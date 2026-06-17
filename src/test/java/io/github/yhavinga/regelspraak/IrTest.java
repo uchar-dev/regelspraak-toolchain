@@ -135,6 +135,39 @@ class IrTest {
         assertNull(m.resolvedRegels.get(0).voorwaarde());
     }
 
+    @Test void aggregatie_neemt_het_elementtype_via_rolnavigatie_over() {
+        // "de som van <attr> van alle passagiers van de reis": the element is the
+        // passagier's attribute (head noun before 'van'), so the sum is its type —
+        // not the deeper "reis". Count is a non-negative integer.
+        String src = """
+            Objecttype de Vlucht
+                het totaalbedrag Numeriek (geheel getal);
+                het aantal reizigers Numeriek (geheel getal);
+            Objecttype de Persoon
+                het bedrag Numeriek (geheel getal);
+            Feittype Vlucht van personen
+                de reis Vlucht
+                de passagier Persoon
+            Eén reis betreft meerdere passagiers
+            Regel som
+                geldig altijd
+                    Het totaalbedrag van een reis moet berekend worden als de som van het bedrag van alle passagiers van de reis.
+            Regel telling
+                geldig altijd
+                    Het aantal reizigers van een reis moet berekend worden als het aantal passagiers van de reis.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "fouten: " + m.errors());
+
+        Expr.Functie som = assertInstanceOf(Expr.Functie.class, m.resolvedRegels.get(0).waarde());
+        assertEquals(Expr.FunctieKind.SOM, som.kind());
+        assertTrue(som.type().isNumeriek(), "som-elementtype niet via rol opgelost");
+
+        Expr.Functie telling = assertInstanceOf(Expr.Functie.class, m.resolvedRegels.get(1).waarde());
+        assertEquals(Expr.FunctieKind.AANTAL, telling.kind());
+        assertTrue(telling.type().isNumeriek(), "telling moet numeriek (een telling) zijn");
+    }
+
     @Test void referenties_lossen_op_via_feittype_rollen() {
         // Subjects are roles, not object-type names: "een reis" → Vlucht (role reis),
         // "een passagier"/"alle passagiers" → Persoon (role passagier, incl. plural).

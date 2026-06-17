@@ -131,7 +131,32 @@ final class ExpressieBouwer {
     // ---------------- §13.4.17 functies / aggregaties ----------------
     private Expr bouwFunctie(FunctieAanroepContext f) {
         String bron = src(f);
-        return new Expr.Functie(functieKind(f), args(f), onbekend(), bron);
+        Expr.FunctieKind kind = functieKind(f);
+        List<Expr> argumenten = args(f);
+        return new Expr.Functie(kind, argumenten, functieType(kind, argumenten), bron);
+    }
+
+    /**
+     * Result datatype of an aggregation/function. The aggregations that preserve
+     * their operand's type — sum/total/min/max/first/last/abs — yield the element
+     * type (which now carries a real unit once the argument's subject resolves
+     * through a role); a count is a non-negative integer; concatenation is Tekst;
+     * the date constructors and Easter are dates. The unit/precision-sensitive
+     * functions (tijdsduur's "in hele <eenheid>", wortel's unit drop, date-component
+     * extraction, day counts, tijdsevenredig deel) are left Onbekend until unit
+     * normalisation exists — typing them naively would mis-match "jaren" against the
+     * declared "jr" and raise a false positive. Structure is captured regardless.
+     */
+    private Datatype functieType(Expr.FunctieKind kind, List<Expr> args) {
+        Datatype eerste = args.isEmpty() ? onbekend() : args.get(0).type();
+        return switch (kind) {
+            case SOM, TOTAAL, MINIMUM, MAXIMUM, EERSTE, LAATSTE, ABSOLUTE_WAARDE -> eerste;
+            case AANTAL -> new Datatype.Numeriek(true, 0, Datatype.Teken.NIET_NEGATIEF, null); // a count
+            case CONCATENATIE -> new Datatype.Tekst();
+            case EERSTE_PAASDAG, DATUM_MET -> new Datatype.DatumInDagen();
+            case DATUMTIJD_MET -> new Datatype.DatumTijd();
+            default -> onbekend();
+        };
     }
 
     private Expr.FunctieKind functieKind(FunctieAanroepContext f) {

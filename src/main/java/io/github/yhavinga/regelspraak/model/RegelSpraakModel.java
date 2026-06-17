@@ -39,9 +39,16 @@ public final class RegelSpraakModel {
      */
     public Objecttype resolveObjecttype(String naam) {
         if (naam == null || naam.isBlank()) return null;
+        // The entity is the HEAD noun phrase, before any " van " navigation:
+        // in "passagiers van de reis" the attribute owner is the passagier, while
+        // "van de reis" only scopes which one. So cut at the first 'van', then within
+        // the head try the whole phrase before its tail (a multi-word role like
+        // "reis met treinmiles" binds before a leading qualifier is dropped).
         String[] woorden = naam.trim().split("\\s+");
-        for (int start = 0; start < woorden.length; start++) {
-            String kandidaat = String.join(" ", java.util.Arrays.copyOfRange(woorden, start, woorden.length));
+        int eind = woorden.length;
+        for (int i = 0; i < woorden.length; i++) if (woorden[i].equalsIgnoreCase("van")) { eind = i; break; }
+        for (int start = 0; start < eind; start++) {
+            String kandidaat = String.join(" ", java.util.Arrays.copyOfRange(woorden, start, eind));
             Objecttype direct = objecttypeOpNaam(kandidaat);
             if (direct != null) return direct;
             Objecttype viaRol = objecttypeViaRol(kandidaat);
