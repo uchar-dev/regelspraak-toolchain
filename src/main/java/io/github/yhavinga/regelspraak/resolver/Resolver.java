@@ -46,8 +46,11 @@ public final class Resolver {
         System.out.printf("objecttypen=%d  domeinen=%d  parameters=%d  feittypen=%d  regels=%d  resolved=%d%n",
                 m.objecttypen.size(), m.domeinen.size(), m.parameters.size(), m.feittypen.size(),
                 m.regels.size(), m.resolvedRegels.size());
-        m.resolvedRegels.forEach(r -> System.out.printf("  [%s] %s := %s :: %s%n",
-                r.soort(), r.doel().bron(), r.waarde().bron(), r.waarde().type().naam()));
+        m.resolvedRegels.forEach(r -> {
+            System.out.printf("  [%s] %s := %s :: %s%n",
+                    r.soort(), r.doel().bron(), r.waarde().bron(), r.waarde().type().naam());
+            if (r.voorwaarde() != null) System.out.println("      indien " + r.voorwaarde().bron());
+        });
         m.diagnostics.forEach(d -> System.out.println("  " + d));
         System.exit(m.isOk() ? 0 : 1);
     }

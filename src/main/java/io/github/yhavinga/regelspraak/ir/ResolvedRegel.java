@@ -9,11 +9,13 @@ package io.github.yhavinga.regelspraak.ir;
  * resultaatdeel kinds (kenmerktoekenning, objectcreatie, verdeling, …) and the
  * voorwaardendeel will join the IR as the resolver learns to bind them.
  *
- * @param naam   the regel name
- * @param soort  which assignment form produced it
- * @param doel   the assignment target — typically an {@link Expr.AttribuutRef}
- * @param waarde the resolved value expression
+ * @param naam       the regel name
+ * @param soort      which assignment form produced it
+ * @param doel       the assignment target — typically an {@link Expr.AttribuutRef}
+ * @param waarde     the resolved value expression (the rule's "then")
+ * @param voorwaarde the resolved condition guarding the rule, or null if unconditional
+ *                   (the rule's "when")
  */
-public record ResolvedRegel(String naam, Soort soort, Expr doel, Expr waarde) {
+public record ResolvedRegel(String naam, Soort soort, Expr doel, Expr waarde, Conditie voorwaarde) {
     public enum Soort { GELIJKSTELLING, BEREKENING, INITIALISATIE }
 }

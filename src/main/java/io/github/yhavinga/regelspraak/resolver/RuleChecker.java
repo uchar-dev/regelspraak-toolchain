@@ -1,12 +1,17 @@
 package io.github.yhavinga.regelspraak.resolver;
 
+import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
 import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.*;
 import io.github.yhavinga.regelspraak.parser.RegelSpraak.*;
+import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.tree.ParseTree;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Type-checks rules against the typeringen matrix (Phase: rule checking). It
@@ -32,8 +37,10 @@ final class RuleChecker {
         for (RegelContext r : doc.regel()) {
             String naam = DefinitionResolver.src(r.regelNaam());
             for (RegelVersieContext v : r.regelVersie()) {
-                resultaat(naam, v.regelSpraakRegel().resultaatDeel());
-                voorwaarden(v.regelSpraakRegel());   // type-check the conditions (§5)
+                RegelSpraakRegelContext rsr = v.regelSpraakRegel();
+                Conditie voorwaarde = rsr.voorwaardeDeel() != null ? bouwVoorwaarde(rsr.voorwaardeDeel()) : null;
+                resultaat(naam, rsr.resultaatDeel(), voorwaarde);
+                voorwaarden(rsr);   // exhaustive condition type-check (§5), unchanged
             }
         }
     }
@@ -52,31 +59,124 @@ final class RuleChecker {
 
     /** Resolve an assignment resultaatdeel into a {@link ResolvedRegel} (the transpiler IR)
      *  and type-check the value against the target (§6 toekenning). */
-    private void resultaat(String naam, ResultaatDeelContext rd) {
+    private void resultaat(String naam, ResultaatDeelContext rd, Conditie voorwaarde) {
         if (rd == null) return;
         if (rd.gelijkstelling() != null) {
             GelijkstellingContext g = rd.gelijkstelling();
             ResolvedRegel.Soort soort = g.WORDT_BEREKEND_ALS() != null
                     ? ResolvedRegel.Soort.BEREKENING : ResolvedRegel.Soort.GELIJKSTELLING;
-            registreer(naam, soort, g.attribuutVanOnderwerp(), g.expressie(), g.getStart().getLine());
+            registreer(naam, soort, g.attribuutVanOnderwerp(), g.expressie(), g.getStart().getLine(), voorwaarde);
         } else if (rd.initialisatie() != null) {
             InitialisatieContext i = rd.initialisatie();
             registreer(naam, ResolvedRegel.Soort.INITIALISATIE, i.attribuutVanOnderwerp(),
-                       i.expressie(), i.getStart().getLine());
+                       i.expressie(), i.getStart().getLine(), voorwaarde);
         }
     }
 
-    private void registreer(String naam, ResolvedRegel.Soort soort,
-                            AttribuutVanOnderwerpContext doel, ExpressieContext waarde, int line) {
+    private void registreer(String naam, ResolvedRegel.Soort soort, AttribuutVanOnderwerpContext doel,
+                            ExpressieContext waarde, int line, Conditie voorwaarde) {
         Expr doelExpr = bouwer.bouwAttribuut(doel);
         Expr waardeExpr = bouwer.bouw(waarde);
-        model.resolvedRegels.add(new ResolvedRegel(naam, soort, doelExpr, waardeExpr));
+        model.resolvedRegels.add(new ResolvedRegel(naam, soort, doelExpr, waardeExpr, voorwaarde));
         Datatype doelType = doelExpr.type(), waardeType = waardeExpr.type();
         if (doelType.isOnbekend() || waardeType.isOnbekend()) return; // not enough resolved to judge
         String fout = Typering.toekenning(doelType, waardeType);
         if (fout != null)
             model.diagnostics.add(new Diagnostic(Severity.ERROR, soort.name().toLowerCase() + ": " + fout, line));
     }
+
+    // ---- §13.4.13/.14/.15 condition IR (structure for the transpiler "when" side) ----
+    // Built alongside (not instead of) the exhaustive type-check walk below, so it
+    // adds structure without changing any diagnostic. Forms not yet structured —
+    // kenmerk/objecttype membership tests, period comparisons — become Onopgelost.
+    private Conditie bouwVoorwaarde(VoorwaardeDeelContext v) {
+        if (v.toplevelSamengesteldeVoorwaarde() != null) return bouwSamengesteld(
+                v.toplevelSamengesteldeVoorwaarde().voorwaardeKwantificatie(),
+                v.toplevelSamengesteldeVoorwaarde().samengesteldeVoorwaardeOnderdeel(), v.toplevelSamengesteldeVoorwaarde());
+        if (v.toplevelElementaireVoorwaarde() != null) {
+            ToplevelElementaireVoorwaardeContext c = v.toplevelElementaireVoorwaarde();
+            if (c.expressie() != null && c.toplevelOperator() != null)
+                return uitToplevel(bouwer.bouw(c.expressie()), c.toplevelOperator(), src(c));
+            if (c.expressie() != null && c.nonToplevelOperator() != null)
+                return uitNonToplevel(bouwer.bouw(c.expressie()), c.nonToplevelOperator(), src(c));
+        }
+        return new Conditie.Onopgelost(src(v));
+    }
+
+    private Conditie bouwSamengesteld(VoorwaardeKwantificatieContext k,
+                                      SamengesteldeVoorwaardeOnderdeelContext onderdeel, ParserRuleContext heel) {
+        List<Conditie> onderdelen = new ArrayList<>();
+        if (onderdeel != null)
+            for (GenesteVoorwaardeContext g : onderdeel.genesteVoorwaarde()) onderdelen.add(bouwGenest(g));
+        return new Conditie.Samengesteld(kwantorVan(k), onderdelen, src(heel));
+    }
+
+    private Conditie bouwGenest(GenesteVoorwaardeContext g) {
+        if (g.genesteSamengesteldeVoorwaarde() != null) {
+            GenesteSamengesteldeVoorwaardeContext c = g.genesteSamengesteldeVoorwaarde();
+            return bouwSamengesteld(c.voorwaardeKwantificatie(), c.samengesteldeVoorwaardeOnderdeel(), c);
+        }
+        if (g.elementaireVoorwaarde() != null) {
+            ElementaireVoorwaardeContext c = g.elementaireVoorwaarde();
+            if (c.expressie() != null && c.nonToplevelOperator() != null)
+                return uitNonToplevel(bouwer.bouw(c.expressie()), c.nonToplevelOperator(), src(c));
+            if (c.expressie() != null && c.toplevelOperator() != null)
+                return uitToplevel(bouwer.bouw(c.expressie()), c.toplevelOperator(), src(c));
+        }
+        return new Conditie.Onopgelost(src(g));
+    }
+
+    private Conditie uitToplevel(Expr lhs, ToplevelOperatorContext op, String bron) {
+        if (op.vergelijkingsTekenGesplitst() != null && op.expressie() != null)
+            return new Conditie.Vergelijking(naarOperator(cmpOf(op.vergelijkingsTekenGesplitst())),
+                    lhs, bouwer.bouw(op.expressie()), bron);
+        if (op.LEEG() != null)   return new Conditie.Predicaat(Conditie.Predicaatsoort.LEEG, lhs, bron);
+        if (op.GEVULD() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.GEVULD, lhs, bron);
+        if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, bron);
+        if (op.NUMERIEK_IS_MET_EXACT() != null || op.NUMERIEK_ZIJN_MET_EXACT() != null)
+            return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, bron);
+        return new Conditie.Onopgelost(bron); // EEN? kaleNaam (is|heeft) — kenmerk/objecttype membership
+    }
+
+    private Conditie uitNonToplevel(Expr lhs, NonToplevelOperatorContext op, String bron) {
+        if (op.vergelijkingsTeken() != null && op.expressie() != null)
+            return new Conditie.Vergelijking(naarOperator(cmpOf(op.vergelijkingsTeken())),
+                    lhs, bouwer.bouw(op.expressie()), bron);
+        if (op.LEEG() != null)   return new Conditie.Predicaat(Conditie.Predicaatsoort.LEEG, lhs, bron);
+        if (op.GEVULD() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.GEVULD, lhs, bron);
+        if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, bron);
+        if (op.NUMERIEK_MET_EXACT() != null)
+            return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, bron);
+        return new Conditie.Onopgelost(bron); // (is|heeft) een? kaleNaam — kenmerk/objecttype membership
+    }
+
+    private Conditie.Kwantor kwantorVan(VoorwaardeKwantificatieContext k) {
+        if (k == null) return Conditie.Kwantor.DE;
+        if (k.ALLE() != null)        return Conditie.Kwantor.ALLE;
+        if (k.GEEN_VAN_DE() != null) return Conditie.Kwantor.GEEN;
+        if (k.TEN_MINSTE() != null)  return Conditie.Kwantor.TEN_MINSTE;
+        if (k.TEN_HOOGSTE() != null) return Conditie.Kwantor.TEN_HOOGSTE;
+        if (k.PRECIES() != null)     return Conditie.Kwantor.PRECIES;
+        return Conditie.Kwantor.DE;
+    }
+
+    private static Conditie.Operator naarOperator(Typering.CmpOp op) {
+        if (op == null) return Conditie.Operator.GELIJK;
+        return switch (op) {
+            case KLEINER -> Conditie.Operator.KLEINER;
+            case KLEINER_OF_GELIJK -> Conditie.Operator.KLEINER_OF_GELIJK;
+            case GROTER -> Conditie.Operator.GROTER;
+            case GROTER_OF_GELIJK -> Conditie.Operator.GROTER_OF_GELIJK;
+            case GELIJK -> Conditie.Operator.GELIJK;
+            case ONGELIJK -> Conditie.Operator.ONGELIJK;
+            case EERDER -> Conditie.Operator.EERDER;
+            case EERDER_OF_GELIJK -> Conditie.Operator.EERDER_OF_GELIJK;
+            case LATER -> Conditie.Operator.LATER;
+            case LATER_OF_GELIJK -> Conditie.Operator.LATER_OF_GELIJK;
+        };
+    }
+
+    private static String src(ParserRuleContext c) { return DefinitionResolver.src(c); }
 
     // ---- §5 condition type-checking (comparisons + predicates) ----
     private void voorwaarden(ParseTree t) {

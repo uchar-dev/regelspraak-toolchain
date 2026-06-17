@@ -1,5 +1,6 @@
 package io.github.yhavinga.regelspraak;
 
+import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
 import io.github.yhavinga.regelspraak.model.Datatype;
@@ -85,6 +86,53 @@ class IrTest {
         Expr.Functie som = assertInstanceOf(Expr.Functie.class, waarde);
         assertEquals(Expr.FunctieKind.SOM, som.kind());
         assertEquals(1, som.argumenten().size());
+    }
+
+    @Test void enkelvoudige_voorwaarde_wordt_een_vergelijking() {
+        String src = """
+            Parameter de grens : Numeriek (geheel getal)
+            Objecttype de Reis
+                de prijs Numeriek (geheel getal);
+            Regel duur
+                geldig altijd
+                    De prijs van een Reis moet gesteld worden op 100
+                    indien de prijs van een Reis groter is dan de grens.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "fouten: " + m.errors());
+        Conditie c = m.resolvedRegels.get(0).voorwaarde();
+        Conditie.Vergelijking v = assertInstanceOf(Conditie.Vergelijking.class, c);
+        assertEquals(Conditie.Operator.GROTER, v.op());
+        assertInstanceOf(Expr.AttribuutRef.class, v.links());
+        assertInstanceOf(Expr.ParameterRef.class, v.rechts());
+    }
+
+    @Test void samengestelde_voorwaarde_wordt_een_boom_van_onderdelen() {
+        String src = """
+            Objecttype de Reis
+                de prijs Numeriek (geheel getal);
+                is duurzaam kenmerk (bijvoeglijk);
+            Regel meervoud
+                geldig altijd
+                    De prijs van een Reis moet gesteld worden op 1
+                    indien de Reis aan alle volgende voorwaarden voldoet:
+                        - de prijs van een Reis groter is dan 0
+                        - de prijs van een Reis kleiner is dan 100.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "fouten: " + m.errors());
+        Conditie c = m.resolvedRegels.get(0).voorwaarde();
+        Conditie.Samengesteld s = assertInstanceOf(Conditie.Samengesteld.class, c);
+        assertEquals(Conditie.Kwantor.ALLE, s.kwantor());
+        assertEquals(2, s.onderdelen().size());
+        assertInstanceOf(Conditie.Vergelijking.class, s.onderdelen().get(0));
+        assertEquals(Conditie.Operator.KLEINER,
+                ((Conditie.Vergelijking) s.onderdelen().get(1)).op());
+    }
+
+    @Test void onvoorwaardelijke_regel_heeft_geen_voorwaarde() {
+        RegelSpraakModel m = Resolver.resolve(SRC);
+        assertNull(m.resolvedRegels.get(0).voorwaarde());
     }
 
     @Test void onopgeloste_referentie_blijft_onbekend_geen_valse_fout() {
