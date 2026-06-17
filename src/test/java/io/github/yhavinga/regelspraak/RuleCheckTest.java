@@ -38,6 +38,40 @@ class RuleCheckTest {
         assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
     }
 
+    @Test void voorwaarde_type_mismatch_wordt_gemeld() {
+        // comparing a Tekst attribute with 'groter dan' (numeric ordering) violates §5.5
+        String src = MODEL + """
+            Regel cond
+                geldig altijd
+                    De teller van een Ding moet gesteld worden op 0
+                    indien de naam van een Ding groter is dan 0.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("voorwaarde")),
+                () -> "verwachtte een voorwaarde-fout, kreeg: " + m.errors());
+    }
+
+    @Test void geldige_voorwaarde_geen_fout() {
+        String src = MODEL + """
+            Regel cond ok
+                geldig altijd
+                    De teller van een Ding moet gesteld worden op 0
+                    indien de teller van een Ding groter is dan 0.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+    }
+
+    @Test void ongedefinieerd_domein_wordt_gemeld() {
+        String src = """
+            Objecttype de Ding
+                de prijs Bedrag;
+            """; // Bedrag is never declared
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("ongedefinieerd domein")),
+                () -> "verwachtte een domein-fout, kreeg: " + m.errors());
+    }
+
     @Test void onoplosbare_referentie_geeft_geen_valse_fout() {
         // a deep van-chain the checker cannot fully resolve must NOT be reported as an error
         String src = MODEL + """

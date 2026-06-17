@@ -39,5 +39,15 @@ public final class Resolver {
         return model;
     }
 
+    /** CLI: resolve a .rs file, print a model summary and any diagnostics; exit 1 if any error. */
+    public static void main(String[] args) throws java.io.IOException {
+        if (args.length < 1) { System.err.println("usage: Resolver <file.rs>"); System.exit(2); }
+        RegelSpraakModel m = resolve(java.nio.file.Files.readString(java.nio.file.Path.of(args[0])));
+        System.out.printf("objecttypen=%d  domeinen=%d  parameters=%d  feittypen=%d  regels=%d%n",
+                m.objecttypen.size(), m.domeinen.size(), m.parameters.size(), m.feittypen.size(), m.regels.size());
+        m.diagnostics.forEach(d -> System.out.println("  " + d));
+        System.exit(m.isOk() ? 0 : 1);
+    }
+
     private Resolver() {}
 }

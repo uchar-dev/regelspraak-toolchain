@@ -23,9 +23,24 @@ final class RuleChecker {
     RuleChecker(RegelSpraakModel model) { this.model = model; }
 
     void check(RegelSpraakDocumentContext doc) {
+        domeinReferenties(doc);
         for (RegelContext r : doc.regel())
-            for (RegelVersieContext v : r.regelVersie())
+            for (RegelVersieContext v : r.regelVersie()) {
                 resultaat(v.regelSpraakRegel().resultaatDeel());
+                voorwaarden(v.regelSpraakRegel());   // type-check the conditions (§5)
+            }
+    }
+
+    /** A domain-typed attribute/parameter must reference a declared domain (§13.3.4). */
+    private void domeinReferenties(RegelSpraakDocumentContext doc) {
+        model.objecttypen.values().forEach(ot -> ot.attributen.forEach((naam, dt) -> meldOnbekendDomein(dt, naam)));
+        model.parameters.values().forEach(p -> meldOnbekendDomein(p.datatype(), p.naam()));
+    }
+    private void meldOnbekendDomein(Datatype dt, String waar) {
+        if (dt instanceof Datatype.Onbekend o && o.reden().startsWith("domein ")) {
+            model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                    "ongedefinieerd " + o.reden() + " (gebruikt door '" + waar + "')", 0));
+        }
     }
 
     private void resultaat(ResultaatDeelContext rd) {
@@ -47,6 +62,68 @@ final class RuleChecker {
         String fout = Typering.toekenning(doelType, waardeType);
         if (fout != null)
             model.diagnostics.add(new Diagnostic(Severity.ERROR, wat + ": " + fout, line));
+    }
+
+    // ---- §5 condition type-checking (comparisons + predicates) ----
+    private void voorwaarden(ParseTree t) {
+        if (t == null) return;
+        if (t instanceof ToplevelElementaireVoorwaardeContext c) checkTopVoorwaarde(c);
+        else if (t instanceof ElementaireVoorwaardeContext c) checkElemVoorwaarde(c);
+        for (int i = 0; i < t.getChildCount(); i++) voorwaarden(t.getChild(i));
+    }
+
+    private void checkTopVoorwaarde(ToplevelElementaireVoorwaardeContext c) {
+        if (c.expressie() == null || c.toplevelOperator() == null) return;
+        Datatype lhs = infer(c.expressie());
+        ToplevelOperatorContext op = c.toplevelOperator();
+        int line = c.getStart().getLine();
+        if (op.vergelijkingsTekenGesplitst() != null && op.expressie() != null)
+            meldVergelijk(cmpOf(op.vergelijkingsTekenGesplitst()), lhs, infer(op.expressie()), line);
+        else if (op.AAN_DE_ELFPROEF() != null)
+            meldPredicaat(Typering.UnairePred.ELFPROEF, lhs, line);
+        else if (op.NUMERIEK_IS_MET_EXACT() != null || op.NUMERIEK_ZIJN_MET_EXACT() != null)
+            meldPredicaat(Typering.UnairePred.NUMERIEK_MET_EXACT, lhs, line);
+    }
+
+    private void checkElemVoorwaarde(ElementaireVoorwaardeContext c) {
+        if (c.expressie() == null || c.nonToplevelOperator() == null) return;
+        Datatype lhs = infer(c.expressie());
+        NonToplevelOperatorContext op = c.nonToplevelOperator();
+        int line = c.getStart().getLine();
+        if (op.vergelijkingsTeken() != null && op.expressie() != null)
+            meldVergelijk(cmpOf(op.vergelijkingsTeken()), lhs, infer(op.expressie()), line);
+        else if (op.AAN_DE_ELFPROEF() != null)
+            meldPredicaat(Typering.UnairePred.ELFPROEF, lhs, line);
+        else if (op.NUMERIEK_MET_EXACT() != null)
+            meldPredicaat(Typering.UnairePred.NUMERIEK_MET_EXACT, lhs, line);
+    }
+
+    private void meldVergelijk(Typering.CmpOp op, Datatype l, Datatype r, int line) {
+        if (op == null) return;
+        var res = Typering.vergelijk(op, l, r);   // Onbekend operands -> ok, so no false positive
+        if (!res.ok()) model.diagnostics.add(new Diagnostic(Severity.ERROR, "voorwaarde: " + res.fout(), line));
+    }
+    private void meldPredicaat(Typering.UnairePred p, Datatype operand, int line) {
+        var res = Typering.predicaat(p, operand);
+        if (!res.ok()) model.diagnostics.add(new Diagnostic(Severity.ERROR, "voorwaarde: " + res.fout(), line));
+    }
+
+    private Typering.CmpOp cmpOf(VergelijkingsTekenContext c) {
+        return cmpOf(c.ONGELIJK() != null, c.GROTER() != null, c.KLEINER() != null,
+                     c.LATER() != null, c.EERDER() != null, c.GELIJK() != null, c.OF() != null);
+    }
+    private Typering.CmpOp cmpOf(VergelijkingsTekenGesplitstContext c) {
+        return cmpOf(c.ONGELIJK() != null, c.GROTER() != null, c.KLEINER() != null,
+                     c.LATER() != null, c.EERDER() != null, c.GELIJK() != null, c.OF() != null);
+    }
+    private Typering.CmpOp cmpOf(boolean ong, boolean gr, boolean kl, boolean la, boolean ee, boolean ge, boolean of) {
+        if (ong) return Typering.CmpOp.ONGELIJK;
+        if (gr)  return of ? Typering.CmpOp.GROTER_OF_GELIJK  : Typering.CmpOp.GROTER;
+        if (kl)  return of ? Typering.CmpOp.KLEINER_OF_GELIJK : Typering.CmpOp.KLEINER;
+        if (la)  return of ? Typering.CmpOp.LATER_OF_GELIJK   : Typering.CmpOp.LATER;
+        if (ee)  return of ? Typering.CmpOp.EERDER_OF_GELIJK  : Typering.CmpOp.EERDER;
+        if (ge)  return Typering.CmpOp.GELIJK;
+        return null;
     }
 
     // ---- expression datatype inference (resolvable subset) ----
