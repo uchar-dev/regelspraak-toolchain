@@ -23,7 +23,17 @@ RUN apt-get update \
 # state (~/.claude.json) under this user's HOME, which run-sandbox.sh persists in
 # a named volume so you authenticate only once.
 RUN useradd -m -s /bin/bash claude
+
+# Baked-in Claude config; entrypoint.sh seeds it into ~/.claude on every start so
+# the setup (model, status line, telemetry-off env) is reproducible from version
+# control rather than hand-written into the volume. Credentials and session
+# history already in the volume are left untouched.
+COPY claude-config/ /opt/claude-config/
+COPY entrypoint.sh  /usr/local/bin/entrypoint.sh
+RUN  chmod +x /usr/local/bin/entrypoint.sh
+
 USER claude
 WORKDIR /work
 
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["claude", "--dangerously-skip-permissions"]
