@@ -2,8 +2,13 @@
 # Run Claude Code in a throwaway container that can see ONLY this repo.
 #
 #   ./run-sandbox.sh            # start Claude (bypass permissions, inside the box)
+#   ./run-sandbox.sh --continue # resume the most recent in-container session
+#   ./run-sandbox.sh --resume   # pick a past in-container session to resume
 #   ./run-sandbox.sh --build    # rebuild the image first, then start
 #   ./run-sandbox.sh --shell    # drop into bash (e.g. to run `claude /login` by hand)
+#
+# Sessions live in the container's volume, not your host ~/.claude, so resume
+# from here -- `claude --resume <id>` on the host will not find them.
 #
 # Isolation: the repo is bind-mounted at /work and nothing else on the host is
 # mounted, so ~/.ssh, ~/.aws, other projects and the host shell are invisible to
@@ -28,8 +33,10 @@ build() { docker build -t "$IMAGE" "$ROOT/docker"; }
 cmd=()
 case "${1:-}" in
   --build) build; shift ;;
+  -c|--continue) cmd=(claude --continue --dangerously-skip-permissions); shift ;;
+  -r|--resume) cmd=(claude --resume --dangerously-skip-permissions); shift ;;
   --shell) cmd=(bash); shift ;;
-  -h|--help) echo "usage: ./$(basename "$0") [--build | --shell]"; exit 0 ;;
+  -h|--help) echo "usage: ./$(basename "$0") [--build | --continue | --resume | --shell]"; exit 0 ;;
 esac
 
 # Build on first use if the image is missing.

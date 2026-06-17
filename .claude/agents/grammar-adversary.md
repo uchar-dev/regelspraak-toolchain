@@ -2,7 +2,7 @@
 name: grammar-adversary
 description: Adversarially tests the current ANTLR grammar against the spec — hunts for inputs it mis-parses, ambiguities, and lexer-ordering bugs. Use after a grammar change, before declaring a section done.
 tools: Read, Grep, Glob, Bash
-model: opus
+model: opus[1m]
 color: red
 ---
 

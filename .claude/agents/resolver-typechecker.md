@@ -2,7 +2,7 @@
 name: resolver-typechecker
 description: Checks the resolver / semantic analysis against the RegelSpraak v2.3.0 typeringen (datatype) matrix — operand types, comparison legality, unit compatibility, arity. Use when reviewing resolver code.
 tools: Read, Grep, Glob
-model: opus
+model: opus[1m]
 color: purple
 ---
 

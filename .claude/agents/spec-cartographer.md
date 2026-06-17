@@ -2,7 +2,7 @@
 name: spec-cartographer
 description: Maps one RegelSpraak v2.3.0 spec section (a Chapter 13 non-terminal, e.g. §13.4.17 Expressie) to the concrete ANTLR lexer tokens and parser rules it requires. Use proactively to fan out over spec sections in parallel before writing grammar.
 tools: Read, Grep, Glob
-model: sonnet
+model: opus[1m]
 color: blue
 ---
 
