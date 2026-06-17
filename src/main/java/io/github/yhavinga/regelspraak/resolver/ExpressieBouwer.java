@@ -141,8 +141,17 @@ final class ExpressieBouwer {
         String bron = src(f);
         Expr.FunctieKind kind = functieKind(f);
         List<Expr> argumenten = args(f);
-        return new Expr.Functie(kind, argumenten, aggregatieElement(kind, argumenten),
-                functieType(kind, argumenten), bron);
+        Datatype type = f instanceof TijdsduurFuncContext t ? tijdsduurType(t) : functieType(kind, argumenten);
+        return new Expr.Functie(kind, argumenten, aggregatieElement(kind, argumenten), type, bron);
+    }
+
+    /** §13.4.17.32 "(absolute) tijdsduur van A tot B in [hele] <eenheid>": a number of
+     *  that unit (whole when "hele" is present). Unit normalisation makes "jaren"
+     *  convertible with a declared "jr". */
+    private Datatype tijdsduurType(TijdsduurFuncContext t) {
+        io.github.yhavinga.regelspraak.model.Eenheid e = t.eenheidMeervoud() != null
+                ? model.resolveEenheid(src(t.eenheidMeervoud())) : null;
+        return new Datatype.Numeriek(t.HELE() != null, 0, Datatype.Teken.ONBEPAALD, e);
     }
 
     /**

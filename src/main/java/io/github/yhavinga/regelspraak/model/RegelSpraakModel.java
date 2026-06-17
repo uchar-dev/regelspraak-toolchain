@@ -104,13 +104,34 @@ public final class RegelSpraakModel {
                 || naam.equalsIgnoreCase(rolNaam + "en");  // partner → partners is +s; persoon → personen
     }
 
-    /** Resolve a unit abbreviation to the Eenheid declared in some system. */
-    public Eenheid resolveEenheid(String afkorting) {
+    /**
+     * Resolve a unit spelling to the Eenheid declared in some system. A unit's
+     * abbreviation ("jr"), word ("jaar") and plural ("jaren") all denote the same
+     * unit, so the spelling is matched as an abbreviation and, normalised to its
+     * singular time-unit word, as an alias of a declared unit. Resolving "jaren" and
+     * "jr" to the same system makes them inter-convertible (same-system rule), which
+     * is what lets a duration "in hele jaren" assign to an attribute "met eenheid jr".
+     */
+    public Eenheid resolveEenheid(String spelling) {
+        String norm = normaliseerTijdseenheid(spelling);
         for (Eenheidstelsel s : eenheidstelsels.values()) {
-            Eenheid e = s.eenheden.get(afkorting);
+            Eenheid e = s.eenheden.get(spelling);
+            if (e == null) e = s.aliassen.get(norm);
             if (e != null) return e;
         }
-        return new Eenheid(afkorting, null); // unknown system; still usable by name
+        return new Eenheid(norm, null); // unknown system; normalised so plural/singular still unify
+    }
+
+    /** Singular form of a built-in time unit (the lexer's nine units), else unchanged. */
+    public static String normaliseerTijdseenheid(String s) {
+        return switch (s == null ? "" : s.toLowerCase()) {
+            case "jaren" -> "jaar";           case "maanden" -> "maand";
+            case "dagen" -> "dag";            case "weken" -> "week";
+            case "kwartalen" -> "kwartaal";   case "uren" -> "uur";
+            case "minuten" -> "minuut";       case "seconden" -> "seconde";
+            case "milliseconden" -> "milliseconde";
+            default -> s;
+        };
     }
 
     /** An object type: its attributes (name -> datatype) and kenmerk names. */
@@ -134,7 +155,8 @@ public final class RegelSpraakModel {
 
     public static final class Eenheidstelsel {
         public final String naam;
-        public final Map<String, Eenheid> eenheden = new LinkedHashMap<>();
+        public final Map<String, Eenheid> eenheden = new LinkedHashMap<>(); // abbreviation -> unit
+        public final Map<String, Eenheid> aliassen = new LinkedHashMap<>(); // unit word / plural (normalised) -> unit
         public Eenheidstelsel(String naam) { this.naam = naam; }
     }
 

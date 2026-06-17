@@ -145,9 +145,19 @@ public final class DefinitionResolver {
     private void eenheidsysteem(EenheidsysteemDefinitionContext ctx) {
         Eenheidstelsel stelsel = new Eenheidstelsel(src(ctx.eenheidsysteemNaam()));
         for (EenheidDefinitieContext u : ctx.eenheidDefinitie()) {
+            Eenheid canoniek = null;
             for (var afk : u.eenheidAfkorting()) {
                 String a = src(afk);
-                stelsel.eenheden.put(a, new Eenheid(a, stelsel.naam));
+                Eenheid e = new Eenheid(a, stelsel.naam);
+                stelsel.eenheden.put(a, e);
+                if (canoniek == null) canoniek = e;
+            }
+            // the unit word ("jaar") and its plural alias the unit, so "jaren"/"jr" unify
+            if (u.eenheidWoord() != null) {
+                if (canoniek == null) canoniek = new Eenheid(src(u.eenheidWoord()), stelsel.naam);
+                stelsel.aliassen.put(RegelSpraakModel.normaliseerTijdseenheid(src(u.eenheidWoord())), canoniek);
+                if (u.meervoudsvorm() != null)
+                    stelsel.aliassen.put(RegelSpraakModel.normaliseerTijdseenheid(src(u.meervoudsvorm())), canoniek);
             }
         }
         model.eenheidstelsels.put(stelsel.naam, stelsel);

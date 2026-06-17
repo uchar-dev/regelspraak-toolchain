@@ -168,6 +168,31 @@ class IrTest {
         assertTrue(telling.type().isNumeriek(), "telling moet numeriek (een telling) zijn");
     }
 
+    @Test void tijdsduur_wordt_getypeerd_met_genormaliseerde_eenheid() {
+        // "in hele jaren" must be convertible with the declared abbreviation "jr",
+        // so a duration can assign to an attribute "met eenheid jr" without a false
+        // positive — unit-word/plural/abbreviation all denote the one unit.
+        String src = """
+            Eenheidsysteem Tijd
+                het jaar    jr
+            Objecttype de Persoon
+                de leeftijd Numeriek (geheel getal) met eenheid jr;
+                de geboortedatum Datum in dagen;
+                de peildatum Datum in dagen;
+            Regel leeftijd
+                geldig altijd
+                    De leeftijd van een Persoon moet berekend worden als de tijdsduur van de geboortedatum van een Persoon tot de peildatum van een Persoon in hele jaren.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "valse fout op jaren/jr: " + m.errors());
+
+        Expr.Functie td = assertInstanceOf(Expr.Functie.class, m.resolvedRegels.get(0).waarde());
+        assertEquals(Expr.FunctieKind.TIJDSDUUR, td.kind());
+        Datatype.Numeriek n = assertInstanceOf(Datatype.Numeriek.class, td.type());
+        assertTrue(n.geheel(), "hele jaren -> geheel");
+        assertTrue(n.eenheid().convertibleNaar(m.resolveEenheid("jr")), "jaren niet inwisselbaar met jr");
+    }
+
     @Test void referenties_lossen_op_via_feittype_rollen() {
         // Subjects are roles, not object-type names: "een reis" → Vlucht (role reis),
         // "een passagier"/"alle passagiers" → Persoon (role passagier, incl. plural).
