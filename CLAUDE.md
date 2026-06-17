@@ -139,7 +139,12 @@ it runs without prompts. **Only run this repo inside a sandbox / VM.** `rm -rf /
 `rm -rf ~`, and `sudo` are still blocked as circuit-breakers. To dial back,
 change `defaultMode` to `acceptEdits`.
 
-**Sandboxed runs:** `./run-sandbox.sh` launches Claude Code in a container
-that has a JDK + this repo bind-mounted and nothing else of the host; the login
-persists in a named volume (log in once). This is the intended way to run the
-bypass posture unattended.
+**Your environment is the sandbox.** A human launches you with `./run-sandbox.sh`
+(or `make run-sandbox`) on the host; you then run inside a container with this repo
+mounted at `/work` — JDK 21, make, git, and the ANTLR jar already present — and
+nothing else of the host reachable. If you are the coding agent reading this, you
+are *already inside* that container: never run `./run-sandbox.sh` or
+`make run-sandbox` yourself — there is no Docker in here and the nesting is
+meaningless.
+Just build in `/work`. The `bypassPermissions` posture is safe because the
+container is the boundary, and your login persists in a named volume across runs.

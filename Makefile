@@ -8,7 +8,7 @@
 # the Drools transpiler grow into real JVM code (see CLAUDE.md / docs/ANTLR-HOWTO.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help antlr-jar parser compile grun gui clean clean-jar
+.PHONY: help antlr-jar parser compile grun gui clean clean-jar run-sandbox
 
 ANTLR4_VERSION := 4.13.2
 ANTLR4_URL     := https://www.antlr.org/download/antlr-$(ANTLR4_VERSION)-complete.jar
@@ -38,6 +38,9 @@ help:
 	@echo "  make gui  RULE=<rule> FILE=<input>   Open the parse tree in the TestRig GUI inspector"
 	@echo "  make clean                           Remove generated sources (gen/) and classes (out/)"
 	@echo "  make clean-jar                       Remove the downloaded ANTLR jar"
+	@echo ""
+	@echo "  make run-sandbox                     (host only) Launch the container that IS the agent's"
+	@echo "                                       environment; cannot run from inside the sandbox"
 	@echo ""
 	@echo "  PACKAGE = $(PACKAGE)"
 	@echo "  Grammar files expected: $(LEXER_G4), $(PARSER_G4)"
@@ -77,3 +80,9 @@ clean:
 
 clean-jar:
 	rm -f $(ANTLR4_JAR)
+
+# Host-side launcher: build and enter the container sandbox that becomes the
+# coding agent's environment. There is no Docker inside the sandbox, so this is
+# for the host only — the agent itself already runs in /work and must not call it.
+run-sandbox:
+	./run-sandbox.sh
