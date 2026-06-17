@@ -95,6 +95,17 @@ The result: **192 of 193** snippets parse (TOKA 47/47). The one exception:
   multi-word enum values are intrinsically unparseable — re-quoting them would be
   editing the source, not parsing it. Catalogued as a conversion defect.
 
+### Known precedence limitation (begrenzing + afronding)
+
+When a begrenzing's bound value is followed by an afronding — "… met een minimum
+van 0 € naar beneden afgerond op 0 decimalen" — the afronding parses INTO the
+bound value (minimum = "0 afgerond"), rather than wrapping the bounded result, as
+§13.4.17 intends. The bound value uses the full `expressie`, which greedily takes
+the trailing afronding. A faithful fix needs the bound value to stop before an
+outer afronding (a precedence split in the begrenzing rule); until then the IR —
+and therefore the generated DRL — rounds the bound rather than the result. Noted
+so the transpiler's output is read with this in mind.
+
 ### Forms still modelled at main-clause word order (resolver-side concern)
 
 - **V-final subordinate clauses** after `dat` (`… dat hij een recht … heeft`,

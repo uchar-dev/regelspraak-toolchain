@@ -115,6 +115,27 @@ class DrlTest {
         assertTrue(drl.contains("/* TODO aggregatie WORTEL"), () -> "wortel niet gemarkeerd:\n" + drl);
     }
 
+    @Test void begrenzing_en_afronding_worden_geemit() {
+        // Kept in separate rules: a begrenzing whose bound value is itself followed by
+        // an afronding parses the afronding INTO the bound value (a grammar-precedence
+        // limitation noted in docs/grammar-divergences.md), so they are tested apart.
+        String src = """
+            Parameter de bodem : Numeriek (geheel getal)
+            Objecttype de Reis
+                de prijs Numeriek (geheel getal);
+                de basis Numeriek (geheel getal);
+            Regel afrond
+                geldig altijd
+                    De prijs van een Reis moet gesteld worden op de basis van een Reis naar beneden afgerond op 2 decimalen.
+            Regel begrens
+                geldig altijd
+                    De prijs van een Reis moet gesteld worden op de basis van een Reis, met een minimum van de bodem.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains(".setScale(2, java.math.RoundingMode.FLOOR)"), () -> "afronding:\n" + drl);
+        assertTrue(drl.contains("< bodem ? bodem :"), () -> "begrenzing-minimum:\n" + drl);
+    }
+
     @Test void namen_worden_geldige_java_identifiers() {
         String src = """
             Objecttype de Natuurlijk persoon

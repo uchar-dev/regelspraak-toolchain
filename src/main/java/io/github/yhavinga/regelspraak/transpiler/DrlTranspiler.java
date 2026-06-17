@@ -100,8 +100,20 @@ public final class DrlTranspiler {
                 return "(" + waarde(b.links(), subject) + " / 100 * " + waarde(b.rechts(), subject) + ")";
             return "(" + waarde(b.links(), subject) + " " + infix(b.op()) + " " + waarde(b.rechts(), subject) + ")";
         }
-        if (e instanceof Expr.Afgerond af)      return waarde(af.basis(), subject); // TODO: setScale per modus
-        if (e instanceof Expr.Begrensd bg)      return waarde(bg.basis(), subject); // TODO: min/max clamp
+        if (e instanceof Expr.Afgerond af) {
+            String mode = switch (af.modus()) {
+                case NAAR_BENEDEN -> "FLOOR"; case NAAR_BOVEN -> "CEILING";
+                case REKENKUNDIG -> "HALF_UP"; case RICHTING_NUL -> "DOWN"; case WEG_VAN_NUL -> "UP";
+            };
+            return "(" + waarde(af.basis(), subject) + ").setScale(" + af.decimalen()
+                    + ", java.math.RoundingMode." + mode + ")";
+        }
+        if (e instanceof Expr.Begrensd bg) {
+            String r = waarde(bg.basis(), subject);
+            if (bg.minimum() != null) { String m = waarde(bg.minimum(), subject); r = "(" + r + " < " + m + " ? " + m + " : " + r + ")"; }
+            if (bg.maximum() != null) { String m = waarde(bg.maximum(), subject); r = "(" + r + " > " + m + " ? " + m + " : " + r + ")"; }
+            return r;
+        }
         if (e instanceof Expr.Constante c)      return todo("constante", c.naam());
         if (e instanceof Expr.Functie f) {
             String var = accumulate(f, subject);              // hoists an accumulate into the "when"
