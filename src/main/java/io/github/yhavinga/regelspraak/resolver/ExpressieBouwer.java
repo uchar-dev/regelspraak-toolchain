@@ -173,7 +173,7 @@ final class ExpressieBouwer {
             return onopgelost(a);
         String attr = src(a.attribuutMetLidwoord().kaleNaam());
         String onderwerpBron = a.onderwerp() != null ? src(a.onderwerp()) : "";
-        Objecttype ot = vindObjecttype(a.onderwerp());
+        Objecttype ot = resolveOnderwerp(a.onderwerp());
         Datatype dt = ot != null && ot.attributen.get(attr) != null ? ot.attributen.get(attr) : onbekend();
         return new Expr.AttribuutRef(attr, ot, onderwerpBron, dt, bron);
     }
@@ -187,6 +187,33 @@ final class ExpressieBouwer {
         if (p != null) return new Expr.ParameterRef(p, bron);
         if (isVariabele) return new Expr.VariabeleRef(naam, onbekend(), bron);
         return onopgelost(bron);
+    }
+
+    /**
+     * The object type a subject denotes: first via its primary noun (resolved
+     * against object-type names and feittype roles, §13.4.1), then — as a fallback
+     * for navigation shapes the primary-noun extraction does not cover — the older
+     * deep scan for a directly-named object type. Returns null when neither binds.
+     */
+    private Objecttype resolveOnderwerp(OnderwerpContext o) {
+        String n = primaireNaam(o);
+        Objecttype ot = n != null ? model.resolveObjecttype(n) : null;
+        return ot != null ? ot : vindObjecttype(o);
+    }
+
+    /** The subject's primary noun — the entity an attribute attaches to. */
+    private String primaireNaam(OnderwerpContext o) {
+        if (o == null) return null;
+        if (o.kaleNaam() != null) return src(o.kaleNaam());   // kwantificatie kaleNaam (van …)?
+        return primaireNaamKeten(o.onderwerpKeten());
+    }
+    private String primaireNaamKeten(OnderwerpKetenContext k) {
+        if (k == null) return null;
+        if (k.universeelOnderwerp() != null) return src(k.universeelOnderwerp().kaleNaam());
+        if (k.onderwerpVerwijzing() != null) return src(k.onderwerpVerwijzing().kaleNaam());
+        if (k.ZIJN() != null && k.kaleNaam() != null) return src(k.kaleNaam()); // "zijn reis"
+        if (k.onderwerpKeten() != null) return primaireNaamKeten(k.onderwerpKeten());
+        return null; // selector-van / other navigation: leave to the deep-scan fallback
     }
 
     /** Find the object type a subject denotes by matching any name in its subtree against the model. */

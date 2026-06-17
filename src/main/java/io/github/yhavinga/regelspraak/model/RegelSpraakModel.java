@@ -27,6 +27,50 @@ public final class RegelSpraakModel {
     public boolean isOk() { return diagnostics.stream().noneMatch(Diagnostic::isError); }
     public List<Diagnostic> errors() { return diagnostics.stream().filter(Diagnostic::isError).toList(); }
 
+    /**
+     * Resolve a subject noun to the object type it denotes (§13.4.1). The noun may
+     * name an object type directly (case-insensitive: "de vlucht" → Vlucht) or be a
+     * feittype role whose filler is that object type ("een passagier" → Natuurlijk
+     * persoon via the role "passagier"). A role reference is often plural
+     * ("passagiers"); a simple Dutch +s/+en plural is matched against the singular
+     * role name. The phrase is tried whole first, then with leading words dropped,
+     * so a multi-word role ("reis met treinmiles") binds before its head noun does.
+     * Returns null when nothing matches — the caller then makes no type claim.
+     */
+    public Objecttype resolveObjecttype(String naam) {
+        if (naam == null || naam.isBlank()) return null;
+        String[] woorden = naam.trim().split("\\s+");
+        for (int start = 0; start < woorden.length; start++) {
+            String kandidaat = String.join(" ", java.util.Arrays.copyOfRange(woorden, start, woorden.length));
+            Objecttype direct = objecttypeOpNaam(kandidaat);
+            if (direct != null) return direct;
+            Objecttype viaRol = objecttypeViaRol(kandidaat);
+            if (viaRol != null) return viaRol;
+        }
+        return null;
+    }
+
+    private Objecttype objecttypeOpNaam(String naam) {
+        Objecttype exact = objecttypen.get(naam);
+        if (exact != null) return exact;
+        for (var e : objecttypen.entrySet())
+            if (e.getKey().equalsIgnoreCase(naam)) return e.getValue();
+        return null;
+    }
+
+    private Objecttype objecttypeViaRol(String naam) {
+        for (Feittype ft : feittypen.values())
+            for (Rol r : ft.rollen)
+                if (rolMatcht(r.naam(), naam)) return objecttypeOpNaam(r.objecttypeNaam());
+        return null;
+    }
+
+    private static boolean rolMatcht(String rolNaam, String naam) {
+        return rolNaam.equalsIgnoreCase(naam)
+                || naam.equalsIgnoreCase(rolNaam + "s")    // passagier → passagiers
+                || naam.equalsIgnoreCase(rolNaam + "en");  // partner → partners is +s; persoon → personen
+    }
+
     /** Resolve a unit abbreviation to the Eenheid declared in some system. */
     public Eenheid resolveEenheid(String afkorting) {
         for (Eenheidstelsel s : eenheidstelsels.values()) {
