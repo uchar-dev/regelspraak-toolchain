@@ -1,5 +1,7 @@
 package io.github.yhavinga.regelspraak;
 
+import io.github.yhavinga.regelspraak.facts.Bestelling;
+import io.github.yhavinga.regelspraak.facts.Factuur;
 import io.github.yhavinga.regelspraak.facts.Passagier;
 import io.github.yhavinga.regelspraak.facts.Vlucht;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
@@ -94,5 +96,38 @@ class DroolsExecutionTest {
 
         assertEquals(0, new BigDecimal("100").compareTo(v.getTotaalprijs()),
                 () -> "som over de juiste passagiers faalde: " + v.getTotaalprijs());
+    }
+
+    @Test void objectcreatie_voegt_een_gekoppeld_feit_toe() {
+        String src = """
+            Objecttype de Bestelling
+                de waarde Numeriek (geheel getal);
+            Objecttype de Factuur
+                de bedrag Numeriek (geheel getal);
+            Feittype Bestelling met factuur
+                de bestelling Bestelling
+                de factuur Factuur
+            Eén bestelling heeft één factuur
+            Regel maak factuur
+                geldig altijd
+                    Een Bestelling heeft een factuur met bedrag gelijk aan de waarde van een Bestelling.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("insert($new)"), () -> "geen insert:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Bestelling b = new Bestelling();
+        b.setWaarde(new BigDecimal("50"));
+        sessie.insert(b);
+        sessie.fireAllRules();
+        var facturen = sessie.getObjects().stream().filter(o -> o instanceof Factuur).map(o -> (Factuur) o).toList();
+        sessie.dispose();
+
+        assertEquals(1, facturen.size(), "objectcreatie maakte geen Factuur");
+        Factuur f = facturen.get(0);
+        assertEquals(0, new BigDecimal("50").compareTo(f.getBedrag()), () -> "bedrag: " + f.getBedrag());
+        assertSame(b, f.getBestelling(), "terugkoppeling naar de bestelling ontbreekt");
     }
 }

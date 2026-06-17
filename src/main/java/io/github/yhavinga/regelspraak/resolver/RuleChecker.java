@@ -2,6 +2,7 @@ package io.github.yhavinga.regelspraak.resolver;
 
 import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
+import io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
 import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
@@ -73,8 +74,36 @@ final class RuleChecker {
                        i.expressie(), i.getStart().getLine(), voorwaarde);
         } else if (rd.kenmerkToekenning() != null) {
             kenmerk(naam, rd.kenmerkToekenning(), voorwaarde);
+        } else if (rd.objectCreatie() != null) {
+            objectcreatie(naam, rd.objectCreatie(), voorwaarde);
         }
     }
+
+    /** §13.4.6 objectcreatie: "<subject> heeft <het rol> met <attribuut> gelijk aan <expr>
+     *  (, <attribuut> gelijk aan <expr>)*". The first kaleNaam carries "<rol> met
+     *  <attribuut>" (the 'met' fold the grammar leaves to the resolver); the rest are
+     *  bare attribute names. */
+    private void objectcreatie(String naam, ObjectCreatieContext oc, Conditie voorwaarde) {
+        Objecttype subject = bouwer.objecttypeVanKeten(oc.onderwerpKeten());
+        bouwer.setSubject(subject);
+        List<KaleNaamContext> namen = oc.kaleNaam();
+        List<ExpressieContext> waarden = oc.expressie();
+        if (namen.isEmpty()) return;
+
+        String[] rolEnAttr = src(namen.get(0)).split("(?i)\\s+met\\s+", 2);
+        Objecttype nieuwType = bouwer != null
+                ? model.resolveObjecttype(stripArtikel(rolEnAttr[0])) : null;
+
+        List<ResolvedObjectCreatie.Toekenning> toek = new ArrayList<>();
+        if (rolEnAttr.length == 2 && !waarden.isEmpty())
+            toek.add(new ResolvedObjectCreatie.Toekenning(stripArtikel(rolEnAttr[1]), bouwer.bouw(waarden.get(0))));
+        for (int i = 1; i < namen.size() && i < waarden.size(); i++)
+            toek.add(new ResolvedObjectCreatie.Toekenning(stripArtikel(src(namen.get(i))), bouwer.bouw(waarden.get(i))));
+
+        model.objectCreaties.add(new ResolvedObjectCreatie(naam, nieuwType, subject, toek, voorwaarde));
+    }
+
+    private static String stripArtikel(String s) { return s.replaceFirst("^(?i)(de|het|een)\\s+", "").trim(); }
 
     /** §13.4.5 kenmerktoekenning: the subject acquires a kenmerk (a boolean property).
      *  Modelled as setting that boolean attribute to true. */
@@ -94,6 +123,7 @@ final class RuleChecker {
         if (rd.gelijkstelling() != null) doel = rd.gelijkstelling().attribuutVanOnderwerp();
         else if (rd.initialisatie() != null) doel = rd.initialisatie().attribuutVanOnderwerp();
         else if (rd.kenmerkToekenning() != null) return bouwer.objecttypeVanKeten(rd.kenmerkToekenning().onderwerpKeten());
+        else if (rd.objectCreatie() != null) return bouwer.objecttypeVanKeten(rd.objectCreatie().onderwerpKeten());
         return doel != null && bouwer.bouwAttribuut(doel) instanceof Expr.AttribuutRef a ? a.objecttype() : null;
     }
 

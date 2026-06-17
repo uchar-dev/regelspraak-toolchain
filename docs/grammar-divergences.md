@@ -106,6 +106,14 @@ outer afronding (a precedence split in the begrenzing rule); until then the IR �
 and therefore the generated DRL — rounds the bound rather than the result. Noted
 so the transpiler's output is read with this in mind.
 
+### Known precedence limitation (telling + arithmetic)
+
+"het aantal <X> maal <Y>" parses as a count of "(X maal Y)" rather than "(count of
+X) maal Y", because the telling's argument is a full `expressie` and greedily takes
+the product. Like the begrenzing/afronding case, this is a precedence split the
+grammar does not yet make, so such a count surfaces in the IR (and DRL) as an
+unresolved aggregation rather than an accumulate over X. Noted for a focused fix.
+
 ### Forms still modelled at main-clause word order (resolver-side concern)
 
 - **V-final subordinate clauses** after `dat` (`… dat hij een recht … heeft`,

@@ -56,7 +56,41 @@ public final class DrlTranspiler {
         if (!model.parameters.isEmpty()) out.append('\n');
 
         for (ResolvedRegel r : model.resolvedRegels) regel(r);
+        for (io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc : model.objectCreaties) objectCreatie(oc);
         return out.toString();
+    }
+
+    /** §13.4.6 objectcreatie -> a rule that inserts a new fact, sets its attributes,
+     *  and links it back to the subject through the feittype role. */
+    private void objectCreatie(io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc) {
+        accumulates = new ArrayList<>();
+        accCount = 0;
+        Objecttype nieuw = oc.nieuwType(), subject = oc.subject();
+        // value expressions may carry aggregations -> collected into the "when"
+        java.util.List<String> setters = new ArrayList<>();
+        for (var t : oc.toekenningen())
+            setters.add("    $new." + setter(t.attribuut()) + "( " + waarde(t.waarde(), subject) + " );");
+
+        out.append("rule \"").append(oc.naam()).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
+        if (subject == null || nieuw == null) {
+            out.append("    // onopgelost objectcreatie: ").append(oc.naam()).append("\n    eval(true)\n");
+            out.append("then\nend\n\n");
+            return;
+        }
+        out.append("    ").append(SUBJECT).append(" : ").append(ident(subject.naam, true))
+           .append("( ").append(oc.voorwaarde() != null ? conditie(oc.voorwaarde(), subject) : "").append(" )\n");
+        for (String acc : accumulates) out.append("    ").append(acc).append('\n');
+        out.append("then\n");
+        out.append("    ").append(ident(nieuw.naam, true)).append(" $new = new ")
+           .append(ident(nieuw.naam, true)).append("();\n");
+        for (String s : setters) out.append(s).append('\n');
+        String rolNaarSubject = model.verbindendeRol(nieuw, subject); // field on the new object -> subject
+        if (rolNaarSubject != null)
+            out.append("    $new.").append(setter(rolNaarSubject)).append("( ").append(SUBJECT).append(" );\n");
+        else
+            out.append("    // onopgelost terugkoppeling naar ").append(subject.naam).append('\n');
+        out.append("    insert($new);\n");
+        out.append("end\n\n");
     }
 
     private void regel(ResolvedRegel r) {

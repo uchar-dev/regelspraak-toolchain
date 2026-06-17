@@ -22,6 +22,8 @@ public final class RegelSpraakModel {
     public final List<Regel> regels = new ArrayList<>();
     /** Resolved rule IR (typed expressions + bound references) — the transpiler's input. */
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedRegel> resolvedRegels = new ArrayList<>();
+    /** Resolved object-creation rules (§13.4.6) — a separate IR shape (new object + attributes). */
+    public final List<io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie> objectCreaties = new ArrayList<>();
     public final List<Diagnostic> diagnostics = new ArrayList<>();
 
     public boolean isOk() { return diagnostics.stream().noneMatch(Diagnostic::isError); }
