@@ -1,8 +1,10 @@
 package io.github.yhavinga.regelspraak;
 
 import io.github.yhavinga.regelspraak.facts.Bestelling;
+import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
 import io.github.yhavinga.regelspraak.facts.Passagier;
+import io.github.yhavinga.regelspraak.facts.Pot;
 import io.github.yhavinga.regelspraak.facts.Vlucht;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
@@ -129,5 +131,38 @@ class DroolsExecutionTest {
         Factuur f = facturen.get(0);
         assertEquals(0, new BigDecimal("50").compareTo(f.getBedrag()), () -> "bedrag: " + f.getBedrag());
         assertSame(b, f.getBestelling(), "terugkoppeling naar de bestelling ontbreekt");
+    }
+
+    @Test void verdeling_in_gelijke_delen_geeft_ieder_een_gelijk_aandeel() {
+        String src = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld in gelijke delen.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("count($c)"), () -> "geen accumulate-count:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Pot p = new Pot(); p.setTotaal(new BigDecimal("90"));
+        Deelnemer d1 = new Deelnemer(); d1.setPot(p);
+        Deelnemer d2 = new Deelnemer(); d2.setPot(p);
+        Deelnemer d3 = new Deelnemer(); d3.setPot(p);
+        sessie.insert(p); sessie.insert(d1); sessie.insert(d2); sessie.insert(d3);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        for (Deelnemer d : new Deelnemer[]{d1, d2, d3})
+            assertEquals(0, new BigDecimal("30").compareTo(d.getAandeel()),
+                    () -> "ieder aandeel moet 90/3 = 30 zijn, kreeg " + d.getAandeel());
     }
 }

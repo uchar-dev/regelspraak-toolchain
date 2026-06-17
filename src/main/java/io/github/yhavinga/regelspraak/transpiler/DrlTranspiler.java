@@ -57,7 +57,34 @@ public final class DrlTranspiler {
 
         for (ResolvedRegel r : model.resolvedRegels) regel(r);
         for (io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc : model.objectCreaties) objectCreatie(oc);
+        for (io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v : model.verdelingen) verdeling(v);
         return out.toString();
+    }
+
+    /** §13.4.10 verdeling. Equal shares is a real rule: bind the source, count the
+     *  recipients (joined to the source), and give each recipient total/count. The
+     *  proportional and group/remainder methods are multi-step allocations with no
+     *  single-rule form, so they are emitted as an explicit marker. */
+    private void verdeling(io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v) {
+        Objecttype bron = v.bronType(), doel = v.doelType();
+        String join = bron != null && doel != null ? model.verbindendeRol(doel, bron) : null;
+        boolean kan = v.methode() == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.GELIJKE_DELEN
+                && join != null;
+        out.append("rule \"").append(v.naam()).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
+        if (!kan) {
+            out.append("    // onopgelost verdeling (")
+               .append(bron == null || doel == null ? "referentie" : v.methode().name().toLowerCase())
+               .append("): ").append(v.bronAttribuut()).append(" over ").append(v.doelAttribuut()).append('\n');
+            out.append("    eval(true)\nthen\nend\n\n");
+            return;
+        }
+        String j = ident(join, false) + " == $src";
+        out.append("    $src : ").append(ident(bron.naam, true)).append("(  )\n");
+        out.append("    accumulate( $c : ").append(ident(doel.naam, true)).append("( ").append(j)
+           .append(" ) ; $n : count($c) )\n");
+        out.append("    $r : ").append(ident(doel.naam, true)).append("( ").append(j).append(" )\n");
+        out.append("then\n    modify($r) {\n        ").append(setter(v.doelAttribuut()))
+           .append("( $src.").append(getter(v.bronAttribuut())).append("() / $n )\n    }\nend\n\n");
     }
 
     /** §13.4.6 objectcreatie -> a rule that inserts a new fact, sets its attributes,

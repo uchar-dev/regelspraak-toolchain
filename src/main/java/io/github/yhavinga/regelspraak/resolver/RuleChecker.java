@@ -4,6 +4,7 @@ import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
+import io.github.yhavinga.regelspraak.ir.ResolvedVerdeling;
 import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.*;
@@ -76,7 +77,30 @@ final class RuleChecker {
             kenmerk(naam, rd.kenmerkToekenning(), voorwaarde);
         } else if (rd.objectCreatie() != null) {
             objectcreatie(naam, rd.objectCreatie(), voorwaarde);
+        } else if (rd.verdeling() != null) {
+            verdeling(naam, rd.verdeling(), voorwaarde);
         }
+    }
+
+    /** §13.4.10 verdeling: distribute a source amount over a recipient attribute. The
+     *  method (equal shares / proportional / a group-and-remainder scheme) is captured;
+     *  only equal shares has a single-rule Drools form (the transpiler marks the rest). */
+    private void verdeling(String naam, VerdelingContext v, Conditie voorwaarde) {
+        if (v.attribuutVanOnderwerp().size() < 2) return;
+        Expr bron = bouwer.bouwAttribuut(v.attribuutVanOnderwerp(0));
+        Expr doel = bouwer.bouwAttribuut(v.attribuutVanOnderwerp(1));
+        if (!(bron instanceof Expr.AttribuutRef b) || !(doel instanceof Expr.AttribuutRef d)) return;
+
+        ResolvedVerdeling.Methode methode = ResolvedVerdeling.Methode.COMPLEX;
+        String rato = null;
+        VerdelenZonderGroepenContext z = v.verdelenZonderGroepen();
+        if (z != null && z.IN_GELIJKE_DELEN() != null) methode = ResolvedVerdeling.Methode.GELIJKE_DELEN;
+        else if (z != null && z.NAAR_RATO_VAN() != null) {
+            methode = ResolvedVerdeling.Methode.NAAR_RATO;
+            rato = z.attribuutMetLidwoord() != null ? src(z.attribuutMetLidwoord()) : null;
+        }
+        model.verdelingen.add(new ResolvedVerdeling(naam, b.objecttype(), b.attribuut(),
+                d.objecttype(), d.attribuut(), methode, rato, voorwaarde));
     }
 
     /** §13.4.6 objectcreatie: "<subject> heeft <het rol> met <attribuut> gelijk aan <expr>

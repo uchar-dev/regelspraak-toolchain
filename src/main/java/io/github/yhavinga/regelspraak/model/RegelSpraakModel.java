@@ -24,6 +24,8 @@ public final class RegelSpraakModel {
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedRegel> resolvedRegels = new ArrayList<>();
     /** Resolved object-creation rules (§13.4.6) — a separate IR shape (new object + attributes). */
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie> objectCreaties = new ArrayList<>();
+    /** Resolved distribution rules (§13.4.10) — source amount spread over recipients. */
+    public final List<io.github.yhavinga.regelspraak.ir.ResolvedVerdeling> verdelingen = new ArrayList<>();
     public final List<Diagnostic> diagnostics = new ArrayList<>();
 
     public boolean isOk() { return diagnostics.stream().noneMatch(Diagnostic::isError); }
@@ -101,9 +103,12 @@ public final class RegelSpraakModel {
     }
 
     private static boolean rolMatcht(String rolNaam, String naam) {
-        return rolNaam.equalsIgnoreCase(naam)
-                || naam.equalsIgnoreCase(rolNaam + "s")    // passagier → passagiers
-                || naam.equalsIgnoreCase(rolNaam + "en");  // partner → partners is +s; persoon → personen
+        if (rolNaam.equalsIgnoreCase(naam)) return true;
+        if (naam.equalsIgnoreCase(rolNaam + "s") || naam.equalsIgnoreCase(rolNaam + "en")) return true;
+        // a multi-word role pluralised on its HEAD noun ("passagiers met recht op
+        // treinmiles" vs the role "passagier met recht op treinmiles")
+        String kopEnkelvoud = naam.replaceFirst("^(\\S+?)(?:s|en)(\\s)", "$1$2");
+        return kopEnkelvoud.equalsIgnoreCase(rolNaam);
     }
 
     /**
