@@ -1,0 +1,22 @@
+# ANTLR tool jar — re-fetch with `make antlr-jar`
+lib/
+
+# ANTLR-generated sources and compiled classes
+gen/
+out/
+*.class
+*.tokens
+*.interp
+
+# Maven (added later, when the JVM app code lands)
+target/
+
+# Spec-conversion scratch (regenerable from the PDFs)
+specification/*/_work/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
