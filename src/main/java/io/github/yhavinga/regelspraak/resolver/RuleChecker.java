@@ -38,6 +38,7 @@ final class RuleChecker {
             String naam = DefinitionResolver.src(r.regelNaam());
             for (RegelVersieContext v : r.regelVersie()) {
                 RegelSpraakRegelContext rsr = v.regelSpraakRegel();
+                bouwer.setSubject(subjectVan(rsr.resultaatDeel())); // so "zijn …" resolves against the rule subject
                 Conditie voorwaarde = rsr.voorwaardeDeel() != null ? bouwVoorwaarde(rsr.voorwaardeDeel()) : null;
                 resultaat(naam, rsr.resultaatDeel(), voorwaarde);
                 voorwaarden(rsr);   // exhaustive condition type-check (§5), unchanged
@@ -71,6 +72,15 @@ final class RuleChecker {
             registreer(naam, ResolvedRegel.Soort.INITIALISATIE, i.attribuutVanOnderwerp(),
                        i.expressie(), i.getStart().getLine(), voorwaarde);
         }
+    }
+
+    /** The object type a rule is about — the object type of its assignment target. */
+    private Objecttype subjectVan(ResultaatDeelContext rd) {
+        AttribuutVanOnderwerpContext doel = null;
+        if (rd == null) return null;
+        if (rd.gelijkstelling() != null) doel = rd.gelijkstelling().attribuutVanOnderwerp();
+        else if (rd.initialisatie() != null) doel = rd.initialisatie().attribuutVanOnderwerp();
+        return doel != null && bouwer.bouwAttribuut(doel) instanceof Expr.AttribuutRef a ? a.objecttype() : null;
     }
 
     private void registreer(String naam, ResolvedRegel.Soort soort, AttribuutVanOnderwerpContext doel,

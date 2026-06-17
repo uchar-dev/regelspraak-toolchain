@@ -28,8 +28,13 @@ import java.util.List;
  */
 final class ExpressieBouwer {
     private final RegelSpraakModel model;
+    // The object type the current rule is about, so a possessive "zijn <attribuut>"
+    // (and "hij") resolve against the rule subject. Set per rule by the checker.
+    private Objecttype huidigSubject;
 
     ExpressieBouwer(RegelSpraakModel model) { this.model = model; }
+
+    void setSubject(Objecttype subject) { this.huidigSubject = subject; }
 
     // ---------------- §13.4.16/.17 expressie ----------------
     Expr bouw(ExpressieContext e) {
@@ -123,7 +128,10 @@ final class ExpressieBouwer {
         if (p.datumTijdMet() != null)   return new Expr.Functie(Expr.FunctieKind.DATUMTIJD_MET, args(p.datumTijdMet()), null, new Datatype.DatumTijd(), bron);
         if (p.attribuutVanOnderwerp() != null) return bouwAttribuut(p.attribuutVanOnderwerp());
         if (p.expressie() != null)      return bouw(p.expressie()); // ( expressie )
-        if (p.onderwerp() != null)      return naamRef(src(p.onderwerp()), false, bron);
+        if (p.onderwerp() != null) {
+            Expr poss = possessief(p.onderwerp(), bron); // "zijn <attribuut van het subject>"
+            return poss != null ? poss : naamRef(src(p.onderwerp()), false, bron);
+        }
         if (p.variabeleNaam() != null)  return naamRef(src(p.variabeleNaam()), true, bron);
         return onopgelost(p);
     }
@@ -218,6 +226,18 @@ final class ExpressieBouwer {
         Objecttype ot = resolveOnderwerp(a.onderwerp());
         Datatype dt = ot != null && ot.attributen.get(attr) != null ? ot.attributen.get(attr) : onbekend();
         return new Expr.AttribuutRef(attr, ot, onderwerpBron, dt, bron);
+    }
+
+    /** A possessive "zijn <kaleNaam>" resolves to the named attribute OF the rule subject,
+     *  when it is one (a "zijn <rol>" navigation is not an attribute and is left to the
+     *  generic path). Returns null when it is not a subject-attribute possessive. */
+    private Expr possessief(OnderwerpContext o, String bron) {
+        if (huidigSubject == null || o.onderwerpKeten() == null) return null;
+        OnderwerpKetenContext k = o.onderwerpKeten();
+        if (k.ZIJN() == null || k.kaleNaam() == null) return null;
+        String attr = src(k.kaleNaam());
+        Datatype dt = huidigSubject.attributen.get(attr);
+        return dt != null ? new Expr.AttribuutRef(attr, huidigSubject, "zijn", dt, bron) : null;
     }
 
     /** A bare name: a known parameter binds to a ParameterRef; a variabeleNaam that is
