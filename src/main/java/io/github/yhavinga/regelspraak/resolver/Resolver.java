@@ -39,10 +39,17 @@ public final class Resolver {
         return model;
     }
 
-    /** CLI: resolve a .rs file, print a model summary and any diagnostics; exit 1 if any error. */
+    /** CLI: resolve a .rs file, print a model summary and any diagnostics; exit 1 if any error.
+     *  With --drl, print the transpiled Drools (DRL) instead of the summary. */
     public static void main(String[] args) throws java.io.IOException {
-        if (args.length < 1) { System.err.println("usage: Resolver <file.rs>"); System.exit(2); }
-        RegelSpraakModel m = resolve(java.nio.file.Files.readString(java.nio.file.Path.of(args[0])));
+        boolean drl = args.length > 0 && args[0].equals("--drl");
+        String[] rest = drl ? java.util.Arrays.copyOfRange(args, 1, args.length) : args;
+        if (rest.length < 1) { System.err.println("usage: Resolver [--drl] <file.rs>"); System.exit(2); }
+        RegelSpraakModel m = resolve(java.nio.file.Files.readString(java.nio.file.Path.of(rest[0])));
+        if (drl) {
+            System.out.print(io.github.yhavinga.regelspraak.transpiler.DrlTranspiler.transpile(m));
+            System.exit(m.isOk() ? 0 : 1);
+        }
         System.out.printf("objecttypen=%d  domeinen=%d  parameters=%d  feittypen=%d  regels=%d  resolved=%d%n",
                 m.objecttypen.size(), m.domeinen.size(), m.parameters.size(), m.feittypen.size(),
                 m.regels.size(), m.resolvedRegels.size());

@@ -8,7 +8,7 @@
 # the Drools transpiler grow into real JVM code (see CLAUDE.md / docs/ANTLR-HOWTO.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus grun gui tokens clean clean-jar run-sandbox
+.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus drl grun gui tokens clean clean-jar run-sandbox
 
 ANTLR4_VERSION := 4.13.2
 ANTLR4_URL     := https://www.antlr.org/download/antlr-$(ANTLR4_VERSION)-complete.jar
@@ -49,6 +49,7 @@ help:
 	@echo "  make compile                         Compile the generated parser with javac"
 	@echo "  make test                            Run the resolver/type-checker JUnit suite"
 	@echo "  make verify-corpus                   Parse every spec example under corpusEntry; report pass/fail"
+	@echo "  make drl  FILE=<input>               Transpile a .rs file to Drools (DRL) on stdout"
 	@echo "  make grun RULE=<rule> FILE=<input>   Print the parse tree for FILE (ANTLR TestRig, text)"
 	@echo "  make gui  RULE=<rule> FILE=<input>   Open the parse tree in the TestRig GUI inspector"
 	@echo "  make clean                           Remove generated sources (gen/) and classes (out/)"
@@ -120,6 +121,10 @@ grun: compile
 # reporting passed / failed / known-defect. Non-zero exit on any unexpected fail.
 verify-corpus: compile
 	@bash tools/verify_corpus.sh
+
+# Transpile a .rs file to Drools (DRL): parse -> resolve -> emit DRL on stdout.
+drl: resolver
+	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver --drl $(FILE)
 
 # Token dump (no parse tree), for lexer debugging.
 tokens: compile

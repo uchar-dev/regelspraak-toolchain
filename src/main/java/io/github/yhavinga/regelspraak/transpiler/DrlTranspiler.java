@@ -1,0 +1,182 @@
+package io.github.yhavinga.regelspraak.transpiler;
+
+import io.github.yhavinga.regelspraak.ir.Conditie;
+import io.github.yhavinga.regelspraak.ir.Expr;
+import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
+import io.github.yhavinga.regelspraak.model.Datatype;
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
+
+import java.util.StringJoiner;
+
+/**
+ * The Drools back-end: it walks the resolved IR ({@link ResolvedRegel}) and emits
+ * DRL text. Each assignment rule becomes one DRL rule — the §13.4.13 condition is
+ * the "when" (a pattern over the target's object type with the condition as a
+ * constraint), and the target-:=-value is the "then" (a modify-block setter).
+ *
+ * This is the first back-end increment: it generates faithful DRL for the
+ * resolvable subset (a target object type, comparisons and arithmetic over the
+ * subject's own attributes, parameters and literals) and emits an explicit,
+ * clearly-marked placeholder for everything the resolver left unbound — navigation
+ * to other objects, aggregations (which need accumulate), bounds and rounding. So
+ * the DRL states its own coverage, exactly like the IR it is built from. Parameters
+ * become globals. The mvel dialect is used so arithmetic and comparison read as
+ * infix over BigDecimal.
+ */
+public final class DrlTranspiler {
+    private static final String SUBJECT = "$subject";
+    private final RegelSpraakModel model;
+    private final StringBuilder out = new StringBuilder();
+
+    public DrlTranspiler(RegelSpraakModel model) { this.model = model; }
+
+    public static String transpile(RegelSpraakModel model) { return new DrlTranspiler(model).run(); }
+
+    private String run() {
+        out.append("package io.github.yhavinga.regelspraak.generated;\n\n");
+        // Parameters become globals the runtime supplies.
+        for (Parameter p : model.parameters.values())
+            out.append("global ").append(javaType(p.datatype())).append(' ')
+               .append(ident(p.naam(), false)).append(";\n");
+        if (!model.parameters.isEmpty()) out.append('\n');
+
+        for (ResolvedRegel r : model.resolvedRegels) regel(r);
+        return out.toString();
+    }
+
+    private void regel(ResolvedRegel r) {
+        Objecttype subject = r.doel() instanceof Expr.AttribuutRef a ? a.objecttype() : null;
+        out.append("rule \"").append(r.naam()).append("\"\n");
+        out.append("    dialect \"mvel\"\n");
+        out.append("when\n");
+        if (subject == null) {
+            out.append("    // onopgelost doel-objecttype: ").append(r.doel().bron()).append('\n');
+            out.append("    eval(true)\n");
+        } else {
+            String constraint = r.voorwaarde() != null ? conditie(r.voorwaarde(), subject) : "";
+            out.append("    ").append(SUBJECT).append(" : ").append(ident(subject.naam, true))
+               .append("( ").append(constraint).append(" )\n");
+        }
+        out.append("then\n");
+        if (subject != null && r.doel() instanceof Expr.AttribuutRef a) {
+            out.append("    modify(").append(SUBJECT).append(") {\n");
+            out.append("        ").append(setter(a.attribuut())).append("( ")
+               .append(waarde(r.waarde(), subject)).append(" )\n");
+            out.append("    }\n");
+        } else {
+            out.append("    // onopgelost doel: ").append(r.doel().bron()).append('\n');
+        }
+        out.append("end\n\n");
+    }
+
+    // ---------------- value expression ("then" side: getters) ----------------
+    private String waarde(Expr e, Objecttype subject) {
+        if (e instanceof Expr.Literal lit)      return literal(lit);
+        if (e instanceof Expr.ParameterRef p)   return ident(p.parameter().naam(), false);
+        if (e instanceof Expr.AttribuutRef a)   return a.objecttype() == subject
+                ? SUBJECT + "." + getter(a.attribuut()) + "()"
+                : todo("navigatie", a.bron());
+        if (e instanceof Expr.Binair b) {
+            if (b.op() == Expr.BinOp.TOT_DE_MACHT)
+                return "Math.pow(" + waarde(b.links(), subject) + ", " + waarde(b.rechts(), subject) + ")";
+            if (b.op() == Expr.BinOp.PERCENTAGE_VAN)
+                return "(" + waarde(b.links(), subject) + " / 100 * " + waarde(b.rechts(), subject) + ")";
+            return "(" + waarde(b.links(), subject) + " " + infix(b.op()) + " " + waarde(b.rechts(), subject) + ")";
+        }
+        if (e instanceof Expr.Afgerond af)      return waarde(af.basis(), subject); // TODO: setScale per modus
+        if (e instanceof Expr.Begrensd bg)      return waarde(bg.basis(), subject); // TODO: min/max clamp
+        if (e instanceof Expr.Constante c)      return todo("constante", c.naam());
+        if (e instanceof Expr.Functie f)        return todo("aggregatie " + f.kind(), f.bron());
+        return todo("expressie", e.bron());
+    }
+
+    // ---------------- condition ("when" side: bare field constraints) ----------------
+    private String conditie(Conditie c, Objecttype subject) {
+        if (c instanceof Conditie.Vergelijking v)
+            return operand(v.links(), subject) + " " + drlOp(v.op()) + " " + operand(v.rechts(), subject);
+        if (c instanceof Conditie.Predicaat p) {
+            String o = operand(p.operand(), subject);
+            return switch (p.soort()) {
+                case LEEG   -> o + " == null";
+                case GEVULD -> o + " != null";
+                default     -> todo("predicaat " + p.soort(), p.bron());
+            };
+        }
+        if (c instanceof Conditie.Samengesteld s) {
+            String join = s.kwantor() == Conditie.Kwantor.GEEN ? " || " : " && ";
+            StringJoiner sj = new StringJoiner(join);
+            for (Conditie deel : s.onderdelen()) sj.add("(" + conditie(deel, subject) + ")");
+            String body = sj.toString().isEmpty() ? "true" : sj.toString();
+            return s.kwantor() == Conditie.Kwantor.GEEN ? "!(" + body + ")" : body;
+        }
+        return todo("voorwaarde", c.bron());
+    }
+
+    /** A condition operand: the subject's own attribute reads as a bare field name. */
+    private String operand(Expr e, Objecttype subject) {
+        if (e instanceof Expr.AttribuutRef a && a.objecttype() == subject) return ident(a.attribuut(), false);
+        if (e instanceof Expr.ParameterRef p) return ident(p.parameter().naam(), false);
+        if (e instanceof Expr.Literal lit)    return literal(lit);
+        return todo("operand", e.bron());
+    }
+
+    // ---------------- leaves & helpers ----------------
+    private static String literal(Expr.Literal lit) {
+        Datatype t = lit.type();
+        if (t.isTekst()) return "\"" + lit.waarde().replace("\"", "") + "\"";
+        if (t instanceof Datatype.Booleaan) return lit.waarde().toLowerCase().contains("waar")
+                && !lit.waarde().toLowerCase().contains("onwaar") ? "true" : "false";
+        // numeric (possibly "0 €"): keep the leading number
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("-?\\d+(?:[.,]\\d+)?").matcher(lit.waarde());
+        return m.find() ? m.group().replace(',', '.') : todo("literal", lit.waarde());
+    }
+
+    private static String infix(Expr.BinOp op) {
+        return switch (op) {
+            case PLUS -> "+";
+            case MIN, VERMINDERD_MET -> "-";
+            case MAAL -> "*";
+            case GEDEELD_DOOR, GEDEELD_DOOR_ABS -> "/";
+            default -> "+"; // TOT_DE_MACHT / PERCENTAGE_VAN handled by caller
+        };
+    }
+
+    private static String drlOp(Conditie.Operator op) {
+        return switch (op) {
+            case KLEINER, EERDER -> "<";
+            case KLEINER_OF_GELIJK, EERDER_OF_GELIJK -> "<=";
+            case GROTER, LATER -> ">";
+            case GROTER_OF_GELIJK, LATER_OF_GELIJK -> ">=";
+            case GELIJK -> "==";
+            case ONGELIJK -> "!=";
+        };
+    }
+
+    private static String javaType(Datatype t) {
+        if (t.isPercentage() || t.isNumeriek()) return "java.math.BigDecimal";
+        if (t.isTekst()) return "String";
+        if (t instanceof Datatype.Booleaan) return "Boolean";
+        if (t instanceof Datatype.DatumInDagen) return "java.time.LocalDate";
+        if (t instanceof Datatype.DatumTijd) return "java.time.LocalDateTime";
+        return "Object";
+    }
+
+    private static String getter(String attribuut) { return "get" + ident(attribuut, true); }
+    private static String setter(String attribuut) { return "set" + ident(attribuut, true); }
+    private static String todo(String wat, String bron) { return "/* TODO " + wat + ": " + bron + " */ null"; }
+
+    /** A RegelSpraak name → a Java identifier (camel- or Pascal-case over its words). */
+    static String ident(String s, boolean upperFirst) {
+        String[] delen = s.trim().split("[^\\p{L}\\p{N}]+");
+        StringBuilder b = new StringBuilder();
+        for (String d : delen) {
+            if (d.isEmpty()) continue;
+            boolean hoofd = upperFirst || b.length() > 0;
+            b.append(hoofd ? Character.toUpperCase(d.charAt(0)) : Character.toLowerCase(d.charAt(0)));
+            b.append(d.substring(1));
+        }
+        return b.isEmpty() ? "x" : b.toString();
+    }
+}
