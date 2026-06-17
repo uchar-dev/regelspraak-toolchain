@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Run Claude Code in a throwaway container that can see ONLY this repo.
+#
+#   ./run-sandbox.sh            # start Claude (bypass permissions, inside the box)
+#   ./run-sandbox.sh --build    # rebuild the image first, then start
+#   ./run-sandbox.sh --shell    # drop into bash (e.g. to run `claude /login` by hand)
+#
+# Isolation: the repo is bind-mounted at /work and nothing else on the host is
+# mounted, so ~/.ssh, ~/.aws, other projects and the host shell are invisible to
+# the container.
+#
+# Login persists: the container user's whole HOME (/home/claude) is a named Docker
+# volume, so BOTH the OAuth token (~/.claude/.credentials.json) and the onboarding
+# state (~/.claude.json) survive across runs. Log in once on the first start; the
+# named volume is NOT deleted by --rm.
+#
+# Safety: never add `-v /var/run/docker.sock` or mount host secrets here. Under
+# --dangerously-skip-permissions, code in /work can read the login token in the
+# volume, so only run repos you trust.
+set -euo pipefail
+
+IMAGE=rsr-sandbox
+VOLUME=rsr-claude-home
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # project root (this script lives here)
+
+build() { docker build -t "$IMAGE" "$ROOT/docker"; }
+
+cmd=()
+case "${1:-}" in
+  --build) build; shift ;;
+  --shell) cmd=(bash); shift ;;
+  -h|--help) echo "usage: ./$(basename "$0") [--build | --shell]"; exit 0 ;;
+esac
+
+# Build on first use if the image is missing.
+docker image inspect "$IMAGE" >/dev/null 2>&1 || build
+
+exec docker run --rm -it \
+  -v "$VOLUME:/home/claude" \
+  -v "$ROOT:/work" \
+  "$IMAGE" ${cmd[@]+"${cmd[@]}"}

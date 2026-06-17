@@ -138,3 +138,8 @@ section against the TOKA casus."
 it runs without prompts. **Only run this repo inside a sandbox / VM.** `rm -rf /`,
 `rm -rf ~`, and `sudo` are still blocked as circuit-breakers. To dial back,
 change `defaultMode` to `acceptEdits`.
+
+**Sandboxed runs:** `./run-sandbox.sh` launches Claude Code in a container
+that has a JDK + this repo bind-mounted and nothing else of the host; the login
+persists in a named volume (log in once). This is the intended way to run the
+bypass posture unattended.
