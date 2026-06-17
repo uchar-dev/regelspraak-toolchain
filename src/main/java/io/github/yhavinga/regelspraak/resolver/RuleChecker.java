@@ -1,10 +1,11 @@
 package io.github.yhavinga.regelspraak.resolver;
 
+import io.github.yhavinga.regelspraak.ir.Expr;
+import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
 import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.*;
 import io.github.yhavinga.regelspraak.parser.RegelSpraak.*;
-import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.tree.ParseTree;
 
 /**
@@ -19,16 +20,22 @@ import org.antlr.v4.runtime.tree.ParseTree;
  */
 final class RuleChecker {
     private final RegelSpraakModel model;
+    private final ExpressieBouwer bouwer;
 
-    RuleChecker(RegelSpraakModel model) { this.model = model; }
+    RuleChecker(RegelSpraakModel model) {
+        this.model = model;
+        this.bouwer = new ExpressieBouwer(model);
+    }
 
     void check(RegelSpraakDocumentContext doc) {
         domeinReferenties(doc);
-        for (RegelContext r : doc.regel())
+        for (RegelContext r : doc.regel()) {
+            String naam = DefinitionResolver.src(r.regelNaam());
             for (RegelVersieContext v : r.regelVersie()) {
-                resultaat(v.regelSpraakRegel().resultaatDeel());
+                resultaat(naam, v.regelSpraakRegel().resultaatDeel());
                 voorwaarden(v.regelSpraakRegel());   // type-check the conditions (§5)
             }
+        }
     }
 
     /** A domain-typed attribute/parameter must reference a declared domain (§13.3.4). */
@@ -43,25 +50,32 @@ final class RuleChecker {
         }
     }
 
-    private void resultaat(ResultaatDeelContext rd) {
+    /** Resolve an assignment resultaatdeel into a {@link ResolvedRegel} (the transpiler IR)
+     *  and type-check the value against the target (§6 toekenning). */
+    private void resultaat(String naam, ResultaatDeelContext rd) {
         if (rd == null) return;
         if (rd.gelijkstelling() != null) {
             GelijkstellingContext g = rd.gelijkstelling();
-            toets(g.attribuutVanOnderwerp(), g.expressie(), g.getStart().getLine(),
-                  g.WORDT_BEREKEND_ALS() != null ? "berekening" : "gelijkstelling");
+            ResolvedRegel.Soort soort = g.WORDT_BEREKEND_ALS() != null
+                    ? ResolvedRegel.Soort.BEREKENING : ResolvedRegel.Soort.GELIJKSTELLING;
+            registreer(naam, soort, g.attribuutVanOnderwerp(), g.expressie(), g.getStart().getLine());
         } else if (rd.initialisatie() != null) {
             InitialisatieContext i = rd.initialisatie();
-            toets(i.attribuutVanOnderwerp(), i.expressie(), i.getStart().getLine(), "initialisatie");
+            registreer(naam, ResolvedRegel.Soort.INITIALISATIE, i.attribuutVanOnderwerp(),
+                       i.expressie(), i.getStart().getLine());
         }
     }
 
-    private void toets(AttribuutVanOnderwerpContext doel, ExpressieContext waarde, int line, String wat) {
-        Datatype doelType = attribuutType(doel);
-        Datatype waardeType = infer(waarde);
+    private void registreer(String naam, ResolvedRegel.Soort soort,
+                            AttribuutVanOnderwerpContext doel, ExpressieContext waarde, int line) {
+        Expr doelExpr = bouwer.bouwAttribuut(doel);
+        Expr waardeExpr = bouwer.bouw(waarde);
+        model.resolvedRegels.add(new ResolvedRegel(naam, soort, doelExpr, waardeExpr));
+        Datatype doelType = doelExpr.type(), waardeType = waardeExpr.type();
         if (doelType.isOnbekend() || waardeType.isOnbekend()) return; // not enough resolved to judge
         String fout = Typering.toekenning(doelType, waardeType);
         if (fout != null)
-            model.diagnostics.add(new Diagnostic(Severity.ERROR, wat + ": " + fout, line));
+            model.diagnostics.add(new Diagnostic(Severity.ERROR, soort.name().toLowerCase() + ": " + fout, line));
     }
 
     // ---- §5 condition type-checking (comparisons + predicates) ----
@@ -126,90 +140,9 @@ final class RuleChecker {
         return null;
     }
 
-    // ---- expression datatype inference (resolvable subset) ----
-    private Datatype infer(ExpressieContext e) {
-        if (e == null) return onbekend();
-        if (e instanceof PrimaireExprContext p) return inferPrimair(p.primaireExpressie());
-        if (e instanceof SomExprContext s) {
-            Typering.BinOp op = s.PLUS() != null ? Typering.BinOp.PLUS
-                    : s.MIN() != null ? Typering.BinOp.MIN : Typering.BinOp.VERMINDERD_MET;
-            return Typering.reken(op, infer(s.expressie(0)), infer(s.expressie(1))).type();
-        }
-        if (e instanceof ProductExprContext s) {
-            Typering.BinOp op = s.MAAL() != null ? Typering.BinOp.MAAL : Typering.BinOp.GEDEELD_DOOR;
-            return result(Typering.reken(op, infer(s.expressie(0)), infer(s.expressie(1))));
-        }
-        if (e instanceof MachtExprContext s)
-            return result(Typering.reken(Typering.BinOp.TOT_DE_MACHT, infer(s.expressie(0)), infer(s.expressie(1))));
-        if (e instanceof AfgerondeExprContext s) return infer(s.expressie());
-        if (e instanceof BegrensdeExprContext s) return infer(s.expressie());
-        if (e instanceof PercentageVanExprContext)  return new Datatype.Numeriek(false, 0, Datatype.Teken.ONBEPAALD, null);
-        return onbekend();
-    }
-
-    private Datatype inferPrimair(PrimaireExpressieContext p) {
-        if (p == null) return onbekend();
-        if (p.getalWaarde() != null) {
-            GetalWaardeContext g = p.getalWaarde();
-            if (g.PERCENT_SIGN() != null) return new Datatype.Percentage(false, 0);
-            if (g.eenheidExpressie() != null) {
-                String afk = DefinitionResolver.src(g.eenheidExpressie().eenheidMacht(0).eenheidAfkorting());
-                return new Datatype.Numeriek(false, 0, Datatype.Teken.ONBEPAALD, model.resolveEenheid(afk));
-            }
-            return new Datatype.Numeriek(false, 0, Datatype.Teken.ONBEPAALD, null);
-        }
-        if (p.tekstWaarde() != null)    return new Datatype.Tekst();
-        if (p.booleanWaarde() != null)  return new Datatype.Booleaan();
-        if (p.deDato() != null)         return new Datatype.DatumInDagen();
-        if (p.rekenConstante() != null) {
-            // "de Rekendatum" is a date; "het Rekenjaar" is an integer year (§13.4.17)
-            return p.rekenConstante().REKENJAAR() != null
-                    ? new Datatype.Numeriek(true, 0, Datatype.Teken.ONBEPAALD, null)
-                    : new Datatype.DatumInDagen();
-        }
-        if (p.attribuutVanOnderwerp() != null) return attribuutType(p.attribuutVanOnderwerp());
-        if (p.expressie() != null)      return infer(p.expressie()); // ( expressie )
-        if (p.onderwerp() != null)      return naamReferentie(DefinitionResolver.src(p.onderwerp()));
-        if (p.variabeleNaam() != null)  return naamReferentie(DefinitionResolver.src(p.variabeleNaam()));
-        return onbekend();
-    }
-
-    /** A bare name reference: resolve as a parameter if known, else unknown. */
-    private Datatype naamReferentie(String naam) {
-        // strip a leading article for parameter lookup ("de volwassenleeftijd")
-        String stripped = naam.replaceFirst("^(?i)(de|het|een)\\s+", "");
-        Parameter p = model.parameters.get(stripped);
-        if (p == null) p = model.parameters.get(naam);
-        return p != null ? p.datatype() : onbekend();
-    }
-
-    /** `<attribuut> van <onderwerp>`: resolve the attribute's datatype via the subject object type. */
-    private Datatype attribuutType(AttribuutVanOnderwerpContext a) {
-        if (a == null || a.attribuutMetLidwoord() == null || a.attribuutMetLidwoord().kaleNaam() == null)
-            return onbekend();
-        String attr = DefinitionResolver.src(a.attribuutMetLidwoord().kaleNaam());
-        Objecttype ot = vindObjecttype(a.onderwerp());
-        if (ot == null) return onbekend();
-        Datatype dt = ot.attributen.get(attr);
-        return dt != null ? dt : onbekend();
-    }
-
-    /** Find the object type a subject denotes by matching any name in its subtree against the model. */
-    private Objecttype vindObjecttype(ParseTree t) {
-        if (t == null) return null;
-        Objecttype found = null;
-        if (t instanceof ParserRuleContext ctx) {
-            String s = DefinitionResolver.src(ctx);
-            Objecttype direct = model.objecttypen.get(s);
-            if (direct != null) found = direct;
-        }
-        for (int i = 0; i < t.getChildCount(); i++) {
-            Objecttype c = vindObjecttype(t.getChild(i));
-            if (c != null) found = c; // prefer the deepest/last match (the base subject)
-        }
-        return found;
-    }
-
-    private static Datatype onbekend() { return new Datatype.Onbekend("niet opgelost"); }
-    private static Datatype result(Typering.Resultaat r) { return r.ok() ? r.type() : onbekend(); }
+    // ---- expression datatype, via the resolved IR ----
+    // The condition checks need an operand's datatype; that is now the type the
+    // ExpressieBouwer computes for the resolved Expr, so inference and IR can never
+    // diverge — they are the same code path.
+    private Datatype infer(ExpressieContext e) { return bouwer.bouw(e).type(); }
 }

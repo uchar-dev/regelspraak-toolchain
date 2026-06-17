@@ -20,6 +20,8 @@ public final class RegelSpraakModel {
     public final List<Tijdlijn> tijdlijnen = new ArrayList<>();
     public final Map<String, Dimensie> dimensies = new LinkedHashMap<>();
     public final List<Regel> regels = new ArrayList<>();
+    /** Resolved rule IR (typed expressions + bound references) — the transpiler's input. */
+    public final List<io.github.yhavinga.regelspraak.ir.ResolvedRegel> resolvedRegels = new ArrayList<>();
     public final List<Diagnostic> diagnostics = new ArrayList<>();
 
     public boolean isOk() { return diagnostics.stream().noneMatch(Diagnostic::isError); }

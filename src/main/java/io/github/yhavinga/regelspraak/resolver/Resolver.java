@@ -43,8 +43,11 @@ public final class Resolver {
     public static void main(String[] args) throws java.io.IOException {
         if (args.length < 1) { System.err.println("usage: Resolver <file.rs>"); System.exit(2); }
         RegelSpraakModel m = resolve(java.nio.file.Files.readString(java.nio.file.Path.of(args[0])));
-        System.out.printf("objecttypen=%d  domeinen=%d  parameters=%d  feittypen=%d  regels=%d%n",
-                m.objecttypen.size(), m.domeinen.size(), m.parameters.size(), m.feittypen.size(), m.regels.size());
+        System.out.printf("objecttypen=%d  domeinen=%d  parameters=%d  feittypen=%d  regels=%d  resolved=%d%n",
+                m.objecttypen.size(), m.domeinen.size(), m.parameters.size(), m.feittypen.size(),
+                m.regels.size(), m.resolvedRegels.size());
+        m.resolvedRegels.forEach(r -> System.out.printf("  [%s] %s := %s :: %s%n",
+                r.soort(), r.doel().bron(), r.waarde().bron(), r.waarde().type().naam()));
         m.diagnostics.forEach(d -> System.out.println("  " + d));
         System.exit(m.isOk() ? 0 : 1);
     }
