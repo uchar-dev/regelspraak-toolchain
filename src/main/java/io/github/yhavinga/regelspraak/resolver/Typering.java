@@ -35,18 +35,35 @@ public final class Typering {
     public static Resultaat reken(BinOp op, Datatype l, Datatype r) {
         if (l.isOnbekend() || r.isOnbekend()) return Resultaat.ok(new Datatype.Onbekend("operand"));
         return switch (op) {
-            // §4.1 / §4.2: numeriek±numeriek (units convertible), OR datum ± numerieke tijdswaarde -> datum
+            // §4.1 / §4.2: numeriek±numeriek (units convertible), OR datum ± a numerieke
+            // tijdswaarde (a number carrying a unit) -> datum (Tabel 2/5 scenario 2).
             case PLUS, MIN -> {
-                if (l.isDatum() && r.isNumeriek()) yield Resultaat.ok(l); // §4.1/4.2 scenario 2
+                if (l.isDatum() && r instanceof Datatype.Numeriek rn && rn.heeftEenheid())
+                    yield Resultaat.ok(l);
                 yield numeriekBinair(l, r, op == BinOp.PLUS ? "plus" : "min");
             }
             // §4.3 verminderd met: numeriek only
             case VERMINDERD_MET -> numeriekBinair(l, r, "verminderd met");
-            // §4.4/4.5/4.7: numeriek; units multiply/divide (modelled loosely: result keeps left's unit)
-            case MAAL, GEDEELD_DOOR, TOT_DE_MACHT -> {
-                if (!l.isGetalachtig() || !r.isGetalachtig())
+            // §4.4/4.5: Numeriek only (Tabel 11/14 list no Percentage row). Units multiply/divide
+            // into a composite the model cannot represent, so a unit-bearing result is reported as
+            // Onbekend ("no claim") rather than mis-typed; a unitless * unit keeps the single unit.
+            case MAAL, GEDEELD_DOOR -> {
+                if (!l.isNumeriek() || !r.isNumeriek())
                     yield Resultaat.fout(naam(op) + " vereist numerieke operanden, kreeg " + l.naam() + " en " + r.naam());
-                yield Resultaat.ok(new Datatype.Numeriek(false, maxDec(l, r), Datatype.Teken.ONBEPAALD, l.eenheidOf()));
+                Eenheid el = l.eenheidOf(), er = r.eenheidOf();
+                if (el == null && er == null)
+                    yield Resultaat.ok(new Datatype.Numeriek(false, maxDec(l, r), Datatype.Teken.ONBEPAALD, null));
+                if (er == null)
+                    yield Resultaat.ok(new Datatype.Numeriek(false, maxDec(l, r), Datatype.Teken.ONBEPAALD, el));
+                yield Resultaat.ok(new Datatype.Onbekend("samengestelde eenheid"));
+            }
+            // §4.7 tot de macht: Numeriek without a unit on either side; result without a unit.
+            case TOT_DE_MACHT -> {
+                if (!l.isNumeriek() || !r.isNumeriek())
+                    yield Resultaat.fout("tot de macht vereist numerieke operanden, kreeg " + l.naam() + " en " + r.naam());
+                if (l.eenheidOf() != null || r.eenheidOf() != null)
+                    yield Resultaat.fout("tot de macht is alleen toegestaan op operanden zonder eenheid");
+                yield Resultaat.ok(new Datatype.Numeriek(false, maxDec(l, r), Datatype.Teken.ONBEPAALD, null));
             }
         };
     }
@@ -91,9 +108,14 @@ public final class Typering {
         if (operand.isOnbekend()) return Resultaat.ok(new Datatype.Booleaan());
         return switch (p) {
             case LEEG, GEVULD -> Resultaat.ok(new Datatype.Booleaan()); // §5.11/5.12 any datatype
-            case ELFPROEF, NUMERIEK_MET_EXACT -> operand.isTekst()       // §5.13/5.16 Tekst only
+            case ELFPROEF -> // §5.13 Tabel 55: Numeriek (geheel getal, geen eenheid) OR Tekst
+                    operand.isTekst()
+                        || (operand instanceof Datatype.Numeriek n && n.geheel() && !n.heeftEenheid())
                     ? Resultaat.ok(new Datatype.Booleaan())
-                    : Resultaat.fout("elfproef / numeriek-met-exact is alleen toegestaan op Tekst, kreeg " + operand.naam());
+                    : Resultaat.fout("voldoet aan de elfproef is alleen toegestaan op Tekst of Numeriek (geheel getal), kreeg " + operand.naam());
+            case NUMERIEK_MET_EXACT -> operand.isTekst()                 // §5.16 Tekst only
+                    ? Resultaat.ok(new Datatype.Booleaan())
+                    : Resultaat.fout("numeriek met exact is alleen toegestaan op Tekst, kreeg " + operand.naam());
             case DAGSOORT -> operand.isDatum()                           // §5.15 Datum only
                     ? Resultaat.ok(new Datatype.Booleaan())
                     : Resultaat.fout("'is een <dagsoort>' is alleen toegestaan op een datum, kreeg " + operand.naam());
@@ -111,9 +133,12 @@ public final class Typering {
 
     // -------- helpers --------
 
-    /** Same datatype family for gelijk/ongelijk/toekenning (numeriek and percentage count as one). */
+    /** Same datatype family for gelijk/ongelijk/toekenning. Numeriek and Percentage are
+     *  distinct here (the §5.3/5.6 and §6 tables list them as separate rows); the two date
+     *  kinds count as one (the spec models a single date/time datatype with precision). */
     private static boolean zelfdeFamilie(Datatype a, Datatype b) {
-        if (a.isGetalachtig() && b.isGetalachtig()) return true;
+        if (a.isNumeriek() && b.isNumeriek()) return true;
+        if (a.isPercentage() && b.isPercentage()) return true;
         if (a.isDatum() && b.isDatum()) return true;
         return a.getClass().equals(b.getClass());
     }
