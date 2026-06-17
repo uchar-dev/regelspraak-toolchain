@@ -71,7 +71,20 @@ final class RuleChecker {
             InitialisatieContext i = rd.initialisatie();
             registreer(naam, ResolvedRegel.Soort.INITIALISATIE, i.attribuutVanOnderwerp(),
                        i.expressie(), i.getStart().getLine(), voorwaarde);
+        } else if (rd.kenmerkToekenning() != null) {
+            kenmerk(naam, rd.kenmerkToekenning(), voorwaarde);
         }
+    }
+
+    /** §13.4.5 kenmerktoekenning: the subject acquires a kenmerk (a boolean property).
+     *  Modelled as setting that boolean attribute to true. */
+    private void kenmerk(String naam, KenmerkToekenningContext kt, Conditie voorwaarde) {
+        Objecttype subject = bouwer.objecttypeVanKeten(kt.onderwerpKeten());
+        String kenmerk = src(kt.kaleNaam()).replaceFirst("^(?i)(de|het|een)\\s+", "");
+        Expr doel = new Expr.AttribuutRef(kenmerk, subject, src(kt.onderwerpKeten()),
+                new Datatype.Booleaan(), src(kt));
+        Expr waarde = new Expr.Literal("waar", new Datatype.Booleaan(), "waar");
+        model.resolvedRegels.add(new ResolvedRegel(naam, ResolvedRegel.Soort.KENMERKTOEKENNING, doel, waarde, voorwaarde));
     }
 
     /** The object type a rule is about — the object type of its assignment target. */
@@ -80,6 +93,7 @@ final class RuleChecker {
         if (rd == null) return null;
         if (rd.gelijkstelling() != null) doel = rd.gelijkstelling().attribuutVanOnderwerp();
         else if (rd.initialisatie() != null) doel = rd.initialisatie().attribuutVanOnderwerp();
+        else if (rd.kenmerkToekenning() != null) return bouwer.objecttypeVanKeten(rd.kenmerkToekenning().onderwerpKeten());
         return doel != null && bouwer.bouwAttribuut(doel) instanceof Expr.AttribuutRef a ? a.objecttype() : null;
     }
 

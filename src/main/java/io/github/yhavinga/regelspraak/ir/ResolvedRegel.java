@@ -17,5 +17,5 @@ package io.github.yhavinga.regelspraak.ir;
  *                   (the rule's "when")
  */
 public record ResolvedRegel(String naam, Soort soort, Expr doel, Expr waarde, Conditie voorwaarde) {
-    public enum Soort { GELIJKSTELLING, BEREKENING, INITIALISATIE }
+    public enum Soort { GELIJKSTELLING, BEREKENING, INITIALISATIE, KENMERKTOEKENNING }
 }

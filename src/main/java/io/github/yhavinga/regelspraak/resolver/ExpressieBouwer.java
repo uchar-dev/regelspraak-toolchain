@@ -272,6 +272,12 @@ final class ExpressieBouwer {
         return ot != null ? ot : vindObjecttype(o);
     }
 
+    /** The object type an onderwerpketen denotes (a rule subject), via its primary noun. */
+    Objecttype objecttypeVanKeten(OnderwerpKetenContext k) {
+        String n = primaireNaamKeten(k);
+        return n != null ? model.resolveObjecttype(n) : null;
+    }
+
     /** The subject's primary noun — the entity an attribute attaches to. */
     private String primaireNaam(OnderwerpContext o) {
         if (o == null) return null;

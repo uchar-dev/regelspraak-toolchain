@@ -136,6 +136,21 @@ class DrlTest {
         assertTrue(drl.contains("< bodem ? bodem :"), () -> "begrenzing-minimum:\n" + drl);
     }
 
+    @Test void kenmerktoekenning_wordt_boolean_setter_onder_voorwaarde() {
+        String src = """
+            Objecttype de Persoon
+                de leeftijd Numeriek (geheel getal);
+                is minderjarig kenmerk (bijvoeglijk);
+            Regel minderjarig
+                geldig altijd
+                    Een Persoon is minderjarig
+                    indien de leeftijd van een Persoon kleiner is dan 18.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("$subject : Persoon( leeftijd < 18 )"), () -> "voorwaarde:\n" + drl);
+        assertTrue(drl.contains("setMinderjarig( true )"), () -> "kenmerk-setter:\n" + drl);
+    }
+
     @Test void namen_worden_geldige_java_identifiers() {
         String src = """
             Objecttype de Natuurlijk persoon
