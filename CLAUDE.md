@@ -95,3 +95,46 @@ See `docs/ANTLR-HOWTO.md` for the full workflow and the lexer/parser gotchas.
   comes, add a `pom.xml` (Java 21, `org.antlr:antlr4-runtime:4.13.2`, JUnit 5)
   and have Maven compile the ANTLR-generated sources; the Drools engine this
   feeds is Quarkus/Maven, so a Maven build aligns the eventual integration.
+
+## Working autonomously
+
+This project is built to run hands-off. The done-condition is verifiable, so let
+the verifier drive.
+
+**Definition of done**
+1. `grammar/RegelSpraakLexer.g4` and `grammar/RegelSpraak.g4` exist.
+2. `make compile` is green.
+3. Every RegelSpraak snippet in the TOKA casus and the spec's worked examples
+   parses cleanly via `make grun` (no lexer errors, no `error` nodes).
+4. The resolver builds a typed AST and enforces the typeringen matrix, with
+   passing tests.
+
+**The loop** (per Chapter 13 section): map → implement → `make compile` →
+`make grun` the examples → adversarial review → next. Work section by section in
+§13 order.
+
+**Subagents** (`.claude/agents/`):
+- `spec-cartographer` — read-only; maps a §13 section to tokens/rules/examples.
+  Fan out over sections in parallel.
+- `grammar-adversary` — builds and runs the grammar against spec inputs to find
+  mis-parses. Run before declaring a section done.
+- `resolver-typechecker` — checks resolver code against the typeringen matrix.
+
+**Commands** (`.claude/commands/`): `/grammar-section <§>` does one section
+end-to-end; `/verify-corpus` builds and parses the whole example corpus and
+reports.
+
+**Launching**
+```
+claude --permission-mode plan        # approve the build plan first
+/goal Implement the grammar + resolver until the Definition of done above holds.
+      Work section by section through Chapter 13. Derive only from the spec.
+```
+Or fan out hard: ask Claude to "create a workflow that maps all of Chapter 13 in
+parallel, drafts the lexer then the parser, and adversarially verifies each
+section against the TOKA casus."
+
+**Permissions:** `.claude/settings.json` sets `defaultMode: bypassPermissions` —
+it runs without prompts. **Only run this repo inside a sandbox / VM.** `rm -rf /`,
+`rm -rf ~`, and `sudo` are still blocked as circuit-breakers. To dial back,
+change `defaultMode` to `acceptEdits`.

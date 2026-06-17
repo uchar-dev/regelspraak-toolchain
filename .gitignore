@@ -20,3 +20,6 @@ specification/*/_work/
 .vscode/
 *.swp
 *.swo
+
+# Personal, uncommitted Claude Code overrides
+.claude/settings.local.json
