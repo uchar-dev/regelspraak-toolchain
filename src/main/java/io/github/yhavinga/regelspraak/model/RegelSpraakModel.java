@@ -17,6 +17,8 @@ public final class RegelSpraakModel {
     public final Map<String, Eenheidstelsel> eenheidstelsels = new LinkedHashMap<>();
     public final Map<String, Feittype> feittypen = new LinkedHashMap<>();
     public final List<String> dagsoorten = new ArrayList<>();
+    public final List<Tijdlijn> tijdlijnen = new ArrayList<>();
+    public final Map<String, Dimensie> dimensies = new LinkedHashMap<>();
     public final List<Regel> regels = new ArrayList<>();
     public final List<Diagnostic> diagnostics = new ArrayList<>();
 
@@ -56,6 +58,12 @@ public final class RegelSpraakModel {
         public final Map<String, Eenheid> eenheden = new LinkedHashMap<>();
         public Eenheidstelsel(String naam) { this.naam = naam; }
     }
+
+    /** §13.3.6.10 a named timeline; `variabelStartpunt` is bound by a §13.4.12 startpuntbepaling. */
+    public record Tijdlijn(String naam, boolean variabelStartpunt) {}
+
+    /** §13.3.7 a dimension and its ordered label values. */
+    public record Dimensie(String naam, String naamMeervoud, List<String> waarden) {}
 
     /** A rule shell (name + the parse subtree); type-checking annotates diagnostics. */
     public record Regel(String naam, String soort) {}

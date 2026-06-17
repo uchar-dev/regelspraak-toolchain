@@ -81,6 +81,20 @@ class ModelTest {
         assertEquals("jr", ((Datatype.Numeriek) p.datatype()).eenheid().afkorting());
     }
 
+    @Test void dimensie_wordt_gemodelleerd() {
+        String src = """
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. vorig jaar
+                2. huidig jaar
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "fouten: " + m.errors());
+        var d = m.dimensies.get("jaardimensie");
+        assertNotNull(d);
+        assertEquals("jaardimensies", d.naamMeervoud());
+        assertEquals(java.util.List.of("vorig jaar", "huidig jaar"), d.waarden());
+    }
+
     @Test void feittype_rollen_opgelost() {
         RegelSpraakModel m = Resolver.resolve(SRC);
         var ft = m.feittypen.get("Vlucht van natuurlijke personen");

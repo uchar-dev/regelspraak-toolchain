@@ -33,6 +33,8 @@ public final class DefinitionResolver {
             if (d.parameterDefinition() != null) parameter(d.parameterDefinition());
             if (d.feitTypeDefinition() != null) feittype(d.feitTypeDefinition());
             if (d.dagsoortDefinition() != null) model.dagsoorten.add(naam(d.dagsoortDefinition().lowerNaam()));
+            if (d.tijdlijnDefinitie() != null) tijdlijn(d.tijdlijnDefinitie());
+            if (d.dimensieDefinition() != null) dimensie(d.dimensieDefinition());
         }
         for (RegelContext r : doc.regel()) {
             model.regels.add(new Regel(src(r.regelNaam()), "regel"));
@@ -155,6 +157,20 @@ public final class DefinitionResolver {
     private void parameter(ParameterDefinitionContext ctx) {
         String naam = src(ctx.parameterNaam());
         model.parameters.put(naam, new Parameter(naam, datatypeVan(ctx.datatype(), ctx.domeinNaam())));
+    }
+
+    // ---------------- §13.3.6 timelines ----------------
+    private void tijdlijn(TijdlijnDefinitieContext ctx) {
+        boolean variabel = src(ctx).toLowerCase().contains("met variabel startpunt");
+        model.tijdlijnen.add(new Tijdlijn(src(ctx.tijdlijnNaam()), variabel));
+    }
+
+    // ---------------- §13.3.7 dimensions ----------------
+    private void dimensie(DimensieDefinitionContext ctx) {
+        List<String> waarden = ctx.labelWaardeSpecificatie().stream()
+                .map(l -> src(l.dimensieWaarde())).toList();
+        model.dimensies.put(src(ctx.dimensieNaam()),
+                new Dimensie(src(ctx.dimensieNaam()), src(ctx.dimensieNaamMeervoud()), waarden));
     }
 
     // ---------------- §13.3.9 fact types ----------------

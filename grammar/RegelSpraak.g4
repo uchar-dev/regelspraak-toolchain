@@ -229,7 +229,16 @@ voorzetsel             : VAN | IN | VOOR | OVER | OP | BIJ | UIT ; // §13.3.7.3
 dimensieNaam           : lowerNaam ; // §13.3.7.3
 dimensieNaamMeervoud   : lowerNaam ; // §13.3.7.4
 labelWaardeSpecificatie: NUMBER DOT dimensieWaarde ; // §13.3.7.5
-dimensieWaarde         : lowerNaam ; // §13.3.7.6
+// A label value excludes NUMBER so a value ("vorig jaar") stops at the next
+// label's "N." marker instead of swallowing it (§13.3.7.6).
+dimensieWaarde         : dimensieWaardeWoord+ ;
+dimensieWaardeWoord
+    : LOWER_ID | UPPER_ID | AANTAL_WORD
+    | VAN | OP | IN | VOOR | OVER | BIJ | TOT | TOT_EN_MET | PER | MET | EN | OF | DAN | NIET | DE | HET | EEN | VANAF
+    | EEN_TELWOORD | TWEE_TELWOORD | DRIE_TELWOORD | VIER_TELWOORD
+    | JAAR | MAAND | DAG | WEEK | KWARTAAL | UUR | MINUUT | SECONDE | MILLISECONDE
+    | PERIODE | DAGEN | WEKEN | MAANDEN | KWARTALEN | JAREN
+    ;
 
 // ====================================================================
 // §13.3.8 Parameters

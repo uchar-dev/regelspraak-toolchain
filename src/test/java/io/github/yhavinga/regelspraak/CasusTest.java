@@ -42,6 +42,10 @@ class CasusTest {
         assertTrue(m.parameters.size() >= 15, () -> "parameters: " + m.parameters.size());
         assertTrue(m.objecttypen.get("Natuurlijk persoon").attributen.containsKey("leeftijd"));
         assertTrue(m.regels.size() >= 20, () -> "regels: " + m.regels.size());
+
+        // §2.7 the named timeline with a variable start point
+        assertEquals(1, m.tijdlijnen.size());
+        assertTrue(m.tijdlijnen.get(0).variabelStartpunt());
     }
 
     private static String read(Path p) {
