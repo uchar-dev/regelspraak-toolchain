@@ -75,6 +75,14 @@ See `docs/ANTLR-HOWTO.md` for the full workflow and the lexer/parser gotchas.
 4. **Semantics are post-parse.** Type checking, name resolution, unit
    compatibility, and arity live in the **resolver** (a tree visitor), not the
    grammar. The parser only fixes syntactic structure.
+5. **Anchor the entry rule in `EOF`.** Without it ANTLR parses a valid prefix and
+   ignores the rest, so a malformed file silently "passes" — the top rule must
+   consume the whole token stream.
+6. **Express precedence with ANTLR4 left recursion.** Order the alternatives of a
+   single left-recursive `expressie` rule low-to-high precedence and let ANTLR
+   rewrite the recursion, rather than hand-rolling a cascade of rules.
+7. **Treat generation warnings as errors.** An ambiguity or nondeterminism warning
+   is a grammar defect; a parse that works on top of it is luck.
 
 ## From-scratch discipline
 
@@ -127,9 +135,16 @@ reports.
 **Launching**
 ```
 claude --permission-mode plan        # approve the build plan first
-/goal Implement the grammar + resolver until the Definition of done above holds.
-      Work section by section through Chapter 13. Derive only from the spec.
+/goal Drive this build to the Definition of done above, section by section through
+      Chapter 13, spec as the only oracle; commit each green section. Met only once
+      a turn has shown `make compile` succeeding, `/verify-corpus` reporting every
+      snippet passing, and the resolver tests green — surface that output each turn.
+      If blocked, explain and stop after ~25 turns.
 ```
+The `/goal` evaluator is a separate model that reads only this transcript and
+cannot run commands, so *show* the `make` / `/verify-corpus` output rather than
+asserting success; there is no turn cap unless the condition names one.
+
 Or fan out hard: ask Claude to "create a workflow that maps all of Chapter 13 in
 parallel, drafts the lexer then the parser, and adversarially verifies each
 section against the TOKA casus."
