@@ -8,13 +8,25 @@
 # the Drools transpiler grow into real JVM code (see CLAUDE.md / docs/ANTLR-HOWTO.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help antlr-jar parser compile grun gui clean clean-jar run-sandbox
+.PHONY: help antlr-jar junit-jar parser compile resolver test grun gui tokens clean clean-jar run-sandbox
 
 ANTLR4_VERSION := 4.13.2
 ANTLR4_URL     := https://www.antlr.org/download/antlr-$(ANTLR4_VERSION)-complete.jar
 LIB_DIR        := $(CURDIR)/lib
 ANTLR4_JAR     := $(LIB_DIR)/antlr-$(ANTLR4_VERSION)-complete.jar
 ANTLR4         := java -jar $(ANTLR4_JAR)
+
+# JUnit 5 standalone console launcher — bundles the platform + jupiter engine, so
+# the resolver's tests run with only a JDK + this jar (same jar-only spirit as the
+# ANTLR tool). The ANTLR *runtime* the resolver links against ships inside the
+# ANTLR complete jar, so no further downloads are needed.
+JUNIT_VERSION := 1.10.2
+JUNIT_JAR     := $(LIB_DIR)/junit-platform-console-standalone-$(JUNIT_VERSION).jar
+JUNIT_URL     := https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/$(JUNIT_VERSION)/junit-platform-console-standalone-$(JUNIT_VERSION).jar
+
+# Resolver (typed AST + typeringen enforcement) sources and tests.
+RESOLVER_SRC := $(shell find src/main/java -name '*.java' 2>/dev/null)
+TEST_SRC     := $(shell find src/test/java -name '*.java' 2>/dev/null)
 
 # Java package for the generated parser, and the dirs that follow from it.
 # Change PACKAGE here if you prefer a different namespace.
@@ -53,6 +65,13 @@ $(ANTLR4_JAR):
 	curl -fsSL $(ANTLR4_URL) -o $@.tmp
 	mv $@.tmp $@
 
+junit-jar: $(JUNIT_JAR)
+
+$(JUNIT_JAR):
+	mkdir -p $(LIB_DIR)
+	curl -fsSL $(JUNIT_URL) -o $@.tmp
+	mv $@.tmp $@
+
 # Generate the lexer FIRST: it emits RegelSpraakLexer.tokens, which the parser
 # grammar imports via `options { tokenVocab=RegelSpraakLexer; }`. Generating the
 # parser without an up-to-date .tokens file is the classic "token X is not
@@ -74,6 +93,17 @@ compile: parser
 	mkdir -p $(OUT_DIR)
 	javac -cp $(ANTLR4_JAR) -d $(OUT_DIR) $(GEN_DIR)/*.java
 	javac -cp $(ANTLR4_JAR):$(OUT_DIR) -d $(OUT_DIR) tools/Parse.java
+
+# Compile the resolver (typed AST builder + typeringen checker) against the
+# generated parser. The ANTLR complete jar provides the runtime it links against.
+resolver: compile
+	javac -cp $(ANTLR4_JAR):$(OUT_DIR) -d $(OUT_DIR) $(RESOLVER_SRC)
+
+# Build + run the resolver's JUnit 5 tests via the standalone console launcher.
+test: resolver $(JUNIT_JAR)
+	javac -cp $(ANTLR4_JAR):$(JUNIT_JAR):$(OUT_DIR) -d $(OUT_DIR) $(TEST_SRC)
+	java -jar $(JUNIT_JAR) execute --class-path $(ANTLR4_JAR):$(OUT_DIR) \
+		--scan-class-path --details=tree --disable-banner
 
 # Smoke-test the grammar with no application code, e.g.:
 #   make grun RULE=regelSpraakDocument FILE=examples/toka/toka-01-....rs
