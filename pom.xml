@@ -28,6 +28,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <antlr.version>4.13.2</antlr.version>
     <junit.version>5.10.2</junit.version>
+    <drools.version>8.44.0.Final</drools.version>
   </properties>
 
   <dependencies>
@@ -40,6 +41,23 @@
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
       <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Drools is needed only to COMPILE AND RUN the generated DRL in the
+         integration test (the transpiler itself emits text); hence test scope.
+         drools-engine pulls core + compiler (KieHelper); drools-mvel supplies the
+         mvel dialect the generated rules use. -->
+    <dependency>
+      <groupId>org.drools</groupId>
+      <artifactId>drools-engine</artifactId>
+      <version>${drools.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.drools</groupId>
+      <artifactId>drools-mvel</artifactId>
+      <version>${drools.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -78,6 +96,17 @@
             <goals><goal>add-source</goal></goals>
             <configuration>
               <sources><source>${basedir}/gen</source></sources>
+            </configuration>
+          </execution>
+          <!-- src/it/java holds the Drools execution test + its fact POJOs. It is a
+               Maven-only test root (the jar-only `make test` scans only src/test/java,
+               so it stays free of any Drools dependency). -->
+          <execution>
+            <id>add-drools-it</id>
+            <phase>generate-test-sources</phase>
+            <goals><goal>add-test-source</goal></goals>
+            <configuration>
+              <sources><source>${basedir}/src/it/java</source></sources>
             </configuration>
           </execution>
         </executions>

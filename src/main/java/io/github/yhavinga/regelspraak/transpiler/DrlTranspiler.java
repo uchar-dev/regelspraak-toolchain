@@ -29,6 +29,10 @@ import java.util.StringJoiner;
  */
 public final class DrlTranspiler {
     private static final String SUBJECT = "$subject";
+    /** The package the generated DRL imports its fact classes from. The fact model
+     *  (a POJO per objecttype, with the getters/setters this transpiler assumes) is
+     *  the contract between the generated rules and the runtime. */
+    public static final String FACT_PACKAGE = "io.github.yhavinga.regelspraak.facts";
     private final RegelSpraakModel model;
     private final StringBuilder out = new StringBuilder();
     // per-rule: accumulate patterns hoisted out of the value into the "when"
@@ -41,6 +45,10 @@ public final class DrlTranspiler {
 
     private String run() {
         out.append("package io.github.yhavinga.regelspraak.generated;\n\n");
+        // Import the fact class for each object type so Drools resolves the patterns.
+        for (Objecttype ot : model.objecttypen.values())
+            out.append("import ").append(FACT_PACKAGE).append('.').append(ident(ot.naam, true)).append(";\n");
+        if (!model.objecttypen.isEmpty()) out.append('\n');
         // Parameters become globals the runtime supplies.
         for (Parameter p : model.parameters.values())
             out.append("global ").append(javaType(p.datatype())).append(' ')
@@ -62,6 +70,9 @@ public final class DrlTranspiler {
 
         out.append("rule \"").append(r.naam()).append("\"\n");
         out.append("    dialect \"mvel\"\n");
+        // A forward calculation should not retrigger itself on its own modify; it
+        // still recomputes when another rule changes the facts it reads.
+        out.append("    no-loop true\n");
         out.append("when\n");
         if (subject == null) {
             out.append("    // onopgelost doel-objecttype: ").append(r.doel().bron()).append('\n');
