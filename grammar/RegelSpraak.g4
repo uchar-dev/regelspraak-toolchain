@@ -52,7 +52,7 @@ definitie
 naamWoordLower
     : LOWER_ID | NUMBER | PERCENT_SIGN | AANTAL_WORD
     | VAN | OP | IN | VOOR | OVER | BIJ | TOT | TOT_EN_MET | PER | MET
-    | DE | HET | EN | OF | DAN | ALS | NIET
+    | DE | HET | EN | OF | DAN | ALS | NIET | GELDIG
     | EEN_TELWOORD | TWEE_TELWOORD | DRIE_TELWOORD | VIER_TELWOORD
     | JAAR | MAAND | DAG | WEEK | KWARTAAL | UUR | MINUUT | SECONDE | MILLISECONDE
     | PERIODE | DAGEN | WEKEN | MAANDEN | KWARTALEN | JAREN
@@ -295,7 +295,7 @@ dagsoortDefinition // §13.3.10.1
 kaleNaamWoord
     : LOWER_ID | UPPER_ID | NUMBER | PERCENT_SIGN | AANTAL_WORD
     | OP | IN | VOOR | OVER | BIJ | TOT | TOT_EN_MET | PER | MET | EN | OF | DAN | NIET
-    | DE | HET
+    | DE | HET | GELDIG
     | EEN_TELWOORD | TWEE_TELWOORD | DRIE_TELWOORD | VIER_TELWOORD
     | JAAR | MAAND | DAG | WEEK | KWARTAAL | UUR | MINUUT | SECONDE | MILLISECONDE
     | PERIODE | DAGEN | WEKEN | MAANDEN | KWARTALEN | JAREN
@@ -453,14 +453,14 @@ toplevelSamengesteldCriterium
 samengesteldCriteriumOnderdeel : genestCriterium+ ;
 genestCriterium : bullet ( samengesteldCriterium | elementaireVoorwaarde ) ;
 samengesteldCriterium
-    : WORDT_VOLDAAN AAN ( VOLGEND_CRITERIUM COLON | consistentieKwantificatie VOLGENDE_CRITERIA COLON )
+    : ER? WORDT_VOLDAAN AAN ( VOLGEND_CRITERIUM COLON | consistentieKwantificatie VOLGENDE_CRITERIA COLON )
       samengesteldCriteriumOnderdeel
     ;
 uniciteitsControle : ( alleAttribuutVanOnderwerp | uniciteitConcatenatie ) vereniging* MOETEN UNIEK ZIJN DOT? ;
 vereniging : VERENIGD_MET ( alleAttribuutVanOnderwerp | uniciteitConcatenatie ) ;
-alleAttribuutVanOnderwerp : DE kaleNaam VAN ALLE kaleNaam VAN onderwerpKeten ( VAN onderwerpKeten )? ;
+alleAttribuutVanOnderwerp : DE kaleNaam VAN ALLE kaleNaam ( VAN onderwerpKeten )? ( VAN onderwerpKeten )? ;
 uniciteitConcatenatie
-    : CONCATENATIE_VAN kaleNaam ( COMMA kaleNaam )* EN kaleNaam VAN ALLE kaleNaam VAN onderwerpKeten ( VAN onderwerpKeten )?
+    : CONCATENATIE_VAN kaleNaam ( COMMA kaleNaam )* EN kaleNaam VAN ALLE kaleNaam ( VAN onderwerpKeten )? ( VAN onderwerpKeten )?
     ;
 
 // ====================================================================
@@ -618,7 +618,7 @@ functieAanroep
     | DE MINUUT UIT expressie                                                                      # minuutUitFunc   // §13.4.17.22
     | DE SECONDE UIT expressie                                                                     # secondeUitFunc  // §13.4.17.23
     | DE MILLISECONDE UIT expressie                                                                # milliUitFunc    // §13.4.17.24
-    | AANTAL_DAGEN_IN ( DE MAAND | HET JAAR ) DAT expressie                                        # aantalDagenFunc // §13.4.17.57
+    | AANTAL_DAGEN_IN ( DE MAAND | HET JAAR ) DAT ( toplevelSamengesteldeVoorwaarde | toplevelElementaireVoorwaarde | expressie ) # aantalDagenFunc // §13.4.17.57 (worked example §7.2 puts a predicate after 'dat')
     | TIJDSEVENREDIG_DEEL_PER ( MAAND | JAAR ) VAN expressie conditieBijExpressie                  # tijdsevenredigFunc // §13.4.17.58
     | CONCATENATIE_VAN expressie ( COMMA expressie )* EN expressie                                 # concatFunc      // §13.4.17.2/.8.14
     ;
