@@ -25,8 +25,9 @@ OUT_DIR  := out
 
 # Grammar sources — authored from scratch against the v2.3.0 spec (grammar/README.md).
 # The lexer MUST be generated before the parser (see the `parser` target).
-LEXER_G4  := grammar/RegelSpraakLexer.g4
-PARSER_G4 := grammar/RegelSpraak.g4
+GRAMMAR_DIR := grammar
+LEXER_G4  := $(GRAMMAR_DIR)/RegelSpraakLexer.g4
+PARSER_G4 := $(GRAMMAR_DIR)/RegelSpraak.g4
 
 help:
 	@echo "RegelSpraak-rebooted — ANTLR $(ANTLR4_VERSION) (Java target)"
@@ -56,21 +57,36 @@ $(ANTLR4_JAR):
 # grammar imports via `options { tokenVocab=RegelSpraakLexer; }`. Generating the
 # parser without an up-to-date .tokens file is the classic "token X is not
 # defined" failure. -lib points the parser step at the freshly-written .tokens.
+#
+# We invoke ANTLR from inside $(GRAMMAR_DIR) with a bare filename: given a grammar
+# path with a directory component, ANTLR mirrors that directory *under* -o, so
+# `-o $(GEN_DIR) grammar/X.g4` would bury the output in $(GEN_DIR)/grammar/ where
+# neither -lib nor the javac glob below would find it. cd-ing first makes the
+# output land exactly at $(GEN_DIR), matching the package path.
 parser: $(ANTLR4_JAR)
 	@test -f $(LEXER_G4)  || { echo "missing $(LEXER_G4) — author it first (see grammar/README.md)";  exit 1; }
 	@test -f $(PARSER_G4) || { echo "missing $(PARSER_G4) — author it first (see grammar/README.md)"; exit 1; }
 	mkdir -p $(GEN_DIR)
-	$(ANTLR4) -Dlanguage=Java -visitor -no-listener -package $(PACKAGE) -o $(GEN_DIR) $(LEXER_G4)
-	$(ANTLR4) -Dlanguage=Java -visitor -no-listener -package $(PACKAGE) -lib $(GEN_DIR) -o $(GEN_DIR) $(PARSER_G4)
+	cd $(GRAMMAR_DIR) && $(ANTLR4) -Dlanguage=Java -visitor -no-listener -package $(PACKAGE) -o $(CURDIR)/$(GEN_DIR) $(notdir $(LEXER_G4))
+	cd $(GRAMMAR_DIR) && $(ANTLR4) -Dlanguage=Java -visitor -no-listener -package $(PACKAGE) -lib $(CURDIR)/$(GEN_DIR) -o $(CURDIR)/$(GEN_DIR) $(notdir $(PARSER_G4))
 
 compile: parser
 	mkdir -p $(OUT_DIR)
 	javac -cp $(ANTLR4_JAR) -d $(OUT_DIR) $(GEN_DIR)/*.java
+	javac -cp $(ANTLR4_JAR):$(OUT_DIR) -d $(OUT_DIR) tools/Parse.java
 
 # Smoke-test the grammar with no application code, e.g.:
-#   make grun RULE=regel FILE=examples/snippet.rs
+#   make grun RULE=regelSpraakDocument FILE=examples/toka/toka-01-....rs
+# Uses tools/Parse (not ANTLR's TestRig): a `parser grammar RegelSpraak;` emits a
+# class named `RegelSpraak`, but TestRig insists on a `RegelSpraakParser` suffix.
+# Parse also exits non-zero on any syntax error or `error` node — the clean
+# pass/fail signal /verify-corpus needs.
 grun: compile
-	java -cp $(ANTLR4_JAR):$(OUT_DIR) org.antlr.v4.gui.TestRig $(PACKAGE).RegelSpraak $(RULE) -tree $(FILE)
+	java -cp $(ANTLR4_JAR):$(OUT_DIR) Parse $(RULE) $(FILE)
+
+# Token dump (no parse tree), for lexer debugging.
+tokens: compile
+	java -cp $(ANTLR4_JAR):$(OUT_DIR) Parse $(RULE) $(FILE) -tokens -no-tree
 
 gui: compile
 	java -cp $(ANTLR4_JAR):$(OUT_DIR) org.antlr.v4.gui.TestRig $(PACKAGE).RegelSpraak $(RULE) -gui $(FILE)
