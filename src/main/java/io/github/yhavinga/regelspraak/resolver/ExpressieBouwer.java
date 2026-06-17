@@ -56,9 +56,11 @@ final class ExpressieBouwer {
             return s.afronding() != null ? afgerond(basis, s.afronding(), bron) : basis;
         }
         if (e instanceof PercentageVanExprContext s) {
-            // §13.4.17.12 — current typing: a unitless Numeriek; preserved here.
+            // §4.8 Tabel 18: "X% van Y" has the datatype (incl. the unit) of Y. Do not
+            // fabricate a unitless Numeriek — that is a positive false claim; carry Y's
+            // type, or Onbekend when Y is not numeric (no claim).
             Expr links = bouw(s.expressie(0)), rechts = bouw(s.expressie(1));
-            Datatype t = new Datatype.Numeriek(false, 0, Datatype.Teken.ONBEPAALD, null);
+            Datatype t = rechts.type().isNumeriek() ? rechts.type() : onbekend();
             return new Expr.Binair(Expr.BinOp.PERCENTAGE_VAN, links, rechts, t, bron);
         }
         if (e instanceof AfgerondeExprContext s) return afgerond(bouw(s.expressie()), s.afronding(), bron);

@@ -85,6 +85,13 @@ decisions make the count meaningful:
   alternatives — these are NOT in the real `regel`/`objectTypeExtensie` rules,
   which stay strict, so a real model with a body-less rule is still rejected.
 
+**What this number is and is not.** It is **syntactic parse coverage of worked-example
+fragments** — "does this snippet parse into *a* tree under a documented start rule" —
+not a claim of semantic or structural correctness. Type/unit/arity/name-resolution
+legality is the resolver's job (Definition of Done item 4), and is incomplete; two
+snippets additionally parse into a known-wrong tree (see the precedence limitations
+below) yet still count as parses. Read "192/193" as recognisability, not validation.
+
 The result: **192 of 193** snippets parse (TOKA 47/47). The one exception:
 
 - **`spec-main-35` — unquoted enumeration literals (PDF→Markdown conversion
@@ -105,6 +112,27 @@ the trailing afronding. A faithful fix needs the bound value to stop before an
 outer afronding (a precedence split in the begrenzing rule); until then the IR —
 and therefore the generated DRL — rounds the bound rather than the result. Noted
 so the transpiler's output is read with this in mind.
+
+### Plural (meervoud) resolution
+
+RegelSpraak declares plurals explicitly — `(mv: …)` on a `<naamwoord>` (§13.2.29),
+`(mv: …)` on a feittype role (§13.3.9.1), `<dimensienaammeervoud>` after "bestaande
+uit de" (§13.3.7). It defines **no plural morphology**; §3.1 footnote 2 states that
+deriving a missing plural is "ALEF-specific … outside RegelSpraak." The resolver
+therefore matches a plural reference (e.g. "alle passagiers") against the **declared**
+plural first (role `(mv:)`). Only when a role declares none — as every TOKA role does
+— does it fall back to a regular +s/+en (and head-noun) guess. That fallback is a
+documented, out-of-language best-effort (per footnote 2), never overriding a declared
+form; it does not handle Dutch irregular plurals. A fuller fix would also read the
+plural that appears literally in the feittype cardinality line ("meerdere passagiers").
+
+### Known precedence limitation (wortel / tot de macht + afronding)
+
+§13.4.17.13/.14 make `<afronding>` **mandatory** on "de wortel van" and "tot de macht"
+(it is not bracketed in the diagram). The grammar currently makes it optional and lets
+the function argument run as a full `expressie`, so "de wortel van X afgerond …" can
+absorb a trailing operator into X. To be fixed by requiring the afronding and giving
+these functions a higher-precedence operand sub-rule.
 
 ### Known precedence limitation (telling + arithmetic)
 

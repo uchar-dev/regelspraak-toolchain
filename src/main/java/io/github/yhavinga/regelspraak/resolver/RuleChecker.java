@@ -79,6 +79,16 @@ final class RuleChecker {
             objectcreatie(naam, rd.objectCreatie(), voorwaarde);
         } else if (rd.verdeling() != null) {
             verdeling(naam, rd.verdeling(), voorwaarde);
+        } else {
+            // §13.4.7/.8/.11/.12 — parsed but not yet lifted into the IR. Surface it as
+            // a diagnostic rather than letting the rule silently disappear from the model.
+            String soort = rd.feitCreatie() != null ? "feitcreatie"
+                    : rd.consistentieRegel() != null ? "consistentieregel"
+                    : rd.startpuntBepaling() != null ? "startpuntbepaling"
+                    : rd.dagsoortResultaat() != null ? "dagsoortresultaat" : "resultaatdeel";
+            model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                    "resultaatdeel '" + soort + "' wordt nog niet naar IR/DRL omgezet (regel '" + naam + "')",
+                    rd.getStart().getLine()));
         }
     }
 

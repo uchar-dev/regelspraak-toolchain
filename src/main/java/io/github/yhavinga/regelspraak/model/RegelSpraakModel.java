@@ -72,7 +72,7 @@ public final class RegelSpraakModel {
     private Objecttype objecttypeViaRol(String naam) {
         for (Feittype ft : feittypen.values())
             for (Rol r : ft.rollen)
-                if (rolMatcht(r.naam(), naam)) return objecttypeOpNaam(r.objecttypeNaam());
+                if (rolMatcht(r, naam)) return objecttypeOpNaam(r.objecttypeNaam());
         return null;
     }
 
@@ -102,13 +102,19 @@ public final class RegelSpraakModel {
         return objecttypeOpNaam(r.objecttypeNaam()) == ot || r.objecttypeNaam().equalsIgnoreCase(ot.naam);
     }
 
-    private static boolean rolMatcht(String rolNaam, String naam) {
-        if (rolNaam.equalsIgnoreCase(naam)) return true;
-        if (naam.equalsIgnoreCase(rolNaam + "s") || naam.equalsIgnoreCase(rolNaam + "en")) return true;
-        // a multi-word role pluralised on its HEAD noun ("passagiers met recht op
-        // treinmiles" vs the role "passagier met recht op treinmiles")
-        String kopEnkelvoud = naam.replaceFirst("^(\\S+?)(?:s|en)(\\s)", "$1$2");
-        return kopEnkelvoud.equalsIgnoreCase(rolNaam);
+    private static boolean rolMatcht(Rol r, String naam) {
+        if (r.naam().equalsIgnoreCase(naam)) return true;                       // the singular role name
+        if (r.meervoud() != null && r.meervoud().equalsIgnoreCase(naam)) return true; // the DECLARED plural
+        // Only when no plural is declared: RegelSpraak defines no plural morphology
+        // — §3.1 footnote 2 states derivation is ALEF-specific, OUTSIDE the language.
+        // So this is a documented best-effort fallback, never overriding a declared
+        // form. (See docs/grammar-divergences.md.)
+        if (r.meervoud() == null) {
+            if (naam.equalsIgnoreCase(r.naam() + "s") || naam.equalsIgnoreCase(r.naam() + "en")) return true;
+            String kopEnkelvoud = naam.replaceFirst("^(\\S+?)(?:s|en)(\\s)", "$1$2");
+            return kopEnkelvoud.equalsIgnoreCase(r.naam());
+        }
+        return false;
     }
 
     /**
@@ -158,7 +164,12 @@ public final class RegelSpraakModel {
         public boolean wederkerig;
         public Feittype(String naam) { this.naam = naam; }
     }
-    public record Rol(String naam, String objecttypeNaam) {}
+    /** A feittype role. `meervoud` is the plural the model DECLARES via "(mv: …)"
+     *  (§13.3.9.1), or null when none is declared — the resolver matches plural
+     *  references against the declared form, never a synthesised one. */
+    public record Rol(String naam, String objecttypeNaam, String meervoud) {
+        public Rol(String naam, String objecttypeNaam) { this(naam, objecttypeNaam, null); }
+    }
 
     public static final class Eenheidstelsel {
         public final String naam;

@@ -193,6 +193,32 @@ class IrTest {
         assertTrue(n.eenheid().convertibleNaar(m.resolveEenheid("jr")), "jaren niet inwisselbaar met jr");
     }
 
+    @Test void gedeclareerd_meervoud_wint_van_gegokte_morfologie() {
+        // The role declares an IRREGULAR plural "(mv: steden)"; a "stad"+s guess would
+        // produce "stads" and never match "steden". Matching must use the DECLARED form.
+        String src = """
+            Objecttype de Stad
+                de inwoners Numeriek (geheel getal);
+            Objecttype de Land
+                het totaal Numeriek (geheel getal);
+            Feittype Land met steden
+                het land Land
+                de stad (mv: steden) Stad
+            Eén land heeft meerdere steden
+            Regel som
+                geldig altijd
+                    Het totaal van een land moet berekend worden als de som van de inwoners van alle steden van een land.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "fouten: " + m.errors());
+
+        Expr.Functie som = assertInstanceOf(Expr.Functie.class, m.resolvedRegels.get(0).waarde());
+        assertEquals(Expr.FunctieKind.SOM, som.kind());
+        Expr.AttribuutRef arg = assertInstanceOf(Expr.AttribuutRef.class, som.argumenten().get(0));
+        assertNotNull(arg.objecttype(), "'steden' niet opgelost via gedeclareerd meervoud");
+        assertEquals("Stad", arg.objecttype().naam);   // resolved via (mv: steden), not a guess
+    }
+
     @Test void referenties_lossen_op_via_feittype_rollen() {
         // Subjects are roles, not object-type names: "een reis" → Vlucht (role reis),
         // "een passagier"/"alle passagiers" → Persoon (role passagier, incl. plural).

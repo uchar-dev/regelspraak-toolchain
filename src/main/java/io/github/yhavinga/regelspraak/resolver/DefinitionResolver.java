@@ -188,7 +188,8 @@ public final class DefinitionResolver {
         Feittype ft = new Feittype(src(ctx.feitTypeNaam()));
         ft.wederkerig = ctx.WEDERKERIG_FEITTYPE() != null;
         for (RolSpecificatieContext rs : ctx.rolSpecificatie()) {
-            ft.rollen.add(new Rol(src(rs.rolNaam()), src(rs.objectTypeNaam())));
+            String meervoud = rs.meervoudsvorm() != null ? src(rs.meervoudsvorm()) : null; // declared "(mv: …)"
+            ft.rollen.add(new Rol(src(rs.rolNaam()), src(rs.objectTypeNaam()), meervoud));
         }
         model.feittypen.put(ft.naam, ft);
     }
