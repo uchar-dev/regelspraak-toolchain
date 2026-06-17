@@ -48,120 +48,123 @@ lexer grammar RegelSpraakLexer;
 // ============================================================================
 
 // --- parenthesised / colon-bearing phrases (precede bare '(' and ':') ---
-VOOR_HET_ATTRIBUUT_ZONDER_VOORZETSEL : '(voor het attribuut zonder voorzetsel):' ; // §13.3.7.2
-NA_HET_ATTRIBUUT_MET_VOORZETSEL      : '(na het attribuut met voorzetsel'        ; // §13.3.7.2
+VOOR_HET_ATTRIBUUT_ZONDER_VOORZETSEL : '(voor' WSP 'het' WSP 'attribuut' WSP 'zonder' WSP 'voorzetsel):' ; // §13.3.7.2
+NA_HET_ATTRIBUUT_MET_VOORZETSEL      : '(na' WSP 'het' WSP 'attribuut' WSP 'met' WSP 'voorzetsel'        ; // §13.3.7.2
 BEZIELD     : '(bezield)'     ; // §13.3.1.1
 BEZITTELIJK : '(bezittelijk)' ; // §13.3.2.2
 BIJVOEGLIJK : '(bijvoeglijk)' ; // §13.3.2.3
 MV_START    : '(mv:'          ; // §13.2.29 naamwoord plural opener
 
 // --- datum/datumtijd constructors (precede the bare 'datum'/'de' words) ---
-DATUMTIJD_MET : 'de datumtijd met' ; // §13.4.17.36
-DATUM_MET     : 'de datum met'     ; // §13.4.17.35
+DATUMTIJD_MET : 'de' WSP 'datumtijd' WSP 'met' ; // §13.4.17.36
+DATUM_MET     : 'de' WSP 'datum' WSP 'met'     ; // §13.4.17.35
 
 // --- result / rule-shape phrases ---
-WORDT_BEREKEND_ALS       : 'moet berekend worden als'        ; // §13.4.4.3
-WORDT_GESTELD_OP         : 'moet gesteld worden op'          ; // §13.4.4.2
-WORDT_GEINITIALISEERD_OP : 'moet geïnitialiseerd worden op'  ; // §13.4.9.1
-WORDT_VERDEELD_OVER      : 'wordt verdeeld over'             ; // §13.4.10.1
-WORDT_BEPAALD_DOOR       : 'wordt bepaald door'              ; // §13.4.12.1
-HET_STARTPUNT_VAN        : 'Het startpunt van'               ; // §13.4.12.1
-ER_MOET_WORDEN_VOLDAAN_AAN : 'er moet worden voldaan aan'    ; // §13.4.8.7
-WORDT_VOLDAAN            : 'wordt voldaan'                    ; // §13.4.8.10 / §13.4.14 (trailing 'aan' is separate)
+WORDT_BEREKEND_ALS       : 'moet' WSP 'berekend' WSP 'worden' WSP 'als'        ; // §13.4.4.3
+WORDT_GESTELD_OP         : 'moet' WSP 'gesteld' WSP 'worden' WSP 'op'          ; // §13.4.4.2
+WORDT_GEINITIALISEERD_OP : 'moet' WSP 'geïnitialiseerd' WSP 'worden' WSP 'op'  ; // §13.4.9.1
+WORDT_VERDEELD_OVER      : 'wordt' WSP 'verdeeld' WSP 'over'             ; // §13.4.10.1
+WORDT_BEPAALD_DOOR       : 'wordt' WSP 'bepaald' WSP 'door'              ; // §13.4.12.1
+HET_STARTPUNT_VAN        : 'Het' WSP 'startpunt' WSP 'van'               ; // §13.4.12.1
+ER_MOET_WORDEN_VOLDAAN_AAN : 'er' WSP 'moet' WSP 'worden' WSP 'voldaan' WSP 'aan'    ; // §13.4.8.7
+WORDT_VOLDAAN            : 'wordt' WSP 'voldaan'                    ; // §13.4.8.10 / §13.4.14 (trailing 'aan' is separate)
 
 // --- aggregation / function phrases ---
-ABSOLUTE_TIJDSDUUR_VAN : 'de absolute tijdsduur van' ; // §13.4.17.32
-TIJDSDUUR_VAN          : 'de tijdsduur van'          ; // §13.4.17.32
-ABSOLUTE_WAARDE_VAN    : 'de absolute waarde van'    ; // §13.4.17.17
-MAXIMALE_WAARDE_VAN    : 'de maximale waarde van'    ; // §13.4.17.16 / .47
-MINIMALE_WAARDE_VAN    : 'de minimale waarde van'    ; // §13.4.17.15 / .47
-WORTEL_VAN             : 'de wortel van'             ; // §13.4.17.13
-SOM_VAN                : 'de som van'                ; // §13.4.17.47
-TOTAAL_VAN             : 'het totaal van'            ; // §13.4.17.56
-AANTAL_DAGEN_IN        : 'het aantal dagen in'       ; // §13.4.17.57
-EERSTE_PAASDAG_VAN     : 'de eerste paasdag van'     ; // §13.4.17.37
-EERSTE_VAN             : 'de eerste van'             ; // §13.4.17.39 / .49
-LAATSTE_VAN            : 'de laatste van'            ; // §13.4.17.40 / .49
-CONCATENATIE_VAN       : 'de concatenatie van'       ; // §13.4.8.14
-TIJDSEVENREDIG_DEEL_PER: 'het tijdsevenredig deel per'; // §13.4.17.58
-IN_HELE                : 'in hele'                   ; // §13.4.17.32
+ABSOLUTE_TIJDSDUUR_VAN : 'de' WSP 'absolute' WSP 'tijdsduur' WSP 'van' ; // §13.4.17.32
+TIJDSDUUR_VAN          : 'de' WSP 'tijdsduur' WSP 'van'          ; // §13.4.17.32
+ABSOLUTE_WAARDE_VAN    : 'de' WSP 'absolute' WSP 'waarde' WSP 'van'    ; // §13.4.17.17
+MAXIMALE_WAARDE_VAN    : 'de' WSP 'maximale' WSP 'waarde' WSP 'van'    ; // §13.4.17.16 / .47
+MINIMALE_WAARDE_VAN    : 'de' WSP 'minimale' WSP 'waarde' WSP 'van'    ; // §13.4.17.15 / .47
+WORTEL_VAN             : 'de' WSP 'wortel' WSP 'van'             ; // §13.4.17.13
+SOM_VAN                : 'de' WSP 'som' WSP 'van'                ; // §13.4.17.47
+TOTAAL_VAN             : 'het' WSP 'totaal' WSP 'van'            ; // §13.4.17.56
+AANTAL_DAGEN_IN        : 'het' WSP 'aantal' WSP 'dagen' WSP 'in'       ; // §13.4.17.57
+EERSTE_PAASDAG_VAN     : 'de' WSP 'eerste' WSP 'paasdag' WSP 'van'     ; // §13.4.17.37
+EERSTE_VAN             : 'de' WSP 'eerste' WSP 'van'             ; // §13.4.17.39 / .49
+LAATSTE_VAN            : 'de' WSP 'laatste' WSP 'van'            ; // §13.4.17.40 / .49
+CONCATENATIE_VAN       : 'de' WSP 'concatenatie' WSP 'van'       ; // §13.4.8.14
+TIJDSEVENREDIG_DEEL_PER: 'het' WSP 'tijdsevenredig' WSP 'deel' WSP 'per'; // §13.4.17.58
+// 'in hele <eenheid>' (§13.4.17.32) is composed in the parser as IN HELE <unit>,
+// so 'in' and 'hele' stay separate tokens (the bare-unit form is just 'in <unit>').
 // 'aantal' is its own word (the telling aggregation 'het aantal' is composed in
 // the parser as HET AANTAL_WORD), so the article stays separable from an
 // attribute name that merely begins with "aantal" (e.g. "het aantal treinmiles").
 // The longer 'het aantal dagen in' phrase is still matched first.
 
 // --- bounding / rounding / arithmetic phrases ---
-MET_EEN_MINIMUM_VAN : 'met een minimum van' ; // §13.4.17.29
-MET_EEN_MAXIMUM_VAN : 'met een maximum van' ; // §13.4.17.30
-GEDEELD_DOOR_ABS    : 'gedeeld door (ABS)'  ; // §13.4.17 (abs division)
-GEDEELD_DOOR        : 'gedeeld door'        ; // §13.4.16
-VERMINDERD_MET      : 'verminderd met'      ; // §13.4.16
-TOT_DE_MACHT        : 'tot de macht'        ; // §13.4.17.14
-AFGEROND_OP         : 'afgerond op'         ; // §13.4.17.26
-NAAR_BENEDEN        : 'naar beneden'        ; // §13.4.17.26
-NAAR_BOVEN          : 'naar boven'          ; // §13.4.17.26
-RICHTING_NUL        : 'richting nul'        ; // §13.4.17.26
-WEG_VAN_NUL         : 'weg van nul'         ; // §13.4.17.26
-VERENIGD_MET        : 'verenigd met'        ; // §13.4.8.12
-TOT_EN_MET          : 'tot en met'          ; // §13.2 range / kenmerk names
+MET_EEN_MINIMUM_VAN : 'met' WSP 'een' WSP 'minimum' WSP 'van' ; // §13.4.17.29
+MET_EEN_MAXIMUM_VAN : 'met' WSP 'een' WSP 'maximum' WSP 'van' ; // §13.4.17.30
+GEDEELD_DOOR_ABS    : 'gedeeld' WSP 'door' WSP '(ABS)'  ; // §13.4.17 (abs division)
+GEDEELD_DOOR        : 'gedeeld' WSP 'door'        ; // §13.4.16
+VERMINDERD_MET      : 'verminderd' WSP 'met'      ; // §13.4.16
+TOT_DE_MACHT        : 'tot' WSP 'de' WSP 'macht'        ; // §13.4.17.14
+AFGEROND_OP         : 'afgerond' WSP 'op'         ; // §13.4.17.26
+NAAR_BENEDEN        : 'naar' WSP 'beneden'        ; // §13.4.17.26
+NAAR_BOVEN          : 'naar' WSP 'boven'          ; // §13.4.17.26
+RICHTING_NUL        : 'richting' WSP 'nul'        ; // §13.4.17.26
+WEG_VAN_NUL         : 'weg' WSP 'van' WSP 'nul'         ; // §13.4.17.26
+VERENIGD_MET        : 'verenigd' WSP 'met'        ; // §13.4.8.12
+TOT_EN_MET          : 'tot' WSP 'en' WSP 'met'          ; // §13.2 range / kenmerk names
 
 // --- verdeling phrases ---
-WAARBIJ_WORDT_VERDEELD     : 'waarbij wordt verdeeld'      ; // §13.4.10.1
-ALS_ONVERDEELDE_REST_BLIJFT: 'Als onverdeelde rest blijft' ; // §13.4.10.8
-BIJ_EVEN_GROOT_CRITERIUM   : 'bij een even groot criterium'; // §13.4.10.5 (TOKA includes 'een')
-OP_VOLGORDE_VAN            : 'op volgorde van'             ; // §13.4.10.4
-IN_GELIJKE_DELEN           : 'in gelijke delen'           ; // §13.4.10.2
-NAAR_RATO_VAN             : 'naar rato van'                ; // §13.4.10.2
+WAARBIJ_WORDT_VERDEELD     : 'waarbij' WSP 'wordt' WSP 'verdeeld'      ; // §13.4.10.1
+ALS_ONVERDEELDE_REST_BLIJFT: 'Als' WSP 'onverdeelde' WSP 'rest' WSP 'blijft' ; // §13.4.10.8
+BIJ_EVEN_GROOT_CRITERIUM   : 'bij' WSP 'een' WSP 'even' WSP 'groot' WSP 'criterium'; // §13.4.10.5 (TOKA includes 'een')
+OP_VOLGORDE_VAN            : 'op' WSP 'volgorde' WSP 'van'             ; // §13.4.10.4
+IN_GELIJKE_DELEN           : 'in' WSP 'gelijke' WSP 'delen'           ; // §13.4.10.2
+NAAR_RATO_VAN             : 'naar' WSP 'rato' WSP 'van'                ; // §13.4.10.2
 
 // --- consistency / criterium phrases ---
-VOLGEND_CRITERIUM : 'het volgende criterium' ; // §13.4.8.7
-VOLGENDE_CRITERIA : 'volgende criteria'      ; // §13.4.8.7
-AAN_DE_ELFPROEF   : 'aan de elfproef'        ; // §13.4.15 elfproef
-NUMERIEK_MET_EXACT: 'numeriek met exact'     ; // §13.4.15 (is numeriek)
+VOLGEND_CRITERIUM : 'het' WSP 'volgende' WSP 'criterium' ; // §13.4.8.7
+VOLGENDE_CRITERIA : 'volgende' WSP 'criteria'      ; // §13.4.8.7
+AAN_DE_ELFPROEF   : 'aan' WSP 'de' WSP 'elfproef'        ; // §13.4.15 elfproef
+NUMERIEK_IS_MET_EXACT  : 'numeriek' WSP 'is' WSP 'met' WSP 'exact'   ; // §13.4.15.32 toplevel tekst (verb infixed)
+NUMERIEK_ZIJN_MET_EXACT: 'numeriek' WSP 'zijn' WSP 'met' WSP 'exact' ; // §13.4.15.33 toplevel tekst meervoud
+NUMERIEK_MET_EXACT: 'numeriek' WSP 'met' WSP 'exact'     ; // §13.4.15.84 non-toplevel (is numeriek)
 
 // --- condition phrases ---
-GEDURENDE_DE_TIJD_DAT : 'gedurende de tijd dat' ; // §13.4.17.55
-GEDURENDE_HET_GEHELE  : 'gedurende het gehele'  ; // §13.4.15.70
-GEDURENDE_DE_GEHELE   : 'gedurende de gehele'   ; // §13.4.15.70
-VOLGENDE_VOORWAARDEN  : 'volgende voorwaarden'  ; // §13.4.14
-VOLGENDE_VOORWAARDE   : 'volgende voorwaarde'   ; // §13.4.13
-GEEN_VAN_DE           : 'geen van de'           ; // §13.4.14 quantifier
-TEN_MINSTE            : 'ten minste'            ; // §13.4.14 quantifier
-TEN_HOOGSTE           : 'ten hoogste'           ; // §13.4.14 quantifier
+GEDURENDE_DE_TIJD_DAT : 'gedurende' WSP 'de' WSP 'tijd' WSP 'dat' ; // §13.4.17.55
+GEDURENDE_HET_GEHELE  : 'gedurende' WSP 'het' WSP 'gehele'  ; // §13.4.15.70
+GEDURENDE_DE_GEHELE   : 'gedurende' WSP 'de' WSP 'gehele'   ; // §13.4.15.70
+VOLGENDE_VOORWAARDEN  : 'volgende' WSP 'voorwaarden'  ; // §13.4.14
+VOLGENDE_VOORWAARDE   : 'volgende' WSP 'voorwaarde'   ; // §13.4.13
+GEEN_VAN_DE           : 'geen' WSP 'van' WSP 'de'           ; // §13.4.14 quantifier
+TEN_MINSTE            : 'ten' WSP 'minste'            ; // §13.4.14 quantifier
+TEN_HOOGSTE           : 'ten' WSP 'hoogste'           ; // §13.4.14 quantifier
 
 // --- GegevensSpraak phrases ---
-EXTENSIE_VAN_OBJECTTYPE : 'Extensie van objecttype'         ; // §13.3.1.2
-DATUM_TIJD_MILLIS       : 'Datum en tijd in millisecondes'  ; // §13.3.3.6
-DATUM_IN_DAGEN          : 'Datum in dagen'                  ; // §13.3.3.6
-WEDERKERIG_FEITTYPE     : 'Wederkerig feittype'             ; // §13.3.9.2
-IS_VAN_HET_TYPE         : 'is van het type'                 ; // §13.3.4.1
-MET_EENHEID             : 'met eenheid'                     ; // §13.3.2.5
-GEDIMENSIONEERD_MET     : 'gedimensioneerd met'             ; // §13.3.2.5
-GEHEEL_GETAL            : 'geheel getal'                    ; // §13.3.3.7
+EXTENSIE_VAN_OBJECTTYPE : 'Extensie' WSP 'van' WSP 'objecttype'         ; // §13.3.1.2
+DATUM_TIJD_MILLIS       : 'Datum' WSP 'en' WSP 'tijd' WSP 'in' WSP 'millisecondes'  ; // §13.3.3.6
+DATUM_IN_DAGEN          : 'Datum' WSP 'in' WSP 'dagen'                  ; // §13.3.3.6
+WEDERKERIG_FEITTYPE     : 'Wederkerig' WSP 'feittype'             ; // §13.3.9.2
+IS_VAN_HET_TYPE         : 'is' WSP 'van' WSP 'het' WSP 'type'                 ; // §13.3.4.1
+MET_EENHEID             : 'met' WSP 'eenheid'                     ; // §13.3.2.5
+GEDIMENSIONEERD_MET     : 'gedimensioneerd' WSP 'met'             ; // §13.3.2.5
+GEHEEL_GETAL            : 'geheel' WSP 'getal'                    ; // §13.3.3.7
 NIET_NEGATIEF           : 'niet-negatief'                   ; // §13.3.3.7
-BESTAANDE_UIT           : 'bestaande uit de'                ; // §13.3.7.1
-DAARBIJ_GELDT           : 'Daarbij geldt'                   ; // §13.4.2.10 (trailing ':' is COLON)
+BESTAANDE_UIT           : 'bestaande' WSP 'uit' WSP 'de'                ; // §13.3.7.1
+DAARBIJ_GELDT           : 'Daarbij' WSP 'geldt'                   ; // §13.4.2.10 (trailing ':' is COLON)
 
 // --- tijdlijn phrases ---
-HEEFT_TIJDVAKKEN_VAN   : 'heeft tijdvakken van'  ; // §13.3.6.10
-MET_VARIABEL_STARTPUNT : 'met variabel startpunt'; // §13.3.6.10
-STARTEND_OP_DAG        : 'startend op dag'       ; // §13.3.6.4/.5/.6
-STARTEND_OP            : 'startend op'           ; // §13.3.6.3
-VAN_DE_MAAND           : 'van de maand'          ; // §13.3.6.4
-VAN_MAAND              : 'van maand'             ; // §13.3.6.5/.6
-ELKE_DAG     : 'elke dag'     ; // §13.3.6.2
-ELKE_WEEK    : 'elke week'    ; // §13.3.6.2
-ELKE_MAAND   : 'elke maand'   ; // §13.3.6.2
-ELK_KWARTAAL : 'elk kwartaal' ; // §13.3.6.2
-ELK_JAAR     : 'elk jaar'     ; // §13.3.6.2
+HEEFT_TIJDVAKKEN_VAN   : 'heeft' WSP 'tijdvakken' WSP 'van'  ; // §13.3.6.10
+MET_VARIABEL_STARTPUNT : 'met' WSP 'variabel' WSP 'startpunt'; // §13.3.6.10
+STARTEND_OP_DAG        : 'startend' WSP 'op' WSP 'dag'       ; // §13.3.6.4/.5/.6
+STARTEND_OP            : 'startend' WSP 'op'           ; // §13.3.6.3
+VAN_DE_MAAND           : 'van' WSP 'de' WSP 'maand'          ; // §13.3.6.4
+VAN_MAAND              : 'van' WSP 'maand'             ; // §13.3.6.5/.6
+ELKE_DAG     : 'elke' WSP 'dag'     ; // §13.3.6.2
+ELKE_WEEK    : 'elke' WSP 'week'    ; // §13.3.6.2
+ELKE_MAAND   : 'elke' WSP 'maand'   ; // §13.3.6.2
+ELK_KWARTAAL : 'elk' WSP 'kwartaal' ; // §13.3.6.2
+ELK_JAAR     : 'elk' WSP 'jaar'     ; // §13.3.6.2
 
 // --- rangtelwoord (§13.2.12) ---
-ALS_TWEEDE_GENOEMDE : 'als tweede genoemde' ;
-ALS_DERDE_GENOEMDE  : 'als derde genoemde'  ;
-ALS_VIERDE_GENOEMDE : 'als vierde genoemde' ;
+ALS_TWEEDE_GENOEMDE : 'als' WSP 'tweede' WSP 'genoemde' ;
+ALS_DERDE_GENOEMDE  : 'als' WSP 'derde' WSP 'genoemde'  ;
+ALS_VIERDE_GENOEMDE : 'als' WSP 'vierde' WSP 'genoemde' ;
 EERSTGENOEMDE       : 'eerstgenoemde'       ;
 LAATSTGENOEMDE      : 'laatstgenoemde'      ;
-E_GENOEMDE          : 'e genoemde'          ;
+E_GENOEMDE          : 'e' WSP 'genoemde'          ;
 
 // ============================================================================
 // Literals (§13.2.3-13.2.21). DATE precedes NUMBER so a dotted date is one
@@ -320,7 +323,8 @@ HELE         : 'hele'         ; // §13.4.17.32 'in hele <eenheid>' (when not fu
 // ============================================================================
 // Operators and punctuation. Multi-char before single-char (---, .., before -, .).
 // ============================================================================
-DASH3      : '---' ; // §13.3.1.5 koptekst marker
+KOPTEKST   : '---' ~[\r\n]* ; // §13.3.1.5 koptekst — a heading line; consumes to end-of-line
+                              // so the free-text heading cannot run into the next member once WS is skipped
 DOTDOT     : '..'  ; // nested bullet (TOKA)
 BULLET     : '•' ; // EBNF bullet glyph
 LPAREN     : '('   ;
@@ -350,6 +354,7 @@ APOSTROPHE : '\''  ;
 UPPER_ID : UPPER ( LETTER | DIGIT | '_' | '-' | '\'' )* ; // capitalised name word (objecttype/domein/datatype names)
 LOWER_ID : LETTER ( LETTER | DIGIT | '_' | '-' | '\'' )* ; // lowercase name word (attribute/role/parameter names)
 
+fragment WSP    : [ \t\r\n]+ ; // inter-word whitespace inside multi-word keywords (tolerates line wraps)
 fragment UPPER  : [\p{Lu}\p{Lt}] ; // §13.2.6 uppercase / titlecase letter
 fragment LETTER : [\p{L}]        ; // §13.2.6 letter (Unicode, incl. accented)
 fragment DIGIT  : [0-9]          ; // §13.2.1 digit
