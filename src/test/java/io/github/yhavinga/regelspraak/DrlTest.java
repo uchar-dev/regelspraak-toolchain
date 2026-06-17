@@ -66,12 +66,38 @@ class DrlTest {
                     Het aantal reizigers van een reis moet berekend worden als het aantal passagiers van de reis.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        // sum over the passenger (element type via role), result fed to the setter
-        assertTrue(drl.contains("$e1 : Persoon("), () -> "accumulate-bron ontbreekt:\n" + drl);
+        // sum over the passenger (element type via role), scoped to the subject by the
+        // feittype join, result fed to the setter
+        assertTrue(drl.contains("$e1 : Persoon( reis == $subject )"), () -> "accumulate-join ontbreekt:\n" + drl);
         assertTrue(drl.contains("sum( $e1.getBedrag() )"), () -> "sum-functie ontbreekt:\n" + drl);
         assertTrue(drl.contains("setTotaalbedrag( $acc1 )"), () -> "som-resultaat niet gebruikt:\n" + drl);
         // count
         assertTrue(drl.contains("count( $e1 )"), () -> "count-functie ontbreekt:\n" + drl);
+    }
+
+    @Test void navigatie_wordt_join_pad_in_waarde_en_voorwaarde() {
+        // The subject navigates to a related object via the feittype role "reis":
+        // value -> $subject.getReis().getVluchtdatum(); condition -> reis.vluchtdatum.
+        String src = """
+            Objecttype de Vlucht
+                de vluchtdatum Datum in dagen;
+            Objecttype de Persoon
+                de reisdatum Datum in dagen;
+            Feittype Vlucht van personen
+                de reis Vlucht
+                de passagier Persoon
+            Eén reis betreft meerdere passagiers
+            Regel kopieer datum
+                geldig altijd
+                    De reisdatum van een passagier moet gesteld worden op de vluchtdatum van de reis
+                    indien de vluchtdatum van de reis later is dan de reisdatum van een passagier.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("$subject : Persoon("), () -> "subject:\n" + drl);
+        // value navigation through the role reference (getters)
+        assertTrue(drl.contains("$subject.getReis().getVluchtdatum()"), () -> "waarde-navigatie:\n" + drl);
+        // condition navigation as a property path on the pattern
+        assertTrue(drl.contains("reis.vluchtdatum > reisdatum"), () -> "voorwaarde-navigatie:\n" + drl);
     }
 
     @Test void onmapbare_aggregatie_wordt_gemarkeerd_niet_verzonnen() {

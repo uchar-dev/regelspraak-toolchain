@@ -87,9 +87,12 @@ public final class DrlTranspiler {
     private String waarde(Expr e, Objecttype subject) {
         if (e instanceof Expr.Literal lit)      return literal(lit);
         if (e instanceof Expr.ParameterRef p)   return ident(p.parameter().naam(), false);
-        if (e instanceof Expr.AttribuutRef a)   return a.objecttype() == subject
-                ? SUBJECT + "." + getter(a.attribuut()) + "()"
-                : todo("navigatie", a.bron());
+        if (e instanceof Expr.AttribuutRef a) {
+            if (a.objecttype() == subject) return SUBJECT + "." + getter(a.attribuut()) + "()";
+            String rol = model.verbindendeRol(subject, a.objecttype()); // navigate subject -> related
+            if (rol != null) return SUBJECT + "." + getter(rol) + "()." + getter(a.attribuut()) + "()";
+            return todo("navigatie", a.bron());
+        }
         if (e instanceof Expr.Binair b) {
             if (b.op() == Expr.BinOp.TOT_DE_MACHT)
                 return "Math.pow(" + waarde(b.links(), subject) + ", " + waarde(b.rechts(), subject) + ")";
@@ -101,7 +104,7 @@ public final class DrlTranspiler {
         if (e instanceof Expr.Begrensd bg)      return waarde(bg.basis(), subject); // TODO: min/max clamp
         if (e instanceof Expr.Constante c)      return todo("constante", c.naam());
         if (e instanceof Expr.Functie f) {
-            String var = accumulate(f);                       // hoists an accumulate into the "when"
+            String var = accumulate(f, subject);              // hoists an accumulate into the "when"
             return var != null ? var : todo("aggregatie " + f.kind(), f.bron());
         }
         return todo("expressie", e.bron());
@@ -114,7 +117,7 @@ public final class DrlTranspiler {
      * element scope — which instances relate to the subject — is left as a marker
      * here; navigation joins fill it. Returns null for aggregations not yet mappable.
      */
-    private String accumulate(Expr.Functie f) {
+    private String accumulate(Expr.Functie f, Objecttype subject) {
         Objecttype elem = f.elementObjecttype();
         String fn = switch (f.kind()) {
             case SOM, TOTAAL -> "sum";
@@ -131,12 +134,16 @@ public final class DrlTranspiler {
                 && f.argumenten().get(0) instanceof Expr.AttribuutRef a)
             elementExpr = ev + "." + getter(a.attribuut()) + "()";
         accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true)
-                + "( " + scopeMarker(f) + " ) ; " + var + " : " + fn + "( " + elementExpr + " ) )");
+                + "( " + scope(elem, subject, f) + " ) ; " + var + " : " + fn + "( " + elementExpr + " ) )");
         return var;
     }
 
-    /** The element scope ("which passagiers of the reis") — a navigation marker for now. */
-    private static String scopeMarker(Expr.Functie f) {
+    /** The element scope: the join binding the element to the subject ("the passagiers
+     *  OF this reis" -> reis == $subject), if the connecting feittype is unambiguous;
+     *  otherwise the source phrase as a marker. */
+    private String scope(Objecttype elem, Objecttype subject, Expr.Functie f) {
+        String rol = subject != null ? model.verbindendeRol(elem, subject) : null; // field on element -> subject
+        if (rol != null) return ident(rol, false) + " == " + SUBJECT;
         String bron = !f.argumenten().isEmpty() && f.argumenten().get(0) instanceof Expr.AttribuutRef a
                 ? a.onderwerpBron() : f.bron();
         return "/* van: " + bron + " */";
@@ -164,9 +171,15 @@ public final class DrlTranspiler {
         return todo("voorwaarde", c.bron());
     }
 
-    /** A condition operand: the subject's own attribute reads as a bare field name. */
+    /** A condition operand: the subject's own attribute reads as a bare field name; a
+     *  related object's attribute reads as a property path ("reis.vluchtdatum"). */
     private String operand(Expr e, Objecttype subject) {
-        if (e instanceof Expr.AttribuutRef a && a.objecttype() == subject) return ident(a.attribuut(), false);
+        if (e instanceof Expr.AttribuutRef a) {
+            if (a.objecttype() == subject) return ident(a.attribuut(), false);
+            String rol = model.verbindendeRol(subject, a.objecttype());
+            if (rol != null) return ident(rol, false) + "." + ident(a.attribuut(), false);
+            return todo("navigatie", a.bron());
+        }
         if (e instanceof Expr.ParameterRef p) return ident(p.parameter().naam(), false);
         if (e instanceof Expr.Literal lit)    return literal(lit);
         return todo("operand", e.bron());

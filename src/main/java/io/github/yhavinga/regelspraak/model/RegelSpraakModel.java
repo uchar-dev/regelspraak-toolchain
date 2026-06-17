@@ -72,6 +72,32 @@ public final class RegelSpraakModel {
         return null;
     }
 
+    /**
+     * The role name to navigate from {@code houder} to {@code doelwit} — the
+     * reference field on a {@code houder} fact that points at a {@code doelwit},
+     * which is the role {@code doelwit} plays in a feittype that also has a (distinct)
+     * role for {@code houder}. So from a passagier (Natuurlijk persoon) to its flight
+     * (Vlucht) this is "reis". Returns null when there is no such feittype or more
+     * than one (ambiguous) — the caller then emits a marker rather than a wrong join.
+     */
+    public String verbindendeRol(Objecttype houder, Objecttype doelwit) {
+        if (houder == null || doelwit == null) return null;
+        String gevonden = null;
+        int n = 0;
+        for (Feittype ft : feittypen.values())
+            for (Rol doel : ft.rollen)
+                if (rolHeeftObjecttype(doel, doelwit)
+                        && ft.rollen.stream().anyMatch(h -> h != doel && rolHeeftObjecttype(h, houder))) {
+                    gevonden = doel.naam();
+                    n++;
+                }
+        return n == 1 ? gevonden : null;
+    }
+
+    private boolean rolHeeftObjecttype(Rol r, Objecttype ot) {
+        return objecttypeOpNaam(r.objecttypeNaam()) == ot || r.objecttypeNaam().equalsIgnoreCase(ot.naam);
+    }
+
     private static boolean rolMatcht(String rolNaam, String naam) {
         return rolNaam.equalsIgnoreCase(naam)
                 || naam.equalsIgnoreCase(rolNaam + "s")    // passagier → passagiers
