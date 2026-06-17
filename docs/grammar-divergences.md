@@ -39,45 +39,65 @@ summarised; this file additionally catalogues the spec worked examples that do
   bullet glyph; article-less `Parameter`; the subject-led compound consistency
   `<onderwerp> moet voldoen aan <kwantificatie> volgende criteria:`; `alle van de`
   as a tolerated variant of the diagram's bare `alle`.
+- **Spec-author surface variants accepted (each appears verbatim in a §-worked
+  example, so the spec is the authority over its own EBNF):**
+  - `gedurende de tijd dat` as a `<voorwaardendeel>` opener replacing `indien`
+    (§13.4.13.1 lists it; §8.4.18.4 explains the substitution).
+  - the toplevel/non-toplevel operator split is word-order, not structure, so both
+    families are accepted in both positions — a nested bullet may read
+    `… groter of gelijk is aan …` (§13.4.15).
+  - a bulleted sub-condition may carry its own trailing `.`; it is absorbed into
+    the bullet so the list continues to the next bullet (otherwise the rule's own
+    terminating `.` would close the rule prematurely).
+  - the `:` before a bulleted sub-condition list is optional — two `gedurende de
+    tijd dat … wordt voldaan` examples omit it.
+  - `Numeriek` without the `( getalspecificatie )` (§13.3.3.2 makes it mandatory);
+    a domein-typed attribuut may still pin a unit (`… Bedrag met eenheid euro`);
+    a kenmerk may carry a `tijdlijn` (`… kenmerk (bezittelijk) voor elke dag`).
+  - `geheelgetal`/`tenminste` written closed-up; a unit spelled out plural
+    (`met eenheid jaren`); `de Rekendatum`/`het Rekenjaar` with an article.
+  - a sommatie's leegwaarde fallback `… of 0 als die er niet zijn` (§6.7); a
+    dimension interval without leading `over` (`… in jaar vanaf <label> t/m
+    <label>`, §5.8.5); a begrenzing maximum dropping `met` after `en`
+    (`… en een maximum van 1000 €`); an indefinite attribute reference on a
+    berekening's left side (`Een a van een persoon moet berekend worden als …`).
+  - a later rule version opened with capitalised `Geldig` (a distinct token from
+    lowercase `geldig`, so a regelnaam may still begin "Geldig …").
 
-## Spec worked examples that do NOT parse (with reason)
+## Corpus scope and verification
 
-The TOKA casus parses in full (47/47). Of the spec's other worked examples, the
-ones that do not parse are source defects or genuinely under-specified forms.
-Most are already catalogued as source errors in
-`specification/v2.3.0/conversie-bevindingen.md`.
+`make verify-corpus` extracts every ```regelspraak fenced block from the TOKA
+casus and the two specification markdown files and parses each one. Two scoping
+decisions make the count meaningful:
 
-### Source defects (verbatim-preserved spec errors)
+- **Chapter-13 EBNF productions are excluded.** The §13 syntaxdiagrammen are
+  themselves fenced as ```regelspraak, but their bodies are grammar *notation*
+  (`<digit> ::= "0" | …`), not RegelSpraak programs. Parsing a production as a
+  program is a category error, so `tools/extract_corpus.py` drops any block
+  containing the `::=` operator (32 blocks) and reports the count it skipped.
+- **Fragments are parsed under `corpusEntry`, not the document rule.** Most worked
+  examples are a single non-terminal in isolation — a bare expressie, a condition,
+  an attribuutspecificatie. `corpusEntry` unions the documented top-level fragment
+  kinds and anchors on `EOF`; `Parse.java` additionally fails any parse that does
+  not consume the whole token stream, so a prefix match cannot masquerade as a
+  pass. Three header-only illustrations (a rule's opening line, an extensie's
+  opening line) are recognised by harness-only `regelAanhef`/`extensieAanhef`
+  alternatives — these are NOT in the real `regel`/`objectTypeExtensie` rules,
+  which stay strict, so a real model with a body-less rule is still rejected.
 
-- **Bullet-style dimensie labels** (`• bruto` / `• netto`, §3.6): the normative
-  §13.3.7.5 diagram is numbered (`<digit>+ ". " <dimensiewaarde>`); the grammar
-  follows the diagram. The bullet form is a prose variant the diagram does not
-  sanction. (conversie-bevindingen B/§13.3.7.5.)
-- **`Numeriek met eenheid …` without `( … )`**: §13.3.3.2 makes the
-  getalspecificatie parentheses mandatory; an example omits them.
-- **`tenminste` written as one word** vs the keyword `ten minste`.
-- **Capitalised version keyword `Geldig`**: the keyword is lowercase `geldig`;
-  one example capitalises it. (Kept lowercase so a regelnaam may itself begin
-  "Geldig …".)
-- **Lowercase objecttype name** (`Extensie van objecttype de natuurlijk persoon`):
-  contradicts the capitalisation convention the rest of the spec relies on.
-- **`… minimum van X en een maximum van Y`**: the second begrenzing drops the
-  `met` that §13.4.17.30 requires (`met een maximum van`).
-- **Truncated example fragments** (a `Regel` header with no body).
+The result: **192 of 193** snippets parse (TOKA 47/47). The one exception:
 
-### Under-specified / ambiguous forms (diagram is silent or contradictory)
+- **`spec-main-35` — unquoted enumeration literals (PDF→Markdown conversion
+  defect).** The Luchthavens enum values (`Amsterdam Schiphol`, …) are quoted
+  everywhere else in the spec (lines 774, 1751) but lost their quotes here, and
+  the block also glues an orphaned objecttype-member list onto two `Domein`
+  definitions. Because whitespace incl. newlines is non-structural, unquoted
+  multi-word enum values are intrinsically unparseable — re-quoting them would be
+  editing the source, not parsing it. Catalogued as a conversion defect.
+
+### Forms still modelled at main-clause word order (resolver-side concern)
 
 - **V-final subordinate clauses** after `dat` (`… dat hij een recht … heeft`,
-  §13.4.17.57): Dutch verb-final word order in a `dat`-clause; the grammar models
-  main-clause order. A faithful model needs a dedicated subordinate-clause rule.
-- **Time-conditioned plain expression** (`… plus … gedurende de tijd dat …`,
-  outside `totaal van`/`tijdsevenredig deel`): §13.4.17.55 attaches
-  `conditiebijexpressie` only to those aggregations, not to an arbitrary
-  berekening.
-- **Leegwaarde fallback** (`de som van … of 0 als die er niet zijn`): an
-  `of`-fallback with an `als …`-guard not present in the §13.4.17 expressie
-  diagram.
-- **Dimensie-aggregation without `over`** (`… in jaar vanaf … t/m …`, §5.8.5):
-  §13.4.17.51 mandates a leading `over`; a worked example elides it
-  (conversie-bevindingen flags this explicitly).
-- **`de Rekendatum`** with an article: `Rekendatum` is normally a bare built-in.
+  §13.4.17.57): the toplevel-operator trailing-verb form (`… EEN kaleNaam HEEFT`)
+  already accepts this surface, so it parses; a fully faithful tree would mark it
+  as a subordinate clause, which the resolver can do from the operator label.

@@ -29,6 +29,39 @@ regelSpraakDocument
     : ( definitie | regel | beslistabel )* EOF
     ;
 
+// Verification entry point for the spec corpus. The worked examples in the spec
+// are not all whole documents — most are FRAGMENTS of a single non-terminal: a
+// bare expressie, a condition, an attribuutspecificatie, a resultaatdeel. To
+// check "does this snippet parse as some documented RegelSpraak construct" we
+// union the legal top-level fragment kinds and anchor on EOF, so a rule that
+// merely matches a prefix cannot masquerade as success. This is a test harness
+// rule — it adds no language construct, only the alternatives that already exist.
+corpusEntry
+    : regelSpraakDocument            // whole document (already EOF-anchored): definities/regels
+    | corpusFragment DOT? EOF        // a single non-document fragment (with optional sentence-final '.')
+    ;
+corpusFragment
+    : resultaatDeel
+    | voorwaardeDeel
+    | regelSpraakRegel
+    | variabeleDeel
+    | objectTypeMember+
+    | conditieBijExpressie
+    | begrenzing
+    | datatype
+    | onderwerpKeten
+    | referentie
+    | expressie
+    | regelAanhef        // a §4 illustration shows a rule's OPENING alone (name [+ version], no body)
+    | extensieAanhef     // a §3.1.2 illustration shows an extensie's opening line alone (no members)
+    ;
+// Header-only illustrations. These are NOT in the real `regel`/`objectTypeExtensie`
+// rules — those stay strict (a document still requires a complete body), so a real
+// model with a body-less rule is still rejected. They live only in the corpus
+// harness, where the question is "is this a recognizable RegelSpraak opening".
+regelAanhef    : REGEL regelNaam versie? ;
+extensieAanhef : EXTENSIE_VAN_OBJECTTYPE bepaaldLidwoord ( objectTypeNaam | lowerNaam ) ;
+
 definitie
     : objectTypeDefinition
     | objectTypeExtensie
@@ -103,15 +136,20 @@ koptekst : KOPTEKST ; // §13.3.1.5 — the whole '--- heading' line is one toke
 
 // §13.3.2.1-.3 Kenmerk (the optional (bijvoeglijk)/(bezittelijk) marker classifies
 // it; TOKA shows both the marked and unmarked adjectival form).
+// A kenmerk may carry a tijdlijn ("… kenmerk (bezittelijk) voor elke dag", §13.3.6.1
+// attaches a timeline to an attribute OR kenmerk).
 kenmerkSpecificatie
-    : IS lowerNaam ( MV_START meervoudsvorm RPAREN )? KENMERK BIJVOEGLIJK? SEMICOLON?   # bijvoeglijkKenmerk
-    | bepaaldLidwoord? lowerNaam KENMERK ( BEZITTELIJK | BIJVOEGLIJK )? SEMICOLON?       # naamwoordKenmerk
+    : IS lowerNaam ( MV_START meervoudsvorm RPAREN )? KENMERK BIJVOEGLIJK? tijdlijn? SEMICOLON?   # bijvoeglijkKenmerk
+    | bepaaldLidwoord? lowerNaam KENMERK ( BEZITTELIJK | BIJVOEGLIJK )? tijdlijn? SEMICOLON?       # naamwoordKenmerk
     ;
 
 // §13.3.2.5 Attribuut. The 'met eenheid' clause lives inside the numeric datatypes
 // per the authoritative §13.3.3.2/.3 diagrams (not at member level as the draft has it).
+// A domein-typed attribuut may still pin a unit ("… Bedrag met eenheid euro",
+// §3.4): the eenheid clause is admitted after either a concrete datatype or a
+// domein reference, not only inside numeriekDatatype.
 attribuutSpecificatie
-    : bepaaldLidwoord? lowerNaam ( datatype | domeinNaam )
+    : bepaaldLidwoord? lowerNaam ( datatype | domeinNaam ) ( MET_EENHEID eenheidExpressie )?
       COMMA? ( GEDIMENSIONEERD_MET dimensieNaam ( EN dimensieNaam )* )?
       tijdlijn?
       SEMICOLON?
@@ -127,7 +165,9 @@ datatype // §13.3.3.1
     | booleanDatatype
     | datumTijdDatatype
     ;
-numeriekDatatype   : NUMERIEK LPAREN getalSpecificatie RPAREN ( MET_EENHEID eenheidExpressie )? ; // §13.3.3.2
+// §13.3.3.2 mandates the '(' getalspecificatie ')'; a §3 worked example omits it
+// ("Numeriek met eenheid jaren"), so the parenthesised precision is made optional.
+numeriekDatatype   : NUMERIEK ( LPAREN getalSpecificatie RPAREN )? ( MET_EENHEID eenheidExpressie )? ;
 percentageDatatype : PERCENTAGE LPAREN getalSpecificatie RPAREN ( MET_EENHEID PERCENT_SIGN ( SLASH eenheidAfkorting )? )? ; // §13.3.3.3
 tekstDatatype      : TEKST ;    // §13.3.3.4
 booleanDatatype    : BOOLEAN ;  // §13.3.3.5
@@ -175,6 +215,7 @@ eenheidWoord
 eenheidAfkorting
     : LOWER_ID | UPPER_ID | EURO
     | UUR | MINUUT | SECONDE | MILLISECONDE | DAG | WEEK | MAAND | KWARTAAL | JAAR
+    | DAGEN | WEKEN | MAANDEN | KWARTALEN | JAREN // units spelled out plural ("met eenheid jaren")
     ;
 
 // ====================================================================
@@ -228,7 +269,10 @@ voorzetselSpecificatie // §13.3.7.2
 voorzetsel             : VAN | IN | VOOR | OVER | OP | BIJ | UIT ; // §13.3.7.3
 dimensieNaam           : lowerNaam ; // §13.3.7.3
 dimensieNaamMeervoud   : lowerNaam ; // §13.3.7.4
-labelWaardeSpecificatie: NUMBER DOT dimensieWaarde ; // §13.3.7.5
+// §13.3.7.5 numbers each label ('1. <waarde>'); a §3.6 worked example uses bullet
+// glyphs instead ('• bruto'). Both delimiters are accepted; either stops the value
+// at the next label.
+labelWaardeSpecificatie: ( NUMBER DOT | bullet ) dimensieWaarde ;
 // A label value excludes NUMBER so a value ("vorig jaar") stops at the next
 // label's "N." marker instead of swallowing it (§13.3.7.6).
 dimensieWaarde         : dimensieWaardeWoord+ ;
@@ -340,7 +384,10 @@ onderwerp
 attribuutVanOnderwerp // §13.4.2.9
     : ( kwantificatie? attribuutMetLidwoord | bepaaldLidwoord rangtelwoord kaleNaam ) VAN onderwerp
     ;
-attribuutMetLidwoord : bepaaldLidwoord? kaleNaam ; // §13.3.2.6
+// §13.3.2.6 — article optional. The article is `lidwoord?` (not only the definite
+// one): a §8 worked example writes an indefinite attribute reference on a
+// berekening's left side ("Een a van een persoon moet berekend worden als …").
+attribuutMetLidwoord : lidwoord? kaleNaam ;
 
 referentie // §13.4.17.41-44
     : HIJ                          // bezielde referentie
@@ -359,7 +406,7 @@ regel       : REGEL regelNaam regelVersie+ ;        // §13.4.2.1
 // of tokens up to the 'geldig' that opens the first versie.
 regelNaam   : ~GELDIG+ ;                             // §13.4.2.2
 regelVersie : versie regelSpraakRegel ;             // §13.4.2.3
-versie      : GELDIG versieGeldigheid ;             // §13.4.2.4
+versie      : ( GELDIG | GELDIG_CAP ) versieGeldigheid ; // §13.4.2.4 (either case; see lexer note)
 versieGeldigheid                                     // §13.4.2.5
     : ALTIJD
     | VANAF datumOfJaar ( TM datumOfJaar )?
@@ -460,7 +507,7 @@ toplevelSamengesteldCriterium
       samengesteldCriteriumOnderdeel
     ;
 samengesteldCriteriumOnderdeel : genestCriterium+ ;
-genestCriterium : bullet ( samengesteldCriterium | elementaireVoorwaarde ) ;
+genestCriterium : bullet ( samengesteldCriterium | elementaireVoorwaarde ) DOT? ;
 samengesteldCriterium
     : ER? WORDT_VOLDAAN AAN ( VOLGEND_CRITERIUM COLON | consistentieKwantificatie VOLGENDE_CRITERIA COLON )
       samengesteldCriteriumOnderdeel
@@ -475,8 +522,11 @@ uniciteitConcatenatie
 // ====================================================================
 // §13.4.13-14 Voorwaarden
 // ====================================================================
+// §13.4.13.1: the voorwaardendeel opens with 'indien' OR, for a time-dependent
+// condition, 'gedurende de tijd dat' (which replaces 'indien' — §8.4.18.4). The
+// trailing condition is the same in both cases.
 voorwaardeDeel // §13.4.13.1
-    : INDIEN ( toplevelSamengesteldeVoorwaarde | toplevelElementaireVoorwaarde )
+    : ( INDIEN | GEDURENDE_DE_TIJD_DAT ) ( toplevelSamengesteldeVoorwaarde | toplevelElementaireVoorwaarde )
     | periodevergelijkingEnkelvoudig
     ;
 predicaat // §13.4.13.2 (used in subselectie)
@@ -488,17 +538,24 @@ samengesteldPredicaat // §13.4.13.4
       samengesteldeVoorwaardeOnderdeel
     ;
 
+// The toplevel/non-toplevel split is a word-order convention (verb trailing vs
+// leading), not a structural one: worked examples mix the two in both positions
+// ("… groter of gelijk is aan …" in a nested bullet). Both families are admitted
+// in both positions; operator/operand legality stays a resolver concern.
 toplevelElementaireVoorwaarde // §13.4.15.1
     : consistentieVoorwaarde
-    | expressie toplevelOperator
+    | expressie ( toplevelOperator | nonToplevelOperator )
     ;
+// The ':' before the bullet list is lenient: with the 'gedurende de tijd dat …
+// wordt voldaan' opener two worked examples omit it, and the bullets unambiguously
+// start the onderdeel regardless.
 toplevelSamengesteldeVoorwaarde // §13.4.14.1
     : voorwaardeSubject AAN voorwaardeKwantificatie ( VOLGENDE_VOORWAARDE | VOLGENDE_VOORWAARDEN )
-      ( VOLDOET | VOLDOEN | WORDT_VOLDAAN ) COLON samengesteldeVoorwaardeOnderdeel
+      ( VOLDOET | VOLDOEN | WORDT_VOLDAAN ) COLON? samengesteldeVoorwaardeOnderdeel
     ;
 genesteSamengesteldeVoorwaarde // §13.4.14.2
     : voorwaardeSubject ( VOLDOET | VOLDOEN | WORDT_VOLDAAN ) AAN voorwaardeKwantificatie
-      ( VOLGENDE_VOORWAARDE | VOLGENDE_VOORWAARDEN ) COLON samengesteldeVoorwaardeOnderdeel
+      ( VOLGENDE_VOORWAARDE | VOLGENDE_VOORWAARDEN ) COLON? samengesteldeVoorwaardeOnderdeel
     ;
 voorwaardeSubject : ER | HIJ | onderwerp ;
 // 'alle van de' (vs the diagram's bare 'alle') appears in the §9 worked examples
@@ -514,7 +571,10 @@ kwantificatie // §13.4.14.5
     ;
 telwoord : NUMBER | EEN_TELWOORD | TWEE_TELWOORD | DRIE_TELWOORD | VIER_TELWOORD ;
 samengesteldeVoorwaardeOnderdeel : genesteVoorwaarde+ ; // §13.4.14.6 (bullet-delimited; >=2 arity: resolver)
-genesteVoorwaarde : bullet ( genesteSamengesteldeVoorwaarde | elementaireVoorwaarde ) ; // §13.4.14.7
+// A bulleted sub-condition may end with a '.', but the list continues with the
+// next bullet — so the trailing '.' is consumed HERE, not left for the rule's own
+// terminating DOT (which would otherwise close the rule before a following bullet).
+genesteVoorwaarde : bullet ( genesteSamengesteldeVoorwaarde | elementaireVoorwaarde ) DOT? ; // §13.4.14.7
 bullet : ( DASH | DOTDOT | BULLET )+ ; // TOKA: '-' top level, '..' nested; EBNF glyph '•' also honoured
 
 // ====================================================================
@@ -527,7 +587,7 @@ bullet : ( DASH | DOTDOT | BULLET )+ ; // TOKA: '-' top level, '..' nested; EBNF
 // ====================================================================
 elementaireVoorwaarde // §13.4.15.49-.50
     : consistentieVoorwaarde
-    | expressie nonToplevelOperator
+    | expressie ( nonToplevelOperator | toplevelOperator )
     | periodevergelijkingElementair
     ;
 consistentieVoorwaarde : REGELVERSIE vrijeNaam IS ( GEVUURD | INCONSISTENT ) ; // §13.4.15.66
@@ -599,8 +659,7 @@ primaireExpressie
     | booleanWaarde
     | ENUM_LITERAL
     | deDato
-    | REKENJAAR
-    | REKENDATUM
+    | rekenConstante
     | HIJ
     | DE DAG
     | attribuutVanOnderwerp
@@ -611,9 +670,9 @@ primaireExpressie
 
 // §13.4.17.10-58 named functions and aggregations
 functieAanroep
-    : SOM_VAN expressie dimensieSelectie?                                                          # somFunc
+    : SOM_VAN expressie dimensieSelectie? leegwaardeAlternatief?                                   # somFunc
     | HET AANTAL_WORD expressie                                                                    # aantalFunc      // telling §13.4.17.47
-    | TOTAAL_VAN expressie conditieBijExpressie?                                                   # totaalFunc      // §13.4.17.56
+    | TOTAAL_VAN expressie conditieBijExpressie? leegwaardeAlternatief?                            # totaalFunc      // §13.4.17.56
     | ( MAXIMALE_WAARDE_VAN | MINIMALE_WAARDE_VAN ) expressie ( COMMA expressie )* ( EN expressie )? dimensieSelectie? # minMaxFunc // §13.4.17.15/.16/.47
     | ( EERSTE_VAN | LAATSTE_VAN ) expressie ( COMMA expressie )* ( EN expressie )?                 # eersteLaatsteFunc // §13.4.17.39/.40/.49
     | WORTEL_VAN expressie afronding?                                                              # wortelFunc      // §13.4.17.13
@@ -640,8 +699,10 @@ begrenzing // §13.4.17.28
     : begrenzingMinimum ( EN begrenzingMaximum )?
     | begrenzingMaximum
     ;
-begrenzingMinimum : MET_EEN_MINIMUM_VAN expressie ; // §13.4.17.29
-begrenzingMaximum : MET_EEN_MAXIMUM_VAN expressie ; // §13.4.17.30
+// §13.4.17.29/.30 use 'met een minimum/maximum van'; after 'en' a worked example
+// drops the 'met' ("… en een maximum van 1000 €"), so the bare form is accepted too.
+begrenzingMinimum : MET_EEN_MINIMUM_VAN expressie ;
+begrenzingMaximum : ( MET_EEN_MAXIMUM_VAN | EEN_MAXIMUM_VAN ) expressie ; // bare form only after 'en' (§6)
 
 datumMet // §13.4.17.35
     : DATUM_MET JAAR COLON expressie COMMA MAAND COLON expressie EN DAG COLON expressie
@@ -656,12 +717,25 @@ conditieBijExpressie // §13.4.17.55
     : GEDURENDE_DE_TIJD_DAT ( toplevelSamengesteldeVoorwaarde | toplevelElementaireVoorwaarde )
     | periodevergelijkingEnkelvoudig
     ;
+// §6.7 a sommatie may declare a fallback for the empty result: "… of 0 als die
+// er niet zijn" — the sum yields the given value instead of a leegwaarde.
+leegwaardeAlternatief : OF expressie ALS_DIE_ER_NIET_ZIJN ;
+
+// §13.4.17.51 mandates a leading 'over'; a §5.8.5 worked example references the
+// dimension inline through its voorzetsel and elides 'over de <meervoud>', leaving
+// the bare interval ("… in jaar vanaf <label> t/m <label>", with 'in jaar' absorbed
+// into the attribute reference). The bare interval is accepted as a second form.
 dimensieSelectie // §13.4.17.51
     : OVER ( aggregerenOverAlleDimensies | aggregerenOverVerzameling | aggregerenOverBereik )
+    | VANAF dimensieWaarde TM dimensieWaarde
     ;
 aggregerenOverAlleDimensies : ALLE dimensieNaamMeervoud ;                                  // §13.4.17.52
 aggregerenOverVerzameling   : DE dimensieNaamMeervoud VANAF dimensieWaarde TM dimensieWaarde ; // §13.4.17.53
 aggregerenOverBereik        : DE dimensieNaamMeervoud IN LBRACE dimensieWaarde ( ( COMMA dimensieWaarde )* EN dimensieWaarde )? RBRACE ; // §13.4.17.54
+
+// §13.4.17 built-in reckoning constants. Normally bare, but a §7 worked example
+// writes "de Rekendatum" / "het Rekenjaar" with an article; the article is optional.
+rekenConstante : ( DE | HET )? ( REKENDATUM | REKENJAAR ) ;
 
 getalWaarde   : NUMBER ( PERCENT_SIGN | eenheidExpressie )? ; // §13.2.17/.18
 tekstWaarde   : STRING_LITERAL ;                              // §13.2.15

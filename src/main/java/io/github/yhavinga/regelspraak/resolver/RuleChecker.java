@@ -161,8 +161,12 @@ final class RuleChecker {
         if (p.tekstWaarde() != null)    return new Datatype.Tekst();
         if (p.booleanWaarde() != null)  return new Datatype.Booleaan();
         if (p.deDato() != null)         return new Datatype.DatumInDagen();
-        if (p.REKENDATUM() != null)     return new Datatype.DatumInDagen();
-        if (p.REKENJAAR() != null)      return new Datatype.Numeriek(true, 0, Datatype.Teken.ONBEPAALD, null);
+        if (p.rekenConstante() != null) {
+            // "de Rekendatum" is a date; "het Rekenjaar" is an integer year (§13.4.17)
+            return p.rekenConstante().REKENJAAR() != null
+                    ? new Datatype.Numeriek(true, 0, Datatype.Teken.ONBEPAALD, null)
+                    : new Datatype.DatumInDagen();
+        }
         if (p.attribuutVanOnderwerp() != null) return attribuutType(p.attribuutVanOnderwerp());
         if (p.expressie() != null)      return infer(p.expressie()); // ( expressie )
         if (p.onderwerp() != null)      return naamReferentie(DefinitionResolver.src(p.onderwerp()));

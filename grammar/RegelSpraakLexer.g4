@@ -94,6 +94,11 @@ TIJDSEVENREDIG_DEEL_PER: 'het' WSP 'tijdsevenredig' WSP 'deel' WSP 'per'; // §1
 // --- bounding / rounding / arithmetic phrases ---
 MET_EEN_MINIMUM_VAN : 'met' WSP 'een' WSP 'minimum' WSP 'van' ; // §13.4.17.29
 MET_EEN_MAXIMUM_VAN : 'met' WSP 'een' WSP 'maximum' WSP 'van' ; // §13.4.17.30
+// A §6 worked example drops the 'met' on the SECOND begrenzing after 'en'
+// ("met een minimum van 0 € en een maximum van 1000 €"). Only the maximum form
+// is attested, so only it is tokenised; matching 'een minimum van' too would
+// needlessly shadow an attribute literally named "minimum".
+EEN_MAXIMUM_VAN     : 'een' WSP 'maximum' WSP 'van' ;
 GEDEELD_DOOR_ABS    : 'gedeeld' WSP 'door' WSP '(ABS)'  ; // §13.4.17 (abs division)
 GEDEELD_DOOR        : 'gedeeld' WSP 'door'        ; // §13.4.16
 VERMINDERD_MET      : 'verminderd' WSP 'met'      ; // §13.4.16
@@ -123,13 +128,16 @@ NUMERIEK_ZIJN_MET_EXACT: 'numeriek' WSP 'zijn' WSP 'met' WSP 'exact' ; // §13.4
 NUMERIEK_MET_EXACT: 'numeriek' WSP 'met' WSP 'exact'     ; // §13.4.15.84 non-toplevel (is numeriek)
 
 // --- condition phrases ---
+// §6.7 leegwaarde fallback on a sommatie: "… of 0 als die er niet zijn".
+ALS_DIE_ER_NIET_ZIJN  : 'als' WSP 'die' WSP 'er' WSP 'niet' WSP 'zijn' ;
 GEDURENDE_DE_TIJD_DAT : 'gedurende' WSP 'de' WSP 'tijd' WSP 'dat' ; // §13.4.17.55
 GEDURENDE_HET_GEHELE  : 'gedurende' WSP 'het' WSP 'gehele'  ; // §13.4.15.70
 GEDURENDE_DE_GEHELE   : 'gedurende' WSP 'de' WSP 'gehele'   ; // §13.4.15.70
 VOLGENDE_VOORWAARDEN  : 'volgende' WSP 'voorwaarden'  ; // §13.4.14
 VOLGENDE_VOORWAARDE   : 'volgende' WSP 'voorwaarde'   ; // §13.4.13
 GEEN_VAN_DE           : 'geen' WSP 'van' WSP 'de'           ; // §13.4.14 quantifier
-TEN_MINSTE            : 'ten' WSP 'minste'            ; // §13.4.14 quantifier
+// 'ten minste'; a §7 worked example writes it closed up as 'tenminste'.
+TEN_MINSTE            : 'ten' WSP 'minste' | 'tenminste' ; // §13.4.14 quantifier
 TEN_HOOGSTE           : 'ten' WSP 'hoogste'           ; // §13.4.14 quantifier
 
 // --- GegevensSpraak phrases ---
@@ -140,7 +148,8 @@ WEDERKERIG_FEITTYPE     : 'Wederkerig' WSP 'feittype'             ; // §13.3.9.
 IS_VAN_HET_TYPE         : 'is' WSP 'van' WSP 'het' WSP 'type'                 ; // §13.3.4.1
 MET_EENHEID             : 'met' WSP 'eenheid'                     ; // §13.3.2.5
 GEDIMENSIONEERD_MET     : 'gedimensioneerd' WSP 'met'             ; // §13.3.2.5
-GEHEEL_GETAL            : 'geheel' WSP 'getal'                    ; // §13.3.3.7
+// §13.3.3.7 'geheel getal'; spec examples also write it closed up as 'geheelgetal'.
+GEHEEL_GETAL            : 'geheel' WSP 'getal' | 'geheelgetal'    ;
 NIET_NEGATIEF           : 'niet-negatief'                   ; // §13.3.3.7
 BESTAANDE_UIT           : 'bestaande' WSP 'uit' WSP 'de'                ; // §13.3.7.1
 DAARBIJ_GELDT           : 'Daarbij' WSP 'geldt'                   ; // §13.4.2.10 (trailing ':' is COLON)
@@ -208,6 +217,11 @@ BOOLEAN    : 'Boolean'    ;
 
 // --- rule structure / verbs ---
 GELDIG  : 'geldig'  ; // the spec version keyword is lowercase; a regelnaam may itself begin "Geldig …"
+// A separate capitalised token: §4 worked examples open later versions of a rule
+// with 'Geldig'. Kept distinct from GELDIG so a regelnaam may still START with
+// "Geldig …" (regelNaam excludes only lowercase GELDIG); the parser's `versie`
+// accepts either case, so a sentence-initial capitalised version keyword parses.
+GELDIG_CAP : 'Geldig' ;
 ALTIJD  : 'altijd'  ;
 INDIEN  : 'indien'  ;
 MOETEN  : 'moeten'  ;

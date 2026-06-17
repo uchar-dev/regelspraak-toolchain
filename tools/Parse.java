@@ -70,11 +70,21 @@ public final class Parse {
         ParseTree tree = (ParseTree) m.invoke(parser);
 
         int errorNodes = countErrorNodes(tree);
+        // A start rule that does not itself consume EOF can match a valid PREFIX
+        // and silently leave tokens unread — that is not a clean parse. Require
+        // the whole token stream to be consumed (the next real token is EOF).
+        boolean consumedAll = parser.getInputStream().LA(1) == Token.EOF;
         if (showTree) System.out.println(tree.toStringTree(parser));
         for (String e : errors) System.err.println(e);
-        if (!errors.isEmpty() || errorNodes > 0) {
+        if (!consumedAll) {
+            Token next = parser.getCurrentToken();
+            System.err.println("line " + next.getLine() + ":" + next.getCharPositionInLine()
+                    + " input not fully consumed at '" + next.getText().replace("\n", "\\n") + "'");
+        }
+        if (!errors.isEmpty() || errorNodes > 0 || !consumedAll) {
             System.err.println("PARSE FAILED: " + errors.size() + " syntax error(s), "
-                    + errorNodes + " error node(s) in rule '" + rule + "'");
+                    + errorNodes + " error node(s)" + (consumedAll ? "" : ", input not fully consumed")
+                    + " in rule '" + rule + "'");
             System.exit(1);
         }
     }
