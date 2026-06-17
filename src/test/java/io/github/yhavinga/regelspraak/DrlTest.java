@@ -47,19 +47,46 @@ class DrlTest {
         assertTrue(drl.contains("$subject.getToeslag() + grens"), () -> "waarde-expressie ontbreekt:\n" + drl);
     }
 
-    @Test void onopgeloste_constructie_wordt_gemarkeerd_niet_verzonnen() {
-        // An aggregation is not yet transpilable (needs accumulate); it must surface as
-        // an explicit marker, never as silently-wrong DRL.
+    @Test void aggregaties_worden_accumulate_patronen() {
         String src = """
-            Objecttype de Reis
-                de totaal Numeriek (geheel getal);
-                de prijs Numeriek (geheel getal);
-            Regel tel
+            Objecttype de Vlucht
+                het totaalbedrag Numeriek (geheel getal);
+                het aantal reizigers Numeriek (geheel getal);
+            Objecttype de Persoon
+                het bedrag Numeriek (geheel getal);
+            Feittype Vlucht van personen
+                de reis Vlucht
+                de passagier Persoon
+            Eén reis betreft meerdere passagiers
+            Regel som
                 geldig altijd
-                    De totaal van een Reis moet berekend worden als de som van de prijs van een Reis.
+                    Het totaalbedrag van een reis moet berekend worden als de som van het bedrag van alle passagiers van de reis.
+            Regel telling
+                geldig altijd
+                    Het aantal reizigers van een reis moet berekend worden als het aantal passagiers van de reis.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        assertTrue(drl.contains("/* TODO aggregatie SOM"), () -> "aggregatie niet gemarkeerd:\n" + drl);
+        // sum over the passenger (element type via role), result fed to the setter
+        assertTrue(drl.contains("$e1 : Persoon("), () -> "accumulate-bron ontbreekt:\n" + drl);
+        assertTrue(drl.contains("sum( $e1.getBedrag() )"), () -> "sum-functie ontbreekt:\n" + drl);
+        assertTrue(drl.contains("setTotaalbedrag( $acc1 )"), () -> "som-resultaat niet gebruikt:\n" + drl);
+        // count
+        assertTrue(drl.contains("count( $e1 )"), () -> "count-functie ontbreekt:\n" + drl);
+    }
+
+    @Test void onmapbare_aggregatie_wordt_gemarkeerd_niet_verzonnen() {
+        // wortel has no accumulate equivalent yet; it must surface as an explicit
+        // marker, never as silently-wrong DRL.
+        String src = """
+            Objecttype de Reis
+                de prijs Numeriek (geheel getal);
+                de wortelprijs Numeriek (geheel getal);
+            Regel w
+                geldig altijd
+                    De wortelprijs van een Reis moet berekend worden als de wortel van de prijs van een Reis.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("/* TODO aggregatie WORTEL"), () -> "wortel niet gemarkeerd:\n" + drl);
     }
 
     @Test void namen_worden_geldige_java_identifiers() {

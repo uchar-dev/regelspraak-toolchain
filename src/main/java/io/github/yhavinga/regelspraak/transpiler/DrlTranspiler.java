@@ -8,6 +8,8 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.StringJoiner;
 
 /**
@@ -29,6 +31,9 @@ public final class DrlTranspiler {
     private static final String SUBJECT = "$subject";
     private final RegelSpraakModel model;
     private final StringBuilder out = new StringBuilder();
+    // per-rule: accumulate patterns hoisted out of the value into the "when"
+    private List<String> accumulates = new ArrayList<>();
+    private int accCount = 0;
 
     public DrlTranspiler(RegelSpraakModel model) { this.model = model; }
 
@@ -47,7 +52,14 @@ public final class DrlTranspiler {
     }
 
     private void regel(ResolvedRegel r) {
+        accumulates = new ArrayList<>();
+        accCount = 0;
         Objecttype subject = r.doel() instanceof Expr.AttribuutRef a ? a.objecttype() : null;
+        // Translate the value first: any aggregation registers an accumulate pattern
+        // for the "when" and yields the bound result variable used here in the "then".
+        String valueStr = subject != null && r.doel() instanceof Expr.AttribuutRef
+                ? waarde(r.waarde(), subject) : null;
+
         out.append("rule \"").append(r.naam()).append("\"\n");
         out.append("    dialect \"mvel\"\n");
         out.append("when\n");
@@ -58,12 +70,12 @@ public final class DrlTranspiler {
             String constraint = r.voorwaarde() != null ? conditie(r.voorwaarde(), subject) : "";
             out.append("    ").append(SUBJECT).append(" : ").append(ident(subject.naam, true))
                .append("( ").append(constraint).append(" )\n");
+            for (String acc : accumulates) out.append("    ").append(acc).append('\n');
         }
         out.append("then\n");
-        if (subject != null && r.doel() instanceof Expr.AttribuutRef a) {
+        if (valueStr != null && r.doel() instanceof Expr.AttribuutRef a) {
             out.append("    modify(").append(SUBJECT).append(") {\n");
-            out.append("        ").append(setter(a.attribuut())).append("( ")
-               .append(waarde(r.waarde(), subject)).append(" )\n");
+            out.append("        ").append(setter(a.attribuut())).append("( ").append(valueStr).append(" )\n");
             out.append("    }\n");
         } else {
             out.append("    // onopgelost doel: ").append(r.doel().bron()).append('\n');
@@ -88,8 +100,46 @@ public final class DrlTranspiler {
         if (e instanceof Expr.Afgerond af)      return waarde(af.basis(), subject); // TODO: setScale per modus
         if (e instanceof Expr.Begrensd bg)      return waarde(bg.basis(), subject); // TODO: min/max clamp
         if (e instanceof Expr.Constante c)      return todo("constante", c.naam());
-        if (e instanceof Expr.Functie f)        return todo("aggregatie " + f.kind(), f.bron());
+        if (e instanceof Expr.Functie f) {
+            String var = accumulate(f);                       // hoists an accumulate into the "when"
+            return var != null ? var : todo("aggregatie " + f.kind(), f.bron());
+        }
         return todo("expressie", e.bron());
+    }
+
+    /**
+     * Turn an aggregation into a Drools accumulate: bind a source pattern over the
+     * element object type and an accumulate function (sum/count/min/max), register it
+     * for the "when", and return the result variable to drop into the value. The
+     * element scope — which instances relate to the subject — is left as a marker
+     * here; navigation joins fill it. Returns null for aggregations not yet mappable.
+     */
+    private String accumulate(Expr.Functie f) {
+        Objecttype elem = f.elementObjecttype();
+        String fn = switch (f.kind()) {
+            case SOM, TOTAAL -> "sum";
+            case AANTAL -> "count";
+            case MINIMUM -> "min";
+            case MAXIMUM -> "max";
+            default -> null;
+        };
+        if (elem == null || fn == null) return null;
+        int n = ++accCount;
+        String ev = "$e" + n, var = "$acc" + n;
+        String elementExpr = ev;
+        if (!fn.equals("count") && !f.argumenten().isEmpty()
+                && f.argumenten().get(0) instanceof Expr.AttribuutRef a)
+            elementExpr = ev + "." + getter(a.attribuut()) + "()";
+        accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true)
+                + "( " + scopeMarker(f) + " ) ; " + var + " : " + fn + "( " + elementExpr + " ) )");
+        return var;
+    }
+
+    /** The element scope ("which passagiers of the reis") — a navigation marker for now. */
+    private static String scopeMarker(Expr.Functie f) {
+        String bron = !f.argumenten().isEmpty() && f.argumenten().get(0) instanceof Expr.AttribuutRef a
+                ? a.onderwerpBron() : f.bron();
+        return "/* van: " + bron + " */";
     }
 
     // ---------------- condition ("when" side: bare field constraints) ----------------

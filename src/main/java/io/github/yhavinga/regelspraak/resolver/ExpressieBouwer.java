@@ -119,8 +119,8 @@ final class ExpressieBouwer {
         if (p.HIJ() != null)            return new Expr.Constante("hij", onbekend(), bron);
         if (p.DE() != null && p.DAG() != null) return new Expr.Constante("de dag", onbekend(), bron);
         if (p.functieAanroep() != null) return bouwFunctie(p.functieAanroep());
-        if (p.datumMet() != null)       return new Expr.Functie(Expr.FunctieKind.DATUM_MET, args(p.datumMet()), onbekend(), bron);
-        if (p.datumTijdMet() != null)   return new Expr.Functie(Expr.FunctieKind.DATUMTIJD_MET, args(p.datumTijdMet()), onbekend(), bron);
+        if (p.datumMet() != null)       return new Expr.Functie(Expr.FunctieKind.DATUM_MET, args(p.datumMet()), null, new Datatype.DatumInDagen(), bron);
+        if (p.datumTijdMet() != null)   return new Expr.Functie(Expr.FunctieKind.DATUMTIJD_MET, args(p.datumTijdMet()), null, new Datatype.DatumTijd(), bron);
         if (p.attribuutVanOnderwerp() != null) return bouwAttribuut(p.attribuutVanOnderwerp());
         if (p.expressie() != null)      return bouw(p.expressie()); // ( expressie )
         if (p.onderwerp() != null)      return naamRef(src(p.onderwerp()), false, bron);
@@ -133,7 +133,24 @@ final class ExpressieBouwer {
         String bron = src(f);
         Expr.FunctieKind kind = functieKind(f);
         List<Expr> argumenten = args(f);
-        return new Expr.Functie(kind, argumenten, functieType(kind, argumenten), bron);
+        return new Expr.Functie(kind, argumenten, aggregatieElement(kind, argumenten),
+                functieType(kind, argumenten), bron);
+    }
+
+    /**
+     * The object type an aggregation ranges over. For value-aggregations
+     * (sum/min/max/first/last) it is the object the aggregated attribute belongs to
+     * — the argument's bound AttribuutRef objecttype. For a count "het aantal
+     * <rol> van <onderwerp>" the parser makes <rol> the attribute name, so the
+     * counted element type is that role resolved to its object type.
+     */
+    private Objecttype aggregatieElement(Expr.FunctieKind kind, List<Expr> args) {
+        if (args.isEmpty() || !(args.get(0) instanceof Expr.AttribuutRef a)) return null;
+        return switch (kind) {
+            case SOM, TOTAAL, MINIMUM, MAXIMUM, EERSTE, LAATSTE -> a.objecttype();
+            case AANTAL -> model.resolveObjecttype(a.attribuut());
+            default -> null;
+        };
     }
 
     /**

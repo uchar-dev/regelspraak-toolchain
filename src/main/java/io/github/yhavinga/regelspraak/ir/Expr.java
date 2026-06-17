@@ -41,7 +41,11 @@ public sealed interface Expr {
         AANTAL_DAGEN_IN, JAAR_UIT, MAAND_UIT, DAG_UIT, UUR_UIT, MINUUT_UIT, SECONDE_UIT, MILLISECONDE_UIT,
         DATUM_MET, DATUMTIJD_MET
     }
-    record Functie(FunctieKind kind, List<Expr> argumenten, Datatype type, String bron) implements Expr {}
+    /** `elementObjecttype` is the object type the aggregation ranges over — the type
+     *  whose instances are summed/counted/etc. (null if unresolved). It is what the
+     *  transpiler binds the accumulate source pattern to. */
+    record Functie(FunctieKind kind, List<Expr> argumenten, Objecttype elementObjecttype,
+                   Datatype type, String bron) implements Expr {}
 
     /** §13.4.17.25/.26 rounding wrapper; the rounding does not change the datatype. */
     enum AfrondModus { NAAR_BENEDEN, NAAR_BOVEN, REKENKUNDIG, RICHTING_NUL, WEG_VAN_NUL }
