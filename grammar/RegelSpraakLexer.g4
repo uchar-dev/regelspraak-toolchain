@@ -207,7 +207,7 @@ TEKST      : 'Tekst'      ;
 BOOLEAN    : 'Boolean'    ;
 
 // --- rule structure / verbs ---
-GELDIG  : 'geldig'  ;
+GELDIG  : 'geldig'  ; // the spec version keyword is lowercase; a regelnaam may itself begin "Geldig …"
 ALTIJD  : 'altijd'  ;
 INDIEN  : 'indien'  ;
 MOETEN  : 'moeten'  ;
@@ -326,7 +326,7 @@ HELE         : 'hele'         ; // §13.4.17.32 'in hele <eenheid>' (when not fu
 KOPTEKST   : '---' ~[\r\n]* ; // §13.3.1.5 koptekst — a heading line; consumes to end-of-line
                               // so the free-text heading cannot run into the next member once WS is skipped
 DOTDOT     : '..'  ; // nested bullet (TOKA)
-BULLET     : '•' ; // EBNF bullet glyph
+BULLET     : '•' | '▪' ; // EBNF/spec bullet glyphs (• and ▪)
 LPAREN     : '('   ;
 RPAREN     : ')'   ;
 LBRACE     : '{'   ;

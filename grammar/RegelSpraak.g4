@@ -53,6 +53,7 @@ naamWoordLower
     : LOWER_ID | NUMBER | PERCENT_SIGN | AANTAL_WORD
     | VAN | OP | IN | VOOR | OVER | BIJ | TOT | TOT_EN_MET | PER | MET
     | DE | HET | EN | OF | DAN | ALS | NIET
+    | EEN_TELWOORD | TWEE_TELWOORD | DRIE_TELWOORD | VIER_TELWOORD
     | JAAR | MAAND | DAG | WEEK | KWARTAAL | UUR | MINUUT | SECONDE | MILLISECONDE
     | PERIODE | DAGEN | WEKEN | MAANDEN | KWARTALEN | JAREN
     ;
@@ -103,17 +104,17 @@ koptekst : KOPTEKST ; // §13.3.1.5 — the whole '--- heading' line is one toke
 // §13.3.2.1-.3 Kenmerk (the optional (bijvoeglijk)/(bezittelijk) marker classifies
 // it; TOKA shows both the marked and unmarked adjectival form).
 kenmerkSpecificatie
-    : IS lowerNaam ( MV_START meervoudsvorm RPAREN )? KENMERK BIJVOEGLIJK? SEMICOLON   # bijvoeglijkKenmerk
-    | bepaaldLidwoord? lowerNaam KENMERK ( BEZITTELIJK | BIJVOEGLIJK )? SEMICOLON       # naamwoordKenmerk
+    : IS lowerNaam ( MV_START meervoudsvorm RPAREN )? KENMERK BIJVOEGLIJK? SEMICOLON?   # bijvoeglijkKenmerk
+    | bepaaldLidwoord? lowerNaam KENMERK ( BEZITTELIJK | BIJVOEGLIJK )? SEMICOLON?       # naamwoordKenmerk
     ;
 
 // §13.3.2.5 Attribuut. The 'met eenheid' clause lives inside the numeric datatypes
 // per the authoritative §13.3.3.2/.3 diagrams (not at member level as the draft has it).
 attribuutSpecificatie
     : bepaaldLidwoord? lowerNaam ( datatype | domeinNaam )
-      ( GEDIMENSIONEERD_MET dimensieNaam ( EN dimensieNaam )* )?
+      COMMA? ( GEDIMENSIONEERD_MET dimensieNaam ( EN dimensieNaam )* )?
       tijdlijn?
-      SEMICOLON
+      SEMICOLON?
     ;
 
 // ====================================================================
@@ -233,8 +234,8 @@ dimensieWaarde         : lowerNaam ; // §13.3.7.6
 // ====================================================================
 // §13.3.8 Parameters
 // ====================================================================
-parameterDefinition // §13.3.8.1 — name bounded by ':'; unit lives inside the datatype
-    : PARAMETER bepaaldLidwoord parameterNaam COLON ( datatype | domeinNaam ) SEMICOLON?
+parameterDefinition // §13.3.8.1 — name bounded by ':'; article optional (spec examples omit it)
+    : PARAMETER bepaaldLidwoord? parameterNaam COLON ( datatype | domeinNaam ) SEMICOLON?
     ;
 parameterNaam : vrijeNaam ; // §13.3.8.3
 
@@ -242,8 +243,8 @@ parameterNaam : vrijeNaam ; // §13.3.8.3
 // §13.3.9 Feittypen
 // ====================================================================
 feitTypeDefinition
-    : FEITTYPE feitTypeNaam rolSpecificatie rolSpecificatie feitTypeCardinaliteit       // §13.3.9.1
-    | WEDERKERIG_FEITTYPE feitTypeNaam rolSpecificatie feitTypeCardinaliteit            // §13.3.9.2
+    : FEITTYPE feitTypeNaam rolSpecificatie rolSpecificatie feitTypeCardinaliteit SEMICOLON?      // §13.3.9.1
+    | WEDERKERIG_FEITTYPE feitTypeNaam rolSpecificatie feitTypeCardinaliteit SEMICOLON?           // §13.3.9.2
     ;
 feitTypeNaam : feitTypeNaamWoord+ ; // §13.3.9.3 — excludes DE/HET so it stops at the role article
 feitTypeNaamWoord
@@ -295,6 +296,7 @@ kaleNaamWoord
     : LOWER_ID | UPPER_ID | NUMBER | PERCENT_SIGN | AANTAL_WORD
     | OP | IN | VOOR | OVER | BIJ | TOT | TOT_EN_MET | PER | MET | EN | OF | DAN | NIET
     | DE | HET
+    | EEN_TELWOORD | TWEE_TELWOORD | DRIE_TELWOORD | VIER_TELWOORD
     | JAAR | MAAND | DAG | WEEK | KWARTAAL | UUR | MINUUT | SECONDE | MILLISECONDE
     | PERIODE | DAGEN | WEKEN | MAANDEN | KWARTALEN | JAREN
     ;
@@ -433,9 +435,17 @@ onverdeeldeRest  : ALS_ONVERDEELDE_REST_BLIJFT attribuutVanOnderwerp OVER DOT? ;
 consistentieRegel
     : uniciteitsControle
     | toplevelSamengesteldCriterium
+    | samengesteldeConsistentie
     | enkelvoudigeConsistentieRegel
     ;
 enkelvoudigeConsistentieRegel : expressie MOET toplevelOperator ; // operand types/operator legality: resolver
+// Subject-led compound consistency "<onderwerp> moet voldoen aan <kwantificatie>
+// volgende criteria:" from the §9 worked examples (the §13.4.8.7 diagram shows
+// only the "er moet worden voldaan aan" opener).
+samengesteldeConsistentie
+    : onderwerp MOET ( VOLDOEN | VOLDOET ) AAN consistentieKwantificatie
+      ( VOLGENDE_CRITERIA | VOLGENDE_VOORWAARDEN | VOLGENDE_VOORWAARDE ) COLON samengesteldCriteriumOnderdeel
+    ;
 toplevelSamengesteldCriterium
     : ER_MOET_WORDEN_VOLDAAN_AAN ( VOLGEND_CRITERIUM COLON | consistentieKwantificatie VOLGENDE_CRITERIA COLON )
       samengesteldCriteriumOnderdeel
@@ -482,11 +492,13 @@ genesteSamengesteldeVoorwaarde // §13.4.14.2
       ( VOLGENDE_VOORWAARDE | VOLGENDE_VOORWAARDEN ) COLON samengesteldeVoorwaardeOnderdeel
     ;
 voorwaardeSubject : ER | HIJ | onderwerp ;
+// 'alle van de' (vs the diagram's bare 'alle') appears in the §9 worked examples
+// — tolerated as an optional 'van de' tail.
 voorwaardeKwantificatie // §13.4.14.4
-    : DE | ALLE | GEEN_VAN_DE | ( TEN_MINSTE | TEN_HOOGSTE | PRECIES ) telwoord VAN DE
+    : DE | ALLE ( VAN DE )? | GEEN_VAN_DE | ( TEN_MINSTE | TEN_HOOGSTE | PRECIES ) telwoord VAN DE
     ;
 consistentieKwantificatie // §13.4.14.3
-    : ALLE | GEEN_VAN_DE | ( TEN_MINSTE | TEN_HOOGSTE | PRECIES ) telwoord VAN DE
+    : ALLE ( VAN DE )? | GEEN_VAN_DE | ( TEN_MINSTE | TEN_HOOGSTE | PRECIES ) telwoord VAN DE
     ;
 kwantificatie // §13.4.14.5
     : DE | ALLE | AL | GEEN_VAN_DE | ( TEN_MINSTE | TEN_HOOGSTE | PRECIES ) telwoord VAN DE

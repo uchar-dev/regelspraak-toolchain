@@ -23,3 +23,7 @@ specification/*/_work/
 
 # Personal, uncommitted Claude Code overrides
 .claude/settings.local.json
+
+# Regenerable spec-example extractions (use tools/extract_corpus.py)
+examples/spec-main/
+examples/spec-antlr/
