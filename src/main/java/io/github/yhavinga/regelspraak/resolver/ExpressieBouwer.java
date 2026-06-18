@@ -96,8 +96,8 @@ final class ExpressieBouwer {
     /** Resolve a begrenzing into [minimum, maximum] (either may be null). */
     private Expr[] grenzen(BegrenzingContext b) {
         Expr min = null, max = null;
-        if (b.begrenzingMinimum() != null) min = bouw(b.begrenzingMinimum().expressie());
-        if (b.begrenzingMaximum() != null) max = bouw(b.begrenzingMaximum().expressie());
+        if (b.begrenzingMinimum() != null) min = bouwPrimair(b.begrenzingMinimum().primaireExpressie());
+        if (b.begrenzingMaximum() != null) max = bouwPrimair(b.begrenzingMaximum().primaireExpressie());
         return new Expr[]{ min, max };
     }
 

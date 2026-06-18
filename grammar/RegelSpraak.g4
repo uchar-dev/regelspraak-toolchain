@@ -706,8 +706,13 @@ begrenzing // §13.4.17.28
     ;
 // §13.4.17.29/.30 use 'met een minimum/maximum van'; after 'en' a worked example
 // drops the 'met' ("… en een maximum van 1000 €"), so the bare form is accepted too.
-begrenzingMinimum : MET_EEN_MINIMUM_VAN expressie ;
-begrenzingMaximum : ( MET_EEN_MAXIMUM_VAN | EEN_MAXIMUM_VAN ) expressie ; // bare form only after 'en' (§6)
+// The bound is a primaireExpressie, not a full expressie: a trailing <afronding> on a
+// begrensde expressie ("… met een minimum van 0 € naar beneden afgerond op 0 decimalen")
+// must round the WHOLE bounded result, not the bound — a full-expressie bound would absorb
+// the afronding. Every TOKA bound is primaire (a literal or attribute ref); an arithmetic
+// bound can still be written parenthesised. (Same precedence reasoning as the telling.)
+begrenzingMinimum : MET_EEN_MINIMUM_VAN primaireExpressie ;
+begrenzingMaximum : ( MET_EEN_MAXIMUM_VAN | EEN_MAXIMUM_VAN ) primaireExpressie ; // bare form only after 'en' (§6)
 
 datumMet // §13.4.17.35
     : DATUM_MET JAAR COLON expressie COMMA MAAND COLON expressie EN DAG COLON expressie

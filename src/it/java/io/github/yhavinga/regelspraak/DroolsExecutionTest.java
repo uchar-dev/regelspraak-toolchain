@@ -115,6 +115,38 @@ class DroolsExecutionTest {
                 () -> "som over de juiste passagiers faalde: " + v.getTotaalprijs());
     }
 
+    @Test void afronding_na_begrenzing_rondt_het_geheel_af_niet_de_grens() {
+        // §13.4.17.25-30: "X, met een minimum van 0 naar beneden afgerond op 0 decimalen" must
+        // round the WHOLE bounded result (floor(max(X,0))), not the 0-bound. A full-expressie
+        // bound would absorb the afronding and leave the result unrounded; the primaireExpressie
+        // bound keeps the afronding on the outer expression. Proven by firing: basis 7 -> 7/2=3.5
+        // -> max(3.5,0)=3.5 -> floor = 3 (a bound-only rounding would leave 3.5).
+        String src = """
+            Objecttype de Heffing
+                de basis Numeriek (geheel getal);
+                de netto Numeriek (geheel getal);
+            Regel netto
+                geldig altijd
+                    De netto van een Heffing moet berekend worden als de basis van een Heffing gedeeld door 2, met een minimum van 0 naar beneden afgerond op 0 decimalen.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains(")).setScale(0, java.math.RoundingMode.FLOOR) )"),
+                () -> "de afronding moet de hele begrensde expressie omsluiten:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Heffing pos = new Heffing(); pos.setBasis(new BigDecimal("7"));    // 7/2=3.5 -> floor 3
+        Heffing neg = new Heffing(); neg.setBasis(new BigDecimal("-4"));   // -4/2=-2 -> min 0 -> 0
+        sessie.insert(pos); sessie.insert(neg);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("3").compareTo(pos.getNetto()),
+                () -> "floor(max(7/2,0)) = 3, kreeg " + pos.getNetto());
+        assertEquals(0, BigDecimal.ZERO.compareTo(neg.getNetto()),
+                () -> "max(-2,0) = 0, kreeg " + neg.getNetto());
+    }
+
     @Test void telling_maal_parameter_bindt_de_maal_buiten_de_telling() {
         // §13.4.17.47 telling precedence: "het aantal X van de reis maal de factor" must be
         // (count of X) maal factor, NOT count(X maal factor). The telling takes a
