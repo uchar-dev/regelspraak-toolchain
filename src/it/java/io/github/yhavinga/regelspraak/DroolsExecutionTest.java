@@ -155,6 +155,45 @@ class DroolsExecutionTest {
                 () -> "telt 2 luchthavens van deze reiziger, niet alle facts; kreeg " + r.getAantalBestemmingen());
     }
 
+    @Test void aantal_kiest_de_join_via_de_geschreven_rol_bij_twee_feittypen() {
+        // p11 review (verdict B): when TWO feittypen join the (element, subject) pair, the by-pair
+        // join search is ambiguous; the count names exactly one element role ("vertrek"), so the
+        // join must be the matching feittype's subject-side field (vertrekkendeReiziger), not a
+        // comment placeholder counting every Luchthaven.
+        String src = """
+            Objecttype de Reiziger
+                het aantal vertrekluchthavens Numeriek (geheel getal);
+            Objecttype de Luchthaven
+            Feittype Reiziger en vertrekluchthaven
+                de vertrekkende reiziger Reiziger
+                de vertrek Luchthaven
+            Eén vertrekkende reiziger betreft meerdere vertrekken
+            Feittype Reiziger en aankomstluchthaven
+                de aankomende reiziger Reiziger
+                de aankomst Luchthaven
+            Eén aankomende reiziger betreft meerdere aankomsten
+            Regel tel
+                geldig altijd
+                    Het aantal vertrekluchthavens van een Reiziger moet gesteld worden op het aantal vertrek van de reiziger.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("Luchthaven( vertrekkendeReiziger == $subject )"),
+                () -> "verwachtte de join via de geschreven rol 'vertrek':\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Reiziger r = new Reiziger();
+        Luchthaven v1 = new Luchthaven(); v1.setVertrekkendeReiziger(r);
+        Luchthaven v2 = new Luchthaven(); v2.setVertrekkendeReiziger(r);
+        Luchthaven aankomst = new Luchthaven(); aankomst.setAankomendeReiziger(r);  // an arrival, not counted
+        sessie.insert(r); sessie.insert(v1); sessie.insert(v2); sessie.insert(aankomst);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("2").compareTo(r.getAantalVertrekluchthavens()),
+                () -> "telt 2 vertrek-luchthavens, niet de aankomst; kreeg " + r.getAantalVertrekluchthavens());
+    }
+
     @Test void begrenzing_grens_wordt_omgerekend_naar_de_eenheid_van_de_waarde() {
         // §4/§6.1.4: a convertible-but-different bound unit is restated in the basis unit before
         // the clamp. duur 20 mnd capped at a 1 jr maximum (= 12 mnd) must give 12, not 1 (a raw

@@ -441,9 +441,10 @@ public final class DrlTranspiler {
             default -> null;
         };
         if (elem == null || fn == null) return null;
+        String scope = scope(elem, subject, f);
+        if (bevatMarker(scope)) return null;   // unresolvable join -> marker, never a global aggregate
         int n = ++accCount;
         String ev = "$e" + n, var = "$acc" + n;
-        String scope = scope(elem, subject, f);
         Expr arg = f.argumenten().isEmpty() ? null : f.argumenten().get(0);
 
         // §4.10/§5.8.2 sommatie ("som van"): an empty sum (no non-empty contributors) is a
@@ -474,11 +475,20 @@ public final class DrlTranspiler {
      *  OF this reis" -> reis == $subject), if the connecting feittype is unambiguous;
      *  otherwise the source phrase as a marker. */
     private String scope(Objecttype elem, Objecttype subject, Expr.Functie f) {
-        String rol = subject != null ? model.verbindendeRol(elem, subject) : null; // field on element -> subject
+        Expr.AttribuutRef arg = !f.argumenten().isEmpty() && f.argumenten().get(0) instanceof Expr.AttribuutRef a ? a : null;
+        // A count names its element role explicitly ("het aantal bestemming …"), so when more than
+        // one feittype joins the (element, subject) pair the written name picks the unique join the
+        // by-pair search cannot. Try that first, then fall back to the by-pair role.
+        String rol = null;
+        if (subject != null && arg != null && f.kind() == Expr.FunctieKind.AANTAL)
+            rol = model.verbindendeRolViaElementnaam(subject, arg.attribuut());
+        if (rol == null && subject != null) rol = model.verbindendeRol(elem, subject);
         if (rol != null) return ident(rol, false) + " == " + SUBJECT;
-        String bron = !f.argumenten().isEmpty() && f.argumenten().get(0) instanceof Expr.AttribuutRef a
-                ? a.onderwerpBron() : f.bron();
-        return "/* van: " + bron + " */";
+        // No join resolvable: emit a TODO marker, not a bare "/* van: */" comment. The marker is
+        // caught by bevatMarker so accumulate() returns null and the aggregation becomes a visible
+        // no-op — never a silently-wrong count over EVERY instance (§5.8.1: a count ranges over the
+        // subject's related instances). Consistent with the resolver's "unresolvable -> marker" rule.
+        return todo("aggregatie-bereik", arg != null ? arg.onderwerpBron() : f.bron());
     }
 
     // ---------------- condition ("when" side: bare field constraints) ----------------

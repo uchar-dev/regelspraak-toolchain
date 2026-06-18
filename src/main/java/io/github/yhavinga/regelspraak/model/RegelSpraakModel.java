@@ -170,6 +170,28 @@ public final class RegelSpraakModel {
     }
 
     /**
+     * The subject-side join field for an aggregation whose ELEMENT role is named
+     * {@code geschrevenRol} — the field on the element fact that points back at the
+     * subject (the role {@code subject} plays in the feittype where {@code geschrevenRol}
+     * names the element role). This disambiguates by the WRITTEN element name what the
+     * by-pair {@link #verbindendeRol} cannot: when the (element, subject) pair is joined
+     * by more than one feittype, the count names exactly one element role, so the join is
+     * unique. Returns null when no role, or more than one, matches — the caller then keeps
+     * the by-pair fallback (single-feittype case) or emits a marker.
+     */
+    public String verbindendeRolViaElementnaam(Objecttype subject, String geschrevenRol) {
+        if (subject == null || geschrevenRol == null) return null;
+        String gevonden = null;
+        int n = 0;
+        for (Feittype ft : feittypen.values())
+            for (Rol elemRol : ft.rollen)
+                if (rolMatcht(elemRol, geschrevenRol) && feittypeRelateert(ft, elemRol, subject))
+                    for (Rol subjRol : ft.rollen)
+                        if (subjRol != elemRol && rolHeeftObjecttype(subjRol, subject)) { gevonden = subjRol.naam(); n++; }
+        return n == 1 ? gevonden : null;
+    }
+
+    /**
      * The written role name to record on a navigation reference: the {@code noun}
      * itself when it denotes a feittype role (and not an object type by that name),
      * else null. Kept as written so {@link #verbindendeRolViaNaam}'s {@code rolMatcht}

@@ -362,4 +362,21 @@ class DrlTest {
         assertTrue(drl.contains("$subject : NatuurlijkPersoon("), () -> "klassenaam:\n" + drl);
         assertTrue(drl.contains("setTeBetalenBelasting("), () -> "setternaam:\n" + drl);
     }
+
+    @Test void onschaalbare_telling_wordt_marker_geen_globale_telling() {
+        // p11 (verdict C): a count whose element has NO relationship to the subject cannot be
+        // scoped to it. It must surface as a marker, NOT a comment-placeholder accumulate that
+        // would count EVERY instance globally (§5.8.1: a count ranges over the related instances).
+        String src = """
+            Objecttype de Reiziger
+                het aantal dingen Numeriek (geheel getal);
+            Objecttype de Ding
+            Regel tel
+                geldig altijd
+                    Het aantal dingen van een Reiziger moet gesteld worden op het aantal Ding van de reiziger.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertFalse(drl.contains("accumulate("), () -> "een onschaalbare telling mag geen globale accumulate worden:\n" + drl);
+        assertTrue(drl.contains("/* TODO"), () -> "verwachtte een marker:\n" + drl);
+    }
 }

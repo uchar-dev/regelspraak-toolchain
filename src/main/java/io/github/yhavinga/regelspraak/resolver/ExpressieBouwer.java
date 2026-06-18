@@ -242,15 +242,19 @@ final class ExpressieBouwer {
      * collides with a declared objecttype name ("het aantal bestemming", where Bestemming is a
      * type AND "bestemming" a role to Luchthaven) binds the wrong type and then loses its join to
      * a comment placeholder — counting ALL instances globally. Mirror the p12 navigation
-     * disambiguation: when a same-named role uniquely reaches a type FROM the subject and the
-     * by-name objecttype does NOT itself join the subject, the written reference IS that role
-     * navigation (§13.4.1.2/.3), so count the role's target. Otherwise the by-name reading stands.
+     * disambiguation EXACTLY: take the role reading when a same-named role uniquely reaches a type
+     * FROM the subject and no role NAMED-as-written reaches the by-name objecttype from the subject
+     * — the written reference IS that role navigation (§13.4.1.2/.3). The name-aware
+     * {@link RegelSpraakModel#verbindendeRolViaNaam} (not the name-blind by-pair {@code
+     * verbindendeRol}) is what makes a count and the analogous plain navigation resolve the same
+     * written filler identically, even when the by-name objecttype joins the subject through a
+     * DIFFERENT, unwritten role. Otherwise the by-name reading stands.
      */
     private Objecttype aantalElement(String woord) {
         Objecttype byNaam = model.resolveObjecttype(woord);
         if (huidigSubject == null) return byNaam;
         Objecttype viaRol = model.rolDoeltypeNaarSubject(huidigSubject, woord);
-        if (viaRol != null && (byNaam == null || model.verbindendeRol(byNaam, huidigSubject) == null))
+        if (viaRol != null && (byNaam == null || model.verbindendeRolViaNaam(huidigSubject, byNaam, woord) == null))
             return viaRol;
         return byNaam;
     }
