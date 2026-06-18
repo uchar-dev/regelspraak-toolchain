@@ -305,6 +305,23 @@ class RuleCheckTest {
                 () -> "verwachtte een eenheidfout voor minimale waarde van, kreeg: " + m.errors());
     }
 
+    @Test void maximale_waarde_van_percentages_wordt_gemeld() {
+        // Tabel 22/23 list the min/max operand strictly as Numeriek (no Percentage row, unlike the
+        // §5.1-5.4 ordinal-comparison tables which DO carry one) — so a Percentage min/max operand
+        // is a type error, not silently accepted.
+        String src = """
+            Objecttype de Ding
+                de korting Percentage (geheel getal);
+                de toeslag Percentage (geheel getal);
+            Regel pctmax
+                geldig altijd
+                    De korting van een Ding moet gesteld worden op de maximale waarde van de korting van een Ding en de toeslag van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("maximale waarde van vereist numerieke")),
+                () -> "een Percentage min/max-operand had gemeld moeten worden, kreeg: " + m.errors());
+    }
+
     @Test void schone_maximale_waarde_geen_fout() {
         // two numeriek operands, no units -> no false positive.
         String src = MODEL + """

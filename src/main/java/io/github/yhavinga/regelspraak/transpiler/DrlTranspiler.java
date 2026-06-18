@@ -393,9 +393,15 @@ public final class DrlTranspiler {
      * instances). Lowered as a left fold of ternaries: min/eerste keeps the smaller/earlier, max/
      * laatste the larger/later. Numeric operands are restated in the first operand's unit before
      * comparing (the result unit "Eenheid1", Tabel 22/23), exactly as +/- and begrenzing do;
-     * dates lower to Comparable LocalDate(Time), which mvel's &lt;/&gt; compare directly. Returns
-     * null for the single-operand collection form and for non-min/max/eerste/laatste kinds, and
-     * falls through to the marker path on any operand that cannot be lowered.
+     * dates lower to Comparable LocalDate(Time), which mvel's &lt;/&gt; compare directly.
+     *
+     * <p>§4.12-4.15 ("leegwaarden … worden niet meegeteld; alle leeg → leeg"): each fold step
+     * SKIPS an empty (null) operand and yields empty only when every operand is empty — a bare
+     * comparison would poison the whole result to null, because mvel evaluates "null &lt; x" as
+     * false and so selects the empty branch. The guard re-references each operand by name (a
+     * side-effect-free getter), so the step is O(operands) textually but correct; the corpus only
+     * ever lists two operands. Returns null for the single-operand collection form and for
+     * non-min/max/eerste/laatste kinds, and falls through to the marker path on an unmappable operand.
      */
     private String concatenatieAggregatie(Expr.Functie f, Objecttype subject) {
         String cmp = switch (f.kind()) {
@@ -411,7 +417,9 @@ public final class DrlTranspiler {
             Expr arg = f.argumenten().get(i);
             String x = omrekenWaarde(waarde(arg, subject), arg.type(), doel);
             if (bevatMarker(x)) return null;
-            acc = "(" + acc + " " + cmp + " " + x + " ? " + acc + " : " + x + ")";
+            // null-skipping: acc empty → take x; x empty → keep acc; else compare. All-empty stays null.
+            acc = "(" + acc + " == null ? " + x + " : (" + x + " == null ? " + acc
+                    + " : (" + acc + " " + cmp + " " + x + " ? " + acc + " : " + x + ")))";
         }
         return acc;
     }

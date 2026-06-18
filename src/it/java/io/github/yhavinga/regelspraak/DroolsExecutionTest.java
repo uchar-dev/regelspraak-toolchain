@@ -202,6 +202,42 @@ class DroolsExecutionTest {
                 () -> "eerste van (10 mrt, 5 mrt) = 5 mrt, kreeg " + v.getVroegsteVertrek());
     }
 
+    @Test void concatenatie_aggregatie_telt_leegwaarden_niet_mee() {
+        // §4.12-4.15: "leegwaarden … worden niet meegeteld; alle leeg → leeg". A null (empty)
+        // operand must be SKIPPED, not poison the result — a bare "5 > null ? 5 : null" would
+        // wrongly yield null (mvel evaluates null comparisons as false). Fire with one empty
+        // operand in each position and with both empty.
+        String src = """
+            Objecttype de Periode
+                de duur Numeriek (geheel getal);
+                de netto Numeriek (geheel getal);
+                de looptijd Numeriek (geheel getal);
+            Regel netto
+                geldig altijd
+                    De netto van een Periode moet gesteld worden op de maximale waarde van de duur van een Periode en de looptijd van een Periode.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        KieBase kb = build(DrlTranspiler.transpile(m));
+
+        assertEquals(0, new BigDecimal("5").compareTo(maxNetto(kb, "5", null)),
+                "looptijd leeg -> max telt alleen duur=5");
+        assertEquals(0, new BigDecimal("9").compareTo(maxNetto(kb, null, "9")),
+                "duur leeg -> max telt alleen looptijd=9");
+        assertNull(maxNetto(kb, null, null), "beide leeg -> resultaat leeg (null)");
+    }
+
+    private static BigDecimal maxNetto(KieBase kb, String duur, String looptijd) {
+        KieSession sessie = kb.newKieSession();
+        Periode p = new Periode();
+        if (duur != null) p.setDuur(new BigDecimal(duur));
+        if (looptijd != null) p.setLooptijd(new BigDecimal(looptijd));
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+        return p.getNetto();
+    }
+
     @Test void afronding_na_begrenzing_rondt_het_geheel_af_niet_de_grens() {
         // §13.4.17.25-30: "X, met een minimum van 0 naar beneden afgerond op 0 decimalen" must
         // round the WHOLE bounded result (floor(max(X,0))), not the 0-bound. A full-expressie

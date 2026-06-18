@@ -127,18 +127,19 @@ public final class Typering {
 
     /** §4.12/4.13 Tabel 22/23 — minimale/maximale waarde van (getalaggregatiefunctie): every
      *  operand must be a numerieke expressie, and "wanneer eenheden worden gebruikt, deze in
-     *  elkaar om te rekenen zijn." Read getalachtig (Numeriek OR Percentage) rather than strictly
-     *  Numeriek, mirroring the §5.1-5.4 ordinal comparison — min/max is repeated ordinal selection,
-     *  and that comparison admits a Percentage. The unit rule is the STRICT §4 one (unlike the
-     *  lenient {@link #begrenzing}): all operands unitless, or all unit-bearing and pairwise
-     *  inter-convertible — no TOKA quirk forces leniency here (its lone max is single-operand).
-     *  Onbekend operands make no claim (skipped); a single operand is trivially well-typed.
-     *  Returns the diagnostic, or null when ok. */
+     *  elkaar om te rekenen zijn." Strictly Numeriek, NOT getalachtig: Tabel 22/23 carry only a
+     *  Numeriek operand row, whereas the §5.1-5.4 ordinal-comparison tables (Tabel 32/34/39/41)
+     *  carry an explicit Percentage row — the spec admits Percentage exactly where it lists it, so
+     *  min/max excludes it (a Percentage min/max is a missed-diagnostic false-negative otherwise).
+     *  The unit rule is the STRICT §4 one (unlike the lenient {@link #begrenzing}): all operands
+     *  unitless, or all unit-bearing and pairwise inter-convertible — no TOKA quirk forces leniency
+     *  here (its lone max is single-operand). Onbekend operands make no claim (skipped); a single
+     *  operand is trivially well-typed. Returns the diagnostic, or null when ok. */
     public static String getalAggregatie(String functie, java.util.List<Datatype> operanden) {
         Eenheid ref = null; boolean refGezet = false;
         for (Datatype d : operanden) {
             if (d.isOnbekend()) continue;
-            if (!d.isGetalachtig())
+            if (!d.isNumeriek())
                 return functie + " vereist numerieke operanden, kreeg " + d.naam();
             Eenheid e = d.eenheidOf();
             if (!refGezet) { ref = e; refGezet = true; continue; }
@@ -154,7 +155,13 @@ public final class Typering {
     /** §4.14/4.15 Tabel 24/25 — eerste/laatste van (datumaggregatiefunctie): every operand must
      *  be a datumexpressie, and "alle expressies dezelfde tijd-precisie bevatten" — modelled as
      *  the same concrete date kind (all {@link Datatype.DatumInDagen} or all {@link
-     *  Datatype.DatumTijd}). Onbekend = no claim. Returns the diagnostic, or null when ok. */
+     *  Datatype.DatumTijd}). The equal-precision rule is normative and twice-stated (§4.14/4.15
+     *  prose AND §5.8.4: "Deze moeten namelijk allemaal gelijk zijn") with no coercion path — so
+     *  this is strict equality. NOTE a spec tension: the §5.8.4 "Bevestigingstijdstip" worked
+     *  example mixes a Datum-tijd operand with a Datum-in-dagen one, violating its own rule; we
+     *  follow the normative prose over the inconsistent illustration (the example's standalone
+     *  corpus form resolves clean only because its operands are Onbekend "Daarbij geldt"
+     *  variables). Onbekend = no claim. Returns the diagnostic, or null when ok. */
     public static String datumAggregatie(String functie, java.util.List<Datatype> operanden) {
         Datatype ref = null;
         for (Datatype d : operanden) {
