@@ -108,18 +108,33 @@ public final class RegelSpraakModel {
      * because the source names exactly one. Matching by name first, object type
      * second, is the §13.4.1 reading: the written role IS the navigation. Returns null
      * when no role, or more than one, matches (still ambiguous).
+     *
+     * A DECLARED role name (singular or declared plural) is tried before the best-effort
+     * synthesized plural, so a reference that exactly names one role is not defeated by
+     * another role whose +s/+en plural happens to collide (§3.1 footnote 2: a synthesized
+     * plural is outside the language and must never override a declared name).
      */
     public String verbindendeRolViaNaam(Objecttype houder, Objecttype doelwit, String geschrevenRol) {
         if (doelwit == null || geschrevenRol == null) return null;
+        String exact = zoekVerbindendeRol(houder, doelwit, geschrevenRol, true);
+        return exact != null ? exact : zoekVerbindendeRol(houder, doelwit, geschrevenRol, false);
+    }
+
+    /** The unique role of {@code doelwit} that {@code geschrevenRol} names in a feittype
+     *  relating {@code houder}, or null when none or more than one matches. With
+     *  {@code exactOnly} only declared role names count; otherwise the best-effort plural
+     *  is also allowed (used only when no declared name matched). */
+    private String zoekVerbindendeRol(Objecttype houder, Objecttype doelwit, String geschrevenRol, boolean exactOnly) {
         String gevonden = null;
         int n = 0;
         for (Feittype ft : feittypen.values())
-            for (Rol doel : ft.rollen)
-                if (rolMatcht(doel, geschrevenRol) && rolHeeftObjecttype(doel, doelwit)
-                        && feittypeRelateert(ft, doel, houder)) {
+            for (Rol doel : ft.rollen) {
+                boolean naamMatcht = exactOnly ? rolMatchtExact(doel, geschrevenRol) : rolMatcht(doel, geschrevenRol);
+                if (naamMatcht && rolHeeftObjecttype(doel, doelwit) && feittypeRelateert(ft, doel, houder)) {
                     gevonden = doel.naam();
                     n++;
                 }
+            }
         return n == 1 ? gevonden : null;
     }
 
@@ -154,18 +169,26 @@ public final class RegelSpraakModel {
     }
 
     private static boolean rolMatcht(Rol r, String naam) {
-        if (r.naam().equalsIgnoreCase(naam)) return true;                       // the singular role name
-        if (r.meervoud() != null && r.meervoud().equalsIgnoreCase(naam)) return true; // the DECLARED plural
-        // Only when no plural is declared: RegelSpraak defines no plural morphology
-        // — §3.1 footnote 2 states derivation is ALEF-specific, OUTSIDE the language.
-        // So this is a documented best-effort fallback, never overriding a declared
-        // form. (See docs/grammar-divergences.md.)
-        if (r.meervoud() == null) {
-            if (naam.equalsIgnoreCase(r.naam() + "s") || naam.equalsIgnoreCase(r.naam() + "en")) return true;
-            String kopEnkelvoud = naam.replaceFirst("^(\\S+?)(?:s|en)(\\s)", "$1$2");
-            return kopEnkelvoud.equalsIgnoreCase(r.naam());
-        }
-        return false;
+        return rolMatchtExact(r, naam) || rolMatchtBestEffort(r, naam);
+    }
+
+    /** A role name the model DECLARES: the singular role name or its declared (mv:)
+     *  plural. These are the forms the language actually defines. */
+    private static boolean rolMatchtExact(Rol r, String naam) {
+        return r.naam().equalsIgnoreCase(naam)
+                || (r.meervoud() != null && r.meervoud().equalsIgnoreCase(naam));
+    }
+
+    /** A best-effort plural match used ONLY when no plural is declared: RegelSpraak
+     *  defines no plural morphology — §3.1 footnote 2 states derivation is ALEF-specific,
+     *  OUTSIDE the language — so this must never defeat a declared form, and callers that
+     *  disambiguate by name (see {@link #verbindendeRolViaNaam}) try the exact forms
+     *  first. (See docs/grammar-divergences.md.) */
+    private static boolean rolMatchtBestEffort(Rol r, String naam) {
+        if (r.meervoud() != null) return false;
+        if (naam.equalsIgnoreCase(r.naam() + "s") || naam.equalsIgnoreCase(r.naam() + "en")) return true;
+        String kopEnkelvoud = naam.replaceFirst("^(\\S+?)(?:s|en)(\\s)", "$1$2");
+        return kopEnkelvoud.equalsIgnoreCase(r.naam());
     }
 
     /**

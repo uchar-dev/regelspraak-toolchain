@@ -168,16 +168,21 @@ public final class DrlTranspiler {
      * FIELD to navigate through, {@link #EIGEN} for the subject's own attribute, or
      * null when it cannot be resolved (caller emits a marker).
      *
-     * When the source named the role (navigatieRol), navigation is intended and is
-     * resolved by name — which both disambiguates an object-type pair joined by more
-     * than one feittype/role AND covers a wederkerig self-relation ("zijn partner",
-     * where the navigated type equals the subject's, so an own-attribute read would be
-     * wrong). Only when no role was named do we treat a same-type reference as the
-     * subject's own attribute and otherwise fall back to the by-pair search.
+     * When the source named the role (navigatieRol), a by-name resolution is tried
+     * first — it disambiguates an object-type pair joined by more than one feittype/role
+     * AND covers a wederkerig self-relation ("zijn partner", where the navigated type
+     * equals the subject's). But a definite back-reference to the subject by its OWN
+     * role name ("de reis", where the subject already fills the role reis) names the
+     * same instance (§5.5.3), so when the by-name lookup finds nothing we fall through:
+     * a same-type reference reads as the subject's own attribute, otherwise the by-pair
+     * search applies. Returning null only when all three fail keeps an honestly
+     * unresolved reference a marker rather than a wrong own-attribute read.
      */
     private String naviRol(Objecttype subject, Expr.AttribuutRef a) {
-        if (a.navigatieRol() != null)
-            return model.verbindendeRolViaNaam(subject, a.objecttype(), a.navigatieRol());
+        if (a.navigatieRol() != null) {
+            String rol = model.verbindendeRolViaNaam(subject, a.objecttype(), a.navigatieRol());
+            if (rol != null) return rol;
+        }
         if (a.objecttype() == subject) return EIGEN;
         return model.verbindendeRol(subject, a.objecttype());
     }

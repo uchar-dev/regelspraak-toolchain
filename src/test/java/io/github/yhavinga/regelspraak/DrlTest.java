@@ -151,6 +151,57 @@ class DrlTest {
         assertTrue(drl.contains("setMinderjarig( true )"), () -> "kenmerk-setter:\n" + drl);
     }
 
+    @Test void definiete_terugverwijzing_via_eigen_rolnaam_leest_eigen_attribuut() {
+        // §5.5.3: a definite back-reference to the subject by a role it itself fills
+        // ("de reis", where the subject IS the Vlucht playing role reis) names the SAME
+        // instance — it must read the subject's own attribute, not degrade to a marker.
+        String src = """
+            Objecttype de Vlucht
+                de vertrek Numeriek (geheel getal);
+                de aankomst Numeriek (geheel getal);
+            Objecttype de Passagier
+                de naam Tekst;
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel kopieer
+                geldig altijd
+                    De aankomst van een Vlucht moet gesteld worden op de vertrek van de reis.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("setAankomst( $subject.getVertrek() )"), () -> "eigen-attribuut-lezing:\n" + drl);
+        assertFalse(drl.contains("TODO navigatie"), () -> "mag geen navigatie-marker zijn:\n" + drl);
+    }
+
+    @Test void exacte_rolnaam_wint_van_gesynthetiseerd_meervoud_van_andere_rol() {
+        // Two feittypen over Reis<->Vlucht; one role is literally "heenvluchten", which
+        // also happens to be the synthesized +en plural of the other feittype's
+        // "heenvlucht". A reference naming "heenvluchten" exactly must bind THAT role, not
+        // collapse to a false ambiguity (§3.1 footnote 2: a synthesized plural never
+        // defeats a declared name).
+        String src = """
+            Objecttype de Reis
+                de prijs Numeriek (geheel getal);
+            Objecttype de Vlucht
+                de tarief Numeriek (geheel getal);
+            Feittype boeking
+                de reis Reis
+                de heenvlucht Vlucht
+            Eén reis heeft één heenvlucht
+            Feittype extra
+                de extrareis Reis
+                de heenvluchten Vlucht
+            Eén extrareis heeft één heenvluchten
+            Regel prijs
+                geldig altijd
+                    De prijs van een Reis moet gesteld worden op de tarief van de heenvluchten.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("$subject.getHeenvluchten().getTarief()"), () -> "exacte rol moet binden:\n" + drl);
+        assertFalse(drl.contains("TODO navigatie"), () -> "geen valse ambiguïteit:\n" + drl);
+    }
+
     @Test void namen_worden_geldige_java_identifiers() {
         String src = """
             Objecttype de Natuurlijk persoon
