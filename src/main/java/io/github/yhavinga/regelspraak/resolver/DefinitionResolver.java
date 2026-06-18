@@ -142,25 +142,56 @@ public final class DefinitionResolver {
     }
 
     // ---------------- §13.3.5 unit systems ----------------
+    /** A unit's raw declaration before its conversion factor is resolved. */
+    private record EenheidRuw(java.util.List<String> afkortingen, String woord, String meervoud,
+                              java.math.BigDecimal omrekenN, String omrekenNaar) {}
+
     private void eenheidsysteem(EenheidsysteemDefinitionContext ctx) {
         Eenheidstelsel stelsel = new Eenheidstelsel(src(ctx.eenheidsysteemNaam()));
+        // pass 1: collect raw definitions keyed by primary abbreviation (or word)
+        java.util.Map<String, EenheidRuw> ruw = new java.util.LinkedHashMap<>();
         for (EenheidDefinitieContext u : ctx.eenheidDefinitie()) {
-            Eenheid canoniek = null;
-            for (var afk : u.eenheidAfkorting()) {
-                String a = src(afk);
-                Eenheid e = new Eenheid(a, stelsel.naam);
-                stelsel.eenheden.put(a, e);
-                if (canoniek == null) canoniek = e;
+            java.util.List<String> afk = u.eenheidAfkorting().stream().map(DefinitionResolver::src).toList();
+            String primair = !afk.isEmpty() ? afk.get(0) : (u.eenheidWoord() != null ? src(u.eenheidWoord()) : null);
+            if (primair == null) continue;
+            java.math.BigDecimal n = null; String naar = null;
+            if (u.omrekenSpecificatie() != null) {                       // "= 12 mnd"
+                try { n = new java.math.BigDecimal(u.omrekenSpecificatie().NUMBER().getText().replace(',', '.')); }
+                catch (NumberFormatException ignore) {}
+                naar = src(u.omrekenSpecificatie().eenheidAfkorting());
             }
-            // the unit word ("jaar") and its plural alias the unit, so "jaren"/"jr" unify
-            if (u.eenheidWoord() != null) {
-                if (canoniek == null) canoniek = new Eenheid(src(u.eenheidWoord()), stelsel.naam);
-                stelsel.aliassen.put(RegelSpraakModel.normaliseerTijdseenheid(src(u.eenheidWoord())), canoniek);
-                if (u.meervoudsvorm() != null)
-                    stelsel.aliassen.put(RegelSpraakModel.normaliseerTijdseenheid(src(u.meervoudsvorm())), canoniek);
-            }
+            ruw.put(primair, new EenheidRuw(afk, u.eenheidWoord() != null ? src(u.eenheidWoord()) : null,
+                    u.meervoudsvorm() != null ? src(u.meervoudsvorm()) : null, n, naar));
+        }
+        // pass 2: resolve each unit's canonical + factor, then register every spelling
+        java.util.Map<String, Eenheid> opgelost = new java.util.HashMap<>();
+        for (String primair : ruw.keySet()) {
+            Eenheid e = resolveFactor(primair, ruw, stelsel.naam, opgelost, new java.util.HashSet<>());
+            EenheidRuw r = ruw.get(primair);
+            for (String a : r.afkortingen()) stelsel.eenheden.put(a, e);
+            if (r.woord() != null) stelsel.aliassen.put(RegelSpraakModel.normaliseerTijdseenheid(r.woord()), e);
+            if (r.meervoud() != null) stelsel.aliassen.put(RegelSpraakModel.normaliseerTijdseenheid(r.meervoud()), e);
         }
         model.eenheidstelsels.put(stelsel.naam, stelsel);
+    }
+
+    /** Reduce a unit to its system canonical and the factor to reach it: a base unit
+     *  is its own canonical (factor 1); "<u> = N <v>" inherits v's canonical with
+     *  factor N·factor(v). Memoised; a cycle or external target stops at a base. */
+    private Eenheid resolveFactor(String abbrev, java.util.Map<String, EenheidRuw> ruw, String stelsel,
+                                  java.util.Map<String, Eenheid> memo, java.util.Set<String> bezig) {
+        if (memo.containsKey(abbrev)) return memo.get(abbrev);
+        EenheidRuw r = ruw.get(abbrev);
+        Eenheid e;
+        if (r == null || r.omrekenNaar() == null || r.omrekenN() == null || !bezig.add(abbrev)) {
+            e = new Eenheid(abbrev, stelsel, abbrev, java.math.BigDecimal.ONE);
+        } else {
+            Eenheid basis = resolveFactor(r.omrekenNaar(), ruw, stelsel, memo, bezig);
+            bezig.remove(abbrev);
+            e = new Eenheid(abbrev, stelsel, basis.canoniek(), r.omrekenN().multiply(basis.factorNaarCanoniek()));
+        }
+        memo.put(abbrev, e);
+        return e;
     }
 
     // ---------------- §13.3.8 parameters ----------------

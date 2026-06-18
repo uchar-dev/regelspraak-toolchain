@@ -84,7 +84,8 @@ public final class DrlTranspiler {
            .append(" ) ; $n : count($c) )\n");
         out.append("    $r : ").append(ident(doel.naam, true)).append("( ").append(j).append(" )\n");
         out.append("then\n    modify($r) {\n        ").append(setter(v.doelAttribuut()))
-           .append("( $src.").append(getter(v.bronAttribuut())).append("() / $n )\n    }\nend\n\n");
+           .append("( $src.").append(getter(v.bronAttribuut()))
+           .append("().divide($n, java.math.MathContext.DECIMAL64) )\n    }\nend\n\n"); // safe division
     }
 
     /** §13.4.6 objectcreatie -> a rule that inserts a new fact, sets its attributes,
@@ -146,6 +147,10 @@ public final class DrlTranspiler {
         }
         out.append("then\n");
         if (valueStr != null && r.doel() instanceof Expr.AttribuutRef a) {
+            if (r.waarde().type().isNumeriek()) {
+                valueStr = omreken(valueStr, r.waarde().type(), a.type()); // restate in the target's unit
+                valueStr = afrondNaarDoel(valueStr, a.type());              // §6: round to the target's precision
+            }
             out.append("    modify(").append(SUBJECT).append(") {\n");
             out.append("        ").append(setter(a.attribuut())).append("( ").append(valueStr).append(" )\n");
             out.append("    }\n");
@@ -170,7 +175,13 @@ public final class DrlTranspiler {
                 return "Math.pow(" + waarde(b.links(), subject) + ", " + waarde(b.rechts(), subject) + ")";
             if (b.op() == Expr.BinOp.PERCENTAGE_VAN)
                 return "(" + waarde(b.links(), subject) + " / 100 * " + waarde(b.rechts(), subject) + ")";
-            return "(" + waarde(b.links(), subject) + " " + infix(b.op()) + " " + waarde(b.rechts(), subject) + ")";
+            if (b.op() == Expr.BinOp.GEDEELD_DOOR || b.op() == Expr.BinOp.GEDEELD_DOOR_ABS)
+                return "(" + waarde(b.links(), subject) + ").divide(" + waarde(b.rechts(), subject)
+                        + ", java.math.MathContext.DECIMAL64)"; // safe: no non-terminating-quotient throw
+            // §4: restate the right operand in the left operand's unit before +/- so a
+            // convertible-but-different unit (mnd vs jr) is scaled, not added raw.
+            String rechts = omreken(waarde(b.rechts(), subject), b.rechts().type(), b.links().type());
+            return "(" + waarde(b.links(), subject) + " " + infix(b.op()) + " " + rechts + ")";
         }
         if (e instanceof Expr.Afgerond af) {
             String mode = switch (af.modus()) {
@@ -278,6 +289,23 @@ public final class DrlTranspiler {
         // numeric (possibly "0 €"): keep the leading number
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("-?\\d+(?:[.,]\\d+)?").matcher(lit.waarde());
         return m.find() ? m.group().replace(',', '.') : todo("literal", lit.waarde());
+    }
+
+    /** §6: round a numeric value to the target attribute's declared precision (also
+     *  absorbs the residue of a reverse unit conversion). */
+    private static String afrondNaarDoel(String expr, Datatype doel) {
+        int dec = doel instanceof Datatype.Numeriek n ? n.decimalen()
+                : doel instanceof Datatype.Percentage p ? p.decimalen() : -1;
+        return dec < 0 ? expr : "(" + expr + ").setScale(" + dec + ", java.math.RoundingMode.HALF_UP)";
+    }
+
+    /** Wrap an emitted value in a unit conversion when its unit differs from (but is
+     *  convertible to) the target unit; otherwise return it unchanged. §13.3.5.2. */
+    private static String omreken(String expr, Datatype van, Datatype naar) {
+        io.github.yhavinga.regelspraak.model.Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();
+        if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return expr;
+        return "(" + expr + ").multiply(new java.math.BigDecimal(\""
+                + ev.omrekenfactorNaar(en).toPlainString() + "\"))";
     }
 
     private static String infix(Expr.BinOp op) {

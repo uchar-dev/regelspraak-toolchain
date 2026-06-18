@@ -4,6 +4,7 @@ import io.github.yhavinga.regelspraak.facts.Bestelling;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
 import io.github.yhavinga.regelspraak.facts.Passagier;
+import io.github.yhavinga.regelspraak.facts.Periode;
 import io.github.yhavinga.regelspraak.facts.Pot;
 import io.github.yhavinga.regelspraak.facts.Vlucht;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
@@ -164,5 +165,35 @@ class DroolsExecutionTest {
         for (Deelnemer d : new Deelnemer[]{d1, d2, d3})
             assertEquals(0, new BigDecimal("30").compareTo(d.getAandeel()),
                     () -> "ieder aandeel moet 90/3 = 30 zijn, kreeg " + d.getAandeel());
+    }
+
+    @Test void cross_unit_optelling_wordt_omgerekend_niet_rauw_geteld() {
+        // duur(mnd) := looptijd(jr) + duur(mnd). looptijd must be scaled jr->mnd (×12),
+        // NOT added raw: 2 jr + 3 mnd = 27 mnd, not 5.
+        String src = """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Objecttype de Periode
+                de duur Numeriek (geheel getal) met eenheid mnd;
+                de looptijd Numeriek (geheel getal) met eenheid jr;
+            Regel tel
+                geldig altijd
+                    De duur van een Periode moet gesteld worden op de looptijd van een Periode plus de duur van een Periode.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Periode p = new Periode();
+        p.setLooptijd(new BigDecimal("2"));   // 2 years
+        p.setDuur(new BigDecimal("3"));       // 3 months
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("27").compareTo(p.getDuur()),
+                () -> "2 jr + 3 mnd moet 27 mnd zijn (niet 5), kreeg " + p.getDuur());
     }
 }
