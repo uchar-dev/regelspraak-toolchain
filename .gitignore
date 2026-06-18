@@ -27,3 +27,4 @@ specification/*/_work/
 # Regenerable spec-example extractions (use tools/extract_corpus.py)
 examples/spec-main/
 examples/spec-antlr/
+backlog/
