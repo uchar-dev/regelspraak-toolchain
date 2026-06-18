@@ -143,6 +143,27 @@ class RuleCheckTest {
         assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
     }
 
+    @Test void ongeldige_drempel_in_samengestelde_voorwaarde_wordt_gemeld() {
+        // §13.4.14.4: a counting quantifier's threshold must be a positive integer; a 0 (or a
+        // decimal/fraction/overflow that coerces to 0) would silently collapse the compound
+        // condition to always-true, so it is rejected.
+        String src = """
+            Objecttype de Persoon
+                de a Numeriek (geheel getal);
+                de b Numeriek (geheel getal);
+                is gekozen kenmerk (bijvoeglijk);
+            Regel kies
+                geldig altijd
+                    Een Persoon is gekozen
+                    indien hij aan ten minste 0 van de volgende voorwaarden voldoet:
+                    - de a van een Persoon is groter dan 0
+                    - de b van een Persoon is groter dan 0.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("telwoord")),
+                () -> "verwachtte een drempel-fout, kreeg: " + m.errors());
+    }
+
     @Test void onoplosbare_referentie_geeft_geen_valse_fout() {
         // a deep van-chain the checker cannot fully resolve must NOT be reported as an error
         String src = MODEL + """

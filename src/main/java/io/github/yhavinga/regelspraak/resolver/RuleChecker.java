@@ -238,7 +238,19 @@ final class RuleChecker {
         List<Conditie> onderdelen = new ArrayList<>();
         if (onderdeel != null)
             for (GenesteVoorwaardeContext g : onderdeel.genesteVoorwaarde()) onderdelen.add(bouwGenest(g));
-        return new Conditie.Samengesteld(kwantorVan(k), drempelVan(k), onderdelen, src(heel));
+        Conditie.Kwantor kwantor = kwantorVan(k);
+        int drempel = drempelVan(k);
+        // A counting quantifier's telwoord is a positive whole number (§13.4.14.4 /
+        // §13.4.14.5: één/twee/… or a written getal). A 0, negative, decimal, fraction or
+        // unparseable value all reach drempelVan as < 1; flag it rather than let it collapse
+        // the rule to always-true (minstens(0) is vacuously true). An over-size N is fine —
+        // it is a faithfully unsatisfiable "false", so it is not an error.
+        if ((kwantor == Conditie.Kwantor.TEN_MINSTE || kwantor == Conditie.Kwantor.TEN_HOOGSTE
+                || kwantor == Conditie.Kwantor.PRECIES) && drempel < 1)
+            model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                    "telwoord van een kwantificatie moet een positief geheel getal (>= 1) zijn",
+                    (k != null ? k : heel).getStart().getLine()));
+        return new Conditie.Samengesteld(kwantor, drempel, onderdelen, src(heel));
     }
 
     /** The threshold count N of a ten-minste/ten-hoogste/precies quantifier (§13.4.14.4),
