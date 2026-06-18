@@ -102,16 +102,33 @@ The result: **192 of 193** snippets parse (TOKA 47/47). The one exception:
   multi-word enum values are intrinsically unparseable — re-quoting them would be
   editing the source, not parsing it. Catalogued as a conversion defect.
 
-### Known precedence limitation (begrenzing + afronding)
+### Begrenzing + afronding precedence — fixed, with a bounded bound-operand divergence
 
-When a begrenzing's bound value is followed by an afronding — "… met een minimum
-van 0 € naar beneden afgerond op 0 decimalen" — the afronding parses INTO the
-bound value (minimum = "0 afgerond"), rather than wrapping the bounded result, as
-§13.4.17 intends. The bound value uses the full `expressie`, which greedily takes
-the trailing afronding. A faithful fix needs the bound value to stop before an
-outer afronding (a precedence split in the begrenzing rule); until then the IR —
-and therefore the generated DRL — rounds the bound rather than the result. Noted
-so the transpiler's output is read with this in mind.
+A trailing afronding on a begrensde expressie — "… min de korting, met een minimum
+van 0 € naar beneden afgerond op 0 decimalen" — must round the WHOLE bounded result
+(§13.4.17.25 afronding follows a getalexpressie, and "X met een minimum van B" is the
+getalexpressie it follows). It used to parse INTO the bound (minimum = "0 afgerond"),
+because the bound was a full `expressie` that greedily took the afronding — so the TOKA
+"Te betalen belasting" rule returned max(belasting − korting, 0) UNROUNDED. Fixed: the
+bound is now a `primaireExpressie`, so the trailing afronding can no longer be swallowed
+and binds to the outer begrensde expression — the rule lowers to
+`(max(belasting − korting, 0)).setScale(0, FLOOR)`.
+
+The EBNF does not formalize where the afronding binds (the bound "0 € … afgerond" is
+itself a valid afrondingexpressie), so binding it to the whole bounded result is a
+deliberate disambiguation, justified by the §6.1.3/6.1.4 prose (the rounding is "in het
+voordeel van de passagier" — of the amount, not the constant 0).
+
+Bounded divergence this introduces: §13.4.17.29/.30 give the bound as a full
+`<getalexpressie>`, but `primaireExpressie` excludes the binary-operator alternatives, so
+a **bare arithmetic/percentage bound** — "met een maximum van de basis maal 2",
+"met een minimum van 10% van de basis" — silently mis-binds (the trailing operator
+re-attaches outside the begrenzing) rather than being part of the bound. Every TOKA/spec
+bound is a literal or an attribute reference (a primaireExpressie), so no example is
+affected; an arithmetic bound must be written **parenthesised** — "met een maximum van
+(de basis maal 2)". Accepted in trade for the afronding fix: a flat left-recursive
+`expressie` cannot give the bound full arithmetic AND stop it before a trailing afronding
+without splitting the precedence into a separate bound rule (deferred — no corpus need).
 
 ### Unit conversion — scope and known gaps
 
@@ -220,12 +237,13 @@ countability: when "het aantal <phrase>" binds no countable element and the whol
 phrase is a declared parameter, it is read as that parameter (a genuine count always
 binds an element in a well-formed model, so it is never reinterpreted).
 
-### Known precedence limitation (begrenzing/afronding, wortel/macht)
+### Known precedence limitation (wortel/macht)
 
-The same "operand is a full `expressie`" greediness remains for the bounding/rounding
-wrappers and `de wortel van` / `tot de macht` (their mandatory `<afronding>` is still
-optional and the argument runs as a full `expressie`). Carded for a focused fix; only
-the telling case above is resolved.
+The same "operand is a full `expressie`" greediness remains for `de wortel van` /
+`tot de macht`: their mandatory `<afronding>` (§13.4.17.13/.14) is still optional and the
+argument runs as a full `expressie`, so "de wortel van X afgerond …" can absorb a trailing
+operator into X. Carded for a focused fix. (The telling and begrenzing+afronding cases —
+see above — are resolved.)
 
 ### Forms still modelled at main-clause word order (resolver-side concern)
 

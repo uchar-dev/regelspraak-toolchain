@@ -147,6 +147,32 @@ class DroolsExecutionTest {
                 () -> "max(-2,0) = 0, kreeg " + neg.getNetto());
     }
 
+    @Test void geparenthethiseerde_rekenkundige_grens_bindt_binnen_de_begrenzing() {
+        // The bound is a primaireExpressie, so a BARE arithmetic bound mis-binds (documented
+        // divergence); the workaround is to parenthesise it. "met een maximum van (de basis maal 2)"
+        // must bind the whole "basis maal 2" as the cap: min(basis, basis*2) = basis for basis>0.
+        // basis 10 -> 10 (a mis-bound "maal 2 outside" would give min(10,10)*2 = 20).
+        String src = """
+            Objecttype de Heffing
+                de basis Numeriek (geheel getal);
+                de netto Numeriek (geheel getal);
+            Regel netto
+                geldig altijd
+                    De netto van een Heffing moet gesteld worden op de basis van een Heffing, met een maximum van (de basis van een Heffing maal 2).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Heffing h = new Heffing(); h.setBasis(new BigDecimal("10"));
+        sessie.insert(h);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("10").compareTo(h.getNetto()),
+                () -> "min(10, 10*2) = 10 (parenthesised bound), kreeg " + h.getNetto());
+    }
+
     @Test void telling_maal_parameter_bindt_de_maal_buiten_de_telling() {
         // §13.4.17.47 telling precedence: "het aantal X van de reis maal de factor" must be
         // (count of X) maal factor, NOT count(X maal factor). The telling takes a
