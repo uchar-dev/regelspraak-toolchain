@@ -361,9 +361,19 @@ public final class DrlTranspiler {
                     + ", java.math.RoundingMode." + mode + ")";
         }
         if (e instanceof Expr.Begrensd bg) {
+            // §4/§6.1.4: a convertible-but-different bound unit (a jr bound on a mnd basis) is
+            // restated in the basis unit before the clamp compares magnitudes, exactly as the
+            // +/- path does. No-op when the units match or are absent.
             String r = waarde(bg.basis(), subject);
-            if (bg.minimum() != null) { String m = waarde(bg.minimum(), subject); r = "(" + r + " < " + m + " ? " + m + " : " + r + ")"; }
-            if (bg.maximum() != null) { String m = waarde(bg.maximum(), subject); r = "(" + r + " > " + m + " ? " + m + " : " + r + ")"; }
+            Datatype bt = bg.basis().type();
+            if (bg.minimum() != null) {
+                String m = omrekenWaarde(waarde(bg.minimum(), subject), bg.minimum().type(), bt);
+                r = "(" + r + " < " + m + " ? " + m + " : " + r + ")";
+            }
+            if (bg.maximum() != null) {
+                String m = omrekenWaarde(waarde(bg.maximum(), subject), bg.maximum().type(), bt);
+                r = "(" + r + " > " + m + " ? " + m + " : " + r + ")";
+            }
             return r;
         }
         if (e instanceof Expr.Constante c)      return todo("constante", c.naam());

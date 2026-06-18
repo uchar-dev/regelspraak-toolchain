@@ -103,6 +103,26 @@ public final class Typering {
         };
     }
 
+    /** §6.1.4 begrenzing: the bounded value (Numeriek/Percentage) is clamped to a bound of the
+     *  same family. The unit rule is deliberately looser than {@link #eenhedenCompatibel}: a
+     *  unit-bearing literal bounding a unitless numeric is allowed (the TOKA casus bounds a
+     *  unitless Bedrag by "0 €"), so only two PRESENT but inconvertible units are flagged — a
+     *  convertible pair (mnd vs jr) is restated at transpile time. Returns the diagnostic, or
+     *  null when ok / either side is Onbekend (no claim). */
+    public static String begrenzing(Datatype basis, Datatype grens) {
+        if (basis.isOnbekend() || grens.isOnbekend()) return null;
+        if (!basis.isGetalachtig())
+            return "begrenzing is alleen toegestaan op een numerieke waarde, kreeg " + basis.naam();
+        if (!zelfdeFamilie(basis, grens))
+            return "begrenzing vereist een grens van dezelfde soort als de begrensde waarde, kreeg "
+                    + basis.naam() + " en " + grens.naam();
+        Eenheid eb = basis.eenheidOf(), eg = grens.eenheidOf();
+        if (eb != null && eg != null && !eb.convertibleNaar(eg))
+            return "begrenzing: eenheden '" + eb.afkorting() + "' en '" + eg.afkorting()
+                    + "' zijn niet in elkaar om te rekenen";
+        return null;
+    }
+
     /** §5.11-5.16 one-sided predicates. */
     public static Resultaat predicaat(UnairePred p, Datatype operand) {
         if (operand.isOnbekend()) return Resultaat.ok(new Datatype.Booleaan());

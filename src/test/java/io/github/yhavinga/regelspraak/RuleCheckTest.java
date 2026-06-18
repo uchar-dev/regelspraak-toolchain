@@ -15,6 +15,31 @@ class RuleCheckTest {
             de naam Tekst;
         """;
 
+    @Test void verkeerde_begrenzing_grens_wordt_gemeld() {
+        // §6.1.4: a begrenzing bound must be the same numeric family as the bounded value; a
+        // Tekst bound is a type error (it would otherwise lower to an uncompilable comparison).
+        String src = MODEL + """
+            Regel grensfout
+                geldig altijd
+                    De teller van een Ding moet gesteld worden op de teller van een Ding, met een maximum van de naam van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertFalse(m.errors().isEmpty(), "begrenzing met een Tekst-grens had gemeld moeten worden");
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("begrenzing")),
+                () -> "verwachtte een begrenzing-fout, kreeg: " + m.errors());
+    }
+
+    @Test void begrenzing_met_geldige_grens_geen_fout() {
+        // a same-family numeric bound is fine — no false positive.
+        String src = MODEL + """
+            Regel grensok
+                geldig altijd
+                    De teller van een Ding moet gesteld worden op de teller van een Ding, met een maximum van 100.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+    }
+
     @Test void verkeerde_toekenning_wordt_gemeld() {
         // assigning a Tekst attribute to a Numeriek attribute violates §6.1
         String src = MODEL + """

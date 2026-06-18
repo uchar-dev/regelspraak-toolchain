@@ -115,6 +115,35 @@ class DroolsExecutionTest {
                 () -> "som over de juiste passagiers faalde: " + v.getTotaalprijs());
     }
 
+    @Test void begrenzing_grens_wordt_omgerekend_naar_de_eenheid_van_de_waarde() {
+        // §4/§6.1.4: a convertible-but-different bound unit is restated in the basis unit before
+        // the clamp. duur 20 mnd capped at a 1 jr maximum (= 12 mnd) must give 12, not 1 (a raw
+        // "20 > 1 ? 1 : 20" comparison would wrongly clamp to 1).
+        String src = """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Objecttype de Periode
+                de duur Numeriek (geheel getal) met eenheid mnd;
+                de netto Numeriek (geheel getal) met eenheid mnd;
+                de looptijd Numeriek (geheel getal) met eenheid jr;
+            Regel netto
+                geldig altijd
+                    De netto van een Periode moet gesteld worden op de duur van een Periode, met een maximum van de looptijd van een Periode.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Periode p = new Periode(); p.setDuur(new BigDecimal("20")); p.setLooptijd(new BigDecimal("1")); // cap = 1 jr = 12 mnd
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("12").compareTo(p.getNetto()),
+                () -> "min(20 mnd, 1 jr=12 mnd) = 12, kreeg " + p.getNetto());
+    }
+
     @Test void afronding_na_begrenzing_rondt_het_geheel_af_niet_de_grens() {
         // §13.4.17.25-30: "X, met een minimum van 0 naar beneden afgerond op 0 decimalen" must
         // round the WHOLE bounded result (floor(max(X,0))), not the 0-bound. A full-expressie

@@ -67,6 +67,10 @@ final class ExpressieBouwer {
         if (e instanceof BegrensdeExprContext s) {
             Expr basis = bouw(s.expressie());
             Expr[] mm = grenzen(s.begrenzing());
+            // §6.1.4: each bound must be order-comparable with the bounded value (same numeric
+            // family, unit-convertible) — else the clamp is meaningless and lowers to invalid DRL.
+            if (mm[0] != null) meldBegrenzing(basis.type(), mm[0].type(), s);
+            if (mm[1] != null) meldBegrenzing(basis.type(), mm[1].type(), s);
             return new Expr.Begrensd(basis, mm[0], mm[1], bron);
         }
         return onopgelost(e);
@@ -91,6 +95,15 @@ final class ExpressieBouwer {
         int dec = 0;
         if (a.NUMBER() != null) try { dec = Integer.parseInt(a.NUMBER().getText()); } catch (NumberFormatException ignore) {}
         return new Expr.Afgerond(basis, modus, dec, bron);
+    }
+
+    /** Emit a §6.1.4 ERROR when a begrenzing bound is not order-comparable with the bounded
+     *  value (a non-numeric, wrong-family, or unit-incompatible bound). Onbekend = no claim. */
+    private void meldBegrenzing(Datatype basis, Datatype grens, ParserRuleContext ctx) {
+        String fout = Typering.begrenzing(basis, grens);
+        if (fout != null)
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(
+                    RegelSpraakModel.Severity.ERROR, fout, ctx.getStart().getLine()));
     }
 
     /** Resolve a begrenzing into [minimum, maximum] (either may be null). */
