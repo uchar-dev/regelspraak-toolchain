@@ -4,6 +4,7 @@ import io.github.yhavinga.regelspraak.facts.Bestelling;
 import io.github.yhavinga.regelspraak.facts.Burger;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
+import io.github.yhavinga.regelspraak.facts.Heffing;
 import io.github.yhavinga.regelspraak.facts.Inconsistentie;
 import io.github.yhavinga.regelspraak.facts.Kandidaat;
 import io.github.yhavinga.regelspraak.facts.Konto;
@@ -27,6 +28,7 @@ import org.kie.api.runtime.KieSession;
 import org.kie.internal.utils.KieHelper;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -538,6 +540,39 @@ class DroolsExecutionTest {
         assertFalse(k1.isGekozen(), "1 vervuld < 2");
         assertTrue(k2.isGekozen(), "2 vervuld >= 2");
         assertTrue(k3.isGekozen(), "3 vervuld >= 2");
+    }
+
+    @Test void rule_versie_vuurt_alleen_binnen_zijn_geldigheidsvenster() {
+        // §4.2 / §13.4.2.5: the version whose window contains the Rekendatum applies. Two
+        // versions set prijs differently; each fires only in its period, and a Rekendatum
+        // outside both windows leaves the value untouched.
+        String src = """
+            Objecttype de Heffing
+                de prijs Numeriek (geheel getal);
+            Regel verhoog
+                geldig vanaf 2024 t/m 2024
+                    De prijs van een Heffing moet gesteld worden op 100.
+                geldig vanaf 2025
+                    De prijs van een Heffing moet gesteld worden op 200.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        KieBase kb = build(DrlTranspiler.transpile(m));
+
+        assertEquals(0, new BigDecimal("100").compareTo(prijsOp(kb, LocalDate.of(2024, 6, 1))), "in 2024 -> versie #1 (100)");
+        assertEquals(0, new BigDecimal("200").compareTo(prijsOp(kb, LocalDate.of(2025, 6, 1))), "in 2025 -> versie #2 (200)");
+        assertNull(prijsOp(kb, LocalDate.of(2023, 6, 1)), "voor beide vensters -> geen versie vuurt");
+    }
+
+    /** Fire the heffing rules at one Rekendatum and return the resulting prijs. */
+    private static BigDecimal prijsOp(KieBase kb, LocalDate rekendatum) {
+        KieSession sessie = kb.newKieSession();
+        sessie.setGlobal("rekendatum", rekendatum);
+        Heffing h = new Heffing();
+        sessie.insert(h);
+        sessie.fireAllRules();
+        sessie.dispose();
+        return h.getPrijs();
     }
 
     private static Kandidaat kandidaat(int a, int b, int c) {

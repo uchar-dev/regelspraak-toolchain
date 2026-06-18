@@ -327,6 +327,29 @@ class DrlTest {
         assertTrue(drl.contains(" && !("), () -> "precies -> minstens N en niet minstens N+1:\n" + drl);
     }
 
+    @Test void rule_versies_krijgen_een_rekendatum_venster_en_unieke_namen() {
+        // §13.4.2.5 / §4.2: each version becomes a distinct rule guarded by the Rekendatum
+        // window; a single-version "geldig altijd" rule keeps its bare name and no guard.
+        String src = """
+            Objecttype de Heffing
+                de prijs Numeriek (geheel getal);
+            Regel verhoog
+                geldig vanaf 2024 t/m 2024
+                    De prijs van een Heffing moet gesteld worden op 100.
+                geldig vanaf 2025
+                    De prijs van een Heffing moet gesteld worden op 200.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("global java.time.LocalDate rekendatum;"), () -> "rekendatum-global ontbreekt:\n" + drl);
+        assertTrue(drl.contains("rule \"verhoog #1\"") && drl.contains("rule \"verhoog #2\""),
+                () -> "versies krijgen geen unieke namen:\n" + drl);
+        assertTrue(drl.contains("!rekendatum.isBefore(java.time.LocalDate.of(2024, 1, 1))")
+                && drl.contains("!rekendatum.isAfter(java.time.LocalDate.of(2024, 12, 31))"),
+                () -> "venster van versie #1 ontbreekt:\n" + drl);
+        // open-ended "vanaf 2025": a lower bound but no upper
+        assertTrue(drl.contains("!rekendatum.isBefore(java.time.LocalDate.of(2025, 1, 1))"), () -> "venster #2:\n" + drl);
+    }
+
     @Test void namen_worden_geldige_java_identifiers() {
         String src = """
             Objecttype de Natuurlijk persoon

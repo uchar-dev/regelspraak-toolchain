@@ -2,6 +2,7 @@ package io.github.yhavinga.regelspraak.resolver;
 
 import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
+import io.github.yhavinga.regelspraak.ir.Geldigheid;
 import io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
 import io.github.yhavinga.regelspraak.ir.ResolvedVerdeling;
@@ -12,6 +13,7 @@ import io.github.yhavinga.regelspraak.parser.RegelSpraak.*;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.tree.ParseTree;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -38,14 +40,51 @@ final class RuleChecker {
         domeinReferenties(doc);
         for (RegelContext r : doc.regel()) {
             String naam = DefinitionResolver.src(r.regelNaam());
-            for (RegelVersieContext v : r.regelVersie()) {
+            List<RegelVersieContext> versies = r.regelVersie();
+            for (int i = 0; i < versies.size(); i++) {
+                RegelVersieContext v = versies.get(i);
                 RegelSpraakRegelContext rsr = v.regelSpraakRegel();
+                // Each §13.4.2.3 version is a distinct rule selected by Rekendatum (§4.2):
+                // give it its validity window and, when a rule has several, a unique name.
+                Geldigheid geldigheid = geldigheidVan(v.versie());
+                String versieNaam = versies.size() > 1 ? naam + " #" + (i + 1) : naam;
                 bouwer.setSubject(subjectVan(rsr.resultaatDeel())); // so "zijn …" resolves against the rule subject
                 Conditie voorwaarde = rsr.voorwaardeDeel() != null ? bouwVoorwaarde(rsr.voorwaardeDeel()) : null;
-                resultaat(naam, rsr.resultaatDeel(), voorwaarde);
+                resultaat(naam, versieNaam, rsr.resultaatDeel(), voorwaarde, geldigheid);
                 voorwaarden(rsr);   // exhaustive condition type-check (§5), unchanged
             }
         }
+    }
+
+    /** §13.4.2.5 version validity. "geldig altijd" is open both ends; a year shorthand
+     *  widens to the whole year (vanaf -> 1 Jan, t/m -> 31 Dec), t/m being inclusive. */
+    private Geldigheid geldigheidVan(VersieContext v) {
+        if (v == null || v.versieGeldigheid() == null) return Geldigheid.ALTIJD;
+        VersieGeldigheidContext g = v.versieGeldigheid();
+        if (g.ALTIJD() != null) return Geldigheid.ALTIJD;
+        java.util.List<DatumOfJaarContext> data = g.datumOfJaar();
+        if (g.VANAF() != null) {
+            LocalDate vanaf = grens(data.get(0), true);
+            LocalDate tot = g.TM() != null && data.size() > 1 ? grens(data.get(1), false) : null;
+            return new Geldigheid(vanaf, tot);
+        }
+        if (g.TM() != null && !data.isEmpty()) return new Geldigheid(null, grens(data.get(0), false));
+        return Geldigheid.ALTIJD;
+    }
+
+    /** A datumOfJaar to a concrete date. A full DATE is taken as-is; a bare year widens to
+     *  its first day as a lower bound ({@code onder}) or its last day as an upper bound. */
+    private static LocalDate grens(DatumOfJaarContext d, boolean onder) {
+        if (d == null) return null;
+        if (d.DATE() != null) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{1,2})-(\\d{1,2})-(\\d{4})").matcher(d.DATE().getText());
+            if (m.find()) return LocalDate.of(Integer.parseInt(m.group(3)), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(1)));
+            return null;
+        }
+        try {
+            int jaar = Integer.parseInt(d.NUMBER().getText());
+            return onder ? LocalDate.of(jaar, 1, 1) : LocalDate.of(jaar, 12, 31);
+        } catch (NumberFormatException | java.time.DateTimeException e) { return null; }
     }
 
     /** A domain-typed attribute/parameter must reference a declared domain (§13.3.4). */
@@ -61,20 +100,23 @@ final class RuleChecker {
     }
 
     /** Resolve an assignment resultaatdeel into a {@link ResolvedRegel} (the transpiler IR)
-     *  and type-check the value against the target (§6 toekenning). */
-    private void resultaat(String naam, ResultaatDeelContext rd, Conditie voorwaarde) {
+     *  and type-check the value against the target (§6 toekenning). The assignment kinds
+     *  carry the version's {@code geldigheid} and its per-version {@code versieNaam}; the
+     *  other resultaatdeel kinds keep the base {@code naam} and (for now) no validity guard. */
+    private void resultaat(String naam, String versieNaam, ResultaatDeelContext rd,
+                           Conditie voorwaarde, Geldigheid geldigheid) {
         if (rd == null) return;
         if (rd.gelijkstelling() != null) {
             GelijkstellingContext g = rd.gelijkstelling();
             ResolvedRegel.Soort soort = g.WORDT_BEREKEND_ALS() != null
                     ? ResolvedRegel.Soort.BEREKENING : ResolvedRegel.Soort.GELIJKSTELLING;
-            registreer(naam, soort, g.attribuutVanOnderwerp(), g.expressie(), g.getStart().getLine(), voorwaarde);
+            registreer(versieNaam, soort, g.attribuutVanOnderwerp(), g.expressie(), g.getStart().getLine(), voorwaarde, geldigheid);
         } else if (rd.initialisatie() != null) {
             InitialisatieContext i = rd.initialisatie();
-            registreer(naam, ResolvedRegel.Soort.INITIALISATIE, i.attribuutVanOnderwerp(),
-                       i.expressie(), i.getStart().getLine(), voorwaarde);
+            registreer(versieNaam, ResolvedRegel.Soort.INITIALISATIE, i.attribuutVanOnderwerp(),
+                       i.expressie(), i.getStart().getLine(), voorwaarde, geldigheid);
         } else if (rd.kenmerkToekenning() != null) {
-            kenmerk(naam, rd.kenmerkToekenning(), voorwaarde);
+            kenmerk(versieNaam, rd.kenmerkToekenning(), voorwaarde, geldigheid);
         } else if (rd.objectCreatie() != null) {
             objectcreatie(naam, rd.objectCreatie(), voorwaarde);
         } else if (rd.verdeling() != null) {
@@ -178,13 +220,13 @@ final class RuleChecker {
 
     /** §13.4.5 kenmerktoekenning: the subject acquires a kenmerk (a boolean property).
      *  Modelled as setting that boolean attribute to true. */
-    private void kenmerk(String naam, KenmerkToekenningContext kt, Conditie voorwaarde) {
+    private void kenmerk(String naam, KenmerkToekenningContext kt, Conditie voorwaarde, Geldigheid geldigheid) {
         Objecttype subject = bouwer.objecttypeVanKeten(kt.onderwerpKeten());
         String kenmerk = src(kt.kaleNaam()).replaceFirst("^(?i)(de|het|een)\\s+", "");
         Expr doel = new Expr.AttribuutRef(kenmerk, subject, src(kt.onderwerpKeten()),
                 null, new Datatype.Booleaan(), src(kt));
         Expr waarde = new Expr.Literal("waar", new Datatype.Booleaan(), "waar");
-        model.resolvedRegels.add(new ResolvedRegel(naam, ResolvedRegel.Soort.KENMERKTOEKENNING, doel, waarde, voorwaarde));
+        model.resolvedRegels.add(new ResolvedRegel(naam, ResolvedRegel.Soort.KENMERKTOEKENNING, doel, waarde, voorwaarde, geldigheid));
     }
 
     /** The object type a rule is about — the object type of its assignment target. */
@@ -204,10 +246,10 @@ final class RuleChecker {
     }
 
     private void registreer(String naam, ResolvedRegel.Soort soort, AttribuutVanOnderwerpContext doel,
-                            ExpressieContext waarde, int line, Conditie voorwaarde) {
+                            ExpressieContext waarde, int line, Conditie voorwaarde, Geldigheid geldigheid) {
         Expr doelExpr = bouwer.bouwAttribuut(doel);
         Expr waardeExpr = bouwer.bouw(waarde);
-        model.resolvedRegels.add(new ResolvedRegel(naam, soort, doelExpr, waardeExpr, voorwaarde));
+        model.resolvedRegels.add(new ResolvedRegel(naam, soort, doelExpr, waardeExpr, voorwaarde, geldigheid));
         Datatype doelType = doelExpr.type(), waardeType = waardeExpr.type();
         if (doelType.isOnbekend() || waardeType.isOnbekend()) return; // not enough resolved to judge
         String fout = Typering.toekenning(doelType, waardeType);

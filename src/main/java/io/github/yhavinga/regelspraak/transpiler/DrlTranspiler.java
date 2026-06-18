@@ -54,6 +54,11 @@ public final class DrlTranspiler {
             out.append("global ").append(javaType(p.datatype())).append(' ')
                .append(ident(p.naam(), false)).append(";\n");
         if (!model.parameters.isEmpty()) out.append('\n');
+        // §4.2 version selection: a time-bounded rule version guards on the Rekendatum the
+        // runtime supplies, so declare it as a global when any rule actually needs it.
+        boolean tijdgebonden = model.resolvedRegels.stream()
+                .anyMatch(r -> r.geldigheid() != null && !r.geldigheid().altijd());
+        if (tijdgebonden) out.append("global java.time.LocalDate rekendatum;\n\n");
 
         for (ResolvedRegel r : model.resolvedRegels) regel(r);
         for (io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc : model.objectCreaties) objectCreatie(oc);
@@ -113,6 +118,20 @@ public final class DrlTranspiler {
      *  the DRL {@code rule "…"} header and the Inconsistentie string literal stay
      *  well-formed (an unescaped quote fails the whole Drools package). */
     private static String escapeRegelNaam(String naam) { return naam.replace("\"", "'"); }
+
+    /** The §4.2 validity guard: an eval over the Rekendatum global that fires only inside the
+     *  version's window. Null-guarded so an unset Rekendatum simply doesn't match (no NPE), and
+     *  the inclusive bounds use isBefore/isAfter negations (LocalDate has no &lt;= operator). */
+    private static String geldigheidGuard(io.github.yhavinga.regelspraak.ir.Geldigheid g) {
+        StringJoiner sj = new StringJoiner(" && ", "eval( ", " )");
+        sj.add("rekendatum != null");
+        if (g.vanaf() != null) sj.add("!rekendatum.isBefore(" + datumLit(g.vanaf()) + ")");
+        if (g.tot() != null)   sj.add("!rekendatum.isAfter(" + datumLit(g.tot()) + ")");
+        return sj.toString();
+    }
+    private static String datumLit(java.time.LocalDate d) {
+        return "java.time.LocalDate.of(" + d.getYear() + ", " + d.getMonthValue() + ", " + d.getDayOfMonth() + ")";
+    }
 
     /** The negation of a consistency assertion — what makes the rule fire (the
      *  violation). A comparison flips to its complement; an emptiness predicate flips
@@ -230,6 +249,9 @@ public final class DrlTranspiler {
             out.append("    ").append(SUBJECT).append(" : ").append(ident(subject.naam, true))
                .append("( ").append(constraint).append(" )\n");
             for (String acc : accumulates) out.append("    ").append(acc).append('\n');
+            // §4.2: a time-bounded version only fires when the Rekendatum is in its window.
+            if (r.geldigheid() != null && !r.geldigheid().altijd())
+                out.append("    ").append(geldigheidGuard(r.geldigheid())).append('\n');
         }
         out.append("then\n");
         if (valueStr != null && r.doel() instanceof Expr.AttribuutRef a) {
