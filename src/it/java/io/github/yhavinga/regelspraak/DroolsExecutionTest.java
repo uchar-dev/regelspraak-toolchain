@@ -595,6 +595,50 @@ class DroolsExecutionTest {
         assertNull(factuurBedragOp(kb, LocalDate.of(2023, 6, 1)), "voor beide vensters -> geen factuur aangemaakt");
     }
 
+    @Test void verdeling_versies_compileren_en_vuren_alleen_binnen_hun_venster() {
+        // p6b for a verdeling: two versions guard on the Rekendatum and must compile to distinct
+        // DRL rules (the $src/accumulate/$r when-shape with an added eval). In-window the pot is
+        // distributed; outside every window no version fires.
+        String src = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel
+                geldig vanaf 2024 t/m 2024
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld in gelijke delen.
+                geldig vanaf 2025
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld in gelijke delen.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rule \"verdeel #1\"") && drl.contains("rule \"verdeel #2\""), () -> "versie-namen:\n" + drl);
+        KieBase kb = build(drl); // asserts the package COMPILES (guard in the $src/accumulate/$r shape)
+
+        assertEquals(0, new BigDecimal("30").compareTo(aandeelOp(kb, LocalDate.of(2024, 6, 1))), "in 2024 -> verdeeld (90/3)");
+        assertNull(aandeelOp(kb, LocalDate.of(2023, 6, 1)), "voor beide vensters -> niet verdeeld");
+    }
+
+    /** Fire the verdeel rules at one Rekendatum over a Pot(90) with 3 Deelnemers; return one
+     *  deelnemer's aandeel, or null when no version fired. */
+    private static BigDecimal aandeelOp(KieBase kb, LocalDate rekendatum) {
+        KieSession sessie = kb.newKieSession();
+        sessie.setGlobal("rekendatum", rekendatum);
+        Pot p = new Pot(); p.setTotaal(new BigDecimal("90"));
+        Deelnemer d1 = new Deelnemer(); d1.setPot(p);
+        Deelnemer d2 = new Deelnemer(); d2.setPot(p);
+        Deelnemer d3 = new Deelnemer(); d3.setPot(p);
+        sessie.insert(p); sessie.insert(d1); sessie.insert(d2); sessie.insert(d3);
+        sessie.fireAllRules();
+        sessie.dispose();
+        return d1.getAandeel();
+    }
+
     /** Fire the objectcreatie rules at one Rekendatum over a Bestelling(waarde=50); return the
      *  created Factuur's bedrag, or null when no Factuur was created. */
     private static BigDecimal factuurBedragOp(KieBase kb, LocalDate rekendatum) {
