@@ -272,9 +272,9 @@ final class ExpressieBouwer {
         if (noun != null && huidigSubject != null && ot != huidigSubject
                 && model.verbindendeRolViaNaam(huidigSubject, ot, noun) == null) {
             Objecttype viaRol = model.rolDoeltypeNaarSubject(huidigSubject, noun);
-            if (viaRol != null && viaRol.attributen.get(attr) != null) { ot = viaRol; navRol = noun; }
+            if (viaRol != null && viaRol.attribuut(attr) != null) { ot = viaRol; navRol = noun; }
         }
-        Datatype dt = ot != null && ot.attributen.get(attr) != null ? ot.attributen.get(attr) : onbekend();
+        Datatype dt = ot != null && ot.attribuut(attr) != null ? ot.attribuut(attr) : onbekend();
         return new Expr.AttribuutRef(attr, ot, onderwerpBron, navRol, dt, bron);
     }
 
@@ -286,7 +286,7 @@ final class ExpressieBouwer {
         OnderwerpKetenContext k = o.onderwerpKeten();
         if (k.ZIJN() == null || k.kaleNaam() == null) return null;
         String attr = src(k.kaleNaam());
-        Datatype dt = huidigSubject.attributen.get(attr);
+        Datatype dt = huidigSubject.attribuut(attr);
         // a subject-own attribute — no role navigation
         return dt != null ? new Expr.AttribuutRef(attr, huidigSubject, "zijn", null, dt, bron) : null;
     }

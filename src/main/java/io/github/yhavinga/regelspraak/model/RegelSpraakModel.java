@@ -248,6 +248,26 @@ public final class RegelSpraakModel {
         public final Map<String, Datatype> attributen = new LinkedHashMap<>();
         public final List<String> kenmerken = new ArrayList<>();
         public Objecttype(String naam) { this.naam = naam; }
+
+        /** The declared datatype of attribute {@code naam}, matched case-INsensitively —
+         *  object-type names already resolve this way (see {@link #objecttypeOpNaam}), so a
+         *  reference that differs only in case (TOKA writes both "datum-tijd" and
+         *  "Datum-tijd") binds the same attribute. Null when this type declares no such
+         *  attribute. */
+        public Datatype attribuut(String naam) {
+            Datatype exact = attributen.get(naam);
+            if (exact != null) return exact;
+            for (var e : attributen.entrySet())
+                if (e.getKey().equalsIgnoreCase(naam)) return e.getValue();
+            return null;
+        }
+
+        /** Does this type declare a member named {@code naam} (an attribute or a kenmerk),
+         *  case-insensitively? Used to decide whether a navigation can emit a getter for it
+         *  or must stay an honest marker. */
+        public boolean heeftLid(String naam) {
+            return attribuut(naam) != null || kenmerken.stream().anyMatch(k -> k.equalsIgnoreCase(naam));
+        }
     }
 
     public record Parameter(String naam, Datatype datatype) {}

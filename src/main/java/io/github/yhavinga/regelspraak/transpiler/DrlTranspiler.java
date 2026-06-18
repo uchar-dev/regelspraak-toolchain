@@ -304,11 +304,20 @@ public final class DrlTranspiler {
         return model.verbindendeRol(subject, a.objecttype());
     }
 
+    /** True when the reference is bound to a known object type that does NOT declare the
+     *  attribute (nor a kenmerk by that name). Emitting `getX()` for it would call a method
+     *  the fact has no declaration for — uncompilable DRL — so the caller emits a marker
+     *  instead. (A null object type is already handled by {@link #naviRol} returning null.) */
+    private static boolean attribuutOntbreekt(Expr.AttribuutRef a) {
+        return a.objecttype() != null && !a.objecttype().heeftLid(a.attribuut());
+    }
+
     // ---------------- value expression ("then" side: getters) ----------------
     private String waarde(Expr e, Objecttype subject) {
         if (e instanceof Expr.Literal lit)      return literal(lit);
         if (e instanceof Expr.ParameterRef p)   return ident(p.parameter().naam(), false);
         if (e instanceof Expr.AttribuutRef a) {
+            if (attribuutOntbreekt(a)) return todo("navigatie", a.bron());
             String rol = naviRol(subject, a);
             if (EIGEN.equals(rol)) return SUBJECT + "." + getter(a.attribuut()) + "()";
             if (rol != null)       return SUBJECT + "." + getter(rol) + "()." + getter(a.attribuut()) + "()";
@@ -468,6 +477,7 @@ public final class DrlTranspiler {
      *  related object's attribute reads as a property path ("reis.vluchtdatum"). */
     private String operand(Expr e, Objecttype subject) {
         if (e instanceof Expr.AttribuutRef a) {
+            if (attribuutOntbreekt(a)) return todo("navigatie", a.bron());
             String rol = naviRol(subject, a);
             if (EIGEN.equals(rol)) return ident(a.attribuut(), false);
             if (rol != null)       return ident(rol, false) + "." + ident(a.attribuut(), false);

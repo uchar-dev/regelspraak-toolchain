@@ -267,6 +267,102 @@ class DroolsExecutionTest {
         assertFalse(onder.isOud(), "20 mnd > 2 jr (24) moet onwaar zijn");
     }
 
+    @Test void afwezig_attribuut_op_doeltype_wordt_marker_in_de_waarde() {
+        // p7b: a navigation reads an attribute the target type does not declare (Luchthaven
+        // has afstand, not rang). Emitting $subject.getBestemming().getRang() would call a
+        // method the fact has no declaration for -> uncompilable DRL. The transpiler must
+        // emit a /* TODO navigatie */ marker instead, which compiles and leaves the field unset.
+        String src = """
+            Objecttype de Reiziger
+                de doelrang Numeriek (geheel getal);
+            Objecttype de Luchthaven
+                de afstand Numeriek (geheel getal) met eenheid km;
+            Feittype reis naar luchthaven
+                de reiziger Reiziger
+                de bestemming Luchthaven
+            Eén reiziger reist naar één bestemming
+            Regel rang overnemen
+                geldig altijd
+                    De doelrang van een Reiziger moet gesteld worden op de rang van de bestemming.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("TODO navigatie"), () -> "afwezig attribuut moet een marker zijn:\n" + drl);
+        assertFalse(drl.contains("getRang()"), () -> "mag geen getter voor een afwezig attribuut emitteren:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();   // build() asserts the DRL COMPILES
+        Reiziger r = new Reiziger(); r.setBestemming(new Luchthaven());
+        sessie.insert(r);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertNull(r.getDoelrang(), () -> "doelrang moet leeg blijven, kreeg " + r.getDoelrang());
+    }
+
+    @Test void afwezig_attribuut_in_een_voorwaarde_compileert_en_vuurt_niet() {
+        // p7b, the harder position: the absent attribute is a CONDITION operand. A broken
+        // getter in a pattern constraint fails to compile and would sink the whole package;
+        // the marker must keep the DRL compiling, and the un-evaluable condition must not fire.
+        String src = """
+            Objecttype de Reiziger
+                de doelrang Numeriek (geheel getal);
+            Objecttype de Luchthaven
+                de afstand Numeriek (geheel getal) met eenheid km;
+            Feittype reis naar luchthaven
+                de reiziger Reiziger
+                de bestemming Luchthaven
+            Eén reiziger reist naar één bestemming
+            Regel rang conditie
+                geldig altijd
+                    De doelrang van een Reiziger moet gesteld worden op 5
+                    indien de rang van de bestemming groter is dan 3.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();   // build() asserts the DRL COMPILES
+        Reiziger r = new Reiziger(); r.setBestemming(new Luchthaven());
+        sessie.insert(r);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertNull(r.getDoelrang(), () -> "een onevalueerbare voorwaarde mag niet vuren, kreeg " + r.getDoelrang());
+    }
+
+    @Test void attribuutverwijzing_bindt_hoofdletterongevoelig() {
+        // Object-type names already resolve case-insensitively; an attribute reference that
+        // differs only in case ("de Afstand" vs declared "afstand") must bind the same
+        // attribute and emit the getter, not be dropped to a marker. Proven by firing: 250.
+        String src = """
+            Objecttype de Reiziger
+                de afstand tot doel Numeriek (geheel getal) met eenheid km;
+            Objecttype de Luchthaven
+                de afstand Numeriek (geheel getal) met eenheid km;
+            Feittype reis naar luchthaven
+                de reiziger Reiziger
+                de bestemming Luchthaven
+            Eén reiziger reist naar één bestemming
+            Regel afstand overnemen
+                geldig altijd
+                    De afstand tot doel van een Reiziger moet gesteld worden op de Afstand van de bestemming.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("$subject.getBestemming().getAfstand()"),
+                () -> "hoofdletterongevoelige verwijzing moet de getter binden:\n" + drl);
+        assertFalse(drl.contains("TODO navigatie"), () -> "mag geen marker zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Luchthaven doel = new Luchthaven(); doel.setAfstand(new BigDecimal("250"));
+        Reiziger r = new Reiziger(); r.setBestemming(doel);
+        sessie.insert(doel); sessie.insert(r);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("250").compareTo(r.getAfstandTotDoel()),
+                () -> "Afstand (250) moet binden ondanks hoofdletter, kreeg " + r.getAfstandTotDoel());
+    }
+
     @Test void navigatie_bindt_de_rol_die_de_bron_noemt_niet_een_willekeurige() {
         // Two feittypen connect the SAME object-type pair (Burger↔Trip) and a wederkerig
         // Partnerrelatie connects Burger to itself. A by-pair join is ambiguous for both
