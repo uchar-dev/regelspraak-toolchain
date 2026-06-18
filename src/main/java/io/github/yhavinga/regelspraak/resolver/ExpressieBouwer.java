@@ -143,12 +143,16 @@ final class ExpressieBouwer {
         String bron = src(f);
         Expr.FunctieKind kind = functieKind(f);
         List<Expr> argumenten = args(f);
-        // §13.4.17.47 telling vs a declared name that merely begins with "aantal":
-        // "het aantal <X>" is a count only when <X> denotes a countable element. When it
-        // binds none AND the whole phrase is a declared parameter, it is that reference, not
-        // a count — TOKA's parameter "aantal treinmiles per passagier voor contingent" is
-        // written "het aantal treinmiles per passagier voor contingent". Conservative: only
-        // when the count has no element, so a real telling is never reinterpreted.
+        // §13.4.17.47 telling vs a declared parameter whose name begins with "aantal": the spec
+        // gives no syntactic tie-break for "het aantal <phrase>" (a count of <phrase>, or a
+        // reference to a declared name "aantal <phrase>"). Resolve it by countability: a count
+        // ranges over a countable element, so when "het aantal <phrase>" binds none AND the whole
+        // phrase is a declared parameter, read it as that parameter — TOKA declares the parameter
+        // "aantal treinmiles per passagier voor contingent", written "het aantal treinmiles per
+        // passagier voor contingent". In a well-formed model a genuine count always binds an
+        // element (so is never reinterpreted); only a count phrase that cannot resolve a countable
+        // element falls back to a same-named declared parameter, where the parameter is the
+        // concrete reading and the count reading is meaningless.
         if (kind == Expr.FunctieKind.AANTAL && aggregatieElement(kind, argumenten) == null) {
             Expr ref = naamRef(bron, false, bron);
             if (!(ref instanceof Expr.Onopgelost)) return ref;

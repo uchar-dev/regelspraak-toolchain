@@ -189,13 +189,43 @@ the function argument run as a full `expressie`, so "de wortel van X afgerond �
 absorb a trailing operator into X. To be fixed by requiring the afronding and giving
 these functions a higher-precedence operand sub-rule.
 
-### Known precedence limitation (telling + arithmetic)
+### Telling (aantal) operand precedence — fixed, with a deliberate EBNF asymmetry
 
-"het aantal <X> maal <Y>" parses as a count of "(X maal Y)" rather than "(count of
-X) maal Y", because the telling's argument is a full `expressie` and greedily takes
-the product. Like the begrenzing/afronding case, this is a precedence split the
-grammar does not yet make, so such a count surfaces in the IR (and DRL) as an
-unresolved aggregation rather than an accumulate over X. Noted for a focused fix.
+The §13.4.17.46 EBNF and syntax diagram give all four `getalaggregatie` functions the
+same operand non-terminal — `<getalaggregatiefunctie> <expressie>`, so the count, the
+sum, and min/max alike take a full `<expressie>`. Taken literally that makes
+"het aantal X maal Y" a count of "(X maal Y)": the operand greedily absorbs the
+trailing `maal`. On the TOKA contingent rule that swallowed the whole product into the
+count and lowered it to a null marker — the core "aantal passagiers maal aantal
+treinmiles per passagier" calculation produced nothing.
+
+The fix gives **only** the telling a higher-precedence operand — `HET AANTAL_WORD
+primaireExpressie` — so a trailing `maal`/`plus` binds outside the count and
+"het aantal X maal Y" is "(count of X) maal Y". `de som van` / `de maximale waarde
+van` / `de minimale waarde van` keep their full `<expressie>` operand. This per-function
+asymmetry is a deliberate divergence from §13.4.17.46's symmetric EBNF, and it is what
+the **typeringen** matrix mandates: §4.11 — "de *aantal* operator kan alleen gebruik
+maken van onderwerpexpressies" (a count ranges over an object/multiplicity expression,
+never an arithmetic one), whereas §5.8.2 explicitly allows a sum's operand to be "een
+rekenkundige expressie." So the count must stop at its objectexpressie while the sum
+keeps reading the arithmetic. (`primaireExpressie` is slightly broader than an
+objectexpressie — it also admits literals and a nested function call — but it excludes
+the binary-operator alternatives, which is the precedence point.)
+
+Tightening the operand surfaced a telling-vs-name ambiguity the absorbed argument had
+hidden: a parameter may be named beginning with "aantal" (TOKA's "aantal treinmiles per
+passagier voor contingent", referenced "het aantal treinmiles per passagier voor
+contingent"). The spec offers no syntactic tie-break, so the resolver decides by
+countability: when "het aantal <phrase>" binds no countable element and the whole
+phrase is a declared parameter, it is read as that parameter (a genuine count always
+binds an element in a well-formed model, so it is never reinterpreted).
+
+### Known precedence limitation (begrenzing/afronding, wortel/macht)
+
+The same "operand is a full `expressie`" greediness remains for the bounding/rounding
+wrappers and `de wortel van` / `tot de macht` (their mandatory `<afronding>` is still
+optional and the argument runs as a full `expressie`). Carded for a focused fix; only
+the telling case above is resolved.
 
 ### Forms still modelled at main-clause word order (resolver-side concern)
 
