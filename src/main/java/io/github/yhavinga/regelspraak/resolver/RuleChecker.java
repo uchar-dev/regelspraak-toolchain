@@ -41,12 +41,19 @@ final class RuleChecker {
         for (RegelContext r : doc.regel()) {
             String naam = DefinitionResolver.src(r.regelNaam());
             List<RegelVersieContext> versies = r.regelVersie();
+            // §13.4.2.5 validity per version, computed up front so §4.2's non-overlap
+            // invariant can be checked across the rule's versions. A version whose validity
+            // bound is malformed is null here (already diagnosed) and is not emitted.
+            List<Geldigheid> gelden = new ArrayList<>();
+            for (RegelVersieContext v : versies) gelden.add(geldigheidVan(v.versie()));
+            if (versies.size() > 1) meldOverlap(naam, gelden, r.getStart().getLine());
             for (int i = 0; i < versies.size(); i++) {
+                Geldigheid geldigheid = gelden.get(i);
+                if (geldigheid == null) continue; // malformed validity bound — already reported
                 RegelVersieContext v = versies.get(i);
                 RegelSpraakRegelContext rsr = v.regelSpraakRegel();
                 // Each §13.4.2.3 version is a distinct rule selected by Rekendatum (§4.2):
-                // give it its validity window and, when a rule has several, a unique name.
-                Geldigheid geldigheid = geldigheidVan(v.versie());
+                // when a rule has several, give each a unique name.
                 String versieNaam = versies.size() > 1 ? naam + " #" + (i + 1) : naam;
                 bouwer.setSubject(subjectVan(rsr.resultaatDeel())); // so "zijn …" resolves against the rule subject
                 Conditie voorwaarde = rsr.voorwaardeDeel() != null ? bouwVoorwaarde(rsr.voorwaardeDeel()) : null;
@@ -56,35 +63,85 @@ final class RuleChecker {
         }
     }
 
-    /** §13.4.2.5 version validity. "geldig altijd" is open both ends; a year shorthand
-     *  widens to the whole year (vanaf -> 1 Jan, t/m -> 31 Dec), t/m being inclusive. */
+    /** §4.2 (spec line 1387): the validity periods of a rule's versions must not overlap —
+     *  otherwise more than one version applies at a Rekendatum (and, writing the same
+     *  attribute, they ping-pong in the engine). Flag any intersecting pair. */
+    private void meldOverlap(String naam, List<Geldigheid> gelden, int line) {
+        for (int i = 0; i < gelden.size(); i++)
+            for (int j = i + 1; j < gelden.size(); j++) {
+                Geldigheid a = gelden.get(i), b = gelden.get(j);
+                if (a != null && b != null && overlapt(a, b)) {
+                    model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                            "geldigheidsperioden van regelversies overlappen (regel '" + naam + "')", line));
+                    return;
+                }
+            }
+    }
+    /** Two inclusive windows intersect unless one's upper bound is strictly before the
+     *  other's lower bound; a null bound is an open end (±∞), so ALTIJD overlaps everything. */
+    private static boolean overlapt(Geldigheid a, Geldigheid b) {
+        return !voorbij(a.tot(), b.vanaf()) && !voorbij(b.tot(), a.vanaf());
+    }
+    private static boolean voorbij(LocalDate tot, LocalDate vanaf) {
+        return tot != null && vanaf != null && tot.isBefore(vanaf);
+    }
+
+    /** §13.4.2.5 version validity, or null when a present bound is not a valid date/year
+     *  (already diagnosed): such a version is dropped, not silently made always-active.
+     *  "geldig altijd" is open both ends; a year widens to the whole year (vanaf -> 1 Jan,
+     *  t/m -> 31 Dec), t/m being inclusive. */
     private Geldigheid geldigheidVan(VersieContext v) {
         if (v == null || v.versieGeldigheid() == null) return Geldigheid.ALTIJD;
         VersieGeldigheidContext g = v.versieGeldigheid();
         if (g.ALTIJD() != null) return Geldigheid.ALTIJD;
+        int line = v.getStart().getLine();
         java.util.List<DatumOfJaarContext> data = g.datumOfJaar();
+        LocalDate vanaf = null, tot = null;
         if (g.VANAF() != null) {
-            LocalDate vanaf = grens(data.get(0), true);
-            LocalDate tot = g.TM() != null && data.size() > 1 ? grens(data.get(1), false) : null;
-            return new Geldigheid(vanaf, tot);
+            vanaf = grensOfMeld(data.get(0), true, line);
+            if (vanaf == null) return null;
+            if (g.TM() != null && data.size() > 1) {
+                tot = grensOfMeld(data.get(1), false, line);
+                if (tot == null) return null;
+            }
+        } else if (g.TM() != null && !data.isEmpty()) {
+            tot = grensOfMeld(data.get(0), false, line);
+            if (tot == null) return null;
         }
-        if (g.TM() != null && !data.isEmpty()) return new Geldigheid(null, grens(data.get(0), false));
-        return Geldigheid.ALTIJD;
+        return new Geldigheid(vanaf, tot);
     }
 
-    /** A datumOfJaar to a concrete date. A full DATE is taken as-is; a bare year widens to
-     *  its first day as a lower bound ({@code onder}) or its last day as an upper bound. */
+    /** Resolve a validity bound, or report an ERROR and return null when it is neither a
+     *  valid calendar date (dd-mm-jjjj) nor a four-digit year (§13.2.24). */
+    private LocalDate grensOfMeld(DatumOfJaarContext d, boolean onder, int line) {
+        LocalDate b = grens(d, onder);
+        if (b == null)
+            model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                    "ongeldige versiegeldigheidsgrens '" + (d != null ? src(d) : "")
+                            + "' (verwacht een datum dd-mm-jjjj of een jaartal van vier cijfers)", line));
+        return b;
+    }
+
+    /** A datumOfJaar to a concrete date, or null when it is not a real calendar date or a
+     *  four-digit year. Never throws — an out-of-range day/month/year yields null. */
     private static LocalDate grens(DatumOfJaarContext d, boolean onder) {
         if (d == null) return null;
         if (d.DATE() != null) {
             java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{1,2})-(\\d{1,2})-(\\d{4})").matcher(d.DATE().getText());
-            if (m.find()) return LocalDate.of(Integer.parseInt(m.group(3)), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(1)));
-            return null;
+            if (!m.find()) return null;
+            try {
+                return LocalDate.of(Integer.parseInt(m.group(3)), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(1)));
+            } catch (java.time.DateTimeException e) { return null; }
         }
-        try {
-            int jaar = Integer.parseInt(d.NUMBER().getText());
-            return onder ? LocalDate.of(jaar, 1, 1) : LocalDate.of(jaar, 12, 31);
-        } catch (NumberFormatException | java.time.DateTimeException e) { return null; }
+        // §13.2.24: a bare year is exactly four digits — reject a decimal/fraction/signed/
+        // out-of-range NUMBER the grammar's generic token would otherwise admit.
+        if (d.NUMBER() != null && d.NUMBER().getText().matches("\\d{4}")) {
+            try {
+                int jaar = Integer.parseInt(d.NUMBER().getText());
+                return onder ? LocalDate.of(jaar, 1, 1) : LocalDate.of(jaar, 12, 31);
+            } catch (NumberFormatException | java.time.DateTimeException e) { return null; }
+        }
+        return null;
     }
 
     /** A domain-typed attribute/parameter must reference a declared domain (§13.3.4). */

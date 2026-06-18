@@ -164,6 +164,63 @@ class RuleCheckTest {
                 () -> "verwachtte een drempel-fout, kreeg: " + m.errors());
     }
 
+    static final String HEFFING = """
+        Objecttype de Heffing
+            de prijs Numeriek (geheel getal);
+        """;
+
+    @Test void overlappende_regelversie_perioden_worden_gemeld() {
+        // §4.2 (spec l.1387): version validity periods must not overlap — else more than one
+        // version applies at a Rekendatum (and writing the same attribute they loop in the engine).
+        String src = HEFFING + """
+            Regel verhoog
+                geldig vanaf 2020 t/m 2022
+                    De prijs van een Heffing moet gesteld worden op 100.
+                geldig vanaf 2021 t/m 2023
+                    De prijs van een Heffing moet gesteld worden op 200.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("overlappen")),
+                () -> "verwachtte een overlap-fout, kreeg: " + m.errors());
+    }
+
+    @Test void niet_overlappende_regelversies_geen_fout() {
+        String src = HEFFING + """
+            Regel verhoog
+                geldig vanaf 2024 t/m 2024
+                    De prijs van een Heffing moet gesteld worden op 100.
+                geldig vanaf 2025
+                    De prijs van een Heffing moet gesteld worden op 200.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+    }
+
+    @Test void ongeldige_versiegeldigheidsgrens_wordt_gemeld_niet_stil_altijd() {
+        // a decimal "year" can't resolve to a date; it must error, not silently collapse the
+        // bounded version to always-active (§13.2.24 year is four digits).
+        String src = HEFFING + """
+            Regel verhoog
+                geldig vanaf 2024,5
+                    De prijs van een Heffing moet gesteld worden op 100.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("versiegeldigheidsgrens")),
+                () -> "verwachtte een grens-fout, kreeg: " + m.errors());
+    }
+
+    @Test void kalender_ongeldige_datum_in_geldigheid_crasht_niet_maar_meldt() {
+        // an out-of-range calendar date must be a diagnostic, not an uncaught DateTimeException.
+        String src = HEFFING + """
+            Regel verhoog
+                geldig t/m 31-06-2022
+                    De prijs van een Heffing moet gesteld worden op 100.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src); // must not throw
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("versiegeldigheidsgrens")),
+                () -> "verwachtte een grens-fout, kreeg: " + m.errors());
+    }
+
     @Test void onoplosbare_referentie_geeft_geen_valse_fout() {
         // a deep van-chain the checker cannot fully resolve must NOT be reported as an error
         String src = MODEL + """
