@@ -271,4 +271,80 @@ class RuleCheckTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "geen valse positief verwacht, kreeg: " + m.errors());
     }
+
+    @Test void maximale_waarde_met_niet_numerieke_operand_wordt_gemeld() {
+        // §4.13 Tabel 23: every "maximale waarde van"-operand must be numeriek; a Tekst operand
+        // (here "de naam") is a type error.
+        String src = MODEL + """
+            Regel maxfout
+                geldig altijd
+                    De teller van een Ding moet gesteld worden op de maximale waarde van de naam van een Ding en de teller van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("maximale waarde van vereist numerieke")),
+                () -> "verwachtte een operand-typefout voor maximale waarde van, kreeg: " + m.errors());
+    }
+
+    @Test void minimale_waarde_met_onverenigbare_eenheden_wordt_gemeld() {
+        // §4.12 Tabel 22: operanden met eenheden die niet in elkaar om te rekenen zijn (km vs €).
+        String src = """
+            Eenheidsysteem Afstand
+                de kilometer km
+            Eenheidsysteem Geld
+                de euro EUR
+            Objecttype de Ding
+                de afstand Numeriek (geheel getal) met eenheid km;
+                de prijs Numeriek (geheel getal) met eenheid EUR;
+                de uitkomst Numeriek (geheel getal) met eenheid km;
+            Regel eenheidfout
+                geldig altijd
+                    De uitkomst van een Ding moet gesteld worden op de minimale waarde van de afstand van een Ding en de prijs van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("niet in elkaar om te rekenen")),
+                () -> "verwachtte een eenheidfout voor minimale waarde van, kreeg: " + m.errors());
+    }
+
+    @Test void schone_maximale_waarde_geen_fout() {
+        // two numeriek operands, no units -> no false positive.
+        String src = MODEL + """
+            Regel maxok
+                geldig altijd
+                    De teller van een Ding moet gesteld worden op de maximale waarde van de teller van een Ding en de teller van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+    }
+
+    @Test void eerste_van_met_niet_datum_operand_wordt_gemeld() {
+        // §4.14 Tabel 24: "eerste van" is a datumaggregatie — every operand must be a datum;
+        // a Numeriek operand ("de teller") is a type error.
+        String src = """
+            Objecttype de Ding
+                de start Datum in dagen;
+                de teller Numeriek (geheel getal);
+                de uitkomst Datum in dagen;
+            Regel datumfout
+                geldig altijd
+                    De uitkomst van een Ding moet gesteld worden op de eerste van de start van een Ding en de teller van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("eerste van vereist datumexpressies")),
+                () -> "verwachtte een datum-operandfout voor eerste van, kreeg: " + m.errors());
+    }
+
+    @Test void schone_eerste_van_geen_fout() {
+        // two same-precision datums -> no false positive.
+        String src = """
+            Objecttype de Ding
+                de start Datum in dagen;
+                de einde Datum in dagen;
+                de uitkomst Datum in dagen;
+            Regel datumok
+                geldig altijd
+                    De uitkomst van een Ding moet gesteld worden op de eerste van de start van een Ding en de einde van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+    }
 }

@@ -125,6 +125,50 @@ public final class Typering {
         return null;
     }
 
+    /** §4.12/4.13 Tabel 22/23 — minimale/maximale waarde van (getalaggregatiefunctie): every
+     *  operand must be a numerieke expressie, and "wanneer eenheden worden gebruikt, deze in
+     *  elkaar om te rekenen zijn." Read getalachtig (Numeriek OR Percentage) rather than strictly
+     *  Numeriek, mirroring the §5.1-5.4 ordinal comparison — min/max is repeated ordinal selection,
+     *  and that comparison admits a Percentage. The unit rule is the STRICT §4 one (unlike the
+     *  lenient {@link #begrenzing}): all operands unitless, or all unit-bearing and pairwise
+     *  inter-convertible — no TOKA quirk forces leniency here (its lone max is single-operand).
+     *  Onbekend operands make no claim (skipped); a single operand is trivially well-typed.
+     *  Returns the diagnostic, or null when ok. */
+    public static String getalAggregatie(String functie, java.util.List<Datatype> operanden) {
+        Eenheid ref = null; boolean refGezet = false;
+        for (Datatype d : operanden) {
+            if (d.isOnbekend()) continue;
+            if (!d.isGetalachtig())
+                return functie + " vereist numerieke operanden, kreeg " + d.naam();
+            Eenheid e = d.eenheidOf();
+            if (!refGezet) { ref = e; refGezet = true; continue; }
+            if ((ref == null) != (e == null))
+                return functie + ": als één operand een eenheid heeft, moeten alle operanden er een hebben";
+            if (ref != null && !ref.convertibleNaar(e))
+                return functie + ": eenheden '" + ref.afkorting() + "' en '" + e.afkorting()
+                        + "' zijn niet in elkaar om te rekenen";
+        }
+        return null;
+    }
+
+    /** §4.14/4.15 Tabel 24/25 — eerste/laatste van (datumaggregatiefunctie): every operand must
+     *  be a datumexpressie, and "alle expressies dezelfde tijd-precisie bevatten" — modelled as
+     *  the same concrete date kind (all {@link Datatype.DatumInDagen} or all {@link
+     *  Datatype.DatumTijd}). Onbekend = no claim. Returns the diagnostic, or null when ok. */
+    public static String datumAggregatie(String functie, java.util.List<Datatype> operanden) {
+        Datatype ref = null;
+        for (Datatype d : operanden) {
+            if (d.isOnbekend()) continue;
+            if (!d.isDatum())
+                return functie + " vereist datumexpressies, kreeg " + d.naam();
+            if (ref == null) { ref = d; continue; }
+            if (!ref.getClass().equals(d.getClass()))
+                return functie + ": alle datumexpressies moeten dezelfde tijd-precisie hebben, kreeg "
+                        + ref.naam() + " en " + d.naam();
+        }
+        return null;
+    }
+
     /** §5.11-5.16 one-sided predicates. */
     public static Resultaat predicaat(UnairePred p, Datatype operand) {
         if (operand.isOnbekend()) return Resultaat.ok(new Datatype.Booleaan());

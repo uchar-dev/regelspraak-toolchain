@@ -378,10 +378,42 @@ public final class DrlTranspiler {
         }
         if (e instanceof Expr.Constante c)      return todo("constante", c.naam());
         if (e instanceof Expr.Functie f) {
+            String concat = concatenatieAggregatie(f, subject); // pairwise min/max over listed operands
+            if (concat != null) return concat;
             String var = accumulate(f, subject);              // hoists an accumulate into the "when"
             return var != null ? var : todo("aggregatie " + f.kind(), f.bron());
         }
         return todo("expressie", e.bron());
+    }
+
+    /**
+     * §4.12-4.15 / §5.8.3-5.8.4 concatenation-of-expressies form: "de minimale/maximale/eerste/
+     * laatste van A en B [en C …]" over two-or-more LISTED scalar operands — distinct from the
+     * single-operand collection aggregation (handled by {@link #accumulate}, which ranges over
+     * instances). Lowered as a left fold of ternaries: min/eerste keeps the smaller/earlier, max/
+     * laatste the larger/later. Numeric operands are restated in the first operand's unit before
+     * comparing (the result unit "Eenheid1", Tabel 22/23), exactly as +/- and begrenzing do;
+     * dates lower to Comparable LocalDate(Time), which mvel's &lt;/&gt; compare directly. Returns
+     * null for the single-operand collection form and for non-min/max/eerste/laatste kinds, and
+     * falls through to the marker path on any operand that cannot be lowered.
+     */
+    private String concatenatieAggregatie(Expr.Functie f, Objecttype subject) {
+        String cmp = switch (f.kind()) {
+            case MINIMUM, EERSTE  -> "<";   // keep the smaller / earlier
+            case MAXIMUM, LAATSTE -> ">";   // keep the larger / later
+            default -> null;
+        };
+        if (cmp == null || f.argumenten().size() < 2) return null;
+        Datatype doel = f.argumenten().get(0).type();          // Eenheid1: result carries the first operand's unit
+        String acc = waarde(f.argumenten().get(0), subject);
+        if (bevatMarker(acc)) return null;
+        for (int i = 1; i < f.argumenten().size(); i++) {
+            Expr arg = f.argumenten().get(i);
+            String x = omrekenWaarde(waarde(arg, subject), arg.type(), doel);
+            if (bevatMarker(x)) return null;
+            acc = "(" + acc + " " + cmp + " " + x + " ? " + acc + " : " + x + ")";
+        }
+        return acc;
     }
 
     /**

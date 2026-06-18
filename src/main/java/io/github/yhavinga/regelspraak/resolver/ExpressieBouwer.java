@@ -170,6 +170,7 @@ final class ExpressieBouwer {
             Expr ref = naamRef(bron, false, bron);
             if (!(ref instanceof Expr.Onopgelost)) return ref;
         }
+        meldAggregatie(kind, argumenten, f);
         Datatype type = f instanceof TijdsduurFuncContext t ? tijdsduurType(t) : functieType(kind, argumenten);
         Expr leegwaarde = leegwaardeVan(f);
         // §4.10/§5.8.2: the fallback substitutes for the sum's RESULT, so it must be numeriek
@@ -180,6 +181,24 @@ final class ExpressieBouwer {
                     "leegwaarde-alternatief van een sommatie moet numeriek zijn, kreeg "
                             + leegwaarde.type() + " (§5.8.2)", f.getStart().getLine()));
         return new Expr.Functie(kind, argumenten, aggregatieElement(kind, argumenten), leegwaarde, type, bron);
+    }
+
+    /** §4.12-4.15: type-check the operand list of a value/date aggregation. min/max demand all
+     *  numeriek with inter-convertible units (Tabel 22/23); eerste/laatste demand all datum with
+     *  one tijd-precisie (Tabel 24/25). Other functies (sum/total parse a single arithmetic
+     *  operand, the date-component extractors, etc.) carry no such operand-list contract here. */
+    private void meldAggregatie(Expr.FunctieKind kind, List<Expr> argumenten, FunctieAanroepContext f) {
+        List<Datatype> typen = argumenten.stream().map(Expr::type).toList();
+        String fout = switch (kind) {
+            case MINIMUM -> Typering.getalAggregatie("minimale waarde van", typen);
+            case MAXIMUM -> Typering.getalAggregatie("maximale waarde van", typen);
+            case EERSTE  -> Typering.datumAggregatie("eerste van", typen);
+            case LAATSTE -> Typering.datumAggregatie("laatste van", typen);
+            default -> null;
+        };
+        if (fout != null)
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(
+                    RegelSpraakModel.Severity.ERROR, fout, f.getStart().getLine()));
     }
 
     /** The §5.8.2 "of … als die er niet zijn" fallback expression of a sommatie, or null.

@@ -85,11 +85,18 @@ definitie
 naamWoordLower
     : LOWER_ID | NUMBER | PERCENT_SIGN | AANTAL_WORD
     | VAN | OP | IN | VOOR | OVER | BIJ | TOT | TOT_EN_MET | PER | MET
-    | DE | HET | EN | OF | DAN | ALS | NIET | GELDIG
+    | DE | HET | OF | DAN | ALS | NIET | GELDIG
     | EEN_TELWOORD | TWEE_TELWOORD | DRIE_TELWOORD | VIER_TELWOORD
     | JAAR | MAAND | DAG | WEEK | KWARTAAL | UUR | MINUUT | SECONDE | MILLISECONDE
     | PERIODE | DAGEN | WEKEN | MAANDEN | KWARTALEN | JAREN
     ;
+// EN is deliberately NOT a name word: it is the operand separator of the §13.4.17
+// concatenation-of-expressies forms ("de eerste/laatste/minimale/maximale waarde van
+// A en B", §4.12-4.15) and the §13.4.6 gegevensverstrekking list. The spec defines a
+// <naam> as a free <karakterreeks>, so "A en B" is syntactically ambiguous (a name
+// containing "en", or two operands); the corpus only ever uses a bare "en" as a
+// separator (never inside a declared name — "tot en met" is its own token), so EN
+// splits. A name needing a literal "en" is an accepted, documented limitation.
 
 // A lowercase-led name: a run of name words (which excludes UPPER_ID, so the
 // name stops at a capitalised type/domain). The leading article, when present,
@@ -347,7 +354,7 @@ dagsoortDefinition // §13.3.10.1
 // 'van de/het <subject>' is absorbed and the resolver re-splits it.
 kaleNaamWoord
     : LOWER_ID | UPPER_ID | NUMBER | PERCENT_SIGN | AANTAL_WORD
-    | OP | IN | VOOR | OVER | BIJ | TOT | TOT_EN_MET | PER | MET | EN | OF | DAN | NIET
+    | OP | IN | VOOR | OVER | BIJ | TOT | TOT_EN_MET | PER | MET | OF | DAN | NIET
     | DE | HET | GELDIG
     | EEN_TELWOORD | TWEE_TELWOORD | DRIE_TELWOORD | VIER_TELWOORD
     | JAAR | MAAND | DAG | WEEK | KWARTAAL | UUR | MINUUT | SECONDE | MILLISECONDE

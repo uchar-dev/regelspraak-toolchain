@@ -144,6 +144,64 @@ class DroolsExecutionTest {
                 () -> "min(20 mnd, 1 jr=12 mnd) = 12, kreeg " + p.getNetto());
     }
 
+    @Test void maximale_waarde_van_concatenatie_kiest_de_grootste_en_rekent_eenheden_om() {
+        // §4.13 Tabel 23: "de maximale waarde van A en B" over two LISTED operands is a pairwise
+        // max, NOT a collection accumulate. The operands carry different-but-convertible units
+        // (duur in mnd, looptijd in jr); the jr operand must be restated in mnd before comparing,
+        // so max(5 mnd, 1 jr = 12 mnd) = 12, not a raw "5 > 1 ? 5 : 1" = 5.
+        String src = """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Objecttype de Periode
+                de duur Numeriek (geheel getal) met eenheid mnd;
+                de netto Numeriek (geheel getal) met eenheid mnd;
+                de looptijd Numeriek (geheel getal) met eenheid jr;
+            Regel netto
+                geldig altijd
+                    De netto van een Periode moet gesteld worden op de maximale waarde van de duur van een Periode en de looptijd van een Periode.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("accumulate("), () -> "concatenatie mag GEEN collectie-accumulate worden:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Periode p = new Periode(); p.setDuur(new BigDecimal("5")); p.setLooptijd(new BigDecimal("1")); // 1 jr = 12 mnd
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("12").compareTo(p.getNetto()),
+                () -> "max(5 mnd, 1 jr=12 mnd) = 12, kreeg " + p.getNetto());
+    }
+
+    @Test void eerste_van_concatenatie_kiest_de_vroegste_datum() {
+        // §4.14 Tabel 24: "de eerste van A en B" over two LISTED date operands is the earliest of
+        // the two (a pairwise comparison), not a collection accumulate.
+        String src = """
+            Objecttype de Vlucht
+                de verwacht vertrek Datum in dagen;
+                de daadwerkelijk vertrek Datum in dagen;
+                de vroegste vertrek Datum in dagen;
+            Regel vroegste
+                geldig altijd
+                    De vroegste vertrek van een Vlucht moet gesteld worden op de eerste van de verwacht vertrek van een Vlucht en de daadwerkelijk vertrek van een Vlucht.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v = new Vlucht();
+        v.setVerwachtVertrek(LocalDate.of(2025, 3, 10));
+        v.setDaadwerkelijkVertrek(LocalDate.of(2025, 3, 5));   // earlier -> "eerste van" picks this
+        sessie.insert(v);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(LocalDate.of(2025, 3, 5), v.getVroegsteVertrek(),
+                () -> "eerste van (10 mrt, 5 mrt) = 5 mrt, kreeg " + v.getVroegsteVertrek());
+    }
+
     @Test void afronding_na_begrenzing_rondt_het_geheel_af_niet_de_grens() {
         // §13.4.17.25-30: "X, met een minimum van 0 naar beneden afgerond op 0 decimalen" must
         // round the WHOLE bounded result (floor(max(X,0))), not the 0-bound. A full-expressie

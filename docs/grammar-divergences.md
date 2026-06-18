@@ -237,6 +237,31 @@ countability: when "het aantal <phrase>" binds no countable element and the whol
 phrase is a declared parameter, it is read as that parameter (a genuine count always
 binds an element in a well-formed model, so it is never reinterpreted).
 
+### Aggregation operand separator — `en` splits, it is not a name word
+
+The §13.4.17 concatenation-of-expressies forms — "de eerste/laatste/minimale/maximale
+waarde van A en B [, C en D]" (§4.12-4.15) and the §13.4.6 gegevensverstrekking list —
+separate their operands with `en`. But the spec defines a `<naam>` as a free
+`<karakterreeks>` (§13.2 `<naam> ::= <karakterreeks>`), so a bare "A en B" is genuinely
+ambiguous: one name containing the word "en", or two operands separated by it. A
+context-free parser must choose deterministically, and ANTLR's greedy `kaleNaamWoord+` /
+`naamWoordLower+` loops chose to **absorb** the `en` — so "de eerste van X en Y" parsed as
+a single-operand aggregation over a compound name "X en Y", silently dropping the second
+operand (two TOKA examples, the eerste/laatste van of two dates, mis-parsed this way while
+still producing no error node).
+
+Resolved by **removing `EN` from the name-word sets** (`naamWoordLower`, `kaleNaamWoord`),
+so `en` is the operand separator. Justification: the corpus never uses a bare `en` *inside*
+a declared name (its only `en` occurrences are the `tot en met` token and the datatype
+keyword `Datum en tijd in millisecondes`), and RegelSpraak conditions compose with
+**bullet-delimited** structures, not an inline `en`/`of` boolean operator — so `en` carries
+no in-name or in-expression role that this loses. Bounded divergence: a name that genuinely
+needs a literal interior "en" can no longer be written (it would split); no spec or TOKA
+example needs one. This makes the multi-operand min/max/eerste/laatste forms parse all their
+operands, which the resolver then type-checks (§4.12-4.15: min/max operands all numeriek with
+inter-convertible units; eerste/laatste all datum of one tijd-precisie) and the transpiler
+lowers as a pairwise fold of `<`/`>` ternaries rather than a collection accumulate.
+
 ### Known precedence limitation (wortel/macht)
 
 The same "operand is a full `expressie`" greediness remains for `de wortel van` /
