@@ -1,6 +1,7 @@
 package io.github.yhavinga.regelspraak;
 
 import io.github.yhavinga.regelspraak.facts.Bestelling;
+import io.github.yhavinga.regelspraak.facts.Bestemming;
 import io.github.yhavinga.regelspraak.facts.Burger;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
@@ -12,6 +13,7 @@ import io.github.yhavinga.regelspraak.facts.Luchthaven;
 import io.github.yhavinga.regelspraak.facts.Meting;
 import io.github.yhavinga.regelspraak.facts.Passagier;
 import io.github.yhavinga.regelspraak.facts.Periode;
+import io.github.yhavinga.regelspraak.facts.Persoon;
 import io.github.yhavinga.regelspraak.facts.Pot;
 import io.github.yhavinga.regelspraak.facts.Reis;
 import io.github.yhavinga.regelspraak.facts.Reiziger;
@@ -411,6 +413,121 @@ class DroolsExecutionTest {
 
         assertEquals(0, new BigDecimal("250").compareTo(r.getAfstandTotDoel()),
                 () -> "afstand tot doel moet de afstand van de luchthaven (250) zijn, kreeg " + r.getAfstandTotDoel());
+    }
+
+    @Test void botsende_naam_kaapt_geen_eigen_subjectreferentie() {
+        // §5.5.3: a definite back-reference to the subject's OWN objecttype ("de persoon" when
+        // the subject is a Persoon) denotes the same instance -> the subject's own attribute.
+        // Here "persoon" is ALSO a role name (of Organisatie). The role-preference must NOT
+        // hijack the self-reference: "de leeftijd van de persoon" reads the subject's own
+        // leeftijd ($subject.getLeeftijd()), not a navigation to Organisatie.
+        String src = """
+            Objecttype de Persoon
+                de leeftijd Numeriek (geheel getal);
+                de gekopieerd Numeriek (geheel getal);
+            Objecttype de Organisatie
+                de omvang Numeriek (geheel getal);
+            Feittype lidmaatschap
+                de persoon Organisatie
+                de deelnemer Persoon
+            Eén persoon heeft één deelnemer
+            Regel kopieer
+                geldig altijd
+                    De gekopieerd van een Persoon moet gesteld worden op de leeftijd van de persoon.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("$subject.getLeeftijd()"), () -> "zelfreferentie moet eigen attribuut lezen:\n" + drl);
+        assertFalse(drl.contains("getPersoon()"), () -> "een gelijknamige rol mag de zelfreferentie niet kapen:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Persoon p = new Persoon(); p.setLeeftijd(new BigDecimal("30"));
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("30").compareTo(p.getGekopieerd()),
+                () -> "gekopieerd moet de eigen leeftijd (30) zijn, kreeg " + p.getGekopieerd());
+    }
+
+    @Test void botsende_naam_zonder_attribuut_op_de_rol_blijft_een_marker() {
+        // The role target (Luchthaven) does NOT carry the referenced attribute "rang" — only the
+        // name-twin objecttype Bestemming does, but that objecttype does not join the subject. So
+        // the role reading must be REFUSED (it would emit a getter Luchthaven cannot answer, which
+        // fails to compile); the reference stays an honest /* TODO navigatie */ null marker that
+        // still compiles. Proven by COMPILING the DRL in Drools.
+        String src = """
+            Objecttype de Reiziger
+                de doelrang Numeriek (geheel getal);
+            Objecttype de Bestemming
+                de rang Numeriek (geheel getal);
+            Objecttype de Luchthaven
+                de afstand Numeriek (geheel getal) met eenheid km;
+            Feittype reis naar luchthaven
+                de reiziger Reiziger
+                de bestemming Luchthaven
+            Eén reiziger reist naar één bestemming
+            Regel rang overnemen
+                geldig altijd
+                    De doelrang van een Reiziger moet gesteld worden op de rang van de bestemming.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("TODO navigatie"), () -> "onbereikbaar attribuut moet een marker blijven:\n" + drl);
+        assertFalse(drl.contains("getBestemming().getRang()"), () -> "mag geen getter voor een afwezig attribuut emitteren:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();   // build() asserts the DRL COMPILES
+        Reiziger r = new Reiziger();
+        sessie.insert(r);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertNull(r.getDoelrang(), () -> "doelrang moet leeg blijven (marker), kreeg " + r.getDoelrang());
+    }
+
+    @Test void botsende_naam_bindt_de_geschreven_rol_niet_een_andere_die_toevallig_verbindt() {
+        // The name-twin objecttype Bestemming IS reachable from the subject — but through a
+        // DIFFERENT, unwritten role ("plek"). The author wrote "bestemming", which names the role
+        // to Luchthaven. The navigation must bind the WRITTEN role (Reiziger -> Luchthaven via
+        // getBestemming), not collapse to the by-pair join through "plek" (which would read the
+        // wrong instance). Proven by firing: it must read 250 (the luchthaven), not 999 (the plek).
+        String src = """
+            Objecttype de Reiziger
+                de afstand tot doel Numeriek (geheel getal) met eenheid km;
+            Objecttype de Bestemming
+                de afstand Numeriek (geheel getal) met eenheid km;
+            Objecttype de Luchthaven
+                de afstand Numeriek (geheel getal) met eenheid km;
+            Feittype reis naar luchthaven
+                de reiziger Reiziger
+                de bestemming Luchthaven
+            Eén reiziger reist naar één bestemming
+            Feittype bezoekt
+                de bezoeker Reiziger
+                de plek Bestemming
+            Eén bezoeker bezoekt één plek
+            Regel afstand overnemen
+                geldig altijd
+                    De afstand tot doel van een Reiziger moet gesteld worden op de afstand van de bestemming.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("$subject.getBestemming().getAfstand()"), () -> "moet de geschreven rol binden:\n" + drl);
+        assertFalse(drl.contains("getPlek()"), () -> "mag niet via de ongeschreven rol plek joinen:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Luchthaven doel = new Luchthaven(); doel.setAfstand(new BigDecimal("250"));   // the WRITTEN role bestemming
+        Bestemming plek = new Bestemming(); plek.setAfstand(new BigDecimal("999"));   // the unwritten role plek
+        Reiziger r = new Reiziger(); r.setBestemming(doel); r.setPlek(plek);
+        sessie.insert(doel); sessie.insert(plek); sessie.insert(r);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("250").compareTo(r.getAfstandTotDoel()),
+                () -> "moet de afstand van de geschreven bestemming (250) lezen, niet de plek (999), kreeg " + r.getAfstandTotDoel());
     }
 
     @Test void consistentieregel_markeert_alleen_de_schendende_instantie() {

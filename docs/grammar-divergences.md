@@ -145,6 +145,29 @@ documented, out-of-language best-effort (per footnote 2), never overriding a dec
 form; it does not handle Dutch irregular plurals. A fuller fix would also read the
 plural that appears literally in the feittype cardinality line ("meerdere passagiers").
 
+### Reference filler: objecttypenaam vs rolnaam (resolver-side disambiguation)
+
+§13.4.1.2/.3 let a reference filler in an onderwerp be **either** an `<objecttypenaam>`
+**or** a `<rolnaam>`; the EBNF lists the objecttype alternative first but carries no
+normative precedence, and §4804 of the spec states explicitly that the grammar cannot
+express that a reference must point to a *reachable* object — it is a resolver-level
+semantic check. When a noun is **both** a declared objecttype name and a feittype role,
+the resolver therefore disambiguates by **reachability from the rule subject**, which is
+what §13.4.1 means by "the written reference *is* the navigation": for a single-object
+definite/possessive reference (`de <X>` / `zijn <X>`), it takes the role reading only
+when (a) the objecttype reading is **not** the subject's own type — a definite
+back-reference to the subject's type reads the subject's own attribute, §5.5.3 — **and**
+(b) no role **named as written** reaches that objecttype from the subject, **and** (c) a
+same-named role uniquely reaches a type that actually **carries** the referenced
+attribute. Otherwise the objecttype reading stands, and a genuinely unresolvable
+reference stays a `/* TODO navigatie */` marker rather than becoming a wrong join or a
+getter for an absent property. This is a deliberate, bounded divergence: the spec offers
+no explicit tie-break for an objecttypenaam/rolnaam collision (the rangtelwoord of
+§13.4.1.3 disambiguates two *different* onderwerpen sharing a name, a different case), so
+reachability is the resolver's reading. It fires only where the objecttype reading would
+otherwise have been a non-functional dangling reference; a fuller treatment could emit an
+INFO diagnostic when both readings are independently valid.
+
 ### Known precedence limitation (wortel / tot de macht + afronding)
 
 §13.4.17.13/.14 make `<afronding>` **mandatory** on "de wortel van" and "tot de macht"

@@ -151,19 +151,6 @@ public final class RegelSpraakModel {
         return ft.rollen.stream().anyMatch(h -> h != doelRol && rolHeeftObjecttype(h, houder));
     }
 
-    /** Is there any feittype relating {@code subject} to {@code doel} — a role whose
-     *  object type is {@code doel} in a feittype that also has {@code subject} at its
-     *  other end? Unlike {@link #verbindendeRol} this is a plain existence test (it does
-     *  not collapse to null when more than one feittype connects them), used to decide
-     *  whether a navigation's objecttype reading is reachable from the subject at all. */
-    public boolean verbindt(Objecttype subject, Objecttype doel) {
-        if (subject == null || doel == null) return false;
-        for (Feittype ft : feittypen.values())
-            for (Rol r : ft.rollen)
-                if (rolHeeftObjecttype(r, doel) && feittypeRelateert(ft, r, subject)) return true;
-        return false;
-    }
-
     /** The object type a role named {@code geschrevenRol} reaches FROM {@code subject}:
      *  the unique type of a role that {@code geschrevenRol} names in a feittype relating
      *  {@code subject}. This is the §13.4.1.2/.3 rolnaam reading of a navigation filler —

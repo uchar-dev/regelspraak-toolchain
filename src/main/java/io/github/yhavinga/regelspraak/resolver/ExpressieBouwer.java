@@ -259,15 +259,20 @@ final class ExpressieBouwer {
         // navigation, so it is excluded (it stays an own-attribute read).
         String noun = navigatieNoun(a.onderwerp());
         String navRol = model.navigatieRolNaam(noun);
-        // §13.4.1.2/.3: a navigation filler may name an objecttype OR a role. When the
-        // objecttype reading does not connect to the rule subject via any feittype but a
-        // same-named role DOES reach a type that does, the role wins — the written
-        // reference is that navigation, not a free object type that shares the name.
-        // (Only for a single-object definite/possessive reference; `noun` is null
-        // for an indefinite subject or a set quantifier, so those are untouched.)
-        if (noun != null && huidigSubject != null && !model.verbindt(huidigSubject, ot)) {
+        // §13.4.1.2/.3: a navigation filler may name an objecttype OR a role. Take the
+        // role reading only when the objecttype reading is NOT the navigation the author
+        // wrote — it is not the subject's own type (a definite back-reference to the
+        // subject's type reads the subject's own attribute, §5.5.3), AND no role NAMED as
+        // written reaches that objecttype from the subject. Then, when a same-named role
+        // uniquely reaches a type that actually CARRIES the attribute, bind the role and
+        // record it for the join. Scoped to a single-object definite/possessive reference
+        // (`noun` is null for an indefinite subject or a set quantifier) and an
+        // unambiguous, attribute-bearing role, so an honestly unresolvable reference stays
+        // a marker rather than becoming a wrong join or a getter for an absent property.
+        if (noun != null && huidigSubject != null && ot != huidigSubject
+                && model.verbindendeRolViaNaam(huidigSubject, ot, noun) == null) {
             Objecttype viaRol = model.rolDoeltypeNaarSubject(huidigSubject, noun);
-            if (viaRol != null) { ot = viaRol; navRol = noun; }
+            if (viaRol != null && viaRol.attributen.get(attr) != null) { ot = viaRol; navRol = noun; }
         }
         Datatype dt = ot != null && ot.attributen.get(attr) != null ? ot.attributen.get(attr) : onbekend();
         return new Expr.AttribuutRef(attr, ot, onderwerpBron, navRol, dt, bron);
