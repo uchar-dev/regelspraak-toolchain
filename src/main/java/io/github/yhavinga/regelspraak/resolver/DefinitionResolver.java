@@ -6,7 +6,10 @@ import io.github.yhavinga.regelspraak.parser.RegelSpraak;
 import io.github.yhavinga.regelspraak.parser.RegelSpraak.*;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.misc.Interval;
+import org.antlr.v4.runtime.tree.ParseTree;
+import org.antlr.v4.runtime.tree.TerminalNode;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -234,11 +237,41 @@ public final class DefinitionResolver {
     private void feittype(FeitTypeDefinitionContext ctx) {
         Feittype ft = new Feittype(src(ctx.feitTypeNaam()));
         ft.wederkerig = ctx.WEDERKERIG_FEITTYPE() != null;
+        List<Rol> rollen = new ArrayList<>();
         for (RolSpecificatieContext rs : ctx.rolSpecificatie()) {
             String meervoud = rs.meervoudsvorm() != null ? src(rs.meervoudsvorm()) : null; // declared "(mv: …)"
-            ft.rollen.add(new Rol(src(rs.rolNaam()), src(rs.objectTypeNaam()), meervoud));
+            rollen.add(new Rol(src(rs.rolNaam()), src(rs.objectTypeNaam()), meervoud));
         }
+        // §13.3.9.1 cardinaliteit: the line "<q1> <rol1> … <q2> <rol2>" marks each role one or
+        // meerdere. A wederkerig role is enkelvoudig (§3.11), so only a normal feittype's roles
+        // take a 'meerdere' mark; an unmatched/absent line leaves a role single (fail-open).
+        if (!ft.wederkerig && ctx.feitTypeCardinaliteit() != null)
+            rollen = markeerKardinaliteit(rollen, ctx.feitTypeCardinaliteit());
+        ft.rollen.addAll(rollen);
         model.feittypen.put(ft.naam, ft);
+    }
+
+    /** Tag each role single/meerdere from the cardinaliteit line. The line alternates a
+     *  quantifier terminal (één | meerdere) with a noun phrase; the quantifier qualifies the
+     *  phrase that follows it, and a role whose name a word of that phrase matches takes that
+     *  cardinality. The verb in the phrase ("… betreft …") matches no role and is ignored. */
+    private List<Rol> markeerKardinaliteit(List<Rol> rollen, FeitTypeCardinaliteitContext card) {
+        List<Rol> uit = new ArrayList<>(rollen);
+        boolean meervoudigVolgend = false;
+        for (int i = 0; i < card.getChildCount(); i++) {
+            ParseTree ch = card.getChild(i);
+            if (ch instanceof TerminalNode t) {
+                meervoudigVolgend = t.getSymbol().getType() == RegelSpraak.MEERDERE;
+            } else if (ch instanceof CardinaliteitDeelContext deel) {
+                for (String woord : src(deel).split("\\s+"))
+                    for (int j = 0; j < uit.size(); j++) {
+                        Rol r = uit.get(j);
+                        if (RegelSpraakModel.rolNaamMatcht(r, woord) && r.meervoudig() != meervoudigVolgend)
+                            uit.set(j, new Rol(r.naam(), r.objecttypeNaam(), r.meervoud(), meervoudigVolgend));
+                    }
+            }
+        }
+        return uit;
     }
 
     // ---------------- helpers ----------------

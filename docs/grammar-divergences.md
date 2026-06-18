@@ -198,6 +198,23 @@ consume) is a separate hardening: the resolver should mark a reference whose bou
 lacks the attribute, so an unresolvable navigation is always a marker, never a broken
 getter.
 
+### To-many navigation: a scalar read through a meerdere role is a marker
+
+§13.3.9.1's cardinaliteit line ("Eén reis betreft meerdere passagiers") fixes each role's
+multiplicity, but the IR/transpiler used to ignore it: a bare scalar read "de <attr> van de
+<meervoudige rol>" lowered to `$subject.getRol().getAttr()`, silently reading ONE element of a
+collection (and, when the subject is the "één" side, a getter the fact model does not even
+have). The resolver now records each role's cardinality (`Rol.meervoudig`, parsed by matching
+the cardinaliteit nouns onto the roles), and the transpiler refuses a scalar getter chain
+through a to-many role — it emits a `/* TODO naar-veel-navigatie */` marker instead, since the
+read must be an aggregation (`de som/maximale/… waarde van … van de <rol>`, which already lowers
+to an accumulate). The check is fail-open: a role whose cardinality cannot be uniquely
+determined stays single, so a genuine to-one navigation is never wrongly refused (the corpus
+and the to-one direction are unchanged). A wederkerig role is treated as enkelvoudig (§3.11),
+so its single role is not marked to-many; flagging a wederkerig "meerdere…meerdere" line is left
+as future work. This is the cardinality counterpart to the absent-attribute marker above:
+an honestly unrepresentable scalar read is a visible marker, never silently-wrong DRL.
+
 ### Known precedence limitation (wortel / tot de macht + afronding)
 
 §13.4.17.13/.14 make `<afronding>` **mandatory** on "de wortel van" and "tot de macht"

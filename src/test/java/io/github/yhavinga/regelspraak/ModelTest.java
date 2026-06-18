@@ -104,4 +104,13 @@ class ModelTest {
         assertEquals("Vlucht", ft.rollen.get(0).objecttypeNaam());
         assertEquals("Natuurlijk persoon", ft.rollen.get(1).objecttypeNaam());
     }
+
+    @Test void feittype_cardinaliteit_markeert_de_meervoudige_rol() {
+        // §13.3.9.1: "Eén reis betreft de verplaatsing van meerdere passagiers" makes the
+        // passagier role the to-many side and the reis role single.
+        RegelSpraakModel m = Resolver.resolve(SRC);
+        var ft = m.feittypen.get("Vlucht van natuurlijke personen");
+        assertFalse(ft.rollen.get(0).meervoudig(), "reis is enkelvoudig (Eén reis ...)");
+        assertTrue(ft.rollen.get(1).meervoudig(), "passagier is meervoudig (... meerdere passagiers)");
+    }
 }

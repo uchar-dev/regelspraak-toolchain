@@ -318,6 +318,15 @@ public final class DrlTranspiler {
         return model.verbindendeRol(subject, a.objecttype());
     }
 
+    /** Whether a bare scalar read {@code $subject.getRol().getAttr()} crosses a TO-MANY role
+     *  (§13.3.9.1): the subject relates to MANY of {@code a}'s object type through {@code rol},
+     *  so a single getter would silently read one of many. Such a read must instead be an
+     *  aggregation (de som/maximale/… van … van de <rol>), so it is emitted as a marker. Only a
+     *  resolved (non-EIGEN, non-null) role can be to-many. */
+    private boolean naarVeel(Objecttype subject, Expr.AttribuutRef a, String rol) {
+        return rol != null && !EIGEN.equals(rol) && model.naarVeelRol(subject, a.objecttype(), rol);
+    }
+
     /** True when the reference is bound to a known object type that does NOT declare the
      *  attribute (nor a kenmerk by that name). Emitting `getX()` for it would call a method
      *  the fact has no declaration for — uncompilable DRL — so the caller emits a marker
@@ -334,6 +343,7 @@ public final class DrlTranspiler {
             if (attribuutOntbreekt(a)) return todo("navigatie", a.bron());
             String rol = naviRol(subject, a);
             if (EIGEN.equals(rol)) return SUBJECT + "." + getter(a.attribuut()) + "()";
+            if (naarVeel(subject, a, rol)) return todo("naar-veel-navigatie", a.bron());
             if (rol != null)       return SUBJECT + "." + getter(rol) + "()." + getter(a.attribuut()) + "()";
             return todo("navigatie", a.bron());
         }
@@ -554,6 +564,7 @@ public final class DrlTranspiler {
             if (attribuutOntbreekt(a)) return todo("navigatie", a.bron());
             String rol = naviRol(subject, a);
             if (EIGEN.equals(rol)) return ident(a.attribuut(), false);
+            if (naarVeel(subject, a, rol)) return todo("naar-veel-navigatie", a.bron());
             if (rol != null)       return ident(rol, false) + "." + ident(a.attribuut(), false);
             return todo("navigatie", a.bron());
         }

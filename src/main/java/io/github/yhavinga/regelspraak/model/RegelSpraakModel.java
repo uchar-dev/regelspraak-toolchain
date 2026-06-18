@@ -302,10 +302,36 @@ public final class RegelSpraakModel {
     }
     /** A feittype role. `meervoud` is the plural the model DECLARES via "(mv: …)"
      *  (§13.3.9.1), or null when none is declared — the resolver matches plural
-     *  references against the declared form, never a synthesised one. */
-    public record Rol(String naam, String objecttypeNaam, String meervoud) {
-        public Rol(String naam, String objecttypeNaam) { this(naam, objecttypeNaam, null); }
+     *  references against the declared form, never a synthesised one. `meervoudig` is the
+     *  role's cardinality from the feittype's cardinaliteit line (§13.3.9.1): true when this
+     *  role is the "meerdere" side (a navigation TO it yields many), false when "één". */
+    public record Rol(String naam, String objecttypeNaam, String meervoud, boolean meervoudig) {
+        public Rol(String naam, String objecttypeNaam) { this(naam, objecttypeNaam, null, false); }
+        public Rol(String naam, String objecttypeNaam, String meervoud) { this(naam, objecttypeNaam, meervoud, false); }
     }
+
+    /** Whether navigating from {@code houder} to {@code doelwit} through the role named
+     *  {@code rolNaam} crosses a TO-MANY (meerdere) role — i.e. the field on {@code houder}
+     *  would be a collection, so a scalar getter chain is wrong and the read needs an
+     *  aggregation (§13.3.9.1 cardinaliteit). Finds the unique {@code doelwit} role that
+     *  {@code rolNaam} names in a feittype relating {@code houder} and returns its
+     *  cardinality; false when single, unknown, or not uniquely found (fail-open: never
+     *  refuse a navigation we cannot prove is to-many). */
+    public boolean naarVeelRol(Objecttype houder, Objecttype doelwit, String rolNaam) {
+        if (doelwit == null || rolNaam == null) return false;
+        Rol gevonden = null; int n = 0;
+        for (Feittype ft : feittypen.values())
+            for (Rol r : ft.rollen)
+                if (r.naam().equalsIgnoreCase(rolNaam) && rolHeeftObjecttype(r, doelwit) && feittypeRelateert(ft, r, houder)) {
+                    gevonden = r; n++;
+                }
+        return n == 1 && gevonden.meervoudig();
+    }
+
+    /** Package-visible role-name match (singular, declared plural, or best-effort plural),
+     *  used by {@link io.github.yhavinga.regelspraak.resolver.DefinitionResolver} to map a cardinaliteit
+     *  noun onto a role. */
+    public static boolean rolNaamMatcht(Rol r, String woord) { return rolMatcht(r, woord); }
 
     public static final class Eenheidstelsel {
         public final String naam;

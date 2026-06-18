@@ -379,4 +379,46 @@ class DrlTest {
         assertFalse(drl.contains("accumulate("), () -> "een onschaalbare telling mag geen globale accumulate worden:\n" + drl);
         assertTrue(drl.contains("/* TODO"), () -> "verwachtte een marker:\n" + drl);
     }
+
+    @Test void naar_veel_rol_scalar_read_wordt_marker_niet_een_getter() {
+        // §13.3.9.1: a scalar read through a TO-MANY role ("de leeftijd van de passagier", where
+        // passagier is the meerdere side) cannot read one of many via a scalar getter — it must be
+        // an aggregation. Emit a marker, not $subject.getPassagier().getLeeftijd().
+        String src = """
+            Objecttype de Vlucht
+                de uitkomst Numeriek (geheel getal);
+            Objecttype de Passagier
+                de leeftijd Numeriek (geheel getal);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel r
+                geldig altijd
+                    De uitkomst van een Vlucht moet gesteld worden op de leeftijd van de passagier.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("/* TODO naar-veel-navigatie"), () -> "to-many read niet gemarkeerd:\n" + drl);
+        assertFalse(drl.contains("getPassagier().getLeeftijd()"), () -> "mag geen scalar getter zijn:\n" + drl);
+    }
+
+    @Test void naar_een_rol_blijft_een_scalar_getter() {
+        // the reverse direction (de vluchtprijs van de reis, reis = the één side) stays a getter.
+        String src = """
+            Objecttype de Vlucht
+                de vluchtprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                de uitkomst Numeriek (geheel getal);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel r
+                geldig altijd
+                    De uitkomst van een Passagier moet gesteld worden op de vluchtprijs van de reis.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("$subject.getReis().getVluchtprijs()"), () -> "to-one getter ontbreekt:\n" + drl);
+        assertFalse(drl.contains("naar-veel"), () -> "to-one mag geen marker zijn:\n" + drl);
+    }
 }
