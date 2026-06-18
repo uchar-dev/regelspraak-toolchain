@@ -4,11 +4,13 @@ import io.github.yhavinga.regelspraak.facts.Bestelling;
 import io.github.yhavinga.regelspraak.facts.Burger;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
+import io.github.yhavinga.regelspraak.facts.Inconsistentie;
 import io.github.yhavinga.regelspraak.facts.Meting;
 import io.github.yhavinga.regelspraak.facts.Passagier;
 import io.github.yhavinga.regelspraak.facts.Periode;
 import io.github.yhavinga.regelspraak.facts.Pot;
 import io.github.yhavinga.regelspraak.facts.Reis;
+import io.github.yhavinga.regelspraak.facts.Route;
 import io.github.yhavinga.regelspraak.facts.Trip;
 import io.github.yhavinga.regelspraak.facts.Vlucht;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
@@ -363,5 +365,35 @@ class DroolsExecutionTest {
 
         // prijs is the tarief of the named "heenvluchten" (99), not the colliding "heenvlucht" (7)
         assertEquals(0, new BigDecimal("99").compareTo(r.getPrijs()), () -> "prijs: " + r.getPrijs());
+    }
+
+    @Test void consistentieregel_markeert_alleen_de_schendende_instantie() {
+        // §13.4.8: "de vertrek moet ongelijk zijn aan de bestemming" — a Route with equal
+        // endpoints is a round trip and must be flagged inconsistent; one with distinct
+        // endpoints must NOT. Proven by firing in a real engine and counting Inconsistentie.
+        String src = """
+            Objecttype de Route
+                de vertrek Tekst;
+                de bestemming Tekst;
+            Regel rondvlucht
+                geldig altijd
+                    De vertrek van een Route moet ongelijk zijn aan de bestemming van een Route.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Route rond = new Route(); rond.setVertrek("AMS"); rond.setBestemming("AMS");   // round trip -> inconsistent
+        Route enkel = new Route(); enkel.setVertrek("AMS"); enkel.setBestemming("JFK"); // distinct -> consistent
+        sessie.insert(rond); sessie.insert(enkel);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> (Inconsistentie) o).toList();
+        sessie.dispose();
+
+        assertEquals(1, fouten.size(), () -> "precies de rondvlucht moet inconsistent zijn: " + fouten);
+        assertEquals("rondvlucht", fouten.get(0).getRegel());
+        assertSame(rond, fouten.get(0).getSubject(), "de gemarkeerde instantie moet de rondvlucht zijn");
     }
 }

@@ -202,6 +202,26 @@ class DrlTest {
         assertFalse(drl.contains("TODO navigatie"), () -> "geen valse ambiguïteit:\n" + drl);
     }
 
+    @Test void consistentieregel_vuurt_op_de_schending_en_markeert_inconsistentie() {
+        // §13.4.8 / §9.5: "X moet ongelijk zijn aan Y" asserts X != Y; the rule is
+        // INCONSISTENT when that is violated (X == Y). So the generated rule fires on the
+        // negated assertion and inserts an Inconsistentie naming the rule and the subject.
+        String src = """
+            Objecttype de Route
+                de vertrek Tekst;
+                de bestemming Tekst;
+            Regel rondvlucht
+                geldig altijd
+                    De vertrek van een Route moet ongelijk zijn aan de bestemming van een Route.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rule \"rondvlucht\""), () -> "regel ontbreekt:\n" + drl);
+        // ongelijk asserted -> fires on the gelijk violation
+        assertTrue(drl.contains("$subject : Route( vertrek == bestemming )"), () -> "schending-constraint:\n" + drl);
+        assertTrue(drl.contains("insert(new io.github.yhavinga.regelspraak.facts.Inconsistentie(\"rondvlucht\", $subject))"),
+                () -> "inconsistentie-markering ontbreekt:\n" + drl);
+    }
+
     @Test void namen_worden_geldige_java_identifiers() {
         String src = """
             Objecttype de Natuurlijk persoon

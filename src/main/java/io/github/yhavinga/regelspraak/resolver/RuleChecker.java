@@ -79,17 +79,37 @@ final class RuleChecker {
             objectcreatie(naam, rd.objectCreatie(), voorwaarde);
         } else if (rd.verdeling() != null) {
             verdeling(naam, rd.verdeling(), voorwaarde);
+        } else if (rd.consistentieRegel() != null) {
+            consistentie(naam, rd.consistentieRegel());
         } else {
-            // §13.4.7/.8/.11/.12 — parsed but not yet lifted into the IR. Surface it as
+            // §13.4.7/.11/.12 — parsed but not yet lifted into the IR. Surface it as
             // a diagnostic rather than letting the rule silently disappear from the model.
             String soort = rd.feitCreatie() != null ? "feitcreatie"
-                    : rd.consistentieRegel() != null ? "consistentieregel"
                     : rd.startpuntBepaling() != null ? "startpuntbepaling"
                     : rd.dagsoortResultaat() != null ? "dagsoortresultaat" : "resultaatdeel";
             model.diagnostics.add(new Diagnostic(Severity.WARNING,
                     "resultaatdeel '" + soort + "' wordt nog niet naar IR/DRL omgezet (regel '" + naam + "')",
                     rd.getStart().getLine()));
         }
+    }
+
+    /** §13.4.8 consistentieregel (single-criterion form): "&lt;expressie&gt; moet
+     *  &lt;operator&gt;". The assertion is built with the same operator machinery as a
+     *  voorwaarde (uitToplevel), so the operand types and operator legality are the
+     *  §5 ones; the subject is the object type the asserted expression is about. Compound
+     *  criteria and uniciteit (different shapes) are not yet lifted — they keep a WARNING. */
+    private void consistentie(String naam, ConsistentieRegelContext cr) {
+        EnkelvoudigeConsistentieRegelContext e = cr.enkelvoudigeConsistentieRegel();
+        if (e == null || e.expressie() == null || e.toplevelOperator() == null) {
+            model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                    "consistentieregel (samengesteld/uniciteit) wordt nog niet naar IR/DRL omgezet (regel '"
+                            + naam + "')", cr.getStart().getLine()));
+            return;
+        }
+        Expr lhs = bouwer.bouw(e.expressie());
+        Conditie assertie = uitToplevel(lhs, e.toplevelOperator(), src(e));
+        Objecttype subject = lhs instanceof Expr.AttribuutRef a ? a.objecttype() : null;
+        model.consistenties.add(new io.github.yhavinga.regelspraak.ir.ResolvedConsistentie(naam, subject, assertie, src(cr)));
     }
 
     /** §13.4.10 verdeling: distribute a source amount over a recipient attribute. The
@@ -158,6 +178,11 @@ final class RuleChecker {
         else if (rd.initialisatie() != null) doel = rd.initialisatie().attribuutVanOnderwerp();
         else if (rd.kenmerkToekenning() != null) return bouwer.objecttypeVanKeten(rd.kenmerkToekenning().onderwerpKeten());
         else if (rd.objectCreatie() != null) return bouwer.objecttypeVanKeten(rd.objectCreatie().onderwerpKeten());
+        else if (rd.consistentieRegel() != null) {
+            EnkelvoudigeConsistentieRegelContext e = rd.consistentieRegel().enkelvoudigeConsistentieRegel();
+            return e != null && e.expressie() != null
+                    && bouwer.bouw(e.expressie()) instanceof Expr.AttribuutRef a ? a.objecttype() : null;
+        }
         return doel != null && bouwer.bouwAttribuut(doel) instanceof Expr.AttribuutRef a ? a.objecttype() : null;
     }
 

@@ -58,7 +58,64 @@ public final class DrlTranspiler {
         for (ResolvedRegel r : model.resolvedRegels) regel(r);
         for (io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc : model.objectCreaties) objectCreatie(oc);
         for (io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v : model.verdelingen) verdeling(v);
+        for (io.github.yhavinga.regelspraak.ir.ResolvedConsistentie c : model.consistenties) consistentie(c);
         return out.toString();
+    }
+
+    /** §13.4.8 consistentieregel. The assertion MUST hold, so the rule fires on its
+     *  VIOLATION — the negated condition — and inserts an Inconsistentie carrying the
+     *  rule name and the offending subject (§9.5: "inconsistent" as the result, usable by
+     *  other rules). A condition whose negation is not expressible (compound/predicate
+     *  beyond leeg/gevuld) or an unresolved subject becomes an explicit marker. */
+    private void consistentie(io.github.yhavinga.regelspraak.ir.ResolvedConsistentie c) {
+        accumulates = new ArrayList<>();
+        accCount = 0;
+        Objecttype subject = c.subject();
+        Conditie schending = negeer(c.assertie());
+        out.append("rule \"").append(c.naam()).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
+        if (subject == null || schending == null) {
+            out.append("    // onopgelost consistentieregel: ").append(c.bron()).append("\n    eval(true)\nthen\nend\n\n");
+            return;
+        }
+        String constraint = conditie(schending, subject);
+        out.append("    ").append(SUBJECT).append(" : ").append(ident(subject.naam, true))
+           .append("( ").append(constraint).append(" )\n");
+        for (String acc : accumulates) out.append("    ").append(acc).append('\n');
+        out.append("then\n    insert(new ").append(FACT_PACKAGE).append(".Inconsistentie(\"")
+           .append(c.naam().replace("\"", "'")).append("\", ").append(SUBJECT).append("));\nend\n\n");
+    }
+
+    /** The negation of a consistency assertion — what makes the rule fire (the
+     *  violation). A comparison flips to its complement; an emptiness predicate flips
+     *  leeg↔gevuld; anything else has no clean single-constraint negation here and yields
+     *  null so the caller marks the rule rather than emit a wrong trigger. */
+    private static Conditie negeer(Conditie c) {
+        if (c instanceof Conditie.Vergelijking v)
+            return new Conditie.Vergelijking(flip(v.op()), v.links(), v.rechts(), v.bron());
+        if (c instanceof Conditie.Predicaat p) {
+            Conditie.Predicaatsoort neg = switch (p.soort()) {
+                case LEEG -> Conditie.Predicaatsoort.GEVULD;
+                case GEVULD -> Conditie.Predicaatsoort.LEEG;
+                default -> null;
+            };
+            return neg != null ? new Conditie.Predicaat(neg, p.operand(), p.bron()) : null;
+        }
+        return null;
+    }
+
+    private static Conditie.Operator flip(Conditie.Operator op) {
+        return switch (op) {
+            case GELIJK -> Conditie.Operator.ONGELIJK;
+            case ONGELIJK -> Conditie.Operator.GELIJK;
+            case KLEINER -> Conditie.Operator.GROTER_OF_GELIJK;
+            case KLEINER_OF_GELIJK -> Conditie.Operator.GROTER;
+            case GROTER -> Conditie.Operator.KLEINER_OF_GELIJK;
+            case GROTER_OF_GELIJK -> Conditie.Operator.KLEINER;
+            case EERDER -> Conditie.Operator.LATER_OF_GELIJK;
+            case EERDER_OF_GELIJK -> Conditie.Operator.LATER;
+            case LATER -> Conditie.Operator.EERDER_OF_GELIJK;
+            case LATER_OF_GELIJK -> Conditie.Operator.EERDER;
+        };
     }
 
     /** §13.4.10 verdeling. Equal shares is a real rule: bind the source, count the

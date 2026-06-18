@@ -26,6 +26,8 @@ public final class RegelSpraakModel {
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie> objectCreaties = new ArrayList<>();
     /** Resolved distribution rules (§13.4.10) — source amount spread over recipients. */
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedVerdeling> verdelingen = new ArrayList<>();
+    /** Resolved consistency rules (§13.4.8) — an assertion that must hold, else inconsistent. */
+    public final List<io.github.yhavinga.regelspraak.ir.ResolvedConsistentie> consistenties = new ArrayList<>();
     public final List<Diagnostic> diagnostics = new ArrayList<>();
 
     public boolean isOk() { return diagnostics.stream().noneMatch(Diagnostic::isError); }

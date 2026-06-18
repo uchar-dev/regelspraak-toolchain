@@ -18,9 +18,9 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * End-to-end on the real TOKA casus: the whole document resolves to a faithful
  * model AND raises no ERROR diagnostics — the resolver makes no false claim on the
  * constructs it cannot fully resolve. (It does raise WARNINGs for resultaatdeel
- * kinds not yet lifted into the IR — feitcreatie, consistentieregel,
- * startpuntbepaling, dagsoortresultaat — so those rules are visible as gaps rather
- * than silently dropped.) Reads the committed fixtures under examples/toka.
+ * kinds not yet lifted into the IR — feitcreatie, startpuntbepaling,
+ * dagsoortresultaat — so those rules are visible as gaps rather than silently
+ * dropped.) Reads the committed fixtures under examples/toka.
  */
 class CasusTest {
 
@@ -48,6 +48,12 @@ class CasusTest {
         // §2.7 the named timeline with a variable start point
         assertEquals(1, m.tijdlijnen.size());
         assertTrue(m.tijdlijnen.get(0).variabelStartpunt());
+
+        // §3.11 the consistency rule ("Controleer of vlucht geen rondvlucht is") now
+        // lifts into IR rather than being warned-and-dropped.
+        assertFalse(m.consistenties.isEmpty(), "de rondvlucht-consistentieregel moet IR opleveren");
+        assertTrue(m.consistenties.stream().anyMatch(c -> c.subject() != null && c.assertie() != null),
+                () -> "consistentie zonder subject/assertie: " + m.consistenties);
     }
 
     private static String read(Path p) {
