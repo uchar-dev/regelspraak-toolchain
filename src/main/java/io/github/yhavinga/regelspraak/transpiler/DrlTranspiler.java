@@ -349,7 +349,10 @@ public final class DrlTranspiler {
         }
         if (e instanceof Expr.Binair b) {
             if (b.op() == Expr.BinOp.TOT_DE_MACHT)
-                return "Math.pow(" + waarde(b.links(), subject) + ", " + waarde(b.rechts(), subject) + ")";
+                // Math.pow yields a double; wrap as BigDecimal so the mandatory afronding's
+                // setScale and any surrounding BigDecimal arithmetic compile (§13.4.17.14).
+                return "java.math.BigDecimal.valueOf(Math.pow((" + waarde(b.links(), subject)
+                        + ").doubleValue(), (" + waarde(b.rechts(), subject) + ").doubleValue()))";
             if (b.op() == Expr.BinOp.PERCENTAGE_VAN)
                 return "(" + waarde(b.links(), subject) + " / 100 * " + waarde(b.rechts(), subject) + ")";
             if (b.op() == Expr.BinOp.GEDEELD_DOOR || b.op() == Expr.BinOp.GEDEELD_DOOR_ABS)

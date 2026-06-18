@@ -101,15 +101,15 @@ class DrlTest {
     }
 
     @Test void onmapbare_aggregatie_wordt_gemarkeerd_niet_verzonnen() {
-        // wortel has no accumulate equivalent yet; it must surface as an explicit
-        // marker, never as silently-wrong DRL.
+        // wortel has no accumulate equivalent yet; it must surface as an explicit marker, never
+        // as silently-wrong DRL. (§13.4.17.13 makes the afronding mandatory.)
         String src = """
             Objecttype de Reis
                 de prijs Numeriek (geheel getal);
                 de wortelprijs Numeriek (geheel getal);
             Regel w
                 geldig altijd
-                    De wortelprijs van een Reis moet berekend worden als de wortel van de prijs van een Reis.
+                    De wortelprijs van een Reis moet berekend worden als de wortel van de prijs van een Reis naar beneden afgerond op 2 decimalen.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertTrue(drl.contains("/* TODO aggregatie WORTEL"), () -> "wortel niet gemarkeerd:\n" + drl);
@@ -134,6 +134,24 @@ class DrlTest {
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertTrue(drl.contains(".setScale(2, java.math.RoundingMode.FLOOR)"), () -> "afronding:\n" + drl);
         assertTrue(drl.contains("< bodem ? bodem :"), () -> "begrenzing-minimum:\n" + drl);
+    }
+
+    @Test void macht_afronding_rondt_de_macht_af_en_een_trailing_operator_bindt_buiten() {
+        // §13.4.17.14: the mandatory afronding rounds the POWER (it is a sibling of the exponent,
+        // not inside it), and a trailing 'maal' binds OUTSIDE the rounded power — the exponent is
+        // now a primaireExpressie, so neither the afronding nor the operator is absorbed into it.
+        String src = """
+            Objecttype de Heffing
+                de basis Numeriek (geheel getal);
+                de netto Numeriek (geheel getal);
+            Regel r
+                geldig altijd
+                    De netto van een Heffing moet gesteld worden op de basis van een Heffing tot de macht 2 naar beneden afgerond op 0 decimalen maal 3.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        // the setScale (rounding the power) is multiplied by 3 -> the maal is outside the afronding
+        assertTrue(drl.contains(".setScale(0, java.math.RoundingMode.FLOOR) * new java.math.BigDecimal(\"3\")"),
+                () -> "afronding moet de macht afronden en 'maal 3' moet erbuiten binden:\n" + drl);
     }
 
     @Test void kenmerktoekenning_wordt_boolean_setter_onder_voorwaarde() {

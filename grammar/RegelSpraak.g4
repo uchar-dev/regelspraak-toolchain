@@ -648,7 +648,7 @@ periodevergelijkingElementair : HET IS DE PERIODE periodevergelijkingEnkelvoudig
 // every TOKA fixture are paren-free).
 // ====================================================================
 expressie
-    : expressie TOT_DE_MACHT expressie afronding?                    # machtExpr        // §13.4.17.14
+    : expressie TOT_DE_MACHT primaireExpressie afronding             # machtExpr        // §13.4.17.14 (afronding mandatory; exponent is primair so it rounds the POWER)
     | expressie ( MAAL | GEDEELD_DOOR | GEDEELD_DOOR_ABS ) expressie # productExpr      // §13.4.16
     | expressie ( PLUS | MIN | VERMINDERD_MET ) expressie            # somExpr          // §13.4.16 (datum +/- duur too)
     | expressie PERCENT_SIGN VAN expressie                           # percentageVanExpr // §13.4.17.12 (% required to disambiguate from 'van' navigation)
@@ -687,7 +687,7 @@ functieAanroep
     | TOTAAL_VAN expressie conditieBijExpressie? leegwaardeAlternatief?                            # totaalFunc      // §13.4.17.56
     | ( MAXIMALE_WAARDE_VAN | MINIMALE_WAARDE_VAN ) expressie ( COMMA expressie )* ( EN expressie )? dimensieSelectie? # minMaxFunc // §13.4.17.15/.16/.47
     | ( EERSTE_VAN | LAATSTE_VAN ) expressie ( COMMA expressie )* ( EN expressie )?                 # eersteLaatsteFunc // §13.4.17.39/.40/.49
-    | WORTEL_VAN expressie afronding?                                                              # wortelFunc      // §13.4.17.13
+    | WORTEL_VAN primaireExpressie afronding                                                      # wortelFunc      // §13.4.17.13 (afronding mandatory; radicand is primair so the afronding rounds the ROOT)
     | ABSOLUTE_WAARDE_VAN LPAREN expressie RPAREN                                                  # absWaardeFunc   // §13.4.17.17
     | ( TIJDSDUUR_VAN | ABSOLUTE_TIJDSDUUR_VAN ) expressie TOT expressie IN HELE? eenheidMeervoud  # tijdsduurFunc   // §13.4.17.32
     | EERSTE_PAASDAG_VAN expressie                                                                 # paasdagFunc     // §13.4.17.37

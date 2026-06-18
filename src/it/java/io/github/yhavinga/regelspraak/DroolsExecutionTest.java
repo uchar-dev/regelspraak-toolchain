@@ -375,6 +375,29 @@ class DroolsExecutionTest {
                 () -> "min(10, 10*2) = 10 (parenthesised bound), kreeg " + h.getNetto());
     }
 
+    @Test void macht_afronding_rondt_de_macht_af_en_compileert_als_bigdecimal() {
+        // §13.4.17.14: the mandatory afronding rounds the POWER, not the exponent. "basis tot de
+        // macht 2 afgerond op 0" with basis=5 must give 25 (5^2), and the Math.pow result must
+        // lower to a BigDecimal so setScale compiles and fires.
+        String src = """
+            Objecttype de Heffing
+                de basis Numeriek (geheel getal);
+                de netto Numeriek (geheel getal);
+            Regel macht
+                geldig altijd
+                    De netto van een Heffing moet gesteld worden op de basis van een Heffing tot de macht 2 naar beneden afgerond op 0 decimalen.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        KieSession sessie = build(DrlTranspiler.transpile(m)).newKieSession();
+        Heffing h = new Heffing(); h.setBasis(new BigDecimal("5"));
+        sessie.insert(h);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("25").compareTo(h.getNetto()),
+                () -> "5 tot de macht 2 = 25, kreeg " + h.getNetto());
+    }
+
     @Test void telling_maal_parameter_bindt_de_maal_buiten_de_telling() {
         // §13.4.17.47 telling precedence: "het aantal X van de reis maal de factor" must be
         // (count of X) maal factor, NOT count(X maal factor). The telling takes a

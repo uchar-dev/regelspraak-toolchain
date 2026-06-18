@@ -52,8 +52,10 @@ final class ExpressieBouwer {
             return binair(op, s.expressie(0), s.expressie(1), bron);
         }
         if (e instanceof MachtExprContext s) {
-            Expr basis = binair(Expr.BinOp.TOT_DE_MACHT, s.expressie(0), s.expressie(1), bron);
-            return s.afronding() != null ? afgerond(basis, s.afronding(), bron) : basis;
+            // §13.4.17.14: "X tot de macht Y <afronding>" — the exponent Y is a primaireExpressie
+            // and the mandatory afronding rounds the POWER (it is a sibling of Y, not inside it).
+            Expr basis = binairExpr(Expr.BinOp.TOT_DE_MACHT, bouw(s.expressie()), bouwPrimair(s.primaireExpressie()), bron);
+            return afgerond(basis, s.afronding(), bron);
         }
         if (e instanceof PercentageVanExprContext s) {
             // §4.8 Tabel 18: "X% van Y" has the datatype (incl. the unit) of Y. Do not
@@ -79,7 +81,12 @@ final class ExpressieBouwer {
     /** Arithmetic node whose result datatype is taken from the typeringen matrix
      *  (a type error there yields Onbekend, matching the checker's no-claim path). */
     private Expr binair(Expr.BinOp op, ExpressieContext l, ExpressieContext r, String bron) {
-        Expr links = bouw(l), rechts = bouw(r);
+        return binairExpr(op, bouw(l), bouw(r), bron);
+    }
+
+    /** Arithmetic node over already-built operands (used where the right operand is a
+     *  primaireExpressie, e.g. the exponent of "tot de macht"). */
+    private Expr binairExpr(Expr.BinOp op, Expr links, Expr rechts, String bron) {
         Typering.Resultaat res = Typering.reken(naarTyperingOp(op), links.type(), rechts.type());
         Datatype t = res.ok() ? res.type() : onbekend();
         return new Expr.Binair(op, links, rechts, t, bron);

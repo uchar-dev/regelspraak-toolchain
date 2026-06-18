@@ -220,13 +220,25 @@ single role is not marked to-many; flagging a wederkerig "meerdere…meerdere" l
 future work. This is the cardinality counterpart to the absent-attribute marker above: an
 honestly unrepresentable scalar read is a visible marker, never silently-wrong DRL.
 
-### Known precedence limitation (wortel / tot de macht + afronding)
+### Wortel / tot de macht + afronding — fixed, with a bounded operand divergence
 
 §13.4.17.13/.14 make `<afronding>` **mandatory** on "de wortel van" and "tot de macht"
-(it is not bracketed in the diagram). The grammar currently makes it optional and lets
-the function argument run as a full `expressie`, so "de wortel van X afgerond …" can
-absorb a trailing operator into X. To be fixed by requiring the afronding and giving
-these functions a higher-precedence operand sub-rule.
+(it is not bracketed in the diagram). The grammar used to make it optional and let the
+operand run as a full `expressie`, so the trailing afronding bound INTO the operand: "de
+wortel van X maal Y afgerond" rooted `(X·Y) rounded`, and "X tot de macht 2 afgerond"
+rounded the EXPONENT (`X^(2 rounded)`) instead of the power. Fixed by (a) requiring the
+afronding and (b) making the radicand / the exponent a `primaireExpressie` — so the
+afronding is a sibling that rounds the root/power, and a trailing operator binds OUTSIDE:
+"de wortel van X afgerond … maal Y" is `(√X rounded)·Y`, and "X tot de macht 2 afgerond …
+maal 3" is `((X²) rounded)·3`. (Math.pow's double result is wrapped as a BigDecimal so the
+setScale and surrounding arithmetic compile and fire.)
+
+Bounded divergence (same trade as begrenzing): §13.4.17.13/.14 give the operand as a full
+`<getalexpressie>`, but `primaireExpressie` excludes the binary-operator alternatives, so a
+**bare arithmetic radicand/exponent** must be parenthesised — "de wortel van (X maal Y)
+afgerond …". No corpus example uses wortel/macht at all, so none is affected. (`de wortel
+van` still lowers to a `/* TODO aggregatie WORTEL */` marker — no Drools form yet — but the
+afronding and precedence are now captured correctly; `tot de macht` lowers and fires.)
 
 ### Telling (aantal) operand precedence — fixed, with a deliberate EBNF asymmetry
 
@@ -284,13 +296,6 @@ operands, which the resolver then type-checks (§4.12-4.15: min/max operands all
 inter-convertible units; eerste/laatste all datum of one tijd-precisie) and the transpiler
 lowers as a pairwise fold of `<`/`>` ternaries rather than a collection accumulate.
 
-### Known precedence limitation (wortel/macht)
-
-The same "operand is a full `expressie`" greediness remains for `de wortel van` /
-`tot de macht`: their mandatory `<afronding>` (§13.4.17.13/.14) is still optional and the
-argument runs as a full `expressie`, so "de wortel van X afgerond …" can absorb a trailing
-operator into X. Carded for a focused fix. (The telling and begrenzing+afronding cases —
-see above — are resolved.)
 
 ### Forms still modelled at main-clause word order (resolver-side concern)
 
