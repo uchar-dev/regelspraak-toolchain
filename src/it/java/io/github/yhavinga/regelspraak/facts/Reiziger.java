@@ -10,10 +10,13 @@ import java.math.BigDecimal;
 public class Reiziger {
     private BigDecimal afstandTotDoel;
     private BigDecimal doelrang;
+    private BigDecimal aantalBestemmingen;   // result of "het aantal bestemming van de reiziger"
     private Luchthaven bestemming;
     private Bestemming plek;
     public BigDecimal getAfstandTotDoel() { return afstandTotDoel; }
     public void setAfstandTotDoel(BigDecimal v) { this.afstandTotDoel = v; }
+    public BigDecimal getAantalBestemmingen() { return aantalBestemmingen; }
+    public void setAantalBestemmingen(BigDecimal v) { this.aantalBestemmingen = v; }
     public BigDecimal getDoelrang() { return doelrang; }
     public void setDoelrang(BigDecimal v) { this.doelrang = v; }
     public Luchthaven getBestemming() { return bestemming; }

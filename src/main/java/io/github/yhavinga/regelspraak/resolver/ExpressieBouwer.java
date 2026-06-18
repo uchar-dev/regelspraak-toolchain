@@ -230,9 +230,29 @@ final class ExpressieBouwer {
         if (args.isEmpty() || !(args.get(0) instanceof Expr.AttribuutRef a)) return null;
         return switch (kind) {
             case SOM, TOTAAL, MINIMUM, MAXIMUM, EERSTE, LAATSTE -> a.objecttype();
-            case AANTAL -> model.resolveObjecttype(a.attribuut());
+            case AANTAL -> aantalElement(a.attribuut());
             default -> null;
         };
+    }
+
+    /**
+     * The object type a count "het aantal &lt;X&gt; van &lt;onderwerp&gt;" ranges over (§4.11
+     * counts onderwerpexpressies). The naive reading — {@link RegelSpraakModel#resolveObjecttype}
+     * — is subject-blind and tries the name as an objecttype FIRST, so a count element word that
+     * collides with a declared objecttype name ("het aantal bestemming", where Bestemming is a
+     * type AND "bestemming" a role to Luchthaven) binds the wrong type and then loses its join to
+     * a comment placeholder — counting ALL instances globally. Mirror the p12 navigation
+     * disambiguation: when a same-named role uniquely reaches a type FROM the subject and the
+     * by-name objecttype does NOT itself join the subject, the written reference IS that role
+     * navigation (§13.4.1.2/.3), so count the role's target. Otherwise the by-name reading stands.
+     */
+    private Objecttype aantalElement(String woord) {
+        Objecttype byNaam = model.resolveObjecttype(woord);
+        if (huidigSubject == null) return byNaam;
+        Objecttype viaRol = model.rolDoeltypeNaarSubject(huidigSubject, woord);
+        if (viaRol != null && (byNaam == null || model.verbindendeRol(byNaam, huidigSubject) == null))
+            return viaRol;
+        return byNaam;
     }
 
     /**

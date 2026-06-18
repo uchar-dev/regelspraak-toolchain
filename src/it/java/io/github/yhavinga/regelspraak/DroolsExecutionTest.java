@@ -115,6 +115,46 @@ class DroolsExecutionTest {
                 () -> "som over de juiste passagiers faalde: " + v.getTotaalprijs());
     }
 
+    @Test void aantal_telt_via_de_rol_niet_alle_facts() {
+        // p11: "het aantal bestemming van de reiziger" collides with the objecttype Bestemming.
+        // The count must range over the Luchthavens the reiziger reaches via the "bestemming"
+        // role (reiziger == $subject) -- NOT all Bestemming facts, NOT all Luchthavens globally.
+        String src = """
+            Objecttype de Reiziger
+                het aantal bestemmingen Numeriek (geheel getal);
+            Objecttype de Luchthaven
+            Objecttype de Bestemming
+            Feittype Reiziger met bestemmingen
+                de reiziger Reiziger
+                de bestemming Luchthaven
+            Eén reiziger betreft meerdere bestemmingen
+            Regel tel
+                geldig altijd
+                    Het aantal bestemmingen van een Reiziger moet gesteld worden op het aantal bestemming van de reiziger.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("Luchthaven( reiziger == $subject )"),
+                () -> "verwachtte een join via de rol, niet een comment-placeholder:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Reiziger r = new Reiziger();
+        Reiziger ander = new Reiziger();
+        Luchthaven l1 = new Luchthaven(); l1.setReiziger(r);
+        Luchthaven l2 = new Luchthaven(); l2.setReiziger(r);
+        Luchthaven l3 = new Luchthaven(); l3.setReiziger(ander);    // another reiziger's -> excluded
+        Bestemming b1 = new Bestemming(); Bestemming b2 = new Bestemming(); // free objecttype -> excluded
+        sessie.insert(r); sessie.insert(ander);
+        sessie.insert(l1); sessie.insert(l2); sessie.insert(l3);
+        sessie.insert(b1); sessie.insert(b2);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("2").compareTo(r.getAantalBestemmingen()),
+                () -> "telt 2 luchthavens van deze reiziger, niet alle facts; kreeg " + r.getAantalBestemmingen());
+    }
+
     @Test void begrenzing_grens_wordt_omgerekend_naar_de_eenheid_van_de_waarde() {
         // §4/§6.1.4: a convertible-but-different bound unit is restated in the basis unit before
         // the clamp. duur 20 mnd capped at a 1 jr maximum (= 12 mnd) must give 12, not 1 (a raw
