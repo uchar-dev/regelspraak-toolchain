@@ -204,16 +204,21 @@ getter.
 multiplicity, but the IR/transpiler used to ignore it: a bare scalar read "de <attr> van de
 <meervoudige rol>" lowered to `$subject.getRol().getAttr()`, silently reading ONE element of a
 collection (and, when the subject is the "één" side, a getter the fact model does not even
-have). The resolver now records each role's cardinality (`Rol.meervoudig`, parsed by matching
-the cardinaliteit nouns onto the roles), and the transpiler refuses a scalar getter chain
-through a to-many role — it emits a `/* TODO naar-veel-navigatie */` marker instead, since the
-read must be an aggregation (`de som/maximale/… waarde van … van de <rol>`, which already lowers
-to an accumulate). The check is fail-open: a role whose cardinality cannot be uniquely
-determined stays single, so a genuine to-one navigation is never wrongly refused (the corpus
-and the to-one direction are unchanged). A wederkerig role is treated as enkelvoudig (§3.11),
-so its single role is not marked to-many; flagging a wederkerig "meerdere…meerdere" line is left
-as future work. This is the cardinality counterpart to the absent-attribute marker above:
-an honestly unrepresentable scalar read is a visible marker, never silently-wrong DRL.
+have). The resolver now records each role's cardinality (`Rol.meervoudig`). The cardinaliteit
+line is `(één|meerdere) <rolnaam> <relatiebeschrijving> (één|meerdere) <rolnaam>`, so the
+rolnaam is the **leading phrase** of each segment and the free-text relatiebeschrijving prose
+follows it; the quantifier is bound to the longest leading sub-phrase that names a role. Matching
+the leading phrase (not word-by-word) is what lets a **multi-word** role name bind whole
+("passagier met recht op treinmiles") and keeps a role that the relatiebeschrijving merely
+mentions ("… boeken de reis voor …") from being mis-marked. The transpiler then refuses a scalar
+getter chain through a to-many role — it emits a `/* TODO naar-veel-navigatie */` marker instead,
+since the read must be an aggregation (`de som/maximale/… waarde van … van de <rol>`, which
+already lowers to an accumulate). The check is fail-open: a role whose cardinality cannot be
+determined stays single, so a genuine to-one navigation is never wrongly refused (the corpus and
+the to-one direction are unchanged). A wederkerig role is treated as enkelvoudig (§3.11), so its
+single role is not marked to-many; flagging a wederkerig "meerdere…meerdere" line is left as
+future work. This is the cardinality counterpart to the absent-attribute marker above: an
+honestly unrepresentable scalar read is a visible marker, never silently-wrong DRL.
 
 ### Known precedence limitation (wortel / tot de macht + afronding)
 

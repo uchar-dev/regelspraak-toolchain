@@ -253,8 +253,13 @@ public final class DefinitionResolver {
 
     /** Tag each role single/meerdere from the cardinaliteit line. The line alternates a
      *  quantifier terminal (één | meerdere) with a noun phrase; the quantifier qualifies the
-     *  phrase that follows it, and a role whose name a word of that phrase matches takes that
-     *  cardinality. The verb in the phrase ("… betreft …") matches no role and is ignored. */
+     *  phrase that follows it. Per the §13.3.9.1 EBNF a segment is
+     *  {@code (één|meerdere) <rolnaam> <relatiebeschrijving>}: the rolnaam is the LEADING phrase
+     *  and the free-text relatiebeschrijving prose follows it. So a role is matched against the
+     *  longest LEADING sub-phrase of the deel (not word-by-word). This binds a multi-word role
+     *  name whole ("passagier met recht op treinmiles") and never marks a role that a trailing
+     *  relatiebeschrijving merely names ("… boeken de reis voor …" leaves the reis role untouched)
+     *  — the two failure modes word-by-word matching had. */
     private List<Rol> markeerKardinaliteit(List<Rol> rollen, FeitTypeCardinaliteitContext card) {
         List<Rol> uit = new ArrayList<>(rollen);
         boolean meervoudigVolgend = false;
@@ -263,15 +268,29 @@ public final class DefinitionResolver {
             if (ch instanceof TerminalNode t) {
                 meervoudigVolgend = t.getSymbol().getType() == RegelSpraak.MEERDERE;
             } else if (ch instanceof CardinaliteitDeelContext deel) {
-                for (String woord : src(deel).split("\\s+"))
-                    for (int j = 0; j < uit.size(); j++) {
-                        Rol r = uit.get(j);
-                        if (RegelSpraakModel.rolNaamMatcht(r, woord) && r.meervoudig() != meervoudigVolgend)
-                            uit.set(j, new Rol(r.naam(), r.objecttypeNaam(), r.meervoud(), meervoudigVolgend));
-                    }
+                String[] woorden = src(deel).split("\\s+");
+                markeerKop(uit, woorden, meervoudigVolgend);
             }
         }
         return uit;
+    }
+
+    /** Mark the role named by the LEADING sub-phrase of {@code woorden} (the rolnaam head):
+     *  try the longest leading phrase first so a multi-word role binds whole and a more specific
+     *  role wins over a shorter prefix; stop at the first match so trailing relatiebeschrijving
+     *  words never mark another role. */
+    private void markeerKop(List<Rol> uit, String[] woorden, boolean meervoudig) {
+        for (int len = woorden.length; len >= 1; len--) {
+            String kandidaat = String.join(" ", java.util.Arrays.copyOfRange(woorden, 0, len));
+            for (int j = 0; j < uit.size(); j++) {
+                Rol r = uit.get(j);
+                if (RegelSpraakModel.rolNaamMatcht(r, kandidaat)) {
+                    if (r.meervoudig() != meervoudig)
+                        uit.set(j, new Rol(r.naam(), r.objecttypeNaam(), r.meervoud(), meervoudig));
+                    return;
+                }
+            }
+        }
     }
 
     // ---------------- helpers ----------------

@@ -113,4 +113,39 @@ class ModelTest {
         assertFalse(ft.rollen.get(0).meervoudig(), "reis is enkelvoudig (Eén reis ...)");
         assertTrue(ft.rollen.get(1).meervoudig(), "passagier is meervoudig (... meerdere passagiers)");
     }
+
+    @Test void cardinaliteit_markeert_een_meerwoordige_rolnaam() {
+        // The rolnaam is the LEADING phrase of a cardinaliteit segment, so a multi-word role
+        // name binds whole — word-by-word matching missed it and left the role wrongly single.
+        String src = """
+            Objecttype de Contingent
+            Objecttype de Natuurlijk persoon
+            Feittype Contingent en passagiers
+                de contingent Contingent
+                de passagier met recht op treinmiles Natuurlijk persoon
+            Eén contingent betreft meerdere passagiers met recht op treinmiles
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        var ft = m.feittypen.get("Contingent en passagiers");
+        assertFalse(ft.rollen.get(0).meervoudig(), "contingent is enkelvoudig");
+        assertTrue(ft.rollen.get(1).meervoudig(), "de meerwoordige rol is meervoudig");
+    }
+
+    @Test void cardinaliteit_markeert_geen_rol_die_alleen_in_de_relatiebeschrijving_staat() {
+        // The relatiebeschrijving prose may name the OTHER role ("… boeken de reis voor …").
+        // Only the segment HEAD takes the quantifier, so the reis role stays single (no
+        // over-marking) — else a valid to-one navigation would wrongly become a marker.
+        String src = """
+            Objecttype de Reis
+            Objecttype de Passagier
+            Feittype Boeking
+                de passagier Passagier
+                de reis Reis
+            meerdere passagiers boeken de reis voor Eén reis
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        var ft = m.feittypen.get("Boeking");
+        assertTrue(ft.rollen.get(0).meervoudig(), "passagier is meervoudig (meerdere passagiers ...)");
+        assertFalse(ft.rollen.get(1).meervoudig(), "reis mag niet meervoudig zijn enkel omdat de relatiebeschrijving 'reis' noemt");
+    }
 }
