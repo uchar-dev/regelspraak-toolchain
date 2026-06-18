@@ -292,9 +292,15 @@ public final class DrlTranspiler {
         if (t.isTekst()) return "\"" + lit.waarde().replace("\"", "") + "\"";
         if (t instanceof Datatype.Booleaan) return lit.waarde().toLowerCase().contains("waar")
                 && !lit.waarde().toLowerCase().contains("onwaar") ? "true" : "false";
-        // numeric (possibly "0 €"): keep the leading number
+        if (t.isDatum()) { // "dd. d-m-yyyy [time]" -> LocalDate.of(y, m, d)
+            java.util.regex.Matcher d = java.util.regex.Pattern.compile("(\\d{1,2})-(\\d{1,2})-(\\d{4})").matcher(lit.waarde());
+            return d.find() ? "java.time.LocalDate.of(" + d.group(3) + ", " + d.group(2) + ", " + d.group(1) + ")"
+                    : todo("datumliteral", lit.waarde());
+        }
+        // numeric (possibly "0 €"): the leading number AS A BigDecimal, so arithmetic,
+        // unit scaling (.multiply) and rounding (.setScale) compile in mvel.
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("-?\\d+(?:[.,]\\d+)?").matcher(lit.waarde());
-        return m.find() ? m.group().replace(',', '.') : todo("literal", lit.waarde());
+        return m.find() ? "new java.math.BigDecimal(\"" + m.group().replace(',', '.') + "\")" : todo("literal", lit.waarde());
     }
 
     /** Wrap an emitted value in a unit conversion when its unit differs from (but is

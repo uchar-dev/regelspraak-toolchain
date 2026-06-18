@@ -147,7 +147,7 @@ class DrlTest {
                     indien de leeftijd van een Persoon kleiner is dan 18.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        assertTrue(drl.contains("$subject : Persoon( leeftijd < 18 )"), () -> "voorwaarde:\n" + drl);
+        assertTrue(drl.contains("leeftijd < new java.math.BigDecimal(\"18\")"), () -> "voorwaarde:\n" + drl);
         assertTrue(drl.contains("setMinderjarig( true )"), () -> "kenmerk-setter:\n" + drl);
     }
 

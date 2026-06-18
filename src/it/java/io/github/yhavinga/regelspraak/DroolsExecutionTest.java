@@ -225,4 +225,32 @@ class DroolsExecutionTest {
         assertTrue(boven.isOud(), "25 mnd > 2 jr (24 mnd) moet waar zijn");
         assertFalse(onder.isOud(), "20 mnd > 2 jr (24 mnd) moet onwaar zijn (niet rauw 20>2)");
     }
+
+    @Test void cross_unit_literal_grens_compileert_en_vuurt() {
+        // The bound is a bare unit LITERAL "2 jr" (not an attribute). It must be scaled
+        // to mnd and — crucially — emitted as a BigDecimal so (2).multiply does not
+        // fail to compile in mvel.
+        String src = """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Objecttype de Meting
+                de duurmnd Numeriek (geheel getal) met eenheid mnd;
+                is oud kenmerk (bijvoeglijk);
+            Regel oud
+                geldig altijd
+                    Een Meting is oud
+                    indien de duurmnd van een Meting groter is dan 2 jr.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        KieSession sessie = build(drl).newKieSession();      // build() asserts it COMPILES
+        Meting boven = new Meting(); boven.setDuurmnd(new BigDecimal("25"));
+        Meting onder = new Meting(); onder.setDuurmnd(new BigDecimal("20"));
+        sessie.insert(boven); sessie.insert(onder);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertTrue(boven.isOud(), "25 mnd > 2 jr (24) moet waar zijn");
+        assertFalse(onder.isOud(), "20 mnd > 2 jr (24) moet onwaar zijn");
+    }
 }
