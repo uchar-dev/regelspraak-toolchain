@@ -255,6 +255,36 @@ class DrlTest {
         assertFalse(drl.contains("\"rondvlucht\""), () -> "ongeëscapete quote lekt door:\n" + drl);
     }
 
+    @Test void lege_sommatie_is_leegwaarde_tenzij_een_fallback_is_opgegeven() {
+        // §5.8.2: an empty sommatie is a leegwaarde, NOT 0 — Drools sum() returns 0, so the
+        // non-empty contributors are counted and the result branches on that count. With
+        // "of 0 als die er niet zijn" the empty case takes the fallback instead.
+        String src = """
+            Objecttype de Vlucht
+                de somMet Numeriek (geheel getal);
+                de somZonder Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel met
+                geldig altijd
+                    De somMet van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis of 0 als die er niet zijn.
+            Regel zonder
+                geldig altijd
+                    De somZonder van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        // empty contributors counted; only non-null values summed
+        assertTrue(drl.contains("$e1 : Passagier( reis == $subject, prijs != null )"), () -> "leeg-filter ontbreekt:\n" + drl);
+        assertTrue(drl.contains("$n1 : count($e1)"), () -> "count-bewaking ontbreekt:\n" + drl);
+        // fallback present -> 0 on empty; absent -> leegwaarde (null)
+        assertTrue(drl.contains("setSomMet( ($n1 == 0 ? new java.math.BigDecimal(\"0\") : $acc1) )"), () -> "fallback-tak:\n" + drl);
+        assertTrue(drl.contains("setSomZonder( ($n1 == 0 ? null : $acc1) )"), () -> "leegwaarde-tak:\n" + drl);
+    }
+
     @Test void namen_worden_geldige_java_identifiers() {
         String src = """
             Objecttype de Natuurlijk persoon

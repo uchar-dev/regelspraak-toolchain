@@ -43,9 +43,14 @@ public sealed interface Expr {
     }
     /** `elementObjecttype` is the object type the aggregation ranges over — the type
      *  whose instances are summed/counted/etc. (null if unresolved). It is what the
-     *  transpiler binds the accumulate source pattern to. */
+     *  transpiler binds the accumulate source pattern to.
+     *
+     *  `leegwaarde` is the §5.8.2 "of … als die er niet zijn" fallback for a sommatie
+     *  (SOM/TOTAAL): the value the sum takes when it has no non-empty contributors,
+     *  instead of a leegwaarde. Null when the source declared no fallback (an empty
+     *  sommatie is then a leegwaarde); always null for non-sommatie functions. */
     record Functie(FunctieKind kind, List<Expr> argumenten, Objecttype elementObjecttype,
-                   Datatype type, String bron) implements Expr {}
+                   Expr leegwaarde, Datatype type, String bron) implements Expr {}
 
     /** §13.4.17.25/.26 rounding wrapper; the rounding does not change the datatype. */
     enum AfrondModus { NAAR_BENEDEN, NAAR_BOVEN, REKENKUNDIG, RICHTING_NUL, WEG_VAN_NUL }

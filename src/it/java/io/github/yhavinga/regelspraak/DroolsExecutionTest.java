@@ -428,4 +428,46 @@ class DroolsExecutionTest {
         assertEquals(2, fouten.size(), () -> "over-limiet en lege saldo moeten beide inconsistent zijn: " + fouten);
         assertTrue(fouten.stream().noneMatch(f -> f.getSubject() == ok), "de consistente Konto mag niet gemarkeerd zijn");
     }
+
+    @Test void lege_sommatie_geeft_leegwaarde_of_de_opgegeven_fallback() {
+        // §5.8.2: a sum over zero contributors is a leegwaarde (null) — UNLESS "of 0 als die
+        // er niet zijn" is added, then it is 0. A non-empty sum is unaffected. Drools sum()
+        // returns 0 for empty, so without the count-guard both empty cases would wrongly be 0.
+        String src = """
+            Objecttype de Vlucht
+                de somMet Numeriek (geheel getal);
+                de somZonder Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel met
+                geldig altijd
+                    De somMet van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis of 0 als die er niet zijn.
+            Regel zonder
+                geldig altijd
+                    De somZonder van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht vol = new Vlucht();
+        Passagier a = new Passagier(); a.setPrijs(new BigDecimal("30")); a.setReis(vol);
+        Passagier b = new Passagier(); b.setPrijs(new BigDecimal("70")); b.setReis(vol);
+        Vlucht leeg = new Vlucht();                                   // no passengers
+        sessie.insert(vol); sessie.insert(leeg); sessie.insert(a); sessie.insert(b);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        // non-empty: both forms sum to 100
+        assertEquals(0, new BigDecimal("100").compareTo(vol.getSomMet()), () -> "vol somMet: " + vol.getSomMet());
+        assertEquals(0, new BigDecimal("100").compareTo(vol.getSomZonder()), () -> "vol somZonder: " + vol.getSomZonder());
+        // empty: fallback -> 0, no fallback -> leegwaarde (null)
+        assertEquals(0, BigDecimal.ZERO.compareTo(leeg.getSomMet()), () -> "lege somMet moet 0 zijn: " + leeg.getSomMet());
+        assertNull(leeg.getSomZonder(), () -> "lege somZonder moet leegwaarde (null) zijn: " + leeg.getSomZonder());
+    }
 }

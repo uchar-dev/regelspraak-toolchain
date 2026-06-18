@@ -126,8 +126,8 @@ final class ExpressieBouwer {
         if (p.HIJ() != null)            return new Expr.Constante("hij", onbekend(), bron);
         if (p.DE() != null && p.DAG() != null) return new Expr.Constante("de dag", onbekend(), bron);
         if (p.functieAanroep() != null) return bouwFunctie(p.functieAanroep());
-        if (p.datumMet() != null)       return new Expr.Functie(Expr.FunctieKind.DATUM_MET, args(p.datumMet()), null, new Datatype.DatumInDagen(), bron);
-        if (p.datumTijdMet() != null)   return new Expr.Functie(Expr.FunctieKind.DATUMTIJD_MET, args(p.datumTijdMet()), null, new Datatype.DatumTijd(), bron);
+        if (p.datumMet() != null)       return new Expr.Functie(Expr.FunctieKind.DATUM_MET, args(p.datumMet()), null, null, new Datatype.DatumInDagen(), bron);
+        if (p.datumTijdMet() != null)   return new Expr.Functie(Expr.FunctieKind.DATUMTIJD_MET, args(p.datumTijdMet()), null, null, new Datatype.DatumTijd(), bron);
         if (p.attribuutVanOnderwerp() != null) return bouwAttribuut(p.attribuutVanOnderwerp());
         if (p.expressie() != null)      return bouw(p.expressie()); // ( expressie )
         if (p.onderwerp() != null) {
@@ -144,7 +144,17 @@ final class ExpressieBouwer {
         Expr.FunctieKind kind = functieKind(f);
         List<Expr> argumenten = args(f);
         Datatype type = f instanceof TijdsduurFuncContext t ? tijdsduurType(t) : functieType(kind, argumenten);
-        return new Expr.Functie(kind, argumenten, aggregatieElement(kind, argumenten), type, bron);
+        return new Expr.Functie(kind, argumenten, aggregatieElement(kind, argumenten), leegwaardeVan(f), type, bron);
+    }
+
+    /** The §5.8.2 "of … als die er niet zijn" fallback expression of a sommatie (the
+     *  grammar attaches it to both "som van" and "totaal van", both summations), or null. */
+    private Expr leegwaardeVan(FunctieAanroepContext f) {
+        if (f instanceof SomFuncContext s && s.leegwaardeAlternatief() != null)
+            return bouw(s.leegwaardeAlternatief().expressie());
+        if (f instanceof TotaalFuncContext t && t.leegwaardeAlternatief() != null)
+            return bouw(t.leegwaardeAlternatief().expressie());
+        return null;
     }
 
     /** §13.4.17.32 "(absolute) tijdsduur van A tot B in [hele] <eenheid>": a number of

@@ -236,7 +236,7 @@ public final class DrlTranspiler {
             // restate the value in the target's unit (§4); §6.1.2 forbids AUTO-rounding —
             // if the result has too many decimals the author must add an explicit afronding.
             if (r.waarde().type().isNumeriek())
-                valueStr = omreken(valueStr, r.waarde().type(), a.type());
+                valueStr = omrekenWaarde(valueStr, r.waarde().type(), a.type());
             out.append("    modify(").append(SUBJECT).append(") {\n");
             out.append("        ").append(setter(a.attribuut())).append("( ").append(valueStr).append(" )\n");
             out.append("    }\n");
@@ -295,7 +295,7 @@ public final class DrlTranspiler {
                 return "(" + waarde(b.links(), subject) + " * " + waarde(b.rechts(), subject) + ")";
             // §4: restate the right operand in the left operand's unit before +/- so a
             // convertible-but-different unit (mnd vs jr) is scaled, not added raw.
-            String rechts = omreken(waarde(b.rechts(), subject), b.rechts().type(), b.links().type());
+            String rechts = omrekenWaarde(waarde(b.rechts(), subject), b.rechts().type(), b.links().type());
             return "(" + waarde(b.links(), subject) + " " + infix(b.op()) + " " + rechts + ")";
         }
         if (e instanceof Expr.Afgerond af) {
@@ -339,12 +339,28 @@ public final class DrlTranspiler {
         if (elem == null || fn == null) return null;
         int n = ++accCount;
         String ev = "$e" + n, var = "$acc" + n;
+        String scope = scope(elem, subject, f);
+        Expr arg = f.argumenten().isEmpty() ? null : f.argumenten().get(0);
+
+        // §5.8.2 sommatie: an empty sum (no non-empty contributors) is a leegwaarde, not 0 —
+        // unless "of … als die er niet zijn" supplies a fallback. Drools sum() can't tell an
+        // empty sum from a real 0, so count the non-empty contributors and branch on it.
+        // Needs a resolved join and a plain attribute argument; otherwise fall through.
+        if ((f.kind() == Expr.FunctieKind.SOM || f.kind() == Expr.FunctieKind.TOTAAL)
+                && arg instanceof Expr.AttribuutRef a && !scope.startsWith("/*")) {
+            String cnt = "$n" + n;
+            accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true)
+                    + "( " + scope + ", " + ident(a.attribuut(), false) + " != null ) ; "
+                    + cnt + " : count(" + ev + "), " + var + " : sum( " + ev + "." + getter(a.attribuut()) + "() ) )");
+            String fallback = f.leegwaarde() != null ? waarde(f.leegwaarde(), subject) : "null";
+            return "(" + cnt + " == 0 ? " + fallback + " : " + var + ")";
+        }
+
         String elementExpr = ev;
-        if (!fn.equals("count") && !f.argumenten().isEmpty()
-                && f.argumenten().get(0) instanceof Expr.AttribuutRef a)
+        if (!fn.equals("count") && arg instanceof Expr.AttribuutRef a)
             elementExpr = ev + "." + getter(a.attribuut()) + "()";
         accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true)
-                + "( " + scope(elem, subject, f) + " ) ; " + var + " : " + fn + "( " + elementExpr + " ) )");
+                + "( " + scope + " ) ; " + var + " : " + fn + "( " + elementExpr + " ) )");
         return var;
     }
 
@@ -425,6 +441,19 @@ public final class DrlTranspiler {
         if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return expr;
         return "(" + expr + ").multiply(new java.math.BigDecimal(\""
                 + ev.omrekenfactorNaar(en).toPlainString() + "\"))";
+    }
+
+    /** Unit conversion on the VALUE side, null-safe: a leegwaarde (an empty sommatie has
+     *  no fallback) converts to a leegwaarde rather than an NPE on .multiply. Only for the
+     *  "then"/value side — a Drools pattern constraint cannot carry the {@code == null}
+     *  guard (it reads as a nested constraint), and constraint operands are plain
+     *  attributes, so {@link #omreken} stays the constraint form. */
+    private static String omrekenWaarde(String expr, Datatype van, Datatype naar) {
+        if (expr.contains("/* TODO")) return expr;
+        io.github.yhavinga.regelspraak.model.Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();
+        if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return expr;
+        String factor = ev.omrekenfactorNaar(en).toPlainString();
+        return "(" + expr + " == null ? null : (" + expr + ").multiply(new java.math.BigDecimal(\"" + factor + "\")))";
     }
 
     private static String infix(Expr.BinOp op) {
