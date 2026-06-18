@@ -159,14 +159,27 @@ when (a) the objecttype reading is **not** the subject's own type — a definite
 back-reference to the subject's type reads the subject's own attribute, §5.5.3 — **and**
 (b) no role **named as written** reaches that objecttype from the subject, **and** (c) a
 same-named role uniquely reaches a type that actually **carries** the referenced
-attribute. Otherwise the objecttype reading stands, and a genuinely unresolvable
-reference stays a `/* TODO navigatie */` marker rather than becoming a wrong join or a
-getter for an absent property. This is a deliberate, bounded divergence: the spec offers
-no explicit tie-break for an objecttypenaam/rolnaam collision (the rangtelwoord of
+attribute. Otherwise the objecttype reading stands. The disambiguation never
+*introduces* a wrong join or an attribute-less role binding — the override is taken only
+when its target carries the attribute, else the prior reading is left untouched — and a
+collision the override declines (because no reachable reading carries the attribute)
+stays a `/* TODO navigatie */` marker. This is a deliberate, bounded divergence: the spec
+offers no explicit tie-break for an objecttypenaam/rolnaam collision (the rangtelwoord of
 §13.4.1.3 disambiguates two *different* onderwerpen sharing a name, a different case), so
 reachability is the resolver's reading. It fires only where the objecttype reading would
 otherwise have been a non-functional dangling reference; a fuller treatment could emit an
 INFO diagnostic when both readings are independently valid.
+
+This narrow guarantee is **not** yet a general one. On the ordinary objecttype/by-pair
+navigation path (no name collision, or a collision where the objecttype reading itself
+joins the subject), the transpiler still emits `$subject.getRol().getAttr()` for an
+attribute the bound type does not declare — uncompilable DRL with no resolver diagnostic
+— because attribute-existence is checked only inside this override branch, not before
+every getter is emitted. That pre-existing gap (and the related rangtelwoord
+disambiguation for two same-named roles, §5.5.3 ¶1888, which the resolver does not yet
+consume) is a separate hardening: the resolver should mark a reference whose bound type
+lacks the attribute, so an unresolvable navigation is always a marker, never a broken
+getter.
 
 ### Known precedence limitation (wortel / tot de macht + afronding)
 
