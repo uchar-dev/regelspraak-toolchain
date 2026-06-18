@@ -235,8 +235,14 @@ final class ExpressieBouwer {
         String attr = src(a.attribuutMetLidwoord().kaleNaam());
         String onderwerpBron = a.onderwerp() != null ? src(a.onderwerp()) : "";
         Objecttype ot = resolveOnderwerp(a.onderwerp());
+        // The role the author wrote to reach `ot` (the noun of a DEFINITE reference or a
+        // possessive, when it names a feittype role) — threaded so the transpiler
+        // navigates the exact field even when the (subject, ot) pair is connected by more
+        // than one feittype/role. An indefinite "een <X>" is the universal subject, not a
+        // navigation, so it is excluded (it stays an own-attribute read).
+        String navRol = model.navigatieRolNaam(navigatieNoun(a.onderwerp()));
         Datatype dt = ot != null && ot.attributen.get(attr) != null ? ot.attributen.get(attr) : onbekend();
-        return new Expr.AttribuutRef(attr, ot, onderwerpBron, dt, bron);
+        return new Expr.AttribuutRef(attr, ot, onderwerpBron, navRol, dt, bron);
     }
 
     /** A possessive "zijn <kaleNaam>" resolves to the named attribute OF the rule subject,
@@ -248,7 +254,8 @@ final class ExpressieBouwer {
         if (k.ZIJN() == null || k.kaleNaam() == null) return null;
         String attr = src(k.kaleNaam());
         Datatype dt = huidigSubject.attributen.get(attr);
-        return dt != null ? new Expr.AttribuutRef(attr, huidigSubject, "zijn", dt, bron) : null;
+        // a subject-own attribute — no role navigation
+        return dt != null ? new Expr.AttribuutRef(attr, huidigSubject, "zijn", null, dt, bron) : null;
     }
 
     /** A bare name: a known parameter binds to a ParameterRef; a variabeleNaam that is
@@ -278,6 +285,28 @@ final class ExpressieBouwer {
     Objecttype objecttypeVanKeten(OnderwerpKetenContext k) {
         String n = primaireNaamKeten(k);
         return n != null ? model.resolveObjecttype(n) : null;
+    }
+
+    /**
+     * The role noun for a navigation reference: the noun of a DEFINITE singular
+     * reference ("de reis" — parsed either as a kwantificatie "de" or an
+     * onderwerpVerwijzing) or a possessive ("zijn partner"). An indefinite "een &lt;X&gt;"
+     * (universeelOnderwerp) is the rule's universal subject, and a set quantifier
+     * (alle/geen/ten minste …) ranges over a set — neither is a single-object role
+     * navigation, so both yield null and the reference stays an own-attribute read.
+     */
+    private String navigatieNoun(OnderwerpContext o) {
+        if (o == null) return null;
+        if (o.kwantificatie() != null && o.kaleNaam() != null) // alt: "de <X>" (only the bare definite, not "alle"/"ten minste … van de")
+            return o.kwantificatie().DE() != null && o.kwantificatie().getChildCount() == 1 ? src(o.kaleNaam()) : null;
+        return navigatieNoun(o.onderwerpKeten());
+    }
+    private String navigatieNoun(OnderwerpKetenContext k) {
+        if (k == null) return null;
+        if (k.onderwerpVerwijzing() != null) return src(k.onderwerpVerwijzing().kaleNaam()); // "de reis"
+        if (k.ZIJN() != null && k.kaleNaam() != null) return src(k.kaleNaam());              // "zijn partner"
+        if (k.onderwerpKeten() != null) return navigatieNoun(k.onderwerpKeten());            // … die/dat predicaat
+        return null; // universeelOnderwerp ("een <X>" = subject) / selector-van: not a single role navigation
     }
 
     /** The subject's primary noun — the entity an attribute attaches to. */

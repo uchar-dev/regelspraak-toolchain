@@ -79,10 +79,12 @@ public final class RegelSpraakModel {
     /**
      * The role name to navigate from {@code houder} to {@code doelwit} — the
      * reference field on a {@code houder} fact that points at a {@code doelwit},
-     * which is the role {@code doelwit} plays in a feittype that also has a (distinct)
-     * role for {@code houder}. So from a passagier (Natuurlijk persoon) to its flight
-     * (Vlucht) this is "reis". Returns null when there is no such feittype or more
-     * than one (ambiguous) — the caller then emits a marker rather than a wrong join.
+     * which is the role {@code doelwit} plays in a feittype that also relates a
+     * {@code houder}. So from a passagier (Natuurlijk persoon) to its flight (Vlucht)
+     * this is "reis". Returns null when there is no such feittype or more than one
+     * (ambiguous) — the caller then emits a marker rather than a wrong join. This is
+     * the by-pair fallback used when the source did not name the role; prefer
+     * {@link #verbindendeRolViaNaam} whenever the written role is available.
      */
     public String verbindendeRol(Objecttype houder, Objecttype doelwit) {
         if (houder == null || doelwit == null) return null;
@@ -90,12 +92,61 @@ public final class RegelSpraakModel {
         int n = 0;
         for (Feittype ft : feittypen.values())
             for (Rol doel : ft.rollen)
-                if (rolHeeftObjecttype(doel, doelwit)
-                        && ft.rollen.stream().anyMatch(h -> h != doel && rolHeeftObjecttype(h, houder))) {
+                if (rolHeeftObjecttype(doel, doelwit) && feittypeRelateert(ft, doel, houder)) {
                     gevonden = doel.naam();
                     n++;
                 }
         return n == 1 ? gevonden : null;
+    }
+
+    /**
+     * Like {@link #verbindendeRol} but disambiguated by the role name the author
+     * wrote: only a feittype role whose NAME matches {@code geschrevenRol} (singular,
+     * declared plural, or a best-effort plural) and whose object type is
+     * {@code doelwit} counts. This resolves the case the by-pair search cannot — two
+     * feittypen over the same object-type pair, or one object type playing two roles —
+     * because the source names exactly one. Matching by name first, object type
+     * second, is the §13.4.1 reading: the written role IS the navigation. Returns null
+     * when no role, or more than one, matches (still ambiguous).
+     */
+    public String verbindendeRolViaNaam(Objecttype houder, Objecttype doelwit, String geschrevenRol) {
+        if (doelwit == null || geschrevenRol == null) return null;
+        String gevonden = null;
+        int n = 0;
+        for (Feittype ft : feittypen.values())
+            for (Rol doel : ft.rollen)
+                if (rolMatcht(doel, geschrevenRol) && rolHeeftObjecttype(doel, doelwit)
+                        && feittypeRelateert(ft, doel, houder)) {
+                    gevonden = doel.naam();
+                    n++;
+                }
+        return n == 1 ? gevonden : null;
+    }
+
+    /** Does {@code ft} relate {@code houder} through its other end of {@code doelRol}?
+     *  For a normal feittype that means a DISTINCT role filled by {@code houder}; for a
+     *  wederkerig feittype (§13.3.9.2) the single role relates the object type to
+     *  itself, so it is enough that that role's own type is {@code houder}. A null
+     *  {@code houder} imposes no constraint. */
+    private boolean feittypeRelateert(Feittype ft, Rol doelRol, Objecttype houder) {
+        if (houder == null) return true;
+        if (ft.wederkerig) return rolHeeftObjecttype(doelRol, houder);
+        return ft.rollen.stream().anyMatch(h -> h != doelRol && rolHeeftObjecttype(h, houder));
+    }
+
+    /**
+     * The written role name to record on a navigation reference: the {@code noun}
+     * itself when it denotes a feittype role (and not an object type by that name),
+     * else null. Kept as written so {@link #verbindendeRolViaNaam}'s {@code rolMatcht}
+     * can still reconcile a plural ("passagiers") against the declared singular.
+     */
+    public String navigatieRolNaam(String noun) {
+        if (noun == null || noun.isBlank()) return null;
+        if (objecttypeOpNaam(noun) != null) return null; // names an object type directly — not navigation
+        for (Feittype ft : feittypen.values())
+            for (Rol r : ft.rollen)
+                if (rolMatcht(r, noun)) return noun;
+        return null;
     }
 
     private boolean rolHeeftObjecttype(Rol r, Objecttype ot) {

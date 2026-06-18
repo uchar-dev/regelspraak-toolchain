@@ -145,7 +145,7 @@ final class RuleChecker {
         Objecttype subject = bouwer.objecttypeVanKeten(kt.onderwerpKeten());
         String kenmerk = src(kt.kaleNaam()).replaceFirst("^(?i)(de|het|een)\\s+", "");
         Expr doel = new Expr.AttribuutRef(kenmerk, subject, src(kt.onderwerpKeten()),
-                new Datatype.Booleaan(), src(kt));
+                null, new Datatype.Booleaan(), src(kt));
         Expr waarde = new Expr.Literal("waar", new Datatype.Booleaan(), "waar");
         model.resolvedRegels.add(new ResolvedRegel(naam, ResolvedRegel.Soort.KENMERKTOEKENNING, doel, waarde, voorwaarde));
     }

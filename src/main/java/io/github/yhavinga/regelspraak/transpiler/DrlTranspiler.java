@@ -160,14 +160,36 @@ public final class DrlTranspiler {
         out.append("end\n\n");
     }
 
+    /** Sentinel from {@link #naviRol}: the reference is the subject's own attribute. */
+    private static final String EIGEN = "";
+
+    /**
+     * How to read an attribute reference relative to the rule subject: the reference
+     * FIELD to navigate through, {@link #EIGEN} for the subject's own attribute, or
+     * null when it cannot be resolved (caller emits a marker).
+     *
+     * When the source named the role (navigatieRol), navigation is intended and is
+     * resolved by name — which both disambiguates an object-type pair joined by more
+     * than one feittype/role AND covers a wederkerig self-relation ("zijn partner",
+     * where the navigated type equals the subject's, so an own-attribute read would be
+     * wrong). Only when no role was named do we treat a same-type reference as the
+     * subject's own attribute and otherwise fall back to the by-pair search.
+     */
+    private String naviRol(Objecttype subject, Expr.AttribuutRef a) {
+        if (a.navigatieRol() != null)
+            return model.verbindendeRolViaNaam(subject, a.objecttype(), a.navigatieRol());
+        if (a.objecttype() == subject) return EIGEN;
+        return model.verbindendeRol(subject, a.objecttype());
+    }
+
     // ---------------- value expression ("then" side: getters) ----------------
     private String waarde(Expr e, Objecttype subject) {
         if (e instanceof Expr.Literal lit)      return literal(lit);
         if (e instanceof Expr.ParameterRef p)   return ident(p.parameter().naam(), false);
         if (e instanceof Expr.AttribuutRef a) {
-            if (a.objecttype() == subject) return SUBJECT + "." + getter(a.attribuut()) + "()";
-            String rol = model.verbindendeRol(subject, a.objecttype()); // navigate subject -> related
-            if (rol != null) return SUBJECT + "." + getter(rol) + "()." + getter(a.attribuut()) + "()";
+            String rol = naviRol(subject, a);
+            if (EIGEN.equals(rol)) return SUBJECT + "." + getter(a.attribuut()) + "()";
+            if (rol != null)       return SUBJECT + "." + getter(rol) + "()." + getter(a.attribuut()) + "()";
             return todo("navigatie", a.bron());
         }
         if (e instanceof Expr.Binair b) {
@@ -276,9 +298,9 @@ public final class DrlTranspiler {
      *  related object's attribute reads as a property path ("reis.vluchtdatum"). */
     private String operand(Expr e, Objecttype subject) {
         if (e instanceof Expr.AttribuutRef a) {
-            if (a.objecttype() == subject) return ident(a.attribuut(), false);
-            String rol = model.verbindendeRol(subject, a.objecttype());
-            if (rol != null) return ident(rol, false) + "." + ident(a.attribuut(), false);
+            String rol = naviRol(subject, a);
+            if (EIGEN.equals(rol)) return ident(a.attribuut(), false);
+            if (rol != null)       return ident(rol, false) + "." + ident(a.attribuut(), false);
             return todo("navigatie", a.bron());
         }
         if (e instanceof Expr.ParameterRef p) return ident(p.parameter().naam(), false);

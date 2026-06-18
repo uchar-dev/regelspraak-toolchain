@@ -1,12 +1,14 @@
 package io.github.yhavinga.regelspraak;
 
 import io.github.yhavinga.regelspraak.facts.Bestelling;
+import io.github.yhavinga.regelspraak.facts.Burger;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
 import io.github.yhavinga.regelspraak.facts.Meting;
 import io.github.yhavinga.regelspraak.facts.Passagier;
 import io.github.yhavinga.regelspraak.facts.Periode;
 import io.github.yhavinga.regelspraak.facts.Pot;
+import io.github.yhavinga.regelspraak.facts.Trip;
 import io.github.yhavinga.regelspraak.facts.Vlucht;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
@@ -252,5 +254,73 @@ class DroolsExecutionTest {
 
         assertTrue(boven.isOud(), "25 mnd > 2 jr (24) moet waar zijn");
         assertFalse(onder.isOud(), "20 mnd > 2 jr (24) moet onwaar zijn");
+    }
+
+    @Test void navigatie_bindt_de_rol_die_de_bron_noemt_niet_een_willekeurige() {
+        // Two feittypen connect the SAME object-type pair (Burger↔Trip) and a wederkerig
+        // Partnerrelatie connects Burger to itself. A by-pair join is ambiguous for both
+        // (Burger→Trip has two feittypen; Burger→Burger via a single wederkerig role); the
+        // source names which one, so each navigation must bind the WRITTEN role:
+        //   heensom := de tarief van de heenvlucht   -> getHeenvlucht()
+        //   terugsom := de tarief van de terugvlucht -> getTerugvlucht()
+        //   partnerleeftijd := de leeftijd van zijn partner -> getPartner() (NOT own leeftijd)
+        String src = """
+            Objecttype de Burger
+                de heensom Numeriek (geheel getal);
+                de terugsom Numeriek (geheel getal);
+                de partnerleeftijd Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal);
+            Objecttype de Trip
+                de tarief Numeriek (geheel getal);
+            Feittype heenreis
+                de reiziger Burger
+                de heenvlucht Trip
+            Eén reiziger heeft één heenvlucht
+            Feittype terugreis
+                de passagier Burger
+                de terugvlucht Trip
+            Eén passagier heeft één terugvlucht
+            Wederkerig feittype Partnerrelatie
+                de partner Burger
+            Eén partner heeft één partner
+            Regel heen
+                geldig altijd
+                    De heensom van een Burger moet gesteld worden op de tarief van de heenvlucht.
+            Regel terug
+                geldig altijd
+                    De terugsom van een Burger moet gesteld worden op de tarief van de terugvlucht.
+            Regel partner
+                geldig altijd
+                    De partnerleeftijd van een Burger moet gesteld worden op de leeftijd van zijn partner.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        // the joins bind the NAMED reference fields, not the marker the by-pair search emits
+        assertTrue(drl.contains("$subject.getHeenvlucht().getTarief()"), () -> "heenvlucht-navigatie:\n" + drl);
+        assertTrue(drl.contains("$subject.getTerugvlucht().getTarief()"), () -> "terugvlucht-navigatie:\n" + drl);
+        assertTrue(drl.contains("$subject.getPartner().getLeeftijd()"), () -> "wederkerige partner-navigatie:\n" + drl);
+        assertFalse(drl.contains("TODO navigatie"), () -> "navigatie bleef onopgelost:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Trip t1 = new Trip(); t1.setTarief(new BigDecimal("100"));   // p's heenvlucht
+        Trip t2 = new Trip(); t2.setTarief(new BigDecimal("50"));    // p's terugvlucht
+        Trip t3 = new Trip(); t3.setTarief(new BigDecimal("10"));    // q's heenvlucht
+        Trip t4 = new Trip(); t4.setTarief(new BigDecimal("20"));    // q's terugvlucht
+        Burger p = new Burger(); p.setLeeftijd(new BigDecimal("30")); p.setHeenvlucht(t1); p.setTerugvlucht(t2);
+        Burger q = new Burger(); q.setLeeftijd(new BigDecimal("40")); q.setHeenvlucht(t3); q.setTerugvlucht(t4);
+        p.setPartner(q); q.setPartner(p);                            // wederkerig: symmetric
+        sessie.insert(t1); sessie.insert(t2); sessie.insert(t3); sessie.insert(t4);
+        sessie.insert(p); sessie.insert(q);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        // heen/terug must not be swapped: heensom is the HEENvlucht tarief, not the terug
+        assertEquals(0, new BigDecimal("100").compareTo(p.getHeensom()), () -> "heensom: " + p.getHeensom());
+        assertEquals(0, new BigDecimal("50").compareTo(p.getTerugsom()), () -> "terugsom: " + p.getTerugsom());
+        assertEquals(0, new BigDecimal("10").compareTo(q.getHeensom()), () -> "q heensom: " + q.getHeensom());
+        // wederkerig navigation reads the PARTNER's leeftijd, not the subject's own
+        assertEquals(0, new BigDecimal("40").compareTo(p.getPartnerleeftijd()), () -> "p partnerleeftijd: " + p.getPartnerleeftijd());
+        assertEquals(0, new BigDecimal("30").compareTo(q.getPartnerleeftijd()), () -> "q partnerleeftijd: " + q.getPartnerleeftijd());
     }
 }

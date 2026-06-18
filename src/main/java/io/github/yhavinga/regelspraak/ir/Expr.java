@@ -62,9 +62,17 @@ public sealed interface Expr {
      * A resolved `<attribuut> van <onderwerp>` reference (§13.4.2.9). `objecttype`
      * is the type the subject denotes (null when it could not be resolved), and
      * `type` is the attribute's declared datatype on that object type.
+     *
+     * `navigatieRol` is the role name the author WROTE to reach that object (the
+     * onderwerp's primary noun, e.g. "heenvlucht" in "de tarief van de heenvlucht"),
+     * or null when the reference is the subject's own attribute / names an object type
+     * directly. Threading the written role lets the transpiler pick the right
+     * reference field when one object-type pair is connected by more than one feittype
+     * or role — and distinguishes a wederkerig self-relation ("zijn partner", where the
+     * navigated type equals the subject's) from a plain own-attribute read (§13.3.9.2).
      */
     record AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
-                        Datatype type, String bron) implements Expr {}
+                        String navigatieRol, Datatype type, String bron) implements Expr {}
 
     /** A resolved parameter reference (§13.3.8); the type is the parameter's. */
     record ParameterRef(Parameter parameter, String bron) implements Expr {
