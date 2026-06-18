@@ -103,19 +103,21 @@ public final class Typering {
         };
     }
 
-    /** §6.1.4 begrenzing: the bounded value (Numeriek/Percentage) is clamped to a bound of the
-     *  same family. The unit rule is deliberately looser than {@link #eenhedenCompatibel}: a
-     *  unit-bearing literal bounding a unitless numeric is allowed (the TOKA casus bounds a
-     *  unitless Bedrag by "0 €"), so only two PRESENT but inconvertible units are flagged — a
-     *  convertible pair (mnd vs jr) is restated at transpile time. Returns the diagnostic, or
-     *  null when ok / either side is Onbekend (no claim). */
+    /** §6.1.4 begrenzing: the bounded value must be Numeriek/Percentage and the bound "een
+     *  numerieke expressie" — both getalachtig, but NOT necessarily the same family (§6.1.4 lets
+     *  a Percentage value take a plain numeric-literal bound). The unit rule is intentionally
+     *  looser than {@link #eenhedenCompatibel}: only two PRESENT-but-inconvertible units (km vs €)
+     *  are flagged, while a unit-bearing literal against a unitless numeric is tolerated — not
+     *  because the spec sanctions it, but to accommodate a known inconsistency in the TOKA casus,
+     *  which declares Bedrag unitless yet bounds it by "0 €" (a convertible pair like mnd/jr is
+     *  restated at transpile time). Returns the diagnostic, or null when ok / either side is
+     *  Onbekend (no claim). */
     public static String begrenzing(Datatype basis, Datatype grens) {
         if (basis.isOnbekend() || grens.isOnbekend()) return null;
         if (!basis.isGetalachtig())
             return "begrenzing is alleen toegestaan op een numerieke waarde, kreeg " + basis.naam();
-        if (!zelfdeFamilie(basis, grens))
-            return "begrenzing vereist een grens van dezelfde soort als de begrensde waarde, kreeg "
-                    + basis.naam() + " en " + grens.naam();
+        if (!grens.isGetalachtig())
+            return "begrenzing vereist een numerieke grens, kreeg " + grens.naam();
         Eenheid eb = basis.eenheidOf(), eg = grens.eenheidOf();
         if (eb != null && eg != null && !eb.convertibleNaar(eg))
             return "begrenzing: eenheden '" + eb.afkorting() + "' en '" + eg.afkorting()

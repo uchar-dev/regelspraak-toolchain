@@ -30,7 +30,7 @@ class RuleCheckTest {
     }
 
     @Test void begrenzing_met_geldige_grens_geen_fout() {
-        // a same-family numeric bound is fine — no false positive.
+        // a numeric bound is fine — no false positive.
         String src = MODEL + """
             Regel grensok
                 geldig altijd
@@ -38,6 +38,21 @@ class RuleCheckTest {
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+    }
+
+    @Test void percentage_waarde_met_numerieke_literal_grens_geen_fout() {
+        // §6.1.4 admits a Percentage value bounded by a plain numeric expression — the bound need
+        // not be the SAME family as the bounded value, only numeric (getalachtig). No false positive.
+        String src = """
+            Objecttype de Ding
+                de korting Percentage (geheel getal);
+                de basis Percentage (geheel getal);
+            Regel grenspct
+                geldig altijd
+                    De korting van een Ding moet gesteld worden op de basis van een Ding, met een maximum van 100.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "een numerieke literal-grens op een Percentage-waarde mag geen fout zijn: " + m.errors());
     }
 
     @Test void verkeerde_toekenning_wordt_gemeld() {
