@@ -375,6 +375,39 @@ class DroolsExecutionTest {
                 () -> "min(10, 10*2) = 10 (parenthesised bound), kreeg " + h.getNetto());
     }
 
+    @Test void samengestelde_eenheid_rekent_de_rate_om() {
+        // §13.3.3.2 / §6.5: a rate unit (€/mnd, €/jr) must convert numerator AND denominator.
+        // Assigning a €/mnd value to a €/jr attribute scales by 12 (the denominator jr is 12 of
+        // the mnd it replaces): 10 €/mnd = 120 €/jr. Before, the denominator was dropped and both
+        // resolved to € — no scaling at all.
+        String src = """
+            Eenheidsysteem Geld
+                de euro €
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Objecttype de Heffing
+                de prijs Numeriek (geheel getal) met eenheid €/jr;
+                de basis Numeriek (geheel getal) met eenheid €/mnd;
+            Regel r
+                geldig altijd
+                    De prijs van een Heffing moet gesteld worden op de basis van een Heffing.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains(".multiply(new java.math.BigDecimal(\"12\"))"),
+                () -> "rate-omrekening (x12) ontbreekt:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Heffing h = new Heffing(); h.setBasis(new BigDecimal("10"));   // 10 €/mnd
+        sessie.insert(h);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("120").compareTo(h.getPrijs()),
+                () -> "10 €/mnd = 120 €/jr, kreeg " + h.getPrijs());
+    }
+
     @Test void macht_afronding_rondt_de_macht_af_en_compileert_als_bigdecimal() {
         // §13.4.17.14: the mandatory afronding rounds the POWER, not the exponent. "basis tot de
         // macht 2 afgerond op 0" with basis=5 must give 25 (5^2), and the Math.pow result must

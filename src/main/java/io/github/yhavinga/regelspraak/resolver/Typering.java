@@ -120,7 +120,7 @@ public final class Typering {
             return "begrenzing vereist een numerieke grens, kreeg " + grens.naam();
         Eenheid eb = basis.eenheidOf(), eg = grens.eenheidOf();
         if (eb != null && eg != null && !eb.convertibleNaar(eg))
-            return "begrenzing: eenheden '" + eb.afkorting() + "' en '" + eg.afkorting()
+            return "begrenzing: eenheden '" + eb.weergave() + "' en '" + eg.weergave()
                     + "' zijn niet in elkaar om te rekenen";
         return null;
     }
@@ -146,7 +146,7 @@ public final class Typering {
             if ((ref == null) != (e == null))
                 return functie + ": als één operand een eenheid heeft, moeten alle operanden er een hebben";
             if (ref != null && !ref.convertibleNaar(e))
-                return functie + ": eenheden '" + ref.afkorting() + "' en '" + e.afkorting()
+                return functie + ": eenheden '" + ref.weergave() + "' en '" + e.weergave()
                         + "' zijn niet in elkaar om te rekenen";
         }
         return null;
@@ -223,7 +223,7 @@ public final class Typering {
         if (el == null || er == null)
             return waar + ": als één operand een eenheid heeft, moeten beide er een hebben";
         if (!el.convertibleNaar(er))
-            return waar + ": eenheden '" + el.afkorting() + "' en '" + er.afkorting() + "' zijn niet in elkaar om te rekenen";
+            return waar + ": eenheden '" + el.weergave() + "' en '" + er.weergave() + "' zijn niet in elkaar om te rekenen";
         return null;
     }
 

@@ -364,4 +364,43 @@ class RuleCheckTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
     }
+
+    static final String RATE_SYS = """
+        Eenheidsysteem Geld
+            de euro €
+        Eenheidsysteem Afstand
+            de kilometer km
+        Eenheidsysteem Tijd
+            de maand    mnd
+            het jaar    jr    =    12 mnd
+        """;
+
+    @Test void samengestelde_eenheden_met_convertibele_delen_geen_fout() {
+        // §13.3.3.2: €/jr and €/mnd are convertible (same numerator, convertible denominator).
+        String src = RATE_SYS + """
+            Objecttype de Abonnement
+                de jaarprijs Numeriek (geheel getal) met eenheid €/jr;
+                de maandprijs Numeriek (geheel getal) met eenheid €/mnd;
+            Regel r
+                geldig altijd
+                    De jaarprijs van een Abonnement moet gesteld worden op de maandprijs van een Abonnement.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "€/jr en €/mnd zijn convertibel: " + m.errors());
+    }
+
+    @Test void samengestelde_eenheden_met_onverenigbare_teller_wordt_gemeld() {
+        // €/jr and km/jr share a denominator but the numerators (€ vs km) are not convertible.
+        String src = RATE_SYS + """
+            Objecttype de Abonnement
+                de jaarprijs Numeriek (geheel getal) met eenheid €/jr;
+                de snelheid Numeriek (geheel getal) met eenheid km/jr;
+            Regel r
+                geldig altijd
+                    De jaarprijs van een Abonnement moet gesteld worden op de snelheid van een Abonnement.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("'€/jr' en 'km/jr'")),
+                () -> "verwachtte een eenheidfout met de samengestelde weergave, kreeg: " + m.errors());
+    }
 }

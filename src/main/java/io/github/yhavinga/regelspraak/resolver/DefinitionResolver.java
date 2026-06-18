@@ -138,10 +138,14 @@ public final class DefinitionResolver {
     }
 
     private Eenheid eenheidVan(EenheidExpressieContext e) {
-        // first unit-power's abbreviation; resolved against the declared unit systems
+        // §13.3.3.2: <eenheidexpressie> ::= <eenheidmacht> ("/" <eenheidmacht>)* — the numerator
+        // is the first power; a single trailing "/<unit>" is the denominator of a rate unit
+        // (€/jr). A second denominator (€/u/s) is not yet modelled — keep the numerator only.
         if (e.eenheidMacht().isEmpty()) return null;
-        String afk = src(e.eenheidMacht(0).eenheidAfkorting());
-        return model.resolveEenheid(afk);
+        Eenheid teller = model.resolveEenheid(src(e.eenheidMacht(0).eenheidAfkorting()));
+        if (e.eenheidMacht().size() == 2)
+            return Eenheid.samengesteld(teller, model.resolveEenheid(src(e.eenheidMacht(1).eenheidAfkorting())));
+        return teller;
     }
 
     // ---------------- §13.3.5 unit systems ----------------

@@ -134,20 +134,27 @@ without splitting the precedence into a separate bound rule (deferred — no cor
 
 Unit systems declare conversions (§13.3.5.2: "het jaar jr = 12 mnd", incl. the
 "1/N" rational form), and the resolver reduces each unit to its system canonical
-with a factor. The transpiler converts a **simple (numerator-only)** unit on the
-right operand of `+`/`-`, in a comparison, and at an assignment, so cross-unit
-arithmetic and comparison are scaled rather than computed on raw magnitudes.
+with a factor. The transpiler converts a unit on the right operand of `+`/`-`, in a
+comparison, and at an assignment, so cross-unit arithmetic and comparison are scaled
+rather than computed on raw magnitudes.
+
+A **composite (rate) unit** (`€/jr`, `€/mnd` — §13.3.3.2's `<eenheidmacht> "/"
+<eenheidmacht>`) now carries its denominator (`Eenheid.noemer`) instead of dropping it.
+Two rates are convertible iff their numerators AND denominators are each convertible, and
+the conversion restates the numerator and **inverts** the denominator: assigning `10 €/mnd`
+to a `€/jr` attribute scales by 12 (a `jr` is 12 of the `mnd` it replaces), so `10 €/mnd =
+120 €/jr`; mismatched numerators (`€/jr` vs `km/jr`) are a type error naming the full units.
 
 Deliberately **not yet** handled (documented rather than half-done):
-- **Composite / rate units** (`€/jr`, `km/u`): the denominator is currently dropped,
-  so two rate units look identical and are not converted (no scaling is emitted —
-  a missing feature, not a wrong number). The §6.4/§6.5 composite-unit algebra
-  (result unit of `maal`/`gedeeld door`, cancellation, denominator-direction
-  inversion) is future work. `maal` therefore emits a plain product and does NOT
-  convert its operands (units multiply, they need not match).
-- **Reverse-factor precision**: the exact direction (to the smaller unit, ×N) is
-  exact; the reverse (×1/N) is carried at DECIMAL64. Per §6.1.2 there is **no
-  implicit rounding** — the author adds an explicit afronding where precision matters.
+- **Composite-unit ALGEBRA** (the §6.4/§6.5 result unit of `maal`/`gedeeld door`:
+  `€ · 1/jr`, cancellation, multi-denominator `€/u/s`, unit exponents `m²`): only a single
+  numerator-over-single-denominator rate is modelled and only conversion (not synthesis) is
+  implemented. `maal`/`gedeeld door` still yield Onbekend for a composite result (no claim,
+  not a wrong number), and a unit with more than one `/` keeps the numerator only.
+- **Reverse-factor precision**: the exact direction (to the smaller unit, ×N) is exact;
+  the reverse (×1/N — e.g. `€/jr → €/mnd`, ÷12) is carried at DECIMAL64. Per §6.1.2 there is
+  **no implicit rounding** — the author adds an explicit afronding where precision matters.
+  (The rate conversion above is fired and asserted in the exact ×N direction.)
 
 ### Plural (meervoud) resolution
 
