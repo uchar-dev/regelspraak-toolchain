@@ -240,6 +240,11 @@ afgerond …". No corpus example uses wortel/macht at all, so none is affected. 
 van` still lowers to a `/* TODO aggregatie WORTEL */` marker — no Drools form yet — but the
 afronding and precedence are now captured correctly; `tot de macht` lowers and fires.)
 
+`tot de macht` lowers through `Math.pow`, an IEEE-754 double, so an integer power whose magnitude
+exceeds 2^53 (~9·10¹⁵) can be off by a few units before the afronding rounds it (e.g. 7¹⁹). This
+is pre-existing (main lowered the same `Math.pow`) and far outside any realistic RegelSpraak
+magnitude; an exact `BigDecimal.pow(int)` for integral exponents is a carded follow-up.
+
 ### Telling (aantal) operand precedence — fixed, with a deliberate EBNF asymmetry
 
 The §13.4.17.46 EBNF and syntax diagram give all four `getalaggregatie` functions the
