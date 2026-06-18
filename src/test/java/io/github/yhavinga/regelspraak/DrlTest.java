@@ -285,6 +285,48 @@ class DrlTest {
         assertTrue(drl.contains("setSomZonder( ($n1 == 0 ? null : $acc1) )"), () -> "leegwaarde-tak:\n" + drl);
     }
 
+    @Test void drempelkwantoren_worden_booleaanse_telcombinaties() {
+        // §13.4.14.4: the threshold quantifiers count satisfied criteria. Drools constraints
+        // take only booleans, so this is the OR of k-subsets (minstens): at-least-N directly,
+        // at-most-N as !at-least-(N+1), exactly-N as their conjunction. No ternary arithmetic.
+        String src = """
+            Objecttype de Persoon
+                de a Numeriek (geheel getal);
+                de b Numeriek (geheel getal);
+                de c Numeriek (geheel getal);
+                is gekozen kenmerk (bijvoeglijk);
+                is afgewezen kenmerk (bijvoeglijk);
+                is uniek kenmerk (bijvoeglijk);
+            Regel minstens
+                geldig altijd
+                    Een Persoon is gekozen
+                    indien hij aan ten minste 2 van de volgende voorwaarden voldoet:
+                    - de a van een Persoon is groter dan 0
+                    - de b van een Persoon is groter dan 0
+                    - de c van een Persoon is groter dan 0.
+            Regel hoogstens
+                geldig altijd
+                    Een Persoon is afgewezen
+                    indien hij aan ten hoogste 1 van de volgende voorwaarden voldoet:
+                    - de a van een Persoon is groter dan 0
+                    - de b van een Persoon is groter dan 0.
+            Regel preciesEen
+                geldig altijd
+                    Een Persoon is uniek
+                    indien hij aan precies 1 van de volgende voorwaarden voldoet:
+                    - de a van een Persoon is groter dan 0
+                    - de b van een Persoon is groter dan 0.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertFalse(drl.contains("? 1 : 0"), () -> "geen ternaire telkunst in een constraint:\n" + drl);
+        // ten minste 2 of 3 -> OR of the three pairs (a&&b) || (a&&c) || (b&&c)
+        assertTrue(drl.contains(") && (b > ") && drl.contains(") || ("), () -> "minstens-combinaties:\n" + drl);
+        // ten hoogste 1 of 2 -> !(at least 2) = !((a&&b))
+        assertTrue(drl.contains("Persoon( !("), () -> "ten hoogste -> negatie:\n" + drl);
+        // precies 1 of 2 -> (at least 1) && !(at least 2)
+        assertTrue(drl.contains(" && !("), () -> "precies -> minstens N en niet minstens N+1:\n" + drl);
+    }
+
     @Test void namen_worden_geldige_java_identifiers() {
         String src = """
             Objecttype de Natuurlijk persoon

@@ -394,13 +394,43 @@ public final class DrlTranspiler {
             };
         }
         if (c instanceof Conditie.Samengesteld s) {
-            String join = s.kwantor() == Conditie.Kwantor.GEEN ? " || " : " && ";
-            StringJoiner sj = new StringJoiner(join);
-            for (Conditie deel : s.onderdelen()) sj.add("(" + conditie(deel, subject) + ")");
-            String body = sj.toString().isEmpty() ? "true" : sj.toString();
-            return s.kwantor() == Conditie.Kwantor.GEEN ? "!(" + body + ")" : body;
+            List<String> delen = new ArrayList<>();
+            for (Conditie deel : s.onderdelen()) delen.add("(" + conditie(deel, subject) + ")");
+            if (delen.isEmpty()) return "true";
+            // §13.4.14.4: alle = all hold (AND); geen = none holds (!OR); the counting
+            // quantifiers express "k of the criteria hold" purely in booleans (a Drools
+            // pattern constraint accepts &&/||/! but not arithmetic over ternaries), via the
+            // OR of every k-subset (minstens): at-least-N directly, at-most-N as not-at-
+            // least-(N+1), exactly-N as the conjunction of the two.
+            int n = s.drempel();
+            return switch (s.kwantor()) {
+                case GEEN        -> "!(" + String.join(" || ", delen) + ")";
+                case TEN_MINSTE  -> minstens(delen, n);
+                case TEN_HOOGSTE -> "!(" + minstens(delen, n + 1) + ")";
+                case PRECIES     -> "(" + minstens(delen, n) + " && !(" + minstens(delen, n + 1) + "))";
+                default          -> String.join(" && ", delen); // ALLE / DE
+            };
         }
         return todo("voorwaarde", c.bron());
+    }
+
+    /** A boolean expression true when AT LEAST {@code k} of {@code delen} hold: the OR over
+     *  every k-subset, each subset AND-ed. k&lt;=0 is always true; k&gt;size is never. The
+     *  bullet lists are small, so the C(size,k) expansion stays modest. */
+    private static String minstens(List<String> delen, int k) {
+        if (k <= 0) return "true";
+        if (k > delen.size()) return "false";
+        List<String> combos = new ArrayList<>();
+        combineer(delen, k, 0, new ArrayList<>(), combos);
+        return "(" + String.join(" || ", combos) + ")";
+    }
+    private static void combineer(List<String> delen, int k, int start, List<String> huidig, List<String> uit) {
+        if (huidig.size() == k) { uit.add("(" + String.join(" && ", huidig) + ")"); return; }
+        for (int i = start; i <= delen.size() - (k - huidig.size()); i++) {
+            huidig.add(delen.get(i));
+            combineer(delen, k, i + 1, huidig, uit);
+            huidig.remove(huidig.size() - 1);
+        }
     }
 
     /** A condition operand: the subject's own attribute reads as a bare field name; a

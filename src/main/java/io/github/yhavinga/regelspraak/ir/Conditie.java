@@ -33,9 +33,11 @@ public sealed interface Conditie {
     enum Predicaatsoort { LEEG, GEVULD, ELFPROEF, NUMERIEK_MET_EXACT, DAGSOORT }
     record Predicaat(Predicaatsoort soort, Expr operand, String bron) implements Conditie {}
 
-    /** §13.4.14 compound condition: a quantifier over a bullet list of sub-conditions. */
+    /** §13.4.14 compound condition: a quantifier over a bullet list of sub-conditions.
+     *  `drempel` is the threshold count N for the counting quantifiers (ten minste / ten
+     *  hoogste / precies N, §13.4.14.4); 0 and unused for alle / geen / de. */
     enum Kwantor { DE, ALLE, GEEN, TEN_MINSTE, TEN_HOOGSTE, PRECIES }
-    record Samengesteld(Kwantor kwantor, List<Conditie> onderdelen, String bron) implements Conditie {}
+    record Samengesteld(Kwantor kwantor, int drempel, List<Conditie> onderdelen, String bron) implements Conditie {}
 
     /** A condition form the resolver did not yet structure (membership/period tests). */
     record Onopgelost(String bron) implements Conditie {}

@@ -5,6 +5,7 @@ import io.github.yhavinga.regelspraak.facts.Burger;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
 import io.github.yhavinga.regelspraak.facts.Inconsistentie;
+import io.github.yhavinga.regelspraak.facts.Kandidaat;
 import io.github.yhavinga.regelspraak.facts.Konto;
 import io.github.yhavinga.regelspraak.facts.Meting;
 import io.github.yhavinga.regelspraak.facts.Passagier;
@@ -501,5 +502,47 @@ class DroolsExecutionTest {
 
         assertNotNull(leeg.getTotaalprijs(), "lege 'totaal van' moet 0 zijn, geen leegwaarde");
         assertEquals(0, BigDecimal.ZERO.compareTo(leeg.getTotaalprijs()), () -> "lege totaal van: " + leeg.getTotaalprijs());
+    }
+
+    @Test void ten_minste_n_van_de_criteria_telt_de_vervulde_voorwaarden() {
+        // §13.4.14.4: "aan ten minste 2 van de volgende voorwaarden voldoet" must count how
+        // many criteria hold, not AND them all. So 2 or 3 satisfied -> chosen, 0 or 1 -> not.
+        String src = """
+            Objecttype de Kandidaat
+                de a Numeriek (geheel getal);
+                de b Numeriek (geheel getal);
+                de c Numeriek (geheel getal);
+                is gekozen kenmerk (bijvoeglijk);
+            Regel kies
+                geldig altijd
+                    Een Kandidaat is gekozen
+                    indien hij aan ten minste 2 van de volgende voorwaarden voldoet:
+                    - de a van een Kandidaat is groter dan 0
+                    - de b van een Kandidaat is groter dan 0
+                    - de c van een Kandidaat is groter dan 0.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Kandidaat k0 = kandidaat(0, 0, 0);   // 0 satisfied
+        Kandidaat k1 = kandidaat(5, 0, 0);   // 1 satisfied
+        Kandidaat k2 = kandidaat(5, 5, 0);   // 2 satisfied -> chosen
+        Kandidaat k3 = kandidaat(5, 5, 5);   // 3 satisfied -> chosen
+        sessie.insert(k0); sessie.insert(k1); sessie.insert(k2); sessie.insert(k3);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertFalse(k0.isGekozen(), "0 vervuld < 2");
+        assertFalse(k1.isGekozen(), "1 vervuld < 2");
+        assertTrue(k2.isGekozen(), "2 vervuld >= 2");
+        assertTrue(k3.isGekozen(), "3 vervuld >= 2");
+    }
+
+    private static Kandidaat kandidaat(int a, int b, int c) {
+        Kandidaat k = new Kandidaat();
+        k.setA(new BigDecimal(a)); k.setB(new BigDecimal(b)); k.setC(new BigDecimal(c));
+        return k;
     }
 }

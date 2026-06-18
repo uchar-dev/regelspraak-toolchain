@@ -238,7 +238,20 @@ final class RuleChecker {
         List<Conditie> onderdelen = new ArrayList<>();
         if (onderdeel != null)
             for (GenesteVoorwaardeContext g : onderdeel.genesteVoorwaarde()) onderdelen.add(bouwGenest(g));
-        return new Conditie.Samengesteld(kwantorVan(k), onderdelen, src(heel));
+        return new Conditie.Samengesteld(kwantorVan(k), drempelVan(k), onderdelen, src(heel));
+    }
+
+    /** The threshold count N of a ten-minste/ten-hoogste/precies quantifier (§13.4.14.4),
+     *  or 0 when the quantifier carries no count (alle / geen / de). */
+    private int drempelVan(VoorwaardeKwantificatieContext k) {
+        if (k == null || k.telwoord() == null) return 0;
+        TelwoordContext t = k.telwoord();
+        if (t.NUMBER() != null) try { return Integer.parseInt(t.NUMBER().getText()); } catch (NumberFormatException e) { return 0; }
+        if (t.EEN_TELWOORD() != null)  return 1;
+        if (t.TWEE_TELWOORD() != null) return 2;
+        if (t.DRIE_TELWOORD() != null) return 3;
+        if (t.VIER_TELWOORD() != null) return 4;
+        return 0;
     }
 
     private Conditie bouwGenest(GenesteVoorwaardeContext g) {
