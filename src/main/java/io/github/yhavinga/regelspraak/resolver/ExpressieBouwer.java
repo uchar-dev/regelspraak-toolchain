@@ -257,7 +257,18 @@ final class ExpressieBouwer {
         // navigates the exact field even when the (subject, ot) pair is connected by more
         // than one feittype/role. An indefinite "een <X>" is the universal subject, not a
         // navigation, so it is excluded (it stays an own-attribute read).
-        String navRol = model.navigatieRolNaam(navigatieNoun(a.onderwerp()));
+        String noun = navigatieNoun(a.onderwerp());
+        String navRol = model.navigatieRolNaam(noun);
+        // §13.4.1.2/.3: a navigation filler may name an objecttype OR a role. When the
+        // objecttype reading does not connect to the rule subject via any feittype but a
+        // same-named role DOES reach a type that does, the role wins — the written
+        // reference is that navigation, not a free object type that shares the name.
+        // (Only for a single-object definite/possessive reference; `noun` is null
+        // for an indefinite subject or a set quantifier, so those are untouched.)
+        if (noun != null && huidigSubject != null && !model.verbindt(huidigSubject, ot)) {
+            Objecttype viaRol = model.rolDoeltypeNaarSubject(huidigSubject, noun);
+            if (viaRol != null) { ot = viaRol; navRol = noun; }
+        }
         Datatype dt = ot != null && ot.attributen.get(attr) != null ? ot.attributen.get(attr) : onbekend();
         return new Expr.AttribuutRef(attr, ot, onderwerpBron, navRol, dt, bron);
     }

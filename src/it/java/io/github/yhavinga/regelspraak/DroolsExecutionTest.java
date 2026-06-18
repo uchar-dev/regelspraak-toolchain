@@ -8,11 +8,13 @@ import io.github.yhavinga.regelspraak.facts.Heffing;
 import io.github.yhavinga.regelspraak.facts.Inconsistentie;
 import io.github.yhavinga.regelspraak.facts.Kandidaat;
 import io.github.yhavinga.regelspraak.facts.Konto;
+import io.github.yhavinga.regelspraak.facts.Luchthaven;
 import io.github.yhavinga.regelspraak.facts.Meting;
 import io.github.yhavinga.regelspraak.facts.Passagier;
 import io.github.yhavinga.regelspraak.facts.Periode;
 import io.github.yhavinga.regelspraak.facts.Pot;
 import io.github.yhavinga.regelspraak.facts.Reis;
+import io.github.yhavinga.regelspraak.facts.Reiziger;
 import io.github.yhavinga.regelspraak.facts.Route;
 import io.github.yhavinga.regelspraak.facts.Trip;
 import io.github.yhavinga.regelspraak.facts.Vlucht;
@@ -369,6 +371,46 @@ class DroolsExecutionTest {
 
         // prijs is the tarief of the named "heenvluchten" (99), not the colliding "heenvlucht" (7)
         assertEquals(0, new BigDecimal("99").compareTo(r.getPrijs()), () -> "prijs: " + r.getPrijs());
+    }
+
+    @Test void botsende_objecttype_en_rolnaam_bindt_de_rol_die_de_subject_bereikt() {
+        // §13.4.1.2/.3: a navigation filler may be an objecttypenaam OR a rolnaam. "bestemming"
+        // is BOTH — a free objecttype AND a role (of Luchthaven) on the subject Reiziger. The
+        // free objecttype does NOT join Reiziger; the role does. So "de afstand van de
+        // bestemming" must bind the ROLE (Reiziger -> Luchthaven via getBestemming), not the
+        // same-named objecttype (which would leave a "TODO navigatie" null). Proven by firing.
+        String src = """
+            Objecttype de Reiziger
+                de afstand tot doel Numeriek (geheel getal) met eenheid km;
+            Objecttype de Bestemming
+                de naam Tekst;
+            Objecttype de Luchthaven
+                de afstand Numeriek (geheel getal) met eenheid km;
+            Feittype reis naar luchthaven
+                de reiziger Reiziger
+                de bestemming Luchthaven
+            Eén reiziger reist naar één bestemming
+            Regel afstand overnemen
+                geldig altijd
+                    De afstand tot doel van een Reiziger moet gesteld worden op de afstand van de bestemming.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("$subject.getBestemming().getAfstand()"),
+                () -> "navigatie moet via de rol bestemming -> Luchthaven binden:\n" + drl);
+        assertFalse(drl.contains("TODO navigatie"),
+                () -> "de botsende objecttypenaam mag de rol niet overschaduwen:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Luchthaven doel = new Luchthaven(); doel.setAfstand(new BigDecimal("250"));
+        Reiziger r = new Reiziger(); r.setBestemming(doel);
+        sessie.insert(doel); sessie.insert(r);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("250").compareTo(r.getAfstandTotDoel()),
+                () -> "afstand tot doel moet de afstand van de luchthaven (250) zijn, kreeg " + r.getAfstandTotDoel());
     }
 
     @Test void consistentieregel_markeert_alleen_de_schendende_instantie() {
