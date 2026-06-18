@@ -15,9 +15,10 @@ import java.util.List;
  * @param subject      the object type that owns the rule (the creator)
  * @param toekenningen the attribute assignments on the new object
  * @param voorwaarde   the condition guarding the creation, or null
+ * @param geldigheid   the §13.4.2.5 version validity window ({@link Geldigheid#ALTIJD} if always)
  */
 public record ResolvedObjectCreatie(String naam, Objecttype nieuwType, Objecttype subject,
-                                    List<Toekenning> toekenningen, Conditie voorwaarde) {
+                                    List<Toekenning> toekenningen, Conditie voorwaarde, Geldigheid geldigheid) {
     /** One attribute of the new object set to a resolved value expression. */
     public record Toekenning(String attribuut, Expr waarde) {}
 }

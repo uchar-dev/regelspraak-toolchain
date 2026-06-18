@@ -564,6 +564,50 @@ class DroolsExecutionTest {
         assertNull(prijsOp(kb, LocalDate.of(2023, 6, 1)), "voor beide vensters -> geen versie vuurt");
     }
 
+    @Test void objectcreatie_versies_kiezen_op_rekendatum_en_compileren_zonder_naamconflict() {
+        // §13.4.2.5 / §4.2 for an objectcreatie: two versions create the factuur differently;
+        // each fires only in its window, and the two versions must get distinct DRL rule names
+        // (a multi-version rule of this kind used to collide into one name and fail the package).
+        String src = """
+            Objecttype de Bestelling
+                de waarde Numeriek (geheel getal);
+            Objecttype de Factuur
+                de bedrag Numeriek (geheel getal);
+            Feittype Bestelling met factuur
+                de bestelling Bestelling
+                de factuur Factuur
+            Eén bestelling heeft één factuur
+            Regel maak factuur
+                geldig vanaf 2024 t/m 2024
+                    Een Bestelling heeft een factuur met bedrag gelijk aan de waarde van een Bestelling.
+                geldig vanaf 2025
+                    Een Bestelling heeft een factuur met bedrag gelijk aan 999.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rule \"maak factuur #1\"") && drl.contains("rule \"maak factuur #2\""),
+                () -> "versies krijgen geen unieke namen:\n" + drl);
+        KieBase kb = build(drl); // asserts the package COMPILES (no duplicate rule name)
+
+        assertEquals(0, new BigDecimal("50").compareTo(factuurBedragOp(kb, LocalDate.of(2024, 6, 1))), "2024 -> versie #1 (waarde 50)");
+        assertEquals(0, new BigDecimal("999").compareTo(factuurBedragOp(kb, LocalDate.of(2025, 6, 1))), "2025 -> versie #2 (999)");
+        assertNull(factuurBedragOp(kb, LocalDate.of(2023, 6, 1)), "voor beide vensters -> geen factuur aangemaakt");
+    }
+
+    /** Fire the objectcreatie rules at one Rekendatum over a Bestelling(waarde=50); return the
+     *  created Factuur's bedrag, or null when no Factuur was created. */
+    private static BigDecimal factuurBedragOp(KieBase kb, LocalDate rekendatum) {
+        KieSession sessie = kb.newKieSession();
+        sessie.setGlobal("rekendatum", rekendatum);
+        Bestelling b = new Bestelling(); b.setWaarde(new BigDecimal("50"));
+        sessie.insert(b);
+        sessie.fireAllRules();
+        var facturen = sessie.getObjects().stream().filter(o -> o instanceof Factuur).map(o -> (Factuur) o).toList();
+        sessie.dispose();
+        return facturen.isEmpty() ? null : facturen.get(0).getBedrag();
+    }
+
     /** Fire the heffing rules at one Rekendatum and return the resulting prijs. */
     private static BigDecimal prijsOp(KieBase kb, LocalDate rekendatum) {
         KieSession sessie = kb.newKieSession();

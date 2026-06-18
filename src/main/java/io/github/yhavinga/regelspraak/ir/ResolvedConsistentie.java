@@ -14,4 +14,5 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
  * rules (the §9.6 "is inconsistent" regelpredicaat). Compound criteria
  * (samengesteld / uniciteit) are a separate, not-yet-lifted form.
  */
-public record ResolvedConsistentie(String naam, Objecttype subject, Conditie assertie, String bron) {}
+public record ResolvedConsistentie(String naam, Objecttype subject, Conditie assertie, String bron,
+                                   Geldigheid geldigheid) {}

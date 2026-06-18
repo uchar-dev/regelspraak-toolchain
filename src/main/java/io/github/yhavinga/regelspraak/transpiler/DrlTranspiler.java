@@ -55,9 +55,12 @@ public final class DrlTranspiler {
                .append(ident(p.naam(), false)).append(";\n");
         if (!model.parameters.isEmpty()) out.append('\n');
         // §4.2 version selection: a time-bounded rule version guards on the Rekendatum the
-        // runtime supplies, so declare it as a global when any rule actually needs it.
-        boolean tijdgebonden = model.resolvedRegels.stream()
-                .anyMatch(r -> r.geldigheid() != null && !r.geldigheid().altijd());
+        // runtime supplies, so declare it as a global when any rule of any kind needs it.
+        boolean tijdgebonden =
+                   model.resolvedRegels.stream().anyMatch(r -> tijdgebondenGeldigheid(r.geldigheid()))
+                || model.objectCreaties.stream().anyMatch(o -> tijdgebondenGeldigheid(o.geldigheid()))
+                || model.verdelingen.stream().anyMatch(v -> tijdgebondenGeldigheid(v.geldigheid()))
+                || model.consistenties.stream().anyMatch(c -> tijdgebondenGeldigheid(c.geldigheid()));
         if (tijdgebonden) out.append("global java.time.LocalDate rekendatum;\n\n");
 
         for (ResolvedRegel r : model.resolvedRegels) regel(r);
@@ -85,6 +88,7 @@ public final class DrlTranspiler {
         out.append("    ").append(SUBJECT).append(" : ").append(ident(subject.naam, true))
            .append("( ").append(constraint).append(" )\n");
         for (String acc : accumulates) out.append("    ").append(acc).append('\n');
+        if (tijdgebondenGeldigheid(c.geldigheid())) out.append("    ").append(geldigheidGuard(c.geldigheid())).append('\n');
         out.append("then\n    insert(new ").append(FACT_PACKAGE).append(".Inconsistentie(\"")
            .append(escapeRegelNaam(c.naam())).append("\", ").append(SUBJECT).append("));\nend\n\n");
     }
@@ -131,6 +135,9 @@ public final class DrlTranspiler {
     }
     private static String datumLit(java.time.LocalDate d) {
         return "java.time.LocalDate.of(" + d.getYear() + ", " + d.getMonthValue() + ", " + d.getDayOfMonth() + ")";
+    }
+    private static boolean tijdgebondenGeldigheid(io.github.yhavinga.regelspraak.ir.Geldigheid g) {
+        return g != null && !g.altijd();
     }
 
     /** The negation of a consistency assertion — what makes the rule fire (the
@@ -188,6 +195,7 @@ public final class DrlTranspiler {
         out.append("    accumulate( $c : ").append(ident(doel.naam, true)).append("( ").append(j)
            .append(" ) ; $n : count($c) )\n");
         out.append("    $r : ").append(ident(doel.naam, true)).append("( ").append(j).append(" )\n");
+        if (tijdgebondenGeldigheid(v.geldigheid())) out.append("    ").append(geldigheidGuard(v.geldigheid())).append('\n');
         out.append("then\n    modify($r) {\n        ").append(setter(v.doelAttribuut()))
            .append("( $src.").append(getter(v.bronAttribuut()))
            .append("().divide($n, java.math.MathContext.DECIMAL64) )\n    }\nend\n\n"); // safe division
@@ -213,6 +221,7 @@ public final class DrlTranspiler {
         out.append("    ").append(SUBJECT).append(" : ").append(ident(subject.naam, true))
            .append("( ").append(oc.voorwaarde() != null ? conditie(oc.voorwaarde(), subject) : "").append(" )\n");
         for (String acc : accumulates) out.append("    ").append(acc).append('\n');
+        if (tijdgebondenGeldigheid(oc.geldigheid())) out.append("    ").append(geldigheidGuard(oc.geldigheid())).append('\n');
         out.append("then\n");
         out.append("    ").append(ident(nieuw.naam, true)).append(" $new = new ")
            .append(ident(nieuw.naam, true)).append("();\n");

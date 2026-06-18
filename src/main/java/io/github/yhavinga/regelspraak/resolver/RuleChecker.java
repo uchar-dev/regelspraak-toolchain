@@ -175,11 +175,11 @@ final class RuleChecker {
         } else if (rd.kenmerkToekenning() != null) {
             kenmerk(versieNaam, rd.kenmerkToekenning(), voorwaarde, geldigheid);
         } else if (rd.objectCreatie() != null) {
-            objectcreatie(naam, rd.objectCreatie(), voorwaarde);
+            objectcreatie(versieNaam, rd.objectCreatie(), voorwaarde, geldigheid);
         } else if (rd.verdeling() != null) {
-            verdeling(naam, rd.verdeling(), voorwaarde);
+            verdeling(versieNaam, rd.verdeling(), voorwaarde, geldigheid);
         } else if (rd.consistentieRegel() != null) {
-            consistentie(naam, rd.consistentieRegel());
+            consistentie(versieNaam, rd.consistentieRegel(), geldigheid);
         } else {
             // §13.4.7/.11/.12 — parsed but not yet lifted into the IR. Surface it as
             // a diagnostic rather than letting the rule silently disappear from the model.
@@ -197,14 +197,14 @@ final class RuleChecker {
      *  voorwaarde (uitToplevel), so the operand types and operator legality are the
      *  §5 ones; the subject is the object type the asserted expression is about. Compound
      *  criteria and uniciteit (different shapes) are not yet lifted — they keep a WARNING. */
-    private void consistentie(String naam, ConsistentieRegelContext cr) {
+    private void consistentie(String naam, ConsistentieRegelContext cr, Geldigheid geldigheid) {
         EnkelvoudigeConsistentieRegelContext e = cr.enkelvoudigeConsistentieRegel();
         if (e != null && e.expressie() != null && e.toplevelOperator() != null) {
             Expr lhs = bouwer.bouw(e.expressie());
             Conditie assertie = uitToplevel(lhs, e.toplevelOperator(), src(e));
             Objecttype subject = lhs instanceof Expr.AttribuutRef a ? a.objecttype() : null;
             if (subject != null && transpileerbaar(assertie)) {
-                model.consistenties.add(new io.github.yhavinga.regelspraak.ir.ResolvedConsistentie(naam, subject, assertie, src(cr)));
+                model.consistenties.add(new io.github.yhavinga.regelspraak.ir.ResolvedConsistentie(naam, subject, assertie, src(cr), geldigheid));
                 return;
             }
         }
@@ -231,7 +231,7 @@ final class RuleChecker {
     /** §13.4.10 verdeling: distribute a source amount over a recipient attribute. The
      *  method (equal shares / proportional / a group-and-remainder scheme) is captured;
      *  only equal shares has a single-rule Drools form (the transpiler marks the rest). */
-    private void verdeling(String naam, VerdelingContext v, Conditie voorwaarde) {
+    private void verdeling(String naam, VerdelingContext v, Conditie voorwaarde, Geldigheid geldigheid) {
         if (v.attribuutVanOnderwerp().size() < 2) return;
         Expr bron = bouwer.bouwAttribuut(v.attribuutVanOnderwerp(0));
         Expr doel = bouwer.bouwAttribuut(v.attribuutVanOnderwerp(1));
@@ -246,14 +246,14 @@ final class RuleChecker {
             rato = z.attribuutMetLidwoord() != null ? src(z.attribuutMetLidwoord()) : null;
         }
         model.verdelingen.add(new ResolvedVerdeling(naam, b.objecttype(), b.attribuut(),
-                d.objecttype(), d.attribuut(), methode, rato, voorwaarde));
+                d.objecttype(), d.attribuut(), methode, rato, voorwaarde, geldigheid));
     }
 
     /** §13.4.6 objectcreatie: "<subject> heeft <het rol> met <attribuut> gelijk aan <expr>
      *  (, <attribuut> gelijk aan <expr>)*". The first kaleNaam carries "<rol> met
      *  <attribuut>" (the 'met' fold the grammar leaves to the resolver); the rest are
      *  bare attribute names. */
-    private void objectcreatie(String naam, ObjectCreatieContext oc, Conditie voorwaarde) {
+    private void objectcreatie(String naam, ObjectCreatieContext oc, Conditie voorwaarde, Geldigheid geldigheid) {
         Objecttype subject = bouwer.objecttypeVanKeten(oc.onderwerpKeten());
         bouwer.setSubject(subject);
         List<KaleNaamContext> namen = oc.kaleNaam();
@@ -270,7 +270,7 @@ final class RuleChecker {
         for (int i = 1; i < namen.size() && i < waarden.size(); i++)
             toek.add(new ResolvedObjectCreatie.Toekenning(stripArtikel(src(namen.get(i))), bouwer.bouw(waarden.get(i))));
 
-        model.objectCreaties.add(new ResolvedObjectCreatie(naam, nieuwType, subject, toek, voorwaarde));
+        model.objectCreaties.add(new ResolvedObjectCreatie(naam, nieuwType, subject, toek, voorwaarde, geldigheid));
     }
 
     private static String stripArtikel(String s) { return s.replaceFirst("^(?i)(de|het|een)\\s+", "").trim(); }

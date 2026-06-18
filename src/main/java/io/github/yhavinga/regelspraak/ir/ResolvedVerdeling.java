@@ -16,6 +16,7 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
  */
 public record ResolvedVerdeling(String naam, Objecttype bronType, String bronAttribuut,
                                 Objecttype doelType, String doelAttribuut,
-                                Methode methode, String ratoAttribuut, Conditie voorwaarde) {
+                                Methode methode, String ratoAttribuut, Conditie voorwaarde,
+                                Geldigheid geldigheid) {
     public enum Methode { GELIJKE_DELEN, NAAR_RATO, COMPLEX }
 }
