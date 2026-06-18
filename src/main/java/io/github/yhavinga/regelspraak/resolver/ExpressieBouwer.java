@@ -143,6 +143,16 @@ final class ExpressieBouwer {
         String bron = src(f);
         Expr.FunctieKind kind = functieKind(f);
         List<Expr> argumenten = args(f);
+        // §13.4.17.47 telling vs a declared name that merely begins with "aantal":
+        // "het aantal <X>" is a count only when <X> denotes a countable element. When it
+        // binds none AND the whole phrase is a declared parameter, it is that reference, not
+        // a count — TOKA's parameter "aantal treinmiles per passagier voor contingent" is
+        // written "het aantal treinmiles per passagier voor contingent". Conservative: only
+        // when the count has no element, so a real telling is never reinterpreted.
+        if (kind == Expr.FunctieKind.AANTAL && aggregatieElement(kind, argumenten) == null) {
+            Expr ref = naamRef(bron, false, bron);
+            if (!(ref instanceof Expr.Onopgelost)) return ref;
+        }
         Datatype type = f instanceof TijdsduurFuncContext t ? tijdsduurType(t) : functieType(kind, argumenten);
         Expr leegwaarde = leegwaardeVan(f);
         // §4.10/§5.8.2: the fallback substitutes for the sum's RESULT, so it must be numeriek
@@ -235,11 +245,18 @@ final class ExpressieBouwer {
         return Expr.FunctieKind.SOM; // unreachable: every functieAanroep alternative is covered above
     }
 
-    /** The direct expressie children of a context, built in order — an aggregation's arguments. */
+    /** The direct expression children of a context, built in order — an aggregation's
+     *  arguments. The telling (§13.4.17.47 aantal) takes a higher-precedence
+     *  primaireExpressie operand (so a trailing 'maal'/'plus' binds outside the count),
+     *  so a primaireExpressie child is built as such; every other aggregation takes full
+     *  expressie children. */
     private List<Expr> args(ParserRuleContext ctx) {
         List<Expr> out = new ArrayList<>();
-        for (int i = 0; i < ctx.getChildCount(); i++)
-            if (ctx.getChild(i) instanceof ExpressieContext ec) out.add(bouw(ec));
+        for (int i = 0; i < ctx.getChildCount(); i++) {
+            ParseTree ch = ctx.getChild(i);
+            if (ch instanceof ExpressieContext ec) out.add(bouw(ec));
+            else if (ch instanceof PrimaireExpressieContext pe) out.add(bouwPrimair(pe));
+        }
         return out;
     }
 

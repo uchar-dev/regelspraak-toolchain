@@ -671,7 +671,7 @@ primaireExpressie
 // §13.4.17.10-58 named functions and aggregations
 functieAanroep
     : SOM_VAN expressie dimensieSelectie? leegwaardeAlternatief?                                   # somFunc
-    | HET AANTAL_WORD expressie                                                                    # aantalFunc      // telling §13.4.17.47
+    | HET AANTAL_WORD primaireExpressie                                                           # aantalFunc      // telling §13.4.17.47 (counts an objectexpressie, not an arithmetic expr: a trailing 'maal'/'plus' binds OUTSIDE the count)
     | TOTAAL_VAN expressie conditieBijExpressie? leegwaardeAlternatief?                            # totaalFunc      // §13.4.17.56
     | ( MAXIMALE_WAARDE_VAN | MINIMALE_WAARDE_VAN ) expressie ( COMMA expressie )* ( EN expressie )? dimensieSelectie? # minMaxFunc // §13.4.17.15/.16/.47
     | ( EERSTE_VAN | LAATSTE_VAN ) expressie ( COMMA expressie )* ( EN expressie )?                 # eersteLaatsteFunc // §13.4.17.39/.40/.49

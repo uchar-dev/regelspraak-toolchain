@@ -115,6 +115,82 @@ class DroolsExecutionTest {
                 () -> "som over de juiste passagiers faalde: " + v.getTotaalprijs());
     }
 
+    @Test void telling_maal_parameter_bindt_de_maal_buiten_de_telling() {
+        // §13.4.17.47 telling precedence: "het aantal X van de reis maal de factor" must be
+        // (count of X) maal factor, NOT count(X maal factor). The telling takes a
+        // primaireExpressie operand, so the maal binds outside. Proven by firing: 2 passengers
+        // maal 10 = 20 (a count-of-(passenger-maal-10) would not even resolve).
+        String src = """
+            Parameter de factor : Numeriek (geheel getal)
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel tel
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis maal de factor.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("($acc1 * factor)"), () -> "de maal moet buiten de telling binden:\n" + drl);
+        assertFalse(drl.contains("TODO aggregatie"), () -> "de telling mag de maal niet opslokken:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        sessie.setGlobal("factor", new BigDecimal("10"));
+        Vlucht v = new Vlucht();
+        Passagier a = new Passagier(); a.setReis(v);
+        Passagier b = new Passagier(); b.setReis(v);
+        Vlucht ander = new Vlucht();                              // a flight with no passengers, to prove the join
+        sessie.insert(v); sessie.insert(ander); sessie.insert(a); sessie.insert(b);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("20").compareTo(v.getTotaalprijs()),
+                () -> "2 passagiers maal 10 = 20, kreeg " + v.getTotaalprijs());
+    }
+
+    @Test void het_aantal_gevolgd_door_parameternaam_is_de_parameter_niet_een_telling() {
+        // A parameter whose name begins with "aantal" ("aantal punten per passagier"), written
+        // "het aantal punten per passagier", must resolve to the PARAMETER, not be grabbed by the
+        // telling rule as count(punten per passagier). Mirrors TOKA's contingent-treinmiles
+        // parameter. Proven by firing: 2 passengers maal 10 = 20.
+        String src = """
+            Parameter de aantal punten per passagier : Numeriek (geheel getal)
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel tel
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis maal het aantal punten per passagier.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("($acc1 * aantalPuntenPerPassagier)"),
+                () -> "de aantal-parameter moet als parameter binden:\n" + drl);
+        assertFalse(drl.contains("TODO aggregatie"), () -> "de parameternaam mag geen geneste telling worden:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        sessie.setGlobal("aantalPuntenPerPassagier", new BigDecimal("10"));
+        Vlucht v = new Vlucht();
+        Passagier a = new Passagier(); a.setReis(v);
+        Passagier b = new Passagier(); b.setReis(v);
+        sessie.insert(v); sessie.insert(a); sessie.insert(b);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("20").compareTo(v.getTotaalprijs()),
+                () -> "2 passagiers maal 10 = 20, kreeg " + v.getTotaalprijs());
+    }
+
     @Test void objectcreatie_voegt_een_gekoppeld_feit_toe() {
         String src = """
             Objecttype de Bestelling
