@@ -155,9 +155,8 @@ public final class DefinitionResolver {
             String primair = !afk.isEmpty() ? afk.get(0) : (u.eenheidWoord() != null ? src(u.eenheidWoord()) : null);
             if (primair == null) continue;
             java.math.BigDecimal n = null; String naar = null;
-            if (u.omrekenSpecificatie() != null) {                       // "= 12 mnd"
-                try { n = new java.math.BigDecimal(u.omrekenSpecificatie().NUMBER().getText().replace(',', '.')); }
-                catch (NumberFormatException ignore) {}
+            if (u.omrekenSpecificatie() != null) {                       // "= 12 mnd" or "= 1/1000 m"
+                n = rationeel(u.omrekenSpecificatie().NUMBER().getText(), primair);
                 naar = src(u.omrekenSpecificatie().eenheidAfkorting());
             }
             ruw.put(primair, new EenheidRuw(afk, u.eenheidWoord() != null ? src(u.eenheidWoord()) : null,
@@ -173,6 +172,23 @@ public final class DefinitionResolver {
             if (r.meervoud() != null) stelsel.aliassen.put(RegelSpraakModel.normaliseerTijdseenheid(r.meervoud()), e);
         }
         model.eenheidstelsels.put(stelsel.naam, stelsel);
+    }
+
+    /** Parse an omrekenfactor, which the lexer hands over as a single rational NUMBER
+     *  token: a whole number ("12"), a decimal ("1,5"), or the §13.3.5.2 "1/N" form
+     *  ("1/1000"). A malformed factor is reported, not silently swallowed. */
+    private java.math.BigDecimal rationeel(String tekst, String eenheid) {
+        try {
+            int slash = tekst.indexOf('/');
+            if (slash >= 0)
+                return new java.math.BigDecimal(tekst.substring(0, slash))
+                        .divide(new java.math.BigDecimal(tekst.substring(slash + 1)), java.math.MathContext.DECIMAL64);
+            return new java.math.BigDecimal(tekst.replace(',', '.'));
+        } catch (RuntimeException e) {
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
+                    "onleesbare omrekenfactor '" + tekst + "' bij eenheid '" + eenheid + "'", 0));
+            return null;
+        }
     }
 
     /** Reduce a unit to its system canonical and the factor to reach it: a base unit

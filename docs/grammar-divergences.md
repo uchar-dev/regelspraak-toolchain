@@ -113,6 +113,25 @@ outer afronding (a precedence split in the begrenzing rule); until then the IR �
 and therefore the generated DRL — rounds the bound rather than the result. Noted
 so the transpiler's output is read with this in mind.
 
+### Unit conversion — scope and known gaps
+
+Unit systems declare conversions (§13.3.5.2: "het jaar jr = 12 mnd", incl. the
+"1/N" rational form), and the resolver reduces each unit to its system canonical
+with a factor. The transpiler converts a **simple (numerator-only)** unit on the
+right operand of `+`/`-`, in a comparison, and at an assignment, so cross-unit
+arithmetic and comparison are scaled rather than computed on raw magnitudes.
+
+Deliberately **not yet** handled (documented rather than half-done):
+- **Composite / rate units** (`€/jr`, `km/u`): the denominator is currently dropped,
+  so two rate units look identical and are not converted (no scaling is emitted —
+  a missing feature, not a wrong number). The §6.4/§6.5 composite-unit algebra
+  (result unit of `maal`/`gedeeld door`, cancellation, denominator-direction
+  inversion) is future work. `maal` therefore emits a plain product and does NOT
+  convert its operands (units multiply, they need not match).
+- **Reverse-factor precision**: the exact direction (to the smaller unit, ×N) is
+  exact; the reverse (×1/N) is carried at DECIMAL64. Per §6.1.2 there is **no
+  implicit rounding** — the author adds an explicit afronding where precision matters.
+
 ### Plural (meervoud) resolution
 
 RegelSpraak declares plurals explicitly — `(mv: …)` on a `<naamwoord>` (§13.2.29),

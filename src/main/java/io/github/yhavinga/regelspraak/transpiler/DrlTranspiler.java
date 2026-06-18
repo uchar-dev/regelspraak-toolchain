@@ -147,10 +147,10 @@ public final class DrlTranspiler {
         }
         out.append("then\n");
         if (valueStr != null && r.doel() instanceof Expr.AttribuutRef a) {
-            if (r.waarde().type().isNumeriek()) {
-                valueStr = omreken(valueStr, r.waarde().type(), a.type()); // restate in the target's unit
-                valueStr = afrondNaarDoel(valueStr, a.type());              // §6: round to the target's precision
-            }
+            // restate the value in the target's unit (§4); §6.1.2 forbids AUTO-rounding —
+            // if the result has too many decimals the author must add an explicit afronding.
+            if (r.waarde().type().isNumeriek())
+                valueStr = omreken(valueStr, r.waarde().type(), a.type());
             out.append("    modify(").append(SUBJECT).append(") {\n");
             out.append("        ").append(setter(a.attribuut())).append("( ").append(valueStr).append(" )\n");
             out.append("    }\n");
@@ -178,6 +178,8 @@ public final class DrlTranspiler {
             if (b.op() == Expr.BinOp.GEDEELD_DOOR || b.op() == Expr.BinOp.GEDEELD_DOOR_ABS)
                 return "(" + waarde(b.links(), subject) + ").divide(" + waarde(b.rechts(), subject)
                         + ", java.math.MathContext.DECIMAL64)"; // safe: no non-terminating-quotient throw
+            if (b.op() == Expr.BinOp.MAAL)  // §6.4: units multiply, operands are NOT converted to match
+                return "(" + waarde(b.links(), subject) + " * " + waarde(b.rechts(), subject) + ")";
             // §4: restate the right operand in the left operand's unit before +/- so a
             // convertible-but-different unit (mnd vs jr) is scaled, not added raw.
             String rechts = omreken(waarde(b.rechts(), subject), b.rechts().type(), b.links().type());
@@ -246,8 +248,12 @@ public final class DrlTranspiler {
 
     // ---------------- condition ("when" side: bare field constraints) ----------------
     private String conditie(Conditie c, Objecttype subject) {
-        if (c instanceof Conditie.Vergelijking v)
-            return operand(v.links(), subject) + " " + drlOp(v.op()) + " " + operand(v.rechts(), subject);
+        if (c instanceof Conditie.Vergelijking v) {
+            // §5.1 Tabel 32: a comparison across convertible-but-different units restates
+            // the right operand in the left's unit first ("24 mnd > 2 jr", not "24 > 2").
+            String rechts = omreken(operand(v.rechts(), subject), v.rechts().type(), v.links().type());
+            return operand(v.links(), subject) + " " + drlOp(v.op()) + " " + rechts;
+        }
         if (c instanceof Conditie.Predicaat p) {
             String o = operand(p.operand(), subject);
             return switch (p.soort()) {
@@ -291,17 +297,11 @@ public final class DrlTranspiler {
         return m.find() ? m.group().replace(',', '.') : todo("literal", lit.waarde());
     }
 
-    /** §6: round a numeric value to the target attribute's declared precision (also
-     *  absorbs the residue of a reverse unit conversion). */
-    private static String afrondNaarDoel(String expr, Datatype doel) {
-        int dec = doel instanceof Datatype.Numeriek n ? n.decimalen()
-                : doel instanceof Datatype.Percentage p ? p.decimalen() : -1;
-        return dec < 0 ? expr : "(" + expr + ").setScale(" + dec + ", java.math.RoundingMode.HALF_UP)";
-    }
-
     /** Wrap an emitted value in a unit conversion when its unit differs from (but is
-     *  convertible to) the target unit; otherwise return it unchanged. §13.3.5.2. */
+     *  convertible to) the target unit; otherwise return it unchanged (§13.3.5.2).
+     *  Never wraps an unlowered placeholder — that would emit (null).multiply(...). */
     private static String omreken(String expr, Datatype van, Datatype naar) {
+        if (expr.contains("/* TODO")) return expr; // placeholder value — do not wrap (would NPE)
         io.github.yhavinga.regelspraak.model.Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();
         if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return expr;
         return "(" + expr + ").multiply(new java.math.BigDecimal(\""

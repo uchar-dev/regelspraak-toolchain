@@ -3,6 +3,7 @@ package io.github.yhavinga.regelspraak;
 import io.github.yhavinga.regelspraak.facts.Bestelling;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
+import io.github.yhavinga.regelspraak.facts.Meting;
 import io.github.yhavinga.regelspraak.facts.Passagier;
 import io.github.yhavinga.regelspraak.facts.Periode;
 import io.github.yhavinga.regelspraak.facts.Pot;
@@ -179,7 +180,7 @@ class DroolsExecutionTest {
                 de looptijd Numeriek (geheel getal) met eenheid jr;
             Regel tel
                 geldig altijd
-                    De duur van een Periode moet gesteld worden op de looptijd van een Periode plus de duur van een Periode.
+                    De duur van een Periode moet gesteld worden op de duur van een Periode plus de looptijd van een Periode.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
@@ -195,5 +196,33 @@ class DroolsExecutionTest {
 
         assertEquals(0, new BigDecimal("27").compareTo(p.getDuur()),
                 () -> "2 jr + 3 mnd moet 27 mnd zijn (niet 5), kreeg " + p.getDuur());
+    }
+
+    @Test void cross_unit_vergelijking_wordt_omgerekend_niet_rauw_vergeleken() {
+        // "duurmnd (mnd) groter dan grensjr (jr)": 2 jr is 24 mnd. 25 mnd > 24 mnd is
+        // true; 20 mnd > 24 mnd is false. A raw "25 > 2 / 20 > 2" would wrongly say both.
+        String src = """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Objecttype de Meting
+                de duurmnd Numeriek (geheel getal) met eenheid mnd;
+                de grensjr Numeriek (geheel getal) met eenheid jr;
+                is oud kenmerk (bijvoeglijk);
+            Regel oud
+                geldig altijd
+                    Een Meting is oud
+                    indien de duurmnd van een Meting groter is dan de grensjr van een Meting.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        KieSession sessie = build(drl).newKieSession();
+        Meting boven = new Meting(); boven.setDuurmnd(new BigDecimal("25")); boven.setGrensjr(new BigDecimal("2"));
+        Meting onder = new Meting(); onder.setDuurmnd(new BigDecimal("20")); onder.setGrensjr(new BigDecimal("2"));
+        sessie.insert(boven); sessie.insert(onder);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertTrue(boven.isOud(), "25 mnd > 2 jr (24 mnd) moet waar zijn");
+        assertFalse(onder.isOud(), "20 mnd > 2 jr (24 mnd) moet onwaar zijn (niet rauw 20>2)");
     }
 }
