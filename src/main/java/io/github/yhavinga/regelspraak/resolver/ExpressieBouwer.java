@@ -144,16 +144,23 @@ final class ExpressieBouwer {
         Expr.FunctieKind kind = functieKind(f);
         List<Expr> argumenten = args(f);
         Datatype type = f instanceof TijdsduurFuncContext t ? tijdsduurType(t) : functieType(kind, argumenten);
-        return new Expr.Functie(kind, argumenten, aggregatieElement(kind, argumenten), leegwaardeVan(f), type, bron);
+        Expr leegwaarde = leegwaardeVan(f);
+        // §4.10/§5.8.2: the fallback substitutes for the sum's RESULT, so it must be numeriek
+        // (a Tekst/Datum fallback would otherwise emit a type-mixed DRL ternary that throws at
+        // fire time). Onbekend = no claim, so it is not flagged.
+        if (leegwaarde != null && !leegwaarde.type().isNumeriek() && !leegwaarde.type().isOnbekend())
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
+                    "leegwaarde-alternatief van een sommatie moet numeriek zijn, kreeg "
+                            + leegwaarde.type() + " (§5.8.2)", f.getStart().getLine()));
+        return new Expr.Functie(kind, argumenten, aggregatieElement(kind, argumenten), leegwaarde, type, bron);
     }
 
-    /** The §5.8.2 "of … als die er niet zijn" fallback expression of a sommatie (the
-     *  grammar attaches it to both "som van" and "totaal van", both summations), or null. */
+    /** The §5.8.2 "of … als die er niet zijn" fallback expression of a sommatie, or null.
+     *  Only "som van" carries it: an empty "som van" is a leegwaarde unless this overrides
+     *  it (§4.10), whereas an empty "totaal van" is unconditionally 0 (§4.20, no fallback). */
     private Expr leegwaardeVan(FunctieAanroepContext f) {
         if (f instanceof SomFuncContext s && s.leegwaardeAlternatief() != null)
             return bouw(s.leegwaardeAlternatief().expressie());
-        if (f instanceof TotaalFuncContext t && t.leegwaardeAlternatief() != null)
-            return bouw(t.leegwaardeAlternatief().expressie());
         return null;
     }
 

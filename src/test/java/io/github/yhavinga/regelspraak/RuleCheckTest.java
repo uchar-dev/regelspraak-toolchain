@@ -103,6 +103,46 @@ class RuleCheckTest {
                 () -> "verwachtte een WARNING, kreeg: " + m.diagnostics);
     }
 
+    @Test void niet_numerieke_leegwaarde_van_een_sommatie_wordt_gemeld() {
+        // §4.10/§5.8.2: the "of … als die er niet zijn" fallback substitutes for the sum's
+        // numeriek result, so a Tekst fallback must error (else it becomes a type-mixed DRL
+        // ternary that throws at fire time).
+        String src = """
+            Objecttype de Vlucht
+                de somMet Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel met
+                geldig altijd
+                    De somMet van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis of "geen" als die er niet zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("leegwaarde-alternatief")),
+                () -> "verwachtte een leegwaarde-type-fout, kreeg: " + m.errors());
+    }
+
+    @Test void numerieke_leegwaarde_van_een_sommatie_geen_fout() {
+        String src = """
+            Objecttype de Vlucht
+                de somMet Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel met
+                geldig altijd
+                    De somMet van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis of 0 als die er niet zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+    }
+
     @Test void onoplosbare_referentie_geeft_geen_valse_fout() {
         // a deep van-chain the checker cannot fully resolve must NOT be reported as an error
         String src = MODEL + """

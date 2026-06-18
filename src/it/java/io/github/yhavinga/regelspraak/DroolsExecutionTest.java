@@ -470,4 +470,36 @@ class DroolsExecutionTest {
         assertEquals(0, BigDecimal.ZERO.compareTo(leeg.getSomMet()), () -> "lege somMet moet 0 zijn: " + leeg.getSomMet());
         assertNull(leeg.getSomZonder(), () -> "lege somZonder moet leegwaarde (null) zijn: " + leeg.getSomZonder());
     }
+
+    @Test void lege_totaal_van_is_nul_niet_leegwaarde() {
+        // typeringen §4.20: an empty "totaal van" is unconditionally 0 (it has no
+        // "of 0 als die er niet zijn" fallback and no empty=leegwaarde rule, unlike "som van").
+        // So it must NOT go through the §5.8.2 empty=leegwaarde count-guard.
+        String src = """
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel totaal
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als het totaal van de prijs van alle passagiers van de reis.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("? null :"), () -> "totaal van mag geen leegwaarde-tak hebben:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht leeg = new Vlucht();   // no passengers
+        sessie.insert(leeg);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertNotNull(leeg.getTotaalprijs(), "lege 'totaal van' moet 0 zijn, geen leegwaarde");
+        assertEquals(0, BigDecimal.ZERO.compareTo(leeg.getTotaalprijs()), () -> "lege totaal van: " + leeg.getTotaalprijs());
+    }
 }

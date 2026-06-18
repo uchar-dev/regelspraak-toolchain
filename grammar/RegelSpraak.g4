@@ -717,8 +717,9 @@ conditieBijExpressie // §13.4.17.55
     : GEDURENDE_DE_TIJD_DAT ( toplevelSamengesteldeVoorwaarde | toplevelElementaireVoorwaarde )
     | periodevergelijkingEnkelvoudig
     ;
-// §6.7 a sommatie may declare a fallback for the empty result: "… of 0 als die
-// er niet zijn" — the sum yields the given value instead of a leegwaarde.
+// §5.8.2 a "som van" may declare a fallback for the empty result: "… of 0 als die
+// er niet zijn" — the sum yields the given value instead of a leegwaarde. (Only "som
+// van"; an empty "totaal van" is unconditionally 0 per §4.20 typeringen, no fallback.)
 leegwaardeAlternatief : OF expressie ALS_DIE_ER_NIET_ZIJN ;
 
 // §13.4.17.51 mandates a leading 'over'; a §5.8.5 worked example references the

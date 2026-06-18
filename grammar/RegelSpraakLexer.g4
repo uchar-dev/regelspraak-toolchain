@@ -128,7 +128,7 @@ NUMERIEK_ZIJN_MET_EXACT: 'numeriek' WSP 'zijn' WSP 'met' WSP 'exact' ; // §13.4
 NUMERIEK_MET_EXACT: 'numeriek' WSP 'met' WSP 'exact'     ; // §13.4.15.84 non-toplevel (is numeriek)
 
 // --- condition phrases ---
-// §6.7 leegwaarde fallback on a sommatie: "… of 0 als die er niet zijn".
+// §5.8.2 leegwaarde fallback on a "som van": "… of 0 als die er niet zijn".
 ALS_DIE_ER_NIET_ZIJN  : 'als' WSP 'die' WSP 'er' WSP 'niet' WSP 'zijn' ;
 GEDURENDE_DE_TIJD_DAT : 'gedurende' WSP 'de' WSP 'tijd' WSP 'dat' ; // §13.4.17.55
 GEDURENDE_HET_GEHELE  : 'gedurende' WSP 'het' WSP 'gehele'  ; // §13.4.15.70

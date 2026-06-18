@@ -342,11 +342,13 @@ public final class DrlTranspiler {
         String scope = scope(elem, subject, f);
         Expr arg = f.argumenten().isEmpty() ? null : f.argumenten().get(0);
 
-        // §5.8.2 sommatie: an empty sum (no non-empty contributors) is a leegwaarde, not 0 —
-        // unless "of … als die er niet zijn" supplies a fallback. Drools sum() can't tell an
-        // empty sum from a real 0, so count the non-empty contributors and branch on it.
+        // §4.10/§5.8.2 sommatie ("som van"): an empty sum (no non-empty contributors) is a
+        // leegwaarde, not 0 — unless "of … als die er niet zijn" supplies a fallback. Drools
+        // sum() can't tell an empty sum from a real 0, so count the non-empty contributors and
+        // branch on it. TOTAAL ("totaal van") is excluded: §4.20 makes its empty result an
+        // unconditional 0, which the plain sum() over an empty accumulate already yields.
         // Needs a resolved join and a plain attribute argument; otherwise fall through.
-        if ((f.kind() == Expr.FunctieKind.SOM || f.kind() == Expr.FunctieKind.TOTAAL)
+        if (f.kind() == Expr.FunctieKind.SOM
                 && arg instanceof Expr.AttribuutRef a && !scope.startsWith("/*")) {
             String cnt = "$n" + n;
             accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true)
