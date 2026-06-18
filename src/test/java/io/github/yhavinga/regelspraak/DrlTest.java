@@ -222,6 +222,39 @@ class DrlTest {
                 () -> "inconsistentie-markering ontbreekt:\n" + drl);
     }
 
+    @Test void consistentieregel_ordening_bewaakt_lege_operanden() {
+        // §9.5 + leegwaarde rekentabels: "saldo moet kleiner zijn dan limiet" is onwaar —
+        // inconsistent — when violated AND when an operand is empty. The algebraic
+        // complement alone is also onwaar on null, so the violation guards the nulls.
+        String src = """
+            Objecttype de Konto
+                de saldo Numeriek (geheel getal);
+                de limiet Numeriek (geheel getal);
+            Regel saldocheck
+                geldig altijd
+                    De saldo van een Konto moet kleiner zijn dan de limiet van een Konto.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("saldo == null || limiet == null || saldo >= limiet"),
+                () -> "leeg-operand-bewaking ontbreekt:\n" + drl);
+    }
+
+    @Test void consistentieregel_naam_met_quote_levert_geldige_drl_header() {
+        // a rule name is free text and may contain a double quote (§13.2.8); it must be
+        // escaped so the DRL header and the Inconsistentie literal stay well-formed.
+        String src = """
+            Objecttype de Route
+                de vertrek Tekst;
+                de bestemming Tekst;
+            Regel Controleer "rondvlucht" status
+                geldig altijd
+                    De vertrek van een Route moet ongelijk zijn aan de bestemming van een Route.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rule \"Controleer 'rondvlucht' status\""), () -> "header niet geëscaped:\n" + drl);
+        assertFalse(drl.contains("\"rondvlucht\""), () -> "ongeëscapete quote lekt door:\n" + drl);
+    }
+
     @Test void namen_worden_geldige_java_identifiers() {
         String src = """
             Objecttype de Natuurlijk persoon

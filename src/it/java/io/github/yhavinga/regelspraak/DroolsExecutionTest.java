@@ -5,6 +5,7 @@ import io.github.yhavinga.regelspraak.facts.Burger;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
 import io.github.yhavinga.regelspraak.facts.Inconsistentie;
+import io.github.yhavinga.regelspraak.facts.Konto;
 import io.github.yhavinga.regelspraak.facts.Meting;
 import io.github.yhavinga.regelspraak.facts.Passagier;
 import io.github.yhavinga.regelspraak.facts.Periode;
@@ -395,5 +396,36 @@ class DroolsExecutionTest {
         assertEquals(1, fouten.size(), () -> "precies de rondvlucht moet inconsistent zijn: " + fouten);
         assertEquals("rondvlucht", fouten.get(0).getRegel());
         assertSame(rond, fouten.get(0).getSubject(), "de gemarkeerde instantie moet de rondvlucht zijn");
+    }
+
+    @Test void consistentieregel_ordening_markeert_ook_de_lege_operand() {
+        // §9.5 + leegwaarde rekentabels: "saldo moet kleiner zijn dan limiet" is violated when
+        // saldo >= limiet AND when saldo is empty (a missing value is itself an inconsistency).
+        // The algebraic complement (saldo >= limiet) alone is false for null saldo and would
+        // miss it; the null-guarded violation must fire. Proven by firing in a real engine.
+        String src = """
+            Objecttype de Konto
+                de saldo Numeriek (geheel getal);
+                de limiet Numeriek (geheel getal);
+            Regel saldocheck
+                geldig altijd
+                    De saldo van een Konto moet kleiner zijn dan de limiet van een Konto.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Konto ok = new Konto();   ok.setSaldo(new BigDecimal("10"));   ok.setLimiet(new BigDecimal("50")); // 10<50 consistent
+        Konto over = new Konto(); over.setSaldo(new BigDecimal("80")); over.setLimiet(new BigDecimal("50")); // 80>=50 inconsistent
+        Konto leeg = new Konto(); leeg.setLimiet(new BigDecimal("50"));                                      // saldo null inconsistent
+        sessie.insert(ok); sessie.insert(over); sessie.insert(leeg);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> (Inconsistentie) o).toList();
+        sessie.dispose();
+
+        assertEquals(2, fouten.size(), () -> "over-limiet en lege saldo moeten beide inconsistent zijn: " + fouten);
+        assertTrue(fouten.stream().noneMatch(f -> f.getSubject() == ok), "de consistente Konto mag niet gemarkeerd zijn");
     }
 }

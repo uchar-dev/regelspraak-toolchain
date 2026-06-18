@@ -72,6 +72,37 @@ class RuleCheckTest {
                 () -> "verwachtte een domein-fout, kreeg: " + m.errors());
     }
 
+    @Test void consistentiecriterium_wordt_getypeerd_als_een_voorwaarde() {
+        // §8.3.1: a single criterion is the same predicate as the matching voorwaarde, so an
+        // ill-typed comparison (Tekst ordered against Numeriek) must error identically.
+        String src = MODEL + """
+            Regel typecheck
+                geldig altijd
+                    De naam van een Ding moet groter zijn dan de teller van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("ordeningsvergelijking")),
+                () -> "verwachtte een type-fout op het consistentiecriterium, kreeg: " + m.errors());
+    }
+
+    @Test void niet_liftbare_consistentieregel_waarschuwt_ipv_stil_te_vallen() {
+        // a membership criterion ("moet een <kenmerk> zijn") cannot yet be transpiled to a
+        // faithful violation rule; it must surface as a WARNING, not vanish into an inert rule.
+        String src = """
+            Objecttype de Vlucht
+                is rondvlucht kenmerk;
+            Regel controleer rondvlucht
+                geldig altijd
+                    Een Vlucht moet een rondvlucht zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "geen fout verwacht, kreeg: " + m.errors());
+        assertTrue(m.consistenties.isEmpty(), "een niet-liftbare vorm mag geen IR opleveren");
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
+                        && d.message().contains("consistentieregel")),
+                () -> "verwachtte een WARNING, kreeg: " + m.diagnostics);
+    }
+
     @Test void onoplosbare_referentie_geeft_geen_valse_fout() {
         // a deep van-chain the checker cannot fully resolve must NOT be reported as an error
         String src = MODEL + """

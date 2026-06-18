@@ -71,19 +71,48 @@ public final class DrlTranspiler {
         accumulates = new ArrayList<>();
         accCount = 0;
         Objecttype subject = c.subject();
-        Conditie schending = negeer(c.assertie());
-        out.append("rule \"").append(c.naam()).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
-        if (subject == null || schending == null) {
+        String constraint = subject != null ? schendingConstraint(c.assertie(), subject) : null;
+        out.append("rule \"").append(escapeRegelNaam(c.naam())).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
+        if (constraint == null) {
             out.append("    // onopgelost consistentieregel: ").append(c.bron()).append("\n    eval(true)\nthen\nend\n\n");
             return;
         }
-        String constraint = conditie(schending, subject);
         out.append("    ").append(SUBJECT).append(" : ").append(ident(subject.naam, true))
            .append("( ").append(constraint).append(" )\n");
         for (String acc : accumulates) out.append("    ").append(acc).append('\n');
         out.append("then\n    insert(new ").append(FACT_PACKAGE).append(".Inconsistentie(\"")
-           .append(c.naam().replace("\"", "'")).append("\", ").append(SUBJECT).append("));\nend\n\n");
+           .append(escapeRegelNaam(c.naam())).append("\", ").append(SUBJECT).append("));\nend\n\n");
     }
+
+    /** The "when" constraint that detects a VIOLATION of the assertion. An ordering or
+     *  date comparison is onwaar — hence inconsistent (§9.5) — not only when the
+     *  complement holds but also when EITHER operand is empty (the typeringen leegwaarde
+     *  tables: a leeg operand makes the comparison onwaar). The algebraic complement is
+     *  likewise onwaar on null, so those operands are guarded explicitly. gelijk/ongelijk
+     *  and leeg/gevuld use the plain negation (their empty cells are complementary).
+     *  Returns null when no faithful negation exists — the caller marks the rule. */
+    private String schendingConstraint(Conditie assertie, Objecttype subject) {
+        if (assertie instanceof Conditie.Vergelijking v && ordeningOfDatum(v.op())) {
+            String l = operand(v.links(), subject), r = operand(v.rechts(), subject);
+            String complement = conditie(new Conditie.Vergelijking(flip(v.op()), v.links(), v.rechts(), v.bron()), subject);
+            return "(" + l + " == null || " + r + " == null || " + complement + ")";
+        }
+        Conditie schending = negeer(assertie);
+        return schending != null ? conditie(schending, subject) : null;
+    }
+
+    private static boolean ordeningOfDatum(Conditie.Operator op) {
+        return switch (op) {
+            case KLEINER, KLEINER_OF_GELIJK, GROTER, GROTER_OF_GELIJK,
+                 EERDER, EERDER_OF_GELIJK, LATER, LATER_OF_GELIJK -> true;
+            case GELIJK, ONGELIJK -> false;
+        };
+    }
+
+    /** A rule name is free text (§13.2.8) and may contain a double quote; escape it so
+     *  the DRL {@code rule "…"} header and the Inconsistentie string literal stay
+     *  well-formed (an unescaped quote fails the whole Drools package). */
+    private static String escapeRegelNaam(String naam) { return naam.replace("\"", "'"); }
 
     /** The negation of a consistency assertion — what makes the rule fire (the
      *  violation). A comparison flips to its complement; an emptiness predicate flips
@@ -127,7 +156,7 @@ public final class DrlTranspiler {
         String join = bron != null && doel != null ? model.verbindendeRol(doel, bron) : null;
         boolean kan = v.methode() == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.GELIJKE_DELEN
                 && join != null;
-        out.append("rule \"").append(v.naam()).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
+        out.append("rule \"").append(escapeRegelNaam(v.naam())).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
         if (!kan) {
             out.append("    // onopgelost verdeling (")
                .append(bron == null || doel == null ? "referentie" : v.methode().name().toLowerCase())
@@ -156,7 +185,7 @@ public final class DrlTranspiler {
         for (var t : oc.toekenningen())
             setters.add("    $new." + setter(t.attribuut()) + "( " + waarde(t.waarde(), subject) + " );");
 
-        out.append("rule \"").append(oc.naam()).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
+        out.append("rule \"").append(escapeRegelNaam(oc.naam())).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
         if (subject == null || nieuw == null) {
             out.append("    // onopgelost objectcreatie: ").append(oc.naam()).append("\n    eval(true)\n");
             out.append("then\nend\n\n");
@@ -187,7 +216,7 @@ public final class DrlTranspiler {
         String valueStr = subject != null && r.doel() instanceof Expr.AttribuutRef
                 ? waarde(r.waarde(), subject) : null;
 
-        out.append("rule \"").append(r.naam()).append("\"\n");
+        out.append("rule \"").append(escapeRegelNaam(r.naam())).append("\"\n");
         out.append("    dialect \"mvel\"\n");
         // A forward calculation should not retrigger itself on its own modify; it
         // still recomputes when another rule changes the facts it reads.

@@ -100,16 +100,33 @@ final class RuleChecker {
      *  criteria and uniciteit (different shapes) are not yet lifted — they keep a WARNING. */
     private void consistentie(String naam, ConsistentieRegelContext cr) {
         EnkelvoudigeConsistentieRegelContext e = cr.enkelvoudigeConsistentieRegel();
-        if (e == null || e.expressie() == null || e.toplevelOperator() == null) {
-            model.diagnostics.add(new Diagnostic(Severity.WARNING,
-                    "consistentieregel (samengesteld/uniciteit) wordt nog niet naar IR/DRL omgezet (regel '"
-                            + naam + "')", cr.getStart().getLine()));
-            return;
+        if (e != null && e.expressie() != null && e.toplevelOperator() != null) {
+            Expr lhs = bouwer.bouw(e.expressie());
+            Conditie assertie = uitToplevel(lhs, e.toplevelOperator(), src(e));
+            Objecttype subject = lhs instanceof Expr.AttribuutRef a ? a.objecttype() : null;
+            if (subject != null && transpileerbaar(assertie)) {
+                model.consistenties.add(new io.github.yhavinga.regelspraak.ir.ResolvedConsistentie(naam, subject, assertie, src(cr)));
+                return;
+            }
         }
-        Expr lhs = bouwer.bouw(e.expressie());
-        Conditie assertie = uitToplevel(lhs, e.toplevelOperator(), src(e));
-        Objecttype subject = lhs instanceof Expr.AttribuutRef a ? a.objecttype() : null;
-        model.consistenties.add(new io.github.yhavinga.regelspraak.ir.ResolvedConsistentie(naam, subject, assertie, src(cr)));
+        // Compound criteria / uniciteit, a membership criterion ("moet een <kenmerk|rol>
+        // zijn"), elfproef / numeriek-met-exact, or a computed/unresolved subject: forms
+        // whose "inconsistent" we cannot yet express as a faithful violation rule. Surface
+        // the gap as a WARNING rather than lift it into a silent inert rule (which would
+        // both drop the check and lose the diagnostic the §13.4.7/.11/.12 path still gives).
+        model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                "consistentieregel wordt nog niet (volledig) naar IR/DRL omgezet (regel '" + naam + "')",
+                cr.getStart().getLine()));
+    }
+
+    /** The single-criterion assertions whose negation the transpiler can emit as a
+     *  faithful violation rule: a comparison, or an emptiness predicate. Everything else
+     *  (membership, elfproef, numeriek-met-exact, unstructured) is left to a WARNING. */
+    private static boolean transpileerbaar(Conditie c) {
+        if (c instanceof Conditie.Vergelijking) return true;
+        if (c instanceof Conditie.Predicaat p)
+            return p.soort() == Conditie.Predicaatsoort.LEEG || p.soort() == Conditie.Predicaatsoort.GEVULD;
+        return false;
     }
 
     /** §13.4.10 verdeling: distribute a source amount over a recipient attribute. The
@@ -296,7 +313,25 @@ final class RuleChecker {
         if (t == null) return;
         if (t instanceof ToplevelElementaireVoorwaardeContext c) checkTopVoorwaarde(c);
         else if (t instanceof ElementaireVoorwaardeContext c) checkElemVoorwaarde(c);
+        else if (t instanceof EnkelvoudigeConsistentieRegelContext c) checkConsistentieCriterium(c);
         for (int i = 0; i < t.getChildCount(); i++) voorwaarden(t.getChild(i));
+    }
+
+    /** A §13.4.8 single criterion ("&lt;expressie&gt; moet &lt;operator&gt;") is the same
+     *  predicate over the same onderwerpexpressie as the matching §5 voorwaarde (§8.3.1),
+     *  so its operands get the identical typeringen check — the lifted criterion now
+     *  transpiles, which would otherwise let an ill-typed comparison through silently. */
+    private void checkConsistentieCriterium(EnkelvoudigeConsistentieRegelContext c) {
+        if (c.expressie() == null || c.toplevelOperator() == null) return;
+        Datatype lhs = infer(c.expressie());
+        ToplevelOperatorContext op = c.toplevelOperator();
+        int line = c.getStart().getLine();
+        if (op.vergelijkingsTekenGesplitst() != null && op.expressie() != null)
+            meldVergelijk(cmpOf(op.vergelijkingsTekenGesplitst()), lhs, infer(op.expressie()), line);
+        else if (op.AAN_DE_ELFPROEF() != null)
+            meldPredicaat(Typering.UnairePred.ELFPROEF, lhs, line);
+        else if (op.NUMERIEK_IS_MET_EXACT() != null || op.NUMERIEK_ZIJN_MET_EXACT() != null)
+            meldPredicaat(Typering.UnairePred.NUMERIEK_MET_EXACT, lhs, line);
     }
 
     private void checkTopVoorwaarde(ToplevelElementaireVoorwaardeContext c) {
