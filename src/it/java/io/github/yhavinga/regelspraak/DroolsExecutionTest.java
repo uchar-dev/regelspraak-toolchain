@@ -363,6 +363,67 @@ class DroolsExecutionTest {
                 () -> "Afstand (250) moet binden ondanks hoofdletter, kreeg " + r.getAfstandTotDoel());
     }
 
+    @Test void consistentieregel_met_afwezig_attribuut_vuurt_niet() {
+        // p7b regression: a consistentieregel whose ordering operand cannot be resolved (the role
+        // target Luchthaven has no "rang") must NOT flag anything (§9.5: inconsistent only on a
+        // real violation). The schending-constraint wraps operands in "<op> == null" null-guards,
+        // so a /* TODO */ marker there would read "null == null" (always true) and fire on EVERY
+        // subject. The transpiler must instead drop to the no-op path. Proven by firing: 0 Inconsistentie.
+        String src = """
+            Objecttype de Reiziger
+                de doelrang Numeriek (geheel getal);
+            Objecttype de Luchthaven
+                de afstand Numeriek (geheel getal) met eenheid km;
+            Feittype reis naar luchthaven
+                de reiziger Reiziger
+                de bestemming Luchthaven
+            Eén reiziger reist naar één bestemming
+            Regel rang controle
+                geldig altijd
+                    De doelrang van een Reiziger moet groter zijn dan de rang van de bestemming.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();   // build() asserts the DRL COMPILES
+        Reiziger r = new Reiziger(); r.setDoelrang(new BigDecimal("5")); r.setBestemming(new Luchthaven());
+        sessie.insert(r);
+        sessie.fireAllRules();
+        long fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie).count();
+        sessie.dispose();
+        assertEquals(0, fouten, "een onevalueerbare consistentieregel mag niets markeren");
+    }
+
+    @Test void consistentieregel_gevuld_met_afwezig_attribuut_vuurt_niet() {
+        // The negation branch of the same hazard: "moet gevuld zijn" over an absent attribute
+        // negates to "<marker> == null" (always true). Must drop to the no-op path -> 0 Inconsistentie.
+        String src = """
+            Objecttype de Reiziger
+                de doelrang Numeriek (geheel getal);
+            Objecttype de Luchthaven
+                de afstand Numeriek (geheel getal) met eenheid km;
+            Feittype reis naar luchthaven
+                de reiziger Reiziger
+                de bestemming Luchthaven
+            Eén reiziger reist naar één bestemming
+            Regel rang gevuld
+                geldig altijd
+                    De rang van de bestemming van een Reiziger moet gevuld zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Reiziger r = new Reiziger(); r.setBestemming(new Luchthaven());
+        sessie.insert(r);
+        sessie.fireAllRules();
+        long fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie).count();
+        sessie.dispose();
+        assertEquals(0, fouten, "een onevalueerbare gevuld-criterium mag niets markeren");
+    }
+
     @Test void navigatie_bindt_de_rol_die_de_bron_noemt_niet_een_willekeurige() {
         // Two feittypen connect the SAME object-type pair (Burger↔Trip) and a wederkerig
         // Partnerrelatie connects Burger to itself. A by-pair join is ambiguous for both

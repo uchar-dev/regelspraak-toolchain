@@ -103,12 +103,26 @@ public final class DrlTranspiler {
     private String schendingConstraint(Conditie assertie, Objecttype subject) {
         if (assertie instanceof Conditie.Vergelijking v && ordeningOfDatum(v.op())) {
             String l = operand(v.links(), subject), r = operand(v.rechts(), subject);
+            // An un-evaluable operand (a /* TODO */ marker) must NOT be wrapped in this
+            // null-guard: the guard's "<marker> == null" reads as "null == null" — always
+            // true — so the rule would flag EVERY instance inconsistent though its criterion
+            // was never evaluated (§9.5: inconsistent only on a real violation). Drop to the
+            // no-op path instead, like an assertion with no faithful negation.
+            if (bevatMarker(l) || bevatMarker(r)) return null;
             String complement = conditie(new Conditie.Vergelijking(flip(v.op()), v.links(), v.rechts(), v.bron()), subject);
             return "(" + l + " == null || " + r + " == null || " + complement + ")";
         }
         Conditie schending = negeer(assertie);
-        return schending != null ? conditie(schending, subject) : null;
+        if (schending == null) return null;
+        // Same hazard via the negation: a gevuld→leeg predicate over a marker emits
+        // "<marker> == null" (always true). An un-evaluable criterion flags nothing.
+        String c = conditie(schending, subject);
+        return bevatMarker(c) ? null : c;
     }
+
+    /** Does a lowered constraint string carry an unresolved-reference marker? Such a fragment
+     *  is not a usable boolean — wrapping it in a null-guard or negation flips it to a constant. */
+    private static boolean bevatMarker(String s) { return s.contains("/* TODO"); }
 
     private static boolean ordeningOfDatum(Conditie.Operator op) {
         return switch (op) {
