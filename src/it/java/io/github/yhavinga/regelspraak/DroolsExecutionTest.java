@@ -8,6 +8,7 @@ import io.github.yhavinga.regelspraak.facts.Meting;
 import io.github.yhavinga.regelspraak.facts.Passagier;
 import io.github.yhavinga.regelspraak.facts.Periode;
 import io.github.yhavinga.regelspraak.facts.Pot;
+import io.github.yhavinga.regelspraak.facts.Reis;
 import io.github.yhavinga.regelspraak.facts.Trip;
 import io.github.yhavinga.regelspraak.facts.Vlucht;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
@@ -322,5 +323,45 @@ class DroolsExecutionTest {
         // wederkerig navigation reads the PARTNER's leeftijd, not the subject's own
         assertEquals(0, new BigDecimal("40").compareTo(p.getPartnerleeftijd()), () -> "p partnerleeftijd: " + p.getPartnerleeftijd());
         assertEquals(0, new BigDecimal("30").compareTo(q.getPartnerleeftijd()), () -> "q partnerleeftijd: " + q.getPartnerleeftijd());
+    }
+
+    @Test void exacte_rolnaam_bindt_ondanks_botsend_gesynthetiseerd_meervoud() {
+        // A role literally named "heenvluchten" collides with the +en plural a best-effort
+        // pluraliser would form for another feittype's "heenvlucht" role. A reference that
+        // names "heenvluchten" exactly must bind THAT role (§3.1 footnote 2: a synthesized
+        // plural never defeats a declared name), not collapse to a null marker. Proven by
+        // compiling+firing the navigation getter against the fact model.
+        String src = """
+            Objecttype de Reis
+                de prijs Numeriek (geheel getal);
+            Objecttype de Trip
+                de tarief Numeriek (geheel getal);
+            Feittype boeking
+                de reis Reis
+                de heenvlucht Trip
+            Eén reis heeft één heenvlucht
+            Feittype extra
+                de extrareis Reis
+                de heenvluchten Trip
+            Eén extrareis heeft één heenvluchten
+            Regel prijs
+                geldig altijd
+                    De prijs van een Reis moet gesteld worden op de tarief van de heenvluchten.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("$subject.getHeenvluchten().getTarief()"), () -> "exacte rol moet binden:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Trip heen = new Trip(); heen.setTarief(new BigDecimal("7"));          // the "heenvlucht" role
+        Trip extra = new Trip(); extra.setTarief(new BigDecimal("99"));       // the "heenvluchten" role
+        Reis r = new Reis(); r.setHeenvlucht(heen); r.setHeenvluchten(extra);
+        sessie.insert(heen); sessie.insert(extra); sessie.insert(r);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        // prijs is the tarief of the named "heenvluchten" (99), not the colliding "heenvlucht" (7)
+        assertEquals(0, new BigDecimal("99").compareTo(r.getPrijs()), () -> "prijs: " + r.getPrijs());
     }
 }
