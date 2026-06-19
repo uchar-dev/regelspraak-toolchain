@@ -247,10 +247,12 @@ afgerond …". No corpus example uses wortel/macht at all, so none is affected. 
 van` still lowers to a `/* TODO aggregatie WORTEL */` marker — no Drools form yet — but the
 afronding and precedence are now captured correctly; `tot de macht` lowers and fires.)
 
-`tot de macht` lowers through `Math.pow`, an IEEE-754 double, so an integer power whose magnitude
-exceeds 2^53 (~9·10¹⁵) can be off by a few units before the afronding rounds it (e.g. 7¹⁹). This
-is pre-existing (main lowered the same `Math.pow`) and far outside any realistic RegelSpraak
-magnitude; an exact `BigDecimal.pow(int)` for integral exponents is a carded follow-up.
+`tot de macht` with an INTEGER (literal) exponent — the common case — lowers exactly through
+`BigDecimal.pow(int)`, so an integer power of any magnitude is exact (7¹⁹ = 11398895185373143, not
+the …144 that an IEEE-754 double yields). A genuinely fractional or runtime (non-literal) exponent
+still lowers through `Math.pow` (a double), so such a power above 2^53 (~9·10¹⁵) can be off by a
+few units before the afronding rounds it — far outside any realistic RegelSpraak magnitude, and an
+exact runtime-integer path is left for if a corpus ever needs it.
 
 ### Telling (aantal) operand precedence — fixed, with a deliberate EBNF asymmetry
 

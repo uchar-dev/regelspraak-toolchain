@@ -431,6 +431,29 @@ class DroolsExecutionTest {
                 () -> "5 tot de macht 2 = 25, kreeg " + h.getNetto());
     }
 
+    @Test void macht_met_gehele_exponent_is_exact_boven_de_double_grens() {
+        // §4.7: the result is an exact Numeriek rounded by the afronding. An integer power above
+        // 2^53 must be exact — 7^19 = 11398895185373143, not the 11398895185373144 that Math.pow
+        // (a double) yields. BigDecimal.pow(int) computes it exactly.
+        String src = """
+            Objecttype de Heffing
+                de basis Numeriek (geheel getal);
+                de netto Numeriek (geheel getal);
+            Regel macht
+                geldig altijd
+                    De netto van een Heffing moet gesteld worden op de basis van een Heffing tot de macht 19 naar beneden afgerond op 0 decimalen.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        KieSession sessie = build(DrlTranspiler.transpile(m)).newKieSession();
+        Heffing h = new Heffing(); h.setBasis(new BigDecimal("7"));
+        sessie.insert(h);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("11398895185373143").compareTo(h.getNetto()),
+                () -> "7 tot de macht 19 = 11398895185373143 exact, kreeg " + h.getNetto());
+    }
+
     @Test void telling_maal_parameter_bindt_de_maal_buiten_de_telling() {
         // §13.4.17.47 telling precedence: "het aantal X van de reis maal de factor" must be
         // (count of X) maal factor, NOT count(X maal factor). The telling takes a

@@ -348,11 +348,17 @@ public final class DrlTranspiler {
             return todo("navigatie", a.bron());
         }
         if (e instanceof Expr.Binair b) {
-            if (b.op() == Expr.BinOp.TOT_DE_MACHT)
-                // Math.pow yields a double; wrap as BigDecimal so the mandatory afronding's
-                // setScale and any surrounding BigDecimal arithmetic compile (§13.4.17.14).
+            if (b.op() == Expr.BinOp.TOT_DE_MACHT) {
+                // §13.4.17.14: an INTEGER (literal) exponent — the common case — is computed
+                // exactly with BigDecimal.pow(int); going through Math.pow (a double) would lose
+                // integer precision above 2^53 (7^19 off by 1) before the mandatory afronding.
+                Integer n = geheelExponent(b.rechts());
+                if (n != null) return "(" + waarde(b.links(), subject) + ").pow(" + n + ")";
+                // a genuinely fractional/runtime exponent: Math.pow yields a double, wrapped as a
+                // BigDecimal so the afronding's setScale and surrounding arithmetic compile.
                 return "java.math.BigDecimal.valueOf(Math.pow((" + waarde(b.links(), subject)
                         + ").doubleValue(), (" + waarde(b.rechts(), subject) + ").doubleValue()))";
+            }
             if (b.op() == Expr.BinOp.PERCENTAGE_VAN)
                 return "(" + waarde(b.links(), subject) + " / 100 * " + waarde(b.rechts(), subject) + ")";
             if (b.op() == Expr.BinOp.GEDEELD_DOOR || b.op() == Expr.BinOp.GEDEELD_DOOR_ABS)
@@ -582,6 +588,25 @@ public final class DrlTranspiler {
     }
 
     // ---------------- leaves & helpers ----------------
+    /** The integer exponent when {@code e} is an integer-valued numeric literal ("2" in "tot de
+     *  macht 2"), else null — lets an integer power lower exactly via {@code BigDecimal.pow(int)}
+     *  rather than through Math.pow's double. The number is read as {@link #literal} reads it. */
+    private static Integer geheelExponent(Expr e) {
+        if (!(e instanceof Expr.Literal lit) || !lit.type().isNumeriek()) return null;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("-?\\d+(?:[.,]\\d+)?").matcher(lit.waarde());
+        if (!m.find()) return null;
+        try {
+            java.math.BigDecimal bd = new java.math.BigDecimal(m.group().replace(',', '.'));
+            // BigDecimal.pow(int) is exact only for 0..999999999; a negative or fractional exponent
+            // falls through to the Math.pow path (which handles them, at double precision).
+            if (bd.signum() >= 0 && bd.stripTrailingZeros().scale() <= 0) {
+                int n = bd.intValueExact();
+                if (n <= 999_999_999) return n;
+            }
+        } catch (ArithmeticException ignore) {}
+        return null;
+    }
+
     private static String literal(Expr.Literal lit) {
         Datatype t = lit.type();
         if (t.isTekst()) return "\"" + lit.waarde().replace("\"", "") + "\"";
