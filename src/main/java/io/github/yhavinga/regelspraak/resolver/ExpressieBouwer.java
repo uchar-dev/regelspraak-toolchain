@@ -218,8 +218,8 @@ final class ExpressieBouwer {
                     "leegwaarde-alternatief van een sommatie moet numeriek zijn, kreeg "
                             + leegwaarde.type() + " (§5.8.2)", f.getStart().getLine()));
         Conditie filter = tellingFilter(f);
-        if (filter != null)
-            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
+        if (filter instanceof Conditie.Onopgelost)   // a resolved kenmerk-filter is lowered; only an
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING, // unresolved one warns
                     "een 'die/dat'-subselectie op een telling-operand wordt nog niet omgezet; de telling "
                             + "blijft buiten beschouwing in plaats van alle instanties te tellen (§13.4.2) — '"
                             + filter.bron() + "'", f.getStart().getLine()));
@@ -240,10 +240,29 @@ final class ExpressieBouwer {
     private Conditie tellingFilter(FunctieAanroepContext f) {
         if (!(f instanceof AantalFuncContext a) || a.primaireExpressie().size() != 1) return null;
         PrimaireExpressieContext pe = a.primaireExpressie(0);
-        OnderwerpContext o = pe.attribuutVanOnderwerp() != null ? pe.attribuutVanOnderwerp().onderwerp()
-                : pe.onderwerp();
+        AttribuutVanOnderwerpContext av = pe.attribuutVanOnderwerp();
+        OnderwerpContext o = av != null ? av.onderwerp() : pe.onderwerp();
         PredicaatContext p = dieInKeten(o);
-        return p != null ? new Conditie.Onopgelost(src(p)) : null;
+        if (p == null) return null;
+        // §13.4.2: the die/dat predicaat filters the COUNTED ELEMENT (the passagiers), not the rule
+        // subject. Resolve it against the element type: a kenmerk of the element becomes a real
+        // Conditie.Kenmerk (lowered as an accumulate-source constraint); anything else stays an
+        // Onopgelost marker, so the count is a visible no-op rather than a silently-wrong total.
+        Objecttype elem = av != null && av.attribuutMetLidwoord() != null
+                ? aantalElement(src(av.attribuutMetLidwoord().kaleNaam())) : null;
+        Conditie filter = elementKenmerkFilter(p, elem);
+        return filter != null ? filter : new Conditie.Onopgelost(src(p));
+    }
+
+    /** A "die een &lt;kenmerk&gt; zijn" subselectie resolved against the counted element type: the
+     *  predicaat's name matched (case-insensitively) to a declared kenmerk of the element, as a
+     *  {@link Conditie.Kenmerk}; null when the predicaat is not such a kenmerk of the element (a
+     *  comparison, an objecttype/role membership, an unknown name — all left to the marker path). */
+    private Conditie elementKenmerkFilter(PredicaatContext p, Objecttype elem) {
+        if (elem == null || p.nonToplevelOperator() == null || p.nonToplevelOperator().kaleNaam() == null) return null;
+        String naam = src(p.nonToplevelOperator().kaleNaam());
+        return elem.kenmerken.stream().filter(k -> k.equalsIgnoreCase(naam)).findFirst()
+                .<Conditie>map(k -> new Conditie.Kenmerk(k, src(p))).orElse(null);
     }
 
     /** The "die/dat &lt;predicaat&gt;" on an onderwerp's own onderwerpketen chain (following only the

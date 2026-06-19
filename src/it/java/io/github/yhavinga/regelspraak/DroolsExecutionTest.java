@@ -1732,4 +1732,39 @@ class DroolsExecutionTest {
         sessie.dispose();
         assertFalse(m.isBonus(), "een compound met een onopgeloste sub moet een no-op zijn, niet stil vuren");
     }
+
+    @Test void getelde_die_kenmerk_filter_telt_alleen_de_gefilterde_elementen() {
+        // p24(2): "het aantal passagiers van de reis die een kind zijn" must count only the kind
+        // passagiers. The die-filter resolves to a kenmerk on the counted ELEMENT and lowers to an
+        // accumulate-source constraint Passagier( reis == $subject, kind == true ). Fired: 3
+        // passagiers, 2 of them kind -> the count is 2, not 3 (the p20b silent-all is gone for real).
+        String src = """
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                is kind kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel tel
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis die een kind zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("kind == true"), () -> "die-filter moet een accumulate-constraint zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v = new Vlucht();
+        Passagier a = new Passagier(); a.setReis(v); a.setKind(true);
+        Passagier b = new Passagier(); b.setReis(v); b.setKind(true);
+        Passagier c = new Passagier(); c.setReis(v); c.setKind(false);   // not a kind -> excluded
+        sessie.insert(v); sessie.insert(a); sessie.insert(b); sessie.insert(c);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("2").compareTo(v.getTotaalprijs()),
+                () -> "alleen de kinderen tellen mee (2), kreeg " + v.getTotaalprijs());
+    }
 }

@@ -394,17 +394,18 @@ a multi-operand telling is emitted as a `/* TODO aggregatie AANTAL */` marker ra
 silently counting only the first operand. The union-count lowering (a disjunctively-filtered
 single accumulate) is carded.
 
-A related §13.4.2 gap: a `die/dat <predicaat>` **subselectie** on an aggregation operand
+A related §13.4.2 gap: a `die/dat <predicaat>` **subselectie** on a single-operand count
 ("het aantal passagiers van de reis die een kind zijn" — only the kind-passagiers) filters
-the counted/summed element. The predicaten these subselecties use are kenmerk-membership
-tests, which the resolver does not yet structure into a `Conditie` (they stay `Onopgelost`),
-so the filter cannot yet be lowered to an accumulate constraint. Rather than silently
-aggregate over EVERY instance, the resolver now records the subselectie as an `Onopgelost`
-`filter` on the `Expr.Functie`, warns, and the transpiler emits the aggregation as a marker
-(`Expr.Functie.filter() != null → /* TODO aggregatie … */`). So a filtered count/sum is a
-visible no-op, never a wrong total. Resolving the predicaat against the element type and
-lowering it as `accumulate( $e : Passagier( reis == $subject, <filter> ) ; … )` is carded
-(it depends on first modelling kenmerk-membership predicates, which are unbuilt project-wide).
+the counted element. A subselectie whose predicaat is a **kenmerk** of the counted element is
+now resolved (against the ELEMENT type, not the rule subject) into a `Conditie.Kenmerk` and
+lowered as an extra accumulate-source constraint —
+`accumulate( $e : Passagier( reis == $subject, kind == true ) ; count($e) )` — so only the
+matching instances are counted. A subselectie the resolver cannot structure (a comparison, an
+objecttype/role membership, a name that is not a kenmerk of the element) stays an `Onopgelost`
+`filter` on the `Expr.Functie`, the resolver warns, and the transpiler emits the count as a
+marker rather than a count over EVERY instance — a visible no-op, never a wrong total. Still
+carded (p24): the non-kenmerk die-filters, the navigation case, and the multi-operand union
+count (also still a marker).
 
 ### Aggregation operand separator — `en` splits, it is not a name word
 

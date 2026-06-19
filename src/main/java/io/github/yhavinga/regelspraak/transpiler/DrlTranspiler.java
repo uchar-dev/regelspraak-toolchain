@@ -456,11 +456,6 @@ public final class DrlTranspiler {
         // which is not yet lowered — emit a marker rather than silently counting only the first
         // operand.
         if (f.kind() == Expr.FunctieKind.AANTAL && f.argumenten().size() > 1) return null;
-        // §13.4.2 "die/dat <predicaat>" subselectie on the element ("… van de reis die een kind
-        // zijn"): resolving the predicaat into an accumulate constraint is not built yet (the
-        // resolver leaves it Onopgelost). Lowering without it would count/sum EVERY instance — a
-        // silent miscompile — so a filtered aggregation becomes a visible marker instead.
-        if (f.filter() != null) return null;
         Objecttype elem = f.elementObjecttype();
         String fn = switch (f.kind()) {
             case SOM, TOTAAL -> "sum";
@@ -472,6 +467,17 @@ public final class DrlTranspiler {
         if (elem == null || fn == null) return null;
         String scope = scope(elem, subject, f);
         if (bevatMarker(scope)) return null;   // unresolvable join -> marker, never a global aggregate
+        // §13.4.2 "die/dat <predicaat>" subselectie on the element ("… van de reis die een kind
+        // zijn") -> an extra constraint on the accumulate source pattern, so only the matching
+        // instances are aggregated. A filter the resolver could not structure (Onopgelost) lowers to
+        // a marker here -> bail, so the aggregation is a visible no-op rather than counting EVERY
+        // instance (a silent miscompile).
+        String filterScope = scope;
+        if (f.filter() != null) {
+            String fc = conditie(f.filter(), elem);  // Kenmerk -> bare element property; Onopgelost -> marker
+            if (bevatMarker(fc)) return null;
+            filterScope = scope + ", " + fc;
+        }
         int n = ++accCount;
         String ev = "$e" + n, var = "$acc" + n;
         Expr arg = f.argumenten().isEmpty() ? null : f.argumenten().get(0);
@@ -486,7 +492,7 @@ public final class DrlTranspiler {
                 && arg instanceof Expr.AttribuutRef a && !scope.startsWith("/*")) {
             String cnt = "$n" + n;
             accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true)
-                    + "( " + scope + ", " + ident(a.attribuut(), false) + " != null ) ; "
+                    + "( " + filterScope + ", " + ident(a.attribuut(), false) + " != null ) ; "
                     + cnt + " : count(" + ev + "), " + var + " : sum( " + ev + "." + getter(a.attribuut()) + "() ) )");
             String fallback = f.leegwaarde() != null ? waarde(f.leegwaarde(), subject) : "null";
             return "(" + cnt + " == 0 ? " + fallback + " : " + var + ")";
@@ -496,7 +502,7 @@ public final class DrlTranspiler {
         if (!fn.equals("count") && arg instanceof Expr.AttribuutRef a)
             elementExpr = ev + "." + getter(a.attribuut()) + "()";
         accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true)
-                + "( " + scope + " ) ; " + var + " : " + fn + "( " + elementExpr + " ) )");
+                + "( " + filterScope + " ) ; " + var + " : " + fn + "( " + elementExpr + " ) )");
         return var;
     }
 
