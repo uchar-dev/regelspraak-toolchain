@@ -173,6 +173,27 @@ class ModelTest {
                 () -> "een schone feittypenaam mag geen lidwoord-waarschuwing geven: " + m.diagnostics);
     }
 
+    @Test void rolnaam_met_lidwoord_na_voorzetsel_waarschuwt_niet() {
+        // §13.3.9.4: a rolnaam may legitimately contain an article AFTER a preposition ("eigenaar van de
+        // woning", "behandelaar van het dossier"). Only an article after a BARE noun signals the corruption,
+        // so these spec-legal names must NOT warn — the discriminator the heuristic refinement keys on.
+        String src = """
+            Objecttype de Persoon
+                de naam Tekst;
+            Objecttype de Woning
+                de naam Tekst;
+            Feittype eigendom
+                de eigenaar van de woning Persoon
+                de woning Woning
+            Eén eigenaar van de woning bezit meerdere woningen
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertEquals("eigenaar van de woning", m.feittypen.get("eigendom").rollen.get(0).naam(),
+                () -> "de rol met een legitiem 'van de' moet intact parseren");
+        assertFalse(m.diagnostics.stream().anyMatch(d -> d.message().contains("lidwoord")),
+                () -> "een 'van de'-rolnaam mag geen lidwoord-waarschuwing geven: " + m.diagnostics);
+    }
+
     @Test void cardinaliteit_onregelmatig_meervoud_wordt_via_eliminatie_gemarkeerd() {
         // "vakken" is the doubling-plural of role "vak" — undeclared, so neither the best-effort nor
         // MeervoudMatcher synthesises it (§footnote 2). But a non-wederkerig feittype has exactly two

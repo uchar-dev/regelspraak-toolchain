@@ -269,14 +269,17 @@ public final class DefinitionResolver {
             // §13.3.9.3: feitTypeNaam excludes 'de'/'het' (it stops at the role's article), so a feittype
             // name that itself contains an article ("bonus van DE vlucht") truncates there and the leftover
             // "de <woord>" is absorbed by this greedy rolNaam — corrupting it to "<woord> de <echte rol>"
-            // with no error node. A real role name carries no internal definite article, so flag one as the
-            // tell-tale of a name+article boundary swallowed into the role (honest signal, never silent).
-            if (rolNaam.matches("(?i).*\\b(de|het)\\s.*"))
+            // with no error node. A role name MAY legitimately contain an article, but only after a
+            // preposition ("eigenaar van de woning", "behandelaar van het dossier"); the corruption's article
+            // instead follows a bare noun ("vlucht de bonusvlucht"). So flag a 'de'/'het' that has a word
+            // before AND after it and is NOT preceded by a preposition — the tell-tale of a swallowed
+            // name+article boundary — without warning on spec-legal "… van de/het …" names.
+            if (lidwoordNaBareWoord(rolNaam))
                 model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
-                        "feittype '" + ft.naam + "': de rolnaam '" + rolNaam + "' bevat een lidwoord (de/het) —"
-                        + " waarschijnlijk bevat de feittypenaam een 'de'/'het' die de naam afkapt en in de rol"
-                        + " wordt geabsorbeerd (§13.3.9.3); hernoem het feittype zonder lidwoord in de naam",
-                        rs.getStart().getLine()));
+                        "feittype '" + ft.naam + "': de rolnaam '" + rolNaam + "' bevat een lidwoord (de/het) na een"
+                        + " zelfstandig woord — waarschijnlijk bevat de feittypenaam een 'de'/'het' die de naam"
+                        + " afkapt en in de rol wordt geabsorbeerd (§13.3.9.3); hernoem het feittype zonder lidwoord",
+                        ctx.feitTypeNaam().getStart().getLine()));
             rollen.add(new Rol(rolNaam, src(rs.objectTypeNaam()), meervoud));
         }
         // §13.3.9.1 cardinaliteit: the line "<q1> <rol1> … <q2> <rol2>" marks each role one or
@@ -286,6 +289,22 @@ public final class DefinitionResolver {
             rollen = markeerKardinaliteit(rollen, ctx.feitTypeCardinaliteit());
         ft.rollen.addAll(rollen);
         model.feittypen.put(ft.naam, ft);
+    }
+
+    /** The prepositions a role name may carry before an internal article (the §13.4 name words: a role
+     *  like "eigenaar van de woning" / "deel in het geheel" is legitimate). */
+    private static final java.util.Set<String> VOORZETSELS =
+            java.util.Set.of("van", "op", "in", "voor", "over", "bij", "tot", "per", "met");
+
+    /** Whether {@code rolNaam} contains a 'de'/'het' that has a word both before and after it and is NOT
+     *  preceded by a preposition — the signature of a feittype-name article (§13.3.9.3) swallowed into the
+     *  role, as opposed to a legitimate "… van de/het …" role name. */
+    private static boolean lidwoordNaBareWoord(String rolNaam) {
+        String[] w = rolNaam.toLowerCase().split("\\s+");
+        for (int i = 1; i + 1 < w.length; i++)            // an article with a word before AND after it
+            if ((w[i].equals("de") || w[i].equals("het")) && !VOORZETSELS.contains(w[i - 1]))
+                return true;
+        return false;
     }
 
     /** Tag each role single/meerdere from the cardinaliteit line. The line alternates a
