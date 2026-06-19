@@ -333,9 +333,19 @@ outside; the comma/`en` list only matches a following primaire). The IR captures
 operand, but the count's SEMANTICS — the UNION of the per-operand sets — is not yet lowered:
 a multi-operand telling is emitted as a `/* TODO aggregatie AANTAL */` marker rather than
 silently counting only the first operand. The union-count lowering (a disjunctively-filtered
-single accumulate) and the pre-existing gap that a `die <predicaat> zijn` filter on a count
-operand is dropped are carded together (a single filtered count currently counts all
-instances — silently wrong, not introduced here).
+single accumulate) is carded.
+
+A related §13.4.2 gap: a `die/dat <predicaat>` **subselectie** on an aggregation operand
+("het aantal passagiers van de reis die een kind zijn" — only the kind-passagiers) filters
+the counted/summed element. The predicaten these subselecties use are kenmerk-membership
+tests, which the resolver does not yet structure into a `Conditie` (they stay `Onopgelost`),
+so the filter cannot yet be lowered to an accumulate constraint. Rather than silently
+aggregate over EVERY instance, the resolver now records the subselectie as an `Onopgelost`
+`filter` on the `Expr.Functie`, warns, and the transpiler emits the aggregation as a marker
+(`Expr.Functie.filter() != null → /* TODO aggregatie … */`). So a filtered count/sum is a
+visible no-op, never a wrong total. Resolving the predicaat against the element type and
+lowering it as `accumulate( $e : Passagier( reis == $subject, <filter> ) ; … )` is carded
+(it depends on first modelling kenmerk-membership predicates, which are unbuilt project-wide).
 
 ### Aggregation operand separator — `en` splits, it is not a name word
 

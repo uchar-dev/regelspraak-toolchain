@@ -1488,4 +1488,46 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertFalse(m.errors().isEmpty(), "1/0 moet een syntaxfout geven, niet stil naar 1 herstellen");
     }
+
+    // ---------------- p20: §13.4.2 die-filter on a count must not silently count all ----------------
+
+    @Test void getelde_die_subselectie_wordt_een_marker_niet_een_telling_over_alles() {
+        // "het aantal passagiers van de reis die een minderjarige zijn" must count only the
+        // minderjarige passagiers. The die-filter is a kenmerk-membership predicate, which the
+        // resolver does not yet structure into a Conditie (carded), so the count must NOT silently
+        // range over EVERY passagier: it lowers to a marker and the resolver warns. Proven by
+        // firing — with 3 passagiers the result is never set to 3 (the honest no-op stands).
+        String src = """
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                is minderjarig kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel tel
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis die een minderjarige zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("die/dat")),
+                "de niet-omgezette die-filter moet een waarschuwing geven");
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("/* TODO aggregatie AANTAL"), () -> "gefilterde telling moet een marker zijn:\n" + drl);
+        assertFalse(drl.contains("count("), () -> "een gefilterde telling mag niet als count over alle instanties lager komen:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v = new Vlucht(); v.setTotaalprijs(new BigDecimal("999")); // sentinel
+        Passagier a = new Passagier(); a.setReis(v);
+        Passagier b = new Passagier(); b.setReis(v);
+        Passagier c = new Passagier(); c.setReis(v);
+        sessie.insert(v); sessie.insert(a); sessie.insert(b); sessie.insert(c);
+        sessie.fireAllRules();
+        sessie.dispose();
+        BigDecimal res = v.getTotaalprijs();
+        assertTrue(res == null || new BigDecimal("3").compareTo(res) != 0,
+                () -> "de gefilterde telling telde stil ALLE passagiers: " + res);
+    }
 }

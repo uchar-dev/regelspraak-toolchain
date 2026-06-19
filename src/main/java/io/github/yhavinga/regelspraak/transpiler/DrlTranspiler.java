@@ -454,8 +454,13 @@ public final class DrlTranspiler {
         // §4.11/§5.8.1 telling over a concatenation of expressies ("het aantal X, Y en Z"): the
         // count is the UNION of the per-operand sets (a disjunctively-filtered single accumulate),
         // which is not yet lowered — emit a marker rather than silently counting only the first
-        // operand. (The per-operand "die <predicaat>" filter is itself not yet lowered — carded.)
+        // operand.
         if (f.kind() == Expr.FunctieKind.AANTAL && f.argumenten().size() > 1) return null;
+        // §13.4.2 "die/dat <predicaat>" subselectie on the element ("… van de reis die een kind
+        // zijn"): resolving the predicaat into an accumulate constraint is not built yet (the
+        // resolver leaves it Onopgelost). Lowering without it would count/sum EVERY instance — a
+        // silent miscompile — so a filtered aggregation becomes a visible marker instead.
+        if (f.filter() != null) return null;
         Objecttype elem = f.elementObjecttype();
         String fn = switch (f.kind()) {
             case SOM, TOTAAL -> "sum";

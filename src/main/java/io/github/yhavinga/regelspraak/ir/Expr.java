@@ -48,9 +48,17 @@ public sealed interface Expr {
      *  `leegwaarde` is the §5.8.2 "of … als die er niet zijn" fallback for a sommatie
      *  (SOM/TOTAAL): the value the sum takes when it has no non-empty contributors,
      *  instead of a leegwaarde. Null when the source declared no fallback (an empty
-     *  sommatie is then a leegwaarde); always null for non-sommatie functions. */
+     *  sommatie is then a leegwaarde); always null for non-sommatie functions.
+     *
+     *  `filter` is a §13.4.2 "die/dat &lt;predicaat&gt;" subselectie on the counted/aggregated
+     *  element ("het aantal passagiers van de reis die een kind zijn" — only the kind-passagiers).
+     *  It is resolved against the ELEMENT type, not the rule subject. Null when the operand
+     *  carries no such filter. A filter the resolver cannot yet structure (the kenmerk-membership
+     *  predicates these subselecties use are still {@link Conditie.Onopgelost}) is kept here as an
+     *  Onopgelost marker so the transpiler can see it must NOT lower the aggregation to a count
+     *  over every instance — it emits a visible marker instead of a silently-wrong total. */
     record Functie(FunctieKind kind, List<Expr> argumenten, Objecttype elementObjecttype,
-                   Expr leegwaarde, Datatype type, String bron) implements Expr {}
+                   Expr leegwaarde, Conditie filter, Datatype type, String bron) implements Expr {}
 
     /** §13.4.17.25/.26 rounding wrapper; the rounding does not change the datatype. */
     enum AfrondModus { NAAR_BENEDEN, NAAR_BOVEN, REKENKUNDIG, RICHTING_NUL, WEG_VAN_NUL }

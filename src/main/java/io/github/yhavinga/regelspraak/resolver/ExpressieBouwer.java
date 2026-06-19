@@ -1,5 +1,6 @@
 package io.github.yhavinga.regelspraak.resolver;
 
+import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
@@ -147,8 +148,8 @@ final class ExpressieBouwer {
         if (p.HIJ() != null)            return new Expr.Constante("hij", onbekend(), bron);
         if (p.DE() != null && p.DAG() != null) return new Expr.Constante("de dag", onbekend(), bron);
         if (p.functieAanroep() != null) return bouwFunctie(p.functieAanroep());
-        if (p.datumMet() != null)       return new Expr.Functie(Expr.FunctieKind.DATUM_MET, args(p.datumMet()), null, null, new Datatype.DatumInDagen(), bron);
-        if (p.datumTijdMet() != null)   return new Expr.Functie(Expr.FunctieKind.DATUMTIJD_MET, args(p.datumTijdMet()), null, null, new Datatype.DatumTijd(), bron);
+        if (p.datumMet() != null)       return new Expr.Functie(Expr.FunctieKind.DATUM_MET, args(p.datumMet()), null, null, null, new Datatype.DatumInDagen(), bron);
+        if (p.datumTijdMet() != null)   return new Expr.Functie(Expr.FunctieKind.DATUMTIJD_MET, args(p.datumTijdMet()), null, null, null, new Datatype.DatumTijd(), bron);
         if (p.attribuutVanOnderwerp() != null) return bouwAttribuut(p.attribuutVanOnderwerp());
         if (p.expressie() != null)      return bouw(p.expressie()); // ( expressie )
         if (p.onderwerp() != null) {
@@ -188,7 +189,42 @@ final class ExpressieBouwer {
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
                     "leegwaarde-alternatief van een sommatie moet numeriek zijn, kreeg "
                             + leegwaarde.type() + " (§5.8.2)", f.getStart().getLine()));
-        return new Expr.Functie(kind, argumenten, aggregatieElement(kind, argumenten), leegwaarde, type, bron);
+        Conditie filter = aggregatieFilter(f);
+        if (filter != null)
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
+                    "een 'die/dat'-subselectie op een aggregatie-operand wordt nog niet omgezet; de "
+                            + "telling/aggregatie blijft buiten beschouwing in plaats van alle instanties "
+                            + "te tellen (§13.4.2) — '" + filter.bron() + "'", f.getStart().getLine()));
+        return new Expr.Functie(kind, argumenten, aggregatieElement(kind, argumenten), leegwaarde, filter, type, bron);
+    }
+
+    /** A §13.4.2 "die/dat &lt;predicaat&gt;" subselectie anywhere in an aggregation's operand(s) —
+     *  the filter on the counted/summed element ("… van de reis die een kind zijn"). Returned as an
+     *  {@link Conditie.Onopgelost} marker (the kenmerk-membership predicates these subselecties use
+     *  are not yet structured into a Conditie), so the transpiler keeps the aggregation a visible
+     *  marker rather than counting/summing every instance. Scans only the functieAanroep's direct
+     *  expressie/primaireExpressie operands, not its leegwaarde/dimensie tails. */
+    private Conditie aggregatieFilter(FunctieAanroepContext f) {
+        for (int i = 0; i < f.getChildCount(); i++) {
+            ParseTree ch = f.getChild(i);
+            if (ch instanceof ExpressieContext || ch instanceof PrimaireExpressieContext) {
+                PredicaatContext p = vindDie(ch);
+                if (p != null) return new Conditie.Onopgelost(src(p));
+            }
+        }
+        return null;
+    }
+
+    /** The first "die/dat &lt;predicaat&gt;" subselectie in a parse subtree, or null. An
+     *  onderwerpketen built from that alternative is the only place a {@code predicaat()} child
+     *  appears, so its presence is the filter. */
+    private PredicaatContext vindDie(ParseTree t) {
+        if (t instanceof OnderwerpKetenContext k && k.predicaat() != null) return k.predicaat();
+        for (int i = 0; i < t.getChildCount(); i++) {
+            PredicaatContext p = vindDie(t.getChild(i));
+            if (p != null) return p;
+        }
+        return null;
     }
 
     /** §4.12-4.15: type-check the operand list of a value/date aggregation. min/max demand all
