@@ -36,6 +36,7 @@ final class ExpressieBouwer {
     ExpressieBouwer(RegelSpraakModel model) { this.model = model; }
 
     void setSubject(Objecttype subject) { this.huidigSubject = subject; }
+    Objecttype subject() { return huidigSubject; }
 
     // ---------------- §13.4.16/.17 expressie ----------------
     Expr bouw(ExpressieContext e) {

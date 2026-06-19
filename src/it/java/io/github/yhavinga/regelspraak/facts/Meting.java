@@ -7,10 +7,13 @@ public class Meting {
     private BigDecimal duurmnd;
     private BigDecimal grensjr;
     private boolean oud;
+    private boolean bonus;
     public BigDecimal getDuurmnd() { return duurmnd; }
     public void setDuurmnd(BigDecimal v) { this.duurmnd = v; }
     public BigDecimal getGrensjr() { return grensjr; }
     public void setGrensjr(BigDecimal v) { this.grensjr = v; }
     public boolean isOud() { return oud; }
     public void setOud(boolean v) { this.oud = v; }
+    public boolean isBonus() { return bonus; }
+    public void setBonus(boolean v) { this.bonus = v; }
 }

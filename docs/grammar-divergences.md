@@ -320,6 +320,20 @@ fraction under-reports — both carded with the per-operation precision work. Fa
 acceptable (the check is an added safeguard, not load-bearing); false positives would reject valid
 models, so those were eliminated.
 
+### Kenmerk-membership test in a condition (§5.14) — subject-only
+
+A condition `indien de Meting oud is` / `indien hij oud is` tests whether the subject carries a
+boolean kenmerk. The resolver used to drop it (`Conditie.Onopgelost` → a `/* TODO voorwaarde */`
+marker), so the rule never gated on the kenmerk — even though kenmerk *assignment* ("Een Meting is
+oud indien …" → `setOud(true)`) already worked. It is now structured as a `Conditie.Kenmerk` and
+lowered to the boolean **property** constraint `oud == true` inside the subject pattern (the property
+form, not `getOud()`, resolves to the fact's `isOud()` — a boolean bean getter is `isX`, not `getX`).
+Scope is deliberately the **subject's own** kenmerk: the operand must denote the subject (the
+bezielde `hij`, or a definite self-reference whose noun is the subject type). A navigation-based
+kenmerk check (`de partner … oud is` — the kenmerk is on another object), an objecttype-membership
+test (`X is een <objecttype>`), and negation stay `Onopgelost` and are carded — the navigation case is
+the one the §13.4.2 aggregation die-filter needs (the kenmerk against the counted element, not the
+subject).
 ### Telling (aantal) operand precedence — fixed, with a deliberate EBNF asymmetry
 
 The §13.4.17.46 EBNF and syntax diagram give all four `getalaggregatie` functions the

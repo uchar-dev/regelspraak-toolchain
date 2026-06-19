@@ -33,6 +33,12 @@ public sealed interface Conditie {
     enum Predicaatsoort { LEEG, GEVULD, ELFPROEF, NUMERIEK_MET_EXACT, DAGSOORT }
     record Predicaat(Predicaatsoort soort, Expr operand, String bron) implements Conditie {}
 
+    /** §5.14 kenmerk-membership test on the rule subject ("de Meting is oud" / "hij heeft het
+     *  recht …"): true when the subject carries the boolean kenmerk. Only the subject's own
+     *  kenmerk is structured here; a navigation-based or objecttype-membership test stays
+     *  {@link Onopgelost}. The transpiler lowers it to the subject's boolean property constraint. */
+    record Kenmerk(String kenmerk, String bron) implements Conditie {}
+
     /** §13.4.14 compound condition: a quantifier over a bullet list of sub-conditions.
      *  `drempel` is the threshold count N for the counting quantifiers (ten minste / ten
      *  hoogste / precies N, §13.4.14.4); 0 and unused for alle / geen / de. */

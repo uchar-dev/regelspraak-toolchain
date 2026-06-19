@@ -389,7 +389,8 @@ final class RuleChecker {
         if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, bron);
         if (op.NUMERIEK_IS_MET_EXACT() != null || op.NUMERIEK_ZIJN_MET_EXACT() != null)
             return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, bron);
-        return new Conditie.Onopgelost(bron); // EEN? kaleNaam (is|heeft) — kenmerk/objecttype membership
+        Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), bron);    // EEN? kaleNaam (is|heeft): §5.14
+        return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
     }
 
     private Conditie uitNonToplevel(Expr lhs, NonToplevelOperatorContext op, String bron) {
@@ -401,7 +402,27 @@ final class RuleChecker {
         if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, bron);
         if (op.NUMERIEK_MET_EXACT() != null)
             return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, bron);
-        return new Conditie.Onopgelost(bron); // (is|heeft) een? kaleNaam — kenmerk/objecttype membership
+        Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), bron);    // (is|heeft) een? kaleNaam: §5.14
+        return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
+    }
+
+    /** §5.14: "&lt;subject&gt; is/heeft (een) &lt;kenmerk&gt;" -> a {@link Conditie.Kenmerk}, when the
+     *  operand denotes the rule subject and the name is a declared kenmerk of it. A navigation
+     *  operand or an objecttype name stays unresolved (carded). */
+    private Conditie kenmerkPredicaat(Expr lhs, KaleNaamContext naamCtx, String bron) {
+        Objecttype subject = bouwer.subject();
+        if (naamCtx == null || subject == null || !duidtSubjectAan(lhs, subject)) return null;
+        String naam = stripArtikel(src(naamCtx));
+        return subject.kenmerken.stream().filter(k -> k.equalsIgnoreCase(naam)).findFirst()
+                .<Conditie>map(k -> new Conditie.Kenmerk(k, bron)).orElse(null);
+    }
+
+    /** The condition operand denotes the rule subject itself: the bezielde "hij", or a definite
+     *  self-reference whose noun is the subject type ("de Meting"). A navigation ("de partner van …")
+     *  names a different filler, so it is excluded (its kenmerk would be on another object). */
+    private boolean duidtSubjectAan(Expr lhs, Objecttype subject) {
+        if (lhs instanceof Expr.Constante c) return c.naam().equalsIgnoreCase("hij");
+        return stripArtikel(lhs.bron()).equalsIgnoreCase(subject.naam);
     }
 
     private Conditie.Kwantor kwantorVan(VoorwaardeKwantificatieContext k) {

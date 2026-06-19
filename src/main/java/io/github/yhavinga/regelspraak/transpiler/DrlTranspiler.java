@@ -536,6 +536,9 @@ public final class DrlTranspiler {
                 default     -> todo("predicaat " + p.soort(), p.bron());
             };
         }
+        // §5.14 subject kenmerk test: a bare boolean property constraint inside the subject pattern.
+        // The property form (not getX()) resolves to the boolean isX() getter the fact declares.
+        if (c instanceof Conditie.Kenmerk k) return ident(k.kenmerk(), false) + " == true";
         if (c instanceof Conditie.Samengesteld s) {
             List<String> delen = new ArrayList<>();
             for (Conditie deel : s.onderdelen()) delen.add("(" + conditie(deel, subject) + ")");

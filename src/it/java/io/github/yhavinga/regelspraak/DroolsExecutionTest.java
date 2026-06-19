@@ -1577,4 +1577,59 @@ class DroolsExecutionTest {
         assertTrue(DrlTranspiler.transpile(m).contains("min( $e1.getLeeftijd() )"),
                 () -> "min over de set moet een echte accumulate blijven:\n" + DrlTranspiler.transpile(m));
     }
+
+    // ---------------- p24(1): §5.14 kenmerk-membership test in a condition ----------------
+
+    @Test void kenmerk_check_in_voorwaarde_gateert_de_regel() {
+        // "indien de Meting oud is" gates on the subject's boolean kenmerk. It used to lower to a
+        // /* TODO voorwaarde */ marker (the rule never honoured the kenmerk); it now lowers to the
+        // boolean property constraint "oud == true" (which resolves to the fact's isOud()).
+        String src = """
+            Objecttype de Meting
+                is oud kenmerk (bijvoeglijk);
+                is bonus kenmerk (bijvoeglijk);
+            Regel geefbonus
+                geldig altijd
+                    Een Meting is bonus
+                    indien de Meting oud is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("oud == true"), () -> "kenmerk-check moet een boolean constraint zijn:\n" + drl);
+        assertFalse(drl.contains("TODO voorwaarde"), () -> "kenmerk-check mag geen marker meer zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Meting oud = new Meting(); oud.setOud(true);
+        Meting jong = new Meting(); jong.setOud(false);
+        sessie.insert(oud); sessie.insert(jong);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(oud.isBonus(), "een oude Meting moet bonus krijgen");
+        assertFalse(jong.isBonus(), "een niet-oude Meting mag geen bonus krijgen");
+    }
+
+    @Test void hij_kenmerk_check_gateert_de_regel() {
+        // The bezielde "hij" form also denotes the subject: "indien hij oud is".
+        String src = """
+            Objecttype de Meting
+                is oud kenmerk (bijvoeglijk);
+                is bonus kenmerk (bijvoeglijk);
+            Regel geefbonus
+                geldig altijd
+                    Een Meting is bonus
+                    indien hij oud is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("oud == true"), () -> "'hij oud is' moet een boolean constraint zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Meting oud = new Meting(); oud.setOud(true);
+        sessie.insert(oud);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(oud.isBonus(), "een oude Meting moet bonus krijgen via 'hij oud is'");
+    }
 }
