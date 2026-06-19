@@ -488,4 +488,36 @@ class DrlTest {
         assertTrue(drl.contains("/* TODO aggregatie AANTAL"), () -> "een onoplosbare union moet een marker zijn:\n" + drl);
         assertFalse(drl.contains("accumulate("), () -> "een onoplosbare union mag niet stil tellen:\n" + drl);
     }
+
+    @Test void union_over_verschillende_elementtypes_blijft_marker() {
+        // p29(4) review (HIGH): a single accumulate has one source pattern, so operands ranging over
+        // DIFFERENT element types cannot be unioned — even when they share a kenmerk name. Resolving
+        // every operand against operand-0's element would silently drop the foreign set and OR its
+        // filter onto the wrong fact. Such a union must stay a marker, never a wrong count.
+        String src = """
+            Objecttype de Vlucht
+                het aantal Numeriek (geheel getal);
+            Objecttype de Passagier
+                is jong kenmerk (bijvoeglijk);
+            Objecttype de Bemanning
+                is jong kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype Vlucht met bemanning
+                de vlucht Vlucht
+                het bemanningslid Bemanning
+            Eén vlucht betreft meerdere bemanningsleden
+            Regel r
+                geldig altijd
+                    Het aantal van een Vlucht moet berekend worden als het aantal passagiers van de reis die een jong zijn, bemanningsleden van de reis die een jong zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("/* TODO aggregatie AANTAL"),
+                () -> "een union over verschillende elementtypes moet een marker zijn:\n" + drl);
+        assertFalse(drl.contains("accumulate("), () -> "een type-mismatch union mag niet stil tellen:\n" + drl);
+    }
 }

@@ -261,13 +261,28 @@ final class ExpressieBouwer {
         if (f instanceof AantalFuncContext) {
             java.util.List<Conditie> delen = new ArrayList<>();
             for (ParseTree op : operanden) {
+                // Every operand must range over the SAME element (a single accumulate has one source
+                // pattern) AND resolve to a kenmerk filter of it. An operand over a DIFFERENT element
+                // — even when it shares a kenmerk name — would otherwise have its foreign set silently
+                // dropped and its filter OR-ed onto the wrong fact, so it leaves the whole union a marker.
                 PredicaatContext p = vindDie(op);
-                Conditie k = p != null ? elementKenmerkFilter(p, elem) : null;
+                Conditie k = p != null && operandElement(op) == elem ? elementKenmerkFilter(p, elem) : null;
                 if (k == null) return new Conditie.Onopgelost(src(f));
                 delen.add(k);
             }
             return new Conditie.Samengesteld(Conditie.Kwantor.TEN_MINSTE, 1, delen, src(f));
         }
+        return null;
+    }
+
+    /** The element type a count operand ("passagiers van …") ranges over, or null when it is not an
+     *  "&lt;attribuut&gt; van &lt;onderwerp&gt;" naming a countable element — used to confirm every operand
+     *  of a §5.8.1 union shares one element before OR-ing their filters. */
+    private Objecttype operandElement(ParseTree op) {
+        if (op instanceof PrimaireExpressieContext pe && pe.attribuutVanOnderwerp() != null
+                && pe.attribuutVanOnderwerp().attribuutMetLidwoord() != null
+                && pe.attribuutVanOnderwerp().attribuutMetLidwoord().kaleNaam() != null)
+            return aantalElement(src(pe.attribuutVanOnderwerp().attribuutMetLidwoord().kaleNaam()));
         return null;
     }
 
