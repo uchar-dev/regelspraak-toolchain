@@ -403,4 +403,34 @@ class RuleCheckTest {
         assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("'€/jr' en 'km/jr'")),
                 () -> "verwachtte een eenheidfout met de samengestelde weergave, kreeg: " + m.errors());
     }
+
+    static final String BEGRENS_MODEL = """
+        Objecttype de Reis
+            de prijs Numeriek (geheel getal);
+            de basis Numeriek (geheel getal);
+        Regel r
+            geldig altijd
+        """;
+
+    @Test void bare_maximum_zonder_met_standalone_wordt_afgewezen() {
+        // §13.4.17.28/.30: a STANDALONE maximum requires "met een maximum van"; the bare "een
+        // maximum van" (no 'met') is admitted ONLY after 'en', so standalone it is a syntax error.
+        String src = BEGRENS_MODEL +
+                "        De prijs van een Reis moet gesteld worden op de basis van een Reis, een maximum van 100.\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("syntaxfout")),
+                () -> "bare 'een maximum van' standalone had afgewezen moeten worden, kreeg: " + m.errors());
+    }
+
+    @Test void met_een_maximum_van_standalone_en_bare_na_en_worden_geaccepteerd() {
+        // the 'met' form standalone, and the bare form after 'en', both parse cleanly.
+        String metStandalone = BEGRENS_MODEL +
+                "        De prijs van een Reis moet gesteld worden op de basis van een Reis, met een maximum van 100.\n";
+        assertTrue(Resolver.resolve(metStandalone).errors().isEmpty(),
+                () -> "'met een maximum van' standalone: " + Resolver.resolve(metStandalone).errors());
+        String bareNaEn = BEGRENS_MODEL +
+                "        De prijs van een Reis moet gesteld worden op de basis van een Reis, met een minimum van 0 en een maximum van 100.\n";
+        assertTrue(Resolver.resolve(bareNaEn).errors().isEmpty(),
+                () -> "bare 'en een maximum van' na een minimum: " + Resolver.resolve(bareNaEn).errors());
+    }
 }

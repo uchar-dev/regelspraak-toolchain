@@ -708,7 +708,7 @@ afronding // §13.4.17.26
     : ( NAAR_BENEDEN | NAAR_BOVEN | REKENKUNDIG | RICHTING_NUL | WEG_VAN_NUL ) AFGEROND_OP NUMBER DECIMALEN
     ;
 begrenzing // §13.4.17.28
-    : begrenzingMinimum ( EN begrenzingMaximum )?
+    : begrenzingMinimum ( EN begrenzingMaximumNaEn )?
     | begrenzingMaximum
     ;
 // §13.4.17.29/.30 use 'met een minimum/maximum van'; after 'en' a worked example
@@ -721,7 +721,11 @@ begrenzing // §13.4.17.28
 // maal 2") then mis-binds — write it parenthesised ("maximum van (de basis maal 2)"). Every
 // TOKA/spec bound is a literal or attribute ref. (Same precedence reasoning as the telling.)
 begrenzingMinimum : MET_EEN_MINIMUM_VAN primaireExpressie ;
-begrenzingMaximum : ( MET_EEN_MAXIMUM_VAN | EEN_MAXIMUM_VAN ) primaireExpressie ; // bare form only after 'en' (§6)
+// §13.4.17.28/.30: a STANDALONE maximum requires 'met een maximum van'. The bare 'een maximum
+// van' (no 'met') appears ONLY after 'en' (the §6 worked example "… en een maximum van 1000 €"),
+// so it is admitted only in the post-'en' rule — not standalone.
+begrenzingMaximum     : MET_EEN_MAXIMUM_VAN primaireExpressie ;
+begrenzingMaximumNaEn : ( MET_EEN_MAXIMUM_VAN | EEN_MAXIMUM_VAN ) primaireExpressie ;
 
 datumMet // §13.4.17.35
     : DATUM_MET JAAR COLON expressie COMMA MAAND COLON expressie EN DAG COLON expressie

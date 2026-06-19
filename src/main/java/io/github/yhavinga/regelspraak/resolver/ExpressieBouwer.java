@@ -117,7 +117,8 @@ final class ExpressieBouwer {
     private Expr[] grenzen(BegrenzingContext b) {
         Expr min = null, max = null;
         if (b.begrenzingMinimum() != null) min = bouwPrimair(b.begrenzingMinimum().primaireExpressie());
-        if (b.begrenzingMaximum() != null) max = bouwPrimair(b.begrenzingMaximum().primaireExpressie());
+        if (b.begrenzingMaximum() != null) max = bouwPrimair(b.begrenzingMaximum().primaireExpressie());        // standalone 'met een maximum van'
+        else if (b.begrenzingMaximumNaEn() != null) max = bouwPrimair(b.begrenzingMaximumNaEn().primaireExpressie()); // after 'en' (bare allowed)
         return new Expr[]{ min, max };
     }
 
