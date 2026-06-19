@@ -421,8 +421,8 @@ final class RuleChecker {
         // the operator's kaleNaam; for "hij"/a bare subject the kop is empty and the name is the kaleNaam.
         String staart = stripArtikel(src(naamCtx));
         String kenmerk = kop.isEmpty() ? staart : kop + " " + staart;
-        return subject.kenmerken.stream().filter(k -> k.equalsIgnoreCase(kenmerk)).findFirst()
-                .<Conditie>map(k -> new Conditie.Kenmerk(k, bron)).orElse(null);
+        String gevonden = KenmerkMatcher.vind(subject, kenmerk);
+        return gevonden != null ? new Conditie.Kenmerk(gevonden, bron) : null;
     }
 
     /** When the condition operand denotes the rule subject, the part of a multi-word kenmerk the

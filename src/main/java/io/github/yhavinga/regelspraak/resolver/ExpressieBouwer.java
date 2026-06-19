@@ -307,9 +307,10 @@ final class ExpressieBouwer {
         // is a possession/role query ("die een kind hebben" = that HAVE a child), a different predicate
         // class — not the element's boolean kenmerk; leave it to the marker path.
         if (op.IS() == null && op.ZIJN() == null) return null;
-        String naam = src(op.kaleNaam());
-        return elem.kenmerken.stream().filter(k -> k.equalsIgnoreCase(naam)).findFirst()
-                .<Conditie>map(k -> new Conditie.Kenmerk(k, src(p))).orElse(null);
+        // §13.4.2: the written form may be the kenmerk's inflected/nominalized spelling
+        // ("die een minderjarige zijn" against the declared "minderjarig") — bind it morphologically.
+        String kenmerk = KenmerkMatcher.vind(elem, src(op.kaleNaam()));
+        return kenmerk != null ? new Conditie.Kenmerk(kenmerk, src(p)) : null;
     }
 
     /** §4.12-4.15: type-check the operand list of a value/date aggregation. min/max demand all

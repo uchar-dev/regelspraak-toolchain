@@ -9,6 +9,7 @@ public class Passagier {
     private Vlucht reis;
     private boolean kind;
     private boolean student;
+    private boolean minderjarig;
     public BigDecimal getPrijs() { return prijs; }
     public void setPrijs(BigDecimal v) { this.prijs = v; }
     public Vlucht getReis() { return reis; }
@@ -17,4 +18,6 @@ public class Passagier {
     public void setKind(boolean v) { this.kind = v; }
     public boolean isStudent() { return student; }
     public void setStudent(boolean v) { this.student = v; }
+    public boolean isMinderjarig() { return minderjarig; }
+    public void setMinderjarig(boolean v) { this.minderjarig = v; }
 }

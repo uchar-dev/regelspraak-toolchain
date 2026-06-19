@@ -339,6 +339,29 @@ gated as the kenmerk. Still `Onopgelost` and carded: a navigation-based kenmerk 
 oud is` — the kenmerk is on another object, which is what the §13.4.2 die-filter needs), the
 objecttype/role-membership lowering itself, and negation.
 
+### Inflected kenmerk forms in a die-subselectie (§13.4.2) — bound morphologically
+
+A bijvoeglijk kenmerk is declared in its base/predicative form (`is minderjarig kenmerk`), but a
+subselectie writes it nominalized: the spec's *own* canonical §13.4.2 example reads `het aantal
+passagiers van de reis die een **minderjarige** zijn` against that declared `minderjarig`, and §5.7
+does the same. Exact (case-insensitive) equality misses the `-e` inflection, so the spec's primary
+subselectie example silently stayed a marker (an honest no-op — never a wrong count, but the count
+was lost). `KenmerkMatcher` now binds the written form to a declared kenmerk through the **regular
+Dutch adjectival `-e` inflection**: the plain suffix (`minderjarig`→`minderjarige`, `groen`→`groene`)
+and the long-vowel-digraph shortening that opens the final syllable (`groot`→`grote`,
+`duurzaam`→`duurzame`). An exact base match is always preferred over an inflected one, and candidates
+are generated from the controlled declared base and tested against the written form (never base
+against base), so an over-generated non-word (e.g. `duurzaame`) cannot collide with a real name and a
+predicaat naming an *undeclared* kenmerk stays a marker. Applied uniformly to the §13.4.2 die-filter
+and the §5.14 subject kenmerk check.
+
+Deliberately **not** modelled (each stays an errs-safe marker, never a wrong bind): stress-dependent
+consonant doubling (`wit`→`witte`) and consonant voicing (`vies`→`vieze`) — they would mis-transform
+unstressed endings (`-ig`, `-el`); and the declared **meervoudsvorm** (`(mv: …)`, §13.2.29) — the
+grammar's predicaat has no bare-plural-noun alternative (`die minderjarigen zijn` does not parse) and
+the spec writes the singular nominalized form even for a plural subject, so a meervoudsvorm has no
+reachable predicaat input to bind. Both are carded (p29) should a real input ever demand them.
+
 ### An unresolved condition is a compilable no-op, not an uncompilable `null`
 
 Any condition the resolver leaves `Onopgelost` (a navigation/objecttype/role-membership test, a

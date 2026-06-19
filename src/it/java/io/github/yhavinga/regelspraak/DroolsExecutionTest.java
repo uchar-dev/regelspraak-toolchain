@@ -1493,14 +1493,14 @@ class DroolsExecutionTest {
         assertFalse(m.errors().isEmpty(), "1/0 moet een syntaxfout geven, niet stil naar 1 herstellen");
     }
 
-    // ---------------- p20: §13.4.2 die-filter on a count must not silently count all ----------------
+    // ---------------- p29(1): §13.4.2 inflected kenmerk die-filter ----------------
 
-    @Test void getelde_die_subselectie_wordt_een_marker_niet_een_telling_over_alles() {
-        // "het aantal passagiers van de reis die een minderjarige zijn" must count only the
-        // minderjarige passagiers. The die-filter is a kenmerk-membership predicate, which the
-        // resolver does not yet structure into a Conditie (carded), so the count must NOT silently
-        // range over EVERY passagier: it lowers to a marker and the resolver warns. Proven by
-        // firing — with 3 passagiers the result is never set to 3 (the honest no-op stands).
+    @Test void getelde_die_verbogen_kenmerk_filter_telt_alleen_de_minderjarige_passagiers() {
+        // The spec's OWN canonical §13.4.2 example: kenmerk declared "minderjarig", but the rule
+        // writes the nominalized "-e" form "die een minderjarige zijn". Exact equality misses that,
+        // so it used to stay a marker; KenmerkMatcher binds the inflection to the declared base, so
+        // it lowers to Passagier( reis == $subject, minderjarig == true ). Fired: 3 passagiers, 2
+        // minderjarig -> the count is 2, the inflected form is no longer a silent no-op.
         String src = """
             Objecttype de Vlucht
                 de totaalprijs Numeriek (geheel getal);
@@ -1516,11 +1516,47 @@ class DroolsExecutionTest {
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("minderjarig == true"),
+                () -> "de verbogen die-filter moet een accumulate-constraint zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v = new Vlucht();
+        Passagier a = new Passagier(); a.setReis(v); a.setMinderjarig(true);
+        Passagier b = new Passagier(); b.setReis(v); b.setMinderjarig(true);
+        Passagier c = new Passagier(); c.setReis(v); c.setMinderjarig(false);  // meerderjarig -> excluded
+        sessie.insert(v); sessie.insert(a); sessie.insert(b); sessie.insert(c);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("2").compareTo(v.getTotaalprijs()),
+                () -> "alleen de minderjarige passagiers tellen mee (2), kreeg " + v.getTotaalprijs());
+    }
+
+    @Test void getelde_die_onbekend_kenmerk_blijft_een_marker_niet_een_telling_over_alles() {
+        // The inflection match must stay TIGHT: a predicaat naming a kenmerk the element does NOT
+        // declare ("die een volwassene zijn", with only "minderjarig" declared) is no inflection of
+        // any declared kenmerk, so it must NOT silently bind one and must NOT count all. It lowers to
+        // a marker and warns; fired with 3 passagiers the result is never set to 3.
+        String src = """
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                is minderjarig kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel tel
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis die een volwassene zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("die/dat")),
                 "de niet-omgezette die-filter moet een waarschuwing geven");
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("/* TODO aggregatie AANTAL"), () -> "gefilterde telling moet een marker zijn:\n" + drl);
-        assertFalse(drl.contains("count("), () -> "een gefilterde telling mag niet als count over alle instanties lager komen:\n" + drl);
+        assertTrue(drl.contains("/* TODO aggregatie AANTAL"), () -> "een onbekend kenmerk moet een marker zijn:\n" + drl);
+        assertFalse(drl.contains("count("), () -> "een onbekende die-filter mag niet als count over alle instanties lager komen:\n" + drl);
 
         KieSession sessie = build(drl).newKieSession();
         Vlucht v = new Vlucht(); v.setTotaalprijs(new BigDecimal("999")); // sentinel
@@ -1532,7 +1568,7 @@ class DroolsExecutionTest {
         sessie.dispose();
         BigDecimal res = v.getTotaalprijs();
         assertTrue(res == null || new BigDecimal("3").compareTo(res) != 0,
-                () -> "de gefilterde telling telde stil ALLE passagiers: " + res);
+                () -> "de onbekende die-filter telde stil ALLE passagiers: " + res);
     }
 
     @Test void die_op_een_min_max_operand_is_geen_telling_filter_en_breekt_de_fold_niet() {
