@@ -114,6 +114,29 @@ class ModelTest {
         assertTrue(ft.rollen.get(1).meervoudig(), "passagier is meervoudig (... meerdere passagiers)");
     }
 
+    @Test void many_to_many_cardinaliteit_met_kleine_letter_opener_markeert_beide_rollen() {
+        // §13.3.9.1/.2: the cardinaliteit terminal is the lowercase "meerdere" (syntaxdiagrammen), and a
+        // many-to-many line opens with it. It MUST be lowercase: a sentence-initial capital "Meerdere" is
+        // irreducibly ambiguous with an objecttypenaam — the preceding role's greedy objectTypeNaam would
+        // absorb it (or, made a keyword, "Meerdere" is stolen from every name). See docs/grammar-divergences.md.
+        String src = """
+            Objecttype de Student
+                de naam Tekst;
+            Objecttype de Docent
+                de naam Tekst;
+            Feittype begeleiding
+                de student Student
+                de docent Docent
+            meerdere studenten begeleiden meerdere docenten
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "de kleine-letter many-to-many opener moet parseren: " + m.errors());
+        var ft = m.feittypen.get("begeleiding");
+        assertNotNull(ft, () -> "feittype niet opgelost: " + m.feittypen.keySet());
+        assertTrue(ft.rollen.get(0).meervoudig(), "student is meervoudig (meerdere studenten ...)");
+        assertTrue(ft.rollen.get(1).meervoudig(), "docent is meervoudig (... meerdere docenten)");
+    }
+
     @Test void cardinaliteit_markeert_een_meerwoordige_rolnaam() {
         // The rolnaam is the LEADING phrase of a cardinaliteit segment, so a multi-word role
         // name binds whole — word-by-word matching missed it and left the role wrongly single.

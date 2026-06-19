@@ -600,3 +600,26 @@ a carded follow-up.
 feitcreatie lowers yet; a `<rolB>`/`<rolC>` whose own name contains "van" (which makes `kaleNaam`
 multi-segment) WARNs as a false multi-hop (acceptable honesty, a coverage gap); and directional self-
 relation lowering.
+
+### §13.3.9.1/.2 feittype cardinaliteit — the many-to-many opener must be lowercase `meerdere`
+
+A feittype's cardinaliteit line ends the feittype: `(één|meerdere) <rol> … (één|meerdere) <rol>`. The
+one-side opener is genuinely capitalised in the spec's examples ("**Eén** reis betreft meerdere
+passagiers"), so `EEN_TELWOORD` admits `'Eén'/'Één'`. A many-to-many line would, by Dutch sentence
+orthography, open with a capital "**Meerdere** …" — but this form is **not supported**, and the spec does
+not require it: the syntaxdiagrammen write the terminal as the lowercase `"meerdere"` in both positions,
+and no spec/TOKA example contains a capitalised many-to-many opener.
+
+The capital is irreducibly ambiguous and cannot be accepted cleanly. The opener immediately follows the
+second role's `objectTypeNaam` (`UPPER_ID (UPPER_ID|LOWER_ID)*`, greedy). A capitalised "Meerdere" is
+either (a) an ordinary `UPPER_ID`, which `objectTypeNaam` then absorbs ("… het vak Vak **Meerdere
+studenten volgen** …"), truncating the cardinaliteit and failing the parse; or (b) a dedicated keyword
+token, which then steals the word "Meerdere" from every name context (objecttypenaam, meervoudsvorm,
+feittype-name word, any §13.4 `kaleNaam`) where `<karakterreeks>` makes it spec-legal. No lexer or parser
+formulation escapes this, because the boundary between "last word of the second objecttypenaam" and "first
+word of the cardinaliteit" is exactly a capitalised word either way.
+
+**Resolution:** write a many-to-many cardinaliteit line with a lowercase opener — "meerdere studenten
+begeleiden meerdere docenten" — matching the spec terminal. That parses and marks both roles meervoudig.
+(An earlier attempt to widen `MEERDERE` to `[Mm]'eerdere'` was reverted: an adversarial review showed it
+regressed "Meerdere" as a name word for no spec-required gain.)
