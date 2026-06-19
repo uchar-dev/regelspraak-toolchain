@@ -222,12 +222,12 @@ final class ExpressieBouwer {
         if (filter instanceof Conditie.Onopgelost)   // a resolved kenmerk-filter is lowered; only an
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING, // unresolved one warns
                     "een 'die/dat'-subselectie op een aggregatie-operand wordt nog niet omgezet; de aggregatie "
-                            + "blijft buiten beschouwing in plaats van alle instanties mee te nemen (§13.4.2) — '"
+                            + "blijft buiten beschouwing in plaats van alle instanties mee te nemen (§5.6) — '"
                             + filter.bron() + "'", f.getStart().getLine()));
         return new Expr.Functie(kind, argumenten, elem, leegwaarde, filter, type, bron);
     }
 
-    /** The §13.4.2 "die/dat &lt;predicaat&gt;" subselectie filtering a SINGLE-operand set-aggregation's
+    /** The §5.6 "die/dat &lt;predicaat&gt;" subselectie filtering a SINGLE-operand set-aggregation's
      *  element ("het aantal / de som / de minimale waarde van … passagiers van de reis die een kind
      *  zijn" — only the kind-passagiers). Resolved against the ELEMENT type (not the rule subject): a
      *  kenmerk of the element becomes a real {@link Conditie.Kenmerk} (lowered as an accumulate-source
@@ -303,7 +303,7 @@ final class ExpressieBouwer {
     private Conditie elementKenmerkFilter(PredicaatContext p, Objecttype elem) {
         NonToplevelOperatorContext op = p.nonToplevelOperator();
         if (elem == null || op == null || op.kaleNaam() == null) return null;
-        // §5.14: a kenmerk membership is "is/zijn (een) <kenmerk>". A "heeft/hebben een <X>" predicaat
+        // §8.1.8: a kenmerk membership is "is/zijn (een) <kenmerk>". A "heeft/hebben een <X>" predicaat
         // is a possession/role query ("die een kind hebben" = that HAVE a child), a different predicate
         // class — not the element's boolean kenmerk; leave it to the marker path.
         if (op.IS() == null && op.ZIJN() == null) return null;

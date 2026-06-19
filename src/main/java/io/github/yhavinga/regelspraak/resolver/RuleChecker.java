@@ -389,7 +389,7 @@ final class RuleChecker {
         if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, bron);
         if (op.NUMERIEK_IS_MET_EXACT() != null || op.NUMERIEK_ZIJN_MET_EXACT() != null)
             return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, bron);
-        Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null, bron); // EEN? kaleNaam (is|heeft): §5.14
+        Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null, bron); // EEN? kaleNaam (is|heeft): §8.1.8
         return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
     }
 
@@ -402,11 +402,11 @@ final class RuleChecker {
         if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, bron);
         if (op.NUMERIEK_MET_EXACT() != null)
             return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, bron);
-        Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null, bron); // (is|heeft) een? kaleNaam: §5.14
+        Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null, bron); // (is|heeft) een? kaleNaam: §8.1.8
         return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
     }
 
-    /** §5.14: "&lt;subject&gt; is/heeft &lt;kenmerk&gt;" -> a {@link Conditie.Kenmerk}, when the operand
+    /** §8.1.8: "&lt;subject&gt; is/heeft &lt;kenmerk&gt;" -> a {@link Conditie.Kenmerk}, when the operand
      *  denotes the rule subject and the (reconstructed) name is a declared kenmerk of it. The leading
      *  EEN article is NOT a kenmerk reference: per §13.4.15.44/.45 "is een &lt;naam&gt;" is an
      *  objecttype/role-membership test, so it is left Onopgelost (carded) — this also stops a name

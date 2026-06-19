@@ -320,7 +320,7 @@ fraction under-reports — both carded with the per-operation precision work. Fa
 acceptable (the check is an added safeguard, not load-bearing); false positives would reject valid
 models, so those were eliminated.
 
-### Kenmerk-membership test in a condition (§5.14) — subject-only
+### Kenmerk-membership test in a condition (§8.1.8) — subject-only
 
 A condition `indien de Meting oud is` / `indien hij oud is` tests whether the subject carries a
 boolean kenmerk. The resolver used to drop it (`Conditie.Onopgelost` → a `/* TODO voorwaarde */`

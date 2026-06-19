@@ -1649,7 +1649,7 @@ class DroolsExecutionTest {
                 () -> "min over de set moet een echte accumulate blijven:\n" + DrlTranspiler.transpile(m));
     }
 
-    // ---------------- p24(1): §5.14 kenmerk-membership test in a condition ----------------
+    // ---------------- p24(1): §8.1.8 kenmerk-membership test in a condition ----------------
 
     @Test void kenmerk_check_in_voorwaarde_gateert_de_regel() {
         // "indien de Meting oud is" gates on the subject's boolean kenmerk. It used to lower to a
@@ -1840,8 +1840,8 @@ class DroolsExecutionTest {
     }
 
     @Test void die_heeft_possessie_telt_niet_als_kenmerk_filter() {
-        // p24b review (LOW): "die heeft een kind" is a possession/role query (§5.14: a kenmerk is
-        // "is/zijn", not "heeft een"), NOT the element's boolean kenmerk. It must NOT lower to the
+        // p24b review (LOW): "die heeft een kind" is a possession/rolcheck query (§8.1.7; a kenmerk
+        // is "is/zijn", §8.1.8), NOT the element's boolean kenmerk. It must NOT lower to the
         // same "kind == true" constraint as "die een kind zijn" — it stays an honest marker.
         String src = """
             Objecttype de Vlucht
