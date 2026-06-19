@@ -200,7 +200,16 @@ public final class Typering {
         if (doel.isOnbekend() || waarde.isOnbekend()) return null;
         if (!zelfdeFamilie(doel, waarde))
             return "kan een waarde van type " + waarde.naam() + " niet toekennen aan een " + doel.naam();
-        if (doel.isGetalachtig()) return eenhedenCompatibel(doel, waarde, "toekenning");
+        if (!doel.isGetalachtig()) return null;
+        String eenheidFout = eenhedenCompatibel(doel, waarde, "toekenning");
+        if (eenheidFout != null) return eenheidFout;
+        // §6.1.2: a result may be assigned only when its decimal count does not exceed the
+        // attribute's; a higher-precision result must first be explicitly rounded (§6.1.3). The
+        // value's precision already reflects any afronding wrapper (Expr.Afgerond.type()).
+        int dv = decimalenVan(waarde), dd = decimalenVan(doel);
+        if (dv > dd)
+            return "het toe te kennen resultaat heeft meer decimalen (" + dv + ") dan het attribuut toelaat ("
+                    + dd + "); rond het resultaat eerst expliciet af (§6.1.2)";
         return null;
     }
 
@@ -227,10 +236,15 @@ public final class Typering {
         return null;
     }
 
+    /** The declared decimal count of a getalachtig datatype (0 for anything else). */
+    private static int decimalenVan(Datatype t) {
+        if (t instanceof Datatype.Numeriek n) return n.decimalen();
+        if (t instanceof Datatype.Percentage p) return p.decimalen();
+        return 0;
+    }
+
     private static int maxDec(Datatype l, Datatype r) {
-        int dl = (l instanceof Datatype.Numeriek n) ? n.decimalen() : (l instanceof Datatype.Percentage p ? p.decimalen() : 0);
-        int dr = (r instanceof Datatype.Numeriek n) ? n.decimalen() : (r instanceof Datatype.Percentage p ? p.decimalen() : 0);
-        return Math.max(dl, dr);
+        return Math.max(decimalenVan(l), decimalenVan(r));
     }
 
     private static String naam(BinOp op) {

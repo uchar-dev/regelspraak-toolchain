@@ -129,12 +129,14 @@ final class ExpressieBouwer {
         String bron = src(p);
         if (p.getalWaarde() != null) {
             GetalWaardeContext g = p.getalWaarde();
-            if (g.PERCENT_SIGN() != null) return new Expr.Literal(bron, new Datatype.Percentage(false, 0), bron);
+            int dec = decimalenVanLiteral(bron);    // §6.1.2: the literal's real precision, not 0
+            boolean geheel = dec == 0;
+            if (g.PERCENT_SIGN() != null) return new Expr.Literal(bron, new Datatype.Percentage(geheel, dec), bron);
             if (g.eenheidExpressie() != null) {
                 String afk = src(g.eenheidExpressie().eenheidMacht(0).eenheidAfkorting());
-                return new Expr.Literal(bron, new Datatype.Numeriek(false, 0, Datatype.Teken.ONBEPAALD, model.resolveEenheid(afk)), bron);
+                return new Expr.Literal(bron, new Datatype.Numeriek(geheel, dec, Datatype.Teken.ONBEPAALD, model.resolveEenheid(afk)), bron);
             }
-            return new Expr.Literal(bron, new Datatype.Numeriek(false, 0, Datatype.Teken.ONBEPAALD, null), bron);
+            return new Expr.Literal(bron, new Datatype.Numeriek(geheel, dec, Datatype.Teken.ONBEPAALD, null), bron);
         }
         if (p.tekstWaarde() != null)    return new Expr.Literal(bron, new Datatype.Tekst(), bron);
         if (p.booleanWaarde() != null)  return new Expr.Literal(bron, new Datatype.Booleaan(), bron);
@@ -158,6 +160,28 @@ final class ExpressieBouwer {
         }
         if (p.variabeleNaam() != null)  return naamRef(src(p.variabeleNaam()), true, bron);
         return onopgelost(p);
+    }
+
+    /** §13.2.2-.5: the decimal precision of a numeric literal's value — its minimal scale, since
+     *  §6.1.2 treats 0,5 and 0,50 as the same precision. A §13.2.5 rational reduces to its exact
+     *  value (4/2 -> 0, 3/2 -> 1); a non-terminating one (1/3) has no finite scale, so it is read at
+     *  DECIMAL64 and types as "many decimals" — which §6.1.2 then rightly demands be rounded. */
+    private static int decimalenVanLiteral(String bron) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(-?\\d+)(?:[.,](\\d+)|(?:_(\\d+))?/(\\d+))?").matcher(bron);
+        if (!m.find()) return 0;
+        java.math.BigDecimal v;
+        if (m.group(2) != null) v = new java.math.BigDecimal(m.group(1) + "." + m.group(2)); // a,b
+        else if (m.group(4) == null) v = new java.math.BigDecimal(m.group(1));               // integer
+        else {                                                                               // a/c or a_b/c
+            java.math.BigDecimal heel = new java.math.BigDecimal(m.group(1)), noemer = new java.math.BigDecimal(m.group(4));
+            java.math.BigDecimal teller = m.group(3) == null ? heel
+                    : heel.abs().multiply(noemer).add(new java.math.BigDecimal(m.group(3)));
+            if (m.group(3) != null && m.group(1).startsWith("-")) teller = teller.negate();
+            try { v = teller.divide(noemer); }
+            catch (ArithmeticException nietEindig) { v = teller.divide(noemer, java.math.MathContext.DECIMAL64); }
+        }
+        return Math.max(0, v.stripTrailingZeros().scale());
     }
 
     // ---------------- §13.4.17 functies / aggregaties ----------------

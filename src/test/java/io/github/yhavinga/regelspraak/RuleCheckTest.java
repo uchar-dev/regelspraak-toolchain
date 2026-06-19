@@ -486,4 +486,63 @@ class RuleCheckTest {
         assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("hoofdletters")),
                 () -> "kenmerk-botsing verwacht, kreeg: " + m.diagnostics);
     }
+
+    // ---- p22: §6.1.2 assignment precision (a value may not exceed the target's decimals) ----
+
+    static final String GETAL_MODEL = """
+        Objecttype de Ding
+            de uitkomst Numeriek (geheel getal);
+            de prijs Numeriek (getal met 2 decimalen);
+        """;
+
+    @Test void resultaat_met_meer_decimalen_dan_het_attribuut_wordt_gemeld() {
+        // §6.1.2: a 1-decimal value (1,5) cannot be assigned to a geheel-getal attribute without an
+        // explicit afronding. The literal types as 1 decimal now, so the assignment is flagged.
+        String src = GETAL_MODEL + """
+            Regel r
+                geldig altijd
+                    De uitkomst van een Ding moet gesteld worden op 1,5.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("decimalen")),
+                () -> "verwachtte een §6.1.2 decimalen-fout, kreeg: " + m.errors());
+    }
+
+    @Test void resultaat_met_expliciete_afronding_geen_fout() {
+        // §6.1.3: rounding first makes it legal — the afronding sets the result's precision to 0.
+        String src = GETAL_MODEL + """
+            Regel r
+                geldig altijd
+                    De uitkomst van een Ding moet gesteld worden op 1,5 naar beneden afgerond op 0 decimalen.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "een afgerond resultaat mag geen §6.1.2-fout geven: " + m.errors());
+    }
+
+    @Test void attribuut_met_meer_decimalen_naar_minder_wordt_gemeld() {
+        // a read of a 2-decimal attribute assigned to a geheel-getal attribute exceeds its precision.
+        String src = GETAL_MODEL + """
+            Regel r
+                geldig altijd
+                    De uitkomst van een Ding moet gesteld worden op de prijs van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("decimalen")),
+                () -> "verwachtte een §6.1.2 decimalen-fout, kreeg: " + m.errors());
+    }
+
+    @Test void minder_of_gelijke_decimalen_geen_fout() {
+        // an integer (0 dec) into geheel getal, and a 1-decimal literal into a 2-decimal attribute,
+        // both fit — no false positive.
+        String src = GETAL_MODEL + """
+            Regel a
+                geldig altijd
+                    De uitkomst van een Ding moet gesteld worden op 5.
+            Regel b
+                geldig altijd
+                    De prijs van een Ding moet gesteld worden op 1,5.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "geen §6.1.2-fout verwacht voor passende precisie: " + m.errors());
+    }
 }

@@ -293,6 +293,24 @@ The spec's *rendered* values in prose and tables show a space instead (`2 1/11`,
 a display convention (a space-separated `2 1/11` would lex as two separate numbers), so those table
 values are not single-literal input. The underscore form is the one the grammar admits.
 
+### Literal precision and §6.1.2 assignment-precision — enforced
+
+A numeric literal now carries its real decimal precision instead of a hardcoded 0: a decimaalgetal
+`1,5` types as 1 decimal, a rationeelgetal as the decimals of its exact value (`4/2` → 0, `3/2` → 1,
+a non-terminating `1/3` → its DECIMAL64 scale). Precision is the value's *minimal* scale, per the
+§6.1.2 note that `0,5` and `0,50` are the same precision. An integer literal is now `geheel` too,
+which also lets an integer literal pass the §5.13 elfproef (it could not before).
+
+On the back of that, §6.1.2 is enforced: `Typering.toekenning` rejects assigning a value whose
+decimal count exceeds the target attribute's, unless it was first explicitly rounded — "`1,5` →
+geheel getal" is an error, "`1,5` afgerond op 0 decimalen → geheel getal" is fine. The afronding
+wrapper now reports the rounded precision (`Expr.Afgerond.type()` returns the base type with
+`decimalen` set to the rounding's), which is exactly what makes the rounded form pass. A read of a
+2-decimal attribute into a geheel-getal attribute is likewise flagged. Known gap (NOT closed here):
+division (`gedeeld door`) still types its result via `maxDec` (the max of the operand decimals), so
+a non-terminating quotient like `10 gedeeld door 3` under-reports its precision and would slip the
+§6.1.2 check — the §4.5 division-precision rules are a separate, carded concern.
+
 ### Telling (aantal) operand precedence — fixed, with a deliberate EBNF asymmetry
 
 The §13.4.17.46 EBNF and syntax diagram give all four `getalaggregatie` functions the

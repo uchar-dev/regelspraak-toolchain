@@ -60,10 +60,17 @@ public sealed interface Expr {
     record Functie(FunctieKind kind, List<Expr> argumenten, Objecttype elementObjecttype,
                    Expr leegwaarde, Conditie filter, Datatype type, String bron) implements Expr {}
 
-    /** §13.4.17.25/.26 rounding wrapper; the rounding does not change the datatype. */
+    /** §13.4.17.25/.26 rounding wrapper. Rounding to N decimals sets the result's precision to N
+     *  (§6.1.2: it is exactly the explicit afronding that lets a higher-precision result be assigned
+     *  to a lower-precision attribute), keeping the base's unit and sign. */
     enum AfrondModus { NAAR_BENEDEN, NAAR_BOVEN, REKENKUNDIG, RICHTING_NUL, WEG_VAN_NUL }
     record Afgerond(Expr basis, AfrondModus modus, int decimalen, String bron) implements Expr {
-        @Override public Datatype type() { return basis.type(); }
+        @Override public Datatype type() {
+            Datatype b = basis.type();
+            if (b instanceof Datatype.Numeriek n) return new Datatype.Numeriek(decimalen == 0, decimalen, n.teken(), n.eenheid());
+            if (b instanceof Datatype.Percentage p) return new Datatype.Percentage(decimalen == 0, decimalen);
+            return b;
+        }
     }
 
     /** §13.4.17.27-.30 bounding wrapper (a minimum and/or maximum); type is the base's. */

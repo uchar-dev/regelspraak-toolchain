@@ -1442,8 +1442,10 @@ class DroolsExecutionTest {
     }
 
     @Test void gemengd_rationeel_literal_telt_heel_en_breuk_op() {
-        // The mixed form "1_1/2" = 1 + 1/2 = 1,5. 4 * 1_1/2 = 6.
-        assertEquals(0, new BigDecimal("6").compareTo(heffingNetto("geheel getal",
+        // The mixed form "1_1/2" = 1 + 1/2 = 1,5. 4 * 1_1/2 = 6. The product is a 1-decimal result
+        // (the rational types as 1 decimal now), so the target is a 2-decimal attribute — assigning
+        // it to a geheel getal would be a §6.1.2 precision violation.
+        assertEquals(0, new BigDecimal("6").compareTo(heffingNetto("getal met 2 decimalen",
                 "berekend worden als de basis van een Heffing maal 1_1/2", new BigDecimal("4"))),
                 "1_1/2 moet als 1,5 lager komen");
     }
@@ -1467,8 +1469,10 @@ class DroolsExecutionTest {
     @Test void niet_eindigend_rationeel_literal_vuurt_via_decimal64_zonder_te_gooien() {
         // "maal 1/3" cannot lower to an exact BigDecimal — it must divide under DECIMAL64 rather
         // than throw a non-terminating ArithmeticException at runtime. 9 * 1/3 ~= 3 (the residual
-        // imprecision is the engine-wide decimal-vs-exact-fraction limitation, carded).
-        BigDecimal netto = heffingNetto("getal met 2 decimalen",
+        // imprecision is the engine-wide decimal-vs-exact-fraction limitation, carded). The
+        // non-terminating literal types as 16 decimals (DECIMAL64), so the target carries 16 — a
+        // narrower attribute would (correctly, per §6.1.2) demand an explicit afronding first.
+        BigDecimal netto = heffingNetto("getal met 16 decimalen",
                 "berekend worden als de basis van een Heffing maal 1/3", new BigDecimal("9"));
         assertTrue(netto.subtract(new BigDecimal("3")).abs().compareTo(new BigDecimal("0.0001")) < 0,
                 () -> "9 maal 1/3 ~= 3, kreeg " + netto);
