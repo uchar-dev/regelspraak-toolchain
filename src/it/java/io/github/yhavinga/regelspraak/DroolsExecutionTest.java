@@ -1530,4 +1530,47 @@ class DroolsExecutionTest {
         assertTrue(res == null || new BigDecimal("3").compareTo(res) != 0,
                 () -> "de gefilterde telling telde stil ALLE passagiers: " + res);
     }
+
+    @Test void die_op_een_min_max_operand_is_geen_telling_filter_en_breekt_de_fold_niet() {
+        // p20b review (HIGH regression, fixed): die-detection is scoped to a SINGLE-operand telling.
+        // A die on a min/max value-fold operand ("… en de leeftijd van de eerste passagier die …")
+        // belongs to that operand's own navigation, not the aggregation's element — reading it as a
+        // telling filter silently markered a working min/max. So no die/dat warning fires here, and a
+        // plain min over a set still lowers to a real accumulate (proving tellingFilter is AANTAL-only).
+        String fold = """
+            Objecttype de Vlucht
+                de uitkomst Numeriek (geheel getal);
+                de basiswaarde Numeriek (geheel getal);
+            Objecttype de Passagier
+                de leeftijd Numeriek (geheel getal);
+                is minderjarig kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel m
+                geldig altijd
+                    De uitkomst van een Vlucht moet berekend worden als de minimale waarde van de basiswaarde van de Vlucht en de leeftijd van de eerste passagier die een minderjarige is.
+            """;
+        assertFalse(Resolver.resolve(fold).diagnostics.stream().anyMatch(d -> d.message().contains("die/dat")),
+                "een die op een min/max-operand mag niet als telling-filter gelezen worden");
+
+        String set = """
+            Objecttype de Vlucht
+                de uitkomst Numeriek (geheel getal);
+            Objecttype de Passagier
+                de leeftijd Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel m
+                geldig altijd
+                    De uitkomst van een Vlucht moet berekend worden als de minimale waarde van de leeftijd van alle passagiers van de reis.
+            """;
+        RegelSpraakModel m = Resolver.resolve(set);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        assertTrue(DrlTranspiler.transpile(m).contains("min( $e1.getLeeftijd() )"),
+                () -> "min over de set moet een echte accumulate blijven:\n" + DrlTranspiler.transpile(m));
+    }
 }

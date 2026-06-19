@@ -189,41 +189,48 @@ final class ExpressieBouwer {
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
                     "leegwaarde-alternatief van een sommatie moet numeriek zijn, kreeg "
                             + leegwaarde.type() + " (§5.8.2)", f.getStart().getLine()));
-        Conditie filter = aggregatieFilter(f);
+        Conditie filter = tellingFilter(f);
         if (filter != null)
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
-                    "een 'die/dat'-subselectie op een aggregatie-operand wordt nog niet omgezet; de "
-                            + "telling/aggregatie blijft buiten beschouwing in plaats van alle instanties "
-                            + "te tellen (§13.4.2) — '" + filter.bron() + "'", f.getStart().getLine()));
+                    "een 'die/dat'-subselectie op een telling-operand wordt nog niet omgezet; de telling "
+                            + "blijft buiten beschouwing in plaats van alle instanties te tellen (§13.4.2) — '"
+                            + filter.bron() + "'", f.getStart().getLine()));
         return new Expr.Functie(kind, argumenten, aggregatieElement(kind, argumenten), leegwaarde, filter, type, bron);
     }
 
-    /** A §13.4.2 "die/dat &lt;predicaat&gt;" subselectie anywhere in an aggregation's operand(s) —
-     *  the filter on the counted/summed element ("… van de reis die een kind zijn"). Returned as an
-     *  {@link Conditie.Onopgelost} marker (the kenmerk-membership predicates these subselecties use
-     *  are not yet structured into a Conditie), so the transpiler keeps the aggregation a visible
-     *  marker rather than counting/summing every instance. Scans only the functieAanroep's direct
-     *  expressie/primaireExpressie operands, not its leegwaarde/dimensie tails. */
-    private Conditie aggregatieFilter(FunctieAanroepContext f) {
-        for (int i = 0; i < f.getChildCount(); i++) {
-            ParseTree ch = f.getChild(i);
-            if (ch instanceof ExpressieContext || ch instanceof PrimaireExpressieContext) {
-                PredicaatContext p = vindDie(ch);
-                if (p != null) return new Conditie.Onopgelost(src(p));
-            }
-        }
-        return null;
+    /** The §13.4.2 "die/dat &lt;predicaat&gt;" subselectie on a SINGLE-operand telling's counted
+     *  element ("het aantal passagiers van de reis die een kind zijn" — only the kind-passagiers),
+     *  as an {@link Conditie.Onopgelost} marker; null when there is none. The kenmerk-membership
+     *  predicaten these subselecties use are not yet structured into a Conditie, so the transpiler
+     *  keeps such a count a visible marker rather than counting every instance.
+     *
+     *  Deliberately narrow: only the lone count operand, and only the die on ITS OWN subject
+     *  onderwerpketen chain — not a deep scan of the whole subtree. A multi-operand telling is
+     *  already a union marker, and a die buried in a sibling/sub navigation (e.g. the "de eerste
+     *  passagier die …" operand of a min/max value-fold) is that navigation's own filter, not the
+     *  aggregation's element filter; markering on it would silently kill a working accumulate. */
+    private Conditie tellingFilter(FunctieAanroepContext f) {
+        if (!(f instanceof AantalFuncContext a) || a.primaireExpressie().size() != 1) return null;
+        PrimaireExpressieContext pe = a.primaireExpressie(0);
+        OnderwerpContext o = pe.attribuutVanOnderwerp() != null ? pe.attribuutVanOnderwerp().onderwerp()
+                : pe.onderwerp();
+        PredicaatContext p = dieInKeten(o);
+        return p != null ? new Conditie.Onopgelost(src(p)) : null;
     }
 
-    /** The first "die/dat &lt;predicaat&gt;" subselectie in a parse subtree, or null. An
-     *  onderwerpketen built from that alternative is the only place a {@code predicaat()} child
-     *  appears, so its presence is the filter. */
-    private PredicaatContext vindDie(ParseTree t) {
-        if (t instanceof OnderwerpKetenContext k && k.predicaat() != null) return k.predicaat();
-        for (int i = 0; i < t.getChildCount(); i++) {
-            PredicaatContext p = vindDie(t.getChild(i));
-            if (p != null) return p;
-        }
+    /** The "die/dat &lt;predicaat&gt;" on an onderwerp's own onderwerpketen chain (following only the
+     *  left-recursive keten and the selector "van" navigation), or null. */
+    private PredicaatContext dieInKeten(OnderwerpContext o) {
+        if (o == null) return null;
+        if (o.onderwerpKeten() != null) return dieInKeten(o.onderwerpKeten());
+        if (o.onderwerp() != null) return dieInKeten(o.onderwerp()); // kwantificatie kaleNaam VAN onderwerp
+        return null;
+    }
+    private PredicaatContext dieInKeten(OnderwerpKetenContext k) {
+        if (k == null) return null;
+        if (k.predicaat() != null) return k.predicaat();             // onderwerpKeten (die|dat) predicaat
+        if (k.onderwerpKeten() != null) return dieInKeten(k.onderwerpKeten());
+        if (k.onderwerp() != null) return dieInKeten(k.onderwerp()); // selector VAN onderwerp
         return null;
     }
 
