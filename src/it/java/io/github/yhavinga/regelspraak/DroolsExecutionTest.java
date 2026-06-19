@@ -1275,6 +1275,43 @@ class DroolsExecutionTest {
                 "de unieke namen mogen niet gemarkeerd zijn");
     }
 
+    @Test void uniciteit_verenigd_met_zelfde_eenheid_vuurt_over_beide_typen() {
+        // §8.1.6: a vereniging of two SAME-unit (EUR) Numeriek attributes is well-formed and fires — a
+        // value shared across the two types is a duplicate. (A EUR ∪ jr union instead warns and emits no
+        // rule, so "5 EUR" and "5 jr" are never cross-matched; that is pinned in DrlTest.)
+        String src = """
+            Eenheidsysteem Geld
+                de euro EUR
+            Objecttype de Heffing
+                de prijs (mv: prijzen) Numeriek (geheel getal) met eenheid EUR;
+            Objecttype de Passagier
+                de prijs (mv: prijzen) Numeriek (geheel getal) met eenheid EUR;
+            Regel bedrag uniek
+                geldig altijd
+                    De prijzen van alle Heffing verenigd met de prijzen van alle Passagier moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("accumulate("), () -> "zelfde-eenheid vereniging moet lowereren:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Heffing h1 = new Heffing(); h1.setPrijs(new BigDecimal("100"));
+        Heffing h2 = new Heffing(); h2.setPrijs(new BigDecimal("50"));    // uniek
+        Passagier p1 = new Passagier(); p1.setPrijs(new BigDecimal("100")); // deelt 100 met h1 (zelfde eenheid)
+        Passagier p2 = new Passagier(); p2.setPrijs(new BigDecimal("200")); // uniek
+        sessie.insert(h1); sessie.insert(h2); sessie.insert(p1); sessie.insert(p2);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> (Inconsistentie) o).toList();
+        sessie.dispose();
+        assertEquals(2, fouten.size(), () -> "alleen de gedeelde 100 over beide typen: " + fouten);
+        assertTrue(fouten.stream().anyMatch(f -> f.getSubject() == h1) && fouten.stream().anyMatch(f -> f.getSubject() == p1),
+                "de twee '100'-bedragen over beide typen gemarkeerd");
+        assertTrue(fouten.stream().noneMatch(f -> f.getSubject() == h2 || f.getSubject() == p2),
+                "de unieke bedragen mogen niet gemarkeerd zijn");
+    }
+
     @Test void uniciteit_scoped_telt_alleen_binnen_dezelfde_ouder() {
         // §8.1.6 parent-scoped: "de stoelnummers van alle passagiers van de reis moeten uniek zijn" —
         // a stoelnummer must be unique PER reis, not globally. Two passagiers of the SAME reis sharing

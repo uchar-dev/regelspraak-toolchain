@@ -599,6 +599,52 @@ class DrlTest {
                 "een datatype-mismatch vereniging mag geen regel opleveren");
     }
 
+    @Test void uniciteit_verenigd_met_verschillende_eenheden_blijft_een_waarschuwing() {
+        // §8.1.6 "hetzelfde datatype": for Numeriek the unit is part of the datatype, and units do not
+        // survive into the fact model (bare BigDecimals), so a EUR ∪ jr union would cross-match "5 EUR" and
+        // "5 jr" as one value -> a silently-wrong false duplicate. A unit mismatch must WARN, no rule.
+        String src = """
+            Eenheidsysteem Geld
+                de euro EUR
+            Eenheidsysteem Tijd
+                de jaar jr
+            Objecttype de Konto
+                het saldo Numeriek (geheel getal) met eenheid EUR;
+            Objecttype de Persoon
+                de leeftijd Numeriek (geheel getal) met eenheid jr;
+            Regel mismatch
+                geldig altijd
+                    De saldos van alle Konto verenigd met de leeftijden van alle Persoon moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("consistentieregel")),
+                "een eenheid-mismatch vereniging moet waarschuwen");
+        assertFalse(DrlTranspiler.transpile(m).contains("accumulate("),
+                "een eenheid-mismatch vereniging mag geen regel opleveren");
+    }
+
+    @Test void uniciteit_verenigd_met_zelfde_eenheid_lowert() {
+        // The same unit on both sources is a well-formed union and must still lower (no false WARN).
+        String src = """
+            Eenheidsysteem Geld
+                de euro EUR
+            Objecttype de Konto
+                het saldo Numeriek (geheel getal) met eenheid EUR;
+            Objecttype de Rekening
+                het saldo Numeriek (geheel getal) met eenheid EUR;
+            Regel uniek
+                geldig altijd
+                    De saldos van alle Konto verenigd met de saldos van alle Rekening moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("accumulate("), () -> "een zelfde-eenheid vereniging moet lowereren:\n" + drl);
+        assertFalse(m.diagnostics.stream().anyMatch(d -> d.message().contains("consistentieregel")),
+                () -> "een zelfde-eenheid vereniging mag niet waarschuwen: " + m.diagnostics);
+    }
+
     @Test void samengestelde_consistentie_alle_lowert_naar_or_van_schendingen() {
         // §13.4.8 "alle volgende criteria": the violation is OR of the per-criterion violations.
         String src = """

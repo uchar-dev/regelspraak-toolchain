@@ -347,6 +347,13 @@ final class RuleChecker {
             Datatype da = a.type().attribuut(a.sleutels().get(i));
             Datatype db = b.type().attribuut(b.sleutels().get(i));
             if (da == null || db == null || da.getClass() != db.getClass()) return false;
+            // §8.1.6: the sources combine "attributen met HETZELFDE datatype". For Numeriek the unit IS
+            // part of the datatype, and units do not survive into the fact model (values are bare
+            // BigDecimals), so a union of a EUR attribute and a jr attribute would cross-match "5 EUR" and
+            // "5 jr" as one value — a silently-wrong false duplicate. Require the SAME eenheid (both unitless
+            // counts too); a unit mismatch is as ill-formed as a Tekst∪Numeriek one and leaves a WARNING.
+            if (da instanceof Datatype.Numeriek na && db instanceof Datatype.Numeriek nb
+                    && !java.util.Objects.equals(na.eenheid(), nb.eenheid())) return false;
         }
         return true;
     }
