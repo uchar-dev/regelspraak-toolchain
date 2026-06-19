@@ -88,6 +88,16 @@ public final class DrlTranspiler {
         String constraint = subject != null ? schendingConstraint(c.assertie(), subject) : null;
         out.append("rule \"").append(escapeRegelNaam(c.naam())).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
         if (constraint == null) {
+            // The resolver judged this consistentie liftable, but its violation is not expressible — an
+            // operand lowered to a marker (e.g. an unresolvable navigation / foreign-type right operand)
+            // or the assertion has no faithful negation. The rule would be an inert eval(true) that flags
+            // nothing, so surface the dropped check as a WARNING (matching the unlifted forms) instead of
+            // letting it vanish silently. Deduped so a re-transpile of the same model does not pile up.
+            var w = new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
+                    "consistentieregel '" + c.naam() + "' kon niet naar een schending-constraint worden omgezet"
+                    + " (operand onresolveerbaar of geen getrouwe negatie); de regel controleert niets",
+                    c.line());
+            if (!model.diagnostics.contains(w)) model.diagnostics.add(w);
             out.append("    // onopgelost consistentieregel: ").append(c.bron()).append("\n    eval(true)\nthen\nend\n\n");
             return;
         }

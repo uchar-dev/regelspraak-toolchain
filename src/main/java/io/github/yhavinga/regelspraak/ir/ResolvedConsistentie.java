@@ -15,4 +15,4 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
  * (samengesteld / uniciteit) are a separate, not-yet-lifted form.
  */
 public record ResolvedConsistentie(String naam, Objecttype subject, Conditie assertie, String bron,
-                                   Geldigheid geldigheid) {}
+                                   int line, Geldigheid geldigheid) {}

@@ -47,9 +47,16 @@ public final class Resolver {
         if (rest.length < 1) { System.err.println("usage: Resolver [--drl] <file.rs>"); System.exit(2); }
         RegelSpraakModel m = resolve(java.nio.file.Files.readString(java.nio.file.Path.of(rest[0])));
         if (drl) {
+            // Transpiling also surfaces lowering-phase diagnostics (e.g. a consistentieregel whose
+            // violation is not expressible); print them to stderr so they are visible without polluting
+            // the DRL on stdout.
             System.out.print(io.github.yhavinga.regelspraak.transpiler.DrlTranspiler.transpile(m));
+            m.diagnostics.forEach(d -> System.err.println("  " + d));
             System.exit(m.isOk() ? 0 : 1);
         }
+        // Run the transpiler (discarding the DRL) so the summary's diagnostics include the lowering-phase
+        // ones — a "does my model resolve AND lower cleanly?" check, not resolve-only.
+        io.github.yhavinga.regelspraak.transpiler.DrlTranspiler.transpile(m);
         System.out.printf("objecttypen=%d  domeinen=%d  parameters=%d  feittypen=%d  regels=%d  resolved=%d%n",
                 m.objecttypen.size(), m.domeinen.size(), m.parameters.size(), m.feittypen.size(),
                 m.regels.size(), m.resolvedRegels.size());

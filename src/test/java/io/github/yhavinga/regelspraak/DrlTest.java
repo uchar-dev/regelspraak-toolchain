@@ -953,4 +953,42 @@ class DrlTest {
         assertTrue(drl.contains("eval( false )"),
                 () -> "een onlowerbare voorwaarde moet de regel inert maken (geen over-creatie):\n" + drl);
     }
+
+    @Test void consistentie_met_onresolveerbare_rechter_operand_waarschuwt() {
+        // §9.5: a consistentie whose RIGHT operand is a foreign-type attribute (no navigation from the
+        // subject) lowers to an inert eval(true) — it checks nothing. The transpiler must surface that as
+        // a WARNING (eenSubject only inspects the LEFT operand), not drop the check silently.
+        String src = """
+            Objecttype de Vlucht
+                de prijs Numeriek (geheel getal);
+            Objecttype de Klant
+                de leeftijd Numeriek (geheel getal);
+            Regel controleer
+                geldig altijd
+                    De prijs van een Vlucht moet groter zijn dan de leeftijd van een Klant.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        String drl = DrlTranspiler.transpile(m);   // the WARNING is a lowering-phase diagnostic
+        assertTrue(drl.contains("// onopgelost consistentieregel") && drl.contains("eval(true)"),
+                () -> "een onresolveerbare consistentie lowert naar een no-op:\n" + drl);
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
+                        && d.message().contains("consistentieregel") && d.message().contains("controleert niets")),
+                () -> "de gedropte controle moet een WARNING geven: " + m.diagnostics);
+    }
+
+    @Test void consistentie_met_geldige_operanden_waarschuwt_niet() {
+        // The same-subject comparison lowers cleanly, so no lowering WARNING must be raised.
+        String src = """
+            Objecttype de Vlucht
+                de luchthavenVertrek Tekst;
+                de luchthavenBestemming Tekst;
+            Regel rondvlucht
+                geldig altijd
+                    De luchthavenVertrek van een Vlucht moet ongelijk zijn aan de luchthavenBestemming van een Vlucht.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        DrlTranspiler.transpile(m);
+        assertFalse(m.diagnostics.stream().anyMatch(d -> d.message().contains("controleert niets")),
+                () -> "een geldige consistentie mag geen lowering-WARNING geven: " + m.diagnostics);
+    }
 }

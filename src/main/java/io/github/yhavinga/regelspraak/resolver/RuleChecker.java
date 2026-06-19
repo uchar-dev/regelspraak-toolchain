@@ -206,7 +206,7 @@ final class RuleChecker {
             Conditie assertie = uitToplevel(lhs, e.toplevelOperator(), src(e));
             Objecttype subject = lhs instanceof Expr.AttribuutRef a ? a.objecttype() : null;
             if (subject != null && transpileerbaar(assertie)) {
-                model.consistenties.add(new io.github.yhavinga.regelspraak.ir.ResolvedConsistentie(naam, subject, assertie, src(cr), geldigheid));
+                model.consistenties.add(new io.github.yhavinga.regelspraak.ir.ResolvedConsistentie(naam, subject, assertie, src(cr), cr.getStart().getLine(), geldigheid));
                 return;
             }
         }
@@ -231,7 +231,7 @@ final class RuleChecker {
             // criterion over a different object type would emit that type's attribute on the wrong fact
             // (an uncompilable property that sinks the whole DRL package). Mixed subjects -> WARNING.
             if (subject != null && transpileerbaar(assertie) && eenSubject(assertie, subject)) {
-                model.consistenties.add(new io.github.yhavinga.regelspraak.ir.ResolvedConsistentie(naam, subject, assertie, src(cr), geldigheid));
+                model.consistenties.add(new io.github.yhavinga.regelspraak.ir.ResolvedConsistentie(naam, subject, assertie, src(cr), cr.getStart().getLine(), geldigheid));
                 return;
             }
         }
