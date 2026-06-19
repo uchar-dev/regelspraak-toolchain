@@ -1826,4 +1826,42 @@ class DroolsExecutionTest {
         assertEquals(0, new BigDecimal("100").compareTo(v.getTotaalprijs()),
                 () -> "alleen de prijzen van de kinderen tellen mee (100), kreeg " + v.getTotaalprijs());
     }
+
+    @Test void union_telling_telt_de_vereniging_van_de_gefilterde_sets() {
+        // p29(4): §5.8.1 "het aantal X, Y en Z" counts the UNION of the per-operand kenmerk-filtered
+        // sets — lowered to ONE accumulate whose source ORs the filters, so an instance in several
+        // sets counts once. Used to be a marker. Fired: kind, student, kind+student, neither -> 3.
+        String src = """
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                is kind kenmerk (bijvoeglijk);
+                is student kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel tel
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis die een kind zijn en passagiers van de reis die een student zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("kind == true") && drl.contains("student == true") && drl.contains("||"),
+                () -> "union-telling moet één accumulate met OR-filters zijn:\n" + drl);
+        assertFalse(drl.contains("TODO aggregatie"), () -> "union-telling mag geen marker meer zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v = new Vlucht();
+        Passagier a = new Passagier(); a.setReis(v); a.setKind(true);
+        Passagier b = new Passagier(); b.setReis(v); b.setStudent(true);
+        Passagier c = new Passagier(); c.setReis(v); c.setKind(true); c.setStudent(true);  // in BOTH sets -> once
+        Passagier d = new Passagier(); d.setReis(v);                                        // neither -> excluded
+        sessie.insert(v); sessie.insert(a); sessie.insert(b); sessie.insert(c); sessie.insert(d);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("3").compareTo(v.getTotaalprijs()),
+                () -> "de vereniging telt elk lid één keer (3), kreeg " + v.getTotaalprijs());
+    }
 }

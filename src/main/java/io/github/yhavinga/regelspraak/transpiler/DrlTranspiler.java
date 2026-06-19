@@ -452,10 +452,11 @@ public final class DrlTranspiler {
      */
     private String accumulate(Expr.Functie f, Objecttype subject) {
         // §4.11/§5.8.1 telling over a concatenation of expressies ("het aantal X, Y en Z"): the
-        // count is the UNION of the per-operand sets (a disjunctively-filtered single accumulate),
-        // which is not yet lowered — emit a marker rather than silently counting only the first
-        // operand.
-        if (f.kind() == Expr.FunctieKind.AANTAL && f.argumenten().size() > 1) return null;
+        // count is the UNION of the per-operand sets. When the resolver could OR the per-operand
+        // kenmerk filters (f.filter() is the disjunction), this lowers to ONE accumulate whose
+        // source pattern carries that OR — an instance matching several operands counts once. A
+        // union it could not resolve has no filter -> marker, never a count over the first operand.
+        if (f.kind() == Expr.FunctieKind.AANTAL && f.argumenten().size() > 1 && f.filter() == null) return null;
         Objecttype elem = f.elementObjecttype();
         String fn = switch (f.kind()) {
             case SOM, TOTAAL -> "sum";

@@ -407,8 +407,16 @@ p20b) — so those stay markers/drops. A subselectie the resolver cannot structu
 `heeft een …` possession, an objecttype/role membership, a name that is not a kenmerk of the
 element) stays an `Onopgelost` `filter` on the `Expr.Functie`; the resolver warns and the
 transpiler emits the aggregation as a marker rather than aggregating over EVERY instance — a
-visible no-op, never a wrong total. Still carded (p29): inflected/meervoud kenmerk spellings, the
-multi-operand union count, and the value-fold die.
+visible no-op, never a wrong total.
+
+A **multi-operand count** — the §5.8.1 union "het aantal X, Y en Z" — is lowered when every operand
+resolves to a kenmerk filter over the *same* element: the resolver ORs the per-operand filters (a
+`Conditie.Samengesteld(TEN_MINSTE, 1, …)`), and the transpiler emits ONE accumulate whose source
+carries the disjunction — `Passagier( reis == $subject, ((kind == true) || (student == true)) )` —
+so an instance in several sets matches once and is counted once (a true union, not a sum of set
+sizes). A union with any unresolvable operand (a bare set, a comparison, a different element) stays a
+marker. A multi-operand min/max VALUE-fold is excluded (its die is on a sub-operand navigation). Still
+carded (p29): inflected/meervoud kenmerk spellings, and the value-fold operand die.
 
 ### Aggregation operand separator — `en` splits, it is not a name word
 

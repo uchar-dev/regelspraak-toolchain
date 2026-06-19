@@ -245,11 +245,30 @@ final class ExpressieBouwer {
             ParseTree ch = f.getChild(i);
             if (ch instanceof ExpressieContext || ch instanceof PrimaireExpressieContext) operanden.add(ch);
         }
-        if (operanden.size() != 1) return null;
-        PredicaatContext p = vindDie(operanden.get(0));
-        if (p == null) return null;
-        Conditie filter = elementKenmerkFilter(p, elem);
-        return filter != null ? filter : new Conditie.Onopgelost(src(p));
+        if (operanden.size() == 1) {
+            PredicaatContext p = vindDie(operanden.get(0));
+            if (p == null) return null;
+            Conditie filter = elementKenmerkFilter(p, elem);
+            return filter != null ? filter : new Conditie.Onopgelost(src(p));
+        }
+        // §5.8.1 union telling "het aantal X, Y en Z": the count is the UNION of the per-operand
+        // sets — a disjunctively-filtered single accumulate. OR the per-operand kenmerk filters over
+        // the shared element (an instance in several sets matches the OR once, so it is counted
+        // once). Any operand without a resolvable kenmerk filter (a comparison, an unfiltered set,
+        // a different element) leaves the whole union Onopgelost -> a marker, never a wrong count.
+        // (A min/max value-fold reaches here too with >1 operand, but its die is on a sub-operand
+        // navigation, not the element — so it is excluded; only AANTAL unions.)
+        if (f instanceof AantalFuncContext) {
+            java.util.List<Conditie> delen = new ArrayList<>();
+            for (ParseTree op : operanden) {
+                PredicaatContext p = vindDie(op);
+                Conditie k = p != null ? elementKenmerkFilter(p, elem) : null;
+                if (k == null) return new Conditie.Onopgelost(src(f));
+                delen.add(k);
+            }
+            return new Conditie.Samengesteld(Conditie.Kwantor.TEN_MINSTE, 1, delen, src(f));
+        }
+        return null;
     }
 
     /** The first "die/dat &lt;predicaat&gt;" subselectie anywhere in an operand subtree. */

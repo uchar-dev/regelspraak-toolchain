@@ -440,10 +440,10 @@ class DrlTest {
         assertFalse(drl.contains("naar-veel"), () -> "to-one mag geen marker zijn:\n" + drl);
     }
 
-    @Test void telling_concatenatie_parseert_en_wordt_een_marker() {
-        // §4.11/§5.8.1: "het aantal X, Y en Z" (a concatenation of expressies) must PARSE. The
-        // union count (a disjunctively-filtered single accumulate) is not yet lowered, so it is an
-        // honest marker — NOT a silent count of only the first operand.
+    @Test void telling_concatenatie_met_oplosbare_kenmerkfilters_wordt_een_union_accumulate() {
+        // §4.11/§5.8.1: "het aantal X, Y en Z" (a concatenation) must PARSE, and when every operand
+        // resolves to a kenmerk filter the union count lowers to ONE accumulate whose source ORs the
+        // filters (p29 part 4) — NOT a silent count of only the first operand.
         String src = """
             Objecttype de Vlucht
                 het aantal Numeriek (geheel getal);
@@ -461,7 +461,31 @@ class DrlTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "de concatenatie-telling moet parseren: " + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("/* TODO aggregatie AANTAL"), () -> "multi-operand telling moet een marker zijn:\n" + drl);
-        assertFalse(drl.contains("accumulate("), () -> "multi-operand telling mag niet stil één operand tellen:\n" + drl);
+        assertTrue(drl.contains("accumulate(") && drl.contains("jong == true") && drl.contains("oud == true")
+                && drl.contains("||"), () -> "de union-telling moet één accumulate met OR-filters zijn:\n" + drl);
+        assertFalse(drl.contains("/* TODO aggregatie AANTAL"), () -> "de oplosbare union mag geen marker zijn:\n" + drl);
+    }
+
+    @Test void telling_concatenatie_met_onoplosbare_operand_blijft_marker() {
+        // A union with an operand that has NO resolvable kenmerk filter (here a bare set) cannot be
+        // lowered faithfully — it stays an honest marker, never a count of only the first operand.
+        String src = """
+            Objecttype de Vlucht
+                het aantal Numeriek (geheel getal);
+            Objecttype de Passagier
+                is jong kenmerk (bijvoeglijk);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Het aantal van een Vlucht moet berekend worden als het aantal passagiers van de reis die een jong zijn en passagiers van de reis.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "de concatenatie-telling moet parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("/* TODO aggregatie AANTAL"), () -> "een onoplosbare union moet een marker zijn:\n" + drl);
+        assertFalse(drl.contains("accumulate("), () -> "een onoplosbare union mag niet stil tellen:\n" + drl);
     }
 }

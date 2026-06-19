@@ -8,10 +8,13 @@ public class Passagier {
     private BigDecimal prijs;
     private Vlucht reis;
     private boolean kind;
+    private boolean student;
     public BigDecimal getPrijs() { return prijs; }
     public void setPrijs(BigDecimal v) { this.prijs = v; }
     public Vlucht getReis() { return reis; }
     public void setReis(Vlucht r) { this.reis = r; }
     public boolean isKind() { return kind; }
     public void setKind(boolean v) { this.kind = v; }
+    public boolean isStudent() { return student; }
+    public void setStudent(boolean v) { this.student = v; }
 }
