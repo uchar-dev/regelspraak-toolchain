@@ -439,4 +439,29 @@ class DrlTest {
         assertTrue(drl.contains("$subject.getReis().getVluchtprijs()"), () -> "to-one getter ontbreekt:\n" + drl);
         assertFalse(drl.contains("naar-veel"), () -> "to-one mag geen marker zijn:\n" + drl);
     }
+
+    @Test void telling_concatenatie_parseert_en_wordt_een_marker() {
+        // §4.11/§5.8.1: "het aantal X, Y en Z" (a concatenation of expressies) must PARSE. The
+        // union count (a disjunctively-filtered single accumulate) is not yet lowered, so it is an
+        // honest marker — NOT a silent count of only the first operand.
+        String src = """
+            Objecttype de Vlucht
+                het aantal Numeriek (geheel getal);
+            Objecttype de Passagier
+                is jong kenmerk (bijvoeglijk);
+                is oud kenmerk (bijvoeglijk);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Het aantal van een Vlucht moet berekend worden als het aantal passagiers van de reis die een jong zijn en passagiers van de reis die een oud zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "de concatenatie-telling moet parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("/* TODO aggregatie AANTAL"), () -> "multi-operand telling moet een marker zijn:\n" + drl);
+        assertFalse(drl.contains("accumulate("), () -> "multi-operand telling mag niet stil één operand tellen:\n" + drl);
+    }
 }

@@ -445,6 +445,11 @@ public final class DrlTranspiler {
      * here; navigation joins fill it. Returns null for aggregations not yet mappable.
      */
     private String accumulate(Expr.Functie f, Objecttype subject) {
+        // §4.11/§5.8.1 telling over a concatenation of expressies ("het aantal X, Y en Z"): the
+        // count is the UNION of the per-operand sets (a disjunctively-filtered single accumulate),
+        // which is not yet lowered — emit a marker rather than silently counting only the first
+        // operand. (The per-operand "die <predicaat>" filter is itself not yet lowered — carded.)
+        if (f.kind() == Expr.FunctieKind.AANTAL && f.argumenten().size() > 1) return null;
         Objecttype elem = f.elementObjecttype();
         String fn = switch (f.kind()) {
             case SOM, TOTAAL -> "sum";

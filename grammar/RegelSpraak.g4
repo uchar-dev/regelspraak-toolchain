@@ -683,7 +683,7 @@ functieAanroep
     // never an arithmetic one (whereas §5.8.2 lets a sum's operand BE arithmetic). So ONLY aantal
     // takes a higher-precedence primaireExpressie: a trailing 'maal'/'plus' binds OUTSIDE the
     // count. Deliberate divergence from the symmetric EBNF — see docs/grammar-divergences.md.
-    | HET AANTAL_WORD primaireExpressie                                                           # aantalFunc
+    | HET AANTAL_WORD primaireExpressie ( COMMA primaireExpressie )* ( EN primaireExpressie )?    # aantalFunc
     | TOTAAL_VAN expressie conditieBijExpressie? leegwaardeAlternatief?                            # totaalFunc      // §13.4.17.56
     | ( MAXIMALE_WAARDE_VAN | MINIMALE_WAARDE_VAN ) expressie ( COMMA expressie )* ( EN expressie )? dimensieSelectie? # minMaxFunc // §13.4.17.15/.16/.47
     | ( EERSTE_VAN | LAATSTE_VAN ) expressie ( COMMA expressie )* ( EN expressie )?                 # eersteLaatsteFunc // §13.4.17.39/.40/.49

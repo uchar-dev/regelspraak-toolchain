@@ -283,6 +283,19 @@ countability: when "het aantal <phrase>" binds no countable element and the whol
 phrase is a declared parameter, it is read as that parameter (a genuine count always
 binds an element in a well-formed model, so it is never reinterpreted).
 
+The telling also takes a **concatenation of operands** (§4.11 "een concatenatie van
+expressies"; the §5.8.1 "uitzonderingspassagiers" worked example counts "het aantal X, Y
+en Z"): `HET AANTAL_WORD primaireExpressie ( COMMA primaireExpressie )* ( EN
+primaireExpressie )?`. The per-operand operand stays a `primaireExpressie`, so the
+single-operand "het aantal X maal Y" precedence above is unchanged (a trailing `maal` binds
+outside; the comma/`en` list only matches a following primaire). The IR captures every
+operand, but the count's SEMANTICS — the UNION of the per-operand sets — is not yet lowered:
+a multi-operand telling is emitted as a `/* TODO aggregatie AANTAL */` marker rather than
+silently counting only the first operand. The union-count lowering (a disjunctively-filtered
+single accumulate) and the pre-existing gap that a `die <predicaat> zijn` filter on a count
+operand is dropped are carded together (a single filtered count currently counts all
+instances — silently wrong, not introduced here).
+
 ### Aggregation operand separator — `en` splits, it is not a name word
 
 The §13.4.17 concatenation-of-expressies forms — "de eerste/laatste/minimale/maximale
