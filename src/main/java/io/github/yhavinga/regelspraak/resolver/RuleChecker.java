@@ -182,7 +182,7 @@ final class RuleChecker {
         } else if (rd.consistentieRegel() != null) {
             consistentie(versieNaam, rd.consistentieRegel(), geldigheid);
         } else if (rd.feitCreatie() != null) {
-            feitCreatie(naam, rd.feitCreatie(), voorwaarde, geldigheid);
+            feitCreatie(versieNaam, rd.feitCreatie(), voorwaarde, geldigheid);
         } else {
             // §13.4.11/.12 — parsed but not yet lifted into the IR. Surface it as
             // a diagnostic rather than letting the rule silently disappear from the model.
@@ -430,22 +430,41 @@ final class RuleChecker {
         KaleNaamContext rhs = fc.kaleNaam(1);
         String rolC = stripArtikel(src(rhs.kaleNaamDeel(0)));          // RHS role — the existing navigation
         boolean meerHops = rhs.kaleNaamDeel().size() > 1;             // role part itself navigates further -> multi-hop
-        Objecttype terug = bouwer.resolveOnderwerp(fc.onderwerp(1));   // onderwerpD must be the anker (a back-reference)
+        // onderwerpD must DIRECTLY name the anker objecttype (a back-reference to the iterated subject),
+        // not merely resolve to the same type through a role: "de vlucht" lifts, but "de aansluitvlucht"
+        // (a different flight of the same type reached by a role) must WARN, not silently reuse the
+        // anker's own join. A type-identity test cannot tell them apart, so check the written noun.
+        String terugNoun = bouwer.primaireNaamVanOnderwerp(fc.onderwerp(1));
+        boolean directeAnker = anker != null && terugNoun != null
+                && model.objecttypeOpNaam(stripArtikel(terugNoun)) == anker;
 
-        if (anker != null && !meerHops && terug == anker) {
+        String reden;
+        if (anker == null) reden = "anker-objecttype niet herleidbaar";
+        else if (meerHops) reden = "meerstaps-navigatie in de doelketen";
+        else if (!directeAnker) reden = "doelketen verwijst niet rechtstreeks naar de anker (geen back-reference)";
+        else {
             Objecttype doel = model.rolDoeltypeNaarSubject(anker, rolC);
             String joinVeld = model.verbindendeRolViaElementnaam(anker, rolC); // existing rolC relation's field on doel
             String zetVeld  = model.verbindendeRolViaElementnaam(anker, rolB); // the NEW relation's field on doel
-            if (doel != null && joinVeld != null && zetVeld != null && !joinVeld.equalsIgnoreCase(zetVeld)) {
+            if (doel == null || joinVeld == null || zetVeld == null)
+                reden = "rol of feittype niet eenduidig te herleiden";
+            else if (joinVeld.equalsIgnoreCase(zetVeld))
+                reden = "de nieuwe en de bestaande relatie vallen samen (zelfde referentieveld)";
+            // The reference field lives on the MANY side, pointing at the ONE side (§13.3.9.1 cardinaliteit;
+            // the convention objectCreatie links by). So both the join (rolC) and the set (rolB) field exist
+            // on doel only when doel is the MANY side of BOTH relations. If doel is the "één" side, the field
+            // belongs on the anker instead — emit nothing (Drools would reject the setter, or worse link the
+            // wrong way) and WARN. This also covers the under-determined non-wederkerig self-relation.
+            else if (!(model.naarVeelRol(anker, doel, rolC) && model.naarVeelRol(anker, doel, rolB)))
+                reden = "referentieveld hoort aan de meervoudige kant; het doel is hier niet de meervoudige kant";
+            else {
                 model.feitCreaties.add(new io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie(
                         naam, anker, doel, zetVeld, joinVeld, voorwaarde, geldigheid));
                 return;
             }
         }
         model.diagnostics.add(new Diagnostic(Severity.WARNING,
-                "feitcreatie wordt nog niet naar IR/DRL omgezet (regel '" + naam + "'): "
-                + (meerHops ? "meerstaps-navigatie in de doelketen"
-                            : "rol of onderwerp niet eenduidig naar één feittype te herleiden"),
+                "feitcreatie wordt nog niet naar IR/DRL omgezet (regel '" + naam + "'): " + reden,
                 fc.getStart().getLine()));
     }
 

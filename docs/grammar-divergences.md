@@ -550,3 +550,49 @@ Deferred (carded), left as an honest WARNING (no inert eval-true rule): the `gee
 `ten hoogste` / `precies` kwantoren — their violation needs a count of *satisfied* criteria the single
 violation-constraint cannot yet express — and a criterion that is itself not a lowerable comparison or
 emptiness predicate (membership, elfproef, …) leaves the whole compound a WARNING via `transpileerbaar`.
+
+### §9.4 / §13.4.7 feitcreatie — only the 1-hop shape is lowered, as a reference-field set
+
+A feitcreatie ("Een `<rolB>` van een `<anker>` is een `<rolC>` van `<onderwerpD>`") creates an instance
+of the feittype that `<rolB>` names, relating each `<anker>` to the objects that fill `<rolC>` of it
+(§9.4). The fact model represents a relation instance as a **single-valued reference field on the MANY
+side, pointing at the ONE side** (the same convention `objectcreatie` links by, e.g. `Passagier.reis ->
+Vlucht`), so creating a feit is a `modify`-set of that field — not a new fact. The rule binds the anker,
+joins the doel objects already related to it by the existing `<rolC>` relation, and sets the new
+relation's reference field on each:
+
+    $subject : Anker( <anker-voorwaarde> )
+    $doel    : Doel( <joinVeld> == $subject, <doel-voorwaarde> )
+    then modify($doel) { set<ZetVeld>($subject) }
+
+Both `joinVeld` (the existing `<rolC>` relation) and `zetVeld` (the new `<rolB>` relation) resolve through
+the **written role name** (`verbindendeRolViaElementnaam`), which selects the one feittype among several
+over the same object-type pair — a by-pair search cannot. No grammar change was needed: the greedy
+`kaleNaam` splits the RHS at the last "van" (the rule's trailing `VAN onderwerp`), so the role is the
+first segment and the resolver re-splits against the model, as the rest of the §13.4 name handling does.
+
+**Lowered only when ALL of these hold** (otherwise an honest WARNING, never a silently-wrong/uncompilable
+rule):
+- **1-hop**: the role part (`<rolC>`) is a single segment — no further `van`-navigation inside it.
+- **Direct back-reference**: `<onderwerpD>` DIRECTLY names the anker objecttype (`objecttypeOpNaam`), not
+  merely a same-typed object reached by a role. "de vlucht" lifts; "de aansluitvlucht" (a different
+  flight of the same type) WARNs — a type-identity test could not tell them apart and would reuse the
+  anker's own join.
+- **Cardinality**: the doel is the MANY side of BOTH relations (`naarVeelRol(anker, doel, rolC)` and
+  `naarVeelRol(anker, doel, rolB)`). Only then do `joinVeld` and `zetVeld` exist as reference fields ON
+  the doel. When `<rolB>` (or the navigation) is the "één" side the field belongs on the anker, so lifting
+  would emit a setter Drools rejects (sinking the whole package) or link the wrong direction — it WARNs
+  instead. This also covers the under-determined non-wederkerig same-type self-relation (voogd/pupil).
+- distinct fields (`joinVeld != zetVeld`) and a uniquely-resolvable role/feittype.
+
+A multi-version (time-bounded) feitcreatie gets per-version DRL rule names ("… #1", "… #2"), like every
+other resultaatdeel kind. A voorwaarde is hosted where it resolves — a guard on the anker stays on the
+`$subject` pattern, a guard on the doel moves to the `$doel` pattern; if it lowers to neither it is dropped
+with a visible DRL comment, never an always-false `null > x` no-op.
+
+**Deferred (carded), each an honest WARNING:** the MULTI-HOP `<onderwerpD>` navigation — the spec's own
+§9.4 / TOKA example ("… van de reis met treinmiles van het vastgestelde contingent treinmiles", Contingent
+-> Vlucht -> passagiers) needs a two-pattern join one join field cannot express, so no real spec/TOKA
+feitcreatie lowers yet; a `<rolB>`/`<rolC>` whose own name contains "van" (which makes `kaleNaam`
+multi-segment) WARNs as a false multi-hop (acceptable honesty, a coverage gap); and directional self-
+relation lowering.

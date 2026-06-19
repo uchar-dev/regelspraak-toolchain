@@ -750,4 +750,150 @@ class DrlTest {
                         && d.message().contains("feitcreatie") && d.message().contains("meerstaps")),
                 () -> "een meerstaps-feitcreatie moet een eerlijke waarschuwing geven: " + m.diagnostics);
     }
+
+    /** Vlucht/Passagier with the existing "passagier" relation plus a NEW relation whose roles +
+     *  cardinaliteit + rule body are spliced in — the shared scaffold for the feitcreatie edge tests. */
+    private static String feitcreatieBron(String nieuwFeittype, String regelBody) {
+        return """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            """ + nieuwFeittype + """
+            Regel ken bonus toe
+                geldig altijd
+                    """ + regelBody + "\n";
+    }
+
+    @Test void feitcreatie_inverse_cardinaliteit_blijft_een_waarschuwing() {
+        // The reference field lives on the MANY side. When rolB ("hoofdpassagier") is the EEN side, the
+        // new relation's field belongs on the anker, not the doel; lifting it would emit a setter Drools
+        // cannot resolve (or link the wrong way). So it must WARN, never emit a rule.
+        String ft = """
+            Feittype hoofdrelatie
+                de hoofdvlucht Vlucht
+                de hoofdpassagier Passagier
+            Meerdere hoofdvluchten kennen één hoofdpassagier
+            """;
+        String src = feitcreatieBron(ft, "Een hoofdpassagier van een vlucht is een passagier van de vlucht.");
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertFalse(DrlTranspiler.transpile(m).contains("rule \"ken bonus toe\""),
+                () -> "inverse-cardinaliteit feitcreatie mag geen regel emitteren");
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("feitcreatie")
+                        && d.message().contains("meervoudige kant")),
+                () -> "verwachtte een cardinaliteit-waarschuwing: " + m.diagnostics);
+    }
+
+    @Test void feitcreatie_zonder_directe_anker_back_reference_blijft_een_waarschuwing() {
+        // onderwerpD "de aansluitvlucht" resolves to the same TYPE (Vlucht) as the anker but is a
+        // different flight reached by a role. A type-identity test would wrongly reuse the anker's own
+        // join; the back-reference check requires onderwerpD to DIRECTLY name the anker -> WARN here.
+        String ft = """
+            Feittype Vlucht heeft aansluiting
+                de hoofdvlucht Vlucht
+                de aansluitvlucht Vlucht
+            Eén hoofdvlucht heeft één aansluitvlucht
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            """;
+        String src = feitcreatieBron(ft, "Een bonuspassagier van een vlucht is een passagier van de aansluitvlucht.");
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertFalse(DrlTranspiler.transpile(m).contains("rule \"ken bonus toe\""),
+                () -> "een niet-directe back-reference mag geen regel emitteren");
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("feitcreatie")
+                        && d.message().contains("back-reference")),
+                () -> "verwachtte een back-reference-waarschuwing: " + m.diagnostics);
+    }
+
+    @Test void feitcreatie_self_relatie_blijft_een_waarschuwing() {
+        // A non-wederkerig same-type feittype (voogd/pupil, both Persoon): the rule navigates via the
+        // EEN-side role (voogd), so the doel is not the field-holding many side -> WARN, no rule.
+        String src = """
+            Objecttype de Persoon
+                de naam Tekst;
+            Feittype voogdij
+                de voogd Persoon
+                de pupil Persoon
+            Eén voogd heeft meerdere pupillen
+            Regel ken voogd toe
+                geldig altijd
+                    Een pupil van een persoon is een voogd van de persoon.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertFalse(DrlTranspiler.transpile(m).contains("rule \"ken voogd toe\""),
+                () -> "een onder-bepaalde self-relatie mag geen regel emitteren");
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("feitcreatie")),
+                () -> "verwachtte een feitcreatie-waarschuwing: " + m.diagnostics);
+    }
+
+    @Test void feitcreatie_meerdere_versies_krijgen_unieke_regelnamen() {
+        // A time-bounded feitcreatie with two versions must get distinct DRL rule names (like every other
+        // resultaatdeel kind), else Drools rejects the package with "Duplicate rule name".
+        String ft = """
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            """;
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            """ + ft + """
+            Regel ken bonus toe
+                geldig vanaf 2020 t/m 2020
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht.
+                geldig vanaf 2021
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rule \"ken bonus toe #1\"") && drl.contains("rule \"ken bonus toe #2\""),
+                () -> "versies van een feitcreatie krijgen geen unieke namen:\n" + drl);
+        assertFalse(drl.contains("rule \"ken bonus toe\"\n"), () -> "de kale dubbele naam mag niet voorkomen:\n" + drl);
+    }
+
+    @Test void feitcreatie_doel_voorwaarde_komt_op_het_doel_patroon() {
+        // A guard on the doel (the passengers) must host on the $doel pattern, not become a null marker
+        // on the anker (which would make the rule silently never fire).
+        String ft = """
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            """;
+        String src = feitcreatieBron(ft,
+                "Een bonuspassagier van een vlucht is een passagier van de vlucht\n"
+                + "                    indien de prijs van de passagier groter is dan 18.");
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("$doel : Passagier( reis == $subject, prijs > new java.math.BigDecimal(\"18\") )"),
+                () -> "de doel-voorwaarde moet op het $doel-patroon staan:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "de doel-voorwaarde mag geen null-marker op de anker worden:\n" + drl);
+    }
+
+    @Test void feitcreatie_anker_voorwaarde_blijft_op_het_subject() {
+        // A guard on the anker (Vlucht) stays on the $subject pattern.
+        String ft = """
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            """;
+        String src = feitcreatieBron(ft,
+                "Een bonuspassagier van een vlucht is een passagier van de vlucht\n"
+                + "                    indien de naam van de vlucht gelijk is aan \"KL123\".");
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("$subject : Vlucht( naam == \"KL123\" )"),
+                () -> "de anker-voorwaarde moet op het $subject-patroon staan:\n" + drl);
+    }
 }

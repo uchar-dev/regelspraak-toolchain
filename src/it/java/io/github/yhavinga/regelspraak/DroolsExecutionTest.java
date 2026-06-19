@@ -2199,4 +2199,41 @@ class DroolsExecutionTest {
         assertSame(v2, p3.getBonusvlucht(), () -> "passagier van v2 moet aan v2 gekoppeld zijn");
         assertNull(zonder.getBonusvlucht(), () -> "een passagier zonder vlucht krijgt geen relatie");
     }
+
+    @Test void feitcreatie_met_doel_voorwaarde_koppelt_alleen_de_passende_passagiers() {
+        // A feitcreatie guard on the doel ("indien de prijs van de passagier groter is dan 18") selects
+        // WHICH passengers get the relation; it must host on the $doel pattern and actually fire.
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht
+                    indien de prijs van de passagier groter is dan 18.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v = new Vlucht();
+        Passagier rijk = new Passagier(); rijk.setReis(v); rijk.setPrijs(new BigDecimal("99"));  // > 18 -> gekoppeld
+        Passagier arm = new Passagier(); arm.setReis(v); arm.setPrijs(new BigDecimal("5"));      // <= 18 -> niet
+        sessie.insert(v); sessie.insert(rijk); sessie.insert(arm);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertSame(v, rijk.getBonusvlucht(), () -> "een passagier die aan de voorwaarde voldoet moet gekoppeld zijn");
+        assertNull(arm.getBonusvlucht(), () -> "een passagier die niet voldoet mag niet gekoppeld zijn");
+    }
 }

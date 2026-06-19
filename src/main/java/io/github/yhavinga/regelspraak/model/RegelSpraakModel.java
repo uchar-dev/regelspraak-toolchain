@@ -69,7 +69,11 @@ public final class RegelSpraakModel {
         return null;
     }
 
-    private Objecttype objecttypeOpNaam(String naam) {
+    /** The object type DIRECTLY named {@code naam} (case-insensitively), or null — a name match
+     *  only, never a feittype role. Distinct from {@link #resolveObjecttype}, which also reaches a
+     *  type through a role; a feitcreatie back-reference needs the strict form to tell "de vlucht"
+     *  (the iterated anker itself) from "de aansluitvlucht" (a different flight of the same type). */
+    public Objecttype objecttypeOpNaam(String naam) {
         Objecttype exact = objecttypen.get(naam);
         if (exact != null) return exact;
         for (var e : objecttypen.entrySet())

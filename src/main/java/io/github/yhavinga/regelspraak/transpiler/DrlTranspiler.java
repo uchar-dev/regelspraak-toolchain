@@ -359,13 +359,34 @@ public final class DrlTranspiler {
         accumulates = new ArrayList<>();
         accCount = 0;
         Objecttype anker = fc.anker(), doel = fc.doel();
-        String ankerC = fc.voorwaarde() != null ? conditie(fc.voorwaarde(), anker) : "";
+        // The voorwaarde selects which objects get the relation: a guard on the anker (Vlucht) stays on
+        // the anker pattern; a guard on the doel (the passengers) must host on the $doel pattern, not
+        // become a /* TODO */ null-marker on the anker (which would silently make the rule never fire).
+        String ankerC = "", doelExtra = "", commentaar = "";
+        if (fc.voorwaarde() != null) {
+            String opAnker = conditie(fc.voorwaarde(), anker);
+            if (!bevatMarker(opAnker)) {
+                ankerC = opAnker;
+            } else {
+                accumulates = new ArrayList<>(); accCount = 0;   // discard the failed anker attempt
+                String opDoel = conditie(fc.voorwaarde(), doel);
+                if (!bevatMarker(opDoel)) {
+                    doelExtra = opDoel;
+                } else {
+                    accumulates = new ArrayList<>(); accCount = 0;
+                    commentaar = "    // voorwaarde niet naar de anker of het doel te lowereren (overgeslagen)\n";
+                }
+            }
+        }
         out.append("rule \"").append(escapeRegelNaam(fc.naam())).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
+        out.append(commentaar);
         out.append("    ").append(SUBJECT).append(" : ").append(ident(anker.naam, true)).append("( ").append(ankerC).append(" )\n");
         for (String acc : accumulates) out.append("    ").append(acc).append('\n');
         if (tijdgebondenGeldigheid(fc.geldigheid())) out.append("    ").append(geldigheidGuard(fc.geldigheid())).append('\n');
         out.append("    $doel : ").append(ident(doel.naam, true)).append("( ")
-           .append(ident(fc.joinVeld(), false)).append(" == ").append(SUBJECT).append(" )\n");
+           .append(ident(fc.joinVeld(), false)).append(" == ").append(SUBJECT);
+        if (!doelExtra.isEmpty()) out.append(", ").append(doelExtra);
+        out.append(" )\n");
         out.append("then\n    modify($doel) {\n        ")
            .append(setter(fc.zetVeld())).append("( ").append(SUBJECT).append(" )\n    }\nend\n\n");
     }

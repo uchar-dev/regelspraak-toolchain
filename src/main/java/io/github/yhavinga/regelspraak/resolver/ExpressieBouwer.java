@@ -563,6 +563,10 @@ final class ExpressieBouwer {
         return null; // universeelOnderwerp ("een <X>" = subject) / selector-van: not a single role navigation
     }
 
+    /** The primary (head) noun of a subject — used by the resolver's §13.4.7 feitcreatie
+     *  back-reference check to see whether onderwerpD directly names the anker objecttype. */
+    String primaireNaamVanOnderwerp(OnderwerpContext o) { return primaireNaam(o); }
+
     /** The subject's primary noun — the entity an attribute attaches to. */
     private String primaireNaam(OnderwerpContext o) {
         if (o == null) return null;
