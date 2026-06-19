@@ -267,6 +267,32 @@ read, an integer-valued rational exponent (`4/2`) reduces to an exact `pow(2)`, 
 (`3/2`) or non-terminating quotient falls through to the `Math.pow` path as before. No corpus example
 uses a rational literal, so corpus coverage is unchanged; proven by firing in Drools.
 
+Three points the adversarial review surfaced, all addressed or deliberately bounded:
+
+- **Denominator is `POSITIVE_DIGIT` (lexer tightened).** §13.2.5 gives the denominator as
+  `POSITIVE_DIGIT+` (`[1-9] DIGIT*`), but the `NUMBER` token had written it `'/' DIGIT+`, admitting
+  `1/0`. That lowered to a `BigDecimal` divide-by-zero that throws at *fire* time. The token now uses
+  `'/' [1-9] DIGIT*`, so `1/0` is not a number: the lexer splits it into `NUMBER SLASH NUMBER` and the
+  parser rejects the stray `/` (an honest parse error, not a runtime crash). Valid fractions such as
+  the `1/1000` omrekenfactor are unaffected.
+- **Mixed-form sign from the text, not the value.** The mixed `a_b/c` sign is read from a leading `-`
+  in the literal, because `BigDecimal("-0")` has `signum() == 0` — so `-0_1/2` (= −0.5) would otherwise
+  lose its minus and lower to +0.5.
+- **Non-terminating rationals are approximated at `DECIMAL64`, not kept exact.** The typeringen
+  precision clauses (gedeeld door §389, percentage van §486) describe a rationeelgetal as an *exact*
+  fraction, decimal notation used only when it terminates. The engine, however, is `BigDecimal`
+  throughout — `gedeeld door` itself already divides under `DECIMAL64` — so a non-terminating literal
+  like `1/3` is approximated to 16 digits (`9 maal 1/3` fires 2.9999999999999997, not an exact 3).
+  This is the engine-wide decimal-vs-exact-fraction limitation, not specific to literals; carried as a
+  backlog item rather than fixed here, since exact-rational arithmetic would have to be threaded
+  through every operator.
+
+A note on the mixed form's spelling: the EBNF (syntaxdiagrammen §13.2.5, and the spec-for-ANTLR
+`NUMBER` token) writes the mixed number with an underscore (`a_b/c`), and the parser follows it.
+The spec's *rendered* values in prose and tables show a space instead (`2 1/11`, `1 319/365 €/mnd`) —
+a display convention (a space-separated `2 1/11` would lex as two separate numbers), so those table
+values are not single-literal input. The underscore form is the one the grammar admits.
+
 ### Telling (aantal) operand precedence — fixed, with a deliberate EBNF asymmetry
 
 The §13.4.17.46 EBNF and syntax diagram give all four `getalaggregatie` functions the

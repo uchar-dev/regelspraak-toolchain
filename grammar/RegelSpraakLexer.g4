@@ -186,8 +186,10 @@ DATE
 
 NUMBER
     : '-'? DIGIT+ ( ',' DIGIT+                        // §13.2.4 decimaalgetal
-                  | ( '_' DIGIT+ )? '/' DIGIT+ )?     // §13.2.5 rationeelgetal
-    ; // bare form = §13.2.3 geheelgetal
+                  | ( '_' DIGIT+ )? '/' [1-9] DIGIT* )? // §13.2.5 rationeelgetal: denominator is
+    ; // bare form = §13.2.3 geheelgetal       // POSITIVE_DIGIT, so "1/0" is not a number (it
+      // splits into NUMBER SLASH NUMBER and the parser rejects it) rather than lowering to a
+      // fire-time divide-by-zero.
 
 STRING_LITERAL : '"' ~["\r\n]* '"' ;                       // §13.2.15 tekstwaarde
 ENUM_LITERAL   : '\'' ~['\r\n]* '\'' | '’' ~[‘\r\n]* '‘' ; // §13.2.14 (straight ' or typographic)

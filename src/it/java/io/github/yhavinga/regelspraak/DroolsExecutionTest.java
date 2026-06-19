@@ -1402,18 +1402,21 @@ class DroolsExecutionTest {
 
     // ---------------- p21: §13.2.5 rational literals (a/c, mixed a_b/c) ----------------
     // The lowering used to read only a rational's leading integer ("4/2" -> 4), so every
-    // arithmetic position with a rational was silently wrong. These fire the real engine.
+    // arithmetic position with a rational was silently wrong. These fire the real engine. The
+    // netto type is a parameter so a fractional result lands in a decimal attribute (a fractional
+    // value into a geheel-getal attribute would be a §6.1.2 precision violation — carded, not yet
+    // enforced — and we do not want to bake a spec-invalid model into the regression suite).
 
     /** Fire one 'De netto van een Heffing moet <berekening>.' rule over a single Heffing. */
-    private BigDecimal heffingNetto(String berekening, BigDecimal basis) {
+    private BigDecimal heffingNetto(String nettoType, String berekening, BigDecimal basis) {
         String src = """
             Objecttype de Heffing
                 de basis Numeriek (geheel getal);
-                de netto Numeriek (geheel getal);
+                de netto Numeriek (%s);
             Regel r
                 geldig altijd
                     De netto van een Heffing moet %s.
-            """.formatted(berekening);
+            """.formatted(nettoType, berekening);
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         KieSession sessie = build(DrlTranspiler.transpile(m)).newKieSession();
@@ -1426,37 +1429,63 @@ class DroolsExecutionTest {
 
     @Test void rationeel_literal_dat_exact_deelt_is_zijn_quotient_niet_zijn_kop() {
         // "maal 4/2" is *2, not the *4 the leading-integer reader produced. 3 * 4/2 = 6 (not 12).
-        assertEquals(0, new BigDecimal("6").compareTo(
-                heffingNetto("berekend worden als de basis van een Heffing maal 4/2", new BigDecimal("3"))),
+        assertEquals(0, new BigDecimal("6").compareTo(heffingNetto("geheel getal",
+                "berekend worden als de basis van een Heffing maal 4/2", new BigDecimal("3"))),
                 "4/2 moet als 2 lager komen, niet als 4");
     }
 
     @Test void rationeel_literal_dat_een_echte_breuk_is_blijft_fractioneel() {
         // "maal 3/2" is *1.5. 5 * 3/2 = 7,5 — the half survives (a *3 mis-read would give 15).
-        assertEquals(0, new BigDecimal("7.5").compareTo(
-                heffingNetto("berekend worden als de basis van een Heffing maal 3/2", new BigDecimal("5"))),
+        assertEquals(0, new BigDecimal("7.5").compareTo(heffingNetto("getal met 2 decimalen",
+                "berekend worden als de basis van een Heffing maal 3/2", new BigDecimal("5"))),
                 "3/2 moet als 1,5 lager komen");
     }
 
     @Test void gemengd_rationeel_literal_telt_heel_en_breuk_op() {
         // The mixed form "1_1/2" = 1 + 1/2 = 1,5. 4 * 1_1/2 = 6.
-        assertEquals(0, new BigDecimal("6").compareTo(
-                heffingNetto("berekend worden als de basis van een Heffing maal 1_1/2", new BigDecimal("4"))),
+        assertEquals(0, new BigDecimal("6").compareTo(heffingNetto("geheel getal",
+                "berekend worden als de basis van een Heffing maal 1_1/2", new BigDecimal("4"))),
                 "1_1/2 moet als 1,5 lager komen");
+    }
+
+    @Test void negatief_gemengd_rationeel_met_nul_heel_behoudt_zijn_teken() {
+        // "-0_1/2" = -(0 + 1/2) = -0,5. The sign must come from the leading '-', not the whole
+        // part: BigDecimal("-0").signum() is 0, so reading the sign from it dropped the minus.
+        // basis 1 maal -0_1/2 = -0,5.
+        assertEquals(0, new BigDecimal("-0.5").compareTo(heffingNetto("getal met 2 decimalen",
+                "berekend worden als de basis van een Heffing maal -0_1/2", new BigDecimal("1"))),
+                "-0_1/2 moet -0,5 zijn, niet +0,5");
     }
 
     @Test void rationeel_exponent_dat_tot_een_geheel_getal_reduceert_is_een_exacte_macht() {
         // "tot de macht 4/2" is ^2, not ^4. 3^2 = 9 (a pow(4) mis-read would give 81).
-        assertEquals(0, new BigDecimal("9").compareTo(heffingNetto(
+        assertEquals(0, new BigDecimal("9").compareTo(heffingNetto("geheel getal",
                 "gesteld worden op de basis van een Heffing tot de macht 4/2 naar beneden afgerond op 0 decimalen",
                 new BigDecimal("3"))), "4/2 als exponent moet 2 zijn, niet 4");
     }
 
     @Test void niet_eindigend_rationeel_literal_vuurt_via_decimal64_zonder_te_gooien() {
         // "maal 1/3" cannot lower to an exact BigDecimal — it must divide under DECIMAL64 rather
-        // than throw a non-terminating ArithmeticException at runtime. 9 * 1/3 ~= 3.
-        BigDecimal netto = heffingNetto("berekend worden als de basis van een Heffing maal 1/3", new BigDecimal("9"));
+        // than throw a non-terminating ArithmeticException at runtime. 9 * 1/3 ~= 3 (the residual
+        // imprecision is the engine-wide decimal-vs-exact-fraction limitation, carded).
+        BigDecimal netto = heffingNetto("getal met 2 decimalen",
+                "berekend worden als de basis van een Heffing maal 1/3", new BigDecimal("9"));
         assertTrue(netto.subtract(new BigDecimal("3")).abs().compareTo(new BigDecimal("0.0001")) < 0,
                 () -> "9 maal 1/3 ~= 3, kreeg " + netto);
+    }
+
+    @Test void rationeel_literal_met_nul_noemer_wordt_bij_het_parsen_afgewezen() {
+        // §13.2.5: the denominator is POSITIVE_DIGIT, so "1/0" is not a number — the lexer splits
+        // it into NUMBER SLASH NUMBER and the parser rejects the stray '/'. It must NOT lower to a
+        // BigDecimal divide-by-zero that throws at fire time (the regression this guards).
+        String src = """
+            Objecttype de Heffing
+                de netto Numeriek (geheel getal);
+            Regel r
+                geldig altijd
+                    De netto van een Heffing moet gesteld worden op 1/0.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertFalse(m.errors().isEmpty(), "1/0 moet een syntaxfout geven, niet stil naar 1 herstellen");
     }
 }

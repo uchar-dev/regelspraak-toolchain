@@ -628,7 +628,9 @@ public final class DrlTranspiler {
         if (m.group(3) == null) // a/c
             return new java.math.BigDecimal[]{ heel, noemer };
         java.math.BigDecimal teller = heel.abs().multiply(noemer).add(new java.math.BigDecimal(m.group(3)));
-        return new java.math.BigDecimal[]{ heel.signum() < 0 ? teller.negate() : teller, noemer }; // a_b/c
+        // The sign comes from the leading '-' in the text, not heel.signum(): for "-0_1/2" the whole
+        // part is BigDecimal("-0"), whose signum() is 0, so signum() would drop the minus (-0.5 -> +0.5).
+        return new java.math.BigDecimal[]{ m.group(1).startsWith("-") ? teller.negate() : teller, noemer }; // a_b/c
     }
 
     private static String literal(Expr.Literal lit) {
