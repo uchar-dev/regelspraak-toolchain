@@ -259,8 +259,13 @@ final class ExpressieBouwer {
      *  {@link Conditie.Kenmerk}; null when the predicaat is not such a kenmerk of the element (a
      *  comparison, an objecttype/role membership, an unknown name — all left to the marker path). */
     private Conditie elementKenmerkFilter(PredicaatContext p, Objecttype elem) {
-        if (elem == null || p.nonToplevelOperator() == null || p.nonToplevelOperator().kaleNaam() == null) return null;
-        String naam = src(p.nonToplevelOperator().kaleNaam());
+        NonToplevelOperatorContext op = p.nonToplevelOperator();
+        if (elem == null || op == null || op.kaleNaam() == null) return null;
+        // §5.14: a kenmerk membership is "is/zijn (een) <kenmerk>". A "heeft/hebben een <X>" predicaat
+        // is a possession/role query ("die een kind hebben" = that HAVE a child), a different predicate
+        // class — not the element's boolean kenmerk; leave it to the marker path.
+        if (op.IS() == null && op.ZIJN() == null) return null;
+        String naam = src(op.kaleNaam());
         return elem.kenmerken.stream().filter(k -> k.equalsIgnoreCase(naam)).findFirst()
                 .<Conditie>map(k -> new Conditie.Kenmerk(k, src(p))).orElse(null);
     }

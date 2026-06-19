@@ -1767,4 +1767,26 @@ class DroolsExecutionTest {
         assertEquals(0, new BigDecimal("2").compareTo(v.getTotaalprijs()),
                 () -> "alleen de kinderen tellen mee (2), kreeg " + v.getTotaalprijs());
     }
+
+    @Test void die_heeft_possessie_telt_niet_als_kenmerk_filter() {
+        // p24b review (LOW): "die heeft een kind" is a possession/role query (§5.14: a kenmerk is
+        // "is/zijn", not "heeft een"), NOT the element's boolean kenmerk. It must NOT lower to the
+        // same "kind == true" constraint as "die een kind zijn" — it stays an honest marker.
+        String src = """
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                is kind kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel tel
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis die heeft een kind.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertFalse(drl.contains("kind == true"),
+                () -> "'die heeft een kind' (possessie) mag niet als kenmerk-constraint lager komen:\n" + drl);
+    }
 }
