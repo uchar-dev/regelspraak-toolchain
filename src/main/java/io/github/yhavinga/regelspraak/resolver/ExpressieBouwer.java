@@ -307,7 +307,7 @@ final class ExpressieBouwer {
         // is a possession/role query ("die een kind hebben" = that HAVE a child), a different predicate
         // class — not the element's boolean kenmerk; leave it to the marker path.
         if (op.IS() == null && op.ZIJN() == null) return null;
-        // §13.4.2: the written form may be the kenmerk's inflected/nominalized spelling
+        // §5.6: the written form may be the kenmerk's inflected/nominalized spelling
         // ("die een minderjarige zijn" against the declared "minderjarig") — bind it morphologically.
         String kenmerk = KenmerkMatcher.vind(elem, src(op.kaleNaam()));
         return kenmerk != null ? new Conditie.Kenmerk(kenmerk, src(p)) : null;

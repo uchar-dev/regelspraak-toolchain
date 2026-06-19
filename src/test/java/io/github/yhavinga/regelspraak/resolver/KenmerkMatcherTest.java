@@ -3,6 +3,8 @@ package io.github.yhavinga.regelspraak.resolver;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -46,5 +48,28 @@ class KenmerkMatcherTest {
         // unstressed endings; such a written form stays unmatched (a marker), never a wrong bind.
         assertNull(KenmerkMatcher.vind(met("wit"), "witte"));
         assertNull(KenmerkMatcher.vind(met("vies"), "vieze"));
+    }
+
+    @Test void digraaf_stam_overgenereert_de_basisvorm_niet() {
+        // A long-vowel-digraph stem inflects ONLY to its shortened form; the bare base+"e" is a
+        // non-word and must not be generated (else a misspelled "hooge" would bind, and it would
+        // collide with a short-vowel sibling — see ambigue_verbuiging_bindt_niets).
+        assertEquals(List.of("hoge"), KenmerkMatcher.verbogenVormen("hoog"));
+        assertEquals(List.of("grote"), KenmerkMatcher.verbogenVormen("groot"));
+        assertEquals(List.of("duurzame"), KenmerkMatcher.verbogenVormen("duurzaam"));
+        assertEquals("hoog", KenmerkMatcher.vind(met("hoog"), "hoge"));   // canonical -e binds
+        assertNull(KenmerkMatcher.vind(met("hoog"), "hooge"));            // non-word does not
+    }
+
+    @Test void ambigue_verbuiging_bindt_niets() {
+        // "grote" is the regular inflection of BOTH "groot" (shortened) and "grot" (plain +e, since
+        // its doubled "grotte" is unmodelled). Binding either would make the result depend on
+        // declaration order — a silent wrong count — so an ambiguous inflection binds NONE.
+        assertNull(KenmerkMatcher.vind(met("groot", "grot"), "grote"));
+        assertNull(KenmerkMatcher.vind(met("grot", "groot"), "grote"));  // order-independent
+        assertNull(KenmerkMatcher.vind(met("laat", "lat"), "late"));
+        // each alone is unambiguous and still binds
+        assertEquals("groot", KenmerkMatcher.vind(met("groot"), "grote"));
+        assertEquals("laat", KenmerkMatcher.vind(met("laat"), "late"));
     }
 }

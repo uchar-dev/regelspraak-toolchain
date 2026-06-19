@@ -1571,6 +1571,41 @@ class DroolsExecutionTest {
                 () -> "de onbekende die-filter telde stil ALLE passagiers: " + res);
     }
 
+    @Test void verbuiging_die_bij_meerdere_kenmerken_matcht_is_orde_onafhankelijk_een_marker() {
+        // p29(1) review (HIGH, fixed): "grote" is the regular inflection of BOTH "groot" (shortened)
+        // and "grot" (plain +e). Binding either would make the count depend on which kenmerk was
+        // declared first — a silent, order-dependent wrong total. The ambiguous inflection must bind
+        // NONE: identical DRL (a marker, no count) regardless of declaration order, fired as a no-op.
+        java.util.function.Function<String, String> drlVoor = volgorde -> DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+            %s
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel tel
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis die een grote zijn.
+            """.formatted(volgorde)));
+        String grootEerst = drlVoor.apply("    is groot kenmerk (bijvoeglijk);\n    is grot kenmerk (bijvoeglijk);");
+        String grotEerst = drlVoor.apply("    is grot kenmerk (bijvoeglijk);\n    is groot kenmerk (bijvoeglijk);");
+        for (String drl : new String[]{grootEerst, grotEerst}) {
+            assertTrue(drl.contains("/* TODO aggregatie AANTAL"), () -> "ambigue verbuiging moet een marker zijn:\n" + drl);
+            assertFalse(drl.contains("count("), () -> "ambigue verbuiging mag niet als telling lager komen:\n" + drl);
+            KieSession sessie = build(drl).newKieSession();
+            Vlucht v = new Vlucht(); v.setTotaalprijs(new BigDecimal("999"));
+            Passagier a = new Passagier(); a.setReis(v);
+            Passagier b = new Passagier(); b.setReis(v);
+            sessie.insert(v); sessie.insert(a); sessie.insert(b);
+            sessie.fireAllRules();
+            sessie.dispose();
+            assertTrue(v.getTotaalprijs() == null || new BigDecimal("2").compareTo(v.getTotaalprijs()) != 0,
+                    () -> "ambigue verbuiging telde stil: " + v.getTotaalprijs());
+        }
+    }
+
     @Test void die_op_een_min_max_operand_is_geen_telling_filter_en_breekt_de_fold_niet() {
         // p20b review (HIGH regression, fixed): die-detection is scoped to a SINGLE-operand telling.
         // A die on a min/max value-fold operand ("… en de leeftijd van de eerste passagier die …")

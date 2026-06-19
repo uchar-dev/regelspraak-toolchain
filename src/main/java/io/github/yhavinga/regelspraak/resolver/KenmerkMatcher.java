@@ -9,23 +9,25 @@ import java.util.List;
  *  declared kenmerk of an object type.
  *
  *  <p>A bijvoeglijk kenmerk is declared in its base/predicative form ("is <b>minderjarig</b>
- *  kenmerk"), but a subselectie naturally writes it nominalized — the spec's own canonical §13.4.2
- *  example reads "het aantal passagiers van de reis die een <b>minderjarige</b> zijn" against that
- *  declared "minderjarig", and §5.7 does the same. Plain case-insensitive equality misses the "-e"
- *  inflection, so the spec's primary subselectie example would silently stay a marker.
+ *  kenmerk", §3.5), but a subselectie writes it nominalized — the spec's own canonical §5.6 example
+ *  reads "het aantal passagiers van de reis die een <b>minderjarige</b> zijn" against that declared
+ *  "minderjarig", and §5.7 does the same. Plain case-insensitive equality misses the "-e" inflection,
+ *  so the spec's primary subselectie example would silently stay a marker.
  *
  *  <p>Matching tries exact (case-insensitive) against the base form first — always preferred over an
- *  inflected hit, so a kenmerk that happens to be the inflection of another still binds itself —
- *  then the regular Dutch adjectival "-e" inflection of the base ({@link #verbogenVormen}).
+ *  inflected hit, so a kenmerk that happens to be the inflection of another still binds itself — then
+ *  the regular Dutch adjectival "-e" inflection of the base ({@link #verbogenVormen}). The inflection
+ *  pass is <b>ambiguity-safe</b>: if the written form is the regular inflection of more than one
+ *  declared kenmerk it binds NONE (an honest marker), so the result never depends on declaration
+ *  order. This matters because a long-vowel base and a short-vowel base can share an inflected form
+ *  ("groot"→"grote" and the (unmodelled-doubling) "grot"→"grote").
  *
- *  <p>Only the REGULAR inflection is generated: the plain "-e" suffix and the long-vowel-digraph
- *  shortening that opens the final syllable (duurzaam→duurzame, groot→grote). Stress-dependent
- *  consonant doubling (wit→witte) and consonant voicing (vies→vieze) are deliberately NOT modelled —
- *  they would mis-transform unstressed endings (-ig, -el), and a kenmerk whose written inflection
- *  needs them simply stays a marker: an honest no-op, never a wrong match. Candidates are generated
- *  from the controlled declared base and tested against the written form (never base against base),
- *  so an over-generated non-word candidate (e.g. "duurzaame" from the plain-suffix rule) cannot
- *  collide with a real name.
+ *  <p>Only the REGULAR inflection is generated: the plain "-e" suffix (minderjarig→minderjarige,
+ *  groen→groene) OR, for a base ending in a long-vowel digraph plus one consonant, the
+ *  syllable-opening shortening alone (groot→grote, duurzaam→duurzame) — never the bare "groote", which
+ *  is not a word. Stress-dependent consonant doubling (wit→witte) and voicing (vies→vieze) are
+ *  deliberately NOT modelled: they would mis-transform unstressed endings (-ig, -el), so a kenmerk
+ *  whose written inflection needs them stays a marker — an honest no-op, never a wrong match.
  *
  *  <p>The plural meervoudsvorm a bijvoeglijk kenmerk may declare ("(mv: …)", §13.2.29) is NOT matched
  *  here: the grammar's predicaat has no bare-plural-noun alternative ("die minderjarigen zijn" does
@@ -35,33 +37,44 @@ final class KenmerkMatcher {
     private KenmerkMatcher() {}
 
     /** The declared kenmerk of {@code ot} that the written predicaat name {@code geschreven} denotes,
-     *  or null when none does (an unknown name, an attribute, a role) — left to the marker path. */
+     *  or null when none does (an unknown name, an attribute, a role, or an ambiguous inflection) —
+     *  left to the marker path. */
     static String vind(Objecttype ot, String geschreven) {
         if (ot == null || geschreven == null) return null;
-        for (String k : ot.kenmerken)                         // base form — preferred
+        for (String k : ot.kenmerken)                         // base form — always preferred
             if (k.equalsIgnoreCase(geschreven)) return k;
-        for (String k : ot.kenmerken)                         // regular "-e" inflection
+        String enige = null;                                  // the single kenmerk this form inflects from
+        for (String k : ot.kenmerken)
             for (String vorm : verbogenVormen(k))
-                if (vorm.equalsIgnoreCase(geschreven)) return k;
-        return null;
+                if (vorm.equalsIgnoreCase(geschreven)) {
+                    if (enige != null && !enige.equalsIgnoreCase(k)) return null;  // ambiguous → marker
+                    enige = k;
+                }
+        return enige;
     }
 
-    /** The regular attributive/nominalized "-e" form(s) of a bijvoeglijk-naamwoord base. */
+    /** The regular attributive/nominalized "-e" form of a bijvoeglijk-naamwoord base. Exactly one
+     *  candidate: the syllable-opening shortened form for a long-vowel-digraph-plus-one-consonant
+     *  stem, otherwise the plain "-e" suffix. */
     static List<String> verbogenVormen(String basis) {
         List<String> uit = new ArrayList<>();
         String b = basis.toLowerCase();
         if (b.isEmpty() || b.endsWith("e")) return uit;       // an -e base is already its inflected form
-        uit.add(b + "e");                                     // klein→kleine, groen→groene, minderjarig→minderjarige
-        // A long-vowel digraph in the final closed syllable shortens when "-e" opens the syllable:
-        // …aa|ee|oo|uu + one consonant → single vowel + that consonant + e (groot→grote, duurzaam→duurzame).
+        // A long-vowel digraph (aa|ee|oo|uu) in the final closed syllable shortens when "-e" opens the
+        // syllable: …VV + one consonant → single V + that consonant + e (groot→grote, duurzaam→duurzame).
+        // The bare base+"e" (a non-word, "groote") is NOT also emitted — it would over-generate and
+        // collide with a short-vowel sibling's regular inflection.
         int n = b.length();
         if (n >= 3) {
             char last = b.charAt(n - 1);
             char v1 = b.charAt(n - 3), v2 = b.charAt(n - 2);
             boolean digraf = v1 == v2 && (v1 == 'a' || v1 == 'e' || v1 == 'o' || v1 == 'u');
-            if (digraf && isMedeklinker(last))
+            if (digraf && isMedeklinker(last)) {
                 uit.add(b.substring(0, n - 3) + v1 + last + "e");
+                return uit;
+            }
         }
+        uit.add(b + "e");                                     // klein→kleine, groen→groene, minderjarig→minderjarige
         return uit;
     }
 
