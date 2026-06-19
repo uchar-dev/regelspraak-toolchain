@@ -111,6 +111,11 @@ public final class DrlTranspiler {
         String type = ident(u.subject().naam, true);
         StringBuilder binders = new StringBuilder();   // op de subject: "$k0 : p != null, …"
         StringBuilder matchers = new StringBuilder();  // in de accumulate: "p == $k0, …"
+        if (u.scopeVeld() != null) {                   // parent-scoped: count only within the subject's scope
+            String sv = ident(u.scopeVeld(), false);
+            binders.append("$scope : ").append(sv).append(" != null, ");
+            matchers.append(sv).append(" == $scope, ");
+        }
         for (int i = 0; i < u.sleutels().size(); i++) {
             String prop = ident(u.sleutels().get(i), false);
             binders.append("$k").append(i).append(" : ").append(prop).append(" != null");

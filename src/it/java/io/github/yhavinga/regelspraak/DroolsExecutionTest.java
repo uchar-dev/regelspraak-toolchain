@@ -1275,6 +1275,47 @@ class DroolsExecutionTest {
                 "de unieke namen mogen niet gemarkeerd zijn");
     }
 
+    @Test void uniciteit_scoped_telt_alleen_binnen_dezelfde_ouder() {
+        // §8.1.6 parent-scoped: "de stoelnummers van alle passagiers van de reis moeten uniek zijn" —
+        // a stoelnummer must be unique PER reis, not globally. Two passagiers of the SAME reis sharing
+        // a stoelnummer are flagged; the same stoelnummer on a DIFFERENT reis is fine (different scope).
+        // The accumulate is restricted to the subject's reis. Fired.
+        String src = """
+            Objecttype de Vlucht
+            Objecttype de Passagier
+                het stoelnummer Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel stoel uniek
+                geldig altijd
+                    De stoelnummers van alle passagiers van de reis moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("reis == $scope, stoelnummer == $k0"),
+                () -> "de telling moet binnen dezelfde reis (scope) blijven:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v1 = new Vlucht(); Vlucht v2 = new Vlucht();
+        Passagier a = new Passagier(); a.setReis(v1); a.setStoelnummer(new BigDecimal("1"));
+        Passagier b = new Passagier(); b.setReis(v1); b.setStoelnummer(new BigDecimal("1")); // == a, zelfde reis
+        Passagier c = new Passagier(); c.setReis(v1); c.setStoelnummer(new BigDecimal("2")); // uniek in v1
+        Passagier d = new Passagier(); d.setReis(v2); d.setStoelnummer(new BigDecimal("1")); // stoel 1, ANDERE reis
+        for (Object o : new Object[]{v1, v2, a, b, c, d}) sessie.insert(o);
+        sessie.fireAllRules();
+        var fout = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> (Inconsistentie) o).toList();
+        sessie.dispose();
+        assertEquals(2, fout.size(), () -> "alleen de twee met dezelfde reis EN stoel: " + fout);
+        assertTrue(fout.stream().anyMatch(f -> f.getSubject() == a) && fout.stream().anyMatch(f -> f.getSubject() == b),
+                "beide passagiers met reis v1 + stoel 1 zijn gemarkeerd");
+        assertTrue(fout.stream().noneMatch(f -> f.getSubject() == c || f.getSubject() == d),
+                "uniek-in-scope (c) en dezelfde stoel op een andere reis (d) zijn niet gemarkeerd");
+    }
+
     @Test void consistentieregel_ordening_markeert_ook_de_lege_operand() {
         // §9.5 + leegwaarde rekentabels: "saldo moet kleiner zijn dan limiet" is violated when
         // saldo >= limiet AND when saldo is empty (a missing value is itself an inconsistency).

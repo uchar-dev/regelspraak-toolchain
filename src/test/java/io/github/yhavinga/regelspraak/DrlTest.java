@@ -661,4 +661,28 @@ class DrlTest {
         assertFalse(DrlTranspiler.transpile(m).contains("rule \"mix\""),
                 "een gemengd-subject compound mag geen regel opleveren");
     }
+
+    @Test void uniciteit_parent_scoped_telt_binnen_de_ouder() {
+        // §8.1.6 "de X van alle Y van <parent>": unique within each parent — the accumulate binds the
+        // subject's scope ref and counts only same-scope instances.
+        String src = """
+            Objecttype de Vlucht
+            Objecttype de Passagier
+                het stoelnummer Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel stoel uniek
+                geldig altijd
+                    De stoelnummers van alle passagiers van de reis moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("$subject : Passagier( $scope : reis != null, $k0 : stoelnummer != null )"),
+                () -> "de scope (reis) moet niet-leeg gebonden worden:\n" + drl);
+        assertTrue(drl.contains("from accumulate( $o : Passagier( reis == $scope, stoelnummer == $k0 ), count($o) )"),
+                () -> "de telling moet binnen dezelfde reis blijven:\n" + drl);
+    }
 }

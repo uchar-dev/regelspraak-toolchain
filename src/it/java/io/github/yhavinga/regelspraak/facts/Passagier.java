@@ -10,6 +10,7 @@ public class Passagier {
     private boolean kind;
     private boolean student;
     private boolean minderjarig;
+    private BigDecimal stoelnummer;   // §8.1.6 parent-scoped uniqueness key (unique per reis)
     public BigDecimal getPrijs() { return prijs; }
     public void setPrijs(BigDecimal v) { this.prijs = v; }
     public Vlucht getReis() { return reis; }
@@ -20,4 +21,6 @@ public class Passagier {
     public void setStudent(boolean v) { this.student = v; }
     public boolean isMinderjarig() { return minderjarig; }
     public void setMinderjarig(boolean v) { this.minderjarig = v; }
+    public BigDecimal getStoelnummer() { return stoelnummer; }
+    public void setStoelnummer(BigDecimal v) { this.stoelnummer = v; }
 }

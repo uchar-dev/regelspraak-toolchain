@@ -17,6 +17,11 @@ import java.util.List;
  *
  * <p>{@code sleutels} holds one declared attribute name (single-attribute uniqueness) or several (a
  * §5.7 concatenatie). The cross-type {@code verenigd met} form is not lifted here.
+ *
+ * <p>{@code scopeVeld} (usually null) makes the uniqueness PARENT-SCOPED — "de X van alle Y van &lt;Z&gt;",
+ * unique within each Z rather than globally: it is the reference field on a {@code subject} fact that
+ * points at the scope owner, so the count is restricted to instances sharing the subject's scope
+ * (e.g. seat numbers unique per flight: scopeVeld "reis", counting only passagiers of the same reis).
  */
-public record ResolvedUniciteit(String naam, Objecttype subject, List<String> sleutels, String bron,
-                                Geldigheid geldigheid) {}
+public record ResolvedUniciteit(String naam, Objecttype subject, List<String> sleutels, String scopeVeld,
+                                String bron, Geldigheid geldigheid) {}

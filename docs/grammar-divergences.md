@@ -523,10 +523,17 @@ shared by two Cirkels, or by a Cirkel and a Vierkant, is caught (§8.1.6's three
 by value positionally and must share key arity; the per-source rule names are distinct but the
 Inconsistentie carries the one declared rule name, and the idempotency guard is on that shared name.
 
+Uniqueness **scoped within a parent** (`de X van alle Y van <parent>`, e.g. seat numbers unique per
+flight) lowers to the same count rule **restricted to the subject's scope**: the subject binds its scope
+reference (`$scope : reis != null`) and the accumulate adds `reis == $scope`, so only instances sharing
+the parent are counted. The element Y may be an object type or a **role** (resolved through the feittype,
+whose role plural matches where the conservative object-type plural would not); the scope ref is the
+connecting role field (`verbindendeRol`). The parent navigation is the type `kaleNaam`'s trailing
+`van`-part; exactly one parent level is handled.
+
 **Deliberately deferred (carded), each leaving a WARNING, never a silent drop:** a nested-`van`
-concatenatie part; uniqueness **scoped within a parent** (`… van alle X van <Y>`, where the parent is
-absorbed into the type `kaleNaam` and needs a feittype-role join); and an object type whose plural is
-irregular/multi-word and undeclared (`Natuurlijke personen` resolves only via a declared meervoudsvorm).
+concatenatie part; a scoped uniqueness with more than one parent level; and an object type whose plural
+is irregular/multi-word and undeclared (`Natuurlijke personen` resolves only via a declared meervoudsvorm).
 
 ### §13.4.8 samengestelde consistentieregel — the `alle`-criteria form, fired on any violation
 

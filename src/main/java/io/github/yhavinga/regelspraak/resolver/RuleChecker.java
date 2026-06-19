@@ -252,11 +252,16 @@ final class RuleChecker {
      *  cross-type "verenigd met" union, a uniqueness scoped within a parent ("… van alle X van &lt;Y&gt;"),
      *  or any name that does not resolve; the transpiler then never silently drops or mis-checks. */
     private boolean uniciteit(String naam, UniciteitsControleContext u, Geldigheid geldigheid) {
+        // §8.1.6 parent-scoped "de X van alle Y van <parent>": unique within each parent, not globally.
+        if (u.vereniging().isEmpty() && u.alleAttribuutVanOnderwerp() != null) {
+            var scoped = parentScoped(naam, u.alleAttribuutVanOnderwerp(), src(u), geldigheid);
+            if (scoped != null) { model.uniciteiten.add(scoped); return true; }
+        }
         Bron eerste = bronVan(u.alleAttribuutVanOnderwerp(), u.uniciteitConcatenatie());
         if (eerste == null) return false;
         if (u.vereniging().isEmpty()) {                              // the common single-source form
             model.uniciteiten.add(new io.github.yhavinga.regelspraak.ir.ResolvedUniciteit(
-                    naam, eerste.type(), eerste.sleutels(), src(u), geldigheid));
+                    naam, eerste.type(), eerste.sleutels(), null, src(u), geldigheid));
             return true;
         }
         // §8.1.6 "verenigd met": uniqueness across the UNION of two or more sources' key spaces. Every
@@ -306,6 +311,31 @@ final class RuleChecker {
             return new Bron(type, sleutels);
         }
         return null;
+    }
+
+    /** §8.1.6 parent-scoped uniqueness "de X van alle Y van &lt;parent&gt;" — unique within each parent.
+     *  Resolves the element Y, its key attribute X, and the reference field on a Y that points at its
+     *  scope owner &lt;parent&gt; (so the count is restricted per-parent). Null when it is not the scoped
+     *  shape — then the global single-source path applies — or when the scope does not resolve. */
+    private io.github.yhavinga.regelspraak.ir.ResolvedUniciteit parentScoped(String naam, AlleAttribuutVanOnderwerpContext a,
+                                                                 String bron, Geldigheid g) {
+        if (!a.onderwerpKeten().isEmpty()) return null;
+        java.util.List<KaleNaamDeelContext> delen = a.kaleNaam(1).kaleNaamDeel();
+        if (delen.size() != 2) return null;                          // element + exactly one parent navigation
+        // The element is an object type ("alle Vluchten") or, more often when scoped, a role name
+        // ("alle passagiers van de reis") — the role's plural matches via the feittype, not the
+        // conservative object-type plural.
+        Objecttype elem = MeervoudMatcher.vindObjecttype(model.objecttypen.values(), src(delen.get(0)));
+        if (elem == null) elem = model.rolDoeltypeNaarSubject(null, src(delen.get(0)));
+        if (elem == null) return null;
+        String attr = MeervoudMatcher.vindAttribuut(elem, src(a.kaleNaam(0)));
+        if (attr == null) return null;
+        String parentNav = stripArtikel(src(delen.get(1)));
+        Objecttype parentType = model.rolDoeltypeNaarSubject(elem, parentNav);  // the role's object type
+        if (parentType == null) return null;
+        String joinVeld = model.verbindendeRol(elem, parentType);    // field on a Y pointing at its <parent>
+        if (joinVeld == null) return null;
+        return new io.github.yhavinga.regelspraak.ir.ResolvedUniciteit(naam, elem, java.util.List.of(attr), joinVeld, bron, g);
     }
 
     /** §8.1.6: two union sources may be combined only when their key parts share a datatype. Compared
