@@ -59,11 +59,14 @@ final class ExpressieBouwer {
             return afgerond(basis, s.afronding(), bron);
         }
         if (e instanceof PercentageVanExprContext s) {
-            // §4.8 Tabel 18: "X% van Y" has the datatype (incl. the unit) of Y. Do not
-            // fabricate a unitless Numeriek — that is a positive false claim; carry Y's
-            // type, or Onbekend when Y is not numeric (no claim).
+            // §4.8 Tabel 18: "X% van Y" carries Y's UNIT. But §4.8 Precisie makes the result an
+            // exact fraction with "geen decimale precisie" of its own (the §4.5 gedeeld door rule),
+            // so do NOT propagate Y's declared decimal count: "50% van prijs (2 dec)" is an exact
+            // whole or fraction, and asserting 2 decimals would trip the §6.1.2 assignment check
+            // against a lower-precision target. Keep the unit, drop the decimal claim.
             Expr links = bouw(s.expressie(0)), rechts = bouw(s.expressie(1));
-            Datatype t = rechts.type().isNumeriek() ? rechts.type() : onbekend();
+            Datatype t = rechts.type() instanceof Datatype.Numeriek n
+                    ? new Datatype.Numeriek(false, 0, Datatype.Teken.ONBEPAALD, n.eenheid()) : onbekend();
             return new Expr.Binair(Expr.BinOp.PERCENTAGE_VAN, links, rechts, t, bron);
         }
         if (e instanceof AfgerondeExprContext s) return afgerond(bouw(s.expressie()), s.afronding(), bron);
@@ -345,10 +348,24 @@ final class ExpressieBouwer {
      * normalisation exists — typing them naively would mis-match "jaren" against the
      * declared "jr" and raise a false positive. Structure is captured regardless.
      */
+    /** The least declared decimal count over a min/max operand list — the floor of the
+     *  value-dependent result precision, so the §6.1.2 check never over-reports. */
+    private static int minDecimalen(List<Expr> args) {
+        return args.stream().mapToInt(a -> a.type() instanceof Datatype.Numeriek m ? m.decimalen()
+                : a.type() instanceof Datatype.Percentage p ? p.decimalen() : 0).min().orElse(0);
+    }
+
     private Datatype functieType(Expr.FunctieKind kind, List<Expr> args) {
         Datatype eerste = args.isEmpty() ? onbekend() : args.get(0).type();
         return switch (kind) {
-            case SOM, TOTAAL, MINIMUM, MAXIMUM, EERSTE, LAATSTE, ABSOLUTE_WAARDE -> eerste;
+            case SOM, TOTAAL, EERSTE, LAATSTE, ABSOLUTE_WAARDE -> eerste;
+            // §4.12/§4.13: a multi-operand min/max result is the SMALLEST/LARGEST VALUE, whose
+            // precision is value-dependent and not statically known. A single-operand min/max over a
+            // set carries the element's precision (reliable). For the value-fold, report the LEAST
+            // operand precision so the §6.1.2 check never over-reports (the exact value-dependent
+            // precision is carded); the first operand's precision would be order-dependent.
+            case MINIMUM, MAXIMUM -> args.size() <= 1 || !(eerste instanceof Datatype.Numeriek n) ? eerste
+                    : new Datatype.Numeriek(minDecimalen(args) == 0, minDecimalen(args), n.teken(), n.eenheid());
             case AANTAL -> new Datatype.Numeriek(true, 0, Datatype.Teken.NIET_NEGATIEF, null); // a count
             case CONCATENATIE -> new Datatype.Tekst();
             case EERSTE_PAASDAG, DATUM_MET -> new Datatype.DatumInDagen();

@@ -545,4 +545,35 @@ class RuleCheckTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "geen §6.1.2-fout verwacht voor passende precisie: " + m.errors());
     }
+
+    @Test void percentage_van_decimaal_attribuut_naar_geheel_getal_geen_fout() {
+        // p22 review (HIGH false positive, fixed): §4.8 makes "X% van Y" an exact fraction with no
+        // decimal precision of its own (it shares only Y's unit), so 50% van prijs(2 dec) must NOT
+        // inherit 2 decimals and trip §6.1.2 against a geheel-getal target. 50% van 4,00 = 2.
+        String src = GETAL_MODEL + """
+            Regel r
+                geldig altijd
+                    De uitkomst van een Ding moet gesteld worden op 50% van de prijs van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "percentage-van mag geen §6.1.2 valse positieve geven: " + m.errors());
+    }
+
+    @Test void multi_operand_maximum_met_gemengde_precisie_geen_valse_positieve() {
+        // p22 review (MED false positive, fixed): a multi-operand min/max result is the winning
+        // VALUE, whose precision is value-dependent; typing it from the first operand was
+        // order-dependent. The conservative least-precision avoids flagging a valid assignment to a
+        // geheel-getal target when the whole-number operand could win.
+        String src = """
+            Objecttype de Ding
+                de uitkomst Numeriek (geheel getal);
+                de hoeveelheid Numeriek (geheel getal);
+                de prijs Numeriek (getal met 2 decimalen);
+            Regel r
+                geldig altijd
+                    De uitkomst van een Ding moet gesteld worden op de maximale waarde van de hoeveelheid van een Ding en de prijs van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "multi-operand min/max mag geen §6.1.2 valse positieve geven: " + m.errors());
+    }
 }

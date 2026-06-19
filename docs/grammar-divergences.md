@@ -306,10 +306,19 @@ decimal count exceeds the target attribute's, unless it was first explicitly rou
 geheel getal" is an error, "`1,5` afgerond op 0 decimalen → geheel getal" is fine. The afronding
 wrapper now reports the rounded precision (`Expr.Afgerond.type()` returns the base type with
 `decimalen` set to the rounding's), which is exactly what makes the rounded form pass. A read of a
-2-decimal attribute into a geheel-getal attribute is likewise flagged. Known gap (NOT closed here):
-division (`gedeeld door`) still types its result via `maxDec` (the max of the operand decimals), so
-a non-terminating quotient like `10 gedeeld door 3` under-reports its precision and would slip the
-§6.1.2 check — the §4.5 division-precision rules are a separate, carded concern.
+2-decimal attribute into a geheel-getal attribute is likewise flagged.
+
+To keep the check free of *false positives*, two result types that would otherwise over-report were
+made precision-conservative: `percentage van` (§4.8) is an exact fraction that shares only its
+operand's unit, so it no longer inherits the operand's decimal count (`50% van prijs(2 dec) → geheel
+getal` is valid — `50% van 4,00 = 2`); and a multi-operand `min/max` value-fold (§4.12/§4.13), whose
+result is the winning value and thus value-dependent, reports the *least* operand precision rather
+than the (order-dependent) first operand's. The remaining inaccuracies are *false negatives* (the
+check passes some assignments it ideally would flag) and are strictly safe: `maal` types its result
+with `maxDec` where §4.4 mandates the sum-of-decimals, and `gedeeld door` / a non-terminating
+fraction under-reports — both carded with the per-operation precision work. False negatives are
+acceptable (the check is an added safeguard, not load-bearing); false positives would reject valid
+models, so those were eliminated.
 
 ### Telling (aantal) operand precedence — fixed, with a deliberate EBNF asymmetry
 
