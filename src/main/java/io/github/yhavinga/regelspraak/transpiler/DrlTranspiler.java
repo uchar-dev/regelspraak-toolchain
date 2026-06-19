@@ -590,13 +590,15 @@ public final class DrlTranspiler {
     // ---------------- leaves & helpers ----------------
     /** The integer exponent when {@code e} is an integer-valued numeric literal ("2" in "tot de
      *  macht 2"), else null — lets an integer power lower exactly via {@code BigDecimal.pow(int)}
-     *  rather than through Math.pow's double. The number is read as {@link #literal} reads it. */
+     *  rather than through Math.pow's double. Reads the number as {@link #literal} does, so a
+     *  rational that reduces to a whole number ("4/2" -> 2) is an exact exponent too, while a true
+     *  fraction ("3/2") or non-terminating quotient ("1/3") falls through to the Math.pow path. */
     private static Integer geheelExponent(Expr e) {
         if (!(e instanceof Expr.Literal lit) || !lit.type().isNumeriek()) return null;
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("-?\\d+(?:[.,]\\d+)?").matcher(lit.waarde());
-        if (!m.find()) return null;
+        java.math.BigDecimal[] r = rationaal(lit.waarde());
+        if (r == null) return null;
         try {
-            java.math.BigDecimal bd = new java.math.BigDecimal(m.group().replace(',', '.'));
+            java.math.BigDecimal bd = r[0].divide(r[1]); // exact value; throws when non-terminating
             // BigDecimal.pow(int) is exact only for 0..999999999; a negative or fractional exponent
             // falls through to the Math.pow path (which handles them, at double precision).
             if (bd.signum() >= 0 && bd.stripTrailingZeros().scale() <= 0) {
@@ -605,6 +607,28 @@ public final class DrlTranspiler {
             }
         } catch (ArithmeticException ignore) {}
         return null;
+    }
+
+    /** Numerator and denominator of a numeric literal's leading number (denominator ONE for a
+     *  plain integer or decimal), or null when there is no number. Recognises the §13.2.5 rational
+     *  forms — "a/c" and the mixed "a_b/c" (= a + b/c, the fraction taking the whole part's sign) —
+     *  alongside a bare integer and an "a,b" (or "a.b") decimal. Earlier readers matched only the
+     *  leading "a", silently dropping "/c", so "maal 4/2" lowered to *4 and "macht 4/2" to pow(4). */
+    static java.math.BigDecimal[] rationaal(String bron) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(-?\\d+)(?:[.,](\\d+)|(?:_(\\d+))?/(\\d+))?").matcher(bron);
+        if (!m.find()) return null;
+        java.math.BigDecimal heel = new java.math.BigDecimal(m.group(1));
+        if (m.group(2) != null) // a,b decimal
+            return new java.math.BigDecimal[]{ new java.math.BigDecimal(m.group(1) + "." + m.group(2)),
+                    java.math.BigDecimal.ONE };
+        if (m.group(4) == null) // bare integer
+            return new java.math.BigDecimal[]{ heel, java.math.BigDecimal.ONE };
+        java.math.BigDecimal noemer = new java.math.BigDecimal(m.group(4));
+        if (m.group(3) == null) // a/c
+            return new java.math.BigDecimal[]{ heel, noemer };
+        java.math.BigDecimal teller = heel.abs().multiply(noemer).add(new java.math.BigDecimal(m.group(3)));
+        return new java.math.BigDecimal[]{ heel.signum() < 0 ? teller.negate() : teller, noemer }; // a_b/c
     }
 
     private static String literal(Expr.Literal lit) {
@@ -618,9 +642,17 @@ public final class DrlTranspiler {
                     : todo("datumliteral", lit.waarde());
         }
         // numeric (possibly "0 €"): the leading number AS A BigDecimal, so arithmetic,
-        // unit scaling (.multiply) and rounding (.setScale) compile in mvel.
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("-?\\d+(?:[.,]\\d+)?").matcher(lit.waarde());
-        return m.find() ? "new java.math.BigDecimal(\"" + m.group().replace(',', '.') + "\")" : todo("literal", lit.waarde());
+        // unit scaling (.multiply) and rounding (.setScale) compile in mvel. A §13.2.5 rational
+        // ("4/2", "3/2", "1_1/2") is lowered to its exact value when the quotient terminates, else
+        // to a DECIMAL64 division so it still computes (e.g. 1/3).
+        java.math.BigDecimal[] r = rationaal(lit.waarde());
+        if (r == null) return todo("literal", lit.waarde());
+        try {
+            return "new java.math.BigDecimal(\"" + r[0].divide(r[1]).toPlainString() + "\")"; // exact
+        } catch (ArithmeticException nietEindig) {
+            return "new java.math.BigDecimal(\"" + r[0].toPlainString() + "\").divide(new java.math.BigDecimal(\""
+                    + r[1].toPlainString() + "\"), java.math.MathContext.DECIMAL64)";
+        }
     }
 
     /** Wrap an emitted value in a unit conversion when its unit differs from (but is

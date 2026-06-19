@@ -251,11 +251,21 @@ afronding and precedence are now captured correctly; `tot de macht` lowers and f
 through `BigDecimal.pow(int)`, so e.g. 7¹⁹ = 11398895185373143, not the …144 that an IEEE-754
 double yields. A genuinely fractional or runtime (non-literal) exponent still lowers through
 `Math.pow` (a double), so such a power above 2^53 (~9·10¹⁵) can be off by a few units before the
-afronding rounds it — far outside any realistic RegelSpraak magnitude. Separately, the numeric
-**literal** reader (`literal`, shared by `geheelExponent`) recognises only a decimal number, so a
-`<rationeelgetal>` literal (§13.2.5, `a[_b]/c`, e.g. `4/2`) is mis-read as its leading integer (`4`)
-in EVERY arithmetic position, not only as an exponent — a pre-existing gap (carded), with no corpus
-example using a rational literal.
+afronding rounds it — far outside any realistic RegelSpraak magnitude.
+
+### Rationeelgetal literals (§13.2.5 `a[_b]/c`) — fixed
+
+The numeric **literal** reader (`literal`, shared by `geheelExponent`) once matched only a number's
+leading decimal head, silently dropping the `"/c"` of a `<rationeelgetal>`. So `4/2` lowered to `4`,
+`3/2` to `3`, and `tot de macht 4/2` to `pow(4)` — every arithmetic position with a rational was
+wrong, not only exponents. The reader now parses all four §13.2.5 forms via `rationaal`: a bare
+integer, an `a,b` decimal, the simple `a/c`, and the mixed `a_b/c` (= a + b/c, the fraction carrying
+the whole part's sign). A rational whose quotient **terminates** lowers to its exact `BigDecimal`
+value (`4/2` → `2`, `3/2` → `1.5`, `1_1/2` → `1.5`); a non-terminating one (`1/3`) lowers to a
+`DECIMAL64` division so it computes at runtime rather than throwing. Because the exact value is now
+read, an integer-valued rational exponent (`4/2`) reduces to an exact `pow(2)`, while a true fraction
+(`3/2`) or non-terminating quotient falls through to the `Math.pow` path as before. No corpus example
+uses a rational literal, so corpus coverage is unchanged; proven by firing in Drools.
 
 ### Telling (aantal) operand precedence — fixed, with a deliberate EBNF asymmetry
 
