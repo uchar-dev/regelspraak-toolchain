@@ -2155,4 +2155,48 @@ class DroolsExecutionTest {
         assertEquals(0, new BigDecimal("3").compareTo(v.getTotaalprijs()),
                 () -> "de vereniging telt elk lid één keer (3), kreeg " + v.getTotaalprijs());
     }
+
+    @Test void feitcreatie_1hop_legt_de_nieuwe_relatie_op_de_passagiers_van_de_vlucht() {
+        // §13.4.7/§9.4: a feitcreatie creates an instance of the feittype <rolB> names, relating each
+        // anker to the objects filling <rolC> of it. Here the new "bonusrelatie" is created between a
+        // Vlucht and each of its passengers (reached by the existing "passagier" relation, reis).
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de naam Tekst;
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("setBonusvlucht") && drl.contains("reis == $subject"),
+                () -> "feitcreatie moet de nieuwe relatie zetten op de juiste join:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v1 = new Vlucht(), v2 = new Vlucht();
+        Passagier p1 = new Passagier(); p1.setReis(v1);
+        Passagier p2 = new Passagier(); p2.setReis(v1);
+        Passagier p3 = new Passagier(); p3.setReis(v2);
+        Passagier zonder = new Passagier();                       // geen vlucht -> geen relatie
+        sessie.insert(v1); sessie.insert(v2);
+        sessie.insert(p1); sessie.insert(p2); sessie.insert(p3); sessie.insert(zonder);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertSame(v1, p1.getBonusvlucht(), () -> "passagier van v1 moet aan v1 gekoppeld zijn");
+        assertSame(v1, p2.getBonusvlucht(), () -> "tweede passagier van v1 moet aan v1 gekoppeld zijn");
+        assertSame(v2, p3.getBonusvlucht(), () -> "passagier van v2 moet aan v2 gekoppeld zijn");
+        assertNull(zonder.getBonusvlucht(), () -> "een passagier zonder vlucht krijgt geen relatie");
+    }
 }

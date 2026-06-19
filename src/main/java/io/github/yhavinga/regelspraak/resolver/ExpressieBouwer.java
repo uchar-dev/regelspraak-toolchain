@@ -529,7 +529,7 @@ final class ExpressieBouwer {
      * for navigation shapes the primary-noun extraction does not cover — the older
      * deep scan for a directly-named object type. Returns null when neither binds.
      */
-    private Objecttype resolveOnderwerp(OnderwerpContext o) {
+    Objecttype resolveOnderwerp(OnderwerpContext o) {
         String n = primaireNaam(o);
         Objecttype ot = n != null ? model.resolveObjecttype(n) : null;
         return ot != null ? ot : vindObjecttype(o);

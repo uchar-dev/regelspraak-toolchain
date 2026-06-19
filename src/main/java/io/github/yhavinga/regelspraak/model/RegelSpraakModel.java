@@ -32,6 +32,8 @@ public final class RegelSpraakModel {
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedUniciteit> uniciteiten = new ArrayList<>();
     /** Resolved §8.1.6 cross-type "verenigd met" uniqueness — a key unique across the union of types. */
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie> uniciteitUnies = new ArrayList<>();
+    /** Resolved §13.4.7 feitcreatie rules — a new feittype instance (a reference field) linking two existing objects. */
+    public final List<io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie> feitCreaties = new ArrayList<>();
     public final List<Diagnostic> diagnostics = new ArrayList<>();
 
     public boolean isOk() { return diagnostics.stream().noneMatch(Diagnostic::isError); }

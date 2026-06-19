@@ -181,11 +181,12 @@ final class RuleChecker {
             verdeling(versieNaam, rd.verdeling(), voorwaarde, geldigheid);
         } else if (rd.consistentieRegel() != null) {
             consistentie(versieNaam, rd.consistentieRegel(), geldigheid);
+        } else if (rd.feitCreatie() != null) {
+            feitCreatie(naam, rd.feitCreatie(), voorwaarde, geldigheid);
         } else {
-            // §13.4.7/.11/.12 — parsed but not yet lifted into the IR. Surface it as
+            // §13.4.11/.12 — parsed but not yet lifted into the IR. Surface it as
             // a diagnostic rather than letting the rule silently disappear from the model.
-            String soort = rd.feitCreatie() != null ? "feitcreatie"
-                    : rd.startpuntBepaling() != null ? "startpuntbepaling"
+            String soort = rd.startpuntBepaling() != null ? "startpuntbepaling"
                     : rd.dagsoortResultaat() != null ? "dagsoortresultaat" : "resultaatdeel";
             model.diagnostics.add(new Diagnostic(Severity.WARNING,
                     "resultaatdeel '" + soort + "' wordt nog niet naar IR/DRL omgezet (regel '" + naam + "')",
@@ -412,6 +413,41 @@ final class RuleChecker {
     }
 
     private static String stripArtikel(String s) { return s.replaceFirst("^(?i)(de|het|een)\\s+", "").trim(); }
+
+    /** §13.4.7 feitcreatie: "Een &lt;rolB&gt; van een &lt;anker&gt; is een &lt;rolC&gt; van
+     *  &lt;onderwerpD&gt;" creates an instance of the feittype that {@code rolB} names, relating each
+     *  {@code anker} to the {@code doel} objects that fill {@code rolC} of it (§9.4). The grammar's
+     *  greedy kaleNaam splits the RHS at the LAST "van" (the rule's trailing {@code VAN onderwerp}),
+     *  so the role part is the FIRST kaleNaam segment and any further segment is a navigation; this
+     *  resolver re-splits per the §13.4-names design rather than changing the grammar.
+     *  <p>Lifts only the 1-hop shape — {@code onderwerpD} is the anker itself, reached by the single
+     *  role {@code rolC} — into a {@link ResolvedFeitCreatie}. A multi-hop navigation (the TOKA
+     *  "verdeling contingent treinmiles over passagiers" example) or an unresolvable role/onderwerp
+     *  keeps an honest WARNING rather than a silent wrong link. */
+    private void feitCreatie(String naam, FeitCreatieContext fc, Conditie voorwaarde, Geldigheid geldigheid) {
+        String rolB = stripArtikel(src(fc.kaleNaam(0)));               // LHS role — the relation being created
+        Objecttype anker = bouwer.resolveOnderwerp(fc.onderwerp(0));   // the "one" side / iterated subject
+        KaleNaamContext rhs = fc.kaleNaam(1);
+        String rolC = stripArtikel(src(rhs.kaleNaamDeel(0)));          // RHS role — the existing navigation
+        boolean meerHops = rhs.kaleNaamDeel().size() > 1;             // role part itself navigates further -> multi-hop
+        Objecttype terug = bouwer.resolveOnderwerp(fc.onderwerp(1));   // onderwerpD must be the anker (a back-reference)
+
+        if (anker != null && !meerHops && terug == anker) {
+            Objecttype doel = model.rolDoeltypeNaarSubject(anker, rolC);
+            String joinVeld = model.verbindendeRolViaElementnaam(anker, rolC); // existing rolC relation's field on doel
+            String zetVeld  = model.verbindendeRolViaElementnaam(anker, rolB); // the NEW relation's field on doel
+            if (doel != null && joinVeld != null && zetVeld != null && !joinVeld.equalsIgnoreCase(zetVeld)) {
+                model.feitCreaties.add(new io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie(
+                        naam, anker, doel, zetVeld, joinVeld, voorwaarde, geldigheid));
+                return;
+            }
+        }
+        model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                "feitcreatie wordt nog niet naar IR/DRL omgezet (regel '" + naam + "'): "
+                + (meerHops ? "meerstaps-navigatie in de doelketen"
+                            : "rol of onderwerp niet eenduidig naar één feittype te herleiden"),
+                fc.getStart().getLine()));
+    }
 
     /** §13.4.5 kenmerktoekenning: the subject acquires a kenmerk (a boolean property).
      *  Modelled as setting that boolean attribute to true. */

@@ -685,4 +685,69 @@ class DrlTest {
         assertTrue(drl.contains("from accumulate( $o : Passagier( reis == $scope, stoelnummer == $k0 ), count($o) )"),
                 () -> "de telling moet binnen dezelfde reis blijven:\n" + drl);
     }
+
+    @Test void feitcreatie_1hop_lowert_naar_een_join_en_modify_set() {
+        // §13.4.7 feitcreatie, 1-hop: the new "bonusrelatie" is created on each passenger of the flight,
+        // joined via the existing "passagier" relation (reis), set as the new relation's reference field.
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de naam Tekst;
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("$subject : Vlucht(  )"), () -> "de anker (Vlucht) is het hoofd-patroon:\n" + drl);
+        assertTrue(drl.contains("$doel : Passagier( reis == $subject )"),
+                () -> "de doel-passagiers joinen via de bestaande rol (reis):\n" + drl);
+        assertTrue(drl.contains("modify($doel) {") && drl.contains("setBonusvlucht( $subject )"),
+                () -> "de nieuwe relatie wordt als referentieveld gezet:\n" + drl);
+    }
+
+    @Test void feitcreatie_meerstaps_blijft_een_eerlijke_waarschuwing() {
+        // The TOKA shape: onderwerpD navigates anker -> Vlucht -> passagiers. One join field cannot
+        // express that, so it must stay a WARNING, never a silently-wrong relation rule.
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de naam Tekst;
+            Objecttype de Contingent
+                de naam Tekst;
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype contingentrelatie
+                de contingentvlucht Vlucht
+                de contingent Contingent
+            Eén contingentvlucht heeft één contingent
+            Feittype bonusrelatie
+                de bonuscontingent Contingent
+                de bonuspassagier Passagier
+            Eén bonuscontingent kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een contingent is een passagier van de reis van het contingent.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("rule \"ken bonus toe\""),
+                () -> "een meerstaps-feitcreatie mag geen relatie-regel emitteren:\n" + drl);
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
+                        && d.message().contains("feitcreatie") && d.message().contains("meerstaps")),
+                () -> "een meerstaps-feitcreatie moet een eerlijke waarschuwing geven: " + m.diagnostics);
+    }
 }

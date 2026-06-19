@@ -11,6 +11,7 @@ public class Passagier {
     private boolean student;
     private boolean minderjarig;
     private BigDecimal stoelnummer;   // §8.1.6 parent-scoped uniqueness key (unique per reis)
+    private Vlucht bonusvlucht;       // §13.4.7 feitcreatie target: the relation a feitcreatie creates (set to reis)
     public BigDecimal getPrijs() { return prijs; }
     public void setPrijs(BigDecimal v) { this.prijs = v; }
     public Vlucht getReis() { return reis; }
@@ -23,4 +24,6 @@ public class Passagier {
     public void setMinderjarig(boolean v) { this.minderjarig = v; }
     public BigDecimal getStoelnummer() { return stoelnummer; }
     public void setStoelnummer(BigDecimal v) { this.stoelnummer = v; }
+    public Vlucht getBonusvlucht() { return bonusvlucht; }
+    public void setBonusvlucht(Vlucht v) { this.bonusvlucht = v; }
 }

@@ -62,7 +62,8 @@ public final class DrlTranspiler {
                 || model.verdelingen.stream().anyMatch(v -> tijdgebondenGeldigheid(v.geldigheid()))
                 || model.consistenties.stream().anyMatch(c -> tijdgebondenGeldigheid(c.geldigheid()))
                 || model.uniciteiten.stream().anyMatch(u -> tijdgebondenGeldigheid(u.geldigheid()))
-                || model.uniciteitUnies.stream().anyMatch(u -> tijdgebondenGeldigheid(u.geldigheid()));
+                || model.uniciteitUnies.stream().anyMatch(u -> tijdgebondenGeldigheid(u.geldigheid()))
+                || model.feitCreaties.stream().anyMatch(f -> tijdgebondenGeldigheid(f.geldigheid()));
         if (tijdgebonden) out.append("global java.time.LocalDate rekendatum;\n\n");
 
         for (ResolvedRegel r : model.resolvedRegels) regel(r);
@@ -71,6 +72,7 @@ public final class DrlTranspiler {
         for (io.github.yhavinga.regelspraak.ir.ResolvedConsistentie c : model.consistenties) consistentie(c);
         for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteit u : model.uniciteiten) uniciteit(u);
         for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie u : model.uniciteitUnies) uniciteitUnie(u);
+        for (io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie f : model.feitCreaties) feitCreatie(f);
         return out.toString();
     }
 
@@ -346,6 +348,26 @@ public final class DrlTranspiler {
             out.append("    // onopgelost terugkoppeling naar ").append(subject.naam).append('\n');
         out.append("    insert($new);\n");
         out.append("end\n\n");
+    }
+
+    /** §13.4.7 feitcreatie -> a rule that, for each anker and each doel ALREADY related to it by the
+     *  existing rolC relation ({@code joinVeld}), creates the NEW relation by setting {@code zetVeld}
+     *  on the doel. A relation instance is a reference field in this fact model (§9.4), so creating one
+     *  is a {@code modify}-set; {@code no-loop} keeps the modify from re-triggering the rule, and setting
+     *  the field to the same value is idempotent across other rules' fire cycles. */
+    private void feitCreatie(io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie fc) {
+        accumulates = new ArrayList<>();
+        accCount = 0;
+        Objecttype anker = fc.anker(), doel = fc.doel();
+        String ankerC = fc.voorwaarde() != null ? conditie(fc.voorwaarde(), anker) : "";
+        out.append("rule \"").append(escapeRegelNaam(fc.naam())).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
+        out.append("    ").append(SUBJECT).append(" : ").append(ident(anker.naam, true)).append("( ").append(ankerC).append(" )\n");
+        for (String acc : accumulates) out.append("    ").append(acc).append('\n');
+        if (tijdgebondenGeldigheid(fc.geldigheid())) out.append("    ").append(geldigheidGuard(fc.geldigheid())).append('\n');
+        out.append("    $doel : ").append(ident(doel.naam, true)).append("( ")
+           .append(ident(fc.joinVeld(), false)).append(" == ").append(SUBJECT).append(" )\n");
+        out.append("then\n    modify($doel) {\n        ")
+           .append(setter(fc.zetVeld())).append("( ").append(SUBJECT).append(" )\n    }\nend\n\n");
     }
 
     private void regel(ResolvedRegel r) {
