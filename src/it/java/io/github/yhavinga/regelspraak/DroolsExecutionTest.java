@@ -1681,4 +1681,28 @@ class DroolsExecutionTest {
         assertFalse(drl.contains("meting == true"),
                 () -> "'is een meting' mag niet als kenmerk-gate lager komen (objecttype-lidmaatschap):\n" + drl);
     }
+
+    @Test void onopgeloste_voorwaarde_compileert_als_no_op() {
+        // p27: an unresolved condition (here an objecttype/role-membership "is een werkdag", not
+        // lowered) used to emit a `null` pattern constraint, which is not a boolean and made the
+        // WHOLE generated DRL uncompilable. It now lowers to an always-false constraint: the DRL
+        // COMPILES (build() asserts it) and the rule is a visible no-op (it never fires).
+        String src = """
+            Objecttype de Meting
+                is bonus kenmerk (bijvoeglijk);
+            Regel r
+                geldig altijd
+                    Een Meting is bonus
+                    indien hij een werkdag is.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("false /* TODO voorwaarde"),
+                () -> "een onopgeloste voorwaarde moet een compileerbare false-marker zijn:\n" + drl);
+        KieSession sessie = build(drl).newKieSession();   // build() FAILS if the DRL does not compile
+        Meting m = new Meting();
+        sessie.insert(m);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertFalse(m.isBonus(), "een regel met een onopgeloste voorwaarde mag niet vuren (no-op)");
+    }
 }

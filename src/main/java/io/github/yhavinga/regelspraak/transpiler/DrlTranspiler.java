@@ -533,7 +533,7 @@ public final class DrlTranspiler {
             return switch (p.soort()) {
                 case LEEG   -> o + " == null";
                 case GEVULD -> o + " != null";
-                default     -> todo("predicaat " + p.soort(), p.bron());
+                default     -> onopgelosteConstraint("predicaat " + p.soort(), p.bron());
             };
         }
         // §5.14 subject kenmerk test: a bare boolean property constraint inside the subject pattern.
@@ -557,7 +557,15 @@ public final class DrlTranspiler {
                 default          -> String.join(" && ", delen); // ALLE / DE
             };
         }
-        return todo("voorwaarde", c.bron());
+        return onopgelosteConstraint("voorwaarde", c.bron());
+    }
+
+    /** An unresolved CONDITION lowers to an always-false constraint, so the rule is a visible no-op
+     *  that COMPILES — unlike the value-side {@code … null} marker, a bare {@code null} is not a
+     *  boolean pattern constraint ({@code Subject( null )} fails to compile, which would sink the
+     *  whole DRL). Still carries the "/* TODO *&#47;" text, so {@link #bevatMarker} flags it. */
+    private static String onopgelosteConstraint(String wat, String bron) {
+        return "false /* TODO " + wat + ": " + bron + " */";
     }
 
     /** A boolean expression true when AT LEAST {@code k} of {@code delen} hold: the OR over
