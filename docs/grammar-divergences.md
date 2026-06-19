@@ -394,18 +394,21 @@ a multi-operand telling is emitted as a `/* TODO aggregatie AANTAL */` marker ra
 silently counting only the first operand. The union-count lowering (a disjunctively-filtered
 single accumulate) is carded.
 
-A related §13.4.2 gap: a `die/dat <predicaat>` **subselectie** on a single-operand count
-("het aantal passagiers van de reis die een kind zijn" — only the kind-passagiers) filters
-the counted element. A subselectie whose predicaat is a **kenmerk** of the counted element is
-now resolved (against the ELEMENT type, not the rule subject) into a `Conditie.Kenmerk` and
-lowered as an extra accumulate-source constraint —
-`accumulate( $e : Passagier( reis == $subject, kind == true ) ; count($e) )` — so only the
-matching instances are counted. A subselectie the resolver cannot structure (a comparison, an
-objecttype/role membership, a name that is not a kenmerk of the element) stays an `Onopgelost`
-`filter` on the `Expr.Functie`, the resolver warns, and the transpiler emits the count as a
-marker rather than a count over EVERY instance — a visible no-op, never a wrong total. Still
-carded (p24): the non-kenmerk die-filters, the navigation case, and the multi-operand union
-count (also still a marker).
+A related §13.4.2 gap: a `die/dat <predicaat>` **subselectie** on a single-operand SET
+aggregation — `het aantal` / `de som` / `de minimale|maximale waarde van … passagiers van de
+reis die een kind zijn` — filters the aggregated element. A subselectie whose predicaat is an
+`is/zijn` **kenmerk** of the aggregated element is resolved (against the ELEMENT type, not the
+rule subject) into a `Conditie.Kenmerk` and lowered as an extra accumulate-source constraint —
+`accumulate( $e : Passagier( reis == $subject, kind == true ) ; count($e) )` (and likewise
+`sum`/`min`/`max`) — so only the matching instances are aggregated. The detection is confined to
+a SINGLE operand: a multi-operand telling (the §5.8.1 union) or a min/max value-fold has no single
+element filter — there a die belongs to one operand's own navigation, not the aggregation (see
+p20b) — so those stay markers/drops. A subselectie the resolver cannot structure (a comparison, a
+`heeft een …` possession, an objecttype/role membership, a name that is not a kenmerk of the
+element) stays an `Onopgelost` `filter` on the `Expr.Functie`; the resolver warns and the
+transpiler emits the aggregation as a marker rather than aggregating over EVERY instance — a
+visible no-op, never a wrong total. Still carded (p29): inflected/meervoud kenmerk spellings, the
+multi-operand union count, and the value-fold die.
 
 ### Aggregation operand separator — `en` splits, it is not a name word
 

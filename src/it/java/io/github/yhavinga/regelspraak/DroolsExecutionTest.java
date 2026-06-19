@@ -1789,4 +1789,41 @@ class DroolsExecutionTest {
         assertFalse(drl.contains("kind == true"),
                 () -> "'die heeft een kind' (possessie) mag niet als kenmerk-constraint lager komen:\n" + drl);
     }
+
+    @Test void som_met_die_kenmerk_filter_telt_alleen_de_gefilterde_elementen() {
+        // p29(3): "de som van de prijs van alle passagiers van de reis die een kind zijn" must sum
+        // only the kind passagiers. The die-filter generalises beyond AANTAL to a single-operand SOM
+        // (it used to silently sum EVERY passagier). Fired: prijs 30 + 70 (kind) + 999 (not kind) ->
+        // 100, not 1099.
+        String src = """
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+                is kind kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel som
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die een kind zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("kind == true") && drl.contains("sum("),
+                () -> "SOM die-filter moet een gefilterde accumulate zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v = new Vlucht();
+        Passagier a = new Passagier(); a.setReis(v); a.setKind(true);  a.setPrijs(new BigDecimal("30"));
+        Passagier b = new Passagier(); b.setReis(v); b.setKind(true);  b.setPrijs(new BigDecimal("70"));
+        Passagier c = new Passagier(); c.setReis(v); c.setKind(false); c.setPrijs(new BigDecimal("999"));
+        sessie.insert(v); sessie.insert(a); sessie.insert(b); sessie.insert(c);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("100").compareTo(v.getTotaalprijs()),
+                () -> "alleen de prijzen van de kinderen tellen mee (100), kreeg " + v.getTotaalprijs());
+    }
 }

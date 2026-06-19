@@ -193,6 +193,7 @@ final class ExpressieBouwer {
         String bron = src(f);
         Expr.FunctieKind kind = functieKind(f);
         List<Expr> argumenten = args(f);
+        Objecttype elem = aggregatieElement(kind, argumenten);
         // §13.4.17.47 telling vs a declared parameter whose name begins with "aantal": the spec
         // gives no syntactic tie-break for "het aantal <phrase>" (a count of <phrase>, or a
         // reference to a declared name "aantal <phrase>"). Resolve it by countability: a count
@@ -203,7 +204,7 @@ final class ExpressieBouwer {
         // element (so is never reinterpreted); only a count phrase that cannot resolve a countable
         // element falls back to a same-named declared parameter, where the parameter is the
         // concrete reading and the count reading is meaningless.
-        if (kind == Expr.FunctieKind.AANTAL && aggregatieElement(kind, argumenten) == null) {
+        if (kind == Expr.FunctieKind.AANTAL && elem == null) {
             Expr ref = naamRef(bron, false, bron);
             if (!(ref instanceof Expr.Onopgelost)) return ref;
         }
@@ -217,41 +218,48 @@ final class ExpressieBouwer {
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
                     "leegwaarde-alternatief van een sommatie moet numeriek zijn, kreeg "
                             + leegwaarde.type() + " (§5.8.2)", f.getStart().getLine()));
-        Conditie filter = tellingFilter(f);
+        Conditie filter = aggregatieFilter(f, elem);
         if (filter instanceof Conditie.Onopgelost)   // a resolved kenmerk-filter is lowered; only an
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING, // unresolved one warns
-                    "een 'die/dat'-subselectie op een telling-operand wordt nog niet omgezet; de telling "
-                            + "blijft buiten beschouwing in plaats van alle instanties te tellen (§13.4.2) — '"
+                    "een 'die/dat'-subselectie op een aggregatie-operand wordt nog niet omgezet; de aggregatie "
+                            + "blijft buiten beschouwing in plaats van alle instanties mee te nemen (§13.4.2) — '"
                             + filter.bron() + "'", f.getStart().getLine()));
-        return new Expr.Functie(kind, argumenten, aggregatieElement(kind, argumenten), leegwaarde, filter, type, bron);
+        return new Expr.Functie(kind, argumenten, elem, leegwaarde, filter, type, bron);
     }
 
-    /** The §13.4.2 "die/dat &lt;predicaat&gt;" subselectie on a SINGLE-operand telling's counted
-     *  element ("het aantal passagiers van de reis die een kind zijn" — only the kind-passagiers),
-     *  as an {@link Conditie.Onopgelost} marker; null when there is none. The kenmerk-membership
-     *  predicaten these subselecties use are not yet structured into a Conditie, so the transpiler
-     *  keeps such a count a visible marker rather than counting every instance.
+    /** The §13.4.2 "die/dat &lt;predicaat&gt;" subselectie filtering a SINGLE-operand set-aggregation's
+     *  element ("het aantal / de som / de minimale waarde van … passagiers van de reis die een kind
+     *  zijn" — only the kind-passagiers). Resolved against the ELEMENT type (not the rule subject): a
+     *  kenmerk of the element becomes a real {@link Conditie.Kenmerk} (lowered as an accumulate-source
+     *  constraint); anything else stays {@link Conditie.Onopgelost}, so the aggregation is a visible
+     *  marker rather than a silently-wrong total over EVERY instance.
      *
-     *  Deliberately narrow: only the lone count operand, and only the die on ITS OWN subject
-     *  onderwerpketen chain — not a deep scan of the whole subtree. A multi-operand telling is
-     *  already a union marker, and a die buried in a sibling/sub navigation (e.g. the "de eerste
-     *  passagier die …" operand of a min/max value-fold) is that navigation's own filter, not the
-     *  aggregation's element filter; markering on it would silently kill a working accumulate. */
-    private Conditie tellingFilter(FunctieAanroepContext f) {
-        if (!(f instanceof AantalFuncContext a) || a.primaireExpressie().size() != 1) return null;
-        PrimaireExpressieContext pe = a.primaireExpressie(0);
-        AttribuutVanOnderwerpContext av = pe.attribuutVanOnderwerp();
-        OnderwerpContext o = av != null ? av.onderwerp() : pe.onderwerp();
-        PredicaatContext p = dieInKeten(o);
+     *  Only a single operand is considered: a multi-operand telling (the §5.8.1 union) or a min/max
+     *  VALUE-fold has no single element filter — there a die belongs to one operand's own navigation
+     *  (e.g. "de eerste passagier die …"), not the aggregation, and markering on it would kill a
+     *  working accumulate (see p20b). With one operand a generic subtree scan is safe. */
+    private Conditie aggregatieFilter(FunctieAanroepContext f, Objecttype elem) {
+        if (elem == null) return null;
+        java.util.List<ParseTree> operanden = new ArrayList<>();
+        for (int i = 0; i < f.getChildCount(); i++) {
+            ParseTree ch = f.getChild(i);
+            if (ch instanceof ExpressieContext || ch instanceof PrimaireExpressieContext) operanden.add(ch);
+        }
+        if (operanden.size() != 1) return null;
+        PredicaatContext p = vindDie(operanden.get(0));
         if (p == null) return null;
-        // §13.4.2: the die/dat predicaat filters the COUNTED ELEMENT (the passagiers), not the rule
-        // subject. Resolve it against the element type: a kenmerk of the element becomes a real
-        // Conditie.Kenmerk (lowered as an accumulate-source constraint); anything else stays an
-        // Onopgelost marker, so the count is a visible no-op rather than a silently-wrong total.
-        Objecttype elem = av != null && av.attribuutMetLidwoord() != null
-                ? aantalElement(src(av.attribuutMetLidwoord().kaleNaam())) : null;
         Conditie filter = elementKenmerkFilter(p, elem);
         return filter != null ? filter : new Conditie.Onopgelost(src(p));
+    }
+
+    /** The first "die/dat &lt;predicaat&gt;" subselectie anywhere in an operand subtree. */
+    private PredicaatContext vindDie(ParseTree t) {
+        if (t instanceof OnderwerpKetenContext k && k.predicaat() != null) return k.predicaat();
+        for (int i = 0; i < t.getChildCount(); i++) {
+            PredicaatContext r = vindDie(t.getChild(i));
+            if (r != null) return r;
+        }
+        return null;
     }
 
     /** A "die een &lt;kenmerk&gt; zijn" subselectie resolved against the counted element type: the
@@ -268,22 +276,6 @@ final class ExpressieBouwer {
         String naam = src(op.kaleNaam());
         return elem.kenmerken.stream().filter(k -> k.equalsIgnoreCase(naam)).findFirst()
                 .<Conditie>map(k -> new Conditie.Kenmerk(k, src(p))).orElse(null);
-    }
-
-    /** The "die/dat &lt;predicaat&gt;" on an onderwerp's own onderwerpketen chain (following only the
-     *  left-recursive keten and the selector "van" navigation), or null. */
-    private PredicaatContext dieInKeten(OnderwerpContext o) {
-        if (o == null) return null;
-        if (o.onderwerpKeten() != null) return dieInKeten(o.onderwerpKeten());
-        if (o.onderwerp() != null) return dieInKeten(o.onderwerp()); // kwantificatie kaleNaam VAN onderwerp
-        return null;
-    }
-    private PredicaatContext dieInKeten(OnderwerpKetenContext k) {
-        if (k == null) return null;
-        if (k.predicaat() != null) return k.predicaat();             // onderwerpKeten (die|dat) predicaat
-        if (k.onderwerpKeten() != null) return dieInKeten(k.onderwerpKeten());
-        if (k.onderwerp() != null) return dieInKeten(k.onderwerp()); // selector VAN onderwerp
-        return null;
     }
 
     /** §4.12-4.15: type-check the operand list of a value/date aggregation. min/max demand all
