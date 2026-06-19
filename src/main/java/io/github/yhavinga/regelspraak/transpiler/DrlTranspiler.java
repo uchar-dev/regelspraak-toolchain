@@ -543,6 +543,12 @@ public final class DrlTranspiler {
             List<String> delen = new ArrayList<>();
             for (Conditie deel : s.onderdelen()) delen.add("(" + conditie(deel, subject) + ")");
             if (delen.isEmpty()) return "true";
+            // An unresolved sub-condition cannot be faithfully combined. Splicing its always-false
+            // marker into one operand is wrong under the NEGATED quantifiers (geen/ten hoogste/
+            // precies, which wrap the operands in !(…)): there the dropped criterion flips into a
+            // positive firing decision. So mark the WHOLE compound a no-op (rule never fires) rather
+            // than risk a silently-wrong gate — for every quantifier.
+            if (delen.stream().anyMatch(DrlTranspiler::bevatMarker)) return onopgelosteConstraint("voorwaarde", s.bron());
             // §13.4.14.4: alle = all hold (AND); geen = none holds (!OR); the counting
             // quantifiers express "k of the criteria hold" purely in booleans (a Drools
             // pattern constraint accepts &&/||/! but not arithmetic over ternaries), via the

@@ -1705,4 +1705,31 @@ class DroolsExecutionTest {
         sessie.dispose();
         assertFalse(m.isBonus(), "een regel met een onopgeloste voorwaarde mag niet vuren (no-op)");
     }
+
+    @Test void onopgeloste_subvoorwaarde_in_geen_compound_vuurt_niet() {
+        // p27 review (HIGH): under a negated quantifier (geen / ten hoogste / precies) an unresolved
+        // sub-condition lowered to `false` is DROPPED by the negation, so the rule fired when it must
+        // not. The whole compound is now a no-op marker instead. Here: "geen van {oud, werkdag}" with
+        // werkdag unresolved — a Meting that is NOT oud would (buggily) satisfy "geen" and fire; it
+        // must not, because the werkdag criterion could not be evaluated.
+        String src = """
+            Objecttype de Meting
+                is oud kenmerk (bijvoeglijk);
+                is bonus kenmerk (bijvoeglijk);
+            Regel r
+                geldig altijd
+                    Een Meting is bonus
+                    indien hij aan geen van de volgende voorwaarden voldoet:
+                    - hij is oud
+                    - hij een werkdag is.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertFalse(drl.contains("!("), () -> "een compound met een onopgeloste sub mag niet als !(...) lager komen:\n" + drl);
+        KieSession sessie = build(drl).newKieSession();
+        Meting m = new Meting(); m.setOud(false);   // would buggily satisfy "geen van {oud, …}"
+        sessie.insert(m);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertFalse(m.isBonus(), "een compound met een onopgeloste sub moet een no-op zijn, niet stil vuren");
+    }
 }
