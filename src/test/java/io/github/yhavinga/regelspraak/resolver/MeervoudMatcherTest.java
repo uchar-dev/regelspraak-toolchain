@@ -57,6 +57,22 @@ class MeervoudMatcherTest {
         assertEquals("stad", MeervoudMatcher.vindAttribuut(stad, "steden"));   // vowel-change plural
     }
 
+    @Test void dubbelzinnig_meervoud_over_de_declaratie_en_synthese_heen_bindt_niets() {
+        // Two attributes declaring the SAME plural, or a declared plural that is also another
+        // attribute's regular plural, is ambiguous across the declared+synthesised pool -> binds none
+        // (not an order-dependent guess), like the synthesis pool already did.
+        Objecttype tweeDecl = metAttributen("zoon", "dochter");
+        tweeDecl.attribuutMeervoud.put("zoon", "kinderen");
+        tweeDecl.attribuutMeervoud.put("dochter", "kinderen");
+        assertNull(MeervoudMatcher.vindAttribuut(tweeDecl, "kinderen"));
+        Objecttype kruis = metAttributen("reis", "vlucht");   // reis declares "vluchten"; it is also vlucht's regular plural
+        kruis.attribuutMeervoud.put("reis", "vluchten");
+        assertNull(MeervoudMatcher.vindAttribuut(kruis, "vluchten"));
+        Objecttype exact = metAttributen("wagens", "auto");   // a singular literally named like a plural still wins exactly
+        exact.attribuutMeervoud.put("auto", "wagens");
+        assertEquals("wagens", MeervoudMatcher.vindAttribuut(exact, "wagens"));
+    }
+
     @Test void foute_meervouden_worden_niet_overgegenereerd() {
         // A consonant-doubling stem (man->mannen, bom->bommen) is left unmodelled rather than
         // generating the lossy "manen"/"bomen" — those are the real plurals of "maan"/"boom", so

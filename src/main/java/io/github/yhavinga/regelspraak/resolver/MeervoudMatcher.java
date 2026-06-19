@@ -25,22 +25,26 @@ import java.util.List;
 final class MeervoudMatcher {
     private MeervoudMatcher() {}
 
-    /** The declared attribute of {@code ot} the written (possibly plural) name denotes, or null. */
+    /** The declared attribute of {@code ot} the written (possibly plural) name denotes, or null. The
+     *  singular exact match is preferred; otherwise the written form must be the declared "(mv: …)" OR
+     *  the synthesised regular plural of exactly ONE attribute — if it is the plural (declared or
+     *  synthesised) of more than one, it binds none (an honest marker, not an order-dependent guess). */
     static String vindAttribuut(Objecttype ot, String geschreven) {
         if (ot == null || geschreven == null) return null;
         for (String attr : ot.attributen.keySet())
             if (attr.equalsIgnoreCase(geschreven)) return attr;          // singular, exact — preferred
-        for (String attr : ot.attributen.keySet()) {                     // declared (mv: …) — spec-sanctioned, exact
-            String mv = ot.attribuutMeervoud.get(attr);
-            if (mv != null && mv.equalsIgnoreCase(geschreven)) return attr;
-        }
         String enige = null;
-        for (String attr : ot.attributen.keySet())
-            for (String mv : meervoudsVormen(attr))
-                if (mv.equalsIgnoreCase(geschreven)) {
-                    if (enige != null && !enige.equalsIgnoreCase(attr)) return null;  // ambiguous → marker
-                    enige = attr;
-                }
+        for (String attr : ot.attributen.keySet()) {
+            String mv = ot.attribuutMeervoud.get(attr);                  // declared (mv: …), §3.3 — spec-sanctioned
+            boolean matcht = mv != null && mv.equalsIgnoreCase(geschreven);
+            if (!matcht)                                                 // else the synthesised regular plural
+                for (String vorm : meervoudsVormen(attr))
+                    if (vorm.equalsIgnoreCase(geschreven)) { matcht = true; break; }
+            if (matcht) {
+                if (enige != null && !enige.equalsIgnoreCase(attr)) return null;  // ambiguous → marker
+                enige = attr;
+            }
+        }
         return enige;
     }
 
