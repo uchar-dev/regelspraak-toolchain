@@ -91,6 +91,7 @@ public final class DrlTranspiler {
            .append("( ").append(constraint).append(" )\n");
         for (String acc : accumulates) out.append("    ").append(acc).append('\n');
         if (tijdgebondenGeldigheid(c.geldigheid())) out.append("    ").append(geldigheidGuard(c.geldigheid())).append('\n');
+        out.append("    ").append(inconsistentieGuard(c.naam())).append('\n');
         out.append("then\n    insert(new ").append(FACT_PACKAGE).append(".Inconsistentie(\"")
            .append(escapeRegelNaam(c.naam())).append("\", ").append(SUBJECT).append("));\nend\n\n");
     }
@@ -119,8 +120,18 @@ public final class DrlTranspiler {
         out.append("    Number( intValue > 1 ) from accumulate( $o : ").append(type)
            .append("( ").append(matchers).append(" ), count($o) )\n");
         if (tijdgebondenGeldigheid(u.geldigheid())) out.append("    ").append(geldigheidGuard(u.geldigheid())).append('\n');
+        out.append("    ").append(inconsistentieGuard(u.naam())).append('\n');
         out.append("then\n    insert(new ").append(FACT_PACKAGE).append(".Inconsistentie(\"")
            .append(escapeRegelNaam(u.naam())).append("\", ").append(SUBJECT).append("));\nend\n\n");
+    }
+
+    /** A "when" guard that makes an Inconsistentie-inserting rule IDEMPOTENT across fire cycles: it
+     *  fires only while no Inconsistentie for this rule + subject already exists. Without it, a later
+     *  insertion that changes a count/comparison re-activates the rule on an already-flagged subject
+     *  (no-loop only blocks re-activation from the rule's OWN consequence), inserting a duplicate. */
+    private String inconsistentieGuard(String naam) {
+        return "not " + FACT_PACKAGE + ".Inconsistentie( regel == \"" + escapeRegelNaam(naam)
+                + "\", subject == " + SUBJECT + " )";
     }
 
     /** The "when" constraint that detects a VIOLATION of the assertion. An ordering or

@@ -487,20 +487,32 @@ The lowering **counts** rather than self-joins:
 ```
 $subject : Type( $k0 : attr != null )
 Number( intValue > 1 ) from accumulate( $o : Type( attr == $k0 ), count($o) )
+not io.github.yhavinga.regelspraak.facts.Inconsistentie( regel == "<naam>", subject == $subject )
 ```
 An `exists Type( this != $subject, attr == $k0 )` would read more directly, but Drools does *not*
 exclude self inside `exists` for this shape — it flagged even a unique instance (verified by firing).
 The count includes the subject, so `> 1` means a twin exists; this also flags each subject exactly once
-regardless of how many instances share the key. A **null** key cannot establish a duplicate (§8.1.6: two
-unknown identities are not the same real-world object): the subject is matched only when its key is
-non-null, and a non-null `== $k0` never matches a null-keyed instance, so nulls neither flag nor count.
+*per evaluation*. The trailing `not Inconsistentie(…)` makes the consequence **idempotent across fire
+cycles**: a duplicate inserted in a later cycle raises the count for an already-flagged subject and
+re-activates the rule (no-loop blocks only re-activation from the rule's *own* consequence), which would
+otherwise insert a second Inconsistentie. The same self-guard is on the single-criterion
+consistentieregel, whose inserted Inconsistentie could likewise be re-inserted if its triggering facts
+change. A **null** key cannot establish a duplicate (§8.1.6: two unknown identities are not the same
+real-world object): the subject is matched only when its key is non-null, and a non-null `== $k0` never
+matches a null-keyed instance, so nulls neither flag nor count.
 
 The plural surface (`alle Vluchten`, `de burgerservicenummers`) binds back to the declared singular via
-`MeervoudMatcher` (regular `-s`/`-en` plurals, ambiguity-safe; the object type may also match by its
-declared `(mv: …)`). **Deliberately deferred (carded), each leaving a WARNING, never a silent drop:** the
-§5.7 **concatenatie** key (its `CONCATENATIE_VAN` token is lowercase-only, it absorbs the article into
-the kaleNaam, and the spec form uses nested-`van` navigations), the cross-type **`verenigd met`** union,
-uniqueness **scoped within a parent** (`… van alle X van <Y>`), and an object type whose plural is
-irregular/multi-word and undeclared (`Natuurlijke personen` resolves only via a declared meervoudsvorm).
-The IR/transpiler already carry a composite key (`List` of attributes), so the concatenatie is a
-resolver+grammar task, not an IR one.
+`MeervoudMatcher`. Per spec footnote 2 (line 450), *deriving* a plural from the name is an ALEF-specific
+convenience, explicitly "separate from RegelSpraak" — the sanctioned source is the declared `(mv: …)`
+form. So matching prefers the exact name and the declared meervoudsvorm; the synthesised regular plural
+is a best-effort tooling fallback, generated **conservatively** (like the kenmerk `-e` inflection): `-s`
+only for the unstressed `-e/-el/-em/-en/-er`/vowel endings, `-en` with long-vowel shortening
+(naam→namen) but **not** for a consonant-doubling stem (man→mannen is unmodelled, so `manen`/`bomen`
+— the real plurals of `maan`/`boom` — are never generated and cannot mis-bind), and ambiguity-safe.
+**Deliberately deferred (carded), each leaving a WARNING, never a silent drop:** declarable **attribute**
+meervouds (the fully spec-faithful path, removing reliance on synthesis); the §5.7 **concatenatie** key
+(its `CONCATENATIE_VAN` token is lowercase-only, it absorbs the article into the kaleNaam, and the spec
+form uses nested-`van` navigations); the cross-type **`verenigd met`** union; uniqueness **scoped within
+a parent** (`… van alle X van <Y>`); and an object type whose plural is irregular/multi-word and
+undeclared (`Natuurlijke personen` resolves only via a declared meervoudsvorm). The IR/transpiler already
+carry a composite key (`List` of attributes), so the concatenatie is a resolver+grammar task, not an IR one.

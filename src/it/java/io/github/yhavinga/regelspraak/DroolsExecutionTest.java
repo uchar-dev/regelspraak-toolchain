@@ -1173,6 +1173,34 @@ class DroolsExecutionTest {
                 "de unieke en de lege-BSN instanties mogen niet gemarkeerd zijn");
     }
 
+    @Test void uniciteit_telt_niet_dubbel_bij_incrementeel_vuren() {
+        // p2 review (MED, fixed): a duplicate inserted in a LATER fire cycle raises the accumulate
+        // count for already-flagged subjects, re-activating the rule — no-loop does not block a
+        // re-activation caused by a DIFFERENT fact's insertion. Without a guard each growth step
+        // re-inserts an Inconsistentie (3 shared keys -> 5 facts). The "not Inconsistentie(regel,
+        // subject)" self-guard keeps the consequence idempotent: each subject flagged exactly once.
+        String src = """
+            Objecttype de Natuurlijk persoon
+                het burgerservicenummer Numeriek (geheel getal);
+            Regel bsn uniek
+                geldig altijd
+                    De burgerservicenummers van alle Natuurlijk persoon moeten uniek zijn.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        KieSession sessie = build(drl).newKieSession();
+        for (String bsn : new String[]{"100", "100", "100"}) {   // arrive one per fire cycle
+            NatuurlijkPersoon p = new NatuurlijkPersoon(); p.setBurgerservicenummer(new BigDecimal(bsn));
+            sessie.insert(p);
+            sessie.fireAllRules();
+        }
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> (Inconsistentie) o).toList();
+        sessie.dispose();
+        assertEquals(3, fouten.size(), () -> "elk subject precies een keer, geen dubbele inserts: " + fouten);
+        assertEquals(3, fouten.stream().map(Inconsistentie::getSubject).distinct().count(),
+                "drie verschillende subjecten");
+    }
+
     @Test void consistentieregel_ordening_markeert_ook_de_lege_operand() {
         // §9.5 + leegwaarde rekentabels: "saldo moet kleiner zijn dan limiet" is violated when
         // saldo >= limiet AND when saldo is empty (a missing value is itself an inconsistency).

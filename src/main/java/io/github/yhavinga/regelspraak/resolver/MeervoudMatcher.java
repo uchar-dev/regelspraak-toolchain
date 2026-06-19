@@ -58,26 +58,50 @@ final class MeervoudMatcher {
         return enige;
     }
 
-    /** The regular Dutch noun plural form(s) of a singular: "-s" and "-en", the latter shortened on a
-     *  long-vowel-digraph-plus-one-consonant stem (naam→namen, persoon→personen). */
+    /** The regular Dutch noun plural form(s) of a singular — generated CONSERVATIVELY so a written form
+     *  binds only when it is a confident plural of the declared name (else it stays an honest marker,
+     *  never a wrong bind):
+     *  <ul>
+     *    <li>"-s" only for the unstressed -e/-el/-em/-en/-er endings and vowel stems (nummer→nummers,
+     *        tafel→tafels) — NOT for an arbitrary stem, so "naam" does not yield the non-word "naams";</li>
+     *    <li>"-en" otherwise, with the long-vowel-digraph shortening (naam→namen, persoon→personen) —
+     *        but NOT for a short-vowel-plus-single-consonant stem, whose real plural doubles the
+     *        consonant (man→mannen) and is left unmodelled: emitting the lossy "manen"/"bomen" would
+     *        mis-bind, since those are the real plurals of "maan"/"boom".</li>
+     *  </ul> */
     static List<String> meervoudsVormen(String enkelvoud) {
         List<String> uit = new ArrayList<>();
         String b = enkelvoud.toLowerCase();
-        if (b.isEmpty()) return uit;
-        uit.add(b + "s");                                     // nummer→nummers, tafel→tafels (else a harmless non-word)
         int n = b.length();
+        if (n == 0) return uit;
+        if (neemtS(b)) uit.add(b + "s");
         if (n >= 3) {
-            char last = b.charAt(n - 1);
-            char v1 = b.charAt(n - 3), v2 = b.charAt(n - 2);
+            char last = b.charAt(n - 1), v2 = b.charAt(n - 2), v1 = b.charAt(n - 3);
             boolean digraf = v1 == v2 && (v1 == 'a' || v1 == 'e' || v1 == 'o' || v1 == 'u');
             if (digraf && isMedeklinker(last)) {
                 uit.add(b.substring(0, n - 3) + v1 + last + "en");   // naam→namen, persoon→personen
                 return uit;
             }
+            if (isKlinker(v2) && isMedeklinker(v1) && isMedeklinker(last))
+                return uit;                                          // short V + single C: doubling class, unmodelled
         }
-        uit.add(b + "en");                                    // vlucht→vluchten, vierkant→vierkanten
+        uit.add(b + "en");                                           // vlucht→vluchten, vierkant→vierkanten
         return uit;
     }
+
+    /** Does this stem take the "-s" plural? The unstressed -el/-em/-en/-er suffixes (a consonant before
+     *  the suffix, so taf-el not the stressed -eel of "deel"), a final schwa -e, or a vowel stem. */
+    private static boolean neemtS(String b) {
+        int n = b.length();
+        if (b.endsWith("e") || isKlinker(b.charAt(n - 1))) return true;
+        if (n >= 3 && isMedeklinker(b.charAt(n - 3))) {
+            String suf = b.substring(n - 2);
+            return suf.equals("el") || suf.equals("em") || suf.equals("en") || suf.equals("er");
+        }
+        return false;
+    }
+
+    private static boolean isKlinker(char c) { return "aeiou".indexOf(c) >= 0; }
 
     private static boolean isMedeklinker(char c) {
         return c >= 'a' && c <= 'z' && "aeiou".indexOf(c) < 0;
