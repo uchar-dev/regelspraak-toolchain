@@ -1201,6 +1201,41 @@ class DroolsExecutionTest {
                 "drie verschillende subjecten");
     }
 
+    @Test void uniciteit_concatenatie_markeert_alleen_de_volledige_sleuteldubbelen() {
+        // §8.1.6 + §5.7: "de concatenatie van de luchthaven en de vertrektijd van alle Vluchten moeten
+        // uniek zijn" — two flights sharing the SAME (luchthaven, vertrektijd) violate uniqueness;
+        // sharing only ONE part does not. The composite key is AND-matched in the accumulate. Fired.
+        String src = """
+            Objecttype de Vlucht
+                de luchthaven Numeriek (geheel getal);
+                de vertrektijd Numeriek (geheel getal);
+            Regel vlucht uniek
+                geldig altijd
+                    De concatenatie van de luchthaven en de vertrektijd van alle Vluchten moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("$o : Vlucht( luchthaven == $k0, vertrektijd == $k1 )"),
+                () -> "de combinatie moet op BEIDE sleuteldelen joinen:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht a = new Vlucht(); a.setLuchthaven(new BigDecimal("1")); a.setVertrektijd(new BigDecimal("900"));
+        Vlucht b = new Vlucht(); b.setLuchthaven(new BigDecimal("1")); b.setVertrektijd(new BigDecimal("900")); // == a
+        Vlucht c = new Vlucht(); c.setLuchthaven(new BigDecimal("1")); c.setVertrektijd(new BigDecimal("930")); // alleen luchthaven gedeeld
+        Vlucht d = new Vlucht(); d.setLuchthaven(new BigDecimal("2")); d.setVertrektijd(new BigDecimal("900")); // alleen tijd gedeeld
+        for (Vlucht v : new Vlucht[]{a, b, c, d}) sessie.insert(v);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> (Inconsistentie) o).toList();
+        sessie.dispose();
+        assertEquals(2, fouten.size(), () -> "alleen de twee met dezelfde (luchthaven, vertrektijd): " + fouten);
+        assertTrue(fouten.stream().anyMatch(f -> f.getSubject() == a) && fouten.stream().anyMatch(f -> f.getSubject() == b),
+                "beide volledige-sleutel-dubbelen gemarkeerd");
+        assertTrue(fouten.stream().noneMatch(f -> f.getSubject() == c || f.getSubject() == d),
+                "wie maar EEN sleuteldeel deelt mag niet gemarkeerd zijn");
+    }
+
     @Test void consistentieregel_ordening_markeert_ook_de_lege_operand() {
         // §9.5 + leegwaarde rekentabels: "saldo moet kleiner zijn dan limiet" is violated when
         // saldo >= limiet AND when saldo is empty (a missing value is itself an inconsistency).

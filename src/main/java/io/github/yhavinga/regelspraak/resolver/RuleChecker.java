@@ -219,26 +219,43 @@ final class RuleChecker {
                 cr.getStart().getLine()));
     }
 
-    /** §8.1.6 uniciteitscontrole ("de &lt;attribuut&gt; van alle &lt;Type&gt; moeten uniek zijn", or a
-     *  §5.7 concatenatie of attributes). Resolves the object type (by name, declared meervoudsvorm, or
-     *  regular plural) and its key attribute(s) over which uniqueness must hold, into a
+    /** §8.1.6 uniciteitscontrole — either "de &lt;attribuut&gt; van alle &lt;Type&gt; moeten uniek zijn"
+     *  or a §5.7 concatenatie "de concatenatie van &lt;attribuut&gt; en … van alle &lt;Type&gt; …". Resolves
+     *  the object type (by name, declared meervoudsvorm, or regular plural) and the key attribute(s)
+     *  over which the value — or the COMBINATION of values — must be unique, into a
      *  {@link io.github.yhavinga.regelspraak.ir.ResolvedUniciteit}. Returns false — leaving the WARNING — for the
      *  cross-type "verenigd met" union, a uniqueness scoped within a parent ("… van alle X van &lt;Y&gt;"),
      *  or any name that does not resolve; the transpiler then never silently drops or mis-checks. */
     private boolean uniciteit(String naam, UniciteitsControleContext u, Geldigheid geldigheid) {
         if (!u.vereniging().isEmpty()) return false;                  // §8.1.6 cross-type union: not lifted
-        // The §5.7 concatenatie key ("de concatenatie van … en … van alle <Type>") is carded: its
-        // CONCATENATIE_VAN token is lowercase-only (a capitalised rule does not parse), it absorbs the
-        // article into the attribuut kaleNaam, and the spec form uses nested-"van" navigations.
-        if (u.alleAttribuutVanOnderwerp() == null) return false;
-        AlleAttribuutVanOnderwerpContext a = u.alleAttribuutVanOnderwerp();
-        if (!a.onderwerpKeten().isEmpty()) return false;             // uniqueness scoped within a parent: not lifted
-        Objecttype type = MeervoudMatcher.vindObjecttype(model.objecttypen.values(), src(a.kaleNaam(1)));
-        if (type == null) return false;
-        String attr = MeervoudMatcher.vindAttribuut(type, src(a.kaleNaam(0)));
-        if (attr == null) return false;
-        model.uniciteiten.add(new io.github.yhavinga.regelspraak.ir.ResolvedUniciteit(
-                naam, type, java.util.List.of(attr), src(u), geldigheid));
+        Objecttype type;
+        java.util.List<String> sleutels = new ArrayList<>();
+        if (u.alleAttribuutVanOnderwerp() != null) {
+            AlleAttribuutVanOnderwerpContext a = u.alleAttribuutVanOnderwerp();
+            if (!a.onderwerpKeten().isEmpty()) return false;         // uniqueness scoped within a parent: not lifted
+            type = MeervoudMatcher.vindObjecttype(model.objecttypen.values(), src(a.kaleNaam(1)));
+            if (type == null) return false;
+            String attr = MeervoudMatcher.vindAttribuut(type, src(a.kaleNaam(0)));  // "DE attr VAN ALLE": no absorbed article
+            if (attr == null) return false;
+            sleutels.add(attr);
+        } else if (u.uniciteitConcatenatie() != null) {
+            UniciteitConcatenatieContext c = u.uniciteitConcatenatie();
+            if (!c.onderwerpKeten().isEmpty()) return false;         // scoped within a parent: not lifted
+            // CONCATENATIE_VAN kaleNaam (COMMA kaleNaam)* EN kaleNaam VAN ALLE <type>: the last kaleNaam
+            // is the type, the rest are the key attributes whose COMBINATION must be unique. Each
+            // attribute kaleNaam has absorbed its leading article ("de luchthaven") — strip it. A
+            // nested-"van" navigation in an attribute name does not resolve (vindAttribuut null) and so
+            // leaves the whole rule a WARNING rather than a partial key.
+            java.util.List<KaleNaamContext> namen = c.kaleNaam();
+            type = MeervoudMatcher.vindObjecttype(model.objecttypen.values(), src(namen.get(namen.size() - 1)));
+            if (type == null) return false;
+            for (int i = 0; i < namen.size() - 1; i++) {
+                String attr = MeervoudMatcher.vindAttribuut(type, stripArtikel(src(namen.get(i))));
+                if (attr == null) return false;
+                sleutels.add(attr);
+            }
+        } else return false;
+        model.uniciteiten.add(new io.github.yhavinga.regelspraak.ir.ResolvedUniciteit(naam, type, sleutels, src(u), geldigheid));
         return true;
     }
 

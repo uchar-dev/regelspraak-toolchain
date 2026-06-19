@@ -82,7 +82,7 @@ AANTAL_DAGEN_IN        : 'het' WSP 'aantal' WSP 'dagen' WSP 'in'       ; // §13
 EERSTE_PAASDAG_VAN     : 'de' WSP 'eerste' WSP 'paasdag' WSP 'van'     ; // §13.4.17.37
 EERSTE_VAN             : 'de' WSP 'eerste' WSP 'van'             ; // §13.4.17.39 / .49
 LAATSTE_VAN            : 'de' WSP 'laatste' WSP 'van'            ; // §13.4.17.40 / .49
-CONCATENATIE_VAN       : 'de' WSP 'concatenatie' WSP 'van'       ; // §13.4.8.14
+CONCATENATIE_VAN       : [Dd] 'e' WSP 'concatenatie' WSP 'van'   ; // §13.4.8.14 (sentence-initial 'De' too)
 TIJDSEVENREDIG_DEEL_PER: 'het' WSP 'tijdsevenredig' WSP 'deel' WSP 'per'; // §13.4.17.58
 // 'in hele <eenheid>' (§13.4.17.32) is composed in the parser as IN HELE <unit>,
 // so 'in' and 'hele' stay separate tokens (the bare-unit form is just 'in <unit>').

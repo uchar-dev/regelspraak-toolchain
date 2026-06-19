@@ -13,6 +13,12 @@ public class Vlucht {
     private LocalDate verwachtVertrek;       // §4.14 "eerste van" operands (date concatenation)
     private LocalDate daadwerkelijkVertrek;
     private LocalDate vroegsteVertrek;       // the "eerste van" result
+    private BigDecimal luchthaven;           // §8.1.6 concatenatie uniqueness key (luchthaven, vertrektijd)
+    private BigDecimal vertrektijd;
+    public BigDecimal getLuchthaven() { return luchthaven; }
+    public void setLuchthaven(BigDecimal v) { this.luchthaven = v; }
+    public BigDecimal getVertrektijd() { return vertrektijd; }
+    public void setVertrektijd(BigDecimal v) { this.vertrektijd = v; }
     public BigDecimal getTotaalprijs() { return totaalprijs; }
     public void setTotaalprijs(BigDecimal v) { this.totaalprijs = v; }
     public BigDecimal getSomMet() { return somMet; }

@@ -509,10 +509,14 @@ is a best-effort tooling fallback, generated **conservatively** (like the kenmer
 only for the unstressed `-e/-el/-em/-en/-er`/vowel endings, `-en` with long-vowel shortening
 (naam→namen) but **not** for a consonant-doubling stem (man→mannen is unmodelled, so `manen`/`bomen`
 — the real plurals of `maan`/`boom` — are never generated and cannot mis-bind), and ambiguity-safe.
-**Deliberately deferred (carded), each leaving a WARNING, never a silent drop:** declarable **attribute**
-meervouds (the fully spec-faithful path, removing reliance on synthesis); the §5.7 **concatenatie** key
-(its `CONCATENATIE_VAN` token is lowercase-only, it absorbs the article into the kaleNaam, and the spec
-form uses nested-`van` navigations); the cross-type **`verenigd met`** union; uniqueness **scoped within
-a parent** (`… van alle X van <Y>`); and an object type whose plural is irregular/multi-word and
-undeclared (`Natuurlijke personen` resolves only via a declared meervoudsvorm). The IR/transpiler already
-carry a composite key (`List` of attributes), so the concatenatie is a resolver+grammar task, not an IR one.
+The §5.7 **concatenatie** key (`de concatenatie van X en Y van alle <Type>`) lowers to the same rule
+with a **composite** key — the accumulate matches every part (`luchthaven == $k0, vertrektijd == $k1`),
+so only instances sharing the WHOLE combination are flagged. `CONCATENATIE_VAN` now accepts a
+sentence-initial `De`, and each attribute name's absorbed leading article is stripped. A nested-`van`
+attribute navigation in a concatenatie part (the spec's `luchthaven van vertrek`) does not resolve to a
+single attribute, so that form stays a WARNING rather than building a partial key.
+
+**Deliberately deferred (carded), each leaving a WARNING, never a silent drop:** a nested-`van`
+concatenatie part; the cross-type **`verenigd met`** union; uniqueness **scoped within a parent**
+(`… van alle X van <Y>`); and an object type whose plural is irregular/multi-word and undeclared
+(`Natuurlijke personen` resolves only via a declared meervoudsvorm).
