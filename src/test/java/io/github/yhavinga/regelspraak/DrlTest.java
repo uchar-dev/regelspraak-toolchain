@@ -578,4 +578,24 @@ class DrlTest {
         assertFalse(DrlTranspiler.transpile(m).contains("accumulate("),
                 "een onresolvebare uniciteit mag geen regel opleveren");
     }
+
+    @Test void uniciteit_verenigd_met_verschillende_datatypes_blijft_een_waarschuwing() {
+        // §8.1.6: a vereniging combines attributes of the SAME datatype. A Tekst attribute unioned with
+        // a Numeriek one is ill-formed (mvel's coercive == would cross-match "5" and 5) -> WARNING, no rule.
+        String src = """
+            Objecttype de Cirkel
+                de naam Tekst;
+            Objecttype het Vierkant
+                de code Numeriek (geheel getal);
+            Regel mismatch
+                geldig altijd
+                    De namen van alle Cirkels verenigd met de codes van alle Vierkanten moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("consistentieregel")),
+                "een datatype-mismatch vereniging moet waarschuwen");
+        assertFalse(DrlTranspiler.transpile(m).contains("accumulate("),
+                "een datatype-mismatch vereniging mag geen regel opleveren");
+    }
 }

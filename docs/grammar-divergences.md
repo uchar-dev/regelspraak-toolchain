@@ -516,7 +516,14 @@ sentence-initial `De`, and each attribute name's absorbed leading article is str
 attribute navigation in a concatenatie part (the spec's `luchthaven van vertrek`) does not resolve to a
 single attribute, so that form stays a WARNING rather than building a partial key.
 
+The cross-type **`verenigd met`** union (`de namen van alle Cirkels verenigd met de namen van alle
+Vierkanten`) lifts to one rule **per source type**: a subject of that source is flagged when the total
+count — summed over every source — of instances whose key equals the subject's exceeds one. So a value
+shared by two Cirkels, or by a Cirkel and a Vierkant, is caught (§8.1.6's three cases). The sources join
+by value positionally and must share key arity; the per-source rule names are distinct but the
+Inconsistentie carries the one declared rule name, and the idempotency guard is on that shared name.
+
 **Deliberately deferred (carded), each leaving a WARNING, never a silent drop:** a nested-`van`
-concatenatie part; the cross-type **`verenigd met`** union; uniqueness **scoped within a parent**
-(`… van alle X van <Y>`); and an object type whose plural is irregular/multi-word and undeclared
-(`Natuurlijke personen` resolves only via a declared meervoudsvorm).
+concatenatie part; uniqueness **scoped within a parent** (`… van alle X van <Y>`, where the parent is
+absorbed into the type `kaleNaam` and needs a feittype-role join); and an object type whose plural is
+irregular/multi-word and undeclared (`Natuurlijke personen` resolves only via a declared meervoudsvorm).

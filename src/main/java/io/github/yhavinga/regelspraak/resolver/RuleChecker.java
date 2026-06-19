@@ -6,6 +6,7 @@ import io.github.yhavinga.regelspraak.ir.Geldigheid;
 import io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
 import io.github.yhavinga.regelspraak.ir.ResolvedVerdeling;
+import io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie.Bron;
 import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.*;
@@ -227,35 +228,71 @@ final class RuleChecker {
      *  cross-type "verenigd met" union, a uniqueness scoped within a parent ("… van alle X van &lt;Y&gt;"),
      *  or any name that does not resolve; the transpiler then never silently drops or mis-checks. */
     private boolean uniciteit(String naam, UniciteitsControleContext u, Geldigheid geldigheid) {
-        if (!u.vereniging().isEmpty()) return false;                  // §8.1.6 cross-type union: not lifted
-        Objecttype type;
-        java.util.List<String> sleutels = new ArrayList<>();
-        if (u.alleAttribuutVanOnderwerp() != null) {
-            AlleAttribuutVanOnderwerpContext a = u.alleAttribuutVanOnderwerp();
-            if (!a.onderwerpKeten().isEmpty()) return false;         // uniqueness scoped within a parent: not lifted
-            type = MeervoudMatcher.vindObjecttype(model.objecttypen.values(), src(a.kaleNaam(1)));
-            if (type == null) return false;
+        Bron eerste = bronVan(u.alleAttribuutVanOnderwerp(), u.uniciteitConcatenatie());
+        if (eerste == null) return false;
+        if (u.vereniging().isEmpty()) {                              // the common single-source form
+            model.uniciteiten.add(new io.github.yhavinga.regelspraak.ir.ResolvedUniciteit(
+                    naam, eerste.type(), eerste.sleutels(), src(u), geldigheid));
+            return true;
+        }
+        // §8.1.6 "verenigd met": uniqueness across the UNION of two or more sources' key spaces. Every
+        // source must resolve and carry the SAME key arity (the values union positionally — "attributen
+        // met hetzelfde datatype"); any unresolved/mismatched source leaves the whole rule a WARNING.
+        java.util.List<Bron> bronnen = new ArrayList<>();
+        bronnen.add(eerste);
+        for (VerenigingContext v : u.vereniging()) {
+            Bron b = bronVan(v.alleAttribuutVanOnderwerp(), v.uniciteitConcatenatie());
+            // §8.1.6: "een vereniging is de combinatie van twee attributen met HETZELFDE datatype". The
+            // values join one space, so each source's key parts must match the first's in arity AND
+            // datatype-kind; otherwise the union is ill-formed (Tekst vs Numeriek would cross-match
+            // under mvel's coercive ==) — leave it a WARNING, like an arity mismatch.
+            if (b == null || b.sleutels().size() != eerste.sleutels().size() || !zelfdeDatatypes(eerste, b))
+                return false;
+            bronnen.add(b);
+        }
+        model.uniciteitUnies.add(new io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie(naam, bronnen, src(u), geldigheid));
+        return true;
+    }
+
+    /** One uniqueness source — "de &lt;attribuut&gt; van alle &lt;Type&gt;" or a §5.7 concatenatie — resolved
+     *  to its object type and key attribute(s), or null when it does not resolve (an unknown name, a
+     *  parent-scoped navigation, a nested-"van" attribute). Exactly one of the two contexts is non-null. */
+    private Bron bronVan(AlleAttribuutVanOnderwerpContext a, UniciteitConcatenatieContext c) {
+        if (a != null) {
+            if (!a.onderwerpKeten().isEmpty()) return null;          // scoped within a parent: not lifted
+            Objecttype type = MeervoudMatcher.vindObjecttype(model.objecttypen.values(), src(a.kaleNaam(1)));
+            if (type == null) return null;
             String attr = MeervoudMatcher.vindAttribuut(type, src(a.kaleNaam(0)));  // "DE attr VAN ALLE": no absorbed article
-            if (attr == null) return false;
-            sleutels.add(attr);
-        } else if (u.uniciteitConcatenatie() != null) {
-            UniciteitConcatenatieContext c = u.uniciteitConcatenatie();
-            if (!c.onderwerpKeten().isEmpty()) return false;         // scoped within a parent: not lifted
+            return attr == null ? null : new Bron(type, java.util.List.of(attr));
+        }
+        if (c != null) {
+            if (!c.onderwerpKeten().isEmpty()) return null;
             // CONCATENATIE_VAN kaleNaam (COMMA kaleNaam)* EN kaleNaam VAN ALLE <type>: the last kaleNaam
-            // is the type, the rest are the key attributes whose COMBINATION must be unique. Each
-            // attribute kaleNaam has absorbed its leading article ("de luchthaven") — strip it. A
-            // nested-"van" navigation in an attribute name does not resolve (vindAttribuut null) and so
-            // leaves the whole rule a WARNING rather than a partial key.
+            // is the type, the rest are the key attributes (each absorbs its leading article — strip it);
+            // a nested-"van" part does not resolve, leaving a WARNING rather than a partial key.
             java.util.List<KaleNaamContext> namen = c.kaleNaam();
-            type = MeervoudMatcher.vindObjecttype(model.objecttypen.values(), src(namen.get(namen.size() - 1)));
-            if (type == null) return false;
+            Objecttype type = MeervoudMatcher.vindObjecttype(model.objecttypen.values(), src(namen.get(namen.size() - 1)));
+            if (type == null) return null;
+            java.util.List<String> sleutels = new ArrayList<>();
             for (int i = 0; i < namen.size() - 1; i++) {
                 String attr = MeervoudMatcher.vindAttribuut(type, stripArtikel(src(namen.get(i))));
-                if (attr == null) return false;
+                if (attr == null) return null;
                 sleutels.add(attr);
             }
-        } else return false;
-        model.uniciteiten.add(new io.github.yhavinga.regelspraak.ir.ResolvedUniciteit(naam, type, sleutels, src(u), geldigheid));
+            return new Bron(type, sleutels);
+        }
+        return null;
+    }
+
+    /** §8.1.6: two union sources may be combined only when their key parts share a datatype. Compared
+     *  by datatype KIND positionally (Tekst vs Numeriek differ; a finer unit/precision check is carded).
+     *  A non-matching pair is ill-formed — the caller leaves it a WARNING. */
+    private static boolean zelfdeDatatypes(Bron a, Bron b) {
+        for (int i = 0; i < a.sleutels().size(); i++) {
+            Datatype da = a.type().attribuut(a.sleutels().get(i));
+            Datatype db = b.type().attribuut(b.sleutels().get(i));
+            if (da == null || db == null || da.getClass() != db.getClass()) return false;
+        }
         return true;
     }
 

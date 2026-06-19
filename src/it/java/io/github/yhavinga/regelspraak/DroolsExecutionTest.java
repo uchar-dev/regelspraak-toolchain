@@ -5,6 +5,7 @@ import io.github.yhavinga.regelspraak.facts.Bestemming;
 import io.github.yhavinga.regelspraak.facts.Burger;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
+import io.github.yhavinga.regelspraak.facts.Cirkel;
 import io.github.yhavinga.regelspraak.facts.Heffing;
 import io.github.yhavinga.regelspraak.facts.Inconsistentie;
 import io.github.yhavinga.regelspraak.facts.Kandidaat;
@@ -20,6 +21,7 @@ import io.github.yhavinga.regelspraak.facts.Reis;
 import io.github.yhavinga.regelspraak.facts.Reiziger;
 import io.github.yhavinga.regelspraak.facts.Route;
 import io.github.yhavinga.regelspraak.facts.Trip;
+import io.github.yhavinga.regelspraak.facts.Vierkant;
 import io.github.yhavinga.regelspraak.facts.Vlucht;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
@@ -1234,6 +1236,43 @@ class DroolsExecutionTest {
                 "beide volledige-sleutel-dubbelen gemarkeerd");
         assertTrue(fouten.stream().noneMatch(f -> f.getSubject() == c || f.getSubject() == d),
                 "wie maar EEN sleuteldeel deelt mag niet gemarkeerd zijn");
+    }
+
+    @Test void uniciteit_verenigd_met_markeert_dubbelen_over_beide_typen() {
+        // §8.1.6 "verenigd met": "de namen van alle Cirkels verenigd met de namen van alle Vierkanten
+        // moeten uniek zijn" — a naam must be unique across BOTH types: no two Cirkels, no two
+        // Vierkanten, and no Cirkel sharing a naam with a Vierkant. One rule per source sums the
+        // cross-type count. Fired.
+        String src = """
+            Objecttype de Cirkel
+                de naam Tekst;
+            Objecttype het Vierkant
+                de naam Tekst;
+            Regel vorm uniek
+                geldig altijd
+                    De namen van alle Cirkels verenigd met de namen van alle Vierkanten moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Cirkel c1 = new Cirkel(); c1.setNaam("A");
+        Cirkel c2 = new Cirkel(); c2.setNaam("A");      // twee Cirkels met dezelfde naam
+        Cirkel c3 = new Cirkel(); c3.setNaam("B");      // uniek
+        Vierkant v1 = new Vierkant(); v1.setNaam("A");  // deelt naam met de Cirkels
+        Vierkant v2 = new Vierkant(); v2.setNaam("C");  // uniek
+        sessie.insert(c1); sessie.insert(c2); sessie.insert(c3); sessie.insert(v1); sessie.insert(v2);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> (Inconsistentie) o).toList();
+        sessie.dispose();
+        // c1, c2 (two Cirkels "A") and v1 (Vierkant "A" == Cirkel "A") flagged; the unique "B"/"C" not.
+        assertEquals(3, fouten.size(), () -> "de drie 'A'-vormen over beide typen: " + fouten);
+        assertTrue(fouten.stream().anyMatch(f -> f.getSubject() == c1) && fouten.stream().anyMatch(f -> f.getSubject() == c2)
+                && fouten.stream().anyMatch(f -> f.getSubject() == v1), "alle drie 'A'-vormen gemarkeerd");
+        assertTrue(fouten.stream().noneMatch(f -> f.getSubject() == c3 || f.getSubject() == v2),
+                "de unieke namen mogen niet gemarkeerd zijn");
     }
 
     @Test void consistentieregel_ordening_markeert_ook_de_lege_operand() {

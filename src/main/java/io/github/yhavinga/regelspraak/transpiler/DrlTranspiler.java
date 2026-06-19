@@ -61,7 +61,8 @@ public final class DrlTranspiler {
                 || model.objectCreaties.stream().anyMatch(o -> tijdgebondenGeldigheid(o.geldigheid()))
                 || model.verdelingen.stream().anyMatch(v -> tijdgebondenGeldigheid(v.geldigheid()))
                 || model.consistenties.stream().anyMatch(c -> tijdgebondenGeldigheid(c.geldigheid()))
-                || model.uniciteiten.stream().anyMatch(u -> tijdgebondenGeldigheid(u.geldigheid()));
+                || model.uniciteiten.stream().anyMatch(u -> tijdgebondenGeldigheid(u.geldigheid()))
+                || model.uniciteitUnies.stream().anyMatch(u -> tijdgebondenGeldigheid(u.geldigheid()));
         if (tijdgebonden) out.append("global java.time.LocalDate rekendatum;\n\n");
 
         for (ResolvedRegel r : model.resolvedRegels) regel(r);
@@ -69,6 +70,7 @@ public final class DrlTranspiler {
         for (io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v : model.verdelingen) verdeling(v);
         for (io.github.yhavinga.regelspraak.ir.ResolvedConsistentie c : model.consistenties) consistentie(c);
         for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteit u : model.uniciteiten) uniciteit(u);
+        for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie u : model.uniciteitUnies) uniciteitUnie(u);
         return out.toString();
     }
 
@@ -123,6 +125,46 @@ public final class DrlTranspiler {
         out.append("    ").append(inconsistentieGuard(u.naam())).append('\n');
         out.append("then\n    insert(new ").append(FACT_PACKAGE).append(".Inconsistentie(\"")
            .append(escapeRegelNaam(u.naam())).append("\", ").append(SUBJECT).append("));\nend\n\n");
+    }
+
+    /** §8.1.6 "verenigd met": uniqueness across the UNION of several sources' key spaces. One rule per
+     *  source — a subject of that source is flagged when the total count, summed over EVERY source, of
+     *  instances whose key equals the subject's exceeds one (so a value shared within one source or
+     *  across two is caught). Keys join positionally (every source has the same arity). */
+    private void uniciteitUnie(io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie u) {
+        var bronnen = u.bronnen();
+        int arity = bronnen.get(0).sleutels().size();
+        for (int s = 0; s < bronnen.size(); s++) {                   // the source whose instances this rule judges
+            var subj = bronnen.get(s);
+            StringBuilder binders = new StringBuilder();             // bind the subject's non-null key parts
+            for (int i = 0; i < arity; i++) {
+                if (i > 0) binders.append(", ");
+                binders.append("$k").append(i).append(" : ").append(ident(subj.sleutels().get(i), false)).append(" != null");
+            }
+            StringBuilder counts = new StringBuilder();              // one count per source, matched by value
+            StringBuilder som = new StringBuilder();
+            for (int j = 0; j < bronnen.size(); j++) {
+                var b = bronnen.get(j);
+                StringBuilder match = new StringBuilder();
+                for (int i = 0; i < arity; i++) {
+                    if (i > 0) match.append(", ");
+                    match.append(ident(b.sleutels().get(i), false)).append(" == $k").append(i);
+                }
+                counts.append("    $o").append(j).append(" : Number() from accumulate( $i").append(j).append(" : ")
+                      .append(ident(b.type().naam, true)).append("( ").append(match).append(" ), count($i").append(j).append(") )\n");
+                som.append(j > 0 ? " + " : "").append("$o").append(j).append(".intValue()");
+            }
+            // DRL rule names must be unique; the 1-based source index disambiguates even a same-type union.
+            String ruleNaam = u.naam() + " (" + subj.type().naam + " " + (s + 1) + ")";
+            out.append("rule \"").append(escapeRegelNaam(ruleNaam)).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
+            out.append("    ").append(SUBJECT).append(" : ").append(ident(subj.type().naam, true)).append("( ").append(binders).append(" )\n");
+            out.append(counts);
+            out.append("    eval( ").append(som).append(" > 1 )\n");
+            if (tijdgebondenGeldigheid(u.geldigheid())) out.append("    ").append(geldigheidGuard(u.geldigheid())).append('\n');
+            out.append("    ").append(inconsistentieGuard(u.naam())).append('\n');   // guard on the shared rule name
+            out.append("then\n    insert(new ").append(FACT_PACKAGE).append(".Inconsistentie(\"")
+               .append(escapeRegelNaam(u.naam())).append("\", ").append(SUBJECT).append("));\nend\n\n");
+        }
     }
 
     /** A "when" guard that makes an Inconsistentie-inserting rule IDEMPOTENT across fire cycles: it
