@@ -65,11 +65,27 @@ public final class DefinitionResolver {
     private void member(Objecttype ot, ObjectTypeMemberContext m) {
         if (m.attribuutSpecificatie() != null) {
             AttribuutSpecificatieContext a = m.attribuutSpecificatie();
-            ot.attributen.put(naam(a.lowerNaam()), datatypeVan(a.datatype(), a.domeinNaam()));
+            String naam = naam(a.lowerNaam());
+            meldHoofdletterBotsing(ot, naam, a.getStart().getLine());
+            ot.attributen.put(naam, datatypeVan(a.datatype(), a.domeinNaam()));
         } else if (m.kenmerkSpecificatie() != null) {
-            ot.kenmerken.add(kenmerkNaam(m.kenmerkSpecificatie()));
+            String naam = kenmerkNaam(m.kenmerkSpecificatie());
+            meldHoofdletterBotsing(ot, naam, m.getStart().getLine());
+            ot.kenmerken.add(naam);
         }
         // koptekst carries no model information
+    }
+
+    /** §13.2.30: a naam is NOT hoofdletter-onderscheidend, so two members of one object type
+     *  that differ ONLY in case are the SAME name declared twice — ambiguous (a third casing
+     *  would bind whichever was declared first, see {@link Objecttype#attribuut}). Warn at
+     *  registration; an exact-key redeclaration is a different concern and is left to the map. */
+    private void meldHoofdletterBotsing(Objecttype ot, String naam, int regel) {
+        if (ot.attributen.containsKey(naam) || ot.kenmerken.contains(naam)) return; // exact duplicate: not a case botsing
+        if (ot.heeftLid(naam))
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
+                    "lid '" + naam + "' van objecttype '" + ot.naam + "' verschilt alleen in hoofdletters van een eerder lid; "
+                            + "namen zijn niet hoofdletter-onderscheidend (§13.2.30), dus de verwijzing is dubbelzinnig", regel));
     }
 
     private String kenmerkNaam(KenmerkSpecificatieContext k) {

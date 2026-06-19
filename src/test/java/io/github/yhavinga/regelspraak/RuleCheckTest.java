@@ -433,4 +433,31 @@ class RuleCheckTest {
         assertTrue(Resolver.resolve(bareNaEn).errors().isEmpty(),
                 () -> "bare 'en een maximum van' na een minimum: " + Resolver.resolve(bareNaEn).errors());
     }
+
+    @Test void leden_die_alleen_in_hoofdletters_verschillen_worden_gewaarschuwd() {
+        // §13.2.30: a naam is not hoofdletter-onderscheidend, so two members differing only in
+        // case are the same name twice — a third casing binds whichever was declared first, and
+        // the typeringen verdict then flips on declaration order. Warn at registration.
+        String src = """
+            Objecttype de Rekening
+                de saldo Numeriek (geheel getal);
+                de saLdo Tekst;
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
+                        && d.message().contains("hoofdletters")),
+                () -> "verwachtte een hoofdletter-botsing-waarschuwing, kreeg: " + m.diagnostics);
+    }
+
+    @Test void leden_zonder_hoofdletterbotsing_geven_geen_waarschuwing() {
+        // distinct member names must not warn.
+        String src = """
+            Objecttype de Rekening
+                de saldo Numeriek (geheel getal);
+                de limiet Numeriek (geheel getal);
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertFalse(m.diagnostics.stream().anyMatch(d -> d.message().contains("hoofdletters")),
+                () -> "geen botsing verwacht, kreeg: " + m.diagnostics);
+    }
 }
