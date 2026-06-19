@@ -247,12 +247,15 @@ afgerond …". No corpus example uses wortel/macht at all, so none is affected. 
 van` still lowers to a `/* TODO aggregatie WORTEL */` marker — no Drools form yet — but the
 afronding and precedence are now captured correctly; `tot de macht` lowers and fires.)
 
-`tot de macht` with an INTEGER (literal) exponent — the common case — lowers exactly through
-`BigDecimal.pow(int)`, so an integer power of any magnitude is exact (7¹⁹ = 11398895185373143, not
-the …144 that an IEEE-754 double yields). A genuinely fractional or runtime (non-literal) exponent
-still lowers through `Math.pow` (a double), so such a power above 2^53 (~9·10¹⁵) can be off by a
-few units before the afronding rounds it — far outside any realistic RegelSpraak magnitude, and an
-exact runtime-integer path is left for if a corpus ever needs it.
+`tot de macht` with an integer **decimal** literal exponent — the common case — lowers exactly
+through `BigDecimal.pow(int)`, so e.g. 7¹⁹ = 11398895185373143, not the …144 that an IEEE-754
+double yields. A genuinely fractional or runtime (non-literal) exponent still lowers through
+`Math.pow` (a double), so such a power above 2^53 (~9·10¹⁵) can be off by a few units before the
+afronding rounds it — far outside any realistic RegelSpraak magnitude. Separately, the numeric
+**literal** reader (`literal`, shared by `geheelExponent`) recognises only a decimal number, so a
+`<rationeelgetal>` literal (§13.2.5, `a[_b]/c`, e.g. `4/2`) is mis-read as its leading integer (`4`)
+in EVERY arithmetic position, not only as an exponent — a pre-existing gap (carded), with no corpus
+example using a rational literal.
 
 ### Telling (aantal) operand precedence — fixed, with a deliberate EBNF asymmetry
 
