@@ -1632,4 +1632,53 @@ class DroolsExecutionTest {
         sessie.dispose();
         assertTrue(oud.isBonus(), "een oude Meting moet bonus krijgen via 'hij oud is'");
     }
+
+    @Test void meerwoordig_kenmerk_check_in_definiete_vorm_vuurt() {
+        // p24a review: a MULTI-WORD kenmerk in the definite form "de Meting bereikbaar per trein is".
+        // The greedy onderwerp parse splits the kenmerk across the operand and the operator, so the
+        // resolver reconstructs the full name from the absorbed prefix + the operator's kaleNaam. It
+        // lowers to the camelCase boolean property "bereikbaarPerTrein == true" (-> isBereikbaarPerTrein()).
+        String src = """
+            Objecttype de Meting
+                is bereikbaar per trein kenmerk (bijvoeglijk);
+                is bonus kenmerk (bijvoeglijk);
+            Regel r
+                geldig altijd
+                    Een Meting is bonus
+                    indien de Meting bereikbaar per trein is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("bereikbaarPerTrein == true"), () -> "meerwoordig kenmerk moet lager komen:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Meting wel = new Meting(); wel.setBereikbaarPerTrein(true);
+        Meting niet = new Meting(); niet.setBereikbaarPerTrein(false);
+        sessie.insert(wel); sessie.insert(niet);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(wel.isBonus(), "een per-trein-bereikbare Meting moet bonus krijgen");
+        assertFalse(niet.isBonus(), "een niet-bereikbare Meting mag geen bonus krijgen");
+    }
+
+    @Test void een_lidwoord_membership_wordt_geen_stille_kenmerk_gate() {
+        // p24a review (MED): "is een <naam>" is an objecttype/role-membership test (§13.4.15.44/.45),
+        // NOT a kenmerk reference — even when <naam> also names a subject kenmerk. It must stay an
+        // unresolved marker, not be silently gated as the kenmerk (which would be a wrong gate).
+        String src = """
+            Objecttype de Meting
+                de x Numeriek (geheel getal);
+            Objecttype de Ding
+                is meting kenmerk (bijvoeglijk);
+                is bonus kenmerk (bijvoeglijk);
+            Regel r
+                geldig altijd
+                    Een Ding is bonus
+                    indien de Ding een meting is.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertFalse(drl.contains("meting == true"),
+                () -> "'is een meting' mag niet als kenmerk-gate lager komen (objecttype-lidmaatschap):\n" + drl);
+    }
 }

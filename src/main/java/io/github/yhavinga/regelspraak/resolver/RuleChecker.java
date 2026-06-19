@@ -389,7 +389,7 @@ final class RuleChecker {
         if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, bron);
         if (op.NUMERIEK_IS_MET_EXACT() != null || op.NUMERIEK_ZIJN_MET_EXACT() != null)
             return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, bron);
-        Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), bron);    // EEN? kaleNaam (is|heeft): §5.14
+        Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null, bron); // EEN? kaleNaam (is|heeft): §5.14
         return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
     }
 
@@ -402,27 +402,40 @@ final class RuleChecker {
         if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, bron);
         if (op.NUMERIEK_MET_EXACT() != null)
             return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, bron);
-        Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), bron);    // (is|heeft) een? kaleNaam: §5.14
+        Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null, bron); // (is|heeft) een? kaleNaam: §5.14
         return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
     }
 
-    /** §5.14: "&lt;subject&gt; is/heeft (een) &lt;kenmerk&gt;" -> a {@link Conditie.Kenmerk}, when the
-     *  operand denotes the rule subject and the name is a declared kenmerk of it. A navigation
-     *  operand or an objecttype name stays unresolved (carded). */
-    private Conditie kenmerkPredicaat(Expr lhs, KaleNaamContext naamCtx, String bron) {
+    /** §5.14: "&lt;subject&gt; is/heeft &lt;kenmerk&gt;" -> a {@link Conditie.Kenmerk}, when the operand
+     *  denotes the rule subject and the (reconstructed) name is a declared kenmerk of it. The leading
+     *  EEN article is NOT a kenmerk reference: per §13.4.15.44/.45 "is een &lt;naam&gt;" is an
+     *  objecttype/role-membership test, so it is left Onopgelost (carded) — this also stops a name
+     *  that is both a kenmerk and an objecttype/role from being silently gated as the kenmerk. */
+    private Conditie kenmerkPredicaat(Expr lhs, KaleNaamContext naamCtx, boolean metEen, String bron) {
         Objecttype subject = bouwer.subject();
-        if (naamCtx == null || subject == null || !duidtSubjectAan(lhs, subject)) return null;
-        String naam = stripArtikel(src(naamCtx));
-        return subject.kenmerken.stream().filter(k -> k.equalsIgnoreCase(naam)).findFirst()
+        if (metEen || naamCtx == null || subject == null) return null;
+        String kop = subjectKop(lhs, subject);
+        if (kop == null) return null;
+        // The greedy onderwerp parse absorbs a multi-word kenmerk's leading words into the operand
+        // ("de Meting bereikbaar per" + operator "trein"), so the kenmerk is that absorbed kop plus
+        // the operator's kaleNaam; for "hij"/a bare subject the kop is empty and the name is the kaleNaam.
+        String staart = stripArtikel(src(naamCtx));
+        String kenmerk = kop.isEmpty() ? staart : kop + " " + staart;
+        return subject.kenmerken.stream().filter(k -> k.equalsIgnoreCase(kenmerk)).findFirst()
                 .<Conditie>map(k -> new Conditie.Kenmerk(k, bron)).orElse(null);
     }
 
-    /** The condition operand denotes the rule subject itself: the bezielde "hij", or a definite
-     *  self-reference whose noun is the subject type ("de Meting"). A navigation ("de partner van …")
-     *  names a different filler, so it is excluded (its kenmerk would be on another object). */
-    private boolean duidtSubjectAan(Expr lhs, Objecttype subject) {
-        if (lhs instanceof Expr.Constante c) return c.naam().equalsIgnoreCase("hij");
-        return stripArtikel(lhs.bron()).equalsIgnoreCase(subject.naam);
+    /** When the condition operand denotes the rule subject, the part of a multi-word kenmerk the
+     *  greedy onderwerp parse absorbed into the operand (empty for the bezielde "hij" or a bare
+     *  subject reference); null when the operand is not the subject. A navigation ("de partner van
+     *  …") names a different filler, so it is excluded — its kenmerk would be on another object. */
+    private String subjectKop(Expr lhs, Objecttype subject) {
+        if (lhs instanceof Expr.Constante c) return c.naam().equalsIgnoreCase("hij") ? "" : null;
+        String b = lhs.bron() == null ? "" : stripArtikel(lhs.bron());
+        if (b.equalsIgnoreCase(subject.naam)) return "";                              // "de Meting"
+        if (b.regionMatches(true, 0, subject.naam + " ", 0, subject.naam.length() + 1)) // "de Meting bereikbaar per"
+            return b.substring(subject.naam.length()).trim();
+        return null;
     }
 
     private Conditie.Kwantor kwantorVan(VoorwaardeKwantificatieContext k) {

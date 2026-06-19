@@ -329,11 +329,15 @@ oud indien …" → `setOud(true)`) already worked. It is now structured as a `C
 lowered to the boolean **property** constraint `oud == true` inside the subject pattern (the property
 form, not `getOud()`, resolves to the fact's `isOud()` — a boolean bean getter is `isX`, not `getX`).
 Scope is deliberately the **subject's own** kenmerk: the operand must denote the subject (the
-bezielde `hij`, or a definite self-reference whose noun is the subject type). A navigation-based
-kenmerk check (`de partner … oud is` — the kenmerk is on another object), an objecttype-membership
-test (`X is een <objecttype>`), and negation stay `Onopgelost` and are carded — the navigation case is
-the one the §13.4.2 aggregation die-filter needs (the kenmerk against the counted element, not the
-subject).
+bezielde `hij`, or a definite self-reference whose noun is the subject type). A multi-word kenmerk in
+the definite form is handled too — the greedy `onderwerp` parse absorbs its leading words into the
+operand (`de Meting bereikbaar per` + operator `trein`), so the resolver reconstructs the full name
+from that absorbed prefix plus the operator's `kaleNaam`. The leading **`een`** article is honoured as
+the §13.4.15.44/.45 signal of an objecttype/role-**membership** test (`X is een <objecttype>`), which
+stays `Onopgelost` — so a name that is *both* a subject kenmerk and an objecttype/role is not silently
+gated as the kenmerk. Still `Onopgelost` and carded: a navigation-based kenmerk check (`de partner …
+oud is` — the kenmerk is on another object, which is what the §13.4.2 die-filter needs), the
+objecttype/role-membership lowering itself, and negation.
 ### Telling (aantal) operand precedence — fixed, with a deliberate EBNF asymmetry
 
 The §13.4.17.46 EBNF and syntax diagram give all four `getalaggregatie` functions the
