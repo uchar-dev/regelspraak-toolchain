@@ -527,3 +527,19 @@ Inconsistentie carries the one declared rule name, and the idempotency guard is 
 concatenatie part; uniqueness **scoped within a parent** (`… van alle X van <Y>`, where the parent is
 absorbed into the type `kaleNaam` and needs a feittype-role join); and an object type whose plural is
 irregular/multi-word and undeclared (`Natuurlijke personen` resolves only via a declared meervoudsvorm).
+
+### §13.4.8 samengestelde consistentieregel — the `alle`-criteria form, fired on any violation
+
+A compound consistency rule ("`<onderwerp>` moet voldoen aan alle volgende criteria: …", or the
+impersonal "er moet worden voldaan aan alle volgende criteria: …") lifts into a `Conditie.Samengesteld`
+over its bullet criteria and lowers like the single-criterion rule: the rule fires on the VIOLATION and
+records an `Inconsistentie`. For the `alle` kwantor the violation is the **OR of the per-criterion
+violations** — a subject is inconsistent when *any* criterion fails — each criterion reusing the
+single-criterion null-guarded violation (so an empty operand is itself a violation, §9.5). The subject is
+the type the criteria are about (the first criterion's left operand). `CONCATENATIE_VAN`-style
+lowercase-only tokens were widened: `ER_MOET_WORDEN_VOLDAAN_AAN` now accepts a sentence-initial `Er`.
+
+Deferred (carded), left as an honest WARNING (no inert eval-true rule): the `geen` / `ten minste` /
+`ten hoogste` / `precies` kwantoren — their violation needs a count of *satisfied* criteria the single
+violation-constraint cannot yet express — and a criterion that is itself not a lowerable comparison or
+emptiness predicate (membership, elfproef, …) leaves the whole compound a WARNING via `transpileerbaar`.

@@ -66,7 +66,7 @@ WORDT_GEINITIALISEERD_OP : 'moet' WSP 'geïnitialiseerd' WSP 'worden' WSP 'op'  
 WORDT_VERDEELD_OVER      : 'wordt' WSP 'verdeeld' WSP 'over'             ; // §13.4.10.1
 WORDT_BEPAALD_DOOR       : 'wordt' WSP 'bepaald' WSP 'door'              ; // §13.4.12.1
 HET_STARTPUNT_VAN        : 'Het' WSP 'startpunt' WSP 'van'               ; // §13.4.12.1
-ER_MOET_WORDEN_VOLDAAN_AAN : 'er' WSP 'moet' WSP 'worden' WSP 'voldaan' WSP 'aan'    ; // §13.4.8.7
+ER_MOET_WORDEN_VOLDAAN_AAN : [Ee] 'r' WSP 'moet' WSP 'worden' WSP 'voldaan' WSP 'aan' ; // §13.4.8.7 (sentence-initial 'Er' too)
 WORDT_VOLDAAN            : 'wordt' WSP 'voldaan'                    ; // §13.4.8.10 / §13.4.14 (trailing 'aan' is separate)
 
 // --- aggregation / function phrases ---

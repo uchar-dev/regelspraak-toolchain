@@ -184,6 +184,17 @@ public final class DrlTranspiler {
      *  and leeg/gevuld use the plain negation (their empty cells are complementary).
      *  Returns null when no faithful negation exists — the caller marks the rule. */
     private String schendingConstraint(Conditie assertie, Objecttype subject) {
+        if (assertie instanceof Conditie.Samengesteld s && s.kwantor() == Conditie.Kwantor.ALLE) {
+            // §13.4.8: "alle criteria moeten gelden" — inconsistent when ANY criterion is violated.
+            // OR the per-criterion violations; an un-lowerable criterion no-ops the whole rule.
+            java.util.List<String> schendingen = new java.util.ArrayList<>();
+            for (Conditie deel : s.onderdelen()) {
+                String d = schendingConstraint(deel, subject);
+                if (d == null) return null;
+                schendingen.add(d);
+            }
+            return schendingen.isEmpty() ? null : "(" + String.join(" || ", schendingen) + ")";
+        }
         if (assertie instanceof Conditie.Vergelijking v && ordeningOfDatum(v.op())) {
             String l = operand(v.links(), subject), r = operand(v.rechts(), subject);
             // An un-evaluable operand (a /* TODO */ marker) must NOT be wrapped in this

@@ -7,8 +7,11 @@ import java.math.BigDecimal;
 public class Konto {
     private BigDecimal saldo;
     private BigDecimal limiet;
+    private BigDecimal minimum;   // §13.4.8 compound-criteria band lower bound
     public BigDecimal getSaldo() { return saldo; }
     public void setSaldo(BigDecimal v) { this.saldo = v; }
     public BigDecimal getLimiet() { return limiet; }
     public void setLimiet(BigDecimal v) { this.limiet = v; }
+    public BigDecimal getMinimum() { return minimum; }
+    public void setMinimum(BigDecimal v) { this.minimum = v; }
 }

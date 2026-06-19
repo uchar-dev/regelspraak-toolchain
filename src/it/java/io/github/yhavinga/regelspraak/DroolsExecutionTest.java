@@ -1306,6 +1306,42 @@ class DroolsExecutionTest {
         assertTrue(fouten.stream().noneMatch(f -> f.getSubject() == ok), "de consistente Konto mag niet gemarkeerd zijn");
     }
 
+    @Test void samengestelde_consistentie_alle_criteria_markeert_elke_schending() {
+        // §13.4.8: "moet voldoen aan alle volgende criteria: - saldo < limiet - saldo > minimum" — a
+        // Konto is inconsistent when ANY criterion fails (violation = OR of the per-criterion
+        // violations). Within the band is consistent; over the limit, under the minimum, or an empty
+        // saldo (leegwaarde -> onwaar -> violated) is flagged. Fired in real Drools.
+        String src = """
+            Objecttype de Konto
+                de saldo Numeriek (geheel getal);
+                de limiet Numeriek (geheel getal);
+                de minimum Numeriek (geheel getal);
+            Regel grenzen
+                geldig altijd
+                    Een Konto moet voldoen aan alle volgende criteria:
+                        - het saldo van een Konto is kleiner dan de limiet van een Konto.
+                        - het saldo van een Konto is groter dan het minimum van een Konto.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Konto binnen = new Konto(); binnen.setSaldo(new BigDecimal("50")); binnen.setLimiet(new BigDecimal("100")); binnen.setMinimum(BigDecimal.ZERO);  // in band
+        Konto teHoog = new Konto(); teHoog.setSaldo(new BigDecimal("150")); teHoog.setLimiet(new BigDecimal("100")); teHoog.setMinimum(BigDecimal.ZERO); // >= limiet
+        Konto teLaag = new Konto(); teLaag.setSaldo(new BigDecimal("-10")); teLaag.setLimiet(new BigDecimal("100")); teLaag.setMinimum(BigDecimal.ZERO); // <= minimum
+        Konto leeg = new Konto(); leeg.setLimiet(new BigDecimal("100")); leeg.setMinimum(BigDecimal.ZERO);                                              // saldo leeg
+        for (Konto k : new Konto[]{binnen, teHoog, teLaag, leeg}) sessie.insert(k);
+        sessie.fireAllRules();
+        var fout = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> (Inconsistentie) o).toList();
+        sessie.dispose();
+        assertEquals(3, fout.size(), () -> "te hoog, te laag en leeg zijn inconsistent; binnen de band niet: " + fout);
+        assertTrue(fout.stream().noneMatch(f -> f.getSubject() == binnen), "een Konto binnen de band is consistent");
+        assertTrue(fout.stream().anyMatch(f -> f.getSubject() == teHoog) && fout.stream().anyMatch(f -> f.getSubject() == teLaag)
+                && fout.stream().anyMatch(f -> f.getSubject() == leeg), "elke schending wordt gemarkeerd");
+    }
+
     @Test void lege_sommatie_geeft_leegwaarde_of_de_opgegeven_fallback() {
         // §5.8.2: a sum over zero contributors is a leegwaarde (null) — UNLESS "of 0 als die
         // er niet zijn" is added, then it is 0. A non-empty sum is unaffected. Drools sum()

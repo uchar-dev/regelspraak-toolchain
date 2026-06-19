@@ -598,4 +598,67 @@ class DrlTest {
         assertFalse(DrlTranspiler.transpile(m).contains("accumulate("),
                 "een datatype-mismatch vereniging mag geen regel opleveren");
     }
+
+    @Test void samengestelde_consistentie_alle_lowert_naar_or_van_schendingen() {
+        // §13.4.8 "alle volgende criteria": the violation is OR of the per-criterion violations.
+        String src = """
+            Objecttype de Konto
+                de saldo Numeriek (geheel getal);
+                de limiet Numeriek (geheel getal);
+                de minimum Numeriek (geheel getal);
+            Regel grenzen
+                geldig altijd
+                    Een Konto moet voldoen aan alle volgende criteria:
+                        - het saldo van een Konto is kleiner dan de limiet van een Konto.
+                        - het saldo van een Konto is groter dan het minimum van een Konto.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("saldo >= limiet) || (") && drl.contains("saldo <= minimum"),
+                () -> "de schending moet de OR van de criterium-schendingen zijn:\n" + drl);
+    }
+
+    @Test void samengestelde_consistentie_geen_kwantor_blijft_een_waarschuwing() {
+        // GEEN / ten-minste / ten-hoogste / precies need a satisfied-criterion COUNT the single
+        // violation rule cannot express yet -> honest WARNING, no rule (not a silent inert eval).
+        String src = """
+            Objecttype de Konto
+                de saldo Numeriek (geheel getal);
+                de limiet Numeriek (geheel getal);
+            Regel geen
+                geldig altijd
+                    Een Konto moet voldoen aan geen van de volgende criteria:
+                        - het saldo van een Konto is kleiner dan de limiet van een Konto.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("consistentieregel")),
+                "een GEEN-kwantor samengestelde consistentie moet waarschuwen");
+        assertFalse(DrlTranspiler.transpile(m).contains("rule \"geen\""),
+                "een niet-omgezette samengestelde consistentie mag geen regel opleveren");
+    }
+
+    @Test void samengestelde_consistentie_met_gemengde_subjecten_blijft_een_waarschuwing() {
+        // The rule lowers to ONE subject pattern, so criteria over DIFFERENT object types cannot be
+        // lifted (a foreign attribute on the wrong fact would not compile, sinking the DRL) -> WARNING.
+        String src = """
+            Objecttype de Konto
+                de saldo Numeriek (geheel getal);
+                de limiet Numeriek (geheel getal);
+            Objecttype de Klant
+                de leeftijd Numeriek (geheel getal);
+            Regel mix
+                geldig altijd
+                    Een Konto moet voldoen aan alle volgende criteria:
+                        - het saldo van een Konto is kleiner dan de limiet van een Konto.
+                        - de leeftijd van een Klant is groter dan de limiet van een Konto.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("consistentieregel")),
+                "een compound over gemengde subjecten moet waarschuwen");
+        assertFalse(DrlTranspiler.transpile(m).contains("rule \"mix\""),
+                "een gemengd-subject compound mag geen regel opleveren");
+    }
 }

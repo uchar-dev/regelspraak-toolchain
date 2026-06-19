@@ -210,7 +210,31 @@ final class RuleChecker {
             }
         }
         if (cr.uniciteitsControle() != null && uniciteit(naam, cr.uniciteitsControle(), geldigheid)) return;
-        // Compound criteria, a membership criterion ("moet een <kenmerk|rol> zijn"), elfproef /
+        // §13.4.8 samengestelde consistentieregel — quantified bullet criteria, in either the
+        // subject-led ("<onderwerp> moet voldoen aan alle volgende criteria: …") or the impersonal
+        // ("er moet worden voldaan aan …") form. Build a Conditie.Samengesteld over the criteria; the
+        // subject is the type the criteria are about (the first criterion's left operand).
+        ConsistentieKwantificatieContext kw = null;
+        SamengesteldCriteriumOnderdeelContext crit = null;
+        if (cr.samengesteldeConsistentie() != null) {
+            kw = cr.samengesteldeConsistentie().consistentieKwantificatie();
+            crit = cr.samengesteldeConsistentie().samengesteldCriteriumOnderdeel();
+        } else if (cr.toplevelSamengesteldCriterium() != null) {
+            kw = cr.toplevelSamengesteldCriterium().consistentieKwantificatie();   // null for the single "volgend criterium"
+            crit = cr.toplevelSamengesteldCriterium().samengesteldCriteriumOnderdeel();
+        }
+        if (crit != null) {
+            Conditie assertie = bouwCriteria(kw, crit, src(cr));
+            Objecttype subject = subjectVanAssertie(assertie);
+            // All criteria must be about the SAME subject: the rule lowers to one subject pattern, so a
+            // criterion over a different object type would emit that type's attribute on the wrong fact
+            // (an uncompilable property that sinks the whole DRL package). Mixed subjects -> WARNING.
+            if (subject != null && transpileerbaar(assertie) && eenSubject(assertie, subject)) {
+                model.consistenties.add(new io.github.yhavinga.regelspraak.ir.ResolvedConsistentie(naam, subject, assertie, src(cr), geldigheid));
+                return;
+            }
+        }
+        // A membership criterion ("moet een <kenmerk|rol> zijn"), elfproef /
         // numeriek-met-exact, a cross-type "verenigd met" uniqueness, or a computed/unresolved
         // subject: forms whose "inconsistent" we cannot yet express as a faithful violation rule.
         // Surface the gap as a WARNING rather than lift it into a silent inert rule (which would
@@ -303,6 +327,12 @@ final class RuleChecker {
         if (c instanceof Conditie.Vergelijking) return true;
         if (c instanceof Conditie.Predicaat p)
             return p.soort() == Conditie.Predicaatsoort.LEEG || p.soort() == Conditie.Predicaatsoort.GEVULD;
+        // An ALLE compound is the violation = OR of the criteria's violations (transpiler), lowerable
+        // when every criterion is. GEEN and the counting kwantoren (ten minste/hoogste/precies) need a
+        // satisfied-criterion count the single violation rule cannot express yet — left to a WARNING.
+        if (c instanceof Conditie.Samengesteld s)
+            return s.kwantor() == Conditie.Kwantor.ALLE && !s.onderdelen().isEmpty()
+                    && s.onderdelen().stream().allMatch(RuleChecker::transpileerbaar);
         return false;
     }
 
@@ -433,8 +463,12 @@ final class RuleChecker {
     /** The threshold count N of a ten-minste/ten-hoogste/precies quantifier (§13.4.14.4),
      *  or 0 when the quantifier carries no count (alle / geen / de). */
     private int drempelVan(VoorwaardeKwantificatieContext k) {
-        if (k == null || k.telwoord() == null) return 0;
-        TelwoordContext t = k.telwoord();
+        return k == null ? 0 : telwoordWaarde(k.telwoord());
+    }
+
+    /** A telwoord (§13.4.14.4): a written één/twee/drie/vier or a NUMBER, else 0 (no/unparseable count). */
+    private static int telwoordWaarde(TelwoordContext t) {
+        if (t == null) return 0;
         if (t.NUMBER() != null) try { return Integer.parseInt(t.NUMBER().getText()); } catch (NumberFormatException e) { return 0; }
         if (t.EEN_TELWOORD() != null)  return 1;
         if (t.TWEE_TELWOORD() != null) return 2;
@@ -443,19 +477,70 @@ final class RuleChecker {
         return 0;
     }
 
+    /** §13.4.8 samengestelde consistentie-criteria → a {@link Conditie.Samengesteld} over the criteria. */
+    private Conditie bouwCriteria(ConsistentieKwantificatieContext k, SamengesteldCriteriumOnderdeelContext onderdeel, String bron) {
+        List<Conditie> onderdelen = new ArrayList<>();
+        for (GenestCriteriumContext g : onderdeel.genestCriterium()) onderdelen.add(bouwCriterium(g));
+        return new Conditie.Samengesteld(kwantorVanConsistentie(k), k == null ? 0 : telwoordWaarde(k.telwoord()), onderdelen, bron);
+    }
+
+    private Conditie bouwCriterium(GenestCriteriumContext g) {
+        if (g.samengesteldCriterium() != null) {
+            SamengesteldCriteriumContext c = g.samengesteldCriterium();
+            return bouwCriteria(c.consistentieKwantificatie(), c.samengesteldCriteriumOnderdeel(), src(c));
+        }
+        if (g.elementaireVoorwaarde() != null) return bouwElementair(g.elementaireVoorwaarde());
+        return new Conditie.Onopgelost(src(g));
+    }
+
+    /** §13.4.14.3 consistentie-kwantor; null (the single "het volgende criterium") is the trivial ALLE. */
+    private static Conditie.Kwantor kwantorVanConsistentie(ConsistentieKwantificatieContext k) {
+        if (k == null || k.ALLE() != null) return Conditie.Kwantor.ALLE;
+        if (k.GEEN_VAN_DE() != null)  return Conditie.Kwantor.GEEN;
+        if (k.TEN_MINSTE() != null)   return Conditie.Kwantor.TEN_MINSTE;
+        if (k.TEN_HOOGSTE() != null)  return Conditie.Kwantor.TEN_HOOGSTE;
+        if (k.PRECIES() != null)      return Conditie.Kwantor.PRECIES;
+        return Conditie.Kwantor.ALLE;
+    }
+
+    /** Every criterion's left operand is about {@code subject} (a literal/parameter left side is fine):
+     *  the rule lowers to one subject pattern, so a criterion over another object type cannot be lifted. */
+    private static boolean eenSubject(Conditie c, Objecttype subject) {
+        if (c instanceof Conditie.Vergelijking v)
+            return !(v.links() instanceof Expr.AttribuutRef a) || a.objecttype() == subject;
+        if (c instanceof Conditie.Predicaat p)
+            return !(p.operand() instanceof Expr.AttribuutRef a) || a.objecttype() == subject;
+        if (c instanceof Conditie.Samengesteld s)
+            return s.onderdelen().stream().allMatch(d -> eenSubject(d, subject));
+        return true;
+    }
+
+    /** The type the criteria are about — the object type of the first criterion's left operand. */
+    private static Objecttype subjectVanAssertie(Conditie c) {
+        if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef a) return a.objecttype();
+        if (c instanceof Conditie.Predicaat p && p.operand() instanceof Expr.AttribuutRef a) return a.objecttype();
+        if (c instanceof Conditie.Samengesteld s)
+            for (Conditie d : s.onderdelen()) { Objecttype t = subjectVanAssertie(d); if (t != null) return t; }
+        return null;
+    }
+
     private Conditie bouwGenest(GenesteVoorwaardeContext g) {
         if (g.genesteSamengesteldeVoorwaarde() != null) {
             GenesteSamengesteldeVoorwaardeContext c = g.genesteSamengesteldeVoorwaarde();
             return bouwSamengesteld(c.voorwaardeKwantificatie(), c.samengesteldeVoorwaardeOnderdeel(), c);
         }
-        if (g.elementaireVoorwaarde() != null) {
-            ElementaireVoorwaardeContext c = g.elementaireVoorwaarde();
-            if (c.expressie() != null && c.nonToplevelOperator() != null)
-                return uitNonToplevel(bouwer.bouw(c.expressie()), c.nonToplevelOperator(), src(c));
-            if (c.expressie() != null && c.toplevelOperator() != null)
-                return uitToplevel(bouwer.bouw(c.expressie()), c.toplevelOperator(), src(c));
-        }
+        if (g.elementaireVoorwaarde() != null) return bouwElementair(g.elementaireVoorwaarde());
         return new Conditie.Onopgelost(src(g));
+    }
+
+    /** An §13.4.15 elementaire voorwaarde / consistentie-criterium ("&lt;expressie&gt; &lt;operator&gt;") to a
+     *  {@link Conditie}; shared by the samengestelde voorwaarde and the samengestelde consistentieregel. */
+    private Conditie bouwElementair(ElementaireVoorwaardeContext c) {
+        if (c.expressie() != null && c.nonToplevelOperator() != null)
+            return uitNonToplevel(bouwer.bouw(c.expressie()), c.nonToplevelOperator(), src(c));
+        if (c.expressie() != null && c.toplevelOperator() != null)
+            return uitToplevel(bouwer.bouw(c.expressie()), c.toplevelOperator(), src(c));
+        return new Conditie.Onopgelost(src(c));
     }
 
     private Conditie uitToplevel(Expr lhs, ToplevelOperatorContext op, String bron) {
