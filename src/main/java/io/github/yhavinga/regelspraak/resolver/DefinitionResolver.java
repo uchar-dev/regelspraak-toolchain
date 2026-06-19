@@ -69,6 +69,7 @@ public final class DefinitionResolver {
             String naam = naam(a.lowerNaam());
             meldHoofdletterBotsing(ot, naam, ot.attributen.keySet(), a.getStart().getLine());
             ot.attributen.put(naam, datatypeVan(a.datatype(), a.domeinNaam()));
+            if (a.meervoudsvorm() != null) ot.attribuutMeervoud.put(naam, src(a.meervoudsvorm())); // §3.3, for §8.1.6
         } else if (m.kenmerkSpecificatie() != null) {
             String naam = kenmerkNaam(m.kenmerkSpecificatie());
             meldHoofdletterBotsing(ot, naam, ot.kenmerken, m.getStart().getLine());

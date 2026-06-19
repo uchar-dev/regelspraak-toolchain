@@ -274,6 +274,10 @@ public final class RegelSpraakModel {
          *  declared spelling, without guessing irregular noun/adjective plural morphology. */
         public String meervoud;
         public final Map<String, Datatype> attributen = new LinkedHashMap<>();
+        /** An attribute's declared "(mv: …)" plural (§3.3 naamwoord, footnote 2), keyed by its singular
+         *  naam — the spec-sanctioned source for the plural a §8.1.6 uniciteitscontrole writes, so it is
+         *  matched exactly (incl. irregular plurals) ahead of any synthesised form. */
+        public final Map<String, String> attribuutMeervoud = new LinkedHashMap<>();
         public final List<String> kenmerken = new ArrayList<>();
         public Objecttype(String naam) { this.naam = naam; }
 

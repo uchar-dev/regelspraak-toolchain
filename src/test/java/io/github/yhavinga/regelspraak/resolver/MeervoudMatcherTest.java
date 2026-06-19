@@ -45,6 +45,18 @@ class MeervoudMatcherTest {
         assertNull(MeervoudMatcher.vindObjecttype(typen, "Routes"));                         // unknown
     }
 
+    @Test void gedeclareerd_attribuut_meervoud_wint_en_dekt_onregelmatige() {
+        // The spec-sanctioned source (footnote 2) is the declared "(mv: …)"; it is matched exactly,
+        // ahead of synthesis, so it covers irregular plurals synthesis deliberately refuses.
+        Objecttype kind = metAttributen("kind");
+        kind.attribuutMeervoud.put("kind", "kinderen");
+        assertEquals("kind", MeervoudMatcher.vindAttribuut(kind, "kinderen")); // irregular -eren plural
+        assertEquals("kind", MeervoudMatcher.vindAttribuut(kind, "kind"));     // singular still binds
+        Objecttype stad = metAttributen("stad");                               // synth refuses (stad->[])
+        stad.attribuutMeervoud.put("stad", "steden");
+        assertEquals("stad", MeervoudMatcher.vindAttribuut(stad, "steden"));   // vowel-change plural
+    }
+
     @Test void foute_meervouden_worden_niet_overgegenereerd() {
         // A consonant-doubling stem (man->mannen, bom->bommen) is left unmodelled rather than
         // generating the lossy "manen"/"bomen" — those are the real plurals of "maan"/"boom", so

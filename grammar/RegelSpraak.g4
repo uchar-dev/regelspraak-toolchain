@@ -156,7 +156,7 @@ kenmerkSpecificatie
 // §3.4): the eenheid clause is admitted after either a concrete datatype or a
 // domein reference, not only inside numeriekDatatype.
 attribuutSpecificatie
-    : bepaaldLidwoord? lowerNaam ( datatype | domeinNaam ) ( MET_EENHEID eenheidExpressie )?
+    : bepaaldLidwoord? lowerNaam ( MV_START meervoudsvorm RPAREN )? ( datatype | domeinNaam ) ( MET_EENHEID eenheidExpressie )?
       COMMA? ( GEDIMENSIONEERD_MET dimensieNaam ( EN dimensieNaam )* )?
       tijdlijn?
       SEMICOLON?

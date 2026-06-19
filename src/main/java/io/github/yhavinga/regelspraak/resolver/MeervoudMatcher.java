@@ -30,6 +30,10 @@ final class MeervoudMatcher {
         if (ot == null || geschreven == null) return null;
         for (String attr : ot.attributen.keySet())
             if (attr.equalsIgnoreCase(geschreven)) return attr;          // singular, exact — preferred
+        for (String attr : ot.attributen.keySet()) {                     // declared (mv: …) — spec-sanctioned, exact
+            String mv = ot.attribuutMeervoud.get(attr);
+            if (mv != null && mv.equalsIgnoreCase(geschreven)) return attr;
+        }
         String enige = null;
         for (String attr : ot.attributen.keySet())
             for (String mv : meervoudsVormen(attr))

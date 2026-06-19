@@ -541,6 +541,26 @@ class DrlTest {
                 () -> "meer dan een instantie met dezelfde sleutel is de schending:\n" + drl);
     }
 
+    @Test void uniciteit_met_gedeclareerd_onregelmatig_attribuut_meervoud_lowert() {
+        // §8.1.6 writes the attribute in its meervoudsvorm; an attribuut is a naamwoord, so it may
+        // declare "(mv: …)". The declared plural (incl. an irregular -eren one synthesis refuses)
+        // binds the singular attribute exactly, so the uniqueness rule lowers.
+        String src = """
+            Objecttype de Reiziger
+                het kind (mv: kinderen) Numeriek (geheel getal);
+            Regel uniek
+                geldig altijd
+                    De kinderen van alle Reiziger moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("$subject : Reiziger( $k0 : kind != null )"),
+                () -> "de gedeclareerde meervoudsvorm moet het enkelvoud-attribuut binden:\n" + drl);
+        assertTrue(drl.contains("from accumulate( $o : Reiziger( kind == $k0 ), count($o) )"),
+                () -> drl);
+    }
+
     @Test void uniciteit_over_onbekend_type_blijft_een_waarschuwing() {
         // The object type must resolve; "alle Routes" with no Route declared cannot lower — it stays a
         // WARNING and emits no rule, rather than silently dropping the consistency check.
