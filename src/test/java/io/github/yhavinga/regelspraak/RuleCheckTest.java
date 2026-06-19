@@ -460,4 +460,30 @@ class RuleCheckTest {
         assertFalse(m.diagnostics.stream().anyMatch(d -> d.message().contains("hoofdletters")),
                 () -> "geen botsing verwacht, kreeg: " + m.diagnostics);
     }
+
+    @Test void attribuut_en_kenmerk_met_zelfde_naam_botsen_niet() {
+        // The check is SAME-KIND: an attribute and a kenmerk may legitimately share a name (TOKA's
+        // Vlucht has both a "bereikbaar per trein" kenmerk and attribute). A kenmerk carries no
+        // datatype and never enters attribuut(), so even a case-only difference is not ambiguous.
+        String src = """
+            Objecttype de Vlucht
+                is bereikBaar per trein kenmerk (bijvoeglijk);
+                de bereikbaar per trein Boolean;
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertFalse(m.diagnostics.stream().anyMatch(d -> d.message().contains("hoofdletters")),
+                () -> "een attribuut en kenmerk met dezelfde naam mogen niet botsen, kreeg: " + m.diagnostics);
+    }
+
+    @Test void kenmerken_die_alleen_in_hoofdletters_verschillen_worden_gewaarschuwd() {
+        // same-kind kenmerk collision is still flagged.
+        String src = """
+            Objecttype de Persoon
+                is jong kenmerk (bijvoeglijk);
+                is jOng kenmerk (bijvoeglijk);
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("hoofdletters")),
+                () -> "kenmerk-botsing verwacht, kreeg: " + m.diagnostics);
+    }
 }

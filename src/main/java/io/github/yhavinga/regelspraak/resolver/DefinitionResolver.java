@@ -66,23 +66,26 @@ public final class DefinitionResolver {
         if (m.attribuutSpecificatie() != null) {
             AttribuutSpecificatieContext a = m.attribuutSpecificatie();
             String naam = naam(a.lowerNaam());
-            meldHoofdletterBotsing(ot, naam, a.getStart().getLine());
+            meldHoofdletterBotsing(ot, naam, ot.attributen.keySet(), a.getStart().getLine());
             ot.attributen.put(naam, datatypeVan(a.datatype(), a.domeinNaam()));
         } else if (m.kenmerkSpecificatie() != null) {
             String naam = kenmerkNaam(m.kenmerkSpecificatie());
-            meldHoofdletterBotsing(ot, naam, m.getStart().getLine());
+            meldHoofdletterBotsing(ot, naam, ot.kenmerken, m.getStart().getLine());
             ot.kenmerken.add(naam);
         }
         // koptekst carries no model information
     }
 
-    /** §13.2.30: a naam is NOT hoofdletter-onderscheidend, so two members of one object type
-     *  that differ ONLY in case are the SAME name declared twice — ambiguous (a third casing
-     *  would bind whichever was declared first, see {@link Objecttype#attribuut}). Warn at
-     *  registration; an exact-key redeclaration is a different concern and is left to the map. */
-    private void meldHoofdletterBotsing(Objecttype ot, String naam, int regel) {
-        if (ot.attributen.containsKey(naam) || ot.kenmerken.contains(naam)) return; // exact duplicate: not a case botsing
-        if (ot.heeftLid(naam))
+    /** §13.2.30: a naam is NOT hoofdletter-onderscheidend, so two members of one object type OF
+     *  THE SAME KIND that differ ONLY in case are the same name declared twice — ambiguous (a
+     *  third casing would bind whichever was declared first, see {@link Objecttype#attribuut}).
+     *  Warn at registration. Scoped to one kind: an attribute and a kenmerk MAY legitimately
+     *  share a name (TOKA's Vlucht has both a "bereikbaar per trein" kenmerk and attribute) — a
+     *  kenmerk carries no datatype and never enters {@link Objecttype#attribuut}, so there is no
+     *  cross-kind ambiguity. An exact-case redeclaration is left to the collection. */
+    private void meldHoofdletterBotsing(Objecttype ot, String naam, java.util.Collection<String> bestaande, int regel) {
+        if (bestaande.contains(naam)) return; // exact duplicate of the same kind: not a case botsing
+        if (bestaande.stream().anyMatch(k -> k.equalsIgnoreCase(naam)))
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
                     "lid '" + naam + "' van objecttype '" + ot.naam + "' verschilt alleen in hoofdletters van een eerder lid; "
                             + "namen zijn niet hoofdletter-onderscheidend (§13.2.30), dus de verwijzing is dubbelzinnig", regel));
