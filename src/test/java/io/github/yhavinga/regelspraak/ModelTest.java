@@ -137,6 +137,42 @@ class ModelTest {
         assertTrue(ft.rollen.get(1).meervoudig(), "docent is meervoudig (... meerdere docenten)");
     }
 
+    @Test void feittype_naam_met_lidwoord_waarschuwt_voor_de_aangetaste_rol() {
+        // §13.3.9.3: feitTypeNaam excludes de/het, so a feittype name containing one ("bonus van de vlucht")
+        // truncates there and the leftover "de vlucht" is absorbed into the first role's greedy rolNaam,
+        // corrupting it to "vlucht de bonusvlucht" with NO error node. Flag the tell-tale internal article.
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de naam Tekst;
+            Feittype bonus van de vlucht
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
+                        && d.message().contains("lidwoord") && d.message().contains("rolnaam")),
+                () -> "een feittypenaam met een lidwoord moet de aangetaste rol melden: " + m.diagnostics);
+    }
+
+    @Test void feittype_naam_zonder_lidwoord_waarschuwt_niet() {
+        // The TOKA-style multi-word role names ("te verdelen contingent treinmiles", "passagier met recht
+        // op treinmiles") carry no internal article, so they must not trip the heuristic.
+        String src = """
+            Objecttype de Contingent
+            Objecttype de Natuurlijk persoon
+            Feittype verdeling contingent treinmiles over passagiers
+                de te verdelen contingent treinmiles Contingent
+                de passagier met recht op treinmiles Natuurlijk persoon
+            Eén te verdelen contingent treinmiles betreft meerdere passagiers met recht op treinmiles
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertFalse(m.diagnostics.stream().anyMatch(d -> d.message().contains("lidwoord")),
+                () -> "een schone feittypenaam mag geen lidwoord-waarschuwing geven: " + m.diagnostics);
+    }
+
     @Test void cardinaliteit_onregelmatig_meervoud_wordt_via_eliminatie_gemarkeerd() {
         // "vakken" is the doubling-plural of role "vak" — undeclared, so neither the best-effort nor
         // MeervoudMatcher synthesises it (§footnote 2). But a non-wederkerig feittype has exactly two

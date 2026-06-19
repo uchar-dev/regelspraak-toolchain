@@ -264,8 +264,20 @@ public final class DefinitionResolver {
         ft.wederkerig = ctx.WEDERKERIG_FEITTYPE() != null;
         List<Rol> rollen = new ArrayList<>();
         for (RolSpecificatieContext rs : ctx.rolSpecificatie()) {
+            String rolNaam = src(rs.rolNaam());
             String meervoud = rs.meervoudsvorm() != null ? src(rs.meervoudsvorm()) : null; // declared "(mv: …)"
-            rollen.add(new Rol(src(rs.rolNaam()), src(rs.objectTypeNaam()), meervoud));
+            // §13.3.9.3: feitTypeNaam excludes 'de'/'het' (it stops at the role's article), so a feittype
+            // name that itself contains an article ("bonus van DE vlucht") truncates there and the leftover
+            // "de <woord>" is absorbed by this greedy rolNaam — corrupting it to "<woord> de <echte rol>"
+            // with no error node. A real role name carries no internal definite article, so flag one as the
+            // tell-tale of a name+article boundary swallowed into the role (honest signal, never silent).
+            if (rolNaam.matches("(?i).*\\b(de|het)\\s.*"))
+                model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
+                        "feittype '" + ft.naam + "': de rolnaam '" + rolNaam + "' bevat een lidwoord (de/het) —"
+                        + " waarschijnlijk bevat de feittypenaam een 'de'/'het' die de naam afkapt en in de rol"
+                        + " wordt geabsorbeerd (§13.3.9.3); hernoem het feittype zonder lidwoord in de naam",
+                        rs.getStart().getLine()));
+            rollen.add(new Rol(rolNaam, src(rs.objectTypeNaam()), meervoud));
         }
         // §13.3.9.1 cardinaliteit: the line "<q1> <rol1> … <q2> <rol2>" marks each role one or
         // meerdere. A wederkerig role is enkelvoudig (§3.11), so only a normal feittype's roles
