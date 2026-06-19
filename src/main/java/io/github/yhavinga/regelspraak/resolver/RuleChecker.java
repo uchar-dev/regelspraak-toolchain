@@ -487,6 +487,7 @@ final class RuleChecker {
         else if (rd.initialisatie() != null) doel = rd.initialisatie().attribuutVanOnderwerp();
         else if (rd.kenmerkToekenning() != null) return bouwer.objecttypeVanKeten(rd.kenmerkToekenning().onderwerpKeten());
         else if (rd.objectCreatie() != null) return bouwer.objecttypeVanKeten(rd.objectCreatie().onderwerpKeten());
+        else if (rd.feitCreatie() != null) return bouwer.resolveOnderwerp(rd.feitCreatie().onderwerp(0)); // the anker — so its voorwaarde (incl. a kenmerk) resolves
         else if (rd.consistentieRegel() != null) {
             EnkelvoudigeConsistentieRegelContext e = rd.consistentieRegel().enkelvoudigeConsistentieRegel();
             return e != null && e.expressie() != null

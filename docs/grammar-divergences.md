@@ -587,8 +587,12 @@ rule):
 
 A multi-version (time-bounded) feitcreatie gets per-version DRL rule names ("… #1", "… #2"), like every
 other resultaatdeel kind. A voorwaarde is hosted where it resolves — a guard on the anker stays on the
-`$subject` pattern, a guard on the doel moves to the `$doel` pattern; if it lowers to neither it is dropped
-with a visible DRL comment, never an always-false `null > x` no-op.
+`$subject` pattern (a kenmerk too: `subjectVan` yields the anker so §8.1.8 resolves it), a guard on the
+doel moves to the `$doel` pattern. A guard that lowers to NEITHER (a kenmerk on the navigated doel, which
+the §8.1.8 subject-only path cannot reach, or a mixed anker+doel compound) makes the rule an inert
+`eval(false)` no-op carrying a marker — never a dropped guard, which would fire unconditionally and
+**over-create** the relation. Creating nothing (visibly) beats creating wrongly; resolving those guards is
+a carded follow-up.
 
 **Deferred (carded), each an honest WARNING:** the MULTI-HOP `<onderwerpD>` navigation — the spec's own
 §9.4 / TOKA example ("… van de reis met treinmiles van het vastgestelde contingent treinmiles", Contingent

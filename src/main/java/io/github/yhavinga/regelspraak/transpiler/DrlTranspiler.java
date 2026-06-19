@@ -360,9 +360,12 @@ public final class DrlTranspiler {
         accCount = 0;
         Objecttype anker = fc.anker(), doel = fc.doel();
         // The voorwaarde selects which objects get the relation: a guard on the anker (Vlucht) stays on
-        // the anker pattern; a guard on the doel (the passengers) must host on the $doel pattern, not
-        // become a /* TODO */ null-marker on the anker (which would silently make the rule never fire).
-        String ankerC = "", doelExtra = "", commentaar = "";
+        // the anker pattern; a guard on the doel (the passengers) hosts on the $doel pattern. A guard that
+        // lowers to NEITHER must NOT be silently dropped — dropping it makes the rule fire unconditionally
+        // and OVER-CREATE the relation. Instead the rule becomes an inert eval(false) no-op (carrying the
+        // marker), the §-wide "an unresolved condition is a compilable no-op" discipline: better to create
+        // nothing (visibly) than to create wrongly.
+        String ankerC = "", doelExtra = "", noFire = "";
         if (fc.voorwaarde() != null) {
             String opAnker = conditie(fc.voorwaarde(), anker);
             if (!bevatMarker(opAnker)) {
@@ -374,12 +377,12 @@ public final class DrlTranspiler {
                     doelExtra = opDoel;
                 } else {
                     accumulates = new ArrayList<>(); accCount = 0;
-                    commentaar = "    // voorwaarde niet naar de anker of het doel te lowereren (overgeslagen)\n";
+                    noFire = "    eval( false ) /* TODO voorwaarde niet naar anker of doel te lowereren — regel inert i.p.v. over-creatie */\n";
                 }
             }
         }
         out.append("rule \"").append(escapeRegelNaam(fc.naam())).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
-        out.append(commentaar);
+        out.append(noFire);
         out.append("    ").append(SUBJECT).append(" : ").append(ident(anker.naam, true)).append("( ").append(ankerC).append(" )\n");
         for (String acc : accumulates) out.append("    ").append(acc).append('\n');
         if (tijdgebondenGeldigheid(fc.geldigheid())) out.append("    ").append(geldigheidGuard(fc.geldigheid())).append('\n');

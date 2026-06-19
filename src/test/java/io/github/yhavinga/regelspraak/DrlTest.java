@@ -896,4 +896,61 @@ class DrlTest {
         assertTrue(drl.contains("$subject : Vlucht( naam == \"KL123\" )"),
                 () -> "de anker-voorwaarde moet op het $subject-patroon staan:\n" + drl);
     }
+
+    @Test void feitcreatie_anker_kenmerk_voorwaarde_komt_op_het_subject() {
+        // A kenmerk guard on the anker resolves (subjectVan now yields the anker) and hosts on $subject.
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+                is internationaal kenmerk (bijvoeglijk);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht
+                    indien de vlucht internationaal is.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("$subject : Vlucht( internationaal == true )"),
+                () -> "een anker-kenmerk-voorwaarde moet op $subject resolven:\n" + drl);
+        assertFalse(drl.contains("eval( false )"), () -> "een resolveerbare anker-kenmerk-voorwaarde mag de regel niet inert maken:\n" + drl);
+    }
+
+    @Test void feitcreatie_onlowerbare_voorwaarde_wordt_inert_geen_overcreatie() {
+        // A guard that lowers to NEITHER anker nor doel (here a doel kenmerk, which the §8.1.8 subject-only
+        // kenmerk path cannot resolve on a navigated doel) must make the rule inert (eval(false)), NOT be
+        // dropped — a dropped guard fires unconditionally and OVER-CREATES the relation.
+        String ft = """
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            """;
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                is vip kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            """ + ft + """
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht
+                    indien de passagier vip is.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("eval( false )"),
+                () -> "een onlowerbare voorwaarde moet de regel inert maken (geen over-creatie):\n" + drl);
+    }
 }

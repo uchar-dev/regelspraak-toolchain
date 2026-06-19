@@ -15,6 +15,9 @@ public class Vlucht {
     private LocalDate vroegsteVertrek;       // the "eerste van" result
     private BigDecimal luchthaven;           // §8.1.6 concatenatie uniqueness key (luchthaven, vertrektijd)
     private BigDecimal vertrektijd;
+    private boolean internationaal;          // §13.4.7 feitcreatie anker-kenmerk voorwaarde
+    public boolean isInternationaal() { return internationaal; }
+    public void setInternationaal(boolean v) { this.internationaal = v; }
     public BigDecimal getLuchthaven() { return luchthaven; }
     public void setLuchthaven(BigDecimal v) { this.luchthaven = v; }
     public BigDecimal getVertrektijd() { return vertrektijd; }

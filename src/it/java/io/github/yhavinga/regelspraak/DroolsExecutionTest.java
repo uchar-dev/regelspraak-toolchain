@@ -2236,4 +2236,82 @@ class DroolsExecutionTest {
         assertSame(v, rijk.getBonusvlucht(), () -> "een passagier die aan de voorwaarde voldoet moet gekoppeld zijn");
         assertNull(arm.getBonusvlucht(), () -> "een passagier die niet voldoet mag niet gekoppeld zijn");
     }
+
+    @Test void feitcreatie_met_onlowerbare_voorwaarde_creeert_niets_geen_overcreatie() {
+        // A doel-kenmerk guard the §8.1.8 subject-only path cannot resolve on a navigated doel makes the
+        // rule inert (eval(false)) rather than dropping the guard. Dropping it would link EVERY passenger
+        // (over-creation); inert must link NONE. Better to create nothing visibly than to create wrongly.
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                is student kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht
+                    indien de passagier student is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v = new Vlucht();
+        Passagier a = new Passagier(); a.setReis(v); a.setStudent(true);
+        Passagier b = new Passagier(); b.setReis(v);
+        sessie.insert(v); sessie.insert(a); sessie.insert(b);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertNull(a.getBonusvlucht(), () -> "een inerte feitcreatie mag geen relatie creëren (geen over-creatie)");
+        assertNull(b.getBonusvlucht(), () -> "een inerte feitcreatie mag geen relatie creëren");
+    }
+
+    @Test void feitcreatie_met_anker_kenmerk_voorwaarde_vuurt_alleen_voor_passende_ankers() {
+        // A kenmerk guard on the anker ("indien de vlucht internationaal is") resolves on $subject and
+        // gates which flights' passengers get the relation. Passengers of a non-international flight stay
+        // unlinked. (Vlucht.internationaal is a boolean kenmerk on the fact.)
+        String src = """
+            Objecttype de Vlucht
+                is internationaal kenmerk (bijvoeglijk);
+            Objecttype de Passagier
+                de naam Tekst;
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht
+                    indien de vlucht internationaal is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("eval( false )"), () -> "anker-kenmerk moet resolven, niet inert:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht intl = new Vlucht(); intl.setInternationaal(true);
+        Vlucht binnen = new Vlucht();                                  // niet internationaal
+        Passagier p1 = new Passagier(); p1.setReis(intl);
+        Passagier p2 = new Passagier(); p2.setReis(binnen);
+        sessie.insert(intl); sessie.insert(binnen); sessie.insert(p1); sessie.insert(p2);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertSame(intl, p1.getBonusvlucht(), () -> "passagier van een internationale vlucht moet gekoppeld zijn");
+        assertNull(p2.getBonusvlucht(), () -> "passagier van een binnenlandse vlucht mag niet gekoppeld zijn");
+    }
 }
