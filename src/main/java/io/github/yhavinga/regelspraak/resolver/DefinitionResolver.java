@@ -287,35 +287,59 @@ public final class DefinitionResolver {
      *  — the two failure modes word-by-word matching had. */
     private List<Rol> markeerKardinaliteit(List<Rol> rollen, FeitTypeCardinaliteitContext card) {
         List<Rol> uit = new ArrayList<>(rollen);
+        // Collect the (meervoudig, head-words) segments in order — there are exactly two for a
+        // non-wederkerig feittype (the grammar fixes it), one per role.
+        List<Boolean> meervoud = new ArrayList<>();
+        List<String[]> segmenten = new ArrayList<>();
         boolean meervoudigVolgend = false;
         for (int i = 0; i < card.getChildCount(); i++) {
             ParseTree ch = card.getChild(i);
             if (ch instanceof TerminalNode t) {
                 meervoudigVolgend = t.getSymbol().getType() == RegelSpraak.MEERDERE;
             } else if (ch instanceof CardinaliteitDeelContext deel) {
-                String[] woorden = src(deel).split("\\s+");
-                markeerKop(uit, woorden, meervoudigVolgend);
+                segmenten.add(src(deel).split("\\s+"));
+                meervoud.add(meervoudigVolgend);
             }
+        }
+        // Bind each segment to a role by NAME first (longest leading sub-phrase). A segment whose noun
+        // matches no role — an UNDECLARED irregular plural the language does not synthesise (§footnote 2:
+        // "vakken"/"pupillen" need consonant doubling, refused by both the best-effort and MeervoudMatcher)
+        // — is then assigned by ELIMINATION: a non-wederkerig feittype has exactly two roles, so if the
+        // other segment named one role, this segment must be the remaining one. No plural guessing, just
+        // the 2-role structure. (When BOTH segments fail to name a role there is no signal, so both stay.)
+        int[] segRol = new int[segmenten.size()];
+        boolean[] rolBezet = new boolean[uit.size()];
+        for (int s = 0; s < segmenten.size(); s++) {
+            int j = vindKop(uit, segmenten.get(s), rolBezet);
+            segRol[s] = j;
+            if (j >= 0) rolBezet[j] = true;
+        }
+        for (int s = 0; s < segmenten.size(); s++) {
+            if (segRol[s] >= 0) continue;
+            int rest = -1, n = 0;
+            for (int j = 0; j < uit.size(); j++) if (!rolBezet[j]) { rest = j; n++; }
+            if (n == 1) { segRol[s] = rest; rolBezet[rest] = true; }
+        }
+        for (int s = 0; s < segmenten.size(); s++) {
+            int j = segRol[s];
+            if (j >= 0 && uit.get(j).meervoudig() != meervoud.get(s))
+                uit.set(j, new Rol(uit.get(j).naam(), uit.get(j).objecttypeNaam(), uit.get(j).meervoud(), meervoud.get(s)));
         }
         return uit;
     }
 
-    /** Mark the role named by the LEADING sub-phrase of {@code woorden} (the rolnaam head):
-     *  try the longest leading phrase first so a multi-word role binds whole and a more specific
-     *  role wins over a shorter prefix; stop at the first match so trailing relatiebeschrijving
-     *  words never mark another role. */
-    private void markeerKop(List<Rol> uit, String[] woorden, boolean meervoudig) {
+    /** The index of the role named by the LEADING sub-phrase of {@code woorden} (the rolnaam head),
+     *  or -1 when none matches: try the longest leading phrase first so a multi-word role binds whole
+     *  and a more specific role wins over a shorter prefix; stop at the first match so trailing
+     *  relatiebeschrijving words never name another role. An already-bound role is skipped so the two
+     *  segments cannot both claim the same role. */
+    private int vindKop(List<Rol> uit, String[] woorden, boolean[] rolBezet) {
         for (int len = woorden.length; len >= 1; len--) {
             String kandidaat = String.join(" ", java.util.Arrays.copyOfRange(woorden, 0, len));
-            for (int j = 0; j < uit.size(); j++) {
-                Rol r = uit.get(j);
-                if (RegelSpraakModel.rolNaamMatcht(r, kandidaat)) {
-                    if (r.meervoudig() != meervoudig)
-                        uit.set(j, new Rol(r.naam(), r.objecttypeNaam(), r.meervoud(), meervoudig));
-                    return;
-                }
-            }
+            for (int j = 0; j < uit.size(); j++)
+                if (!rolBezet[j] && RegelSpraakModel.rolNaamMatcht(uit.get(j), kandidaat)) return j;
         }
+        return -1;
     }
 
     // ---------------- helpers ----------------

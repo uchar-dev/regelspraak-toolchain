@@ -137,6 +137,47 @@ class ModelTest {
         assertTrue(ft.rollen.get(1).meervoudig(), "docent is meervoudig (... meerdere docenten)");
     }
 
+    @Test void cardinaliteit_onregelmatig_meervoud_wordt_via_eliminatie_gemarkeerd() {
+        // "vakken" is the doubling-plural of role "vak" — undeclared, so neither the best-effort nor
+        // MeervoudMatcher synthesises it (§footnote 2). But a non-wederkerig feittype has exactly two
+        // roles, so once "studenten" names the student role, the unmatched "vakken" segment is the
+        // remaining (vak) role by ELIMINATION — no plural guessing. Both end up meervoudig.
+        String src = """
+            Objecttype de Student
+                de naam Tekst;
+            Objecttype de Vak
+                de naam Tekst;
+            Feittype inschrijving
+                de student Student
+                het vak Vak
+            meerdere studenten volgen meerdere vakken
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        var ft = m.feittypen.get("inschrijving");
+        assertTrue(ft.rollen.get(0).meervoudig(), "student is meervoudig (regulier meervoud)");
+        assertTrue(ft.rollen.get(1).meervoudig(), "vak is meervoudig (onregelmatig 'vakken' via eliminatie)");
+    }
+
+    @Test void cardinaliteit_eliminatie_respecteert_de_andere_kardinaliteit() {
+        // "pupillen" (doubling) is unmatched; "voogd" names the één-side role by name; so pupil is the
+        // remaining role and takes ITS OWN quantifier (meerdere), not voogd's. Elimination assigns the
+        // role, the segment's own telwoord assigns the cardinality.
+        String src = """
+            Objecttype de Persoon
+                de naam Tekst;
+            Feittype voogdij
+                de voogd Persoon
+                de pupil Persoon
+            Eén voogd heeft meerdere pupillen
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        var ft = m.feittypen.get("voogdij");
+        assertFalse(ft.rollen.get(0).meervoudig(), "voogd is enkelvoudig (Eén voogd ...)");
+        assertTrue(ft.rollen.get(1).meervoudig(), "pupil is meervoudig (... meerdere pupillen, via eliminatie)");
+    }
+
     @Test void cardinaliteit_markeert_een_meerwoordige_rolnaam() {
         // The rolnaam is the LEADING phrase of a cardinaliteit segment, so a multi-word role
         // name binds whole — word-by-word matching missed it and left the role wrongly single.

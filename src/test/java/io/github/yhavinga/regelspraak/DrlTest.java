@@ -976,6 +976,30 @@ class DrlTest {
                 () -> "de gedropte controle moet een WARNING geven: " + m.diagnostics);
     }
 
+    @Test void onregelmatig_meervoud_kardinaliteit_maakt_de_rol_naar_veel() {
+        // p33 downstream: the cardinaliteit "meerdere vakken" marks vak meervoudig via elimination, so a
+        // scalar read through it ("de punten van het vak", a to-many role) is correctly a marker — not a
+        // wrong scalar getter (getVak().getPunten()), which is what an unmarked role would have produced.
+        String src = """
+            Objecttype de Student
+                de uitkomst Numeriek (geheel getal);
+            Objecttype de Vak
+                de punten Numeriek (geheel getal);
+            Feittype inschrijving
+                de student Student
+                het vak Vak
+            Eén student volgt meerdere vakken
+            Regel r
+                geldig altijd
+                    De uitkomst van een Student moet gesteld worden op de punten van het vak.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("/* TODO naar-veel-navigatie"),
+                () -> "een scalar-read door de meervoudige (vakken) rol moet een marker zijn:\n" + drl);
+        assertFalse(drl.contains("getVak().getPunten()"),
+                () -> "de onregelmatige-meervoud rol mag niet als to-one getter lowereren:\n" + drl);
+    }
+
     @Test void consistentie_met_geldige_operanden_waarschuwt_niet() {
         // The same-subject comparison lowers cleanly, so no lowering WARNING must be raised.
         String src = """
