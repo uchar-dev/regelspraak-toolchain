@@ -338,6 +338,20 @@ stays `Onopgelost` — so a name that is *both* a subject kenmerk and an objectt
 gated as the kenmerk. Still `Onopgelost` and carded: a navigation-based kenmerk check (`de partner …
 oud is` — the kenmerk is on another object, which is what the §13.4.2 die-filter needs), the
 objecttype/role-membership lowering itself, and negation.
+
+### An unresolved condition is a compilable no-op, not an uncompilable `null`
+
+Any condition the resolver leaves `Onopgelost` (a navigation/objecttype/role-membership test, a
+period comparison, an unstructured predicaat) lowers in the "when" side to an **always-false**
+constraint `false /* TODO voorwaarde: … */`, so the rule is a visible no-op (it never fires) and the
+DRL still compiles. Previously it lowered to `/* TODO … */ null`, but a bare `null` is not a boolean
+pattern constraint — `Subject( null )` fails to compile, which sank the *whole* generated DRL even
+when every other rule was fine. (The value-side `… null` marker is unchanged — `null` is a valid
+value for an object/decimal field; only a constraint position rejects it.) A **compound** condition
+with any unresolved sub-condition is marked a no-op *as a whole*, not by splicing `false` into one
+operand: under the negated quantifiers (`geen` / `ten hoogste` / `precies`, which wrap operands in
+`!(…)`) a spliced `false` would be dropped by the negation and let the rule fire when it must not.
+
 ### Telling (aantal) operand precedence — fixed, with a deliberate EBNF asymmetry
 
 The §13.4.17.46 EBNF and syntax diagram give all four `getalaggregatie` functions the
