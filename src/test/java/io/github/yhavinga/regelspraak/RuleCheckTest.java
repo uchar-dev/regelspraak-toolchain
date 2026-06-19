@@ -576,4 +576,30 @@ class RuleCheckTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "multi-operand min/max mag geen §6.1.2 valse positieve geven: " + m.errors());
     }
+
+    @Test void product_van_twee_decimalen_overschrijdt_de_precisie() {
+        // p25: §4.4 — a product gets the SUM of the operands' decimals, not the max. prijs(2) maal
+        // factor(2) is a 4-decimal result, so assigning it to a 2-decimal attribute is a §6.1.2
+        // violation (it used to slip because maxDec reported 2).
+        String src = GETAL_MODEL + """
+            Regel r
+                geldig altijd
+                    De prijs van een Ding moet gesteld worden op de prijs van een Ding maal de prijs van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("decimalen")),
+                () -> "verwachtte een §6.1.2 decimalen-fout (2+2 > 2), kreeg: " + m.errors());
+    }
+
+    @Test void product_van_decimaal_en_geheel_blijft_binnen_de_precisie() {
+        // §4.4: 2 + 0 = 2 decimals — prijs(2) maal een geheel getal fits a 2-decimal attribute, so no
+        // false positive (the common "bedrag maal aantal" shape).
+        String src = GETAL_MODEL + """
+            Regel r
+                geldig altijd
+                    De prijs van een Ding moet gesteld worden op de prijs van een Ding maal de uitkomst van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "2dec maal geheel (2+0=2) mag geen §6.1.2-fout geven: " + m.errors());
+    }
 }

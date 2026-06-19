@@ -50,11 +50,17 @@ public final class Typering {
             case MAAL, GEDEELD_DOOR -> {
                 if (!l.isNumeriek() || !r.isNumeriek())
                     yield Resultaat.fout(naam(op) + " vereist numerieke operanden, kreeg " + l.naam() + " en " + r.naam());
+                // §4.4: a product gets the SUM of the operands' decimals ("X,X maal X,XX = X,XXX"),
+                // not the max — so a 2dec × 2dec product is 4dec and §6.1.2 rightly demands an
+                // afronding before it lands in a narrower attribute. §4.5 gedeeld door is an exact
+                // fraction (no decimal precision of its own); maxDec under-reports it, but that errs
+                // safe (a false negative, never a false positive) and is carded separately.
+                int dec = op == BinOp.MAAL ? decimalenVan(l) + decimalenVan(r) : maxDec(l, r);
                 Eenheid el = l.eenheidOf(), er = r.eenheidOf();
                 if (el == null && er == null)
-                    yield Resultaat.ok(new Datatype.Numeriek(false, maxDec(l, r), Datatype.Teken.ONBEPAALD, null));
+                    yield Resultaat.ok(new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, null));
                 if (er == null)
-                    yield Resultaat.ok(new Datatype.Numeriek(false, maxDec(l, r), Datatype.Teken.ONBEPAALD, el));
+                    yield Resultaat.ok(new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, el));
                 yield Resultaat.ok(new Datatype.Onbekend("samengestelde eenheid"));
             }
             // §4.7 tot de macht: Numeriek without a unit on either side; result without a unit.
