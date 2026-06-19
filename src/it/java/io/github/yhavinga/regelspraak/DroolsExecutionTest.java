@@ -11,6 +11,7 @@ import io.github.yhavinga.regelspraak.facts.Kandidaat;
 import io.github.yhavinga.regelspraak.facts.Konto;
 import io.github.yhavinga.regelspraak.facts.Luchthaven;
 import io.github.yhavinga.regelspraak.facts.Meting;
+import io.github.yhavinga.regelspraak.facts.NatuurlijkPersoon;
 import io.github.yhavinga.regelspraak.facts.Passagier;
 import io.github.yhavinga.regelspraak.facts.Periode;
 import io.github.yhavinga.regelspraak.facts.Persoon;
@@ -1130,6 +1131,46 @@ class DroolsExecutionTest {
         assertEquals(1, fouten.size(), () -> "precies de rondvlucht moet inconsistent zijn: " + fouten);
         assertEquals("rondvlucht", fouten.get(0).getRegel());
         assertSame(rond, fouten.get(0).getSubject(), "de gemarkeerde instantie moet de rondvlucht zijn");
+    }
+
+    @Test void uniciteit_markeert_de_instanties_die_een_sleutel_delen() {
+        // §8.1.6: "de burgerservicenummers van alle Natuurlijk persoon moeten uniek zijn" — two
+        // persons sharing a BSN violate uniqueness (both flagged), a unique BSN does not. The plural
+        // attribuut "burgerservicenummers" binds the declared singular "burgerservicenummer" via the
+        // meervoud. Proven by firing in a real engine and counting Inconsistentie.
+        String src = """
+            Objecttype de Natuurlijk persoon
+                het burgerservicenummer Numeriek (geheel getal);
+            Regel bsn uniek
+                geldig altijd
+                    De burgerservicenummers van alle Natuurlijk persoon moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("from accumulate( $o : NatuurlijkPersoon( burgerservicenummer == $k0 ), count($o) )"),
+                () -> "uniciteit moet de sleutel-tweelingen tellen:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        NatuurlijkPersoon a = new NatuurlijkPersoon(); a.setBurgerservicenummer(new BigDecimal("100"));
+        NatuurlijkPersoon b = new NatuurlijkPersoon(); b.setBurgerservicenummer(new BigDecimal("100")); // deelt BSN
+        NatuurlijkPersoon c = new NatuurlijkPersoon(); c.setBurgerservicenummer(new BigDecimal("200")); // uniek
+        NatuurlijkPersoon d = new NatuurlijkPersoon();                                                  // BSN leeg
+        NatuurlijkPersoon e = new NatuurlijkPersoon();                                                  // BSN leeg
+        for (NatuurlijkPersoon p : new NatuurlijkPersoon[]{a, b, c, d, e}) sessie.insert(p);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> (Inconsistentie) o).toList();
+        sessie.dispose();
+
+        // Both duplicates flagged; the unique one not; and two NULL keys do NOT collide (§8.1.6: two
+        // unknown identities are not the same real-world object — the key is guarded "!= null").
+        assertEquals(2, fouten.size(), () -> "alleen de twee met gedeeld BSN mogen gemarkeerd zijn: " + fouten);
+        assertTrue(fouten.stream().allMatch(f -> f.getRegel().equals("bsn uniek")));
+        assertTrue(fouten.stream().anyMatch(f -> f.getSubject() == a) && fouten.stream().anyMatch(f -> f.getSubject() == b),
+                "beide instanties met hetzelfde BSN moeten gemarkeerd zijn");
+        assertTrue(fouten.stream().noneMatch(f -> f.getSubject() == c || f.getSubject() == d || f.getSubject() == e),
+                "de unieke en de lege-BSN instanties mogen niet gemarkeerd zijn");
     }
 
     @Test void consistentieregel_ordening_markeert_ook_de_lege_operand() {

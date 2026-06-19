@@ -475,3 +475,32 @@ lowers as a pairwise fold of `<`/`>` ternaries rather than a collection accumula
   §13.4.17.57): the toplevel-operator trailing-verb form (`… EEN kaleNaam HEEFT`)
   already accepts this surface, so it parses; a fully faithful tree would mark it
   as a subordinate clause, which the resolver can do from the operator label.
+
+### §8.1.6 uniciteitscontrole — lowered as an accumulate-count violation rule
+
+`de <attribuut> van alle <Type> moeten uniek zijn` lifts into `ResolvedUniciteit` (the subject type +
+the key attribute(s)) and lowers to a rule that flags an instance whose key is not unique. "is uniek"
+is waar when the key is unique, so the violation is *another* instance with the same key — recorded as
+an `Inconsistentie`, the observable §9.5 result, exactly like the single-criterion consistentieregel.
+
+The lowering **counts** rather than self-joins:
+```
+$subject : Type( $k0 : attr != null )
+Number( intValue > 1 ) from accumulate( $o : Type( attr == $k0 ), count($o) )
+```
+An `exists Type( this != $subject, attr == $k0 )` would read more directly, but Drools does *not*
+exclude self inside `exists` for this shape — it flagged even a unique instance (verified by firing).
+The count includes the subject, so `> 1` means a twin exists; this also flags each subject exactly once
+regardless of how many instances share the key. A **null** key cannot establish a duplicate (§8.1.6: two
+unknown identities are not the same real-world object): the subject is matched only when its key is
+non-null, and a non-null `== $k0` never matches a null-keyed instance, so nulls neither flag nor count.
+
+The plural surface (`alle Vluchten`, `de burgerservicenummers`) binds back to the declared singular via
+`MeervoudMatcher` (regular `-s`/`-en` plurals, ambiguity-safe; the object type may also match by its
+declared `(mv: …)`). **Deliberately deferred (carded), each leaving a WARNING, never a silent drop:** the
+§5.7 **concatenatie** key (its `CONCATENATIE_VAN` token is lowercase-only, it absorbs the article into
+the kaleNaam, and the spec form uses nested-`van` navigations), the cross-type **`verenigd met`** union,
+uniqueness **scoped within a parent** (`… van alle X van <Y>`), and an object type whose plural is
+irregular/multi-word and undeclared (`Natuurlijke personen` resolves only via a declared meervoudsvorm).
+The IR/transpiler already carry a composite key (`List` of attributes), so the concatenatie is a
+resolver+grammar task, not an IR one.

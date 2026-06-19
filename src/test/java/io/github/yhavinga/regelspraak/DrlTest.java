@@ -520,4 +520,42 @@ class DrlTest {
                 () -> "een union over verschillende elementtypes moet een marker zijn:\n" + drl);
         assertFalse(drl.contains("accumulate("), () -> "een type-mismatch union mag niet stil tellen:\n" + drl);
     }
+
+    @Test void uniciteit_lowert_naar_een_accumulate_count() {
+        // §8.1.6: a uniqueness check becomes a rule that binds the non-null key on the subject and
+        // counts the instances whose key equals it; more than one (the subject plus a twin) is the
+        // violation. Counting (not an exists self-join) flags each subject exactly once.
+        String src = """
+            Objecttype de Natuurlijk persoon
+                het burgerservicenummer Numeriek (geheel getal);
+            Regel bsn uniek
+                geldig altijd
+                    De burgerservicenummers van alle Natuurlijk persoon moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("$subject : NatuurlijkPersoon( $k0 : burgerservicenummer != null )"),
+                () -> "de sleutel moet niet-leeg gebonden worden:\n" + drl);
+        assertTrue(drl.contains("Number( intValue > 1 ) from accumulate( $o : NatuurlijkPersoon( burgerservicenummer == $k0 ), count($o) )"),
+                () -> "meer dan een instantie met dezelfde sleutel is de schending:\n" + drl);
+    }
+
+    @Test void uniciteit_over_onbekend_type_blijft_een_waarschuwing() {
+        // The object type must resolve; "alle Routes" with no Route declared cannot lower — it stays a
+        // WARNING and emits no rule, rather than silently dropping the consistency check.
+        String src = """
+            Objecttype de Vlucht
+                het vluchtnummer Numeriek (geheel getal);
+            Regel x
+                geldig altijd
+                    De vluchtnummers van alle Routes moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("consistentieregel")),
+                "een onresolvebare uniciteit moet waarschuwen");
+        assertFalse(DrlTranspiler.transpile(m).contains("accumulate("),
+                "een onresolvebare uniciteit mag geen regel opleveren");
+    }
 }

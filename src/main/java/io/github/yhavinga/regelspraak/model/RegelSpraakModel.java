@@ -28,6 +28,8 @@ public final class RegelSpraakModel {
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedVerdeling> verdelingen = new ArrayList<>();
     /** Resolved consistency rules (§13.4.8) — an assertion that must hold, else inconsistent. */
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedConsistentie> consistenties = new ArrayList<>();
+    /** Resolved §8.1.6 uniqueness checks — a key that must be unique across instances, else inconsistent. */
+    public final List<io.github.yhavinga.regelspraak.ir.ResolvedUniciteit> uniciteiten = new ArrayList<>();
     public final List<Diagnostic> diagnostics = new ArrayList<>();
 
     public boolean isOk() { return diagnostics.stream().noneMatch(Diagnostic::isError); }
@@ -267,6 +269,10 @@ public final class RegelSpraakModel {
     public static final class Objecttype {
         public final String naam;
         public boolean bezield;
+        /** The declared "(mv: …)" plural (§13.2.29), or null. Used to resolve a plural-form reference
+         *  ("alle Natuurlijke personen" in a §8.1.6 uniciteitscontrole) back to this type by its exact
+         *  declared spelling, without guessing irregular noun/adjective plural morphology. */
+        public String meervoud;
         public final Map<String, Datatype> attributen = new LinkedHashMap<>();
         public final List<String> kenmerken = new ArrayList<>();
         public Objecttype(String naam) { this.naam = naam; }

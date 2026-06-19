@@ -60,13 +60,15 @@ public final class DrlTranspiler {
                    model.resolvedRegels.stream().anyMatch(r -> tijdgebondenGeldigheid(r.geldigheid()))
                 || model.objectCreaties.stream().anyMatch(o -> tijdgebondenGeldigheid(o.geldigheid()))
                 || model.verdelingen.stream().anyMatch(v -> tijdgebondenGeldigheid(v.geldigheid()))
-                || model.consistenties.stream().anyMatch(c -> tijdgebondenGeldigheid(c.geldigheid()));
+                || model.consistenties.stream().anyMatch(c -> tijdgebondenGeldigheid(c.geldigheid()))
+                || model.uniciteiten.stream().anyMatch(u -> tijdgebondenGeldigheid(u.geldigheid()));
         if (tijdgebonden) out.append("global java.time.LocalDate rekendatum;\n\n");
 
         for (ResolvedRegel r : model.resolvedRegels) regel(r);
         for (io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc : model.objectCreaties) objectCreatie(oc);
         for (io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v : model.verdelingen) verdeling(v);
         for (io.github.yhavinga.regelspraak.ir.ResolvedConsistentie c : model.consistenties) consistentie(c);
+        for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteit u : model.uniciteiten) uniciteit(u);
         return out.toString();
     }
 
@@ -91,6 +93,34 @@ public final class DrlTranspiler {
         if (tijdgebondenGeldigheid(c.geldigheid())) out.append("    ").append(geldigheidGuard(c.geldigheid())).append('\n');
         out.append("then\n    insert(new ").append(FACT_PACKAGE).append(".Inconsistentie(\"")
            .append(escapeRegelNaam(c.naam())).append("\", ").append(SUBJECT).append("));\nend\n\n");
+    }
+
+    /** §8.1.6 uniciteitscontrole. "is uniek" is waar when the key is unique, so the rule is violated
+     *  when two DISTINCT instances share it. The subject binds each non-null key part, and an
+     *  accumulate counts the instances whose key equals it; more than one means a duplicate exists, so
+     *  the subject is flagged with an Inconsistentie — once, regardless of how many instances share the
+     *  key (an {@code exists}-with-{@code this != $subject} self-join is unreliable here: Drools does
+     *  not exclude self inside {@code exists} for this shape, flagging even a unique instance). A null
+     *  key cannot establish a duplicate (§8.1.6: two unknown identities are not the same object), so it
+     *  is guarded out — the subject is matched only when its key is non-null, and a non-null "== $kN"
+     *  never matches a null-keyed instance, so a null key is neither flagged nor counted as a match. */
+    private void uniciteit(io.github.yhavinga.regelspraak.ir.ResolvedUniciteit u) {
+        String type = ident(u.subject().naam, true);
+        StringBuilder binders = new StringBuilder();   // op de subject: "$k0 : p != null, …"
+        StringBuilder matchers = new StringBuilder();  // in de accumulate: "p == $k0, …"
+        for (int i = 0; i < u.sleutels().size(); i++) {
+            String prop = ident(u.sleutels().get(i), false);
+            binders.append("$k").append(i).append(" : ").append(prop).append(" != null");
+            matchers.append(prop).append(" == $k").append(i);
+            if (i < u.sleutels().size() - 1) { binders.append(", "); matchers.append(", "); }
+        }
+        out.append("rule \"").append(escapeRegelNaam(u.naam())).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
+        out.append("    ").append(SUBJECT).append(" : ").append(type).append("( ").append(binders).append(" )\n");
+        out.append("    Number( intValue > 1 ) from accumulate( $o : ").append(type)
+           .append("( ").append(matchers).append(" ), count($o) )\n");
+        if (tijdgebondenGeldigheid(u.geldigheid())) out.append("    ").append(geldigheidGuard(u.geldigheid())).append('\n');
+        out.append("then\n    insert(new ").append(FACT_PACKAGE).append(".Inconsistentie(\"")
+           .append(escapeRegelNaam(u.naam())).append("\", ").append(SUBJECT).append("));\nend\n\n");
     }
 
     /** The "when" constraint that detects a VIOLATION of the assertion. An ordering or

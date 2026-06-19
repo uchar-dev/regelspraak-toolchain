@@ -53,6 +53,7 @@ public final class DefinitionResolver {
     private void objecttype(ObjectTypeDefinitionContext ctx) {
         Objecttype ot = model.objecttypen.computeIfAbsent(src(ctx.objectTypeNaam()), Objecttype::new);
         if (ctx.BEZIELD() != null) ot.bezield = true;
+        if (ctx.meervoudsvorm() != null) ot.meervoud = src(ctx.meervoudsvorm()); // §13.2.29, for §8.1.6 plural refs
         for (ObjectTypeMemberContext m : ctx.objectTypeMember()) member(ot, m);
     }
 

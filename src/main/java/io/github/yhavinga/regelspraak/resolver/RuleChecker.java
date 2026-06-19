@@ -208,14 +208,38 @@ final class RuleChecker {
                 return;
             }
         }
-        // Compound criteria / uniciteit, a membership criterion ("moet een <kenmerk|rol>
-        // zijn"), elfproef / numeriek-met-exact, or a computed/unresolved subject: forms
-        // whose "inconsistent" we cannot yet express as a faithful violation rule. Surface
-        // the gap as a WARNING rather than lift it into a silent inert rule (which would
+        if (cr.uniciteitsControle() != null && uniciteit(naam, cr.uniciteitsControle(), geldigheid)) return;
+        // Compound criteria, a membership criterion ("moet een <kenmerk|rol> zijn"), elfproef /
+        // numeriek-met-exact, a cross-type "verenigd met" uniqueness, or a computed/unresolved
+        // subject: forms whose "inconsistent" we cannot yet express as a faithful violation rule.
+        // Surface the gap as a WARNING rather than lift it into a silent inert rule (which would
         // both drop the check and lose the diagnostic the §13.4.7/.11/.12 path still gives).
         model.diagnostics.add(new Diagnostic(Severity.WARNING,
                 "consistentieregel wordt nog niet (volledig) naar IR/DRL omgezet (regel '" + naam + "')",
                 cr.getStart().getLine()));
+    }
+
+    /** §8.1.6 uniciteitscontrole ("de &lt;attribuut&gt; van alle &lt;Type&gt; moeten uniek zijn", or a
+     *  §5.7 concatenatie of attributes). Resolves the object type (by name, declared meervoudsvorm, or
+     *  regular plural) and its key attribute(s) over which uniqueness must hold, into a
+     *  {@link io.github.yhavinga.regelspraak.ir.ResolvedUniciteit}. Returns false — leaving the WARNING — for the
+     *  cross-type "verenigd met" union, a uniqueness scoped within a parent ("… van alle X van &lt;Y&gt;"),
+     *  or any name that does not resolve; the transpiler then never silently drops or mis-checks. */
+    private boolean uniciteit(String naam, UniciteitsControleContext u, Geldigheid geldigheid) {
+        if (!u.vereniging().isEmpty()) return false;                  // §8.1.6 cross-type union: not lifted
+        // The §5.7 concatenatie key ("de concatenatie van … en … van alle <Type>") is carded: its
+        // CONCATENATIE_VAN token is lowercase-only (a capitalised rule does not parse), it absorbs the
+        // article into the attribuut kaleNaam, and the spec form uses nested-"van" navigations.
+        if (u.alleAttribuutVanOnderwerp() == null) return false;
+        AlleAttribuutVanOnderwerpContext a = u.alleAttribuutVanOnderwerp();
+        if (!a.onderwerpKeten().isEmpty()) return false;             // uniqueness scoped within a parent: not lifted
+        Objecttype type = MeervoudMatcher.vindObjecttype(model.objecttypen.values(), src(a.kaleNaam(1)));
+        if (type == null) return false;
+        String attr = MeervoudMatcher.vindAttribuut(type, src(a.kaleNaam(0)));
+        if (attr == null) return false;
+        model.uniciteiten.add(new io.github.yhavinga.regelspraak.ir.ResolvedUniciteit(
+                naam, type, java.util.List.of(attr), src(u), geldigheid));
+        return true;
     }
 
     /** The single-criterion assertions whose negation the transpiler can emit as a
