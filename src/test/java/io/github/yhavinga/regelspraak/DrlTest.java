@@ -1149,4 +1149,42 @@ class DrlTest {
         assertTrue(drl.contains("nietIngezetene == true"),
                 () -> "een gedeclareerd 'niet-…' kenmerk moet positief binden:\n" + drl);
     }
+
+    @Test void bijvoeglijk_kenmerk_met_lidwoord_in_de_naam_bindt_zichzelf() {
+        // p36 review (MED): a bijvoeglijk kenmerk has no separate bepaaldLidwoord? in its grammar rule and
+        // naamWoordLower admits de/het, so "is de minimis kenmerk" is stored verbatim as "de minimis" (the
+        // article is part of the name). A blind article-strip at lookup dropped the leading "de" and lost the
+        // match (a marker). The condition must bind the kenmerk verbatim and lower to "deMinimis == true".
+        String src = """
+            Objecttype de Persoon
+                de uitkomst Numeriek (geheel getal);
+                is de minimis kenmerk (bijvoeglijk);
+            Regel r
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 1 indien de Persoon de minimis is.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("deMinimis == true"),
+                () -> "een bijvoeglijk kenmerk met een lidwoord in de naam moet verbatim binden:\n" + drl);
+        assertFalse(drl.contains("TODO voorwaarde"),
+                () -> "het mag geen marker worden door het lidwoord weg te strippen:\n" + drl);
+    }
+
+    @Test void kenmerk_met_lidwoord_bindt_de_volledige_naam_niet_een_kortere_broer() {
+        // p36 review (MED): with both "de minimis voordeel" (stored verbatim via a leading article in the
+        // name) and "minimis voordeel" declared, a strip-first lookup of the written "de minimis voordeel"
+        // would bind the SHORTER sibling — a silent wrong gate. Verbatim-first must bind the full name.
+        String src = """
+            Objecttype de Persoon
+                de uitkomst Numeriek (geheel getal);
+                het de minimis voordeel kenmerk;
+                de minimis voordeel kenmerk;
+            Regel r
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 1 indien de Persoon de minimis voordeel heeft.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("deMinimisVoordeel == true"),
+                () -> "de geschreven volledige naam moet binden, niet de kortere broer:\n" + drl);
+    }
 }

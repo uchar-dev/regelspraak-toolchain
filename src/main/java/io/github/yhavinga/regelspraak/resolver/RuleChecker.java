@@ -688,15 +688,28 @@ final class RuleChecker {
      *  {@code heeftWerkwoord} is true when the predicate verb is hebben (§8.1.8: see the "geen" branch).
      *  Null when neither the whole name nor a de-negated form is a declared kenmerk of {@code type}. */
     private static Conditie kenmerkConditie(Objecttype type, String kenmerk, String navigatie, boolean heeftWerkwoord, String bron) {
-        // A bezittelijk/noch-noch kenmerk is written with its own leading article ("het recht op
-        // duurzaamheidskorting"), and the greedy onderwerp parse can leave that article on the reconstructed
-        // name (kop "het recht op" + operand). Declared kenmerken are stored article-stripped and none begins
-        // with an article, so dropping a leading de/het/een can only help a match, never make a wrong one.
-        String naam = stripArtikel(kenmerk);
+        // Match the written name VERBATIM first. A bijvoeglijk kenmerk may be declared WITH a leading article
+        // as part of its name ("is de minimis kenmerk" -> stored "de minimis"): its grammar rule has no
+        // separate bepaaldLidwoord? and naamWoordLower admits de/het, so the article is part of the stored
+        // name — the false-invariant the first cut tripped on (a blind strip dropped it to a wrong/no match).
+        Conditie c = bindKenmerk(type, kenmerk, navigatie, heeftWerkwoord, bron);
+        if (c != null) return c;
+        // Only if the verbatim name binds NOTHING, retry with a leading de/het/een stripped — recovering the
+        // bezittelijk/noch-noch case where the article is the kenmerk's OWN (stored article-stripped) and the
+        // greedy onderwerp parse left it on the reconstructed name ("het recht op duurzaamheidskorting").
+        // Verbatim-first guarantees a kenmerk whose name really begins with an article binds itself, never a
+        // shorter sibling.
+        String gestript = stripArtikel(kenmerk);
+        return gestript.equals(kenmerk) ? null : bindKenmerk(type, gestript, navigatie, heeftWerkwoord, bron);
+    }
+
+    /** Bind one candidate name to a declared kenmerk of {@code type}, honouring a leading "niet" or, under
+     *  the hebben-verb, "geen" as NEGATION — but each only after the WHOLE name fails, so a kenmerk declared
+     *  starting with niet/geen still binds positively (never silently inverted). Null when nothing binds. */
+    private static Conditie bindKenmerk(Objecttype type, String naam, String navigatie, boolean heeftWerkwoord, String bron) {
         String g = KenmerkMatcher.vind(type, naam);
         if (g != null) return new Conditie.Kenmerk(g, navigatie, false, bron);
-        // §8.1.8.1 bijvoeglijk negation "is niet <k>" -> "== false" (verb-agnostic; tried only after the
-        // WHOLE name fails, so a declared "niet-…" kenmerk binds positively above, never silently inverted).
+        // §8.1.8.1 bijvoeglijk negation "is niet <k>" -> "== false" (verb-agnostic).
         if (naam.regionMatches(true, 0, "niet ", 0, 5)) {
             g = KenmerkMatcher.vind(type, naam.substring(5).trim());
             if (g != null) return new Conditie.Kenmerk(g, navigatie, true, bron);
@@ -704,8 +717,8 @@ final class RuleChecker {
         // §8.1.8.2 bezittelijk negation "heeft geen <k>" -> "== false". Gated on the hebben-verb: the
         // noch-noch "is geen <k>" (§8.1.8.3) is the negation of "is een <k>", itself left a marker for the
         // §13.4.15.44/.45 objecttype/role-membership ambiguity (p28) — lowering only its negation would gate
-        // one of a complementary pair while the other stays an inert no-op. "geen" is absorbed into the
-        // kaleNaam (there is no GEEN token), so it survives stripArtikel into this reconstructed name.
+        // one of a complementary pair while the other stays an inert no-op. "geen" carries no token (only
+        // GEEN_VAN_DE), so it lexes as LOWER_ID and rides inside the kaleNaam into this reconstructed name.
         if (heeftWerkwoord && naam.regionMatches(true, 0, "geen ", 0, 5)) {
             g = KenmerkMatcher.vind(type, naam.substring(5).trim());
             if (g != null) return new Conditie.Kenmerk(g, navigatie, true, bron);

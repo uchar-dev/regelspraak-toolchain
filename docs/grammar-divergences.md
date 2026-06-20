@@ -357,14 +357,19 @@ lowering only the negation would gate one of a complementary pair while the othe
 `geen <k>` whose `<k>` is not a declared kenmerk stays a marker regardless (`KenmerkMatcher` gates on a
 declared kenmerk), so a genuine role/objecttype membership is never mis-gated.
 
-**Article-strip on the reconstructed name (bundled fix).** A bezittelijk/noch-noch kenmerk is written
-with its own leading article (`het recht op duurzaamheidskorting`), and the greedy `onderwerp` parse can
-leave that article on the kop it absorbs (`de Persoon` + `het recht op` + operator `duurzaamheidskorting`).
-The reconstructed name `het recht op duurzaamheidskorting` then failed to match the article-stripped
-declared kenmerk, so the **positive** `heeft het recht …` was silently a marker while `heeft geen recht …`
-lowered — an asymmetry on the canonical TOKA bezittelijk kenmerk. `kenmerkConditie` now `stripArtikel`s a
-leading `de/het/een` from the reconstructed name before matching; this is always safe because declared
-kenmerken are stored article-stripped and none begins with an article, so the strip can only help a match.
+**Verbatim-then-stripped matching of the reconstructed name (bundled fix).** A bezittelijk/noch-noch
+kenmerk is written with its own leading article (`het recht op duurzaamheidskorting`), and the greedy
+`onderwerp` parse can leave that article on the kop it absorbs (`de Persoon` + `het recht op` + operator
+`duurzaamheidskorting`). The reconstructed name `het recht op duurzaamheidskorting` then failed to match the
+article-stripped declared kenmerk, so the **positive** `heeft het recht …` was silently a marker while
+`heeft geen recht …` lowered — an asymmetry on the canonical TOKA bezittelijk kenmerk. The match now tries
+the name **verbatim first** and only retries with a leading `de/het/een` stripped if the verbatim name binds
+nothing. A blind strip-first is *wrong*: a **bijvoeglijk** kenmerk has no separate `bepaaldLidwoord?` in its
+grammar rule (`bijvoeglijkKenmerk : IS lowerNaam … KENMERK`) and `naamWoordLower` admits `de`/`het`, so `is
+de minimis kenmerk` is stored *verbatim* as `de minimis` (article inside the name); stripping it would drop
+the match, or bind a shorter sibling (`de minimis voordeel` vs `minimis voordeel`). Verbatim-first binds a
+kenmerk whose name really begins with an article to *itself*, and only the article-stripped retry recovers
+the bezittelijk case where the article is the kenmerk's own (stored stripped) but the parse left it on.
 
 Still `Onopgelost` and carded: the objecttype/role-membership lowering itself (positive `is een <X>`,
 negative `is geen <X>`), and a navigated-DOEL kenmerk on a to-many role (p32).
