@@ -9,6 +9,9 @@ public class Meting {
     private boolean oud;
     private boolean bonus;
     private boolean bereikbaarPerTrein;
+    private BigDecimal uitkomst;   // §8.1.8 negated-kenmerk test target
+    public BigDecimal getUitkomst() { return uitkomst; }
+    public void setUitkomst(BigDecimal v) { this.uitkomst = v; }
     public BigDecimal getDuurmnd() { return duurmnd; }
     public void setDuurmnd(BigDecimal v) { this.duurmnd = v; }
     public BigDecimal getGrensjr() { return grensjr; }

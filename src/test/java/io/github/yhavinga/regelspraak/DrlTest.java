@@ -1111,13 +1111,42 @@ class DrlTest {
         assertFalse(drl.contains("bezittingen.leegstaand"), () -> "het mag niet als scalar lowereren:\n" + drl);
     }
 
-    @Test void navigatie_kenmerk_negatie_blijft_marker() {
-        // Review D3: a negated navigated kenmerk ("niet leegstaand") must stay a marker, never silently
-        // lower to the INVERTED positive constraint.
+    @Test void kenmerk_negatie_subject_lowert_naar_false() {
+        // §8.1.8 negation: "indien de Meting niet oud is" -> "oud == false".
+        String src = """
+            Objecttype de Meting
+                de uitkomst Numeriek (geheel getal);
+                is oud kenmerk (bijvoeglijk);
+            Regel r
+                geldig altijd
+                    De uitkomst van een Meting moet gesteld worden op 1 indien de Meting niet oud is.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("oud == false"), () -> "subject-negatie moet naar '== false' lowereren:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "het mag geen marker blijven:\n" + drl);
+    }
+
+    @Test void kenmerk_negatie_navigatie_lowert_met_nullguard() {
+        // A negated navigated kenmerk lowers to "<rol> != null && <rol>.<kenmerk> == false".
         String drl = DrlTranspiler.transpile(Resolver.resolve(
                 navKenmerkBron("indien de woning van een Persoon niet leegstaand is.")));
-        assertTrue(drl.contains("/* TODO"), () -> "een genegeerd navigated kenmerk moet een marker zijn:\n" + drl);
-        assertFalse(drl.contains("woning.leegstaand == true"),
-                () -> "het mag niet naar de geïnverteerde positieve constraint lowereren:\n" + drl);
+        assertTrue(drl.contains("woning != null && woning.leegstaand == false"),
+                () -> "navigated negatie moet null-guarded naar '== false' lowereren:\n" + drl);
+    }
+
+    @Test void declared_niet_kenmerk_bindt_positief_niet_als_negatie() {
+        // A kenmerk DECLARED with a leading "niet" ("is niet ingezetene kenmerk") must bind positively —
+        // the whole name is tried before stripping "niet", so it is not mistaken for a negation.
+        String src = """
+            Objecttype de Persoon
+                de uitkomst Numeriek (geheel getal);
+                is niet ingezetene kenmerk (bijvoeglijk);
+            Regel r
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 1 indien de Persoon niet ingezetene is.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("nietIngezetene == true"),
+                () -> "een gedeclareerd 'niet-…' kenmerk moet positief binden:\n" + drl);
     }
 }

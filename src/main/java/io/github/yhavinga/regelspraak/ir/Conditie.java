@@ -39,8 +39,8 @@ public sealed interface Conditie {
      *  ("de partner van X is gepensioneerd") it is the navigation role, lowered to the property path
      *  {@code partner.gepensioneerd == true}. A to-many navigation or objecttype-membership stays
      *  {@link Onopgelost}. */
-    record Kenmerk(String kenmerk, String navigatie, String bron) implements Conditie {
-        public Kenmerk(String kenmerk, String bron) { this(kenmerk, null, bron); }
+    record Kenmerk(String kenmerk, String navigatie, boolean negatie, String bron) implements Conditie {
+        public Kenmerk(String kenmerk, String bron) { this(kenmerk, null, false, bron); }
     }
 
     /** §13.4.14 compound condition: a quantifier over a bullet list of sub-conditions.

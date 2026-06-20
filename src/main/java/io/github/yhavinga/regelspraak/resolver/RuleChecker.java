@@ -677,8 +677,21 @@ final class RuleChecker {
         // ("de Meting bereikbaar per" + operator "trein"), so the kenmerk is that absorbed kop plus
         // the operator's kaleNaam; for "hij"/a bare subject the kop is empty and the name is the kaleNaam.
         String kenmerk = kop.isEmpty() ? staart : kop + " " + staart;
-        String gevonden = KenmerkMatcher.vind(subject, kenmerk);
-        return gevonden != null ? new Conditie.Kenmerk(gevonden, bron) : null;
+        return kenmerkConditie(subject, kenmerk, null, bron);
+    }
+
+    /** Resolve {@code kenmerk} on {@code type} into a {@link Conditie.Kenmerk}, honouring a leading "niet"
+     *  as NEGATION — but only after the WHOLE name fails, so a declared "niet-…" kenmerk still binds
+     *  positively. {@code navigatie} is the to-one navigation role (null for the subject's own). Null when
+     *  neither the whole name nor its de-negated form is a declared kenmerk of {@code type}. */
+    private static Conditie kenmerkConditie(Objecttype type, String kenmerk, String navigatie, String bron) {
+        String g = KenmerkMatcher.vind(type, kenmerk);
+        if (g != null) return new Conditie.Kenmerk(g, navigatie, false, bron);
+        if (kenmerk.regionMatches(true, 0, "niet ", 0, 5)) {
+            g = KenmerkMatcher.vind(type, kenmerk.substring(5).trim());
+            if (g != null) return new Conditie.Kenmerk(g, navigatie, true, bron);
+        }
+        return null;
     }
 
     /** §8.1.8 navigated: "de &lt;rol&gt; van X is &lt;kenmerk&gt;" — the kenmerk is on the object the rol
@@ -701,8 +714,7 @@ final class RuleChecker {
         // match the declared kenmerk and stays a marker (never a silently-inverted positive constraint).
         String tail = navigatieStaart(a);
         String kenmerk = tail.isEmpty() ? staart : tail + " " + staart;
-        String gevonden = KenmerkMatcher.vind(doel, kenmerk);
-        return gevonden != null ? new Conditie.Kenmerk(gevonden, rol, bron) : null;
+        return kenmerkConditie(doel, kenmerk, rol, bron);
     }
 
     /** The words the greedy operand parse absorbed AFTER the navigated "de &lt;rol&gt; van &lt;onderwerp&gt;"

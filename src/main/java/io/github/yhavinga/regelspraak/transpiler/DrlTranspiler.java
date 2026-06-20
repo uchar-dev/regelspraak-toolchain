@@ -704,7 +704,7 @@ public final class DrlTranspiler {
         // not null-safe, so a missing partner must read as "not gepensioneerd", not throw): the constraint
         // becomes "partner != null && partner.gepensioneerd == true".
         if (c instanceof Conditie.Kenmerk k) {
-            String prop = ident(k.kenmerk(), false) + " == true";
+            String prop = ident(k.kenmerk(), false) + " == " + (k.negatie() ? "false" : "true");
             if (k.navigatie() == null) return prop;
             String nav = ident(k.navigatie(), false);
             return nav + " != null && " + nav + "." + prop;

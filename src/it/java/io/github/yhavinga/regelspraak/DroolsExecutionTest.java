@@ -2389,4 +2389,32 @@ class DroolsExecutionTest {
         assertNull(b.getUitkomst(), () -> "partner werkt niet -> niet gegated");
         assertNull(c.getUitkomst(), () -> "geen partner -> niet gegated (geen NPE op null-navigatie)");
     }
+
+    @Test void negatie_kenmerk_voorwaarde_vuurt_voor_de_niet_instanties() {
+        // §8.1.8 negation: "indien de Meting niet oud is" -> "oud == false". Fires for the NOT-oud
+        // metingen only.
+        String src = """
+            Objecttype de Meting
+                de uitkomst Numeriek (geheel getal);
+                is oud kenmerk (bijvoeglijk);
+            Regel r
+                geldig altijd
+                    De uitkomst van een Meting moet gesteld worden op 1 indien de Meting niet oud is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("oud == false"), () -> "negatie niet gelowered:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Meting jong = new Meting();                    // niet oud -> vuurt
+        Meting oud = new Meting(); oud.setOud(true);   // oud -> niet
+        sessie.insert(jong); sessie.insert(oud);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("1").compareTo(jong.getUitkomst()),
+                () -> "een niet-oude meting moet gegated zijn, kreeg " + jong.getUitkomst());
+        assertNull(oud.getUitkomst(), () -> "een oude meting mag niet gegated zijn");
+    }
 }
