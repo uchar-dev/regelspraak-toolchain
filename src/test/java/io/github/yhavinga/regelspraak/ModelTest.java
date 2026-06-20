@@ -104,6 +104,31 @@ class ModelTest {
                 () -> "verwachtte een WARNING over de ontbrekende getalspecificatie; kreeg " + m.diagnostics);
     }
 
+    @Test void bare_numeriek_lost_op_voor_attribuut_en_domein_carriers() {
+        // getalInfo(null) is reachable from all three datatype carriers, not only a parameter. Lock the
+        // no-NPE + form-(c) degrade for an attribuut and a domein too (the parameter form is covered above).
+        String src = """
+            Domein Vrij is van het type Numeriek
+            Objecttype de Rekening
+                het saldo Numeriek;
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);                 // must not throw
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+
+        Datatype.Numeriek dom = assertInstanceOf(Datatype.Numeriek.class, m.domeinen.get("Vrij"));
+        assertFalse(dom.geheel());
+        assertEquals(0, dom.decimalen());
+        Datatype.Numeriek attr = assertInstanceOf(Datatype.Numeriek.class,
+                m.objecttypen.get("Rekening").attributen.get("saldo"));
+        assertFalse(attr.geheel());
+        assertNull(attr.eenheid(), "geen eenheid geschreven");
+        // both carriers raise the mandatory-getalspecificatie WARNING (one per declaration)
+        assertEquals(2, m.diagnostics.stream().filter(d ->
+                d.severity() == RegelSpraakModel.Severity.WARNING
+                        && d.message().contains("getalspecificatie")).count(),
+                () -> "verwachtte twee getalspecificatie-WARNINGs; kreeg " + m.diagnostics);
+    }
+
     @Test void dimensie_wordt_gemodelleerd() {
         String src = """
             Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
