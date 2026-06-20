@@ -96,8 +96,9 @@ class DrlTest {
         assertTrue(drl.contains("$subject : Persoon("), () -> "subject:\n" + drl);
         // value navigation through the role reference (getters)
         assertTrue(drl.contains("$subject.getReis().getVluchtdatum()"), () -> "waarde-navigatie:\n" + drl);
-        // condition navigation as a property path on the pattern
-        assertTrue(drl.contains("reis.vluchtdatum > reisdatum"), () -> "voorwaarde-navigatie:\n" + drl);
+        // condition navigation as a null-safe property path on the pattern (Drools "!." — a null to-one
+        // reference yields a leegwaarde instead of throwing; mvel "." is not null-safe)
+        assertTrue(drl.contains("reis!.vluchtdatum > reisdatum"), () -> "voorwaarde-navigatie:\n" + drl);
     }
 
     @Test void onmapbare_aggregatie_wordt_gemarkeerd_niet_verzonnen() {

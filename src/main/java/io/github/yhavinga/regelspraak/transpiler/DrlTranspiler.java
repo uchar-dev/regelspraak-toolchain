@@ -810,7 +810,10 @@ public final class DrlTranspiler {
             String rol = naviRol(subject, a);
             if (EIGEN.equals(rol)) return ident(a.attribuut(), false);
             if (naarVeel(subject, a, rol)) return todo("naar-veel-navigatie", a.bron());
-            if (rol != null)       return ident(rol, false) + "." + ident(a.attribuut(), false);
+            // Drools null-safe navigation "!.": a null to-one reference yields null (a leegwaarde) instead of
+            // throwing — mvel "." is NOT null-safe, so "partner.roepnaam" NPEs at evaluation when partner is
+            // null. With "!." the comparison/predicate then follows the typeringen leegwaarde rows naturally.
+            if (rol != null)       return ident(rol, false) + "!." + ident(a.attribuut(), false);
             return todo("navigatie", a.bron());
         }
         if (e instanceof Expr.ParameterRef p) return ident(p.parameter().naam(), false);

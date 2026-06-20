@@ -11,6 +11,7 @@ public class Persoon {
     private BigDecimal uitkomst;       // §8.1.8 navigated-kenmerk test target
     private boolean gepensioneerd;     // §8.1.8 navigated kenmerk
     private boolean rechtOpDuurzaamheidskorting; // §8.1.8.2 bezittelijk "het recht op duurzaamheidskorting"
+    private String roepnaam;           // §9.5 navigated Tekst equality (null-safe navigation test)
     private Persoon partner;           // to-one self-relation the navigated kenmerk reads through
     public BigDecimal getLeeftijd() { return leeftijd; }
     public void setLeeftijd(BigDecimal v) { this.leeftijd = v; }
@@ -22,6 +23,8 @@ public class Persoon {
     public void setGepensioneerd(boolean v) { this.gepensioneerd = v; }
     public boolean isRechtOpDuurzaamheidskorting() { return rechtOpDuurzaamheidskorting; }
     public void setRechtOpDuurzaamheidskorting(boolean v) { this.rechtOpDuurzaamheidskorting = v; }
+    public String getRoepnaam() { return roepnaam; }
+    public void setRoepnaam(String v) { this.roepnaam = v; }
     public Persoon getPartner() { return partner; }
     public void setPartner(Persoon v) { this.partner = v; }
 }

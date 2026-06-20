@@ -1136,6 +1136,46 @@ class DroolsExecutionTest {
         assertSame(rond, fouten.get(0).getSubject(), "de gemarkeerde instantie moet de rondvlucht zijn");
     }
 
+    @Test void consistentie_genavigeerde_gelijkheid_gooit_geen_npe_op_lege_referentie() {
+        // p30: a consistentie equality over a TO-ONE navigation ("de roepnaam ... gelijk aan de roepnaam van
+        // zijn partner") read "partner.roepnaam", which NPEs in mvel when partner is null (mvel "." is not
+        // null-safe). Drools "!." makes a null reference a non-match, so the rule FIRES WITHOUT throwing:
+        // it still flags a real mismatch between two partners, and a partnerless person is simply not matched
+        // (a conservative under-report of the gevuld-vs-leeg violation — documented — but never a crash).
+        String src = """
+            Objecttype de Persoon
+                de roepnaam Tekst;
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel naamcheck
+                geldig altijd
+                    De roepnaam van een Persoon moet gelijk zijn aan de roepnaam van zijn partner.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("partner!.roepnaam"), () -> "navigatie moet null-veilig zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Persoon a = new Persoon(); a.setRoepnaam("Ann");
+        Persoon b = new Persoon(); b.setRoepnaam("Ann"); a.setPartner(b); b.setPartner(a);  // gelijk -> consistent
+        Persoon c = new Persoon(); c.setRoepnaam("Cy");
+        Persoon d = new Persoon(); d.setRoepnaam("Dee"); c.setPartner(d); d.setPartner(c);  // ongelijk -> schending
+        Persoon eenzaam = new Persoon(); eenzaam.setRoepnaam("Bo");                          // partner null -> geen NPE
+        sessie.insert(a); sessie.insert(b); sessie.insert(c); sessie.insert(d); sessie.insert(eenzaam);
+        sessie.fireAllRules();   // must NOT throw an NPE on the null partner
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> ((Inconsistentie) o).getSubject()).toList();
+        sessie.dispose();
+
+        assertFalse(fouten.contains(a), () -> "gelijke roepnamen -> consistent: " + fouten);
+        assertTrue(fouten.contains(c), () -> "ongelijke partner-roepnamen moeten een schending zijn: " + fouten);
+        assertTrue(fouten.contains(d), () -> "ongelijke partner-roepnamen moeten een schending zijn: " + fouten);
+        assertFalse(fouten.contains(eenzaam), () -> "een lege navigatie (geen partner) mag geen NPE geven; conservatief geen schending: " + fouten);
+    }
+
     @Test void consistentie_tekst_gelijkheid_met_beide_leeg_is_een_schending() {
         // typeringen Tabel 38: for a NON-numeriek "gelijk aan", BOTH operands empty evaluates to "fout"
         // (the numeriek Tabel 37 case is "waar"). A consistentie criterion is satisfied only when its

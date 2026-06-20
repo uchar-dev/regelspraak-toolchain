@@ -227,6 +227,22 @@ single role is not marked to-many; flagging a wederkerig "meerdere…meerdere" l
 future work. This is the cardinality counterpart to the absent-attribute marker above: an
 honestly unrepresentable scalar read is a visible marker, never silently-wrong DRL.
 
+### To-one navigation in a comparison constraint is null-safe (`!.`)
+
+A comparison/predicate operand that navigates a to-one reference ("de leeftijd van zijn partner",
+"de roepnaam van de reis") lowers, on the constraint (when) side, to a property path on the pattern.
+mvel's `.` is **not** null-safe, so `partner.roepnaam` throws an NPE at evaluation when `partner`
+is null — which sinks the *whole* rule firing, not just that instance. The path now uses Drools'
+null-safe operator `!.` (`partner!.roepnaam`): a null reference makes the constraint a **non-match**
+rather than a throw. This is conservative — a comparison against a null-navigated operand does not
+fire (a consistentie reports no violation for it; a voorwaarde reads the condition as false) — so it
+*under-reports* the typeringen leegwaarde rows for the gevuld-vs-empty-navigation case (where a null
+navigated operand should make an equality "onwaar"/a violation). Trading that bounded false-negative
+for crash-safety is the deliberate choice; a fully leegwaarde-faithful null navigation would need
+explicit per-operand branching and is carded. The value (then) side keeps its getter chain
+(`$subject.getReis().getX()`); a null there is a separate, carded concern. The §8.1.8 navigated
+kenmerk already emits its own explicit `rol != null && rol.x` guard and is unchanged.
+
 ### Wortel / tot de macht + afronding — fixed, with a bounded operand divergence
 
 §13.4.17.13/.14 make `<afronding>` **mandatory** on "de wortel van" and "tot de macht"
