@@ -586,6 +586,19 @@ Deferred (carded), left as an honest WARNING (no inert eval-true rule): the `gee
 violation-constraint cannot yet express — and a criterion that is itself not a lowerable comparison or
 emptiness predicate (membership, elfproef, …) leaves the whole compound a WARNING via `transpileerbaar`.
 
+**Both-empty `gelijk aan` over a non-numeriek type is a violation (typeringen Tabel 37/38).** For a
+`gelijk aan` criterion, two empty operands evaluate to `waar` when the type is Numeriek/Percentage
+(Tabel 37) but to **`fout`** for Tekst/Datum/Boolean/Enumeratie (Tabel 38). A consistentie criterion is
+satisfied only when its comparison is `waar`, so the non-numeriek both-empty case is a violation. The
+plain complement `l != r` reads `null != null` → false and would wrongly report the instance *consistent*,
+so a non-numeriek equality violation is widened to `l != r || (l == null && r == null)`; the numeriek case
+keeps the bare `l != r` (both-empty = `waar` = consistent). `ongelijk aan` needs no change — its both-empty
+result is `onwaar` for every type (Tabel 44), which the existing `l == r` violation already reports. The
+§9.5 reading of `fout` is the chosen one (a criterion is a violation unless its comparison is `waar`); the
+spec does not spell out whether `fout` should instead be an ERROR diagnostic, so this is documented, not
+silently assumed. The ordering operators' both-empty `fout` (Tabel 45) is unrelated — they take the
+separate null-guarded `schendingConstraint` path.
+
 ### §9.4 / §13.4.7 feitcreatie — only the 1-hop shape is lowered, as a reference-field set
 
 A feitcreatie ("Een `<rolB>` van een `<anker>` is een `<rolC>` van `<onderwerpD>`") creates an instance

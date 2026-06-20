@@ -1353,4 +1353,28 @@ class DrlTest {
         assertTrue(drl.contains("deMinimisVoordeel == true"),
                 () -> "de geschreven volledige naam moet binden, niet de kortere broer:\n" + drl);
     }
+
+    @Test void consistentie_gelijkheid_beide_leeg_alleen_voor_niet_numeriek() {
+        // p39 / typeringen Tabel 37 vs 38: a both-empty "gelijk aan" is "waar" for Numeriek (consistent) but
+        // "fout" for a non-numeriek type (a violation). So the Tekst criterion gets the both-empty clause and
+        // the Numeriek one does NOT.
+        String src = """
+            Objecttype de Konto
+                de naam Tekst;
+                de bijnaam Tekst;
+                de saldo Numeriek (geheel getal);
+                de tegoed Numeriek (geheel getal);
+            Regel tekst
+                geldig altijd
+                    De naam van een Konto moet gelijk zijn aan de bijnaam van een Konto.
+            Regel num
+                geldig altijd
+                    De saldo van een Konto moet gelijk zijn aan de tegoed van een Konto.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("naam != bijnaam || (naam == null && bijnaam == null)"),
+                () -> "een niet-numerieke beide-leeg gelijkheid moet een schending zijn:\n" + drl);
+        assertTrue(drl.contains("Konto( saldo != tegoed )"),
+                () -> "een numerieke gelijkheid mag de beide-leeg clausule NIET krijgen (Tabel 37 waar):\n" + drl);
+    }
 }

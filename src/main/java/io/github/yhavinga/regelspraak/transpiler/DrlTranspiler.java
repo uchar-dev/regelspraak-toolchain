@@ -223,12 +223,32 @@ public final class DrlTranspiler {
             String complement = conditie(new Conditie.Vergelijking(flip(v.op()), v.links(), v.rechts(), v.bron()), subject);
             return "(" + l + " == null || " + r + " == null || " + complement + ")";
         }
+        if (assertie instanceof Conditie.Vergelijking v && v.op() == Conditie.Operator.GELIJK
+                && nietNumeriekVergelijking(v)) {
+            // typeringen Tabel 38: a NON-numeriek "gelijk aan" with BOTH operands empty is "fout" — unlike the
+            // numeriek Tabel 37 case, which is "waar". So the criterion is NOT satisfied -> a violation. The
+            // plain complement `l != r` reads `null != null` -> false, wrongly reporting the instance consistent
+            // (§9.5 reading: a criterion is satisfied only when its comparison is "waar"; "fout" is a violation).
+            String l = operand(v.links(), subject), r = operand(v.rechts(), subject);
+            if (bevatMarker(l) || bevatMarker(r)) return null;
+            return "(" + l + " != " + r + " || (" + l + " == null && " + r + " == null))";
+        }
         Conditie schending = negeer(assertie);
         if (schending == null) return null;
         // Same hazard via the negation: a gevuld→leeg predicate over a marker emits
         // "<marker> == null" (always true). An un-evaluable criterion flags nothing.
         String c = conditie(schending, subject);
         return bevatMarker(c) ? null : c;
+    }
+
+    /** A comparison whose operands are a RESOLVED non-numeriek type (Tekst/Datum/Boolean/Enumeratie). For
+     *  these, typeringen Tabel 38 makes a both-empty "gelijk aan" evaluate to "fout"; the numeriek Tabel 37
+     *  makes it "waar". An unresolved (Onbekend) operand is left to the numeriek-or-unknown default, so the
+     *  both-empty special case never fires on a construct the resolver could not type. */
+    private static boolean nietNumeriekVergelijking(Conditie.Vergelijking v) {
+        Datatype l = v.links().type(), r = v.rechts().type();
+        return !l.isOnbekend() && !r.isOnbekend()
+                && !l.isNumeriek() && !l.isPercentage() && !r.isNumeriek() && !r.isPercentage();
     }
 
     /** Does a lowered constraint string carry an unresolved-reference marker? Such a fragment

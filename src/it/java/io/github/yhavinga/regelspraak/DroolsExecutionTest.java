@@ -1136,6 +1136,40 @@ class DroolsExecutionTest {
         assertSame(rond, fouten.get(0).getSubject(), "de gemarkeerde instantie moet de rondvlucht zijn");
     }
 
+    @Test void consistentie_tekst_gelijkheid_met_beide_leeg_is_een_schending() {
+        // typeringen Tabel 38: for a NON-numeriek "gelijk aan", BOTH operands empty evaluates to "fout"
+        // (the numeriek Tabel 37 case is "waar"). A consistentie criterion is satisfied only when its
+        // comparison is "waar", so the both-empty Tekst case is a violation — not silently consistent (which
+        // the plain `vertrek != bestemming` -> `null != null` -> false would report).
+        String src = """
+            Objecttype de Route
+                de vertrek Tekst;
+                de bestemming Tekst;
+            Regel gelijke eindpunten
+                geldig altijd
+                    De vertrek van een Route moet gelijk zijn aan de bestemming van een Route.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Route beideLeeg = new Route();                                              // beide leeg -> fout -> schending
+        Route gelijk = new Route(); gelijk.setVertrek("AMS"); gelijk.setBestemming("AMS"); // gelijk -> consistent
+        Route eenLeeg = new Route(); eenLeeg.setVertrek("AMS");                     // één leeg -> onwaar -> schending
+        Route ongelijk = new Route(); ongelijk.setVertrek("AMS"); ongelijk.setBestemming("JFK"); // -> schending
+        sessie.insert(beideLeeg); sessie.insert(gelijk); sessie.insert(eenLeeg); sessie.insert(ongelijk);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> (Inconsistentie) o).map(Inconsistentie::getSubject).toList();
+        sessie.dispose();
+
+        assertTrue(fouten.contains(beideLeeg), () -> "beide-leeg Tekst-gelijkheid moet een schending zijn (Tabel 38 fout): " + fouten);
+        assertTrue(fouten.contains(eenLeeg), () -> "één-leeg moet een schending zijn (onwaar): " + fouten);
+        assertTrue(fouten.contains(ongelijk), () -> "ongelijke eindpunten moeten een schending zijn: " + fouten);
+        assertFalse(fouten.contains(gelijk), () -> "gelijke eindpunten mogen geen schending zijn: " + fouten);
+    }
+
     @Test void uniciteit_markeert_de_instanties_die_een_sleutel_delen() {
         // §8.1.6: "de burgerservicenummers van alle Natuurlijk persoon moeten uniek zijn" — two
         // persons sharing a BSN violate uniqueness (both flagged), a unique BSN does not. The plural
