@@ -344,9 +344,30 @@ name (so a plural `de passagiers` is the same role), a TO-MANY navigation stays 
 exists/forall), and the multi-word kenmerk is reconstructed from the absorbed operand tail. **Negation**
 (`… niet oud is`) lowers to `oud == false` (and `partner != null && partner.gepensioneerd == false`),
 detected by a leading `niet` only AFTER the whole reconstructed name fails to match — so a kenmerk
-*declared* with a leading `niet` (`is niet ingezetene kenmerk`) still binds positively. Still `Onopgelost`
-and carded: the objecttype/role-membership lowering itself, and the **`geen`** negation forms
-(§8.1.8 Tabel 16: `heeft geen <X>` / `is geen <X>`, distinct from `niet`).
+*declared* with a leading `niet` (`is niet ingezetene kenmerk`) still binds positively.
+
+**The bezittelijk `geen` negation lowers; the noch-noch `geen` stays a marker.** §8.1.8 writes the
+bezittelijk negation as `heeft geen <kenmerk>` (§8.1.8.2) and the noch-noch one as `is geen <kenmerk>`
+(§8.1.8.3); both reach the resolver with `geen` *inside* the `kaleNaam` (there is no `GEEN` token — only
+`GEEN_VAN_DE` — so `geen` lexes as a plain `LOWER_ID` and survives `stripArtikel`). The bezittelijk form
+lowers to `== false`, **gated on the hebben-verb** (`op.HEEFT()/HEBBEN()`): its positive `heeft <k>` is
+lowered, so the negative is its faithful complement. The noch-noch `is geen <k>` is left `Onopgelost`,
+because its positive `is een <k>` is *itself* deferred for the §13.4.15.44/.45 membership ambiguity (p28) —
+lowering only the negation would gate one of a complementary pair while the other is an inert no-op. A
+`geen <k>` whose `<k>` is not a declared kenmerk stays a marker regardless (`KenmerkMatcher` gates on a
+declared kenmerk), so a genuine role/objecttype membership is never mis-gated.
+
+**Article-strip on the reconstructed name (bundled fix).** A bezittelijk/noch-noch kenmerk is written
+with its own leading article (`het recht op duurzaamheidskorting`), and the greedy `onderwerp` parse can
+leave that article on the kop it absorbs (`de Persoon` + `het recht op` + operator `duurzaamheidskorting`).
+The reconstructed name `het recht op duurzaamheidskorting` then failed to match the article-stripped
+declared kenmerk, so the **positive** `heeft het recht …` was silently a marker while `heeft geen recht …`
+lowered — an asymmetry on the canonical TOKA bezittelijk kenmerk. `kenmerkConditie` now `stripArtikel`s a
+leading `de/het/een` from the reconstructed name before matching; this is always safe because declared
+kenmerken are stored article-stripped and none begins with an article, so the strip can only help a match.
+
+Still `Onopgelost` and carded: the objecttype/role-membership lowering itself (positive `is een <X>`,
+negative `is geen <X>`), and a navigated-DOEL kenmerk on a to-many role (p32).
 
 ### Inflected kenmerk forms in a die-subselectie (§5.6) — bound morphologically
 

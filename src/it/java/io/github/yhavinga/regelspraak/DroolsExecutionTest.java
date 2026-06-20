@@ -2417,4 +2417,134 @@ class DroolsExecutionTest {
                 () -> "een niet-oude meting moet gegated zijn, kreeg " + jong.getUitkomst());
         assertNull(oud.getUitkomst(), () -> "een oude meting mag niet gegated zijn");
     }
+
+    // ---------------- p36: §8.1.8.2 bezittelijk "geen" negation in a condition ----------------
+
+    /** §8.1.8.2: the bezittelijk negation "heeft geen <kenmerk>" lowers to "== false". The kenmerk is the
+     *  multi-word TOKA kenmerk "het recht op duurzaamheidskorting"; both the negation AND its lowered name
+     *  exercise the article-strip on the greedily kop-absorbed "het ... op" (there is no GEEN token, so
+     *  "geen" survives into the reconstructed name). Fires for the personen WITHOUT the recht. */
+    @Test void bezittelijk_geen_negatie_vuurt_voor_de_personen_zonder_het_recht() {
+        String src = """
+            Objecttype de Persoon
+                de uitkomst Numeriek (geheel getal);
+                het recht op duurzaamheidskorting kenmerk (bezittelijk);
+            Regel r
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 1
+                    indien de Persoon geen recht op duurzaamheidskorting heeft.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rechtOpDuurzaamheidskorting == false"), () -> "bezittelijk geen-negatie niet gelowered:\n" + drl);
+        assertFalse(drl.contains("TODO voorwaarde"), () -> "bezittelijk geen-negatie mag geen marker zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Persoon zonder = new Persoon();                                       // geen recht -> vuurt
+        Persoon met = new Persoon(); met.setRechtOpDuurzaamheidskorting(true); // heeft recht -> niet
+        sessie.insert(zonder); sessie.insert(met);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("1").compareTo(zonder.getUitkomst()),
+                () -> "een persoon zonder recht moet gegated zijn, kreeg " + zonder.getUitkomst());
+        assertNull(met.getUitkomst(), () -> "een persoon met recht mag niet gegated zijn");
+    }
+
+    /** The positive complement: "heeft het recht op duurzaamheidskorting" must lower symmetrically to
+     *  "== true". The leading article on the kop-absorbed multi-word kenmerk used to leave it a marker
+     *  (an inert no-op), so the positive silently never fired while the negation gated — the asymmetry the
+     *  article-strip closes. Fires for the personen WITH the recht. */
+    @Test void bezittelijk_positief_meerwoordig_met_lidwoord_vuurt_voor_de_personen_met_het_recht() {
+        String src = """
+            Objecttype de Persoon
+                de uitkomst Numeriek (geheel getal);
+                het recht op duurzaamheidskorting kenmerk (bezittelijk);
+            Regel r
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 1
+                    indien de Persoon het recht op duurzaamheidskorting heeft.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rechtOpDuurzaamheidskorting == true"), () -> "positief bezittelijk niet gelowered:\n" + drl);
+        assertFalse(drl.contains("TODO voorwaarde"), () -> "positief bezittelijk mag geen marker zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Persoon met = new Persoon(); met.setRechtOpDuurzaamheidskorting(true);  // heeft recht -> vuurt
+        Persoon zonder = new Persoon();                                         // geen recht -> niet
+        sessie.insert(met); sessie.insert(zonder);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("1").compareTo(met.getUitkomst()),
+                () -> "een persoon met recht moet gegated zijn, kreeg " + met.getUitkomst());
+        assertNull(zonder.getUitkomst(), () -> "een persoon zonder recht mag niet gegated zijn");
+    }
+
+    /** The navigated bezittelijk negation: "de partner van een Persoon heeft geen recht …" reads the kenmerk
+     *  through the to-one partner role, null-guarded -> "partner != null && partner.rechtOp… == false".
+     *  Fires only for a person whose partner exists and lacks the recht. */
+    @Test void navigatie_bezittelijk_geen_negatie_vuurt_via_de_to_one_partner() {
+        String src = """
+            Objecttype de Persoon
+                de uitkomst Numeriek (geheel getal);
+                het recht op duurzaamheidskorting kenmerk (bezittelijk);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel r
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 1
+                    indien de partner van een Persoon geen recht op duurzaamheidskorting heeft.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("partner != null && partner.rechtOpDuurzaamheidskorting == false"),
+                () -> "navigated bezittelijk geen-negatie niet gelowered:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Persoon metRecht = new Persoon(); metRecht.setRechtOpDuurzaamheidskorting(true);
+        Persoon zonderRecht = new Persoon();
+        Persoon a = new Persoon(); a.setPartner(zonderRecht);  // partner zonder recht -> vuurt
+        Persoon b = new Persoon(); b.setPartner(metRecht);     // partner met recht -> niet
+        Persoon c = new Persoon();                             // geen partner -> niet (geen NPE)
+        sessie.insert(metRecht); sessie.insert(zonderRecht); sessie.insert(a); sessie.insert(b); sessie.insert(c);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("1").compareTo(a.getUitkomst()),
+                () -> "partner zonder recht -> gegated, kreeg " + a.getUitkomst());
+        assertNull(b.getUitkomst(), () -> "partner met recht -> niet gegated");
+        assertNull(c.getUitkomst(), () -> "geen partner -> niet gegated (geen NPE op null-navigatie)");
+    }
+
+    /** The noch-noch "is geen <kenmerk>" (§8.1.8.3) stays an honest marker, NOT a silent gate: it is the
+     *  negation of "is een <kenmerk>", which is itself deferred for the §13.4.15.44/.45 membership ambiguity
+     *  (p28). Lowering only the negation would gate one of a complementary pair while the other is an inert
+     *  no-op. So it lowers to a compileerbare false-marker and the rule never fires. */
+    @Test void noch_noch_is_geen_negatie_blijft_een_marker_geen_stille_gate() {
+        String src = """
+            Objecttype de Persoon
+                de uitkomst Numeriek (geheel getal);
+                de reiziger kenmerk;
+            Regel r
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 1
+                    indien de Persoon geen reiziger is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("false /* TODO voorwaarde"), () -> "is-geen noch-noch moet een marker blijven:\n" + drl);
+        assertFalse(drl.contains("reiziger == false"), () -> "is-geen noch-noch mag niet stil gegated worden:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();   // build() FAILS if the marker is not compileerbaar
+        Persoon p = new Persoon();
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertNull(p.getUitkomst(), "een noch-noch is-geen marker moet een no-op zijn (niet stil vuren)");
+    }
 }

@@ -645,7 +645,8 @@ final class RuleChecker {
         if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, bron);
         if (op.NUMERIEK_IS_MET_EXACT() != null || op.NUMERIEK_ZIJN_MET_EXACT() != null)
             return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, bron);
-        Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null, bron); // EEN? kaleNaam (is|heeft): §8.1.8
+        Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null,
+                op.HEEFT() != null || op.HEBBEN() != null, bron); // EEN? kaleNaam (is|heeft): §8.1.8
         return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
     }
 
@@ -658,7 +659,8 @@ final class RuleChecker {
         if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, bron);
         if (op.NUMERIEK_MET_EXACT() != null)
             return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, bron);
-        Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null, bron); // (is|heeft) een? kaleNaam: §8.1.8
+        Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null,
+                op.HEEFT() != null || op.HEBBEN() != null, bron); // (is|heeft) een? kaleNaam: §8.1.8
         return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
     }
 
@@ -667,28 +669,45 @@ final class RuleChecker {
      *  EEN article is NOT a kenmerk reference: per §13.4.15.44/.45 "is een &lt;naam&gt;" is an
      *  objecttype/role-membership test, so it is left Onopgelost (carded) — this also stops a name
      *  that is both a kenmerk and an objecttype/role from being silently gated as the kenmerk. */
-    private Conditie kenmerkPredicaat(Expr lhs, KaleNaamContext naamCtx, boolean metEen, String bron) {
+    private Conditie kenmerkPredicaat(Expr lhs, KaleNaamContext naamCtx, boolean metEen, boolean heeftWerkwoord, String bron) {
         Objecttype subject = bouwer.subject();
         if (metEen || naamCtx == null || subject == null) return null;
         String staart = stripArtikel(src(naamCtx));
         String kop = subjectKop(lhs, subject);
-        if (kop == null) return navigatieKenmerk(lhs, staart, bron); // not the subject -> maybe a navigated kenmerk
+        if (kop == null) return navigatieKenmerk(lhs, staart, heeftWerkwoord, bron); // not the subject -> maybe a navigated kenmerk
         // The greedy onderwerp parse absorbs a multi-word kenmerk's leading words into the operand
         // ("de Meting bereikbaar per" + operator "trein"), so the kenmerk is that absorbed kop plus
         // the operator's kaleNaam; for "hij"/a bare subject the kop is empty and the name is the kaleNaam.
         String kenmerk = kop.isEmpty() ? staart : kop + " " + staart;
-        return kenmerkConditie(subject, kenmerk, null, bron);
+        return kenmerkConditie(subject, kenmerk, null, heeftWerkwoord, bron);
     }
 
     /** Resolve {@code kenmerk} on {@code type} into a {@link Conditie.Kenmerk}, honouring a leading "niet"
-     *  as NEGATION — but only after the WHOLE name fails, so a declared "niet-…" kenmerk still binds
-     *  positively. {@code navigatie} is the to-one navigation role (null for the subject's own). Null when
-     *  neither the whole name nor its de-negated form is a declared kenmerk of {@code type}. */
-    private static Conditie kenmerkConditie(Objecttype type, String kenmerk, String navigatie, String bron) {
-        String g = KenmerkMatcher.vind(type, kenmerk);
+     *  or "geen" as NEGATION — but each only after the WHOLE name fails, so a declared "niet-…" kenmerk
+     *  still binds positively. {@code navigatie} is the to-one navigation role (null for the subject's own).
+     *  {@code heeftWerkwoord} is true when the predicate verb is hebben (§8.1.8: see the "geen" branch).
+     *  Null when neither the whole name nor a de-negated form is a declared kenmerk of {@code type}. */
+    private static Conditie kenmerkConditie(Objecttype type, String kenmerk, String navigatie, boolean heeftWerkwoord, String bron) {
+        // A bezittelijk/noch-noch kenmerk is written with its own leading article ("het recht op
+        // duurzaamheidskorting"), and the greedy onderwerp parse can leave that article on the reconstructed
+        // name (kop "het recht op" + operand). Declared kenmerken are stored article-stripped and none begins
+        // with an article, so dropping a leading de/het/een can only help a match, never make a wrong one.
+        String naam = stripArtikel(kenmerk);
+        String g = KenmerkMatcher.vind(type, naam);
         if (g != null) return new Conditie.Kenmerk(g, navigatie, false, bron);
-        if (kenmerk.regionMatches(true, 0, "niet ", 0, 5)) {
-            g = KenmerkMatcher.vind(type, kenmerk.substring(5).trim());
+        // §8.1.8.1 bijvoeglijk negation "is niet <k>" -> "== false" (verb-agnostic; tried only after the
+        // WHOLE name fails, so a declared "niet-…" kenmerk binds positively above, never silently inverted).
+        if (naam.regionMatches(true, 0, "niet ", 0, 5)) {
+            g = KenmerkMatcher.vind(type, naam.substring(5).trim());
+            if (g != null) return new Conditie.Kenmerk(g, navigatie, true, bron);
+        }
+        // §8.1.8.2 bezittelijk negation "heeft geen <k>" -> "== false". Gated on the hebben-verb: the
+        // noch-noch "is geen <k>" (§8.1.8.3) is the negation of "is een <k>", itself left a marker for the
+        // §13.4.15.44/.45 objecttype/role-membership ambiguity (p28) — lowering only its negation would gate
+        // one of a complementary pair while the other stays an inert no-op. "geen" is absorbed into the
+        // kaleNaam (there is no GEEN token), so it survives stripArtikel into this reconstructed name.
+        if (heeftWerkwoord && naam.regionMatches(true, 0, "geen ", 0, 5)) {
+            g = KenmerkMatcher.vind(type, naam.substring(5).trim());
             if (g != null) return new Conditie.Kenmerk(g, navigatie, true, bron);
         }
         return null;
@@ -700,7 +719,7 @@ final class RuleChecker {
      *  stays a marker, as does an unresolvable rol or a kenmerk the navigated type does not declare. The rol
      *  is normalised to its declared name (a plural "de passagiers" is the same role as "de passagier"), so
      *  the to-many test and the emitted reference field are the canonical one. */
-    private Conditie navigatieKenmerk(Expr lhs, String staart, String bron) {
+    private Conditie navigatieKenmerk(Expr lhs, String staart, boolean heeftWerkwoord, String bron) {
         if (!(lhs instanceof Expr.AttribuutRef a) || a.objecttype() == null) return null;
         Objecttype subject = a.objecttype();                                       // the onderwerp the navigation is from
         Objecttype doel = model.rolDoeltypeNaarSubject(subject, a.attribuut());
@@ -714,7 +733,7 @@ final class RuleChecker {
         // match the declared kenmerk and stays a marker (never a silently-inverted positive constraint).
         String tail = navigatieStaart(a);
         String kenmerk = tail.isEmpty() ? staart : tail + " " + staart;
-        return kenmerkConditie(doel, kenmerk, rol, bron);
+        return kenmerkConditie(doel, kenmerk, rol, heeftWerkwoord, bron);
     }
 
     /** The words the greedy operand parse absorbed AFTER the navigated "de &lt;rol&gt; van &lt;onderwerp&gt;"
