@@ -37,11 +37,23 @@ class TyperingTest {
     @Test void macht_met_eenheid_fout() {                    // §4.7: no units allowed
         assertFalse(Typering.reken(BinOp.TOT_DE_MACHT, num("km", "afstand"), num()).ok());
     }
+    // jr and mnd are convertible because the resolver reduces both to the SAME canonical (mnd) via the
+    // declared "jr = 12 mnd"; sharing only a stelsel is not enough (p44), so the fixtures carry that link.
+    static Datatype num(String afk, String stelsel, String canoniek, long factor) {
+        return new Datatype.Numeriek(false, 0, Teken.ONBEPAALD,
+                new Eenheid(afk, stelsel, canoniek, java.math.BigDecimal.valueOf(factor)));
+    }
     @Test void plus_convertibele_eenheden_ok() {
-        assertTrue(Typering.reken(BinOp.PLUS, num("jr", "Tijd"), num("mnd", "Tijd")).ok());
+        assertTrue(Typering.reken(BinOp.PLUS, num("jr", "Tijd", "mnd", 12), num("mnd", "Tijd", "mnd", 1)).ok());
     }
     @Test void plus_niet_convertibele_eenheden_fout() {
-        assertFalse(Typering.reken(BinOp.PLUS, num("jr", "Tijd"), num("km", "afstand")).ok());
+        assertFalse(Typering.reken(BinOp.PLUS, num("jr", "Tijd", "mnd", 12), num("km", "afstand", "km", 1)).ok());
+    }
+    @Test void plus_zelfde_stelsel_andere_canoniek_fout() {
+        // p44: two independent base units in ONE system (appel/peer, no declared conversion) reduce to
+        // disjoint canonicals, so they are NOT inter-convertible — sharing a stelsel must not make them so.
+        assertFalse(Typering.reken(BinOp.PLUS, num("app", "Mix", "app", 1), num("pr", "Mix", "pr", 1)).ok());
+        assertFalse(Typering.vergelijk(CmpOp.GELIJK, num("app", "Mix", "app", 1), num("pr", "Mix", "pr", 1)).ok());
     }
     @Test void plus_eenheid_op_een_kant_fout() {
         assertFalse(Typering.reken(BinOp.PLUS, num("jr", "Tijd"), num()).ok());

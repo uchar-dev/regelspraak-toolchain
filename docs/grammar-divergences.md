@@ -152,6 +152,15 @@ two factors. The ratio truncates for a non-terminating quotient (`mnd → jr = 1
 is exact (p43). Both the consistentie and the voorwaarde comparison paths use this; a
 composite (rate) unit keeps the single-operand ratio (its precision edge stays carded).
 
+Two units are **convertible** only when they are the same unit or reduce to the SAME system
+canonical — sharing only an `eenheidstelsel` is not enough (p44). A declared conversion
+(`het jaar jr = 12 mnd`) is what reduces `jr` to canonical `mnd`; two independent base units in
+one system (`appel app`, `peer pr`, no declared conversion) reduce to disjoint canonicals, so
+§13.3.5's "equal or convertible" requirement fails and a comparison/`+`/assignment between them is a
+unit error (`eenheden 'app' en 'pr' zijn niet in elkaar om te rekenen`) rather than a silent raw-
+magnitude comparison. A well-formed system reduces every unit to one canonical, so the ordinary
+`jr`/`mnd`/`dag` case is unaffected.
+
 A **composite (rate) unit** (`€/jr`, `€/mnd` — §13.3.3.2's `<eenheidmacht> "/"
 <eenheidmacht>`) now carries its denominator (`Eenheid.noemer`) instead of dropping it.
 Two rates are convertible iff their numerators AND denominators are each convertible, and

@@ -49,11 +49,15 @@ public record Eenheid(String afkorting, String stelsel, String canoniek, BigDeci
         return tellerConvertibel(other);
     }
 
-    /** Numerator convertibility: same abbreviation, same canonical, or same system. */
+    /** Numerator convertibility: the same unit (abbreviation), or two units that reduce to the SAME
+     *  system canonical. Sharing only an eenheidstelsel is NOT enough — two independent base units in one
+     *  system (appel vs peer) reduce to disjoint canonicals and are not inter-convertible, so §13.3.5's
+     *  "equal or convertible" requirement is violated and comparing them on raw magnitudes is a
+     *  silent-wrong (p44). A well-formed system reduces every unit to one canonical, so this stays true
+     *  for the ordinary jr/mnd/dag case; an unresolved (null) canonical is treated as not convertible. */
     private boolean tellerConvertibel(Eenheid other) {
         if (afkorting.equals(other.afkorting)) return true;
-        if (canoniek != null && other.canoniek != null && canoniek.equals(other.canoniek)) return true;
-        return stelsel != null && stelsel.equals(other.stelsel);
+        return canoniek != null && other.canoniek != null && canoniek.equals(other.canoniek);
     }
 
     /** Multiplier to restate a quantity in THIS unit as a quantity in {@code target}
