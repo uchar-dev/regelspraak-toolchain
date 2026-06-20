@@ -927,11 +927,31 @@ final class RuleChecker {
             meldPredicaat(Typering.UnairePred.NUMERIEK_MET_EXACT, lhs, line);
     }
 
+    // §13.4.15: the toplevel/non-toplevel split is word-order, not structure, so BOTH operator families
+    // are admitted in BOTH voorwaarde positions (grammar: toplevelElementaireVoorwaarde and
+    // elementaireVoorwaarde each allow `toplevelOperator | nonToplevelOperator`). The type-check must
+    // therefore dispatch on whichever operator is actually present, not on the voorwaarde's name —
+    // otherwise an operator in the "other" position (e.g. the verb-leading "voldoet aan de elfproef" under
+    // INDIEN) is silently unchecked, letting an ill-typed predicate through (p34).
     private void checkTopVoorwaarde(ToplevelElementaireVoorwaardeContext c) {
-        if (c.expressie() == null || c.toplevelOperator() == null) return;
+        if (c.expressie() == null) return;
         Datatype lhs = infer(c.expressie());
-        ToplevelOperatorContext op = c.toplevelOperator();
         int line = c.getStart().getLine();
+        checkToplevelOp(lhs, c.toplevelOperator(), line);
+        checkNonToplevelOp(lhs, c.nonToplevelOperator(), line);
+    }
+
+    private void checkElemVoorwaarde(ElementaireVoorwaardeContext c) {
+        if (c.expressie() == null) return;
+        Datatype lhs = infer(c.expressie());
+        int line = c.getStart().getLine();
+        checkNonToplevelOp(lhs, c.nonToplevelOperator(), line);
+        checkToplevelOp(lhs, c.toplevelOperator(), line);
+    }
+
+    /** Type-check a verb-split / trailing operator (vergelijking, elfproef, numeriek-met-exact). */
+    private void checkToplevelOp(Datatype lhs, ToplevelOperatorContext op, int line) {
+        if (op == null) return;
         if (op.vergelijkingsTekenGesplitst() != null && op.expressie() != null)
             meldVergelijk(cmpOf(op.vergelijkingsTekenGesplitst()), lhs, infer(op.expressie()), line);
         else if (op.AAN_DE_ELFPROEF() != null)
@@ -940,11 +960,9 @@ final class RuleChecker {
             meldPredicaat(Typering.UnairePred.NUMERIEK_MET_EXACT, lhs, line);
     }
 
-    private void checkElemVoorwaarde(ElementaireVoorwaardeContext c) {
-        if (c.expressie() == null || c.nonToplevelOperator() == null) return;
-        Datatype lhs = infer(c.expressie());
-        NonToplevelOperatorContext op = c.nonToplevelOperator();
-        int line = c.getStart().getLine();
+    /** Type-check a verb-leading operator (vergelijking, elfproef, numeriek-met-exact). */
+    private void checkNonToplevelOp(Datatype lhs, NonToplevelOperatorContext op, int line) {
+        if (op == null) return;
         if (op.vergelijkingsTeken() != null && op.expressie() != null)
             meldVergelijk(cmpOf(op.vergelijkingsTeken()), lhs, infer(op.expressie()), line);
         else if (op.AAN_DE_ELFPROEF() != null)
