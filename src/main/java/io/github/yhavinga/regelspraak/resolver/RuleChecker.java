@@ -58,7 +58,7 @@ final class RuleChecker {
                 String versieNaam = versies.size() > 1 ? naam + " #" + (i + 1) : naam;
                 bouwer.setSubject(subjectVan(rsr.resultaatDeel())); // so "zijn …" resolves against the rule subject
                 Conditie voorwaarde = rsr.voorwaardeDeel() != null ? bouwVoorwaarde(rsr.voorwaardeDeel()) : null;
-                resultaat(naam, versieNaam, rsr.resultaatDeel(), voorwaarde, geldigheid);
+                resultaat(naam, versieNaam, rsr.resultaatDeel(), rsr.voorwaardeDeel(), voorwaarde, geldigheid);
                 voorwaarden(rsr);   // exhaustive condition type-check (§5), unchanged
             }
         }
@@ -162,7 +162,7 @@ final class RuleChecker {
      *  carry the version's {@code geldigheid} and its per-version {@code versieNaam}; the
      *  other resultaatdeel kinds keep the base {@code naam} and (for now) no validity guard. */
     private void resultaat(String naam, String versieNaam, ResultaatDeelContext rd,
-                           Conditie voorwaarde, Geldigheid geldigheid) {
+                           VoorwaardeDeelContext vd, Conditie voorwaarde, Geldigheid geldigheid) {
         if (rd == null) return;
         if (rd.gelijkstelling() != null) {
             GelijkstellingContext g = rd.gelijkstelling();
@@ -182,7 +182,7 @@ final class RuleChecker {
         } else if (rd.consistentieRegel() != null) {
             consistentie(versieNaam, rd.consistentieRegel(), geldigheid);
         } else if (rd.feitCreatie() != null) {
-            feitCreatie(versieNaam, rd.feitCreatie(), voorwaarde, geldigheid);
+            feitCreatie(versieNaam, rd.feitCreatie(), vd, voorwaarde, geldigheid);
         } else {
             // §13.4.11/.12 — parsed but not yet lifted into the IR. Surface it as
             // a diagnostic rather than letting the rule silently disappear from the model.
@@ -431,7 +431,7 @@ final class RuleChecker {
      *  role {@code rolC} — into a {@link ResolvedFeitCreatie}. A multi-hop navigation (the TOKA
      *  "verdeling contingent treinmiles over passagiers" example) or an unresolvable role/onderwerp
      *  keeps an honest WARNING rather than a silent wrong link. */
-    private void feitCreatie(String naam, FeitCreatieContext fc, Conditie voorwaarde, Geldigheid geldigheid) {
+    private void feitCreatie(String naam, FeitCreatieContext fc, VoorwaardeDeelContext vd, Conditie voorwaarde, Geldigheid geldigheid) {
         String rolB = stripArtikel(src(fc.kaleNaam(0)));               // LHS role — the relation being created
         Objecttype anker = bouwer.resolveOnderwerp(fc.onderwerp(0));   // the "one" side / iterated subject
         KaleNaamContext rhs = fc.kaleNaam(1);
@@ -465,14 +465,34 @@ final class RuleChecker {
             else if (!(model.naarVeelRol(anker, doel, rolC) && model.naarVeelRol(anker, doel, rolB)))
                 reden = "referentieveld hoort aan de meervoudige kant; het doel is hier niet de meervoudige kant";
             else {
+                Conditie effectief = doelVoorwaarde(voorwaarde, vd, anker, doel);
                 model.feitCreaties.add(new io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie(
-                        naam, anker, doel, zetVeld, joinVeld, voorwaarde, geldigheid));
+                        naam, anker, doel, zetVeld, joinVeld, effectief, geldigheid));
                 return;
             }
         }
         model.diagnostics.add(new Diagnostic(Severity.WARNING,
                 "feitcreatie wordt nog niet naar IR/DRL omgezet (regel '" + naam + "'): " + reden,
                 fc.getStart().getLine()));
+    }
+
+    /** §13.4.7 voorwaarde hosting. A feitcreatie guard is built with the ANKER as subject; a guard that
+     *  names a kenmerk of the DOEL ("indien de passagier vip is") is then an unresolved marker, because the
+     *  single-subject §8.1.8 path refuses a to-many navigation from the anker (it would need a separate
+     *  pattern). The feitcreatie HAS that pattern ($doel), so re-resolve the guard with the doel as subject;
+     *  if it is then a single BARE doel-kenmerk, tag it with {@code eigenaar = doel} so the transpiler hosts
+     *  it on the $doel pattern (and never the anker — even under a same-named anker kenmerk). Restricted to
+     *  the simple single-kenmerk guard and to {@code doel != anker}: an anker guard that already resolved, a
+     *  compound, a self-relation, or a still-unresolved guard is returned unchanged — an un-lowerable guard
+     *  stays an honest inert no-op, never a wrong link. */
+    private Conditie doelVoorwaarde(Conditie ankerVoorwaarde, VoorwaardeDeelContext vd, Objecttype anker, Objecttype doel) {
+        if (!(ankerVoorwaarde instanceof Conditie.Onopgelost) || vd == null || doel == anker) return ankerVoorwaarde;
+        bouwer.setSubject(doel);
+        Conditie doelV = bouwVoorwaarde(vd);
+        bouwer.setSubject(anker);                          // restore: the anker is the iterated subject
+        if (doelV instanceof Conditie.Kenmerk k && k.navigatie() == null && k.eigenaar() == null)
+            return new Conditie.Kenmerk(k.kenmerk(), null, k.negatie(), doel, k.bron());
+        return ankerVoorwaarde;
     }
 
     /** §13.4.5 kenmerktoekenning: the subject acquires a kenmerk (a boolean property).

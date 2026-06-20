@@ -970,10 +970,12 @@ class DrlTest {
         assertFalse(drl.contains("eval( false )"), () -> "een resolveerbare anker-kenmerk-voorwaarde mag de regel niet inert maken:\n" + drl);
     }
 
-    @Test void feitcreatie_onlowerbare_voorwaarde_wordt_inert_geen_overcreatie() {
-        // A guard that lowers to NEITHER anker nor doel (here a doel kenmerk, which the §8.1.8 subject-only
-        // kenmerk path cannot resolve on a navigated doel) must make the rule inert (eval(false)), NOT be
-        // dropped — a dropped guard fires unconditionally and OVER-CREATES the relation.
+    @Test void feitcreatie_doel_kenmerk_voorwaarde_host_op_doel_pattern() {
+        // p32: a feitcreatie guard naming a kenmerk of the navigated DOEL ("indien de passagier vip is")
+        // resolves against the doel type and hosts on the $doel pattern (vip == true), like the comparison
+        // case — it no longer falls through to an inert eval(false). The guard is built with the anker as
+        // subject (a to-many navigation -> marker), then re-resolved with the doel as subject and tagged so
+        // the transpiler emits it ONLY on $doel.
         String ft = """
             Feittype bonusrelatie
                 de bonusvlucht Vlucht
@@ -996,8 +998,95 @@ class DrlTest {
                     indien de passagier vip is.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("$doel : Passagier( reis == $subject, vip == true )"),
+                () -> "een doel-kenmerk moet op het $doel-patroon hosten:\n" + drl);
+        assertFalse(drl.contains("eval( false )"), () -> "het mag niet meer inert zijn:\n" + drl);
+        assertFalse(drl.contains("Vlucht( vip"), () -> "het kenmerk mag NIET op de anker hosten:\n" + drl);
+    }
+
+    @Test void feitcreatie_doel_kenmerk_host_op_doel_ook_bij_gelijknamige_anker_kenmerk() {
+        // p32 collision safety: with the SAME kenmerk name declared on BOTH the anker (Vlucht) and the doel
+        // (Passagier), the guard "indien de passagier student is" names the doel. The eigenaar tag must pin it
+        // to the $doel pattern — it must NOT host on the anker (which is tried first and also declares it).
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+                is student kenmerk (bijvoeglijk);
+            Objecttype de Passagier
+                is student kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht
+                    indien de passagier student is.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("$doel : Passagier( reis == $subject, student == true )"),
+                () -> "moet op $doel hosten, ondanks gelijknamig anker-kenmerk:\n" + drl);
+        assertFalse(drl.contains("Vlucht( student"), () -> "mag NIET op de anker hosten:\n" + drl);
+    }
+
+    @Test void feitcreatie_genegeerd_doel_kenmerk_host_op_doel_als_false() {
+        // p32 + p36: a NEGATED bezittelijk doel-kenmerk guard ("indien de passagier geen recht op korting
+        // heeft") hosts on $doel as "== false" — the doel re-resolution preserves the negation.
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                het recht op korting kenmerk (bezittelijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht
+                    indien de passagier geen recht op korting heeft.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("$doel : Passagier( reis == $subject, rechtOpKorting == false )"),
+                () -> "een genegeerd doel-kenmerk moet op $doel hosten als == false:\n" + drl);
+    }
+
+    @Test void feitcreatie_echt_onlowerbare_voorwaarde_wordt_inert_geen_overcreatie() {
+        // A guard that lowers to NEITHER anker nor doel — here an objecttype/role-membership test (§13.4.15.44,
+        // left a marker, p28), not a doel kenmerk — must make the rule inert (eval(false)), NOT be dropped:
+        // a dropped guard fires unconditionally and OVER-CREATES the relation.
+        String ft = """
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            """;
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            """ + ft + """
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht
+                    indien de passagier een werkdag is.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertTrue(drl.contains("eval( false )"),
-                () -> "een onlowerbare voorwaarde moet de regel inert maken (geen over-creatie):\n" + drl);
+                () -> "een echt onlowerbare voorwaarde moet de regel inert maken (geen over-creatie):\n" + drl);
     }
 
     @Test void consistentie_met_onresolveerbare_rechter_operand_waarschuwt() {

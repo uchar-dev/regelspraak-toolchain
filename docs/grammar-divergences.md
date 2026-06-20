@@ -623,11 +623,18 @@ rule):
 A multi-version (time-bounded) feitcreatie gets per-version DRL rule names ("… #1", "… #2"), like every
 other resultaatdeel kind. A voorwaarde is hosted where it resolves — a guard on the anker stays on the
 `$subject` pattern (a kenmerk too: `subjectVan` yields the anker so §8.1.8 resolves it), a guard on the
-doel moves to the `$doel` pattern. A guard that lowers to NEITHER (a kenmerk on the navigated doel, which
-the §8.1.8 subject-only path cannot reach, or a mixed anker+doel compound) makes the rule an inert
+doel moves to the `$doel` pattern. A **kenmerk** on the navigated doel ("indien de passagier vip is") is
+hosted on `$doel` too: the guard is first built with the anker as subject, where the to-many navigation to
+the doel leaves the §8.1.8 kenmerkcheck an unresolved marker; the feitcreatie then re-resolves that single
+marker with the **doel** as subject and tags the resulting bare `Conditie.Kenmerk` with `eigenaar = doel`,
+so the transpiler emits `vip == true` only on the `$doel` pattern — never the anker, even when the anker
+declares a same-named kenmerk (the `eigenaar` tag pins it; an untagged kenmerk stays unconstrained). The
+re-resolution is restricted to the single-kenmerk guard and to a distinct doel type, so the conservative
+to-many-navigation refusal still holds for an ordinary single-pattern rule (a regular-rule self-relation
+to-many kenmerk stays a marker, never a silent read of the subject's own kenmerk). A guard that lowers to
+NEITHER pattern (an objecttype/role-membership test, or a mixed anker+doel compound) makes the rule an inert
 `eval(false)` no-op carrying a marker — never a dropped guard, which would fire unconditionally and
-**over-create** the relation. Creating nothing (visibly) beats creating wrongly; resolving those guards is
-a carded follow-up.
+**over-create** the relation. Creating nothing (visibly) beats creating wrongly.
 
 **Deferred (carded), each an honest WARNING:** the MULTI-HOP `<onderwerpD>` navigation — the spec's own
 §9.4 / TOKA example ("… van de reis met treinmiles van het vastgestelde contingent treinmiles", Contingent

@@ -2274,10 +2274,10 @@ class DroolsExecutionTest {
         assertNull(arm.getBonusvlucht(), () -> "een passagier die niet voldoet mag niet gekoppeld zijn");
     }
 
-    @Test void feitcreatie_met_onlowerbare_voorwaarde_creeert_niets_geen_overcreatie() {
-        // A doel-kenmerk guard the §8.1.8 subject-only path cannot resolve on a navigated doel makes the
-        // rule inert (eval(false)) rather than dropping the guard. Dropping it would link EVERY passenger
-        // (over-creation); inert must link NONE. Better to create nothing visibly than to create wrongly.
+    @Test void feitcreatie_met_doel_kenmerk_voorwaarde_koppelt_alleen_de_passende_passagiers() {
+        // p32: a feitcreatie guard naming a kenmerk of the navigated DOEL ("indien de passagier student is")
+        // now resolves against the doel type and hosts on $doel (student == true), so the relation is created
+        // only for the matching passengers — like the comparison guard, no longer an inert no-op.
         String src = """
             Objecttype de Vlucht
                 de naam Tekst;
@@ -2299,10 +2299,51 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("student == true"), () -> "doel-kenmerk niet gelowered:\n" + drl);
 
         KieSession sessie = build(drl).newKieSession();
         Vlucht v = new Vlucht();
-        Passagier a = new Passagier(); a.setReis(v); a.setStudent(true);
+        Passagier a = new Passagier(); a.setReis(v); a.setStudent(true);   // student -> gekoppeld
+        Passagier b = new Passagier(); b.setReis(v);                       // geen student -> niet
+        sessie.insert(v); sessie.insert(a); sessie.insert(b);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertSame(v, a.getBonusvlucht(), () -> "een student-passagier moet gekoppeld zijn");
+        assertNull(b.getBonusvlucht(), () -> "een niet-student mag niet gekoppeld zijn");
+    }
+
+    @Test void feitcreatie_met_echt_onlowerbare_voorwaarde_creeert_niets_geen_overcreatie() {
+        // A guard that lowers to NEITHER anker nor doel — here an objecttype/role-membership test
+        // ("indien de passagier een werkdag is", left a marker, p28), not a doel kenmerk — makes the rule
+        // inert (eval(false)) rather than dropping the guard. Dropping it would link EVERY passenger
+        // (over-creation); inert must link NONE. Better to create nothing visibly than to create wrongly.
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht
+                    indien de passagier een werkdag is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("eval( false )"), () -> "een echt onlowerbare voorwaarde moet inert zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v = new Vlucht();
+        Passagier a = new Passagier(); a.setReis(v);
         Passagier b = new Passagier(); b.setReis(v);
         sessie.insert(v); sessie.insert(a); sessie.insert(b);
         sessie.fireAllRules();

@@ -704,6 +704,12 @@ public final class DrlTranspiler {
         // not null-safe, so a missing partner must read as "not gepensioneerd", not throw): the constraint
         // becomes "partner != null && partner.gepensioneerd == true".
         if (c instanceof Conditie.Kenmerk k) {
+            // §13.4.7 feitcreatie hosts a doel-kenmerk on the $doel pattern: a kenmerk tagged with an
+            // eigenaar emits ONLY on that type's pattern (a marker elsewhere), so it never lands on the
+            // anker — even when the anker happens to declare a same-named kenmerk. An untagged kenmerk
+            // (the single-subject rule) is unconstrained and emits on whatever pattern hosts the voorwaarde.
+            if (k.eigenaar() != null && k.eigenaar() != subject)
+                return onopgelosteConstraint("kenmerk '" + k.kenmerk() + "' hoort bij " + k.eigenaar().naam, c.bron());
             String prop = ident(k.kenmerk(), false) + " == " + (k.negatie() ? "false" : "true");
             if (k.navigatie() == null) return prop;
             String nav = ident(k.navigatie(), false);

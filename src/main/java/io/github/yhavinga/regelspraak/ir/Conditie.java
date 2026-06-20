@@ -1,5 +1,7 @@
 package io.github.yhavinga.regelspraak.ir;
 
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
+
 import java.util.List;
 
 /**
@@ -37,10 +39,14 @@ public sealed interface Conditie {
      *  named object carries the boolean kenmerk. {@code navigatie} is null for the subject's OWN kenmerk
      *  (lowered to the subject's boolean property, {@code oud == true}); for a TO-ONE navigated kenmerk
      *  ("de partner van X is gepensioneerd") it is the navigation role, lowered to the property path
-     *  {@code partner.gepensioneerd == true}. A to-many navigation or objecttype-membership stays
-     *  {@link Onopgelost}. */
-    record Kenmerk(String kenmerk, String navigatie, boolean negatie, String bron) implements Conditie {
-        public Kenmerk(String kenmerk, String bron) { this(kenmerk, null, false, bron); }
+     *  {@code partner.gepensioneerd == true}. A to-many navigation in a single-pattern rule stays
+     *  {@link Onopgelost}. {@code eigenaar}, when non-null, is the object type whose pattern this BARE
+     *  constraint must attach to — a §13.4.7 feitcreatie hosts a doel-kenmerk on the {@code $doel} pattern,
+     *  so the transpiler emits it only on that type and markers it elsewhere (never on the anker, even when
+     *  the anker declares a same-named kenmerk). null leaves it unconstrained (the single-subject rule). */
+    record Kenmerk(String kenmerk, String navigatie, boolean negatie, Objecttype eigenaar, String bron) implements Conditie {
+        public Kenmerk(String kenmerk, String navigatie, boolean negatie, String bron) { this(kenmerk, navigatie, negatie, null, bron); }
+        public Kenmerk(String kenmerk, String bron) { this(kenmerk, null, false, null, bron); }
     }
 
     /** §13.4.14 compound condition: a quantifier over a bullet list of sub-conditions.
