@@ -407,6 +407,15 @@ final class ExpressieBouwer {
                 : a.type() instanceof Datatype.Percentage p ? p.decimalen() : 0).min().orElse(0);
     }
 
+    /** Whether EVERY min/max operand is a whole number — the only case in which the winning value
+     *  is provably integral. Derived from each operand's geheel flag, NOT from decimalen==0 (which an
+     *  unbounded "getal" operand also carries), so a min/max of unbounded or decimal operands is not
+     *  mislabelled geheel — which would wrongly admit it to the §5.13 elfproef (Tabel 55). */
+    private static boolean alleGeheel(List<Expr> args) {
+        return args.stream().allMatch(a -> (a.type() instanceof Datatype.Numeriek m && m.geheel())
+                || (a.type() instanceof Datatype.Percentage p && p.geheel()));
+    }
+
     private Datatype functieType(Expr.FunctieKind kind, List<Expr> args) {
         Datatype eerste = args.isEmpty() ? onbekend() : args.get(0).type();
         return switch (kind) {
@@ -417,7 +426,7 @@ final class ExpressieBouwer {
             // operand precision so the §6.1.2 check never over-reports (the exact value-dependent
             // precision is carded); the first operand's precision would be order-dependent.
             case MINIMUM, MAXIMUM -> args.size() <= 1 || !(eerste instanceof Datatype.Numeriek n) ? eerste
-                    : new Datatype.Numeriek(minDecimalen(args) == 0, minDecimalen(args), n.teken(), n.eenheid());
+                    : new Datatype.Numeriek(alleGeheel(args), minDecimalen(args), n.teken(), n.eenheid());
             case AANTAL -> new Datatype.Numeriek(true, 0, Datatype.Teken.NIET_NEGATIEF, null); // a count
             case CONCATENATIE -> new Datatype.Tekst();
             case EERSTE_PAASDAG, DATUM_MET -> new Datatype.DatumInDagen();

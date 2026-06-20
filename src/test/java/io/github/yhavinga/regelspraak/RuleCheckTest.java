@@ -167,6 +167,59 @@ class RuleCheckTest {
                 () -> "verwachtte een voorwaarde-fout voor de verb-leidende vergelijking, kreeg: " + m.errors());
     }
 
+    @Test void elfproef_op_min_van_onbeperkte_operanden_wordt_gemeld() {
+        // p35: a min/max value-fold is geheel only if EVERY operand is geheel. A min of unbounded "getal"
+        // operands is NOT provably integral, so the §5.13 elfproef must reject it. It used to be wrongly
+        // accepted: the result was mislabelled geheel from minDecimalen==0, which an unbounded operand's
+        // sentinel 0 also satisfies. (Observable since p34 wired the elfproef check in a voorwaarde.)
+        String src = """
+            Objecttype de Ding
+                de a Numeriek (getal);
+                de b Numeriek (getal);
+                is ok kenmerk (bijvoeglijk);
+            Regel r
+                geldig altijd
+                    Een Ding is ok
+                    indien de minimale waarde van de a van een Ding en de b van een Ding voldoet aan de elfproef.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("elfproef")),
+                () -> "een min van onbeperkte getallen is geen geheel getal; elfproef moet afwijzen: " + m.errors());
+    }
+
+    @Test void elfproef_op_min_van_decimaal_operand_wordt_gemeld() {
+        // a min of a geheel and a 2-decimal operand can win the decimal value, so it is not integral.
+        String src = """
+            Objecttype de Ding
+                de a Numeriek (geheel getal);
+                de b Numeriek (getal met 2 decimalen);
+                is ok kenmerk (bijvoeglijk);
+            Regel r
+                geldig altijd
+                    Een Ding is ok
+                    indien de minimale waarde van de a van een Ding en de b van een Ding voldoet aan de elfproef.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("elfproef")),
+                () -> "een min met een decimaal-operand is niet geheel; elfproef moet afwijzen: " + m.errors());
+    }
+
+    @Test void elfproef_op_min_van_gehele_operanden_geen_fout() {
+        // control: a min of all-geheel operands IS provably integral, so elfproef accepts it.
+        String src = """
+            Objecttype de Ding
+                de a Numeriek (geheel getal);
+                de b Numeriek (geheel getal);
+                is ok kenmerk (bijvoeglijk);
+            Regel r
+                geldig altijd
+                    Een Ding is ok
+                    indien de minimale waarde van de a van een Ding en de b van een Ding voldoet aan de elfproef.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "een min van gehele getallen is geheel: " + m.errors());
+    }
+
     @Test void ongedefinieerd_domein_wordt_gemeld() {
         String src = """
             Objecttype de Ding

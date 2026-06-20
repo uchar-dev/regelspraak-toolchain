@@ -342,9 +342,11 @@ ceiling, so the check does not apply to it: assigning a decimal value to a `Nume
 is always valid. The `decimalen 0` field is an overloaded sentinel — it means both "geheel getal"
 (form (a), bounded at 0) and "getal" (form (c), unbounded), and only the `geheel` flag tells them apart
 (`Datatype.onbeperkt()` encodes this). Before this guard an unbounded target read `decimalenVan == 0`
-and was wrongly capped like a whole number, rejecting any decimal value (p33; the same sentinel overload
-mislabels a min/max-of-unbounded as `geheel` for the elfproef check — carded p35, currently unobservable
-because the elfproef type-check does not yet fire in a voorwaarde, p34).
+and was wrongly capped like a whole number, rejecting any decimal value (p33). The same sentinel overload
+once mislabelled a min/max value-fold as `geheel` (its `decimalen` floor is 0 whenever any operand is
+unbounded or integral), which would have admitted a min-of-unbounded to the §5.13 elfproef; the min/max
+`geheel` flag is now derived from whether **every** operand is geheel, not from `decimalen==0` (p35),
+and the elfproef type-check fires in a voorwaarde (p34).
 
 To keep the check free of *false positives*, two result types that would otherwise over-report were
 made precision-conservative: `percentage van` (§4.8) is an exact fraction that shares only its
