@@ -166,6 +166,16 @@ public final class DefinitionResolver {
         if (g.DECIMALEN() != null && g.NUMBER() != null) {
             try { decimalen = Integer.parseInt(g.NUMBER().getText()); } catch (NumberFormatException ignore) {}
         }
+        // §13.3.3.7: "getal met x decimalen" requires x >= 1 (aantaldecimalen is a positiefgeheelgetal).
+        // A degenerate "getal met 0 decimalen" denotes a whole number — form (a) "geheel getal", capped
+        // at 0 — NOT the unbounded form (c) "getal". Normalize it to geheel so it is not encoded as the
+        // (geheel=false, decimalen=0) unbounded sentinel, which would silently drop its §6.1.2 ceiling.
+        if (!geheel && g.DECIMALEN() != null && decimalen == 0) {
+            geheel = true;
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
+                    "'getal met 0 decimalen' is geen geldige getalspecificatie (§13.3.3.7 vereist >= 1 decimaal);"
+                    + " gelezen als 'geheel getal'", g.getStart().getLine()));
+        }
         return new GetalInfo(geheel, decimalen, teken);
     }
 

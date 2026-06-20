@@ -585,6 +585,27 @@ class RuleCheckTest {
                 () -> "2-decimalen-plafond moet blijven gelden: " + prijsFout.errors());
     }
 
+    @Test void getal_met_0_decimalen_is_geheel_niet_onbeperkt() {
+        // p33 review (grammar-adversary, fixed): "getal met 0 decimalen" (§13.3.3.7 wants >= 1) used to
+        // encode as (geheel=false, decimalen=0), aliasing the UNBOUNDED form-(c) sentinel — so onbeperkt()
+        // wrongly exempted it and the 0-decimal ceiling vanished. It denotes a whole number; normalize it
+        // to geheel (capped at 0) with a WARNING, so assigning a decimal value is still rejected.
+        String src = """
+            Objecttype de Ding
+                de nul Numeriek (getal met 0 decimalen);
+            Regel r
+                geldig altijd
+                    De nul van een Ding moet gesteld worden op 1,5.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("decimalen")
+                        && d.message().contains("§6.1.2")),
+                () -> "een 'getal met 0 decimalen'-doel moet als geheel getal worden begrensd: " + m.errors());
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
+                        && d.message().contains("getal met 0 decimalen")),
+                () -> "verwachtte een WARNING over de degenererende getalspecificatie: " + m.diagnostics);
+    }
+
     @Test void percentage_van_decimaal_attribuut_naar_geheel_getal_geen_fout() {
         // p22 review (HIGH false positive, fixed): §4.8 makes "X% van Y" an exact fraction with no
         // decimal precision of its own (it shares only Y's unit), so 50% van prijs(2 dec) must NOT
