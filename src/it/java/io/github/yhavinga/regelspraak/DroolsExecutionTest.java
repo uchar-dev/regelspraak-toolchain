@@ -1196,11 +1196,12 @@ class DroolsExecutionTest {
     }
 
     @Test void consistentie_genavigeerde_gelijkheid_gooit_geen_npe_op_lege_referentie() {
-        // p30: a consistentie equality over a TO-ONE navigation ("de roepnaam ... gelijk aan de roepnaam van
-        // zijn partner") read "partner.roepnaam", which NPEs in mvel when partner is null (mvel "." is not
-        // null-safe). Drools "!." makes a null reference a non-match, so the rule FIRES WITHOUT throwing:
-        // it still flags a real mismatch between two partners, and a partnerless person is simply not matched
-        // (a conservative under-report of the gevuld-vs-leeg violation — documented — but never a crash).
+        // p30/p41: a consistentie equality over a TO-ONE navigation ("de roepnaam ... gelijk aan de roepnaam
+        // van zijn partner") read "partner.roepnaam", which NPEs in mvel when partner is null (mvel "." is not
+        // null-safe). p30 used Drools "!." (no NPE) but that made a null partner a silent non-match, under-
+        // reporting the gevuld-vs-leeg violation. p41 replaces it with explicit leegwaarde guards (Tabel 38):
+        // a partnerless person's "Bo" gelijk-aan an empty value is "onwaar" -> a real violation, and still no
+        // NPE (the "partner == null" guard short-circuits before any "." dereference).
         String src = """
             Objecttype de Persoon
                 de roepnaam Tekst;
@@ -1215,7 +1216,9 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("partner!.roepnaam"), () -> "navigatie moet null-veilig zijn:\n" + drl);
+        assertTrue(drl.contains("partner == null || partner.roepnaam == null"),
+                () -> "navigatie moet via een expliciete leegwaarde-guard (geen !.):\n" + drl);
+        assertFalse(drl.contains("!."), () -> "geen Drools !. meer voor een consistentie-vergelijking:\n" + drl);
 
         KieSession sessie = build(drl).newKieSession();
         Persoon a = new Persoon(); a.setRoepnaam("Ann");
@@ -1232,7 +1235,75 @@ class DroolsExecutionTest {
         assertFalse(fouten.contains(a), () -> "gelijke roepnamen -> consistent: " + fouten);
         assertTrue(fouten.contains(c), () -> "ongelijke partner-roepnamen moeten een schending zijn: " + fouten);
         assertTrue(fouten.contains(d), () -> "ongelijke partner-roepnamen moeten een schending zijn: " + fouten);
-        assertFalse(fouten.contains(eenzaam), () -> "een lege navigatie (geen partner) mag geen NPE geven; conservatief geen schending: " + fouten);
+        assertTrue(fouten.contains(eenzaam), () -> "p41: 'Bo' gelijk-aan een lege partner-navigatie is onwaar (Tabel 38) -> schending, zonder NPE: " + fouten);
+    }
+
+    @Test void consistentie_genavigeerde_numerieke_gelijkheid_volgt_tabel_37() {
+        // p41: a NUMERIEK "gelijk aan" over a to-one navigation follows Tabel 37 — BOTH operands empty is
+        // "waar" (consistent), but a ONE-sided empty is "onwaar" (a violation). The navigated operand is
+        // guarded so a null partner reads as empty: no NPE, and no "!." silent non-match.
+        String src = """
+            Objecttype de Persoon
+                de leeftijd Numeriek (geheel getal);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel leeftijdcheck
+                geldig altijd
+                    De leeftijd van een Persoon moet gelijk zijn aan de leeftijd van zijn partner.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Persoon eenzijdig = new Persoon(); eenzijdig.setLeeftijd(new BigDecimal("30"));   // partner leeg -> onwaar -> schending
+        Persoon beideLeeg = new Persoon();                                                // leeftijd & partner leeg -> waar
+        Persoon g1 = new Persoon(); g1.setLeeftijd(new BigDecimal("40"));
+        Persoon g2 = new Persoon(); g2.setLeeftijd(new BigDecimal("40")); g1.setPartner(g2); g2.setPartner(g1); // gelijk
+        sessie.insert(eenzijdig); sessie.insert(beideLeeg); sessie.insert(g1); sessie.insert(g2);
+        sessie.fireAllRules();   // must NOT NPE
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> ((Inconsistentie) o).getSubject()).toList();
+        sessie.dispose();
+
+        assertTrue(fouten.contains(eenzijdig), () -> "30 gelijk-aan een lege partner-leeftijd is onwaar -> schending: " + fouten);
+        assertFalse(fouten.contains(beideLeeg), () -> "beide leeg is waar (Tabel 37) -> geen schending: " + fouten);
+        assertFalse(fouten.contains(g1), () -> "gelijke leeftijden -> consistent: " + fouten);
+    }
+
+    @Test void consistentie_genavigeerde_ordening_telt_lege_navigatie_als_schending() {
+        // p41: ordening (Tabel 40-43) over a to-one navigation — any empty operand is "onwaar", so a person
+        // whose partner is absent violates "moet kleiner zijn dan de leeftijd van zijn partner", without NPE.
+        String src = """
+            Objecttype de Persoon
+                de leeftijd Numeriek (geheel getal);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel jongercheck
+                geldig altijd
+                    De leeftijd van een Persoon moet kleiner zijn dan de leeftijd van zijn partner.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Persoon eenzaam = new Persoon(); eenzaam.setLeeftijd(new BigDecimal("30"));        // partner leeg -> onwaar -> schending
+        Persoon jong = new Persoon(); jong.setLeeftijd(new BigDecimal("20"));
+        Persoon oud = new Persoon(); oud.setLeeftijd(new BigDecimal("50")); jong.setPartner(oud); oud.setPartner(jong);
+        sessie.insert(eenzaam); sessie.insert(jong); sessie.insert(oud);
+        sessie.fireAllRules();   // must NOT NPE
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> ((Inconsistentie) o).getSubject()).toList();
+        sessie.dispose();
+
+        assertTrue(fouten.contains(eenzaam), () -> "een lege partner-navigatie -> ordening onwaar -> schending: " + fouten);
+        assertTrue(fouten.contains(oud), () -> "50 < 20 is onwaar -> schending: " + fouten);
+        assertFalse(fouten.contains(jong), () -> "20 < 50 is waar -> consistent: " + fouten);
     }
 
     @Test void genavigeerde_leeg_predikaat_is_waar_voor_een_afwezige_referentie() {

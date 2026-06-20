@@ -212,6 +212,14 @@ public final class DrlTranspiler {
             }
             return schendingen.isEmpty() ? null : "(" + String.join(" || ", schendingen) + ")";
         }
+        // A comparison with a TO-ONE navigated operand cannot use the simple null-guard forms below: those
+        // emit the operand via operand()'s Drools "!." which short-circuits the WHOLE term to a non-match on
+        // a null reference, hiding a real gevuld-vs-leeg violation (p41). Handle it with explicit leegwaarde
+        // guards per the typeringen rekentabellen instead.
+        if (assertie instanceof Conditie.Vergelijking cmp) {
+            String genav = genavigeerdeVergelijkingSchending(cmp, subject);
+            if (genav != null) return genav;
+        }
         if (assertie instanceof Conditie.Vergelijking v && ordeningOfDatum(v.op())) {
             String l = operand(v.links(), subject), r = operand(v.rechts(), subject);
             // An un-evaluable operand (a /* TODO */ marker) must NOT be wrapped in this
@@ -254,6 +262,53 @@ public final class DrlTranspiler {
     /** Does a lowered constraint string carry an unresolved-reference marker? Such a fragment
      *  is not a usable boolean — wrapping it in a null-guard or negation flips it to a constant. */
     private static boolean bevatMarker(String s) { return s.contains("/* TODO"); }
+
+    /** A comparison operand decomposed for a leegwaarde-faithful violation. {@code leeg}/{@code vol}
+     *  are the "is empty"/"is present" guards; {@code waarde} is the value via a plain "." (safe ONLY
+     *  behind {@code !leeg}, which short-circuits a null root). A navigated to-one operand uses an
+     *  explicit root guard; a direct attribute / literal / parameter uses its plain operand() form. */
+    private record OperandDeel(String leeg, String vol, String waarde, boolean genavigeerd) {}
+
+    private OperandDeel operandDeel(Expr e, Objecttype subject) {
+        if (e instanceof Expr.AttribuutRef a && !attribuutOntbreekt(a)) {
+            String rol = naviRol(subject, a);
+            if (rol != null && !EIGEN.equals(rol) && !naarVeel(subject, a, rol)) {
+                String wortel = ident(rol, false), pad = wortel + "." + ident(a.attribuut(), false);
+                return new OperandDeel("(" + wortel + " == null || " + pad + " == null)",
+                        "(" + wortel + " != null && " + pad + " != null)", pad, true);
+            }
+        }
+        String o = operand(e, subject);   // direct attribute / literal / parameter — never "!."
+        return new OperandDeel(o + " == null", o + " != null", o, false);
+    }
+
+    /** §13.3.9 to-one navigation + the typeringen leegwaarde rekentabellen (Tabel 37/38 gelijk,
+     *  40-43 ordening, 44 ongelijk): build a consistentie violation for a comparison with at least one
+     *  navigated to-one operand, treating a null root as the operand being LEEG. Drools "!." would make
+     *  such an operand a silent non-match (under-reporting the violation, p41); these explicit guards
+     *  short-circuit the null root before any plain "." dereference, so an empty operand yields the
+     *  spec result. Returns null when NEITHER operand is navigated (the simpler forms handle it) or when
+     *  an operand is an unresolved marker (the caller then WARNs). */
+    private String genavigeerdeVergelijkingSchending(Conditie.Vergelijking v, Objecttype subject) {
+        OperandDeel l = operandDeel(v.links(), subject), r = operandDeel(v.rechts(), subject);
+        if (!l.genavigeerd() && !r.genavigeerd()) return null;
+        if (bevatMarker(l.waarde()) || bevatMarker(r.waarde())) return null;
+        String lv = l.waarde(), rv = omreken(r.waarde(), v.rechts().type(), v.links().type());
+        if (ordeningOfDatum(v.op()))   // Tabel 40-43: any empty operand -> onwaar -> violation
+            return "(" + l.leeg() + " || " + r.leeg() + " || " + lv + " " + drlOp(flip(v.op())) + " " + rv + ")";
+        if (v.op() == Conditie.Operator.GELIJK) {
+            if (nietNumeriekVergelijking(v))   // Tabel 38: empty -> onwaar/fout -> always a violation
+                return "(" + l.leeg() + " || " + r.leeg() + " || " + lv + " != " + rv + ")";
+            // Tabel 37 (numeriek): BOTH empty is "waar" (consistent); only a one-sided empty (onwaar) or a
+            // gevuld mismatch violates.
+            return "((" + l.leeg() + " && " + r.vol() + ") || (" + r.leeg() + " && " + l.vol() + ") || ("
+                    + l.vol() + " && " + r.vol() + " && " + lv + " != " + rv + "))";
+        }
+        if (v.op() == Conditie.Operator.ONGELIJK)   // Tabel 44: ongelijk is "waar" for gevuld-vs-empty, "onwaar"
+            // for both-empty -> "moet ongelijk zijn" is violated by both-empty OR a gevuld match.
+            return "((" + l.leeg() + " && " + r.leeg() + ") || (" + l.vol() + " && " + r.vol() + " && " + lv + " == " + rv + "))";
+        return null;
+    }
 
     private static boolean ordeningOfDatum(Conditie.Operator op) {
         return switch (op) {

@@ -240,11 +240,23 @@ A comparison/predicate operand that navigates a to-one reference ("de leeftijd v
 mvel's `.` is **not** null-safe, so `partner.roepnaam` throws an NPE at evaluation when `partner`
 is null — which sinks the *whole* rule firing, not just that instance. The path now uses Drools'
 null-safe operator `!.` (`partner!.roepnaam`): a null reference makes the constraint a **non-match**
-rather than a throw. This is conservative for a **comparison** (`gelijk/ongelijk/kleiner/…`): a comparison
-against a null-navigated operand does not fire — so it *under-reports* the typeringen leegwaarde rows for
-the gevuld-vs-empty-navigation case (a null navigated operand should make an equality "onwaar"/a violation).
-Trading that bounded false-negative for crash-safety is the deliberate choice; a fully leegwaarde-faithful
-null navigation is carded.
+rather than a throw.
+
+A **consistentie** comparison is now leegwaarde-faithful (p41): instead of `!.`, its violation is built
+from explicit guards per the typeringen rekentabellen — a navigated operand's emptiness is
+`(rol == null || rol.attr == null)`, and its value is read with a plain `.` that the guard short-circuits
+before any null dereference. So a gevuld value compared to a null-navigated operand evaluates per Tabel 38
+(non-numeriek `==`: onwaar → a violation), Tabel 37 (numeriek `==`: a one-sided empty is onwaar → a
+violation, but **both** empty is waar → consistent), Tabel 40-43 (ordening: any empty → onwaar → a
+violation), and Tabel 44 (ongelijk). A partnerless person is now correctly flagged where the spec says the
+criterion is not satisfied, and still never NPEs (the `rol == null` guard precedes the `.`).
+
+A **voorwaarde** (rule-guard) comparison still lowers via `!.`. That is faithful for a rule guard in nearly
+every row: an empty operand makes the comparison "onwaar", and a `!.` non-match means the rule does not fire
+— the same outcome. The only residual under-report is the rows where an empty operand makes the comparison
+**waar** (a both-empty numeriek `==`, a gevuld-vs-empty `ongelijk`), where the rule should fire but `!.`
+does not match; that narrow case overlaps the §9.5/p40 "what does a fout/empty condition mean" question and
+is left carded.
 
 The **`leeg`/`gevuld` predicate is the exception** — for it, `!.`'s non-match would be plain *wrong*, not
 merely conservative: Drools `!.` short-circuits the whole term to a non-match on a null reference, so
