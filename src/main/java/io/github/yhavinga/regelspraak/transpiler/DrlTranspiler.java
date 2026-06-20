@@ -698,9 +698,17 @@ public final class DrlTranspiler {
                 default     -> onopgelosteConstraint("predicaat " + p.soort(), p.bron());
             };
         }
-        // §8.1.8 subject kenmerk test: a bare boolean property constraint inside the subject pattern.
-        // The property form (not getX()) resolves to the boolean isX() getter the fact declares.
-        if (c instanceof Conditie.Kenmerk k) return ident(k.kenmerk(), false) + " == true";
+        // §8.1.8 kenmerk test: a boolean property constraint inside the subject pattern. The property form
+        // (not getX()) resolves to the boolean isX() getter the fact declares. A navigated kenmerk reads
+        // the property through the to-one role's reference field, guarded against a null reference (mvel is
+        // not null-safe, so a missing partner must read as "not gepensioneerd", not throw): the constraint
+        // becomes "partner != null && partner.gepensioneerd == true".
+        if (c instanceof Conditie.Kenmerk k) {
+            String prop = ident(k.kenmerk(), false) + " == true";
+            if (k.navigatie() == null) return prop;
+            String nav = ident(k.navigatie(), false);
+            return nav + " != null && " + nav + "." + prop;
+        }
         if (c instanceof Conditie.Samengesteld s) {
             List<String> delen = new ArrayList<>();
             for (Conditie deel : s.onderdelen()) delen.add("(" + conditie(deel, subject) + ")");

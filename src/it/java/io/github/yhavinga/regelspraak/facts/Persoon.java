@@ -8,8 +8,17 @@ import java.math.BigDecimal;
 public class Persoon {
     private BigDecimal leeftijd;
     private BigDecimal gekopieerd;
+    private BigDecimal uitkomst;       // §8.1.8 navigated-kenmerk test target
+    private boolean gepensioneerd;     // §8.1.8 navigated kenmerk
+    private Persoon partner;           // to-one self-relation the navigated kenmerk reads through
     public BigDecimal getLeeftijd() { return leeftijd; }
     public void setLeeftijd(BigDecimal v) { this.leeftijd = v; }
     public BigDecimal getGekopieerd() { return gekopieerd; }
     public void setGekopieerd(BigDecimal v) { this.gekopieerd = v; }
+    public BigDecimal getUitkomst() { return uitkomst; }
+    public void setUitkomst(BigDecimal v) { this.uitkomst = v; }
+    public boolean isGepensioneerd() { return gepensioneerd; }
+    public void setGepensioneerd(boolean v) { this.gepensioneerd = v; }
+    public Persoon getPartner() { return partner; }
+    public void setPartner(Persoon v) { this.partner = v; }
 }

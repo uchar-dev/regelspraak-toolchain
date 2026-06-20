@@ -33,11 +33,15 @@ public sealed interface Conditie {
     enum Predicaatsoort { LEEG, GEVULD, ELFPROEF, NUMERIEK_MET_EXACT, DAGSOORT }
     record Predicaat(Predicaatsoort soort, Expr operand, String bron) implements Conditie {}
 
-    /** §8.1.8 kenmerk-membership test on the rule subject ("de Meting is oud" / "hij heeft het
-     *  recht …"): true when the subject carries the boolean kenmerk. Only the subject's own
-     *  kenmerk is structured here; a navigation-based or objecttype-membership test stays
-     *  {@link Onopgelost}. The transpiler lowers it to the subject's boolean property constraint. */
-    record Kenmerk(String kenmerk, String bron) implements Conditie {}
+    /** §8.1.8 kenmerk-membership test ("de Meting is oud" / "hij heeft het recht …"): true when the
+     *  named object carries the boolean kenmerk. {@code navigatie} is null for the subject's OWN kenmerk
+     *  (lowered to the subject's boolean property, {@code oud == true}); for a TO-ONE navigated kenmerk
+     *  ("de partner van X is gepensioneerd") it is the navigation role, lowered to the property path
+     *  {@code partner.gepensioneerd == true}. A to-many navigation or objecttype-membership stays
+     *  {@link Onopgelost}. */
+    record Kenmerk(String kenmerk, String navigatie, String bron) implements Conditie {
+        public Kenmerk(String kenmerk, String bron) { this(kenmerk, null, bron); }
+    }
 
     /** §13.4.14 compound condition: a quantifier over a bullet list of sub-conditions.
      *  `drempel` is the threshold count N for the counting quantifiers (ten minste / ten

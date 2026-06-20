@@ -670,15 +670,28 @@ final class RuleChecker {
     private Conditie kenmerkPredicaat(Expr lhs, KaleNaamContext naamCtx, boolean metEen, String bron) {
         Objecttype subject = bouwer.subject();
         if (metEen || naamCtx == null || subject == null) return null;
+        String staart = stripArtikel(src(naamCtx));
         String kop = subjectKop(lhs, subject);
-        if (kop == null) return null;
+        if (kop == null) return navigatieKenmerk(lhs, staart, bron); // not the subject -> maybe a navigated kenmerk
         // The greedy onderwerp parse absorbs a multi-word kenmerk's leading words into the operand
         // ("de Meting bereikbaar per" + operator "trein"), so the kenmerk is that absorbed kop plus
         // the operator's kaleNaam; for "hij"/a bare subject the kop is empty and the name is the kaleNaam.
-        String staart = stripArtikel(src(naamCtx));
         String kenmerk = kop.isEmpty() ? staart : kop + " " + staart;
         String gevonden = KenmerkMatcher.vind(subject, kenmerk);
         return gevonden != null ? new Conditie.Kenmerk(gevonden, bron) : null;
+    }
+
+    /** §8.1.8 navigated: "de &lt;rol&gt; van X is &lt;kenmerk&gt;" — the kenmerk is on the object the rol
+     *  reaches, not the subject. Lowered when the rol is a TO-ONE navigation from the subject (so the
+     *  property path {@code rol.kenmerk} reads one object); a TO-MANY navigation needs an exists/forall and
+     *  stays a marker, as does an unresolvable rol or a kenmerk the navigated type does not declare. */
+    private Conditie navigatieKenmerk(Expr lhs, String kenmerkNaam, String bron) {
+        if (!(lhs instanceof Expr.AttribuutRef a) || a.objecttype() == null) return null;
+        String rol = a.attribuut();
+        Objecttype doel = model.rolDoeltypeNaarSubject(a.objecttype(), rol);
+        if (doel == null || model.naarVeelRol(a.objecttype(), doel, rol)) return null; // unknown / to-many -> marker
+        String gevonden = KenmerkMatcher.vind(doel, kenmerkNaam);
+        return gevonden != null ? new Conditie.Kenmerk(gevonden, rol, bron) : null;
     }
 
     /** When the condition operand denotes the rule subject, the part of a multi-word kenmerk the

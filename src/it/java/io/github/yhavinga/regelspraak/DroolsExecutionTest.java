@@ -2351,4 +2351,42 @@ class DroolsExecutionTest {
         assertSame(intl, p1.getBonusvlucht(), () -> "passagier van een internationale vlucht moet gekoppeld zijn");
         assertNull(p2.getBonusvlucht(), () -> "passagier van een binnenlandse vlucht mag niet gekoppeld zijn");
     }
+
+    @Test void navigatie_kenmerk_voorwaarde_vuurt_via_de_to_one_rol() {
+        // §8.1.8 navigated: "indien de partner van een Persoon gepensioneerd is" reads the kenmerk through
+        // the to-one partner role -> "partner.gepensioneerd == true". Fires only when the partner is
+        // gepensioneerd; a person whose partner is not, or who has no partner, is not gated in.
+        String src = """
+            Objecttype de Persoon
+                de uitkomst Numeriek (geheel getal);
+                is gepensioneerd kenmerk (bijvoeglijk);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel r
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 1
+                    indien de partner van een Persoon gepensioneerd is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("partner.gepensioneerd == true"), () -> "navigated kenmerk niet gelowered:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Persoon gepensioneerde = new Persoon(); gepensioneerde.setGepensioneerd(true);
+        Persoon werkende = new Persoon();                                  // niet gepensioneerd
+        Persoon a = new Persoon(); a.setPartner(gepensioneerde);           // partner gepensioneerd -> vuurt
+        Persoon b = new Persoon(); b.setPartner(werkende);                 // partner werkt -> niet
+        Persoon c = new Persoon();                                         // geen partner -> niet
+        sessie.insert(gepensioneerde); sessie.insert(werkende); sessie.insert(a); sessie.insert(b); sessie.insert(c);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("1").compareTo(a.getUitkomst()),
+                () -> "een persoon met gepensioneerde partner moet gegated zijn, kreeg " + a.getUitkomst());
+        assertNull(b.getUitkomst(), () -> "partner werkt niet -> niet gegated");
+        assertNull(c.getUitkomst(), () -> "geen partner -> niet gegated (geen NPE op null-navigatie)");
+    }
 }
