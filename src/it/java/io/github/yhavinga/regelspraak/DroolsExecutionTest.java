@@ -2353,6 +2353,84 @@ class DroolsExecutionTest {
         assertNull(b.getBonusvlucht(), () -> "een inerte feitcreatie mag geen relatie creëren");
     }
 
+    @Test void feitcreatie_doel_kenmerk_lowert_ook_als_de_rol_anders_heet_dan_het_doeltype() {
+        // p32 review (MED): the doel is named by the ROLE it fills ("de klant"), which need NOT equal its
+        // type name ("Passagier") — the canonical §9.4/TOKA shape (type "Natuurlijk persoon" filling role
+        // "passagier"). The doel re-resolution must recognise "de <rolC>" as denoting the doel, not only a
+        // type-name match (which my first cut relied on, masked by tests that named the type = the role).
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                is student kenmerk (bijvoeglijk);
+            Feittype Vlucht van klanten
+                de reis Vlucht
+                de klant Passagier
+            Eén reis betreft meerdere klanten
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een klant van de vlucht
+                    indien de klant student is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("student == true"), () -> "rol != doeltype: doel-kenmerk niet gelowered:\n" + drl);
+        assertFalse(drl.contains("eval( false )"), () -> "mag niet inert zijn als de rol anders heet:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v = new Vlucht();
+        Passagier a = new Passagier(); a.setReis(v); a.setStudent(true);
+        Passagier b = new Passagier(); b.setReis(v);
+        sessie.insert(v); sessie.insert(a); sessie.insert(b);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertSame(v, a.getBonusvlucht(), () -> "een student-klant moet gekoppeld zijn (rol != type)");
+        assertNull(b.getBonusvlucht(), () -> "een niet-student mag niet gekoppeld zijn");
+    }
+
+    @Test void feitcreatie_hij_kenmerk_verwijst_naar_de_anker_niet_naar_de_doel() {
+        // p32 review (MED): "hij" denotes the bezielde ANKER (§5.5.4), not the doel — the doel is written with
+        // a definite article ("de passagier"). A guard "indien hij <kenmerk> is" naming a kenmerk the anker
+        // does NOT declare must stay inert, NOT be silently re-targeted to the doel (which would create a
+        // wrong link). Here the anker (Vlucht) is the only bezield onderwerp; student is only on the doel.
+        String src = """
+            Objecttype de Vlucht (bezield)
+                de naam Tekst;
+            Objecttype de Passagier
+                is student kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht
+                    indien hij student is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("eval( false )"), () -> "een hij-guard op de anker mag niet naar de doel verlegd:\n" + drl);
+        assertFalse(drl.contains("student == true"), () -> "het kenmerk mag NIET op de doel hosten:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v = new Vlucht();
+        Passagier a = new Passagier(); a.setReis(v); a.setStudent(true);   // would be wrongly linked by the bug
+        sessie.insert(v); sessie.insert(a);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertNull(a.getBonusvlucht(), () -> "een hij-guard voor de anker mag geen doel-relatie creëren");
+    }
+
     @Test void feitcreatie_met_anker_kenmerk_voorwaarde_vuurt_alleen_voor_passende_ankers() {
         // A kenmerk guard on the anker ("indien de vlucht internationaal is") resolves on $subject and
         // gates which flights' passengers get the relation. Passengers of a non-international flight stay

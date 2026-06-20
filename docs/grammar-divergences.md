@@ -629,9 +629,15 @@ the doel leaves the §8.1.8 kenmerkcheck an unresolved marker; the feitcreatie t
 marker with the **doel** as subject and tags the resulting bare `Conditie.Kenmerk` with `eigenaar = doel`,
 so the transpiler emits `vip == true` only on the `$doel` pattern — never the anker, even when the anker
 declares a same-named kenmerk (the `eigenaar` tag pins it; an untagged kenmerk stays unconstrained). The
-re-resolution is restricted to the single-kenmerk guard and to a distinct doel type, so the conservative
-to-many-navigation refusal still holds for an ordinary single-pattern rule (a regular-rule self-relation
-to-many kenmerk stays a marker, never a silent read of the subject's own kenmerk). A guard that lowers to
+doel is named by the **role it fills** ("de passagier"), which need not equal its type name ("Natuurlijk
+persoon" in the canonical §9.4 shape), so the re-resolution recognises `de <rolC>` as denoting the doel —
+not only a type-name match. The bezielde **`hij`** / bare reference is *rejected* during this re-resolution:
+in a feitcreatie `hij` names the anker (the universele onderwerp), so a guard "indien hij vip is" the anker
+cannot satisfy stays inert rather than being silently re-targeted to the doel (which would create a wrong
+link). The re-resolution is restricted to the single-kenmerk guard and to a distinct doel type, and its
+speculative diagnostics are discarded (the anker build and the separate type-check own them), so the
+conservative to-many-navigation refusal still holds for an ordinary single-pattern rule (a regular-rule
+self-relation to-many kenmerk stays a marker, never a silent read of the subject's own kenmerk). A guard that lowers to
 NEITHER pattern (an objecttype/role-membership test, or a mixed anker+doel compound) makes the rule an inert
 `eval(false)` no-op carrying a marker — never a dropped guard, which would fire unconditionally and
 **over-create** the relation. Creating nothing (visibly) beats creating wrongly.

@@ -31,6 +31,10 @@ import java.util.List;
 final class RuleChecker {
     private final RegelSpraakModel model;
     private final ExpressieBouwer bouwer;
+    /** Set (to the role the doel fills) only while re-resolving a §13.4.7 feitcreatie guard against the DOEL:
+     *  it makes {@link #subjectKop} also accept "de &lt;rolC&gt;" as denoting the (re-)subject, and REJECT the
+     *  bezielde "hij"/bare reference — which in a feitcreatie names the anker, not the doel. null otherwise. */
+    private String doelRol = null;
 
     RuleChecker(RegelSpraakModel model) {
         this.model = model;
@@ -465,7 +469,7 @@ final class RuleChecker {
             else if (!(model.naarVeelRol(anker, doel, rolC) && model.naarVeelRol(anker, doel, rolB)))
                 reden = "referentieveld hoort aan de meervoudige kant; het doel is hier niet de meervoudige kant";
             else {
-                Conditie effectief = doelVoorwaarde(voorwaarde, vd, anker, doel);
+                Conditie effectief = doelVoorwaarde(voorwaarde, vd, anker, doel, rolC);
                 model.feitCreaties.add(new io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie(
                         naam, anker, doel, zetVeld, joinVeld, effectief, geldigheid));
                 return;
@@ -485,11 +489,21 @@ final class RuleChecker {
      *  the simple single-kenmerk guard and to {@code doel != anker}: an anker guard that already resolved, a
      *  compound, a self-relation, or a still-unresolved guard is returned unchanged — an un-lowerable guard
      *  stays an honest inert no-op, never a wrong link. */
-    private Conditie doelVoorwaarde(Conditie ankerVoorwaarde, VoorwaardeDeelContext vd, Objecttype anker, Objecttype doel) {
+    private Conditie doelVoorwaarde(Conditie ankerVoorwaarde, VoorwaardeDeelContext vd, Objecttype anker, Objecttype doel, String rolC) {
         if (!(ankerVoorwaarde instanceof Conditie.Onopgelost) || vd == null || doel == anker) return ankerVoorwaarde;
-        bouwer.setSubject(doel);
-        Conditie doelV = bouwVoorwaarde(vd);
-        bouwer.setSubject(anker);                          // restore: the anker is the iterated subject
+        Conditie doelV;
+        int diagSnapshot = model.diagnostics.size();
+        doelRol = rolC;                                    // accept "de <rolC>" as the doel; reject "hij"/anker
+        try {
+            bouwer.setSubject(doel);
+            doelV = bouwVoorwaarde(vd);
+        } finally {
+            doelRol = null;
+            bouwer.setSubject(anker);                       // restore: the anker is the iterated subject
+            // This second build is SPECULATIVE — the anker build and the separate voorwaarden() type-check own
+            // the diagnostics; drop any this pass appended so a flawed guard is never reported twice.
+            model.diagnostics.subList(diagSnapshot, model.diagnostics.size()).clear();
+        }
         if (doelV instanceof Conditie.Kenmerk k && k.navigatie() == null && k.eigenaar() == null)
             return new Conditie.Kenmerk(k.kenmerk(), null, k.negatie(), doel, k.bron());
         return ankerVoorwaarde;
@@ -788,11 +802,22 @@ final class RuleChecker {
      *  subject reference); null when the operand is not the subject. A navigation ("de partner van
      *  …") names a different filler, so it is excluded — its kenmerk would be on another object. */
     private String subjectKop(Expr lhs, Objecttype subject) {
-        if (lhs instanceof Expr.Constante c) return c.naam().equalsIgnoreCase("hij") ? "" : null;
+        // In a feitcreatie doel re-resolution (doelRol != null) the bezielde "hij"/bare reference names the
+        // ANKER, not the doel (§13.4.7: the doel is written with a definite article, "de <rolC>"), so it must
+        // NOT latch onto the doel — reject it. Outside that mode "hij" denotes the single subject as before.
+        if (lhs instanceof Expr.Constante c)
+            return (doelRol == null && c.naam().equalsIgnoreCase("hij")) ? "" : null;
         String b = lhs.bron() == null ? "" : stripArtikel(lhs.bron());
         if (b.equalsIgnoreCase(subject.naam)) return "";                              // "de Meting"
         if (b.regionMatches(true, 0, subject.naam + " ", 0, subject.naam.length() + 1)) // "de Meting bereikbaar per"
             return b.substring(subject.naam.length()).trim();
+        // The doel is named by the ROLE it fills ("de passagier"), which need not equal its type name
+        // ("Natuurlijk persoon"); accept that role too, with the same multi-word-kenmerk kop reconstruction.
+        if (doelRol != null) {
+            if (b.equalsIgnoreCase(doelRol)) return "";
+            if (b.regionMatches(true, 0, doelRol + " ", 0, doelRol.length() + 1))
+                return b.substring(doelRol.length()).trim();
+        }
         return null;
     }
 
