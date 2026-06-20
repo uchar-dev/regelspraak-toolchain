@@ -634,7 +634,10 @@ persoon" in the canonical §9.4 shape), so the re-resolution recognises `de <rol
 not only a type-name match. The bezielde **`hij`** / bare reference is *rejected* during this re-resolution:
 in a feitcreatie `hij` names the anker (the universele onderwerp), so a guard "indien hij vip is" the anker
 cannot satisfy stays inert rather than being silently re-targeted to the doel (which would create a wrong
-link). The re-resolution is restricted to the single-kenmerk guard and to a distinct doel type, and its
+link). The rejection is unconditional even in the corner case where the doel is the *only* bezield onderwerp
+(a strict §5.5.4 reading could then bind `hij` to the doel) — §9.4's feitcreatie syntax carries no `indien`
+guard at all, so a `hij` guard there is unspecified, and an inert no-op creates nothing, which is never
+wrong against the spec. The re-resolution is restricted to the single-kenmerk guard and to a distinct doel type, and its
 speculative diagnostics are discarded (the anker build and the separate type-check own them), so the
 conservative to-many-navigation refusal still holds for an ordinary single-pattern rule (a regular-rule
 self-relation to-many kenmerk stays a marker, never a silent read of the subject's own kenmerk). A guard that lowers to
