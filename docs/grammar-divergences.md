@@ -140,9 +140,17 @@ without splitting the precedence into a separate bound rule (deferred — no cor
 
 Unit systems declare conversions (§13.3.5.2: "het jaar jr = 12 mnd", incl. the
 "1/N" rational form), and the resolver reduces each unit to its system canonical
-with a factor. The transpiler converts a unit on the right operand of `+`/`-`, in a
-comparison, and at an assignment, so cross-unit arithmetic and comparison are scaled
-rather than computed on raw magnitudes.
+with a factor. The transpiler converts a unit on the right operand of `+`/`-` and at an
+assignment, so cross-unit arithmetic and assignment are scaled rather than computed on
+raw magnitudes.
+
+A cross-unit **comparison** scales BOTH operands to their shared canonical unit by the
+DECLARED (exact) `factorNaarCanoniek`, rather than dividing one operand by the ratio of the
+two factors. The ratio truncates for a non-terminating quotient (`mnd → jr = 1/12 =
+0.0833…`), which made an exact cross-unit `gelijk aan` a false-positive violation (`24 mnd
+== 2 jr` lowered to `2 != 1.9999…`); scaling each side by its integer factor (`24 == 2·12`)
+is exact (p43). Both the consistentie and the voorwaarde comparison paths use this; a
+composite (rate) unit keeps the single-operand ratio (its precision edge stays carded).
 
 A **composite (rate) unit** (`€/jr`, `€/mnd` — §13.3.3.2's `<eenheidmacht> "/"
 <eenheidmacht>`) now carries its denominator (`Eenheid.noemer`) instead of dropping it.

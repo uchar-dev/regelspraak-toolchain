@@ -293,7 +293,8 @@ public final class DrlTranspiler {
         OperandDeel l = operandDeel(v.links(), subject), r = operandDeel(v.rechts(), subject);
         if (!l.genavigeerd() && !r.genavigeerd()) return null;
         if (bevatMarker(l.waarde()) || bevatMarker(r.waarde())) return null;
-        String lv = l.waarde(), rv = omreken(r.waarde(), v.rechts().type(), v.links().type());
+        String[] ov = vergelijkingsOperanden(l.waarde(), v.links().type(), r.waarde(), v.rechts().type());
+        String lv = ov[0], rv = ov[1];
         if (ordeningOfDatum(v.op()))   // Tabel 40-43: any empty operand -> onwaar -> violation
             return "(" + l.leeg() + " || " + r.leeg() + " || " + lv + " " + drlOp(flip(v.op())) + " " + rv + ")";
         if (v.op() == Conditie.Operator.GELIJK) {
@@ -775,8 +776,9 @@ public final class DrlTranspiler {
         if (c instanceof Conditie.Vergelijking v) {
             // §5.1 Tabel 32: a comparison across convertible-but-different units restates
             // the right operand in the left's unit first ("24 mnd > 2 jr", not "24 > 2").
-            String rechts = omreken(operand(v.rechts(), subject), v.rechts().type(), v.links().type());
-            return operand(v.links(), subject) + " " + drlOp(v.op()) + " " + rechts;
+            String[] o = vergelijkingsOperanden(operand(v.links(), subject), v.links().type(),
+                    operand(v.rechts(), subject), v.rechts().type());
+            return o[0] + " " + drlOp(v.op()) + " " + o[1];
         }
         if (c instanceof Conditie.Predicaat p) {
             // A leeg/gevuld predicate over a TO-ONE navigated operand cannot use the null-safe "!." form: "!."
@@ -971,6 +973,32 @@ public final class DrlTranspiler {
     /** Wrap an emitted value in a unit conversion when its unit differs from (but is
      *  convertible to) the target unit; otherwise return it unchanged (§13.3.5.2).
      *  Never wraps an unlowered placeholder — that would emit (null).multiply(...). */
+    /** Operands for a unit-aware COMPARISON, scaled to AVOID {@link #omreken}'s lossy ratio. omreken
+     *  restates the right operand in the left's unit by {@code factorVan / factorNaar}, which truncates
+     *  for a non-terminating quotient (mnd→jr = 1/12 = 0.0833…), so "24 mnd gelijk aan 2 jr" lowered to
+     *  "2 != 1.9999…" — a false-positive violation (p43). For two SIMPLE convertible units this instead
+     *  restates BOTH operands in their shared canonical unit by the DECLARED (exact) factorNaarCanoniek,
+     *  so the comparison scales exactly (24 == 24). No conversion when units match or are absent; a
+     *  composite (rate) unit keeps the single-operand ratio (its precision edge is carded). Returns
+     *  {leftOut, rightOut}. */
+    private static String[] vergelijkingsOperanden(String l, Datatype lt, String r, Datatype rt) {
+        io.github.yhavinga.regelspraak.model.Eenheid el = lt.eenheidOf(), er = rt.eenheidOf();
+        if (el == null || er == null || !el.convertibleNaar(er) || !el.vereistOmrekening(er))
+            return new String[]{l, r};
+        if (el.noemer() == null && er.noemer() == null)
+            return new String[]{naarCanoniek(l, el), naarCanoniek(r, er)};
+        return new String[]{l, omreken(r, rt, lt)};   // composite (rate) unit: keep the existing conversion
+    }
+
+    /** Restate a comparison operand in its system's canonical unit by the DECLARED (exact) factor —
+     *  a multiplication, never the lossy division omreken uses. Identity for a canonical/unitless
+     *  operand or a placeholder marker. */
+    private static String naarCanoniek(String expr, io.github.yhavinga.regelspraak.model.Eenheid e) {
+        if (expr.contains("/* TODO") || e.factorNaarCanoniek() == null
+                || e.factorNaarCanoniek().compareTo(java.math.BigDecimal.ONE) == 0) return expr;
+        return "(" + expr + ").multiply(new java.math.BigDecimal(\"" + e.factorNaarCanoniek().toPlainString() + "\"))";
+    }
+
     private static String omreken(String expr, Datatype van, Datatype naar) {
         if (expr.contains("/* TODO")) return expr; // placeholder value — do not wrap (would NPE)
         io.github.yhavinga.regelspraak.model.Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();

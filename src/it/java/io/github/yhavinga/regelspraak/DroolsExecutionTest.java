@@ -471,6 +471,40 @@ class DroolsExecutionTest {
                 () -> "10 €/mnd = 120 €/jr, kreeg " + h.getPrijs());
     }
 
+    @Test void cross_unit_gelijkheid_is_exact_geen_vals_positief() {
+        // p43: comparing across convertible units must scale by the DECLARED (exact) factors, not by a
+        // truncated ratio. "grensjr (jr) gelijk aan duurmnd (mnd)" used to lower to "grensjr != duurmnd *
+        // 0.08333..." (mnd->jr = 1/12 truncated), so 2 jr == 24 mnd read "2 != 1.9999..." -> a spurious
+        // violation. Now both sides scale to the canonical (mnd): (grensjr * 12) != duurmnd -> 24 != 24.
+        String src = """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Objecttype de Meting
+                de duurmnd Numeriek (geheel getal) met eenheid mnd;
+                de grensjr Numeriek (geheel getal) met eenheid jr;
+            Regel gelijkcheck
+                geldig altijd
+                    De grensjr van een Meting moet gelijk zijn aan de duurmnd van een Meting.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("0.083"), () -> "geen lossy 1/12-factor meer:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Meting gelijk = new Meting(); gelijk.setGrensjr(new BigDecimal("2"));  gelijk.setDuurmnd(new BigDecimal("24")); // 2 jr == 24 mnd
+        Meting anders = new Meting(); anders.setGrensjr(new BigDecimal("2"));  anders.setDuurmnd(new BigDecimal("25")); // 2 jr != 25 mnd
+        sessie.insert(gelijk); sessie.insert(anders);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> ((Inconsistentie) o).getSubject()).toList();
+        sessie.dispose();
+
+        assertFalse(fouten.contains(gelijk), () -> "2 jr == 24 mnd is consistent (geen vals-positief): " + fouten);
+        assertTrue(fouten.contains(anders), () -> "2 jr != 25 mnd is een echte schending: " + fouten);
+    }
+
     @Test void macht_afronding_rondt_de_macht_af_en_compileert_als_bigdecimal() {
         // §13.4.17.14: the mandatory afronding rounds the POWER, not the exponent. "basis tot de
         // macht 2 afgerond op 0" with basis=5 must give 25 (5^2), and the Math.pow result must
