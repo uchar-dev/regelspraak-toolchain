@@ -258,6 +258,48 @@ class DrlTest {
                 () -> "leeg-operand-bewaking ontbreekt:\n" + drl);
     }
 
+    @Test void consistentieregel_met_langvorm_navigatie_waarschuwt_en_noopt_nooit_stil() {
+        // A long-form navigated operand ("de <attr> van de <rol> van een <Type>") the resolver cannot
+        // resolve lowers to a /* TODO */ marker. schendingConstraint must DROP the whole rule to a no-op
+        // AND surface a WARNING — never silently control nothing, and never wrap the marker into a
+        // constant-true guard (which would flag every instance inconsistent). The guard lives at the
+        // bevatMarker checks in every branch (ordening, gelijk, and the negeer→conditie tail); this pins
+        // that a long-form navigated consistentie cannot regress to a silent no-op.
+        String src = """
+            Objecttype de Persoon
+                de leeftijd Numeriek (geheel getal);
+                de naam Tekst;
+            Feittype partnerschap van personen
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel ordening_nav
+              geldig altijd
+                De leeftijd van de partner van een Persoon moet kleiner zijn dan de leeftijd van een Persoon.
+            Regel gelijk_nav
+              geldig altijd
+                De naam van de partner van een Persoon moet gelijk zijn aan de naam van een Persoon.
+            Regel leeg_nav
+              geldig altijd
+                De naam van de partner van een Persoon moet gevuld zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        String drl = DrlTranspiler.transpile(m);
+
+        for (String regel : new String[]{"ordening_nav", "gelijk_nav", "leeg_nav"}) {
+            assertTrue(m.diagnostics.stream().anyMatch(d ->
+                            d.severity() == RegelSpraakModel.Severity.WARNING
+                                    && d.message().contains(regel)
+                                    && d.message().contains("controleert niets")),
+                    () -> "geen no-op-WARNING voor '" + regel + "'; kreeg " + m.diagnostics);
+        }
+        // the marker must never leak into a guard: no rule emits a TODO marker or an "== null"
+        // null-guard built around an unresolved operand.
+        assertFalse(drl.contains("/* TODO"), () -> "marker lekte naar DRL:\n" + drl);
+        // and the no-op shape is the honest "eval(true)" body, not a half-baked constraint pattern
+        assertFalse(drl.contains("Persoon( "), () -> "onverwacht een constraint-patroon op een onresolveerbare regel:\n" + drl);
+    }
+
     @Test void consistentieregel_naam_met_quote_levert_geldige_drl_header() {
         // a rule name is free text and may contain a double quote (§13.2.8); it must be
         // escaped so the DRL header and the Inconsistentie literal stay well-formed.
