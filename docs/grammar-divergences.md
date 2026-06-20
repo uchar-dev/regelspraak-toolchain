@@ -52,8 +52,14 @@ summarised; this file additionally catalogues the spec worked examples that do
   - the `:` before a bulleted sub-condition list is optional — two `gedurende de
     tijd dat … wordt voldaan` examples omit it.
   - `Numeriek` without the `( getalspecificatie )` (§13.3.3.2 makes it mandatory);
-    a domein-typed attribuut may still pin a unit (`… Bedrag met eenheid euro`);
-    a kenmerk may carry a `tijdlijn` (`… kenmerk (bezittelijk) voor elke dag`).
+    the §4.4 worked example writes exactly this (`Numeriek met eenheid jaren`).
+    The **resolver** reads such a bare `Numeriek` as the least-restrictive numeriek
+    — identical to a plain `getal`: unbounded decimals (the `decimalen 0` sentinel),
+    not a whole number, no sign restriction — keeping any unit, and raises a WARNING
+    that the normatively-mandatory getalspecificatie is absent (rather than NPE'ing
+    on the null specification, the spec-main-43 crash). A domein-typed attribuut may
+    still pin a unit (`… Bedrag met eenheid euro`); a kenmerk may carry a `tijdlijn`
+    (`… kenmerk (bezittelijk) voor elke dag`).
   - `geheelgetal`/`tenminste` written closed-up; a unit spelled out plural
     (`met eenheid jaren`); `de Rekendatum`/`het Rekenjaar` with an article.
   - a sommatie's leegwaarde fallback `… of 0 als die er niet zijn` (§6.7); a

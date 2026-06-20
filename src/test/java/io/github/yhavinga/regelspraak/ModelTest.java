@@ -81,6 +81,29 @@ class ModelTest {
         assertEquals("jr", ((Datatype.Numeriek) p.datatype()).eenheid().afkorting());
     }
 
+    @Test void parameter_numeriek_zonder_getalspecificatie_lost_op_zonder_te_crashen() {
+        // §4.4's worked example writes "Numeriek met eenheid jaren" — omitting the getalspecificatie
+        // that §13.3.3 makes mandatory. The grammar tolerates this; the resolver must degrade to the
+        // least-restrictive numeriek reading (== a bare "getal": unbounded decimals, no sign) rather
+        // than NPE on the absent specification (the spec-main-43 crash, p31).
+        String src = "Parameter de volwassenleeftijd : Numeriek met eenheid jaren";
+        RegelSpraakModel m = Resolver.resolve(src);                 // must not throw
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+
+        var p = m.parameters.get("volwassenleeftijd");
+        assertNotNull(p, "parameter ontbreekt");
+        Datatype.Numeriek dt = assertInstanceOf(Datatype.Numeriek.class, p.datatype());
+        assertEquals("jaar", dt.eenheid().afkorting(), "eenheid blijft behouden");
+        assertFalse(dt.geheel(), "geen 'geheel getal' geschreven → niet geheel");
+        assertEquals(0, dt.decimalen(), "geen decimalenspecificatie → onbeperkt (sentinel 0)");
+        assertEquals(Datatype.Teken.ONBEPAALD, dt.teken(), "geen teken geschreven → onbepaald");
+
+        assertTrue(m.diagnostics.stream().anyMatch(d ->
+                        d.severity() == RegelSpraakModel.Severity.WARNING
+                                && d.message().contains("getalspecificatie")),
+                () -> "verwachtte een WARNING over de ontbrekende getalspecificatie; kreeg " + m.diagnostics);
+    }
+
     @Test void dimensie_wordt_gemodelleerd() {
         String src = """
             Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):

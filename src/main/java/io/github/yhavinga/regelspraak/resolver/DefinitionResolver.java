@@ -126,6 +126,14 @@ public final class DefinitionResolver {
     private Datatype datatype(DatatypeContext dt) {
         if (dt.numeriekDatatype() != null) {
             NumeriekDatatypeContext n = dt.numeriekDatatype();
+            // §13.3.3: the getalspecificatie is normatively mandatory ("Numeriek (" <getalspecificatie> ")"),
+            // but a worked example (§4.4) omits it ("Numeriek met eenheid jaren"), so the grammar tolerates
+            // its absence. Degrade to the least-restrictive reading — equal to a plain "getal" (onbeperkt
+            // aantal decimalen, geen tekenbeperking) — and flag the spec-incomplete declaration.
+            if (n.getalSpecificatie() == null)
+                model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
+                        "Numeriek datatype zonder verplichte getalspecificatie (§13.3.3); onbeperkte decimalen aangenomen",
+                        n.getStart().getLine()));
             GetalInfo g = getalInfo(n.getalSpecificatie());
             Eenheid e = n.eenheidExpressie() != null ? eenheidVan(n.eenheidExpressie()) : null;
             return new Datatype.Numeriek(g.geheel, g.decimalen, g.teken, e);
@@ -146,6 +154,9 @@ public final class DefinitionResolver {
     private record GetalInfo(boolean geheel, int decimalen, Datatype.Teken teken) {}
 
     private GetalInfo getalInfo(GetalSpecificatieContext g) {
+        // No specification given: same degenerate reading as a bare "getal" — unbounded decimals
+        // (decimalen 0 is the codebase's unbounded sentinel), not a whole number, no sign restriction.
+        if (g == null) return new GetalInfo(false, 0, Datatype.Teken.ONBEPAALD);
         Datatype.Teken teken = Datatype.Teken.ONBEPAALD;
         if (g.NEGATIEF() != null) teken = Datatype.Teken.NEGATIEF;
         else if (g.NIET_NEGATIEF() != null) teken = Datatype.Teken.NIET_NEGATIEF;

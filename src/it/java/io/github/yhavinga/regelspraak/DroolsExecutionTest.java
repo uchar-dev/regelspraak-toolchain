@@ -85,6 +85,38 @@ class DroolsExecutionTest {
                 () -> "verwacht 110, kreeg " + v.getTotaalprijs());
     }
 
+    @Test void parameter_numeriek_zonder_getalspecificatie_vuurt_als_drempel() {
+        // The §4.4 worked-example form "Numeriek met eenheid jr" (no getalspecificatie) used to NPE the
+        // resolver (p31). Once it degrades gracefully it must still be a usable, well-typed global: this
+        // fires a kenmerktoekenning gated on it to prove the resolved BigDecimal threshold works end-to-end.
+        String src = """
+            Eenheidsysteem Tijd
+                het jaar           jr
+            Parameter de grens : Numeriek met eenheid jr
+            Objecttype de Persoon
+                de leeftijd Numeriek (geheel getal) met eenheid jr;
+                is gepensioneerd kenmerk (bijvoeglijk);
+            Regel pensioencheck
+                geldig altijd
+                    Een Persoon is gepensioneerd
+                    indien zijn leeftijd groter is dan de grens.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        sessie.setGlobal("grens", new BigDecimal("67"));
+        Persoon oud = new Persoon();  oud.setLeeftijd(new BigDecimal("70"));   // 70 > 67 -> gepensioneerd
+        Persoon jong = new Persoon(); jong.setLeeftijd(new BigDecimal("30"));  // 30 > 67 -> niet
+        sessie.insert(oud); sessie.insert(jong);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertTrue(oud.isGepensioneerd(), "70 > grens(67) had moeten vuren");
+        assertFalse(jong.isGepensioneerd(), "30 > grens(67) had niet mogen vuren");
+    }
+
     @Test void aggregatie_accumuleert_over_de_join() {
         String src = """
             Objecttype de Vlucht
