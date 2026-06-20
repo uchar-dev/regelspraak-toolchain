@@ -335,9 +335,18 @@ operand (`de Meting bereikbaar per` + operator `trein`), so the resolver reconst
 from that absorbed prefix plus the operator's `kaleNaam`. The leading **`een`** article is honoured as
 the §13.4.15.44/.45 signal of an objecttype/role-**membership** test (`X is een <objecttype>`), which
 stays `Onopgelost` — so a name that is *both* a subject kenmerk and an objecttype/role is not silently
-gated as the kenmerk. Still `Onopgelost` and carded: a navigation-based kenmerk check (`de partner …
-oud is` — the kenmerk is on another object, which is what the §13.4.2 die-filter needs), the
-objecttype/role-membership lowering itself, and negation.
+gated as the kenmerk.
+
+**Navigated and negated forms are now lowered too.** A TO-ONE navigated kenmerk (`de partner van een
+Persoon gepensioneerd is`) resolves the kenmerk against the navigated type and lowers to the null-guarded
+property path `partner != null && partner.gepensioneerd == true`; the role is normalised to its declared
+name (so a plural `de passagiers` is the same role), a TO-MANY navigation stays a marker (it needs an
+exists/forall), and the multi-word kenmerk is reconstructed from the absorbed operand tail. **Negation**
+(`… niet oud is`) lowers to `oud == false` (and `partner != null && partner.gepensioneerd == false`),
+detected by a leading `niet` only AFTER the whole reconstructed name fails to match — so a kenmerk
+*declared* with a leading `niet` (`is niet ingezetene kenmerk`) still binds positively. Still `Onopgelost`
+and carded: the objecttype/role-membership lowering itself, and the **`geen`** negation forms
+(§8.1.8 Tabel 16: `heeft geen <X>` / `is geen <X>`, distinct from `niet`).
 
 ### Inflected kenmerk forms in a die-subselectie (§5.6) — bound morphologically
 
