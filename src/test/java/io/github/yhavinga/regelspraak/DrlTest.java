@@ -262,9 +262,12 @@ class DrlTest {
         // A long-form navigated operand ("de <attr> van de <rol> van een <Type>") the resolver cannot
         // resolve lowers to a /* TODO */ marker. schendingConstraint must DROP the whole rule to a no-op
         // AND surface a WARNING — never silently control nothing, and never wrap the marker into a
-        // constant-true guard (which would flag every instance inconsistent). The guard lives at the
-        // bevatMarker checks in every branch (ordening, gelijk, and the negeer→conditie tail); this pins
-        // that a long-form navigated consistentie cannot regress to a silent no-op.
+        // constant-true guard (which would flag every instance inconsistent). The load-bearing guards are
+        // the bevatMarker checks: ordening_nav exercises the ordening branch (~222); gelijk_nav and leeg_nav
+        // both route through the negeer→conditie tail guard (~241) — gelijk_nav over Tekst does NOT hit the
+        // non-numeriek GELIJK branch (~233), because the resolver types the unresolved navigated operand as
+        // Onbekend, so nietNumeriekVergelijking is false. (The ~233 guard is unreachable-with-a-marker for
+        // the same reason — defensive only.) This pins that a navigated consistentie cannot silently no-op.
         String src = """
             Objecttype de Persoon
                 de leeftijd Numeriek (geheel getal);
