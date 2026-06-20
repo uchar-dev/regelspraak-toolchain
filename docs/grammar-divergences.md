@@ -659,6 +659,18 @@ spec does not spell out whether `fout` should instead be an ERROR diagnostic, so
 silently assumed. The ordering operators' both-empty `fout` (Tabel 45) is unrelated — they take the
 separate null-guarded `schendingConstraint` path.
 
+The **voorwaarde (rule-guard) counterpart** (p40) is the mirror: a non-numeriek both-empty `gelijk aan` is
+`fout` (§5.3 line 3264 calls it a *foutmelding*), and a rule fires only when its guard is `waar`, so the
+rule must **not** fire. Plain mvel reads `null == null` as `true` (it would fire), so a non-numeriek equality
+guard over two potentially-empty operands is narrowed to `l == r && !(l == null && r == null)`. This applies
+only in a guard context — `conditie(..., alsVoorwaarde=true)`; the same method serves
+`schendingConstraint`'s negation of a consistentie assertion, where a both-empty `fout` must still *fire*
+the violation (an `ongelijk` consistentie negates to `gelijk`, and Tabel 44 makes its both-empty case a
+violation), so the guard is suppressed there (`alsVoorwaarde=false`). A literal operand (never empty) skips
+the guard too. The numeriek both-empty guard stays `waar`/fires per Tabel 37 — §5.3 line 3264 says `onwaar`
+there, a spec self-contradiction left to the existing Tabel-37 reading (consistent with the consistentie
+side above).
+
 ### §9.4 / §13.4.7 feitcreatie — only the 1-hop shape is lowered, as a reference-field set
 
 A feitcreatie ("Een `<rolB>` van een `<anker>` is een `<rolC>` van `<onderwerpD>`") creates an instance

@@ -471,6 +471,40 @@ class DroolsExecutionTest {
                 () -> "10 €/mnd = 120 €/jr, kreeg " + h.getPrijs());
     }
 
+    @Test void voorwaarde_niet_numerieke_gelijkheid_beide_leeg_vuurt_niet() {
+        // p40: "indien vertrek gelijk aan bestemming" over Tekst. §5.3/Tabel 38 make a BOTH-empty
+        // non-numeriek equality "fout" (a foutmelding), not "waar" — so the rule guard is not satisfied and
+        // must NOT fire. Plain mvel "null == null" is true (would fire); the guard excludes the both-empty
+        // case. Gevuld-equal still fires; one-empty and unequal do not.
+        String src = """
+            Objecttype de Route
+                de vertrek Tekst;
+                de bestemming Tekst;
+                is gemarkeerd kenmerk (bijvoeglijk);
+            Regel mark
+                geldig altijd
+                    Een Route is gemarkeerd
+                    indien de vertrek van een Route gelijk is aan de bestemming van een Route.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Route beideLeeg = new Route();                                                  // null == null -> fout -> niet
+        Route gelijk = new Route(); gelijk.setVertrek("A"); gelijk.setBestemming("A");  // waar -> wel
+        Route eenLeeg = new Route(); eenLeeg.setVertrek("A");                           // "A" == null -> onwaar -> niet
+        Route anders = new Route(); anders.setVertrek("A"); anders.setBestemming("B");  // onwaar -> niet
+        sessie.insert(beideLeeg); sessie.insert(gelijk); sessie.insert(eenLeeg); sessie.insert(anders);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertFalse(beideLeeg.isGemarkeerd(), "beide leeg is 'fout' (Tabel 38) -> mag niet vuren");
+        assertTrue(gelijk.isGemarkeerd(), "twee gelijke gevulde waarden -> vuurt");
+        assertFalse(eenLeeg.isGemarkeerd(), "een gevuld, een leeg is onwaar -> niet");
+        assertFalse(anders.isGemarkeerd(), "twee ongelijke waarden -> niet");
+    }
+
     @Test void cross_unit_gelijkheid_is_exact_geen_vals_positief() {
         // p43: comparing across convertible units must scale by the DECLARED (exact) factors, not by a
         // truncated ratio. "grensjr (jr) gelijk aan duurmnd (mnd)" used to lower to "grensjr != duurmnd *

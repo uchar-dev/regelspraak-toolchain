@@ -420,7 +420,7 @@ public final class DrlTranspiler {
             return;
         }
         out.append("    ").append(SUBJECT).append(" : ").append(ident(subject.naam, true))
-           .append("( ").append(oc.voorwaarde() != null ? conditie(oc.voorwaarde(), subject) : "").append(" )\n");
+           .append("( ").append(oc.voorwaarde() != null ? conditie(oc.voorwaarde(), subject, true) : "").append(" )\n");
         for (String acc : accumulates) out.append("    ").append(acc).append('\n');
         if (tijdgebondenGeldigheid(oc.geldigheid())) out.append("    ").append(geldigheidGuard(oc.geldigheid())).append('\n');
         out.append("then\n");
@@ -453,12 +453,12 @@ public final class DrlTranspiler {
         // nothing (visibly) than to create wrongly.
         String ankerC = "", doelExtra = "", noFire = "";
         if (fc.voorwaarde() != null) {
-            String opAnker = conditie(fc.voorwaarde(), anker);
+            String opAnker = conditie(fc.voorwaarde(), anker, true);
             if (!bevatMarker(opAnker)) {
                 ankerC = opAnker;
             } else {
                 accumulates = new ArrayList<>(); accCount = 0;   // discard the failed anker attempt
-                String opDoel = conditie(fc.voorwaarde(), doel);
+                String opDoel = conditie(fc.voorwaarde(), doel, true);
                 if (!bevatMarker(opDoel)) {
                     doelExtra = opDoel;
                 } else {
@@ -512,7 +512,7 @@ public final class DrlTranspiler {
             out.append("    // onopgelost doel-objecttype: ").append(r.doel().bron()).append('\n');
             out.append("    eval(true)\n");
         } else {
-            String constraint = r.voorwaarde() != null ? conditie(r.voorwaarde(), subject) : "";
+            String constraint = r.voorwaarde() != null ? conditie(r.voorwaarde(), subject, true) : "";
             out.append("    ").append(SUBJECT).append(" : ").append(ident(subject.naam, true))
                .append("( ").append(constraint).append(" )\n");
             for (String acc : accumulates) out.append("    ").append(acc).append('\n');
@@ -772,13 +772,29 @@ public final class DrlTranspiler {
     }
 
     // ---------------- condition ("when" side: bare field constraints) ----------------
-    private String conditie(Conditie c, Objecttype subject) {
+    private String conditie(Conditie c, Objecttype subject) { return conditie(c, subject, false); }
+
+    /** Lower a condition to an mvel constraint. {@code alsVoorwaarde} marks a rule-GUARD / filter context,
+     *  where the §5.3 both-empty rule applies; it is false when this is the NEGATION of a consistentie
+     *  assertion (built by {@link #schendingConstraint}'s complement / negeer tail), because there a
+     *  both-empty "fout" must still FIRE the violation (Tabel 44), so the guard must NOT be added. */
+    private String conditie(Conditie c, Objecttype subject, boolean alsVoorwaarde) {
         if (c instanceof Conditie.Vergelijking v) {
             // §5.1 Tabel 32: a comparison across convertible-but-different units restates
             // the right operand in the left's unit first ("24 mnd > 2 jr", not "24 > 2").
             String[] o = vergelijkingsOperanden(operand(v.links(), subject), v.links().type(),
                     operand(v.rechts(), subject), v.rechts().type());
-            return o[0] + " " + drlOp(v.op()) + " " + o[1];
+            String cmp = o[0] + " " + drlOp(v.op()) + " " + o[1];
+            // §5.3 / typeringen Tabel 38: a NON-numeriek "gelijk aan" with BOTH operands empty is "fout"
+            // (a foutmelding), NOT "waar" — so as a rule GUARD the condition is not satisfied and the rule
+            // must NOT fire. Plain mvel reads "null == null" as true (it would fire), so exclude the
+            // both-empty case (p40). A numeriek both-empty stays "waar"/fires per Tabel 37 (the §5.3 prose
+            // says "onwaar" there — a spec contradiction left to the existing Tabel-37 reading).
+            if (alsVoorwaarde && v.op() == Conditie.Operator.GELIJK && nietNumeriekVergelijking(v)
+                    && !bevatMarker(o[0]) && !bevatMarker(o[1])
+                    && !(v.links() instanceof Expr.Literal) && !(v.rechts() instanceof Expr.Literal))
+                return "(" + cmp + " && !(" + o[0] + " == null && " + o[1] + " == null))";
+            return cmp;
         }
         if (c instanceof Conditie.Predicaat p) {
             // A leeg/gevuld predicate over a TO-ONE navigated operand cannot use the null-safe "!." form: "!."
@@ -814,7 +830,7 @@ public final class DrlTranspiler {
         }
         if (c instanceof Conditie.Samengesteld s) {
             List<String> delen = new ArrayList<>();
-            for (Conditie deel : s.onderdelen()) delen.add("(" + conditie(deel, subject) + ")");
+            for (Conditie deel : s.onderdelen()) delen.add("(" + conditie(deel, subject, alsVoorwaarde) + ")");
             if (delen.isEmpty()) return "true";
             // An unresolved sub-condition cannot be faithfully combined. Splicing its always-false
             // marker into one operand is wrong under the NEGATED quantifiers (geen/ten hoogste/

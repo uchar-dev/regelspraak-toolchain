@@ -5,8 +5,11 @@ package io.github.yhavinga.regelspraak.facts;
 public class Route {
     private String vertrek;
     private String bestemming;
+    private boolean gemarkeerd;   // §5.3/p40 both-empty non-numeriek equality voorwaarde target
     public String getVertrek() { return vertrek; }
     public void setVertrek(String v) { this.vertrek = v; }
     public String getBestemming() { return bestemming; }
     public void setBestemming(String v) { this.bestemming = v; }
+    public boolean isGemarkeerd() { return gemarkeerd; }
+    public void setGemarkeerd(boolean v) { this.gemarkeerd = v; }
 }
