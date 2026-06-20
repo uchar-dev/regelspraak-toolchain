@@ -766,6 +766,82 @@ class DrlTest {
         // The §9.4 TOKA shape: onderwerpD navigates anker -> Vlucht -> passagier. It lowers to a CHAIN of
         // patterns: a to-one hop reads the parent's forward reference (this == $subject.contingentvlucht),
         // a to-many hop reads the child's back reference (reis == $t0). The relation is set on the doel.
+        // Here the Contingent is the MANY side of the contingentrelatie, so the FK side is derivable from
+        // cardinality (cur holds it) without an objectcreatie.
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de naam Tekst;
+            Objecttype de Contingent
+                de naam Tekst;
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype contingentrelatie
+                de contingentvlucht Vlucht
+                de contingent Contingent
+            Eén contingentvlucht heeft meerdere contingenten
+            Feittype bonusrelatie
+                de bonuscontingent Contingent
+                de bonuspassagier Passagier
+            Eén bonuscontingent kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een contingent is een passagier van de contingentvlucht van het contingent.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("$subject : Contingent("), () -> "anker-patroon ontbreekt:\n" + drl);
+        assertTrue(drl.contains("$t0 : Vlucht( this == $subject.contingentvlucht )"),
+                () -> "to-one tussenstap moet de ouder-referentie lezen:\n" + drl);
+        assertTrue(drl.contains("$doel : Passagier( reis == $t0 )"),
+                () -> "de doel-join moet naar de laatste tussenstap wijzen:\n" + drl);
+        assertTrue(drl.contains("setBonuscontingent( $subject )"), () -> "de relatie moet op de doel gezet worden:\n" + drl);
+    }
+
+    @Test void feitcreatie_meerstaps_een_op_een_via_objectcreatie_lowert() {
+        // The faithful §9.4 shape: the intermediate hop Contingent -> Vlucht is a true 1-to-1, so cardinality
+        // alone cannot place the reference field — but the §9.3 objectcreatie ("Een Vlucht heeft het
+        // contingent …") created the Contingent and set the link on it, so the field lives on the Contingent
+        // (cur). The chain hop reads it as the parent's forward reference.
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de naam Tekst;
+            Objecttype de Contingent
+                de aantal Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype contingentrelatie
+                de contingentvlucht Vlucht
+                de contingent Contingent
+            Eén contingentvlucht heeft één contingent
+            Feittype bonusrelatie
+                de bonuscontingent Contingent
+                de bonuspassagier Passagier
+            Eén bonuscontingent kent meerdere bonuspassagiers
+            Regel maak contingent
+                geldig altijd
+                    Een Vlucht heeft het contingent met aantal gelijk aan 5.
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een contingent is een passagier van de contingentvlucht van het contingent.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("$t0 : Vlucht( this == $subject.contingentvlucht )"),
+                () -> "een 1-1 die door objectcreatie wordt geplaatst moet lager komen (ouder-veld):\n" + drl);
+    }
+
+    @Test void feitcreatie_meerstaps_kale_een_op_een_blijft_een_waarschuwing() {
+        // A true 1-to-1 intermediate hop with NEITHER a cardinality signal NOR an objectcreatie cannot have
+        // its FK side derived from the model. It must WARN (honest), never guess a side and risk an
+        // uncompilable wrong-side join.
         String src = """
             Objecttype de Vlucht
                 de naam Tekst;
@@ -790,14 +866,12 @@ class DrlTest {
                     Een bonuspassagier van een contingent is een passagier van de contingentvlucht van het contingent.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
-        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("$subject : Contingent("), () -> "anker-patroon ontbreekt:\n" + drl);
-        assertTrue(drl.contains("$t0 : Vlucht( this == $subject.contingentvlucht )"),
-                () -> "to-one tussenstap moet de ouder-referentie lezen:\n" + drl);
-        assertTrue(drl.contains("$doel : Passagier( reis == $t0 )"),
-                () -> "de doel-join moet naar de laatste tussenstap wijzen:\n" + drl);
-        assertTrue(drl.contains("setBonuscontingent( $subject )"), () -> "de relatie moet op de doel gezet worden:\n" + drl);
+        assertFalse(drl.contains("rule \"ken bonus toe\""),
+                () -> "een onbepaalde 1-1 tussenstap mag geen relatie-regel emitteren:\n" + drl);
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
+                        && d.message().contains("referentieveld-zijde")),
+                () -> "een onbepaalde 1-1 tussenstap moet een eerlijke waarschuwing geven: " + m.diagnostics);
     }
 
     /** Vlucht/Passagier with the existing "passagier" relation plus a NEW relation whose roles +

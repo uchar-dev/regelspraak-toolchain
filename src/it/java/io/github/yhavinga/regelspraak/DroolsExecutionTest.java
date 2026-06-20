@@ -2451,7 +2451,7 @@ class DroolsExecutionTest {
             Feittype contingentrelatie
                 de contingentvlucht Vlucht
                 de contingent Contingent
-            Eén contingentvlucht heeft één contingent
+            Eén contingentvlucht heeft meerdere contingenten
             Feittype bonusrelatie
                 de bonuscontingent Contingent
                 de bonuspassagier Passagier

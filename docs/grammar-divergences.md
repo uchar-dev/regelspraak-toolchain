@@ -645,12 +645,27 @@ NEITHER pattern (an objecttype/role-membership test, or a mixed anker+doel compo
 `eval(false)` no-op carrying a marker — never a dropped guard, which would fire unconditionally and
 **over-create** the relation. Creating nothing (visibly) beats creating wrongly.
 
-**Deferred (carded), each an honest WARNING:** the MULTI-HOP `<onderwerpD>` navigation — the spec's own
-§9.4 / TOKA example ("… van de reis met treinmiles van het vastgestelde contingent treinmiles", Contingent
--> Vlucht -> passagiers) needs a two-pattern join one join field cannot express, so no real spec/TOKA
-feitcreatie lowers yet; a `<rolB>`/`<rolC>` whose own name contains "van" (which makes `kaleNaam`
-multi-segment) WARNs as a false multi-hop (acceptable honesty, a coverage gap); and directional self-
-relation lowering.
+**Multi-hop (the canonical §9.4 / Figure-17 example) is lowered.** `<onderwerpD>` may reach the anker
+through a chain ("… een passagier van de reis met treinmiles van het vastgestelde contingent treinmiles":
+Contingent &rarr; Vlucht &rarr; Natuurlijk persoon). `ResolvedFeitCreatie` carries the intermediate objects
+as an ordered `Tussenstap` list; the resolver walks the written target segments in REVERSE (they read
+outside-in — the role onto the doel first, the innermost hop last). The transpiler emits one pattern per hop
+between `$subject` and `$doel`, the doel joining to the last hop. The back-reference check is generalised so
+an anker named by a role ("een vastgestelde contingent treinmiles") is accepted when the back-reference
+repeats that same written noun (still rejecting "de aansluitvlucht").
+
+Each hop's reference field lives on the MANY side (§13.3.9.1), and the join form follows: a **to-many** hop
+keeps it on the child — `child( veld == $prev )`; a **to-one** hop keeps it on the parent when the reverse
+role is meervoudig (cur is the many side) — `child( this == $prev.veld )`. A genuine **one-to-one** hop is
+the hard case: cardinality cannot place the field, so it is taken from the **objectcreatie convention**
+(objectCreatie sets the reference on the *new* object, so the created side holds it). When neither a
+cardinality nor an objectcreatie signal is present, the side is NOT derivable from the model and the
+feitcreatie stays an honest WARNING — never a guessed side that could emit an uncompilable wrong-side join.
+
+**Still an honest WARNING:** a hop role that does not chain; a `<rolB>`/`<rolC>` whose own name contains
+"van" (which makes `kaleNaam` multi-segment); directional self-relation lowering; and the §9.4 role-name
+mismatch ("reis met treinmiles" written against a "reis met contingent treinmiles" feittype role) — the
+worked example only lowers when the navigation names the declared role.
 
 ### §13.3.9.1/.2 feittype cardinaliteit — the many-to-many opener must be lowercase `meerdere`
 

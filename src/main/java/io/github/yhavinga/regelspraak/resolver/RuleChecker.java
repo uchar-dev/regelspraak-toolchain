@@ -468,10 +468,9 @@ final class RuleChecker {
                 String role = stripArtikel(src(delen.get(i)));
                 Objecttype next = model.rolDoeltypeNaarSubject(cur, role);
                 if (next == null) { reden = "tussenstap-rol '" + role + "' niet eenduidig te herleiden"; break; }
-                boolean naarVeel = model.naarVeelRol(cur, next, role);
-                String veld = naarVeel ? model.verbindendeRolViaElementnaam(cur, role) : model.verbindendeRol(cur, next);
-                if (veld == null) { reden = "referentieveld voor tussenstap '" + role + "' niet herleidbaar"; break; }
-                stappen.add(new ResolvedFeitCreatie.Tussenstap(next, veld, !naarVeel));
+                ResolvedFeitCreatie.Tussenstap stap = tussenstap(cur, next, role);
+                if (stap == null) { reden = "referentieveld-zijde voor tussenstap '" + role + "' niet af te leiden"; break; }
+                stappen.add(stap);
                 cur = next;
             }
             if (reden == null) {
@@ -499,6 +498,38 @@ final class RuleChecker {
         model.diagnostics.add(new Diagnostic(Severity.WARNING,
                 "feitcreatie wordt nog niet naar IR/DRL omgezet (regel '" + naam + "'): " + reden,
                 fc.getStart().getLine()));
+    }
+
+    /** One §9.4 chain hop cur -&gt; next via {@code role}: which side holds the reference field, and the join
+     *  form, or null when undeterminable. The field lives on the MANY side (§13.3.9.1). A TO-MANY hop keeps it
+     *  on the CHILD (next) -&gt; {@code next(veld == $prev)}. A TO-ONE hop keeps it on the PARENT (cur) only when
+     *  cur is genuinely the many side (the reverse role is meervoudig) or an objectcreatie placed the link on
+     *  cur -&gt; {@code next(this == $prev.veld)}; it is on the CHILD when an objectcreatie placed it on next. A
+     *  bare one-to-one with NEITHER signal is not derivable from the model — return null (honest WARN), never a
+     *  guessed side that may emit an uncompilable wrong-side join. */
+    private ResolvedFeitCreatie.Tussenstap tussenstap(Objecttype cur, Objecttype next, String role) {
+        if (model.naarVeelRol(cur, next, role)) {                            // to-many: field on the child
+            String veld = model.verbindendeRolViaElementnaam(cur, role);
+            return veld == null ? null : new ResolvedFeitCreatie.Tussenstap(next, veld, false);
+        }
+        String curRol = model.verbindendeRolViaElementnaam(cur, role);       // cur's own role in this feittype
+        boolean curIsVeel = curRol != null && model.naarVeelRol(next, cur, curRol); // reverse to-many -> cur is many
+        if (curIsVeel || aangemaaktNaar(cur, next)) {                        // field on cur (parent)
+            String veld = model.verbindendeRol(cur, next);
+            return veld == null ? null : new ResolvedFeitCreatie.Tussenstap(next, veld, true);
+        }
+        if (aangemaaktNaar(next, cur)) {                                     // 1-1: objectcreatie put it on next
+            String veld = model.verbindendeRolViaElementnaam(cur, role);
+            return veld == null ? null : new ResolvedFeitCreatie.Tussenstap(next, veld, false);
+        }
+        return null;                                                        // bare 1-1: side not derivable
+    }
+
+    /** True when an objectcreatie creates {@code houder} linked to {@code doelwit} ("Een doelwit heeft een
+     *  houder"), so — by the convention objectCreatie sets the reference on the new object — {@code houder}
+     *  holds the reference field to {@code doelwit}. (Source-order: an objectcreatie earlier in the document.) */
+    private boolean aangemaaktNaar(Objecttype houder, Objecttype doelwit) {
+        return model.objectCreaties.stream().anyMatch(oc -> oc.nieuwType() == houder && oc.subject() == doelwit);
     }
 
     /** §13.4.7 voorwaarde hosting. A feitcreatie guard is built with the ANKER as subject; a guard that
