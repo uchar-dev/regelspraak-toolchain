@@ -234,13 +234,20 @@ A comparison/predicate operand that navigates a to-one reference ("de leeftijd v
 mvel's `.` is **not** null-safe, so `partner.roepnaam` throws an NPE at evaluation when `partner`
 is null — which sinks the *whole* rule firing, not just that instance. The path now uses Drools'
 null-safe operator `!.` (`partner!.roepnaam`): a null reference makes the constraint a **non-match**
-rather than a throw. This is conservative — a comparison against a null-navigated operand does not
-fire (a consistentie reports no violation for it; a voorwaarde reads the condition as false) — so it
-*under-reports* the typeringen leegwaarde rows for the gevuld-vs-empty-navigation case (where a null
-navigated operand should make an equality "onwaar"/a violation). Trading that bounded false-negative
-for crash-safety is the deliberate choice; a fully leegwaarde-faithful null navigation would need
-explicit per-operand branching and is carded. The value (then) side keeps its getter chain
-(`$subject.getReis().getX()`); a null there is a separate, carded concern. The §8.1.8 navigated
+rather than a throw. This is conservative for a **comparison** (`gelijk/ongelijk/kleiner/…`): a comparison
+against a null-navigated operand does not fire — so it *under-reports* the typeringen leegwaarde rows for
+the gevuld-vs-empty-navigation case (a null navigated operand should make an equality "onwaar"/a violation).
+Trading that bounded false-negative for crash-safety is the deliberate choice; a fully leegwaarde-faithful
+null navigation is carded.
+
+The **`leeg`/`gevuld` predicate is the exception** — for it, `!.`'s non-match would be plain *wrong*, not
+merely conservative: Drools `!.` short-circuits the whole term to a non-match on a null reference, so
+`partner!.leeftijd == null` reads **false** for a partnerless person, but typeringen Tabel 54 says an absent
+value `is leeg` is **`waar`**. So `leeg`/`gevuld` over a to-one navigation instead guards the reference
+explicitly: `is leeg` → `(rol == null || rol.attr == null)`, `is gevuld` → `(rol != null && rol.attr !=
+null)`. The short-circuit reaches the `.` only when the reference is non-null, so it neither NPEs nor
+misreads — an absent reference is correctly empty (Tabel 53/54). The value (then) side keeps its getter
+chain (`$subject.getReis().getX()`); a null there is a separate, carded concern. The §8.1.8 navigated
 kenmerk already emits its own explicit `rol != null && rol.x` guard and is unchanged.
 
 ### Wortel / tot de macht + afronding — fixed, with a bounded operand divergence

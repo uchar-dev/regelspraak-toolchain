@@ -724,6 +724,13 @@ public final class DrlTranspiler {
             return operand(v.links(), subject) + " " + drlOp(v.op()) + " " + rechts;
         }
         if (c instanceof Conditie.Predicaat p) {
+            // A leeg/gevuld predicate over a TO-ONE navigated operand cannot use the null-safe "!." form: "!."
+            // short-circuits the whole term to a NON-match on a null reference, which is the WRONG answer for
+            // `is leeg` (typeringen Tabel 54: an absent value IS leeg -> waar). Guard the reference explicitly
+            // so an absent reference reads as EMPTY — leeg = (rol == null || rol.attr == null); gevuld = (rol
+            // != null && rol.attr != null) — the "." after the short-circuit guard never dereferences null.
+            String navLeeg = genavigeerdLeegGevuld(p, subject);
+            if (navLeeg != null) return navLeeg;
             String o = operand(p.operand(), subject);
             return switch (p.soort()) {
                 case LEEG   -> o + " == null";
@@ -804,6 +811,21 @@ public final class DrlTranspiler {
 
     /** A condition operand: the subject's own attribute reads as a bare field name; a
      *  related object's attribute reads as a property path ("reis.vluchtdatum"). */
+    /** A leeg/gevuld predicate over a TO-ONE navigated operand, with the navigation root guarded explicitly
+     *  (so a null reference reads as an empty value per typeringen Tabel 53/54, not a Drools "!." non-match),
+     *  or null when the operand is not such a navigation (own attribute, to-many, unresolved → the caller's
+     *  plain form applies). The "." is reached only after the short-circuit root guard, so it never NPEs. */
+    private String genavigeerdLeegGevuld(Conditie.Predicaat p, Objecttype subject) {
+        if (p.soort() != Conditie.Predicaatsoort.LEEG && p.soort() != Conditie.Predicaatsoort.GEVULD) return null;
+        if (!(p.operand() instanceof Expr.AttribuutRef a) || attribuutOntbreekt(a)) return null;
+        String rol = naviRol(subject, a);
+        if (rol == null || EIGEN.equals(rol) || naarVeel(subject, a, rol)) return null;
+        String wortel = ident(rol, false), pad = wortel + "." + ident(a.attribuut(), false);
+        return p.soort() == Conditie.Predicaatsoort.LEEG
+                ? "(" + wortel + " == null || " + pad + " == null)"
+                : "(" + wortel + " != null && " + pad + " != null)";
+    }
+
     private String operand(Expr e, Objecttype subject) {
         if (e instanceof Expr.AttribuutRef a) {
             if (attribuutOntbreekt(a)) return todo("navigatie", a.bron());

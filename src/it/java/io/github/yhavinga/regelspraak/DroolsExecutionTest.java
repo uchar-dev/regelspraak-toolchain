@@ -1176,6 +1176,42 @@ class DroolsExecutionTest {
         assertFalse(fouten.contains(eenzaam), () -> "een lege navigatie (geen partner) mag geen NPE geven; conservatief geen schending: " + fouten);
     }
 
+    @Test void genavigeerde_leeg_predikaat_is_waar_voor_een_afwezige_referentie() {
+        // p30 review (HIGH): "is leeg" over a to-one navigation must NOT use Drools "!." — "!." short-circuits
+        // to a non-match on a null reference, the WRONG answer for `is leeg` (typeringen Tabel 54: an absent
+        // value IS leeg -> waar). The reference is guarded explicitly so a partnerless person reads the
+        // navigated operand as empty and the leeg-gated rule FIRES.
+        String src = """
+            Objecttype de Persoon
+                de uitkomst Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel leegcheck
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 1 indien de leeftijd van zijn partner leeg is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("(partner == null || partner.leeftijd == null)"), () -> "leeg moet de referentie expliciet guarden:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Persoon eenzaam = new Persoon();                                          // geen partner -> leeftijd-van-partner is leeg -> vuurt
+        Persoon metPartner = new Persoon();
+        Persoon partner = new Persoon(); partner.setLeeftijd(new BigDecimal("40"));
+        metPartner.setPartner(partner);                                          // partner met leeftijd -> niet leeg -> niet
+        sessie.insert(eenzaam); sessie.insert(metPartner); sessie.insert(partner);
+        sessie.fireAllRules();   // must NOT NPE
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("1").compareTo(eenzaam.getUitkomst()),
+                () -> "een afwezige partner -> leeftijd-van-partner is leeg (Tabel 54 waar) -> vuurt, kreeg " + eenzaam.getUitkomst());
+        assertNull(metPartner.getUitkomst(), () -> "een gevulde partner-leeftijd is niet leeg -> niet gegated");
+    }
+
     @Test void consistentie_tekst_gelijkheid_met_beide_leeg_is_een_schending() {
         // typeringen Tabel 38: for a NON-numeriek "gelijk aan", BOTH operands empty evaluates to "fout"
         // (the numeriek Tabel 37 case is "waar"). A consistentie criterion is satisfied only when its
