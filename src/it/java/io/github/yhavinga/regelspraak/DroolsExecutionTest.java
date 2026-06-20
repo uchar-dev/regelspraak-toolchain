@@ -1273,6 +1273,39 @@ class DroolsExecutionTest {
         assertFalse(fouten.contains(g1), () -> "gelijke leeftijden -> consistent: " + fouten);
     }
 
+    @Test void consistentie_genavigeerde_operand_links_volgt_dezelfde_leegwaarde() {
+        // p41 symmetry: the navigated operand may be on the LEFT ("de roepnaam van zijn partner moet gelijk
+        // zijn aan de roepnaam"). The same explicit guards apply, so a partnerless person's empty left
+        // operand vs a gevuld right is onwaar (Tabel 38) -> a violation, without NPE.
+        String src = """
+            Objecttype de Persoon
+                de roepnaam Tekst;
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel naamcheck
+                geldig altijd
+                    De roepnaam van zijn partner moet gelijk zijn aan de roepnaam van een Persoon.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Persoon eenzaam = new Persoon(); eenzaam.setRoepnaam("Bo");                        // partner leeg (links) -> schending
+        Persoon a = new Persoon(); a.setRoepnaam("Ann");
+        Persoon b = new Persoon(); b.setRoepnaam("Ann"); a.setPartner(b); b.setPartner(a); // gelijk -> consistent
+        sessie.insert(eenzaam); sessie.insert(a); sessie.insert(b);
+        sessie.fireAllRules();   // must NOT NPE
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> ((Inconsistentie) o).getSubject()).toList();
+        sessie.dispose();
+
+        assertTrue(fouten.contains(eenzaam), () -> "lege LINKER-navigatie vs gevuld is onwaar -> schending: " + fouten);
+        assertFalse(fouten.contains(a), () -> "gelijke roepnamen -> consistent: " + fouten);
+    }
+
     @Test void consistentie_genavigeerde_ordening_telt_lege_navigatie_als_schending() {
         // p41: ordening (Tabel 40-43) over a to-one navigation — any empty operand is "onwaar", so a person
         // whose partner is absent violates "moet kleiner zijn dan de leeftijd van zijn partner", without NPE.
