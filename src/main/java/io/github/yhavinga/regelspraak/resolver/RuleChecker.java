@@ -2,6 +2,7 @@ package io.github.yhavinga.regelspraak.resolver;
 
 import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
+import io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie;
 import io.github.yhavinga.regelspraak.ir.Geldigheid;
 import io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
@@ -439,40 +440,60 @@ final class RuleChecker {
         String rolB = stripArtikel(src(fc.kaleNaam(0)));               // LHS role — the relation being created
         Objecttype anker = bouwer.resolveOnderwerp(fc.onderwerp(0));   // the "one" side / iterated subject
         KaleNaamContext rhs = fc.kaleNaam(1);
-        String rolC = stripArtikel(src(rhs.kaleNaamDeel(0)));          // RHS role — the existing navigation
-        boolean meerHops = rhs.kaleNaamDeel().size() > 1;             // role part itself navigates further -> multi-hop
-        // onderwerpD must DIRECTLY name the anker objecttype (a back-reference to the iterated subject),
-        // not merely resolve to the same type through a role: "de vlucht" lifts, but "de aansluitvlucht"
-        // (a different flight of the same type reached by a role) must WARN, not silently reuse the
-        // anker's own join. A type-identity test cannot tell them apart, so check the written noun.
+        java.util.List<KaleNaamDeelContext> delen = rhs.kaleNaamDeel();
+        String rolC = stripArtikel(src(delen.get(0)));                 // RHS role — the FINAL hop onto the doel
+        // onderwerpD must be a back-reference to the iterated anker ITSELF, not a different object of the
+        // same type reached by a role: "de vlucht" lifts, but "de aansluitvlucht" must WARN, not silently
+        // reuse the anker's own join. It denotes the anker when its written noun matches the ANKER's own
+        // written noun (the anker may itself be named by a role — "een vastgestelde contingent treinmiles" —
+        // so a type-name-only test is too strict); the strict type match is kept as an additional path.
+        String ankerNoun = bouwer.primaireNaamVanOnderwerp(fc.onderwerp(0));
         String terugNoun = bouwer.primaireNaamVanOnderwerp(fc.onderwerp(1));
         boolean directeAnker = anker != null && terugNoun != null
-                && model.objecttypeOpNaam(stripArtikel(terugNoun)) == anker;
+                && ((ankerNoun != null && stripArtikel(terugNoun).equalsIgnoreCase(stripArtikel(ankerNoun)))
+                    || model.objecttypeOpNaam(stripArtikel(terugNoun)) == anker);
 
-        String reden;
+        String reden = null;
         if (anker == null) reden = "anker-objecttype niet herleidbaar";
-        else if (meerHops) reden = "meerstaps-navigatie in de doelketen";
         else if (!directeAnker) reden = "doelketen verwijst niet rechtstreeks naar de anker (geen back-reference)";
         else {
-            Objecttype doel = model.rolDoeltypeNaarSubject(anker, rolC);
-            String joinVeld = model.verbindendeRolViaElementnaam(anker, rolC); // existing rolC relation's field on doel
-            String zetVeld  = model.verbindendeRolViaElementnaam(anker, rolB); // the NEW relation's field on doel
-            if (doel == null || joinVeld == null || zetVeld == null)
-                reden = "rol of feittype niet eenduidig te herleiden";
-            else if (joinVeld.equalsIgnoreCase(zetVeld))
-                reden = "de nieuwe en de bestaande relatie vallen samen (zelfde referentieveld)";
-            // The reference field lives on the MANY side, pointing at the ONE side (§13.3.9.1 cardinaliteit;
-            // the convention objectCreatie links by). So both the join (rolC) and the set (rolB) field exist
-            // on doel only when doel is the MANY side of BOTH relations. If doel is the "één" side, the field
-            // belongs on the anker instead — emit nothing (Drools would reject the setter, or worse link the
-            // wrong way) and WARN. This also covers the under-determined non-wederkerig self-relation.
-            else if (!(model.naarVeelRol(anker, doel, rolC) && model.naarVeelRol(anker, doel, rolB)))
-                reden = "referentieveld hoort aan de meervoudige kant; het doel is hier niet de meervoudige kant";
-            else {
-                Conditie effectief = doelVoorwaarde(voorwaarde, vd, anker, doel, rolC);
-                model.feitCreaties.add(new io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie(
-                        naam, anker, doel, zetVeld, joinVeld, effectief, geldigheid));
-                return;
+            // Walk the §9.4 navigation chain anker -> … -> doel-parent. The written kaleNaamDeel are outside-in
+            // (rolC at index 0, the innermost hop last), so the hops from the anker are the segments in REVERSE
+            // (index size-1 down to 1); segment 0 (rolC) is the final hop onto the doel. The reference field
+            // lives on the many side: a to-many hop keeps it on the child (joined `child(veld == $prev)`), a
+            // to-one hop on the parent (joined `child(this == $prev.veld)`) — the side objectcreatie set it on.
+            java.util.List<ResolvedFeitCreatie.Tussenstap> stappen = new ArrayList<>();
+            Objecttype cur = anker;
+            for (int i = delen.size() - 1; i >= 1; i--) {
+                String role = stripArtikel(src(delen.get(i)));
+                Objecttype next = model.rolDoeltypeNaarSubject(cur, role);
+                if (next == null) { reden = "tussenstap-rol '" + role + "' niet eenduidig te herleiden"; break; }
+                boolean naarVeel = model.naarVeelRol(cur, next, role);
+                String veld = naarVeel ? model.verbindendeRolViaElementnaam(cur, role) : model.verbindendeRol(cur, next);
+                if (veld == null) { reden = "referentieveld voor tussenstap '" + role + "' niet herleidbaar"; break; }
+                stappen.add(new ResolvedFeitCreatie.Tussenstap(next, veld, !naarVeel));
+                cur = next;
+            }
+            if (reden == null) {
+                Objecttype doel = model.rolDoeltypeNaarSubject(cur, rolC);
+                String joinVeld = model.verbindendeRolViaElementnaam(cur, rolC); // existing rolC relation's field on doel
+                String zetVeld  = model.verbindendeRolViaElementnaam(anker, rolB); // the NEW relation's field on doel -> anker
+                if (doel == null || joinVeld == null || zetVeld == null)
+                    reden = "rol of feittype niet eenduidig te herleiden";
+                else if (joinVeld.equalsIgnoreCase(zetVeld))
+                    reden = "de nieuwe en de bestaande relatie vallen samen (zelfde referentieveld)";
+                // The reference field lives on the MANY side, pointing at the ONE side (§13.3.9.1 cardinaliteit;
+                // the convention objectCreatie links by). Both the final join (rolC, from the last hop) and the
+                // set (rolB, from the anker) field exist on doel only when doel is the MANY side of BOTH — else
+                // the field belongs on the other side and a setter would be rejected or link the wrong way. WARN.
+                else if (!(model.naarVeelRol(cur, doel, rolC) && model.naarVeelRol(anker, doel, rolB)))
+                    reden = "referentieveld hoort aan de meervoudige kant; het doel is hier niet de meervoudige kant";
+                else {
+                    Conditie effectief = doelVoorwaarde(voorwaarde, vd, anker, doel, rolC);
+                    model.feitCreaties.add(new io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie(
+                            naam, anker, doel, zetVeld, joinVeld, stappen, effectief, geldigheid));
+                    return;
+                }
             }
         }
         model.diagnostics.add(new Diagnostic(Severity.WARNING,

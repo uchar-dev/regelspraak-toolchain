@@ -6,6 +6,7 @@ import io.github.yhavinga.regelspraak.facts.Burger;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
 import io.github.yhavinga.regelspraak.facts.Cirkel;
+import io.github.yhavinga.regelspraak.facts.Contingent;
 import io.github.yhavinga.regelspraak.facts.Heffing;
 import io.github.yhavinga.regelspraak.facts.Inconsistentie;
 import io.github.yhavinga.regelspraak.facts.Kandidaat;
@@ -2429,6 +2430,56 @@ class DroolsExecutionTest {
         sessie.fireAllRules();
         sessie.dispose();
         assertNull(a.getBonusvlucht(), () -> "een hij-guard voor de anker mag geen doel-relatie creëren");
+    }
+
+    @Test void feitcreatie_meerstaps_legt_de_relatie_over_de_navigatieketen() {
+        // §9.4 (Figure 17) — the canonical multi-hop feitcreatie: the doel is reached from the anker over
+        // a CHAIN, Contingent -> Vlucht -> passagier. The to-one hop reads the parent's forward reference
+        // (Vlucht this == $subject.contingentvlucht), the to-many hop the child's back reference
+        // (Passagier reis == $t0); the new relation is set on each reached passagier.
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de naam Tekst;
+            Objecttype de Contingent
+                de naam Tekst;
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype contingentrelatie
+                de contingentvlucht Vlucht
+                de contingent Contingent
+            Eén contingentvlucht heeft één contingent
+            Feittype bonusrelatie
+                de bonuscontingent Contingent
+                de bonuspassagier Passagier
+            Eén bonuscontingent kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een contingent is een passagier van de contingentvlucht van het contingent.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("$t0 : Vlucht( this == $subject.contingentvlucht )"), () -> drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht vlucht = new Vlucht();
+        Vlucht andere = new Vlucht();
+        Contingent c = new Contingent(); c.setContingentvlucht(vlucht);
+        Passagier p1 = new Passagier(); p1.setReis(vlucht);   // op de contingent-vlucht -> gekoppeld
+        Passagier p2 = new Passagier(); p2.setReis(vlucht);   // idem
+        Passagier q = new Passagier();  q.setReis(andere);    // andere vlucht -> niet
+        sessie.insert(vlucht); sessie.insert(andere); sessie.insert(c);
+        sessie.insert(p1); sessie.insert(p2); sessie.insert(q);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertSame(c, p1.getBonuscontingent(), () -> "p1 op de contingent-vlucht moet gekoppeld zijn");
+        assertSame(c, p2.getBonuscontingent(), () -> "p2 op de contingent-vlucht moet gekoppeld zijn");
+        assertNull(q.getBonuscontingent(), () -> "een passagier van een andere vlucht mag niet gekoppeld zijn");
     }
 
     @Test void feitcreatie_met_anker_kenmerk_voorwaarde_vuurt_alleen_voor_passende_ankers() {

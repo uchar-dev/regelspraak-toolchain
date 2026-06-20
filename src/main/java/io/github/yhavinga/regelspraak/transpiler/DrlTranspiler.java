@@ -396,8 +396,21 @@ public final class DrlTranspiler {
         out.append("    ").append(SUBJECT).append(" : ").append(ident(anker.naam, true)).append("( ").append(ankerC).append(" )\n");
         for (String acc : accumulates) out.append("    ").append(acc).append('\n');
         if (tijdgebondenGeldigheid(fc.geldigheid())) out.append("    ").append(geldigheidGuard(fc.geldigheid())).append('\n');
+        // §9.4 multi-hop: bind each intermediate object on the path anker -> … -> doel, then join the doel to
+        // the last one. A to-many hop reads the child's back-reference (veld == $prev); a to-one hop reads the
+        // parent's forward reference (this == $prev.veld). $prev is the anker for the first step.
+        String vorige = SUBJECT;
+        int t = 0;
+        for (io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie.Tussenstap stap : fc.tussenstappen()) {
+            String var = "$t" + t++;
+            out.append("    ").append(var).append(" : ").append(ident(stap.type().naam, true)).append("( ");
+            if (stap.viaOuderVeld()) out.append("this == ").append(vorige).append('.').append(ident(stap.veld(), false));
+            else out.append(ident(stap.veld(), false)).append(" == ").append(vorige);
+            out.append(" )\n");
+            vorige = var;
+        }
         out.append("    $doel : ").append(ident(doel.naam, true)).append("( ")
-           .append(ident(fc.joinVeld(), false)).append(" == ").append(SUBJECT);
+           .append(ident(fc.joinVeld(), false)).append(" == ").append(vorige);
         if (!doelExtra.isEmpty()) out.append(", ").append(doelExtra);
         out.append(" )\n");
         out.append("then\n    modify($doel) {\n        ")

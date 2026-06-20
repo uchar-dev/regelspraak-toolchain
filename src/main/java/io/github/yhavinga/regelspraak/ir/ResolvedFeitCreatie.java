@@ -13,19 +13,29 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
  * {@code Passagier.reis -> Vlucht}). So creation is a {@code modify}-set of {@code zetVeld} — the
  * anker-side role of {@code rolB}'s feittype — on each matching {@code doel}.
  *
- * <p>Only the 1-hop shape lifts into this record: {@code onderwerpD} is the {@code anker} itself,
- * reached from it by the single role {@code rolC}, whose existing relation's reference field is
- * {@code joinVeld}. A multi-hop navigation ("… van de reis van het contingent") cannot be expressed
- * as one join field and stays an honest WARNING in the resolver (it never reaches this record).
+ * <p>The §9.4 canonical example is MULTI-HOP: {@code onderwerpD} reaches the {@code anker} through a chain
+ * of intermediate objects ("… een passagier van de reis met treinmiles van het vastgestelde contingent
+ * treinmiles": Contingent &rarr; Vlucht &rarr; Natuurlijk persoon). {@code tussenstappen} captures those
+ * intermediate hops from the anker; the {@code joinVeld} then joins the {@code doel} to the LAST step,
+ * or — for the 1-hop shape, with {@code tussenstappen} empty — directly to the anker.
  *
- * @param naam       the regel name
- * @param anker      the onderwerp1 object type — the "one" side, the rule's iterated subject
- * @param doel       the filler object type — the "many" side, filling both {@code rolB} and {@code rolC}
- * @param zetVeld    the reference field on {@code doel} -&gt; {@code anker} for the NEW feittype (set in the consequence)
- * @param joinVeld   the reference field on {@code doel} -&gt; {@code anker} for the EXISTING {@code rolC} relation (joined in the when)
- * @param voorwaarde the condition guarding the creation (on the anker), or null
- * @param geldigheid the §13.4.2.5 validity window ({@link Geldigheid#ALTIJD} if always)
+ * @param naam          the regel name
+ * @param anker         the onderwerp1 object type — the "one" side, the rule's iterated subject
+ * @param doel          the filler object type — the "many" side of both {@code rolB} and the final {@code rolC} hop
+ * @param zetVeld       the reference field on {@code doel} -&gt; {@code anker} for the NEW feittype (set in the consequence)
+ * @param joinVeld      the reference field on {@code doel} for the EXISTING final-hop relation (joined in the when)
+ * @param tussenstappen the intermediate objects on the navigation path anker &rarr; … &rarr; doel-parent (empty = 1-hop)
+ * @param voorwaarde    the condition guarding the creation (on the anker or doel), or null
+ * @param geldigheid    the §13.4.2.5 validity window ({@link Geldigheid#ALTIJD} if always)
  */
 public record ResolvedFeitCreatie(String naam, Objecttype anker, Objecttype doel,
                                   String zetVeld, String joinVeld,
-                                  Conditie voorwaarde, Geldigheid geldigheid) {}
+                                  java.util.List<Tussenstap> tussenstappen,
+                                  Conditie voorwaarde, Geldigheid geldigheid) {
+    /** One intermediate object on the §9.4 multi-hop navigation path from {@code anker} to {@code doel}.
+     *  The reference field lives on the many side (§13.3.9.1): for a TO-MANY hop the CHILD ({@code type})
+     *  holds it, joined {@code type( veld == $prev )}; for a TO-ONE hop the PARENT holds it (the side
+     *  objectcreatie set it on), joined {@code type( this == $prev.veld )} — {@code viaOuderVeld} selects
+     *  which. {@code $prev} is the anker for the first step, the prior step otherwise. */
+    public record Tussenstap(Objecttype type, String veld, boolean viaOuderVeld) {}
+}

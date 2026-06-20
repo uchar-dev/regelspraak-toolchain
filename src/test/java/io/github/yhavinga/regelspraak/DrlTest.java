@@ -762,9 +762,10 @@ class DrlTest {
                 () -> "de nieuwe relatie wordt als referentieveld gezet:\n" + drl);
     }
 
-    @Test void feitcreatie_meerstaps_blijft_een_eerlijke_waarschuwing() {
-        // The TOKA shape: onderwerpD navigates anker -> Vlucht -> passagiers. One join field cannot
-        // express that, so it must stay a WARNING, never a silently-wrong relation rule.
+    @Test void feitcreatie_meerstaps_lowert_naar_een_ketenjoin() {
+        // The §9.4 TOKA shape: onderwerpD navigates anker -> Vlucht -> passagier. It lowers to a CHAIN of
+        // patterns: a to-one hop reads the parent's forward reference (this == $subject.contingentvlucht),
+        // a to-many hop reads the child's back reference (reis == $t0). The relation is set on the doel.
         String src = """
             Objecttype de Vlucht
                 de naam Tekst;
@@ -786,15 +787,17 @@ class DrlTest {
             Eén bonuscontingent kent meerdere bonuspassagiers
             Regel ken bonus toe
                 geldig altijd
-                    Een bonuspassagier van een contingent is een passagier van de reis van het contingent.
+                    Een bonuspassagier van een contingent is een passagier van de contingentvlucht van het contingent.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertFalse(drl.contains("rule \"ken bonus toe\""),
-                () -> "een meerstaps-feitcreatie mag geen relatie-regel emitteren:\n" + drl);
-        assertTrue(m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
-                        && d.message().contains("feitcreatie") && d.message().contains("meerstaps")),
-                () -> "een meerstaps-feitcreatie moet een eerlijke waarschuwing geven: " + m.diagnostics);
+        assertTrue(drl.contains("$subject : Contingent("), () -> "anker-patroon ontbreekt:\n" + drl);
+        assertTrue(drl.contains("$t0 : Vlucht( this == $subject.contingentvlucht )"),
+                () -> "to-one tussenstap moet de ouder-referentie lezen:\n" + drl);
+        assertTrue(drl.contains("$doel : Passagier( reis == $t0 )"),
+                () -> "de doel-join moet naar de laatste tussenstap wijzen:\n" + drl);
+        assertTrue(drl.contains("setBonuscontingent( $subject )"), () -> "de relatie moet op de doel gezet worden:\n" + drl);
     }
 
     /** Vlucht/Passagier with the existing "passagier" relation plus a NEW relation whose roles +
