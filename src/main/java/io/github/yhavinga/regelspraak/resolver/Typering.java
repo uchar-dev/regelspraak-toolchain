@@ -212,6 +212,11 @@ public final class Typering {
         // §6.1.2: a result may be assigned only when its decimal count does not exceed the
         // attribute's; a higher-precision result must first be explicitly rounded (§6.1.3). The
         // value's precision already reflects any afronding wrapper (Expr.Afgerond.type()).
+        // An UNBOUNDED target (§13.3.3 form (c) "getal") has no precision ceiling — it accepts any
+        // number of decimals — so the check does not apply. Without this, an unbounded target reads
+        // decimalenVan == 0 (the sentinel) and is wrongly treated like a "geheel getal" (cap 0),
+        // rejecting any decimal value as over-precise (the false positive p33 reproduced).
+        if (doel.onbeperkt()) return null;
         int dv = decimalenVan(waarde), dd = decimalenVan(doel);
         if (dv > dd)
             return "het toe te kennen resultaat heeft meer decimalen (" + dv + ") dan het attribuut toelaat ("

@@ -46,6 +46,17 @@ public sealed interface Datatype
     default boolean isDatum()      { return this instanceof DatumInDagen || this instanceof DatumTijd; }
     default boolean isOnbekend()   { return this instanceof Onbekend; }
 
+    /** §13.3.3 form (c) "getal": an unbounded numeriek/percentage — any number of decimals, no
+     *  precision ceiling. The three getalspecificatie forms are encoded as: (a) "geheel getal"
+     *  = geheel∧0; (b) "getal met x decimalen" = ¬geheel∧x≥1; (c) "getal" = ¬geheel∧0. So a
+     *  decimalen of 0 is unbounded precisely when the type is NOT a whole number — the geheel
+     *  flag is what tells form (c) apart from form (a), both of which carry decimalen 0. */
+    default boolean onbeperkt() {
+        if (this instanceof Numeriek n)   return !n.geheel() && n.decimalen() == 0;
+        if (this instanceof Percentage p) return !p.geheel() && p.decimalen() == 0;
+        return false;
+    }
+
     /** The unit of a Numeriek, or null. */
     default Eenheid eenheidOf() {
         return (this instanceof Numeriek n) ? n.eenheid() : null;

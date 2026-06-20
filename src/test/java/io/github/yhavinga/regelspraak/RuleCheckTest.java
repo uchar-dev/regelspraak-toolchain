@@ -546,6 +546,45 @@ class RuleCheckTest {
         assertTrue(m.errors().isEmpty(), () -> "geen §6.1.2-fout verwacht voor passende precisie: " + m.errors());
     }
 
+    @Test void onbeperkt_getal_doel_accepteert_elke_precisie_geen_6_1_2_fout() {
+        // p33: §13.3.3 form (c) "getal" is UNBOUNDED — no precision ceiling. Assigning a decimal value
+        // to a Numeriek (getal) target must NOT trip §6.1.2 (the false positive: the unbounded target
+        // read as decimalen 0 like a geheel getal). The geheel-getal and 2-decimal ceilings still apply.
+        String src = """
+            Objecttype de Ding
+                de vrij Numeriek (getal);
+                de geheel Numeriek (geheel getal);
+                de prijs Numeriek (getal met 2 decimalen);
+            Regel a
+                geldig altijd
+                    De vrij van een Ding moet gesteld worden op 1,5.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(),
+                () -> "een onbeperkt 'getal'-doel mag geen §6.1.2-fout geven: " + m.errors());
+
+        // control: the bounded ceilings are NOT relaxed — a decimal into geheel getal, and a 3-decimal
+        // value into a 2-decimal attribute, both still error.
+        RegelSpraakModel geheelFout = Resolver.resolve("""
+            Objecttype de Ding
+                de geheel Numeriek (geheel getal);
+            Regel r
+                geldig altijd
+                    De geheel van een Ding moet gesteld worden op 1,5.
+            """);
+        assertTrue(geheelFout.errors().stream().anyMatch(d -> d.message().contains("decimalen")),
+                () -> "geheel-getal-plafond moet blijven gelden: " + geheelFout.errors());
+        RegelSpraakModel prijsFout = Resolver.resolve("""
+            Objecttype de Ding
+                de prijs Numeriek (getal met 2 decimalen);
+            Regel r
+                geldig altijd
+                    De prijs van een Ding moet gesteld worden op 1,234.
+            """);
+        assertTrue(prijsFout.errors().stream().anyMatch(d -> d.message().contains("decimalen")),
+                () -> "2-decimalen-plafond moet blijven gelden: " + prijsFout.errors());
+    }
+
     @Test void percentage_van_decimaal_attribuut_naar_geheel_getal_geen_fout() {
         // p22 review (HIGH false positive, fixed): §4.8 makes "X% van Y" an exact fraction with no
         // decimal precision of its own (it shares only Y's unit), so 50% van prijs(2 dec) must NOT

@@ -337,6 +337,15 @@ wrapper now reports the rounded precision (`Expr.Afgerond.type()` returns the ba
 `decimalen` set to the rounding's), which is exactly what makes the rounded form pass. A read of a
 2-decimal attribute into a geheel-getal attribute is likewise flagged.
 
+An **unbounded target** (§13.3.3 form (c) "getal" — `geheel=false, decimalen=0`) carries no precision
+ceiling, so the check does not apply to it: assigning a decimal value to a `Numeriek (getal)` attribute
+is always valid. The `decimalen 0` field is an overloaded sentinel — it means both "geheel getal"
+(form (a), bounded at 0) and "getal" (form (c), unbounded), and only the `geheel` flag tells them apart
+(`Datatype.onbeperkt()` encodes this). Before this guard an unbounded target read `decimalenVan == 0`
+and was wrongly capped like a whole number, rejecting any decimal value (p33; the same sentinel overload
+mislabels a min/max-of-unbounded as `geheel` for the elfproef check — carded p35, currently unobservable
+because the elfproef type-check does not yet fire in a voorwaarde, p34).
+
 To keep the check free of *false positives*, two result types that would otherwise over-report were
 made precision-conservative: `percentage van` (§4.8) is an exact fraction that shares only its
 operand's unit, so it no longer inherits the operand's decimal count (`50% van prijs(2 dec) → geheel

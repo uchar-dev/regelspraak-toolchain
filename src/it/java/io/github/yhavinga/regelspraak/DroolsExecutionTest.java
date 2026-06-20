@@ -117,6 +117,33 @@ class DroolsExecutionTest {
         assertFalse(jong.isGepensioneerd(), "30 > grens(67) had niet mogen vuren");
     }
 
+    @Test void onbeperkt_getal_doel_neemt_een_decimaalwaarde_aan_en_vuurt() {
+        // p33: assigning a 2-decimal value to an unbounded Numeriek (getal) target used to be rejected
+        // by a spurious §6.1.2 precision error (the unbounded sentinel read as a 0-decimal ceiling), so
+        // the rule never resolved. Now it resolves and fires, copying the decimal value intact.
+        String src = """
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (getal);
+            Parameter de basis : Numeriek (getal met 2 decimalen)
+            Regel zet
+                geldig altijd
+                    De totaalprijs van een Vlucht moet gesteld worden op de basis.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "onbeperkt doel mag geen §6.1.2-fout geven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        sessie.setGlobal("basis", new BigDecimal("12.34"));
+        Vlucht v = new Vlucht();
+        sessie.insert(v);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("12.34").compareTo(v.getTotaalprijs()),
+                () -> "verwacht 12.34 ongewijzigd, kreeg " + v.getTotaalprijs());
+    }
+
     @Test void aggregatie_accumuleert_over_de_join() {
         String src = """
             Objecttype de Vlucht
