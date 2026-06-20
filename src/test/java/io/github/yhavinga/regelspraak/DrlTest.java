@@ -1061,4 +1061,63 @@ class DrlTest {
         assertFalse(m.diagnostics.stream().anyMatch(d -> d.message().contains("controleert niets")),
                 () -> "een geldige consistentie mag geen lowering-WARNING geven: " + m.diagnostics);
     }
+
+    /** A subject with an attribute + a single-word and multi-word kenmerk, related to a navigated type by a
+     *  to-one and a to-many role — the scaffold for the navigated-kenmerk condition tests. */
+    private static String navKenmerkBron(String regelBody) {
+        return """
+            Objecttype de Persoon
+                de uitkomst Numeriek (geheel getal);
+            Objecttype de Woning
+                is leegstaand kenmerk (bijvoeglijk);
+                is bereikbaar per trein kenmerk (bijvoeglijk);
+            Feittype bewoning
+                de bewoner Persoon
+                de woning Woning
+            Eén bewoner heeft één woning
+            Feittype eigendom
+                de eigenaar Persoon
+                de bezitting (mv: bezittingen) Woning
+            Eén eigenaar heeft meerdere bezittingen
+            Regel r
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 1
+                    """ + regelBody + "\n";
+    }
+
+    @Test void navigatie_kenmerk_to_one_lowert_met_nullguard() {
+        String drl = DrlTranspiler.transpile(Resolver.resolve(
+                navKenmerkBron("indien de woning van een Persoon leegstaand is.")));
+        assertTrue(drl.contains("woning != null && woning.leegstaand == true"),
+                () -> "een to-one navigated kenmerk moet null-guarded lowereren:\n" + drl);
+    }
+
+    @Test void navigatie_kenmerk_meerwoordig_lowert() {
+        // Review D2: the greedy parse absorbs the leading kenmerk words ("bereikbaar per") into the operand;
+        // the resolver must reconstruct the full kenmerk so a multi-word navigated kenmerk binds.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(
+                navKenmerkBron("indien de woning van een Persoon bereikbaar per trein is.")));
+        assertTrue(drl.contains("woning.bereikbaarPerTrein == true"),
+                () -> "een meerwoordig navigated kenmerk moet lowereren:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "het mag geen marker blijven:\n" + drl);
+    }
+
+    @Test void navigatie_kenmerk_naar_veel_blijft_marker() {
+        // Review D1: a to-many role written plural ("de bezittingen") must NOT leak to a scalar constraint
+        // (uncompilable) — the canonical role normalisation makes the to-many test see it.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(
+                navKenmerkBron("indien de bezittingen van een Persoon leegstaand is.")));
+        assertTrue(drl.contains("/* TODO"), () -> "een to-many navigated kenmerk moet een marker zijn:\n" + drl);
+        assertFalse(drl.contains("bezittingen.leegstaand"), () -> "het mag niet als scalar lowereren:\n" + drl);
+    }
+
+    @Test void navigatie_kenmerk_negatie_blijft_marker() {
+        // Review D3: a negated navigated kenmerk ("niet leegstaand") must stay a marker, never silently
+        // lower to the INVERTED positive constraint.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(
+                navKenmerkBron("indien de woning van een Persoon niet leegstaand is.")));
+        assertTrue(drl.contains("/* TODO"), () -> "een genegeerd navigated kenmerk moet een marker zijn:\n" + drl);
+        assertFalse(drl.contains("woning.leegstaand == true"),
+                () -> "het mag niet naar de geïnverteerde positieve constraint lowereren:\n" + drl);
+    }
 }

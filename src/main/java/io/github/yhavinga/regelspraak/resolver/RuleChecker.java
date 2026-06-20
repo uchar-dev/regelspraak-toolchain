@@ -684,14 +684,39 @@ final class RuleChecker {
     /** §8.1.8 navigated: "de &lt;rol&gt; van X is &lt;kenmerk&gt;" — the kenmerk is on the object the rol
      *  reaches, not the subject. Lowered when the rol is a TO-ONE navigation from the subject (so the
      *  property path {@code rol.kenmerk} reads one object); a TO-MANY navigation needs an exists/forall and
-     *  stays a marker, as does an unresolvable rol or a kenmerk the navigated type does not declare. */
-    private Conditie navigatieKenmerk(Expr lhs, String kenmerkNaam, String bron) {
+     *  stays a marker, as does an unresolvable rol or a kenmerk the navigated type does not declare. The rol
+     *  is normalised to its declared name (a plural "de passagiers" is the same role as "de passagier"), so
+     *  the to-many test and the emitted reference field are the canonical one. */
+    private Conditie navigatieKenmerk(Expr lhs, String staart, String bron) {
         if (!(lhs instanceof Expr.AttribuutRef a) || a.objecttype() == null) return null;
-        String rol = a.attribuut();
-        Objecttype doel = model.rolDoeltypeNaarSubject(a.objecttype(), rol);
-        if (doel == null || model.naarVeelRol(a.objecttype(), doel, rol)) return null; // unknown / to-many -> marker
-        String gevonden = KenmerkMatcher.vind(doel, kenmerkNaam);
+        Objecttype subject = a.objecttype();                                       // the onderwerp the navigation is from
+        Objecttype doel = model.rolDoeltypeNaarSubject(subject, a.attribuut());
+        if (doel == null) return null;
+        String rol = model.verbindendeRolViaNaam(subject, doel, a.attribuut());     // canonical role / reference field
+        if (rol == null) rol = a.attribuut();
+        if (model.naarVeelRol(subject, doel, rol)) return null;                     // to-many -> marker (needs exists/forall)
+        // The greedy onderwerp parse can absorb a multi-word kenmerk's leading words — or a "niet" — into
+        // the operand AFTER the navigated onderwerp. Reconstruct the full kenmerk = that absorbed tail + the
+        // operator's kaleNaam, so a multi-word kenmerk binds and an unsupported "niet …" simply fails to
+        // match the declared kenmerk and stays a marker (never a silently-inverted positive constraint).
+        String tail = navigatieStaart(a);
+        String kenmerk = tail.isEmpty() ? staart : tail + " " + staart;
+        String gevonden = KenmerkMatcher.vind(doel, kenmerk);
         return gevonden != null ? new Conditie.Kenmerk(gevonden, rol, bron) : null;
+    }
+
+    /** The words the greedy operand parse absorbed AFTER the navigated "de &lt;rol&gt; van &lt;onderwerp&gt;"
+     *  (the leading words of a multi-word kenmerk, or a "niet") — empty for a clean navigation. Found as the
+     *  operand text following the onderwerp's object-type name. */
+    private static String navigatieStaart(Expr.AttribuutRef a) {
+        String b = a.bron() == null ? "" : a.bron();
+        // The onderwerp type name as a WHOLE word (so a kenmerk word merely containing it as a substring
+        // does not mis-split); take the text after its last occurrence.
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(?i)\\b" + java.util.regex.Pattern.quote(a.objecttype().naam) + "\\b").matcher(b);
+        int eind = -1;
+        while (m.find()) eind = m.end();
+        return eind < 0 ? "" : b.substring(eind).trim();
     }
 
     /** When the condition operand denotes the rule subject, the part of a multi-word kenmerk the
