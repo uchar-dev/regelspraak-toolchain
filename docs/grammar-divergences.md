@@ -882,13 +882,16 @@ criterium`) are the resolver's `COMPLEX` method and stay markers — they are ge
 
 **Two deliberate divergences, both carded (corpus-invisible: TOKA's woonregio factor is always populated):**
 
-1. **Empty weight = exclude, not Fout.** §9.7.6 Tabel 19 makes an *empty* weight on any recipient a **Fout**
-   for the whole verdeling. We instead exclude the weightless recipient from `Σ` and leave it unassigned
-   (the weighted recipients still share the total). The faithful "suppress the whole distribution and surface
-   the Fout" form needs either a second `accumulate` / a `not` CE — which, because the consequence does
-   `modify($r)`, cancels the sibling recipient activations under `no-loop` so only ONE recipient fires
-   (verified empirically against Drools 8.44) — or an inserted `Inconsistentie` fact. Both are beyond this
-   slice; the exclude reading at least fires correctly and is documented, never a silent crash.
+1. **Empty weight surfaces a Fout (Inconsistentie), but the distribution is not suppressed.** §9.7.6 Tabel 19
+   makes an *empty* weight on any recipient a **Fout** for the whole verdeling. The Fout is now surfaced: a
+   SEPARATE, modify-free rule `"<naam> (leeg gewicht)"` fires `exists Doel(join==$subject, weight==null)` and
+   inserts an `Inconsistentie` (the §9.5 channel, idempotency-guarded, exactly like consistentie/uniciteit). It
+   must be a separate rule — a second `accumulate` / a `not` CE on the `modify($r)` distribution rule cancels
+   the sibling recipient activations under `no-loop` so only ONE recipient fires (verified vs Drools 8.44). What
+   REMAINS divergent: the distribution is still exclude-and-redistribute (the weighted recipients keep their
+   shares) rather than suppressed-entirely, because expressing "set no shares when any weight is empty" needs
+   precisely the CE that triggers the cancellation. So the final state on a fout verdeling is {weighted shares
+   set + an Inconsistentie present} — the Fout is detectable, but the shares are not withheld. Carded.
 
 2. **Plain naar rato into an integer target keeps the fraction.** §6.1.2 forbids implicit rounding: a
    fractional share (e.g. 1001 over 3,2 → 600,6) assigned to a `geheel getal` attribute requires an explicit

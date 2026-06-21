@@ -1822,4 +1822,31 @@ class DrlTest {
         assertFalse(drl.contains("getLabel()"),
                 () -> "een Tekst-weging mag geen getter/sum/multiply emitteren (onsamenstelbare DRL):\n" + drl);
     }
+
+    @Test void verdeling_naar_rato_emitteert_een_lege_gewicht_inconsistentie_regel() {
+        // §9.7.6 Tabel 19: a naar-rato verdeling gets a SEPARATE modify-free Inconsistentie rule that fires
+        // when any recipient has an empty weight (exists … weight == null), distinct from the distribution rule.
+        String src = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel naar rato
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld naar rato van de gewicht.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rule \"verdeel naar rato (leeg gewicht)\""), () -> "geen aparte lege-gewicht regel:\n" + drl);
+        assertTrue(drl.contains("exists Deelnemer( pot == $subject, gewicht == null )"), () -> "geen exists-weegloos patroon:\n" + drl);
+        assertTrue(drl.contains("insert(new io.github.yhavinga.regelspraak.facts.Inconsistentie(\"verdeel naar rato\""), () -> "geen Inconsistentie-insert:\n" + drl);
+        // the Inconsistentie rule must NOT contain a modify (that would cancel the distribution's activations)
+        String legeRegel = drl.substring(drl.indexOf("(leeg gewicht)"));
+        assertFalse(legeRegel.substring(0, legeRegel.indexOf("\nend")).contains("modify"),
+                () -> "de lege-gewicht regel mag geen modify bevatten:\n" + legeRegel);
+    }
 }

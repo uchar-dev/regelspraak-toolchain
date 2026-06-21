@@ -1104,6 +1104,39 @@ class DroolsExecutionTest {
         assertNull(dx.getAandeel(), "een gewichtloze deelnemer mag geen aandeel krijgen");
     }
 
+    @Test void verdeling_naar_rato_met_leeg_gewicht_meldt_een_inconsistentie() {
+        // §9.7.6 Tabel 19: an empty weight on ANY recipient makes the verdeling a Fout — now surfaced as an
+        // Inconsistentie (the §9.5 channel). The Inconsistentie rule is SEPARATE from the distribution (a `not`/
+        // exists added to the modify rule cancels sibling recipient activations under no-loop), so the weighted
+        // recipients must STILL get their shares: this fires both and checks they coexist. A fully-weighted pot
+        // produces NO Inconsistentie (the `exists weight==null` guard discriminates per bron).
+        String drl = DrlTranspiler.transpile(Resolver.resolve(VERDELING_NAAR_RATO_SRC));
+        assertTrue(drl.contains("(leeg gewicht)"), () -> "geen lege-gewicht Inconsistentie-regel:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Pot fout = new Pot(); fout.setTotaal(new BigDecimal("120"));         // has a weightless recipient -> Fout
+        Deelnemer a1 = new Deelnemer(); a1.setPot(fout); a1.setGewicht(new BigDecimal("1"));
+        Deelnemer a2 = new Deelnemer(); a2.setPot(fout); a2.setGewicht(new BigDecimal("2"));
+        Deelnemer ax = new Deelnemer(); ax.setPot(fout);                     // weightless
+        Pot goed = new Pot(); goed.setTotaal(new BigDecimal("100"));         // all weighted -> no Fout
+        Deelnemer b1 = new Deelnemer(); b1.setPot(goed); b1.setGewicht(new BigDecimal("1"));
+        Deelnemer b2 = new Deelnemer(); b2.setPot(goed); b2.setGewicht(new BigDecimal("1"));
+        for (Object o : new Object[]{fout, a1, a2, ax, goed, b1, b2}) sessie.insert(o);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> ((Inconsistentie) o).getSubject()).toList();
+        sessie.dispose();
+
+        assertEquals(1, fouten.size(), () -> "precies één Inconsistentie verwacht (alleen de fout-pot), kreeg " + fouten.size());
+        assertSame(fout, fouten.get(0), "de Inconsistentie moet de fout-pot noemen, niet de goede");
+        // the separate rule did NOT cancel the distribution: weighted recipients of the fout-pot still share (sum 3)
+        assertEquals(0, new BigDecimal("40").compareTo(a1.getAandeel()), () -> "120·1/3 = 40, kreeg " + a1.getAandeel());
+        assertEquals(0, new BigDecimal("80").compareTo(a2.getAandeel()), () -> "120·2/3 = 80, kreeg " + a2.getAandeel());
+        assertNull(ax.getAandeel(), "de gewichtloze deelnemer krijgt geen aandeel");
+        // the good pot distributed normally (sum 2 -> 50/50)
+        assertEquals(0, new BigDecimal("50").compareTo(b1.getAandeel()), () -> "100·1/2 = 50, kreeg " + b1.getAandeel());
+    }
+
     @Test void cross_unit_optelling_wordt_omgerekend_niet_rauw_geteld() {
         // duur(mnd) := looptijd(jr) + duur(mnd). looptijd must be scaled jr->mnd (×12),
         // NOT added raw: 2 jr + 3 mnd = 27 mnd, not 5.

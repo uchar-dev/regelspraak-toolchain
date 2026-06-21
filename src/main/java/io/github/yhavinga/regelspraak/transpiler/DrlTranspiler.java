@@ -475,14 +475,15 @@ public final class DrlTranspiler {
             // §13.4.10 naar rato: each recipient gets total·weight/Σweight. The accumulate sums the weights of
             // the recipients that HAVE one, and $r binds the same set, so a weightless recipient is left unset
             // (its weight is null — there is no proportional basis) while the weighted ones share the total.
-            // DIVERGENCE: §9.7.6 Tabel 19 makes an empty weight on any recipient a "Fout" for the WHOLE
-            // verdeling, not a quietly smaller split. The faithful form (suppress the distribution and surface
-            // the Fout) needs either a second accumulate / `not` — which, with the modify in the consequence,
-            // cancels the sibling recipient activations under no-loop so only one recipient fires — or an
-            // inserted Inconsistentie fact. Both are out of this slice; the exclude-and-redistribute reading is
-            // documented (docs/grammar-divergences.md) and carded, and the corpus weight (woonregio factor) is
-            // always populated. A zero total weight (all weights 0) is guarded so the divide cannot throw — the
-            // spec leaves a zero divisor undefined, so no-op-not-crash is the safe reading.
+            // §9.7.6 Tabel 19 makes an empty weight on any recipient a "Fout" for the WHOLE verdeling: the Fout
+            // is now surfaced as a SEPARATE Inconsistentie rule (below), since it cannot ride on this rule — a
+            // second accumulate / `not` in a modify+no-loop rule cancels the sibling recipient activations so
+            // only one recipient fires (verified vs Drools 8.44). DIVERGENCE that remains: the distribution is
+            // NOT suppressed (the weighted recipients still receive shares) — expressing "no shares when any
+            // weight is empty" needs exactly the CE that triggers the cancellation, so it is unsolved; the
+            // exclude-and-redistribute split stays, now flagged by the Inconsistentie. Documented + carded. A
+            // zero total weight (all weights 0) is guarded so the divide cannot throw — the spec leaves a zero
+            // divisor undefined, so no-op-not-crash is the safe reading.
             String wNaam = ident(v.ratoAttribuut(), false), wGet = getter(v.ratoAttribuut());
             rule.clausule("accumulate( $c : " + ident(doel.naam, true) + "( " + j + ", " + wNaam
                             + " != null ) ; $sum : sum($c." + wGet + "()) )")
@@ -494,6 +495,22 @@ public final class DrlTranspiler {
         out.append(rule.geldigheid(v.geldigheid())
             .dan("    modify($r) {\n        " + setter(v.doelAttribuut()) + "( " + aandeel + " )\n    }\n")
             .render());
+        if (rato) {
+            // §9.7.6 Tabel 19: surface the empty-weight Fout via the §9.5 Inconsistentie channel — a SEPARATE,
+            // modify-free rule (so it cannot cancel the distribution's recipient activations), bound to the
+            // bron as $subject, firing once per bron that has a weightless recipient. The header is suffixed for
+            // a unique DRL rule name; the Inconsistentie's `regel` field stays the logical verdeling name (as
+            // uniciteitUnie does), so the idempotency guard keys off it.
+            String wNaam = ident(v.ratoAttribuut(), false);
+            out.append(new Regel(v.naam() + " (leeg gewicht)")
+                .clausule(SUBJECT + " : " + ident(bron.naam, true) + "(  )")
+                .clausule("exists " + ident(doel.naam, true) + "( " + ident(join, false) + " == " + SUBJECT
+                        + ", " + wNaam + " == null )")
+                .geldigheid(v.geldigheid())
+                .clausule(inconsistentieGuard(v.naam()))
+                .dan(inconsistentieDan(v.naam()))
+                .render());
+        }
     }
 
     /** §13.4.6 objectcreatie -> a rule that inserts a new fact, sets its attributes,
