@@ -83,17 +83,69 @@ public final class DrlTranspiler {
         return out.toString();
     }
 
+    /**
+     * One DRL rule under construction: an ordered list of "when" clauses (patterns, accumulates and
+     * guards, in the exact textual order they must appear) and a "then" consequence body. {@link #render}
+     * owns the rule header, the 4-space when-line indent, and the rule-name escaping — the structure that
+     * was hand-appended, identically, by every emitter. This is rule-ASSEMBLY only: the clause and value
+     * strings are still produced by the leaf emitters; here they are composed, not re-derived. An inert
+     * no-op rule (the resolver could not lower it) is just a Regel whose clauses are a {@code // onopgelost}
+     * comment and an {@code eval(true)} with an empty consequence — so the no-op is built structurally,
+     * not special-cased in the renderer.
+     */
+    private static final class Regel {
+        private final String naam;
+        private final List<String> when = new ArrayList<>();
+        private String then = "";
+
+        Regel(String naam) { this.naam = naam; }
+
+        /** Add one when-clause (a pattern, an accumulate, or a guard) — rendered as a single indented line. */
+        Regel clausule(String c) { when.add(c); return this; }
+        Regel clausules(List<String> cs) { when.addAll(cs); return this; }
+        /** The §4.2 validity guard — added only for a time-bounded version, so an "altijd" rule is unchanged. */
+        Regel geldigheid(io.github.yhavinga.regelspraak.ir.Geldigheid g) {
+            if (tijdgebondenGeldigheid(g)) when.add(geldigheidGuard(g));
+            return this;
+        }
+        /** The consequence body: the text between {@code then} and {@code end}, each line already 4-space
+         *  indented and newline-terminated (empty for an inconsistency-free / inert rule). */
+        Regel dan(String body) { this.then = body; return this; }
+
+        String render() {
+            StringBuilder b = new StringBuilder();
+            b.append("rule \"").append(escapeRegelNaam(naam)).append("\"\n");
+            b.append("    dialect \"mvel\"\n    no-loop true\nwhen\n");
+            for (String c : when) b.append("    ").append(c).append('\n');
+            b.append("then\n").append(then).append("end\n\n");
+            return b.toString();
+        }
+    }
+
+    /** Reset the per-rule accumulate side-channel that value/condition lowering writes into (an
+     *  aggregation in the value registers an accumulate pattern for the "when"). Called at the start of
+     *  every emitter that lowers a value or condition, so accumulates from one rule never leak into the
+     *  next. */
+    private void resetAccumulates() { accumulates = new ArrayList<>(); accCount = 0; }
+
+    /** §9.5 the consequence shared by the three inconsistency-flagging rules (consistentie, uniciteit,
+     *  uniciteit-unie): insert an Inconsistentie carrying the rule name and the offending subject. The
+     *  name is escaped to match the {@link #inconsistentieGuard} that keys off the same literal. */
+    private String inconsistentieDan(String naam) {
+        return "    insert(new " + FACT_PACKAGE + ".Inconsistentie(\""
+                + escapeRegelNaam(naam) + "\", " + SUBJECT + "));\n";
+    }
+
     /** §13.4.8 consistentieregel. The assertion MUST hold, so the rule fires on its
      *  VIOLATION — the negated condition — and inserts an Inconsistentie carrying the
      *  rule name and the offending subject (§9.5: "inconsistent" as the result, usable by
      *  other rules). A condition whose negation is not expressible (compound/predicate
      *  beyond leeg/gevuld) or an unresolved subject becomes an explicit marker. */
     private void consistentie(io.github.yhavinga.regelspraak.ir.ResolvedConsistentie c) {
-        accumulates = new ArrayList<>();
-        accCount = 0;
+        resetAccumulates();
         Objecttype subject = c.subject();
         String constraint = subject != null ? schendingConstraint(c.assertie(), subject) : null;
-        out.append("rule \"").append(escapeRegelNaam(c.naam())).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
+        Regel rule = new Regel(c.naam());
         if (constraint == null) {
             // The resolver judged this consistentie liftable, but its violation is not expressible — an
             // operand lowered to a marker (e.g. an unresolvable navigation / foreign-type right operand)
@@ -105,16 +157,16 @@ public final class DrlTranspiler {
                     + " (operand onresolveerbaar of geen getrouwe negatie); de regel controleert niets",
                     c.line());
             if (!model.diagnostics.contains(w)) model.diagnostics.add(w);
-            out.append("    // onopgelost consistentieregel: ").append(c.bron()).append("\n    eval(true)\nthen\nend\n\n");
+            rule.clausule("// onopgelost consistentieregel: " + c.bron()).clausule("eval(true)");
+            out.append(rule.render());
             return;
         }
-        out.append("    ").append(SUBJECT).append(" : ").append(ident(subject.naam, true))
-           .append("( ").append(constraint).append(" )\n");
-        for (String acc : accumulates) out.append("    ").append(acc).append('\n');
-        if (tijdgebondenGeldigheid(c.geldigheid())) out.append("    ").append(geldigheidGuard(c.geldigheid())).append('\n');
-        out.append("    ").append(inconsistentieGuard(c.naam())).append('\n');
-        out.append("then\n    insert(new ").append(FACT_PACKAGE).append(".Inconsistentie(\"")
-           .append(escapeRegelNaam(c.naam())).append("\", ").append(SUBJECT).append("));\nend\n\n");
+        rule.clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + constraint + " )")
+            .clausules(accumulates)
+            .geldigheid(c.geldigheid())
+            .clausule(inconsistentieGuard(c.naam()))
+            .dan(inconsistentieDan(c.naam()));
+        out.append(rule.render());
     }
 
     /** §8.1.6 uniciteitscontrole. "is uniek" is waar when the key is unique, so the rule is violated
@@ -141,14 +193,13 @@ public final class DrlTranspiler {
             matchers.append(prop).append(" == $k").append(i);
             if (i < u.sleutels().size() - 1) { binders.append(", "); matchers.append(", "); }
         }
-        out.append("rule \"").append(escapeRegelNaam(u.naam())).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
-        out.append("    ").append(SUBJECT).append(" : ").append(type).append("( ").append(binders).append(" )\n");
-        out.append("    Number( intValue > 1 ) from accumulate( $o : ").append(type)
-           .append("( ").append(matchers).append(" ), count($o) )\n");
-        if (tijdgebondenGeldigheid(u.geldigheid())) out.append("    ").append(geldigheidGuard(u.geldigheid())).append('\n');
-        out.append("    ").append(inconsistentieGuard(u.naam())).append('\n');
-        out.append("then\n    insert(new ").append(FACT_PACKAGE).append(".Inconsistentie(\"")
-           .append(escapeRegelNaam(u.naam())).append("\", ").append(SUBJECT).append("));\nend\n\n");
+        out.append(new Regel(u.naam())
+            .clausule(SUBJECT + " : " + type + "( " + binders + " )")
+            .clausule("Number( intValue > 1 ) from accumulate( $o : " + type + "( " + matchers + " ), count($o) )")
+            .geldigheid(u.geldigheid())
+            .clausule(inconsistentieGuard(u.naam()))
+            .dan(inconsistentieDan(u.naam()))
+            .render());
     }
 
     /** §8.1.6 "verenigd met": uniqueness across the UNION of several sources' key spaces. One rule per
@@ -165,29 +216,27 @@ public final class DrlTranspiler {
                 if (i > 0) binders.append(", ");
                 binders.append("$k").append(i).append(" : ").append(ident(subj.sleutels().get(i), false)).append(" != null");
             }
-            StringBuilder counts = new StringBuilder();              // one count per source, matched by value
+            // DRL rule names must be unique; the 1-based source index disambiguates even a same-type union.
+            String ruleNaam = u.naam() + " (" + subj.type().naam + " " + (s + 1) + ")";
+            Regel rule = new Regel(ruleNaam)
+                    .clausule(SUBJECT + " : " + ident(subj.type().naam, true) + "( " + binders + " )");
             StringBuilder som = new StringBuilder();
-            for (int j = 0; j < bronnen.size(); j++) {
+            for (int j = 0; j < bronnen.size(); j++) {               // one count per source, matched by value
                 var b = bronnen.get(j);
                 StringBuilder match = new StringBuilder();
                 for (int i = 0; i < arity; i++) {
                     if (i > 0) match.append(", ");
                     match.append(ident(b.sleutels().get(i), false)).append(" == $k").append(i);
                 }
-                counts.append("    $o").append(j).append(" : Number() from accumulate( $i").append(j).append(" : ")
-                      .append(ident(b.type().naam, true)).append("( ").append(match).append(" ), count($i").append(j).append(") )\n");
+                rule.clausule("$o" + j + " : Number() from accumulate( $i" + j + " : "
+                        + ident(b.type().naam, true) + "( " + match + " ), count($i" + j + ") )");
                 som.append(j > 0 ? " + " : "").append("$o").append(j).append(".intValue()");
             }
-            // DRL rule names must be unique; the 1-based source index disambiguates even a same-type union.
-            String ruleNaam = u.naam() + " (" + subj.type().naam + " " + (s + 1) + ")";
-            out.append("rule \"").append(escapeRegelNaam(ruleNaam)).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
-            out.append("    ").append(SUBJECT).append(" : ").append(ident(subj.type().naam, true)).append("( ").append(binders).append(" )\n");
-            out.append(counts);
-            out.append("    eval( ").append(som).append(" > 1 )\n");
-            if (tijdgebondenGeldigheid(u.geldigheid())) out.append("    ").append(geldigheidGuard(u.geldigheid())).append('\n');
-            out.append("    ").append(inconsistentieGuard(u.naam())).append('\n');   // guard on the shared rule name
-            out.append("then\n    insert(new ").append(FACT_PACKAGE).append(".Inconsistentie(\"")
-               .append(escapeRegelNaam(u.naam())).append("\", ").append(SUBJECT).append("));\nend\n\n");
+            rule.clausule("eval( " + som + " > 1 )")
+                .geldigheid(u.geldigheid())
+                .clausule(inconsistentieGuard(u.naam()))             // guard on the shared rule name
+                .dan(inconsistentieDan(u.naam()));
+            out.append(rule.render());
         }
     }
 
@@ -326,10 +375,16 @@ public final class DrlTranspiler {
         };
     }
 
-    /** A rule name is free text (§13.2.8) and may contain a double quote; escape it so
-     *  the DRL {@code rule "…"} header and the Inconsistentie string literal stay
-     *  well-formed (an unescaped quote fails the whole Drools package). */
-    private static String escapeRegelNaam(String naam) { return naam.replace("\"", "'"); }
+    /** A rule name is free text (§13.2.8) and may contain characters that break a DRL string literal — a
+     *  double quote (closes the literal early), a backslash (escapes the next character, so a trailing one
+     *  would escape the closing quote), or a newline / carriage return (splits the {@code rule "…"} header
+     *  across lines). Neutralise all four to a harmless visible substitute rather than backslash-escaping,
+     *  so the SAME form is well-formed in the {@code rule} header, the Inconsistentie literal, and the
+     *  idempotency guard's {@code regel == "…"} — keeping the whole Drools package well-formed. The four
+     *  substitutions are over disjoint characters and none introduces another, so their order is immaterial. */
+    static String escapeRegelNaam(String naam) {
+        return naam.replace("\\", "/").replace("\"", "'").replace("\r", " ").replace("\n", " ");
+    }
 
     /** The §4.2 validity guard: an eval over the Rekendatum global that fires only inside the
      *  version's window. Null-guarded so an unset Rekendatum simply doesn't match (no NPE), and
@@ -390,57 +445,63 @@ public final class DrlTranspiler {
         String join = bron != null && doel != null ? model.verbindendeRol(doel, bron) : null;
         boolean kan = v.methode() == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.GELIJKE_DELEN
                 && join != null;
-        out.append("rule \"").append(escapeRegelNaam(v.naam())).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
         if (!kan) {
-            out.append("    // onopgelost verdeling (")
-               .append(bron == null || doel == null ? "referentie" : v.methode().name().toLowerCase())
-               .append("): ").append(v.bronAttribuut()).append(" over ").append(v.doelAttribuut()).append('\n');
-            out.append("    eval(true)\nthen\nend\n\n");
+            out.append(new Regel(v.naam())
+                .clausule("// onopgelost verdeling ("
+                        + (bron == null || doel == null ? "referentie" : v.methode().name().toLowerCase())
+                        + "): " + v.bronAttribuut() + " over " + v.doelAttribuut())
+                .clausule("eval(true)")
+                .render());
             return;
         }
         String j = ident(join, false) + " == $src";
-        out.append("    $src : ").append(ident(bron.naam, true)).append("(  )\n");
-        out.append("    accumulate( $c : ").append(ident(doel.naam, true)).append("( ").append(j)
-           .append(" ) ; $n : count($c) )\n");
-        out.append("    $r : ").append(ident(doel.naam, true)).append("( ").append(j).append(" )\n");
-        if (tijdgebondenGeldigheid(v.geldigheid())) out.append("    ").append(geldigheidGuard(v.geldigheid())).append('\n');
-        out.append("then\n    modify($r) {\n        ").append(setter(v.doelAttribuut()))
-           .append("( $src.").append(getter(v.bronAttribuut()))
-           .append("().divide($n, java.math.MathContext.DECIMAL64) )\n    }\nend\n\n"); // safe division
+        out.append(new Regel(v.naam())
+            .clausule("$src : " + ident(bron.naam, true) + "(  )")
+            .clausule("accumulate( $c : " + ident(doel.naam, true) + "( " + j + " ) ; $n : count($c) )")
+            .clausule("$r : " + ident(doel.naam, true) + "( " + j + " )")
+            .geldigheid(v.geldigheid())
+            .dan("    modify($r) {\n        " + setter(v.doelAttribuut())
+                    + "( $src." + getter(v.bronAttribuut())
+                    + "().divide($n, java.math.MathContext.DECIMAL64) )\n    }\n")  // safe division
+            .render());
     }
 
     /** §13.4.6 objectcreatie -> a rule that inserts a new fact, sets its attributes,
      *  and links it back to the subject through the feittype role. */
     private void objectCreatie(io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc) {
-        accumulates = new ArrayList<>();
-        accCount = 0;
+        resetAccumulates();
         Objecttype nieuw = oc.nieuwType(), subject = oc.subject();
-        // value expressions may carry aggregations -> collected into the "when"
+        // value expressions may carry aggregations -> collected into the "when" (so lower them BEFORE
+        // reading `accumulates` into the clauses, even on the no-op path, to keep the side-channel order).
         java.util.List<String> setters = new ArrayList<>();
         for (var t : oc.toekenningen())
             setters.add("    $new." + setter(t.attribuut()) + "( " + waarde(t.waarde(), subject) + " );");
 
-        out.append("rule \"").append(escapeRegelNaam(oc.naam())).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
         if (subject == null || nieuw == null) {
-            out.append("    // onopgelost objectcreatie: ").append(oc.naam()).append("\n    eval(true)\n");
-            out.append("then\nend\n\n");
+            out.append(new Regel(oc.naam())
+                .clausule("// onopgelost objectcreatie: " + oc.naam())
+                .clausule("eval(true)")
+                .render());
             return;
         }
-        out.append("    ").append(SUBJECT).append(" : ").append(ident(subject.naam, true))
-           .append("( ").append(oc.voorwaarde() != null ? conditie(oc.voorwaarde(), subject, true) : "").append(" )\n");
-        for (String acc : accumulates) out.append("    ").append(acc).append('\n');
-        if (tijdgebondenGeldigheid(oc.geldigheid())) out.append("    ").append(geldigheidGuard(oc.geldigheid())).append('\n');
-        out.append("then\n");
-        out.append("    ").append(ident(nieuw.naam, true)).append(" $new = new ")
+        StringBuilder dan = new StringBuilder();
+        dan.append("    ").append(ident(nieuw.naam, true)).append(" $new = new ")
            .append(ident(nieuw.naam, true)).append("();\n");
-        for (String s : setters) out.append(s).append('\n');
+        for (String s : setters) dan.append(s).append('\n');
         String rolNaarSubject = model.verbindendeRol(nieuw, subject); // field on the new object -> subject
         if (rolNaarSubject != null)
-            out.append("    $new.").append(setter(rolNaarSubject)).append("( ").append(SUBJECT).append(" );\n");
+            dan.append("    $new.").append(setter(rolNaarSubject)).append("( ").append(SUBJECT).append(" );\n");
         else
-            out.append("    // onopgelost terugkoppeling naar ").append(subject.naam).append('\n');
-        out.append("    insert($new);\n");
-        out.append("end\n\n");
+            dan.append("    // onopgelost terugkoppeling naar ").append(subject.naam).append('\n');
+        dan.append("    insert($new);\n");
+
+        out.append(new Regel(oc.naam())
+            .clausule(SUBJECT + " : " + ident(subject.naam, true)
+                    + "( " + (oc.voorwaarde() != null ? conditie(oc.voorwaarde(), subject, true) : "") + " )")
+            .clausules(accumulates)
+            .geldigheid(oc.geldigheid())
+            .dan(dan.toString())
+            .render());
     }
 
     /** §13.4.7 feitcreatie -> a rule that, for each anker and each doel ALREADY related to it by the
@@ -449,8 +510,7 @@ public final class DrlTranspiler {
      *  is a {@code modify}-set; {@code no-loop} keeps the modify from re-triggering the rule, and setting
      *  the field to the same value is idempotent across other rules' fire cycles. */
     private void feitCreatie(io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie fc) {
-        accumulates = new ArrayList<>();
-        accCount = 0;
+        resetAccumulates();
         Objecttype anker = fc.anker(), doel = fc.doel();
         // The voorwaarde selects which objects get the relation: a guard on the anker (Vlucht) stays on
         // the anker pattern; a guard on the doel (the passengers) hosts on the $doel pattern. A guard that
@@ -464,21 +524,21 @@ public final class DrlTranspiler {
             if (!bevatMarker(opAnker)) {
                 ankerC = opAnker;
             } else {
-                accumulates = new ArrayList<>(); accCount = 0;   // discard the failed anker attempt
+                resetAccumulates();   // discard the failed anker attempt
                 String opDoel = conditie(fc.voorwaarde(), doel, true);
                 if (!bevatMarker(opDoel)) {
                     doelExtra = opDoel;
                 } else {
-                    accumulates = new ArrayList<>(); accCount = 0;
-                    noFire = "    eval( false ) /* TODO voorwaarde niet naar anker of doel te lowereren — regel inert i.p.v. over-creatie */\n";
+                    resetAccumulates();
+                    noFire = "eval( false ) /* TODO voorwaarde niet naar anker of doel te lowereren — regel inert i.p.v. over-creatie */";
                 }
             }
         }
-        out.append("rule \"").append(escapeRegelNaam(fc.naam())).append("\"\n    dialect \"mvel\"\n    no-loop true\nwhen\n");
-        out.append(noFire);
-        out.append("    ").append(SUBJECT).append(" : ").append(ident(anker.naam, true)).append("( ").append(ankerC).append(" )\n");
-        for (String acc : accumulates) out.append("    ").append(acc).append('\n');
-        if (tijdgebondenGeldigheid(fc.geldigheid())) out.append("    ").append(geldigheidGuard(fc.geldigheid())).append('\n');
+        Regel rule = new Regel(fc.naam());
+        if (!noFire.isEmpty()) rule.clausule(noFire);
+        rule.clausule(SUBJECT + " : " + ident(anker.naam, true) + "( " + ankerC + " )")
+            .clausules(accumulates)
+            .geldigheid(fc.geldigheid());
         // §9.4 multi-hop: bind each intermediate object on the path anker -> … -> doel, then join the doel to
         // the last one. A to-many hop reads the child's back-reference (veld == $prev); a to-one hop reads the
         // parent's forward reference (this == $prev.veld). $prev is the anker for the first step.
@@ -486,60 +546,48 @@ public final class DrlTranspiler {
         int t = 0;
         for (io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie.Tussenstap stap : fc.tussenstappen()) {
             String var = "$t" + t++;
-            out.append("    ").append(var).append(" : ").append(ident(stap.type().naam, true)).append("( ");
-            if (stap.viaOuderVeld()) out.append("this == ").append(vorige).append('.').append(ident(stap.veld(), false));
-            else out.append(ident(stap.veld(), false)).append(" == ").append(vorige);
-            out.append(" )\n");
+            rule.clausule(var + " : " + ident(stap.type().naam, true) + "( "
+                    + (stap.viaOuderVeld() ? "this == " + vorige + "." + ident(stap.veld(), false)
+                                           : ident(stap.veld(), false) + " == " + vorige)
+                    + " )");
             vorige = var;
         }
-        out.append("    $doel : ").append(ident(doel.naam, true)).append("( ")
-           .append(ident(fc.joinVeld(), false)).append(" == ").append(vorige);
-        if (!doelExtra.isEmpty()) out.append(", ").append(doelExtra);
-        out.append(" )\n");
-        out.append("then\n    modify($doel) {\n        ")
-           .append(setter(fc.zetVeld())).append("( ").append(SUBJECT).append(" )\n    }\nend\n\n");
+        rule.clausule("$doel : " + ident(doel.naam, true) + "( "
+                + ident(fc.joinVeld(), false) + " == " + vorige
+                + (!doelExtra.isEmpty() ? ", " + doelExtra : "") + " )")
+            .dan("    modify($doel) {\n        " + setter(fc.zetVeld()) + "( " + SUBJECT + " )\n    }\n");
+        out.append(rule.render());
     }
 
     private void regel(ResolvedRegel r) {
-        accumulates = new ArrayList<>();
-        accCount = 0;
+        resetAccumulates();
         Objecttype subject = r.doel() instanceof Expr.AttribuutRef a ? a.objecttype() : null;
         // Translate the value first: any aggregation registers an accumulate pattern
         // for the "when" and yields the bound result variable used here in the "then".
         String valueStr = subject != null && r.doel() instanceof Expr.AttribuutRef
                 ? waarde(r.waarde(), subject) : null;
 
-        out.append("rule \"").append(escapeRegelNaam(r.naam())).append("\"\n");
-        out.append("    dialect \"mvel\"\n");
-        // A forward calculation should not retrigger itself on its own modify; it
-        // still recomputes when another rule changes the facts it reads.
-        out.append("    no-loop true\n");
-        out.append("when\n");
+        // A forward calculation should not retrigger itself on its own modify (no-loop, in the header);
+        // it still recomputes when another rule changes the facts it reads.
+        Regel rule = new Regel(r.naam());
         if (subject == null) {
-            out.append("    // onopgelost doel-objecttype: ").append(r.doel().bron()).append('\n');
-            out.append("    eval(true)\n");
+            rule.clausule("// onopgelost doel-objecttype: " + r.doel().bron()).clausule("eval(true)");
         } else {
             String constraint = r.voorwaarde() != null ? conditie(r.voorwaarde(), subject, true) : "";
-            out.append("    ").append(SUBJECT).append(" : ").append(ident(subject.naam, true))
-               .append("( ").append(constraint).append(" )\n");
-            for (String acc : accumulates) out.append("    ").append(acc).append('\n');
-            // §4.2: a time-bounded version only fires when the Rekendatum is in its window.
-            if (r.geldigheid() != null && !r.geldigheid().altijd())
-                out.append("    ").append(geldigheidGuard(r.geldigheid())).append('\n');
+            rule.clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + constraint + " )")
+                .clausules(accumulates)
+                .geldigheid(r.geldigheid());   // §4.2: a time-bounded version fires only inside its window
         }
-        out.append("then\n");
         if (valueStr != null && r.doel() instanceof Expr.AttribuutRef a) {
             // restate the value in the target's unit (§4); §6.1.2 forbids AUTO-rounding —
             // if the result has too many decimals the author must add an explicit afronding.
             if (r.waarde().type().isNumeriek())
                 valueStr = omrekenWaarde(valueStr, r.waarde().type(), a.type());
-            out.append("    modify(").append(SUBJECT).append(") {\n");
-            out.append("        ").append(setter(a.attribuut())).append("( ").append(valueStr).append(" )\n");
-            out.append("    }\n");
+            rule.dan("    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( " + valueStr + " )\n    }\n");
         } else {
-            out.append("    // onopgelost doel: ").append(r.doel().bron()).append('\n');
+            rule.dan("    // onopgelost doel: " + r.doel().bron() + "\n");
         }
-        out.append("end\n\n");
+        out.append(rule.render());
     }
 
     /** Sentinel from {@link #naviRol}: the reference is the subject's own attribute. */
