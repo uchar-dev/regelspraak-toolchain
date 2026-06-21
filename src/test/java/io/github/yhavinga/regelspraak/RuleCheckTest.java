@@ -724,6 +724,60 @@ class RuleCheckTest {
                 () -> "verwachtte een WARNING over de degenererende getalspecificatie: " + m.diagnostics);
     }
 
+    @Test void rekenkunde_met_incompatibele_eenheden_wordt_gemeld() {
+        // p45: binairExpr used to SWALLOW the typeringen unit-incompatibility error, so "appels plus peren"
+        // resolved silently (raw addition). The arithmetic path now surfaces the fout like the comparison /
+        // begrenzing paths do.
+        String src = """
+            Eenheidsysteem Mix
+                de appel app
+                de peer pr
+            Objecttype de Ding
+                de a Numeriek (geheel getal) met eenheid app;
+                de b Numeriek (geheel getal) met eenheid pr;
+                de som Numeriek (geheel getal) met eenheid app;
+            Regel r
+                geldig altijd
+                    De som van een Ding moet gesteld worden op de a van een Ding plus de b van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("in elkaar om te rekenen")),
+                () -> "een plus over inconvertibele eenheden moet een eenheidfout geven: " + m.errors());
+    }
+
+    @Test void rekenkunde_met_verschillende_families_wordt_gemeld() {
+        // the same swallowed path also dropped a family mismatch: Tekst plus Numeriek is a type error.
+        String src = """
+            Objecttype de Ding
+                de naam Tekst;
+                de teller Numeriek (geheel getal);
+                de som Numeriek (geheel getal);
+            Regel r
+                geldig altijd
+                    De som van een Ding moet gesteld worden op de naam van een Ding plus de teller van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertFalse(m.errors().isEmpty(), () -> "Tekst plus Numeriek moet een fout geven");
+    }
+
+    @Test void rekenkunde_met_convertibele_eenheden_geen_fout() {
+        // control: a convertible plus (jr + mnd, declared) stays clean; no false positive on a real sum.
+        String src = """
+            Eenheidsysteem Tijd
+                de maand mnd
+                het jaar jr = 12 mnd
+            Objecttype de Ding
+                de a Numeriek (geheel getal) met eenheid jr;
+                de b Numeriek (geheel getal) met eenheid mnd;
+                de som Numeriek (geheel getal) met eenheid mnd;
+            Regel r
+                geldig altijd
+                    De som van een Ding moet gesteld worden op de a van een Ding plus de b van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "een convertibele plus mag geen fout geven: " + m.errors());
+    }
+
     @Test void percentage_van_decimaal_attribuut_naar_geheel_getal_geen_fout() {
         // p22 review (HIGH false positive, fixed): §4.8 makes "X% van Y" an exact fraction with no
         // decimal precision of its own (it shares only Y's unit), so 50% van prijs(2 dec) must NOT

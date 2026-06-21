@@ -159,7 +159,9 @@ one system (`appel app`, `peer pr`, no declared conversion) reduce to disjoint c
 §13.3.5's "equal or convertible" requirement fails and a comparison/`+`/assignment between them is a
 unit error (`eenheden 'app' en 'pr' zijn niet in elkaar om te rekenen`) rather than a silent raw-
 magnitude comparison. A well-formed system reduces every unit to one canonical, so the ordinary
-`jr`/`mnd`/`dag` case is unaffected.
+`jr`/`mnd`/`dag` case is unaffected. (The binary-arithmetic path used to *swallow* this typeringen
+error — `appels plus peren` resolved silently; it now surfaces it as a diagnostic like the comparison
+and begrenzing paths, p45.)
 
 A **composite (rate) unit** (`€/jr`, `€/mnd` — §13.3.3.2's `<eenheidmacht> "/"
 <eenheidmacht>`) now carries its denominator (`Eenheid.noemer`) instead of dropping it.

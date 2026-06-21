@@ -46,17 +46,17 @@ final class ExpressieBouwer {
         if (e instanceof SomExprContext s) {
             Expr.BinOp op = s.PLUS() != null ? Expr.BinOp.PLUS
                     : s.MIN() != null ? Expr.BinOp.MIN : Expr.BinOp.VERMINDERD_MET;
-            return binair(op, s.expressie(0), s.expressie(1), bron);
+            return binair(op, s.expressie(0), s.expressie(1), bron, s.getStart().getLine());
         }
         if (e instanceof ProductExprContext s) {
             Expr.BinOp op = s.MAAL() != null ? Expr.BinOp.MAAL
                     : s.GEDEELD_DOOR_ABS() != null ? Expr.BinOp.GEDEELD_DOOR_ABS : Expr.BinOp.GEDEELD_DOOR;
-            return binair(op, s.expressie(0), s.expressie(1), bron);
+            return binair(op, s.expressie(0), s.expressie(1), bron, s.getStart().getLine());
         }
         if (e instanceof MachtExprContext s) {
             // §13.4.17.14: "X tot de macht Y <afronding>" — the exponent Y is a primaireExpressie
             // and the mandatory afronding rounds the POWER (it is a sibling of Y, not inside it).
-            Expr basis = binairExpr(Expr.BinOp.TOT_DE_MACHT, bouw(s.expressie()), bouwPrimair(s.primaireExpressie()), bron);
+            Expr basis = binairExpr(Expr.BinOp.TOT_DE_MACHT, bouw(s.expressie()), bouwPrimair(s.primaireExpressie()), bron, s.getStart().getLine());
             return afgerond(basis, s.afronding(), bron);
         }
         if (e instanceof PercentageVanExprContext s) {
@@ -85,14 +85,21 @@ final class ExpressieBouwer {
 
     /** Arithmetic node whose result datatype is taken from the typeringen matrix
      *  (a type error there yields Onbekend, matching the checker's no-claim path). */
-    private Expr binair(Expr.BinOp op, ExpressieContext l, ExpressieContext r, String bron) {
-        return binairExpr(op, bouw(l), bouw(r), bron);
+    private Expr binair(Expr.BinOp op, ExpressieContext l, ExpressieContext r, String bron, int line) {
+        return binairExpr(op, bouw(l), bouw(r), bron, line);
     }
 
     /** Arithmetic node over already-built operands (used where the right operand is a
-     *  primaireExpressie, e.g. the exponent of "tot de macht"). */
-    private Expr binairExpr(Expr.BinOp op, Expr links, Expr rechts, String bron) {
+     *  primaireExpressie, e.g. the exponent of "tot de macht"). A typeringen error (a
+     *  family mismatch or incompatible/inconvertible units) is SURFACED as a diagnostic
+     *  before degrading the result to Onbekend — the comparison and begrenzing paths
+     *  already do; the arithmetic path used to swallow it (p45). An Onbekend operand makes
+     *  reken return ok (no claim), so no false positive on an unresolved sub-expression. */
+    private Expr binairExpr(Expr.BinOp op, Expr links, Expr rechts, String bron, int line) {
         Typering.Resultaat res = Typering.reken(naarTyperingOp(op), links.type(), rechts.type());
+        if (!res.ok())
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(
+                    RegelSpraakModel.Severity.ERROR, res.fout(), line));
         Datatype t = res.ok() ? res.type() : onbekend();
         return new Expr.Binair(op, links, rechts, t, bron);
     }
