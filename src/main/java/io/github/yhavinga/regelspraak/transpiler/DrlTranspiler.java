@@ -1495,34 +1495,42 @@ public final class DrlTranspiler {
         return new String[]{l, omreken(r, rt, lt)};   // composite (rate) unit: keep the existing conversion
     }
 
+    /** Multiply {@code expr} by a unit-conversion {@code factor} — the one place the {@code .multiply(new
+     *  BigDecimal("…"))} restatement is emitted. Identity when there is no real conversion: a {@code null} or
+     *  unit (1) factor, or a placeholder-marker operand (wrapping which would NPE). When {@code nullVeilig}, the
+     *  multiply is guarded so an empty value converts to empty rather than NPE-ing — the VALUE side only, since
+     *  a Drools pattern constraint cannot host the {@code == null} ternary (it reads as a nested constraint). */
+    private static String vermenigvuldigMetFactor(String expr, java.math.BigDecimal factor, boolean nullVeilig) {
+        if (factor == null || expr.contains("/* TODO") || factor.compareTo(java.math.BigDecimal.ONE) == 0) return expr;
+        String mul = "(" + expr + ").multiply(new java.math.BigDecimal(\"" + factor.toPlainString() + "\"))";
+        return nullVeilig ? "(" + expr + " == null ? null : " + mul + ")" : mul;
+    }
+
+    /** The §4 conversion factor to restate a {@code van}-typed quantity in the {@code naar} unit, or {@code
+     *  null} when no conversion applies (either side unitless, not convertible, or already the same unit). */
+    private static java.math.BigDecimal omrekenFactor(Datatype van, Datatype naar) {
+        io.github.yhavinga.regelspraak.model.Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();
+        if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return null;
+        return ev.omrekenfactorNaar(en);
+    }
+
     /** Restate a comparison operand in its system's canonical unit by the DECLARED (exact) factor —
      *  a multiplication, never the lossy division omreken uses. Identity for a canonical/unitless
      *  operand or a placeholder marker. */
     private static String naarCanoniek(String expr, io.github.yhavinga.regelspraak.model.Eenheid e) {
-        if (expr.contains("/* TODO") || e.factorNaarCanoniek() == null
-                || e.factorNaarCanoniek().compareTo(java.math.BigDecimal.ONE) == 0) return expr;
-        return "(" + expr + ").multiply(new java.math.BigDecimal(\"" + e.factorNaarCanoniek().toPlainString() + "\"))";
+        return vermenigvuldigMetFactor(expr, e.factorNaarCanoniek(), false);
     }
 
+    /** Unit conversion for a CONSTRAINT operand (no null-guard — a pattern constraint cannot host the ternary). */
     private static String omreken(String expr, Datatype van, Datatype naar) {
-        if (expr.contains("/* TODO")) return expr; // placeholder value — do not wrap (would NPE)
-        io.github.yhavinga.regelspraak.model.Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();
-        if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return expr;
-        return "(" + expr + ").multiply(new java.math.BigDecimal(\""
-                + ev.omrekenfactorNaar(en).toPlainString() + "\"))";
+        return vermenigvuldigMetFactor(expr, omrekenFactor(van, naar), false);
     }
 
-    /** Unit conversion on the VALUE side, null-safe: a leegwaarde (an empty sommatie has
-     *  no fallback) converts to a leegwaarde rather than an NPE on .multiply. Only for the
-     *  "then"/value side — a Drools pattern constraint cannot carry the {@code == null}
-     *  guard (it reads as a nested constraint), and constraint operands are plain
-     *  attributes, so {@link #omreken} stays the constraint form. */
+    /** Unit conversion on the VALUE side, null-safe: a leegwaarde (an empty sommatie has no fallback) converts
+     *  to a leegwaarde rather than an NPE on .multiply. Only for the "then"/value side — see
+     *  {@link #vermenigvuldigMetFactor}; the constraint form is {@link #omreken}. */
     private static String omrekenWaarde(String expr, Datatype van, Datatype naar) {
-        if (expr.contains("/* TODO")) return expr;
-        io.github.yhavinga.regelspraak.model.Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();
-        if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return expr;
-        String factor = ev.omrekenfactorNaar(en).toPlainString();
-        return "(" + expr + " == null ? null : (" + expr + ").multiply(new java.math.BigDecimal(\"" + factor + "\")))";
+        return vermenigvuldigMetFactor(expr, omrekenFactor(van, naar), true);
     }
 
     /** §13.4.17.25 afronding: round a basis term to {@code af.decimalen()} via the matching
