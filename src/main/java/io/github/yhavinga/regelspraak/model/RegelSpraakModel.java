@@ -179,6 +179,29 @@ public final class RegelSpraakModel {
         return n == 1 ? gevonden : null;
     }
 
+    /** §8.1.7 rolcheck "{@code subject} is een &lt;geschrevenRol&gt;": the object type at the OTHER end
+     *  of the feittype whose role {@code geschrevenRol} the {@code subject} FILLS — so the subject
+     *  participates in that role iff its reference to that other end is set. The mirror of
+     *  {@link #rolDoeltypeNaarSubject} (which navigates FROM the subject TO a role's filler; here the
+     *  subject IS the filler). Returns null when no role named {@code geschrevenRol} is filled by the
+     *  subject, when it is ambiguous (more than one feittype/sibling matches), or when the feittype is
+     *  wederkerig (no distinct sibling to join — carded). */
+    public Objecttype rolSiblingType(Objecttype subject, String geschrevenRol) {
+        if (subject == null || geschrevenRol == null) return null;
+        Objecttype gevonden = null;
+        int n = 0;
+        for (Feittype ft : feittypen.values())
+            if (!ft.wederkerig)
+                for (Rol r : ft.rollen)
+                    if (rolMatcht(r, geschrevenRol) && rolHeeftObjecttype(r, subject))   // subject fills role r
+                        for (Rol ander : ft.rollen)
+                            if (ander != r) {
+                                Objecttype t = objecttypeOpNaam(ander.objecttypeNaam());
+                                if (t != null) { gevonden = t; n++; }
+                            }
+        return n == 1 ? gevonden : null;
+    }
+
     /**
      * The subject-side join field for an aggregation whose ELEMENT role is named
      * {@code geschrevenRol} — the field on the element fact that points back at the

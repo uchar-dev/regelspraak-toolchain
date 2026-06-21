@@ -2685,6 +2685,43 @@ class DroolsExecutionTest {
         assertFalse(m.errors().isEmpty(), "1/0 moet een syntaxfout geven, niet stil naar 1 herstellen");
     }
 
+    // ---------------- §8.1.7/§8.1.8 membership condition (rolcheck + EEN-form kenmerkcheck) ----------------
+
+    static final String MEMBERSHIP_SRC = """
+            Objecttype de Passagier
+                de leeftijd Numeriek (geheel getal);
+                is minderjarig kenmerk;
+            Objecttype de Vlucht
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            Regel rolgate
+                geldig altijd
+                    Een passagier is minderjarig indien hij is een passagier.
+            """;
+
+    @Test void membership_rolcheck_gate_de_regel_op_rolvervulling() {
+        // §8.1.7 rolcheck "hij is een passagier" — the subject FILLS the "passagier" role iff it joins the
+        // other end of the feittype, so it lowers to "reis != null" (NOT the old silent false /* TODO */ gate
+        // that never fired). The gate must DISCRIMINATE: fire only for passagiers that actually have a reis.
+        RegelSpraakModel m = Resolver.resolve(MEMBERSHIP_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("reis != null"), () -> "rolcheck niet als reis != null gelowerd:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "membership-regel mag geen marker meer bevatten:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v = new Vlucht();
+        Passagier p1 = new Passagier(); p1.setReis(v);   // fills the passagier role
+        Passagier p2 = new Passagier();                  // no reis -> not a passagier
+        for (Object o : new Object[]{v, p1, p2}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(p1.isMinderjarig(), "p1 is een passagier (heeft reis) -> de rolgate vuurt");
+        assertFalse(p2.isMinderjarig(), "p2 is geen passagier (geen reis) -> de rolgate vuurt niet");
+    }
+
     // ---------------- p29(1): §13.4.2 inflected kenmerk die-filter ----------------
 
     @Test void getelde_die_verbogen_kenmerk_filter_telt_alleen_de_minderjarige_passagiers() {

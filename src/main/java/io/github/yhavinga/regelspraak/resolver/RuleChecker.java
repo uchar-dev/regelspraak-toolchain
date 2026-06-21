@@ -788,22 +788,42 @@ final class RuleChecker {
         return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
     }
 
-    /** §8.1.8: "&lt;subject&gt; is/heeft &lt;kenmerk&gt;" -> a {@link Conditie.Kenmerk}, when the operand
-     *  denotes the rule subject and the (reconstructed) name is a declared kenmerk of it. The leading
-     *  EEN article is NOT a kenmerk reference: per §13.4.15.44/.45 "is een &lt;naam&gt;" is an
-     *  objecttype/role-membership test, so it is left Onopgelost (carded) — this also stops a name
-     *  that is both a kenmerk and an objecttype/role from being silently gated as the kenmerk. */
+    /** §8.1.7/§8.1.8: "&lt;subject&gt; is/heeft (een)? &lt;naam&gt;" -> a {@link Conditie.Kenmerk} (the
+     *  §8.1.8 kenmerkcheck) or a {@link Conditie.Rollidmaatschap} (the §8.1.7 rolcheck), when the operand
+     *  denotes the rule subject (or a to-one navigation from it). WITHOUT "een" the name is read as the
+     *  subject's kenmerk (own or navigated). WITH "een" it is read as a rolcheck: "is een &lt;rolnaam&gt;"
+     *  is true when the subject fills that role. The §8.1.8.3 EEN-form kenmerkcheck ("is een &lt;zelfstandig
+     *  kenmerk&gt;") is deliberately NOT taken here — it must not bind a bijvoeglijk kenmerk (written without
+     *  "een"), which needs the kenmerk soort the model discards today (carded). A name that resolves to
+     *  neither stays Onopgelost (an honest marker), never a silently-true gate. */
     private Conditie kenmerkPredicaat(Expr lhs, KaleNaamContext naamCtx, boolean metEen, boolean heeftWerkwoord, String bron) {
         Objecttype subject = bouwer.subject();
-        if (metEen || naamCtx == null || subject == null) return null;
+        if (naamCtx == null || subject == null) return null;
         String staart = stripArtikel(src(naamCtx));
         String kop = subjectKop(lhs, subject);
-        if (kop == null) return navigatieKenmerk(lhs, staart, heeftWerkwoord, bron); // not the subject -> maybe a navigated kenmerk
+        // not the subject itself -> a navigated kenmerk ("zijn reis is duurzaam"), in the non-EEN form only.
+        // The EEN-form navigated kenmerkcheck and a navigated role membership are out of scope (the former
+        // needs the kenmerk soort to avoid binding a bijvoeglijk kenmerk to the "een" form, §8.1.8.1) -> carded.
+        if (kop == null) return metEen ? null : navigatieKenmerk(lhs, staart, heeftWerkwoord, bron);
         // The greedy onderwerp parse absorbs a multi-word kenmerk's leading words into the operand
         // ("de Meting bereikbaar per" + operator "trein"), so the kenmerk is that absorbed kop plus
         // the operator's kaleNaam; for "hij"/a bare subject the kop is empty and the name is the kaleNaam.
-        String kenmerk = kop.isEmpty() ? staart : kop + " " + staart;
-        return kenmerkConditie(subject, kenmerk, null, heeftWerkwoord, bron);
+        String naam = kop.isEmpty() ? staart : kop + " " + staart;
+        if (!metEen) return kenmerkConditie(subject, naam, null, heeftWerkwoord, bron);   // §8.1.8 is/heeft <kenmerk>
+        // §8.1.7 rolcheck: "is een <rolnaam>". The §8.1.8.3 "is een <zelfstandig kenmerk>" kenmerkcheck is
+        // carded: it must NOT bind a bijvoeglijk kenmerk (written without "een"), which needs the kenmerk soort
+        // the model discards today; the corpus EEN-form kenmerk bullets already markered via a sibling bullet.
+        return rolLidmaatschap(subject, naam, bron);
+    }
+
+    /** §8.1.7 rolcheck: "&lt;subject&gt; is een &lt;rolnaam&gt;" — true when the subject fills that role.
+     *  Resolves to a {@link Conditie.Rollidmaatschap} carrying the OTHER end of the feittype (so the
+     *  transpiler can null-test the subject's reference to it). Null when no role the subject fills bears
+     *  that name (-> Onopgelost marker, never a wrong gate). The negated "is geen" form is carded — its
+     *  "geen" parses into the kaleNaam with no "een", so it does not reach this EEN-form path. */
+    private Conditie rolLidmaatschap(Objecttype subject, String naam, String bron) {
+        Objecttype ander = model.rolSiblingType(subject, naam);
+        return ander != null ? new Conditie.Rollidmaatschap(naam, ander, bron) : null;
     }
 
     /** Resolve {@code kenmerk} on {@code type} into a {@link Conditie.Kenmerk}, honouring a leading "niet"

@@ -403,10 +403,24 @@ Scope is deliberately the **subject's own** kenmerk: the operand must denote the
 bezielde `hij`, or a definite self-reference whose noun is the subject type). A multi-word kenmerk in
 the definite form is handled too — the greedy `onderwerp` parse absorbs its leading words into the
 operand (`de Meting bereikbaar per` + operator `trein`), so the resolver reconstructs the full name
-from that absorbed prefix plus the operator's `kaleNaam`. The leading **`een`** article is honoured as
-the §13.4.15.44/.45 signal of an objecttype/role-**membership** test (`X is een <objecttype>`), which
-stays `Onopgelost` — so a name that is *both* a subject kenmerk and an objecttype/role is not silently
-gated as the kenmerk.
+from that absorbed prefix plus the operator's `kaleNaam`. The leading **`een`** article switches the
+reading to a **membership** test: see the §8.1.7 rolcheck section below.
+
+**`is een <rolnaam>` is a §8.1.7 rolcheck (`reis != null`).** The grammar conflates a rolnaam and a
+kenmerknaam after the optional `een`, so the resolver disambiguates by lookup. WITHOUT `een` the name is
+the subject's kenmerk (above). WITH `een` it is read as a rolcheck — the subject FILLS role `<naam>` iff
+it joins the other end of that feittype. `model.rolSiblingType` (the mirror of `rolDoeltypeNaarSubject`)
+returns that other end's object type; in the §9.4 reference-field fact model the subject participates iff
+its reference to that end is set, so `Conditie.Rollidmaatschap` lowers to a bare null-test on the
+subject's own pattern — toka-42 `hij is een passagier` → `reis != null`, lighting up a rule whose whole
+compound used to be a `false /* TODO */` dead gate. When the reference lives on the FAR side (the `heeft
+een <rol>` form) an exists-join is needed, which does not fit a single in-pattern constraint, so it stays
+an honest marker (carded). **Carded** alongside it: the §8.1.8.3 EEN-form *kenmerkcheck* (`is een
+<zelfstandig kenmerk>`) — taking it must NOT bind a bijvoeglijk kenmerk (which is written without `een`),
+and that needs the kenmerk **soort** the model still discards (the grammar already distinguishes
+`BijvoeglijkKenmerk` from `NaamwoordKenmerk`); the corpus EEN-form kenmerk bullets markered already
+through an undeclared sibling bullet, so leaving this carded costs no coverage. The negated `is geen
+<rol>` is carded too — its `geen` lexes into the `kaleNaam` with no `een`, so it never reaches this path.
 
 **Navigated and negated forms are now lowered too.** A TO-ONE navigated kenmerk (`de partner van een
 Persoon gepensioneerd is`) resolves the kenmerk against the navigated type and lowers to the null-guarded

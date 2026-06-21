@@ -49,6 +49,16 @@ public sealed interface Conditie {
         public Kenmerk(String kenmerk, String bron) { this(kenmerk, null, false, null, bron); }
     }
 
+    /** §8.1.7 rolcheck ("hij is een passagier"): true when the subject FILLS the role {@code rol}.
+     *  In the §9.4 reference-field fact model the subject fills a role iff its reference to the OTHER
+     *  end of that feittype is set, so this lowers to a bare null-test on that reference field
+     *  ({@code reis != null}); {@code anderTeFiller} is that other end's object type, from which the
+     *  transpiler looks up the reference field. The negated "is geen" form is a separate (carded) gap —
+     *  its "geen" parses as part of the kaleNaam with no "een", so it never reaches this resolution.
+     *  When the reference lives on the other side (the §8.1.7 "heeft" form) an exists-join is needed,
+     *  which does not fit a single in-pattern constraint — the transpiler markers that, carded. */
+    record Rollidmaatschap(String rol, Objecttype anderTeFiller, String bron) implements Conditie {}
+
     /** §13.4.14 compound condition: a quantifier over a bullet list of sub-conditions.
      *  `drempel` is the threshold count N for the counting quantifiers (ten minste / ten
      *  hoogste / precies N, §13.4.14.4); 0 and unused for alle / geen / de. */

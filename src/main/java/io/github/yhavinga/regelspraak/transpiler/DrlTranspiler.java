@@ -1470,6 +1470,16 @@ public final class DrlTranspiler {
             String nav = ident(k.navigatie(), false);
             return nav + " != null && " + nav + "." + prop;
         }
+        // §8.1.7 rolcheck: the subject fills the role iff its reference to the other end of the feittype is
+        // set. The forward reference (a field ON the subject) is a bare null-test inside the subject's own
+        // pattern — "is een passagier" -> "reis != null". When the reference lives on the other side (the
+        // "heeft een <rol>" form) an exists-join is needed, which does not fit a single in-pattern
+        // constraint, so it stays an honest marker (carded).
+        if (c instanceof Conditie.Rollidmaatschap r) {
+            String veld = subject != null ? model.verbindendeRol(subject, r.anderTeFiller()) : null;
+            if (veld != null) return ident(veld, false) + " != null";
+            return onopgelosteConstraint("rollidmaatschap '" + r.rol() + "'", c.bron());
+        }
         if (c instanceof Conditie.Samengesteld s) {
             List<String> delen = new ArrayList<>();
             for (Conditie deel : s.onderdelen()) delen.add("(" + conditie(deel, subject, alsVoorwaarde) + ")");
