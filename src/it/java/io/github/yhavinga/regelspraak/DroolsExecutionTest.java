@@ -775,6 +775,67 @@ class DroolsExecutionTest {
         assertEquals(LocalDate.of(2025, 4, 20), k25.getGemaakt(), () -> "paaszondag 2025 = 20 apr, kreeg " + k25.getGemaakt());
     }
 
+    @Test void conditie_zijde_builtin_paaskorting_vergelijkt_datum_met_berekende_paasdag() {
+        // §13.4.17 on the CONDITION side: a scalar builtin used as a comparison operand lowers to a bare
+        // pattern-constraint term (the field name, not a $subject getter). This is TOKA's toka-27 Paaskorting:
+        // a vlucht is een reis met paaskorting iff its vluchtdatum IS the Easter Sunday of that date's own year.
+        // Proven by firing — the right operand nests two builtins (eerste paasdag van (het jaar uit (datum))).
+        String src = """
+            Objecttype de Vlucht
+                de reis met paaskorting kenmerk;
+                de vluchtdatum Datum in dagen;
+            Regel Paaskorting
+                geldig altijd
+                    Een Vlucht is een reis met paaskorting
+                    indien de vluchtdatum van een Vlucht gelijk is aan de eerste paasdag van (het jaar uit (de vluchtdatum van een Vlucht)).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("TODO voorwaarde"), () -> "de conditie-builtin mag geen marker meer zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht opPaaszondag = new Vlucht(); opPaaszondag.setVluchtdatum(LocalDate.of(2024, 3, 31));  // paaszondag 2024
+        Vlucht andereDag   = new Vlucht(); andereDag.setVluchtdatum(LocalDate.of(2024, 1, 1));       // geen paaszondag
+        sessie.insert(opPaaszondag); sessie.insert(andereDag);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(opPaaszondag.isReisMetPaaskorting(), "vlucht op paaszondag 2024 had moeten vuren");
+        assertFalse(andereDag.isReisMetPaaskorting(), "vlucht op 1 jan had niet mogen vuren");
+    }
+
+    @Test void conditie_zijde_builtin_in_kwantor_vergelijkt_numeriek_gelijk() {
+        // toka-26 Hoogseizoen: a condition-side builtin (maand uit) inside a "ten minste één" quantifier, each
+        // criterion a NUMERIC == against an integer literal. This is the first firing BigDecimal == BigDecimal
+        // in the corpus, so prove mvel's == on two scale-0 BigDecimals does value-equality (not a type/scale
+        // miss): month 7 -> hoogseizoen, month 1 -> not.
+        String src = """
+            Objecttype de Vlucht
+                is in het hoogseizoen kenmerk (bijvoeglijk);
+                de vluchtdatum Datum in dagen;
+            Regel Hoogseizoen
+                geldig altijd
+                    Een Vlucht is in het hoogseizoen
+                    indien er aan ten minste één van de volgende voorwaarden wordt voldaan:
+                    - de maand uit (de vluchtdatum van de Vlucht) is gelijk aan 6
+                    - de maand uit (de vluchtdatum van de Vlucht) is gelijk aan 7
+                    - de maand uit (de vluchtdatum van de Vlucht) is gelijk aan 8.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("TODO voorwaarde"), () -> "de kwantor-builtins mogen geen marker zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht juli = new Vlucht();    juli.setVluchtdatum(LocalDate.of(2024, 7, 15));   // maand 7 -> hoogseizoen
+        Vlucht januari = new Vlucht(); januari.setVluchtdatum(LocalDate.of(2024, 1, 15)); // maand 1 -> niet
+        sessie.insert(juli); sessie.insert(januari);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(juli.isInHetHoogseizoen(), "een vlucht in juli (maand 7) is hoogseizoen");
+        assertFalse(januari.isInHetHoogseizoen(), "een vlucht in januari (maand 1) is geen hoogseizoen");
+    }
+
     @Test void telling_maal_parameter_bindt_de_maal_buiten_de_telling() {
         // §13.4.17.47 telling precedence: "het aantal X van de reis maal de factor" must be
         // (count of X) maal factor, NOT count(X maal factor). The telling takes a

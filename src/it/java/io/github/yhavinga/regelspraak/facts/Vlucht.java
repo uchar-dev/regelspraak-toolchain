@@ -16,8 +16,17 @@ public class Vlucht {
     private BigDecimal luchthaven;           // §8.1.6 concatenatie uniqueness key (luchthaven, vertrektijd)
     private BigDecimal vertrektijd;
     private boolean internationaal;          // §13.4.7 feitcreatie anker-kenmerk voorwaarde
+    private LocalDate vluchtdatum;           // §13.4.17 condition-side builtin (toka-27 Paaskorting)
+    private boolean reisMetPaaskorting;      // the kenmerk that rule sets
+    private boolean inHetHoogseizoen;        // toka-26: numeric == over a builtin (maand uit) in a quantifier
     public boolean isInternationaal() { return internationaal; }
     public void setInternationaal(boolean v) { this.internationaal = v; }
+    public LocalDate getVluchtdatum() { return vluchtdatum; }
+    public void setVluchtdatum(LocalDate v) { this.vluchtdatum = v; }
+    public boolean isReisMetPaaskorting() { return reisMetPaaskorting; }
+    public void setReisMetPaaskorting(boolean v) { this.reisMetPaaskorting = v; }
+    public boolean isInHetHoogseizoen() { return inHetHoogseizoen; }
+    public void setInHetHoogseizoen(boolean v) { this.inHetHoogseizoen = v; }
     public BigDecimal getLuchthaven() { return luchthaven; }
     public void setLuchthaven(BigDecimal v) { this.luchthaven = v; }
     public BigDecimal getVertrektijd() { return vertrektijd; }

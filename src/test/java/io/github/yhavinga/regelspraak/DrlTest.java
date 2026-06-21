@@ -486,6 +486,26 @@ class DrlTest {
         assertTrue(drl.contains("function java.time.LocalDate rsEerstePaasdag("), () -> "computus-helper niet geïnjecteerd:\n" + drl);
     }
 
+    @Test void scalaire_builtin_in_voorwaarde_lowert_naar_kale_property() {
+        // §13.4.17 a scalar builtin as a CONDITION operand must lower to bare pattern-constraint properties
+        // (the field name), NOT the $subject.getX() getter the value side uses — $subject is not bound inside
+        // its own pattern. toka-27 Paaskorting: vluchtdatum == eerste paasdag van (jaar uit vluchtdatum).
+        String src = """
+            Objecttype de Vlucht
+                de reis met paaskorting kenmerk;
+                de vluchtdatum Datum in dagen;
+            Regel Paaskorting
+                geldig altijd
+                    Een Vlucht is een reis met paaskorting
+                    indien de vluchtdatum van een Vlucht gelijk is aan de eerste paasdag van (het jaar uit (de vluchtdatum van een Vlucht)).
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertFalse(drl.contains("TODO voorwaarde"), () -> "de conditie-builtin mag geen marker zijn:\n" + drl);
+        assertTrue(drl.contains("rsEerstePaasdag(java.math.BigDecimal.valueOf((vluchtdatum).getYear()))"),
+                () -> "het builtin-argument moet de kale property zijn, geen $subject getter:\n" + drl);
+        assertFalse(drl.contains("$subject.getVluchtdatum()"), () -> "geen getter in een pattern-constraint:\n" + drl);
+    }
+
     @Test void kenmerktoekenning_wordt_boolean_setter_onder_voorwaarde() {
         String src = """
             Objecttype de Persoon

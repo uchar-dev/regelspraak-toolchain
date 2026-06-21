@@ -916,3 +916,32 @@ here): the §6.1.2 result precision typing still treats (ABS) like `gedeeld door
 negative, never a false positive — see Tabel 37/§6.1.2 note in Typering); and the §6.5 leegwaarde table
 (`leeg → 0`, `waarde / leeg → fout`) is the broader division-leegwaarde item, still unhandled (a null divisor
 NPEs in mvel exactly as plain division does today).
+
+### §13.4.17 scalar builtins as a condition operand — bare property, not a getter
+
+A scalar builtin (abs, a date/time component, datum-met/datumtijd-met, wortel, eerste paasdag, tijdsduur) is a
+single mvel term, equally valid on a rule's value side (a `then` modify-block) and inside a `when` pattern
+constraint. Originally only the value side lowered it; as a comparison operand it fell through to a marker, so
+two TOKA rules — Paaskorting (`de vluchtdatum gelijk is aan de eerste paasdag van (het jaar uit (de
+vluchtdatum)))`) and Hoogseizoen (`de maand uit (de vluchtdatum) is gelijk aan 6/7/8`) — no-oped.
+
+The lowering is reused verbatim across both positions; only the **argument** lowering differs. The value side
+lowers a builtin's argument with `waarde` (a `$subject.getVluchtdatum()` getter); a pattern constraint is
+evaluated against each candidate fact and references its fields by **bare property name** (`vluchtdatum`),
+because `$subject` is not bound inside its own pattern. So `scalarFunctie` takes its argument lowering as a
+`Function<Expr,String>` — `waarde` on the value side, `operand` on the condition side — and the one builtin
+table serves both. The aggregations (som/min/max over instances) still return null there: they require a `when`
+accumulate and cannot live inside a single constraint, so they stay markers, unchanged.
+
+Two facts worth recording, each verified by firing in Drools 8.44:
+
+- **Numeric `==` is value-based, not scale-sensitive.** Hoogseizoen is the corpus's first firing
+  `BigDecimal == BigDecimal`. A probe confirms mvel coerces numerically (`new BigDecimal("2.5") == new
+  BigDecimal("2.50")` matches), so the existing `==`/`!=` comparison lowering is correct for numeric equality
+  without resorting to `.compareTo(...) == 0`.
+- **The §5.3 both-empty guard's NPE on a null date is the pre-existing leegwaarde gap, not new here.** The
+  guard `&& !(l == null && r == null)` the GELIJK lowering adds is unreachable for Paaskorting: a null
+  `vluchtdatum` NPEs in `(vluchtdatum).getYear()` before the guard runs — exactly the value-side `jaar uit a
+  null date` NPE the builtins-vervolg card tracks (the transpiler-wide leegwaarde rekentabellen item). On the
+  happy path (a filled date) it is a no-op. Not widened here: the leegwaarde fix must touch all operators at
+  once.

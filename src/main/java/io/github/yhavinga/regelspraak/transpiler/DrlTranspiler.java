@@ -11,6 +11,7 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.StringJoiner;
+import java.util.function.Function;
 
 /**
  * The Drools back-end: it walks the resolved IR ({@link ResolvedRegel}) and emits
@@ -784,7 +785,7 @@ public final class DrlTranspiler {
         }
         if (e instanceof Expr.Constante c)      return todo("constante", c.naam());
         if (e instanceof Expr.Functie f) {
-            String scalar = scalarFunctie(f, subject);        // §13.4.17 single-value builtins (abs, datum-delen, datum-met)
+            String scalar = scalarFunctie(f, x -> waarde(x, subject)); // §13.4.17 single-value builtins (abs, datum-delen, datum-met)
             if (scalar != null) return scalar;
             String dim = dimensieAggregatie(f, subject);      // SOM/min/max over a dimension's labels
             if (dim != null) return dim;
@@ -803,11 +804,17 @@ public final class DrlTranspiler {
      * {@link Expr.FunctieKind} (the aggregations and the not-yet-lowered builtins like concatenatie/paasdag),
      * so the caller falls through to the accumulate path or its marker. A marker propagates straight through
      * when an argument is itself unresolved.
+     *
+     * <p>{@code arg} lowers an argument expression: on the VALUE side it is {@link #waarde} (a {@code
+     * $subject.getX()} getter), on the CONDITION side {@link #operand} (the bare property a pattern constraint
+     * needs, since {@code $subject} is not bound inside its own pattern). Every scalar builtin lowers to a
+     * single mvel term valid in either position, so the one routine serves both — the aggregations, which need
+     * a {@code when}-clause accumulate, stay null here and let each caller fall through to its marker.
      */
-    private String scalarFunctie(Expr.Functie f, Objecttype subject) {
+    private String scalarFunctie(Expr.Functie f, Function<Expr, String> arg) {
         List<Expr> a = f.argumenten();
         if (f.kind() == Expr.FunctieKind.TIJDSDUUR || f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR)
-            return tijdsduur(f, subject);
+            return tijdsduur(f, arg);
         // §13.4.17.18-.20 a DATE component (jaar/maand/dag) reads as a Numeriek via the matching getter —
         // valid on ANY datum, since LocalDate and LocalDateTime both have these getters.
         String dateGetter = switch (f.kind()) {
@@ -816,7 +823,7 @@ public final class DrlTranspiler {
         };
         if (dateGetter != null) {
             if (a.size() != 1) return null;
-            String d = waarde(a.get(0), subject);
+            String d = arg.apply(a.get(0));
             return bevatMarker(d) ? d : "java.math.BigDecimal.valueOf((" + d + ")." + dateGetter + "())";
         }
         // §13.4.17.21-.24 a TIME component (uur/minuut/seconde/milliseconde): getHour()/… exist ONLY on a
@@ -830,7 +837,7 @@ public final class DrlTranspiler {
             if (a.size() != 1) return null;
             if (!(a.get(0).type() instanceof Datatype.DatumTijd))
                 return todo("tijd-component uit een niet-datum-tijd (§13.4.17.21-.24)", f.bron());
-            String d = waarde(a.get(0), subject);
+            String d = arg.apply(a.get(0));
             if (bevatMarker(d)) return d;
             return f.kind() == Expr.FunctieKind.MILLISECONDE_UIT
                     ? "java.math.BigDecimal.valueOf((" + d + ").getNano() / 1000000)"
@@ -839,23 +846,23 @@ public final class DrlTranspiler {
         return switch (f.kind()) {
             case ABSOLUTE_WAARDE -> {                 // §13.4.17.17
                 if (a.size() != 1) yield null;
-                String x = waarde(a.get(0), subject);
+                String x = arg.apply(a.get(0));
                 yield bevatMarker(x) ? x : "(" + x + ").abs()";
             }
             case WORTEL -> {                          // §13.4.17.13 — the radicand's root, rounded by the
                 if (a.size() != 1) yield null;        // MANDATORY afronding (an Afgerond wrapper the resolver
-                String x = waarde(a.get(0), subject); // adds). BigDecimal.sqrt at 34-digit precision, NOT a
+                String x = arg.apply(a.get(0));       // adds). BigDecimal.sqrt at 34-digit precision, NOT a
                 // double: Math.sqrt's ~16-digit noise can flip a directional (FLOOR/CEILING) afronding on a
                 // terminating root (sqrt(805147.29)=897.3 but the double is 897.3000…1 -> CEILING gives 897.4).
                 // 34 digits make the directional cut exact for any realistic afronding; a negative radicand
                 // throws a self-describing ArithmeticException (§6.6 foutmelding) instead of a NaN crash.
                 yield bevatMarker(x) ? x : "(" + x + ").sqrt(java.math.MathContext.DECIMAL128)";
             }
-            case DATUM_MET     -> datumConstructor(a, subject, "java.time.LocalDate", 3, false);     // §13.4.17.35 (3 parts)
-            case DATUMTIJD_MET -> datumConstructor(a, subject, "java.time.LocalDateTime", 7, true);  // §13.4.17.36 (7 parts)
+            case DATUM_MET     -> datumConstructor(a, arg, "java.time.LocalDate", 3, false);     // §13.4.17.35 (3 parts)
+            case DATUMTIJD_MET -> datumConstructor(a, arg, "java.time.LocalDateTime", 7, true);  // §13.4.17.36 (7 parts)
             case EERSTE_PAASDAG -> {                  // §13.4.17.37 — Easter Sunday of the given year
                 if (a.size() != 1) yield null;
-                String j = waarde(a.get(0), subject);
+                String j = arg.apply(a.get(0));
                 if (bevatMarker(j)) yield j;
                 registreerPaasdagFunctie();
                 yield "rsEerstePaasdag(" + j + ")";
@@ -868,11 +875,11 @@ public final class DrlTranspiler {
      *  (jaar, maand, dag[, uur, minuut, seconde, milliseconde]); each is restated as an int. When
      *  {@code laatsteIsMilli}, the trailing component is a MILLIsecond but {@code LocalDateTime.of}'s 7th
      *  argument is nanoOfSecond, so it is scaled ×1e6. A marker argument propagates. */
-    private String datumConstructor(List<Expr> a, Objecttype subject, String type, int n, boolean laatsteIsMilli) {
+    private String datumConstructor(List<Expr> a, Function<Expr, String> arg, String type, int n, boolean laatsteIsMilli) {
         if (a.size() != n) return null;
         StringJoiner sj = new StringJoiner(", ", type + ".of(", ")");
         for (int i = 0; i < a.size(); i++) {
-            String v = waarde(a.get(i), subject);
+            String v = arg.apply(a.get(i));
             if (bevatMarker(v)) return v;
             sj.add(laatsteIsMilli && i == a.size() - 1 ? "(" + v + ").intValue() * 1000000" : "(" + v + ").intValue()");
         }
@@ -888,7 +895,7 @@ public final class DrlTranspiler {
      * milliseconde) needs Datum-en-tijd operands (ChronoUnit.HOURS.between throws on a LocalDate); a kwartaal
      * (no ChronoUnit) or an unrecognised unit markers honestly.
      */
-    private String tijdsduur(Expr.Functie f, Objecttype subject) {
+    private String tijdsduur(Expr.Functie f, Function<Expr, String> arg) {
         if (f.argumenten().size() != 2) return null;
         String unit = chronoUnit(f.type());
         if (unit == null) return todo("tijdsduur-eenheid (kwartaal / onbekende tijdseenheid)", f.bron());
@@ -896,7 +903,7 @@ public final class DrlTranspiler {
         Expr eVan = f.argumenten().get(0), eTot = f.argumenten().get(1);
         if (tijdEenheid && (!(eVan.type() instanceof Datatype.DatumTijd) || !(eTot.type() instanceof Datatype.DatumTijd)))
             return todo("tijdsduur in een tijdseenheid vereist datum-tijd operanden (§6.10)", f.bron());
-        String van = waarde(eVan, subject), tot = waarde(eTot, subject);
+        String van = arg.apply(eVan), tot = arg.apply(eTot);
         if (bevatMarker(van) || bevatMarker(tot)) return todo("tijdsduur", f.bron());
         // Lower via a registered Java-bodied helper, NOT inline mvel: a fully-qualified ChronoUnit.<U>.between
         // does not analyse in a Drools mvel modify-block, and the helper also carries the §6.10 null-guard and
@@ -1298,6 +1305,17 @@ public final class DrlTranspiler {
         }
         if (e instanceof Expr.ParameterRef p) return ident(p.parameter().naam(), false);
         if (e instanceof Expr.Literal lit)    return literal(lit);
+        if (e instanceof Expr.Functie f) {
+            // §13.4.17 a SCALAR builtin (abs / date-component / datum-met / wortel / paasdag / tijdsduur) is a
+            // valid pattern-constraint operand once its arguments lower to bare properties — so reuse the one
+            // value-side routine, swapping its arg lowering to operand() (the field name, not a $subject getter,
+            // since $subject is not bound inside its own pattern). The AGGREGATIONS (som/min/max over instances)
+            // return null there: they need a `when` accumulate and cannot live inside a single constraint, so
+            // they fall through to an honest marker (-> the caller's `false /* TODO */`).
+            String scalar = scalarFunctie(f, x -> operand(x, subject));
+            if (scalar != null) return scalar;
+            return todo("aggregatie-functie in voorwaarde " + f.kind(), f.bron());
+        }
         return todo("operand", e.bron());
     }
 
