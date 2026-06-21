@@ -18,6 +18,9 @@ public class Klok {
     private LocalDateTime moment;
     private BigDecimal uurnr;
     private LocalDateTime stip;
+    private boolean wortelVier;   // §13.4.17.13 wortel as a CONDITION operand (under its mandatory afronding)
+    public boolean isWortelVier() { return wortelVier; }
+    public void setWortelVier(boolean v) { this.wortelVier = v; }
     public BigDecimal getSaldo() { return saldo; }
     public void setSaldo(BigDecimal v) { this.saldo = v; }
     public BigDecimal getAbsval() { return absval; }

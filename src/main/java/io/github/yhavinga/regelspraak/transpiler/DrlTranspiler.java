@@ -760,12 +760,7 @@ public final class DrlTranspiler {
             return "(" + waarde(b.links(), subject) + " " + infix(b.op()) + " " + rechts + ")";
         }
         if (e instanceof Expr.Afgerond af) {
-            String mode = switch (af.modus()) {
-                case NAAR_BENEDEN -> "FLOOR"; case NAAR_BOVEN -> "CEILING";
-                case REKENKUNDIG -> "HALF_UP"; case RICHTING_NUL -> "DOWN"; case WEG_VAN_NUL -> "UP";
-            };
-            return "(" + waarde(af.basis(), subject) + ").setScale(" + af.decimalen()
-                    + ", java.math.RoundingMode." + mode + ")";
+            return afgerondeTerm(waarde(af.basis(), subject), af);
         }
         if (e instanceof Expr.Begrensd bg) {
             // §4/§6.1.4: a convertible-but-different bound unit (a jr bound on a mnd basis) is
@@ -1305,6 +1300,15 @@ public final class DrlTranspiler {
         }
         if (e instanceof Expr.ParameterRef p) return ident(p.parameter().naam(), false);
         if (e instanceof Expr.Literal lit)    return literal(lit);
+        if (e instanceof Expr.Afgerond af) {
+            // §13.4.17.13/.25: an afronding wraps a getalexpressie — and "de wortel van X" carries a MANDATORY
+            // afronding, so a condition-side wortel is always Afgerond(Functie(WORTEL)), never the bare Functie.
+            // setScale is a pure method call (no ternary), valid in a pattern constraint, so descend with the
+            // operand-side (bare-property) lowering. A marker basis (e.g. an afronding over an unlowerable
+            // arithmetic operand — those Binair/Begrensd forms use ternaries and stay markers here) propagates.
+            String b = operand(af.basis(), subject);
+            return bevatMarker(b) ? b : afgerondeTerm(b, af);
+        }
         if (e instanceof Expr.Functie f) {
             // §13.4.17 a SCALAR builtin (abs / date-component / datum-met / wortel / paasdag / tijdsduur) is a
             // valid pattern-constraint operand once its arguments lower to bare properties — so reuse the one
@@ -1452,6 +1456,18 @@ public final class DrlTranspiler {
         if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return expr;
         String factor = ev.omrekenfactorNaar(en).toPlainString();
         return "(" + expr + " == null ? null : (" + expr + ").multiply(new java.math.BigDecimal(\"" + factor + "\")))";
+    }
+
+    /** §13.4.17.25 afronding: round a basis term to {@code af.decimalen()} via the matching
+     *  {@link java.math.RoundingMode}. A pure {@code .setScale(...)} method call — no ternary — so it is
+     *  valid in BOTH a modify-block (value side) and a pattern constraint (condition side); shared by
+     *  {@code waarde} and {@code operand} so a wortel/getal afronding lowers identically in either position. */
+    private static String afgerondeTerm(String basis, Expr.Afgerond af) {
+        String mode = switch (af.modus()) {
+            case NAAR_BENEDEN -> "FLOOR"; case NAAR_BOVEN -> "CEILING";
+            case REKENKUNDIG -> "HALF_UP"; case RICHTING_NUL -> "DOWN"; case WEG_VAN_NUL -> "UP";
+        };
+        return "(" + basis + ").setScale(" + af.decimalen() + ", java.math.RoundingMode." + mode + ")";
     }
 
     private static String infix(Expr.BinOp op) {

@@ -804,6 +804,34 @@ class DroolsExecutionTest {
         assertFalse(andereDag.isReisMetPaaskorting(), "vlucht op 1 jan had niet mogen vuren");
     }
 
+    @Test void conditie_zijde_wortel_onder_zijn_verplichte_afronding() {
+        // §13.4.17.13: "de wortel van X" carries a MANDATORY afronding, so a condition-side wortel is always
+        // Afgerond(Functie(WORTEL)) — operand() must descend the afronding wrapper (a pure setScale, valid in a
+        // pattern constraint) to reach the builtin, else the rule no-ops. saldo 16 -> wortel 4 (afgerond) -> fires.
+        String src = """
+            Objecttype de Klok
+                de saldo Numeriek (getal met 2 decimalen);
+                is wortel vier kenmerk (bijvoeglijk);
+            Regel w
+                geldig altijd
+                    Een Klok is wortel vier
+                    indien de wortel van de saldo van een Klok naar beneden afgerond op 0 decimalen gelijk is aan 4.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("TODO voorwaarde"), () -> "de wortel-in-voorwaarde mag geen marker zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Klok zestien = new Klok(); zestien.setSaldo(new BigDecimal("16"));   // sqrt 4 -> fires
+        Klok tien    = new Klok(); tien.setSaldo(new BigDecimal("10"));      // sqrt 3.16 -> afgerond 3 -> niet
+        sessie.insert(zestien); sessie.insert(tien);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(zestien.isWortelVier(), "wortel(16)=4 had moeten vuren");
+        assertFalse(tien.isWortelVier(), "wortel(10)~3 had niet mogen vuren");
+    }
+
     @Test void conditie_zijde_builtin_in_kwantor_vergelijkt_numeriek_gelijk() {
         // toka-26 Hoogseizoen: a condition-side builtin (maand uit) inside a "ten minste één" quantifier, each
         // criterion a NUMERIC == against an integer literal. This is the first firing BigDecimal == BigDecimal
