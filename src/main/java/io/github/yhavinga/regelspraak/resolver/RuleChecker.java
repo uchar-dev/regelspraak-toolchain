@@ -434,6 +434,23 @@ final class RuleChecker {
             rato = z.attribuutMetLidwoord() != null && z.attribuutMetLidwoord().kaleNaam() != null
                     ? src(z.attribuutMetLidwoord().kaleNaam()) : null;
         }
+        // §6.1.2 precision, consistent with the ordinary `regel` assignment: a share whose decimal count
+        // exceeds the target attribute's must be explicitly rounded (the §9.7.4 afronding). Run it only when
+        // the verdeling actually ASSIGNS a share — a COMPLEX marker assigns nothing, and a naar-rato whose
+        // weight is not getalachtig is lowered to an honest no-op (so flagging the precision of a share that is
+        // never computed would be a false positive). (No-op for all-integer TOKA verdelingen.)
+        if (methode != ResolvedVerdeling.Methode.COMPLEX && b.objecttype() != null && d.objecttype() != null) {
+            Datatype gewType = methode == ResolvedVerdeling.Methode.NAAR_RATO && rato != null
+                    ? d.objecttype().attribuut(rato) : null;
+            boolean lowert = methode == ResolvedVerdeling.Methode.GELIJKE_DELEN
+                    || (gewType != null && gewType.isGetalachtig());   // mirror the transpiler's lowering gate
+            if (lowert) {
+                String fout = Typering.verdeelToekenning(d.objecttype().attribuut(d.attribuut()),
+                        b.objecttype().attribuut(b.attribuut()), gewType, afrDec);
+                if (fout != null)
+                    model.diagnostics.add(new Diagnostic(Severity.ERROR, "verdeling: " + fout, v.getStart().getLine()));
+            }
+        }
         model.verdelingen.add(new ResolvedVerdeling(naam, b.objecttype(), b.attribuut(),
                 d.objecttype(), d.attribuut(), methode, rato, afrDec, restAttr, voorwaarde, geldigheid));
     }

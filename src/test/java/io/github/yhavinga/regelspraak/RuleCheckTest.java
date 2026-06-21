@@ -40,6 +40,91 @@ class RuleCheckTest {
         assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
     }
 
+    static final String VERDEEL_MODEL = """
+        Objecttype de Pot
+            de totaal Numeriek (getal met 2 decimalen);
+            de restant Numeriek (geheel getal);
+        Objecttype de Deelnemer
+            de aandeel Numeriek (geheel getal);
+            de gewicht Numeriek (geheel getal);
+        Feittype Pot over deelnemers
+            de pot Pot
+            de deelnemer Deelnemer
+        Eén pot wordt verdeeld over meerdere deelnemers
+        """;
+
+    @Test void verdeling_over_precieze_deling_wordt_als_6_1_2_gemeld() {
+        // §6.1.2, consistent with `regel`: a share whose decimal count (here the 2-decimal `totaal` over an
+        // integer count) exceeds the integer target's must be explicitly rounded — the resolver flags it, just
+        // as it flags the equivalent ordinary assignment.
+        String src = VERDEEL_MODEL + """
+            Regel deel
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld in gelijke delen.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("aandeel") && d.message().contains("6.1.2")),
+                () -> "verwachtte een §6.1.2 verdeling-precisie-fout, kreeg: " + m.errors());
+    }
+
+    @Test void verdeling_met_afronding_onderdrukt_de_6_1_2_melding() {
+        // the §9.7.4 "afgerond op N decimalen naar beneden" IS the explicit afronding §6.1.2 demands, so a
+        // rounded share fits the bounded target — no error (exactly as an Expr.Afgerond suppresses it for regel).
+        String src = VERDEEL_MODEL + """
+            Regel deel afgerond
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - naar rato van de gewicht,
+                    - afgerond op 0 decimalen naar beneden
+                    Als onverdeelde rest blijft de restant van een pot over.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "een afgeronde verdeling mag geen §6.1.2-fout geven: " + m.errors());
+    }
+
+    @Test void verdeling_van_gehele_getallen_geeft_geen_6_1_2_fout() {
+        // every TOKA verdeling is integer-typed -> the share is 0 decimals -> no false positive.
+        String src = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel deel geheel
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld naar rato van de gewicht.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "een geheel-getal verdeling mag geen §6.1.2-fout geven: " + m.errors());
+    }
+
+    @Test void verdeling_naar_rato_met_niet_numeriek_gewicht_geeft_geen_6_1_2_fout() {
+        // a non-getalachtig weight makes the naar-rato verdeling an honest no-op in the transpiler, so the
+        // §6.1.2 precision check must NOT fire on a share that is never computed (a false positive — regel
+        // reports a TYPE error there, not a precision one).
+        String src = """
+            Objecttype de Pot
+                de totaal Numeriek (getal met 2 decimalen);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de label Tekst;
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel deel tekst
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld naar rato van de label.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().noneMatch(d -> d.message().contains("6.1.2")),
+                () -> "een niet-numeriek gewicht mag geen §6.1.2 verdeling-fout geven (de verdeling lowert niet): " + m.errors());
+    }
+
     @Test void percentage_waarde_met_numerieke_literal_grens_geen_fout() {
         // §6.1.4 admits a Percentage value bounded by a plain numeric expression — the bound need
         // not be the SAME family as the bounded value, only numeric (getalachtig). No false positive.

@@ -909,13 +909,18 @@ however, ride on the equal-shares / naar-rato spine when no grouping and no maxi
    precisely the CE that triggers the cancellation. So the final state on a fout verdeling is {weighted shares
    set + an Inconsistentie present} — the Fout is detectable, but the shares are not withheld. Carded.
 
-2. **Plain naar rato into an integer target keeps the fraction.** §6.1.2 forbids implicit rounding: a
-   fractional share (e.g. 1001 over 3,2 → 600,6) assigned to a `geheel getal` attribute requires an explicit
-   afronding. The bare `divide(…, DECIMAL64)` keeps the fraction — exactly as the equal-shares path and the
-   ordinary `regel` assignment already do (their §6.1.2 posture is "emit raw; the author adds the afronding").
-   Enforcing §6.1.2 at the verdeling assignment (consistently with equal-shares and `regel`) is a separate,
-   transpiler-wide item. A zero total weight (`Σ = 0`) is guarded (`signum() != 0`) so the divide cannot
-   throw; the spec leaves a zero divisor undefined, so no-op-not-crash is the chosen reading.
+2. **§6.1.2 precision is now enforced statically on the share, like the ordinary assignment.** A verdeling
+   whose share's declared decimal count exceeds the target attribute's is flagged as the §6.1.2 violation it is
+   (`Typering.verdeelToekenning`, raised by `RuleChecker.verdeling`) — the same ERROR `regel` raises for the
+   equivalent expression, suppressed the same way by an afronding (toka-36's "afgerond op 0 decimalen"). It
+   follows `regel`'s static model: equal-shares is total/count (the share carries the total's decimals), naar
+   rato is total·weight/Σweight (total+weight decimals). It is a no-op for every TOKA verdeling (all
+   integer-typed → 0-decimal share). What it does NOT catch — by design, exactly as `regel` does not — is a
+   RUNTIME-over-precise result of an *integer*-operand division (1001 over 3 → 600,6 at fire time): the static
+   `maxDec` model reports 0 decimals there, and the bare `divide(…, DECIMAL64)` keeps the runtime fraction.
+   That is the engine-wide DECIMAL64 (vs exact-rational) precision model, carded separately; toka-36's
+   afronding is the author's explicit fix for it. A zero total weight (`Σ = 0`) is guarded (`signum() != 0`)
+   so the divide cannot throw; the spec leaves a zero divisor undefined, so no-op-not-crash is the chosen reading.
 
 ### §9.7.4/§9.7.5 verdeling met afronding en onverdeelde rest — floor the share, recomputable remainder
 

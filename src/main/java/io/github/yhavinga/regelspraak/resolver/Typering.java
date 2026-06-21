@@ -224,6 +224,32 @@ public final class Typering {
         return null;
     }
 
+    /** §6.1.2 for a §13.4.10 verdeling share, consistent with {@link #toekenning} (a verdeling assigns a share
+     *  to an attribute, so the same precision rule governs it). The share's decimal count follows the same
+     *  rekentabel model as the equivalent expression: equal-shares is {@code total / count} — a division, and
+     *  {@code count} is a whole count, so {@code maxDec} = the total's decimals; naar rato is
+     *  {@code total · weight / Σweight} — the multiply contributes {@code total+weight} decimals and the
+     *  division by {@code Σweight} does not raise that. An afronding to {@code afrDec} decimals caps the share
+     *  at {@code afrDec} (exactly as an {@code Expr.Afgerond} wrapper caps the value for {@link #toekenning}),
+     *  so a rounded verdeling fits a bounded target. An unbounded ({@code getal}) target has no ceiling.
+     *  Returns the §6.1.2 message when the share is over-precise, else null. For all-integer operands (every
+     *  TOKA verdeling) the share is 0 decimals and this is a no-op — it only flags a decimal-typed bron/weight
+     *  distributed into a narrower target, the case the ordinary {@code regel} assignment already flags. */
+    public static String verdeelToekenning(Datatype doel, Datatype bron, Datatype gewicht, Integer afrDec) {
+        // An Onbekend bron carries no precision claim — like an Expr.Afgerond over an Onbekend base, the
+        // assignment check no-ops (the afrDec path would otherwise flag against the rounding scale alone).
+        if (doel == null || bron == null || doel.isOnbekend() || bron.isOnbekend() || !doel.isGetalachtig()
+                || doel.onbeperkt())
+            return null;
+        int share = afrDec != null ? afrDec
+                : decimalenVan(bron) + (gewicht != null ? decimalenVan(gewicht) : 0);
+        int dd = decimalenVan(doel);
+        return share > dd
+                ? "het toe te kennen aandeel heeft meer decimalen (" + share + ") dan het attribuut toelaat ("
+                  + dd + "); rond de verdeling eerst expliciet af (§6.1.2/§9.7.4)"
+                : null;
+    }
+
     // -------- helpers --------
 
     /** Same datatype family for gelijk/ongelijk/toekenning. Numeriek and Percentage are
