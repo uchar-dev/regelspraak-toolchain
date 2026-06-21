@@ -789,15 +789,25 @@ public final class DrlTranspiler {
         }
         if (e instanceof Expr.Binair b) {
             if (b.op() == Expr.BinOp.TOT_DE_MACHT) {
-                // §13.4.17.14: an INTEGER (literal) exponent — the common case — is computed
-                // exactly with BigDecimal.pow(int); going through Math.pow (a double) would lose
-                // integer precision above 2^53 (7^19 off by 1) before the mandatory afronding.
+                // §13.4.17.14: an INTEGER (literal) exponent — the common case — is computed exactly with
+                // BigDecimal.pow(int); going through Math.pow (a double) would lose integer precision above 2^53
+                // (7^19 off by 1) before the mandatory afronding. §6.7: any empty operand -> leeg, so the base
+                // goes through a null-guarding helper (the integer exponent is a literal, never empty; the
+                // runtime path guards both). A marker base propagates unwrapped, like the other operators.
                 Integer n = geheelExponent(b.rechts());
-                if (n != null) return "(" + waarde(b.links(), subject) + ").pow(" + n + ")";
+                if (n != null) {
+                    String l = waarde(b.links(), subject);
+                    if (bevatMarker(l)) return "(" + l + ").pow(" + n + ")";
+                    registreerMachtFunctie();
+                    return "rsMacht(" + l + ", " + n + ")";
+                }
                 // a genuinely fractional/runtime exponent: Math.pow yields a double, wrapped as a
                 // BigDecimal so the afronding's setScale and surrounding arithmetic compile.
-                return "java.math.BigDecimal.valueOf(Math.pow((" + waarde(b.links(), subject)
-                        + ").doubleValue(), (" + waarde(b.rechts(), subject) + ").doubleValue()))";
+                String l = waarde(b.links(), subject), r = waarde(b.rechts(), subject);
+                if (bevatMarker(l) || bevatMarker(r))
+                    return "java.math.BigDecimal.valueOf(Math.pow((" + l + ").doubleValue(), (" + r + ").doubleValue()))";
+                registreerMachtReeelFunctie();
+                return "rsMachtReeel(" + l + ", " + r + ")";
             }
             if (b.op() == Expr.BinOp.PERCENTAGE_VAN) {
                 String l = waarde(b.links(), subject), r = waarde(b.rechts(), subject);
@@ -942,12 +952,14 @@ public final class DrlTranspiler {
             }
             case WORTEL -> {                          // §13.4.17.13 — the radicand's root, rounded by the
                 if (a.size() != 1) yield null;        // MANDATORY afronding (an Afgerond wrapper the resolver
-                String x = arg.apply(a.get(0));       // adds). BigDecimal.sqrt at 34-digit precision, NOT a
-                // double: Math.sqrt's ~16-digit noise can flip a directional (FLOOR/CEILING) afronding on a
-                // terminating root (sqrt(805147.29)=897.3 but the double is 897.3000…1 -> CEILING gives 897.4).
-                // 34 digits make the directional cut exact for any realistic afronding; a negative radicand
-                // throws a self-describing ArithmeticException (§6.6 foutmelding) instead of a NaN crash.
-                yield bevatMarker(x) ? x : "(" + x + ").sqrt(java.math.MathContext.DECIMAL128)";
+                String x = arg.apply(a.get(0));       // adds, now null-safe). rsWortel does BigDecimal.sqrt at
+                // 34-digit precision, NOT Math.sqrt whose ~16-digit double noise can flip a directional
+                // (FLOOR/CEILING) afronding on a terminating root, and carries the §6.6 leegwaarde (leeg -> leeg)
+                // so a leeg radicand propagates through the afronding. A negative radicand still throws (the §6.6
+                // foutmelding is a separate slice).
+                if (bevatMarker(x)) yield x;
+                registreerWortelFunctie();
+                yield "rsWortel(" + x + ")";
             }
             case DATUM_MET     -> datumConstructor(a, arg, "java.time.LocalDate", 3, false);     // §13.4.17.35 (3 parts)
             case DATUMTIJD_MET -> datumConstructor(a, arg, "java.time.LocalDateTime", 7, true);  // §13.4.17.36 (7 parts)
@@ -1635,15 +1647,58 @@ public final class DrlTranspiler {
     }
 
     /** §13.4.17.25 afronding: round a basis term to {@code af.decimalen()} via the matching
-     *  {@link java.math.RoundingMode}. A pure {@code .setScale(...)} method call — no ternary — so it is
-     *  valid in BOTH a modify-block (value side) and a pattern constraint (condition side); shared by
-     *  {@code waarde} and {@code operand} so a wortel/getal afronding lowers identically in either position. */
-    private static String afgerondeTerm(String basis, Expr.Afgerond af) {
+     *  {@link java.math.RoundingMode}, through the rsAfronding helper so a leeg basis rounds to leeg rather
+     *  than NPE-ing on (null).setScale. That null-guard is load-bearing: wortel and macht carry a MANDATORY
+     *  afronding (§13.4.17.13/.14), and §6.6/§6.7 make their leeg result leeg — which can only propagate if the
+     *  afronding wrapper passes a null through. The helper (not an inline ternary) is also the form valid in a
+     *  pattern constraint; shared by {@code waarde} and {@code operand} so an afronding lowers identically in
+     *  either position. */
+    private String afgerondeTerm(String basis, Expr.Afgerond af) {
         String mode = switch (af.modus()) {
             case NAAR_BENEDEN -> "FLOOR"; case NAAR_BOVEN -> "CEILING";
             case REKENKUNDIG -> "HALF_UP"; case RICHTING_NUL -> "DOWN"; case WEG_VAN_NUL -> "UP";
         };
-        return "(" + basis + ").setScale(" + af.decimalen() + ", java.math.RoundingMode." + mode + ")";
+        registreerAfrondingFunctie();
+        return "rsAfronding(" + basis + ", " + af.decimalen() + ", java.math.RoundingMode." + mode + ")";
+    }
+
+    /** Register the §13.4.17.25 afronding helper — round to {@code scale} decimals, but a leeg (null) value
+     *  rounds to leeg (so a wortel/macht/division leeg result propagates instead of NPE-ing the .setScale).
+     *  Idempotent. */
+    private void registreerAfrondingFunctie() {
+        hulpFuncties.putIfAbsent("rsAfronding",
+                "function java.math.BigDecimal rsAfronding(java.math.BigDecimal x, int scale, java.math.RoundingMode mode) {\n"
+                + "    return x == null ? null : x.setScale(scale, mode);\n"
+                + "}\n\n");
+    }
+
+    /** Register the §13.4.17.13 wortel helper — the radicand's root at 34-digit precision (BigDecimal.sqrt, NOT
+     *  Math.sqrt, whose ~16-digit double noise can flip a directional afronding on a terminating root), with the
+     *  §6.6 leegwaarde (a leeg radicand -> leeg). A negative radicand still throws (the §6.6 foutmelding is a
+     *  separate slice). Idempotent. */
+    private void registreerWortelFunctie() {
+        hulpFuncties.putIfAbsent("rsWortel",
+                "function java.math.BigDecimal rsWortel(java.math.BigDecimal x) {\n"
+                + "    return x == null ? null : x.sqrt(java.math.MathContext.DECIMAL128);\n"
+                + "}\n\n");
+    }
+
+    /** Register the §13.4.17.14 "tot de macht" helpers, both carrying the §6.7 leegwaarde (any empty operand ->
+     *  leeg). rsMacht is the exact integer power (BigDecimal.pow(int) — the exponent is a literal, never empty);
+     *  rsMachtReeel is the fractional/runtime exponent via Math.pow (a double), guarding both operands.
+     *  Idempotent. */
+    private void registreerMachtFunctie() {
+        hulpFuncties.putIfAbsent("rsMacht",
+                "function java.math.BigDecimal rsMacht(java.math.BigDecimal basis, int exponent) {\n"
+                + "    return basis == null ? null : basis.pow(exponent);\n"
+                + "}\n\n");
+    }
+    private void registreerMachtReeelFunctie() {
+        hulpFuncties.putIfAbsent("rsMachtReeel",
+                "function java.math.BigDecimal rsMachtReeel(java.math.BigDecimal basis, java.math.BigDecimal exponent) {\n"
+                + "    if (basis == null || exponent == null) return null;\n"
+                + "    return java.math.BigDecimal.valueOf(Math.pow(basis.doubleValue(), exponent.doubleValue()));\n"
+                + "}\n\n");
     }
 
     private static String infix(Expr.BinOp op) {

@@ -402,8 +402,8 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains(")).setScale(0, java.math.RoundingMode.FLOOR) )"),
-                () -> "de afronding moet de hele begrensde expressie omsluiten:\n" + drl);
+        assertTrue(drl.contains("rsAfronding((") && drl.contains(", 0, java.math.RoundingMode.FLOOR) )"),
+                () -> "de afronding (rsAfronding) moet de hele begrensde expressie omsluiten:\n" + drl);
 
         KieSession sessie = build(drl).newKieSession();
         Heffing pos = new Heffing(); pos.setBasis(new BigDecimal("7"));    // 7/2=3.5 -> floor 3
@@ -904,6 +904,38 @@ class DroolsExecutionTest {
         sessie.dispose();
         assertEquals(1, fouten.size(), () -> "precies één Inconsistentie (alleen 12/leeg), kreeg " + fouten.size());
         assertSame(waardeLeeg, fouten.get(0), "de Inconsistentie moet de waarde/leeg-rekensom noemen");
+    }
+
+    @Test void wortel_en_macht_van_leeg_zijn_leeg_door_de_null_veilige_afronding() {
+        // §6.6/§6.7: wortel/macht of a leeg operand is leeg. Both carry a MANDATORY afronding, so a leeg result
+        // used to NPE in (null).setScale and ABORT the session. Now rsWortel/rsMacht return null and rsAfronding
+        // passes it through. Proven by firing a null basis ALONGSIDE a filled one: the session completes, the
+        // leeg basis yields leeg, the filled one computes wortel(16)=4 / 16^2=256.
+        String src = """
+            Objecttype de Heffing
+                de basis Numeriek (geheel getal);
+                de wortelr Numeriek (geheel getal);
+                de machtr Numeriek (geheel getal);
+            Regel w
+                geldig altijd
+                    De wortelr van een Heffing moet gesteld worden op de wortel van de basis van een Heffing naar beneden afgerond op 0 decimalen.
+            Regel m
+                geldig altijd
+                    De machtr van een Heffing moet gesteld worden op de basis van een Heffing tot de macht 2 naar beneden afgerond op 0 decimalen.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        KieSession sessie = build(DrlTranspiler.transpile(m)).newKieSession();
+        Heffing gevuld = new Heffing(); gevuld.setBasis(new BigDecimal("16"));
+        Heffing leeg = new Heffing();                                   // basis leeg -> wortel/macht leeg
+        leeg.setWortelr(new BigDecimal("999")); leeg.setMachtr(new BigDecimal("999"));  // sentinels
+        sessie.insert(gevuld); sessie.insert(leeg);
+        sessie.fireAllRules();   // a null basis must NOT abort the session in (null).setScale
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("4").compareTo(gevuld.getWortelr()), () -> "wortel(16)=4, kreeg " + gevuld.getWortelr());
+        assertEquals(0, new BigDecimal("256").compareTo(gevuld.getMachtr()), () -> "16^2=256, kreeg " + gevuld.getMachtr());
+        assertNull(leeg.getWortelr(), "wortel van leeg = leeg");
+        assertNull(leeg.getMachtr(), "macht van leeg = leeg");
     }
 
     @Test void conditie_zijde_wortel_onder_zijn_verplichte_afronding() {

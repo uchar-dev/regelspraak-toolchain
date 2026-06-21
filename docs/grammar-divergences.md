@@ -982,8 +982,24 @@ no runtime form, so {leeg + Inconsistentie} is a defensible engineering choice �
 number, and the fout is detectable. SCOPE of the companion: BOTH operands must be the subject's OWN attributes
 (the only shape that lowers to a plain re-readable property constraint); a navigated / parameter / nested /
 aggregation divisor still degrades the value to leeg but raises no Inconsistentie (carded). A division wrapped
-in an *explicit* afronding still NPEs on the leeg (the §6.1.2 afronding-leegwaarde gap, below).
+in an *explicit* afronding now also propagates its leeg (the afronding is null-safe — see below).
 
-Still deferred (carded in builtins-vervolg): **tot de macht** — §6.7 makes any empty operand → leeg, but `tot de
-macht` carries a MANDATORY afronding (§13.4.17.14, like wortel), so a leeg result would NPE in the `.setScale`
-wrapper exactly as wortel does — it belongs with the §6.1.2 afronding-leegwaarde, not here.
+### §6.6/§6.7 + §13.4.17.25 — wortel, tot de macht, and a null-safe afronding
+
+`wortel` and `tot de macht` both carry a MANDATORY afronding (§13.4.17.13/.14), and §6.6/§6.7 make their result
+leeg when an operand is leeg. The afronding lowered to a bare `(basis).setScale(...)`, which NPEs on a null
+basis and aborts the whole `fireAllRules()` pass — so those operators' leeg results could not propagate (the
+leeg hit the afronding and crashed). They were deferred on exactly this entanglement; now resolved:
+
+- The afronding lowers through `rsAfronding(x, scale, mode)` — a leeg value rounds to leeg (the helper form is
+  also what a pattern constraint accepts, so the condition-side afronding is covered). Whether a *bare* afronding
+  over an empty value is leeg is not spec-stated (the typeringen has no afronding leegwaarde row), but leeg→leeg
+  is the only reading that lets the spec-mandated wortel/macht leeg propagate, so it is adopted.
+- `wortel` → `rsWortel` (BigDecimal.sqrt at 34 digits — NOT Math.sqrt, whose ~16-digit double noise can flip a
+  directional round on a terminating root — with `leeg → leeg`). `tot de macht` → `rsMacht` (exact integer pow)
+  / `rsMachtReeel` (runtime Math.pow, both operands guarded), each `leeg → leeg`.
+
+Behaviour-preserving for a non-leeg value (each helper equals the old `.sqrt`/`.pow`/`.setScale`), so the only
+corpus change is toka-24's afronding becoming `rsAfronding`; wortel/macht are corpus-invisible. A NEGATIVE
+radicand still throws an ArithmeticException at fire time (a session abort) — the §6.6 foutmelding is a separate
+slice (it can now reuse the §9.5 Inconsistentie channel, as gedeeld door does).

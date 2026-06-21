@@ -307,7 +307,7 @@ class DrlTest {
                     De prijs van een Reis moet gesteld worden op de basis van een Reis, met een minimum van de bodem.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        assertTrue(drl.contains(".setScale(2, java.math.RoundingMode.FLOOR)"), () -> "afronding:\n" + drl);
+        assertTrue(drl.contains("rsAfronding($subject.getBasis(), 2, java.math.RoundingMode.FLOOR)"), () -> "afronding:\n" + drl);
         assertTrue(drl.contains("< bodem ? bodem :"), () -> "begrenzing-minimum:\n" + drl);
     }
 
@@ -324,8 +324,8 @@ class DrlTest {
                     De netto van een Heffing moet gesteld worden op de basis van een Heffing tot de macht 2 naar beneden afgerond op 0 decimalen maal 3.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        // the setScale (rounding the power) is multiplied by 3 -> the maal is outside the afronding
-        assertTrue(drl.contains(".setScale(0, java.math.RoundingMode.FLOOR)) * rsNul(new java.math.BigDecimal(\"3\"))"),
+        // the afronding (rounding the power) is the maal's left operand -> the maal binds OUTSIDE it
+        assertTrue(drl.contains("rsAfronding(rsMacht($subject.getBasis(), 2), 0, java.math.RoundingMode.FLOOR)) * rsNul(new java.math.BigDecimal(\"3\"))"),
                 () -> "afronding moet de macht afronden en 'maal 3' moet erbuiten binden:\n" + drl);
     }
 
@@ -470,11 +470,13 @@ class DrlTest {
                     De zijde van een Vierkant moet gesteld worden op de wortel van de oppervlakte van een Vierkant naar beneden afgerond op 0 decimalen.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        // the sqrt is the basis of a setScale (the mandatory afronding) — the afronding is NOT dropped.
-        // BigDecimal.sqrt (exact to 34 digits), NOT Math.sqrt (a double whose noise flips a directional round).
-        assertTrue(drl.contains("($subject.getOppervlakte()).sqrt(java.math.MathContext.DECIMAL128)"), () -> "sqrt:\n" + drl);
+        // the sqrt (rsWortel) is the basis of the mandatory afronding (rsAfronding) — the afronding is NOT dropped.
+        // rsWortel does BigDecimal.sqrt (exact to 34 digits), NOT Math.sqrt (a double whose noise flips a round).
+        assertTrue(drl.contains("rsWortel($subject.getOppervlakte())"), () -> "sqrt via rsWortel:\n" + drl);
         assertFalse(drl.contains("Math.sqrt"), () -> "geen double-sqrt (rondingsfout op de afrondgrens):\n" + drl);
-        assertTrue(drl.contains(").setScale(0, java.math.RoundingMode.FLOOR)"), () -> "de verplichte afronding moet de root afronden:\n" + drl);
+        assertTrue(drl.contains("rsAfronding(rsWortel($subject.getOppervlakte()), 0, java.math.RoundingMode.FLOOR)"),
+                () -> "de verplichte afronding moet de root afronden (leeg-veilig):\n" + drl);
+        assertTrue(drl.contains(".sqrt(java.math.MathContext.DECIMAL128)"), () -> "rsWortel moet 34-cijferige sqrt gebruiken:\n" + drl);
     }
 
     @Test void tijdsduur_lowert_naar_chronounit_between_met_leeg_guard() {

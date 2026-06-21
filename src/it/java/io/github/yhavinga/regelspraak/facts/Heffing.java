@@ -9,10 +9,16 @@ public class Heffing {
     private BigDecimal prijs;
     private BigDecimal basis;
     private BigDecimal netto;
+    private BigDecimal wortelr;   // §6.6 wortel-of-leeg propagation through the mandatory afronding
+    private BigDecimal machtr;    // §6.7 macht-of-leeg propagation
     public BigDecimal getPrijs() { return prijs; }
     public void setPrijs(BigDecimal v) { this.prijs = v; }
     public BigDecimal getBasis() { return basis; }
     public void setBasis(BigDecimal v) { this.basis = v; }
     public BigDecimal getNetto() { return netto; }
     public void setNetto(BigDecimal v) { this.netto = v; }
+    public BigDecimal getWortelr() { return wortelr; }
+    public void setWortelr(BigDecimal v) { this.wortelr = v; }
+    public BigDecimal getMachtr() { return machtr; }
+    public void setMachtr(BigDecimal v) { this.machtr = v; }
 }
