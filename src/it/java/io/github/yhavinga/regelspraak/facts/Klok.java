@@ -10,6 +10,7 @@ public class Klok {
     private BigDecimal saldo;
     private BigDecimal absval;
     private LocalDate reisdatum;
+    private LocalDate peildatum;
     private BigDecimal jaartal;
     private BigDecimal maandnr;
     private BigDecimal bouwjaar;
@@ -23,6 +24,8 @@ public class Klok {
     public void setAbsval(BigDecimal v) { this.absval = v; }
     public LocalDate getReisdatum() { return reisdatum; }
     public void setReisdatum(LocalDate v) { this.reisdatum = v; }
+    public LocalDate getPeildatum() { return peildatum; }
+    public void setPeildatum(LocalDate v) { this.peildatum = v; }
     public BigDecimal getJaartal() { return jaartal; }
     public void setJaartal(BigDecimal v) { this.jaartal = v; }
     public BigDecimal getMaandnr() { return maandnr; }

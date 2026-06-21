@@ -799,12 +799,15 @@ public final class DrlTranspiler {
     /**
      * §13.4.17 the SCALAR built-in functions — those that map to a single mvel/Java expression rather than an
      * accumulate over instances: the absolute value, the date/time component extractions, and the date /
-     * datetime constructors. Returns null for every other {@link Expr.FunctieKind} (the aggregations and the
-     * not-yet-lowered builtins like wortel/concatenatie/tijdsduur/paasdag), so the caller falls through to the
-     * accumulate path or its marker. A marker propagates straight through when an argument is itself unresolved.
+     * datetime constructors, plus the tijdsduur between two dates. Returns null for every other
+     * {@link Expr.FunctieKind} (the aggregations and the not-yet-lowered builtins like concatenatie/paasdag),
+     * so the caller falls through to the accumulate path or its marker. A marker propagates straight through
+     * when an argument is itself unresolved.
      */
     private String scalarFunctie(Expr.Functie f, Objecttype subject) {
         List<Expr> a = f.argumenten();
+        if (f.kind() == Expr.FunctieKind.TIJDSDUUR || f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR)
+            return tijdsduur(f, subject);
         // §13.4.17.18-.20 a DATE component (jaar/maand/dag) reads as a Numeriek via the matching getter —
         // valid on ANY datum, since LocalDate and LocalDateTime both have these getters.
         String dateGetter = switch (f.kind()) {
@@ -867,6 +870,65 @@ public final class DrlTranspiler {
             sj.add(laatsteIsMilli && i == a.size() - 1 ? "(" + v + ").intValue() * 1000000" : "(" + v + ").intValue()");
         }
         return sj.toString();
+    }
+
+    /**
+     * §6.10 / §13.4.17.32 "de [absolute] tijdsduur van A tot B in [hele] &lt;tijdseenheid&gt;": the number of
+     * COMPLETE units between two dates, which is exactly {@code ChronoUnit.<UNIT>.between(A, B)} — signed (A
+     * later than B gives a negative result, §6.10) and symmetric, matching Tabel 14's +52 / -52. The absolute
+     * form wraps it in {@code Math.abs}. §6.10 Tabel 14 also makes an EMPTY operand yield an empty result (not
+     * 0), and {@code between(null, …)} would NPE, so both operands are null-guarded. A time unit (uur/…/
+     * milliseconde) needs Datum-en-tijd operands (ChronoUnit.HOURS.between throws on a LocalDate); a kwartaal
+     * (no ChronoUnit) or an unrecognised unit markers honestly.
+     */
+    private String tijdsduur(Expr.Functie f, Objecttype subject) {
+        if (f.argumenten().size() != 2) return null;
+        String unit = chronoUnit(f.type());
+        if (unit == null) return todo("tijdsduur-eenheid (kwartaal / onbekende tijdseenheid)", f.bron());
+        boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
+        Expr eVan = f.argumenten().get(0), eTot = f.argumenten().get(1);
+        if (tijdEenheid && (!(eVan.type() instanceof Datatype.DatumTijd) || !(eTot.type() instanceof Datatype.DatumTijd)))
+            return todo("tijdsduur in een tijdseenheid vereist datum-tijd operanden (§6.10)", f.bron());
+        String van = waarde(eVan, subject), tot = waarde(eTot, subject);
+        if (bevatMarker(van) || bevatMarker(tot)) return todo("tijdsduur", f.bron());
+        // Lower via a registered Java-bodied helper, NOT inline mvel: a fully-qualified ChronoUnit.<U>.between
+        // does not analyse in a Drools mvel modify-block, and the helper also carries the §6.10 null-guard and
+        // the absolute/sign in plain Java where the enum and the overload resolve cleanly.
+        registreerTijdsduurFunctie();
+        return "rsTijdsduur(" + van + ", " + tot + ", \"" + unit + "\", "
+                + (f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR) + ")";
+    }
+
+    /** Register the Java-bodied DRL helper that computes a §6.10 tijdsduur — the whole-unit count between two
+     *  Temporals (signed; absolute when asked), empty when either operand is empty (Tabel 14). Idempotent. */
+    private void registreerTijdsduurFunctie() {
+        hulpFuncties.putIfAbsent("rsTijdsduur",
+                "function java.math.BigDecimal rsTijdsduur(java.time.temporal.Temporal van, "
+                + "java.time.temporal.Temporal tot, String eenheid, boolean absoluut) {\n"
+                + "    if (van == null || tot == null) return null;\n"
+                + "    long n = java.time.temporal.ChronoUnit.valueOf(eenheid).between(van, tot);\n"
+                + "    return java.math.BigDecimal.valueOf(absoluut ? Math.abs(n) : n);\n"
+                + "}\n\n");
+    }
+
+    /** Map a tijdsduur's declared unit (its result {@link Datatype}'s eenheid, e.g. TOKA's "jr" or a bare
+     *  "jaar") to a {@link java.time.temporal.ChronoUnit} name. Normalised through the shared plural->singular
+     *  reducer so "jaren"/"jaar"/"jr" all land on YEARS; returns null for kwartaal (no ChronoUnit) or any
+     *  unrecognised unit, so the caller markers. */
+    private static String chronoUnit(Datatype t) {
+        io.github.yhavinga.regelspraak.model.Eenheid e = t.eenheidOf();
+        if (e == null) return null;
+        return switch (RegelSpraakModel.normaliseerTijdseenheid(e.afkorting())) {
+            case "jaar", "jr"             -> "YEARS";
+            case "maand", "mnd"           -> "MONTHS";
+            case "week", "wk"             -> "WEEKS";
+            case "dag"                    -> "DAYS";
+            case "uur", "u"               -> "HOURS";
+            case "minuut", "min"          -> "MINUTES";
+            case "seconde", "secondes", "sec", "s"     -> "SECONDS";
+            case "milliseconde", "millisecondes", "ms" -> "MILLIS"; // §6.10 spells the plural with -s, which
+            default -> null;   // the -en reducer leaves unchanged; kwartaal (no ChronoUnit) / custom -> marker
+        };
     }
 
     /**

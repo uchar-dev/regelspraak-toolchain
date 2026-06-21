@@ -425,6 +425,53 @@ class DrlTest {
         assertTrue(drl.contains(").setScale(0, java.math.RoundingMode.FLOOR)"), () -> "de verplichte afronding moet de root afronden:\n" + drl);
     }
 
+    @Test void tijdsduur_lowert_naar_chronounit_between_met_leeg_guard() {
+        String src = """
+            Eenheidsysteem Tijd
+                de maand            mnd
+                het jaar            jr       =    12 mnd
+            Objecttype de Klok
+                de vertrek Datum in dagen;
+                de aankomst Datum in dagen;
+                de jaren Numeriek (geheel getal) met eenheid jr;
+                de maanden Numeriek (geheel getal) met eenheid mnd;
+            Regel j
+                geldig altijd
+                    De jaren van een Klok moet gesteld worden op de tijdsduur van de vertrek van een Klok tot de aankomst van een Klok in hele jaren.
+            Regel m
+                geldig altijd
+                    De maanden van een Klok moet gesteld worden op de absolute tijdsduur van de vertrek van een Klok tot de aankomst van een Klok in hele maanden.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        // lowered via the injected rsTijdsduur helper (a fully-qualified ChronoUnit.between does not analyse
+        // inside a Drools mvel modify-block); the signed years, the absolute months, and one helper definition
+        assertTrue(drl.contains("rsTijdsduur($subject.getVertrek(), $subject.getAankomst(), \"YEARS\", false)"),
+                () -> "tijdsduur in jaren:\n" + drl);
+        assertTrue(drl.contains("rsTijdsduur($subject.getVertrek(), $subject.getAankomst(), \"MONTHS\", true)"),
+                () -> "absolute tijdsduur in maanden:\n" + drl);
+        // §6.10 Tabel 14: an empty operand makes the result empty (the guard lives in the helper), and the
+        // helper is injected exactly once
+        assertTrue(drl.contains("function java.math.BigDecimal rsTijdsduur("), () -> "helper niet geïnjecteerd:\n" + drl);
+        assertTrue(drl.contains("if (van == null || tot == null) return null;"), () -> "leeg-guard in helper:\n" + drl);
+    }
+
+    @Test void tijdsduur_in_millisecondes_de_s_meervoudsvorm_uit_de_spec_lowert() {
+        // §6.10 spells the unit "in millisecondes" (-s plural); the -en plural reducer leaves it unchanged,
+        // so chronoUnit must accept the -s form too rather than markering a spec example.
+        String src = """
+            Objecttype de Klok
+                de start Datum en tijd in millisecondes;
+                de eind Datum en tijd in millisecondes;
+                de duur Numeriek (geheel getal) met eenheid millisecondes;
+            Regel d
+                geldig altijd
+                    De duur van een Klok moet gesteld worden op de tijdsduur van de start van een Klok tot de eind van een Klok in millisecondes.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rsTijdsduur($subject.getStart(), $subject.getEind(), \"MILLIS\", false)"),
+                () -> "in millisecondes moet naar MILLIS loweren, niet markeren:\n" + drl);
+    }
+
     @Test void kenmerktoekenning_wordt_boolean_setter_onder_voorwaarde() {
         String src = """
             Objecttype de Persoon

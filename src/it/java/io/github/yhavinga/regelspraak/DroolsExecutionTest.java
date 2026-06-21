@@ -716,6 +716,40 @@ class DroolsExecutionTest {
                 () -> "datumtijd met …, milliseconde 500 = .500s, kreeg " + k.getStip());
     }
 
+    @Test void tijdsduur_telt_volledige_eenheden_absolute_keert_teken_leeg_blijft_leeg() {
+        // §6.10: tijdsduur is the number of COMPLETE units (= ChronoUnit.between, signed); absolute takes the
+        // magnitude; an empty operand yields an empty result (Tabel 14). 2000-01-15 -> 2023-06-20 is 23 whole
+        // years and 281 whole months.
+        String src = """
+            Eenheidsysteem Tijd
+                de maand            mnd
+                het jaar            jr       =    12 mnd
+            Objecttype de Klok
+                de reisdatum Datum in dagen;
+                de peildatum Datum in dagen;
+                de jaartal Numeriek (niet-negatief geheel getal) met eenheid jr;
+                de maandnr Numeriek (geheel getal) met eenheid mnd;
+            Regel j
+                geldig altijd
+                    De jaartal van een Klok moet gesteld worden op de tijdsduur van de reisdatum van een Klok tot de peildatum van een Klok in hele jaren.
+            Regel m
+                geldig altijd
+                    De maandnr van een Klok moet gesteld worden op de absolute tijdsduur van de peildatum van een Klok tot de reisdatum van een Klok in hele maanden.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        KieSession sessie = build(DrlTranspiler.transpile(m)).newKieSession();
+        Klok k1 = new Klok(); k1.setReisdatum(LocalDate.of(2000, 1, 15)); k1.setPeildatum(LocalDate.of(2023, 6, 20));
+        Klok leeg = new Klok(); leeg.setReisdatum(LocalDate.of(2000, 1, 15));   // peildatum leeg -> result leeg
+        sessie.insert(k1); sessie.insert(leeg);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("23").compareTo(k1.getJaartal()), () -> "hele jaren 2000-01-15 -> 2023-06-20 = 23, kreeg " + k1.getJaartal());
+        assertEquals(0, new BigDecimal("281").compareTo(k1.getMaandnr()), () -> "absolute hele maanden = 281, kreeg " + k1.getMaandnr());
+        assertNull(leeg.getJaartal(), "een lege peildatum maakt de tijdsduur leeg, niet 0");
+        assertNull(leeg.getMaandnr(), "een lege peildatum maakt de absolute tijdsduur leeg, niet 0");
+    }
+
     @Test void telling_maal_parameter_bindt_de_maal_buiten_de_telling() {
         // §13.4.17.47 telling precedence: "het aantal X van de reis maal de factor" must be
         // (count of X) maal factor, NOT count(X maal factor). The telling takes a
