@@ -939,9 +939,16 @@ Two facts worth recording, each verified by firing in Drools 8.44:
   `BigDecimal == BigDecimal`. A probe confirms mvel coerces numerically (`new BigDecimal("2.5") == new
   BigDecimal("2.50")` matches), so the existing `==`/`!=` comparison lowering is correct for numeric equality
   without resorting to `.compareTo(...) == 0`.
-- **The §5.3 both-empty guard's NPE on a null date is the pre-existing leegwaarde gap, not new here.** The
-  guard `&& !(l == null && r == null)` the GELIJK lowering adds is unreachable for Paaskorting: a null
-  `vluchtdatum` NPEs in `(vluchtdatum).getYear()` before the guard runs — exactly the value-side `jaar uit a
-  null date` NPE the builtins-vervolg card tracks (the transpiler-wide leegwaarde rekentabellen item). On the
-  happy path (a filled date) it is a no-op. Not widened here: the leegwaarde fix must touch all operators at
-  once.
+- **A null operand to a condition-side builtin throws, and the blast radius is WORSE than on the value side.**
+  §6.12 says the `… uit` extraction yields `leeg` on a `leeg` input, but the date-component / paasdag terms are
+  not null-guarded, so a null `vluchtdatum` NPEs in `(vluchtdatum).getYear()`. This is the same root cause as
+  the value-side `jaar uit a null date` NPE the builtins-vervolg card tracks — but the SURFACE is new and
+  larger: inside a `when` constraint the throw surfaces as a Drools `ConstraintEvaluationException` that aborts
+  the **entire `fireAllRules()` pass** (every later rule too), and it is triggered by *any* fact in the working
+  memory carrying a null date — not just one the rule would have fired for. On the value side an NPE only
+  reaches a fact that already matched the guard. The §5.3 both-empty guard `&& !(l == null && r == null)` does
+  not save it: the comparison `L == R` is evaluated before the guard short-circuits. On the happy path (filled
+  dates) both rules fire correctly. NOT fixed here, and deliberately not piecemeal: the faithful fix is to route
+  the nullable builtins through null-guarding registered helpers (the `rsTijdsduur` pattern, which already
+  guards) so `leeg` propagates as `null` in both positions — tracked in the builtins-vervolg card (item 2,
+  priority raised) as part of the transpiler-wide leegwaarde work, which must touch all operators coherently.
