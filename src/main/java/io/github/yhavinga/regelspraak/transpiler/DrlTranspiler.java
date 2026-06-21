@@ -326,10 +326,10 @@ public final class DrlTranspiler {
     private record OperandDeel(String leeg, String vol, String waarde, boolean genavigeerd) {}
 
     private OperandDeel operandDeel(Expr e, Objecttype subject) {
-        if (e instanceof Expr.AttribuutRef a && !attribuutOntbreekt(a)) {
-            String rol = naviRol(subject, a);
-            if (rol != null && !EIGEN.equals(rol) && !naarVeel(subject, a, rol)) {
-                String wortel = ident(rol, false), pad = wortel + "." + ident(a.attribuut(), false);
+        if (e instanceof Expr.AttribuutRef a) {
+            NaviRef n = naviResolve(a, subject);
+            if (n.soort() == NaviSoort.GENAVIGEERD) {
+                String wortel = ident(n.rol(), false), pad = wortel + "." + ident(a.attribuut(), false);
                 return new OperandDeel("(" + wortel + " == null || " + pad + " == null)",
                         "(" + wortel + " != null && " + pad + " != null)", pad, true);
             }
@@ -663,6 +663,23 @@ public final class DrlTranspiler {
         return a.objecttype() != null && !a.objecttype().heeftLid(a.attribuut());
     }
 
+    /** How an attribute reference reads relative to the rule subject, resolved ONCE so the four
+     *  context-specific emitters (the value getter, the condition property, the leegwaarde decomposition,
+     *  the leeg/gevuld guard) format from it instead of each re-deriving {@link #naviRol} + the
+     *  EIGEN/naar-veel/absent branching. {@code EIGEN} = the subject's own attribute; {@code GENAVIGEERD} =
+     *  a single to-one navigation through {@code rol}; the rest are the marker cases. */
+    private enum NaviSoort { EIGEN, GENAVIGEERD, AFWEZIG, NAAR_VEEL, ONOPGELOST }
+    private record NaviRef(NaviSoort soort, String rol) {}
+
+    private NaviRef naviResolve(Expr.AttribuutRef a, Objecttype subject) {
+        if (attribuutOntbreekt(a)) return new NaviRef(NaviSoort.AFWEZIG, null);
+        String rol = naviRol(subject, a);
+        if (EIGEN.equals(rol))          return new NaviRef(NaviSoort.EIGEN, null);
+        if (naarVeel(subject, a, rol))  return new NaviRef(NaviSoort.NAAR_VEEL, rol);
+        if (rol != null)                return new NaviRef(NaviSoort.GENAVIGEERD, rol);
+        return new NaviRef(NaviSoort.ONOPGELOST, null);
+    }
+
     /** Whether {@code a} reads a §13.3.7 gedimensioneerd attribuut (its field is a Map&lt;label,value&gt;).
      *  Such a read is only valid through an {@link Expr.DimensieCel} (which pins the label) or as the source
      *  of a dimensieaggregatie; a bare value read of it is under-specified (§3.6). */
@@ -675,12 +692,13 @@ public final class DrlTranspiler {
      *  value read and the dimensioned-read forms (which need the bare getter — for a dimensioned attribute
      *  the Map field — before indexing a label), so the latter bypass the §3.6 under-specified guard. */
     private String attribuutGetter(Expr.AttribuutRef a, Objecttype subject) {
-        if (attribuutOntbreekt(a)) return todo("navigatie", a.bron());
-        String rol = naviRol(subject, a);
-        if (EIGEN.equals(rol)) return SUBJECT + "." + getter(a.attribuut()) + "()";
-        if (naarVeel(subject, a, rol)) return todo("naar-veel-navigatie", a.bron());
-        if (rol != null)       return SUBJECT + "." + getter(rol) + "()." + getter(a.attribuut()) + "()";
-        return todo("navigatie", a.bron());
+        NaviRef n = naviResolve(a, subject);
+        return switch (n.soort()) {
+            case EIGEN       -> SUBJECT + "." + getter(a.attribuut()) + "()";
+            case GENAVIGEERD -> SUBJECT + "." + getter(n.rol()) + "()." + getter(a.attribuut()) + "()";
+            case NAAR_VEEL   -> todo("naar-veel-navigatie", a.bron());
+            default          -> todo("navigatie", a.bron());   // AFWEZIG / ONOPGELOST
+        };
     }
 
     // ---------------- value expression ("then" side: getters) ----------------
@@ -1155,10 +1173,10 @@ public final class DrlTranspiler {
      *  plain form applies). The "." is reached only after the short-circuit root guard, so it never NPEs. */
     private String genavigeerdLeegGevuld(Conditie.Predicaat p, Objecttype subject) {
         if (p.soort() != Conditie.Predicaatsoort.LEEG && p.soort() != Conditie.Predicaatsoort.GEVULD) return null;
-        if (!(p.operand() instanceof Expr.AttribuutRef a) || attribuutOntbreekt(a)) return null;
-        String rol = naviRol(subject, a);
-        if (rol == null || EIGEN.equals(rol) || naarVeel(subject, a, rol)) return null;
-        String wortel = ident(rol, false), pad = wortel + "." + ident(a.attribuut(), false);
+        if (!(p.operand() instanceof Expr.AttribuutRef a)) return null;
+        NaviRef n = naviResolve(a, subject);
+        if (n.soort() != NaviSoort.GENAVIGEERD) return null;   // own/to-many/unresolved → the caller's plain form
+        String wortel = ident(n.rol(), false), pad = wortel + "." + ident(a.attribuut(), false);
         return p.soort() == Conditie.Predicaatsoort.LEEG
                 ? "(" + wortel + " == null || " + pad + " == null)"
                 : "(" + wortel + " != null && " + pad + " != null)";
@@ -1191,12 +1209,13 @@ public final class DrlTranspiler {
      *  the §3.6 under-specified guard. Drools "!." yields null (a leegwaarde) for a null to-one reference
      *  instead of NPE-ing the mvel "." dereference. */
     private String attribuutOperand(Expr.AttribuutRef a, Objecttype subject) {
-        if (attribuutOntbreekt(a)) return todo("navigatie", a.bron());
-        String rol = naviRol(subject, a);
-        if (EIGEN.equals(rol)) return ident(a.attribuut(), false);
-        if (naarVeel(subject, a, rol)) return todo("naar-veel-navigatie", a.bron());
-        if (rol != null)       return ident(rol, false) + "!." + ident(a.attribuut(), false);
-        return todo("navigatie", a.bron());
+        NaviRef n = naviResolve(a, subject);
+        return switch (n.soort()) {
+            case EIGEN       -> ident(a.attribuut(), false);
+            case GENAVIGEERD -> ident(n.rol(), false) + "!." + ident(a.attribuut(), false);
+            case NAAR_VEEL   -> todo("naar-veel-navigatie", a.bron());
+            default          -> todo("navigatie", a.bron());   // AFWEZIG / ONOPGELOST
+        };
     }
 
     // ---------------- leaves & helpers ----------------
