@@ -810,39 +810,40 @@ public final class DrlTranspiler {
         List<Expr> a = f.argumenten();
         if (f.kind() == Expr.FunctieKind.TIJDSDUUR || f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR)
             return tijdsduur(f, arg);
-        // §13.4.17.18-.20 a DATE component (jaar/maand/dag) reads as a Numeriek via the matching getter —
-        // valid on ANY datum, since LocalDate and LocalDateTime both have these getters.
-        String dateGetter = switch (f.kind()) {
-            case JAAR_UIT -> "getYear"; case MAAND_UIT -> "getMonthValue"; case DAG_UIT -> "getDayOfMonth";
+        // §13.4.17.18-.24 / §6.12 a DATE or TIME component (jaar/maand/dag/uur/minuut/seconde/milliseconde uit).
+        // All seven read as a Numeriek via one ChronoField, lowered through the rsDatumDeel helper that carries
+        // the §6.12 / typeringen Tabel 28 leegwaarde rule — an empty input yields an empty result. That null
+        // guard is essential, not cosmetic: a bare "(d).getLong(…)" NPEs on a null date, and inside a `when`
+        // constraint the throw is a ConstraintEvaluationException that aborts the WHOLE fireAllRules() pass; a
+        // pattern constraint also cannot express the guard with a ternary, so the helper is the only form valid
+        // in both positions. DATE parts read off any datum; the TIME parts (HOUR_OF_DAY..MILLI_OF_SECOND) are
+        // defined only on a LocalDateTime, so a plain Datum-in-dagen operand markers honestly (LocalDate would
+        // throw UnsupportedTemporalType). (The resolver does not yet reject "het uur uit een Datum" — carded.)
+        String chronoField = switch (f.kind()) {
+            case JAAR_UIT -> "YEAR"; case MAAND_UIT -> "MONTH_OF_YEAR"; case DAG_UIT -> "DAY_OF_MONTH";
+            case UUR_UIT -> "HOUR_OF_DAY"; case MINUUT_UIT -> "MINUTE_OF_HOUR";
+            case SECONDE_UIT -> "SECOND_OF_MINUTE"; case MILLISECONDE_UIT -> "MILLI_OF_SECOND";
             default -> null;
         };
-        if (dateGetter != null) {
+        if (chronoField != null) {
             if (a.size() != 1) return null;
-            String d = arg.apply(a.get(0));
-            return bevatMarker(d) ? d : "java.math.BigDecimal.valueOf((" + d + ")." + dateGetter + "())";
-        }
-        // §13.4.17.21-.24 a TIME component (uur/minuut/seconde/milliseconde): getHour()/… exist ONLY on a
-        // LocalDateTime, so a plain Datum-in-dagen operand would emit uncompilable DRL (sinking the package).
-        // The operand must be a Datum-en-tijd; otherwise lower to an honest marker. (The resolver does not yet
-        // reject "het uur uit een Datum" as a type error — carded.) milliseconde = nanoOfSecond / 1e6.
-        String timeGetter = switch (f.kind()) {
-            case UUR_UIT -> "getHour"; case MINUUT_UIT -> "getMinute"; case SECONDE_UIT -> "getSecond"; default -> null;
-        };
-        if (timeGetter != null || f.kind() == Expr.FunctieKind.MILLISECONDE_UIT) {
-            if (a.size() != 1) return null;
-            if (!(a.get(0).type() instanceof Datatype.DatumTijd))
+            boolean tijdDeel = switch (f.kind()) {
+                case UUR_UIT, MINUUT_UIT, SECONDE_UIT, MILLISECONDE_UIT -> true; default -> false;
+            };
+            if (tijdDeel && !(a.get(0).type() instanceof Datatype.DatumTijd))
                 return todo("tijd-component uit een niet-datum-tijd (§13.4.17.21-.24)", f.bron());
             String d = arg.apply(a.get(0));
             if (bevatMarker(d)) return d;
-            return f.kind() == Expr.FunctieKind.MILLISECONDE_UIT
-                    ? "java.math.BigDecimal.valueOf((" + d + ").getNano() / 1000000)"
-                    : "java.math.BigDecimal.valueOf((" + d + ")." + timeGetter + "())";
+            registreerDatumDeelFunctie();
+            return "rsDatumDeel(" + d + ", java.time.temporal.ChronoField." + chronoField + ")";
         }
         return switch (f.kind()) {
-            case ABSOLUTE_WAARDE -> {                 // §13.4.17.17
-                if (a.size() != 1) yield null;
+            case ABSOLUTE_WAARDE -> {                 // §13.4.17.17 / §6.9 Tabel 20: |leeg| = leeg, so route
+                if (a.size() != 1) yield null;        // through rsAbs (a null guard a constraint cannot ternary).
                 String x = arg.apply(a.get(0));
-                yield bevatMarker(x) ? x : "(" + x + ").abs()";
+                if (bevatMarker(x)) yield x;
+                registreerAbsFunctie();
+                yield "rsAbs(" + x + ")";
             }
             case WORTEL -> {                          // §13.4.17.13 — the radicand's root, rounded by the
                 if (a.size() != 1) yield null;        // MANDATORY afronding (an Afgerond wrapper the resolver
@@ -937,6 +938,28 @@ public final class DrlTranspiler {
                 + "    int maand = (h + l - 7 * m + 114) / 31;\n"
                 + "    int dag = ((h + l - 7 * m + 114) % 31) + 1;\n"
                 + "    return java.time.LocalDate.of(y, maand, dag);\n"
+                + "}\n\n");
+    }
+
+    /** Register the Java-bodied DRL helper that reads one §13.4.17.18-.24 date/time component (a ChronoField)
+     *  off any Temporal as a Numeriek, with the §6.12 / Tabel 28 leegwaarde rule: an empty input yields an
+     *  empty (null) result instead of NPE-ing the field access. One helper for all seven components.
+     *  Idempotent. */
+    private void registreerDatumDeelFunctie() {
+        hulpFuncties.putIfAbsent("rsDatumDeel",
+                "function java.math.BigDecimal rsDatumDeel(java.time.temporal.TemporalAccessor d, "
+                + "java.time.temporal.TemporalField f) {\n"
+                + "    return d == null ? null : java.math.BigDecimal.valueOf(d.getLong(f));\n"
+                + "}\n\n");
+    }
+
+    /** Register the Java-bodied DRL helper for §13.4.17.17 "de absolute waarde van", carrying the §6.9 / Tabel
+     *  20 leegwaarde rule (|leeg| = leeg). A null guard a Drools pattern constraint cannot express with a
+     *  ternary. Idempotent. */
+    private void registreerAbsFunctie() {
+        hulpFuncties.putIfAbsent("rsAbs",
+                "function java.math.BigDecimal rsAbs(java.math.BigDecimal x) {\n"
+                + "    return x == null ? null : x.abs();\n"
                 + "}\n\n");
     }
 

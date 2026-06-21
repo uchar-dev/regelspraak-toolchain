@@ -371,9 +371,9 @@ class DrlTest {
                     De gemaakt van een Klok moet gesteld worden op de datum met jaar: de bouwjaar van een Klok, maand: 3 en dag: 15.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        assertTrue(drl.contains("($subject.getSaldo()).abs()"), () -> "abs:\n" + drl);
-        assertTrue(drl.contains("java.math.BigDecimal.valueOf(($subject.getReisdatum()).getYear())"),
-                () -> "jaar uit:\n" + drl);
+        assertTrue(drl.contains("rsAbs($subject.getSaldo())"), () -> "abs (leeg-veilig via helper):\n" + drl);
+        assertTrue(drl.contains("rsDatumDeel($subject.getReisdatum(), java.time.temporal.ChronoField.YEAR)"),
+                () -> "jaar uit (leeg-veilig via helper):\n" + drl);
         assertTrue(drl.contains("java.time.LocalDate.of(($subject.getBouwjaar()).intValue(), "
                 + "(new java.math.BigDecimal(\"3\")).intValue(), (new java.math.BigDecimal(\"15\")).intValue())"),
                 () -> "datum met:\n" + drl);
@@ -400,8 +400,8 @@ class DrlTest {
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         // a time component on a Datum-en-tijd lowers; on a Datum-in-dagen it markers (getHour() would not compile)
-        assertTrue(drl.contains("java.math.BigDecimal.valueOf(($subject.getMoment()).getHour())"), () -> "uur uit datumtijd:\n" + drl);
-        assertFalse(drl.contains("($subject.getReisdatum()).getHour()"), () -> "uur uit een Datum-in-dagen mag geen getHour() emitteren:\n" + drl);
+        assertTrue(drl.contains("rsDatumDeel($subject.getMoment(), java.time.temporal.ChronoField.HOUR_OF_DAY)"), () -> "uur uit datumtijd:\n" + drl);
+        assertFalse(drl.contains("rsDatumDeel($subject.getReisdatum()"), () -> "uur uit een Datum-in-dagen moet een marker blijven, niet lageren:\n" + drl);
         assertTrue(drl.contains("setUurfout( /* TODO tijd-component"), () -> "uur uit een Datum-in-dagen moet een marker zijn:\n" + drl);
         // datumtijd met has SEVEN parts; LocalDateTime.of's 7th arg is nanos, so milliseconde scales x1e6
         assertTrue(drl.contains("(new java.math.BigDecimal(\"500\")).intValue() * 1000000)"), () -> "datumtijd met milli->nano:\n" + drl);
@@ -501,7 +501,7 @@ class DrlTest {
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertFalse(drl.contains("TODO voorwaarde"), () -> "de conditie-builtin mag geen marker zijn:\n" + drl);
-        assertTrue(drl.contains("rsEerstePaasdag(java.math.BigDecimal.valueOf((vluchtdatum).getYear()))"),
+        assertTrue(drl.contains("rsEerstePaasdag(rsDatumDeel(vluchtdatum, java.time.temporal.ChronoField.YEAR))"),
                 () -> "het builtin-argument moet de kale property zijn, geen $subject getter:\n" + drl);
         assertFalse(drl.contains("$subject.getVluchtdatum()"), () -> "geen getter in een pattern-constraint:\n" + drl);
     }

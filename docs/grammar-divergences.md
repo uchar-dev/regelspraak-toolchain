@@ -939,16 +939,21 @@ Two facts worth recording, each verified by firing in Drools 8.44:
   `BigDecimal == BigDecimal`. A probe confirms mvel coerces numerically (`new BigDecimal("2.5") == new
   BigDecimal("2.50")` matches), so the existing `==`/`!=` comparison lowering is correct for numeric equality
   without resorting to `.compareTo(...) == 0`.
-- **A null operand to a condition-side builtin throws, and the blast radius is WORSE than on the value side.**
-  §6.12 says the `… uit` extraction yields `leeg` on a `leeg` input, but the date-component / paasdag terms are
-  not null-guarded, so a null `vluchtdatum` NPEs in `(vluchtdatum).getYear()`. This is the same root cause as
-  the value-side `jaar uit a null date` NPE the builtins-vervolg card tracks — but the SURFACE is new and
-  larger: inside a `when` constraint the throw surfaces as a Drools `ConstraintEvaluationException` that aborts
-  the **entire `fireAllRules()` pass** (every later rule too), and it is triggered by *any* fact in the working
-  memory carrying a null date — not just one the rule would have fired for. On the value side an NPE only
-  reaches a fact that already matched the guard. The §5.3 both-empty guard `&& !(l == null && r == null)` does
-  not save it: the comparison `L == R` is evaluated before the guard short-circuits. On the happy path (filled
-  dates) both rules fire correctly. NOT fixed here, and deliberately not piecemeal: the faithful fix is to route
-  the nullable builtins through null-guarding registered helpers (the `rsTijdsduur` pattern, which already
-  guards) so `leeg` propagates as `null` in both positions — tracked in the builtins-vervolg card (item 2,
-  priority raised) as part of the transpiler-wide leegwaarde work, which must touch all operators coherently.
+- **The §6.12 / §6.9 leegwaarde of a date-component or abs operand now propagates as `leeg`, instead of NPE-ing.**
+  Originally the date-component (`(d).getYear()`) and abs (`(x).abs()`) lowerings NPE'd on a null operand, and
+  inside a `when` constraint the throw was a Drools `ConstraintEvaluationException` that aborted the **entire
+  `fireAllRules()` pass** — triggered by *any* fact in working memory with a null date, not just a matching one.
+  The seven §13.4.17.18-.24 components and §13.4.17.17 abs now lower through null-guarding registered helpers
+  (`rsDatumDeel(d, ChronoField)` / `rsAbs(x)`, returning `null` on a `null` input per typeringen Tabel 28 / Tabel
+  20), so `leeg` propagates as `null` in both a modify-block and a pattern constraint. A downstream numeric
+  comparison reads `null == 6` as a non-match (Tabel 37); a non-numeric `gelijk aan` with both sides `leeg` is
+  decided by the §5.3 both-empty guard — `beide leeg → fout → no fire` (Tabel 38), which the NPE used to
+  pre-empt and which now actually runs (Paaskorting on a null `vluchtdatum` correctly does not fire). The
+  ChronoField read is value-identical to the old getters, milliseconde included (`MILLI_OF_SECOND` *is*
+  `nanoOfSecond / 1_000_000`).
+
+  Still NOT propagated (carded in builtins-vervolg, the transpiler-wide leegwaarde work that must touch all
+  operators coherently): **wortel** — its mandatory afronding wrapper `(…).setScale(…)` would itself NPE on a
+  `null` root, so it entangles with the §6.1.2 afronding-leegwaarde; **datum-met / datumtijd-met** — a `null`
+  component still NPEs at `(null).intValue()` inside `LocalDate.of(…)` (the old inline form did too); and the
+  binary arithmetic rekentabellen (§6.2-6.5: `min` vs `verminderd met`'s left-empty split, `÷ leeg → fout`).

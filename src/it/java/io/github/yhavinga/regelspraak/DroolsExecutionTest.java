@@ -797,11 +797,13 @@ class DroolsExecutionTest {
         KieSession sessie = build(drl).newKieSession();
         Vlucht opPaaszondag = new Vlucht(); opPaaszondag.setVluchtdatum(LocalDate.of(2024, 3, 31));  // paaszondag 2024
         Vlucht andereDag   = new Vlucht(); andereDag.setVluchtdatum(LocalDate.of(2024, 1, 1));       // geen paaszondag
-        sessie.insert(opPaaszondag); sessie.insert(andereDag);
-        sessie.fireAllRules();
+        Vlucht legeDatum   = new Vlucht();                                                           // §6.12: leeg -> leeg
+        sessie.insert(opPaaszondag); sessie.insert(andereDag); sessie.insert(legeDatum);
+        sessie.fireAllRules();   // a null vluchtdatum must NOT abort the whole session (it used to NPE in (d).getYear())
         sessie.dispose();
         assertTrue(opPaaszondag.isReisMetPaaskorting(), "vlucht op paaszondag 2024 had moeten vuren");
         assertFalse(andereDag.isReisMetPaaskorting(), "vlucht op 1 jan had niet mogen vuren");
+        assertFalse(legeDatum.isReisMetPaaskorting(), "een lege vluchtdatum is geen paaskorting (§5.3 beide leeg -> fout)");
     }
 
     @Test void conditie_zijde_wortel_onder_zijn_verplichte_afronding() {
@@ -857,9 +859,11 @@ class DroolsExecutionTest {
         KieSession sessie = build(drl).newKieSession();
         Vlucht juli = new Vlucht();    juli.setVluchtdatum(LocalDate.of(2024, 7, 15));   // maand 7 -> hoogseizoen
         Vlucht januari = new Vlucht(); januari.setVluchtdatum(LocalDate.of(2024, 1, 15)); // maand 1 -> niet
-        sessie.insert(juli); sessie.insert(januari);
-        sessie.fireAllRules();
+        Vlucht legeDatum = new Vlucht();                                                  // §6.12: maand uit leeg -> leeg
+        sessie.insert(juli); sessie.insert(januari); sessie.insert(legeDatum);
+        sessie.fireAllRules();   // a null vluchtdatum must NOT abort the session (it used to NPE in (d).getMonthValue())
         sessie.dispose();
+        assertFalse(legeDatum.isInHetHoogseizoen(), "een lege vluchtdatum is geen hoogseizoen (maand uit leeg -> leeg)");
         assertTrue(juli.isInHetHoogseizoen(), "een vlucht in juli (maand 7) is hoogseizoen");
         assertFalse(januari.isInHetHoogseizoen(), "een vlucht in januari (maand 1) is geen hoogseizoen");
     }
