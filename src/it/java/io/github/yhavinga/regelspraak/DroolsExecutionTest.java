@@ -1297,6 +1297,29 @@ class DroolsExecutionTest {
         assertEquals(0, BigDecimal.ZERO.compareTo(q.getRestant()), () -> "rest van q = 0, kreeg " + q.getRestant());
     }
 
+    @Test void verdeling_onverdeelde_rest_corrigeert_zich_bij_incrementeel_arriverende_deelnemers() {
+        // §9.4/§9.7.5: recipients are often RULE-DERIVED (toka-29 "passagier met recht op treinmiles"), so they
+        // appear incrementally. The onverdeelde rest must reflect the FINAL distribution, not freeze at the first
+        // complete-LOOKING set: when only tom is present he gets the whole pot (floor(1001·3/3)=1001), and a
+        // fire-once rest would lock in 1001-1001=0. The rest rule is recomputable, so once maria arrives and the
+        // shares recompute to 600/400 the rest self-corrects to 1. Staged inserts model the incremental arrival.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(VERDELING_REST_SRC));
+        KieSession sessie = build(drl).newKieSession();
+        Pot p = new Pot(); p.setTotaal(new BigDecimal("1001"));
+        Deelnemer tom = new Deelnemer(); tom.setPot(p); tom.setGewicht(new BigDecimal("3"));
+        sessie.insert(p); sessie.insert(tom);
+        sessie.fireAllRules();                                  // tom alone -> 1001; a frozen rest would be 0
+        Deelnemer maria = new Deelnemer(); maria.setPot(p); maria.setGewicht(new BigDecimal("2"));
+        sessie.insert(maria);
+        sessie.fireAllRules();                                  // now 600/400 -> the rest must self-correct to 1
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("600").compareTo(tom.getAandeel()), () -> "tom 600, kreeg " + tom.getAandeel());
+        assertEquals(0, new BigDecimal("400").compareTo(maria.getAandeel()), () -> "maria 400, kreeg " + maria.getAandeel());
+        assertEquals(0, new BigDecimal("1").compareTo(p.getRestant()),
+                () -> "de onverdeelde rest moet zich naar 1 corrigeren, niet op 0 blijven staan, kreeg " + p.getRestant());
+    }
+
     @Test void cross_unit_optelling_wordt_omgerekend_niet_rauw_geteld() {
         // duur(mnd) := looptijd(jr) + duur(mnd). looptijd must be scaled jr->mnd (×12),
         // NOT added raw: 2 jr + 3 mnd = 27 mnd, not 5.

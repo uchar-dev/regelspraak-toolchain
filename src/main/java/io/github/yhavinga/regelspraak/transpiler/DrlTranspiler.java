@@ -509,14 +509,16 @@ public final class DrlTranspiler {
             // §9.7.5 onverdeelde rest: the verdeler keeps total − Σ(distributed shares). A SEPARATE rule that
             // modifies the SOURCE (not the recipients), so it cannot cancel the per-recipient activations. It
             // reads the shares the distribution already assigned, so it is method-agnostic (equal-shares and
-            // naar-rato alike) and needs no recompute. Two guards make it correct and terminating: `<restant> ==
-            // null` fires it exactly once per source (its own modify then bars re-firing, even though that
-            // source-modify re-triggers the idempotent share rule); `not <Doel>(<filter>, <doel> == null)` waits
-            // until every recipient that WILL get a share has one, so the sum is the final, not a partial, total.
+            // naar-rato alike) and needs no recompute. It is RECOMPUTABLE, not fire-once: a `restant == null`
+            // freeze would lock in a partial sum when recipients arrive incrementally (the §9.4 rule-derived
+            // case — the `not` guard only sees recipients already in working memory, so a single early recipient
+            // looks "complete"). Instead it re-fires whenever the share set changes and always reflects the
+            // CURRENT full distribution. The `not <Doel>(<filter>, <doel> == null)` guard still keeps it from
+            // summing a recipient mid-assignment; termination holds because no other rule reads restant, so its
+            // modify does not re-trigger the share rule (property reactivity) and the recomputation is a fixpoint.
             String doelP = ident(doel.naam, true), doelN = ident(v.doelAttribuut(), false);
             out.append(new Regel(v.naam() + " (onverdeelde rest)")
-                .clausule("$src : " + ident(bron.naam, true) + "( " + ident(v.bronAttribuut(), false)
-                        + " != null, " + ident(v.restantAttribuut(), false) + " == null )")
+                .clausule("$src : " + ident(bron.naam, true) + "( " + ident(v.bronAttribuut(), false) + " != null )")
                 .clausule("not " + doelP + "( " + doelFilter + ", " + doelN + " == null )")
                 .clausule("accumulate( $u : " + doelP + "( " + doelFilter + ", " + doelN
                         + " != null ) ; $uit : sum($u." + getter(v.doelAttribuut()) + "()) )")

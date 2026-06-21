@@ -876,9 +876,11 @@ then modify($r) { setDoelAttr( $src.getBronAttr().multiply($r.getW()).divide($su
 
 The weight must be a **getalachtig** (numeriek/percentage) field of the recipient — `heeftLid` alone would
 also accept a Tekst attribute or a boolean kenmerk, whose getter cannot be summed/multiplied (uncompilable
-DRL), so a non-numeric/foreign/absent weight stays the honest no-op marker. The group/ordering/remainder
-schemes (a `maximum`, an `afronding`, an explicit `onverdeelde rest`, `op volgorde van`, `bij een even groot
-criterium`) are the resolver's `COMPLEX` method and stay markers — they are genuinely multi-pass.
+DRL), so a non-numeric/foreign/absent weight stays the honest no-op marker. **Group ordering (`op volgorde van
+… bij een even groot criterium`) and a per-recipient `maximum` are the resolver's `COMPLEX` method and stay
+markers — they are genuinely multi-pass.** The §9.7.4 `afronding` and §9.7.5 `onverdeelde rest` modifiers,
+however, ride on the equal-shares / naar-rato spine when no grouping and no maximum is present — see the
+"verdeling met afronding en onverdeelde rest" section below.
 
 **Two deliberate divergences, both carded (corpus-invisible: TOKA's woonregio factor is always populated):**
 
@@ -900,6 +902,37 @@ criterium`) are the resolver's `COMPLEX` method and stay markers — they are ge
    Enforcing §6.1.2 at the verdeling assignment (consistently with equal-shares and `regel`) is a separate,
    transpiler-wide item. A zero total weight (`Σ = 0`) is guarded (`signum() != 0`) so the divide cannot
    throw; the spec leaves a zero divisor undefined, so no-op-not-crash is the chosen reading.
+
+### §9.7.4/§9.7.5 verdeling met afronding en onverdeelde rest — floor the share, recomputable remainder
+
+The bulleted `meervoudigCriterium` form "… waarbij wordt verdeeld: - naar rato van \<gewicht\>, - afgerond op N
+decimalen naar beneden. Als onverdeelde rest blijft \<attribuut van de bron\> over." (toka-36, the §9.7.4
+worked example: 1001 over 3:2 → 600/400, remainder 1) now lowers — the grammar already parsed the modifiers;
+the resolver had been discarding the whole `meervoudigCriterium` subtree. It rides on the equal-shares /
+naar-rato spine, with two additions:
+
+- **Floor (§9.7.4).** Each share is wrapped in the null-safe `rsAfronding(share, N, RoundingMode.FLOOR)` —
+  "naar beneden" is FLOOR, and since `verdeelAfronding` is grammatically always "naar beneden" the mode is
+  fixed. This floor IS the explicit §6.1.2 afronding the spec demands before a division result lands in a
+  bounded target, so it resolves divergence (2) above for the rounded case (the floored share fits the target).
+
+- **Remainder (§9.7.5).** A SEPARATE rule on the bron sets `restant = totaal − Σ(distributed shares)`. It reads
+  the shares the distribution already assigned (method-agnostic — equal-shares and naar-rato alike) rather than
+  recomputing, and is **recomputable, not fire-once**: a `restant == null` freeze would lock in a *partial* sum
+  when recipients arrive incrementally (the §9.4 rule-derived case, toka-29 — the `not Doel(…, doel == null)`
+  guard only sees recipients already in working memory, so a single early recipient looks "complete"). Instead
+  it re-fires whenever the share set changes and always reflects the FINAL distribution. It must be a separate
+  rule modifying the SOURCE (a `not`/second-accumulate on the per-recipient `modify($r)` rule would cancel the
+  sibling activations, like the leeg-gewicht Fout above); termination holds because no other rule reads
+  `restant`, so its modify does not re-trigger the share rule (property reactivity) and the recomputation is a
+  fixpoint. Caught by an adversarial review (the freeze-guard premature-partial bug) + regression-pinned.
+
+`op volgorde van` and a per-recipient `maximum` still keep the verdeling `COMPLEX`: toka-34 (volgorde), toka-35
+(maximum) and toka-37 (volgorde + maximum + afronding) remain markers, while toka-36 lights up.
+
+**Carded:** §9.7.4 — "Als wordt afgerond, dan moet ook altijd een onverdeelde rest worden gespecificeerd." A
+model that floors with no (recognisable) bron-side remainder attribute now raises a WARNING (the leftover would
+otherwise be silently lost); the shares still floor, the remainder simply is not captured.
 
 ### §6.5 gedeeld door (ABS) — 5 decimals toward zero, and a table typo
 

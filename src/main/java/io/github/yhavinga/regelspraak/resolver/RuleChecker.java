@@ -415,6 +415,13 @@ final class RuleChecker {
                     && bouwer.bouwAttribuut(mc.onverdeeldeRest().attribuutVanOnderwerp()) instanceof Expr.AttribuutRef ra
                     && ra.objecttype() == b.objecttype())   // the remainder lives on the verdeler (the source)
                 restAttr = ra.attribuut();
+            if (afrDec != null && restAttr == null)
+                // §9.7.4: "Als wordt afgerond, dan moet ook altijd een onverdeelde rest worden gespecificeerd."
+                // Flooring can leave the plafond under-distributed, so without a captured remainder attribute the
+                // leftover is silently lost — surface that rather than drop it. (The shares still floor correctly.)
+                model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                        "verdeling met afronding zonder herkenbare onverdeelde rest (§9.7.4): het restant na "
+                        + "afronding wordt niet vastgelegd (regel '" + naam + "')", v.getStart().getLine()));
         }
 
         ResolvedVerdeling.Methode methode = ResolvedVerdeling.Methode.COMPLEX;
