@@ -1471,13 +1471,15 @@ public final class DrlTranspiler {
             return nav + " != null && " + nav + "." + prop;
         }
         // §8.1.7 rolcheck: the subject fills the role iff its reference to the other end of the feittype is
-        // set. The forward reference (a field ON the subject) is a bare null-test inside the subject's own
-        // pattern — "is een passagier" -> "reis != null". When the reference lives on the other side (the
-        // "heeft een <rol>" form) an exists-join is needed, which does not fit a single in-pattern
-        // constraint, so it stays an honest marker (carded).
+        // set. This lowers to a bare null-test inside the subject's own pattern ONLY when that reference is a
+        // to-ONE FORWARD field on the subject — "is een passagier" -> "reis != null". When the subject is on
+        // the "één" side (the reference field lives on the other, MANY side: "de Vlucht is een reis", where
+        // `passagier` is a to-many role with no scalar field on Vlucht) a bare `passagier != null` would be
+        // uncompilable DRL that sinks the package, so that far-side case stays an honest marker (carded) — an
+        // exists-join would be needed, which does not fit a single in-pattern constraint.
         if (c instanceof Conditie.Rollidmaatschap r) {
             String veld = subject != null ? model.verbindendeRol(subject, r.anderTeFiller()) : null;
-            if (veld != null) return ident(veld, false) + " != null";
+            if (veld != null && !model.naarVeelRol(subject, r.anderTeFiller(), veld)) return ident(veld, false) + " != null";
             return onopgelosteConstraint("rollidmaatschap '" + r.rol() + "'", c.bron());
         }
         if (c instanceof Conditie.Samengesteld s) {

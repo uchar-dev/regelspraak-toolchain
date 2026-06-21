@@ -2722,6 +2722,31 @@ class DroolsExecutionTest {
         assertFalse(p2.isMinderjarig(), "p2 is geen passagier (geen reis) -> de rolgate vuurt niet");
     }
 
+    @Test void membership_rolcheck_op_de_een_zijde_markert_ipv_uncompilable_drl() {
+        // §8.1.7: "de Vlucht is een reis" — the subject (Vlucht) fills the to-ONE "reis" role, but in the §9.4
+        // reference-field model the relation field lives on the MANY side (Passagier.reis), NOT on Vlucht. A bare
+        // "passagier != null" on a Vlucht pattern is uncompilable DRL (no such field), so the far-side rolcheck
+        // must stay an honest marker (an exists-join is carded), never a wrong/uncompilable constraint.
+        String src = """
+            Objecttype de Passagier
+            Objecttype de Vlucht
+                is internationaal kenmerk;
+            Feittype Vluchtboeking
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            Regel vol
+                geldig altijd
+                    Een Vlucht is internationaal indien hij is een reis.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("passagier != null"), () -> "een far-side rolcheck mag geen scalair veld op de één-zijde lezen:\n" + drl);
+        assertTrue(drl.contains("/* TODO"), () -> "een far-side rolcheck moet een marker blijven:\n" + drl);
+        build(drl);  // must COMPILE — an uncompilable `passagier != null` on Vlucht would throw here
+    }
+
     // ---------------- p29(1): §13.4.2 inflected kenmerk die-filter ----------------
 
     @Test void getelde_die_verbogen_kenmerk_filter_telt_alleen_de_minderjarige_passagiers() {
