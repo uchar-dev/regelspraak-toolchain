@@ -178,20 +178,14 @@ final class ExpressieBouwer {
      *  value (4/2 -> 0, 3/2 -> 1); a non-terminating one (1/3) has no finite scale, so it is read at
      *  DECIMAL64 and types as "many decimals" — which §6.1.2 then rightly demands be rounded. */
     private static int decimalenVanLiteral(String bron) {
-        java.util.regex.Matcher m = java.util.regex.Pattern
-                .compile("(-?\\d+)(?:[.,](\\d+)|(?:_(\\d+))?/(\\d+))?").matcher(bron);
-        if (!m.find()) return 0;
+        java.math.BigDecimal[] r = io.github.yhavinga.regelspraak.model.Rationaal.van(bron);
+        if (r == null) return 0;
+        // the literal's exact value teller/noemer (a decimal/integer has noemer ONE, so the divide is exact);
+        // a non-terminating rational (1/3) has no finite scale, so read it at DECIMAL64 — §6.1.2 then rightly
+        // demands the "many decimals" result be rounded.
         java.math.BigDecimal v;
-        if (m.group(2) != null) v = new java.math.BigDecimal(m.group(1) + "." + m.group(2)); // a,b
-        else if (m.group(4) == null) v = new java.math.BigDecimal(m.group(1));               // integer
-        else {                                                                               // a/c or a_b/c
-            java.math.BigDecimal heel = new java.math.BigDecimal(m.group(1)), noemer = new java.math.BigDecimal(m.group(4));
-            java.math.BigDecimal teller = m.group(3) == null ? heel
-                    : heel.abs().multiply(noemer).add(new java.math.BigDecimal(m.group(3)));
-            if (m.group(3) != null && m.group(1).startsWith("-")) teller = teller.negate();
-            try { v = teller.divide(noemer); }
-            catch (ArithmeticException nietEindig) { v = teller.divide(noemer, java.math.MathContext.DECIMAL64); }
-        }
+        try { v = r[0].divide(r[1]); }
+        catch (ArithmeticException nietEindig) { v = r[0].divide(r[1], java.math.MathContext.DECIMAL64); }
         return Math.max(0, v.stripTrailingZeros().scale());
     }
 

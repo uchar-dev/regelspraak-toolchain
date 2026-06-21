@@ -4,6 +4,7 @@ import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
 import io.github.yhavinga.regelspraak.model.Datatype;
+import io.github.yhavinga.regelspraak.model.Rationaal;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
@@ -1526,7 +1527,7 @@ public final class DrlTranspiler {
      *  fraction ("3/2") or non-terminating quotient ("1/3") falls through to the Math.pow path. */
     private static Integer geheelExponent(Expr e) {
         if (!(e instanceof Expr.Literal lit) || !lit.type().isNumeriek()) return null;
-        java.math.BigDecimal[] r = rationaal(lit.waarde());
+        java.math.BigDecimal[] r = Rationaal.van(lit.waarde());
         if (r == null) return null;
         try {
             java.math.BigDecimal bd = r[0].divide(r[1]); // exact value; throws when non-terminating
@@ -1540,29 +1541,6 @@ public final class DrlTranspiler {
         return null;
     }
 
-    /** Numerator and denominator of a numeric literal's leading number (denominator ONE for a
-     *  plain integer or decimal), or null when there is no number. Recognises the §13.2.5 rational
-     *  forms — "a/c" and the mixed "a_b/c" (= a + b/c, the fraction taking the whole part's sign) —
-     *  alongside a bare integer and an "a,b" (or "a.b") decimal. Earlier readers matched only the
-     *  leading "a", silently dropping "/c", so "maal 4/2" lowered to *4 and "macht 4/2" to pow(4). */
-    static java.math.BigDecimal[] rationaal(String bron) {
-        java.util.regex.Matcher m = java.util.regex.Pattern
-                .compile("(-?\\d+)(?:[.,](\\d+)|(?:_(\\d+))?/(\\d+))?").matcher(bron);
-        if (!m.find()) return null;
-        java.math.BigDecimal heel = new java.math.BigDecimal(m.group(1));
-        if (m.group(2) != null) // a,b decimal
-            return new java.math.BigDecimal[]{ new java.math.BigDecimal(m.group(1) + "." + m.group(2)),
-                    java.math.BigDecimal.ONE };
-        if (m.group(4) == null) // bare integer
-            return new java.math.BigDecimal[]{ heel, java.math.BigDecimal.ONE };
-        java.math.BigDecimal noemer = new java.math.BigDecimal(m.group(4));
-        if (m.group(3) == null) // a/c
-            return new java.math.BigDecimal[]{ heel, noemer };
-        java.math.BigDecimal teller = heel.abs().multiply(noemer).add(new java.math.BigDecimal(m.group(3)));
-        // The sign comes from the leading '-' in the text, not heel.signum(): for "-0_1/2" the whole
-        // part is BigDecimal("-0"), whose signum() is 0, so signum() would drop the minus (-0.5 -> +0.5).
-        return new java.math.BigDecimal[]{ m.group(1).startsWith("-") ? teller.negate() : teller, noemer }; // a_b/c
-    }
 
     private static String literal(Expr.Literal lit) {
         Datatype t = lit.type();
@@ -1578,7 +1556,7 @@ public final class DrlTranspiler {
         // unit scaling (.multiply) and rounding (.setScale) compile in mvel. A §13.2.5 rational
         // ("4/2", "3/2", "1_1/2") is lowered to its exact value when the quotient terminates, else
         // to a DECIMAL64 division so it still computes (e.g. 1/3).
-        java.math.BigDecimal[] r = rationaal(lit.waarde());
+        java.math.BigDecimal[] r = Rationaal.van(lit.waarde());
         if (r == null) return todo("literal", lit.waarde());
         try {
             return "new java.math.BigDecimal(\"" + r[0].divide(r[1]).toPlainString() + "\")"; // exact
