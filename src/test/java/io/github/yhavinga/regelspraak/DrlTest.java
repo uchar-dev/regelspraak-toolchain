@@ -472,6 +472,20 @@ class DrlTest {
                 () -> "in millisecondes moet naar MILLIS loweren, niet markeren:\n" + drl);
     }
 
+    @Test void eerste_paasdag_lowert_naar_de_computus_helper() {
+        String src = """
+            Objecttype de Klok
+                de jaartal Numeriek (geheel getal);
+                de pasen Datum in dagen;
+            Regel p
+                geldig altijd
+                    De pasen van een Klok moet gesteld worden op de eerste paasdag van de jaartal van een Klok.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rsEerstePaasdag($subject.getJaartal())"), () -> "eerste paasdag:\n" + drl);
+        assertTrue(drl.contains("function java.time.LocalDate rsEerstePaasdag("), () -> "computus-helper niet geïnjecteerd:\n" + drl);
+    }
+
     @Test void kenmerktoekenning_wordt_boolean_setter_onder_voorwaarde() {
         String src = """
             Objecttype de Persoon

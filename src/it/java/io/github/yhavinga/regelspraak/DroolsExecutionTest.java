@@ -750,6 +750,31 @@ class DroolsExecutionTest {
         assertNull(leeg.getMaandnr(), "een lege peildatum maakt de absolute tijdsduur leeg, niet 0");
     }
 
+    @Test void eerste_paasdag_berekent_paaszondag_via_de_computus() {
+        // §13.4.17.37: the first day of Easter (Easter Sunday) for a year, via the Gregorian computus.
+        // 2023 -> 9 apr, 2024 -> 31 mrt, 2025 -> 20 apr.
+        String src = """
+            Objecttype de Klok
+                de jaartal Numeriek (geheel getal);
+                de gemaakt Datum in dagen;
+            Regel p
+                geldig altijd
+                    De gemaakt van een Klok moet gesteld worden op de eerste paasdag van de jaartal van een Klok.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        KieSession sessie = build(DrlTranspiler.transpile(m)).newKieSession();
+        Klok k23 = new Klok(); k23.setJaartal(new BigDecimal("2023"));
+        Klok k24 = new Klok(); k24.setJaartal(new BigDecimal("2024"));
+        Klok k25 = new Klok(); k25.setJaartal(new BigDecimal("2025"));
+        sessie.insert(k23); sessie.insert(k24); sessie.insert(k25);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(LocalDate.of(2023, 4, 9), k23.getGemaakt(), () -> "paaszondag 2023 = 9 apr, kreeg " + k23.getGemaakt());
+        assertEquals(LocalDate.of(2024, 3, 31), k24.getGemaakt(), () -> "paaszondag 2024 = 31 mrt, kreeg " + k24.getGemaakt());
+        assertEquals(LocalDate.of(2025, 4, 20), k25.getGemaakt(), () -> "paaszondag 2025 = 20 apr, kreeg " + k25.getGemaakt());
+    }
+
     @Test void telling_maal_parameter_bindt_de_maal_buiten_de_telling() {
         // §13.4.17.47 telling precedence: "het aantal X van de reis maal de factor" must be
         // (count of X) maal factor, NOT count(X maal factor). The telling takes a

@@ -853,6 +853,13 @@ public final class DrlTranspiler {
             }
             case DATUM_MET     -> datumConstructor(a, subject, "java.time.LocalDate", 3, false);     // §13.4.17.35 (3 parts)
             case DATUMTIJD_MET -> datumConstructor(a, subject, "java.time.LocalDateTime", 7, true);  // §13.4.17.36 (7 parts)
+            case EERSTE_PAASDAG -> {                  // §13.4.17.37 — Easter Sunday of the given year
+                if (a.size() != 1) yield null;
+                String j = waarde(a.get(0), subject);
+                if (bevatMarker(j)) yield j;
+                registreerPaasdagFunctie();
+                yield "rsEerstePaasdag(" + j + ")";
+            }
             default -> null;
         };
     }
@@ -908,6 +915,26 @@ public final class DrlTranspiler {
                 + "    if (van == null || tot == null) return null;\n"
                 + "    long n = java.time.temporal.ChronoUnit.valueOf(eenheid).between(van, tot);\n"
                 + "    return java.math.BigDecimal.valueOf(absoluut ? Math.abs(n) : n);\n"
+                + "}\n\n");
+    }
+
+    /** Register the Java-bodied DRL helper that returns §13.4.17.37 "de eerste paasdag van" a year — Easter
+     *  Sunday in the Gregorian calendar via the Anonymous Gregorian computus (exact, no lookup table).
+     *  Empty year -> empty result. Idempotent. */
+    private void registreerPaasdagFunctie() {
+        hulpFuncties.putIfAbsent("rsEerstePaasdag",
+                "function java.time.LocalDate rsEerstePaasdag(java.math.BigDecimal jaar) {\n"
+                + "    if (jaar == null) return null;\n"
+                + "    int y = jaar.intValue();\n"
+                + "    int a = y % 19, b = y / 100, c = y % 100, d = b / 4, e = b % 4;\n"
+                + "    int f = (b + 8) / 25, g = (b - f + 1) / 3;\n"
+                + "    int h = (19 * a + b - d - g + 15) % 30;\n"
+                + "    int i = c / 4, k = c % 4;\n"
+                + "    int l = (32 + 2 * e + 2 * i - h - k) % 7;\n"
+                + "    int m = (a + 11 * h + 22 * l) / 451;\n"
+                + "    int maand = (h + l - 7 * m + 114) / 31;\n"
+                + "    int dag = ((h + l - 7 * m + 114) % 31) + 1;\n"
+                + "    return java.time.LocalDate.of(y, maand, dag);\n"
                 + "}\n\n");
     }
 
