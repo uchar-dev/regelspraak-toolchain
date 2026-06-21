@@ -268,25 +268,33 @@ final class ExpressieBouwer {
     }
 
     /** §13.4.17.51-.54: resolve a SOM/MIN/MAX dimensieselectie to the concrete dimension and the ordered
-     *  list of labels it ranges over, or null when it cannot be lowered — the operand is not a single
-     *  gedimensioneerd attribuut, the named dimension is not one the attribute carries, a label is not a
-     *  declared value, or a "vanaf … t/m …" interval runs backwards. A null leaves the honest marker in
-     *  place. (A conditiebijexpressie — temporal — never reaches here; it is handled by the marker path.) */
+     *  list of labels it ranges over, or null when it cannot be lowered — a null leaves the honest marker in
+     *  place. It only lowers a fold over a SINGLE gedimensioneerd attribuut's labels, and only when the
+     *  operand is the rule subject's OWN dimensioned attribute ({@code a.objecttype() == huidigSubject} —
+     *  the §5.8.5 case, "zijn betaalde belasting in jaar"). A NAVIGATED operand is deferred: a to-MANY read
+     *  ("de prijs in jaar van alle passagiers") would be a 2-level aggregation (over instances AND labels)
+     *  that the single-Map fold cannot express — resolving it would drop the marker and let the instance
+     *  accumulate sum Maps (a miscompile) — and a to-one navigated fold has no spec/corpus example yet. The
+     *  attribute must carry exactly ONE dimension (the value space is a Map&lt;label,value&gt;; a
+     *  multi-dimension attribute is keyed by label COMBINATIONS, §3.6, which the single-label fold would
+     *  mis-read), the named/implied dimension must be that one, every label must be a declared value, and a
+     *  "vanaf … t/m …" interval must not run backwards. (A conditiebijexpressie — temporal — never reaches
+     *  here.) */
     private Expr.DimensieSelectie resolveerDimensieSelectie(FunctieAanroepContext f, List<Expr> argumenten) {
         DimensieSelectieContext dim = f instanceof SomFuncContext s ? s.dimensieSelectie()
                 : f instanceof MinMaxFuncContext m ? m.dimensieSelectie() : null;
         if (dim == null) return null;
         if (argumenten.size() != 1 || !(argumenten.get(0) instanceof Expr.AttribuutRef a) || a.objecttype() == null)
             return null;
+        if (a.objecttype() != huidigSubject) return null;   // only the subject's OWN dimensioned attribuut folds; a navigated read is deferred
         List<String> attrDims = a.objecttype().dimensiesVan(a.attribuut());
-        if (attrDims.isEmpty()) return null;   // operand is not a gedimensioneerd attribuut
+        if (attrDims.size() != 1) return null;   // not gedimensioneerd, or multi-dimension (composite key) — deferred
 
         RegelSpraakModel.Dimensie d;
         List<String> labels;
         if (dim.VANAF() != null) {
-            // §5.8.5 bare interval: the dimension is left implicit, so it is only unambiguous when the
-            // attribute carries exactly one dimension.
-            if (attrDims.size() != 1) return null;
+            // §5.8.5 bare interval: the dimension is left implicit; unambiguous because the attribute carries
+            // exactly one dimension (guaranteed above).
             d = model.dimensieOpNaam(attrDims.get(0));
             if (d == null) return null;
             labels = interval(d, src(dim.dimensieWaarde(0)), src(dim.dimensieWaarde(1)));

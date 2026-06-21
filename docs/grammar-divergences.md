@@ -490,10 +490,21 @@ Key points of the reading:
   needed. This is what makes the §5.8.5 form lowerable while the genuinely temporal forms below are not.
 - §5.8.2 leegwaarde: an empty cell (`map.get(label) == null`) is **skipped**; an all-empty fold yields the
   `of … als die er niet zijn` fallback, else `null` (an empty sum, never a silent 0).
-- The bare `vanaf … t/m …` form leaves the dimension implicit, so it resolves **only** when the operand
-  attribute carries exactly one dimension; an over-form's named dimension must be one the attribute
-  actually carries (else a different axis would be summed). A reversed interval, an unknown label, a
-  multi-operand fold, or a scalar/instance operand stays the honest marker below.
+- Only the rule subject's **own** dimensioned attribute folds (`zijn betaalde belasting in jaar`, the
+  §5.8.5 case). A **navigated** operand is deferred: a to-MANY read (`de prijs in jaar van alle
+  passagiers`) is a 2-level aggregation (over instances *and* labels) the single-Map fold cannot express
+  — resolving it would drop the marker and let the instance accumulate `sum(getMapField())`, a miscompile
+  — and a to-one navigated fold has no spec/corpus example yet.
+- The attribute must carry **exactly one** dimension; the bare `vanaf … t/m …` form leaves the dimension
+  implicit (unambiguous only for a single-dimension attribute), and an over-form's named dimension must be
+  the one the attribute carries. A **multi-dimension** attribute (§3.6 `inkomen` over jaardimensie *and*
+  brutonettodimensie) is keyed by label combinations, which the single-label fold would mis-read, so it
+  stays a marker.
+- A reversed interval, an unknown label, a multi-operand fold, or a scalar operand stays the marker.
+- Grammar shadow: the named-interval over-form `over de <dim> vanaf a t/m b` (§13.4.17.53) is currently
+  **unreachable** — the greedy `kaleNaam` absorbs `over de <meervoud>` into the attribute run — so only
+  `over alle <dim>` (§.52), `over de <dim> in {…}` (§.54), and the bare `… vanaf a t/m b` (§5.8.5) reach
+  the resolver. It fails safe (marker), and no corpus/spec example exercises it; carded.
 
 What is **still** marked, not lowered (the temporal remainder of p5): a `totaal`/`tijdsevenredig deel`
 **conditiebijexpressie** (`gedurende de tijd dat …`, spec-main-81/84-87), a dimensieselectie whose

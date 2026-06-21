@@ -198,6 +198,37 @@ class DrlTest {
         assertFalse(drl.contains("\"heden\""), () -> "labels buiten het interval mogen niet meegeteld worden:\n" + drl);
     }
 
+    @Test void dimensieselectie_op_een_naar_veel_navigatie_blijft_marker_geen_map_som() {
+        // review (lens B): a dimensieselectie over a TO-MANY navigated dimensioned attribuut ("de som van de
+        // prijs in jaar van alle passagiers … over alle jaardimensies") is a 2-level aggregation (over
+        // instances AND labels). The single-Map fold cannot express it, so it must stay the honest marker —
+        // NOT silently fall through to an instance accumulate that sums Map fields (sum($e.getPrijsInJaar())),
+        // a miscompile, with the dimensieselectie WARNING dropped.
+        String src = """
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. vorig jaar
+                2. huidig jaar
+            Objecttype de Reis
+                de totaal Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs in jaar Numeriek (geheel getal) gedimensioneerd met jaardimensie;
+            Feittype Reis van passagiers
+                de reis Reis
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel tel
+                geldig altijd
+                    De totaal van een reis moet berekend worden als de som van de prijs in jaar van alle passagiers van de reis over alle jaardimensies.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("/* TODO aggregatie SOM"), () -> "de naar-veel dimensie-som moet een marker blijven:\n" + drl);
+        assertFalse(drl.contains("sum( $e1.getPrijsInJaar"), () -> "een Map-veld mag niet ge-sum-d worden (miscompile):\n" + drl);
+        assertFalse(drl.contains("rsDimSom"), () -> "een naar-veel navigatie mag niet als labelfold lowered worden:\n" + drl);
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("dimensieselectie")),
+                () -> "de marker-WARNING mag niet verdwijnen: " + m.diagnostics);
+    }
+
     @Test void begrenzing_en_afronding_worden_geemit() {
         // Kept in separate rules: a begrenzing whose bound value is itself followed by
         // an afronding parses the afronding INTO the bound value (a grammar-precedence

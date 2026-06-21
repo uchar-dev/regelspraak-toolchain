@@ -150,6 +150,33 @@ class IrTest {
                 () -> "geen marker-WARNING verwacht: " + m.diagnostics);
     }
 
+    @Test void dimensieselectie_over_multidimensioneel_attribuut_blijft_marker() {
+        // review (lens A): a MULTI-dimension attribuut (§3.6 "inkomen" over jaardimensie EN
+        // brutonettodimensie) is keyed by label COMBINATIONS, so the single-Map<label,value> fold would
+        // mis-read it (map.get(singleLabel) -> null). Until a composite-key model exists it must stay a
+        // marker, not silently fold over one axis. (Single-dimension is the only lowered case.)
+        String src = """
+            Objecttype de Persoon (mv: Personen)
+                de totaal Numeriek (geheel getal);
+                de inkomen Numeriek (geheel getal) gedimensioneerd met jaardimensie en brutonettodimensie;
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. vorig jaar
+                2. huidig jaar
+            Dimensie de brutonettodimensie, bestaande uit de brutonettodimensies (voor het attribuut zonder voorzetsel):
+                1. bruto
+                2. netto
+            Regel tel
+              geldig altijd
+                De totaal van een Persoon moet berekend worden als de som van zijn inkomen over alle jaardimensies.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        Expr.Functie som = assertInstanceOf(Expr.Functie.class, m.resolvedRegels.get(0).waarde());
+        assertNull(som.dimensieSelectie(), "een multidimensioneel attribuut mag (nog) niet over één as gevouwen worden");
+        assertInstanceOf(Conditie.Onopgelost.class, som.filter(), "moet de honest marker houden");
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("dimensieselectie")),
+                () -> "verwachtte een marker-WARNING: " + m.diagnostics);
+    }
+
     @Test void enkelvoudige_voorwaarde_wordt_een_vergelijking() {
         String src = """
             Parameter de grens : Numeriek (geheel getal)
