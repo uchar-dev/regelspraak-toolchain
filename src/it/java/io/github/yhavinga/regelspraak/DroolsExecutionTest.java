@@ -1248,6 +1248,55 @@ class DroolsExecutionTest {
         assertEquals(0, new BigDecimal("50").compareTo(b1.getAandeel()), () -> "100·1/2 = 50, kreeg " + b1.getAandeel());
     }
 
+    static final String VERDELING_REST_SRC = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+                de restant Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel met afronding
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - naar rato van de gewicht,
+                    - afgerond op 0 decimalen naar beneden
+                    Als onverdeelde rest blijft de restant van een pot over.
+            """;
+
+    @Test void verdeling_naar_rato_met_afronding_floort_de_aandelen_en_houdt_de_rest() {
+        // §9.7.4/§9.7.5 worked example (toka-36): 1001 treinmiles naar rato van 3:2 -> 600,6 and 400,4,
+        // floored "naar beneden" to 600 and 400; the 1 left over is the onverdeelde rest, kept by the pot.
+        // A second pot proves per-source isolation and a remainder of exactly 0 (no rounding loss).
+        RegelSpraakModel m = Resolver.resolve(VERDELING_REST_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("java.math.RoundingMode.FLOOR"), () -> "aandeel niet naar beneden afgerond:\n" + drl);
+        assertTrue(drl.contains("(onverdeelde rest)"), () -> "geen onverdeelde-rest regel:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Pot p = new Pot(); p.setTotaal(new BigDecimal("1001"));
+        Deelnemer tom = new Deelnemer(); tom.setPot(p); tom.setGewicht(new BigDecimal("3"));
+        Deelnemer maria = new Deelnemer(); maria.setPot(p); maria.setGewicht(new BigDecimal("2"));
+        Pot q = new Pot(); q.setTotaal(new BigDecimal("120"));
+        Deelnemer q1 = new Deelnemer(); q1.setPot(q); q1.setGewicht(new BigDecimal("1"));
+        Deelnemer q2 = new Deelnemer(); q2.setPot(q); q2.setGewicht(new BigDecimal("2"));
+        for (Object o : new Object[]{p, tom, maria, q, q1, q2}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("600").compareTo(tom.getAandeel()), () -> "floor(1001·3/5)=600, kreeg " + tom.getAandeel());
+        assertEquals(0, new BigDecimal("400").compareTo(maria.getAandeel()), () -> "floor(1001·2/5)=400, kreeg " + maria.getAandeel());
+        assertEquals(0, new BigDecimal("1").compareTo(p.getRestant()), () -> "onverdeelde rest 1001-600-400 = 1, kreeg " + p.getRestant());
+        // per-source isolation + exact remainder 0
+        assertEquals(0, new BigDecimal("40").compareTo(q1.getAandeel()), () -> "floor(120·1/3)=40, kreeg " + q1.getAandeel());
+        assertEquals(0, new BigDecimal("80").compareTo(q2.getAandeel()), () -> "floor(120·2/3)=80, kreeg " + q2.getAandeel());
+        assertEquals(0, BigDecimal.ZERO.compareTo(q.getRestant()), () -> "rest van q = 0, kreeg " + q.getRestant());
+    }
+
     @Test void cross_unit_optelling_wordt_omgerekend_niet_rauw_geteld() {
         // duur(mnd) := looptijd(jr) + duur(mnd). looptijd must be scaled jr->mnd (×12),
         // NOT added raw: 2 jr + 3 mnd = 27 mnd, not 5.

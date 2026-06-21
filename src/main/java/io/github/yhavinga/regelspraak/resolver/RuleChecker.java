@@ -397,9 +397,28 @@ final class RuleChecker {
         Expr doel = bouwer.bouwAttribuut(v.attribuutVanOnderwerp(1));
         if (!(bron instanceof Expr.AttribuutRef b) || !(doel instanceof Expr.AttribuutRef d)) return;
 
+        // The bare "in gelijke delen" / "naar rato van" names the method directly. The bulleted
+        // meervoudigCriterium (§9.7.7) wraps that same method with optional modifiers; only the subset
+        // WITHOUT group ordering and WITHOUT a per-recipient maximum has a single forward-rule form, so a
+        // present verdelenOverGroepen or maximumAanspraak keeps the whole verdeling COMPLEX (a marker).
+        // The §9.7.4 afronding (floor) and §9.7.5 onverdeelde rest ride on the equal-shares / naar-rato spine.
+        VerdelenZonderGroepenContext z = v.verdelenZonderGroepen();
+        Integer afrDec = null;
+        String restAttr = null;
+        MeervoudigCriteriumContext mc = v.meervoudigCriterium();
+        if (z == null && mc != null && mc.verdelenOverGroepen() == null && mc.maximumAanspraak() == null) {
+            z = mc.verdelenZonderGroepen();
+            if (mc.verdeelAfronding() != null)
+                try { afrDec = Integer.valueOf(mc.verdeelAfronding().NUMBER().getText()); }
+                catch (NumberFormatException ignore) {}
+            if (mc.onverdeeldeRest() != null && b.objecttype() != null
+                    && bouwer.bouwAttribuut(mc.onverdeeldeRest().attribuutVanOnderwerp()) instanceof Expr.AttribuutRef ra
+                    && ra.objecttype() == b.objecttype())   // the remainder lives on the verdeler (the source)
+                restAttr = ra.attribuut();
+        }
+
         ResolvedVerdeling.Methode methode = ResolvedVerdeling.Methode.COMPLEX;
         String rato = null;
-        VerdelenZonderGroepenContext z = v.verdelenZonderGroepen();
         if (z != null && z.IN_GELIJKE_DELEN() != null) methode = ResolvedVerdeling.Methode.GELIJKE_DELEN;
         else if (z != null && z.NAAR_RATO_VAN() != null) {
             methode = ResolvedVerdeling.Methode.NAAR_RATO;
@@ -409,7 +428,7 @@ final class RuleChecker {
                     ? src(z.attribuutMetLidwoord().kaleNaam()) : null;
         }
         model.verdelingen.add(new ResolvedVerdeling(naam, b.objecttype(), b.attribuut(),
-                d.objecttype(), d.attribuut(), methode, rato, voorwaarde, geldigheid));
+                d.objecttype(), d.attribuut(), methode, rato, afrDec, restAttr, voorwaarde, geldigheid));
     }
 
     /** §13.4.6 objectcreatie: "<subject> heeft <het rol> met <attribuut> gelijk aan <expr>

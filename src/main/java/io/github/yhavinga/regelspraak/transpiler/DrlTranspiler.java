@@ -467,10 +467,12 @@ public final class DrlTranspiler {
         }
         String j = ident(join, false) + " == $src";
         Regel rule = new Regel(v.naam()).clausule("$src : " + ident(bron.naam, true) + "(  )");
-        String aandeel;   // the per-recipient value set into the modify
+        String aandeel;       // the per-recipient value set into the modify
+        String doelFilter;    // the recipient pattern's constraints (reused by the onverdeelde-rest rule)
         if (gelijk) {
-            rule.clausule("accumulate( $c : " + ident(doel.naam, true) + "( " + j + " ) ; $n : count($c) )")
-                .clausule("$r : " + ident(doel.naam, true) + "( " + j + " )");
+            doelFilter = j;
+            rule.clausule("accumulate( $c : " + ident(doel.naam, true) + "( " + doelFilter + " ) ; $n : count($c) )")
+                .clausule("$r : " + ident(doel.naam, true) + "( " + doelFilter + " )");
             aandeel = "$src." + getter(v.bronAttribuut()) + "().divide($n, java.math.MathContext.DECIMAL64)"; // safe division
         } else {
             // §13.4.10 naar rato: each recipient gets total·weight/Σweight. The accumulate sums the weights of
@@ -486,16 +488,43 @@ public final class DrlTranspiler {
             // zero total weight (all weights 0) is guarded so the divide cannot throw — the spec leaves a zero
             // divisor undefined, so no-op-not-crash is the safe reading.
             String wNaam = ident(v.ratoAttribuut(), false), wGet = getter(v.ratoAttribuut());
-            rule.clausule("accumulate( $c : " + ident(doel.naam, true) + "( " + j + ", " + wNaam
-                            + " != null ) ; $sum : sum($c." + wGet + "()) )")
-                .clausule("$r : " + ident(doel.naam, true) + "( " + j + ", " + wNaam + " != null )")
+            doelFilter = j + ", " + wNaam + " != null";
+            rule.clausule("accumulate( $c : " + ident(doel.naam, true) + "( " + doelFilter
+                            + " ) ; $sum : sum($c." + wGet + "()) )")
+                .clausule("$r : " + ident(doel.naam, true) + "( " + doelFilter + " )")
                 .clausule("eval( $sum.signum() != 0 )");
             aandeel = "$src." + getter(v.bronAttribuut()) + "().multiply($r." + wGet
                     + "()).divide($sum, java.math.MathContext.DECIMAL64)";
         }
+        if (v.afrondingDecimalen() != null) {
+            // §9.7.4 / §6.1.2: floor each share to N decimals ("naar beneden") — the explicit afronding the spec
+            // requires before a division result may land in a bounded target. rsAfronding null-guards the basis.
+            registreerAfrondingFunctie();
+            aandeel = "rsAfronding(" + aandeel + ", " + v.afrondingDecimalen() + ", java.math.RoundingMode.FLOOR)";
+        }
         out.append(rule.geldigheid(v.geldigheid())
             .dan("    modify($r) {\n        " + setter(v.doelAttribuut()) + "( " + aandeel + " )\n    }\n")
             .render());
+        if (v.restantAttribuut() != null) {
+            // §9.7.5 onverdeelde rest: the verdeler keeps total − Σ(distributed shares). A SEPARATE rule that
+            // modifies the SOURCE (not the recipients), so it cannot cancel the per-recipient activations. It
+            // reads the shares the distribution already assigned, so it is method-agnostic (equal-shares and
+            // naar-rato alike) and needs no recompute. Two guards make it correct and terminating: `<restant> ==
+            // null` fires it exactly once per source (its own modify then bars re-firing, even though that
+            // source-modify re-triggers the idempotent share rule); `not <Doel>(<filter>, <doel> == null)` waits
+            // until every recipient that WILL get a share has one, so the sum is the final, not a partial, total.
+            String doelP = ident(doel.naam, true), doelN = ident(v.doelAttribuut(), false);
+            out.append(new Regel(v.naam() + " (onverdeelde rest)")
+                .clausule("$src : " + ident(bron.naam, true) + "( " + ident(v.bronAttribuut(), false)
+                        + " != null, " + ident(v.restantAttribuut(), false) + " == null )")
+                .clausule("not " + doelP + "( " + doelFilter + ", " + doelN + " == null )")
+                .clausule("accumulate( $u : " + doelP + "( " + doelFilter + ", " + doelN
+                        + " != null ) ; $uit : sum($u." + getter(v.doelAttribuut()) + "()) )")
+                .geldigheid(v.geldigheid())
+                .dan("    modify($src) {\n        " + setter(v.restantAttribuut()) + "( $src."
+                        + getter(v.bronAttribuut()) + "().subtract($uit) )\n    }\n")
+                .render());
+        }
         if (rato) {
             // §9.7.6 Tabel 19: surface the empty-weight Fout via the §9.5 Inconsistentie channel — a SEPARATE,
             // modify-free rule (so it cannot cancel the distribution's recipient activations), bound to the
