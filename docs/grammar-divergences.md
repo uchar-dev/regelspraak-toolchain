@@ -470,6 +470,19 @@ grammar's predicaat has no bare-plural-noun alternative (`die minderjarigen zijn
 the spec writes the singular nominalized form even for a plural subject, so a meervoudsvorm has no
 reachable predicaat input to bind. Both are carded (p29) should a real input ever demand them.
 
+### Aggregation dimensieselectie / conditiebijexpressie (§13.4.17.51-.58) — marked, not dropped
+
+A `som`/`min`/`max` may carry a **dimensieselectie** (`over alle <dim>`, `vanaf <label> t/m <label>`,
+`over de <dim> in {…}`) and a `totaal`/`tijdsevenredig deel` a **conditiebijexpressie**
+(`gedurende de tijd dat …`) that restricts the aggregation over a dimension or the time axis. The
+temporal/dimension IR is not built yet (the large remainder of p5), but the restriction must not be
+**silently dropped** — that would aggregate the whole set as if unrestricted (a wrong total; real spec
+examples hit this — spec-main-61 `vanaf vier jaar geleden t/m een jaar geleden`, spec-main-81/84-87
+`gedurende de tijd dat hij een recht … heeft`). The resolver captures the restriction's source as the
+aggregation's `Onopgelost` filter and raises a WARNING, so the transpiler markers the aggregation (a
+visible `/* TODO aggregatie … */` no-op) rather than emit an unrestricted accumulate. Full lowering
+stays carded (p5).
+
 ### An unresolved condition is a compilable no-op, not an uncompilable `null`
 
 Any condition the resolver leaves `Onopgelost` (a navigation/objecttype/role-membership test, a

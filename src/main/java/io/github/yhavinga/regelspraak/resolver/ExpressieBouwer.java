@@ -231,7 +231,34 @@ final class ExpressieBouwer {
                     "een 'die/dat'-subselectie op een aggregatie-operand wordt nog niet omgezet; de aggregatie "
                             + "blijft buiten beschouwing in plaats van alle instanties mee te nemen (§5.6) — '"
                             + filter.bron() + "'", f.getStart().getLine()));
+        // §13.4.17.51-.58: a dimensieselectie ("over alle <dim>", "vanaf … t/m …") or a
+        // conditiebijexpressie ("gedurende de tijd dat …") RESTRICTS the aggregation over a dimension /
+        // time axis. The temporal IR is not built yet, so lowering it is deferred (p5) — but it must not be
+        // SILENTLY DROPPED, which would aggregate the whole set as if unrestricted. Capture its source as an
+        // Onopgelost filter so the transpiler markers the aggregation (a visible no-op), and surface a
+        // WARNING. (Reuses the aggregation-restriction marker path; an already-unresolved die-filter keeps
+        // its own marker.)
+        String dimBron = dimensieOfConditieBron(f);
+        if (dimBron != null) {
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
+                    "een dimensieselectie / 'gedurende de tijd dat' op een aggregatie wordt nog niet omgezet; "
+                            + "de aggregatie blijft buiten beschouwing in plaats van de selectie te negeren "
+                            + "(§13.4.17.51-.58) — '" + dimBron + "'", f.getStart().getLine()));
+            if (!(filter instanceof Conditie.Onopgelost)) filter = new Conditie.Onopgelost(dimBron);
+        }
         return new Expr.Functie(kind, argumenten, elem, leegwaarde, filter, type, bron);
+    }
+
+    /** §13.4.17.51-.58: the raw source of an aggregation's dimensieselectie (som / min-max) or
+     *  conditiebijexpressie (totaal / tijdsevenredig deel), or null when absent — used to mark the dropped
+     *  temporal/dimensional restriction so the aggregation is not silently lowered as if unrestricted. */
+    private String dimensieOfConditieBron(FunctieAanroepContext f) {
+        DimensieSelectieContext dim = f instanceof SomFuncContext s ? s.dimensieSelectie()
+                : f instanceof MinMaxFuncContext m ? m.dimensieSelectie() : null;
+        if (dim != null) return src(dim);
+        ConditieBijExpressieContext cnd = f instanceof TotaalFuncContext t ? t.conditieBijExpressie()
+                : f instanceof TijdsevenredigFuncContext tv ? tv.conditieBijExpressie() : null;
+        return cnd != null ? src(cnd) : null;
     }
 
     /** The §5.6 "die/dat &lt;predicaat&gt;" subselectie filtering a SINGLE-operand set-aggregation's

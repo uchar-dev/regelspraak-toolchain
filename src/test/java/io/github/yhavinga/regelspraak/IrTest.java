@@ -88,6 +88,31 @@ class IrTest {
         assertEquals(1, som.argumenten().size());
     }
 
+    @Test void aggregatie_dimensieselectie_wordt_vastgelegd_niet_stil_genegeerd() {
+        // p5 slice: a dimensieselectie ("over alle <dim>") / conditiebijexpressie ("gedurende de tijd
+        // dat …") RESTRICTS an aggregation over a dimension/time axis. The temporal IR is not built yet,
+        // so rather than SILENTLY dropping the restriction (and aggregating the whole set), the resolver
+        // captures its source as an Onopgelost filter and WARNs. (spec-main-61/81/84-87 use these.)
+        String src = """
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. vorig jaar
+                2. huidig jaar
+            Objecttype de Reis
+                de prijs Numeriek (geheel getal);
+            Regel tel
+                geldig altijd
+                    De prijs van een Reis moet berekend worden als de som van de prijs van een Reis over alle jaardimensies.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        Expr.Functie som = assertInstanceOf(Expr.Functie.class, m.resolvedRegels.get(0).waarde());
+        Conditie.Onopgelost f = assertInstanceOf(Conditie.Onopgelost.class, som.filter(),
+                () -> "de dimensieselectie moet als Onopgelost-marker vastliggen, niet stil verdwijnen");
+        assertTrue(f.bron().contains("over alle jaardimensies"), () -> "bron: " + f.bron());
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
+                        && d.message().contains("dimensieselectie")),
+                () -> "verwachtte een dimensieselectie-WARNING: " + m.diagnostics);
+    }
+
     @Test void enkelvoudige_voorwaarde_wordt_een_vergelijking() {
         String src = """
             Parameter de grens : Numeriek (geheel getal)

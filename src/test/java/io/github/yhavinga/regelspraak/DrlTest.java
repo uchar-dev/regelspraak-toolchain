@@ -116,6 +116,31 @@ class DrlTest {
         assertTrue(drl.contains("/* TODO aggregatie WORTEL"), () -> "wortel niet gemarkeerd:\n" + drl);
     }
 
+    @Test void aggregatie_met_dimensieselectie_wordt_gemarkeerd_niet_stil_gesommeerd() {
+        // p5 slice: a "som van … over alle <dim>" restricts the sum over a dimension. The temporal IR is
+        // not built yet, so the aggregation must MARKER (a no-op) rather than silently sum the whole set
+        // as if the dimensieselectie were absent — the same honest-marker stance as an unlowered die-filter.
+        String src = """
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. vorig jaar
+                2. huidig jaar
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel totaal
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis over alle jaardimensies.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("/* TODO aggregatie SOM"), () -> "dimensie-beperkte som niet gemarkeerd:\n" + drl);
+        assertFalse(drl.contains("accumulate("), () -> "een dimensie-beperkte som mag geen ongefilterde accumulate worden:\n" + drl);
+    }
+
     @Test void begrenzing_en_afronding_worden_geemit() {
         // Kept in separate rules: a begrenzing whose bound value is itself followed by
         // an afronding parses the afronding INTO the bound value (a grammar-precedence
