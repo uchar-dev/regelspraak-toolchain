@@ -455,11 +455,24 @@ final class ExpressieBouwer {
             case MAXIMUM -> Typering.getalAggregatie("maximale waarde van", typen);
             case EERSTE  -> Typering.datumAggregatie("eerste van", typen);
             case LAATSTE -> Typering.datumAggregatie("laatste van", typen);
+            // §6.12 / §13.4.17.21-.24: a time-of-day component is defined only on a datum-TIJD — a plain
+            // "Datum in dagen" has no hour/minute/second. The DATE parts (jaar/maand/dag) accept any date, so
+            // they are NOT checked. Onbekend is skipped (no claim); only a concrete DatumInDagen is a violation.
+            case UUR_UIT, MINUUT_UIT, SECONDE_UIT, MILLISECONDE_UIT -> tijdComponentFout(typen);
             default -> null;
         };
         if (fout != null)
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(
                     RegelSpraakModel.Severity.ERROR, fout, f.getStart().getLine()));
+    }
+
+    /** §6.12 / §13.4.17.21-.24: the operand of a time-of-day component (uur/minuut/seconde/milliseconde uit)
+     *  must be a datum-tijd; a plain "Datum in dagen" carries no time. Returns the fout message for a concrete
+     *  DatumInDagen operand, else null (Onbekend and any non-date type are not this check's concern). */
+    private static String tijdComponentFout(List<Datatype> typen) {
+        if (typen.size() != 1 || !(typen.get(0) instanceof Datatype.DatumInDagen)) return null;
+        return "een tijd-component (uur/minuut/seconde/milliseconde uit) vereist een datum-tijd, kreeg "
+                + typen.get(0).naam() + " (§13.4.17.21-.24)";
     }
 
     /** The §5.8.2 "of … als die er niet zijn" fallback expression of a sommatie, or null.

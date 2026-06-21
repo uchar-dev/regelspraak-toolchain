@@ -121,6 +121,42 @@ class RuleCheckTest {
                 () -> "verwachtte een Tabel-55 elfproef-fout in de voorwaarde, kreeg: " + m.errors());
     }
 
+    @Test void tijd_component_uit_een_datum_in_dagen_wordt_gemeld() {
+        // §6.12 / §13.4.17.21-.24: "het uur uit X" needs a datum-TIJD (a plain Datum in dagen has no time).
+        // The transpiler already markers it; the resolver must now also raise an ERROR. The DATE parts
+        // (jaar/maand/dag) accept a Datum in dagen, so those must NOT be flagged.
+        String src = """
+            Objecttype de Ding
+                de reisdatum Datum in dagen;
+                de moment Datum en tijd in millisecondes;
+                de uurnr Numeriek (geheel getal);
+                de jaartal Numeriek (geheel getal);
+            Regel fout
+                geldig altijd
+                    De uurnr van een Ding moet gesteld worden op het uur uit de reisdatum van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("tijd-component")),
+                () -> "verwachtte een §13.4.17.21-.24 tijd-component-fout, kreeg: " + m.errors());
+
+        // uur uit a Datum-en-tijd, and jaar uit a Datum in dagen, are both legal — no error.
+        String ok = """
+            Objecttype de Ding
+                de reisdatum Datum in dagen;
+                de moment Datum en tijd in millisecondes;
+                de uurnr Numeriek (geheel getal);
+                de jaartal Numeriek (geheel getal);
+            Regel u
+                geldig altijd
+                    De uurnr van een Ding moet gesteld worden op het uur uit de moment van een Ding.
+            Regel j
+                geldig altijd
+                    De jaartal van een Ding moet gesteld worden op het jaar uit de reisdatum van een Ding.
+            """;
+        assertTrue(Resolver.resolve(ok).errors().stream().noneMatch(d -> d.message().contains("tijd-component")),
+                () -> "uur uit een datum-tijd / jaar uit een datum mag geen tijd-component-fout geven");
+    }
+
     @Test void datumdeel_eerder_dan_een_datum_wordt_gemeld() {
         // §13.4.17.18-.24 / typeringen Tabel 28: a date component (maand uit) is a Numeriek, not a Datum.
         // Comparing it with 'eerder dan' a Datum is a §5.7/Tabel 45 type error (which restricts eerder/later
