@@ -733,8 +733,11 @@ public final class DrlTranspiler {
                 return "java.math.BigDecimal.valueOf(Math.pow((" + waarde(b.links(), subject)
                         + ").doubleValue(), (" + waarde(b.rechts(), subject) + ").doubleValue()))";
             }
-            if (b.op() == Expr.BinOp.PERCENTAGE_VAN)
-                return "(" + waarde(b.links(), subject) + " / 100 * " + waarde(b.rechts(), subject) + ")";
+            if (b.op() == Expr.BinOp.PERCENTAGE_VAN) {
+                String l = waarde(b.links(), subject), r = waarde(b.rechts(), subject);
+                if (bevatMarker(l) || bevatMarker(r)) return "(" + l + " / 100 * " + r + ")";
+                return "(" + nulVeilig(l) + " / 100 * " + nulVeilig(r) + ")";  // §6.8 Tabel 13: leeg telt als 0
+            }
             if (b.op() == Expr.BinOp.GEDEELD_DOOR)
                 return "(" + waarde(b.links(), subject) + ").divide(" + waarde(b.rechts(), subject)
                         + ", java.math.MathContext.DECIMAL64)"; // safe: no non-terminating-quotient throw
@@ -746,8 +749,11 @@ public final class DrlTranspiler {
                 // its own "richting 0" rule and its -0,66666 neighbour — a table typo; the rule (DOWN) governs.
                 return "(" + waarde(b.links(), subject) + ").divide(" + waarde(b.rechts(), subject)
                         + ", 5, java.math.RoundingMode.DOWN)";
-            if (b.op() == Expr.BinOp.MAAL)  // §6.4: units multiply, operands are NOT converted to match
-                return "(" + waarde(b.links(), subject) + " * " + waarde(b.rechts(), subject) + ")";
+            if (b.op() == Expr.BinOp.MAAL) {  // §6.4: units multiply, operands are NOT converted to match
+                String l = waarde(b.links(), subject), r = waarde(b.rechts(), subject);
+                if (bevatMarker(l) || bevatMarker(r)) return "(" + l + " * " + r + ")";
+                return "(" + nulVeilig(l) + " * " + nulVeilig(r) + ")";  // §6.4 Tabel 10: any empty operand -> 0
+            }
             // §13.4.16 date arithmetic (a datum ± a tijdsduur) is NOT mvel "+": "LocalDate + BigDecimal" is a
             // type error that breaks the Drools build. The correct form is .plusDays/.plusMonths/… keyed on the
             // duration's unit (deferred to the arithmetic-correctness work), so emit an honest marker rather
@@ -756,8 +762,18 @@ public final class DrlTranspiler {
                 return todo("datum-rekenkunde (datum ± tijdsduur vereist .plusX, geen mvel '+')", b.bron());
             // §4: restate the right operand in the left operand's unit before +/- so a
             // convertible-but-different unit (mnd vs jr) is scaled, not added raw.
+            String links = waarde(b.links(), subject);
             String rechts = omrekenWaarde(waarde(b.rechts(), subject), b.rechts().type(), b.links().type());
-            return "(" + waarde(b.links(), subject) + " " + infix(b.op()) + " " + rechts + ")";
+            if (bevatMarker(links) || bevatMarker(rechts))     // a marker propagates unwrapped (no leegwaarde noise)
+                return "(" + links + " " + infix(b.op()) + " " + rechts + ")";
+            // §6.3 Tabel 7/8 — the ONE place "min" and "verminderd met" differ: both subtract, but a "verminderd
+            // met" whose LEFT operand is empty yields empty (rsVerminderd), while "min" treats an empty operand as
+            // 0 like plus (rsNul). Without this they lowered identically — a silent-wrong for a leeg-left case.
+            if (b.op() == Expr.BinOp.VERMINDERD_MET) {
+                registreerVerminderdFunctie();
+                return "rsVerminderd(" + links + ", " + rechts + ")";
+            }
+            return "(" + nulVeilig(links) + " " + infix(b.op()) + " " + nulVeilig(rechts) + ")"; // §6.2/§6.3 leeg=0
         }
         if (e instanceof Expr.Afgerond af) {
             return afgerondeTerm(waarde(af.basis(), subject), af);
@@ -960,6 +976,34 @@ public final class DrlTranspiler {
         hulpFuncties.putIfAbsent("rsAbs",
                 "function java.math.BigDecimal rsAbs(java.math.BigDecimal x) {\n"
                 + "    return x == null ? null : x.abs();\n"
+                + "}\n\n");
+    }
+
+    /** Wrap a value-side arithmetic operand for the §6.2/§6.4/§6.8 "leeg telt als 0" rekentabel via the rsNul
+     *  helper. The caller has already excluded a marker operand (which must propagate unwrapped so bevatMarker
+     *  still flags it), so this only ever wraps a real value term. */
+    private String nulVeilig(String operand) {
+        registreerNulFunctie();
+        return "rsNul(" + operand + ")";
+    }
+
+    /** Register the DRL helper for the §6.2 (plus) / §6.4 (maal) / §6.8 (percentage) leegwaarde rule — an empty
+     *  operand counts as 0, and the result is therefore never empty. Idempotent. */
+    private void registreerNulFunctie() {
+        hulpFuncties.putIfAbsent("rsNul",
+                "function java.math.BigDecimal rsNul(java.math.BigDecimal x) {\n"
+                + "    return x == null ? java.math.BigDecimal.ZERO : x;\n"
+                + "}\n\n");
+    }
+
+    /** Register the DRL helper for §6.3 Tabel 8 "verminderd met" — the subtraction that differs from "min" only
+     *  in leegwaarde: an empty LEFT operand yields an empty result (regardless of the right), while an empty
+     *  RIGHT counts as 0. Idempotent. */
+    private void registreerVerminderdFunctie() {
+        hulpFuncties.putIfAbsent("rsVerminderd",
+                "function java.math.BigDecimal rsVerminderd(java.math.BigDecimal links, java.math.BigDecimal rechts) {\n"
+                + "    if (links == null) return null;\n"
+                + "    return links.subtract(rechts == null ? java.math.BigDecimal.ZERO : rechts);\n"
                 + "}\n\n");
     }
 

@@ -44,7 +44,7 @@ class DrlTest {
         // "de prijs ... := de toeslag plus de grens" -> modify { setPrijs( ($subject.getToeslag() + grens) ) }
         assertTrue(drl.contains("modify($subject)"), () -> "modify-blok ontbreekt:\n" + drl);
         assertTrue(drl.contains("setPrijs("), () -> "setter ontbreekt:\n" + drl);
-        assertTrue(drl.contains("$subject.getToeslag() + grens"), () -> "waarde-expressie ontbreekt:\n" + drl);
+        assertTrue(drl.contains("rsNul($subject.getToeslag()) + rsNul(grens)"), () -> "waarde-expressie (leeg-veilige plus) ontbreekt:\n" + drl);
     }
 
     @Test void aggregaties_worden_accumulate_patronen() {
@@ -325,8 +325,32 @@ class DrlTest {
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         // the setScale (rounding the power) is multiplied by 3 -> the maal is outside the afronding
-        assertTrue(drl.contains(".setScale(0, java.math.RoundingMode.FLOOR) * new java.math.BigDecimal(\"3\")"),
+        assertTrue(drl.contains(".setScale(0, java.math.RoundingMode.FLOOR)) * rsNul(new java.math.BigDecimal(\"3\"))"),
                 () -> "afronding moet de macht afronden en 'maal 3' moet erbuiten binden:\n" + drl);
+    }
+
+    @Test void verminderd_met_en_min_loweren_verschillend_door_de_leegwaarde() {
+        // §6.3 Tabel 7/8: "min" and "verminderd met" subtract identically, but differ on a leeg LEFT operand —
+        // min treats it as 0 (rsNul, never leeg), verminderd met yields leeg (rsVerminderd). They must NOT lower
+        // to the same DRL (they used to, a silent-wrong).
+        String src = """
+            Objecttype de Reis
+                de a Numeriek (geheel getal);
+                de b Numeriek (geheel getal);
+                de vm Numeriek (geheel getal);
+                de mn Numeriek (geheel getal);
+            Regel rv
+                geldig altijd
+                    De vm van een Reis moet gesteld worden op de a van een Reis verminderd met de b van een Reis.
+            Regel rm
+                geldig altijd
+                    De mn van een Reis moet gesteld worden op de a van een Reis min de b van een Reis.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rsVerminderd($subject.getA(), $subject.getB())"),
+                () -> "verminderd met moet leeg-links -> leeg afdwingen via rsVerminderd:\n" + drl);
+        assertTrue(drl.contains("(rsNul($subject.getA()) - rsNul($subject.getB()))"),
+                () -> "min moet leeg als 0 behandelen via rsNul:\n" + drl);
     }
 
     @Test void gedeeld_door_abs_rondt_op_vijf_decimalen_af_gewoon_delen_blijft_exact() {

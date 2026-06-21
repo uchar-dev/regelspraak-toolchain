@@ -20,6 +20,7 @@ import io.github.yhavinga.regelspraak.facts.Periode;
 import io.github.yhavinga.regelspraak.facts.Persoon;
 import io.github.yhavinga.regelspraak.facts.Pot;
 import io.github.yhavinga.regelspraak.facts.Reis;
+import io.github.yhavinga.regelspraak.facts.Rekensom;
 import io.github.yhavinga.regelspraak.facts.Reiziger;
 import io.github.yhavinga.regelspraak.facts.Route;
 import io.github.yhavinga.regelspraak.facts.Trip;
@@ -806,6 +807,58 @@ class DroolsExecutionTest {
         assertFalse(legeDatum.isReisMetPaaskorting(), "een lege vluchtdatum is geen paaskorting (§5.3 beide leeg -> fout)");
     }
 
+    @Test void leegwaarde_verminderd_met_verschilt_van_min_en_plus_maal_tellen_leeg_als_nul() {
+        // §6.2-6.4 rekentabellen. The headline: "min" and "verminderd met" are the SAME subtraction EXCEPT for
+        // an empty LEFT operand — min treats it as 0 (Tabel 7: leeg min 4 = -4), verminderd met yields leeg
+        // (Tabel 8: leeg verminderd met 4 = leeg). They used to lower identically (a silent-wrong). Plus/maal
+        // treat any empty operand as 0 (Tabel 5/10). Proven by firing with a null grondslag.
+        String src = """
+            Objecttype de Rekensom
+                de grondslag Numeriek (geheel getal);
+                de aftrek Numeriek (geheel getal);
+                de verminderdResultaat Numeriek (geheel getal);
+                de minResultaat Numeriek (geheel getal);
+                de plusResultaat Numeriek (geheel getal);
+                de maalResultaat Numeriek (geheel getal);
+            Regel rv
+                geldig altijd
+                    De verminderdResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom verminderd met de aftrek van een Rekensom.
+            Regel rm
+                geldig altijd
+                    De minResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom min de aftrek van een Rekensom.
+            Regel rp
+                geldig altijd
+                    De plusResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom plus de aftrek van een Rekensom.
+            Regel rx
+                geldig altijd
+                    De maalResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom maal de aftrek van een Rekensom.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        KieSession sessie = build(DrlTranspiler.transpile(m)).newKieSession();
+
+        Rekensom leegLinks = new Rekensom();   // grondslag leeg, aftrek 4
+        leegLinks.setAftrek(new BigDecimal("4"));
+        leegLinks.setVerminderdResultaat(new BigDecimal("999"));  // sentinels: prove the rule overwrote them
+        leegLinks.setMinResultaat(new BigDecimal("999"));
+        Rekensom gevuld = new Rekensom();       // 10, 4
+        gevuld.setGrondslag(new BigDecimal("10")); gevuld.setAftrek(new BigDecimal("4"));
+        sessie.insert(leegLinks); sessie.insert(gevuld);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        // leeg LEFT: verminderd met -> leeg (null); min -> -4; plus -> 4 (leeg=0); maal -> 0 (leeg=0)
+        assertNull(leegLinks.getVerminderdResultaat(), "leeg verminderd met 4 = leeg (Tabel 8)");
+        assertEquals(0, new BigDecimal("-4").compareTo(leegLinks.getMinResultaat()), "leeg min 4 = -4 (Tabel 7)");
+        assertEquals(0, new BigDecimal("4").compareTo(leegLinks.getPlusResultaat()), "leeg plus 4 = 4 (Tabel 5)");
+        assertEquals(0, BigDecimal.ZERO.compareTo(leegLinks.getMaalResultaat()), "leeg maal 4 = 0 (Tabel 10)");
+        // gevuld: all four are the ordinary arithmetic, unchanged
+        assertEquals(0, new BigDecimal("6").compareTo(gevuld.getVerminderdResultaat()), "10 verminderd met 4 = 6");
+        assertEquals(0, new BigDecimal("6").compareTo(gevuld.getMinResultaat()), "10 min 4 = 6");
+        assertEquals(0, new BigDecimal("14").compareTo(gevuld.getPlusResultaat()), "10 plus 4 = 14");
+        assertEquals(0, new BigDecimal("40").compareTo(gevuld.getMaalResultaat()), "10 maal 4 = 40");
+    }
+
     @Test void conditie_zijde_wortel_onder_zijn_verplichte_afronding() {
         // §13.4.17.13: "de wortel van X" carries a MANDATORY afronding, so a condition-side wortel is always
         // Afgerond(Functie(WORTEL)) — operand() must descend the afronding wrapper (a pure setScale, valid in a
@@ -890,7 +943,7 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("($acc1 * factor)"), () -> "de maal moet buiten de telling binden:\n" + drl);
+        assertTrue(drl.contains("(rsNul($acc1) * rsNul(factor))"), () -> "de maal moet buiten de telling binden:\n" + drl);
         assertFalse(drl.contains("TODO aggregatie"), () -> "de telling mag de maal niet opslokken:\n" + drl);
 
         KieSession sessie = build(drl).newKieSession();
@@ -928,7 +981,7 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("($acc1 * aantalPuntenPerPassagier)"),
+        assertTrue(drl.contains("(rsNul($acc1) * rsNul(aantalPuntenPerPassagier))"),
                 () -> "de aantal-parameter moet als parameter binden:\n" + drl);
         assertFalse(drl.contains("TODO aggregatie"), () -> "de parameternaam mag geen geneste telling worden:\n" + drl);
 

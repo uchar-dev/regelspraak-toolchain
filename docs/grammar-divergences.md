@@ -955,5 +955,26 @@ Two facts worth recording, each verified by firing in Drools 8.44:
   Still NOT propagated (carded in builtins-vervolg, the transpiler-wide leegwaarde work that must touch all
   operators coherently): **wortel** — its mandatory afronding wrapper `(…).setScale(…)` would itself NPE on a
   `null` root, so it entangles with the §6.1.2 afronding-leegwaarde; **datum-met / datumtijd-met** — a `null`
-  component still NPEs at `(null).intValue()` inside `LocalDate.of(…)` (the old inline form did too); and the
-  binary arithmetic rekentabellen (§6.2-6.5: `min` vs `verminderd met`'s left-empty split, `÷ leeg → fout`).
+  component still NPEs at `(null).intValue()` inside `LocalDate.of(…)` (the old inline form did too).
+
+### §6.2-6.4 binary arithmetic leegwaarde — leeg = 0, except verminderd met's left
+
+The value-side binary operators used to lower as a bare mvel `l op r`, which NPEs on a `null` operand and — the
+headline — lowered `min` and `verminderd met` IDENTICALLY (both to `-`), a silent-wrong. §6.3 Tabel 7/8 make
+them the same subtraction differing ONLY in leegwaarde: `min` treats an empty operand as 0 (`leeg min 4 = -4`),
+while `verminderd met` yields leeg whenever the LEFT operand is empty (`leeg verminderd met 4 = leeg`), treating
+an empty right as 0. They now lower differently: `plus`/`min`/`maal`/`percentage van` wrap each operand in an
+`rsNul` helper (empty → 0, per §6.2 Tabel 5 / §6.4 Tabel 10 / §6.8 Tabel 13), and `verminderd met` lowers to an
+`rsVerminderd` helper (left-empty → leeg). A marker operand still propagates unwrapped, so an unresolved
+arithmetic term is byte-identical and `bevatMarker` still catches it; for a non-empty operand the result is
+identical to the old `l op r`, so no fired total changes (verified: corpus DRL byte-identical per file).
+
+Two operators are deliberately deferred (carded in builtins-vervolg), each because its leeg rule needs a
+decision beyond the simple "leeg = 0":
+- **gedeeld door / (ABS)** — §6.5 Tabel 12: a LEFT-empty dividend short-circuits to 0 (even `leeg / leeg = 0`),
+  but a non-empty value over an empty divisor is a **fout**. Representing that fout in Drools (throw vs a
+  sentinel vs a documented degrade-to-leeg) is a genuine design choice, so the division still lowers as today
+  (it NPEs on a null operand) until that is decided.
+- **tot de macht** — §6.7: any empty operand → leeg, but its lowering already forks on an integer vs a runtime
+  exponent (`pow(int)` vs a `Math.pow` double), so the leeg-guard threads through two paths; deferred with the
+  rest of the leegwaarde work.
