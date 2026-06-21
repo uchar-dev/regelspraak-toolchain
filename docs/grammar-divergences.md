@@ -897,3 +897,22 @@ criterium`) are the resolver's `COMPLEX` method and stay markers — they are ge
    Enforcing §6.1.2 at the verdeling assignment (consistently with equal-shares and `regel`) is a separate,
    transpiler-wide item. A zero total weight (`Σ = 0`) is guarded (`signum() != 0`) so the divide cannot
    throw; the spec leaves a zero divisor undefined, so no-op-not-crash is the chosen reading.
+
+### §6.5 gedeeld door (ABS) — 5 decimals toward zero, and a table typo
+
+"gedeeld door (ABS)" (the AanslagBelastingenSysteem division) is NOT the exact/fraction quotient of plain
+"gedeeld door": §6.5 makes its result "altijd maximaal 5 [decimalen] waarbij het resultaat **richting 0**
+is/wordt afgerond". That is `BigDecimal.divide(divisor, 5, RoundingMode.DOWN)` — scale 5, truncated toward
+zero — which we emit for `GEDEELD_DOOR_ABS` while plain `GEDEELD_DOOR` keeps its DECIMAL64 (≈16-digit) divide.
+
+The spec's own Tabel 11 row `2 gedeeld door (ABS) 3 → 0,66667` **contradicts** both the stated "richting 0"
+rule (which truncates to `0,66666`) and the symmetric neighbouring row `2 / -3 → -0,66666`. `RoundingMode.DOWN`
+matches 5 of the 6 (ABS) rows exactly (e.g. `2,3/1,134 → 2,02821`, where HALF_UP would give `2,02822`); no
+other mode fits more. So `0,66667` is a table typo and the rule (toward zero) governs — consistent with the
+project's "typo's daargelaten" mandate.
+
+Two things deliberately NOT changed (each pre-existing and shared with plain `gedeeld door`, so out of scope
+here): the §6.1.2 result precision typing still treats (ABS) like `gedeeld door` (errs safe — a false
+negative, never a false positive — see Tabel 37/§6.1.2 note in Typering); and the §6.5 leegwaarde table
+(`leeg → 0`, `waarde / leeg → fout`) is the broader division-leegwaarde item, still unhandled (a null divisor
+NPEs in mvel exactly as plain division does today).

@@ -716,9 +716,17 @@ public final class DrlTranspiler {
             }
             if (b.op() == Expr.BinOp.PERCENTAGE_VAN)
                 return "(" + waarde(b.links(), subject) + " / 100 * " + waarde(b.rechts(), subject) + ")";
-            if (b.op() == Expr.BinOp.GEDEELD_DOOR || b.op() == Expr.BinOp.GEDEELD_DOOR_ABS)
+            if (b.op() == Expr.BinOp.GEDEELD_DOOR)
                 return "(" + waarde(b.links(), subject) + ").divide(" + waarde(b.rechts(), subject)
                         + ", java.math.MathContext.DECIMAL64)"; // safe: no non-terminating-quotient throw
+            if (b.op() == Expr.BinOp.GEDEELD_DOOR_ABS)
+                // §6.5: "gedeeld door (ABS)" (the AanslagBelastingenSysteem division) does NOT share the exact /
+                // fraction result of "gedeeld door" — its result has at most 5 decimals, rounded TOWARD ZERO
+                // ("richting 0"), so a non-terminating quotient always has a known decimal form. divide(d, 5,
+                // DOWN) is exactly that (scale 5, truncate toward zero). The spec's 2/3→0,66667 row contradicts
+                // its own "richting 0" rule and its -0,66666 neighbour — a table typo; the rule (DOWN) governs.
+                return "(" + waarde(b.links(), subject) + ").divide(" + waarde(b.rechts(), subject)
+                        + ", 5, java.math.RoundingMode.DOWN)";
             if (b.op() == Expr.BinOp.MAAL)  // §6.4: units multiply, operands are NOT converted to match
                 return "(" + waarde(b.links(), subject) + " * " + waarde(b.rechts(), subject) + ")";
             // §13.4.16 date arithmetic (a datum ± a tijdsduur) is NOT mvel "+": "LocalDate + BigDecimal" is a

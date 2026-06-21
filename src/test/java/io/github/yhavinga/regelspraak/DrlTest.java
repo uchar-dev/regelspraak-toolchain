@@ -328,6 +328,28 @@ class DrlTest {
                 () -> "afronding moet de macht afronden en 'maal 3' moet erbuiten binden:\n" + drl);
     }
 
+    @Test void gedeeld_door_abs_rondt_op_vijf_decimalen_af_gewoon_delen_blijft_exact() {
+        // §6.5: "gedeeld door (ABS)" truncates to 5 decimals toward zero; plain "gedeeld door" stays the
+        // exact DECIMAL64 quotient. The two must lower to DIFFERENT divides.
+        String src = """
+            Objecttype de Reis
+                de uitkomst Numeriek (getal met 5 decimalen);
+                de teller Numeriek (getal met 5 decimalen);
+                de noemer Numeriek (getal met 5 decimalen);
+            Regel abs
+                geldig altijd
+                    De uitkomst van een Reis moet gesteld worden op de teller van een Reis gedeeld door (ABS) de noemer van een Reis.
+            Regel gewoon
+                geldig altijd
+                    De teller van een Reis moet gesteld worden op de uitkomst van een Reis gedeeld door de noemer van een Reis.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains(".divide($subject.getNoemer(), 5, java.math.RoundingMode.DOWN)"),
+                () -> "gedeeld door (ABS) moet op 5 decimalen richting 0 afronden:\n" + drl);
+        assertTrue(drl.contains(".divide($subject.getNoemer(), java.math.MathContext.DECIMAL64)"),
+                () -> "gewone 'gedeeld door' moet de exacte DECIMAL64-deling houden:\n" + drl);
+    }
+
     @Test void kenmerktoekenning_wordt_boolean_setter_onder_voorwaarde() {
         String src = """
             Objecttype de Persoon

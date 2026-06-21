@@ -587,6 +587,34 @@ class DroolsExecutionTest {
                 () -> "7 tot de macht 19 = 11398895185373143 exact, kreeg " + h.getNetto());
     }
 
+    @Test void gedeeld_door_abs_rondt_af_op_vijf_decimalen_richting_nul() {
+        // §6.5: "gedeeld door (ABS)" yields at most 5 decimals, rounded TOWARD ZERO — unlike the exact /
+        // fraction "gedeeld door". 5 / 3 = 1,6666… -> 1,66666 (truncated to 5, not the DECIMAL64 16-digit
+        // 1,6666666666666667). A negative quotient truncates toward zero too: 2 / -3 -> -0,66666.
+        String src = """
+            Objecttype de Kandidaat
+                de a Numeriek (getal met 5 decimalen);
+                de b Numeriek (getal met 5 decimalen);
+                de c Numeriek (getal met 5 decimalen);
+            Regel deel abs
+                geldig altijd
+                    De c van een Kandidaat moet gesteld worden op de a van een Kandidaat gedeeld door (ABS) de b van een Kandidaat.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        KieSession sessie = build(DrlTranspiler.transpile(m)).newKieSession();
+        Kandidaat pos = new Kandidaat(); pos.setA(new BigDecimal("5")); pos.setB(new BigDecimal("3"));
+        Kandidaat neg = new Kandidaat(); neg.setA(new BigDecimal("2")); neg.setB(new BigDecimal("-3"));
+        sessie.insert(pos); sessie.insert(neg);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("1.66666").compareTo(pos.getC()),
+                () -> "5 gedeeld door (ABS) 3 = 1,66666 (richting 0, 5 decimalen), kreeg " + pos.getC());
+        assertTrue(pos.getC().scale() <= 5, () -> "ten hoogste 5 decimalen, kreeg scale " + pos.getC().scale());
+        assertEquals(0, new BigDecimal("-0.66666").compareTo(neg.getC()),
+                () -> "2 gedeeld door (ABS) -3 = -0,66666 (richting 0), kreeg " + neg.getC());
+    }
+
     @Test void telling_maal_parameter_bindt_de_maal_buiten_de_telling() {
         // §13.4.17.47 telling precedence: "het aantal X van de reis maal de factor" must be
         // (count of X) maal factor, NOT count(X maal factor). The telling takes a
