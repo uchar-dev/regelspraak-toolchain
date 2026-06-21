@@ -938,6 +938,38 @@ class DroolsExecutionTest {
         assertNull(leeg.getMachtr(), "macht van leeg = leeg");
     }
 
+    @Test void wortel_van_negatief_is_leeg_en_meldt_een_inconsistentie() {
+        // §6.6: a negative radicand is a Fout (RegelSpraak has no complex numbers). The value degrades to leeg
+        // (rsWortel returns null for a negative — no session-aborting sqrt throw), and a companion rule surfaces
+        // the §6.6 foutmelding as an Inconsistentie. A leeg radicand is leeg WITHOUT a fout; a positive one
+        // computes normally.
+        String src = """
+            Objecttype de Heffing
+                de basis Numeriek (geheel getal);
+                de wortelr Numeriek (geheel getal);
+            Regel w
+                geldig altijd
+                    De wortelr van een Heffing moet gesteld worden op de wortel van de basis van een Heffing naar beneden afgerond op 0 decimalen.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rule \"w (wortel van negatief)\""), () -> "geen wortel-negatief companion-regel:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Heffing neg = new Heffing(); neg.setBasis(new BigDecimal("-4")); neg.setWortelr(new BigDecimal("999"));  // -> leeg + fout
+        Heffing pos = new Heffing(); pos.setBasis(new BigDecimal("16"));                                          // -> 4, geen fout
+        Heffing leeg = new Heffing(); leeg.setWortelr(new BigDecimal("999"));                                     // -> leeg, geen fout
+        for (Object o : new Object[]{neg, pos, leeg}) sessie.insert(o);
+        sessie.fireAllRules();   // a negative radicand must NOT abort the session (sqrt(-4) used to throw)
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> ((Inconsistentie) o).getSubject()).toList();
+        sessie.dispose();
+        assertEquals(1, fouten.size(), () -> "precies één Inconsistentie (alleen de negatieve), kreeg " + fouten.size());
+        assertSame(neg, fouten.get(0), "de Inconsistentie moet de negatieve heffing noemen");
+        assertNull(neg.getWortelr(), "wortel van een negatief getal = leeg (geen crash)");
+        assertEquals(0, new BigDecimal("4").compareTo(pos.getWortelr()), () -> "wortel(16)=4, kreeg " + pos.getWortelr());
+        assertNull(leeg.getWortelr(), "wortel van leeg = leeg (geen fout)");
+    }
+
     @Test void conditie_zijde_wortel_onder_zijn_verplichte_afronding() {
         // §13.4.17.13: "de wortel van X" carries a MANDATORY afronding, so a condition-side wortel is always
         // Afgerond(Functie(WORTEL)) — operand() must descend the afronding wrapper (a pure setScale, valid in a

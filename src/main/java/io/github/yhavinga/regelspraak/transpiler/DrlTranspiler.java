@@ -636,7 +636,54 @@ public final class DrlTranspiler {
             rule.dan("    // onopgelost doel: " + r.doel().bron() + "\n");
         }
         out.append(rule.render());
-        if (subject != null) deelDoorLeegFout(r, subject, constraint);
+        if (subject != null) { deelDoorLeegFout(r, subject, constraint); wortelNegatiefFout(r, subject, constraint); }
+    }
+
+    /** §6.6: "de wortel van" a NEGATIVE radicand is a Fout (RegelSpraak has no complex numbers). The value side
+     *  already degrades it to leeg (rsWortel returns null for a negative radicand, instead of letting
+     *  BigDecimal.sqrt throw and abort the session); this surfaces the Fout through the §9.5 Inconsistentie
+     *  channel — a SEPARATE rule per wortel that fires when the radicand is negative (and the host voorwaarde
+     *  holds). Scope, like the division fout: only a radicand that is the subject's OWN attribute lowers to a
+     *  plain re-readable property constraint; a navigated/parameter/nested/aggregation radicand still degrades
+     *  to leeg but raises no Inconsistentie (carded). A leeg radicand is leeg, not a fout (§6.6), and the guard
+     *  radicand &lt; 0 is false for a null, so it does not fire for leeg. */
+    private void wortelNegatiefFout(ResolvedRegel r, Objecttype subject, String voorwaarde) {
+        if (bevatMarker(voorwaarde)) return;
+        List<Expr.Functie> wortels = new ArrayList<>();
+        verzamelWortels(r.waarde(), wortels);
+        List<Expr.AttribuutRef> eigen = new ArrayList<>();
+        for (Expr.Functie w : wortels)
+            if (w.argumenten().size() == 1 && w.argumenten().get(0) instanceof Expr.AttribuutRef rad
+                    && naviResolve(rad, subject).soort() == NaviSoort.EIGEN)
+                eigen.add(rad);
+        for (int i = 0; i < eigen.size(); i++) {
+            String pattern = (voorwaarde.isEmpty() ? "" : voorwaarde + ", ")
+                    + ident(eigen.get(i).attribuut(), false) + " < new java.math.BigDecimal(\"0\")";
+            out.append(new Regel(r.naam() + " (wortel van negatief" + (eigen.size() > 1 ? " " + (i + 1) : "") + ")")
+                .clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + pattern + " )")
+                .geldigheid(r.geldigheid())
+                .clausule(inconsistentieGuard(r.naam()))
+                .dan(inconsistentieDan(r.naam()))
+                .render());
+        }
+    }
+
+    /** Collect every "de wortel van" function node reachable through the wrapper layers (Functie args / Binair /
+     *  Afgerond / Begrensd) of a value expression — for the §6.6 negative-radicand fout surfacing. */
+    private static void verzamelWortels(Expr e, List<Expr.Functie> uit) {
+        if (e instanceof Expr.Functie f) {
+            if (f.kind() == Expr.FunctieKind.WORTEL) uit.add(f);
+            for (Expr a : f.argumenten()) verzamelWortels(a, uit);
+        } else if (e instanceof Expr.Binair b) {
+            verzamelWortels(b.links(), uit);
+            verzamelWortels(b.rechts(), uit);
+        } else if (e instanceof Expr.Afgerond af) {
+            verzamelWortels(af.basis(), uit);
+        } else if (e instanceof Expr.Begrensd bg) {
+            verzamelWortels(bg.basis(), uit);
+            verzamelWortels(bg.minimum(), uit);
+            verzamelWortels(bg.maximum(), uit);
+        }
     }
 
     /** §6.5 / Tabel 12: a "waarde gedeeld door leeg" is a Fout. The value side already degrades it to leeg
@@ -956,8 +1003,8 @@ public final class DrlTranspiler {
                 String x = arg.apply(a.get(0));       // adds, now null-safe). rsWortel does BigDecimal.sqrt at
                 // 34-digit precision, NOT Math.sqrt whose ~16-digit double noise can flip a directional
                 // (FLOOR/CEILING) afronding on a terminating root, and carries the §6.6 leegwaarde (leeg -> leeg)
-                // so a leeg radicand propagates through the afronding. A negative radicand still throws (the §6.6
-                // foutmelding is a separate slice).
+                // so a leeg radicand propagates through the afronding. A NEGATIVE radicand also yields leeg (no
+                // session-aborting throw); the §6.6 foutmelding is surfaced by wortelNegatiefFout's companion rule.
                 if (bevatMarker(x)) yield x;
                 registreerWortelFunctie();
                 yield "rsWortel(" + x + ")";
@@ -1652,12 +1699,14 @@ public final class DrlTranspiler {
 
     /** Register the §13.4.17.13 wortel helper — the radicand's root at 34-digit precision (BigDecimal.sqrt, NOT
      *  Math.sqrt, whose ~16-digit double noise can flip a directional afronding on a terminating root), with the
-     *  §6.6 leegwaarde (a leeg radicand -> leeg). A negative radicand still throws (the §6.6 foutmelding is a
-     *  separate slice). Idempotent. */
+     *  §6.6 leegwaarde (a leeg radicand -> leeg) AND its negative-radicand fout: a negative value yields leeg
+     *  (no session-aborting throw), with the §6.6 foutmelding surfaced by the wortelNegatiefFout companion rule.
+     *  Idempotent. */
     private void registreerWortelFunctie() {
         hulpFuncties.putIfAbsent("rsWortel",
                 "function java.math.BigDecimal rsWortel(java.math.BigDecimal x) {\n"
-                + "    return x == null ? null : x.sqrt(java.math.MathContext.DECIMAL128);\n"
+                + "    if (x == null || x.signum() < 0) return null;\n"   // §6.6: leeg -> leeg; negatief -> leeg + Inconsistentie
+                + "    return x.sqrt(java.math.MathContext.DECIMAL128);\n"
                 + "}\n\n");
     }
 

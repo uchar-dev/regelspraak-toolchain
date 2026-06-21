@@ -1000,6 +1000,14 @@ leeg hit the afronding and crashed). They were deferred on exactly this entangle
   / `rsMachtReeel` (runtime Math.pow, both operands guarded), each `leeg → leeg`.
 
 Behaviour-preserving for a non-leeg value (each helper equals the old `.sqrt`/`.pow`/`.setScale`), so the only
-corpus change is toka-24's afronding becoming `rsAfronding`; wortel/macht are corpus-invisible. A NEGATIVE
-radicand still throws an ArithmeticException at fire time (a session abort) — the §6.6 foutmelding is a separate
-slice (it can now reuse the §9.5 Inconsistentie channel, as gedeeld door does).
+corpus change is toka-24's afronding becoming `rsAfronding`; wortel/macht are corpus-invisible.
+
+A **negative radicand** (§6.6: a Fout, since RegelSpraak has no complex numbers) is now handled the way gedeeld
+door's `÷ leeg` fout is: `rsWortel` returns leeg for a negative value (no more session-aborting
+`BigDecimal.sqrt` throw), and a SEPARATE modify-free companion rule `"<naam> (wortel van negatief)"` fires
+`<radicand> < 0` (and the host voorwaarde) and inserts an idempotency-guarded Inconsistentie. So a negative
+radicand is {leeg value + Inconsistentie}, detectable and non-crashing. SCOPE, like the division fout: only a
+radicand that is the subject's OWN attribute lowers to a plain `< 0` property constraint; a navigated /
+parameter / nested / aggregation radicand still degrades to leeg but raises no Inconsistentie (carded). A leeg
+radicand is leeg WITHOUT a fout (§6.6) — the `< 0` guard is false for a null, so the companion does not fire for
+leeg. `tot de macht` of a negative base is well-defined (a real power), so it has no analogous fout.

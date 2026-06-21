@@ -479,6 +479,26 @@ class DrlTest {
         assertTrue(drl.contains(".sqrt(java.math.MathContext.DECIMAL128)"), () -> "rsWortel moet 34-cijferige sqrt gebruiken:\n" + drl);
     }
 
+    @Test void wortel_van_negatief_geeft_leeg_plus_een_companion_inconsistentie() {
+        // §6.6: a negative radicand is a Fout. rsWortel returns leeg for a negative (no session-aborting throw),
+        // and a SEPARATE modify-free companion rule surfaces the fout when the radicand (own attribute) < 0.
+        String src = """
+            Objecttype de Heffing
+                de basis Numeriek (geheel getal);
+                de wortelr Numeriek (geheel getal);
+            Regel w
+                geldig altijd
+                    De wortelr van een Heffing moet gesteld worden op de wortel van de basis van een Heffing naar beneden afgerond op 0 decimalen.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("if (x == null || x.signum() < 0) return null;"), () -> "rsWortel moet een negatief radicand op leeg zetten:\n" + drl);
+        assertTrue(drl.contains("rule \"w (wortel van negatief)\""), () -> "geen wortel-negatief companion:\n" + drl);
+        assertTrue(drl.contains("Heffing( basis < new java.math.BigDecimal(\"0\") )"), () -> "geen radicand < 0 guard:\n" + drl);
+        assertTrue(drl.contains("insert(new io.github.yhavinga.regelspraak.facts.Inconsistentie(\"w\""), () -> "geen Inconsistentie-insert:\n" + drl);
+        String comp = drl.substring(drl.indexOf("(wortel van negatief)"));
+        assertFalse(comp.substring(0, comp.indexOf("\nend")).contains("modify"), () -> "companion mag geen modify bevatten:\n" + comp);
+    }
+
     @Test void tijdsduur_lowert_naar_chronounit_between_met_leeg_guard() {
         String src = """
             Eenheidsysteem Tijd
