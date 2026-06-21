@@ -586,17 +586,44 @@ public final class DrlTranspiler {
         return a.objecttype() != null && !a.objecttype().heeftLid(a.attribuut());
     }
 
+    /** Whether {@code a} reads a §13.3.7 gedimensioneerd attribuut (its field is a Map&lt;label,value&gt;).
+     *  Such a read is only valid through an {@link Expr.DimensieCel} (which pins the label) or as the source
+     *  of a dimensieaggregatie; a bare value read of it is under-specified (§3.6). */
+    private boolean isGedimensioneerd(Expr.AttribuutRef a) {
+        return a.objecttype() != null && !a.objecttype().dimensiesVan(a.attribuut()).isEmpty();
+    }
+
+    /** The getter chain for an attribute read relative to the subject — the EIGEN own-attribute, a single
+     *  navigated reference, or a marker for an absent/naar-veel/unresolvable navigation. Shared by the plain
+     *  value read and the dimensioned-read forms (which need the bare getter — for a dimensioned attribute
+     *  the Map field — before indexing a label), so the latter bypass the §3.6 under-specified guard. */
+    private String attribuutGetter(Expr.AttribuutRef a, Objecttype subject) {
+        if (attribuutOntbreekt(a)) return todo("navigatie", a.bron());
+        String rol = naviRol(subject, a);
+        if (EIGEN.equals(rol)) return SUBJECT + "." + getter(a.attribuut()) + "()";
+        if (naarVeel(subject, a, rol)) return todo("naar-veel-navigatie", a.bron());
+        if (rol != null)       return SUBJECT + "." + getter(rol) + "()." + getter(a.attribuut()) + "()";
+        return todo("navigatie", a.bron());
+    }
+
     // ---------------- value expression ("then" side: getters) ----------------
     private String waarde(Expr e, Objecttype subject) {
         if (e instanceof Expr.Literal lit)      return literal(lit);
         if (e instanceof Expr.ParameterRef p)   return ident(p.parameter().naam(), false);
         if (e instanceof Expr.AttribuutRef a) {
-            if (attribuutOntbreekt(a)) return todo("navigatie", a.bron());
-            String rol = naviRol(subject, a);
-            if (EIGEN.equals(rol)) return SUBJECT + "." + getter(a.attribuut()) + "()";
-            if (naarVeel(subject, a, rol)) return todo("naar-veel-navigatie", a.bron());
-            if (rol != null)       return SUBJECT + "." + getter(rol) + "()." + getter(a.attribuut()) + "()";
-            return todo("navigatie", a.bron());
+            // §3.6: a gedimensioneerd attribuut read WITHOUT pinning its dimensions is under-specified (it
+            // would emit a bare Map getter where a scalar is expected). A legitimate dimensioned read is an
+            // Expr.DimensieCel; a bare AttribuutRef to a dimensioned attribute is therefore an error — marker.
+            if (isGedimensioneerd(a)) return todo("ongedimensioneerde lezing van gedimensioneerd attribuut (§3.6)", a.bron());
+            return attribuutGetter(a, subject);
+        }
+        if (e instanceof Expr.DimensieCel c) {
+            // §3.6 a single dimensioned cell reads the attribute's Map<label,value> field and indexes the
+            // selected label. Scope: a single-dimension attribute (one label); a multi-dimension composite
+            // key is deferred to a marker. An unresolvable underlying read (e.g. a navigation) markers too.
+            String map = attribuutGetter(c.attribuut(), subject);
+            if (bevatMarker(map) || c.labels().size() != 1) return todo("dimensiecel", c.bron());
+            return "(" + map + ").get(\"" + c.labels().get(0).replace("\"", "") + "\")";
         }
         if (e instanceof Expr.Binair b) {
             if (b.op() == Expr.BinOp.TOT_DE_MACHT) {
@@ -701,7 +728,7 @@ public final class DrlTranspiler {
         };
         if (fn == null || f.argumenten().size() != 1 || !(f.argumenten().get(0) instanceof Expr.AttribuutRef a))
             return null;
-        String map = waarde(a, subject);   // the dimensioned attribute reads as its Map<label,value> field
+        String map = attribuutGetter(a, subject);   // the dimensioned attribute reads as its Map<label,value> field
         if (bevatMarker(map)) return null;
         registreerDimensieFunctie(fn);
         StringJoiner keys = new StringJoiner(", ");

@@ -376,8 +376,11 @@ public final class RegelSpraakModel {
     /** §13.3.6.10 a named timeline; `variabelStartpunt` is bound by a §13.4.12 startpuntbepaling. */
     public record Tijdlijn(String naam, boolean variabelStartpunt) {}
 
-    /** §13.3.7 a dimension and its ordered label values. */
-    public record Dimensie(String naam, String naamMeervoud, List<String> waarden) {}
+    /** §13.3.7 a dimension and its ordered label values. {@code voorzetsel} is the §3.6 read preposition
+     *  for the suffix form ("na het attribuut met voorzetsel <vz>": a cell reads "&lt;attribuut&gt; &lt;vz&gt;
+     *  &lt;label&gt;"), or null for the prefix form ("voor het attribuut zonder voorzetsel": "&lt;label&gt;
+     *  &lt;attribuut&gt;"). */
+    public record Dimensie(String naam, String naamMeervoud, String voorzetsel, List<String> waarden) {}
 
     /** The §13.3.7 dimension named {@code naam} (singular) case-insensitively, or null. */
     public Dimensie dimensieOpNaam(String naam) {

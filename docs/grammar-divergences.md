@@ -507,13 +507,35 @@ Key points of the reading:
   the resolver. It fails safe (marker), and no corpus/spec example exercises it; carded.
 
 What is **still** marked, not lowered (the temporal remainder of p5): a `totaal`/`tijdsevenredig deel`
-**conditiebijexpressie** (`gedurende de tijd dat …`, spec-main-81/84-87), a dimensieselectie whose
-operand is not a single gedimensioneerd attribuut, and a single dimensioned **read** with the label woven
-into the noun phrase (`het bruto inkomen van vorig jaar`). These keep the resolver's `Onopgelost` filter +
+**conditiebijexpressie** (`gedurende de tijd dat …`, spec-main-81/84-87), and a dimensieselectie whose
+operand is not a single gedimensioneerd attribuut. These keep the resolver's `Onopgelost` filter +
 WARNING, so the transpiler markers them (`/* TODO aggregatie … */` no-op) rather than aggregating the
 whole set unrestricted. The `gedurende de tijd dat` form is deliberately **not** collapsed to a boolean
 "currently true" guard: without a real time axis that loses the §5.1 piecewise period model, so it stays an
 honest marker rather than a silently-degraded fire. Temporal IR stays carded (p5/p2).
+
+### Reading a single dimension cell (§3.6) — peel `<voorzetsel> <label>`, marker an under-specified read
+
+A gedimensioneerd attribuut read in a rule must pin every dimension (§3.6: "dienen dan altijd alle
+dimensies te worden aangegeven"). The label is woven into the noun phrase: the suffix form
+`<attribuut> <voorzetsel> <label>` (`betaalde belasting in jaar van huidig jaar`, the dimension's
+declared read preposition) or the prefix form `<label> <attribuut>` (`bruto inkomen`). The grammar gives
+this no non-terminal — the `kaleNaam` swallows the whole run — so the **resolver** splits it: a bare name
+that is not a declared attribute is retried as a dimensioned read by peeling the longest declared
+attribute off the head and matching `<voorzetsel> <label>` against the attribute's single dimension. It
+lowers to an `Expr.DimensieCel` and then to `<map-read>.get("label")` (the dimensioned attribute's field
+being the `Map<label,value>` from the aggregation reading above).
+
+- Scope: a **single-dimension** attribute via the **suffix-voorzetsel** form, read as the subject's OWN
+  attribute (`zijn …`). The prefix (`bruto inkomen`) form, a **multi-dimension** cell (it needs every
+  label and a composite key), and a **navigated/definite** read (`de … van <label> van een <type>`, which
+  the two-`van` `kaleNaam` does not cleanly split) all stay honest markers — carded, never a wrong cell.
+- An **under-specified** read — a bare dimensioned attribute used as a value without a label — is an error
+  (§3.6). Because a dimensioned field is a `Map`, emitting its bare getter where a scalar is expected is a
+  silent miscompile, so a bare `AttribuutRef` to a dimensioned attribute lowers to a marker
+  (`/* TODO ongedimensioneerde lezing … */`). The bare getter is still emitted, deliberately, for the two
+  legitimate internal uses — the dimensieaggregatie source and the `DimensieCel` map read — which go
+  through `attribuutGetter` and so bypass that guard. An unknown label likewise markers (not a partial read).
 
 ### An unresolved condition is a compilable no-op, not an uncompilable `null`
 

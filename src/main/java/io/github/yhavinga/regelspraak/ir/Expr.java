@@ -113,6 +113,15 @@ public sealed interface Expr {
     record AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
                         String navigatieRol, Datatype type, String bron) implements Expr {}
 
+    /** §3.6 a single cell of a gedimensioneerd attribuut: the bare attribute read plus the selected label
+     *  for each of its dimensions (in the attribute's declared dimension order — one label for a
+     *  single-dimension attribute). The transpiler lowers it to {@code <map-read>.get(label)}; the result
+     *  type is the attribute's element datatype. A read must pin EVERY dimension (§3.6), so the labels list
+     *  has one entry per dimension. */
+    record DimensieCel(AttribuutRef attribuut, List<String> labels, String bron) implements Expr {
+        @Override public Datatype type() { return attribuut.type(); }
+    }
+
     /** A resolved parameter reference (§13.3.8); the type is the parameter's. */
     record ParameterRef(Parameter parameter, String bron) implements Expr {
         @Override public Datatype type() { return parameter.datatype(); }

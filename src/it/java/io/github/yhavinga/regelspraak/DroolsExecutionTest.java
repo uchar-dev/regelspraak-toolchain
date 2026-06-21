@@ -3149,4 +3149,40 @@ class DroolsExecutionTest {
                 () -> "200 + 400 (lege labels overgeslagen) = 600, kreeg "
                         + np.getBetaaldeBelastingOverDeAfgelopenVierJaar());
     }
+
+    /** §3.6/§3.8 a single dimensioned READ: "zijn betaalde belasting in jaar van huidig jaar" reads exactly
+     *  the one cell of the gedimensioneerd attribuut (the Map keyed by the jaardimensie label "huidig jaar"),
+     *  not the whole map and not another label. The voorzetsel "van" + label is peeled off the attribute run
+     *  and lowered to map.get("huidig jaar"). */
+    @Test void dimensie_cel_lezen_pakt_het_juiste_label() {
+        String src = """
+            Objecttype de Natuurlijk persoon (mv: Natuurlijke personen)
+                de betaalde belasting over de afgelopen vier jaar Numeriek (geheel getal);
+                de betaalde belasting in jaar Numeriek (geheel getal) gedimensioneerd met jaardimensie;
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. vorig jaar
+                2. huidig jaar
+            Regel lees
+              geldig altijd
+                De betaalde belasting over de afgelopen vier jaar van een Natuurlijk persoon moet gesteld worden op zijn betaalde belasting in jaar van huidig jaar.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains(".get(\"huidig jaar\")"), () -> "verwacht een cel-lezing op het label:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        NatuurlijkPersoon np = new NatuurlijkPersoon();
+        Map<String, BigDecimal> belasting = new HashMap<>();
+        belasting.put("vorig jaar", new BigDecimal("111"));
+        belasting.put("huidig jaar", new BigDecimal("222"));
+        np.setBetaaldeBelastingInJaar(belasting);
+        sessie.insert(np);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("222").compareTo(np.getBetaaldeBelastingOverDeAfgelopenVierJaar()),
+                () -> "moet de cel 'huidig jaar' (222) lezen, niet 'vorig jaar' of de hele map, kreeg "
+                        + np.getBetaaldeBelastingOverDeAfgelopenVierJaar());
+    }
 }

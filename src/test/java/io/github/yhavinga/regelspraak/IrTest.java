@@ -177,6 +177,29 @@ class IrTest {
                 () -> "verwachtte een marker-WARNING: " + m.diagnostics);
     }
 
+    @Test void dimensie_cel_lezen_wordt_een_dimensiecel_met_label() {
+        // §3.6/§3.8 "zijn betaalde belasting in jaar van huidig jaar" resolves to a DimensieCel: the bare
+        // attribuut ("betaalde belasting in jaar") plus the peeled jaardimensie label ("huidig jaar").
+        String src = """
+            Objecttype de Natuurlijk persoon (mv: Natuurlijke personen)
+                de uitkomst Numeriek (geheel getal);
+                de betaalde belasting in jaar Numeriek (geheel getal) gedimensioneerd met jaardimensie;
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. vorig jaar
+                2. huidig jaar
+            Regel lees
+              geldig altijd
+                De uitkomst van een Natuurlijk persoon moet gesteld worden op zijn betaalde belasting in jaar van huidig jaar.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        Expr.DimensieCel cel = assertInstanceOf(Expr.DimensieCel.class, m.resolvedRegels.get(0).waarde(),
+                "een gelabelde dimensielezing moet een DimensieCel zijn");
+        assertEquals("betaalde belasting in jaar", cel.attribuut().attribuut(), "de kale attribuutnaam");
+        assertEquals(List.of("huidig jaar"), cel.labels(), "het geselecteerde label");
+        assertTrue(cel.type().isNumeriek(), "het celtype is het element-datatype van het attribuut");
+    }
+
     @Test void enkelvoudige_voorwaarde_wordt_een_vergelijking() {
         String src = """
             Parameter de grens : Numeriek (geheel getal)

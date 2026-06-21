@@ -645,7 +645,47 @@ final class ExpressieBouwer {
         String attr = src(k.kaleNaam());
         Datatype dt = huidigSubject.attribuut(attr);
         // a subject-own attribute — no role navigation
-        return dt != null ? new Expr.AttribuutRef(attr, huidigSubject, "zijn", null, dt, bron) : null;
+        if (dt != null) return new Expr.AttribuutRef(attr, huidigSubject, "zijn", null, dt, bron);
+        // §3.6 the bare name may be a gedimensioneerd attribuut READ with the label woven in
+        // ("zijn betaalde belasting in jaar van huidig jaar"): peel "<voorzetsel> <label>" off the run. An
+        // own-attribute read carries no navigation role (navRol null), exactly as the scalar branch above.
+        return dimensieCel(attr, huidigSubject, null, "zijn", bron);
+    }
+
+    /** §3.6 resolve {@code kaleNaam} as a single-cell read of a gedimensioneerd attribuut of {@code ot} —
+     *  the bare attribuut followed by the dimension's read preposition and a declared label
+     *  ("betaalde belasting in jaar van huidig jaar" = attribuut "betaalde belasting in jaar" + jaardimensie
+     *  label "huidig jaar"). Returns the {@link Expr.DimensieCel}, or null when {@code kaleNaam} is not such a
+     *  read. Scope (the rest stays an honest marker): a SINGLE-dimension attribute (a multi-dimension cell
+     *  needs every label and a composite-key model) read via the SUFFIX voorzetsel form (the prefix
+     *  "&lt;label&gt; &lt;attribuut&gt;" form is deferred). The longest matching attribute wins, so a
+     *  dimensioned name is not shadowed by a shorter scalar prefix of it. */
+    private Expr dimensieCel(String kaleNaam, Objecttype ot, String navRol, String onderwerpBron, String bron) {
+        if (ot == null || kaleNaam == null) return null;
+        String beste = null; String besteLabel = null; RegelSpraakModel.Dimensie besteDim = null;
+        for (var e : ot.attribuutDimensies.entrySet()) {
+            String attr = e.getKey();
+            if (e.getValue().size() != 1) continue;                 // multi-dimension cell deferred
+            RegelSpraakModel.Dimensie d = model.dimensieOpNaam(e.getValue().get(0));
+            if (d == null || d.voorzetsel() == null) continue;      // prefix-form (no voorzetsel) deferred
+            String prefix = attr + " " + d.voorzetsel() + " ";
+            if (kaleNaam.length() <= prefix.length()
+                    || !kaleNaam.regionMatches(true, 0, prefix, 0, prefix.length())) continue;
+            String label = labelVanDimensie(d, kaleNaam.substring(prefix.length()).trim());
+            if (label == null) continue;
+            if (beste == null || attr.length() > beste.length()) { beste = attr; besteLabel = label; besteDim = d; }
+        }
+        if (beste == null) return null;
+        Datatype dt = ot.attribuut(beste);
+        Expr.AttribuutRef ref = new Expr.AttribuutRef(beste, ot, onderwerpBron, navRol, dt, bron);
+        return new Expr.DimensieCel(ref, List.of(besteLabel), bron);
+    }
+
+    /** The declared label of {@code d} that equals {@code naam} case-insensitively (returning the declared
+     *  spelling), or null. */
+    private static String labelVanDimensie(RegelSpraakModel.Dimensie d, String naam) {
+        for (String w : d.waarden()) if (w.equalsIgnoreCase(naam)) return w;
+        return null;
     }
 
     /** A bare name: a known parameter binds to a ParameterRef; a variabeleNaam that is

@@ -279,8 +279,12 @@ public final class DefinitionResolver {
     private void dimensie(DimensieDefinitionContext ctx) {
         List<String> waarden = ctx.labelWaardeSpecificatie().stream()
                 .map(l -> src(l.dimensieWaarde())).toList();
+        // §3.6/§13.3.7.2: "na het attribuut met voorzetsel <vz>" gives the suffix-read preposition; the
+        // "voor het attribuut zonder voorzetsel" form has no voorzetsel (null) — a prefix (bijvoeglijk) read.
+        VoorzetselSpecificatieContext vzs = ctx.voorzetselSpecificatie();
+        String voorzetsel = vzs != null && vzs.voorzetsel() != null ? src(vzs.voorzetsel()) : null;
         model.dimensies.put(src(ctx.dimensieNaam()),
-                new Dimensie(src(ctx.dimensieNaam()), src(ctx.dimensieNaamMeervoud()), waarden));
+                new Dimensie(src(ctx.dimensieNaam()), src(ctx.dimensieNaamMeervoud()), voorzetsel, waarden));
     }
 
     // ---------------- §13.3.9 fact types ----------------

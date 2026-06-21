@@ -198,6 +198,42 @@ class DrlTest {
         assertFalse(drl.contains("\"heden\""), () -> "labels buiten het interval mogen niet meegeteld worden:\n" + drl);
     }
 
+    @Test void dimensie_cel_lezen_en_ongedimensioneerde_lezing() {
+        // §3.6: a labeled dimensioned read lowers to map.get(label); a multi-dimension read and an
+        // under-specified read (no label) both stay honest markers — the latter would otherwise emit a bare
+        // Map getter where a scalar is expected.
+        String src = """
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. vorig jaar
+                2. huidig jaar
+            Dimensie de brutonettodimensie, bestaande uit de brutonettodimensies (voor het attribuut zonder voorzetsel):
+                1. bruto
+                2. netto
+            Objecttype de Persoon
+                de uitkomst Numeriek (geheel getal);
+                de prijs in jaar Numeriek (geheel getal) gedimensioneerd met jaardimensie;
+                de inkomen Numeriek (geheel getal) gedimensioneerd met jaardimensie en brutonettodimensie;
+            Regel cel
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op zijn prijs in jaar van vorig jaar.
+            Regel onder
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op zijn prijs in jaar.
+            Regel multi
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op zijn inkomen van vorig jaar.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("(" + "$subject.getPrijsInJaar()).get(\"vorig jaar\")"),
+                () -> "de gelabelde cel-lezing moet map.get(label) worden:\n" + drl);
+        assertTrue(drl.contains("ongedimensioneerde lezing"),
+                () -> "een lezing zonder label moet een marker zijn, geen kale Map-getter:\n" + drl);
+        // the prefix-form multi-dimension read ("inkomen van vorig jaar", bruto/netto unspecified) is not a
+        // single-dimension suffix cell -> it stays a marker (deferred), never a single-axis map.get.
+        assertFalse(drl.contains("getInkomen()).get("),
+                () -> "een multidimensionele lezing mag niet als enkel-label cel lowered worden:\n" + drl);
+    }
+
     @Test void dimensieselectie_op_een_naar_veel_navigatie_blijft_marker_geen_map_som() {
         // review (lens B): a dimensieselectie over a TO-MANY navigated dimensioned attribuut ("de som van de
         // prijs in jaar van alle passagiers … over alle jaardimensies") is a 2-level aggregation (over
