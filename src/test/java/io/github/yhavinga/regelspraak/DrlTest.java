@@ -369,10 +369,38 @@ class DrlTest {
                     De teller van een Reis moet gesteld worden op de uitkomst van een Reis gedeeld door de noemer van een Reis.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        assertTrue(drl.contains(".divide($subject.getNoemer(), 5, java.math.RoundingMode.DOWN)"),
-                () -> "gedeeld door (ABS) moet op 5 decimalen richting 0 afronden:\n" + drl);
-        assertTrue(drl.contains(".divide($subject.getNoemer(), java.math.MathContext.DECIMAL64)"),
-                () -> "gewone 'gedeeld door' moet de exacte DECIMAL64-deling houden:\n" + drl);
+        // both lower through their §6.5-leegwaarde helper, with the operands passed in...
+        assertTrue(drl.contains("rsGedeeldAbs($subject.getTeller(), $subject.getNoemer())"),
+                () -> "gedeeld door (ABS) moet via rsGedeeldAbs lowert:\n" + drl);
+        assertTrue(drl.contains("rsGedeeld($subject.getUitkomst(), $subject.getNoemer())"),
+                () -> "gewone 'gedeeld door' moet via rsGedeeld lowert:\n" + drl);
+        // ...and the two helpers keep DIFFERENT divides: ABS truncates 5 decimals toward 0, plain stays DECIMAL64.
+        assertTrue(drl.contains(".divide(rechts, 5, java.math.RoundingMode.DOWN)"),
+                () -> "rsGedeeldAbs moet op 5 decimalen richting 0 afronden:\n" + drl);
+        assertTrue(drl.contains(".divide(rechts, java.math.MathContext.DECIMAL64)"),
+                () -> "rsGedeeld moet de exacte DECIMAL64-deling houden:\n" + drl);
+    }
+
+    @Test void gedeeld_door_emitteert_een_deling_door_leeg_inconsistentie_companion() {
+        // §6.5 / Tabel 12: "waarde gedeeld door leeg" -> fout, surfaced as a SEPARATE Inconsistentie rule
+        // guarded dividend != null && divisor == null (an empty LEFT is 0, not a fout). Modify-free.
+        String src = """
+            Objecttype de Rekensom
+                de grondslag Numeriek (geheel getal);
+                de aftrek Numeriek (geheel getal);
+                de deelResultaat Numeriek (getal met 2 decimalen);
+            Regel deel
+                geldig altijd
+                    De deelResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom gedeeld door de aftrek van een Rekensom.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rule \"deel (deling door leeg)\""), () -> "geen companion-regel:\n" + drl);
+        assertTrue(drl.contains("Rekensom( grondslag != null, aftrek == null )"),
+                () -> "de fout-guard moet dividend != null EN divisor == null zijn (een leeg dividend is 0, geen fout):\n" + drl);
+        assertTrue(drl.contains("insert(new io.github.yhavinga.regelspraak.facts.Inconsistentie(\"deel\""), () -> "geen Inconsistentie-insert:\n" + drl);
+        // the companion must be modify-free (it must not interfere with the value rule)
+        String comp = drl.substring(drl.indexOf("(deling door leeg)"));
+        assertFalse(comp.substring(0, comp.indexOf("\nend")).contains("modify"), () -> "companion mag geen modify bevatten:\n" + comp);
     }
 
     @Test void scalaire_builtins_loweren_naar_een_enkele_expressie() {

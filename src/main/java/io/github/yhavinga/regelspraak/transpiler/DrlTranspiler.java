@@ -617,10 +617,10 @@ public final class DrlTranspiler {
         // A forward calculation should not retrigger itself on its own modify (no-loop, in the header);
         // it still recomputes when another rule changes the facts it reads.
         Regel rule = new Regel(r.naam());
+        String constraint = subject != null && r.voorwaarde() != null ? conditie(r.voorwaarde(), subject, true) : "";
         if (subject == null) {
             rule.clausule("// onopgelost doel-objecttype: " + r.doel().bron()).clausule("eval(true)");
         } else {
-            String constraint = r.voorwaarde() != null ? conditie(r.voorwaarde(), subject, true) : "";
             rule.clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + constraint + " )")
                 .clausules(accumulates)
                 .geldigheid(r.geldigheid());   // §4.2: a time-bounded version fires only inside its window
@@ -635,6 +635,55 @@ public final class DrlTranspiler {
             rule.dan("    // onopgelost doel: " + r.doel().bron() + "\n");
         }
         out.append(rule.render());
+        if (subject != null) deelDoorLeegFout(r, subject, constraint);
+    }
+
+    /** §6.5 / Tabel 12: a "waarde gedeeld door leeg" is a Fout. The value side already degrades it to leeg
+     *  (rsGedeeld returns null for a non-empty dividend over an empty divisor); this surfaces the Fout through
+     *  the §9.5 Inconsistentie channel — a SEPARATE rule per division that fires when the dividend is present
+     *  and the divisor is empty (and the host rule's voorwaarde holds, so the division would actually execute).
+     *  Scope: BOTH operands must be the subject's OWN attributes, the only shape that lowers to a plain
+     *  re-readable property constraint here; a navigated/parameter/nested or aggregation operand still degrades
+     *  to leeg but raises no Inconsistentie (carded). An empty LEFT short-circuits to 0 (no fout), so the guard
+     *  is dividend != null AND divisor == null, never merely divisor == null. */
+    private void deelDoorLeegFout(ResolvedRegel r, Objecttype subject, String voorwaarde) {
+        if (bevatMarker(voorwaarde)) return;          // the host rule is itself a no-op marker -> no division fires
+        List<Expr.Binair> delingen = new ArrayList<>();
+        verzamelDelingen(r.waarde(), delingen);
+        List<Expr.Binair> eigen = new ArrayList<>();
+        for (Expr.Binair d : delingen)
+            if (d.links() instanceof Expr.AttribuutRef dl && d.rechts() instanceof Expr.AttribuutRef dr
+                    && naviResolve(dl, subject).soort() == NaviSoort.EIGEN
+                    && naviResolve(dr, subject).soort() == NaviSoort.EIGEN)
+                eigen.add(d);
+        for (int i = 0; i < eigen.size(); i++) {
+            Expr.AttribuutRef dividend = (Expr.AttribuutRef) eigen.get(i).links(), divisor = (Expr.AttribuutRef) eigen.get(i).rechts();
+            String pattern = (voorwaarde.isEmpty() ? "" : voorwaarde + ", ")
+                    + ident(dividend.attribuut(), false) + " != null, " + ident(divisor.attribuut(), false) + " == null";
+            out.append(new Regel(r.naam() + " (deling door leeg" + (eigen.size() > 1 ? " " + (i + 1) : "") + ")")
+                .clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + pattern + " )")
+                .geldigheid(r.geldigheid())
+                .clausule(inconsistentieGuard(r.naam()))
+                .dan(inconsistentieDan(r.naam()))
+                .render());
+        }
+    }
+
+    /** Collect every "gedeeld door"/"gedeeld door (ABS)" node reachable through the arithmetic-wrapper layers
+     *  (Binair / Afgerond / Begrensd) of a value expression — for the §6.5 fout surfacing. Aggregation operands
+     *  are not descended (an aggregation divisor cannot be a plain re-readable guard). */
+    private static void verzamelDelingen(Expr e, List<Expr.Binair> uit) {
+        if (e instanceof Expr.Binair b) {
+            if (b.op() == Expr.BinOp.GEDEELD_DOOR || b.op() == Expr.BinOp.GEDEELD_DOOR_ABS) uit.add(b);
+            verzamelDelingen(b.links(), uit);
+            verzamelDelingen(b.rechts(), uit);
+        } else if (e instanceof Expr.Afgerond af) {
+            verzamelDelingen(af.basis(), uit);
+        } else if (e instanceof Expr.Begrensd bg) {
+            verzamelDelingen(bg.basis(), uit);
+            verzamelDelingen(bg.minimum(), uit);
+            verzamelDelingen(bg.maximum(), uit);
+        }
     }
 
     /** Sentinel from {@link #naviRol}: the reference is the subject's own attribute. */
@@ -755,17 +804,30 @@ public final class DrlTranspiler {
                 if (bevatMarker(l) || bevatMarker(r)) return "(" + l + " / 100 * " + r + ")";
                 return "(" + nulVeilig(l) + " / 100 * " + nulVeilig(r) + ")";  // §6.8 Tabel 13: leeg telt als 0
             }
-            if (b.op() == Expr.BinOp.GEDEELD_DOOR)
-                return "(" + waarde(b.links(), subject) + ").divide(" + waarde(b.rechts(), subject)
-                        + ", java.math.MathContext.DECIMAL64)"; // safe: no non-terminating-quotient throw
-            if (b.op() == Expr.BinOp.GEDEELD_DOOR_ABS)
+            if (b.op() == Expr.BinOp.GEDEELD_DOOR) {
+                // §6.5 Tabel 12 leegwaarde: an empty LEFT (dividend) short-circuits to 0 — even leeg/leeg = 0;
+                // a non-empty value over an empty divisor is a "fout", lowered as leeg (null) here and surfaced
+                // as an Inconsistentie by the companion rule (deelDoorLeegRegel). rsGedeeld carries that order
+                // (left==null tested first) and the null-guard a bare .divide would NPE on.
+                String l = waarde(b.links(), subject), r = waarde(b.rechts(), subject);
+                if (bevatMarker(l) || bevatMarker(r))
+                    return "(" + l + ").divide(" + r + ", java.math.MathContext.DECIMAL64)";
+                registreerGedeeldFunctie();
+                return "rsGedeeld(" + l + ", " + r + ")";
+            }
+            if (b.op() == Expr.BinOp.GEDEELD_DOOR_ABS) {
                 // §6.5: "gedeeld door (ABS)" (the AanslagBelastingenSysteem division) does NOT share the exact /
                 // fraction result of "gedeeld door" — its result has at most 5 decimals, rounded TOWARD ZERO
                 // ("richting 0"), so a non-terminating quotient always has a known decimal form. divide(d, 5,
                 // DOWN) is exactly that (scale 5, truncate toward zero). The spec's 2/3→0,66667 row contradicts
                 // its own "richting 0" rule and its -0,66666 neighbour — a table typo; the rule (DOWN) governs.
-                return "(" + waarde(b.links(), subject) + ").divide(" + waarde(b.rechts(), subject)
-                        + ", 5, java.math.RoundingMode.DOWN)";
+                // Same §6.5 leegwaarde as plain gedeeld door (Tabel 12 covers both): left leeg -> 0, value/leeg -> leeg.
+                String l = waarde(b.links(), subject), r = waarde(b.rechts(), subject);
+                if (bevatMarker(l) || bevatMarker(r))
+                    return "(" + l + ").divide(" + r + ", 5, java.math.RoundingMode.DOWN)";
+                registreerGedeeldAbsFunctie();
+                return "rsGedeeldAbs(" + l + ", " + r + ")";
+            }
             if (b.op() == Expr.BinOp.MAAL) {  // §6.4: units multiply, operands are NOT converted to match
                 String l = waarde(b.links(), subject), r = waarde(b.rechts(), subject);
                 if (bevatMarker(l) || bevatMarker(r)) return "(" + l + " * " + r + ")";
@@ -1021,6 +1083,28 @@ public final class DrlTranspiler {
                 "function java.math.BigDecimal rsVerminderd(java.math.BigDecimal links, java.math.BigDecimal rechts) {\n"
                 + "    if (links == null) return null;\n"
                 + "    return links.subtract(rechts == null ? java.math.BigDecimal.ZERO : rechts);\n"
+                + "}\n\n");
+    }
+
+    /** Register the §6.5 Tabel 12 "gedeeld door" helper. The leegwaarde order is load-bearing (footnote 22): an
+     *  empty LEFT (dividend) short-circuits to 0 FIRST — so leeg/leeg = 0, not a fout — and only a non-empty
+     *  value over an empty divisor is the fout, returned as leeg (the fout itself is surfaced as an
+     *  Inconsistentie by the companion rule). Idempotent. */
+    private void registreerGedeeldFunctie() {
+        hulpFuncties.putIfAbsent("rsGedeeld",
+                "function java.math.BigDecimal rsGedeeld(java.math.BigDecimal links, java.math.BigDecimal rechts) {\n"
+                + "    if (links == null) return java.math.BigDecimal.ZERO;\n"
+                + "    return rechts == null ? null : links.divide(rechts, java.math.MathContext.DECIMAL64);\n"
+                + "}\n\n");
+    }
+
+    /** Register the §6.5 "gedeeld door (ABS)" helper — same Tabel 12 leegwaarde as plain gedeeld door, but the
+     *  divide truncates toward zero at 5 decimals (the AanslagBelastingenSysteem flavour). Idempotent. */
+    private void registreerGedeeldAbsFunctie() {
+        hulpFuncties.putIfAbsent("rsGedeeldAbs",
+                "function java.math.BigDecimal rsGedeeldAbs(java.math.BigDecimal links, java.math.BigDecimal rechts) {\n"
+                + "    if (links == null) return java.math.BigDecimal.ZERO;\n"
+                + "    return rechts == null ? null : links.divide(rechts, 5, java.math.RoundingMode.DOWN);\n"
                 + "}\n\n");
     }
 

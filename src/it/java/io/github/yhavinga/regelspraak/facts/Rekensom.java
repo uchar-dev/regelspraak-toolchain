@@ -11,6 +11,9 @@ public class Rekensom {
     private BigDecimal minResultaat;
     private BigDecimal plusResultaat;
     private BigDecimal maalResultaat;
+    private BigDecimal deelResultaat;
+    public BigDecimal getDeelResultaat() { return deelResultaat; }
+    public void setDeelResultaat(BigDecimal v) { this.deelResultaat = v; }
     public BigDecimal getGrondslag() { return grondslag; }
     public void setGrondslag(BigDecimal v) { this.grondslag = v; }
     public BigDecimal getAftrek() { return aftrek; }

@@ -972,12 +972,18 @@ an empty right as 0. They now lower differently: `plus`/`min`/`maal`/`percentage
 arithmetic term is byte-identical and `bevatMarker` still catches it; for a non-empty operand the result is
 identical to the old `l op r`, so no fired total changes (verified: corpus DRL byte-identical per file).
 
-Two operators are deliberately deferred (carded in builtins-vervolg), each because its leeg rule needs a
-decision beyond the simple "leeg = 0":
-- **gedeeld door / (ABS)** — §6.5 Tabel 12: a LEFT-empty dividend short-circuits to 0 (even `leeg / leeg = 0`),
-  but a non-empty value over an empty divisor is a **fout**. Representing that fout in Drools (throw vs a
-  sentinel vs a documented degrade-to-leeg) is a genuine design choice, so the division still lowers as today
-  (it NPEs on a null operand) until that is decided.
-- **tot de macht** — §6.7: any empty operand → leeg, but its lowering already forks on an integer vs a runtime
-  exponent (`pow(int)` vs a `Math.pow` double), so the leeg-guard threads through two paths; deferred with the
-  rest of the leegwaarde work.
+**gedeeld door / (ABS)** now follows the §6.5 Tabel 12 leegwaarde via `rsGedeeld`/`rsGedeeldAbs`: a LEFT-empty
+dividend short-circuits to 0 (even `leeg / leeg = 0`, footnote 22's load-bearing order — left tested first), and
+a non-empty value over an empty divisor is the **fout**. The fout is modeled as **{leeg value + an
+Inconsistentie}** (the user's chosen representation): the division returns leeg, and a SEPARATE companion rule
+`"<naam> (deling door leeg)"` inserts an idempotency-guarded Inconsistentie via the §9.5 channel when the
+dividend is present and the divisor empty (and the host rule's voorwaarde holds). The spec's "fout !!!" defines
+no runtime form, so {leeg + Inconsistentie} is a defensible engineering choice — never a crash, never a wrong
+number, and the fout is detectable. SCOPE of the companion: BOTH operands must be the subject's OWN attributes
+(the only shape that lowers to a plain re-readable property constraint); a navigated / parameter / nested /
+aggregation divisor still degrades the value to leeg but raises no Inconsistentie (carded). A division wrapped
+in an *explicit* afronding still NPEs on the leeg (the §6.1.2 afronding-leegwaarde gap, below).
+
+Still deferred (carded in builtins-vervolg): **tot de macht** — §6.7 makes any empty operand → leeg, but `tot de
+macht` carries a MANDATORY afronding (§13.4.17.14, like wortel), so a leeg result would NPE in the `.setScale`
+wrapper exactly as wortel does — it belongs with the §6.1.2 afronding-leegwaarde, not here.

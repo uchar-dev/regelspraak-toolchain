@@ -859,6 +859,53 @@ class DroolsExecutionTest {
         assertEquals(0, new BigDecimal("40").compareTo(gevuld.getMaalResultaat()), "10 maal 4 = 40");
     }
 
+    static final String GEDEELD_SRC = """
+            Objecttype de Rekensom
+                de grondslag Numeriek (geheel getal);
+                de aftrek Numeriek (geheel getal);
+                de deelResultaat Numeriek (getal met 2 decimalen);
+            Regel deel
+                geldig altijd
+                    De deelResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom gedeeld door de aftrek van een Rekensom.
+            """;
+
+    @Test void leegwaarde_gedeeld_door_leeg_links_is_nul_waarde_door_leeg_is_leeg() {
+        // §6.5 Tabel 12 (footnote 22): an empty LEFT short-circuits to 0 (even leeg/leeg = 0), but a non-empty
+        // value over an empty divisor is a fout — lowered as leeg (null). Proven by firing the full 2x2.
+        KieSession sessie = build(DrlTranspiler.transpile(Resolver.resolve(GEDEELD_SRC))).newKieSession();
+        Rekensom leegLeeg = new Rekensom();                                                     // leeg / leeg -> 0
+        Rekensom leegRecht = new Rekensom(); leegRecht.setAftrek(new BigDecimal("4"));           // leeg / 4    -> 0
+        Rekensom waardeLeeg = new Rekensom(); waardeLeeg.setGrondslag(new BigDecimal("12"));     // 12 / leeg   -> leeg (fout)
+        Rekensom beide = new Rekensom(); beide.setGrondslag(new BigDecimal("12")); beide.setAftrek(new BigDecimal("4")); // 12/4 -> 3
+        for (Object o : new Object[]{leegLeeg, leegRecht, waardeLeeg, beide}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, BigDecimal.ZERO.compareTo(leegLeeg.getDeelResultaat()), "leeg / leeg = 0");
+        assertEquals(0, BigDecimal.ZERO.compareTo(leegRecht.getDeelResultaat()), "leeg / 4 = 0");
+        assertNull(waardeLeeg.getDeelResultaat(), "12 / leeg = leeg (de fout-waarde, niet een getal of crash)");
+        assertEquals(0, new BigDecimal("3").compareTo(beide.getDeelResultaat()), "12 / 4 = 3");
+    }
+
+    @Test void gedeeld_door_leeg_meldt_een_inconsistentie_maar_leeg_door_iets_niet() {
+        // §6.5: the "waarde gedeeld door leeg" fout is surfaced via the §9.5 Inconsistentie channel (a SEPARATE
+        // companion rule, dividend != null && divisor == null). A leeg dividend (= 0, not a fout) and an
+        // ordinary division must NOT raise one.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(GEDEELD_SRC));
+        assertTrue(drl.contains("rule \"deel (deling door leeg)\""), () -> "geen deling-door-leeg companion-regel:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Rekensom waardeLeeg = new Rekensom(); waardeLeeg.setGrondslag(new BigDecimal("12"));     // 12 / leeg -> FOUT
+        Rekensom leegRecht = new Rekensom(); leegRecht.setAftrek(new BigDecimal("4"));           // leeg / 4  -> 0, geen fout
+        Rekensom beide = new Rekensom(); beide.setGrondslag(new BigDecimal("12")); beide.setAftrek(new BigDecimal("4")); // geen fout
+        for (Object o : new Object[]{waardeLeeg, leegRecht, beide}) sessie.insert(o);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> ((Inconsistentie) o).getSubject()).toList();
+        sessie.dispose();
+        assertEquals(1, fouten.size(), () -> "precies één Inconsistentie (alleen 12/leeg), kreeg " + fouten.size());
+        assertSame(waardeLeeg, fouten.get(0), "de Inconsistentie moet de waarde/leeg-rekensom noemen");
+    }
+
     @Test void conditie_zijde_wortel_onder_zijn_verplichte_afronding() {
         // §13.4.17.13: "de wortel van X" carries a MANDATORY afronding, so a condition-side wortel is always
         // Afgerond(Functie(WORTEL)) — operand() must descend the afronding wrapper (a pure setScale, valid in a
