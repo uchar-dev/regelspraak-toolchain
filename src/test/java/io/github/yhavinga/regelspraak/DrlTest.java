@@ -141,6 +141,31 @@ class DrlTest {
         assertFalse(drl.contains("accumulate("), () -> "een dimensie-beperkte som mag geen ongefilterde accumulate worden:\n" + drl);
     }
 
+    @Test void waardefold_met_dimensieselectie_wordt_ook_gemarkeerd() {
+        // p5 review follow-up: a multi-operand min/max value-fold carrying a dimensieselectie must marker
+        // too — the value-fold path (concatenatieAggregatie) used to emit its unrestricted ternary while the
+        // resolver had already WARNed the aggregation is left out. Without the selectie it still folds.
+        String beperkt = """
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. vorig jaar
+                2. huidig jaar
+            Objecttype de Ding
+                de a Numeriek (geheel getal);
+                de b Numeriek (geheel getal);
+                de m Numeriek (geheel getal);
+            Regel r
+                geldig altijd
+                    De m van een Ding moet gesteld worden op de minimale waarde van de a van een Ding en de b van een Ding over alle jaardimensies.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(beperkt));
+        assertTrue(drl.contains("/* TODO aggregatie MINIMUM"), () -> "dimensie-beperkte waardefold niet gemarkeerd:\n" + drl);
+
+        // control: the same fold WITHOUT the dimensieselectie still lowers to the ternary
+        String vrij = beperkt.replace(" over alle jaardimensies", "");
+        String drl2 = DrlTranspiler.transpile(Resolver.resolve(vrij));
+        assertFalse(drl2.contains("/* TODO aggregatie"), () -> "een onbeperkte waardefold moet gewoon lowert:\n" + drl2);
+    }
+
     @Test void begrenzing_en_afronding_worden_geemit() {
         // Kept in separate rules: a begrenzing whose bound value is itself followed by
         // an afronding parses the afronding INTO the bound value (a grammar-precedence

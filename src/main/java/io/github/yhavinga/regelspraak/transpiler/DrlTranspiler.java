@@ -667,6 +667,11 @@ public final class DrlTranspiler {
      * non-min/max/eerste/laatste kinds, and falls through to the marker path on an unmappable operand.
      */
     private String concatenatieAggregatie(Expr.Functie f, Objecttype subject) {
+        // An unlowered restriction (a dimensieselectie captured as an Onopgelost filter, p5) must marker
+        // the whole fold too — otherwise the value-fold would emit its unrestricted ternary while the
+        // resolver already WARNed that the aggregation is "buiten beschouwing". Bail so the caller falls
+        // through to the marker path. (A value-fold otherwise carries no filter, so this only fires here.)
+        if (f.filter() instanceof Conditie.Onopgelost) return null;
         String cmp = switch (f.kind()) {
             case MINIMUM, EERSTE  -> "<";   // keep the smaller / earlier
             case MAXIMUM, LAATSTE -> ">";   // keep the larger / later
