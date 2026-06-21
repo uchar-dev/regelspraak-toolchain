@@ -234,6 +234,30 @@ class DrlTest {
                 () -> "een multidimensionele lezing mag niet als enkel-label cel lowered worden:\n" + drl);
     }
 
+    @Test void gedimensioneerde_lezing_in_voorwaarde_wordt_marker_geen_map_vergelijking() {
+        // review (HIGH): on the CONDITION side a bare dimensioned read used to emit "prijsInJaar > 5" — a
+        // Map-vs-number term that fails the WHOLE DRL build — and a labeled cell did not lower. Both must now
+        // become a compilable always-false voorwaarde marker, never a raw Map comparison.
+        String src = """
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. vorig jaar
+                2. huidig jaar
+            Objecttype de Persoon
+                de uitkomst Numeriek (geheel getal);
+                de prijs in jaar Numeriek (geheel getal) gedimensioneerd met jaardimensie;
+            Regel bare
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 7 indien zijn prijs in jaar groter is dan 5.
+            Regel cel
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 8 indien zijn prijs in jaar van vorig jaar groter is dan 5.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertFalse(drl.contains("prijsInJaar >"), () -> "een kale Map-vergelijking is onbouwbare DRL:\n" + drl);
+        assertEquals(2, drl.split("false /\\* TODO voorwaarde", -1).length - 1,
+                () -> "beide gedimensioneerde voorwaarde-lezingen moeten een marker-guard worden:\n" + drl);
+    }
+
     @Test void dimensieselectie_op_een_naar_veel_navigatie_blijft_marker_geen_map_som() {
         // review (lens B): a dimensieselectie over a TO-MANY navigated dimensioned attribuut ("de som van de
         // prijs in jaar van alle passagiers … over alle jaardimensies") is a 2-level aggregation (over

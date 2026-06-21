@@ -3185,4 +3185,40 @@ class DroolsExecutionTest {
                 () -> "moet de cel 'huidig jaar' (222) lezen, niet 'vorig jaar' of de hele map, kreeg "
                         + np.getBetaaldeBelastingOverDeAfgelopenVierJaar());
     }
+
+    /** §3.6 review (HIGH): a dimensioned read on the CONDITION side must not emit a bare Map-vs-number
+     *  comparison ("betaaldeBelastingInJaar > 5") — that is a type error that sinks the WHOLE DRL build. An
+     *  under-specified bare read and a (deferred) labeled cell read in a voorwaarde both lower to a compilable
+     *  always-false marker, so the package builds and the rule is an honest no-op rather than uncompilable. */
+    @Test void gedimensioneerde_lezing_in_voorwaarde_is_bouwbaar_en_geen_stille_misvuur() {
+        String src = """
+            Objecttype de Natuurlijk persoon (mv: Natuurlijke personen)
+                de betaalde belasting over de afgelopen vier jaar Numeriek (geheel getal);
+                de betaalde belasting in jaar Numeriek (geheel getal) gedimensioneerd met jaardimensie;
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. vorig jaar
+                2. huidig jaar
+            Regel bare
+              geldig altijd
+                De betaalde belasting over de afgelopen vier jaar van een Natuurlijk persoon moet gesteld worden op 7 indien zijn betaalde belasting in jaar groter is dan 5.
+            Regel cel
+              geldig altijd
+                De betaalde belasting over de afgelopen vier jaar van een Natuurlijk persoon moet gesteld worden op 8 indien zijn betaalde belasting in jaar van huidig jaar groter is dan 5.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("betaaldeBelastingInJaar >"), () -> "een kale Map-vergelijking is onbouwbaar:\n" + drl);
+        assertTrue(drl.contains("false /* TODO voorwaarde"), () -> "de gedimensioneerde lezing moet een marker-guard worden:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();   // build() FAILS (whole package) if a bare Map comparison leaks
+        NatuurlijkPersoon np = new NatuurlijkPersoon();    // cel 'huidig jaar' = 10 (> 5), maar de voorwaarde is een no-op
+        Map<String, BigDecimal> mh = new HashMap<>(); mh.put("huidig jaar", new BigDecimal("10")); np.setBetaaldeBelastingInJaar(mh);
+        sessie.insert(np);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertNull(np.getBetaaldeBelastingOverDeAfgelopenVierJaar(),
+                "een gedimensioneerde lezing in een voorwaarde is (nog) een honest marker -> de regel mag niet vuren");
+    }
 }

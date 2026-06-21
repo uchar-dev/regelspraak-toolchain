@@ -527,9 +527,16 @@ lowers to an `Expr.DimensieCel` and then to `<map-read>.get("label")` (the dimen
 being the `Map<label,value>` from the aggregation reading above).
 
 - Scope: a **single-dimension** attribute via the **suffix-voorzetsel** form, read as the subject's OWN
-  attribute (`zijn …`). The prefix (`bruto inkomen`) form, a **multi-dimension** cell (it needs every
-  label and a composite key), and a **navigated/definite** read (`de … van <label> van een <type>`, which
-  the two-`van` `kaleNaam` does not cleanly split) all stay honest markers — carded, never a wrong cell.
+  attribute (`zijn …`), on the **value (then)** side. The prefix (`bruto inkomen`) form, a **multi-dimension**
+  cell (it needs every label and a composite key), and a **navigated/definite** read (`de … van <label> van
+  een <type>`, which the two-`van` `kaleNaam` does not cleanly split) all stay honest markers — carded.
+- On the **condition (when)** side a dimensioned cell is deferred to a marker (`-> false /* TODO
+  voorwaarde */`). A Drools PATTERN constraint cannot host the value form's null-guarded ternary (the inline
+  `? :` mis-parses, and a null cell vs a number is a build-breaking type error), and a correct null-safe cell
+  comparison needs a guarded conjunction the single-operand path cannot express. So the rule does not fire,
+  never a wrong or uncompilable comparison. Carded. The under-specified guard below applies on BOTH sides
+  (`operand()` as well as `waarde()`), so a bare dimensioned read in a voorwaarde is a marker, not a
+  build-breaking `prijsInJaar > 5` Map-vs-number term.
 - An **under-specified** read — a bare dimensioned attribute used as a value without a label — is an error
   (§3.6). Because a dimensioned field is a `Map`, emitting its bare getter where a scalar is expected is a
   silent miscompile, so a bare `AttribuutRef` to a dimensioned attribute lowers to a marker

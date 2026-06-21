@@ -886,6 +886,11 @@ public final class DrlTranspiler {
             // the right operand in the left's unit first ("24 mnd > 2 jr", not "24 > 2").
             String[] o = vergelijkingsOperanden(operand(v.links(), subject), v.links().type(),
                     operand(v.rechts(), subject), v.rechts().type());
+            // An operand the resolver/transpiler could not lower (an unresolvable navigation, an
+            // under-specified dimensioned read) makes the whole comparison unfaithful — and emitting it raw
+            // would be uncompilable DRL (a Map-vs-number term sinks the package). Make the guard an honest
+            // always-false marker instead.
+            if (bevatMarker(o[0]) || bevatMarker(o[1])) return onopgelosteConstraint("voorwaarde", v.bron());
             String cmp = o[0] + " " + drlOp(v.op()) + " " + o[1];
             // §5.3 / typeringen Tabel 38: a NON-numeriek "gelijk aan" with BOTH operands empty is "fout"
             // (a foutmelding), NOT "waar" — so as a rule GUARD the condition is not satisfied and the rule
@@ -907,6 +912,7 @@ public final class DrlTranspiler {
             String navLeeg = genavigeerdLeegGevuld(p, subject);
             if (navLeeg != null) return navLeeg;
             String o = operand(p.operand(), subject);
+            if (bevatMarker(o)) return onopgelosteConstraint("voorwaarde", p.bron());  // e.g. an under-specified dimensioned read
             return switch (p.soort()) {
                 case LEEG   -> o + " == null";
                 case GEVULD -> o + " != null";
@@ -1002,20 +1008,38 @@ public final class DrlTranspiler {
     }
 
     private String operand(Expr e, Objecttype subject) {
+        if (e instanceof Expr.DimensieCel c)
+            // §3.6 a dimensioned cell on the CONDITION side is deferred to a marker (the value/then side
+            // lowers it). A Drools PATTERN constraint cannot host the null-guarded ternary the value form
+            // uses (the inline "? :" mis-parses, and a null cell vs a number is a build-breaking type error),
+            // and a correct null-safe cell comparison needs a guarded conjunction this single-operand path
+            // cannot express. So it markers honestly (-> false voorwaarde): the rule does not fire, never a
+            // wrong or uncompilable comparison. Carded.
+            return todo("dimensiecel in voorwaarde", c.bron());
         if (e instanceof Expr.AttribuutRef a) {
-            if (attribuutOntbreekt(a)) return todo("navigatie", a.bron());
-            String rol = naviRol(subject, a);
-            if (EIGEN.equals(rol)) return ident(a.attribuut(), false);
-            if (naarVeel(subject, a, rol)) return todo("naar-veel-navigatie", a.bron());
-            // Drools null-safe navigation "!.": a null to-one reference yields null (a leegwaarde) instead of
-            // throwing — mvel "." is NOT null-safe, so "partner.roepnaam" NPEs at evaluation when partner is
-            // null. With "!." the comparison/predicate then follows the typeringen leegwaarde rows naturally.
-            if (rol != null)       return ident(rol, false) + "!." + ident(a.attribuut(), false);
-            return todo("navigatie", a.bron());
+            // §3.6: a bare value read of a gedimensioneerd attribuut is under-specified (its property is a
+            // Map, so "prijsInJaar > 5" is a Map-vs-number type error that fails the whole DRL build). A
+            // legitimate dimensioned read is an Expr.DimensieCel (above); a bare one is a marker.
+            if (isGedimensioneerd(a)) return todo("ongedimensioneerde lezing van gedimensioneerd attribuut (§3.6)", a.bron());
+            return attribuutOperand(a, subject);
         }
         if (e instanceof Expr.ParameterRef p) return ident(p.parameter().naam(), false);
         if (e instanceof Expr.Literal lit)    return literal(lit);
         return todo("operand", e.bron());
+    }
+
+    /** The condition-side property access for an attribute — the bare own-property, a null-safe "!." to-one
+     *  navigation, or a marker for an absent/naar-veel/unresolvable read. Shared by the plain operand and the
+     *  dimensioned-cell read (which needs the Map property before indexing a label), so the latter bypasses
+     *  the §3.6 under-specified guard. Drools "!." yields null (a leegwaarde) for a null to-one reference
+     *  instead of NPE-ing the mvel "." dereference. */
+    private String attribuutOperand(Expr.AttribuutRef a, Objecttype subject) {
+        if (attribuutOntbreekt(a)) return todo("navigatie", a.bron());
+        String rol = naviRol(subject, a);
+        if (EIGEN.equals(rol)) return ident(a.attribuut(), false);
+        if (naarVeel(subject, a, rol)) return todo("naar-veel-navigatie", a.bron());
+        if (rol != null)       return ident(rol, false) + "!." + ident(a.attribuut(), false);
+        return todo("navigatie", a.bron());
     }
 
     // ---------------- leaves & helpers ----------------
