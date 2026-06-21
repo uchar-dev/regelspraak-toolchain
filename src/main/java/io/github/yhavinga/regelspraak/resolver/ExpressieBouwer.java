@@ -231,13 +231,19 @@ final class ExpressieBouwer {
                     "een 'die/dat'-subselectie op een aggregatie-operand wordt nog niet omgezet; de aggregatie "
                             + "blijft buiten beschouwing in plaats van alle instanties mee te nemen (§5.6) — '"
                             + filter.bron() + "'", f.getStart().getLine()));
-        // §13.4.17.51-.58: a dimensieselectie ("over alle <dim>", "vanaf … t/m …") or a
-        // conditiebijexpressie ("gedurende de tijd dat …") RESTRICTS the aggregation over a dimension /
-        // time axis. The temporal IR is not built yet, so lowering it is deferred (p5) — but it must not be
-        // SILENTLY DROPPED, which would aggregate the whole set as if unrestricted. Capture its source as an
-        // Onopgelost filter so the transpiler markers the aggregation (a visible no-op), and surface a
-        // WARNING. (Reuses the aggregation-restriction marker path; an already-unresolved die-filter keeps
-        // its own marker.)
+        // §13.4.17.51-.54: a dimensieselectie over a gedimensioneerd attribuut ("over alle <dim>",
+        // "over de <dim> vanaf … t/m …", "in {…}", or the bare "… vanaf <label> t/m <label>") aggregates
+        // over a DIMENSION's label set, not over object instances. When it resolves — a single dimensioned
+        // attribute operand whose dimension and labels are all known — carry it as a DimensieSelectie so the
+        // transpiler folds the attribute over exactly those labels.
+        Expr.DimensieSelectie dimSel = resolveerDimensieSelectie(f, argumenten);
+        if (dimSel != null)
+            return new Expr.Functie(kind, argumenten, elem, leegwaarde, filter, dimSel, type, bron);
+        // §13.4.17.51-.58: a dimensieselectie that did NOT resolve, or a conditiebijexpressie ("gedurende
+        // de tijd dat …") — the temporal axis is not built yet (p5) — must not be SILENTLY DROPPED, which
+        // would aggregate the whole set as if unrestricted. Capture its source as an Onopgelost filter so
+        // the transpiler markers the aggregation (a visible no-op), and surface a WARNING. (Reuses the
+        // aggregation-restriction marker path; an already-unresolved die-filter keeps its own marker.)
         String dimBron = dimensieOfConditieBron(f);
         if (dimBron != null) {
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
@@ -259,6 +265,85 @@ final class ExpressieBouwer {
         ConditieBijExpressieContext cnd = f instanceof TotaalFuncContext t ? t.conditieBijExpressie()
                 : f instanceof TijdsevenredigFuncContext tv ? tv.conditieBijExpressie() : null;
         return cnd != null ? src(cnd) : null;
+    }
+
+    /** §13.4.17.51-.54: resolve a SOM/MIN/MAX dimensieselectie to the concrete dimension and the ordered
+     *  list of labels it ranges over, or null when it cannot be lowered — the operand is not a single
+     *  gedimensioneerd attribuut, the named dimension is not one the attribute carries, a label is not a
+     *  declared value, or a "vanaf … t/m …" interval runs backwards. A null leaves the honest marker in
+     *  place. (A conditiebijexpressie — temporal — never reaches here; it is handled by the marker path.) */
+    private Expr.DimensieSelectie resolveerDimensieSelectie(FunctieAanroepContext f, List<Expr> argumenten) {
+        DimensieSelectieContext dim = f instanceof SomFuncContext s ? s.dimensieSelectie()
+                : f instanceof MinMaxFuncContext m ? m.dimensieSelectie() : null;
+        if (dim == null) return null;
+        if (argumenten.size() != 1 || !(argumenten.get(0) instanceof Expr.AttribuutRef a) || a.objecttype() == null)
+            return null;
+        List<String> attrDims = a.objecttype().dimensiesVan(a.attribuut());
+        if (attrDims.isEmpty()) return null;   // operand is not a gedimensioneerd attribuut
+
+        RegelSpraakModel.Dimensie d;
+        List<String> labels;
+        if (dim.VANAF() != null) {
+            // §5.8.5 bare interval: the dimension is left implicit, so it is only unambiguous when the
+            // attribute carries exactly one dimension.
+            if (attrDims.size() != 1) return null;
+            d = model.dimensieOpNaam(attrDims.get(0));
+            if (d == null) return null;
+            labels = interval(d, src(dim.dimensieWaarde(0)), src(dim.dimensieWaarde(1)));
+        } else if (dim.aggregerenOverAlleDimensies() != null) {
+            d = geselecteerdeDimensie(dim.aggregerenOverAlleDimensies().dimensieNaamMeervoud(), attrDims);
+            if (d == null) return null;
+            labels = new ArrayList<>(d.waarden());
+        } else if (dim.aggregerenOverVerzameling() != null) {
+            AggregerenOverVerzamelingContext v = dim.aggregerenOverVerzameling();
+            d = geselecteerdeDimensie(v.dimensieNaamMeervoud(), attrDims);
+            if (d == null) return null;
+            labels = interval(d, src(v.dimensieWaarde(0)), src(v.dimensieWaarde(1)));
+        } else if (dim.aggregerenOverBereik() != null) {
+            AggregerenOverBereikContext v = dim.aggregerenOverBereik();
+            d = geselecteerdeDimensie(v.dimensieNaamMeervoud(), attrDims);
+            if (d == null) return null;
+            labels = bereik(d, v.dimensieWaarde());
+        } else {
+            return null;
+        }
+        if (labels == null || labels.isEmpty()) return null;
+        return new Expr.DimensieSelectie(d.naam(), labels, src(dim));
+    }
+
+    /** The dimension an over-form names by its plural, but only when the operand attribute is actually
+     *  gedimensioneerd with it (else summing a different axis would be silently wrong). */
+    private RegelSpraakModel.Dimensie geselecteerdeDimensie(DimensieNaamMeervoudContext mv, List<String> attrDims) {
+        RegelSpraakModel.Dimensie d = model.dimensieOpMeervoud(src(mv));
+        if (d == null) return null;
+        return attrDims.stream().anyMatch(n -> n.equalsIgnoreCase(d.naam())) ? d : null;
+    }
+
+    /** §5.8.5 the contiguous label interval [van .. t/m] in the dimension's DECLARED order (§13.3.7.5),
+     *  or null when a bound is not a declared label or the interval runs backwards. */
+    private static List<String> interval(RegelSpraakModel.Dimensie d, String van, String tm) {
+        int i = labelIndex(d, van), j = labelIndex(d, tm);
+        if (i < 0 || j < 0 || i > j) return null;
+        return new ArrayList<>(d.waarden().subList(i, j + 1));
+    }
+
+    /** §13.4.17.54 the explicit "in {…}" label set, mapped to the declared label spelling, or null when
+     *  any named label is not a value of the dimension. */
+    private List<String> bereik(RegelSpraakModel.Dimensie d, List<DimensieWaardeContext> waarden) {
+        List<String> uit = new ArrayList<>();
+        for (DimensieWaardeContext w : waarden) {
+            int idx = labelIndex(d, src(w));
+            if (idx < 0) return null;
+            uit.add(d.waarden().get(idx));
+        }
+        return uit;
+    }
+
+    private static int labelIndex(RegelSpraakModel.Dimensie d, String label) {
+        String norm = label == null ? "" : label.trim();
+        for (int i = 0; i < d.waarden().size(); i++)
+            if (d.waarden().get(i).equalsIgnoreCase(norm)) return i;
+        return -1;
     }
 
     /** The §5.6 "die/dat &lt;predicaat&gt;" subselectie filtering a SINGLE-operand set-aggregation's

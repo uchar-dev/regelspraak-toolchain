@@ -38,6 +38,10 @@ public final class DrlTranspiler {
     // per-rule: accumulate patterns hoisted out of the value into the "when"
     private List<String> accumulates = new ArrayList<>();
     private int accCount = 0;
+    /** DRL `function` definitions a rule needed (name -> body), injected once after the header.
+     *  Only the helpers actually used are emitted, so a model with no dimensieselectie produces
+     *  byte-identical DRL to before. */
+    private final java.util.LinkedHashMap<String, String> hulpFuncties = new java.util.LinkedHashMap<>();
 
     public DrlTranspiler(RegelSpraakModel model) { this.model = model; }
 
@@ -65,6 +69,7 @@ public final class DrlTranspiler {
                 || model.uniciteitUnies.stream().anyMatch(u -> tijdgebondenGeldigheid(u.geldigheid()))
                 || model.feitCreaties.stream().anyMatch(f -> tijdgebondenGeldigheid(f.geldigheid()));
         if (tijdgebonden) out.append("global java.time.LocalDate rekendatum;\n\n");
+        int naHeader = out.length();   // helper functions (if any) are spliced in here, after the header
 
         for (ResolvedRegel r : model.resolvedRegels) regel(r);
         for (io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc : model.objectCreaties) objectCreatie(oc);
@@ -73,6 +78,8 @@ public final class DrlTranspiler {
         for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteit u : model.uniciteiten) uniciteit(u);
         for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie u : model.uniciteitUnies) uniciteitUnie(u);
         for (io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie f : model.feitCreaties) feitCreatie(f);
+        if (!hulpFuncties.isEmpty())
+            out.insert(naHeader, String.join("", hulpFuncties.values()));
         return out.toString();
     }
 
@@ -641,6 +648,8 @@ public final class DrlTranspiler {
         }
         if (e instanceof Expr.Constante c)      return todo("constante", c.naam());
         if (e instanceof Expr.Functie f) {
+            String dim = dimensieAggregatie(f, subject);      // SOM/min/max over a dimension's labels
+            if (dim != null) return dim;
             String concat = concatenatieAggregatie(f, subject); // pairwise min/max over listed operands
             if (concat != null) return concat;
             String var = accumulate(f, subject);              // hoists an accumulate into the "when"
@@ -666,6 +675,67 @@ public final class DrlTranspiler {
      * ever lists two operands. Returns null for the single-operand collection form and for
      * non-min/max/eerste/laatste kinds, and falls through to the marker path on an unmappable operand.
      */
+    /**
+     * §13.4.17.51-.54 a SOM / MINIMUM / MAXIMUM over a gedimensioneerd attribuut, restricted to a
+     * {@link Expr.DimensieSelectie}'s labels. The labels are resolved at build time (the "vanaf … t/m …"
+     * interval / "in {…}" set already expanded against the dimension's declared order), so this is NOT an
+     * accumulate over instances but a FIXED fold of the attribute's per-label values: the dimensioned
+     * attribute reads as a {@code Map<label, value>} field and the aggregation folds {@code map.get(label)}
+     * over exactly the selected labels.
+     *
+     * <p>§5.8.2 leegwaarde semantics: an empty contributor (an absent label, {@code map.get} → null) is
+     * SKIPPED, not treated as 0; an all-empty fold yields the declared "of … als die er niet zijn" fallback,
+     * else null (an empty sum is a leegwaarde, not 0). Lowered as a call to a registered DRL {@code function}
+     * (folded in Java, so the DRL stays O(1) in the label count rather than an exponential mvel ternary),
+     * passing the attribute's Map and the selected label keys. Returns null for any function without a
+     * dimensieselectie, so the caller falls through to the instance path.
+     */
+    private String dimensieAggregatie(Expr.Functie f, Objecttype subject) {
+        Expr.DimensieSelectie sel = f.dimensieSelectie();
+        if (sel == null) return null;
+        String fn = switch (f.kind()) {
+            case SOM     -> "rsDimSom";
+            case MINIMUM -> "rsDimMin";
+            case MAXIMUM -> "rsDimMax";
+            default -> null;
+        };
+        if (fn == null || f.argumenten().size() != 1 || !(f.argumenten().get(0) instanceof Expr.AttribuutRef a))
+            return null;
+        String map = waarde(a, subject);   // the dimensioned attribute reads as its Map<label,value> field
+        if (bevatMarker(map)) return null;
+        registreerDimensieFunctie(fn);
+        StringJoiner keys = new StringJoiner(", ");
+        for (String label : sel.labels()) keys.add("\"" + label.replace("\"", "") + "\"");
+        String call = fn + "(" + map + ", java.util.Arrays.asList(" + keys + "))";
+        // §5.8.2: an all-empty SOM is a leegwaarde — substitute the declared "of … als die er niet zijn"
+        // fallback when present, else leave the helper's null (an empty sum, never a silent 0). MIN/MAX of
+        // an empty set is likewise the helper's null (no §5.8.2 fallback form).
+        if (f.kind() == Expr.FunctieKind.SOM && f.leegwaarde() != null)
+            return "(" + call + " == null ? " + waarde(f.leegwaarde(), subject) + " : " + call + ")";
+        return call;
+    }
+
+    /** Register the Java-bodied DRL helper that folds a dimensioned attribute's per-label values,
+     *  null-skipping empties and returning null for an all-empty selection (§5.8.2). Idempotent. */
+    private void registreerDimensieFunctie(String fn) {
+        if (hulpFuncties.containsKey(fn)) return;
+        String body = switch (fn) {
+            case "rsDimSom" -> "        if (v != null) acc = (acc == null) ? v : acc.add(v);\n";
+            case "rsDimMin" -> "        if (v != null && (acc == null || v.compareTo(acc) < 0)) acc = v;\n";
+            case "rsDimMax" -> "        if (v != null && (acc == null || v.compareTo(acc) > 0)) acc = v;\n";
+            default -> "";
+        };
+        hulpFuncties.put(fn,
+                "function java.math.BigDecimal " + fn + "(java.util.Map m, java.util.List keys) {\n"
+                + "    java.math.BigDecimal acc = null;\n"
+                + "    for (Object k : keys) {\n"
+                + "        java.math.BigDecimal v = (m == null) ? null : (java.math.BigDecimal) m.get(k);\n"
+                + body
+                + "    }\n"
+                + "    return acc;\n"
+                + "}\n\n");
+    }
+
     private String concatenatieAggregatie(Expr.Functie f, Objecttype subject) {
         // An unlowered restriction (a dimensieselectie captured as an Onopgelost filter, p5) must marker
         // the whole fold too — otherwise the value-fold would emit its unrestricted ternary while the

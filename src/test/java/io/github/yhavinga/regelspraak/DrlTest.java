@@ -117,9 +117,11 @@ class DrlTest {
     }
 
     @Test void aggregatie_met_dimensieselectie_wordt_gemarkeerd_niet_stil_gesommeerd() {
-        // p5 slice: a "som van … over alle <dim>" restricts the sum over a dimension. The temporal IR is
-        // not built yet, so the aggregation must MARKER (a no-op) rather than silently sum the whole set
-        // as if the dimensieselectie were absent — the same honest-marker stance as an unlowered die-filter.
+        // A "som van … over alle <dim>" whose operand is an INSTANCE aggregation over a scalar attribute
+        // ("de prijs van alle passagiers", prijs not gedimensioneerd) has no dimension to range over, so it
+        // stays an honest MARKER (a no-op) rather than silently summing the whole set as if the
+        // dimensieselectie were absent. (The lowerable case — a single gedimensioneerd attribuut operand —
+        // is dimensieaggregatie_over_gedimensioneerd_attribuut_wordt_gevouwen.)
         String src = """
             Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
                 1. vorig jaar
@@ -164,6 +166,36 @@ class DrlTest {
         String vrij = beperkt.replace(" over alle jaardimensies", "");
         String drl2 = DrlTranspiler.transpile(Resolver.resolve(vrij));
         assertFalse(drl2.contains("/* TODO aggregatie"), () -> "een onbeperkte waardefold moet gewoon lowert:\n" + drl2);
+    }
+
+    @Test void dimensieaggregatie_over_gedimensioneerd_attribuut_wordt_gevouwen() {
+        // §5.8.5: a "som van <gedimensioneerd attribuut> vanaf <a> t/m <b>" folds the attribute's per-label
+        // values over the contiguous label interval. The labels are static, so it lowers NOT to an
+        // instance accumulate but to a fixed call to a registered helper (rsDimSom) over the selected label
+        // keys — no marker. The helper is emitted once, after the header.
+        String src = """
+            Objecttype de Natuurlijk persoon (mv: Natuurlijke personen)
+                de betaalde belasting over de afgelopen vier jaar Numeriek (geheel getal);
+                de betaalde belasting in jaar Numeriek (geheel getal) gedimensioneerd met jaardimensie;
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. zes jaar geleden
+                2. vijf jaar geleden
+                3. vier jaar geleden
+                4. drie jaar geleden
+                5. twee jaar geleden
+                6. een jaar geleden
+                7. heden
+            Regel Totaal betaalde belasting over 4 jaar
+              geldig altijd
+                De betaalde belasting over de afgelopen vier jaar van een Natuurlijk persoon moet berekend worden als de som van zijn betaalde belasting in jaar vanaf vier jaar geleden t/m een jaar geleden.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertFalse(drl.contains("/* TODO aggregatie"), () -> "de dimensie-som mag geen marker meer zijn:\n" + drl);
+        assertTrue(drl.contains("function java.math.BigDecimal rsDimSom("), () -> "helper-functie ontbreekt:\n" + drl);
+        // exactly the interval labels [vier..een jaar geleden]; the out-of-interval labels are excluded.
+        assertTrue(drl.contains("rsDimSom($subject.getBetaaldeBelastingInJaar(), java.util.Arrays.asList(\"vier jaar geleden\", \"drie jaar geleden\", \"twee jaar geleden\", \"een jaar geleden\"))"),
+                () -> "verwachte dimensie-som-aanroep over het interval ontbreekt:\n" + drl);
+        assertFalse(drl.contains("\"heden\""), () -> "labels buiten het interval mogen niet meegeteld worden:\n" + drl);
     }
 
     @Test void begrenzing_en_afronding_worden_geemit() {

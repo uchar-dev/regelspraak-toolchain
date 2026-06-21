@@ -37,6 +37,8 @@ import org.kie.internal.utils.KieHelper;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -3057,5 +3059,94 @@ class DroolsExecutionTest {
         sessie.fireAllRules();
         sessie.dispose();
         assertNull(p.getUitkomst(), "een noch-noch is-geen marker moet een no-op zijn (niet stil vuren)");
+    }
+
+    /** §5.8.5 dimensieaggregatie: "de som van zijn betaalde belasting in jaar vanaf vier jaar geleden
+     *  t/m een jaar geleden" sums a gedimensioneerd attribuut over a CONTIGUOUS label interval of the
+     *  jaardimensie. The labels are static (§13.3.7.5 declared order), so the transpiler folds map.get(label)
+     *  over exactly positions 3..6 — the out-of-interval labels ("vijf jaar geleden", "heden") must NOT
+     *  contribute. p5 slice: this used to drop the selectie and emit a marker (an unrestricted no-op). */
+    @Test void dimensieaggregatie_som_vanaf_tm_telt_alleen_het_interval() {
+        String src = """
+            Objecttype de Natuurlijk persoon (mv: Natuurlijke personen)
+                de betaalde belasting over de afgelopen vier jaar Numeriek (geheel getal);
+                de betaalde belasting in jaar Numeriek (geheel getal) gedimensioneerd met jaardimensie;
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. zes jaar geleden
+                2. vijf jaar geleden
+                3. vier jaar geleden
+                4. drie jaar geleden
+                5. twee jaar geleden
+                6. een jaar geleden
+                7. heden
+            Regel Totaal betaalde belasting over 4 jaar
+              geldig altijd
+                De betaalde belasting over de afgelopen vier jaar van een Natuurlijk persoon moet berekend worden als de som van zijn betaalde belasting in jaar vanaf vier jaar geleden t/m een jaar geleden.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        // the dimensieselectie now RESOLVES, so the "nog niet omgezet" marker WARNING must be gone.
+        assertTrue(m.diagnostics.stream().noneMatch(d -> d.message().contains("dimensieselectie")),
+                () -> "dimensieselectie zou nu opgelost moeten zijn, geen marker-WARNING: " + m.diagnostics);
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsDimSom("), () -> "verwacht een dimensie-som helper-aanroep:\n" + drl);
+        assertFalse(drl.contains("TODO aggregatie"), () -> "de aggregatie mag geen marker meer zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        NatuurlijkPersoon np = new NatuurlijkPersoon();
+        Map<String, BigDecimal> belasting = new HashMap<>();
+        belasting.put("zes jaar geleden", new BigDecimal("11"));    // buiten interval
+        belasting.put("vijf jaar geleden", new BigDecimal("22"));   // buiten interval
+        belasting.put("vier jaar geleden", new BigDecimal("100"));  // [interval
+        belasting.put("drie jaar geleden", new BigDecimal("200"));  //  interval
+        belasting.put("twee jaar geleden", new BigDecimal("300"));  //  interval
+        belasting.put("een jaar geleden", new BigDecimal("400"));   //  interval]
+        belasting.put("heden", new BigDecimal("9999"));             // buiten interval
+        np.setBetaaldeBelastingInJaar(belasting);
+        sessie.insert(np);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("1000").compareTo(np.getBetaaldeBelastingOverDeAfgelopenVierJaar()),
+                () -> "som over [vier..een jaar geleden] = 100+200+300+400 = 1000, kreeg "
+                        + np.getBetaaldeBelastingOverDeAfgelopenVierJaar());
+    }
+
+    /** §5.8.2 over a dimensieselectie: a label with no value (map.get -> null) is SKIPPED, not 0, and a
+     *  partial interval still sums the present labels. (An all-empty interval would be a leegwaarde/null.) */
+    @Test void dimensieaggregatie_som_slaat_lege_labels_over() {
+        String src = """
+            Objecttype de Natuurlijk persoon (mv: Natuurlijke personen)
+                de betaalde belasting over de afgelopen vier jaar Numeriek (geheel getal);
+                de betaalde belasting in jaar Numeriek (geheel getal) gedimensioneerd met jaardimensie;
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. zes jaar geleden
+                2. vijf jaar geleden
+                3. vier jaar geleden
+                4. drie jaar geleden
+                5. twee jaar geleden
+                6. een jaar geleden
+                7. heden
+            Regel Totaal betaalde belasting over 4 jaar
+              geldig altijd
+                De betaalde belasting over de afgelopen vier jaar van een Natuurlijk persoon moet berekend worden als de som van zijn betaalde belasting in jaar vanaf vier jaar geleden t/m een jaar geleden.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        NatuurlijkPersoon np = new NatuurlijkPersoon();
+        Map<String, BigDecimal> belasting = new HashMap<>();
+        belasting.put("drie jaar geleden", new BigDecimal("200"));  // vier/twee/een afwezig -> overgeslagen
+        belasting.put("een jaar geleden", new BigDecimal("400"));
+        np.setBetaaldeBelastingInJaar(belasting);
+        sessie.insert(np);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("600").compareTo(np.getBetaaldeBelastingOverDeAfgelopenVierJaar()),
+                () -> "200 + 400 (lege labels overgeslagen) = 600, kreeg "
+                        + np.getBetaaldeBelastingOverDeAfgelopenVierJaar());
     }
 }

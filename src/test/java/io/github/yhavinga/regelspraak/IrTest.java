@@ -8,6 +8,8 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -88,11 +90,11 @@ class IrTest {
         assertEquals(1, som.argumenten().size());
     }
 
-    @Test void aggregatie_dimensieselectie_wordt_vastgelegd_niet_stil_genegeerd() {
-        // p5 slice: a dimensieselectie ("over alle <dim>") / conditiebijexpressie ("gedurende de tijd
-        // dat …") RESTRICTS an aggregation over a dimension/time axis. The temporal IR is not built yet,
-        // so rather than SILENTLY dropping the restriction (and aggregating the whole set), the resolver
-        // captures its source as an Onopgelost filter and WARNs. (spec-main-61/81/84-87 use these.)
+    @Test void aggregatie_dimensieselectie_op_scalair_attribuut_blijft_marker() {
+        // A dimensieselectie ("over alle <dim>") whose operand is NOT a gedimensioneerd attribuut (here
+        // the scalar "prijs") cannot be lowered — there is no label set to range over — so the resolver
+        // keeps the honest marker: an Onopgelost filter + a WARNING, never a silent aggregation of the
+        // whole set. (The lowerable case — a genuinely dimensioned operand — is the next test.)
         String src = """
             Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
                 1. vorig jaar
@@ -105,12 +107,47 @@ class IrTest {
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         Expr.Functie som = assertInstanceOf(Expr.Functie.class, m.resolvedRegels.get(0).waarde());
+        assertNull(som.dimensieSelectie(), "een scalair operand heeft geen oplosbare dimensieselectie");
         Conditie.Onopgelost f = assertInstanceOf(Conditie.Onopgelost.class, som.filter(),
                 () -> "de dimensieselectie moet als Onopgelost-marker vastliggen, niet stil verdwijnen");
         assertTrue(f.bron().contains("over alle jaardimensies"), () -> "bron: " + f.bron());
         assertTrue(m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
                         && d.message().contains("dimensieselectie")),
                 () -> "verwachtte een dimensieselectie-WARNING: " + m.diagnostics);
+    }
+
+    @Test void dimensieselectie_over_gedimensioneerd_attribuut_wordt_opgelost() {
+        // §5.8.5 / §13.4.17.53: "de som van <gedimensioneerd attribuut> vanaf <a> t/m <b>" resolves to a
+        // DimensieSelectie carrying the dimension and the CONTIGUOUS label interval [a..b] in the declared
+        // order (§13.3.7.5) — positions 3..6 of the seven labels — NOT a marker. No WARNING.
+        String src = """
+            Objecttype de Natuurlijk persoon (mv: Natuurlijke personen)
+                de betaalde belasting over de afgelopen vier jaar Numeriek (geheel getal);
+                de betaalde belasting in jaar Numeriek (geheel getal) gedimensioneerd met jaardimensie;
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. zes jaar geleden
+                2. vijf jaar geleden
+                3. vier jaar geleden
+                4. drie jaar geleden
+                5. twee jaar geleden
+                6. een jaar geleden
+                7. heden
+            Regel Totaal betaalde belasting over 4 jaar
+              geldig altijd
+                De betaalde belasting over de afgelopen vier jaar van een Natuurlijk persoon moet berekend worden als de som van zijn betaalde belasting in jaar vanaf vier jaar geleden t/m een jaar geleden.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "fouten: " + m.errors());
+        Expr.Functie som = assertInstanceOf(Expr.Functie.class, m.resolvedRegels.get(0).waarde());
+        assertEquals(Expr.FunctieKind.SOM, som.kind());
+        Expr.DimensieSelectie sel = som.dimensieSelectie();
+        assertNotNull(sel, "de vanaf..t/m dimensieselectie moet opgelost zijn, geen marker");
+        assertEquals("jaardimensie", sel.dimensie());
+        assertEquals(List.of("vier jaar geleden", "drie jaar geleden", "twee jaar geleden", "een jaar geleden"),
+                sel.labels(), "interval [vier..een jaar geleden] inclusief, in gedeclareerde volgorde");
+        assertFalse(som.filter() instanceof Conditie.Onopgelost, "geen Onopgelost-marker meer");
+        assertTrue(m.diagnostics.stream().noneMatch(d -> d.message().contains("dimensieselectie")),
+                () -> "geen marker-WARNING verwacht: " + m.diagnostics);
     }
 
     @Test void enkelvoudige_voorwaarde_wordt_een_vergelijking() {

@@ -70,6 +70,10 @@ public final class DefinitionResolver {
             meldHoofdletterBotsing(ot, naam, ot.attributen.keySet(), a.getStart().getLine());
             ot.attributen.put(naam, datatypeVan(a.datatype(), a.domeinNaam()));
             if (a.meervoudsvorm() != null) ot.attribuutMeervoud.put(naam, src(a.meervoudsvorm())); // §3.3, for §8.1.6
+            // §13.3.7 "gedimensioneerd met <dimensie> (en <dimensie>)*": record the attribute's dimensions
+            // in declared order so a reference / aggregation can range over their label sets (§3.6).
+            if (!a.dimensieNaam().isEmpty())
+                ot.attribuutDimensies.put(naam, a.dimensieNaam().stream().map(dn -> src(dn)).toList());
         } else if (m.kenmerkSpecificatie() != null) {
             String naam = kenmerkNaam(m.kenmerkSpecificatie());
             meldHoofdletterBotsing(ot, naam, ot.kenmerken, m.getStart().getLine());

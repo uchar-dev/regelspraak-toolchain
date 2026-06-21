@@ -470,18 +470,39 @@ grammar's predicaat has no bare-plural-noun alternative (`die minderjarigen zijn
 the spec writes the singular nominalized form even for a plural subject, so a meervoudsvorm has no
 reachable predicaat input to bind. Both are carded (p29) should a real input ever demand them.
 
-### Aggregation dimensieselectie / conditiebijexpressie (§13.4.17.51-.58) — marked, not dropped
+### Aggregation over a dimension (§13.4.17.51-.54) — a fold over static labels, not an accumulate
 
-A `som`/`min`/`max` may carry a **dimensieselectie** (`over alle <dim>`, `vanaf <label> t/m <label>`,
-`over de <dim> in {…}`) and a `totaal`/`tijdsevenredig deel` a **conditiebijexpressie**
-(`gedurende de tijd dat …`) that restricts the aggregation over a dimension or the time axis. The
-temporal/dimension IR is not built yet (the large remainder of p5), but the restriction must not be
-**silently dropped** — that would aggregate the whole set as if unrestricted (a wrong total; real spec
-examples hit this — spec-main-61 `vanaf vier jaar geleden t/m een jaar geleden`, spec-main-81/84-87
-`gedurende de tijd dat hij een recht … heeft`). The resolver captures the restriction's source as the
-aggregation's `Onopgelost` filter and raises a WARNING, so the transpiler markers the aggregation (a
-visible `/* TODO aggregatie … */` no-op) rather than emit an unrestricted accumulate. Full lowering
-stays carded (p5).
+A `som`/`min`/`max` over a **gedimensioneerd attribuut** carrying a **dimensieselectie** —
+`over alle <dim>`, `over de <dim> vanaf <label> t/m <label>`, `over de <dim> in {…}`, or the bare
+`… vanaf <label> t/m <label>` (§5.8.5) — aggregates over a **dimension's label set**, not over object
+instances. The reading is taken straight from §5.8.5: a gedimensioneerd attribuut holds one value per
+label (per the cartesian product of its dimensions, §3.6), the labels are an **ordered symbolic set**
+(§13.3.7.5), and `vanaf a t/m b` selects the **contiguous interval** `[a..b]` inclusive *in the declared
+order*. The labels are therefore **static** — known at transpile time — so the resolver expands the
+interval/set to a concrete label list (`Expr.DimensieSelectie{dimensie, labels}`) and the transpiler
+lowers the aggregation to a **fixed fold of `map.get(label)`** over exactly those labels via a registered
+DRL helper (`rsDimSom`/`rsDimMin`/`rsDimMax`), with the dimensioned attribute modelled as a
+`Map<label, value>` field. This is *not* a Drools `accumulate` — there is no instance set to range over.
+Key points of the reading:
+
+- The "relative" jaardimensie labels (`vier jaar geleden`, `heden`, …) are **opaque ordered strings**,
+  never date arithmetic — §5.8.5 defines the interval purely by declared order, so no temporal model is
+  needed. This is what makes the §5.8.5 form lowerable while the genuinely temporal forms below are not.
+- §5.8.2 leegwaarde: an empty cell (`map.get(label) == null`) is **skipped**; an all-empty fold yields the
+  `of … als die er niet zijn` fallback, else `null` (an empty sum, never a silent 0).
+- The bare `vanaf … t/m …` form leaves the dimension implicit, so it resolves **only** when the operand
+  attribute carries exactly one dimension; an over-form's named dimension must be one the attribute
+  actually carries (else a different axis would be summed). A reversed interval, an unknown label, a
+  multi-operand fold, or a scalar/instance operand stays the honest marker below.
+
+What is **still** marked, not lowered (the temporal remainder of p5): a `totaal`/`tijdsevenredig deel`
+**conditiebijexpressie** (`gedurende de tijd dat …`, spec-main-81/84-87), a dimensieselectie whose
+operand is not a single gedimensioneerd attribuut, and a single dimensioned **read** with the label woven
+into the noun phrase (`het bruto inkomen van vorig jaar`). These keep the resolver's `Onopgelost` filter +
+WARNING, so the transpiler markers them (`/* TODO aggregatie … */` no-op) rather than aggregating the
+whole set unrestricted. The `gedurende de tijd dat` form is deliberately **not** collapsed to a boolean
+"currently true" guard: without a real time axis that loses the §5.1 piecewise period model, so it stays an
+honest marker rather than a silently-degraded fire. Temporal IR stays carded (p5/p2).
 
 ### An unresolved condition is a compilable no-op, not an uncompilable `null`
 

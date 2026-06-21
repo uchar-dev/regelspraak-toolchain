@@ -286,6 +286,11 @@ public final class RegelSpraakModel {
          *  naam — the spec-sanctioned source for the plural a §8.1.6 uniciteitscontrole writes, so it is
          *  matched exactly (incl. irregular plurals) ahead of any synthesised form. */
         public final Map<String, String> attribuutMeervoud = new LinkedHashMap<>();
+        /** §13.3.7 the dimensions an attribute is "gedimensioneerd met", in declared order, keyed by its
+         *  naam — empty/absent for a scalar attribute. A gedimensioneerd attribuut holds one value per
+         *  combination of one label from each of its dimensions (§3.6: "vier mogelijke waardes"), so a
+         *  reference must pin every dimension and an aggregation ranges over a dimension's label set. */
+        public final Map<String, List<String>> attribuutDimensies = new LinkedHashMap<>();
         public final List<String> kenmerken = new ArrayList<>();
         public Objecttype(String naam) { this.naam = naam; }
 
@@ -300,6 +305,16 @@ public final class RegelSpraakModel {
             for (var e : attributen.entrySet())
                 if (e.getKey().equalsIgnoreCase(naam)) return e.getValue();
             return null;
+        }
+
+        /** The §13.3.7 dimensions of attribute {@code naam} (case-insensitively), in declared order,
+         *  or an empty list when the attribute is scalar or undeclared. */
+        public List<String> dimensiesVan(String naam) {
+            List<String> exact = attribuutDimensies.get(naam);
+            if (exact != null) return exact;
+            for (var e : attribuutDimensies.entrySet())
+                if (e.getKey().equalsIgnoreCase(naam)) return e.getValue();
+            return List.of();
         }
 
         /** Does this type declare a member named {@code naam} (an attribute or a kenmerk),
@@ -363,6 +378,26 @@ public final class RegelSpraakModel {
 
     /** §13.3.7 a dimension and its ordered label values. */
     public record Dimensie(String naam, String naamMeervoud, List<String> waarden) {}
+
+    /** The §13.3.7 dimension named {@code naam} (singular) case-insensitively, or null. */
+    public Dimensie dimensieOpNaam(String naam) {
+        if (naam == null) return null;
+        Dimensie exact = dimensies.get(naam);
+        if (exact != null) return exact;
+        for (Dimensie d : dimensies.values())
+            if (d.naam().equalsIgnoreCase(naam)) return d;
+        return null;
+    }
+
+    /** The §13.3.7 dimension whose PLURAL name (dimensienaammeervoud) is {@code meervoud},
+     *  case-insensitively, or null — the §13.4.17.52-.54 over-forms reference a dimension by its
+     *  plural ("over alle jaardimensies", "over de jaardimensies vanaf … t/m …"). */
+    public Dimensie dimensieOpMeervoud(String meervoud) {
+        if (meervoud == null) return null;
+        for (Dimensie d : dimensies.values())
+            if (d.naamMeervoud() != null && d.naamMeervoud().equalsIgnoreCase(meervoud)) return d;
+        return null;
+    }
 
     /** A rule shell (name + the parse subtree); type-checking annotates diagnostics. */
     public record Regel(String naam, String soort) {}

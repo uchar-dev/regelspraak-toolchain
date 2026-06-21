@@ -57,8 +57,27 @@ public sealed interface Expr {
      *  predicates these subselecties use are still {@link Conditie.Onopgelost}) is kept here as an
      *  Onopgelost marker so the transpiler can see it must NOT lower the aggregation to a count
      *  over every instance — it emits a visible marker instead of a silently-wrong total. */
+    /** §13.4.17.51-.54 a resolved dimension selection on an aggregation: the dimension the
+     *  aggregation ranges over and the CONCRETE ordered list of labels selected — the
+     *  "vanaf &lt;a&gt; t/m &lt;b&gt;" interval and the "in {…}" set are already expanded against the
+     *  dimension's declared label order (§13.3.7.5), and "over alle …" is every label. The
+     *  transpiler folds the dimensioned attribute over exactly these labels (a fixed sum/min/max
+     *  of {@code map.get(label)}), so no label arithmetic survives into the back-end. */
+    record DimensieSelectie(String dimensie, List<String> labels, String bron) {}
+
+    /** {@code dimensieSelectie} (§13.4.17.51-.54), when non-null, restricts a SOM/MIN/MAX over a
+     *  gedimensioneerd attribuut to the selected dimension labels — the only aggregation that
+     *  ranges over a dimension's value space rather than over object instances. Null for an
+     *  ordinary instance aggregation. */
     record Functie(FunctieKind kind, List<Expr> argumenten, Objecttype elementObjecttype,
-                   Expr leegwaarde, Conditie filter, Datatype type, String bron) implements Expr {}
+                   Expr leegwaarde, Conditie filter, DimensieSelectie dimensieSelectie,
+                   Datatype type, String bron) implements Expr {
+        /** Most call sites build an instance aggregation with no dimensieselectie. */
+        public Functie(FunctieKind kind, List<Expr> argumenten, Objecttype elementObjecttype,
+                       Expr leegwaarde, Conditie filter, Datatype type, String bron) {
+            this(kind, argumenten, elementObjecttype, leegwaarde, filter, null, type, bron);
+        }
+    }
 
     /** §13.4.17.25/.26 rounding wrapper. Rounding to N decimals sets the result's precision to N
      *  (§6.1.2: it is exactly the explicit afronding that lets a higher-precision result be assigned
