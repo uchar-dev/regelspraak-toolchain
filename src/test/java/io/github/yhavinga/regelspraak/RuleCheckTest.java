@@ -834,4 +834,15 @@ class RuleCheckTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "2dec maal geheel (2+0=2) mag geen §6.1.2-fout geven: " + m.errors());
     }
+
+    @Test void beslistabel_wordt_niet_stil_gedropt_maar_gemeld() {
+        // honest-floor: a beslistabel (Ch.12 decision table) is parsed only as a name shell and check() loops
+        // ONLY doc.regel(), so it used to vanish with NO diagnostic — the project's one true silent drop.
+        // It must now surface an honest WARNING (no ERROR — it is an unimplemented gap, not invalid input).
+        RegelSpraakModel m = Resolver.resolve("Beslistabel Woonregio factor");
+        assertTrue(m.errors().isEmpty(), () -> "een beslistabel is geen fout, alleen nog niet omgezet: " + m.errors());
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
+                        && d.message().contains("beslistabel")),
+                () -> "een beslistabel moet een honest WARNING geven, niet stil verdwijnen: " + m.diagnostics);
+    }
 }

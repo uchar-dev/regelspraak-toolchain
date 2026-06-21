@@ -644,6 +644,12 @@ public final class DrlTranspiler {
                         + ", java.math.MathContext.DECIMAL64)"; // safe: no non-terminating-quotient throw
             if (b.op() == Expr.BinOp.MAAL)  // §6.4: units multiply, operands are NOT converted to match
                 return "(" + waarde(b.links(), subject) + " * " + waarde(b.rechts(), subject) + ")";
+            // §13.4.16 date arithmetic (a datum ± a tijdsduur) is NOT mvel "+": "LocalDate + BigDecimal" is a
+            // type error that breaks the Drools build. The correct form is .plusDays/.plusMonths/… keyed on the
+            // duration's unit (deferred to the arithmetic-correctness work), so emit an honest marker rather
+            // than uncompilable DRL — the only +/- path that otherwise emits broken (not inert) code.
+            if (b.links().type().isDatum() || b.rechts().type().isDatum())
+                return todo("datum-rekenkunde (datum ± tijdsduur vereist .plusX, geen mvel '+')", b.bron());
             // §4: restate the right operand in the left operand's unit before +/- so a
             // convertible-but-different unit (mnd vs jr) is scaled, not added raw.
             String rechts = omrekenWaarde(waarde(b.rechts(), subject), b.rechts().type(), b.links().type());

@@ -67,6 +67,15 @@ final class RuleChecker {
                 voorwaarden(rsr);   // exhaustive condition type-check (§5), unchanged
             }
         }
+        // §13 Beslistabel (Ch.12 decision tables): the grammar parses only a name+versie shell, and the loop
+        // above visits ONLY doc.regel(), so a beslistabel would otherwise vanish with NO IR, NO DRL, and NOT
+        // EVEN a diagnostic — the project's one true SILENT drop (toka-46/47, spec-main-133-139). Surface it
+        // as an honest WARNING until decision-table semantics are implemented, restoring the never-silently-
+        // dropped invariant. (The table BODY is not in the grammar yet; the name shell is all we can name.)
+        for (BeslistabelContext b : doc.beslistabel())
+            model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                    "beslistabel '" + DefinitionResolver.src(b.vrijeNaam()) + "' wordt nog niet naar IR/DRL omgezet "
+                            + "(beslistabel-semantiek, Ch.12, ontbreekt)", b.getStart().getLine()));
     }
 
     /** §4.2 (spec line 1387): the validity periods of a rule's versions must not overlap —
