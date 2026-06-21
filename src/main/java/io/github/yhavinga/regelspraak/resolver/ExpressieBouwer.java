@@ -252,7 +252,11 @@ final class ExpressieBouwer {
                             + "(§13.4.17.51-.58) — '" + dimBron + "'", f.getStart().getLine()));
             if (!(filter instanceof Conditie.Onopgelost)) filter = new Conditie.Onopgelost(dimBron);
         }
-        return new Expr.Functie(kind, argumenten, elem, leegwaarde, filter, type, bron);
+        Expr functie = new Expr.Functie(kind, argumenten, elem, leegwaarde, filter, type, bron);
+        // §13.4.17.13: the wortel's afronding is MANDATORY and rounds the ROOT (it is a sibling of the
+        // radicand, not inside it). It was parsed but dropped; wrap the function so the rounding survives.
+        if (f instanceof WortelFuncContext w) return afgerond(functie, w.afronding(), bron);
+        return functie;
     }
 
     /** §13.4.17.51-.58: the raw source of an aggregation's dimensieselectie (som / min-max) or
@@ -556,6 +560,10 @@ final class ExpressieBouwer {
                     : new Datatype.Numeriek(alleGeheel(args), minDecimalen(args), n.teken(), n.eenheid());
             case AANTAL -> new Datatype.Numeriek(true, 0, Datatype.Teken.NIET_NEGATIEF, null); // a count
             case CONCATENATIE -> new Datatype.Tekst();
+            // §13.4.17.13: a square root is non-negative; its precision comes from the MANDATORY afronding that
+            // wraps it (a sqrt is generally irrational), and its unit would be the operand's unit's root —
+            // composite-unit territory, dropped for now (carded). The afronding's Afgerond re-derives decimals.
+            case WORTEL -> new Datatype.Numeriek(false, 0, Datatype.Teken.NIET_NEGATIEF, null);
             case EERSTE_PAASDAG, DATUM_MET -> new Datatype.DatumInDagen();
             case DATUMTIJD_MET -> new Datatype.DatumTijd();
             default -> onbekend();

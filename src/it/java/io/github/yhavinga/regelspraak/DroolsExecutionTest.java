@@ -566,6 +566,51 @@ class DroolsExecutionTest {
                 () -> "5 tot de macht 2 = 25, kreeg " + h.getNetto());
     }
 
+    @Test void wortel_rondt_de_root_af_via_zijn_verplichte_afronding() {
+        // §13.4.17.13: the wortel's afronding is MANDATORY and rounds the ROOT. sqrt(20) = 4,4721…, floored
+        // to 2 decimals -> 4,47 (not the unrounded double). The afronding used to be parsed and dropped.
+        String src = """
+            Objecttype de Heffing
+                de basis Numeriek (geheel getal);
+                de netto Numeriek (getal met 2 decimalen);
+            Regel w
+                geldig altijd
+                    De netto van een Heffing moet gesteld worden op de wortel van de basis van een Heffing naar beneden afgerond op 2 decimalen.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        KieSession sessie = build(DrlTranspiler.transpile(m)).newKieSession();
+        Heffing h = new Heffing(); h.setBasis(new BigDecimal("20"));
+        sessie.insert(h);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("4.47").compareTo(h.getNetto()),
+                () -> "wortel van 20, op 2 decimalen naar beneden = 4,47, kreeg " + h.getNetto());
+        assertTrue(h.getNetto().scale() <= 2, () -> "de afronding moet de root afronden, kreeg scale " + h.getNetto().scale());
+    }
+
+    @Test void wortel_van_een_terminerende_root_rondt_exact_geen_double_ruis() {
+        // 897.3^2 = 805147.29, so the root is EXACTLY 897.3. A double Math.sqrt gives 897.3000000000001, which
+        // CEILING-to-1-decimal wrongly bumps to 897.4; BigDecimal.sqrt keeps it exact -> 897.3.
+        String src = """
+            Objecttype de Heffing
+                de basis Numeriek (getal met 2 decimalen);
+                de netto Numeriek (getal met 1 decimalen);
+            Regel w
+                geldig altijd
+                    De netto van een Heffing moet gesteld worden op de wortel van de basis van een Heffing naar boven afgerond op 1 decimalen.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        KieSession sessie = build(DrlTranspiler.transpile(m)).newKieSession();
+        Heffing h = new Heffing(); h.setBasis(new BigDecimal("805147.29"));
+        sessie.insert(h);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("897.3").compareTo(h.getNetto()),
+                () -> "wortel van 805147,29 naar boven op 1 decimaal = 897,3 (geen double-ruis naar 897,4), kreeg " + h.getNetto());
+    }
+
     @Test void macht_met_gehele_exponent_is_exact_boven_de_double_grens() {
         // §4.7: the result is an exact Numeriek rounded by the afronding. An integer power above
         // 2^53 must be exact — 7^19 = 11398895185373143, not the 11398895185373144 that Math.pow

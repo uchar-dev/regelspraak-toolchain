@@ -101,19 +101,20 @@ class DrlTest {
         assertTrue(drl.contains("reis!.vluchtdatum > reisdatum"), () -> "voorwaarde-navigatie:\n" + drl);
     }
 
-    @Test void onmapbare_aggregatie_wordt_gemarkeerd_niet_verzonnen() {
-        // wortel has no accumulate equivalent yet; it must surface as an explicit marker, never
-        // as silently-wrong DRL. (§13.4.17.13 makes the afronding mandatory.)
+    @Test void onmapbare_functie_wordt_gemarkeerd_niet_verzonnen() {
+        // concatenatie has no lowering yet; it must surface as an explicit marker, never as silently-wrong
+        // DRL. (wortel — once the example here — now lowers, see wortel_lowert_naar_sqrt_….)
         String src = """
             Objecttype de Reis
-                de prijs Numeriek (geheel getal);
-                de wortelprijs Numeriek (geheel getal);
-            Regel w
+                de naam Tekst;
+                de bijnaam Tekst;
+                de volledig Tekst;
+            Regel c
                 geldig altijd
-                    De wortelprijs van een Reis moet berekend worden als de wortel van de prijs van een Reis naar beneden afgerond op 2 decimalen.
+                    De volledig van een Reis moet gesteld worden op de concatenatie van de naam van een Reis en de bijnaam van een Reis.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        assertTrue(drl.contains("/* TODO aggregatie WORTEL"), () -> "wortel niet gemarkeerd:\n" + drl);
+        assertTrue(drl.contains("/* TODO aggregatie CONCATENATIE"), () -> "concatenatie niet gemarkeerd:\n" + drl);
     }
 
     @Test void aggregatie_met_dimensieselectie_wordt_gemarkeerd_niet_stil_gesommeerd() {
@@ -405,6 +406,23 @@ class DrlTest {
         // datumtijd met has SEVEN parts; LocalDateTime.of's 7th arg is nanos, so milliseconde scales x1e6
         assertTrue(drl.contains("(new java.math.BigDecimal(\"500\")).intValue() * 1000000)"), () -> "datumtijd met milli->nano:\n" + drl);
         assertTrue(drl.contains("java.time.LocalDateTime.of("), () -> "datumtijd met:\n" + drl);
+    }
+
+    @Test void wortel_lowert_naar_sqrt_binnen_zijn_verplichte_afronding() {
+        String src = """
+            Objecttype de Vierkant
+                de oppervlakte Numeriek (geheel getal);
+                de zijde Numeriek (geheel getal);
+            Regel w
+                geldig altijd
+                    De zijde van een Vierkant moet gesteld worden op de wortel van de oppervlakte van een Vierkant naar beneden afgerond op 0 decimalen.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        // the sqrt is the basis of a setScale (the mandatory afronding) — the afronding is NOT dropped.
+        // BigDecimal.sqrt (exact to 34 digits), NOT Math.sqrt (a double whose noise flips a directional round).
+        assertTrue(drl.contains("($subject.getOppervlakte()).sqrt(java.math.MathContext.DECIMAL128)"), () -> "sqrt:\n" + drl);
+        assertFalse(drl.contains("Math.sqrt"), () -> "geen double-sqrt (rondingsfout op de afrondgrens):\n" + drl);
+        assertTrue(drl.contains(").setScale(0, java.math.RoundingMode.FLOOR)"), () -> "de verplichte afronding moet de root afronden:\n" + drl);
     }
 
     @Test void kenmerktoekenning_wordt_boolean_setter_onder_voorwaarde() {

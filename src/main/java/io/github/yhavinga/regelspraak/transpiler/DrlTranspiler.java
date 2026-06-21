@@ -839,6 +839,15 @@ public final class DrlTranspiler {
                 String x = waarde(a.get(0), subject);
                 yield bevatMarker(x) ? x : "(" + x + ").abs()";
             }
+            case WORTEL -> {                          // §13.4.17.13 — the radicand's root, rounded by the
+                if (a.size() != 1) yield null;        // MANDATORY afronding (an Afgerond wrapper the resolver
+                String x = waarde(a.get(0), subject); // adds). BigDecimal.sqrt at 34-digit precision, NOT a
+                // double: Math.sqrt's ~16-digit noise can flip a directional (FLOOR/CEILING) afronding on a
+                // terminating root (sqrt(805147.29)=897.3 but the double is 897.3000…1 -> CEILING gives 897.4).
+                // 34 digits make the directional cut exact for any realistic afronding; a negative radicand
+                // throws a self-describing ArithmeticException (§6.6 foutmelding) instead of a NaN crash.
+                yield bevatMarker(x) ? x : "(" + x + ").sqrt(java.math.MathContext.DECIMAL128)";
+            }
             case DATUM_MET     -> datumConstructor(a, subject, "java.time.LocalDate", 3, false);     // §13.4.17.35 (3 parts)
             case DATUMTIJD_MET -> datumConstructor(a, subject, "java.time.LocalDateTime", 7, true);  // §13.4.17.36 (7 parts)
             default -> null;
