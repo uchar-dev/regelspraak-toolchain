@@ -121,6 +121,42 @@ class RuleCheckTest {
                 () -> "verwachtte een Tabel-55 elfproef-fout in de voorwaarde, kreeg: " + m.errors());
     }
 
+    @Test void datumdeel_eerder_dan_een_datum_wordt_gemeld() {
+        // §13.4.17.18-.24 / typeringen Tabel 28: a date component (maand uit) is a Numeriek, not a Datum.
+        // Comparing it with 'eerder dan' a Datum is a §5.7/Tabel 45 type error (which restricts eerder/later
+        // to two dates). The builtin used to be typed Onbekend, so Typering.vergelijk passed it silently and
+        // the transpiler then emitted an uncompilable BigDecimal-vs-LocalDate term; it must now be flagged.
+        String src = """
+            Objecttype de Ding
+                de reisdatum Datum in dagen;
+                de mijlpaal Datum in dagen;
+                is vroeg kenmerk (bijvoeglijk);
+            Regel r
+                geldig altijd
+                    Een Ding is vroeg
+                    indien de maand uit (de reisdatum van een Ding) eerder is dan de mijlpaal van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("datum-operanden")),
+                () -> "verwachtte een Tabel-45 datum-operanden-fout, kreeg: " + m.errors());
+    }
+
+    @Test void datumdeel_gelijk_aan_getal_geen_fout() {
+        // The legal counterpart (toka-26 Hoogseizoen): a date component compared numerically to an integer
+        // literal is fine — maand uit is a Numeriek (Tabel 28), 6 is a Numeriek literal.
+        String src = """
+            Objecttype de Ding
+                de reisdatum Datum in dagen;
+                is zomers kenmerk (bijvoeglijk);
+            Regel r
+                geldig altijd
+                    Een Ding is zomers
+                    indien de maand uit (de reisdatum van een Ding) gelijk is aan 6.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "een datumdeel == getal mag geen fout zijn: " + m.errors());
+    }
+
     @Test void elfproef_op_geheel_getal_in_voorwaarde_geen_fout() {
         String src = """
             Objecttype de Ding

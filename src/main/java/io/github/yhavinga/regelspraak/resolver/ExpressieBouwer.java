@@ -566,6 +566,13 @@ final class ExpressieBouwer {
             case WORTEL -> new Datatype.Numeriek(false, 0, Datatype.Teken.NIET_NEGATIEF, null);
             case EERSTE_PAASDAG, DATUM_MET -> new Datatype.DatumInDagen();
             case DATUMTIJD_MET -> new Datatype.DatumTijd();
+            // §13.4.17.18-.24 / typeringen Tabel 28: a date/time component (jaar/maand/dag/uur/minuut/seconde/
+            // milliseconde uit) is a unitless non-negative whole Numeriek. Typing it (rather than leaving it
+            // Onbekend, which makes Typering.vergelijk short-circuit OK) lets the comparison matrix REJECT an
+            // illegal use — e.g. "de maand uit X eerder dan <een datum>", which Tabel 45 restricts to two dates
+            // — instead of the transpiler now lowering it to an uncompilable BigDecimal-vs-LocalDate term.
+            case JAAR_UIT, MAAND_UIT, DAG_UIT, UUR_UIT, MINUUT_UIT, SECONDE_UIT, MILLISECONDE_UIT ->
+                    new Datatype.Numeriek(true, 0, Datatype.Teken.NIET_NEGATIEF, null);
             default -> onbekend();
         };
     }
