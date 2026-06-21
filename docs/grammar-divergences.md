@@ -859,3 +859,41 @@ word of the cardinaliteit" is exactly a capitalised word either way.
 begeleiden meerdere docenten" — matching the spec terminal. That parses and marks both roles meervoudig.
 (An earlier attempt to widen `MEERDERE` to `[Mm]'eerdere'` was reverted: an adversarial review showed it
 regressed "Meerdere" as a name word for no spec-required gain.)
+
+### §13.4.10 verdeling naar rato — one weighted-accumulate rule, with two carded edges
+
+"… waarbij wordt verdeeld **naar rato van** \<gewicht\>" (§9.7.1) gives each recipient a share proportional
+to its own weight attribute: `share_i = totaal · w_i / Σ w_j`. This lowers to a single forward rule — the
+equal-shares rule (total / count) with `sum(weight)` in place of `count` and `· w_r` in the numerator:
+
+```
+$src : Bron(  )
+accumulate( $c : Doel( <join> == $src, w != null ) ; $sum : sum($c.getW()) )
+$r : Doel( <join> == $src, w != null )
+eval( $sum.signum() != 0 )
+then modify($r) { setDoelAttr( $src.getBronAttr().multiply($r.getW()).divide($sum, DECIMAL64) ) }
+```
+
+The weight must be a **getalachtig** (numeriek/percentage) field of the recipient — `heeftLid` alone would
+also accept a Tekst attribute or a boolean kenmerk, whose getter cannot be summed/multiplied (uncompilable
+DRL), so a non-numeric/foreign/absent weight stays the honest no-op marker. The group/ordering/remainder
+schemes (a `maximum`, an `afronding`, an explicit `onverdeelde rest`, `op volgorde van`, `bij een even groot
+criterium`) are the resolver's `COMPLEX` method and stay markers — they are genuinely multi-pass.
+
+**Two deliberate divergences, both carded (corpus-invisible: TOKA's woonregio factor is always populated):**
+
+1. **Empty weight = exclude, not Fout.** §9.7.6 Tabel 19 makes an *empty* weight on any recipient a **Fout**
+   for the whole verdeling. We instead exclude the weightless recipient from `Σ` and leave it unassigned
+   (the weighted recipients still share the total). The faithful "suppress the whole distribution and surface
+   the Fout" form needs either a second `accumulate` / a `not` CE — which, because the consequence does
+   `modify($r)`, cancels the sibling recipient activations under `no-loop` so only ONE recipient fires
+   (verified empirically against Drools 8.44) — or an inserted `Inconsistentie` fact. Both are beyond this
+   slice; the exclude reading at least fires correctly and is documented, never a silent crash.
+
+2. **Plain naar rato into an integer target keeps the fraction.** §6.1.2 forbids implicit rounding: a
+   fractional share (e.g. 1001 over 3,2 → 600,6) assigned to a `geheel getal` attribute requires an explicit
+   afronding. The bare `divide(…, DECIMAL64)` keeps the fraction — exactly as the equal-shares path and the
+   ordinary `regel` assignment already do (their §6.1.2 posture is "emit raw; the author adds the afronding").
+   Enforcing §6.1.2 at the verdeling assignment (consistently with equal-shares and `regel`) is a separate,
+   transpiler-wide item. A zero total weight (`Σ = 0`) is guarded (`signum() != 0`) so the divide cannot
+   throw; the spec leaves a zero divisor undefined, so no-op-not-crash is the chosen reading.

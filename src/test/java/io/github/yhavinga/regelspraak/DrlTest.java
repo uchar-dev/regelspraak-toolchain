@@ -1596,4 +1596,28 @@ class DrlTest {
         assertTrue(drl.contains("Konto( saldo != tegoed )"),
                 () -> "een numerieke gelijkheid mag de beide-leeg clausule NIET krijgen (Tabel 37 waar):\n" + drl);
     }
+
+    @Test void verdeling_naar_rato_met_niet_numerieke_weging_blijft_no_op() {
+        // The naar-rato weight must be a getalachtig field: a Tekst weight cannot be summed/multiplied, so
+        // the verdeling stays the honest no-op marker rather than emitting an uncompilable sum/multiply.
+        String src = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de label Tekst;
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel naar rato
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld naar rato van de label.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("// onopgelost verdeling (naar_rato)"),
+                () -> "een niet-numerieke weging moet een no-op blijven:\n" + drl);
+        assertFalse(drl.contains("getLabel()"),
+                () -> "een Tekst-weging mag geen getter/sum/multiply emitteren (onsamenstelbare DRL):\n" + drl);
+    }
 }

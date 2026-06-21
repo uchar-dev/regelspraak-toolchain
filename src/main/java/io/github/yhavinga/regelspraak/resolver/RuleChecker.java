@@ -403,7 +403,10 @@ final class RuleChecker {
         if (z != null && z.IN_GELIJKE_DELEN() != null) methode = ResolvedVerdeling.Methode.GELIJKE_DELEN;
         else if (z != null && z.NAAR_RATO_VAN() != null) {
             methode = ResolvedVerdeling.Methode.NAAR_RATO;
-            rato = z.attribuutMetLidwoord() != null ? src(z.attribuutMetLidwoord()) : null;
+            // the BARE weight name (kaleNaam, lidwoord stripped) so it maps straight to a recipient getter,
+            // exactly like b.attribuut()/d.attribuut() — "de woonregio factor" -> "woonregio factor".
+            rato = z.attribuutMetLidwoord() != null && z.attribuutMetLidwoord().kaleNaam() != null
+                    ? src(z.attribuutMetLidwoord().kaleNaam()) : null;
         }
         model.verdelingen.add(new ResolvedVerdeling(naam, b.objecttype(), b.attribuut(),
                 d.objecttype(), d.attribuut(), methode, rato, voorwaarde, geldigheid));

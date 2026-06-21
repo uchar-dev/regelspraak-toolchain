@@ -729,6 +729,47 @@ class DroolsExecutionTest {
                     () -> "ieder aandeel moet 90/3 = 30 zijn, kreeg " + d.getAandeel());
     }
 
+    static final String VERDELING_NAAR_RATO_SRC = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel naar rato
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld naar rato van de gewicht.
+            """;
+
+    @Test void verdeling_naar_rato_weegt_ieder_aandeel_met_zijn_gewicht() {
+        // §13.4.10 naar rato: each recipient gets total · weight / sum(weight). totaal 120 over weights
+        // 1/2/3 (sum 6) -> 20/40/60. A weightless recipient is excluded from the sum and left unassigned —
+        // never a divide-by-null crash. (A spec-faithful Fout on an empty weight is a documented divergence;
+        // see docs/grammar-divergences.md and the backlog.)
+        RegelSpraakModel m = Resolver.resolve(VERDELING_NAAR_RATO_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("sum($c.getGewicht())"), () -> "geen gewogen accumulate-som:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Pot p = new Pot(); p.setTotaal(new BigDecimal("120"));
+        Deelnemer d1 = new Deelnemer(); d1.setPot(p); d1.setGewicht(new BigDecimal("1"));
+        Deelnemer d2 = new Deelnemer(); d2.setPot(p); d2.setGewicht(new BigDecimal("2"));
+        Deelnemer d3 = new Deelnemer(); d3.setPot(p); d3.setGewicht(new BigDecimal("3"));
+        Deelnemer dx = new Deelnemer(); dx.setPot(p);   // weightless: excluded, not assigned, no NPE
+        sessie.insert(p); sessie.insert(d1); sessie.insert(d2); sessie.insert(d3); sessie.insert(dx);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("20").compareTo(d1.getAandeel()), () -> "gewicht 1 -> 20, kreeg " + d1.getAandeel());
+        assertEquals(0, new BigDecimal("40").compareTo(d2.getAandeel()), () -> "gewicht 2 -> 40, kreeg " + d2.getAandeel());
+        assertEquals(0, new BigDecimal("60").compareTo(d3.getAandeel()), () -> "gewicht 3 -> 60, kreeg " + d3.getAandeel());
+        assertNull(dx.getAandeel(), "een gewichtloze deelnemer mag geen aandeel krijgen");
+    }
+
     @Test void cross_unit_optelling_wordt_omgerekend_niet_rauw_geteld() {
         // duur(mnd) := looptijd(jr) + duur(mnd). looptijd must be scaled jr->mnd (×12),
         // NOT added raw: 2 jr + 3 mnd = 27 mnd, not 5.

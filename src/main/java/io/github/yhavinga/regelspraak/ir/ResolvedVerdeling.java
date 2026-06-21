@@ -7,12 +7,14 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
  * {@code bronType}) is distributed over a recipient attribute ({@code doelAttribuut}
  * of {@code doelType}, the objects related to the source) by some method.
  *
- * Only {@link Methode#GELIJKE_DELEN equal shares} has a clean single-rule Drools
- * form (total / count); proportional and group/ordering/remainder distributions are
- * captured here for coverage but transpile to a marked placeholder — they are
- * multi-step allocations, not one forward rule.
+ * {@link Methode#GELIJKE_DELEN equal shares} (total / count) and {@link Methode#NAAR_RATO
+ * proportional} (total · weight / sum-of-weights) each have a clean single forward-rule
+ * Drools form; the group/ordering/remainder distributions ({@link Methode#COMPLEX}) are
+ * captured here for coverage but transpile to a marked placeholder — they are multi-step
+ * allocations, not one forward rule.
  *
- * @param ratoAttribuut for {@link Methode#NAAR_RATO}, the weight attribute; else null
+ * @param ratoAttribuut for {@link Methode#NAAR_RATO}, the bare recipient weight attribute
+ *                      (lidwoord stripped, so it maps straight to a getter); else null
  */
 public record ResolvedVerdeling(String naam, Objecttype bronType, String bronAttribuut,
                                 Objecttype doelType, String doelAttribuut,

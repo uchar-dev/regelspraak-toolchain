@@ -436,33 +436,62 @@ public final class DrlTranspiler {
         };
     }
 
-    /** §13.4.10 verdeling. Equal shares is a real rule: bind the source, count the
-     *  recipients (joined to the source), and give each recipient total/count. The
-     *  proportional and group/remainder methods are multi-step allocations with no
-     *  single-rule form, so they are emitted as an explicit marker. */
+    /** §13.4.10 verdeling. Two methods have a single forward-rule form: EQUAL SHARES binds the source,
+     *  counts the recipients joined to it, and gives each total/count; NAAR RATO (proportional) instead
+     *  SUMS each recipient's weight attribute and gives each total·weight/sum. Both fold the recipients in
+     *  one accumulate. The group/ordering/remainder schemes (COMPLEX) are multi-pass allocations with no
+     *  single-rule form — and an unresolvable join or a weight that is not a real recipient field — stay an
+     *  explicit no-op marker. */
     private void verdeling(io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v) {
         Objecttype bron = v.bronType(), doel = v.doelType();
         String join = bron != null && doel != null ? model.verbindendeRol(doel, bron) : null;
-        boolean kan = v.methode() == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.GELIJKE_DELEN
-                && join != null;
-        if (!kan) {
+        var methode = v.methode();
+        boolean gelijk = methode == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.GELIJKE_DELEN && join != null;
+        // NAAR RATO needs the join AND a weight that is a real GETALACHTIG (numeriek/percentage) field of the
+        // recipient: heeftLid alone would also accept a Tekst attribute or a boolean kenmerk, whose getter
+        // cannot be summed/multiplied — uncompilable DRL that sinks the whole package. A non-numeric, foreign,
+        // or absent weight therefore stays the honest no-op marker.
+        Datatype gewichtType = doel != null && v.ratoAttribuut() != null ? doel.attribuut(v.ratoAttribuut()) : null;
+        boolean rato = methode == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.NAAR_RATO && join != null
+                && gewichtType != null && gewichtType.isGetalachtig();
+        if (!gelijk && !rato) {
             out.append(new Regel(v.naam())
                 .clausule("// onopgelost verdeling ("
-                        + (bron == null || doel == null ? "referentie" : v.methode().name().toLowerCase())
+                        + (bron == null || doel == null ? "referentie" : methode.name().toLowerCase())
                         + "): " + v.bronAttribuut() + " over " + v.doelAttribuut())
                 .clausule("eval(true)")
                 .render());
             return;
         }
         String j = ident(join, false) + " == $src";
-        out.append(new Regel(v.naam())
-            .clausule("$src : " + ident(bron.naam, true) + "(  )")
-            .clausule("accumulate( $c : " + ident(doel.naam, true) + "( " + j + " ) ; $n : count($c) )")
-            .clausule("$r : " + ident(doel.naam, true) + "( " + j + " )")
-            .geldigheid(v.geldigheid())
-            .dan("    modify($r) {\n        " + setter(v.doelAttribuut())
-                    + "( $src." + getter(v.bronAttribuut())
-                    + "().divide($n, java.math.MathContext.DECIMAL64) )\n    }\n")  // safe division
+        Regel rule = new Regel(v.naam()).clausule("$src : " + ident(bron.naam, true) + "(  )");
+        String aandeel;   // the per-recipient value set into the modify
+        if (gelijk) {
+            rule.clausule("accumulate( $c : " + ident(doel.naam, true) + "( " + j + " ) ; $n : count($c) )")
+                .clausule("$r : " + ident(doel.naam, true) + "( " + j + " )");
+            aandeel = "$src." + getter(v.bronAttribuut()) + "().divide($n, java.math.MathContext.DECIMAL64)"; // safe division
+        } else {
+            // §13.4.10 naar rato: each recipient gets total·weight/Σweight. The accumulate sums the weights of
+            // the recipients that HAVE one, and $r binds the same set, so a weightless recipient is left unset
+            // (its weight is null — there is no proportional basis) while the weighted ones share the total.
+            // DIVERGENCE: §9.7.6 Tabel 19 makes an empty weight on any recipient a "Fout" for the WHOLE
+            // verdeling, not a quietly smaller split. The faithful form (suppress the distribution and surface
+            // the Fout) needs either a second accumulate / `not` — which, with the modify in the consequence,
+            // cancels the sibling recipient activations under no-loop so only one recipient fires — or an
+            // inserted Inconsistentie fact. Both are out of this slice; the exclude-and-redistribute reading is
+            // documented (docs/grammar-divergences.md) and carded, and the corpus weight (woonregio factor) is
+            // always populated. A zero total weight (all weights 0) is guarded so the divide cannot throw — the
+            // spec leaves a zero divisor undefined, so no-op-not-crash is the safe reading.
+            String wNaam = ident(v.ratoAttribuut(), false), wGet = getter(v.ratoAttribuut());
+            rule.clausule("accumulate( $c : " + ident(doel.naam, true) + "( " + j + ", " + wNaam
+                            + " != null ) ; $sum : sum($c." + wGet + "()) )")
+                .clausule("$r : " + ident(doel.naam, true) + "( " + j + ", " + wNaam + " != null )")
+                .clausule("eval( $sum.signum() != 0 )");
+            aandeel = "$src." + getter(v.bronAttribuut()) + "().multiply($r." + wGet
+                    + "()).divide($sum, java.math.MathContext.DECIMAL64)";
+        }
+        out.append(rule.geldigheid(v.geldigheid())
+            .dan("    modify($r) {\n        " + setter(v.doelAttribuut()) + "( " + aandeel + " )\n    }\n")
             .render());
     }
 
