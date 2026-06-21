@@ -766,6 +766,8 @@ public final class DrlTranspiler {
         }
         if (e instanceof Expr.Constante c)      return todo("constante", c.naam());
         if (e instanceof Expr.Functie f) {
+            String scalar = scalarFunctie(f, subject);        // §13.4.17 single-value builtins (abs, datum-delen, datum-met)
+            if (scalar != null) return scalar;
             String dim = dimensieAggregatie(f, subject);      // SOM/min/max over a dimension's labels
             if (dim != null) return dim;
             String concat = concatenatieAggregatie(f, subject); // pairwise min/max over listed operands
@@ -774,6 +776,70 @@ public final class DrlTranspiler {
             return var != null ? var : todo("aggregatie " + f.kind(), f.bron());
         }
         return todo("expressie", e.bron());
+    }
+
+    /**
+     * §13.4.17 the SCALAR built-in functions — those that map to a single mvel/Java expression rather than an
+     * accumulate over instances: the absolute value, the date/time component extractions, and the date /
+     * datetime constructors. Returns null for every other {@link Expr.FunctieKind} (the aggregations and the
+     * not-yet-lowered builtins like wortel/concatenatie/tijdsduur/paasdag), so the caller falls through to the
+     * accumulate path or its marker. A marker propagates straight through when an argument is itself unresolved.
+     */
+    private String scalarFunctie(Expr.Functie f, Objecttype subject) {
+        List<Expr> a = f.argumenten();
+        // §13.4.17.18-.20 a DATE component (jaar/maand/dag) reads as a Numeriek via the matching getter —
+        // valid on ANY datum, since LocalDate and LocalDateTime both have these getters.
+        String dateGetter = switch (f.kind()) {
+            case JAAR_UIT -> "getYear"; case MAAND_UIT -> "getMonthValue"; case DAG_UIT -> "getDayOfMonth";
+            default -> null;
+        };
+        if (dateGetter != null) {
+            if (a.size() != 1) return null;
+            String d = waarde(a.get(0), subject);
+            return bevatMarker(d) ? d : "java.math.BigDecimal.valueOf((" + d + ")." + dateGetter + "())";
+        }
+        // §13.4.17.21-.24 a TIME component (uur/minuut/seconde/milliseconde): getHour()/… exist ONLY on a
+        // LocalDateTime, so a plain Datum-in-dagen operand would emit uncompilable DRL (sinking the package).
+        // The operand must be a Datum-en-tijd; otherwise lower to an honest marker. (The resolver does not yet
+        // reject "het uur uit een Datum" as a type error — carded.) milliseconde = nanoOfSecond / 1e6.
+        String timeGetter = switch (f.kind()) {
+            case UUR_UIT -> "getHour"; case MINUUT_UIT -> "getMinute"; case SECONDE_UIT -> "getSecond"; default -> null;
+        };
+        if (timeGetter != null || f.kind() == Expr.FunctieKind.MILLISECONDE_UIT) {
+            if (a.size() != 1) return null;
+            if (!(a.get(0).type() instanceof Datatype.DatumTijd))
+                return todo("tijd-component uit een niet-datum-tijd (§13.4.17.21-.24)", f.bron());
+            String d = waarde(a.get(0), subject);
+            if (bevatMarker(d)) return d;
+            return f.kind() == Expr.FunctieKind.MILLISECONDE_UIT
+                    ? "java.math.BigDecimal.valueOf((" + d + ").getNano() / 1000000)"
+                    : "java.math.BigDecimal.valueOf((" + d + ")." + timeGetter + "())";
+        }
+        return switch (f.kind()) {
+            case ABSOLUTE_WAARDE -> {                 // §13.4.17.17
+                if (a.size() != 1) yield null;
+                String x = waarde(a.get(0), subject);
+                yield bevatMarker(x) ? x : "(" + x + ").abs()";
+            }
+            case DATUM_MET     -> datumConstructor(a, subject, "java.time.LocalDate", 3, false);     // §13.4.17.35 (3 parts)
+            case DATUMTIJD_MET -> datumConstructor(a, subject, "java.time.LocalDateTime", 7, true);  // §13.4.17.36 (7 parts)
+            default -> null;
+        };
+    }
+
+    /** §13.4.17.35/.36 build a LocalDate/LocalDateTime from its {@code n} numeric component expressions
+     *  (jaar, maand, dag[, uur, minuut, seconde, milliseconde]); each is restated as an int. When
+     *  {@code laatsteIsMilli}, the trailing component is a MILLIsecond but {@code LocalDateTime.of}'s 7th
+     *  argument is nanoOfSecond, so it is scaled ×1e6. A marker argument propagates. */
+    private String datumConstructor(List<Expr> a, Objecttype subject, String type, int n, boolean laatsteIsMilli) {
+        if (a.size() != n) return null;
+        StringJoiner sj = new StringJoiner(", ", type + ".of(", ")");
+        for (int i = 0; i < a.size(); i++) {
+            String v = waarde(a.get(i), subject);
+            if (bevatMarker(v)) return v;
+            sj.add(laatsteIsMilli && i == a.size() - 1 ? "(" + v + ").intValue() * 1000000" : "(" + v + ").intValue()");
+        }
+        return sj.toString();
     }
 
     /**

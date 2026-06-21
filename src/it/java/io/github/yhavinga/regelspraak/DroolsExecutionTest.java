@@ -10,6 +10,7 @@ import io.github.yhavinga.regelspraak.facts.Contingent;
 import io.github.yhavinga.regelspraak.facts.Heffing;
 import io.github.yhavinga.regelspraak.facts.Inconsistentie;
 import io.github.yhavinga.regelspraak.facts.Kandidaat;
+import io.github.yhavinga.regelspraak.facts.Klok;
 import io.github.yhavinga.regelspraak.facts.Konto;
 import io.github.yhavinga.regelspraak.facts.Luchthaven;
 import io.github.yhavinga.regelspraak.facts.Meting;
@@ -37,6 +38,7 @@ import org.kie.internal.utils.KieHelper;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -613,6 +615,60 @@ class DroolsExecutionTest {
         assertTrue(pos.getC().scale() <= 5, () -> "ten hoogste 5 decimalen, kreeg scale " + pos.getC().scale());
         assertEquals(0, new BigDecimal("-0.66666").compareTo(neg.getC()),
                 () -> "2 gedeeld door (ABS) -3 = -0,66666 (richting 0), kreeg " + neg.getC());
+    }
+
+    @Test void scalaire_builtins_absolute_waarde_datumdelen_en_datum_met() {
+        // §13.4.17.17-.24/.35/.36: the absolute value, a date's year/month parts, an hour from a datetime, and a
+        // date/datetime built from numeric parts each lower to a single Java expression that fires in the engine.
+        String src = """
+            Objecttype de Klok
+                de saldo Numeriek (geheel getal);
+                de absval Numeriek (geheel getal);
+                de reisdatum Datum in dagen;
+                de jaartal Numeriek (geheel getal);
+                de maandnr Numeriek (geheel getal);
+                de bouwjaar Numeriek (geheel getal);
+                de gemaakt Datum in dagen;
+                de moment Datum en tijd in millisecondes;
+                de uurnr Numeriek (geheel getal);
+                de stip Datum en tijd in millisecondes;
+            Regel abs
+                geldig altijd
+                    De absval van een Klok moet gesteld worden op de absolute waarde van (de saldo van een Klok).
+            Regel jaar
+                geldig altijd
+                    De jaartal van een Klok moet gesteld worden op het jaar uit de reisdatum van een Klok.
+            Regel maand
+                geldig altijd
+                    De maandnr van een Klok moet gesteld worden op de maand uit de reisdatum van een Klok.
+            Regel bouw
+                geldig altijd
+                    De gemaakt van een Klok moet gesteld worden op de datum met jaar: de bouwjaar van een Klok, maand: 3 en dag: 15.
+            Regel uur
+                geldig altijd
+                    De uurnr van een Klok moet gesteld worden op het uur uit de moment van een Klok.
+            Regel dt
+                geldig altijd
+                    De stip van een Klok moet gesteld worden op de datumtijd met jaar: de bouwjaar van een Klok, maand: 3, dag: 15, uur: 10, minuut: 30, seconde: 0 en milliseconde: 500.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        KieSession sessie = build(DrlTranspiler.transpile(m)).newKieSession();
+        Klok k = new Klok();
+        k.setSaldo(new BigDecimal("-7"));
+        k.setReisdatum(LocalDate.of(2021, 6, 15));
+        k.setBouwjaar(new BigDecimal("2000"));
+        k.setMoment(LocalDateTime.of(2022, 1, 2, 14, 5, 9));
+        sessie.insert(k);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("7").compareTo(k.getAbsval()), () -> "|-7| = 7, kreeg " + k.getAbsval());
+        assertEquals(0, new BigDecimal("2021").compareTo(k.getJaartal()), () -> "jaar uit 2021-06-15 = 2021, kreeg " + k.getJaartal());
+        assertEquals(0, new BigDecimal("6").compareTo(k.getMaandnr()), () -> "maand uit 2021-06-15 = 6, kreeg " + k.getMaandnr());
+        assertEquals(LocalDate.of(2000, 3, 15), k.getGemaakt(), () -> "datum met 2000-3-15, kreeg " + k.getGemaakt());
+        assertEquals(0, new BigDecimal("14").compareTo(k.getUurnr()), () -> "uur uit 14:05:09 = 14, kreeg " + k.getUurnr());
+        assertEquals(LocalDateTime.of(2000, 3, 15, 10, 30, 0, 500_000_000), k.getStip(),
+                () -> "datumtijd met …, milliseconde 500 = .500s, kreeg " + k.getStip());
     }
 
     @Test void telling_maal_parameter_bindt_de_maal_buiten_de_telling() {

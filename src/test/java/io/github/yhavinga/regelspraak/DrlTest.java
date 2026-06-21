@@ -350,6 +350,63 @@ class DrlTest {
                 () -> "gewone 'gedeeld door' moet de exacte DECIMAL64-deling houden:\n" + drl);
     }
 
+    @Test void scalaire_builtins_loweren_naar_een_enkele_expressie() {
+        String src = """
+            Objecttype de Klok
+                de saldo Numeriek (geheel getal);
+                de absval Numeriek (geheel getal);
+                de reisdatum Datum in dagen;
+                de jaartal Numeriek (geheel getal);
+                de bouwjaar Numeriek (geheel getal);
+                de gemaakt Datum in dagen;
+            Regel a
+                geldig altijd
+                    De absval van een Klok moet gesteld worden op de absolute waarde van (de saldo van een Klok).
+            Regel j
+                geldig altijd
+                    De jaartal van een Klok moet gesteld worden op het jaar uit de reisdatum van een Klok.
+            Regel d
+                geldig altijd
+                    De gemaakt van een Klok moet gesteld worden op de datum met jaar: de bouwjaar van een Klok, maand: 3 en dag: 15.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("($subject.getSaldo()).abs()"), () -> "abs:\n" + drl);
+        assertTrue(drl.contains("java.math.BigDecimal.valueOf(($subject.getReisdatum()).getYear())"),
+                () -> "jaar uit:\n" + drl);
+        assertTrue(drl.contains("java.time.LocalDate.of(($subject.getBouwjaar()).intValue(), "
+                + "(new java.math.BigDecimal(\"3\")).intValue(), (new java.math.BigDecimal(\"15\")).intValue())"),
+                () -> "datum met:\n" + drl);
+    }
+
+    @Test void tijd_builtins_eisen_een_datumtijd_en_datumtijd_met_telt_zeven_delen() {
+        String src = """
+            Objecttype de Klok
+                de moment Datum en tijd in millisecondes;
+                de reisdatum Datum in dagen;
+                de uurnr Numeriek (geheel getal);
+                de uurfout Numeriek (geheel getal);
+                de bouwjaar Numeriek (geheel getal);
+                de stip Datum en tijd in millisecondes;
+            Regel u
+                geldig altijd
+                    De uurnr van een Klok moet gesteld worden op het uur uit de moment van een Klok.
+            Regel uf
+                geldig altijd
+                    De uurfout van een Klok moet gesteld worden op het uur uit de reisdatum van een Klok.
+            Regel dt
+                geldig altijd
+                    De stip van een Klok moet gesteld worden op de datumtijd met jaar: de bouwjaar van een Klok, maand: 3, dag: 15, uur: 10, minuut: 30, seconde: 0 en milliseconde: 500.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        // a time component on a Datum-en-tijd lowers; on a Datum-in-dagen it markers (getHour() would not compile)
+        assertTrue(drl.contains("java.math.BigDecimal.valueOf(($subject.getMoment()).getHour())"), () -> "uur uit datumtijd:\n" + drl);
+        assertFalse(drl.contains("($subject.getReisdatum()).getHour()"), () -> "uur uit een Datum-in-dagen mag geen getHour() emitteren:\n" + drl);
+        assertTrue(drl.contains("setUurfout( /* TODO tijd-component"), () -> "uur uit een Datum-in-dagen moet een marker zijn:\n" + drl);
+        // datumtijd met has SEVEN parts; LocalDateTime.of's 7th arg is nanos, so milliseconde scales x1e6
+        assertTrue(drl.contains("(new java.math.BigDecimal(\"500\")).intValue() * 1000000)"), () -> "datumtijd met milli->nano:\n" + drl);
+        assertTrue(drl.contains("java.time.LocalDateTime.of("), () -> "datumtijd met:\n" + drl);
+    }
+
     @Test void kenmerktoekenning_wordt_boolean_setter_onder_voorwaarde() {
         String src = """
             Objecttype de Persoon
