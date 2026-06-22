@@ -1343,6 +1343,19 @@ public final class DrlTranspiler {
                 + "}\n\n");
     }
 
+    /** Register the §6.1.4 begrenzing helper — clamp a value to an optional minimum then maximum (the value
+     *  side's clamp order), null-safe: a leeg value stays leeg, and a null bound is no bound. Used on the
+     *  CONDITION side, where the value side's inline clamp ternary cannot live in a pattern constraint. Idempotent. */
+    private void registreerBegrensFunctie() {
+        hulpFuncties.putIfAbsent("rsBegrens",
+                "function java.math.BigDecimal rsBegrens(java.math.BigDecimal x, java.math.BigDecimal min, java.math.BigDecimal max) {\n"
+                + "    if (x == null) return null;\n"
+                + "    if (min != null && x.compareTo(min) < 0) x = min;\n"
+                + "    if (max != null && x.compareTo(max) > 0) x = max;\n"
+                + "    return x;\n"
+                + "}\n\n");
+    }
+
     /** Register the DRL helper for §6.3 Tabel 8 "verminderd met" — the subtraction that differs from "min" only
      *  in leegwaarde: an empty LEFT operand yields an empty result (regardless of the right), while an empty
      *  RIGHT counts as 0. Idempotent. */
@@ -1821,8 +1834,22 @@ public final class DrlTranspiler {
             // a conversion is due, else a marker (a pattern constraint cannot host the value-side null-guard
             // ternary, and the ternary-free multiply would NPE-abort the session on a null operand, so a
             // convertible-but-different-unit +/- stays an honest no-op). The leegwaarde helpers (rsNul/rsGedeeld/
-            // rsVerminderd/rsMacht) are method calls, valid in a constraint. A Begrensd clamp still markers (carded).
+            // rsVerminderd/rsMacht) are method calls, valid in a constraint.
             return binairTerm(b, x -> operand(x, subject), DrlTranspiler::omrekenConditie);
+        if (e instanceof Expr.Begrensd bg) {
+            // §6.1.4 begrenzing in a CONDITION: the value side clamps with an inline ternary "(r < m ? m : r)"
+            // that mis-parses in a pattern constraint, so lower through the registered rsBegrens helper (a method
+            // call, null-safe, clamping min-then-max sequentially to match the value side's order). The bounds are
+            // restated via omrekenConditie (identity, or a marker on a convertible-but-different unit, like the
+            // +/- path); a marker basis/bound propagates.
+            registreerBegrensFunctie();
+            Datatype bt = bg.basis().type();
+            String basis = operand(bg.basis(), subject);
+            String min = bg.minimum() != null ? omrekenConditie(operand(bg.minimum(), subject), bg.minimum().type(), bt) : "null";
+            String max = bg.maximum() != null ? omrekenConditie(operand(bg.maximum(), subject), bg.maximum().type(), bt) : "null";
+            if (bevatMarker(basis) || bevatMarker(min) || bevatMarker(max)) return todo("begrenzing in voorwaarde", bg.bron());
+            return "rsBegrens(" + basis + ", " + min + ", " + max + ")";
+        }
         if (e instanceof Expr.Functie f) {
             // §13.4.17 a SCALAR builtin (abs / date-component / datum-met / wortel / paasdag / tijdsduur) is a
             // valid pattern-constraint operand once its arguments lower to bare properties — so reuse the one

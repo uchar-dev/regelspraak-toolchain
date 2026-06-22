@@ -1084,6 +1084,37 @@ class DroolsExecutionTest {
         assertFalse(geen.isVol(), "5 maal 2 = 10 != 7 -> de gate vuurt niet");
     }
 
+    @Test void begrenzing_in_een_voorwaarde_klemt_via_rsBegrens_en_vuurt() {
+        // §6.1.4 begrenzing in a CONDITION: "de basistarief, met een minimum van de bodem en een maximum van de
+        // plafond, groter is dan 50" lowers to rsBegrens(basistarief, bodem, plafond) > 50 — the value-side inline
+        // clamp ternary cannot live in a pattern constraint. The min-then-max order and null-safety are pinned.
+        String src = """
+                Objecttype de Passagier
+                    de basistarief Numeriek (geheel getal);
+                    de bodem Numeriek (geheel getal);
+                    de plafond Numeriek (geheel getal);
+                    is duur kenmerk (bijvoeglijk);
+                Regel cond
+                    geldig altijd
+                        Een Passagier is duur indien de basistarief van een Passagier, met een minimum van de bodem van een Passagier en een maximum van de plafond van een Passagier groter is dan 50.
+                """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsBegrens(basistarief, bodem, plafond) > new java.math.BigDecimal(\"50\")"), () -> drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier lift = new Passagier();  lift.setBasistarief(new BigDecimal("10")); lift.setBodem(new BigDecimal("60")); lift.setPlafond(new BigDecimal("100")); // clamp min -> 60 > 50
+        Passagier cap  = new Passagier();  cap.setBasistarief(new BigDecimal("200")); cap.setBodem(new BigDecimal("0")); cap.setPlafond(new BigDecimal("40"));    // clamp max -> 40, !> 50
+        Passagier leeg = new Passagier();  leeg.setBodem(new BigDecimal("60")); leeg.setPlafond(new BigDecimal("100"));   // basistarief leeg -> rsBegrens null -> !> 50
+        for (Object o : new Object[]{lift, cap, leeg}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(lift.isDuur(), "10 geklemd op minimum 60 = 60 > 50 -> vuurt");
+        assertFalse(cap.isDuur(), "200 geklemd op maximum 40 = 40, niet > 50 -> vuurt niet (min-dan-max volgorde)");
+        assertFalse(leeg.isDuur(), "lege basistarief -> rsBegrens leeg -> niet > 50 -> vuurt niet (null-veilig)");
+    }
+
     @Test void wortel_en_macht_van_leeg_zijn_leeg_door_de_null_veilige_afronding() {
         // §6.6/§6.7: wortel/macht of a leeg operand is leeg. Both carry a MANDATORY afronding, so a leeg result
         // used to NPE in (null).setScale and ABORT the session. Now rsWortel/rsMacht return null and rsAfronding
