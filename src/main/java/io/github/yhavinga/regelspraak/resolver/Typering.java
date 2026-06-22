@@ -236,17 +236,21 @@ public final class Typering {
      *  TOKA verdeling) the share is 0 decimals and this is a no-op — it only flags a decimal-typed bron/weight
      *  distributed into a narrower target, the case the ordinary {@code regel} assignment already flags. */
     public static String verdeelToekenning(Datatype doel, Datatype bron, Datatype gewicht, Integer afrDec) {
-        // An Onbekend bron carries no precision claim — like an Expr.Afgerond over an Onbekend base, the
-        // assignment check no-ops (the afrDec path would otherwise flag against the rounding scale alone).
-        if (doel == null || bron == null || doel.isOnbekend() || bron.isOnbekend() || !doel.isGetalachtig())
+        // An Onbekend bron/doel carries no type claim — the assignment check no-ops.
+        if (doel == null || bron == null || doel.isOnbekend() || bron.isOnbekend())
             return null;
         // §13.4.10 the share is assigned to the doel like a regel assignment, so it must satisfy the SAME
-        // family + unit rule as toekenning. The share carries the BRON's eenheid: equal-shares (total/count)
-        // and naar rato (total·w/Σw) both keep it — the count is a plain number and the weight ratio w/Σw is
-        // dimensionless, so the weight's unit cancels. A Percentage bron into a Numeriek doel, or an
-        // inconvertible unit (€ distributed over a metre target), is the same fout the ordinary regel raises.
+        // family + unit rule as toekenning. The FAMILY check runs first, BEFORE the getalachtig guard, so a
+        // numeric verdeelplafond distributed over a non-numeric recipient (a Numeriek bron into a Tekst/Datum
+        // doel) is flagged as the family mismatch it is — exactly the fout the ordinary regel raises — instead
+        // of slipping through to an uncompilable numeric setter.
         if (!zelfdeFamilie(doel, bron))
             return "kan een waarde van type " + bron.naam() + " niet verdelen over een " + doel.naam();
+        // Same family but not getalachtig (e.g. both Datum/Tekst) — no unit/precision rule applies.
+        if (!doel.isGetalachtig()) return null;
+        // The share carries the BRON's eenheid: equal-shares (total/count) and naar rato (total·w/Σw) both keep
+        // it — the count is a plain number and the weight ratio w/Σw is dimensionless, so the weight's unit
+        // cancels. An inconvertible unit (€ distributed over a metre target) is the same fout regel raises.
         String eenheidFout = eenhedenCompatibel(doel, bron, "");   // RuleChecker prepends "verdeling: "
         if (eenheidFout != null) return eenheidFout;
         if (doel.onbeperkt()) return null;   // an unbounded (getal) target has no precision ceiling

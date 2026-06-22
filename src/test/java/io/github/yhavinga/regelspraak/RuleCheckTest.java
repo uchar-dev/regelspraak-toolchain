@@ -2,6 +2,7 @@ package io.github.yhavinga.regelspraak;
 
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
+import io.github.yhavinga.regelspraak.transpiler.DrlTranspiler;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -174,6 +175,32 @@ class RuleCheckTest {
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "een verdeling met gelijke eenheden mag geen fout geven: " + m.errors());
+    }
+
+    @Test void verdeling_over_een_niet_numeriek_doel_meldt_een_familiefout_en_markert() {
+        // §13.4.10 + toekenning family rule: a numeric verdeelplafond distributed over a NON-numeric recipient
+        // (a Tekst "aandeel") is the same family mismatch the ordinary regel raises — the family check runs
+        // BEFORE the getalachtig guard, so it is flagged, and the transpiler markers it instead of emitting an
+        // uncompilable BigDecimal setter against a Tekst attribute. (Found by the slice's adversarial review.)
+        String src = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Tekst;
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel deel
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld in gelijke delen.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("verdelen over een Tekst")),
+                () -> "verwachtte een familie-fout voor een niet-numeriek doel, kreeg: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("onopgelost verdeling"), () -> "een niet-numeriek doel moet markeren, niet loweren:\n" + drl);
+        assertFalse(drl.contains("setAandeel("), () -> "geen BigDecimal-setter tegen een Tekst-attribuut:\n" + drl);
     }
 
     @Test void percentage_waarde_met_numerieke_literal_grens_geen_fout() {

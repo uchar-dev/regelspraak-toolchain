@@ -448,20 +448,26 @@ public final class DrlTranspiler {
         Objecttype bron = v.bronType(), doel = v.doelType();
         String join = bron != null && doel != null ? model.verbindendeRol(doel, bron) : null;
         var methode = v.methode();
-        boolean gelijk = methode == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.GELIJKE_DELEN && join != null;
+        // The share is numeric (a division/fold of the verdeelplafond), so the recipient attribute must be
+        // getalachtig — else the modify would assign a BigDecimal to a Tekst/Datum setter, uncompilable DRL that
+        // sinks the whole package. A non-numeric doel stays an honest marker (the resolver also flags the family
+        // mismatch, the same fout regel raises for the equivalent assignment).
+        Datatype doelType = doel != null && v.doelAttribuut() != null ? doel.attribuut(v.doelAttribuut()) : null;
+        boolean doelOk = doelType != null && doelType.isGetalachtig();
+        boolean gelijk = methode == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.GELIJKE_DELEN && join != null && doelOk;
         // NAAR RATO needs the join AND a weight that is a real GETALACHTIG (numeriek/percentage) field of the
         // recipient: heeftLid alone would also accept a Tekst attribute or a boolean kenmerk, whose getter
         // cannot be summed/multiplied — uncompilable DRL that sinks the whole package. A non-numeric, foreign,
         // or absent weight therefore stays the honest no-op marker.
         Datatype gewichtType = doel != null && v.ratoAttribuut() != null ? doel.attribuut(v.ratoAttribuut()) : null;
-        boolean rato = methode == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.NAAR_RATO && join != null
+        boolean rato = methode == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.NAAR_RATO && join != null && doelOk
                 && gewichtType != null && gewichtType.isGetalachtig();
         // §9.7.2 op volgorde van: the recipients are partitioned by an ORDERABLE ordering key (a number or a
         // date — rsVerdeelOpVolgorde compareTo-sorts it) and the pot is depleted group-by-group; a "naar rato"
         // tie additionally needs a getalachtig tie weight (it is summed). Anything else stays the marker.
         Datatype groepType = methode == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.OP_VOLGORDE
                 && doel != null && v.groepeerAttribuut() != null ? doel.attribuut(v.groepeerAttribuut()) : null;
-        boolean opVolgorde = methode == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.OP_VOLGORDE && join != null
+        boolean opVolgorde = methode == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.OP_VOLGORDE && join != null && doelOk
                 && groepType != null && groepType.isOrdenbaar()
                 && (v.ratoAttribuut() == null || (gewichtType != null && gewichtType.isGetalachtig()));
         if (!gelijk && !rato && !opVolgorde) {

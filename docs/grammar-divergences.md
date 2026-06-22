@@ -950,8 +950,12 @@ however, ride on the equal-shares / naar-rato spine when no grouping and no maxi
    carries the bron's eenheid (equal-shares `total/count` and naar-rato `total·w/Σw` both keep it — the weight
    ratio is dimensionless), so a bron family/unit inconvertible to the doel's (€ distributed over a metre target,
    or a Percentage bron into a Numeriek doel) raises the same fout the ordinary `regel` does — previously the
-   verdeling ran only the precision check and stayed silent. No-op for the unitless TOKA corpus. The shared
-   `eenhedenCompatibel` helper gained an optional (empty) context prefix so the verdeling message is not
+   verdeling ran only the precision check and stayed silent. The **family check runs BEFORE the getalachtig
+   guard**, so a numeric verdeelplafond distributed over a *non-numeric* recipient (a Numeriek bron into a Tekst/
+   Datum doel) is flagged as the family mismatch it is (a slice review caught the early-return swallowing it); and
+   the transpiler gates the lowering on a getalachtig doel, so such a malformed verdeling **markers** instead of
+   emitting an uncompilable `BigDecimal` setter against a Tekst attribute. No-op for the unitless TOKA corpus. The
+   shared `eenhedenCompatibel` helper gained an optional (empty) context prefix so the verdeling message is not
    double-prefixed by `RuleChecker`'s own "verdeling: ".
 
 ### §9.7.3/§9.7.4/§9.7.5 verdeling met maximum, afronding en onverdeelde rest — cap, floor, recomputable remainder
