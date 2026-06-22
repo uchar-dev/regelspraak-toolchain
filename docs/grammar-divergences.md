@@ -610,6 +610,36 @@ whole set unrestricted. The `gedurende de tijd dat` form is deliberately **not**
 "currently true" guard: without a real time axis that loses the §5.1 piecewise period model, so it stays an
 honest marker rather than a silently-degraded fire. Temporal IR stays carded (p5/p2).
 
+The **declaration side of the temporal model is now captured** (§13.3.6), the IR-shape foundation for that
+carded Phase-7 value model. An attribute or kenmerk with a tijdlijn — "de premie Bedrag **voor elk jaar**",
+"is duurzaam kenmerk **voor elke dag**" — records a `Granulariteit {DAG,WEEK,MAAND,KWARTAAL,JAAR}` in a
+parallel `attribuutGranulariteit` / `kenmerkGranulariteit` map on the `Objecttype` (mirroring
+`attribuutDimensies`, so the `Datatype` hierarchy and the typeringen matrix are untouched). `member()`
+previously read the datatype, plural and dimensions but **never** `a.tijdlijn()`, so a temporal attribute
+was indistinguishable from a single-value one. Both the single-period token form ("voor elke dag" → DAG)
+and the multi-period plural unit ("voor elke 5 maanden" → MAAND) reduce to the unit; the period **count**
+and the **startpunt** (vast/variabel) are not yet captured. The named form "voor elke `<tijdlijn>`" adopts
+the granularity of its standalone `Tijdlijn` definition ("Tijdlijn de periode … heeft tijdvakken van een
+kwartaal" → KWARTAAL): the definitions are registered in pass 1 so declaration order is free, and the
+reference is matched to the definition on a whitespace-collapsed, leading-lidwoord-stripped name (the
+reference drops the "de" the definition carries and may wrap across lines). An unresolved name (the
+definition living in another file — the corpus splits them per construct) leaves the attribute untagged,
+no granularity faked. Resolver-only: the periods themselves (knip-merge, tijdsevenredig, gedurende) are
+still unlowered, and the 193-file corpus DRL is byte-identical.
+
+### Tekstreeks `«…»` string-building (§13.4.17.9) — flagged, not silently mis-lowered
+
+A tekstreeks `"nummer «het identificatienummer …» einde"` builds a string by **substituting** each `«…»`
+part at evaluation time. The `STRING_LITERAL` lexer rule swallows the whole quoted span — guillemets and
+the inner reference — as one opaque token, and the resolver turned it into a plain `Tekst` literal, so the
+transpiler baked the guillemet *source* straight into the DRL string: at fire time every fact got the
+literal text `nummer «…» einde` instead of the substituted value (no error, a wrong runtime result — the
+worst class). The tekstWaarde branch now raises an **ERROR** ("tekstreeks … wordt nog niet ondersteund")
+when the literal contains a guillemet; an ordinary `"…"` literal has none and is untouched. This is the
+honest-marker tier; the real feature (a lexer string sub-mode splitting the literal into chunks and
+`«expressie»` escapes, a `TekstReeks` IR node, an mvel-concat lowering) is a separate multi-layer turn. No
+corpus file uses guillemets, so the corpus DRL is byte-identical and no example trips the new ERROR.
+
 ### Reading a single dimension cell (§3.6) — peel `<voorzetsel> <label>`, marker an under-specified read
 
 A gedimensioneerd attribuut read in a rule must pin every dimension (§3.6: "dienen dan altijd alle
@@ -718,6 +748,17 @@ so an instance in several sets matches once and is counted once (a true union, n
 sizes). A union with any unresolvable operand (a bare set, a comparison, a different element) stays a
 marker. A multi-operand min/max VALUE-fold is excluded (its die is on a sub-operand navigation). Still
 carded (p29): inflected/meervoud kenmerk spellings, and the value-fold operand die.
+
+A **multi-operand min/max value-fold over to-many sets** — "de hoogste van de prijs van alle vluchten
+**én** de andere prijs van alle vluchten" (§5.8.3) — is now a `/* TODO aggregatie MAXIMUM/MINIMUM */`
+**marker** rather than a silent fold over only the first set. The accumulate path reads one source
+pattern (`argumenten().get(0)`), so a second set operand (and any die on it) would be dropped; only
+`AANTAL` carried a multi-operand guard, so `MINIMUM`/`MAXIMUM` silently lost the rest. The guard bails
+the over-a-set multi-operand case to a marker. A **scalar** multi-operand fold ("de hoogste van a en b"
+of one object) is unaffected — it lowers to a nested ternary via `concatenatieAggregatie`, which runs
+*before* `accumulate` — and the **single-operand** set min/max (the canonical §5.8.3 example) still
+emits its accumulate. Carded: the real per-operand multi-set fold (one accumulate per set, combined),
+and the analogous `SOM`/`TOTAAL` multi-set case.
 
 ### Aggregation operand separator — `en` splits, it is not a name word
 
