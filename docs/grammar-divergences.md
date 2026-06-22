@@ -435,9 +435,17 @@ non-`een` name is resolved **kenmerk-first** (Tabel 16): `kenmerkConditie` claim
 kenmerk is written exactly this way, `is <k>`), and only a name that is a role but **not** a kenmerk falls through
 to the §8.1.7 rolcheck (`<refField> != null`). Gated to the IS-verb — `heeft <rol>` is the far-side possessive
 (the subject *owns* the filler), which needs an exists-join and stays a marker, never the wrong near-side test.
-Corpus byte-identical (no corpus condition uses the bare `is <rolnaam>` form). **Still carded:** the negated `is
-geen <rol>`/`is geen <kenmerk>` (its `geen` lexes into the `kaleNaam` with no `een`), and the FAR-side rolcheck
-(`heeft een <rol>` — an exists-join that does not fit a single in-pattern constraint).
+Corpus byte-identical (no corpus condition uses the bare `is <rolnaam>` form).
+
+The **negated membership** `<subject> is geen <rol>` / `is geen <kenmerk>` (§8.1.7 / §8.1.8.3) now lowers as well.
+`geen` carries no token (only `GEEN_VAN_DE`), so it lexes as part of the `kaleNaam` and reaches the non-`een` path
+with `naam = "geen <X>"`. The kenmerk negation rides the existing `bindKenmerk` `geen`-de-negation (its verb gate
+was dropped, so `is geen <k>` lowers like `heeft geen <k>` → `<k> == false`); a leftover `geen <rol>` is the
+inverse rolcheck — `Conditie.Rollidmaatschap` gained a `negatie` flag and the transpiler emits `<refField> == null`.
+Per Tabel 16 the negation is resolved kenmerk-first (verbatim-first, so a kenmerk literally named `geen …` still
+binds positively); the boolean lowering is the same regardless of soort, so the noch-noch form is not soort-gated.
+Corpus byte-identical (no corpus `is geen <declared X>` flips). **Still carded:** the FAR-side rolcheck (`heeft een
+<rol>` — an exists-join that does not fit a single in-pattern constraint).
 
 **Navigated and negated forms are now lowered too.** A TO-ONE navigated kenmerk (`de partner van een
 Persoon gepensioneerd is`) resolves the kenmerk against the navigated type and lowers to the null-guarded

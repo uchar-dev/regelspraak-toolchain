@@ -4061,7 +4061,11 @@ class DroolsExecutionTest {
      *  negation of "is een <kenmerk>", which is itself deferred for the §13.4.15.44/.45 membership ambiguity
      *  (p28). Lowering only the negation would gate one of a complementary pair while the other is an inert
      *  no-op. So it lowers to a compileerbare false-marker and the rule never fires. */
-    @Test void noch_noch_is_geen_negatie_blijft_een_marker_geen_stille_gate() {
+    @Test void noch_noch_is_geen_kenmerk_negatie_gate_op_de_afwezige_kenmerken() {
+        // §8.1.8.3 noch-noch negation "is geen <zelfstandig kenmerk>" now lowers to the boolean negation
+        // "reiziger == false" (it used to stay a marker). The "geen" lexes inside the kaleNaam (no GEEN token),
+        // so bindKenmerk de-negates it exactly like "heeft geen <k>". The gate fires for the persons who are NOT
+        // a reiziger, and not for those who are.
         String src = """
             Objecttype de Persoon
                 de uitkomst Numeriek (geheel getal);
@@ -4074,15 +4078,49 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("false /* TODO voorwaarde"), () -> "is-geen noch-noch moet een marker blijven:\n" + drl);
-        assertFalse(drl.contains("reiziger == false"), () -> "is-geen noch-noch mag niet stil gegated worden:\n" + drl);
+        assertTrue(drl.contains("reiziger == false"), () -> "is-geen kenmerk-negatie niet gelowerd:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "is-geen kenmerk-negatie mag geen marker meer zijn:\n" + drl);
 
-        KieSession sessie = build(drl).newKieSession();   // build() FAILS if the marker is not compileerbaar
-        Persoon p = new Persoon();
-        sessie.insert(p);
+        KieSession sessie = build(drl).newKieSession();
+        Persoon reiziger = new Persoon(); reiziger.setReiziger(true);   // IS a reiziger -> not gated
+        Persoon ander = new Persoon();                                  // NOT a reiziger -> gated
+        sessie.insert(reiziger); sessie.insert(ander);
         sessie.fireAllRules();
         sessie.dispose();
-        assertNull(p.getUitkomst(), "een noch-noch is-geen marker moet een no-op zijn (niet stil vuren)");
+        assertNull(reiziger.getUitkomst(), "een reiziger -> 'geen reiziger' is onwaar -> niet gegated");
+        assertEquals(0, new BigDecimal("1").compareTo(ander.getUitkomst()), () -> "geen reiziger -> gegated, kreeg " + ander.getUitkomst());
+    }
+
+    @Test void is_geen_rol_negatie_gate_op_de_niet_vervulde_rol() {
+        // §8.1.7 negation "is geen <rol>": the subject does NOT fill the role -> the inverse null-test
+        // "reis == null". Fires for a passagier WITHOUT a reis, not for one with. The kenmerk negation already
+        // claimed any "geen <kenmerk>" name, so only a "geen <rol>" reaches the negated rolcheck.
+        String src = """
+            Objecttype de Passagier
+                is minderjarig kenmerk (bijvoeglijk);
+            Objecttype de Vlucht
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            Regel rol negatie
+                geldig altijd
+                    Een passagier is minderjarig indien hij geen passagier is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("reis == null"), () -> "is-geen rolcheck-negatie niet als reis == null gelowerd:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v = new Vlucht();
+        Passagier metReis = new Passagier(); metReis.setReis(v);   // IS a passagier -> not gated
+        Passagier zonder = new Passagier();                        // geen reis -> gated
+        for (Object o : new Object[]{v, metReis, zonder}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertFalse(metReis.isMinderjarig(), "heeft reis -> is wél een passagier -> 'geen passagier' onwaar -> niet gegated");
+        assertTrue(zonder.isMinderjarig(), "geen reis -> 'geen passagier' waar -> gegated");
     }
 
     /** §5.8.5 dimensieaggregatie: "de som van zijn betaalde belasting in jaar vanaf vier jaar geleden

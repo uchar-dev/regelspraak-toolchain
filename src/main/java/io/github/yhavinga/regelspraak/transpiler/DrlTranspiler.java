@@ -1561,7 +1561,10 @@ public final class DrlTranspiler {
         // exists-join would be needed, which does not fit a single in-pattern constraint.
         if (c instanceof Conditie.Rollidmaatschap r) {
             String veld = subject != null ? model.verbindendeRol(subject, r.anderTeFiller()) : null;
-            if (veld != null && !model.naarVeelRol(subject, r.anderTeFiller(), veld)) return ident(veld, false) + " != null";
+            // the subject fills the role iff its reference to the other end is set; the §8.1.7 "is geen" negation
+            // is the inverse null-test. The far-side / to-many case has no in-pattern reference -> marker.
+            if (veld != null && !model.naarVeelRol(subject, r.anderTeFiller(), veld))
+                return ident(veld, false) + (r.negatie() ? " == null" : " != null");
             return onopgelosteConstraint("rollidmaatschap '" + r.rol() + "'", c.bron());
         }
         if (c instanceof Conditie.Samengesteld s) {

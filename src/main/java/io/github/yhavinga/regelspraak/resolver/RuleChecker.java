@@ -875,14 +875,20 @@ final class RuleChecker {
         // the operator's kaleNaam; for "hij"/a bare subject the kop is empty and the name is the kaleNaam.
         String naam = kop.isEmpty() ? staart : kop + " " + staart;
         if (!metEen) {
-            // §8.1.8 "is/heeft <kenmerk>" first. §13.4.15.44 makes the "een" optional in the IS-form rolcheck
-            // ("hij is passagier"), so when the name is not a kenmerk fall back to a §8.1.7 rolcheck — kenmerk-
-            // first (the non-"een" form IS how a bijvoeglijk kenmerk is written, so kenmerkConditie already claims
-            // those; only a name that is a ROLE but not a kenmerk newly binds). Gated to the IS-verb: "heeft
-            // <rol>" is the far-side possessive (the subject OWNS the filler), which needs an exists-join and
-            // stays a marker — never the near-side "<refField> != null" lowering, which would be the wrong test.
+            // §8.1.8 "is/heeft <kenmerk>" first (incl. the §8.1.8.1/.2/.3 "niet"/"geen" negations, which
+            // kenmerkConditie de-negates to "== false"). §13.4.15.44 makes the "een" optional in the IS-form
+            // rolcheck ("hij is passagier"), so when the name is not a kenmerk fall back to a §8.1.7 rolcheck —
+            // kenmerk-first (the non-"een" form IS how a bijvoeglijk kenmerk is written, so kenmerkConditie already
+            // claims those; only a name that is a ROLE but not a kenmerk newly binds). Gated to the IS-verb:
+            // "heeft <rol>" is the far-side possessive (the subject OWNS the filler), which needs an exists-join
+            // and stays a marker — never the near-side "<refField> != null" lowering, which would be the wrong test.
             Conditie kc = kenmerkConditie(subject, naam, null, heeftWerkwoord, bron);
-            if (kc != null || heeftWerkwoord) return kc;
+            if (kc != null) return kc;
+            if (heeftWerkwoord) return null;
+            // §8.1.7 negation "is geen <rol>": the kenmerk negation was already taken by kenmerkConditie, so a
+            // leftover "geen <name>" that is a role lowers to the INVERSE rolcheck (the subject does not fill it).
+            if (naam.regionMatches(true, 0, "geen ", 0, 5))
+                return rolLidmaatschap(subject, naam.substring(5).trim(), bron, true);
             return rolLidmaatschap(subject, naam, bron);
         }
         // EEN-form: the grammar conflates a kenmerknaam and a rolnaam after "een", so disambiguate by lookup,
@@ -905,14 +911,17 @@ final class RuleChecker {
                 ? new Conditie.Kenmerk(g, bron) : null;
     }
 
-    /** §8.1.7 rolcheck: "&lt;subject&gt; is een &lt;rolnaam&gt;" — true when the subject fills that role.
+    /** §8.1.7 rolcheck: "&lt;subject&gt; is (een) &lt;rolnaam&gt;" — true when the subject fills that role.
      *  Resolves to a {@link Conditie.Rollidmaatschap} carrying the OTHER end of the feittype (so the
      *  transpiler can null-test the subject's reference to it). Null when no role the subject fills bears
-     *  that name (-> Onopgelost marker, never a wrong gate). The negated "is geen" form is carded — its
-     *  "geen" parses into the kaleNaam with no "een", so it does not reach this EEN-form path. */
+     *  that name (-> Onopgelost marker, never a wrong gate). */
     private Conditie rolLidmaatschap(Objecttype subject, String naam, String bron) {
+        return rolLidmaatschap(subject, naam, bron, false);
+    }
+    /** As above, with {@code negatie} for the §8.1.7 "is geen &lt;rol&gt;" form (the subject does NOT fill it). */
+    private Conditie rolLidmaatschap(Objecttype subject, String naam, String bron, boolean negatie) {
         Objecttype ander = model.rolSiblingType(subject, naam);
-        return ander != null ? new Conditie.Rollidmaatschap(naam, ander, bron) : null;
+        return ander != null ? new Conditie.Rollidmaatschap(naam, ander, bron, negatie) : null;
     }
 
     /** Resolve {@code kenmerk} on {@code type} into a {@link Conditie.Kenmerk}, honouring a leading "niet"
@@ -936,9 +945,9 @@ final class RuleChecker {
         return gestript.equals(kenmerk) ? null : bindKenmerk(type, gestript, navigatie, heeftWerkwoord, bron);
     }
 
-    /** Bind one candidate name to a declared kenmerk of {@code type}, honouring a leading "niet" or, under
-     *  the hebben-verb, "geen" as NEGATION — but each only after the WHOLE name fails, so a kenmerk declared
-     *  starting with niet/geen still binds positively (never silently inverted). Null when nothing binds. */
+    /** Bind one candidate name to a declared kenmerk of {@code type}, honouring a leading "niet" or "geen"
+     *  as NEGATION — but each only after the WHOLE name fails, so a kenmerk declared starting with niet/geen
+     *  still binds positively (never silently inverted). Null when nothing binds. */
     private static Conditie bindKenmerk(Objecttype type, String naam, String navigatie, boolean heeftWerkwoord, String bron) {
         String g = KenmerkMatcher.vind(type, naam);
         if (g != null) return new Conditie.Kenmerk(g, navigatie, false, bron);
@@ -947,12 +956,12 @@ final class RuleChecker {
             g = KenmerkMatcher.vind(type, naam.substring(5).trim());
             if (g != null) return new Conditie.Kenmerk(g, navigatie, true, bron);
         }
-        // §8.1.8.2 bezittelijk negation "heeft geen <k>" -> "== false". Gated on the hebben-verb: the
-        // noch-noch "is geen <k>" (§8.1.8.3) is the negation of "is een <k>", itself left a marker for the
-        // §13.4.15.44/.45 objecttype/role-membership ambiguity (p28) — lowering only its negation would gate
-        // one of a complementary pair while the other stays an inert no-op. "geen" carries no token (only
-        // GEEN_VAN_DE), so it lexes as LOWER_ID and rides inside the kaleNaam into this reconstructed name.
-        if (heeftWerkwoord && naam.regionMatches(true, 0, "geen ", 0, 5)) {
+        // Negation with "geen" -> "== false": the §8.1.8.2 bezittelijk form "heeft geen <k>" AND the §8.1.8.3
+        // noch-noch form "is geen <k>" (both lower to the same boolean negation, so the verb need not gate it;
+        // a soort distinction governs only positive writing-form validation, not the negated lowering). "geen"
+        // carries no token (only GEEN_VAN_DE), so it lexes as LOWER_ID and rides inside the kaleNaam into this
+        // reconstructed name. Verbatim-first above means a kenmerk literally named "geen …" still binds positively.
+        if (naam.regionMatches(true, 0, "geen ", 0, 5)) {
             g = KenmerkMatcher.vind(type, naam.substring(5).trim());
             if (g != null) return new Conditie.Kenmerk(g, navigatie, true, bron);
         }
