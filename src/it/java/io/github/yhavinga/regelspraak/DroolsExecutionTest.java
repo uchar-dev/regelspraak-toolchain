@@ -254,6 +254,34 @@ class DroolsExecutionTest {
                 () -> "geclipte totaal (heeft-vorm) moet 6x10 + 1x11 = 71 zijn, was " + p.getTotaleBelastingvermindering());
     }
 
+    @Test void eenvorm_heeft_een_bezittelijk_kenmerk_vuurt_de_voorwaarde() {
+        // §8.1.8.2 "indien hij EEN recht op duurzaamheidskorting HEEFT" — the EEN-form HEEFT membership over a
+        // BEZITTELIJK kenmerk now BINDS (was an Onopgelost marker that no-op'd the rule), so the condition gates:
+        // the rule fires for a holder, not for a non-holder.
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                het recht op duurzaamheidskorting kenmerk (bezittelijk);
+                de uitkomst Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 5 indien hij een recht op duurzaamheidskorting heeft.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Persoon heeft = new Persoon();  heeft.setRechtOpDuurzaamheidskorting(true);
+        Persoon zonder = new Persoon(); zonder.setRechtOpDuurzaamheidskorting(false);
+        sessie.insert(heeft); sessie.insert(zonder);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("5").compareTo(heeft.getUitkomst()),
+                () -> "houder moet uitkomst 5 krijgen, was " + heeft.getUitkomst());
+        assertNull(zonder.getUitkomst(), () -> "niet-houder mag geen uitkomst krijgen, was " + zonder.getUitkomst());
+    }
+
     @Test void navigated_temporeel_totaal_leest_de_tijdreeks_van_de_partner() {
         // "het totaal van de <temporeel attribuut> van zijn <rol>" reads the to-ONE partner's timeline,
         // root-guarded, and folds it via rsTijdTotaal — NOT a wrong sum() over the List<Segment>. A partnerless

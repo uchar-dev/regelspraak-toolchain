@@ -890,10 +890,14 @@ final class RuleChecker {
             return rolLidmaatschap(subject, naam, bron);
         }
         // EEN-form: the grammar conflates a kenmerknaam and a rolnaam after "een", so disambiguate by lookup,
-        // kenmerk-first (Tabel 16). §8.1.8.3: "is een <zelfstandig kenmerk>" binds a kenmerk ONLY when it is
-        // ZELFSTANDIG (a bijvoeglijk kenmerk is written "is <k>", a bezittelijk one "heeft het <k>", so neither
-        // takes "een"). Otherwise it is the §8.1.7 rolcheck "is een <rolnaam>".
-        Conditie k = zelfstandigKenmerk(subject, naam, bron);
+        // kenmerk-first (Tabel 16). The verb selects which kenmerk SOORT the EEN-form may bind: "is een <k>" is
+        // §8.1.8.3 (a ZELFSTANDIG kenmerk — a bijvoeglijk kenmerk is written "is <k>" without "een"), while
+        // "heeft een <k>" is §8.1.8.2 (a BEZITTELIJK kenmerk — the §7.1 verbatim "heeft een recht op
+        // belastingvermindering"; the canonical "heeft het <k>" rides the non-EEN path above). Neither soort can
+        // bind under the other verb. A name that is no such kenmerk falls through to the §8.1.7 rolcheck "is/heeft
+        // een <rolnaam>" (incl. the far-side "heeft een <rol>" exists-join).
+        Conditie k = heeftWerkwoord ? bezittelijkKenmerk(subject, naam, bron)
+                                    : zelfstandigKenmerk(subject, naam, bron);
         return k != null ? k : rolLidmaatschap(subject, naam, bron);
     }
 
@@ -906,6 +910,18 @@ final class RuleChecker {
     private Conditie zelfstandigKenmerk(Objecttype subject, String naam, String bron) {
         String g = KenmerkMatcher.vind(subject, naam);
         return g != null && subject.kenmerkSoort(g) == Objecttype.KenmerkSoort.ZELFSTANDIG
+                ? new Conditie.Kenmerk(g, bron) : null;
+    }
+
+    /** §8.1.8.2 "&lt;subject&gt; heeft een &lt;bezittelijk kenmerk&gt;" -> a {@link Conditie.Kenmerk} ("k == true"),
+     *  but ONLY for a {@link Objecttype.KenmerkSoort#BEZITTELIJK} kenmerk: the EEN-form heeft binds a possession of
+     *  a kenmerk (the §7.1 "heeft een recht op belastingvermindering"), while a possession of a ROLE
+     *  ("heeft een passagier") is no kenmerk and stays null for the caller's §8.1.7 far-side rolcheck. A
+     *  bijvoeglijk/zelfstandig kenmerk uses "is", so the heeft EEN-form must not bind them. Null when no
+     *  BEZITTELIJK kenmerk of {@code subject} bears the name. */
+    private Conditie bezittelijkKenmerk(Objecttype subject, String naam, String bron) {
+        String g = KenmerkMatcher.vind(subject, naam);
+        return g != null && subject.kenmerkSoort(g) == Objecttype.KenmerkSoort.BEZITTELIJK
                 ? new Conditie.Kenmerk(g, bron) : null;
     }
 
