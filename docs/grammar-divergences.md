@@ -640,18 +640,33 @@ quarter). A null list or a segment with a null bound/value contributes nothing (
 timeline totals 0. It is a transpiler-only recognition — **no** new sealed-`Expr` member — so a NON-temporal
 `TOTAAL` (the ordinary set sum) still flows to the instance-accumulate path; the corpus DRL is byte-identical,
 proven by firing the spec's €186 worked example (12 mnd × 10 + 6 mnd × 11) and the empty/null-timeline cases in
-real Drools. Three readings are deliberately **markered, not faked** (each caught or confirmed by adversarial
-review): a `gedurende de tijd dat <voorwaarde>` restriction rides as the resolver's `Onopgelost` filter, which
-`tijdreeksAggregatie` honours (like every sibling aggregation) — folding the unrestricted timeline would compute
-the wrong condition-free total (§7.1's €71 case); a **multi-period** attribute ("voor elke 5 maanden", inline OR
-a named "tijdvakken van 5 maanden") would weight by 5-month tijdvakken, semantics §7.1 does not work out, so its
-totaal markers rather than mis-counting it 5× as single-period (the count rides on the `Tijdlijn` record and the
-`attribuutTijdlijnAantal` map). A **navigated** temporal totaal ("het totaal van de X per maand van zijn partner")
-is *not* yet handled — `tijdreeksAggregatie` declines it (navigatieRol ≠ null) and it currently falls through to a
-non-meaningful `sum()` over the `List<Segment>` getter (pre-existing, **carded**). Other carded follow-ons:
-`tijdsevenredig deel` and `aantal dagen in` (which PRODUCE a timeline), and the per-period WRITE path ("voor elke
-maand gesteld worden op", a grammar gap); the helper truncates a sub-period-aligned segment (exact for
-boundary-aligned timelines).
+real Drools. Two further temporal totaal forms now lower. A **`gedurende de tijd dat <temporeel kenmerk>`**
+restriction (§7.1's €71 case) is structured — when the totaal is over the subject's own single-period temporal
+attribute and the voorwaarde is a simple `is <kenmerk>` membership naming a single-period temporal kenmerk of the
+subject — into a temporal `Conditie.Kenmerk` (via `KenmerkMatcher`, tightly gated so the accumulate path never
+misreads this subject-kenmerk as an element die-filter), which the transpiler clips the value timeline by:
+`rsTijdTotaal(rsTijdKnip(getValue(), getKenmerk()), "MAAND")`, where `rsTijdKnip` intersects each value Segment with
+the kenmerk's TRUE-period Segments. A **navigated** to-ONE temporal totaal ("het totaal van de X per maand van zijn
+partner") now folds the partner's timeline via `rsTijdTotaal` over the same root-guarded getter chain the navigated
+value read uses (a null reference → leeg). Both fire (the €71 clip; a partner's 12-month series → 120). Still
+**markered, not faked**: a **multi-period** attribute ("voor elke 5 maanden", inline OR named) — semantics §7.1
+does not work out (the count rides on the `Tijdlijn` record + `attribuutTijdlijnAantal`); a **to-many** navigated
+totaal (cannot be one getter); and any gedurende the resolver could not structure (a NEGATED / comparison /
+compound / navigated / non-temporal condition) which stays an `Onopgelost` marker. Carded follow-ons: the negated
+and compound `gedurende`, `tijdsevenredig deel` and `aantal dagen in` (which PRODUCE a timeline, reusing
+`rsTijdKnip`), and the per-period WRITE path ("voor elke maand gesteld worden op", a grammar gap); the helper
+truncates a sub-period-aligned segment (exact for boundary-aligned timelines).
+
+### Elfproef predicate (§8.1.3) — lowered to a registered rsElfproef helper
+
+"voldoet aan de elfproef" type-checked but the transpiler's predicate switch markered it (a `false /* TODO */`
+no-op that never fired). It now lowers to a registered `rsElfproef(Object)` helper: per §8.1.3 it weights each
+digit by its position from the right (the controlecijfer −1, then 2, 3, …; an n-digit reeks weights its leftmost
+digit by n down to 2, the last by −1) and passes iff the weighted sum is divisible by 11 AND the number is not all
+zeros. It admits a Numeriek (geheel getal) — leading zeros already gone — or a Tekst of digits (preserving voor-/
+achterloopnullen); a null, fractional, or non-digit value fails. A boolean-returning function is valid in a pattern
+constraint and fires (the spec's 192837465 fails, sum 205 rest 7; 111222333 passes, sum 66). The sibling default-arm
+predicates `numeriek met exact <n> cijfers` and the dagsoortcontrole stay markered — carded.
 
 ### Timed dedato literal is a Datum-tijd, not a Datum in dagen (§13.2.19/.21)
 
