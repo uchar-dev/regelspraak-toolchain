@@ -26,9 +26,13 @@ public final class DefinitionResolver {
     private final RegelSpraakModel model = new RegelSpraakModel();
 
     public RegelSpraakModel build(RegelSpraakDocumentContext doc) {
-        for (DefinitieContext d : definities(doc)) {        // pass 1: domains + units
+        for (DefinitieContext d : definities(doc)) {        // pass 1: domains + units + timelines
             if (d.domeinDefinition() != null) domein(d.domeinDefinition());
             if (d.eenheidsysteemDefinition() != null) eenheidsysteem(d.eenheidsysteemDefinition());
+            // a named timeline must be registered before pass 2, so an attribute's "voor elke <tijdlijn>"
+            // reference can adopt its granularity regardless of declaration order (§13.3.6.9). It reads only
+            // its own tokens, so it has no dependency on objecttypes/feittypes processed in pass 2.
+            if (d.tijdlijnDefinitie() != null) tijdlijn(d.tijdlijnDefinitie());
         }
         for (DefinitieContext d : definities(doc)) {        // pass 2: everything that references them
             if (d.objectTypeDefinition() != null) objecttype(d.objectTypeDefinition());
@@ -36,7 +40,6 @@ public final class DefinitionResolver {
             if (d.parameterDefinition() != null) parameter(d.parameterDefinition());
             if (d.feitTypeDefinition() != null) feittype(d.feitTypeDefinition());
             if (d.dagsoortDefinition() != null) model.dagsoorten.add(naam(d.dagsoortDefinition().lowerNaam()));
-            if (d.tijdlijnDefinitie() != null) tijdlijn(d.tijdlijnDefinitie());
             if (d.dimensieDefinition() != null) dimensie(d.dimensieDefinition());
         }
         for (RegelContext r : doc.regel()) {
@@ -317,7 +320,28 @@ public final class DefinitionResolver {
         }
         if (t.meervoudigePeriode() != null)
             return granulariteitVanMeervoud(t.meervoudigePeriode().tijdseenhedenMeervoud());
+        // §13.3.6.9 the named form "voor elke <tijdlijn>" adopts the granularity of the standalone Tijdlijn
+        // definition of that name (registered in pass 1). The reference drops the leading lidwoord the
+        // definition carries ("elke periode …" vs "Tijdlijn de periode …") and may wrap across lines, so
+        // match on a whitespace-collapsed, lidwoord-stripped name. An unresolved name (e.g. the definition
+        // lives in another file) leaves the attribute untagged — no granularity claimed, not faked.
+        if (t.ELKE() != null && t.tijdlijnNaam() != null) {
+            String ref = normaliseerTijdlijnNaam(src(t.tijdlijnNaam()));
+            return model.tijdlijnen.stream()
+                    .filter(tl -> normaliseerTijdlijnNaam(tl.naam()).equals(ref))
+                    .map(Tijdlijn::granulariteit).findFirst().orElse(null);
+        }
         return null;
+    }
+
+    /** Normalise a tijdlijn name for cross-reference matching: collapse internal whitespace (names may wrap
+     *  across source lines), lowercase, and strip a single leading lidwoord (the definition writes "de
+     *  periode …", the reference "elke periode …"). */
+    private static String normaliseerTijdlijnNaam(String s) {
+        String n = s.trim().replaceAll("\\s+", " ").toLowerCase();
+        for (String lw : new String[]{"de ", "het ", "een "})
+            if (n.startsWith(lw)) return n.substring(lw.length());
+        return n;
     }
 
     /** §13.3.6.10 the {@link Granulariteit} a standalone tijdlijn DEFINITION declares ("heeft tijdvakken van

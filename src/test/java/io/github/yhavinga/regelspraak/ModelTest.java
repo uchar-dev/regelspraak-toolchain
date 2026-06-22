@@ -79,6 +79,25 @@ class ModelTest {
         assertEquals(RegelSpraakModel.Granulariteit.DAG,   v.kenmerkGranulariteit.get("duurzaam"));
     }
 
+    @Test void benoemde_tijdlijn_referentie_neemt_de_granulariteit_van_haar_definitie_over() {
+        // §13.3.6.9: "voor elke <tijdlijn>" adopts the granularity of the named Tijdlijn definition, even
+        // though the reference drops the leading lidwoord ("elke periode …" vs "Tijdlijn de periode …") and
+        // the name wraps across lines. The definition is registered in pass 1 so declaration order is free.
+        String src = """
+            Domein Bedrag is van het type Numeriek (geheel getal)
+            Tijdlijn de periode van een kwartaal vanaf de geboortedatum heeft tijdvakken van een kwartaal met variabel startpunt;
+            Objecttype de Persoon (mv: Personen)
+                de belasting Bedrag voor elke periode van een kwartaal vanaf de geboortedatum;
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        assertEquals(1, m.tijdlijnen.size());
+        assertEquals(RegelSpraakModel.Granulariteit.KWARTAAL, m.tijdlijnen.get(0).granulariteit());
+        Objecttype p = m.objecttypen.get("Persoon");
+        assertEquals(RegelSpraakModel.Granulariteit.KWARTAAL, p.attribuutGranulariteit.get("belasting"),
+                () -> "de benoemde-tijdlijn referentie nam de granulariteit niet over: " + p.attribuutGranulariteit);
+    }
+
     @Test void domein_typed_attribuut_lost_op() {
         RegelSpraakModel m = Resolver.resolve(SRC);
         // "belasting op basis van afstand" is typed by domain Bedrag = Numeriek(2 decimalen)
