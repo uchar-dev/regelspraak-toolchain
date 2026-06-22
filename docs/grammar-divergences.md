@@ -638,14 +638,20 @@ registered `rsTijdTotaal` helper that folds the list, weighting each segment's v
 DAG/WEEK/MAAND/KWARTAAL/JAAR periods between its bounds (a kwartaal is three maanden; `ChronoUnit` has no
 quarter). A null list or a segment with a null bound/value contributes nothing (§4.20 leegwaarde); an empty
 timeline totals 0. It is a transpiler-only recognition — **no** new sealed-`Expr` member — so a NON-temporal
-`TOTAAL` (the ordinary set sum) still flows to the instance-accumulate path, and a navigated or multi-arg
-`TOTAAL` is unaffected; the corpus DRL is byte-identical, proven by firing the spec's €186 worked example
-(12 mnd × 10 + 6 mnd × 11) and the empty/null-timeline cases in real Drools. A **multi-period** attribute
-("voor elke 5 maanden") would need to weight by 5-month tijdvakken — semantics §7.1 does not work out — so its
-totaal **markers** (`/* TODO totaal van een meer-periodieke tijdreeks */`) rather than mis-counting it as
-single-period. Carded follow-ons: the `gedurende de tijd dat` knip (a period-intersection over the condition's
-own boolean timeline), `tijdsevenredig deel` and `aantal dagen in` (which PRODUCE a timeline), and the per-period
-WRITE path ("voor elke maand gesteld worden op", a grammar gap).
+`TOTAAL` (the ordinary set sum) still flows to the instance-accumulate path; the corpus DRL is byte-identical,
+proven by firing the spec's €186 worked example (12 mnd × 10 + 6 mnd × 11) and the empty/null-timeline cases in
+real Drools. Three readings are deliberately **markered, not faked** (each caught or confirmed by adversarial
+review): a `gedurende de tijd dat <voorwaarde>` restriction rides as the resolver's `Onopgelost` filter, which
+`tijdreeksAggregatie` honours (like every sibling aggregation) — folding the unrestricted timeline would compute
+the wrong condition-free total (§7.1's €71 case); a **multi-period** attribute ("voor elke 5 maanden", inline OR
+a named "tijdvakken van 5 maanden") would weight by 5-month tijdvakken, semantics §7.1 does not work out, so its
+totaal markers rather than mis-counting it 5× as single-period (the count rides on the `Tijdlijn` record and the
+`attribuutTijdlijnAantal` map). A **navigated** temporal totaal ("het totaal van de X per maand van zijn partner")
+is *not* yet handled — `tijdreeksAggregatie` declines it (navigatieRol ≠ null) and it currently falls through to a
+non-meaningful `sum()` over the `List<Segment>` getter (pre-existing, **carded**). Other carded follow-ons:
+`tijdsevenredig deel` and `aantal dagen in` (which PRODUCE a timeline), and the per-period WRITE path ("voor elke
+maand gesteld worden op", a grammar gap); the helper truncates a sub-period-aligned segment (exact for
+boundary-aligned timelines).
 
 ### Timed dedato literal is a Datum-tijd, not a Datum in dagen (§13.2.19/.21)
 
