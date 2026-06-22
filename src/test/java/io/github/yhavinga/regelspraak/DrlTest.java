@@ -2197,4 +2197,45 @@ class DrlTest {
         assertTrue(DrlTranspiler.transpile(Resolver.resolve(enkel)).contains("rsTijdTotaal"),
                 "een enkel-periodieke totaal moet via rsTijdTotaal lowereren");
     }
+
+    @Test void temporeel_totaal_met_gedurende_voorwaarde_laat_de_conditie_niet_vallen() {
+        // Review defect: a "gedurende de tijd dat <voorwaarde>" restriction on a temporal totaal must NOT be
+        // dropped — that would compute the unrestricted total (the spec's €186 instead of €71). The resolver
+        // leaves it an Onopgelost filter; tijdreeksAggregatie must honour it and MARKER, like every sibling
+        // aggregation path, never lower a condition-free rsTijdTotaal.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat hij rechthebbend is).
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertFalse(drl.contains("rsTijdTotaal"),
+                () -> "een gedurende-geconditioneerde totaal mag niet als onbeperkte rsTijdTotaal lowereren:\n" + drl);
+    }
+
+    @Test void benoemde_meer_periodieke_tijdlijn_wordt_ook_gemarkeerd_niet_single_period_geteld() {
+        // Review defect: a NAMED multi-period timeline ("voor elke blokperiode" -> "tijdvakken van 5 maanden")
+        // must inherit the period count from its definition and marker, not slip past the guard into a
+        // single-period rsTijdTotaal (the 5x mis-count the inline form already guards against).
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Tijdlijn de blokperiode heeft tijdvakken van 5 maanden startend op 9-3-2025;
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de premie per blok Bedrag voor elke blokperiode;
+                de totale premie Bedrag;
+            Regel Totale premie
+                geldig altijd
+                    De totale premie van een Passagier moet gesteld worden op het totaal van zijn premie per blok.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("/* TODO totaal van een meer-periodieke tijdreeks"),
+                () -> "een benoemde meer-periodieke totaal moet markeren:\n" + drl);
+        assertFalse(drl.contains("rsTijdTotaal"),
+                () -> "geen single-period rsTijdTotaal voor een benoemde 5-maanden tijdlijn:\n" + drl);
+    }
 }

@@ -435,10 +435,10 @@ public final class RegelSpraakModel {
      *  reduce to one of these. */
     public enum Granulariteit { DAG, WEEK, MAAND, KWARTAAL, JAAR }
 
-    /** §13.3.6.10 a named timeline: its naam, its {@link Granulariteit} (so a "voor elke &lt;naam&gt;"
-     *  attribute reference can adopt it), and whether `variabelStartpunt` is bound by a §13.4.12
-     *  startpuntbepaling. */
-    public record Tijdlijn(String naam, boolean variabelStartpunt, Granulariteit granulariteit) {}
+    /** §13.3.6.10 a named timeline: its naam, its {@link Granulariteit} and period {@code aantal} (so a "voor
+     *  elke &lt;naam&gt;" attribute reference adopts BOTH — "heeft tijdvakken van 5 maanden" is granularity MAAND,
+     *  count 5), and whether `variabelStartpunt` is bound by a §13.4.12 startpuntbepaling. */
+    public record Tijdlijn(String naam, boolean variabelStartpunt, Granulariteit granulariteit, int aantal) {}
 
     /** §13.3.7 a dimension and its ordered label values. {@code voorzetsel} is the §3.6 read preposition
      *  for the suffix form ("na het attribuut met voorzetsel <vz>": a cell reads "&lt;attribuut&gt; &lt;vz&gt;

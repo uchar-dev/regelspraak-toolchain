@@ -311,15 +311,19 @@ public final class DefinitionResolver {
     private void tijdlijn(TijdlijnDefinitieContext ctx) {
         boolean variabel = src(ctx).toLowerCase().contains("met variabel startpunt");
         String naam = src(ctx.tijdlijnNaam());
-        // §13.3.6.10: a "voor elke <tijdlijn>" reference adopts the FIRST timeline of that (normalised) name
-        // via findFirst, so two timelines sharing a name but declaring different granularities would silently
-        // disagree. Warn at registration rather than let the reference quietly take one.
+        Granulariteit gran = granulariteitVanDefinitie(ctx);
+        int aantal = aantalVanDefinitie(ctx);
+        // §13.3.6.10: a "voor elke <tijdlijn>" reference adopts the FIRST timeline of that (normalised) name via
+        // findFirst. Warn only when an earlier same-name timeline declares a DIFFERENT periodicity (granularity
+        // or count) — then the reference silently disagrees; an identical redeclaration is harmless.
         String genormaliseerd = normaliseerTijdlijnNaam(naam);
-        if (model.tijdlijnen.stream().anyMatch(tl -> normaliseerTijdlijnNaam(tl.naam()).equals(genormaliseerd)))
+        if (model.tijdlijnen.stream().anyMatch(tl -> normaliseerTijdlijnNaam(tl.naam()).equals(genormaliseerd)
+                && (tl.granulariteit() != gran || tl.aantal() != aantal)))
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
-                    "tijdlijn '" + naam + "' is meermaals gedefinieerd; een 'voor elke <naam>' verwijzing neemt de "
-                            + "granulariteit van de eerste (§13.3.6.10)", ctx.tijdlijnNaam().getStart().getLine()));
-        model.tijdlijnen.add(new Tijdlijn(naam, variabel, granulariteitVanDefinitie(ctx)));
+                    "tijdlijn '" + naam + "' is meermaals met verschillende periodiciteit gedefinieerd; een 'voor "
+                            + "elke <naam>' verwijzing neemt die van de eerste (§13.3.6.10)",
+                    ctx.tijdlijnNaam().getStart().getLine()));
+        model.tijdlijnen.add(new Tijdlijn(naam, variabel, gran, aantal));
     }
 
     /** §13.3.6 the {@link Granulariteit} of a tijdlijn ATTACHMENT on an attribute/kenmerk. The single-period
@@ -374,10 +378,28 @@ public final class DefinitionResolver {
     }
 
     /** §13.3.6.7 the period count of a tijdlijn attachment: the "5" in "voor elke 5 maanden". A single-period
-     *  form ("voor elke maand") and the named form carry no count, so they are 1. */
-    private static int aantalVan(TijdlijnContext t) {
-        if (t == null || t.meervoudigePeriode() == null) return 1;
-        TijdseenhedenMeervoudContext m = t.meervoudigePeriode().tijdseenhedenMeervoud();
+     *  form ("voor elke maand") carries none (1); the named form "voor elke &lt;tijdlijn&gt;" adopts its
+     *  definition's count (so "heeft tijdvakken van 5 maanden" → 5), mirroring {@link #granulariteitVan}. */
+    private int aantalVan(TijdlijnContext t) {
+        if (t == null) return 1;
+        if (t.meervoudigePeriode() != null) return aantalVanMeervoud(t.meervoudigePeriode().tijdseenhedenMeervoud());
+        if (t.ELKE() != null && t.tijdlijnNaam() != null) {
+            String ref = normaliseerTijdlijnNaam(src(t.tijdlijnNaam()));
+            return model.tijdlijnen.stream()
+                    .filter(tl -> normaliseerTijdlijnNaam(tl.naam()).equals(ref))
+                    .map(Tijdlijn::aantal).findFirst().orElse(1);
+        }
+        return 1;
+    }
+
+    /** §13.3.6.10 the period count a standalone tijdlijn DEFINITION declares ("heeft tijdvakken van 5 maanden" →
+     *  5), or 1 for the singular "een &lt;unit&gt;" form. */
+    private static int aantalVanDefinitie(TijdlijnDefinitieContext ctx) {
+        return aantalVanMeervoud(ctx.tijdseenhedenMeervoud());
+    }
+
+    /** The NUMBER of a plural period unit ("5 maanden" → 5), or 1 when absent. */
+    private static int aantalVanMeervoud(TijdseenhedenMeervoudContext m) {
         if (m == null || m.NUMBER() == null) return 1;
         try { return Integer.parseInt(m.NUMBER().getText()); } catch (NumberFormatException e) { return 1; }
     }

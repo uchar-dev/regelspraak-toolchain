@@ -1545,6 +1545,11 @@ public final class DrlTranspiler {
      *  and marker paths are unchanged (a non-temporal TOTAAL still flows to {@link #accumulate}). */
     private String tijdreeksAggregatie(Expr.Functie f, Objecttype subject) {
         if (f.kind() != Expr.FunctieKind.TOTAAL || f.argumenten().size() != 1) return null;
+        // §7.1 / §8.4 a "gedurende de tijd dat <voorwaarde>" restriction the resolver could not structure rides
+        // as an Onopgelost filter with its WARNING ("blijft buiten beschouwing"); honour it like the sibling
+        // accumulate / concatenatieAggregatie paths do — fall through to the marker rather than fold the FULL
+        // unrestricted timeline (which would compute the wrong, condition-free totaal).
+        if (f.filter() instanceof Conditie.Onopgelost) return null;
         if (!(f.argumenten().get(0) instanceof Expr.AttribuutRef a) || a.navigatieRol() != null) return null;
         if (a.objecttype() == null) return null;
         RegelSpraakModel.Granulariteit g = a.objecttype().attribuutGranulariteit.get(a.attribuut());

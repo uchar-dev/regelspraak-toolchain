@@ -114,6 +114,20 @@ class ModelTest {
                 () -> "verwachtte een dubbel-tijdlijn waarschuwing, kreeg: " + m.diagnostics);
     }
 
+    @Test void identieke_tijdlijn_herdefinitie_waarschuwt_niet() {
+        // The duplicate-name warning fires only on a periodicity MISMATCH (granularity or count); a
+        // byte-identical redeclaration is harmless (findFirst takes an identical one) and stays silent.
+        String src = """
+            Tijdlijn de periode heeft tijdvakken van een maand startend op dag 1 van de maand;
+            Tijdlijn de periode heeft tijdvakken van een maand startend op dag 1 van de maand;
+            Objecttype de Werknemer
+                het bedrag Numeriek (geheel getal) voor elke periode;
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.diagnostics.stream().noneMatch(d -> d.message().contains("meermaals")),
+                () -> "een identieke herdefinitie mag niet waarschuwen: " + m.diagnostics);
+    }
+
     @Test void meer_periodieke_tijdlijn_legt_zijn_periodeaantal_vast() {
         // §13.3.6.7: "voor elke 5 maanden" records granularity MAAND AND count 5; a single-period "voor elke
         // maand" records no count (1 implicit, the map stays sparse).
