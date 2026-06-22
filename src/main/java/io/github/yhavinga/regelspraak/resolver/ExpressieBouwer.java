@@ -390,12 +390,16 @@ final class ExpressieBouwer {
      *  (e.g. "de eerste passagier die …"), not the aggregation, and markering on it would kill a
      *  working accumulate (see p20b). With one operand a generic subtree scan is safe. */
     /** §7.1 the "gedurende de tijd dat <voorwaarde>" restriction on "het totaal van <temporeel attribuut>",
-     *  when it is a SIMPLE single-period temporal-kenmerk membership of the subject ("hij rechthebbend is"),
-     *  resolved to a {@link Conditie.Kenmerk} the transpiler clips the value timeline by. Tightly gated: only a
-     *  TOTAAL over the subject's OWN single-period temporal attribute, with a non-navigated "is <kenmerk>"
-     *  condition naming a single-period temporal kenmerk of the subject. Everything else (a navigated/compound/
-     *  comparison/multi-period condition, a non-temporal or navigated operand) returns null and stays an
-     *  Onopgelost marker — so the accumulate path never misreads this subject-kenmerk as an element die-filter. */
+     *  when it is a SIMPLE single-period temporal-kenmerk membership of the subject ("hij rechthebbend is", or
+     *  the §7.1 verbatim example's bezittelijk "hij een recht op belastingvermindering heeft"), resolved to a
+     *  {@link Conditie.Kenmerk} the transpiler clips the value timeline by. Tightly gated: only a TOTAAL over the
+     *  subject's OWN single-period temporal attribute, with a non-navigated "is/heeft <kenmerk>" condition naming
+     *  a single-period temporal kenmerk of the subject. BOTH membership verbs bind: a bijvoeglijk/zelfstandig
+     *  kenmerk reads "is <k>", a bezittelijk one "heeft (een) <k>" (§3.5) — the verb is not the discriminator;
+     *  the granularity check below is (a role/possession "heeft een <rol>" names no temporal kenmerk, so it still
+     *  returns null). Everything else (a navigated/compound/comparison/multi-period condition, a non-temporal or
+     *  navigated operand) returns null and stays an Onopgelost marker — so the accumulate path never misreads this
+     *  subject-kenmerk as an element die-filter. */
     private Conditie gedurendeKenmerkFilter(FunctieAanroepContext f, Expr.FunctieKind kind, List<Expr> argumenten) {
         if (kind != Expr.FunctieKind.TOTAAL || argumenten.size() != 1 || huidigSubject == null) return null;
         if (!(argumenten.get(0) instanceof Expr.AttribuutRef a) || a.navigatieRol() != null
@@ -415,7 +419,7 @@ final class ExpressieBouwer {
             kn = op.kaleNaam(); isVerb = op.IS() != null || op.ZIJN() != null;
             heeftVerb = op.HEEFT() != null || op.HEBBEN() != null;
         } else return null;
-        if (kn == null || !isVerb || heeftVerb) return null;            // only a "is <kenmerk>" membership
+        if (kn == null || (!isVerb && !heeftVerb)) return null;         // an "is/heeft <kenmerk>" membership (§3.5)
         String kenmerk = KenmerkMatcher.vind(huidigSubject, src(kn));
         if (kenmerk == null || !huidigSubject.kenmerkGranulariteit.containsKey(kenmerk)
                 || huidigSubject.kenmerkTijdlijnAantal.containsKey(kenmerk)) return null;

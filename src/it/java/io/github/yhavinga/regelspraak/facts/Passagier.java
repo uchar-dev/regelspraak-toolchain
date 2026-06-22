@@ -21,12 +21,15 @@ public class Passagier {
     private List<Segment> belastingverminderingPerMaand; // §7.1 a temporal attribute ("voor elke maand") -> a Tijdreeks
     private BigDecimal totaleBelastingvermindering;      // §7.1 "het totaal van" the timeline above
     private List<Segment> rechthebbend;                  // §7.1 a temporal kenmerk's TRUE-periods (the gedurende knip)
+    private List<Segment> rechtOpBelastingvermindering;  // §7.1 the BEZITTELIJK temporal kenmerk of the verbatim "heeft" form
     public List<Segment> getBelastingverminderingPerMaand() { return belastingverminderingPerMaand; }
     public void setBelastingverminderingPerMaand(List<Segment> v) { this.belastingverminderingPerMaand = v; }
     public BigDecimal getTotaleBelastingvermindering() { return totaleBelastingvermindering; }
     public void setTotaleBelastingvermindering(BigDecimal v) { this.totaleBelastingvermindering = v; }
     public List<Segment> getRechthebbend() { return rechthebbend; }
     public void setRechthebbend(List<Segment> v) { this.rechthebbend = v; }
+    public List<Segment> getRechtOpBelastingvermindering() { return rechtOpBelastingvermindering; }
+    public void setRechtOpBelastingvermindering(List<Segment> v) { this.rechtOpBelastingvermindering = v; }
     public BigDecimal getBasistarief() { return basistarief; }
     public void setBasistarief(BigDecimal v) { this.basistarief = v; }
     public BigDecimal getBodem() { return bodem; }

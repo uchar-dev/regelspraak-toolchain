@@ -2220,6 +2220,47 @@ class DrlTest {
         assertFalse(drl.contains("/* TODO"), () -> "de gedurende-conditie mag geen marker meer zijn:\n" + drl);
     }
 
+    @Test void gedurende_klipt_op_een_bezittelijk_kenmerk_met_heeft() {
+        // §7.1 the SPEC'S VERBATIM €71 example uses a BEZITTELIJK kenmerk read with the verb "heeft"
+        // ("gedurende de tijd dat hij een recht op belastingvermindering heeft"), not the "is rechthebbend"
+        // workaround. The gedurende clip must bind on the heeft-verb membership too — the verb is not the
+        // discriminator, the single-period temporal-kenmerk granularity is. (Teeth: revert the line-418
+        // relaxation in gedurendeKenmerkFilter and this falls back to a /* TODO */ marker.)
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rsTijdTotaal(rsTijdKnip($subject.getBelastingverminderingPerMaand(), "
+                        + "$subject.getRechtOpBelastingvermindering()), \"MAAND\")"),
+                () -> "de heeft-vorm bezittelijk kenmerk moet de tijdreeks klippen voor het totaal:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "de heeft-vorm gedurende-conditie mag geen marker zijn:\n" + drl);
+    }
+
+    @Test void gedurende_op_een_attribuut_met_heeft_blijft_een_marker() {
+        // The heeft-relaxation must NOT let a "heeft <attribuut>" (a possession of a value, not a kenmerk) slip
+        // through: only a declared single-period temporal KENMERK clips. A plain temporal attribute named after
+        // "heeft" stays an honest /* TODO */ marker, never a wrong getter-as-condition.
+        String src = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Numeriek (geheel getal) met eenheid € voor elke maand;
+                de premie Numeriek (geheel getal) met eenheid € voor elke maand;
+                de totale belastingvermindering Numeriek (geheel getal) met eenheid €;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat hij een premie heeft).
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("/* TODO"), () -> "een heeft-conditie over een attribuut moet een marker blijven:\n" + drl);
+        assertFalse(drl.contains("rsTijdKnip"), () -> "een attribuut-conditie mag geen tijdklip krijgen:\n" + drl);
+    }
+
     @Test void benoemde_meer_periodieke_tijdlijn_wordt_ook_gemarkeerd_niet_single_period_geteld() {
         // Review defect: a NAMED multi-period timeline ("voor elke blokperiode" -> "tijdvakken van 5 maanden")
         // must inherit the period count from its definition and marker, not slip past the guard into a

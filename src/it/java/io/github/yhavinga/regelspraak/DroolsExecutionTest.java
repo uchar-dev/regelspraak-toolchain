@@ -219,6 +219,41 @@ class DroolsExecutionTest {
                 () -> "geclipte totaal moet 6x10 + 1x11 = 71 zijn, was " + p.getTotaleBelastingvermindering());
     }
 
+    @Test void gedurende_klipt_op_een_bezittelijk_kenmerk_met_het_werkwoord_heeft() {
+        // §7.1 the SPEC'S VERBATIM €71 example: "het totaal van zijn belastingvermindering per maand GEDURENDE DE
+        // TIJD DAT hij EEN RECHT OP BELASTINGVERMINDERING HEEFT" — a BEZITTELIJK temporal kenmerk read with the verb
+        // "heeft" (not the "is rechthebbend" workaround). The gedurende clip must bind on the heeft-verb membership
+        // too, so this lowers to rsTijdTotaal(rsTijdKnip(...)) and fires the same €71 as the is-form above.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsTijdKnip"), () -> "de heeft-vorm moet een rsTijdKnip klip krijgen, DRL:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier p = new Passagier();
+        p.setBelastingverminderingPerMaand(List.of(
+                new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1), new BigDecimal("10.00")),
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 7, 1), new BigDecimal("11.00"))));
+        p.setRechtOpBelastingvermindering(List.of(   // the bezittelijk kenmerk holds true over this interval
+                new Segment(LocalDate.of(2023, 7, 1), LocalDate.of(2024, 2, 1), null)));
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("71.00").compareTo(p.getTotaleBelastingvermindering()),
+                () -> "geclipte totaal (heeft-vorm) moet 6x10 + 1x11 = 71 zijn, was " + p.getTotaleBelastingvermindering());
+    }
+
     @Test void navigated_temporeel_totaal_leest_de_tijdreeks_van_de_partner() {
         // "het totaal van de <temporeel attribuut> van zijn <rol>" reads the to-ONE partner's timeline,
         // root-guarded, and folds it via rsTijdTotaal — NOT a wrong sum() over the List<Segment>. A partnerless
