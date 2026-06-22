@@ -428,10 +428,16 @@ paaskorting") now binds too, through the same to-one navigation as the non-EEN n
 the SAME soort rule: only a ZELFSTANDIG kenmerk of the navigated type binds (→ `<rol> != null && <rol>.<k> == true`),
 while a bijvoeglijk one stays a marker. A navigated *role* membership via the EEN-form remains out of scope (a
 marker). Corpus-invisible (the TOKA navigated EEN-form compounds marker through the same undeclared sibling), so
-proven on a synthetic fixture firing the to-one path. **Still carded:** the negated `is geen <rol>`/`is geen
-<kenmerk>` (its `geen` lexes into the `kaleNaam` with no `een`, so it never reaches this path), the no-`een`
-rolcheck (`hij is <rolnaam>`, §13.4.15.44), and the FAR-side rolcheck (`heeft een <rol>` — an exists-join that does
-not fit a single in-pattern constraint).
+proven on a synthetic fixture firing the to-one path.
+
+The **no-`een` rolcheck** (`<subject> is <rolnaam>`, §13.4.15.44 makes the `een` optional) now binds as well. The
+non-`een` name is resolved **kenmerk-first** (Tabel 16): `kenmerkConditie` claims a declared kenmerk (a bijvoeglijk
+kenmerk is written exactly this way, `is <k>`), and only a name that is a role but **not** a kenmerk falls through
+to the §8.1.7 rolcheck (`<refField> != null`). Gated to the IS-verb — `heeft <rol>` is the far-side possessive
+(the subject *owns* the filler), which needs an exists-join and stays a marker, never the wrong near-side test.
+Corpus byte-identical (no corpus condition uses the bare `is <rolnaam>` form). **Still carded:** the negated `is
+geen <rol>`/`is geen <kenmerk>` (its `geen` lexes into the `kaleNaam` with no `een`), and the FAR-side rolcheck
+(`heeft een <rol>` — an exists-join that does not fit a single in-pattern constraint).
 
 **Navigated and negated forms are now lowered too.** A TO-ONE navigated kenmerk (`de partner van een
 Persoon gepensioneerd is`) resolves the kenmerk against the navigated type and lowers to the null-guarded

@@ -874,7 +874,17 @@ final class RuleChecker {
         // ("de Meting bereikbaar per" + operator "trein"), so the kenmerk is that absorbed kop plus
         // the operator's kaleNaam; for "hij"/a bare subject the kop is empty and the name is the kaleNaam.
         String naam = kop.isEmpty() ? staart : kop + " " + staart;
-        if (!metEen) return kenmerkConditie(subject, naam, null, heeftWerkwoord, bron);   // §8.1.8 is/heeft <kenmerk>
+        if (!metEen) {
+            // §8.1.8 "is/heeft <kenmerk>" first. §13.4.15.44 makes the "een" optional in the IS-form rolcheck
+            // ("hij is passagier"), so when the name is not a kenmerk fall back to a §8.1.7 rolcheck — kenmerk-
+            // first (the non-"een" form IS how a bijvoeglijk kenmerk is written, so kenmerkConditie already claims
+            // those; only a name that is a ROLE but not a kenmerk newly binds). Gated to the IS-verb: "heeft
+            // <rol>" is the far-side possessive (the subject OWNS the filler), which needs an exists-join and
+            // stays a marker — never the near-side "<refField> != null" lowering, which would be the wrong test.
+            Conditie kc = kenmerkConditie(subject, naam, null, heeftWerkwoord, bron);
+            if (kc != null || heeftWerkwoord) return kc;
+            return rolLidmaatschap(subject, naam, bron);
+        }
         // EEN-form: the grammar conflates a kenmerknaam and a rolnaam after "een", so disambiguate by lookup,
         // kenmerk-first (Tabel 16). §8.1.8.3: "is een <zelfstandig kenmerk>" binds a kenmerk ONLY when it is
         // ZELFSTANDIG (a bijvoeglijk kenmerk is written "is <k>", a bezittelijk one "heeft het <k>", so neither

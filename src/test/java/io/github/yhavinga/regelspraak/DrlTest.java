@@ -133,6 +133,31 @@ class DrlTest {
                 () -> "de bijvoeglijke navigated EEN-vorm moet een honest marker blijven:\n" + drl);
     }
 
+    @Test void rolcheck_zonder_een_bindt_kenmerk_eerst_dan_rol() {
+        // §13.4.15.44: "een" optional in the IS-form rolcheck. The non-"een" name is resolved kenmerk-FIRST
+        // (Tabel 16): a bare bijvoeglijk kenmerk ("is minderjarig") binds the kenmerk; only a name that is a
+        // role but NOT a kenmerk ("is passagier") falls through to the §8.1.7 rolcheck (reis != null).
+        String src = """
+            Objecttype de Passagier
+                is minderjarig kenmerk (bijvoeglijk);
+                is volwassen kenmerk (bijvoeglijk);
+            Objecttype de Vlucht
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            Regel kenmerk
+                geldig altijd
+                    Een passagier is volwassen indien hij is minderjarig.
+            Regel rol
+                geldig altijd
+                    Een passagier is volwassen indien hij is passagier.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("minderjarig == true"), () -> "'is minderjarig' moet kenmerk-eerst binden:\n" + drl);
+        assertTrue(drl.contains("reis != null"), () -> "'is passagier' (rol, geen kenmerk) moet de rolcheck binden:\n" + drl);
+    }
+
     @Test void onmapbare_functie_wordt_gemarkeerd_niet_verzonnen() {
         // concatenatie has no lowering yet; it must surface as an explicit marker, never as silently-wrong
         // DRL. (wortel — once the example here — now lowers, see wortel_lowert_naar_sqrt_….)

@@ -2997,6 +2997,29 @@ class DroolsExecutionTest {
         assertFalse(p2.isMinderjarig(), "p2 is geen passagier (geen reis) -> de rolgate vuurt niet");
     }
 
+    @Test void membership_rolcheck_zonder_een_gate_de_regel_op_rolvervulling() {
+        // §13.4.15.44: the "een" is optional in the IS-form rolcheck — "hij is passagier" lowers to the same
+        // "reis != null" near-side test as "hij is een passagier", and discriminates identically (fires only for
+        // a passagier that actually has a reis). Kenmerk-first means a bare bijvoeglijk kenmerk still binds the
+        // kenmerk, not a role (asserted structurally in DrlTest).
+        String src = MEMBERSHIP_SRC.replace("indien hij is een passagier", "indien hij is passagier");
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("reis != null"), () -> "no-een rolcheck niet als reis != null gelowerd:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "een no-een membership-regel mag geen marker zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v = new Vlucht();
+        Passagier p1 = new Passagier(); p1.setReis(v);   // fills the passagier role
+        Passagier p2 = new Passagier();                  // no reis -> not a passagier
+        for (Object o : new Object[]{v, p1, p2}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(p1.isMinderjarig(), "p1 is passagier (heeft reis) -> de rolgate vuurt");
+        assertFalse(p2.isMinderjarig(), "p2 is geen passagier (geen reis) -> de rolgate vuurt niet");
+    }
+
     @Test void membership_rolcheck_op_de_een_zijde_markert_ipv_uncompilable_drl() {
         // §8.1.7: "de Vlucht is een reis" — the subject (Vlucht) fills the to-ONE "reis" role, but in the §9.4
         // reference-field model the relation field lives on the MANY side (Passagier.reis), NOT on Vlucht. A bare
