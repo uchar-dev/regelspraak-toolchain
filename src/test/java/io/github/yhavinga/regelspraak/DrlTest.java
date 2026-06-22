@@ -435,6 +435,51 @@ class DrlTest {
         assertTrue(drl.contains("< bodem ? bodem :"), () -> "begrenzing-minimum:\n" + drl);
     }
 
+    @Test void rekenkundige_voorwaarde_lowert_ternary_vrij_via_binairTerm() {
+        // §6.2-6.8 arithmetic in a CONDITION now lowers, sharing binairTerm with the value side but ternary-free:
+        // the leegwaarde helpers (rsNul) are method calls valid in a pattern constraint, and the unit restatement
+        // is identity when no conversion is due. A maal and a plus over the subject's own attributes lower inline.
+        String src = """
+            Objecttype de Klok
+                de a Numeriek (geheel getal);
+                de b Numeriek (geheel getal);
+                is oud kenmerk (bijvoeglijk);
+            Regel m
+                geldig altijd
+                    Een Klok is oud indien de a van een Klok maal 2 gelijk is aan de b van een Klok.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        // the exact constraint is ternary-free (a "?:" in the pattern would mis-parse); the rsNul helper BODY
+        // may carry a ternary, so assert on the constraint line, not the whole DRL.
+        assertTrue(drl.contains("$subject : Klok( (rsNul(a) * rsNul(new java.math.BigDecimal(\"2\"))) == b )"),
+                () -> "rekenkundige voorwaarde niet ternary-vrij gelowerd:\n" + drl);
+        String constraintRegel = drl.lines().filter(l -> l.contains("$subject : Klok(")).findFirst().orElse("");
+        assertFalse(constraintRegel.contains(" ? "), () -> "de voorwaarde-constraint mag geen ternary bevatten:\n" + constraintRegel);
+    }
+
+    @Test void convertibele_eenheid_in_een_rekenkundige_voorwaarde_blijft_marker() {
+        // The safety floor: a +/- whose operands need a UNIT CONVERSION cannot lower in a constraint — the
+        // value-side restatement is a null-guarded ternary (mis-parses inline), and the ternary-free multiply
+        // would NPE-abort the session on a null operand. So a convertible-but-different-unit arithmetic
+        // condition stays an honest marker (the value side, which CAN host the ternary, still converts).
+        String src = """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Objecttype de Klok
+                de looptijd Numeriek (geheel getal) met eenheid mnd;
+                de extra Numeriek (geheel getal) met eenheid jr;
+                de totaal Numeriek (geheel getal) met eenheid mnd;
+                is oud kenmerk (bijvoeglijk);
+            Regel cond
+                geldig altijd
+                    Een Klok is oud indien de looptijd van een Klok plus de extra van een Klok gelijk is aan de totaal van een Klok.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("/* TODO voorwaarde"), () -> "een eenheidconversie in een rekenkundige voorwaarde moet markeren:\n" + drl);
+        assertFalse(drl.contains(".multiply"), () -> "geen ongegarde multiply in een constraint (NPE-abort risico):\n" + drl);
+    }
+
     @Test void macht_afronding_rondt_de_macht_af_en_een_trailing_operator_bindt_buiten() {
         // §13.4.17.14: the mandatory afronding rounds the POWER (it is a sibling of the exponent,
         // not inside it), and a trailing 'maal' binds OUTSIDE the rounded power — the exponent is

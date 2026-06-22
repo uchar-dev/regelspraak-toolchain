@@ -957,6 +957,97 @@ public final class DrlTranspiler {
         };
     }
 
+    /** How a +/- right operand is restated in the left's unit — the null-guarded ternary form on the value side
+     *  ({@link #omrekenWaarde}), the ternary-free / marker form in a constraint ({@link #omrekenConditie}). */
+    @FunctionalInterface private interface Omrekenen { String apply(String expr, Datatype van, Datatype naar); }
+
+    /** §6.2-6.8 binary arithmetic, shared by the value side ({@link #waarde}) and the condition side
+     *  ({@link #operand}). The sub-operands are lowered by {@code arg} (a $subject getter on the value side, a
+     *  bare property on the condition side); a +/- right operand is restated in the left's unit by {@code omrekenen}.
+     *  Every leegwaarde form is a registered helper or inline arithmetic (rsNul/rsGedeeld/rsGedeeldAbs/rsVerminderd/
+     *  rsMacht), i.e. a method call valid in either a modify-block or a pattern constraint — the only ternary is in
+     *  {@code omrekenen}, which the condition side supplies ternary-free. A marker operand propagates unwrapped so
+     *  {@link #bevatMarker} still flags it. */
+    private String binairTerm(Expr.Binair b, Function<Expr, String> arg, Omrekenen omrekenen) {
+        if (b.op() == Expr.BinOp.TOT_DE_MACHT) {
+            // §13.4.17.14: an INTEGER (literal) exponent — the common case — is computed exactly with
+            // BigDecimal.pow(int); going through Math.pow (a double) would lose integer precision above 2^53
+            // (7^19 off by 1) before the mandatory afronding. §6.7: any empty operand -> leeg, so the base goes
+            // through a null-guarding helper (the integer exponent is a literal, never empty). A marker base
+            // propagates unwrapped, like the other operators.
+            Integer n = geheelExponent(b.rechts());
+            if (n != null) {
+                String l = arg.apply(b.links());
+                if (bevatMarker(l)) return "(" + l + ").pow(" + n + ")";
+                registreerMachtFunctie();
+                return "rsMacht(" + l + ", " + n + ")";
+            }
+            // a genuinely fractional/runtime exponent: Math.pow yields a double, wrapped as a BigDecimal.
+            String l = arg.apply(b.links()), r = arg.apply(b.rechts());
+            if (bevatMarker(l) || bevatMarker(r))
+                return "java.math.BigDecimal.valueOf(Math.pow((" + l + ").doubleValue(), (" + r + ").doubleValue()))";
+            registreerMachtReeelFunctie();
+            return "rsMachtReeel(" + l + ", " + r + ")";
+        }
+        if (b.op() == Expr.BinOp.PERCENTAGE_VAN) {
+            String l = arg.apply(b.links()), r = arg.apply(b.rechts());
+            if (bevatMarker(l) || bevatMarker(r)) return "(" + l + " / 100 * " + r + ")";
+            return "(" + nulVeilig(l) + " / 100 * " + nulVeilig(r) + ")";  // §6.8 Tabel 13: leeg telt als 0
+        }
+        if (b.op() == Expr.BinOp.GEDEELD_DOOR) {
+            // §6.5 Tabel 12 leegwaarde: an empty LEFT (dividend) short-circuits to 0 — even leeg/leeg = 0; a
+            // non-empty value over an empty divisor is a "fout", lowered as leeg (null) and surfaced as an
+            // Inconsistentie by the companion rule. rsGedeeld carries that order and the null-guard a bare .divide
+            // would NPE on.
+            String l = arg.apply(b.links()), r = arg.apply(b.rechts());
+            if (bevatMarker(l) || bevatMarker(r))
+                return "(" + l + ").divide(" + r + ", java.math.MathContext.DECIMAL64)";
+            registreerGedeeldFunctie();
+            return "rsGedeeld(" + l + ", " + r + ")";
+        }
+        if (b.op() == Expr.BinOp.GEDEELD_DOOR_ABS) {
+            // §6.5: "gedeeld door (ABS)" has at most 5 decimals, rounded TOWARD ZERO (divide(d, 5, DOWN)); same
+            // §6.5 leegwaarde as plain gedeeld door (left leeg -> 0, value/leeg -> leeg).
+            String l = arg.apply(b.links()), r = arg.apply(b.rechts());
+            if (bevatMarker(l) || bevatMarker(r))
+                return "(" + l + ").divide(" + r + ", 5, java.math.RoundingMode.DOWN)";
+            registreerGedeeldAbsFunctie();
+            return "rsGedeeldAbs(" + l + ", " + r + ")";
+        }
+        if (b.op() == Expr.BinOp.MAAL) {  // §6.4: units multiply, operands are NOT converted to match
+            String l = arg.apply(b.links()), r = arg.apply(b.rechts());
+            if (bevatMarker(l) || bevatMarker(r)) return "(" + l + " * " + r + ")";
+            return "(" + nulVeilig(l) + " * " + nulVeilig(r) + ")";  // §6.4 Tabel 10: any empty operand -> 0
+        }
+        // §13.4.16 date arithmetic (a datum ± a tijdsduur) is NOT mvel "+": "LocalDate + BigDecimal" is a type
+        // error that breaks the Drools build. The correct form is .plusDays/.plusMonths/… keyed on the duration's
+        // unit (deferred), so emit an honest marker rather than uncompilable DRL.
+        if (b.links().type().isDatum() || b.rechts().type().isDatum())
+            return todo("datum-rekenkunde (datum ± tijdsduur vereist .plusX, geen mvel '+')", b.bron());
+        // §4: restate the right operand in the left operand's unit before +/- so a convertible-but-different unit
+        // (mnd vs jr) is scaled, not added raw.
+        String links = arg.apply(b.links());
+        String rechts = omrekenen.apply(arg.apply(b.rechts()), b.rechts().type(), b.links().type());
+        if (bevatMarker(links) || bevatMarker(rechts))     // a marker propagates unwrapped (no leegwaarde noise)
+            return "(" + links + " " + infix(b.op()) + " " + rechts + ")";
+        // §6.3 Tabel 7/8 — the ONE place "min" and "verminderd met" differ: both subtract, but a "verminderd met"
+        // whose LEFT operand is empty yields empty (rsVerminderd), while "min" treats an empty operand as 0 like
+        // plus (rsNul). Without this they lowered identically — a silent-wrong for a leeg-left case.
+        if (b.op() == Expr.BinOp.VERMINDERD_MET) {
+            registreerVerminderdFunctie();
+            return "rsVerminderd(" + links + ", " + rechts + ")";
+        }
+        return "(" + nulVeilig(links) + " " + infix(b.op()) + " " + nulVeilig(rechts) + ")"; // §6.2/§6.3 leeg=0
+    }
+
+    /** Unit restatement for a CONDITION-side +/- operand: identity when no conversion is due (the common case —
+     *  matching or absent units), else a marker. A pattern constraint cannot host the value-side null-guard
+     *  ternary, and the ternary-free multiply would NPE-abort the session on a null operand, so a
+     *  convertible-but-different-unit +/- in a condition stays an honest no-op rather than a crash. */
+    private static String omrekenConditie(String expr, Datatype van, Datatype naar) {
+        return omrekenFactor(van, naar) == null ? expr : todo("eenheidconversie in een rekenkundige voorwaarde", expr);
+    }
+
     // ---------------- value expression ("then" side: getters) ----------------
     private String waarde(Expr e, Objecttype subject) {
         if (e instanceof Expr.Literal lit)      return literal(lit);
@@ -976,83 +1067,11 @@ public final class DrlTranspiler {
             if (bevatMarker(map) || c.labels().size() != 1) return todo("dimensiecel", c.bron());
             return "(" + map + ").get(\"" + c.labels().get(0).replace("\"", "") + "\")";
         }
-        if (e instanceof Expr.Binair b) {
-            if (b.op() == Expr.BinOp.TOT_DE_MACHT) {
-                // §13.4.17.14: an INTEGER (literal) exponent — the common case — is computed exactly with
-                // BigDecimal.pow(int); going through Math.pow (a double) would lose integer precision above 2^53
-                // (7^19 off by 1) before the mandatory afronding. §6.7: any empty operand -> leeg, so the base
-                // goes through a null-guarding helper (the integer exponent is a literal, never empty; the
-                // runtime path guards both). A marker base propagates unwrapped, like the other operators.
-                Integer n = geheelExponent(b.rechts());
-                if (n != null) {
-                    String l = waarde(b.links(), subject);
-                    if (bevatMarker(l)) return "(" + l + ").pow(" + n + ")";
-                    registreerMachtFunctie();
-                    return "rsMacht(" + l + ", " + n + ")";
-                }
-                // a genuinely fractional/runtime exponent: Math.pow yields a double, wrapped as a
-                // BigDecimal so the afronding's setScale and surrounding arithmetic compile.
-                String l = waarde(b.links(), subject), r = waarde(b.rechts(), subject);
-                if (bevatMarker(l) || bevatMarker(r))
-                    return "java.math.BigDecimal.valueOf(Math.pow((" + l + ").doubleValue(), (" + r + ").doubleValue()))";
-                registreerMachtReeelFunctie();
-                return "rsMachtReeel(" + l + ", " + r + ")";
-            }
-            if (b.op() == Expr.BinOp.PERCENTAGE_VAN) {
-                String l = waarde(b.links(), subject), r = waarde(b.rechts(), subject);
-                if (bevatMarker(l) || bevatMarker(r)) return "(" + l + " / 100 * " + r + ")";
-                return "(" + nulVeilig(l) + " / 100 * " + nulVeilig(r) + ")";  // §6.8 Tabel 13: leeg telt als 0
-            }
-            if (b.op() == Expr.BinOp.GEDEELD_DOOR) {
-                // §6.5 Tabel 12 leegwaarde: an empty LEFT (dividend) short-circuits to 0 — even leeg/leeg = 0;
-                // a non-empty value over an empty divisor is a "fout", lowered as leeg (null) here and surfaced
-                // as an Inconsistentie by the companion rule (deelDoorLeegRegel). rsGedeeld carries that order
-                // (left==null tested first) and the null-guard a bare .divide would NPE on.
-                String l = waarde(b.links(), subject), r = waarde(b.rechts(), subject);
-                if (bevatMarker(l) || bevatMarker(r))
-                    return "(" + l + ").divide(" + r + ", java.math.MathContext.DECIMAL64)";
-                registreerGedeeldFunctie();
-                return "rsGedeeld(" + l + ", " + r + ")";
-            }
-            if (b.op() == Expr.BinOp.GEDEELD_DOOR_ABS) {
-                // §6.5: "gedeeld door (ABS)" (the AanslagBelastingenSysteem division) does NOT share the exact /
-                // fraction result of "gedeeld door" — its result has at most 5 decimals, rounded TOWARD ZERO
-                // ("richting 0"), so a non-terminating quotient always has a known decimal form. divide(d, 5,
-                // DOWN) is exactly that (scale 5, truncate toward zero). The spec's 2/3→0,66667 row contradicts
-                // its own "richting 0" rule and its -0,66666 neighbour — a table typo; the rule (DOWN) governs.
-                // Same §6.5 leegwaarde as plain gedeeld door (Tabel 12 covers both): left leeg -> 0, value/leeg -> leeg.
-                String l = waarde(b.links(), subject), r = waarde(b.rechts(), subject);
-                if (bevatMarker(l) || bevatMarker(r))
-                    return "(" + l + ").divide(" + r + ", 5, java.math.RoundingMode.DOWN)";
-                registreerGedeeldAbsFunctie();
-                return "rsGedeeldAbs(" + l + ", " + r + ")";
-            }
-            if (b.op() == Expr.BinOp.MAAL) {  // §6.4: units multiply, operands are NOT converted to match
-                String l = waarde(b.links(), subject), r = waarde(b.rechts(), subject);
-                if (bevatMarker(l) || bevatMarker(r)) return "(" + l + " * " + r + ")";
-                return "(" + nulVeilig(l) + " * " + nulVeilig(r) + ")";  // §6.4 Tabel 10: any empty operand -> 0
-            }
-            // §13.4.16 date arithmetic (a datum ± a tijdsduur) is NOT mvel "+": "LocalDate + BigDecimal" is a
-            // type error that breaks the Drools build. The correct form is .plusDays/.plusMonths/… keyed on the
-            // duration's unit (deferred to the arithmetic-correctness work), so emit an honest marker rather
-            // than uncompilable DRL — the only +/- path that otherwise emits broken (not inert) code.
-            if (b.links().type().isDatum() || b.rechts().type().isDatum())
-                return todo("datum-rekenkunde (datum ± tijdsduur vereist .plusX, geen mvel '+')", b.bron());
-            // §4: restate the right operand in the left operand's unit before +/- so a
-            // convertible-but-different unit (mnd vs jr) is scaled, not added raw.
-            String links = waarde(b.links(), subject);
-            String rechts = omrekenWaarde(waarde(b.rechts(), subject), b.rechts().type(), b.links().type());
-            if (bevatMarker(links) || bevatMarker(rechts))     // a marker propagates unwrapped (no leegwaarde noise)
-                return "(" + links + " " + infix(b.op()) + " " + rechts + ")";
-            // §6.3 Tabel 7/8 — the ONE place "min" and "verminderd met" differ: both subtract, but a "verminderd
-            // met" whose LEFT operand is empty yields empty (rsVerminderd), while "min" treats an empty operand as
-            // 0 like plus (rsNul). Without this they lowered identically — a silent-wrong for a leeg-left case.
-            if (b.op() == Expr.BinOp.VERMINDERD_MET) {
-                registreerVerminderdFunctie();
-                return "rsVerminderd(" + links + ", " + rechts + ")";
-            }
-            return "(" + nulVeilig(links) + " " + infix(b.op()) + " " + nulVeilig(rechts) + ")"; // §6.2/§6.3 leeg=0
-        }
+        if (e instanceof Expr.Binair b)
+            // §6.2-6.8 arithmetic, shared with the condition side: value getters for the sub-operands, and a
+            // +/- right operand restated in the left's unit by the NULL-GUARDED omrekenWaarde (a "then"-side
+            // ternary is fine here).
+            return binairTerm(b, x -> waarde(x, subject), DrlTranspiler::omrekenWaarde);
         if (e instanceof Expr.Afgerond af) {
             return afgerondeTerm(waarde(af.basis(), subject), af);
         }
@@ -1775,11 +1794,19 @@ public final class DrlTranspiler {
             // §13.4.17.13/.25: an afronding wraps a getalexpressie — and "de wortel van X" carries a MANDATORY
             // afronding, so a condition-side wortel is always Afgerond(Functie(WORTEL)), never the bare Functie.
             // setScale is a pure method call (no ternary), valid in a pattern constraint, so descend with the
-            // operand-side (bare-property) lowering. A marker basis (e.g. an afronding over an unlowerable
-            // arithmetic operand — those Binair/Begrensd forms use ternaries and stay markers here) propagates.
+            // operand-side (bare-property) lowering. A marker basis (e.g. an afronding over a Begrensd clamp,
+            // which still uses a ternary and markers here) propagates.
             String b = operand(af.basis(), subject);
             return bevatMarker(b) ? b : afgerondeTerm(b, af);
         }
+        if (e instanceof Expr.Binair b)
+            // §6.2-6.8 arithmetic in a CONDITION: the SAME lowering as the value side (binairTerm), with the
+            // sub-operands as bare properties and the +/- unit restatement via omrekenConditie — identity unless
+            // a conversion is due, else a marker (a pattern constraint cannot host the value-side null-guard
+            // ternary, and the ternary-free multiply would NPE-abort the session on a null operand, so a
+            // convertible-but-different-unit +/- stays an honest no-op). The leegwaarde helpers (rsNul/rsGedeeld/
+            // rsVerminderd/rsMacht) are method calls, valid in a constraint. A Begrensd clamp still markers (carded).
+            return binairTerm(b, x -> operand(x, subject), DrlTranspiler::omrekenConditie);
         if (e instanceof Expr.Functie f) {
             // §13.4.17 a SCALAR builtin (abs / date-component / datum-met / wortel / paasdag / tijdsduur) is a
             // valid pattern-constraint operand once its arguments lower to bare properties — so reuse the one

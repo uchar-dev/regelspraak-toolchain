@@ -975,6 +975,34 @@ class DroolsExecutionTest {
         assertSame(metPax, fouten.get(0), "de fout hoort bij de Vlucht waar de deling daadwerkelijk zou vuren (lidmaatschap geldt)");
     }
 
+    @Test void rekenkundige_voorwaarde_gate_vuurt_in_echte_drools() {
+        // §6.2-6.8 arithmetic in a CONDITION: "indien de somMet maal 2 gelijk is aan de somZonder" lowers to the
+        // ternary-free constraint (rsNul(somMet) * rsNul(2)) == somZonder and must compile + evaluate in a real
+        // Drools pattern — gating the rule for a Vlucht where it holds, not where it does not.
+        String src = """
+                Objecttype de Vlucht
+                    de somMet Numeriek (geheel getal);
+                    de somZonder Numeriek (geheel getal);
+                    is vol kenmerk (bijvoeglijk);
+                Regel m
+                    geldig altijd
+                        Een Vlucht is vol indien de somMet van een Vlucht maal 2 gelijk is aan de somZonder van een Vlucht.
+                """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("(rsNul(somMet) * rsNul(new java.math.BigDecimal(\"2\"))) == somZonder"), () -> drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht match = new Vlucht(); match.setSomMet(new BigDecimal("5")); match.setSomZonder(new BigDecimal("10")); // 5*2 == 10
+        Vlucht geen = new Vlucht();  geen.setSomMet(new BigDecimal("5"));  geen.setSomZonder(new BigDecimal("7"));   // 5*2 != 7
+        for (Object o : new Object[]{match, geen}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(match.isVol(), "5 maal 2 = 10 = somZonder -> de rekenkundige gate vuurt");
+        assertFalse(geen.isVol(), "5 maal 2 = 10 != 7 -> de gate vuurt niet");
+    }
+
     @Test void wortel_en_macht_van_leeg_zijn_leeg_door_de_null_veilige_afronding() {
         // §6.6/§6.7: wortel/macht of a leeg operand is leeg. Both carry a MANDATORY afronding, so a leeg result
         // used to NPE in (null).setScale and ABORT the session. Now rsWortel/rsMacht return null and rsAfronding
