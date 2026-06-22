@@ -1073,6 +1073,17 @@ public final class DrlTranspiler {
             // would emit a bare Map getter where a scalar is expected). A legitimate dimensioned read is an
             // Expr.DimensieCel; a bare AttribuutRef to a dimensioned attribute is therefore an error — marker.
             if (isGedimensioneerd(a)) return todo("ongedimensioneerde lezing van gedimensioneerd attribuut (§3.6)", a.bron());
+            NaviRef n = naviResolve(a, subject);
+            if (n.soort() == NaviSoort.GENAVIGEERD) {
+                // §6.9 / §13.3.9: a value read THROUGH a to-one reference that is empty is leeg, not a crash. The
+                // modify-block consequence runs for EVERY instance of the subject type (the rule's pattern is over
+                // that type), including ones whose reference is null — and a bare $subject.getPartner().getX()
+                // NPEs there, which inside a Drools consequence aborts the WHOLE fireAllRules pass. Guard the root
+                // so a null reference yields null (the leegwaarde), which the surrounding helpers then propagate.
+                // (The condition side already guards via genavigeerdLeegGevuld / "!."; only this value read did not.)
+                String root = SUBJECT + "." + getter(n.rol()) + "()";
+                return "(" + root + " == null ? null : " + root + "." + getter(a.attribuut()) + "())";
+            }
             return attribuutGetter(a, subject);
         }
         if (e instanceof Expr.DimensieCel c) {

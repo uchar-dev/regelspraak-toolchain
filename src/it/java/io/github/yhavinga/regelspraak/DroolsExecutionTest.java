@@ -985,6 +985,41 @@ class DroolsExecutionTest {
         assertSame(p, fouten.get(0), "de fout hoort bij de Persoon wiens partner een lege aftrek heeft");
     }
 
+    @Test void navigated_waarde_door_een_lege_referentie_blijft_leeg_en_aborteert_de_sessie_niet() {
+        // §6.9 / §13.3.9: a value read through a to-one reference that is empty is leeg, not a crash. The rule
+        // fires for EVERY Persoon, including a partnerless one — a bare $subject.getPartner().getInkomen() used to
+        // NPE there and abort the WHOLE fireAllRules pass. The root guard makes a null reference yield leeg, so a
+        // partnerless subject keeps its target null AND a subject WITH a partner still computes.
+        String src = """
+                Objecttype de Persoon
+                    de inkomen Numeriek (geheel getal);
+                    de aftrek Numeriek (geheel getal);
+                    de ratio Numeriek (getal met 2 decimalen);
+                Feittype partnerschap
+                    de persoon Persoon
+                    de partner Persoon
+                Eén persoon heeft één partner
+                Regel ratioregel
+                    geldig altijd
+                        De ratio van een Persoon moet gesteld worden op de inkomen van zijn partner gedeeld door de aftrek van zijn partner.
+                """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        KieSession sessie = build(DrlTranspiler.transpile(m)).newKieSession();
+        Persoon metPartner = new Persoon(); Persoon q = new Persoon();
+        metPartner.setPartner(q); q.setPartner(metPartner);
+        q.setInkomen(new BigDecimal("12")); q.setAftrek(new BigDecimal("4"));   // metPartner: 12/4 = 3
+        Persoon zonderPartner = new Persoon();   // partner == null -> used to NPE-abort the whole pass
+        for (Object o : new Object[]{metPartner, q, zonderPartner}) sessie.insert(o);
+        sessie.fireAllRules();   // must COMPLETE
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("3.00").compareTo(metPartner.getRatio()), () -> "12/4 = 3, kreeg " + metPartner.getRatio());
+        // a partnerless Persoon: both navigated operands are leeg, and §6.5 makes leeg / leeg = 0 (the point is the
+        // session COMPLETED with a value instead of NPE-aborting; the leegwaarde itself is the existing §6.5 rule).
+        assertEquals(0, BigDecimal.ZERO.compareTo(zonderPartner.getRatio()),
+                () -> "een partnerloze Persoon -> navigatie leeg -> leeg/leeg = 0, geen crash; kreeg " + zonderPartner.getRatio());
+    }
+
     @Test void navigated_wortel_van_negatief_meldt_een_inconsistentie() {
         // §6.6: the wortel-van-negatief fout also fires for a to-one navigated radicand ("de wortel van de basis
         // van zijn partner"): the companion guards the root — (partner != null && partner.basis != null) &&
