@@ -3920,6 +3920,34 @@ class DroolsExecutionTest {
         assertTrue(oud.isBonus(), "een oude Meting moet bonus krijgen via 'hij oud is'");
     }
 
+    @Test void elfproef_predicaat_vuurt_alleen_voor_een_geldig_nummer() {
+        // §8.1.3: "voldoet aan de elfproef" lowers to a registered rsElfproef helper that weights each digit by
+        // its position from the right (last -1, then 2, 3, …) and passes iff the sum is divisible by 11 and is
+        // not all zeros. 111222333 is valid (weighted sum 66); the spec's 192837465 is not (sum 205, rest 7).
+        String src = """
+            Objecttype de Natuurlijk persoon (mv: Natuurlijke personen) (bezield)
+                het burgerservicenummer Numeriek (geheel getal);
+                is geldig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Natuurlijk persoon is geldig indien zijn burgerservicenummer voldoet aan de elfproef.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsElfproef(burgerservicenummer)"), () -> "de elfproef is niet gelowered:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        NatuurlijkPersoon geldig = new NatuurlijkPersoon();   geldig.setBurgerservicenummer(new BigDecimal("111222333"));
+        NatuurlijkPersoon ongeldig = new NatuurlijkPersoon(); ongeldig.setBurgerservicenummer(new BigDecimal("192837465"));
+        sessie.insert(geldig); sessie.insert(ongeldig);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertTrue(geldig.isGeldig(), "111222333 voldoet aan de elfproef (gewogen som 66)");
+        assertFalse(ongeldig.isGeldig(), "192837465 voldoet niet (som 205, rest 7) — de spec-uitwerking");
+    }
+
     @Test void meerwoordig_kenmerk_check_in_definiete_vorm_vuurt() {
         // p24a review: a MULTI-WORD kenmerk in the definite form "de Meting bereikbaar per trein is".
         // The greedy onderwerp parse splits the kenmerk across the operand and the operator, so the

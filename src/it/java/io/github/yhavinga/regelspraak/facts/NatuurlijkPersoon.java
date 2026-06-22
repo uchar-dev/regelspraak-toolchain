@@ -13,6 +13,10 @@ public class NatuurlijkPersoon {
     public BigDecimal getBurgerservicenummer() { return burgerservicenummer; }
     public void setBurgerservicenummer(BigDecimal v) { this.burgerservicenummer = v; }
 
+    private boolean geldig;   // §8.1.3 the kenmerk an "voldoet aan de elfproef" rule sets
+    public boolean isGeldig() { return geldig; }
+    public void setGeldig(boolean v) { this.geldig = v; }
+
     /** §13.3.7 gedimensioneerd met jaardimensie: label ("vier jaar geleden", …) -> value. */
     private Map<String, BigDecimal> betaaldeBelastingInJaar;
     public Map<String, BigDecimal> getBetaaldeBelastingInJaar() { return betaaldeBelastingInJaar; }

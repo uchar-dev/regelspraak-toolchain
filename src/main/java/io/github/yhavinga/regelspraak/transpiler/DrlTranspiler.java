@@ -1350,6 +1350,31 @@ public final class DrlTranspiler {
                 + "}\n\n");
     }
 
+    /** §8.1.3 the elfproef: weight each digit by its position FROM THE RIGHT — the controlecijfer (last) by -1,
+     *  the one before it by 2, then 3, … (so an n-digit reeks weights its leftmost digit by n down to 2, the
+     *  last by -1); the number passes iff the weighted sum is divisible by 11 AND it is not all zeros. Admits a
+     *  Numeriek (geheel getal) — leading zeros already gone — or a Tekst of digits (which preserves voor-/
+     *  achterloopnullen); a null, fractional, or non-digit value is not a valid reeks → false. */
+    private void registreerElfproefFunctie() {
+        hulpFuncties.putIfAbsent("rsElfproef",
+                "function boolean rsElfproef(Object x) {\n"
+                + "    if (x == null) return false;\n"
+                + "    String s = (x instanceof java.math.BigDecimal) ? ((java.math.BigDecimal) x).toBigInteger().toString() : x.toString();\n"
+                + "    int n = s.length();\n"
+                + "    if (n == 0) return false;\n"
+                + "    long som = 0;\n"
+                + "    boolean nietNul = false;\n"
+                + "    for (int i = 0; i < n; i++) {\n"
+                + "        char ch = s.charAt(i);\n"
+                + "        if (ch < '0' || ch > '9') return false;\n"
+                + "        int d = ch - '0';\n"
+                + "        if (d != 0) nietNul = true;\n"
+                + "        som += (long) d * ((i == n - 1) ? -1 : (n - i));\n"
+                + "    }\n"
+                + "    return nietNul && (som % 11 == 0);\n"
+                + "}\n\n");
+    }
+
     /** Wrap a value-side arithmetic operand for the §6.2/§6.4/§6.8 "leeg telt als 0" rekentabel via the rsNul
      *  helper. The caller has already excluded a marker operand (which must propagate unwrapped so bevatMarker
      *  still flags it), so this only ever wraps a real value term. */
@@ -1792,6 +1817,7 @@ public final class DrlTranspiler {
             return LoweredConditie.van(switch (p.soort()) {
                 case LEEG   -> o + " == null";
                 case GEVULD -> o + " != null";
+                case ELFPROEF -> { registreerElfproefFunctie(); yield "rsElfproef(" + o + ")"; }  // §8.1.3
                 default     -> onopgelosteConstraint("predicaat " + p.soort(), p.bron());
             });
         }
