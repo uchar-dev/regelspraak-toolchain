@@ -1199,3 +1199,19 @@ plain Numeriek in `+`/`-`/`<` flags the §4 "als één operand een eenheid heeft
 which the typeringen tables (Tabel 32/34/39/41 list Percentage only against Percentage, never against a bare
 Numeriek) sanction. It fires on zero corpus files. `Typering` needed no edit: once `eenheidOf()` returns `%`, the
 existing `zelfdeFamilie` (Percentage and Numeriek are distinct families) + `eenhedenCompatibel` do the right thing.
+
+### §4.4/4.5 maal/gedeeld composite units — the representable cases are synthesized
+
+A `maal`/`gedeeld door` of two unit-bearing Numerieks used to always degrade to `Onbekend ("samengestelde
+eenheid")`. The `Eenheid` model represents a numerator over **one** simple denominator (a rate `€/jr`), so the
+combinations that fit are now synthesized; the rest stay `Onbekend` (an honest "no claim", never a wrong unit):
+- **`maal`:** a rate times its (convertible) denominator-unit cancels to the numerator — `€/jr maal jr = €`. Two
+  plain numerators (`€ maal m = €·m`) need two numerator factors the model lacks → `Onbekend`.
+- **`gedeeld door`:** two plain units divide to a rate — `€ gedeeld door jr = €/jr` — or to a dimensionless getal
+  when convertible — `€ gedeeld door € = een getal`. A rate divisor (whose result needs a second denominator or a
+  bare `1/jr`) stays `Onbekend`.
+
+Corpus-invisible: no corpus expression multiplies/divides two unit-bearing operands (the unitless×unit and
+unit×unitless branches, which the corpus does exercise, are untouched), so the resolver-ERROR set and the per-file
+DRL are byte-identical. The unrepresentable forms (`€·m`, `1/jr`, the unitless×unit gap) are carded — they need a
+multi-factor `Eenheid` (numerator list + exponents), the §13.3.7 composite-unit model the roadmap defers.

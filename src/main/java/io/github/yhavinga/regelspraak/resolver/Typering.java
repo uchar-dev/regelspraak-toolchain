@@ -44,9 +44,10 @@ public final class Typering {
             }
             // §4.3 verminderd met: numeriek only
             case VERMINDERD_MET -> numeriekBinair(l, r, "verminderd met");
-            // §4.4/4.5: Numeriek only (Tabel 11/14 list no Percentage row). Units multiply/divide
-            // into a composite the model cannot represent, so a unit-bearing result is reported as
-            // Onbekend ("no claim") rather than mis-typed; a unitless * unit keeps the single unit.
+            // §4.4/4.5: Numeriek only (Tabel 11/14 list no Percentage row). A unitless * unit keeps the
+            // single unit; two units multiply/divide into a COMPOSITE, which the Eenheid model represents
+            // only as a numerator over one simple denominator (a rate "€/jr"). The representable combinations
+            // are synthesized; the rest (a two-numerator product like "€·m", a "1/jr") stay Onbekend ("no claim").
             case MAAL, GEDEELD_DOOR -> {
                 if (!l.isNumeriek() || !r.isNumeriek())
                     yield Resultaat.fout(naam(op) + " vereist numerieke operanden, kreeg " + l.naam() + " en " + r.naam());
@@ -61,6 +62,9 @@ public final class Typering {
                     yield Resultaat.ok(new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, null));
                 if (er == null)
                     yield Resultaat.ok(new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, el));
+                if (el != null)   // both operands carry a unit -> synthesize the representable composite
+                    yield Resultaat.ok(samengesteldeEenheid(op, dec, el, er));
+                // el == null, er != null: a unitless × unit (the gedeeld 1/unit too) — pre-existing gap, Onbekend.
                 yield Resultaat.ok(new Datatype.Onbekend("samengestelde eenheid"));
             }
             // §4.7 tot de macht: Numeriek without a unit on either side; result without a unit.
@@ -264,6 +268,31 @@ public final class Typering {
     }
 
     // -------- helpers --------
+
+    /** §4.4/4.5 result datatype for a maal/gedeeld of two unit-bearing operands, in the cases the Eenheid
+     *  model can represent (a numerator over one simple denominator); the rest yield Onbekend ("no claim").
+     *  MAAL: a rate times its (convertible) denominator-unit cancels to the numerator ("€/jr maal jr = €");
+     *  two plain numerators ("€ maal m") are not representable. GEDEELD: two plain units divide to a rate
+     *  ("€ gedeeld door jr = €/jr"), or to a dimensionless number when the units are convertible ("€ gedeeld
+     *  door € = een getal"); a rate divisor (its result needs a second denominator or "1/jr") stays Onbekend. */
+    private static Datatype samengesteldeEenheid(BinOp op, int dec, Eenheid el, Eenheid er) {
+        if (op == BinOp.MAAL) {
+            if (el.noemer() != null && er.noemer() == null && er.convertibleNaar(el.noemer()))
+                return new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, teller(el));
+            if (er.noemer() != null && el.noemer() == null && el.convertibleNaar(er.noemer()))
+                return new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, teller(er));
+            return new Datatype.Onbekend("samengestelde eenheid");
+        }
+        if (el.noemer() == null && er.noemer() == null)   // GEDEELD: only two plain units are representable
+            return el.convertibleNaar(er)
+                    ? new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, null)                       // €/€ -> getal
+                    : new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, Eenheid.samengesteld(el, er)); // €/jr
+        return new Datatype.Onbekend("samengestelde eenheid");
+    }
+    /** A rate's numerator unit, with the denominator stripped. */
+    private static Eenheid teller(Eenheid rate) {
+        return new Eenheid(rate.afkorting(), rate.stelsel(), rate.canoniek(), rate.factorNaarCanoniek());
+    }
 
     /** Same datatype family for gelijk/ongelijk/toekenning. Numeriek and Percentage are
      *  distinct here (the §5.3/5.6 and §6 tables list them as separate rows); the two date

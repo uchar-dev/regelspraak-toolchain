@@ -121,4 +121,34 @@ class TyperingTest {
         // now that a Percentage carries "%", mixing it with a unitless number flags the §4 unit rule.
         assertFalse(Typering.reken(BinOp.PLUS, pct(), num()).ok());
     }
+
+    // §4.4/4.5 composite-unit synthesis (both operands carry a unit)
+    static final Eenheid EUR = new Eenheid("EUR", "Geld");
+    static final Eenheid JR  = new Eenheid("jr", "Tijd");
+    static Datatype numEenh(Eenheid e) { return new Datatype.Numeriek(false, 0, Teken.ONBEPAALD, e); }
+
+    @Test void maal_rate_keer_zijn_noemereenheid_cancelt_tot_de_teller() {
+        // €/jr maal jr = € (the denominator cancels) — was Onbekend
+        var res = Typering.reken(BinOp.MAAL, numEenh(Eenheid.samengesteld(EUR, JR)), numEenh(JR));
+        assertTrue(res.ok());
+        assertEquals("EUR", res.type().eenheidOf().afkorting());
+        assertNull(res.type().eenheidOf().noemer(), "de noemer moet weggevallen zijn");
+    }
+    @Test void gedeeld_eenheid_door_eenheid_geeft_een_rate() {
+        // € gedeeld door jr = €/jr — was Onbekend
+        var res = Typering.reken(BinOp.GEDEELD_DOOR, numEenh(EUR), numEenh(JR));
+        assertTrue(res.ok());
+        assertEquals("EUR/jr", res.type().eenheidOf().weergave());
+    }
+    @Test void gedeeld_door_gelijke_eenheid_geeft_een_dimensieloos_getal() {
+        // € gedeeld door € = een getal (dimensionless) — was Onbekend
+        var res = Typering.reken(BinOp.GEDEELD_DOOR, numEenh(EUR), numEenh(EUR));
+        assertTrue(res.ok());
+        assertNull(res.type().eenheidOf(), "een quotiënt van gelijke eenheden is eenheidloos");
+    }
+    @Test void maal_twee_losse_eenheden_blijft_onbekend() {
+        // € maal m = €·m (two numerators) — not representable in the model, stays Onbekend
+        var res = Typering.reken(BinOp.MAAL, numEenh(EUR), numEenh(new Eenheid("m", "Lengte")));
+        assertTrue(res.type().isOnbekend());
+    }
 }
