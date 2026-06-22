@@ -456,7 +456,15 @@ public final class DrlTranspiler {
         Datatype gewichtType = doel != null && v.ratoAttribuut() != null ? doel.attribuut(v.ratoAttribuut()) : null;
         boolean rato = methode == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.NAAR_RATO && join != null
                 && gewichtType != null && gewichtType.isGetalachtig();
-        if (!gelijk && !rato) {
+        // §9.7.2 op volgorde van: the recipients are partitioned by a getalachtig ordering key and the pot is
+        // depleted group-by-group; a "naar rato" tie additionally needs a getalachtig tie weight. The whole
+        // ordered allocation is computed by rsVerdeelOpVolgorde; anything else stays the marker.
+        Datatype groepType = methode == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.OP_VOLGORDE
+                && doel != null && v.groepeerAttribuut() != null ? doel.attribuut(v.groepeerAttribuut()) : null;
+        boolean opVolgorde = methode == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.OP_VOLGORDE && join != null
+                && groepType != null && groepType.isGetalachtig()
+                && (v.ratoAttribuut() == null || (gewichtType != null && gewichtType.isGetalachtig()));
+        if (!gelijk && !rato && !opVolgorde) {
             out.append(new Regel(v.naam())
                 .clausule("// onopgelost verdeling ("
                         + (bron == null || doel == null ? "referentie" : methode.name().toLowerCase())
@@ -466,6 +474,72 @@ public final class DrlTranspiler {
             return;
         }
         String j = ident(join, false) + " == $src";
+        // a §9.7.6 empty-weight Fout applies whenever a naar-rato split is present (top-level OR the op-volgorde tie)
+        boolean tieNaarRato = rato || (opVolgorde && v.ratoAttribuut() != null);
+        // emit the share rule; both builders return the recipient filter the onverdeelde-rest rule reuses
+        String doelFilter = opVolgorde ? opVolgordeRegel(v, bron, doel, j)
+                                       : gelijkOfRatoRegel(v, bron, doel, j, gelijk);
+        if (v.restantAttribuut() != null) {
+            // §9.7.5 onverdeelde rest: the verdeler keeps total − Σ(distributed shares). A SEPARATE rule that
+            // modifies the SOURCE (not the recipients), so it cannot cancel the per-recipient activations. It
+            // reads the shares the distribution already assigned, so it is method-agnostic (equal-shares and
+            // naar-rato alike) and needs no recompute. It is RECOMPUTABLE, not fire-once: a `restant == null`
+            // freeze would lock in a partial sum when recipients arrive incrementally (the §9.4 rule-derived
+            // case — the `not` guard only sees recipients already in working memory, so a single early recipient
+            // looks "complete"). Instead it re-fires whenever the share set changes and always reflects the
+            // CURRENT full distribution. The `not <Doel>(<filter>, <doel> == null)` guard still keeps it from
+            // summing a recipient mid-assignment; termination holds because no other rule reads restant, so its
+            // modify does not re-trigger the share rule (property reactivity) and the recomputation is a fixpoint.
+            String doelP = ident(doel.naam, true), doelN = ident(v.doelAttribuut(), false);
+            out.append(new Regel(v.naam() + " (onverdeelde rest)")
+                .clausule("$src : " + ident(bron.naam, true) + "( " + ident(v.bronAttribuut(), false) + " != null )")
+                .clausule("not " + doelP + "( " + doelFilter + ", " + doelN + " == null )")
+                .clausule("accumulate( $u : " + doelP + "( " + doelFilter + ", " + doelN
+                        + " != null ) ; $uit : sum($u." + getter(v.doelAttribuut()) + "()) )")
+                .geldigheid(v.geldigheid())
+                .dan("    modify($src) {\n        " + setter(v.restantAttribuut()) + "( $src."
+                        + getter(v.bronAttribuut()) + "().subtract($uit) )\n    }\n")
+                .render());
+        }
+        if (tieNaarRato) {
+            // §9.7.6 Tabel 19: surface the empty-weight Fout via the §9.5 Inconsistentie channel — a SEPARATE,
+            // modify-free rule (so it cannot cancel the distribution's recipient activations), bound to the
+            // bron as $subject, firing once per bron that has a weightless recipient. The header is suffixed for
+            // a unique DRL rule name; the Inconsistentie's `regel` field stays the logical verdeling name (as
+            // uniciteitUnie does), so the idempotency guard keys off it.
+            String wNaam = ident(v.ratoAttribuut(), false);
+            out.append(new Regel(v.naam() + " (leeg gewicht)")
+                .clausule(SUBJECT + " : " + ident(bron.naam, true) + "(  )")
+                .clausule("exists " + ident(doel.naam, true) + "( " + ident(join, false) + " == " + SUBJECT
+                        + ", " + wNaam + " == null )")
+                .geldigheid(v.geldigheid())
+                .clausule(inconsistentieGuard(v.naam()))
+                .dan(inconsistentieDan(v.naam()))
+                .render());
+        }
+        if (v.maximumAttribuut() != null) {
+            // §9.7.6 Tabel 19: a LEEG or NEGATIVE maximum at ANY recipient makes the whole verdeling a Fout (the
+            // N.B. — one recipient suffices). Surfaced like the empty weight: a SEPARATE modify-free Inconsistentie
+            // rule. The value side already degrades a leeg/negative cap to uncapped (rsPlafond for naar rato,
+            // rsVerdeelOpVolgorde for op volgorde), so no negative share is produced — the same {degrade +
+            // Inconsistentie} fout representation as elsewhere.
+            String mNaam = ident(v.maximumAttribuut(), false);
+            out.append(new Regel(v.naam() + " (leeg of negatief maximum)")
+                .clausule(SUBJECT + " : " + ident(bron.naam, true) + "(  )")
+                .clausule("exists " + ident(doel.naam, true) + "( " + ident(join, false) + " == " + SUBJECT
+                        + ", " + mNaam + " == null || " + mNaam + ".signum() < 0 )")
+                .geldigheid(v.geldigheid())
+                .clausule(inconsistentieGuard(v.naam()))
+                .dan(inconsistentieDan(v.naam()))
+                .render());
+        }
+    }
+
+    /** §13.4.10 GELIJKE_DELEN / NAAR_RATO: one accumulate folds the recipients (count, or sum-of-weights); each
+     *  gets total/count or total·weight/Σweight, then the §9.7.3 cap (rsPlafond, naar-rato only) and the §9.7.4
+     *  floor (rsAfronding). Returns the recipient filter the onverdeelde-rest rule reuses. */
+    private String gelijkOfRatoRegel(io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v, Objecttype bron, Objecttype doel,
+                                     String j, boolean gelijk) {
         Regel rule = new Regel(v.naam()).clausule("$src : " + ident(bron.naam, true) + "(  )");
         String aandeel;       // the per-recipient value set into the modify
         String doelFilter;    // the recipient pattern's constraints (reused by the onverdeelde-rest rule)
@@ -513,59 +587,44 @@ public final class DrlTranspiler {
         out.append(rule.geldigheid(v.geldigheid())
             .dan("    modify($r) {\n        " + setter(v.doelAttribuut()) + "( " + aandeel + " )\n    }\n")
             .render());
-        if (v.restantAttribuut() != null) {
-            // §9.7.5 onverdeelde rest: the verdeler keeps total − Σ(distributed shares). A SEPARATE rule that
-            // modifies the SOURCE (not the recipients), so it cannot cancel the per-recipient activations. It
-            // reads the shares the distribution already assigned, so it is method-agnostic (equal-shares and
-            // naar-rato alike) and needs no recompute. It is RECOMPUTABLE, not fire-once: a `restant == null`
-            // freeze would lock in a partial sum when recipients arrive incrementally (the §9.4 rule-derived
-            // case — the `not` guard only sees recipients already in working memory, so a single early recipient
-            // looks "complete"). Instead it re-fires whenever the share set changes and always reflects the
-            // CURRENT full distribution. The `not <Doel>(<filter>, <doel> == null)` guard still keeps it from
-            // summing a recipient mid-assignment; termination holds because no other rule reads restant, so its
-            // modify does not re-trigger the share rule (property reactivity) and the recomputation is a fixpoint.
-            String doelP = ident(doel.naam, true), doelN = ident(v.doelAttribuut(), false);
-            out.append(new Regel(v.naam() + " (onverdeelde rest)")
-                .clausule("$src : " + ident(bron.naam, true) + "( " + ident(v.bronAttribuut(), false) + " != null )")
-                .clausule("not " + doelP + "( " + doelFilter + ", " + doelN + " == null )")
-                .clausule("accumulate( $u : " + doelP + "( " + doelFilter + ", " + doelN
-                        + " != null ) ; $uit : sum($u." + getter(v.doelAttribuut()) + "()) )")
-                .geldigheid(v.geldigheid())
-                .dan("    modify($src) {\n        " + setter(v.restantAttribuut()) + "( $src."
-                        + getter(v.bronAttribuut()) + "().subtract($uit) )\n    }\n")
-                .render());
-        }
-        if (rato) {
-            // §9.7.6 Tabel 19: surface the empty-weight Fout via the §9.5 Inconsistentie channel — a SEPARATE,
-            // modify-free rule (so it cannot cancel the distribution's recipient activations), bound to the
-            // bron as $subject, firing once per bron that has a weightless recipient. The header is suffixed for
-            // a unique DRL rule name; the Inconsistentie's `regel` field stays the logical verdeling name (as
-            // uniciteitUnie does), so the idempotency guard keys off it.
-            String wNaam = ident(v.ratoAttribuut(), false);
-            out.append(new Regel(v.naam() + " (leeg gewicht)")
-                .clausule(SUBJECT + " : " + ident(bron.naam, true) + "(  )")
-                .clausule("exists " + ident(doel.naam, true) + "( " + ident(join, false) + " == " + SUBJECT
-                        + ", " + wNaam + " == null )")
-                .geldigheid(v.geldigheid())
-                .clausule(inconsistentieGuard(v.naam()))
-                .dan(inconsistentieDan(v.naam()))
-                .render());
+        return doelFilter;
+    }
+
+    /** §9.7.2 op volgorde van: one forward rule whose accumulate folds the recipients into index-aligned value
+     *  lists (the fact itself, for an identity key; the ordering criterium; and — when present — the tie weight
+     *  and the cap), hands them to rsVerdeelOpVolgorde (which computes the whole ordered allocation as one
+     *  identity-keyed share map), and assigns each recipient its share via {@code $shares.get($r)}. The §9.7.3 cap
+     *  and §9.7.4 floor are applied INSIDE the helper, group by group, so the §9.7.5 carry-over of the remainder
+     *  reflects the capped+floored shares (Tabel 18) — not a post-hoc clamp against the full plafond. {@code from}
+     *  a Map binds it once (a Map is not a Collection, so it is not iterated). Returns the recipient filter (the
+     *  bare join — every recipient is collected) for the onverdeelde-rest rule. */
+    private String opVolgordeRegel(io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v, Objecttype bron, Objecttype doel, String j) {
+        registreerVerdeelOpVolgordeFunctie();
+        String doelP = ident(doel.naam, true);
+        StringBuilder acc = new StringBuilder("$facts : collectList($p), $groep : collectList($p."
+                + getter(v.groepeerAttribuut()) + "())");
+        String gewArg = "null", maxArg = "null";
+        if (v.ratoAttribuut() != null) {   // a naar-rato tie ("bij een even groot criterium naar rato van <gewicht>")
+            acc.append(", $gewicht : collectList($p.").append(getter(v.ratoAttribuut())).append("())");
+            gewArg = "$gewicht";
         }
         if (v.maximumAttribuut() != null) {
-            // §9.7.6 Tabel 19: a LEEG or NEGATIVE maximum at ANY recipient makes the whole verdeling a Fout (the
-            // N.B. — one recipient suffices). Surfaced like the empty weight: a SEPARATE modify-free Inconsistentie
-            // rule. The value side already degrades a leeg/negative cap to uncapped (rsPlafond), so no negative
-            // share is produced — the same {degrade + Inconsistentie} fout representation as elsewhere.
-            String mNaam = ident(v.maximumAttribuut(), false);
-            out.append(new Regel(v.naam() + " (leeg of negatief maximum)")
-                .clausule(SUBJECT + " : " + ident(bron.naam, true) + "(  )")
-                .clausule("exists " + ident(doel.naam, true) + "( " + ident(join, false) + " == " + SUBJECT
-                        + ", " + mNaam + " == null || " + mNaam + ".signum() < 0 )")
-                .geldigheid(v.geldigheid())
-                .clausule(inconsistentieGuard(v.naam()))
-                .dan(inconsistentieDan(v.naam()))
-                .render());
+            acc.append(", $max : collectList($p.").append(getter(v.maximumAttribuut())).append("())");
+            maxArg = "$max";
         }
+        String dArg = v.afrondingDecimalen() != null ? "Integer.valueOf(" + v.afrondingDecimalen() + ")" : "null";
+        out.append(new Regel(v.naam())
+            .clausule("$src : " + ident(bron.naam, true) + "(  )")
+            .clausule("accumulate( $p : " + doelP + "( " + j + " ) ; " + acc + " )")
+            .clausule("$shares : java.util.Map() from rsVerdeelOpVolgorde( $src." + getter(v.bronAttribuut())
+                    + "(), $facts, $groep, " + (v.afnemend() ? "false" : "true") + ", " + gewArg + ", " + maxArg
+                    + ", " + dArg + " )")
+            .clausule("$r : " + doelP + "( " + j + " )")
+            .geldigheid(v.geldigheid())
+            .dan("    modify($r) {\n        " + setter(v.doelAttribuut())
+                    + "( (java.math.BigDecimal) $shares.get($r) )\n    }\n")
+            .render());
+        return j;
     }
 
     /** §13.4.6 objectcreatie -> a rule that inserts a new fact, sets its attributes,
@@ -1772,6 +1831,85 @@ public final class DrlTranspiler {
         hulpFuncties.putIfAbsent("rsPlafond",
                 "function java.math.BigDecimal rsPlafond(java.math.BigDecimal waarde, java.math.BigDecimal max) {\n"
                 + "    return (waarde == null || max == null || max.signum() < 0) ? waarde : waarde.min(max);\n"
+                + "}\n\n");
+    }
+
+    /** Register the §9.7.2 ordered-allocation helper. Given the verdeelplafond, the index-aligned recipient lists
+     *  (the facts for identity keying, the ordering criterium {@code groep}, the optional tie weight {@code gewicht}
+     *  and optional cap {@code max}), the sort direction and the optional floor decimals, it computes the whole
+     *  "op volgorde van" distribution and returns an identity-keyed share map. The recipients are partitioned into
+     *  groups of equal criterium and processed in sort order; every member of a tie-group splits the SAME
+     *  group-entry pot (§9.7.2 — Wilma 3/4·1200 and Hans 1/4·1200 both off 1200, not sequentially), naar rato of
+     *  {@code gewicht} or in gelijke delen when no weight is present. The §9.7.3 cap and §9.7.4 floor are applied
+     *  per share, and the pot is then depleted by the group total, so the undistributed remainder carries to the
+     *  next group (§9.7.5, Tabel 18: 1800 → 500/500/433/250/91, rest 26). A leeg/negative cap degrades to uncapped
+     *  (the §9.7.6 Fout is surfaced by the separate companion rule); a null ordering criterium sorts last; an empty
+     *  plafond yields an empty map (§9.7.6 row 1, "niet toegepast"); a zero weight-sum gives that group ZERO (no
+     *  divide-by-zero). Recipients reached after the pot is empty get an assigned ZERO (never null), so the
+     *  onverdeelde-rest rule's {@code != null} guard stays satisfiable. Idempotent. */
+    private void registreerVerdeelOpVolgordeFunctie() {
+        hulpFuncties.putIfAbsent("rsVerdeelOpVolgorde",
+                "function java.util.Map rsVerdeelOpVolgorde(java.math.BigDecimal totaal, java.util.List facts,\n"
+                + "        java.util.List groep, boolean toenemend, java.util.List gewicht, java.util.List max, Integer decimals) {\n"
+                + "    java.util.IdentityHashMap result = new java.util.IdentityHashMap();\n"
+                + "    if (totaal == null) return result;\n"   // §9.7.6 row 1: leeg verdeelplafond -> niet toegepast
+                + "    int aantal = facts.size();\n"
+                + "    java.util.List idx = new java.util.ArrayList();\n"
+                + "    for (int i = 0; i < aantal; i++) idx.add(Integer.valueOf(i));\n"
+                + "    for (int a = 1; a < aantal; a++) {\n"   // stable insertion sort of idx by groep value (nulls last)
+                + "        Integer cur = (Integer) idx.get(a);\n"
+                + "        Object curKey = groep.get(cur.intValue());\n"
+                + "        int b = a - 1;\n"
+                + "        while (b >= 0) {\n"
+                + "            Object bKey = groep.get(((Integer) idx.get(b)).intValue());\n"
+                + "            int cmp;\n"
+                + "            if (bKey == null && curKey == null) cmp = 0;\n"
+                + "            else if (bKey == null) cmp = 1;\n"            // a null criterium sorts after a present one
+                + "            else if (curKey == null) cmp = -1;\n"
+                + "            else { int c = ((Comparable) bKey).compareTo(curKey); cmp = toenemend ? c : -c; }\n"
+                + "            if (cmp > 0) { idx.set(b + 1, idx.get(b)); b--; } else break;\n"
+                + "        }\n"
+                + "        idx.set(b + 1, cur);\n"
+                + "    }\n"
+                + "    java.math.BigDecimal pot = totaal;\n"
+                + "    int p = 0;\n"
+                + "    while (p < aantal) {\n"
+                + "        int q = p;\n"
+                + "        Object key = groep.get(((Integer) idx.get(p)).intValue());\n"
+                + "        while (q < aantal && java.util.Objects.equals(key, groep.get(((Integer) idx.get(q)).intValue()))) q++;\n"
+                + "        java.math.BigDecimal groepPot = pot;\n"   // §9.7.2: every member of the group splits this same pot
+                + "        java.math.BigDecimal som = java.math.BigDecimal.ZERO;\n"
+                + "        boolean naarRato = false;\n"
+                + "        for (int k = p; k < q; k++) {\n"
+                + "            Object w = gewicht == null ? null : gewicht.get(((Integer) idx.get(k)).intValue());\n"
+                + "            if (w != null) { naarRato = true; som = som.add((java.math.BigDecimal) w); }\n"
+                + "        }\n"
+                + "        int n = q - p;\n"
+                + "        java.math.BigDecimal groepSom = java.math.BigDecimal.ZERO;\n"
+                + "        for (int k = p; k < q; k++) {\n"
+                + "            int i = ((Integer) idx.get(k)).intValue();\n"
+                + "            java.math.BigDecimal aandeel;\n"
+                + "            if (naarRato) {\n"
+                + "                Object wo = gewicht == null ? null : gewicht.get(i);\n"
+                + "                java.math.BigDecimal w = wo == null ? java.math.BigDecimal.ZERO : (java.math.BigDecimal) wo;\n"
+                + "                aandeel = som.signum() == 0 ? java.math.BigDecimal.ZERO\n"
+                + "                        : groepPot.multiply(w).divide(som, java.math.MathContext.DECIMAL64);\n"
+                + "            } else {\n"
+                + "                aandeel = groepPot.divide(java.math.BigDecimal.valueOf(n), java.math.MathContext.DECIMAL64);\n"
+                + "            }\n"
+                + "            Object cap = max == null ? null : max.get(i);\n"
+                + "            if (cap != null && ((java.math.BigDecimal) cap).signum() >= 0\n"
+                + "                    && aandeel.compareTo((java.math.BigDecimal) cap) > 0) aandeel = (java.math.BigDecimal) cap;\n"   // §9.7.3 cap
+                + "            if (decimals != null) aandeel = aandeel.setScale(decimals.intValue(), java.math.RoundingMode.FLOOR);\n"   // §9.7.4 floor
+                + "            if (aandeel.signum() < 0) aandeel = java.math.BigDecimal.ZERO;\n"
+                + "            result.put(facts.get(i), aandeel);\n"
+                + "            groepSom = groepSom.add(aandeel);\n"
+                + "        }\n"
+                + "        pot = pot.subtract(groepSom);\n"   // §9.7.5: carry the undistributed remainder to the next group
+                + "        if (pot.signum() < 0) pot = java.math.BigDecimal.ZERO;\n"
+                + "        p = q;\n"
+                + "    }\n"
+                + "    return result;\n"
                 + "}\n\n");
     }
 

@@ -1899,4 +1899,66 @@ class DrlTest {
         assertFalse(legeRegel.substring(0, legeRegel.indexOf("\nend")).contains("modify"),
                 () -> "de lege-gewicht regel mag geen modify bevatten:\n" + legeRegel);
     }
+
+    static final String OP_VOLGORDE_NAAR_RATO_SRC = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+                de restant Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel op volgorde
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - op volgorde van toenemende de leeftijd,
+                    - bij een even groot criterium naar rato van de gewicht.
+                    Als onverdeelde rest blijft de restant van een pot over.
+            """;
+
+    @Test void verdeling_op_volgorde_lowert_naar_de_geordende_allocatie() {
+        // §9.7.2: op volgorde lowers to ONE forward rule — an accumulate folding the recipients into index-aligned
+        // value lists (the fact for identity, the ordering criterium, the tie weight), a single Map binding from
+        // the registered allocation helper, and a per-recipient modify reading its share by identity.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(OP_VOLGORDE_NAAR_RATO_SRC));
+        assertTrue(drl.contains("$facts : collectList($p), $groep : collectList($p.getLeeftijd()), $gewicht : collectList($p.getGewicht())"),
+                () -> "geen index-uitgelijnde collectList-lijsten:\n" + drl);
+        assertTrue(drl.contains("$shares : java.util.Map() from rsVerdeelOpVolgorde( $src.getTotaal(), $facts, $groep, true, $gewicht, null, null )"),
+                () -> "geen Map-binding van de geordende allocatie:\n" + drl);
+        assertTrue(drl.contains("setAandeel( (java.math.BigDecimal) $shares.get($r) )"),
+                () -> "het aandeel wordt niet per ontvanger uit de share-map gelezen:\n" + drl);
+        // the §9.7.5 rest rule rides on op-volgorde unchanged, and the helper is registered exactly once
+        assertTrue(drl.contains("rule \"verdeel op volgorde (onverdeelde rest)\""), () -> "geen onverdeelde-rest regel:\n" + drl);
+        assertEquals(drl.indexOf("function java.util.Map rsVerdeelOpVolgorde("),
+                     drl.lastIndexOf("function java.util.Map rsVerdeelOpVolgorde("),
+                     "de allocatie-helper moet precies één keer geregistreerd worden");
+    }
+
+    @Test void verdeling_op_volgorde_met_niet_numeriek_criterium_blijft_no_op() {
+        // The ordering criterium is compareTo-sorted, so a non-getalachtig key (Tekst) cannot be ordered — the
+        // verdeling stays the honest no-op marker rather than emitting an uncompilable allocation.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(
+                OP_VOLGORDE_NAAR_RATO_SRC.replace("de leeftijd Numeriek (geheel getal);", "de leeftijd Tekst;")));
+        // the resolver never promotes a non-getalachtig ordering key to OP_VOLGORDE, so it stays COMPLEX
+        assertTrue(drl.contains("// onopgelost verdeling (complex)"),
+                () -> "een niet-numeriek ordeningscriterium moet een no-op blijven:\n" + drl);
+        assertFalse(drl.contains("rsVerdeelOpVolgorde"),
+                () -> "een niet-ordenbaar criterium mag geen allocatie emitteren:\n" + drl);
+    }
+
+    @Test void verdeling_op_volgorde_in_gelijke_delen_tie_geeft_geen_gewicht_door() {
+        // "bij een even groot criterium in gelijke delen" -> no tie weight: the accumulate omits the $gewicht list
+        // and the helper is called with a null weight argument (it then splits each group in equal shares). With no
+        // weight there is also no §9.7.6 empty-weight Fout, so the (leeg gewicht) rule must NOT be emitted.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(OP_VOLGORDE_NAAR_RATO_SRC.replace(
+                "bij een even groot criterium naar rato van de gewicht", "bij een even groot criterium in gelijke delen")));
+        assertTrue(drl.contains("from rsVerdeelOpVolgorde( $src.getTotaal(), $facts, $groep, true, null, null, null )"),
+                () -> "een gelijke-delen tie moet null als gewicht doorgeven:\n" + drl);
+        assertFalse(drl.contains("$gewicht"), () -> "een gelijke-delen tie mag geen gewicht-lijst verzamelen:\n" + drl);
+        assertFalse(drl.contains("(leeg gewicht)"), () -> "een gelijke-delen tie heeft geen lege-gewicht Fout:\n" + drl);
+    }
 }

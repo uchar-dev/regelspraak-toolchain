@@ -404,10 +404,14 @@ final class RuleChecker {
         // and the §9.7.5 onverdeelde rest ride on the equal-shares / naar-rato spine.
         VerdelenZonderGroepenContext z = v.verdelenZonderGroepen();
         Integer afrDec = null;
-        String restAttr = null, maxAttr = null;
+        String restAttr = null, maxAttr = null, groepeerAttr = null;
+        boolean afnemend = false;
         MeervoudigCriteriumContext mc = v.meervoudigCriterium();
-        if (z == null && mc != null && mc.verdelenOverGroepen() == null) {
-            z = mc.verdelenZonderGroepen();
+        // The §9.7.3/§9.7.4/§9.7.5 modifiers (maximum, afronding, onverdeelde rest) attach to BOTH the
+        // bare-method form and the op-volgorde form (the grammar lets them co-occur with verdelenOverGroepen),
+        // so capture them whenever a meervoudigCriterium is present; only the bare-method `z` is branch-specific.
+        if (z == null && mc != null) {
+            if (mc.verdelenOverGroepen() == null) z = mc.verdelenZonderGroepen();
             if (mc.verdeelAfronding() != null)
                 try { afrDec = Integer.valueOf(mc.verdeelAfronding().NUMBER().getText()); }
                 catch (NumberFormatException ignore) {}
@@ -437,12 +441,35 @@ final class RuleChecker {
             rato = z.attribuutMetLidwoord() != null && z.attribuutMetLidwoord().kaleNaam() != null
                     ? src(z.attribuutMetLidwoord().kaleNaam()) : null;
         }
-        // §9.7.3: a maximale aanspraak is valid ONLY for naar rato ("niet mogelijk bij gelijke verdeling" — a
-        // gelijke verdeling met maximum is voor meerdere uitleg vatbaar) and only when it names a getalachtig
-        // recipient attribute (else the cap getter would not compile). Otherwise the verdeling stays COMPLEX.
+        // §9.7.2 op volgorde van: partition the recipients by an ordering attribute and deplete the pot
+        // group-by-group; within a tie-group the share is "in gelijke delen" or "naar rato van <gewicht>"
+        // (the same role as `rato`, so reuse it). The whole allocation lowers via rsVerdeelOpVolgorde — it
+        // stays COMPLEX (a marker) only when the ordering key or the tie weight is missing or non-getalachtig
+        // (the helper compareTo-sorts the key and sums the weight, so both must be numeric to lower).
+        VerdelenOverGroepenContext og = mc != null ? mc.verdelenOverGroepen() : null;
+        if (og != null) {
+            afnemend = og.AFNEMENDE() != null;
+            groepeerAttr = og.attribuutMetLidwoord() != null && og.attribuutMetLidwoord().kaleNaam() != null
+                    ? src(og.attribuutMetLidwoord().kaleNaam()) : null;
+            CriteriumBijGelijkeVolgordeContext crit = og.criteriumBijGelijkeVolgorde();
+            if (crit != null && crit.NAAR_RATO_VAN() != null && crit.attribuutMetLidwoord() != null
+                    && crit.attribuutMetLidwoord().kaleNaam() != null)
+                rato = src(crit.attribuutMetLidwoord().kaleNaam());   // gelijke-delen tie leaves rato null
+            Datatype groepType = groepeerAttr != null && d.objecttype() != null ? d.objecttype().attribuut(groepeerAttr) : null;
+            Datatype ratoType = rato != null && d.objecttype() != null ? d.objecttype().attribuut(rato) : null;
+            boolean tieOk = rato == null || (ratoType != null && ratoType.isGetalachtig());
+            if (groepType != null && groepType.isGetalachtig() && tieOk)
+                methode = ResolvedVerdeling.Methode.OP_VOLGORDE;
+        }
+        // §9.7.3: a maximale aanspraak is valid ONLY for a naar-rato split ("niet mogelijk bij gelijke verdeling"
+        // — a gelijke verdeling met maximum is voor meerdere uitleg vatbaar), i.e. top-level naar rato OR an
+        // op-volgorde with a naar-rato tie, and only when it names a getalachtig recipient attribute (else the
+        // cap getter would not compile). Otherwise the verdeling falls back to COMPLEX (a marker).
         if (maxAttr != null) {
             Datatype maxType = d.objecttype() != null ? d.objecttype().attribuut(maxAttr) : null;
-            if (methode != ResolvedVerdeling.Methode.NAAR_RATO || maxType == null || !maxType.isGetalachtig()) {
+            boolean ratoTie = methode == ResolvedVerdeling.Methode.NAAR_RATO
+                    || (methode == ResolvedVerdeling.Methode.OP_VOLGORDE && rato != null);
+            if (!ratoTie || maxType == null || !maxType.isGetalachtig()) {
                 methode = ResolvedVerdeling.Methode.COMPLEX;
                 maxAttr = null;
             }
@@ -453,9 +480,11 @@ final class RuleChecker {
         // weight is not getalachtig is lowered to an honest no-op (so flagging the precision of a share that is
         // never computed would be a false positive). (No-op for all-integer TOKA verdelingen.)
         if (methode != ResolvedVerdeling.Methode.COMPLEX && b.objecttype() != null && d.objecttype() != null) {
-            Datatype gewType = methode == ResolvedVerdeling.Methode.NAAR_RATO && rato != null
-                    ? d.objecttype().attribuut(rato) : null;
+            Datatype gewType = (methode == ResolvedVerdeling.Methode.NAAR_RATO
+                    || methode == ResolvedVerdeling.Methode.OP_VOLGORDE) && rato != null
+                    ? d.objecttype().attribuut(rato) : null;   // op-volgorde naar-rato tie weighs like NAAR_RATO
             boolean lowert = methode == ResolvedVerdeling.Methode.GELIJKE_DELEN
+                    || methode == ResolvedVerdeling.Methode.OP_VOLGORDE     // gated above to always lower
                     || (gewType != null && gewType.isGetalachtig());   // mirror the transpiler's lowering gate
             if (lowert) {
                 String fout = Typering.verdeelToekenning(d.objecttype().attribuut(d.attribuut()),
@@ -465,7 +494,8 @@ final class RuleChecker {
             }
         }
         model.verdelingen.add(new ResolvedVerdeling(naam, b.objecttype(), b.attribuut(),
-                d.objecttype(), d.attribuut(), methode, rato, maxAttr, afrDec, restAttr, voorwaarde, geldigheid));
+                d.objecttype(), d.attribuut(), methode, rato, maxAttr, afrDec, restAttr,
+                groepeerAttr, afnemend, voorwaarde, geldigheid));
     }
 
     /** §13.4.6 objectcreatie: "<subject> heeft <het rol> met <attribuut> gelijk aan <expr>

@@ -960,18 +960,79 @@ floor):
   `restant`, so its modify does not re-trigger the share rule (property reactivity) and the recomputation is a
   fixpoint. Caught by an adversarial review (the freeze-guard premature-partial bug) + regression-pinned.
 
-Only `op volgorde van` (group ordering, §9.7.2) still keeps the verdeling `COMPLEX` — toka-34 and toka-37 remain
-markers (they sort recipients into age groups and deplete in order, a genuinely multi-pass allocation). toka-36
-(afronding) lowers; toka-35 (maximum) lowers *structurally* but markers on the TOKA corpus because its cap
-attribute "maximaal aantal te ontvangen treinmiles" is referenced yet never declared (a spec omission, like the
-undeclared "passagier jonger dan 18 jaar" kenmerk) — proven instead on a synthetic fixture firing the §9.7.3
-worked example.
+`op volgorde van` (group ordering, §9.7.2) now lowers as well — see the next section. toka-36 (afronding) and
+toka-34 (op volgorde, no maximum) lower on the corpus; toka-35 (maximum) and toka-37 (op volgorde + maximum)
+lower *structurally* but marker on the TOKA corpus because their cap attribute "maximaal aantal te ontvangen
+treinmiles" is referenced yet never declared (a spec omission, like the undeclared "passagier jonger dan 18 jaar"
+kenmerk) — proven instead on synthetic fixtures firing the §9.7.3 and §9.7.5 worked examples.
 
 **Warning:** §9.7.3/§9.7.4 — "Als een maximale aanspraak / afronding wordt gespecificeerd, dan moet ook altijd
 een onverdeelde rest worden gespecificeerd." A verdeling that caps or floors with no (recognisable) bron-side
 remainder attribute raises a WARNING (the leftover would otherwise be silently lost), but only when the verdeler
 resolves — an unresolved-verdeler fragment markers anyway, so warning there is noise. The shares still cap/floor;
 the remainder simply is not captured.
+
+### §9.7.2 verdeling op volgorde van — ordered group depletion via one registered allocation helper
+
+"… waarbij wordt verdeeld: **op volgorde van toenemende/afnemende** \<criterium\>, **bij een even groot
+criterium** \<in gelijke delen | naar rato van \<gewicht\>\>" (§9.7.2) is a genuinely **multi-pass, order-dependent**
+allocation: the recipients are partitioned into groups of equal `criterium` and the pot is depleted group by
+group in sort order, carrying the remainder forward. It has no single closed-form Drools rule, so it lowers to
+**one forward rule + one registered Java helper**:
+
+- the rule's `accumulate` folds the recipients into **index-aligned value lists** via several `collectList`
+  functions in one accumulate — `collectList($p)` (the fact, for identity keying), `collectList($p.get<crit>())`
+  (the ordering key), and, when present, `collectList($p.get<weight>())` / `collectList($p.get<max>())`;
+- `$shares : java.util.Map() from rsVerdeelOpVolgorde(total, $facts, $groep, toenemend, $gewicht, $max, decimals)`
+  binds the whole share map **once** (a `Map` is not a `Collection`, so `from` does not iterate it); the helper
+  does the imperative ordered allocation and returns an `IdentityHashMap` keyed by the recipient fact;
+- `$r : <Doel>(<join>)` then assigns each recipient its share by identity: `set<doel>((BigDecimal) $shares.get($r))`.
+
+The allocation (in `rsVerdeelOpVolgorde`): sort the recipients by `criterium` (ascending for *toenemende*,
+descending for *afnemende*); for each tie-group in order, **every member splits the SAME group-entry pot** — naar
+rato of the tie weight (`pot·w_i/Σw`) or in gelijke delen (`pot/n`) — then each share is **capped (§9.7.3) and
+floored (§9.7.4)**, and the pot is depleted by the group total so the undistributed remainder carries to the next
+group (§9.7.5). The §9.7.5 onverdeelde-rest and §9.7.6 empty-weight / leeg-or-negative-maximum Fout rules are the
+**same shared companion rules** as the non-ordered methods.
+
+Two design points are load-bearing and pinned by tests:
+
+1. **Group-entry pot, not sequential depletion.** All members of a tie-group divide the pot *as it stood when the
+   group was reached*, not a pot already reduced by earlier members of the same group. The §9.7.2 worked example
+   forces this: 1200 over Wilma(age 20, w3) / Hans(age 20, w1) / Diederik(age 22, w2) gives Wilma `3/4·1200 = 900`
+   and Hans `1/4·1200 = 300` (both off **1200**), exhausting the pot, so Diederik gets **0** and the rest is 0.
+   Sequential within-group depletion would (wrongly) give Hans `1/4·300 = 75`. Pinned by
+   `verdeling_op_volgorde_geeft_de_eerste_groep_alles_zonder_maximum`.
+
+2. **Cap and floor are applied INSIDE the helper, group by group** — never as a post-hoc `rsPlafond`/`rsAfronding`
+   wrap against the full plafond. The §9.7.5 worked example (Tabel 18) proves it: 1800, max 500/250, floor 0 →
+   Piet 500 (pot→1300), Jan/Klaas split **1300** (Jan `2/3·1300=866`→cap 500, Klaas `1/3·1300=433.33`→floor 433;
+   pot→367), Nel/Ria split **367** (Nel `3/4·367=275.25`→cap 250, Ria `1/4·367=91.75`→floor 91), rest **26**. A
+   clamp against the fixed 1800 would compute every later group off the wrong pot. Pinned by
+   `verdeling_op_volgorde_met_maximum_en_afronding_reproduceert_tabel_18`.
+
+Chosen readings where the spec is silent or self-inconsistent (flagged, not invented):
+
+- **Empty *ordering* criterium → sorts last (a degrade), no extra Fout.** Tabel 19's "Criterium bij gelijke
+  volgorde → Leeg → Fout" is the *tie-split* weight (the `bij een even groot criterium naar rato van …` weight),
+  which is the same channel as "Naar rato → Leeg → Fout" and is surfaced by the existing `(leeg gewicht)` rule.
+  Tabel 19 says **nothing** about an empty *ordering* attribute (`leeftijd`), so we do not raise a non-mandated
+  Inconsistentie for it; the helper merely sorts a null key last so it cannot crash. (The earlier design draft's
+  separate `(leeg criterium)` Fout rule was dropped as spec-unsupported.)
+- **§9.7.5 prose arithmetic typos.** The §9.7.5 narrative writes "3/4 · **337** = 252" and "1/4 · **227** = 91";
+  the carried pot is **367** (`1800−500−500−433`) and `3/4·367 = 275.25`. Tabel 18's final column (250/91) and
+  the rest (26) are correct. We reproduce the **table**, and flag "337"/"227" as conversion/spec typos.
+- **Maximum on a gelijke-delen tie → marker (strict reading).** §9.7.3 "niet mogelijk bij gelijke verdeling": we
+  allow a maximum only when a naar-rato split is present (top-level naar rato, or an op-volgorde *naar-rato* tie),
+  and keep a maximum on a gelijke-delen tie `COMPLEX` (a marker), matching the resolver's existing posture.
+- **Negative *tie* weight is not a Fout.** Tabel 19 lists `< 0` as a Fout only for the *maximum*, not the weight.
+  A negative tie weight yields a (possibly negative) provisional share that the helper clamps to `≥ 0`; we do not
+  raise a Fout the spec does not list.
+
+**Restriction (carded):** the ordering key and the tie weight must be **getalachtig** — the helper `compareTo`-sorts
+the key and sums the weight, so a non-numeric (e.g. Datum) ordering criterium currently keeps the verdeling a
+marker, even though a `Comparable` date would sort fine. Generalising the ordering key to any `Comparable`
+datatype is a deferred follow-up.
 
 ### §6.5 gedeeld door (ABS) — 5 decimals toward zero, and a table typo
 

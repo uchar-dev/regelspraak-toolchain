@@ -1394,6 +1394,142 @@ class DroolsExecutionTest {
         assertEquals(1, fouten.size());   // the good pot raised nothing (already asserted by the count)
     }
 
+    static final String VERDELING_OP_VOLGORDE_SRC = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+                de restant Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel op volgorde
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - op volgorde van toenemende de leeftijd,
+                    - bij een even groot criterium naar rato van de gewicht.
+                    Als onverdeelde rest blijft de restant van een pot over.
+            """;
+
+    @Test void verdeling_op_volgorde_geeft_de_eerste_groep_alles_zonder_maximum() {
+        // §9.7.2 worked example: 1200 op volgorde van toenemende leeftijd, tie naar rato van gewicht, no maximum.
+        // The youngest group {Wilma(20,w3), Hans(20,w1)} splits the WHOLE pot (Σ=4 -> 900/300), exhausting it, so
+        // Diederik(22) gets 0 and the onverdeelde rest is 0. This pins the group-entry-pot reading: Hans is 1/4·1200
+        // = 300, NOT 1/4 of a pot already depleted by Wilma. It also empirically verifies the three index-aligned
+        // collectList lists stay aligned and that "Map() from <helper>" binds the share map once.
+        RegelSpraakModel m = Resolver.resolve(VERDELING_OP_VOLGORDE_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("from rsVerdeelOpVolgorde("), () -> "geen op-volgorde allocatie:\n" + drl);
+        assertTrue(drl.contains("collectList($p.getLeeftijd())"), () -> "ordeningscriterium niet verzameld:\n" + drl);
+        assertTrue(drl.contains("$facts, $groep, true,"), () -> "richting toenemend niet gelowerd:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Pot p = new Pot(); p.setTotaal(new BigDecimal("1200"));
+        Deelnemer wilma = new Deelnemer(); wilma.setPot(p); wilma.setLeeftijd(new BigDecimal("20")); wilma.setGewicht(new BigDecimal("3"));
+        Deelnemer hans = new Deelnemer(); hans.setPot(p); hans.setLeeftijd(new BigDecimal("20")); hans.setGewicht(new BigDecimal("1"));
+        Deelnemer diederik = new Deelnemer(); diederik.setPot(p); diederik.setLeeftijd(new BigDecimal("22")); diederik.setGewicht(new BigDecimal("2"));
+        for (Object o : new Object[]{p, wilma, hans, diederik}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("900").compareTo(wilma.getAandeel()), () -> "wilma 3/4·1200 = 900, kreeg " + wilma.getAandeel());
+        assertEquals(0, new BigDecimal("300").compareTo(hans.getAandeel()), () -> "hans 1/4·1200 = 300 (van dezelfde pot), kreeg " + hans.getAandeel());
+        assertEquals(0, BigDecimal.ZERO.compareTo(diederik.getAandeel()), () -> "diederik (oudere groep) krijgt 0, kreeg " + diederik.getAandeel());
+        assertEquals(0, BigDecimal.ZERO.compareTo(p.getRestant()), () -> "onverdeelde rest 1200-1200 = 0, kreeg " + p.getRestant());
+    }
+
+    static final String VERDELING_OP_VOLGORDE_MAX_SRC = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+                de restant Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal);
+                de maximum Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel op volgorde met maximum en afronding
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - op volgorde van toenemende de leeftijd,
+                    - bij een even groot criterium naar rato van de gewicht,
+                    - met een maximum van de maximum,
+                    - afgerond op 0 decimalen naar beneden.
+                    Als onverdeelde rest blijft de restant van een pot over.
+            """;
+
+    @Test void verdeling_op_volgorde_met_maximum_en_afronding_reproduceert_tabel_18() {
+        // §9.7.5 worked example (Tabel 18): 1800 op volgorde van toenemende leeftijd, tie naar rato van gewicht,
+        // max per recipient, floor 0 decimals. The cap+floor are applied INSIDE the helper so the remainder carries
+        // group by group: Piet(22) alone -> 1800 capped 500 (pot 1300); Jan/Klaas(39) split 1300 (Jan 2/3·1300=866
+        // capped 500, Klaas 1/3·1300=433.33 floored 433; pot 367); Nel/Ria(66) split 367 (Nel 3/4·367=275.25 capped
+        // 250, Ria 1/4·367=91.75 floored 91). Shares 500/500/433/250/91, onverdeelde rest 1800-1774 = 26. This is
+        // the regression that catches a post-hoc clamp against the full plafond (which would compute each group off
+        // 1800, not the carried-down pot).
+        RegelSpraakModel m = Resolver.resolve(VERDELING_OP_VOLGORDE_MAX_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("from rsVerdeelOpVolgorde("), () -> "geen op-volgorde allocatie:\n" + drl);
+        assertTrue(drl.contains("$gewicht, $max,"), () -> "maximum niet meegegeven aan de allocatie:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Pot p = new Pot(); p.setTotaal(new BigDecimal("1800"));
+        Deelnemer piet = deelnemer(p, "22", "3", "500");
+        Deelnemer jan = deelnemer(p, "39", "2", "500");
+        Deelnemer klaas = deelnemer(p, "39", "1", "500");
+        Deelnemer nel = deelnemer(p, "66", "3", "250");
+        Deelnemer ria = deelnemer(p, "66", "1", "250");
+        for (Object o : new Object[]{p, piet, jan, klaas, nel, ria}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("500").compareTo(piet.getAandeel()), () -> "piet 1800 -> cap 500, kreeg " + piet.getAandeel());
+        assertEquals(0, new BigDecimal("500").compareTo(jan.getAandeel()), () -> "jan 2/3·1300=866 -> cap 500, kreeg " + jan.getAandeel());
+        assertEquals(0, new BigDecimal("433").compareTo(klaas.getAandeel()), () -> "klaas 1/3·1300=433.33 -> floor 433, kreeg " + klaas.getAandeel());
+        assertEquals(0, new BigDecimal("250").compareTo(nel.getAandeel()), () -> "nel 3/4·367=275.25 -> cap 250, kreeg " + nel.getAandeel());
+        assertEquals(0, new BigDecimal("91").compareTo(ria.getAandeel()), () -> "ria 1/4·367=91.75 -> floor 91, kreeg " + ria.getAandeel());
+        assertEquals(0, new BigDecimal("26").compareTo(p.getRestant()), () -> "onverdeelde rest 1800-1774 = 26 (Tabel 18), kreeg " + p.getRestant());
+    }
+
+    @Test void verdeling_op_volgorde_afnemend_keert_de_groepsvolgorde_om() {
+        // §9.7.2 with AFNEMENDE: the OLDEST group is served first. Diederik(22) alone takes the whole 1200 (his
+        // group's tie weight is irrelevant for a singleton), exhausting the pot, so Wilma/Hans(20) get 0. This pins
+        // that the sort direction flips the depletion order (the share map keys off the reversed group order).
+        RegelSpraakModel m = Resolver.resolve(VERDELING_OP_VOLGORDE_SRC.replace("toenemende de leeftijd", "afnemende de leeftijd"));
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("$facts, $groep, false,"), () -> "richting afnemend niet gelowerd:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Pot p = new Pot(); p.setTotaal(new BigDecimal("1200"));
+        Deelnemer wilma = new Deelnemer(); wilma.setPot(p); wilma.setLeeftijd(new BigDecimal("20")); wilma.setGewicht(new BigDecimal("3"));
+        Deelnemer hans = new Deelnemer(); hans.setPot(p); hans.setLeeftijd(new BigDecimal("20")); hans.setGewicht(new BigDecimal("1"));
+        Deelnemer diederik = new Deelnemer(); diederik.setPot(p); diederik.setLeeftijd(new BigDecimal("22")); diederik.setGewicht(new BigDecimal("2"));
+        for (Object o : new Object[]{p, wilma, hans, diederik}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("1200").compareTo(diederik.getAandeel()), () -> "afnemend: diederik (22) eerst, neemt alles, kreeg " + diederik.getAandeel());
+        assertEquals(0, BigDecimal.ZERO.compareTo(wilma.getAandeel()), () -> "wilma (20) krijgt 0, kreeg " + wilma.getAandeel());
+        assertEquals(0, BigDecimal.ZERO.compareTo(hans.getAandeel()), () -> "hans (20) krijgt 0, kreeg " + hans.getAandeel());
+    }
+
+    private static Deelnemer deelnemer(Pot p, String leeftijd, String gewicht, String maximum) {
+        Deelnemer d = new Deelnemer();
+        d.setPot(p);
+        d.setLeeftijd(new BigDecimal(leeftijd));
+        d.setGewicht(new BigDecimal(gewicht));
+        d.setMaximum(new BigDecimal(maximum));
+        return d;
+    }
+
     @Test void cross_unit_optelling_wordt_omgerekend_niet_rauw_geteld() {
         // duur(mnd) := looptijd(jr) + duur(mnd). looptijd must be scaled jr->mnd (×12),
         // NOT added raw: 2 jr + 3 mnd = 27 mnd, not 5.
