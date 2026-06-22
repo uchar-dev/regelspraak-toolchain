@@ -39,14 +39,18 @@ public record Eenheid(String afkorting, String stelsel, String canoniek, BigDeci
 
     /** §4.4 the PRODUCT of two simple units ("€·m") — an opaque composite carrying NO canonical, so it is
      *  convertible only to an identical product (any assignment/comparison against a concrete unit then flags a
-     *  §4 unit mismatch instead of silently passing as it did when the product degraded to Onbekend). The factor
-     *  abbreviations are ordered so the product is commutative (€ maal m == m maal €). The model does not (yet)
-     *  re-decompose a product, so cancelling a factor away (€·m gedeeld door m) is not recognised — it stays an
-     *  opaque product or Onbekend. */
+     *  §4 unit mismatch instead of silently passing as it did when the product degraded to Onbekend). Each
+     *  operand's afkorting is FLATTENED into its atomic "·"-factors and the combined multiset is SORTED before
+     *  re-joining, so every grouping and order of the same factors yields ONE canonical afkorting — making the
+     *  product commutative AND associative (§4.4 Tabel 11): (€·m)·km == €·(m·km) == €·km·m. A self-product
+     *  (€ maal €) keeps both factors (€·€, a squared unit). The model does not (yet) re-decompose a product, so
+     *  cancelling a factor away (€·m gedeeld door m) is not recognised — it stays an opaque product or Onbekend. */
     public static Eenheid product(Eenheid a, Eenheid b) {
-        String afk = a.afkorting.compareTo(b.afkorting) <= 0
-                ? a.afkorting + "·" + b.afkorting : b.afkorting + "·" + a.afkorting;
-        return new Eenheid(afk, a.stelsel, null, null, null);
+        java.util.List<String> factoren = new java.util.ArrayList<>();
+        java.util.Collections.addAll(factoren, a.afkorting.split("·"));
+        java.util.Collections.addAll(factoren, b.afkorting.split("·"));
+        java.util.Collections.sort(factoren);
+        return new Eenheid(String.join("·", factoren), a.stelsel, null, null, null);
     }
 
     /** Human-readable spelling, including the denominator for a composite ("€/jr"). */

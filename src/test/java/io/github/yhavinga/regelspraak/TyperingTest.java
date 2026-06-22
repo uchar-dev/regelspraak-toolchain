@@ -155,6 +155,19 @@ class TyperingTest {
         var omgekeerd = Typering.reken(BinOp.MAAL, numEenh(m), numEenh(EUR));   // commutatief: m maal € == € maal m
         assertEquals("EUR·m", omgekeerd.type().eenheidOf().afkorting());
     }
+    @Test void productunit_is_commutatief_en_associatief_voor_drie_factoren() {
+        // §4.4 Tabel 11: unit multiplication is commutative AND associative, so (€·m)·km and €·(m·km) must denote
+        // the ONE same product unit (else a correct 3-way product is spuriously rejected on assignment/comparison).
+        Eenheid m = new Eenheid("m", "Lengte"), km = new Eenheid("km", "Lengte");
+        var ab  = Typering.reken(BinOp.MAAL, numEenh(EUR), numEenh(m)).type();   // € maal m  = €·m
+        var abc = Typering.reken(BinOp.MAAL, ab, numEenh(km)).type();            // (€·m) maal km
+        var bc  = Typering.reken(BinOp.MAAL, numEenh(m), numEenh(km)).type();    // m maal km = m·km
+        var abc2 = Typering.reken(BinOp.MAAL, numEenh(EUR), bc).type();          // € maal (m·km)
+        assertEquals(abc.eenheidOf().afkorting(), abc2.eenheidOf().afkorting(), "associatief: één canoniek productunit");
+        assertEquals("EUR·km·m", abc.eenheidOf().afkorting(), "gesorteerde factor-multiset");
+        assertNull(Typering.toekenning(abc, abc2), "dezelfde 3-weg producteenheid toekennen is geen fout");
+    }
+
     @Test void productunit_toegekend_aan_een_enkele_eenheid_is_een_eenheidfout() {
         // §4.4 / §6.1: €·m is convertible only to an identical product, so assigning it to a € target flags a
         // unit mismatch — where the prior Onbekend silently passed.
