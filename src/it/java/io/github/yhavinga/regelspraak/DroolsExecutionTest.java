@@ -3138,6 +3138,52 @@ class DroolsExecutionTest {
         assertFalse(pax.isVol(), "een passagier maar niet internationaal -> de inline conjunct faalt -> vuurt niet");
     }
 
+    @Test void membership_twee_farside_conjuncten_geven_lege_inline_plus_twee_exists() {
+        // The empty-inline edge: when EVERY conjunct is a far-side membership, the combined inline is "" so the
+        // subject pattern stays "Vlucht(  )" and BOTH memberships ride out as separate exists clauses. No dangling
+        // "&&" / "()" — and the rule must fire as a true AND of the two joins (a Vlucht with both a passagier and
+        // a contingent), not for either alone.
+        String src = """
+                Objecttype de Passagier
+                Objecttype de Contingent
+                Objecttype de Vlucht
+                    is vol kenmerk (bijvoeglijk);
+                Feittype Vlucht met passagiers
+                    de reis Vlucht
+                    de passagier Passagier
+                Eén reis heeft meerdere passagiers
+                Feittype Vlucht met contingenten
+                    de contingentvlucht Vlucht
+                    de contingent Contingent
+                Eén contingentvlucht heeft meerdere contingenten
+                Regel r
+                    geldig altijd
+                        Een Vlucht is vol indien hij aan alle volgende voorwaarden voldoet:
+                        - hij heeft een passagier
+                        - hij heeft een contingent.
+                """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("$subject : Vlucht(  )"), () -> "lege inline verwacht:\n" + drl);
+        assertTrue(drl.contains("exists Passagier( reis == $subject )")
+                && drl.contains("exists Contingent( contingentvlucht == $subject )"), () -> "twee exists verwacht:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht beide = new Vlucht();   // passagier + contingent -> vuurt
+        Vlucht alleenPax = new Vlucht();
+        Vlucht leeg = new Vlucht();
+        Passagier p1 = new Passagier(); p1.setReis(beide);
+        Passagier p2 = new Passagier(); p2.setReis(alleenPax);
+        Contingent c1 = new Contingent(); c1.setContingentvlucht(beide);
+        for (Object o : new Object[]{beide, alleenPax, leeg, p1, p2, c1}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(beide.isVol(), "passagier EN contingent -> beide exists matchen -> vuurt");
+        assertFalse(alleenPax.isVol(), "alleen een passagier -> de tweede exists faalt -> vuurt niet");
+        assertFalse(leeg.isVol(), "geen passagier en geen contingent -> vuurt niet");
+    }
+
     @Test void membership_eenvorm_kenmerkcheck_bindt_alleen_een_zelfstandig_kenmerk() {
         // §8.1.8.3: "hij is een <zelfstandig kenmerk>" binds the boolean property (student == true); a BIJVOEGLIJK
         // kenmerk (written "is <k>", no "een") must NOT bind the EEN-form — it stays a marker, so a rule gated on
