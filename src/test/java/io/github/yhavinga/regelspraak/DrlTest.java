@@ -139,25 +139,43 @@ class DrlTest {
         // selects the soort: heeft -> bezittelijk, is -> zelfstandig; neither soort binds under the other verb, so
         // an "is een <bezittelijk k>" (wrong verb) stays an honest marker. (Teeth: route the heeft EEN-form through
         // zelfstandigKenmerk instead and the bezittelijk binding falls back to the marker.)
+        // The pairing is symmetric: a ZELFSTANDIG kenmerk binds the EEN-form only under "is", so "heeft een
+        // <zelfstandig k>" (wrong verb) is now an honest marker too (it formerly over-bound verb-agnostically —
+        // §3.5 line 823 makes a noch-noch/zelfstandig kenmerk read "is een …", not "heeft …").
         String src = """
             Objecttype de Passagier (bezield)
                 het recht op duurzaamheidskorting kenmerk (bezittelijk);
+                het vip kenmerk;
                 de korting Numeriek (geheel getal);
                 de toeslag Numeriek (geheel getal);
+                de premie Numeriek (geheel getal);
+                de bonus Numeriek (geheel getal);
             Regel bezit
                 geldig altijd
                     De korting van een Passagier moet gesteld worden op 1
                     indien hij een recht op duurzaamheidskorting heeft.
-            Regel verkeerd werkwoord
+            Regel verkeerd werkwoord bezittelijk
                 geldig altijd
                     De toeslag van een Passagier moet gesteld worden op 2
                     indien hij een recht op duurzaamheidskorting is.
+            Regel zelfstandig juist
+                geldig altijd
+                    De premie van een Passagier moet gesteld worden op 3
+                    indien hij een vip is.
+            Regel verkeerd werkwoord zelfstandig
+                geldig altijd
+                    De bonus van een Passagier moet gesteld worden op 4
+                    indien hij een vip heeft.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertTrue(drl.contains("rechtOpDuurzaamheidskorting == true"),
                 () -> "de heeft EEN-vorm moet het bezittelijk kenmerk binden:\n" + drl);
         assertTrue(drl.contains("/* TODO voorwaarde: hij een recht op duurzaamheidskorting is */"),
                 () -> "een bezittelijk kenmerk onder 'is' (verkeerd werkwoord) moet een marker blijven:\n" + drl);
+        assertTrue(drl.contains("vip == true"),
+                () -> "een zelfstandig kenmerk moet de IS EEN-vorm binden:\n" + drl);
+        assertTrue(drl.contains("/* TODO voorwaarde: hij een vip heeft */"),
+                () -> "een zelfstandig kenmerk onder 'heeft' (verkeerd werkwoord) moet een marker blijven:\n" + drl);
     }
 
     @Test void rolcheck_zonder_een_bindt_kenmerk_eerst_dan_rol() {
