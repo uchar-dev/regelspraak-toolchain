@@ -1364,6 +1364,36 @@ class DroolsExecutionTest {
         assertEquals(0, new BigDecimal("400").compareTo(p.getRestant()), () -> "onverdeelde rest 1200-300-200-300 = 400, kreeg " + p.getRestant());
     }
 
+    @Test void verdeling_max_met_leeg_of_negatief_maximum_meldt_een_inconsistentie_en_degradeert() {
+        // §9.7.6 Tabel 19: a leeg or NEGATIVE maximum at any recipient makes the whole verdeling a Fout. Like the
+        // empty weight, the Fout is surfaced as a SEPARATE Inconsistentie (one per fout-pot), while the value side
+        // degrades the bad cap to UNCAPPED — never a negative share (which would be silently wrong). A pot whose
+        // maxima are all valid raises no Inconsistentie.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(VERDELING_MAX_SRC));
+        assertTrue(drl.contains("(leeg of negatief maximum)"), () -> "geen leeg/negatief-maximum Inconsistentie-regel:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Pot fout = new Pot(); fout.setTotaal(new BigDecimal("1200"));
+        Deelnemer leeg = new Deelnemer(); leeg.setPot(fout); leeg.setGewicht(new BigDecimal("3"));            // maximum == null
+        Deelnemer neg = new Deelnemer(); neg.setPot(fout); neg.setGewicht(new BigDecimal("2")); neg.setMaximum(new BigDecimal("-5"));
+        Deelnemer ok = new Deelnemer(); ok.setPot(fout); ok.setGewicht(new BigDecimal("1")); ok.setMaximum(new BigDecimal("300"));
+        Pot goed = new Pot(); goed.setTotaal(new BigDecimal("120"));
+        Deelnemer g1 = new Deelnemer(); g1.setPot(goed); g1.setGewicht(new BigDecimal("1")); g1.setMaximum(new BigDecimal("300"));
+        for (Object o : new Object[]{fout, leeg, neg, ok, goed, g1}) sessie.insert(o);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> ((Inconsistentie) o).getSubject()).toList();
+        sessie.dispose();
+
+        assertEquals(1, fouten.size(), () -> "precies één Inconsistentie verwacht (alleen de fout-pot), kreeg " + fouten.size());
+        assertSame(fout, fouten.get(0), "de Inconsistentie moet de fout-pot noemen");
+        // the bad caps degrade to UNCAPPED (positive shares, never negative): leeg 3/6·1200=600, neg 2/6·1200=400
+        assertEquals(0, new BigDecimal("600").compareTo(leeg.getAandeel()), () -> "leeg maximum -> uncapped 600, kreeg " + leeg.getAandeel());
+        assertEquals(0, new BigDecimal("400").compareTo(neg.getAandeel()), () -> "negatief maximum -> uncapped 400 (niet negatief), kreeg " + neg.getAandeel());
+        assertEquals(0, new BigDecimal("200").compareTo(ok.getAandeel()), () -> "geldig 1/6·1200=200 (< max 300), kreeg " + ok.getAandeel());
+        assertEquals(1, fouten.size());   // the good pot raised nothing (already asserted by the count)
+    }
+
     @Test void cross_unit_optelling_wordt_omgerekend_niet_rauw_geteld() {
         // duur(mnd) := looptijd(jr) + duur(mnd). looptijd must be scaled jr->mnd (×12),
         // NOT added raw: 2 jr + 3 mnd = 27 mnd, not 5.

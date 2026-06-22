@@ -934,6 +934,11 @@ floor):
   1200 over 3:1:2 capped at 300 → 300/200/300, leaves 400 as the rest), so the existing remainder rule — which
   reads the *capped* assigned shares — captures it for free. The maximum is naar-rato only ("niet mogelijk bij
   gelijke verdeling", §9.7.3) and must name a getalachtig recipient attribute, else the verdeling stays a marker.
+  **§9.7.6 Tabel 19** makes a *leeg* or *negative* maximum at any recipient a Fout for the whole verdeling (the
+  N.B. — one recipient suffices): surfaced like the empty weight, by a SEPARATE `"(leeg of negatief maximum)"`
+  Inconsistentie rule, while `rsPlafond` degrades a leeg/negative cap to UNCAPPED (never a negative share — that
+  would be silently wrong). A zero maximum is valid (the recipient receives nothing). Caught + fixed by the
+  slice's adversarial review.
 
 - **Floor (§9.7.4).** Each share is wrapped in the null-safe `rsAfronding(share, N, RoundingMode.FLOOR)` —
   "naar beneden" is FLOOR, and since `verdeelAfronding` is grammatically always "naar beneden" the mode is

@@ -551,6 +551,21 @@ public final class DrlTranspiler {
                 .dan(inconsistentieDan(v.naam()))
                 .render());
         }
+        if (v.maximumAttribuut() != null) {
+            // §9.7.6 Tabel 19: a LEEG or NEGATIVE maximum at ANY recipient makes the whole verdeling a Fout (the
+            // N.B. — one recipient suffices). Surfaced like the empty weight: a SEPARATE modify-free Inconsistentie
+            // rule. The value side already degrades a leeg/negative cap to uncapped (rsPlafond), so no negative
+            // share is produced — the same {degrade + Inconsistentie} fout representation as elsewhere.
+            String mNaam = ident(v.maximumAttribuut(), false);
+            out.append(new Regel(v.naam() + " (leeg of negatief maximum)")
+                .clausule(SUBJECT + " : " + ident(bron.naam, true) + "(  )")
+                .clausule("exists " + ident(doel.naam, true) + "( " + ident(join, false) + " == " + SUBJECT
+                        + ", " + mNaam + " == null || " + mNaam + ".signum() < 0 )")
+                .geldigheid(v.geldigheid())
+                .clausule(inconsistentieGuard(v.naam()))
+                .dan(inconsistentieDan(v.naam()))
+                .render());
+        }
     }
 
     /** §13.4.6 objectcreatie -> a rule that inserts a new fact, sets its attributes,
@@ -1749,12 +1764,14 @@ public final class DrlTranspiler {
     }
 
     /** Register the §9.7.3 verdeel-plafond helper — cap a naar-rato share at the recipient's maximum (the
-     *  surplus is not redistributed, §9.7.3). A null share stays leeg; a recipient without a maximum is
-     *  uncapped. Idempotent. */
+     *  surplus is not redistributed, §9.7.3). A null share stays leeg. A leeg or NEGATIVE maximum is §9.7.6
+     *  Tabel 19 Fout: the value degrades to UNCAPPED here (never a negative share — that would be silently
+     *  wrong), and the fout is surfaced by the separate "(leeg of negatief maximum)" Inconsistentie rule. A zero
+     *  maximum is valid (the recipient receives nothing). Idempotent. */
     private void registreerPlafondFunctie() {
         hulpFuncties.putIfAbsent("rsPlafond",
                 "function java.math.BigDecimal rsPlafond(java.math.BigDecimal waarde, java.math.BigDecimal max) {\n"
-                + "    return (waarde == null || max == null) ? waarde : waarde.min(max);\n"
+                + "    return (waarde == null || max == null || max.signum() < 0) ? waarde : waarde.min(max);\n"
                 + "}\n\n");
     }
 
