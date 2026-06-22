@@ -475,14 +475,15 @@ The "een" is optional and the IS/heeft verb no longer gates it (a kenmerk still 
 reaches the far side). Corpus byte-identical across all 193 files (no corpus condition uses the far-side form),
 proven on synthetic fixtures firing `exists`/`not` in real Drools (the mixed inline+far-side AND matrix, the
 all-far-side empty-inline AND, the negated-quantifier marker). The §6.5/§6.6 deling-door-leeg / wortel-negatief
-Inconsistentie companions are **suppressed whenever the condition contributed an extra clause** (a slice review
-caught them over-firing — a companion is gated by the rule's INLINE constraint, but a far-side condition is the
-hoisted exists-clause, so an ungated companion raised an Inconsistentie for subjects the rule never acts on). The
-value still degrades to leeg; only the fout signal is conservatively withheld — an extension of the existing
-companion scope limit (navigated / aggregation / parameter operands already raise none). **Carded:** the far-side
-nested under a non-conjunction quantifier or hosted by an inline-only caller (would need De Morgan restructuring /
-per-caller join hosting), and threading the exists-join into the fout companions so a far-side-gated division can
-raise its fout when the membership holds.
+Inconsistentie companions now **carry the host rule's hoisted clauses** (`lc.extra()`), appended after their own
+subject pattern, so a far-side-gated own-attribute division/wortel raises its fout exactly when it would execute —
+the leeg-divisor / negative-radicand guard holds AND the membership holds. (An earlier slice SUPPRESSED them for a
+far-side-gated rule, because a companion built from the empty inline constraint lost the membership gate and
+over-fired; threading the exists/not clause restores the gate.) The companion is insert-only, so adding an
+exists/not clause cancels no sibling activation (unlike a modify+no-loop rule); the own-attribute operand scope
+limit is unchanged (navigated / aggregation / parameter operands still raise none), and a non-far-side rule passes
+an empty extra list so its companion is byte-identical. **Carded:** the far-side nested under a non-conjunction
+quantifier or hosted by an inline-only caller (would need De Morgan restructuring / per-caller join hosting).
 
 **Navigated and negated forms are now lowered too.** A TO-ONE navigated kenmerk (`de partner van een
 Persoon gepensioneerd is`) resolves the kenmerk against the navigated type and lowers to the null-guarded
@@ -538,6 +539,12 @@ result is independent of declaration order (a long-vowel base and a short-vowel 
 inflected form: `groot`→`grote` and the unmodelled-doubling `grot`→`grote`). A predicaat naming an
 *undeclared* kenmerk stays a marker. Applied uniformly to the die-filter and the subject kenmerk
 check.
+
+A **multi-word** bijvoeglijk kenmerk inflects on its **head** word, not its tail: the adjective is the
+first token and the rest is a prepositional/complement tail carried verbatim, so `bereikbaar per trein`
+→ `bereikbare per trein` (the head's digraph-shortening still applies, `groot bereik`→`grote bereik`) —
+never the tail-inflected non-word `bereikbaar per treine`. The exact-base-first and ambiguity-safe
+guards are unchanged, so a tail-inflected non-word still does not bind.
 
 Deliberately **not** modelled (each stays an errs-safe marker, never a wrong bind): stress-dependent
 consonant doubling (`wit`→`witte`) and consonant voicing (`vies`→`vieze`) — they would mis-transform
@@ -1144,6 +1151,20 @@ because `$subject` is not bound inside its own pattern. So `scalarFunctie` takes
 table serves both. The aggregations (som/min/max over instances) still return null there: they require a `when`
 accumulate and cannot live inside a single constraint, so they stay markers, unchanged.
 
+**Binary arithmetic (§6.2-6.8) in a condition lowers too, via the same `binairTerm`.** The value-side binary
+lowering was extracted into `binairTerm(b, arg, omrekenen)` — shared, so value and condition arithmetic no longer
+duplicate — and `operand` now lowers a `Binair` ("indien de a maal 2 gelijk is aan de b" → `(rsNul(a) * rsNul(2))
+== b`). Every leegwaarde form is already a registered helper or inline arithmetic (`rsNul`/`rsGedeeld`/
+`rsGedeeldAbs`/`rsVerminderd`/`rsMacht`), i.e. a method call valid in either a modify-block or a pattern
+constraint; the **only** ternary was the §4 unit restatement of a `+`/`-` right operand, which the condition side
+supplies via `omrekenConditie` — **identity** when no conversion is due (the common case), else a **marker**.
+That marker is load-bearing: a pattern constraint cannot host the value-side null-guard ternary, and the
+ternary-free `.multiply(factor)` would NPE-**abort the session** on a `null` operand, so a convertible-but-
+different-unit `+`/`-` in a condition stays an honest no-op (the value side, which *can* host the ternary, still
+converts). A `Begrensd` clamp in a condition stays a marker (carded — it needs a clamp helper); and `tot de macht
+<int>` in a condition is unreachable through the parser (a pre-existing `NUMBER` lexer-boundary bug merges the
+exponent with the next token, e.g. `2gelijk` — carded separately).
+
 Two facts worth recording, each verified by firing in Drools 8.44:
 
 - **Numeric `==` is value-based, not scale-sensitive.** Hoogseizoen is the corpus's first firing
@@ -1163,10 +1184,15 @@ Two facts worth recording, each verified by firing in Drools 8.44:
   ChronoField read is value-identical to the old getters, milliseconde included (`MILLI_OF_SECOND` *is*
   `nanoOfSecond / 1_000_000`).
 
-  Still NOT propagated (carded in builtins-vervolg, the transpiler-wide leegwaarde work that must touch all
-  operators coherently): **wortel** — its mandatory afronding wrapper `(…).setScale(…)` would itself NPE on a
-  `null` root, so it entangles with the §6.1.2 afronding-leegwaarde; **datum-met / datumtijd-met** — a `null`
-  component still NPEs at `(null).intValue()` inside `LocalDate.of(…)` (the old inline form did too).
+  **datum-met / datumtijd-met now propagate `leeg` too.** "de datum met jaar/maand/dag" (§13.4.17.35) and "de
+  datumtijd met …" (§13.4.17.36) lowered to an inline `LocalDate.of((c).intValue(), …)` / `LocalDateTime.of(…)`,
+  where a `null` component made `(null).intValue()` throw inside the constructor — again a session-aborting
+  `fireAllRules` throw. They now lower through `rsDatumMet(jaar, maand, dag)` / `rsDatumtijdMet(7 args)`, which
+  null-guard every component (any `null` → a `null` date, §6.9) and carry the §13.4.17.36 milli→nano scale (the
+  7th arg is `nanoOfSecond`, so `×1e6`) in the helper. The typeringen tables give no §4.x leegwaarde row for the
+  date *constructor*, so "any leeg → leeg" generalises the tabled date operators (§4.19) — strictly preferable to
+  a crash. Still NOT propagated (carded in builtins-vervolg): **wortel** — its mandatory afronding wrapper
+  `(…).setScale(…)` would itself NPE on a `null` root, so it entangles with the §6.1.2 afronding-leegwaarde.
 
 ### §6.2-6.4 binary arithmetic leegwaarde — leeg = 0, except verminderd met's left
 
