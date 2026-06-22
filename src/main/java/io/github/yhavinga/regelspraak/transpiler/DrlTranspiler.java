@@ -1549,6 +1549,14 @@ public final class DrlTranspiler {
         // source pattern carries that OR — an instance matching several operands counts once. A
         // union it could not resolve has no filter -> marker, never a count over the first operand.
         if (f.kind() == Expr.FunctieKind.AANTAL && f.argumenten().size() > 1 && f.filter() == null) return null;
+        // §5.8.3 the maximum/minimum of a MULTI-operand value-fold over to-many sets ("de hoogste van de prijs
+        // van alle X én de andere prijs van alle X") would need one accumulate per operand folded together;
+        // accumulate reads only argumenten().get(0), so operands 2..n (and any die on them) are silently
+        // dropped — a wrong max/min. A scalar multi-operand fold is already handled upstream by
+        // concatenatieAggregatie (it runs first), so only the over-a-set form reaches here. Mark it rather
+        // than fake a partial fold over the first set; the single-operand set MIN/MAX (size 1) is untouched.
+        if ((f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM)
+                && f.argumenten().size() > 1) return null;
         Objecttype elem = f.elementObjecttype();
         String fn = switch (f.kind()) {
             case SOM, TOTAAL -> "sum";

@@ -2133,4 +2133,43 @@ class DrlTest {
         assertFalse(drl.contains("$gewicht"), () -> "een gelijke-delen tie mag geen gewicht-lijst verzamelen:\n" + drl);
         assertFalse(drl.contains("(leeg gewicht)"), () -> "een gelijke-delen tie heeft geen lege-gewicht Fout:\n" + drl);
     }
+
+    private static final String MINMAX_SET_SRC = """
+        Domein Bedrag is van het type Numeriek (getal met 2 decimalen) met eenheid €
+        Objecttype de Vlucht (mv: Vluchten)
+            de prijs Bedrag;
+            de andere prijs Bedrag;
+        Objecttype de Reis (mv: Reizen)
+            de hoogste vluchtprijs Bedrag;
+        Feittype reis met vluchten
+            de reis Reis
+            de vlucht Vlucht
+        Eén reis omvat meerdere vluchten
+        Regel max
+            geldig altijd
+                De hoogste vluchtprijs van een reis moet berekend worden als %s.
+        """;
+
+    @Test void multi_operand_max_over_sets_wordt_gemarkeerd_niet_stil_over_de_eerste_set() {
+        // §5.8.3: "de maximale waarde van de prijs van alle vluchten EN de andere prijs van alle vluchten" is a
+        // fold over TWO to-many sets. accumulate reads only the first operand, so emitting it would silently drop
+        // the second set — a wrong max. The multi-operand-over-a-set form must mark, not fake a partial fold.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(MINMAX_SET_SRC.formatted(
+                "de maximale waarde van de prijs van alle vluchten van de reis "
+                        + "en de andere prijs van alle vluchten van de reis")));
+        assertTrue(drl.contains("/* TODO aggregatie MAXIMUM"),
+                () -> "een multi-operand max over sets moet een marker zijn:\n" + drl);
+        assertFalse(drl.contains("max( $e1.getPrijs() )"),
+                () -> "een multi-operand max mag geen single-set accumulate over de eerste operand emitteren:\n" + drl);
+    }
+
+    @Test void enkel_operand_max_over_een_set_blijft_een_accumulate() {
+        // the single-set MIN/MAX (the spec's canonical §5.8.3 example) is untouched by the multi-operand guard.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(MINMAX_SET_SRC.formatted(
+                "de maximale waarde van de prijs van alle vluchten van de reis")));
+        assertTrue(drl.contains("max( $e1.getPrijs() )"),
+                () -> "een enkel-operand max over een set moet een accumulate blijven:\n" + drl);
+        assertFalse(drl.contains("/* TODO aggregatie MAXIMUM"),
+                () -> "een enkel-operand max mag geen marker zijn:\n" + drl);
+    }
 }
