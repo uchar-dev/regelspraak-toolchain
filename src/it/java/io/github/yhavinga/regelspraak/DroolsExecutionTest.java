@@ -717,6 +717,43 @@ class DroolsExecutionTest {
                 () -> "datumtijd met …, milliseconde 500 = .500s, kreeg " + k.getStip());
     }
 
+    @Test void datum_met_een_lege_component_blijft_leeg_en_aborteert_de_sessie_niet() {
+        // §6.9: a "datum met"/"datumtijd met" over a LEEG component yields a leeg (null) date — NOT a thrown
+        // exception. The inline (null).intValue() inside LocalDate.of used to NPE at fire time and abort the
+        // WHOLE fireAllRules() pass (the session-abort class the date-component helpers already closed); routing
+        // through rsDatumMet/rsDatumtijdMet null-guards it. With bouwjaar leeg the target stays null and a SECOND
+        // rule in the same session still fires — proving the pass was not aborted.
+        String src = """
+                Objecttype de Klok
+                    de bouwjaar Numeriek (geheel getal);
+                    de saldo Numeriek (geheel getal);
+                    de absval Numeriek (geheel getal);
+                    de gemaakt Datum in dagen;
+                    de stip Datum en tijd in millisecondes;
+                Regel bouw
+                    geldig altijd
+                        De gemaakt van een Klok moet gesteld worden op de datum met jaar: de bouwjaar van een Klok, maand: 3 en dag: 15.
+                Regel stip
+                    geldig altijd
+                        De stip van een Klok moet gesteld worden op de datumtijd met jaar: de bouwjaar van een Klok, maand: 3, dag: 15, uur: 10, minuut: 30, seconde: 0 en milliseconde: 500.
+                Regel abs
+                    geldig altijd
+                        De absval van een Klok moet gesteld worden op de absolute waarde van (de saldo van een Klok).
+                """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        KieSession sessie = build(DrlTranspiler.transpile(m)).newKieSession();
+        Klok k = new Klok();
+        k.setSaldo(new BigDecimal("-7"));   // bouwjaar deliberately left null (leeg)
+        sessie.insert(k);
+        sessie.fireAllRules();              // must COMPLETE — a null component used to NPE-abort the whole pass
+        sessie.dispose();
+        assertNull(k.getGemaakt(), () -> "een lege jaar-component -> leeg datum, kreeg " + k.getGemaakt());
+        assertNull(k.getStip(), () -> "een lege jaar-component -> leeg datumtijd, kreeg " + k.getStip());
+        assertEquals(0, new BigDecimal("7").compareTo(k.getAbsval()),
+                () -> "de andere regel vuurde toch (de sessie is niet geaborteerd), kreeg " + k.getAbsval());
+    }
+
     @Test void tijdsduur_telt_volledige_eenheden_absolute_keert_teken_leeg_blijft_leeg() {
         // §6.10: tijdsduur is the number of COMPLETE units (= ChronoUnit.between, signed); absolute takes the
         // magnitude; an empty operand yields an empty result (Tabel 14). 2000-01-15 -> 2023-06-20 is 23 whole

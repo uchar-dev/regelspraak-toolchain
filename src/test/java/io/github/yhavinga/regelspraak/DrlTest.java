@@ -550,9 +550,9 @@ class DrlTest {
         assertTrue(drl.contains("rsAbs($subject.getSaldo())"), () -> "abs (leeg-veilig via helper):\n" + drl);
         assertTrue(drl.contains("rsDatumDeel($subject.getReisdatum(), java.time.temporal.ChronoField.YEAR)"),
                 () -> "jaar uit (leeg-veilig via helper):\n" + drl);
-        assertTrue(drl.contains("java.time.LocalDate.of(($subject.getBouwjaar()).intValue(), "
-                + "(new java.math.BigDecimal(\"3\")).intValue(), (new java.math.BigDecimal(\"15\")).intValue())"),
-                () -> "datum met:\n" + drl);
+        // §6.9: lowered via rsDatumMet (a null component -> null date, no NPE) — not an inline LocalDate.of
+        assertTrue(drl.contains("setGemaakt( rsDatumMet($subject.getBouwjaar(), new java.math.BigDecimal(\"3\"), new java.math.BigDecimal(\"15\")) )"),
+                () -> "datum met (leeg-veilig via helper):\n" + drl);
     }
 
     @Test void tijd_builtins_eisen_een_datumtijd_en_datumtijd_met_telt_zeven_delen() {
@@ -579,9 +579,12 @@ class DrlTest {
         assertTrue(drl.contains("rsDatumDeel($subject.getMoment(), java.time.temporal.ChronoField.HOUR_OF_DAY)"), () -> "uur uit datumtijd:\n" + drl);
         assertFalse(drl.contains("rsDatumDeel($subject.getReisdatum()"), () -> "uur uit een Datum-in-dagen moet een marker blijven, niet lageren:\n" + drl);
         assertTrue(drl.contains("setUurfout( /* TODO tijd-component"), () -> "uur uit een Datum-in-dagen moet een marker zijn:\n" + drl);
-        // datumtijd met has SEVEN parts; LocalDateTime.of's 7th arg is nanos, so milliseconde scales x1e6
-        assertTrue(drl.contains("(new java.math.BigDecimal(\"500\")).intValue() * 1000000)"), () -> "datumtijd met milli->nano:\n" + drl);
-        assertTrue(drl.contains("java.time.LocalDateTime.of("), () -> "datumtijd met:\n" + drl);
+        // datumtijd met has SEVEN parts, lowered via rsDatumtijdMet (leeg-veilig); the milli->nano scale (x1e6)
+        // now lives inside the helper, and the 7 components pass straight through as their value expressions.
+        assertTrue(drl.contains("setStip( rsDatumtijdMet($subject.getBouwjaar(), new java.math.BigDecimal(\"3\"), "
+                + "new java.math.BigDecimal(\"15\"), new java.math.BigDecimal(\"10\"), new java.math.BigDecimal(\"30\"), "
+                + "new java.math.BigDecimal(\"0\"), new java.math.BigDecimal(\"500\")) )"), () -> "datumtijd met:\n" + drl);
+        assertTrue(drl.contains("milli.intValue() * 1000000"), () -> "de milli->nano schaal moet in de helper zitten:\n" + drl);
     }
 
     @Test void wortel_lowert_naar_sqrt_binnen_zijn_verplichte_afronding() {

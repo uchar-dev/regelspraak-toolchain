@@ -1159,18 +1159,50 @@ public final class DrlTranspiler {
     }
 
     /** §13.4.17.35/.36 build a LocalDate/LocalDateTime from its {@code n} numeric component expressions
-     *  (jaar, maand, dag[, uur, minuut, seconde, milliseconde]); each is restated as an int. When
-     *  {@code laatsteIsMilli}, the trailing component is a MILLIsecond but {@code LocalDateTime.of}'s 7th
-     *  argument is nanoOfSecond, so it is scaled ×1e6. A marker argument propagates. */
+     *  (jaar, maand, dag[, uur, minuut, seconde, milliseconde]). Lowered via a registered Java-bodied helper
+     *  (rsDatumMet / rsDatumtijdMet) rather than an inline {@code LocalDate.of((c).intValue(), …)}, because a
+     *  §6.9 EMPTY component yields an empty (null) date — and a bare {@code (null).intValue()} would NPE inside
+     *  the constructor at fire time, aborting the whole session (the same leegwaarde class the date-component
+     *  helpers already close). The helper null-guards every component and carries the §13.4.17.36 milli→nano
+     *  scale (LocalDateTime.of's 7th arg is nanoOfSecond) in plain Java. A marker argument propagates. */
     private String datumConstructor(List<Expr> a, Function<Expr, String> arg, String type, int n, boolean laatsteIsMilli) {
         if (a.size() != n) return null;
-        StringJoiner sj = new StringJoiner(", ", type + ".of(", ")");
-        for (int i = 0; i < a.size(); i++) {
-            String v = arg.apply(a.get(i));
+        List<String> args = new ArrayList<>();
+        for (Expr e : a) {
+            String v = arg.apply(e);
             if (bevatMarker(v)) return v;
-            sj.add(laatsteIsMilli && i == a.size() - 1 ? "(" + v + ").intValue() * 1000000" : "(" + v + ").intValue()");
+            args.add(v);
         }
-        return sj.toString();
+        if (laatsteIsMilli) { registreerDatumtijdMetFunctie(); return "rsDatumtijdMet(" + String.join(", ", args) + ")"; }
+        registreerDatumMetFunctie();
+        return "rsDatumMet(" + String.join(", ", args) + ")";
+    }
+
+    /** Register the §13.4.17.35 "de datum met jaar/maand/dag" constructor helper: a LocalDate from three numeric
+     *  components, with the §6.9 leegwaarde rule — any empty component yields an empty (null) date instead of
+     *  NPE-ing {@code (null).intValue()}. Idempotent. */
+    private void registreerDatumMetFunctie() {
+        hulpFuncties.putIfAbsent("rsDatumMet",
+                "function java.time.LocalDate rsDatumMet(java.math.BigDecimal jaar, java.math.BigDecimal maand, "
+                + "java.math.BigDecimal dag) {\n"
+                + "    if (jaar == null || maand == null || dag == null) return null;\n"
+                + "    return java.time.LocalDate.of(jaar.intValue(), maand.intValue(), dag.intValue());\n"
+                + "}\n\n");
+    }
+
+    /** Register the §13.4.17.36 "de datumtijd met jaar/…/milliseconde" constructor helper: a LocalDateTime from
+     *  seven numeric components (the 7th, a MILLIsecond, scaled ×1e6 to LocalDateTime.of's nanoOfSecond), with
+     *  the §6.9 leegwaarde rule — any empty component yields an empty (null) datetime instead of NPE-ing. Idempotent. */
+    private void registreerDatumtijdMetFunctie() {
+        hulpFuncties.putIfAbsent("rsDatumtijdMet",
+                "function java.time.LocalDateTime rsDatumtijdMet(java.math.BigDecimal jaar, java.math.BigDecimal maand, "
+                + "java.math.BigDecimal dag, java.math.BigDecimal uur, java.math.BigDecimal minuut, "
+                + "java.math.BigDecimal seconde, java.math.BigDecimal milli) {\n"
+                + "    if (jaar == null || maand == null || dag == null || uur == null || minuut == null "
+                + "|| seconde == null || milli == null) return null;\n"
+                + "    return java.time.LocalDateTime.of(jaar.intValue(), maand.intValue(), dag.intValue(), "
+                + "uur.intValue(), minuut.intValue(), seconde.intValue(), milli.intValue() * 1000000);\n"
+                + "}\n\n");
     }
 
     /**
