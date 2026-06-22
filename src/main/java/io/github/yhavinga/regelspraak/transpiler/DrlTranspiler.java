@@ -1980,10 +1980,22 @@ public final class DrlTranspiler {
         if (t.isTekst()) return "\"" + lit.waarde().replace("\"", "") + "\"";
         if (t instanceof Datatype.Booleaan) return lit.waarde().toLowerCase().contains("waar")
                 && !lit.waarde().toLowerCase().contains("onwaar") ? "true" : "false";
-        if (t.isDatum()) { // "dd. d-m-yyyy [time]" -> LocalDate.of(y, m, d)
+        if (t.isDatum()) { // "dd. d-m-yyyy [hh:mm:ss.mmm]"
             java.util.regex.Matcher d = java.util.regex.Pattern.compile("(\\d{1,2})-(\\d{1,2})-(\\d{4})").matcher(lit.waarde());
-            return d.find() ? "java.time.LocalDate.of(" + d.group(3) + ", " + d.group(2) + ", " + d.group(1) + ")"
-                    : todo("datumliteral", lit.waarde());
+            if (!d.find()) return todo("datumliteral", lit.waarde());
+            String datum = d.group(3) + ", " + d.group(2) + ", " + d.group(1);
+            if (t instanceof Datatype.DatumTijd) {
+                // §13.2.21 a timed dedato -> LocalDateTime; the captured millisecondes scale to nanoOfSecond
+                // (x1_000_000), reusing the rsDatumtijdMet convention, so the time-of-day is not dropped.
+                java.util.regex.Matcher tm = java.util.regex.Pattern
+                        .compile("(\\d{1,2}):(\\d{2}):(\\d{2})(?:\\.(\\d{1,3}))?").matcher(lit.waarde());
+                if (tm.find()) {
+                    int nanos = (tm.group(4) == null ? 0 : Integer.parseInt(tm.group(4))) * 1_000_000;
+                    return "java.time.LocalDateTime.of(" + datum + ", " + Integer.parseInt(tm.group(1)) + ", "
+                            + Integer.parseInt(tm.group(2)) + ", " + Integer.parseInt(tm.group(3)) + ", " + nanos + ")";
+                }
+            }
+            return "java.time.LocalDate.of(" + datum + ")";
         }
         // numeric (possibly "0 €"): the leading number AS A BigDecimal, so arithmetic,
         // unit scaling (.multiply) and rounding (.setScale) compile in mvel. A §13.2.5 rational

@@ -162,7 +162,13 @@ final class ExpressieBouwer {
             return new Expr.Literal(bron, new Datatype.Tekst(), bron);
         }
         if (p.booleanWaarde() != null)  return new Expr.Literal(bron, new Datatype.Booleaan(), bron);
-        if (p.deDato() != null)         return new Expr.Literal(bron, new Datatype.DatumInDagen(), bron);
+        if (p.deDato() != null) {
+            // §13.2.19/.21: a dedato WITH a time component (hh:mm:ss[.mmm]) is a Datum-tijd (millisecond
+            // precision), not a Datum in dagen — typing it as a bare date drops the time and lowers a
+            // LocalDate into a LocalDateTime target (a Drools type error / silent wrong value).
+            boolean metTijd = bron.matches(".*\\d{1,2}:\\d{2}:\\d{2}.*");
+            return new Expr.Literal(bron, metTijd ? new Datatype.DatumTijd() : new Datatype.DatumInDagen(), bron);
+        }
         if (p.ENUM_LITERAL() != null)   return new Expr.Literal(bron, onbekend(), bron); // which Enumeratie is context-dependent
         if (p.rekenConstante() != null) {
             boolean jaar = p.rekenConstante().REKENJAAR() != null;

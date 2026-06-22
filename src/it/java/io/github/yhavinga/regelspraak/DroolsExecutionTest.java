@@ -3,6 +3,7 @@ package io.github.yhavinga.regelspraak;
 import io.github.yhavinga.regelspraak.facts.Bemanningslid;
 import io.github.yhavinga.regelspraak.facts.Bestelling;
 import io.github.yhavinga.regelspraak.facts.Bestemming;
+import io.github.yhavinga.regelspraak.facts.Gebeurtenis;
 import io.github.yhavinga.regelspraak.facts.Segment;
 import io.github.yhavinga.regelspraak.facts.Burger;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
@@ -204,6 +205,38 @@ class DroolsExecutionTest {
         sessie.dispose();
         assertEquals(0, BigDecimal.ZERO.compareTo(leeg.getTotaleBelastingvermindering()), "lege tijdreeks -> 0");
         assertNull(nul.getTotaleBelastingvermindering(), "null tijdreeks -> leeg (geen crash)");
+    }
+
+    @Test void dedato_literal_met_tijd_behoudt_het_tijdstip_als_datumtijd() {
+        // §13.2.21: "dd. 12-3-2023 11:34:42.679" is a Datum-tijd; it must lower to a LocalDateTime that keeps
+        // the time and type-matches the setter (a bare date stays a LocalDate). Previously it dropped the time
+        // and assigned a LocalDate to a LocalDateTime setter — a Drools build/type error.
+        String src = """
+            Objecttype de Gebeurtenis (mv: Gebeurtenissen)
+                het tijdstip Datum en tijd in millisecondes;
+                de geldigheid Datum in dagen;
+            Regel zet tijdstip
+                geldig altijd
+                    Het tijdstip van een Gebeurtenis moet gesteld worden op dd. 12-3-2023 11:34:42.679.
+            Regel zet geldigheid
+                geldig altijd
+                    De geldigheid van een Gebeurtenis moet gesteld worden op dd. 12-3-2023.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("java.time.LocalDateTime.of(2023, 3, 12, 11, 34, 42, 679000000)"),
+                () -> "een dedato met tijd moet een LocalDateTime worden:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Gebeurtenis g = new Gebeurtenis();
+        sessie.insert(g);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(LocalDateTime.of(2023, 3, 12, 11, 34, 42, 679_000_000), g.getTijdstip(),
+                () -> "het tijdstip moet de tijd behouden, was " + g.getTijdstip());
+        assertEquals(LocalDate.of(2023, 3, 12), g.getGeldigheid(), "de bare datum blijft een LocalDate");
     }
 
     @Test void aggregatie_accumuleert_over_de_join() {
