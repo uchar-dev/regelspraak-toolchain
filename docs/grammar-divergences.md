@@ -1163,7 +1163,23 @@ ternary-free `.multiply(factor)` would NPE-**abort the session** on a `null` ope
 different-unit `+`/`-` in a condition stays an honest no-op (the value side, which *can* host the ternary, still
 converts). `tot de macht <int>` lowers in a condition too, with its mandatory §13.4.17.14 afronding wrapper
 (`… tot de macht 2 naar beneden afgerond op 0 decimalen gelijk is aan …` → `rsAfronding(rsMacht(a, 2), 0,
-FLOOR) == b`). A `Begrensd` clamp in a condition stays a marker (carded — it needs a clamp helper).
+FLOOR) == b`). A `Begrensd` clamp lowers in a condition too (§6.1.4): the value side's inline clamp ternary
+`(r < m ? m : r)` mis-parses in a constraint, so a condition-side begrenzing (`… met een minimum van de bodem en
+een maximum van de plafond groter is dan 50`) lowers through a registered `rsBegrens(basis, min, max)` helper
+(null-safe, clamping min-then-max to match the value side's order); a convertible-but-different-unit bound markers
+like the `+`/`-` path. The value side keeps its inline ternary (byte-pinned; no corpus DRL has a clamp).
+
+### §6.9 / §13.3.9 — a navigated to-one VALUE read is null-guarded at its root
+
+A then-side value read through a to-one reference lowered to a bare `$subject.getPartner().getX()`. The rule's
+`modify` consequence runs for EVERY instance of the subject type, so a subject whose reference is null NPE'd inside
+the consequence — which, inside Drools, **aborts the whole `fireAllRules` pass** (every later rule on every fact).
+§6.9 / §13.3.9 make a read through an empty reference *leeg*, not a crash. The plain value read (not
+`attribuutGetter`, which the dimensioned Map-reads also call) now guards the root:
+`($subject.getPartner() == null ? null : $subject.getPartner().getX())`, so a null reference yields the leegwaarde
+and the surrounding helpers propagate it (a partnerless subject's `leeg / leeg` division is `0` per §6.5). The
+condition side already guarded (genavigeerd-leeg-gevuld / `!.`); only this value read did not. Corpus byte-identical
+(no corpus value read is navigated).
 
 Two facts worth recording, each verified by firing in Drools 8.44:
 
@@ -1213,10 +1229,13 @@ Inconsistentie}** (the user's chosen representation): the division returns leeg,
 `"<naam> (deling door leeg)"` inserts an idempotency-guarded Inconsistentie via the §9.5 channel when the
 dividend is present and the divisor empty (and the host rule's voorwaarde holds). The spec's "fout !!!" defines
 no runtime form, so {leeg + Inconsistentie} is a defensible engineering choice — never a crash, never a wrong
-number, and the fout is detectable. SCOPE of the companion: BOTH operands must be the subject's OWN attributes
-(the only shape that lowers to a plain re-readable property constraint); a navigated / parameter / nested /
-aggregation divisor still degrades the value to leeg but raises no Inconsistentie (carded). A division wrapped
-in an *explicit* afronding now also propagates its leeg (the afronding is null-safe — see below).
+number, and the fout is detectable. SCOPE of the companion: both operands must lower to a re-readable leeg/vol
+guard — the subject's OWN attribute, **or one reached by a to-ONE navigation** (`de inkomen van zijn partner
+gedeeld door de aftrek van zijn partner`), guarded against a null root (`(partner != null && partner.inkomen !=
+null), (partner == null || partner.aftrek == null)`); a literal / parameter / to-many / unresolvable operand still
+degrades the value to leeg but raises no Inconsistentie (carded). The own-attribute path reuses the bare-property
+form, so it stays byte-identical to the prior EIGEN-only emission. A division wrapped in an *explicit* afronding
+also propagates its leeg (the afronding is null-safe — see below).
 
 ### §6.6/§6.7 + §13.4.17.25 — wortel, tot de macht, and a null-safe afronding
 
@@ -1240,9 +1259,10 @@ A **negative radicand** (§6.6: a Fout, since RegelSpraak has no complex numbers
 door's `÷ leeg` fout is: `rsWortel` returns leeg for a negative value (no more session-aborting
 `BigDecimal.sqrt` throw), and a SEPARATE modify-free companion rule `"<naam> (wortel van negatief)"` fires
 `<radicand> < 0` (and the host voorwaarde) and inserts an idempotency-guarded Inconsistentie. So a negative
-radicand is {leeg value + Inconsistentie}, detectable and non-crashing. SCOPE, like the division fout: only a
-radicand that is the subject's OWN attribute lowers to a plain `< 0` property constraint; a navigated /
-parameter / nested / aggregation radicand still degrades to leeg but raises no Inconsistentie (carded). A leeg
+radicand is {leeg value + Inconsistentie}, detectable and non-crashing. SCOPE, like the division fout: a radicand
+that is the subject's OWN attribute lowers to a plain `< 0` constraint, and a to-ONE NAVIGATED radicand to a
+root-guarded one (`(partner != null && partner.basis != null) && partner.basis < 0`); a parameter / nested /
+to-many / aggregation radicand still degrades to leeg but raises no Inconsistentie (carded). A leeg
 radicand is leeg WITHOUT a fout (§6.6) — the `< 0` guard is false for a null, so the companion does not fire for
 leeg. `tot de macht` of a negative base is well-defined (a real power), so it has no analogous fout.
 
