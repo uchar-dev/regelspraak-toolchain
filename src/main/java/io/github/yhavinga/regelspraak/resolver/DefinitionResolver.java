@@ -74,11 +74,17 @@ public final class DefinitionResolver {
             // in declared order so a reference / aggregation can range over their label sets (§3.6).
             if (!a.dimensieNaam().isEmpty())
                 ot.attribuutDimensies.put(naam, a.dimensieNaam().stream().map(dn -> src(dn)).toList());
+            // §13.3.6 a temporal attribute carries a tijdlijn ("voor elk jaar") — record its granularity so
+            // the Phase-7 value model can later lower the periods; absent for an ordinary single-value attribute.
+            Granulariteit g = granulariteitVan(a.tijdlijn());
+            if (g != null) ot.attribuutGranulariteit.put(naam, g);
         } else if (m.kenmerkSpecificatie() != null) {
             String naam = kenmerkNaam(m.kenmerkSpecificatie());
             meldHoofdletterBotsing(ot, naam, ot.kenmerken, m.getStart().getLine());
             ot.kenmerken.add(naam);
             ot.kenmerkSoorten.put(naam, kenmerkSoortVan(m.kenmerkSpecificatie()));   // §3.5 drives the §8.1.8 predicate form
+            Granulariteit gk = granulariteitVan(tijdlijnVan(m.kenmerkSpecificatie()));
+            if (gk != null) ot.kenmerkGranulariteit.put(naam, gk);
         }
         // koptekst carries no model information
     }
@@ -292,7 +298,56 @@ public final class DefinitionResolver {
     // ---------------- §13.3.6 timelines ----------------
     private void tijdlijn(TijdlijnDefinitieContext ctx) {
         boolean variabel = src(ctx).toLowerCase().contains("met variabel startpunt");
-        model.tijdlijnen.add(new Tijdlijn(src(ctx.tijdlijnNaam()), variabel));
+        model.tijdlijnen.add(new Tijdlijn(src(ctx.tijdlijnNaam()), variabel, granulariteitVanDefinitie(ctx)));
+    }
+
+    /** §13.3.6 the {@link Granulariteit} of a tijdlijn ATTACHMENT on an attribute/kenmerk. The single-period
+     *  form carries it in the token ("voor elke dag" → DAG), the multi-period form in the plural unit ("voor
+     *  elke 5 maanden" → MAAND). The named form ("voor elke &lt;tijdlijn&gt;") adopts its definition's
+     *  granularity, resolved against {@link RegelSpraakModel#tijdlijnen} elsewhere — null here. */
+    private Granulariteit granulariteitVan(TijdlijnContext t) {
+        if (t == null) return null;
+        EnkelvoudigePeriodeContext e = t.enkelvoudigePeriode();
+        if (e != null) {
+            if (e.ELKE_DAG() != null)     return Granulariteit.DAG;
+            if (e.ELKE_WEEK() != null)    return Granulariteit.WEEK;
+            if (e.ELKE_MAAND() != null)   return Granulariteit.MAAND;
+            if (e.ELK_KWARTAAL() != null) return Granulariteit.KWARTAAL;
+            if (e.ELK_JAAR() != null)     return Granulariteit.JAAR;
+        }
+        if (t.meervoudigePeriode() != null)
+            return granulariteitVanMeervoud(t.meervoudigePeriode().tijdseenhedenMeervoud());
+        return null;
+    }
+
+    /** §13.3.6.10 the {@link Granulariteit} a standalone tijdlijn DEFINITION declares ("heeft tijdvakken van
+     *  een jaar" → JAAR), from the singular unit token or the plural-period unit. */
+    private static Granulariteit granulariteitVanDefinitie(TijdlijnDefinitieContext ctx) {
+        if (ctx.DAG() != null)      return Granulariteit.DAG;
+        if (ctx.WEEK() != null)     return Granulariteit.WEEK;
+        if (ctx.MAAND() != null)    return Granulariteit.MAAND;
+        if (ctx.KWARTAAL() != null) return Granulariteit.KWARTAAL;
+        if (ctx.JAAR() != null)     return Granulariteit.JAAR;
+        return granulariteitVanMeervoud(ctx.tijdseenhedenMeervoud());
+    }
+
+    /** §13.3.6.8 the plural time-unit of a multi-period tijdlijn → its singular {@link Granulariteit}. */
+    private static Granulariteit granulariteitVanMeervoud(TijdseenhedenMeervoudContext m) {
+        if (m == null) return null;
+        if (m.DAGEN() != null)     return Granulariteit.DAG;
+        if (m.WEKEN() != null)     return Granulariteit.WEEK;
+        if (m.MAANDEN() != null)   return Granulariteit.MAAND;
+        if (m.KWARTALEN() != null) return Granulariteit.KWARTAAL;
+        if (m.JAREN() != null)     return Granulariteit.JAAR;
+        return null;
+    }
+
+    /** The optional tijdlijn attachment on a kenmerk declaration (both the bijvoeglijk and naamwoord forms
+     *  carry one), or null. */
+    private static TijdlijnContext tijdlijnVan(KenmerkSpecificatieContext k) {
+        if (k instanceof BijvoeglijkKenmerkContext b) return b.tijdlijn();
+        if (k instanceof NaamwoordKenmerkContext n) return n.tijdlijn();
+        return null;
     }
 
     // ---------------- §13.3.7 dimensions ----------------

@@ -56,6 +56,29 @@ class ModelTest {
         assertTrue(np.kenmerken.contains("minderjarig"));
     }
 
+    @Test void temporele_attributen_dragen_hun_granulariteit() {
+        // §13.3.6: an attribute/kenmerk with a tijdlijn ("voor elk jaar") records its Granulariteit; an
+        // ordinary attribute carries none. Both the single-period (elke dag/jaar) and multi-period (elke
+        // 5 maanden) inline forms reduce to a unit; the period count and startpunt are not yet captured.
+        String src = """
+            Domein Bedrag is van het type Numeriek (geheel getal)
+            Objecttype de Vlucht (mv: Vluchten)
+                de dagwaarde   Bedrag voor elke dag;
+                de jaarwaarde  Bedrag voor elk jaar;
+                de blokwaarde  Bedrag voor elke 5 maanden startend op 9-3-2025;
+                de gewoon      Bedrag;
+                is duurzaam kenmerk (bijvoeglijk) voor elke dag;
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        Objecttype v = m.objecttypen.get("Vlucht");
+        assertEquals(RegelSpraakModel.Granulariteit.DAG,   v.attribuutGranulariteit.get("dagwaarde"));
+        assertEquals(RegelSpraakModel.Granulariteit.JAAR,  v.attribuutGranulariteit.get("jaarwaarde"));
+        assertEquals(RegelSpraakModel.Granulariteit.MAAND, v.attribuutGranulariteit.get("blokwaarde"));
+        assertNull(v.attribuutGranulariteit.get("gewoon"), "een gewoon attribuut draagt geen granulariteit");
+        assertEquals(RegelSpraakModel.Granulariteit.DAG,   v.kenmerkGranulariteit.get("duurzaam"));
+    }
+
     @Test void domein_typed_attribuut_lost_op() {
         RegelSpraakModel m = Resolver.resolve(SRC);
         // "belasting op basis van afstand" is typed by domain Bedrag = Numeriek(2 decimalen)

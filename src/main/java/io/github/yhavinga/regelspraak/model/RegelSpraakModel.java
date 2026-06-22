@@ -314,7 +314,17 @@ public final class RegelSpraakModel {
          *  combination of one label from each of its dimensions (§3.6: "vier mogelijke waardes"), so a
          *  reference must pin every dimension and an aggregation ranges over a dimension's label set. */
         public final Map<String, List<String>> attribuutDimensies = new LinkedHashMap<>();
+        /** §13.3.6 the granularity of a TEMPORAL attribute's tijdlijn ("de premie Bedrag voor elk jaar" -&gt;
+         *  JAAR), keyed by its naam — absent for an ordinary single-value attribute. A temporal attribute
+         *  holds one value per period of this granularity (§5.1); recording the declaration here is the
+         *  IR-shape foundation for the Phase-7 value model that will lower the periods (knip-merge,
+         *  tijdsevenredig, gedurende). The period COUNT ("voor elke 5 maanden") and the startpunt are not
+         *  yet captured — only the unit. */
+        public final Map<String, Granulariteit> attribuutGranulariteit = new LinkedHashMap<>();
         public final List<String> kenmerken = new ArrayList<>();
+        /** §13.3.6 the granularity of a temporal kenmerk's tijdlijn ("is duurzaam kenmerk voor elke dag"),
+         *  keyed by its naam — the kenmerk analogue of {@link #attribuutGranulariteit}. */
+        public final Map<String, Granulariteit> kenmerkGranulariteit = new LinkedHashMap<>();
         /** §3.5 the soort of each kenmerk, keyed by its naam — drives the §8.1.8 predicate form: a
          *  BIJVOEGLIJK kenmerk is written "is &lt;k&gt;", a BEZITTELIJK one "heeft het &lt;k&gt;", a
          *  ZELFSTANDIG one "is een &lt;k&gt;" (so only a ZELFSTANDIG kenmerk binds the EEN-form). */
@@ -414,8 +424,16 @@ public final class RegelSpraakModel {
         public Eenheidstelsel(String naam) { this.naam = naam; }
     }
 
-    /** §13.3.6.10 a named timeline; `variabelStartpunt` is bound by a §13.4.12 startpuntbepaling. */
-    public record Tijdlijn(String naam, boolean variabelStartpunt) {}
+    /** §13.3.6.2/§13.3.6.10 the period unit of a tijdlijn — the granularity at which a temporal value
+     *  changes (one value per dag / week / maand / kwartaal / jaar). Both the inline attribute form
+     *  ("voor elk jaar") and a named {@link Tijdlijn} definition ("heeft tijdvakken van een jaar")
+     *  reduce to one of these. */
+    public enum Granulariteit { DAG, WEEK, MAAND, KWARTAAL, JAAR }
+
+    /** §13.3.6.10 a named timeline: its naam, its {@link Granulariteit} (so a "voor elke &lt;naam&gt;"
+     *  attribute reference can adopt it), and whether `variabelStartpunt` is bound by a §13.4.12
+     *  startpuntbepaling. */
+    public record Tijdlijn(String naam, boolean variabelStartpunt, Granulariteit granulariteit) {}
 
     /** §13.3.7 a dimension and its ordered label values. {@code voorzetsel} is the §3.6 read preposition
      *  for the suffix form ("na het attribuut met voorzetsel <vz>": a cell reads "&lt;attribuut&gt; &lt;vz&gt;
