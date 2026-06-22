@@ -450,7 +450,15 @@ The **FAR-side rolcheck** `<subject> heeft (een) <rol>` (§8.1.7 — the subject
 field lives on the to-MANY filler, not on the subject) now lowers too. When `rolLidmaatschap` finds the subject
 does not FILL the role but the role reaches a to-many filler from it, it resolves a new `Conditie.VerreRollidmaatschap`
 (the filler type + its back-reference field), which the transpiler lowers to an **exists-join** — a SEPARATE
-when-clause `exists <Filler>( <backref> == $subject )` (the `heeft geen` negation is the `not` of it). Because an
+when-clause `exists <Filler>( <backref> == $subject )`. The **backref is found by the written role name**
+(`verbindendeRolViaElementnaam(subject, naam)` — the subject-side role of the SAME feittype that declares the named
+role), falling back to the by-pair `verbindendeRol(filler, subject)` for the single-feittype case (both yield the
+same role there, so it stays byte-identical). This disambiguates a filler that references the subject through MORE
+THAN ONE feittype (a `Passagier` that fills both `passagier` (`reis`) and `bonuspassagier` (`bonusvlucht`) of a
+`Vlucht`): the by-pair lookup is then ambiguous and the whole far-side wrongly degraded to a marker; now `heeft een
+passagier` gates on the `reis` backref specifically. A genuinely ambiguous model (e.g. two roles of one feittype
+share the subject type) still degrades safely to a marker, never a wrong backref. (The `heeft geen` negation is the
+`not` of the exists.) Because an
 exists-join cannot live inside the subject pattern's inline constraint, condition lowering returns a
 `LoweredConditie{inline, extra}`: the inline mvel constraint plus zero or more hoisted when-clauses. A far-side
 membership yields an empty inline and one `exists`/`not` clause; everything else yields `extra=[]`. `regel()`
@@ -1289,12 +1297,18 @@ A `maal`/`gedeeld door` of two unit-bearing Numerieks used to always degrade to 
 eenheid")`. The `Eenheid` model represents a numerator over **one** simple denominator (a rate `€/jr`), so the
 combinations that fit are now synthesized; the rest stay `Onbekend` (an honest "no claim", never a wrong unit):
 - **`maal`:** a rate times its (convertible) denominator-unit cancels to the numerator — `€/jr maal jr = €`. Two
-  plain numerators (`€ maal m = €·m`) need two numerator factors the model lacks → `Onbekend`.
+  plain numerators multiply to an opaque **PRODUCT unit** — `€ maal m = €·m` (`Eenheid.product`): an afkorting
+  `€·m` with **no canonical**, so it is convertible only to an identical product, and a `€·m` result assigned to a
+  `€` target now flags the §4 unit mismatch the typeringen matrix intends (where the prior `Onbekend` let it pass
+  silently). The factor abbreviations are flattened to atomic factors and **sorted**, so the product is both
+  commutative AND associative (§4.4 Tabel 11): `€ maal m == m maal €` and `(€·m)·km == €·(m·km) == €·km·m`. A rate
+  factor (a product with a denominator, `€·m/jr`) is still not representable → `Onbekend`.
 - **`gedeeld door`:** two plain units divide to a rate — `€ gedeeld door jr = €/jr` — or to a dimensionless getal
   when convertible — `€ gedeeld door € = een getal`. A rate divisor (whose result needs a second denominator or a
   bare `1/jr`) stays `Onbekend`.
 
 Corpus-invisible: no corpus expression multiplies/divides two unit-bearing operands (the unitless×unit and
-unit×unitless branches, which the corpus does exercise, are untouched), so the resolver-ERROR set and the per-file
-DRL are byte-identical. The unrepresentable forms (`€·m`, `1/jr`, the unitless×unit gap) are carded — they need a
-multi-factor `Eenheid` (numerator list + exponents), the §13.3.7 composite-unit model the roadmap defers.
+unit×unitless branches, which the corpus does exercise, are untouched), so the resolver-ERROR set (73) and the
+per-file DRL are byte-identical. The product unit is opaque — the model does not re-decompose it, so cancelling a
+factor (`€·m gedeeld door m`) is not recognised; the rate-product forms (`€·m/jr`, `1/jr`) stay `Onbekend` (they
+need a multi-factor `Eenheid` with exponents, the §13.3.7 model the roadmap defers).
