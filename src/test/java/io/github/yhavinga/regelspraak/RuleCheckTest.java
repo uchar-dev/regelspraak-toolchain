@@ -30,6 +30,28 @@ class RuleCheckTest {
                 () -> "verwachtte een begrenzing-fout, kreeg: " + m.errors());
     }
 
+    @Test void product_van_twee_eenheden_toegekend_aan_een_enkele_eenheid_wordt_gemeld() {
+        // §4.4 / §6.1: "de prijs (€) maal de lengte (m)" is €·m, an opaque product unit convertible only to an
+        // identical product — assigning it to a € attribute is a unit mismatch. Previously the product degraded
+        // to Onbekend and the assignment passed silently.
+        String src = """
+            Eenheidsysteem Geld
+                de euro EUR
+            Eenheidsysteem Lengte
+                de meter m
+            Objecttype de Doos
+                de prijs Numeriek (geheel getal) met eenheid EUR;
+                de lengte Numeriek (geheel getal) met eenheid m;
+                de uitkomst Numeriek (geheel getal) met eenheid EUR;
+            Regel r
+                geldig altijd
+                    De uitkomst van een Doos moet gesteld worden op de prijs van een Doos maal de lengte van een Doos.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("EUR·m")),
+                () -> "verwachtte een €·m eenheidfout, kreeg: " + m.errors());
+    }
+
     @Test void begrenzing_met_geldige_grens_geen_fout() {
         // a numeric bound is fine — no false positive.
         String src = MODEL + """

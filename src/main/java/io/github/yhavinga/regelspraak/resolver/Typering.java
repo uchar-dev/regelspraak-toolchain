@@ -281,6 +281,12 @@ public final class Typering {
                 return new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, teller(el));
             if (er.noemer() != null && el.noemer() == null && el.convertibleNaar(er.noemer()))
                 return new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, teller(er));
+            // §4.4: two plain units multiply to a PRODUCT unit ("€ maal m = €·m"). An opaque composite (no
+            // canonical), so it is convertible only to an identical product — a €·m result assigned to a € target
+            // now flags a unit mismatch (it used to degrade to Onbekend and pass silently). A rate factor (a
+            // second denominator / "€·m/jr") is not representable, so it stays Onbekend.
+            if (el.noemer() == null && er.noemer() == null)
+                return new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, Eenheid.product(el, er));
             return new Datatype.Onbekend("samengestelde eenheid");
         }
         if (el.noemer() == null && er.noemer() == null)   // GEDEELD: only two plain units are representable

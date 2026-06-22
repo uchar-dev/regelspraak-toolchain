@@ -146,9 +146,20 @@ class TyperingTest {
         assertTrue(res.ok());
         assertNull(res.type().eenheidOf(), "een quotiënt van gelijke eenheden is eenheidloos");
     }
-    @Test void maal_twee_losse_eenheden_blijft_onbekend() {
-        // € maal m = €·m (two numerators) — not representable in the model, stays Onbekend
-        var res = Typering.reken(BinOp.MAAL, numEenh(EUR), numEenh(new Eenheid("m", "Lengte")));
-        assertTrue(res.type().isOnbekend());
+    @Test void maal_twee_losse_eenheden_geeft_een_opaak_productunit() {
+        // §4.4: € maal m = €·m — an opaque PRODUCT unit (no canonical), commutative, not Onbekend.
+        Eenheid m = new Eenheid("m", "Lengte");
+        var res = Typering.reken(BinOp.MAAL, numEenh(EUR), numEenh(m));
+        assertTrue(res.ok());
+        assertEquals("EUR·m", res.type().eenheidOf().afkorting(), "het productunit (factoren gesorteerd)");
+        var omgekeerd = Typering.reken(BinOp.MAAL, numEenh(m), numEenh(EUR));   // commutatief: m maal € == € maal m
+        assertEquals("EUR·m", omgekeerd.type().eenheidOf().afkorting());
+    }
+    @Test void productunit_toegekend_aan_een_enkele_eenheid_is_een_eenheidfout() {
+        // §4.4 / §6.1: €·m is convertible only to an identical product, so assigning it to a € target flags a
+        // unit mismatch — where the prior Onbekend silently passed.
+        Datatype productEm = Typering.reken(BinOp.MAAL, numEenh(EUR), numEenh(new Eenheid("m", "Lengte"))).type();
+        assertNotNull(Typering.toekenning(numEenh(EUR), productEm), "€·m toegekend aan € moet een eenheidfout zijn");
+        assertNull(Typering.toekenning(productEm, productEm), "€·m toegekend aan €·m is correct");
     }
 }
