@@ -14,6 +14,18 @@ public class Persoon {
     private boolean reiziger;          // §8.1.8.3 zelfstandig kenmerk, for the "is geen reiziger" negation
     private String roepnaam;           // §9.5 navigated Tekst equality (null-safe navigation test)
     private Persoon partner;           // to-one self-relation the navigated kenmerk reads through
+    private BigDecimal inkomen;        // §6.5 navigated deling-door-leeg companion: dividend van zijn partner
+    private BigDecimal aftrek;         // §6.5 navigated deling-door-leeg companion: divisor van zijn partner
+    private BigDecimal ratio;          // §6.5 navigated division target
+    private BigDecimal basis;          // §6.6 navigated wortel-van-negatief companion: radicand van zijn partner
+    public BigDecimal getInkomen() { return inkomen; }
+    public void setInkomen(BigDecimal v) { this.inkomen = v; }
+    public BigDecimal getAftrek() { return aftrek; }
+    public void setAftrek(BigDecimal v) { this.aftrek = v; }
+    public BigDecimal getRatio() { return ratio; }
+    public void setRatio(BigDecimal v) { this.ratio = v; }
+    public BigDecimal getBasis() { return basis; }
+    public void setBasis(BigDecimal v) { this.basis = v; }
     public BigDecimal getLeeftijd() { return leeftijd; }
     public void setLeeftijd(BigDecimal v) { this.leeftijd = v; }
     public BigDecimal getGekopieerd() { return gekopieerd; }

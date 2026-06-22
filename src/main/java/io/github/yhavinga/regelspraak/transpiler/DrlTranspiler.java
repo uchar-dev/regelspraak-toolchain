@@ -340,6 +340,19 @@ public final class DrlTranspiler {
         return new OperandDeel(o + " == null", o + " != null", o, false);
     }
 
+    /** The §6.5/§6.6 fout-companion decomposition for an operand that is the subject's OWN attribute or one
+     *  reached by a to-ONE navigation — the only shapes that lower to a re-readable leeg/vol guard a separate
+     *  insert-only rule can re-test. null for a literal / parameter / to-many / unresolvable operand (which
+     *  still degrades to leeg on the value side but raises no Inconsistentie). An own attribute reuses the bare
+     *  property form, so the companion is byte-identical to the original EIGEN-only emission. */
+    private OperandDeel companionDeel(Expr e, Objecttype subject) {
+        if (!(e instanceof Expr.AttribuutRef a)) return null;
+        NaviSoort s = naviResolve(a, subject).soort();
+        if (s != NaviSoort.EIGEN && s != NaviSoort.GENAVIGEERD) return null;
+        OperandDeel d = operandDeel(e, subject);
+        return bevatMarker(d.waarde()) ? null : d;
+    }
+
     /** §13.3.9 to-one navigation + the typeringen leegwaarde rekentabellen (Tabel 37/38 gelijk,
      *  40-43 ordening, 44 ongelijk): build a consistentie violation for a comparison with at least one
      *  navigated to-one operand, treating a null root as the operand being LEEG. Drools "!." would make
@@ -788,15 +801,20 @@ public final class DrlTranspiler {
         if (bevatMarker(voorwaarde)) return;
         List<Expr.Functie> wortels = new ArrayList<>();
         verzamelWortels(r.waarde(), wortels);
-        List<Expr.AttribuutRef> eigen = new ArrayList<>();
+        List<String> guards = new ArrayList<>();   // the "radicand < 0" guard per qualifying wortel
         for (Expr.Functie w : wortels)
-            if (w.argumenten().size() == 1 && w.argumenten().get(0) instanceof Expr.AttribuutRef rad
-                    && naviResolve(rad, subject).soort() == NaviSoort.EIGEN)
-                eigen.add(rad);
-        for (int i = 0; i < eigen.size(); i++) {
-            String pattern = (voorwaarde.isEmpty() ? "" : voorwaarde + ", ")
-                    + ident(eigen.get(i).attribuut(), false) + " < new java.math.BigDecimal(\"0\")";
-            Regel rule = new Regel(r.naam() + " (wortel van negatief" + (eigen.size() > 1 ? " " + (i + 1) : "") + ")")
+            if (w.argumenten().size() == 1) {
+                OperandDeel rd = companionDeel(w.argumenten().get(0), subject);
+                if (rd != null)
+                    // a navigated radicand must guard its root before the "." dereference (mvel is not null-safe);
+                    // an own attribute reads `basis < 0` directly (a null is false for "< 0", no NPE) — byte-identical.
+                    guards.add(rd.genavigeerd()
+                            ? rd.vol() + " && " + rd.waarde() + " < new java.math.BigDecimal(\"0\")"
+                            : rd.waarde() + " < new java.math.BigDecimal(\"0\")");
+            }
+        for (int i = 0; i < guards.size(); i++) {
+            String pattern = (voorwaarde.isEmpty() ? "" : voorwaarde + ", ") + guards.get(i);
+            Regel rule = new Regel(r.naam() + " (wortel van negatief" + (guards.size() > 1 ? " " + (i + 1) : "") + ")")
                 .clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + pattern + " )");
             for (String e : extraClausules) rule.clausule(e);   // the host rule's far-side membership gate, if any
             out.append(rule
@@ -829,25 +847,23 @@ public final class DrlTranspiler {
      *  (rsGedeeld returns null for a non-empty dividend over an empty divisor); this surfaces the Fout through
      *  the §9.5 Inconsistentie channel — a SEPARATE rule per division that fires when the dividend is present
      *  and the divisor is empty (and the host rule's voorwaarde holds, so the division would actually execute).
-     *  Scope: BOTH operands must be the subject's OWN attributes, the only shape that lowers to a plain
-     *  re-readable property constraint here; a navigated/parameter/nested or aggregation operand still degrades
-     *  to leeg but raises no Inconsistentie (carded). An empty LEFT short-circuits to 0 (no fout), so the guard
-     *  is dividend != null AND divisor == null, never merely divisor == null. */
+     *  Scope: both operands must lower to a re-readable leeg/vol guard — the subject's OWN attribute, or one
+     *  reached by a to-ONE navigation (`partner.inkomen / partner.aftrek`), guarded against a null root. A
+     *  literal / parameter / to-many / unresolvable operand still degrades to leeg but raises no Inconsistentie
+     *  (carded). An empty LEFT short-circuits to 0 (no fout), so the guard is dividend != null AND divisor ==
+     *  null, never merely divisor == null. */
     private void deelDoorLeegFout(ResolvedRegel r, Objecttype subject, String voorwaarde, List<String> extraClausules) {
         if (bevatMarker(voorwaarde)) return;          // the host rule is itself a no-op marker -> no division fires
         List<Expr.Binair> delingen = new ArrayList<>();
         verzamelDelingen(r.waarde(), delingen);
-        List<Expr.Binair> eigen = new ArrayList<>();
-        for (Expr.Binair d : delingen)
-            if (d.links() instanceof Expr.AttribuutRef dl && d.rechts() instanceof Expr.AttribuutRef dr
-                    && naviResolve(dl, subject).soort() == NaviSoort.EIGEN
-                    && naviResolve(dr, subject).soort() == NaviSoort.EIGEN)
-                eigen.add(d);
-        for (int i = 0; i < eigen.size(); i++) {
-            Expr.AttribuutRef dividend = (Expr.AttribuutRef) eigen.get(i).links(), divisor = (Expr.AttribuutRef) eigen.get(i).rechts();
-            String pattern = (voorwaarde.isEmpty() ? "" : voorwaarde + ", ")
-                    + ident(dividend.attribuut(), false) + " != null, " + ident(divisor.attribuut(), false) + " == null";
-            Regel rule = new Regel(r.naam() + " (deling door leeg" + (eigen.size() > 1 ? " " + (i + 1) : "") + ")")
+        List<String> patronen = new ArrayList<>();   // "dividend-vol, divisor-leeg" per qualifying division
+        for (Expr.Binair d : delingen) {
+            OperandDeel dividend = companionDeel(d.links(), subject), divisor = companionDeel(d.rechts(), subject);
+            if (dividend != null && divisor != null) patronen.add(dividend.vol() + ", " + divisor.leeg());
+        }
+        for (int i = 0; i < patronen.size(); i++) {
+            String pattern = (voorwaarde.isEmpty() ? "" : voorwaarde + ", ") + patronen.get(i);
+            Regel rule = new Regel(r.naam() + " (deling door leeg" + (patronen.size() > 1 ? " " + (i + 1) : "") + ")")
                 .clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + pattern + " )");
             for (String e : extraClausules) rule.clausule(e);   // the host rule's far-side membership gate, if any
             out.append(rule

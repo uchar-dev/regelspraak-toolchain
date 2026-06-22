@@ -943,6 +943,87 @@ class DroolsExecutionTest {
         assertSame(waardeLeeg, fouten.get(0), "de Inconsistentie moet de waarde/leeg-rekensom noemen");
     }
 
+    @Test void navigated_deling_door_leeg_meldt_een_inconsistentie() {
+        // §6.5: the deling-door-leeg fout now also fires for a TO-ONE NAVIGATED division ("de inkomen van zijn
+        // partner gedeeld door de aftrek van zijn partner"): the companion guards the navigation root before the
+        // "." dereference — (partner != null && partner.inkomen != null), (partner == null || partner.aftrek ==
+        // null) — so a partner with a present dividend and a leeg divisor raises ONE Inconsistentie on the subject;
+        // a present divisor does not, and the value still degrades to leeg (no crash).
+        String src = """
+                Objecttype de Persoon
+                    de inkomen Numeriek (geheel getal);
+                    de aftrek Numeriek (geheel getal);
+                    de ratio Numeriek (getal met 2 decimalen);
+                Feittype partnerschap
+                    de persoon Persoon
+                    de partner Persoon
+                Eén persoon heeft één partner
+                Regel ratioregel
+                    geldig altijd
+                        De ratio van een Persoon moet gesteld worden op de inkomen van zijn partner gedeeld door de aftrek van zijn partner.
+                """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rule \"ratioregel (deling door leeg)\""), () -> "geen navigated companion:\n" + drl);
+
+        // mutual partnership so EVERY subject has a partner (a navigated VALUE does not yet null-guard its root —
+        // a partnerless Persoon would NPE the main rule; that is a pre-existing orthogonal gap, carded).
+        KieSession sessie = build(drl).newKieSession();
+        Persoon p = new Persoon(); Persoon q = new Persoon();
+        p.setPartner(q); q.setPartner(p);
+        q.setInkomen(new BigDecimal("12"));                                // p navigates q: 12 / leeg -> fout
+        p.setInkomen(new BigDecimal("10")); p.setAftrek(new BigDecimal("5")); // q navigates p: 10 / 5 = 2 -> geen fout
+        for (Object o : new Object[]{p, q}) sessie.insert(o);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> ((Inconsistentie) o).getSubject()).toList();
+        sessie.dispose();
+        assertNull(p.getRatio(), "12 / leeg via navigatie = leeg (geen crash)");
+        assertEquals(0, new BigDecimal("2.00").compareTo(q.getRatio()), () -> "10/5 = 2, kreeg " + q.getRatio());
+        assertEquals(1, fouten.size(), () -> "precies één Inconsistentie (de navigated leeg-divisor), kreeg " + fouten.size());
+        assertSame(p, fouten.get(0), "de fout hoort bij de Persoon wiens partner een lege aftrek heeft");
+    }
+
+    @Test void navigated_wortel_van_negatief_meldt_een_inconsistentie() {
+        // §6.6: the wortel-van-negatief fout also fires for a to-one navigated radicand ("de wortel van de basis
+        // van zijn partner"): the companion guards the root — (partner != null && partner.basis != null) &&
+        // partner.basis < 0 — so a partner with a negative basis raises an Inconsistentie; a non-negative one does
+        // not, and the value degrades to leeg (rsWortel returns null for a negative, no session-aborting sqrt throw).
+        String src = """
+                Objecttype de Persoon
+                    de basis Numeriek (geheel getal);
+                    de uitkomst Numeriek (geheel getal);
+                Feittype partnerschap
+                    de persoon Persoon
+                    de partner Persoon
+                Eén persoon heeft één partner
+                Regel w
+                    geldig altijd
+                        De uitkomst van een Persoon moet gesteld worden op de wortel van de basis van zijn partner naar beneden afgerond op 0 decimalen.
+                """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rule \"w (wortel van negatief)\""), () -> "geen navigated wortel companion:\n" + drl);
+
+        // mutual partnership so every subject has a partner (see the division test note on the navigated-value root).
+        KieSession sessie = build(drl).newKieSession();
+        Persoon neg = new Persoon(); Persoon q = new Persoon();
+        neg.setPartner(q); q.setPartner(neg);
+        q.setBasis(new BigDecimal("-9"));   // neg navigates q: wortel(-9) -> leeg + fout
+        neg.setBasis(new BigDecimal("16")); // q navigates neg: wortel(16) = 4 -> geen fout
+        for (Object o : new Object[]{neg, q}) sessie.insert(o);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> ((Inconsistentie) o).getSubject()).toList();
+        sessie.dispose();
+        assertNull(neg.getUitkomst(), "wortel van -9 = leeg (geen sqrt-throw)");
+        assertEquals(0, new BigDecimal("4").compareTo(q.getUitkomst()), () -> "wortel van 16 = 4, kreeg " + q.getUitkomst());
+        assertEquals(1, fouten.size(), () -> "precies één Inconsistentie (de negatieve navigated radicand), kreeg " + fouten.size());
+        assertSame(neg, fouten.get(0), "de fout hoort bij de Persoon wiens partner een negatieve basis heeft");
+    }
+
     @Test void far_side_gegate_deling_door_leeg_meldt_alleen_als_het_lidmaatschap_geldt() {
         // §6.5 + §8.1.7: a division gated on a FAR-side membership ("indien hij heeft een passagier"). The
         // deling-door-leeg companion now CARRIES the exists-join, so it raises the Inconsistentie only for a
