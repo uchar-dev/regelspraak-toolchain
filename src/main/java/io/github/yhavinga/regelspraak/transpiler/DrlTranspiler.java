@@ -675,9 +675,13 @@ public final class DrlTranspiler {
             dan.append("    // onopgelost terugkoppeling naar ").append(subject.naam).append('\n');
         dan.append("    insert($new);\n");
 
+        // Like the feitcreatie anker, a §8.1.7 far-side guard on the objectcreatie subject hosts its exists/not
+        // join after the subject pattern; a near guard yields empty extra and keeps the output byte-identical.
+        LoweredConditie opVw = oc.voorwaarde() != null
+                ? conditie(oc.voorwaarde(), subject, true) : LoweredConditie.van("");
         out.append(new Regel(oc.naam())
-            .clausule(SUBJECT + " : " + ident(subject.naam, true)
-                    + "( " + (oc.voorwaarde() != null ? conditieInline(oc.voorwaarde(), subject, true) : "") + " )")
+            .clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + opVw.inline() + " )")
+            .clausules(opVw.extra())
             .clausules(accumulates)
             .geldigheid(oc.geldigheid())
             .dan(dan.toString())
@@ -699,10 +703,16 @@ public final class DrlTranspiler {
         // marker), the §-wide "an unresolved condition is a compilable no-op" discipline: better to create
         // nothing (visibly) than to create wrongly.
         String ankerC = "", doelExtra = "", noFire = "";
+        List<String> ankerExtra = List.of();
         if (fc.voorwaarde() != null) {
-            String opAnker = conditieInline(fc.voorwaarde(), anker, true);
-            if (!bevatMarker(opAnker)) {
-                ankerC = opAnker;
+            // A §8.1.7 far-side anker guard ("indien de vlucht heeft een passagier") lowers to an EMPTY inline
+            // plus a hoisted exists/not join, so lower the anker side with the FULL carrier and host its extra
+            // after the anker pattern. conditieInline would degrade that join to a marker, dropping the rule to
+            // an inert eval(false); a near anker guard yields empty extra and stays byte-identical.
+            LoweredConditie opAnker = conditie(fc.voorwaarde(), anker, true);
+            if (!bevatMarker(opAnker.inline())) {
+                ankerC = opAnker.inline();
+                ankerExtra = opAnker.extra();
             } else {
                 resetAccumulates();   // discard the failed anker attempt
                 String opDoel = conditieInline(fc.voorwaarde(), doel, true);
@@ -717,6 +727,7 @@ public final class DrlTranspiler {
         Regel rule = new Regel(fc.naam());
         if (!noFire.isEmpty()) rule.clausule(noFire);
         rule.clausule(SUBJECT + " : " + ident(anker.naam, true) + "( " + ankerC + " )")
+            .clausules(ankerExtra)        // far-side anker membership: the exists/not join, after $subject is bound
             .clausules(accumulates)
             .geldigheid(fc.geldigheid());
         // §9.4 multi-hop: bind each intermediate object on the path anker -> … -> doel, then join the doel to

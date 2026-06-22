@@ -1,5 +1,6 @@
 package io.github.yhavinga.regelspraak;
 
+import io.github.yhavinga.regelspraak.facts.Bemanningslid;
 import io.github.yhavinga.regelspraak.facts.Bestelling;
 import io.github.yhavinga.regelspraak.facts.Bestemming;
 import io.github.yhavinga.regelspraak.facts.Burger;
@@ -1383,6 +1384,51 @@ class DroolsExecutionTest {
         Factuur f = facturen.get(0);
         assertEquals(0, new BigDecimal("50").compareTo(f.getBedrag()), () -> "bedrag: " + f.getBedrag());
         assertSame(b, f.getBestelling(), "terugkoppeling naar de bestelling ontbreekt");
+    }
+
+    @Test void objectcreatie_met_far_side_voorwaarde_maakt_alleen_voor_bemande_vluchten() {
+        // §8.1.7 + §13.4.6: a far-side membership guard on the objectcreatie subject ("indien de vlucht heeft een
+        // bemanningslid") hosts as an exists-join after the $subject pattern, exactly like the feitcreatie anker.
+        // It used to degrade to a marker (false /* TODO */) and create nothing. Here it filters: a passagier is
+        // created only for a vlucht that has crew.
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Objecttype het Bemanningslid
+                de naam Tekst;
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype Vlucht met bemanning
+                de bemande vlucht Vlucht
+                het bemanningslid Bemanningslid
+            Eén bemande vlucht heeft meerdere bemanningsleden
+            Regel maak passagier
+                geldig altijd
+                    Een Vlucht heeft een passagier met prijs gelijk aan 10
+                    indien de vlucht heeft een bemanningslid.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("exists Bemanningslid( bemandeVlucht == $subject )"),
+                () -> "de far-side subject-voorwaarde moet als exists-join hosten:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "de far-side subject-voorwaarde mag geen marker zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht bemand = new Vlucht();
+        Vlucht onbemand = new Vlucht();
+        Bemanningslid crew = new Bemanningslid(); crew.setBemandeVlucht(bemand);
+        for (Object o : new Object[]{bemand, onbemand, crew}) sessie.insert(o);
+        sessie.fireAllRules();
+        var passagiers = sessie.getObjects().stream().filter(o -> o instanceof Passagier).map(o -> (Passagier) o).toList();
+        sessie.dispose();
+
+        assertEquals(1, passagiers.size(), () -> "precies één passagier (voor de bemande vlucht): " + passagiers.size());
+        assertSame(bemand, passagiers.get(0).getReis(), () -> "de passagier moet aan de bemande vlucht hangen");
     }
 
     @Test void verdeling_in_gelijke_delen_geeft_ieder_een_gelijk_aandeel() {
@@ -4102,6 +4148,58 @@ class DroolsExecutionTest {
 
         assertNull(a.getBonusvlucht(), () -> "een inerte feitcreatie mag geen relatie creëren (geen over-creatie)");
         assertNull(b.getBonusvlucht(), () -> "een inerte feitcreatie mag geen relatie creëren");
+    }
+
+    @Test void feitcreatie_met_far_side_anker_voorwaarde_koppelt_alleen_bemande_vluchten() {
+        // §8.1.7 + §13.4.7: a far-side membership guard on the feitcreatie ANKER ("indien de vlucht heeft een
+        // bemanningslid") is a hoisted exists-join, not an inline anker constraint, so it must host as a separate
+        // when-clause after the $subject anker pattern. conditieInline used to degrade that join to a marker,
+        // dropping the whole rule to an inert eval(false). The membership references a DIFFERENT relation than the
+        // doel join (the bemanning, not the passengers), so it genuinely filters: a vlucht with passengers but no
+        // crew gets NO bonusrelatie.
+        String src = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de naam Tekst;
+            Objecttype het Bemanningslid
+                de naam Tekst;
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype Vlucht met bemanning
+                de bemande vlucht Vlucht
+                het bemanningslid Bemanningslid
+            Eén bemande vlucht heeft meerdere bemanningsleden
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht
+                    indien de vlucht heeft een bemanningslid.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("exists Bemanningslid( bemandeVlucht == $subject )"),
+                () -> "de far-side anker-voorwaarde moet als exists-join hosten:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "de far-side anker-voorwaarde mag geen marker zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht bemand = new Vlucht();     // heeft een bemanningslid -> de passagiers krijgen de relatie
+        Vlucht onbemand = new Vlucht();   // heeft passagiers maar geen bemanning -> geen relatie
+        Passagier p1 = new Passagier(); p1.setReis(bemand);
+        Passagier p2 = new Passagier(); p2.setReis(onbemand);
+        Bemanningslid crew = new Bemanningslid(); crew.setBemandeVlucht(bemand);
+        for (Object o : new Object[]{bemand, onbemand, p1, p2, crew}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertSame(bemand, p1.getBonusvlucht(), () -> "passagier van een bemande vlucht moet gekoppeld zijn");
+        assertNull(p2.getBonusvlucht(), () -> "passagier van een onbemande vlucht mag NIET gekoppeld zijn (exists filtert)");
     }
 
     @Test void feitcreatie_doel_kenmerk_lowert_ook_als_de_rol_anders_heet_dan_het_doeltype() {
