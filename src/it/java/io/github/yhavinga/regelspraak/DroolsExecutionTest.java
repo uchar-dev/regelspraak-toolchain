@@ -943,6 +943,38 @@ class DroolsExecutionTest {
         assertSame(waardeLeeg, fouten.get(0), "de Inconsistentie moet de waarde/leeg-rekensom noemen");
     }
 
+    @Test void far_side_gegate_deling_door_leeg_meldt_alleen_als_het_lidmaatschap_geldt() {
+        // §6.5 + §8.1.7: a division gated on a FAR-side membership ("indien hij heeft een passagier"). The
+        // deling-door-leeg companion now CARRIES the exists-join, so it raises the Inconsistentie only for a
+        // Vlucht that (a) has a leeg divisor AND (b) actually has a passagier — exactly when the division would
+        // execute. A divisor-leeg Vlucht with NO passagier is never acted on by the rule, so it raises nothing.
+        String src = """
+                Objecttype de Passagier
+                Objecttype de Vlucht
+                    de somMet Numeriek (geheel getal);
+                    de somZonder Numeriek (geheel getal);
+                    de totaalprijs Numeriek (getal met 2 decimalen);
+                Feittype Vlucht met passagiers
+                    de reis Vlucht
+                    de passagier Passagier
+                Eén reis heeft meerdere passagiers
+                Regel deel
+                    geldig altijd
+                        De totaalprijs van een Vlucht moet gesteld worden op de somMet van een Vlucht gedeeld door de somZonder van een Vlucht indien hij heeft een passagier.
+                """;
+        KieSession sessie = build(DrlTranspiler.transpile(Resolver.resolve(src))).newKieSession();
+        Vlucht metPax = new Vlucht(); metPax.setSomMet(new BigDecimal("12"));   // somZonder leeg -> fout, EN heeft passagier
+        Vlucht zonderPax = new Vlucht(); zonderPax.setSomMet(new BigDecimal("12"));  // somZonder leeg, MAAR geen passagier
+        Passagier p = new Passagier(); p.setReis(metPax);
+        for (Object o : new Object[]{metPax, zonderPax, p}) sessie.insert(o);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> ((Inconsistentie) o).getSubject()).toList();
+        sessie.dispose();
+        assertEquals(1, fouten.size(), () -> "precies één Inconsistentie (alleen de Vlucht mét passagier), kreeg " + fouten.size());
+        assertSame(metPax, fouten.get(0), "de fout hoort bij de Vlucht waar de deling daadwerkelijk zou vuren (lidmaatschap geldt)");
+    }
+
     @Test void wortel_en_macht_van_leeg_zijn_leeg_door_de_null_veilige_afronding() {
         // §6.6/§6.7: wortel/macht of a leeg operand is leeg. Both carry a MANDATORY afronding, so a leeg result
         // used to NPE in (null).setScale and ABORT the session. Now rsWortel/rsMacht return null and rsAfronding

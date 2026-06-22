@@ -199,12 +199,10 @@ class DrlTest {
                 () -> "een far-side onder een negatieve kwantor mag geen exists emitteren:\n" + drl);
     }
 
-    @Test void far_side_gate_onderdrukt_de_deling_door_leeg_companion() {
-        // review HIGH: a far-side condition is a PEELED exists-clause, not an inline constraint, so the §6.5
-        // deling-door-leeg companion (gated on the inline constraint) would lose the membership gate and over-fire
-        // — raising an Inconsistentie for subjects the rule never acts on. It is suppressed for a far-side-gated
-        // rule (the division still degrades to leeg; only the fout signal is conservatively withheld). The division
-        // IS recognised (rsGedeeld), so without the fix the companion would be emitted.
+    @Test void far_side_gate_wordt_in_de_deling_door_leeg_companion_meegedragen() {
+        // §6.5: a far-side condition is a hoisted exists-clause, not an inline constraint. The deling-door-leeg
+        // companion now CARRIES that exists clause, so it fires exactly when the division would execute — the
+        // own-attribute divisor is leeg AND the membership holds — never for a subject the rule does not act on.
         String src = """
             Objecttype de Passagier
             Objecttype de Vlucht
@@ -221,8 +219,10 @@ class DrlTest {
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertTrue(drl.contains("rsGedeeld"), () -> "de deling moet herkend zijn (anders bewijst de test niets):\n" + drl);
-        assertTrue(drl.contains("exists Passagier( reis == $subject )"), () -> "de far-side gate moet aanwezig zijn:\n" + drl);
-        assertFalse(drl.contains("(deling door leeg)"), () -> "geen ongekoppelde deling-door-leeg companion bij een far-side gate:\n" + drl);
+        assertTrue(drl.contains("(deling door leeg)"), () -> "de deling-door-leeg companion moet nu wel ge-emit zijn:\n" + drl);
+        // the companion pattern carries both the own-attribute leeg-guard AND the far-side membership exists-clause
+        assertTrue(drl.contains("$subject : Vlucht( somMet != null, somZonder == null )\n    exists Passagier( reis == $subject )"),
+                () -> "de companion moet de far-side gate (exists) meedragen:\n" + drl);
     }
 
     @Test void onmapbare_functie_wordt_gemarkeerd_niet_verzonnen() {

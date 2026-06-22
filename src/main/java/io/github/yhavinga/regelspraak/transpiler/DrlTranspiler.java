@@ -763,15 +763,16 @@ public final class DrlTranspiler {
             rule.dan("    // onopgelost doel: " + r.doel().bron() + "\n");
         }
         out.append(rule.render());
-        // §6.5/§6.6 fout companions are gated by the rule's INLINE constraint. A far-side condition is a hoisted
-        // exists-clause, not an inline constraint, so a companion built from it would lose the membership gate and
-        // over-fire (raise the Inconsistentie for subjects the rule never acts on). Suppress them whenever the
-        // condition contributed an extra clause — an extension of the existing scope limit (navigated / aggregation
-        // / parameter operands already raise no companion); the value still degrades to leeg, only the fout signal
-        // is conservatively withheld. Threading the exists-join into the companions is carded.
-        if (subject != null && !lc.heeftExtra()) {
-            deelDoorLeegFout(r, subject, constraint);
-            wortelNegatiefFout(r, subject, constraint);
+        // §6.5/§6.6 fout companions are gated by the rule's INLINE constraint PLUS its hoisted join clauses. A
+        // far-side condition is a separate exists/not clause, not an inline constraint, so the companion must
+        // carry it too — otherwise it loses the membership gate and over-fires (raising the Inconsistentie for
+        // subjects the rule never acts on). Threading lc.extra() into the companion fires it exactly when the
+        // division/wortel would actually execute: the inline constraint holds AND the membership holds. (The
+        // companion is insert-only, so adding an exists/not clause is safe — it cancels no sibling activation,
+        // unlike a modify+no-loop rule. The own-attribute operand scope limit is unchanged.)
+        if (subject != null) {
+            deelDoorLeegFout(r, subject, constraint, lc.extra());
+            wortelNegatiefFout(r, subject, constraint, lc.extra());
         }
     }
 
@@ -783,7 +784,7 @@ public final class DrlTranspiler {
      *  plain re-readable property constraint; a navigated/parameter/nested/aggregation radicand still degrades
      *  to leeg but raises no Inconsistentie (carded). A leeg radicand is leeg, not a fout (§6.6), and the guard
      *  radicand &lt; 0 is false for a null, so it does not fire for leeg. */
-    private void wortelNegatiefFout(ResolvedRegel r, Objecttype subject, String voorwaarde) {
+    private void wortelNegatiefFout(ResolvedRegel r, Objecttype subject, String voorwaarde, List<String> extraClausules) {
         if (bevatMarker(voorwaarde)) return;
         List<Expr.Functie> wortels = new ArrayList<>();
         verzamelWortels(r.waarde(), wortels);
@@ -795,8 +796,10 @@ public final class DrlTranspiler {
         for (int i = 0; i < eigen.size(); i++) {
             String pattern = (voorwaarde.isEmpty() ? "" : voorwaarde + ", ")
                     + ident(eigen.get(i).attribuut(), false) + " < new java.math.BigDecimal(\"0\")";
-            out.append(new Regel(r.naam() + " (wortel van negatief" + (eigen.size() > 1 ? " " + (i + 1) : "") + ")")
-                .clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + pattern + " )")
+            Regel rule = new Regel(r.naam() + " (wortel van negatief" + (eigen.size() > 1 ? " " + (i + 1) : "") + ")")
+                .clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + pattern + " )");
+            for (String e : extraClausules) rule.clausule(e);   // the host rule's far-side membership gate, if any
+            out.append(rule
                 .geldigheid(r.geldigheid())
                 .clausule(inconsistentieGuard(r.naam()))
                 .dan(inconsistentieDan(r.naam()))
@@ -830,7 +833,7 @@ public final class DrlTranspiler {
      *  re-readable property constraint here; a navigated/parameter/nested or aggregation operand still degrades
      *  to leeg but raises no Inconsistentie (carded). An empty LEFT short-circuits to 0 (no fout), so the guard
      *  is dividend != null AND divisor == null, never merely divisor == null. */
-    private void deelDoorLeegFout(ResolvedRegel r, Objecttype subject, String voorwaarde) {
+    private void deelDoorLeegFout(ResolvedRegel r, Objecttype subject, String voorwaarde, List<String> extraClausules) {
         if (bevatMarker(voorwaarde)) return;          // the host rule is itself a no-op marker -> no division fires
         List<Expr.Binair> delingen = new ArrayList<>();
         verzamelDelingen(r.waarde(), delingen);
@@ -844,8 +847,10 @@ public final class DrlTranspiler {
             Expr.AttribuutRef dividend = (Expr.AttribuutRef) eigen.get(i).links(), divisor = (Expr.AttribuutRef) eigen.get(i).rechts();
             String pattern = (voorwaarde.isEmpty() ? "" : voorwaarde + ", ")
                     + ident(dividend.attribuut(), false) + " != null, " + ident(divisor.attribuut(), false) + " == null";
-            out.append(new Regel(r.naam() + " (deling door leeg" + (eigen.size() > 1 ? " " + (i + 1) : "") + ")")
-                .clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + pattern + " )")
+            Regel rule = new Regel(r.naam() + " (deling door leeg" + (eigen.size() > 1 ? " " + (i + 1) : "") + ")")
+                .clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + pattern + " )");
+            for (String e : extraClausules) rule.clausule(e);   // the host rule's far-side membership gate, if any
+            out.append(rule
                 .geldigheid(r.geldigheid())
                 .clausule(inconsistentieGuard(r.naam()))
                 .dan(inconsistentieDan(r.naam()))
