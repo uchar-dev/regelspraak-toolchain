@@ -219,6 +219,45 @@ class DroolsExecutionTest {
                 () -> "geclipte totaal moet 6x10 + 1x11 = 71 zijn, was " + p.getTotaleBelastingvermindering());
     }
 
+    @Test void navigated_temporeel_totaal_leest_de_tijdreeks_van_de_partner() {
+        // "het totaal van de <temporeel attribuut> van zijn <rol>" reads the to-ONE partner's timeline,
+        // root-guarded, and folds it via rsTijdTotaal — NOT a wrong sum() over the List<Segment>. A partnerless
+        // persoon yields leeg (the root guard), no crash.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de bedrag per maand Bedrag voor elke maand;
+                de totaal partner bedrag Bedrag;
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel R
+                geldig altijd
+                    De totaal partner bedrag van een Persoon moet gesteld worden op het totaal van de bedrag per maand van zijn partner.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsTijdTotaal(($subject.getPartner() == null ? null : "
+                        + "$subject.getPartner().getBedragPerMaand()), \"MAAND\")"),
+                () -> "navigated temporeel totaal moet de partner-tijdreeks root-guarded folden:\n" + drl);
+        assertFalse(drl.contains("accumulate"), () -> "geen accumulate-som over de List<Segment>:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Persoon p1 = new Persoon(), p2 = new Persoon();
+        p1.setPartner(p2);
+        p2.setBedragPerMaand(List.of(
+                new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1), new BigDecimal("10.00")))); // 12 mnd x 10
+        sessie.insert(p1); sessie.insert(p2);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("120.00").compareTo(p1.getTotaalPartnerBedrag()),
+                () -> "totaal van partner-tijdreeks moet 12x10 = 120 zijn, was " + p1.getTotaalPartnerBedrag());
+        assertNull(p2.getTotaalPartnerBedrag(), "een partnerloze persoon -> leeg (root guard, geen crash)");
+    }
+
     @Test void totaal_van_een_lege_tijdreeks_is_nul() {
         // §4.20 leegwaarde: an empty (or null) timeline totals 0, not a crash.
         String src = """

@@ -1,6 +1,7 @@
 package io.github.yhavinga.regelspraak.facts;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /** Fact POJO for the self-reference guard test. The subject's own objecttype also lends
  *  its name to a role of another type ({@link Organisatie}); a definite back-reference
@@ -14,6 +15,12 @@ public class Persoon {
     private boolean reiziger;          // §8.1.8.3 zelfstandig kenmerk, for the "is geen reiziger" negation
     private String roepnaam;           // §9.5 navigated Tekst equality (null-safe navigation test)
     private Persoon partner;           // to-one self-relation the navigated kenmerk reads through
+    private List<Segment> bedragPerMaand;       // §7.1 a temporal attribute, read through a to-one navigation
+    private BigDecimal totaalPartnerBedrag;     // §7.1 "het totaal van de bedrag per maand van zijn partner"
+    public List<Segment> getBedragPerMaand() { return bedragPerMaand; }
+    public void setBedragPerMaand(List<Segment> v) { this.bedragPerMaand = v; }
+    public BigDecimal getTotaalPartnerBedrag() { return totaalPartnerBedrag; }
+    public void setTotaalPartnerBedrag(BigDecimal v) { this.totaalPartnerBedrag = v; }
     private BigDecimal inkomen;        // §6.5 navigated deling-door-leeg companion: dividend van zijn partner
     private BigDecimal aftrek;         // §6.5 navigated deling-door-leeg companion: divisor van zijn partner
     private BigDecimal ratio;          // §6.5 navigated division target

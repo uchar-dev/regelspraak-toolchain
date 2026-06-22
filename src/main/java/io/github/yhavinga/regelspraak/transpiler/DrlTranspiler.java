@@ -1550,7 +1550,7 @@ public final class DrlTranspiler {
         // accumulate / concatenatieAggregatie paths do — fall through to the marker rather than fold the FULL
         // unrestricted timeline (which would compute the wrong, condition-free totaal).
         if (f.filter() instanceof Conditie.Onopgelost) return null;
-        if (!(f.argumenten().get(0) instanceof Expr.AttribuutRef a) || a.navigatieRol() != null) return null;
+        if (!(f.argumenten().get(0) instanceof Expr.AttribuutRef a)) return null;
         if (a.objecttype() == null) return null;
         RegelSpraakModel.Granulariteit g = a.objecttype().attribuutGranulariteit.get(a.attribuut());
         if (g == null) return null;   // not a temporal attribute -> fall through to the instance-accumulate / marker
@@ -1559,7 +1559,19 @@ public final class DrlTranspiler {
         if (a.objecttype().attribuutTijdlijnAantal.containsKey(a.attribuut()))
             return todo("totaal van een meer-periodieke tijdreeks (§13.3.6.7, voor elke <n> " + g.name().toLowerCase()
                     + "en)", a.bron());
-        String waardeTijdreeks = SUBJECT + "." + getter(a.attribuut()) + "()";
+        // The timeline getter: the subject's own attribute, or a to-ONE navigated partner's, root-guarded so a
+        // null reference is leeg (rsTijdTotaal returns null) rather than an NPE-abort. A to-many / unresolvable
+        // navigation cannot be one getter — marker it (never a wrong sum() over the List<Segment>).
+        NaviRef n = naviResolve(a, subject);
+        String waardeTijdreeks;
+        if (n.soort() == NaviSoort.EIGEN) {
+            waardeTijdreeks = SUBJECT + "." + getter(a.attribuut()) + "()";
+        } else if (n.soort() == NaviSoort.GENAVIGEERD) {
+            String root = SUBJECT + "." + getter(n.rol()) + "()";
+            waardeTijdreeks = "(" + root + " == null ? null : " + root + "." + getter(a.attribuut()) + "())";
+        } else {
+            return null;
+        }
         // §7.1 "gedurende de tijd dat <temporeel kenmerk>": the resolver structured the restriction into a
         // temporal Conditie.Kenmerk of the subject; clip the value timeline to that kenmerk's TRUE periods
         // before totalling (rsTijdKnip). A filter the resolver could not structure stays Onopgelost -> the
