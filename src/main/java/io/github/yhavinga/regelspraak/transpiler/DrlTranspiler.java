@@ -762,7 +762,16 @@ public final class DrlTranspiler {
             rule.dan("    // onopgelost doel: " + r.doel().bron() + "\n");
         }
         out.append(rule.render());
-        if (subject != null) { deelDoorLeegFout(r, subject, constraint); wortelNegatiefFout(r, subject, constraint); }
+        // §6.5/§6.6 fout companions are gated by the rule's INLINE constraint. A far-side condition is a peeled
+        // exists-clause, not an inline constraint (constraint == ""), so a companion built from it would lose the
+        // membership gate and over-fire (raise the Inconsistentie for subjects the rule never acts on). Suppress
+        // them for a far-side-gated rule — an extension of the existing scope limit (navigated / aggregation /
+        // parameter operands already raise no companion); the value still degrades to leeg, only the fout signal
+        // is conservatively withheld. Threading the exists-join into the companions is carded.
+        if (subject != null && verreClausule == null) {
+            deelDoorLeegFout(r, subject, constraint);
+            wortelNegatiefFout(r, subject, constraint);
+        }
     }
 
     /** §6.6: "de wortel van" a NEGATIVE radicand is a Fout (RegelSpraak has no complex numbers). The value side

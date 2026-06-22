@@ -456,8 +456,14 @@ TOP-LEVEL condition** (in `regel()`); nested in an AND/OR or a comparison the wh
 (the exists cannot be expressed inline), and the deferred call sites (feitcreatie, consistentie, the die-filter)
 keep their markers. The "een" is optional and the IS/heeft verb no longer gates it (a kenmerk still binds first;
 only a role newly reaches the far side). Corpus byte-identical (no corpus condition uses the far-side form), proven
-on a synthetic fixture firing `exists`/`not` in real Drools. **Carded:** the far-side as a NESTED/non-top-level
-condition (needs the `Conditie → List<Clause>` rule-assembly refactor to peel an exists out of an AND/OR).
+on a synthetic fixture firing `exists`/`not` in real Drools. The §6.5/§6.6 deling-door-leeg / wortel-negatief
+Inconsistentie companions are **suppressed for a far-side-gated rule** (a slice review caught them over-firing — a
+companion is gated by the rule's INLINE constraint, but a far-side condition is the peeled exists-clause, so an
+ungated companion raised an Inconsistentie for subjects the rule never acts on). The value still degrades to leeg;
+only the fout signal is conservatively withheld — an extension of the existing companion scope limit (navigated /
+aggregation / parameter operands already raise none). **Carded:** the far-side as a NESTED/non-top-level condition
+(needs the `Conditie → List<Clause>` rule-assembly refactor to peel an exists out of an AND/OR), and threading the
+exists-join into the fout companions so a far-side-gated division can raise its fout when the membership holds.
 
 **Navigated and negated forms are now lowered too.** A TO-ONE navigated kenmerk (`de partner van een
 Persoon gepensioneerd is`) resolves the kenmerk against the navigated type and lowers to the null-guarded
