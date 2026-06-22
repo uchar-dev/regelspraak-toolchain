@@ -238,9 +238,18 @@ public final class Typering {
     public static String verdeelToekenning(Datatype doel, Datatype bron, Datatype gewicht, Integer afrDec) {
         // An Onbekend bron carries no precision claim — like an Expr.Afgerond over an Onbekend base, the
         // assignment check no-ops (the afrDec path would otherwise flag against the rounding scale alone).
-        if (doel == null || bron == null || doel.isOnbekend() || bron.isOnbekend() || !doel.isGetalachtig()
-                || doel.onbeperkt())
+        if (doel == null || bron == null || doel.isOnbekend() || bron.isOnbekend() || !doel.isGetalachtig())
             return null;
+        // §13.4.10 the share is assigned to the doel like a regel assignment, so it must satisfy the SAME
+        // family + unit rule as toekenning. The share carries the BRON's eenheid: equal-shares (total/count)
+        // and naar rato (total·w/Σw) both keep it — the count is a plain number and the weight ratio w/Σw is
+        // dimensionless, so the weight's unit cancels. A Percentage bron into a Numeriek doel, or an
+        // inconvertible unit (€ distributed over a metre target), is the same fout the ordinary regel raises.
+        if (!zelfdeFamilie(doel, bron))
+            return "kan een waarde van type " + bron.naam() + " niet verdelen over een " + doel.naam();
+        String eenheidFout = eenhedenCompatibel(doel, bron, "");   // RuleChecker prepends "verdeling: "
+        if (eenheidFout != null) return eenheidFout;
+        if (doel.onbeperkt()) return null;   // an unbounded (getal) target has no precision ceiling
         int share = afrDec != null ? afrDec
                 : decimalenVan(bron) + (gewicht != null ? decimalenVan(gewicht) : 0);
         int dd = decimalenVan(doel);
@@ -262,14 +271,17 @@ public final class Typering {
         return a.getClass().equals(b.getClass());
     }
 
-    /** Unit rule (§4 note): both unitless, or both present and inter-convertible. */
+    /** Unit rule (§4 note): both unitless, or both present and inter-convertible. {@code waar} is the
+     *  diagnostic context prefix; an EMPTY {@code waar} omits it (for a caller that adds its own prefix,
+     *  e.g. the verdeling check whose RuleChecker wrapper already prepends "verdeling: "). */
     private static String eenhedenCompatibel(Datatype l, Datatype r, String waar) {
         Eenheid el = l.eenheidOf(), er = r.eenheidOf();
         if (el == null && er == null) return null;
+        String pre = waar.isEmpty() ? "" : waar + ": ";
         if (el == null || er == null)
-            return waar + ": als één operand een eenheid heeft, moeten beide er een hebben";
+            return pre + "als één operand een eenheid heeft, moeten beide er een hebben";
         if (!el.convertibleNaar(er))
-            return waar + ": eenheden '" + el.weergave() + "' en '" + er.weergave() + "' zijn niet in elkaar om te rekenen";
+            return pre + "eenheden '" + el.weergave() + "' en '" + er.weergave() + "' zijn niet in elkaar om te rekenen";
         return null;
     }
 

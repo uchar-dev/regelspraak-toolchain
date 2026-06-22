@@ -932,6 +932,13 @@ however, ride on the equal-shares / naar-rato spine when no grouping and no maxi
    That is the engine-wide DECIMAL64 (vs exact-rational) precision model, carded separately; toka-36's
    afronding is the author's explicit fix for it. A zero total weight (`Σ = 0`) is guarded (`signum() != 0`)
    so the divide cannot throw; the spec leaves a zero divisor undefined, so no-op-not-crash is the chosen reading.
+   **`verdeelToekenning` now also runs the FAMILY + UNIT half of `toekenning`** (not just precision): the share
+   carries the bron's eenheid (equal-shares `total/count` and naar-rato `total·w/Σw` both keep it — the weight
+   ratio is dimensionless), so a bron family/unit inconvertible to the doel's (€ distributed over a metre target,
+   or a Percentage bron into a Numeriek doel) raises the same fout the ordinary `regel` does — previously the
+   verdeling ran only the precision check and stayed silent. No-op for the unitless TOKA corpus. The shared
+   `eenhedenCompatibel` helper gained an optional (empty) context prefix so the verdeling message is not
+   double-prefixed by `RuleChecker`'s own "verdeling: ".
 
 ### §9.7.3/§9.7.4/§9.7.5 verdeling met maximum, afronding en onverdeelde rest — cap, floor, recomputable remainder
 

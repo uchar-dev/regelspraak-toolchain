@@ -125,6 +125,57 @@ class RuleCheckTest {
                 () -> "een niet-numeriek gewicht mag geen §6.1.2 verdeling-fout geven (de verdeling lowert niet): " + m.errors());
     }
 
+    @Test void verdeling_met_onomrekenbare_eenheid_wordt_gemeld_zoals_een_regel() {
+        // §13.4.10: a verdeling assigns a share to the doel like a regel assignment, so the same UNIT rule
+        // applies — a source in € distributed into a target in metres is "eenheden niet om te rekenen", exactly
+        // as the ordinary `regel` flags it (the verdeling previously ran only the §6.1.2 precision check).
+        String src = """
+            Eenheidsysteem Geld
+                de euro EUR
+            Eenheidsysteem Lengte
+                de meter m
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal) met eenheid EUR;
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal) met eenheid m;
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel deel
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld in gelijke delen.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("verdeling")
+                        && d.message().contains("niet in elkaar om te rekenen")),
+                () -> "verwachtte een onomrekenbare-eenheid verdeling-fout, kreeg: " + m.errors());
+        // exactly one "verdeling:" prefix (not the double prefix the shared helper would add)
+        assertFalse(m.errors().stream().anyMatch(d -> d.message().contains("verdeling: verdeling:")),
+                () -> "de verdeling-eenheidsfout mag geen dubbele prefix hebben: " + m.errors());
+    }
+
+    @Test void verdeling_met_gelijke_eenheden_geeft_geen_fout() {
+        // both source and target in EUR, inter-convertible -> no fout (and no false positive on the unit check).
+        String src = """
+            Eenheidsysteem Geld
+                de euro EUR
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal) met eenheid EUR;
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal) met eenheid EUR;
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel deel
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld in gelijke delen.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "een verdeling met gelijke eenheden mag geen fout geven: " + m.errors());
+    }
+
     @Test void percentage_waarde_met_numerieke_literal_grens_geen_fout() {
         // §6.1.4 admits a Percentage value bounded by a plain numeric expression — the bound need
         // not be the SAME family as the bounded value, only numeric (getalachtig). No false positive.
