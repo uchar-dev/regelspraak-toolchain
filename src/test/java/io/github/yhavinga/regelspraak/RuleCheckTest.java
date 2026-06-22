@@ -30,6 +30,28 @@ class RuleCheckTest {
                 () -> "verwachtte een begrenzing-fout, kreeg: " + m.errors());
     }
 
+    @Test void tekstreeks_met_guillemets_wordt_gemeld_niet_stil_verkeerd_gelowered() {
+        // §13.4.17.9: a "…«expressie»…" tekstreeks SUBSTITUTES its «…» parts; the lexer swallows the whole
+        // quoted span as one literal, so lowering it verbatim emits the guillemet source as the runtime value
+        // (a silent wrong result). It must be a loud ERROR until the feature lands; a plain "…" stays clean.
+        String src = MODEL + """
+            Regel zet naam
+                geldig altijd
+                    De naam van een Ding moet berekend worden als "teller is «de teller van een Ding» klaar".
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("tekstreeks")),
+                () -> "verwachtte een tekstreeks-fout, kreeg: " + m.errors());
+
+        String schoon = MODEL + """
+            Regel zet naam schoon
+                geldig altijd
+                    De naam van een Ding moet berekend worden als "gewone tekst zonder gidsels".
+            """;
+        assertTrue(Resolver.resolve(schoon).errors().stream().noneMatch(d -> d.message().contains("tekstreeks")),
+                () -> "een gewone tekst-literal mag geen tekstreeks-fout geven: " + Resolver.resolve(schoon).errors());
+    }
+
     @Test void product_van_twee_eenheden_toegekend_aan_een_enkele_eenheid_wordt_gemeld() {
         // §4.4 / §6.1: "de prijs (€) maal de lengte (m)" is €·m, an opaque product unit convertible only to an
         // identical product — assigning it to a € attribute is a unit mismatch. Previously the product degraded
