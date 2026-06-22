@@ -664,7 +664,7 @@ public final class DrlTranspiler {
 
         out.append(new Regel(oc.naam())
             .clausule(SUBJECT + " : " + ident(subject.naam, true)
-                    + "( " + (oc.voorwaarde() != null ? conditie(oc.voorwaarde(), subject, true) : "") + " )")
+                    + "( " + (oc.voorwaarde() != null ? conditieInline(oc.voorwaarde(), subject, true) : "") + " )")
             .clausules(accumulates)
             .geldigheid(oc.geldigheid())
             .dan(dan.toString())
@@ -687,12 +687,12 @@ public final class DrlTranspiler {
         // nothing (visibly) than to create wrongly.
         String ankerC = "", doelExtra = "", noFire = "";
         if (fc.voorwaarde() != null) {
-            String opAnker = conditie(fc.voorwaarde(), anker, true);
+            String opAnker = conditieInline(fc.voorwaarde(), anker, true);
             if (!bevatMarker(opAnker)) {
                 ankerC = opAnker;
             } else {
                 resetAccumulates();   // discard the failed anker attempt
-                String opDoel = conditie(fc.voorwaarde(), doel, true);
+                String opDoel = conditieInline(fc.voorwaarde(), doel, true);
                 if (!bevatMarker(opDoel)) {
                     doelExtra = opDoel;
                 } else {
@@ -737,18 +737,19 @@ public final class DrlTranspiler {
         // A forward calculation should not retrigger itself on its own modify (no-loop, in the header);
         // it still recomputes when another rule changes the facts it reads.
         Regel rule = new Regel(r.naam());
-        // §8.1.7 far-side "heeft een <rol>": a top-level VerreRollidmaatschap is an EXISTS-join, a separate
-        // when-clause (it cannot live inside the subject pattern's inline constraint), so peel it out here. Nested
-        // in an AND/OR it falls through conditie() to an honest marker — only the top-level form lowers.
-        String verreClausule = subject != null && r.voorwaarde() instanceof Conditie.VerreRollidmaatschap vr
-                ? verreRolClausule(vr) : null;
-        String constraint = verreClausule != null ? ""
-                : subject != null && r.voorwaarde() != null ? conditie(r.voorwaarde(), subject, true) : "";
+        // §8.1.7 far-side "heeft een <rol>" lowers to an EXISTS-join — a separate when-clause that cannot live
+        // inside the subject pattern's inline constraint, so condition lowering hands it back as an extra clause
+        // (directly for a top-level membership, carried up through a pure-conjunction §13.4.14 alle/de compound).
+        // Each is appended after the subject pattern; a far-side nested under a non-conjunction quantifier stays
+        // an honest marker.
+        LoweredConditie lc = subject != null && r.voorwaarde() != null
+                ? conditie(r.voorwaarde(), subject, true) : LoweredConditie.van("");
+        String constraint = lc.inline();
         if (subject == null) {
             rule.clausule("// onopgelost doel-objecttype: " + r.doel().bron()).clausule("eval(true)");
         } else {
             rule.clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + constraint + " )");
-            if (verreClausule != null) rule.clausule(verreClausule);   // the exists-join, after $subject is bound
+            for (String e : lc.extra()) rule.clausule(e);   // the exists-join(s), after $subject is bound
             rule.clausules(accumulates)
                 .geldigheid(r.geldigheid());   // §4.2: a time-bounded version fires only inside its window
         }
@@ -762,13 +763,13 @@ public final class DrlTranspiler {
             rule.dan("    // onopgelost doel: " + r.doel().bron() + "\n");
         }
         out.append(rule.render());
-        // §6.5/§6.6 fout companions are gated by the rule's INLINE constraint. A far-side condition is a peeled
-        // exists-clause, not an inline constraint (constraint == ""), so a companion built from it would lose the
-        // membership gate and over-fire (raise the Inconsistentie for subjects the rule never acts on). Suppress
-        // them for a far-side-gated rule — an extension of the existing scope limit (navigated / aggregation /
-        // parameter operands already raise no companion); the value still degrades to leeg, only the fout signal
+        // §6.5/§6.6 fout companions are gated by the rule's INLINE constraint. A far-side condition is a hoisted
+        // exists-clause, not an inline constraint, so a companion built from it would lose the membership gate and
+        // over-fire (raise the Inconsistentie for subjects the rule never acts on). Suppress them whenever the
+        // condition contributed an extra clause — an extension of the existing scope limit (navigated / aggregation
+        // / parameter operands already raise no companion); the value still degrades to leeg, only the fout signal
         // is conservatively withheld. Threading the exists-join into the companions is carded.
-        if (subject != null && verreClausule == null) {
+        if (subject != null && !lc.heeftExtra()) {
             deelDoorLeegFout(r, subject, constraint);
             wortelNegatiefFout(r, subject, constraint);
         }
@@ -1512,13 +1513,35 @@ public final class DrlTranspiler {
     }
 
     // ---------------- condition ("when" side: bare field constraints) ----------------
-    private String conditie(Conditie c, Objecttype subject) { return conditie(c, subject, false); }
+    /** A lowered condition: the inline mvel constraint spliced into the subject pattern, plus zero or
+     *  more SEPARATE when-clauses (exists/not joins) appended AFTER it. {@code extra} is non-empty only
+     *  for a hoistable far-side membership (§8.1.7 "heeft een &lt;rol&gt;") — directly, or carried up
+     *  through a pure conjunction (§13.4.14 alle/de). An exists-join cannot live inside the in-pattern
+     *  constraint, so it rides here instead; a caller that has nowhere to append it degrades to a marker
+     *  via {@link #conditieInline}. */
+    private record LoweredConditie(String inline, List<String> extra) {
+        static LoweredConditie van(String inline) { return new LoweredConditie(inline, List.of()); }
+        boolean heeftExtra() { return !extra.isEmpty(); }
+    }
 
-    /** Lower a condition to an mvel constraint. {@code alsVoorwaarde} marks a rule-GUARD / filter context,
-     *  where the §5.3 both-empty rule applies; it is false when this is the NEGATION of a consistentie
-     *  assertion (built by {@link #schendingConstraint}'s complement / negeer tail), because there a
-     *  both-empty "fout" must still FIRE the violation (Tabel 44), so the guard must NOT be added. */
-    private String conditie(Conditie c, Objecttype subject, boolean alsVoorwaarde) {
+    /** The inline constraint of a condition for a caller that has NO place to append an extra when-clause
+     *  (the §13.4.8 schending OR/negation, an accumulate source pattern, the feitcreatie anker/$doel
+     *  patterns, the objectcreatie guard). A condition that WANTS to hoist a join ({@code heeftExtra})
+     *  has no faithful inline form here, so it collapses to the always-false marker — exactly the
+     *  un-lowerable signal these sites already detect via {@link #bevatMarker}, never a silent drop. */
+    private String conditieInline(Conditie c, Objecttype subject, boolean alsVoorwaarde) {
+        LoweredConditie lc = conditie(c, subject, alsVoorwaarde);
+        return lc.heeftExtra() ? onopgelosteConstraint("voorwaarde", c.bron()) : lc.inline();
+    }
+
+    private String conditie(Conditie c, Objecttype subject) { return conditieInline(c, subject, false); }
+
+    /** Lower a condition to an mvel constraint plus any hoisted join clauses. {@code alsVoorwaarde} marks a
+     *  rule-GUARD / filter context, where the §5.3 both-empty rule applies; it is false when this is the
+     *  NEGATION of a consistentie assertion (built by {@link #schendingConstraint}'s complement / negeer
+     *  tail), because there a both-empty "fout" must still FIRE the violation (Tabel 44), so the guard
+     *  must NOT be added. */
+    private LoweredConditie conditie(Conditie c, Objecttype subject, boolean alsVoorwaarde) {
         if (c instanceof Conditie.Vergelijking v) {
             // §5.1 Tabel 32: a comparison across convertible-but-different units restates
             // the right operand in the left's unit first ("24 mnd > 2 jr", not "24 > 2").
@@ -1528,7 +1551,7 @@ public final class DrlTranspiler {
             // under-specified dimensioned read) makes the whole comparison unfaithful — and emitting it raw
             // would be uncompilable DRL (a Map-vs-number term sinks the package). Make the guard an honest
             // always-false marker instead.
-            if (bevatMarker(o[0]) || bevatMarker(o[1])) return onopgelosteConstraint("voorwaarde", v.bron());
+            if (bevatMarker(o[0]) || bevatMarker(o[1])) return LoweredConditie.van(onopgelosteConstraint("voorwaarde", v.bron()));
             String cmp = o[0] + " " + drlOp(v.op()) + " " + o[1];
             // §5.3 / typeringen Tabel 38: a NON-numeriek "gelijk aan" with BOTH operands empty is "fout"
             // (a foutmelding), NOT "waar" — so as a rule GUARD the condition is not satisfied and the rule
@@ -1538,8 +1561,8 @@ public final class DrlTranspiler {
             if (alsVoorwaarde && v.op() == Conditie.Operator.GELIJK && nietNumeriekVergelijking(v)
                     && !bevatMarker(o[0]) && !bevatMarker(o[1])
                     && !(v.links() instanceof Expr.Literal) && !(v.rechts() instanceof Expr.Literal))
-                return "(" + cmp + " && !(" + o[0] + " == null && " + o[1] + " == null))";
-            return cmp;
+                return LoweredConditie.van("(" + cmp + " && !(" + o[0] + " == null && " + o[1] + " == null))");
+            return LoweredConditie.van(cmp);
         }
         if (c instanceof Conditie.Predicaat p) {
             // A leeg/gevuld predicate over a TO-ONE navigated operand cannot use the null-safe "!." form: "!."
@@ -1548,14 +1571,14 @@ public final class DrlTranspiler {
             // so an absent reference reads as EMPTY — leeg = (rol == null || rol.attr == null); gevuld = (rol
             // != null && rol.attr != null) — the "." after the short-circuit guard never dereferences null.
             String navLeeg = genavigeerdLeegGevuld(p, subject);
-            if (navLeeg != null) return navLeeg;
+            if (navLeeg != null) return LoweredConditie.van(navLeeg);
             String o = operand(p.operand(), subject);
-            if (bevatMarker(o)) return onopgelosteConstraint("voorwaarde", p.bron());  // e.g. an under-specified dimensioned read
-            return switch (p.soort()) {
+            if (bevatMarker(o)) return LoweredConditie.van(onopgelosteConstraint("voorwaarde", p.bron()));  // e.g. an under-specified dimensioned read
+            return LoweredConditie.van(switch (p.soort()) {
                 case LEEG   -> o + " == null";
                 case GEVULD -> o + " != null";
                 default     -> onopgelosteConstraint("predicaat " + p.soort(), p.bron());
-            };
+            });
         }
         // §8.1.8 kenmerk test: a boolean property constraint inside the subject pattern. The property form
         // (not getX()) resolves to the boolean isX() getter the fact declares. A navigated kenmerk reads
@@ -1568,11 +1591,11 @@ public final class DrlTranspiler {
             // anker — even when the anker happens to declare a same-named kenmerk. An untagged kenmerk
             // (the single-subject rule) is unconstrained and emits on whatever pattern hosts the voorwaarde.
             if (k.eigenaar() != null && k.eigenaar() != subject)
-                return onopgelosteConstraint("kenmerk '" + k.kenmerk() + "' hoort bij " + k.eigenaar().naam, c.bron());
+                return LoweredConditie.van(onopgelosteConstraint("kenmerk '" + k.kenmerk() + "' hoort bij " + k.eigenaar().naam, c.bron()));
             String prop = ident(k.kenmerk(), false) + " == " + (k.negatie() ? "false" : "true");
-            if (k.navigatie() == null) return prop;
+            if (k.navigatie() == null) return LoweredConditie.van(prop);
             String nav = ident(k.navigatie(), false);
-            return nav + " != null && " + nav + "." + prop;
+            return LoweredConditie.van(nav + " != null && " + nav + "." + prop);
         }
         // §8.1.7 rolcheck: the subject fills the role iff its reference to the other end of the feittype is
         // set. This lowers to a bare null-test inside the subject's own pattern ONLY when that reference is a
@@ -1586,34 +1609,59 @@ public final class DrlTranspiler {
             // the subject fills the role iff its reference to the other end is set; the §8.1.7 "is geen" negation
             // is the inverse null-test. The far-side / to-many case has no in-pattern reference -> marker.
             if (veld != null && !model.naarVeelRol(subject, r.anderTeFiller(), veld))
-                return ident(veld, false) + (r.negatie() ? " == null" : " != null");
-            return onopgelosteConstraint("rollidmaatschap '" + r.rol() + "'", c.bron());
+                return LoweredConditie.van(ident(veld, false) + (r.negatie() ? " == null" : " != null"));
+            return LoweredConditie.van(onopgelosteConstraint("rollidmaatschap '" + r.rol() + "'", c.bron()));
         }
+        // §8.1.7 far-side "heeft een <rol>": the reference lives on the to-many filler, so this is an EXISTS-join
+        // — a separate when-clause that CANNOT live inside the subject pattern's inline constraint. It rides out as
+        // an extra clause (empty inline); regel() appends it after the subject pattern, and a pure-conjunction
+        // compound carries it up. Any caller without a place to host it (conditieInline) degrades it to a marker.
+        if (c instanceof Conditie.VerreRollidmaatschap vr)
+            return new LoweredConditie("", List.of(verreRolClausule(vr)));
         if (c instanceof Conditie.Samengesteld s) {
-            List<String> delen = new ArrayList<>();
-            for (Conditie deel : s.onderdelen()) delen.add("(" + conditie(deel, subject, alsVoorwaarde) + ")");
-            if (delen.isEmpty()) return "true";
-            // An unresolved sub-condition cannot be faithfully combined. Splicing its always-false
-            // marker into one operand is wrong under the NEGATED quantifiers (geen/ten hoogste/
-            // precies, which wrap the operands in !(…)): there the dropped criterion flips into a
-            // positive firing decision. So mark the WHOLE compound a no-op (rule never fires) rather
-            // than risk a silently-wrong gate — for every quantifier.
-            if (delen.stream().anyMatch(DrlTranspiler::bevatMarker)) return onopgelosteConstraint("voorwaarde", s.bron());
-            // §13.4.14.4: alle = all hold (AND); geen = none holds (!OR); the counting
-            // quantifiers express "k of the criteria hold" purely in booleans (a Drools
-            // pattern constraint accepts &&/||/! but not arithmetic over ternaries), via the
-            // OR of every k-subset (minstens): at-least-N directly, at-most-N as not-at-
-            // least-(N+1), exactly-N as the conjunction of the two.
+            List<LoweredConditie> kinderen = new ArrayList<>();
+            for (Conditie deel : s.onderdelen()) kinderen.add(conditie(deel, subject, alsVoorwaarde));
+            if (kinderen.isEmpty()) return LoweredConditie.van("true");
+            // Only a PURE CONJUNCTION (§13.4.14 alle/de) is a plain && of its parts, so a hoisted exists/not
+            // clause — implicitly AND-ed as a separate when-clause — is faithful there. The other quantifiers
+            // fold the parts with || / ! (geen, ten hoogste, precies, and ten minste via `minstens`), where a
+            // separate clause would instead ASSERT the membership unconditionally — a silently-wrong gate. So a
+            // child that wants to hoist (`heeftExtra`) under any NON-conjunction quantifier no-ops the whole
+            // compound, exactly as a marker child does. Keyed on alle/de EXPLICITLY (never the default arm) so a
+            // future quantifier cannot silently inherit the hoist.
+            boolean conjunctie = s.kwantor() == Conditie.Kwantor.ALLE || s.kwantor() == Conditie.Kwantor.DE;
+            // An unresolved sub-condition cannot be faithfully combined. Splicing its always-false marker into
+            // one operand is wrong under the NEGATED quantifiers (geen/ten hoogste/precies, which wrap the
+            // operands in !(…)): there the dropped criterion flips into a positive firing decision. So mark the
+            // WHOLE compound a no-op (rule never fires) rather than risk a silently-wrong gate — for every quantifier.
+            boolean wilHoisten = kinderen.stream().anyMatch(LoweredConditie::heeftExtra);
+            if (kinderen.stream().anyMatch(k -> bevatMarker(k.inline())) || (wilHoisten && !conjunctie))
+                return LoweredConditie.van(onopgelosteConstraint("voorwaarde", s.bron()));
+            if (conjunctie) {
+                // Join ONLY the non-empty inlines (a pure far-side child has an empty inline — dropping it
+                // avoids a dangling "()" / " && "); concat every child's hoisted clauses. When every child is a
+                // pure far-side membership the combined inline is "" — the subject pattern stays "(  )" and the
+                // exists clauses carry the whole gate.
+                List<String> inlineDelen = kinderen.stream().map(LoweredConditie::inline)
+                        .filter(x -> !x.isEmpty()).map(x -> "(" + x + ")").toList();
+                List<String> extra = kinderen.stream().flatMap(k -> k.extra().stream()).toList();
+                return new LoweredConditie(String.join(" && ", inlineDelen), extra);
+            }
+            // §13.4.14.4: geen = none holds (!OR); the counting quantifiers express "k of the criteria hold"
+            // purely in booleans (a Drools pattern constraint accepts &&/||/! but not arithmetic over ternaries),
+            // via the OR of every k-subset (minstens): at-least-N directly, at-most-N as not-at-least-(N+1),
+            // exactly-N as the conjunction of the two. No child has extra here (guarded above).
+            List<String> delen = kinderen.stream().map(k -> "(" + k.inline() + ")").toList();
             int n = s.drempel();
-            return switch (s.kwantor()) {
+            return LoweredConditie.van(switch (s.kwantor()) {
                 case GEEN        -> "!(" + String.join(" || ", delen) + ")";
                 case TEN_MINSTE  -> minstens(delen, n);
                 case TEN_HOOGSTE -> "!(" + minstens(delen, n + 1) + ")";
                 case PRECIES     -> "(" + minstens(delen, n) + " && !(" + minstens(delen, n + 1) + "))";
-                default          -> String.join(" && ", delen); // ALLE / DE
-            };
+                default          -> String.join(" && ", delen); // unreachable (alle/de handled above), kept total
+            });
         }
-        return onopgelosteConstraint("voorwaarde", c.bron());
+        return LoweredConditie.van(onopgelosteConstraint("voorwaarde", c.bron()));
     }
 
     /** An unresolved CONDITION lowers to an always-false constraint, so the rule is a visible no-op

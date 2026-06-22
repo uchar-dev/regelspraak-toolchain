@@ -158,11 +158,7 @@ class DrlTest {
         assertTrue(drl.contains("reis != null"), () -> "'is passagier' (rol, geen kenmerk) moet de rolcheck binden:\n" + drl);
     }
 
-    @Test void far_side_rolcheck_genest_in_een_compound_blijft_marker() {
-        // §8.1.7 far-side "heeft een <rol>" lowers to an EXISTS-join, which can only be peeled as a rule's
-        // TOP-LEVEL condition (a separate when-clause). NESTED in an AND/OR it cannot live inside the inline
-        // constraint, so it must stay an honest marker — never a silently-dropped or uncompilable join.
-        String src = """
+    private static final String FAR_SIDE_ALLE_SRC = """
             Objecttype de Passagier
             Objecttype de Vlucht
                 is vol kenmerk (bijvoeglijk);
@@ -177,9 +173,30 @@ class DrlTest {
                     - hij heeft een passagier
                     - hij is internationaal.
             """;
-        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        assertTrue(drl.contains("/* TODO"), () -> "een geneste far-side rolcheck moet een marker blijven:\n" + drl);
-        assertFalse(drl.contains("exists Passagier"), () -> "een geneste far-side rolcheck mag geen exists emitteren:\n" + drl);
+
+    @Test void far_side_rolcheck_genest_in_een_conjunctie_hoist_als_exists_join() {
+        // §8.1.7 far-side "heeft een <rol>" lowers to an EXISTS-join — a separate when-clause that cannot live
+        // inside the inline constraint. Under a PURE CONJUNCTION (alle/de) it hoists faithfully: the kenmerk
+        // conjunct stays inline on the subject pattern, the membership rides out as a separate "exists" clause.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(FAR_SIDE_ALLE_SRC));
+        assertTrue(drl.contains("exists Passagier( reis == $subject )"),
+                () -> "een geneste far-side rolcheck in een conjunctie moet hoisten naar een exists-join:\n" + drl);
+        assertTrue(drl.contains("internationaal == true"),
+                () -> "de andere conjunct moet inline op het subject-patroon blijven:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "geen marker meer voor de geneste conjunctie far-side:\n" + drl);
+    }
+
+    @Test void far_side_rolcheck_genest_onder_negatieve_kwantor_blijft_marker() {
+        // The safety floor: under a NON-conjunction quantifier (geen / ten hoogste / precies, and ten minste via
+        // an OR-fold) the parts are combined with || / !, where a hoisted "exists" — implicitly AND-ed as a
+        // separate clause — would ASSERT the membership unconditionally (a silently-wrong gate). So a far-side
+        // nested under such a quantifier must STAY a marker, never emit an exists.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(
+                FAR_SIDE_ALLE_SRC.replace("aan alle volgende voorwaarden voldoet", "aan geen van de volgende voorwaarden voldoet")));
+        assertTrue(drl.contains("/* TODO"),
+                () -> "een far-side onder een negatieve kwantor moet een marker blijven:\n" + drl);
+        assertFalse(drl.contains("exists Passagier"),
+                () -> "een far-side onder een negatieve kwantor mag geen exists emitteren:\n" + drl);
     }
 
     @Test void far_side_gate_onderdrukt_de_deling_door_leeg_companion() {

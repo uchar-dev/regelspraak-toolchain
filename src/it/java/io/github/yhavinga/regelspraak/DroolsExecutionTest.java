@@ -3097,6 +3097,47 @@ class DroolsExecutionTest {
         assertFalse(bezet.isVol(), "een Vlucht met een passagier -> 'heeft geen' is onwaar -> niet gegated");
     }
 
+    @Test void membership_far_side_genest_in_alle_hoist_naar_exists_join_en_vuurt_als_AND() {
+        // §8.1.7 far-side membership NESTED in a pure conjunction (§13.4.14 alle): "heeft een passagier" hoists to a
+        // separate "exists Passagier(reis == $subject)" while the other conjunct "is internationaal" stays inline on
+        // the subject pattern. The rule is the AND of both: it fires only for a Vlucht that is BOTH internationaal
+        // AND has at least one passagier — proving the hoisted join is a real conjunct, not a dropped criterion.
+        String src = """
+                Objecttype de Passagier
+                Objecttype de Vlucht
+                    is vol kenmerk (bijvoeglijk);
+                    is internationaal kenmerk (bijvoeglijk);
+                Feittype Vlucht met passagiers
+                    de reis Vlucht
+                    de passagier Passagier
+                Eén reis heeft meerdere passagiers
+                Regel r
+                    geldig altijd
+                        Een Vlucht is vol indien hij aan alle volgende voorwaarden voldoet:
+                        - hij heeft een passagier
+                        - hij is internationaal.
+                """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("exists Passagier( reis == $subject )"), () -> "geen exists-join:\n" + drl);
+        assertTrue(drl.contains("internationaal == true"), () -> "de inline conjunct ontbreekt:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "de geneste conjunctie far-side mag geen marker zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht beide = new Vlucht(); beide.setInternationaal(true);   // internationaal + passagier -> vuurt
+        Vlucht intl  = new Vlucht(); intl.setInternationaal(true);    // internationaal, geen passagier -> niet
+        Vlucht pax   = new Vlucht();                                  // passagier, niet internationaal -> niet
+        Passagier p1 = new Passagier(); p1.setReis(beide);
+        Passagier p2 = new Passagier(); p2.setReis(pax);
+        for (Object o : new Object[]{beide, intl, pax, p1, p2}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(beide.isVol(), "internationaal EN een passagier -> beide conjuncten gelden -> vuurt");
+        assertFalse(intl.isVol(), "internationaal maar geen passagier -> de exists-join faalt -> vuurt niet");
+        assertFalse(pax.isVol(), "een passagier maar niet internationaal -> de inline conjunct faalt -> vuurt niet");
+    }
+
     @Test void membership_eenvorm_kenmerkcheck_bindt_alleen_een_zelfstandig_kenmerk() {
         // §8.1.8.3: "hij is een <zelfstandig kenmerk>" binds the boolean property (student == true); a BIJVOEGLIJK
         // kenmerk (written "is <k>", no "een") must NOT bind the EEN-form — it stays a marker, so a rule gated on
