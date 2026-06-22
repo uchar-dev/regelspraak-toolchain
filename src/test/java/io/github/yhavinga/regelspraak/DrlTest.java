@@ -101,6 +101,38 @@ class DrlTest {
         assertTrue(drl.contains("reis!.vluchtdatum > reisdatum"), () -> "voorwaarde-navigatie:\n" + drl);
     }
 
+    @Test void navigatie_eenvorm_kenmerkcheck_bindt_alleen_de_zelfstandige_soort() {
+        // §8.1.8.3 navigated EEN-form ("de reis van een Passagier is een <k>") binds a ZELFSTANDIG kenmerk of the
+        // navigated type but NOT a bijvoeglijk one — the same soort gate the subject's own EEN-form uses. The
+        // bijvoeglijk case stays an honest marker (a navigated role membership via "een" is out of scope), never a
+        // silently-true gate.
+        String src = """
+            Objecttype de Vlucht
+                is reis met paaskorting kenmerk;
+                is internationaal kenmerk (bijvoeglijk);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+                de toeslag Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel zelfstandig
+                geldig altijd
+                    De prijs van een Passagier moet gesteld worden op 1
+                    indien de reis van een Passagier een reis met paaskorting is.
+            Regel bijvoeglijk
+                geldig altijd
+                    De toeslag van een Passagier moet gesteld worden op 2
+                    indien de reis van een Passagier een internationaal is.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("reis.reisMetPaaskorting == true"), () -> "navigated zelfstandig EEN-vorm niet gebonden:\n" + drl);
+        assertFalse(drl.contains("reis.internationaal == true"), () -> "een bijvoeglijk navigated kenmerk mag de EEN-vorm NIET binden:\n" + drl);
+        assertTrue(drl.contains("/* TODO voorwaarde: de reis van een Passagier een internationaal is */"),
+                () -> "de bijvoeglijke navigated EEN-vorm moet een honest marker blijven:\n" + drl);
+    }
+
     @Test void onmapbare_functie_wordt_gemarkeerd_niet_verzonnen() {
         // concatenatie has no lowering yet; it must surface as an explicit marker, never as silently-wrong
         // DRL. (wortel — once the example here — now lowers, see wortel_lowert_naar_sqrt_….)

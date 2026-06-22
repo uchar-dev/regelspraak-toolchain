@@ -3820,6 +3820,46 @@ class DroolsExecutionTest {
         assertNull(c.getUitkomst(), () -> "geen partner -> niet gegated (geen NPE op null-navigatie)");
     }
 
+    @Test void navigatie_eenvorm_kenmerkcheck_bindt_alleen_een_zelfstandig_kenmerk() {
+        // §8.1.8.3 navigated EEN-form: "de reis van een Passagier is een reis met paaskorting" reads a ZELFSTANDIG
+        // kenmerk through the to-one reis role -> "reis != null && reis.reisMetPaaskorting == true", gating the rule
+        // only when the navigated vlucht bears the kenmerk (and never NPEing on a passenger without a reis). The
+        // soort gate mirrors the subject's own EEN-form (zelfstandigKenmerk); a bijvoeglijk navigated kenmerk would
+        // stay a marker (asserted structurally in DrlTest).
+        String src = """
+            Objecttype de Vlucht
+                is reis met paaskorting kenmerk;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel zelfstandig
+                geldig altijd
+                    De prijs van een Passagier moet gesteld worden op 1
+                    indien de reis van een Passagier een reis met paaskorting is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("reis.reisMetPaaskorting == true"), () -> "navigated zelfstandig EEN-vorm niet gelowerd:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht paasvlucht = new Vlucht(); paasvlucht.setReisMetPaaskorting(true);
+        Vlucht gewoon = new Vlucht();
+        Passagier a = new Passagier(); a.setReis(paasvlucht);   // reis is een reis met paaskorting -> gegated
+        Passagier b = new Passagier(); b.setReis(gewoon);        // niet
+        Passagier c = new Passagier();                           // geen reis -> niet (geen NPE op null-navigatie)
+        for (Object o : new Object[]{paasvlucht, gewoon, a, b, c}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("1").compareTo(a.getPrijs()), () -> "reis met paaskorting -> gegated, kreeg " + a.getPrijs());
+        assertNull(b.getPrijs(), "gewone reis -> niet gegated");
+        assertNull(c.getPrijs(), "geen reis -> niet gegated (geen NPE op null-navigatie)");
+    }
+
     @Test void negatie_kenmerk_voorwaarde_vuurt_voor_de_niet_instanties() {
         // §8.1.8 negation: "indien de Meting niet oud is" -> "oud == false". Fires for the NOT-oud
         // metingen only.

@@ -864,10 +864,10 @@ final class RuleChecker {
         if (naamCtx == null || subject == null) return null;
         String staart = stripArtikel(src(naamCtx));
         String kop = subjectKop(lhs, subject);
-        // not the subject itself -> a navigated kenmerk ("zijn reis is duurzaam"), in the non-EEN form only.
-        // The EEN-form navigated kenmerkcheck and a navigated role membership are out of scope (the former
-        // needs the kenmerk soort to avoid binding a bijvoeglijk kenmerk to the "een" form, §8.1.8.1) -> carded.
-        if (kop == null) return metEen ? null : navigatieKenmerk(lhs, staart, heeftWerkwoord, bron);
+        // not the subject itself -> a navigated kenmerk ("zijn reis is duurzaam", or the EEN-form "zijn reis is
+        // een belaste reis"). The EEN-form binds only a ZELFSTANDIG kenmerk of the navigated type (the soort guard,
+        // §8.1.8.3); a navigated role membership stays out of scope (a marker).
+        if (kop == null) return navigatieKenmerk(lhs, staart, heeftWerkwoord, metEen, bron);
         // The greedy onderwerp parse absorbs a multi-word kenmerk's leading words into the operand
         // ("de Meting bereikbaar per" + operator "trein"), so the kenmerk is that absorbed kop plus
         // the operator's kaleNaam; for "hij"/a bare subject the kop is empty and the name is the kaleNaam.
@@ -952,8 +952,11 @@ final class RuleChecker {
      *  property path {@code rol.kenmerk} reads one object); a TO-MANY navigation needs an exists/forall and
      *  stays a marker, as does an unresolvable rol or a kenmerk the navigated type does not declare. The rol
      *  is normalised to its declared name (a plural "de passagiers" is the same role as "de passagier"), so
-     *  the to-many test and the emitted reference field are the canonical one. */
-    private Conditie navigatieKenmerk(Expr lhs, String staart, boolean heeftWerkwoord, String bron) {
+     *  the to-many test and the emitted reference field are the canonical one. With {@code metEen} (the §8.1.8.3
+     *  "is een &lt;k&gt;" form) the navigated kenmerk binds ONLY when it is {@link Objecttype.KenmerkSoort#ZELFSTANDIG}
+     *  — exactly as {@link #zelfstandigKenmerk} gates the subject's own EEN-form — so a bijvoeglijk/bezittelijk
+     *  kenmerk (never written with "een") is not mis-bound; a navigated role membership stays out of scope (null). */
+    private Conditie navigatieKenmerk(Expr lhs, String staart, boolean heeftWerkwoord, boolean metEen, String bron) {
         if (!(lhs instanceof Expr.AttribuutRef a) || a.objecttype() == null) return null;
         Objecttype subject = a.objecttype();                                       // the onderwerp the navigation is from
         Objecttype doel = model.rolDoeltypeNaarSubject(subject, a.attribuut());
@@ -967,6 +970,13 @@ final class RuleChecker {
         // match the declared kenmerk and stays a marker (never a silently-inverted positive constraint).
         String tail = navigatieStaart(a);
         String kenmerk = tail.isEmpty() ? staart : tail + " " + staart;
+        if (metEen) {
+            // §8.1.8.3 navigated EEN-form: bind ONLY a ZELFSTANDIG kenmerk of the navigated type; a navigated
+            // role membership ("zijn reis is een belaste reis" where "belaste reis" were a role) is out of scope.
+            String g = KenmerkMatcher.vind(doel, kenmerk);
+            return g != null && doel.kenmerkSoort(g) == Objecttype.KenmerkSoort.ZELFSTANDIG
+                    ? new Conditie.Kenmerk(g, rol, false, bron) : null;
+        }
         return kenmerkConditie(doel, kenmerk, rol, heeftWerkwoord, bron);
     }
 

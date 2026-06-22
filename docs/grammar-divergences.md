@@ -421,10 +421,17 @@ optional `(bijvoeglijk)`/`(bezittelijk)` tag (an untagged declaration is zelfsta
 passagier van 18 … kenmerk`, which the grammar admits via the IS-form without the tag), keeps a bijvoeglijk
 kenmerk (written `is <k>`, no `een`) and a bezittelijk one (`heeft het <k>`) from binding the EEN-form. The TOKA
 EEN-form kenmerk bullets resolve but their compounds still marker through an undeclared sibling kenmerk, so no
-corpus rule lights up yet. **Carded:** the NAVIGATED EEN-form kenmerkcheck (`zijn reis is een <kenmerk>`), the
-negated `is geen <rol>`/`is geen <kenmerk>` (its `geen` lexes into the `kaleNaam` with no `een`, so it never
-reaches this path), and the FAR-side rolcheck (`heeft een <rol>` — an exists-join that does not fit a single
-in-pattern constraint).
+corpus rule lights up yet.
+
+The NAVIGATED EEN-form (`de <rol> van <X> is een <kenmerk>`, e.g. "de reis van een Passagier is een reis met
+paaskorting") now binds too, through the same to-one navigation as the non-EEN navigated kenmerkcheck and gated by
+the SAME soort rule: only a ZELFSTANDIG kenmerk of the navigated type binds (→ `<rol> != null && <rol>.<k> == true`),
+while a bijvoeglijk one stays a marker. A navigated *role* membership via the EEN-form remains out of scope (a
+marker). Corpus-invisible (the TOKA navigated EEN-form compounds marker through the same undeclared sibling), so
+proven on a synthetic fixture firing the to-one path. **Still carded:** the negated `is geen <rol>`/`is geen
+<kenmerk>` (its `geen` lexes into the `kaleNaam` with no `een`, so it never reaches this path), the no-`een`
+rolcheck (`hij is <rolnaam>`, §13.4.15.44), and the FAR-side rolcheck (`heeft een <rol>` — an exists-join that does
+not fit a single in-pattern constraint).
 
 **Navigated and negated forms are now lowered too.** A TO-ONE navigated kenmerk (`de partner van een
 Persoon gepensioneerd is`) resolves the kenmerk against the navigated type and lowers to the null-guarded
