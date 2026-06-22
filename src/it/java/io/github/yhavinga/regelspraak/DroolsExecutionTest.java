@@ -185,6 +185,40 @@ class DroolsExecutionTest {
                 () -> "totaal moet 12x10 + 6x11 = 186 zijn, was " + p.getTotaleBelastingvermindering());
     }
 
+    @Test void totaal_van_een_temporeel_attribuut_gedurende_een_kenmerk_klipt_naar_de_ware_periodes() {
+        // §7.1 the €71 worked example: "het totaal van zijn belastingvermindering per maand GEDURENDE DE TIJD DAT
+        // hij rechthebbend is" clips the value timeline (€10/mnd over 2023, €11/mnd over 2024 H1) to the kenmerk's
+        // true-periods (2023-07-01..2024-02-01), then totals: 6 mnd × €10 + 1 mnd × €11 = €71 (not the €186
+        // unrestricted total).
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat hij rechthebbend is).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier p = new Passagier();
+        p.setBelastingverminderingPerMaand(List.of(
+                new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1), new BigDecimal("10.00")),
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 7, 1), new BigDecimal("11.00"))));
+        p.setRechthebbend(List.of(   // the kenmerk holds true over this interval
+                new Segment(LocalDate.of(2023, 7, 1), LocalDate.of(2024, 2, 1), null)));
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("71.00").compareTo(p.getTotaleBelastingvermindering()),
+                () -> "geclipte totaal moet 6x10 + 1x11 = 71 zijn, was " + p.getTotaleBelastingvermindering());
+    }
+
     @Test void totaal_van_een_lege_tijdreeks_is_nul() {
         // §4.20 leegwaarde: an empty (or null) timeline totals 0, not a crash.
         String src = """

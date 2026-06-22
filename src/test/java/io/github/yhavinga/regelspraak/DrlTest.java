@@ -2198,11 +2198,11 @@ class DrlTest {
                 "een enkel-periodieke totaal moet via rsTijdTotaal lowereren");
     }
 
-    @Test void temporeel_totaal_met_gedurende_voorwaarde_laat_de_conditie_niet_vallen() {
-        // Review defect: a "gedurende de tijd dat <voorwaarde>" restriction on a temporal totaal must NOT be
-        // dropped — that would compute the unrestricted total (the spec's €186 instead of €71). The resolver
-        // leaves it an Onopgelost filter; tijdreeksAggregatie must honour it and MARKER, like every sibling
-        // aggregation path, never lower a condition-free rsTijdTotaal.
+    @Test void temporeel_totaal_met_gedurende_voorwaarde_klipt_de_tijdreeks() {
+        // §7.1: a "gedurende de tijd dat <temporeel kenmerk>" restriction clips the value timeline to the
+        // kenmerk's TRUE periods before totalling — the spec's €71 case, NOT the unrestricted €186. The resolver
+        // structures the condition into a temporal Conditie.Kenmerk; the transpiler wraps the value series in
+        // rsTijdKnip(value, condition) before rsTijdTotaal — never a condition-free unrestricted total.
         String src = """
             Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
             Objecttype de Passagier (mv: Passagiers) (bezield)
@@ -2214,8 +2214,10 @@ class DrlTest {
                     De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat hij rechthebbend is).
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        assertFalse(drl.contains("rsTijdTotaal"),
-                () -> "een gedurende-geconditioneerde totaal mag niet als onbeperkte rsTijdTotaal lowereren:\n" + drl);
+        assertTrue(drl.contains("rsTijdTotaal(rsTijdKnip($subject.getBelastingverminderingPerMaand(), "
+                        + "$subject.getRechthebbend()), \"MAAND\")"),
+                () -> "een gedurende-conditie moet de tijdreeks klippen voor het totaal:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "de gedurende-conditie mag geen marker meer zijn:\n" + drl);
     }
 
     @Test void benoemde_meer_periodieke_tijdlijn_wordt_ook_gemarkeerd_niet_single_period_geteld() {

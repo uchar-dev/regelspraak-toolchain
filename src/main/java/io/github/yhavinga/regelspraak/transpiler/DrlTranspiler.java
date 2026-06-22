@@ -1559,8 +1559,43 @@ public final class DrlTranspiler {
         if (a.objecttype().attribuutTijdlijnAantal.containsKey(a.attribuut()))
             return todo("totaal van een meer-periodieke tijdreeks (§13.3.6.7, voor elke <n> " + g.name().toLowerCase()
                     + "en)", a.bron());
+        String waardeTijdreeks = SUBJECT + "." + getter(a.attribuut()) + "()";
+        // §7.1 "gedurende de tijd dat <temporeel kenmerk>": the resolver structured the restriction into a
+        // temporal Conditie.Kenmerk of the subject; clip the value timeline to that kenmerk's TRUE periods
+        // before totalling (rsTijdKnip). A filter the resolver could not structure stays Onopgelost -> the
+        // marker above; any OTHER non-null filter we do not lower is markered rather than silently dropped.
+        if (f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null
+                && subject != null && subject.kenmerkGranulariteit.containsKey(k.kenmerk())) {
+            registreerTijdKnipFunctie();
+            waardeTijdreeks = "rsTijdKnip(" + waardeTijdreeks + ", " + SUBJECT + "." + getter(k.kenmerk()) + "())";
+        } else if (f.filter() != null) {
+            return null;   // a restriction we cannot lower -> marker, never a silently-unrestricted total
+        }
         registreerTijdTotaalFunctie();
-        return "rsTijdTotaal(" + SUBJECT + "." + getter(a.attribuut()) + "(), \"" + g.name() + "\")";
+        return "rsTijdTotaal(" + waardeTijdreeks + ", \"" + g.name() + "\")";
+    }
+
+    /** Register the §7.1 timeline-clip helper: intersect each value Segment with each condition TRUE-interval,
+     *  emitting the overlapping [max(van), min(tot)) carrying the value's waarde (the kenmerk's timeline lists
+     *  only its true periods). A null value or condition list clips to empty (§4.20 leegwaarde -> 0). */
+    private void registreerTijdKnipFunctie() {
+        hulpFuncties.putIfAbsent("rsTijdKnip",
+                "function java.util.List rsTijdKnip(java.util.List waarde, java.util.List conditie) {\n"
+                + "    java.util.List uit = new java.util.ArrayList();\n"
+                + "    if (waarde == null || conditie == null) return uit;\n"
+                + "    for (Object wo : waarde) {\n"
+                + "        " + FACT_PACKAGE + ".Segment w = (" + FACT_PACKAGE + ".Segment) wo;\n"
+                + "        if (w.getVan() == null || w.getTot() == null) continue;\n"
+                + "        for (Object co : conditie) {\n"
+                + "            " + FACT_PACKAGE + ".Segment c = (" + FACT_PACKAGE + ".Segment) co;\n"
+                + "            if (c.getVan() == null || c.getTot() == null) continue;\n"
+                + "            java.time.LocalDate van = w.getVan().isAfter(c.getVan()) ? w.getVan() : c.getVan();\n"
+                + "            java.time.LocalDate tot = w.getTot().isBefore(c.getTot()) ? w.getTot() : c.getTot();\n"
+                + "            if (van.isBefore(tot)) uit.add(new " + FACT_PACKAGE + ".Segment(van, tot, w.getWaarde()));\n"
+                + "        }\n"
+                + "    }\n"
+                + "    return uit;\n"
+                + "}");
     }
 
     /** Register the §7.1 totaal-over-a-timeline helper: fold a {@code List<Segment>} by weighting each segment's
