@@ -473,8 +473,13 @@ each rides out as its own `exists`. Under a **non-conjunction quantifier** (`gee
 `ten minste` via its OR-fold) a hoisted clause — implicitly AND-ed as a separate pattern — would instead *assert*
 the membership unconditionally, a silently-wrong gate, so a far-side child there still no-ops the **whole compound**
 to a marker (keyed explicitly on `alle`/`de`, never the default arm). (`de` is the §10.2 singular single-criterion
-form, faithfully a conjunction of its one bullet.) Callers with nowhere to append a join (feitcreatie anker/$doel,
-objectcreatie guard, the §13.4.8 schending OR/negation, the die-filter accumulate source) go through a
+form, faithfully a conjunction of its one bullet.) A **feitcreatie anker guard** (§13.4.7 "Een bonuspassagier van
+een vlucht is een passagier van de vlucht **indien de vlucht heeft een bemanningslid**") and an **objectcreatie
+subject guard** (§13.4.6) now lower with the full carrier and host their `extra()` after the anker/subject pattern,
+exactly like `regel()` — the membership (a relation distinct from the doel join) genuinely filters which ankers get
+the relation, so a vlucht with passengers but no crew creates no bonusrelatie. A near guard yields `extra=[]` and is
+byte-identical. The remaining inline-only callers (the feitcreatie **$doel** guard — its exists would reference
+`$doel`, bound later; the §13.4.8 schending OR/negation; the die-filter accumulate source) still go through the
 `conditieInline` adapter that degrades a would-be-hoisted condition to the same `false /* TODO */` marker those
 sites already detect — never a silent drop, never an over-creation. Still **only the conjunction case** lowers; a
 far-side nested under a negation/OR, or hosted by an inline-only caller, remains an honest marker.
