@@ -432,6 +432,14 @@ final class ExpressieBouwer {
             kenmerk = KenmerkMatcher.vind(huidigSubject, geschreven.substring(5).trim());
             negatie = kenmerk != null;
         }
+        if (kenmerk == null) {
+            // §8.1.8.2 the CANONICAL bezittelijk form is "heeft HET <k>" (the §3.5 example "heeft het recht op
+            // duurzaamheidskorting"): the article is absorbed into the kaleNaam (only "een" is a separate token), so
+            // a verbatim match misses it. Retry article-stripped — verbatim-first above keeps a kenmerk literally
+            // named "het …" binding itself.
+            String zonderArtikel = geschreven.replaceFirst("^(?i)(de|het|een)\\s+", "").trim();
+            if (!zonderArtikel.equals(geschreven)) kenmerk = KenmerkMatcher.vind(huidigSubject, zonderArtikel);
+        }
         if (kenmerk == null || !huidigSubject.kenmerkGranulariteit.containsKey(kenmerk)
                 || huidigSubject.kenmerkTijdlijnAantal.containsKey(kenmerk)) return null;
         return new Conditie.Kenmerk(kenmerk, null, negatie, src(cnd));

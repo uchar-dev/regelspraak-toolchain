@@ -2288,6 +2288,28 @@ class DrlTest {
         assertFalse(drl.contains("rsTijdKnip"), () -> "een attribuut-conditie mag geen tijdklip krijgen:\n" + drl);
     }
 
+    @Test void gedurende_bindt_de_canonieke_heeft_het_bezittelijke_vorm() {
+        // §8.1.8.2/§3.5 the CANONICAL bezittelijk membership is "heeft HET <k>" ("heeft het recht op
+        // duurzaamheidskorting"); the article is absorbed into the kaleNaam (only "een" is a separate token), so
+        // the gedurende filter must article-strip to bind it. (Teeth: drop the article-strip fallback and this
+        // falls back to a /* TODO */ marker.)
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat hij het recht op belastingvermindering heeft).
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rsTijdTotaal(rsTijdKnip($subject.getBelastingverminderingPerMaand(), "
+                        + "$subject.getRechtOpBelastingvermindering()), \"MAAND\")"),
+                () -> "de canonieke 'heeft het <k>' vorm moet de tijdreeks klippen:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "de 'heeft het' vorm mag geen marker zijn:\n" + drl);
+    }
+
     @Test void negated_gedurende_klipt_via_het_complement() {
         // §8.1.8.1/.2 a "gedurende de tijd dat hij GEEN <kenmerk> heeft" clips the value timeline to the FALSE
         // periods — rsTijdKnipNiet (the complement), never the positive rsTijdKnip. (Teeth: drop the negatie
