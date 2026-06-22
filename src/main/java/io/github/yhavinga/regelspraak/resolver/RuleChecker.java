@@ -876,17 +876,15 @@ final class RuleChecker {
         String naam = kop.isEmpty() ? staart : kop + " " + staart;
         if (!metEen) {
             // §8.1.8 "is/heeft <kenmerk>" first (incl. the §8.1.8.1/.2/.3 "niet"/"geen" negations, which
-            // kenmerkConditie de-negates to "== false"). §13.4.15.44 makes the "een" optional in the IS-form
-            // rolcheck ("hij is passagier"), so when the name is not a kenmerk fall back to a §8.1.7 rolcheck —
+            // kenmerkConditie de-negates to "== false"). When the name is not a kenmerk it is a §8.1.7 rolcheck —
             // kenmerk-first (the non-"een" form IS how a bijvoeglijk kenmerk is written, so kenmerkConditie already
-            // claims those; only a name that is a ROLE but not a kenmerk newly binds). Gated to the IS-verb:
-            // "heeft <rol>" is the far-side possessive (the subject OWNS the filler), which needs an exists-join
-            // and stays a marker — never the near-side "<refField> != null" lowering, which would be the wrong test.
+            // claims those; only a name that is a ROLE but not a kenmerk newly binds). §13.4.15.44 makes the "een"
+            // optional ("hij is passagier"); "heeft (geen) <rol>" is the §8.1.7 possessive, which rolLidmaatschap
+            // resolves to the near-side test or — when the subject owns a to-many filler — the far-side exists-join.
             Conditie kc = kenmerkConditie(subject, naam, null, heeftWerkwoord, bron);
             if (kc != null) return kc;
-            if (heeftWerkwoord) return null;
-            // §8.1.7 negation "is geen <rol>": the kenmerk negation was already taken by kenmerkConditie, so a
-            // leftover "geen <name>" that is a role lowers to the INVERSE rolcheck (the subject does not fill it).
+            // a leftover "geen <name>" that is a role is the INVERSE rolcheck (the subject does not fill it);
+            // otherwise the positive rolcheck.
             if (naam.regionMatches(true, 0, "geen ", 0, 5))
                 return rolLidmaatschap(subject, naam.substring(5).trim(), bron, true);
             return rolLidmaatschap(subject, naam, bron);
@@ -918,10 +916,19 @@ final class RuleChecker {
     private Conditie rolLidmaatschap(Objecttype subject, String naam, String bron) {
         return rolLidmaatschap(subject, naam, bron, false);
     }
-    /** As above, with {@code negatie} for the §8.1.7 "is geen &lt;rol&gt;" form (the subject does NOT fill it). */
+    /** As above, with {@code negatie} for the "is geen &lt;rol&gt;" form (the subject does NOT fill it). When the
+     *  subject does not FILL the role (rolSiblingType null) but the role reaches a TO-MANY filler from it, this is
+     *  the §8.1.7 FAR-side "&lt;subject&gt; heeft een &lt;rol&gt;": resolve to a {@link Conditie.VerreRollidmaatschap}
+     *  carrying that filler and its back-reference field, which the transpiler lowers to an exists-join. */
     private Conditie rolLidmaatschap(Objecttype subject, String naam, String bron, boolean negatie) {
         Objecttype ander = model.rolSiblingType(subject, naam);
-        return ander != null ? new Conditie.Rollidmaatschap(naam, ander, bron, negatie) : null;
+        if (ander != null) return new Conditie.Rollidmaatschap(naam, ander, bron, negatie);
+        Objecttype filler = model.rolDoeltypeNaarSubject(subject, naam);
+        if (filler != null && model.naarVeelRol(subject, filler, naam)) {
+            String backref = model.verbindendeRol(filler, subject);   // the filler's reference field back to the subject
+            if (backref != null) return new Conditie.VerreRollidmaatschap(filler, backref, negatie, bron);
+        }
+        return null;
     }
 
     /** Resolve {@code kenmerk} on {@code type} into a {@link Conditie.Kenmerk}, honouring a leading "niet"

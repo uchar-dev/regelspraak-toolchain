@@ -737,12 +737,19 @@ public final class DrlTranspiler {
         // A forward calculation should not retrigger itself on its own modify (no-loop, in the header);
         // it still recomputes when another rule changes the facts it reads.
         Regel rule = new Regel(r.naam());
-        String constraint = subject != null && r.voorwaarde() != null ? conditie(r.voorwaarde(), subject, true) : "";
+        // §8.1.7 far-side "heeft een <rol>": a top-level VerreRollidmaatschap is an EXISTS-join, a separate
+        // when-clause (it cannot live inside the subject pattern's inline constraint), so peel it out here. Nested
+        // in an AND/OR it falls through conditie() to an honest marker — only the top-level form lowers.
+        String verreClausule = subject != null && r.voorwaarde() instanceof Conditie.VerreRollidmaatschap vr
+                ? verreRolClausule(vr) : null;
+        String constraint = verreClausule != null ? ""
+                : subject != null && r.voorwaarde() != null ? conditie(r.voorwaarde(), subject, true) : "";
         if (subject == null) {
             rule.clausule("// onopgelost doel-objecttype: " + r.doel().bron()).clausule("eval(true)");
         } else {
-            rule.clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + constraint + " )")
-                .clausules(accumulates)
+            rule.clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + constraint + " )");
+            if (verreClausule != null) rule.clausule(verreClausule);   // the exists-join, after $subject is bound
+            rule.clausules(accumulates)
                 .geldigheid(r.geldigheid());   // §4.2: a time-bounded version fires only inside its window
         }
         if (valueStr != null && r.doel() instanceof Expr.AttribuutRef a) {
@@ -1606,6 +1613,14 @@ public final class DrlTranspiler {
      *  whole DRL). Still carries the "/* TODO *&#47;" text, so {@link #bevatMarker} flags it. */
     private static String onopgelosteConstraint(String wat, String bron) {
         return "false /* TODO " + wat + ": " + bron + " */";
+    }
+
+    /** §8.1.7 far-side "heeft een &lt;rol&gt;" as a separate when-clause: the subject is satisfied when at least
+     *  one filler references it ({@code exists <Filler>( <backref> == $subject )}); the "heeft geen" negation is
+     *  the {@code not} of that. Bound AFTER the subject pattern so {@code $subject} is in scope. */
+    private String verreRolClausule(Conditie.VerreRollidmaatschap vr) {
+        String patroon = ident(vr.filler().naam, true) + "( " + ident(vr.backref(), false) + " == " + SUBJECT + " )";
+        return (vr.negatie() ? "not " : "exists ") + patroon;
     }
 
     /** A boolean expression true when AT LEAST {@code k} of {@code delen} hold: the OR over

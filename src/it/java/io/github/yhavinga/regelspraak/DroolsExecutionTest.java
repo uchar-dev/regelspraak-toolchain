@@ -3045,6 +3045,58 @@ class DroolsExecutionTest {
         build(drl);  // must COMPILE — an uncompilable `passagier != null` on Vlucht would throw here
     }
 
+    static final String FAR_SIDE_SRC = """
+            Objecttype de Passagier
+            Objecttype de Vlucht
+                is vol kenmerk (bijvoeglijk);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Een Vlucht is vol indien hij heeft een passagier.
+            """;
+
+    @Test void membership_far_side_heeft_een_rol_lowert_naar_een_exists_join() {
+        // §8.1.7 far-side "de Vlucht heeft een passagier": the subject is on the "één" side, so the relation field
+        // lives on the MANY side (Passagier.reis). It lowers to an exists-join — a SEPARATE when-clause "exists
+        // Passagier(reis == $subject)", not an in-pattern constraint — peeled because it is the rule's top-level
+        // condition. Fires for a Vlucht with at least one passagier, not for an empty one.
+        RegelSpraakModel m = Resolver.resolve(FAR_SIDE_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("exists Passagier( reis == $subject )"), () -> "geen exists-join:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "de far-side rolcheck mag geen marker zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht bezet = new Vlucht();
+        Vlucht leeg = new Vlucht();
+        Passagier p = new Passagier(); p.setReis(bezet);
+        for (Object o : new Object[]{bezet, leeg, p}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(bezet.isVol(), "een Vlucht met een passagier -> heeft een passagier -> de gate vuurt");
+        assertFalse(leeg.isVol(), "een Vlucht zonder passagiers -> de gate vuurt niet (geen exists-match)");
+    }
+
+    @Test void membership_far_side_heeft_geen_rol_is_de_not_exists() {
+        // the §8.1.7 negation "heeft geen passagier" -> "not Passagier(reis == $subject)": gated for an EMPTY vlucht.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(
+                FAR_SIDE_SRC.replace("hij heeft een passagier", "hij heeft geen passagier")));
+        assertTrue(drl.contains("not Passagier( reis == $subject )"), () -> "geen not-exists clausule:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht leeg = new Vlucht();
+        Vlucht bezet = new Vlucht();
+        Passagier p = new Passagier(); p.setReis(bezet);
+        for (Object o : new Object[]{leeg, bezet, p}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(leeg.isVol(), "een lege Vlucht -> heeft geen passagier -> de gate vuurt");
+        assertFalse(bezet.isVol(), "een Vlucht met een passagier -> 'heeft geen' is onwaar -> niet gegated");
+    }
+
     @Test void membership_eenvorm_kenmerkcheck_bindt_alleen_een_zelfstandig_kenmerk() {
         // §8.1.8.3: "hij is een <zelfstandig kenmerk>" binds the boolean property (student == true); a BIJVOEGLIJK
         // kenmerk (written "is <k>", no "een") must NOT bind the EEN-form — it stays a marker, so a rule gated on

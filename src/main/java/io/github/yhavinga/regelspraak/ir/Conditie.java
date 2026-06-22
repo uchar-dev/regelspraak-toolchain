@@ -55,12 +55,19 @@ public sealed interface Conditie {
      *  ({@code reis != null}); {@code anderTeFiller} is that other end's object type, from which the
      *  transpiler looks up the reference field. {@code negatie} marks the §8.1.7/§8.1.8.3 "is geen &lt;rol&gt;"
      *  negation — the subject does NOT fill the role — which lowers to the inverse null-test ({@code reis == null}).
-     *  When the reference lives on the other side (the §8.1.7 "heeft" form) an exists-join is needed,
-     *  which does not fit a single in-pattern constraint — the transpiler markers that, carded. */
+     *  When the reference lives on the other side (the §8.1.7 "heeft" form) it is a {@link VerreRollidmaatschap}. */
     record Rollidmaatschap(String rol, Objecttype anderTeFiller, String bron, boolean negatie) implements Conditie {
         /** Positive rolcheck — the subject fills the role. */
         Rollidmaatschap(String rol, Objecttype anderTeFiller, String bron) { this(rol, anderTeFiller, bron, false); }
     }
+
+    /** §8.1.7 FAR-side rolcheck ("de vlucht heeft een passagier"): the subject sits on the "één" side, so the
+     *  reference lives on the OTHER object — a to-many {@code filler} whose {@code backref} field points back to
+     *  the subject. True when at least one such filler exists, so it lowers to an EXISTS-join (a separate
+     *  when-clause {@code exists <filler>( <backref> == $subject )}), NOT an in-pattern constraint — which is why
+     *  it can only be peeled when it is a rule's TOP-LEVEL condition; nested in an AND/OR or a comparison it
+     *  stays a marker. {@code negatie} is the "heeft geen" form ({@code not <filler>(...)}). */
+    record VerreRollidmaatschap(Objecttype filler, String backref, boolean negatie, String bron) implements Conditie {}
 
     /** §13.4.14 compound condition: a quantifier over a bullet list of sub-conditions.
      *  `drempel` is the threshold count N for the counting quantifiers (ten minste / ten

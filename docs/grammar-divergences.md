@@ -444,8 +444,20 @@ was dropped, so `is geen <k>` lowers like `heeft geen <k>` → `<k> == false`); 
 inverse rolcheck — `Conditie.Rollidmaatschap` gained a `negatie` flag and the transpiler emits `<refField> == null`.
 Per Tabel 16 the negation is resolved kenmerk-first (verbatim-first, so a kenmerk literally named `geen …` still
 binds positively); the boolean lowering is the same regardless of soort, so the noch-noch form is not soort-gated.
-Corpus byte-identical (no corpus `is geen <declared X>` flips). **Still carded:** the FAR-side rolcheck (`heeft een
-<rol>` — an exists-join that does not fit a single in-pattern constraint).
+Corpus byte-identical (no corpus `is geen <declared X>` flips).
+
+The **FAR-side rolcheck** `<subject> heeft (een) <rol>` (§8.1.7 — the subject is on the "één" side, so the relation
+field lives on the to-MANY filler, not on the subject) now lowers too. When `rolLidmaatschap` finds the subject
+does not FILL the role but the role reaches a to-many filler from it, it resolves a new `Conditie.VerreRollidmaatschap`
+(the filler type + its back-reference field), which the transpiler lowers to an **exists-join** — a SEPARATE
+when-clause `exists <Filler>( <backref> == $subject )` (the `heeft geen` negation is the `not` of it). Because an
+exists-join cannot live inside the subject pattern's inline constraint, it is peeled **only when it is a rule's
+TOP-LEVEL condition** (in `regel()`); nested in an AND/OR or a comparison the whole compound stays an honest marker
+(the exists cannot be expressed inline), and the deferred call sites (feitcreatie, consistentie, the die-filter)
+keep their markers. The "een" is optional and the IS/heeft verb no longer gates it (a kenmerk still binds first;
+only a role newly reaches the far side). Corpus byte-identical (no corpus condition uses the far-side form), proven
+on a synthetic fixture firing `exists`/`not` in real Drools. **Carded:** the far-side as a NESTED/non-top-level
+condition (needs the `Conditie → List<Clause>` rule-assembly refactor to peel an exists out of an AND/OR).
 
 **Navigated and negated forms are now lowered too.** A TO-ONE navigated kenmerk (`de partner van een
 Persoon gepensioneerd is`) resolves the kenmerk against the navigated type and lowers to the null-guarded

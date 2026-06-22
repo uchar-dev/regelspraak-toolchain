@@ -158,6 +158,30 @@ class DrlTest {
         assertTrue(drl.contains("reis != null"), () -> "'is passagier' (rol, geen kenmerk) moet de rolcheck binden:\n" + drl);
     }
 
+    @Test void far_side_rolcheck_genest_in_een_compound_blijft_marker() {
+        // §8.1.7 far-side "heeft een <rol>" lowers to an EXISTS-join, which can only be peeled as a rule's
+        // TOP-LEVEL condition (a separate when-clause). NESTED in an AND/OR it cannot live inside the inline
+        // constraint, so it must stay an honest marker — never a silently-dropped or uncompilable join.
+        String src = """
+            Objecttype de Passagier
+            Objecttype de Vlucht
+                is vol kenmerk (bijvoeglijk);
+                is internationaal kenmerk (bijvoeglijk);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Een Vlucht is vol indien hij aan alle volgende voorwaarden voldoet:
+                    - hij heeft een passagier
+                    - hij is internationaal.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("/* TODO"), () -> "een geneste far-side rolcheck moet een marker blijven:\n" + drl);
+        assertFalse(drl.contains("exists Passagier"), () -> "een geneste far-side rolcheck mag geen exists emitteren:\n" + drl);
+    }
+
     @Test void onmapbare_functie_wordt_gemarkeerd_niet_verzonnen() {
         // concatenatie has no lowering yet; it must surface as an explicit marker, never as silently-wrong
         // DRL. (wortel — once the example here — now lowers, see wortel_lowert_naar_sqrt_….)
