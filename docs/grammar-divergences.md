@@ -618,14 +618,45 @@ parallel `attribuutGranulariteit` / `kenmerkGranulariteit` map on the `Objecttyp
 previously read the datatype, plural and dimensions but **never** `a.tijdlijn()`, so a temporal attribute
 was indistinguishable from a single-value one. Both the single-period token form ("voor elke dag" → DAG)
 and the multi-period plural unit ("voor elke 5 maanden" → MAAND) reduce to the unit; the period **count**
-and the **startpunt** (vast/variabel) are not yet captured. The named form "voor elke `<tijdlijn>`" adopts
+("voor elke 5 maanden" → 5) rides in a parallel `attribuutTijdlijnAantal` / `kenmerkTijdlijnAantal` map (absent
+= 1), the **startpunt** (vast/variabel) is not yet captured. The named form "voor elke `<tijdlijn>`" adopts
 the granularity of its standalone `Tijdlijn` definition ("Tijdlijn de periode … heeft tijdvakken van een
 kwartaal" → KWARTAAL): the definitions are registered in pass 1 so declaration order is free, and the
 reference is matched to the definition on a whitespace-collapsed, leading-lidwoord-stripped name (the
 reference drops the "de" the definition carries and may wrap across lines). An unresolved name (the
 definition living in another file — the corpus splits them per construct) leaves the attribute untagged,
-no granularity faked. Resolver-only: the periods themselves (knip-merge, tijdsevenredig, gedurende) are
-still unlowered, and the 193-file corpus DRL is byte-identical.
+no granularity faked. Resolver-only: most periods (knip-merge, tijdsevenredig, gedurende) are still unlowered,
+and the 193-file corpus DRL is byte-identical. A **duplicate timeline name** (two `Tijdlijn` definitions sharing
+a normalised name) now **WARNs** at registration, since a "voor elke `<naam>`" reference adopts the first via
+`findFirst` — the ambiguity is made visible rather than silently resolved.
+
+**The first temporal VALUE operator is lowered: §7.1 "het totaal van `<temporeel attribuut>`".** A temporal
+attribute's runtime value is a piecewise `List<Segment{van,tot,waarde}>` on the bean (a new
+`io.github.yhavinga.regelspraak.facts.Segment` POJO — the externally-provided timeline contract). `tijdreeksAggregatie`
+recognises a `TOTAAL` over a single OWN temporal attribute (by the captured granularity) and lowers it to a
+registered `rsTijdTotaal` helper that folds the list, weighting each segment's value by the count of whole
+DAG/WEEK/MAAND/KWARTAAL/JAAR periods between its bounds (a kwartaal is three maanden; `ChronoUnit` has no
+quarter). A null list or a segment with a null bound/value contributes nothing (§4.20 leegwaarde); an empty
+timeline totals 0. It is a transpiler-only recognition — **no** new sealed-`Expr` member — so a NON-temporal
+`TOTAAL` (the ordinary set sum) still flows to the instance-accumulate path, and a navigated or multi-arg
+`TOTAAL` is unaffected; the corpus DRL is byte-identical, proven by firing the spec's €186 worked example
+(12 mnd × 10 + 6 mnd × 11) and the empty/null-timeline cases in real Drools. A **multi-period** attribute
+("voor elke 5 maanden") would need to weight by 5-month tijdvakken — semantics §7.1 does not work out — so its
+totaal **markers** (`/* TODO totaal van een meer-periodieke tijdreeks */`) rather than mis-counting it as
+single-period. Carded follow-ons: the `gedurende de tijd dat` knip (a period-intersection over the condition's
+own boolean timeline), `tijdsevenredig deel` and `aantal dagen in` (which PRODUCE a timeline), and the per-period
+WRITE path ("voor elke maand gesteld worden op", a grammar gap).
+
+### Timed dedato literal is a Datum-tijd, not a Datum in dagen (§13.2.19/.21)
+
+A dedato literal carrying a time — "dd. 12-3-2023 **11:34:42.679**" — is a §13.2.21 Datum-tijd (millisecond
+precision). The resolver typed every dedato as Datum in dagen, and the literal lowering matched only the
+day-month-year groups and emitted `LocalDate.of`, silently dropping the time AND assigning a `LocalDate` into a
+`LocalDateTime` setter (a Drools build/type error, a wrong runtime value). Now a dedato whose source carries an
+`hh:mm:ss[.mmm]` component is typed `Datum-tijd` and lowers to `LocalDateTime.of(y,m,d,H,M,S,nanos)` with the
+millisecondes scaled to `nanoOfSecond` (× 1 000 000, the `rsDatumtijdMet` convention); a bare date is unchanged
+(`LocalDate.of`). Only the timed form is new — the bare date is the only form in the TOKA casus and every worked
+example — so the corpus DRL is byte-identical; proven on a synthetic fixture firing in real Drools.
 
 ### Tekstreeks `«…»` string-building (§13.4.17.9) — flagged, not silently mis-lowered
 
