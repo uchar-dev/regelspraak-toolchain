@@ -98,6 +98,22 @@ class ModelTest {
                 () -> "de benoemde-tijdlijn referentie nam de granulariteit niet over: " + p.attribuutGranulariteit);
     }
 
+    @Test void dubbel_gedefinieerde_tijdlijn_geeft_een_waarschuwing() {
+        // §13.3.6.10: two timelines sharing a name but declaring different granularity -> a "voor elke <naam>"
+        // reference silently takes the first (findFirst). Warn at registration so the ambiguity is visible; a
+        // single timeline stays clean.
+        String src = """
+            Tijdlijn de periode heeft tijdvakken van een maand startend op dag 1 van de maand;
+            Tijdlijn de periode heeft tijdvakken van een jaar startend op dag 1 van maand 1;
+            Objecttype de Werknemer
+                het bedrag Numeriek (geheel getal) voor elke periode;
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
+                        && d.message().contains("meermaals")),
+                () -> "verwachtte een dubbel-tijdlijn waarschuwing, kreeg: " + m.diagnostics);
+    }
+
     @Test void domein_typed_attribuut_lost_op() {
         RegelSpraakModel m = Resolver.resolve(SRC);
         // "belasting op basis van afstand" is typed by domain Bedrag = Numeriek(2 decimalen)

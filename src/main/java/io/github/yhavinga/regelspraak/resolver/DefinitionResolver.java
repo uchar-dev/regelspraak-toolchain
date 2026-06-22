@@ -301,7 +301,16 @@ public final class DefinitionResolver {
     // ---------------- §13.3.6 timelines ----------------
     private void tijdlijn(TijdlijnDefinitieContext ctx) {
         boolean variabel = src(ctx).toLowerCase().contains("met variabel startpunt");
-        model.tijdlijnen.add(new Tijdlijn(src(ctx.tijdlijnNaam()), variabel, granulariteitVanDefinitie(ctx)));
+        String naam = src(ctx.tijdlijnNaam());
+        // §13.3.6.10: a "voor elke <tijdlijn>" reference adopts the FIRST timeline of that (normalised) name
+        // via findFirst, so two timelines sharing a name but declaring different granularities would silently
+        // disagree. Warn at registration rather than let the reference quietly take one.
+        String genormaliseerd = normaliseerTijdlijnNaam(naam);
+        if (model.tijdlijnen.stream().anyMatch(tl -> normaliseerTijdlijnNaam(tl.naam()).equals(genormaliseerd)))
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
+                    "tijdlijn '" + naam + "' is meermaals gedefinieerd; een 'voor elke <naam>' verwijzing neemt de "
+                            + "granulariteit van de eerste (§13.3.6.10)", ctx.tijdlijnNaam().getStart().getLine()));
+        model.tijdlijnen.add(new Tijdlijn(naam, variabel, granulariteitVanDefinitie(ctx)));
     }
 
     /** §13.3.6 the {@link Granulariteit} of a tijdlijn ATTACHMENT on an attribute/kenmerk. The single-period
