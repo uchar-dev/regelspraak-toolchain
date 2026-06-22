@@ -1161,9 +1161,9 @@ supplies via `omrekenConditie` — **identity** when no conversion is due (the c
 That marker is load-bearing: a pattern constraint cannot host the value-side null-guard ternary, and the
 ternary-free `.multiply(factor)` would NPE-**abort the session** on a `null` operand, so a convertible-but-
 different-unit `+`/`-` in a condition stays an honest no-op (the value side, which *can* host the ternary, still
-converts). A `Begrensd` clamp in a condition stays a marker (carded — it needs a clamp helper); and `tot de macht
-<int>` in a condition is unreachable through the parser (a pre-existing `NUMBER` lexer-boundary bug merges the
-exponent with the next token, e.g. `2gelijk` — carded separately).
+converts). `tot de macht <int>` lowers in a condition too, with its mandatory §13.4.17.14 afronding wrapper
+(`… tot de macht 2 naar beneden afgerond op 0 decimalen gelijk is aan …` → `rsAfronding(rsMacht(a, 2), 0,
+FLOOR) == b`). A `Begrensd` clamp in a condition stays a marker (carded — it needs a clamp helper).
 
 Two facts worth recording, each verified by firing in Drools 8.44:
 
