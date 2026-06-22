@@ -3940,12 +3940,14 @@ class DroolsExecutionTest {
         KieSession sessie = build(drl).newKieSession();
         NatuurlijkPersoon geldig = new NatuurlijkPersoon();   geldig.setBurgerservicenummer(new BigDecimal("111222333"));
         NatuurlijkPersoon ongeldig = new NatuurlijkPersoon(); ongeldig.setBurgerservicenummer(new BigDecimal("192837465"));
-        sessie.insert(geldig); sessie.insert(ongeldig);
+        NatuurlijkPersoon somNul = new NatuurlijkPersoon();   somNul.setBurgerservicenummer(new BigDecimal("12")); // weighted sum 0
+        sessie.insert(geldig); sessie.insert(ongeldig); sessie.insert(somNul);
         sessie.fireAllRules();
         sessie.dispose();
 
         assertTrue(geldig.isGeldig(), "111222333 voldoet aan de elfproef (gewogen som 66)");
         assertFalse(ongeldig.isGeldig(), "192837465 voldoet niet (som 205, rest 7) — de spec-uitwerking");
+        assertFalse(somNul.isGeldig(), "12 heeft gewogen som 0; het quotiënt moet een POSITIEF geheel getal zijn (§8.1.3)");
     }
 
     @Test void meerwoordig_kenmerk_check_in_definiete_vorm_vuurt() {

@@ -1363,15 +1363,12 @@ public final class DrlTranspiler {
                 + "    int n = s.length();\n"
                 + "    if (n == 0) return false;\n"
                 + "    long som = 0;\n"
-                + "    boolean nietNul = false;\n"
                 + "    for (int i = 0; i < n; i++) {\n"
                 + "        char ch = s.charAt(i);\n"
                 + "        if (ch < '0' || ch > '9') return false;\n"
-                + "        int d = ch - '0';\n"
-                + "        if (d != 0) nietNul = true;\n"
-                + "        som += (long) d * ((i == n - 1) ? -1 : (n - i));\n"
+                + "        som += (long) (ch - '0') * ((i == n - 1) ? -1 : (n - i));\n"
                 + "    }\n"
-                + "    return nietNul && (som % 11 == 0);\n"
+                + "    return som > 0 && (som % 11 == 0);\n"   // §8.1.3 the quotient must be a POSITIEF geheel getal: som==0 (e.g. \"12\", or all zeros) fails
                 + "}\n\n");
     }
 
@@ -1568,6 +1565,13 @@ public final class DrlTranspiler {
      *  count per segment from the attribute's declared {@link RegelSpraakModel.Granulariteit}). Returns null for
      *  any other operand — a navigated or non-temporal attribute, a multi-arg fold — so the instance-accumulate
      *  and marker paths are unchanged (a non-temporal TOTAAL still flows to {@link #accumulate}). */
+    /** §13.4.2 a SET aggregation's onderwerp leads with the universal quantifier "alle" ("alle passagiers van de
+     *  reis"), unlike a single object's possessive ("zijn …") or definite ("de … van zijn …") onderwerp. Used to
+     *  tell a collapsed set-totaal from a genuine single-object timeline at lowering time. */
+    private static boolean isSetOnderwerp(Expr.AttribuutRef a) {
+        return a.onderwerpBron() != null && a.onderwerpBron().trim().toLowerCase().startsWith("alle ");
+    }
+
     private String tijdreeksAggregatie(Expr.Functie f, Objecttype subject) {
         if (f.kind() != Expr.FunctieKind.TOTAAL || f.argumenten().size() != 1) return null;
         // §7.1 / §8.4 a "gedurende de tijd dat <voorwaarde>" restriction the resolver could not structure rides
@@ -1577,6 +1581,12 @@ public final class DrlTranspiler {
         if (f.filter() instanceof Conditie.Onopgelost) return null;
         if (!(f.argumenten().get(0) instanceof Expr.AttribuutRef a)) return null;
         if (a.objecttype() == null) return null;
+        // A "het totaal van <attr> van ALLE <set>" is a SET aggregation. When the element type equals the rule
+        // subject's, the resolver collapses it to an EIGEN-looking AttribuutRef (no navigatieRol) — only the
+        // onderwerp ("alle passagiers …") still records the quantifier. Folding it as the subject's own single
+        // timeline would silently drop the set, so bail to the marker (the accumulate path then markers it too;
+        // a distinct element type is caught there directly). A per-element timeline fold is not lowered yet.
+        if (isSetOnderwerp(a)) return null;
         RegelSpraakModel.Granulariteit g = a.objecttype().attribuutGranulariteit.get(a.attribuut());
         if (g == null) return null;   // not a temporal attribute -> fall through to the instance-accumulate / marker
         // §13.3.6.7 a MULTI-period attribute ("voor elke 5 maanden") weights each tijdvak by the period count,
@@ -1682,6 +1692,14 @@ public final class DrlTranspiler {
         // than fake a partial fold over the first set; the single-operand set MIN/MAX (size 1) is untouched.
         if ((f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM)
                 && f.argumenten().size() > 1) return null;
+        // A SOM/TOTAAL/MIN/MAX over a TEMPORAL attribute ("de <attr> per maand van alle <set>") cannot be a
+        // Drools sum/min/max over the getter — that aggregates the List<Segment> timeline itself (a
+        // ClassCastException at fire time), never period-weighting the tijdvakken. A per-element timeline fold
+        // (fold each element's tijdreeks, then aggregate) is not lowered yet -> marker, never a crashing/wrong
+        // aggregate. (The single-object §7.1 totaal is handled upstream by tijdreeksAggregatie.)
+        if (!f.argumenten().isEmpty() && f.argumenten().get(0) instanceof Expr.AttribuutRef ta
+                && ta.objecttype() != null && ta.objecttype().attribuutGranulariteit.containsKey(ta.attribuut()))
+            return null;
         Objecttype elem = f.elementObjecttype();
         String fn = switch (f.kind()) {
             case SOM, TOTAAL -> "sum";

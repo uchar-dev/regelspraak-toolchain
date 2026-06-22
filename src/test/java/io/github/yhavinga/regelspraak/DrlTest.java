@@ -2240,4 +2240,48 @@ class DrlTest {
         assertFalse(drl.contains("rsTijdTotaal"),
                 () -> "geen single-period rsTijdTotaal voor een benoemde 5-maanden tijdlijn:\n" + drl);
     }
+
+    @Test void temporeel_totaal_over_een_set_markeert_niet_vouwt_de_eigen_tijdreeks_of_sumt_de_lijst() {
+        // Review defect: "het totaal van <temporeel attr> van ALLE <set>" is a SET aggregation, not a single
+        // timeline. When the element type EQUALS the subject's, the resolver collapses it to an EIGEN-looking ref
+        // (onderwerp "alle …"); it must MARKER, never fold the subject's OWN series (silent wrong) nor — for a
+        // DIFFERENT element type — sum the List<Segment> (a fire-time ClassCastException).
+        String sameType = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Vlucht (mv: Vluchten)
+                de naam Tekst;
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Feittype reis met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op het totaal van de belastingvermindering per maand van alle passagiers van de reis.
+            """;
+        String drl1 = DrlTranspiler.transpile(Resolver.resolve(sameType));
+        assertFalse(drl1.contains("rsTijdTotaal"), () -> "een set-totaal mag niet als eigen tijdreeks vouwen:\n" + drl1);
+        assertTrue(drl1.contains("/* TODO aggregatie TOTAAL"), () -> "een set-totaal moet markeren:\n" + drl1);
+
+        String diffType = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Vlucht (mv: Vluchten)
+                de totaalprijs Bedrag;
+            Objecttype de Passagier (mv: Passagiers)
+                de belastingvermindering per maand Bedrag voor elke maand;
+            Feittype reis met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel R
+                geldig altijd
+                    De totaalprijs van een Vlucht moet gesteld worden op het totaal van de belastingvermindering per maand van alle passagiers van de reis.
+            """;
+        String drl2 = DrlTranspiler.transpile(Resolver.resolve(diffType));
+        assertFalse(drl2.contains("getBelastingverminderingPerMaand()"),
+                () -> "een set-totaal over een ander type mag de List<Segment> niet sommen:\n" + drl2);
+        assertTrue(drl2.contains("/* TODO aggregatie TOTAAL"), () -> "een set-totaal (ander type) moet markeren:\n" + drl2);
+    }
 }

@@ -399,6 +399,7 @@ final class ExpressieBouwer {
     private Conditie gedurendeKenmerkFilter(FunctieAanroepContext f, Expr.FunctieKind kind, List<Expr> argumenten) {
         if (kind != Expr.FunctieKind.TOTAAL || argumenten.size() != 1 || huidigSubject == null) return null;
         if (!(argumenten.get(0) instanceof Expr.AttribuutRef a) || a.navigatieRol() != null
+                || (a.onderwerpBron() != null && a.onderwerpBron().trim().toLowerCase().startsWith("alle "))
                 || a.objecttype() != huidigSubject || !huidigSubject.attribuutGranulariteit.containsKey(a.attribuut())
                 || huidigSubject.attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;
         ConditieBijExpressieContext cnd = f instanceof TotaalFuncContext t ? t.conditieBijExpressie() : null;
