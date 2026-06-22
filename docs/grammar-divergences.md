@@ -650,22 +650,31 @@ the kenmerk's TRUE-period Segments. A **navigated** to-ONE temporal totaal ("het
 partner") now folds the partner's timeline via `rsTijdTotaal` over the same root-guarded getter chain the navigated
 value read uses (a null reference → leeg). Both fire (the €71 clip; a partner's 12-month series → 120). Still
 **markered, not faked**: a **multi-period** attribute ("voor elke 5 maanden", inline OR named) — semantics §7.1
-does not work out (the count rides on the `Tijdlijn` record + `attribuutTijdlijnAantal`); a **to-many** navigated
-totaal (cannot be one getter); and any gedurende the resolver could not structure (a NEGATED / comparison /
-compound / navigated / non-temporal condition) which stays an `Onopgelost` marker. Carded follow-ons: the negated
-and compound `gedurende`, `tijdsevenredig deel` and `aantal dagen in` (which PRODUCE a timeline, reusing
-`rsTijdKnip`), and the per-period WRITE path ("voor elke maand gesteld worden op", a grammar gap); the helper
-truncates a sub-period-aligned segment (exact for boundary-aligned timelines).
+does not work out (the count rides on the `Tijdlijn` record + `attribuutTijdlijnAantal`); a **set** totaal ("het
+totaal van `<temporeel attr>` van **alle** `<set>`") — a per-element timeline fold (fold each element's series,
+then total) is not lowered, so it markers rather than mis-folding the subject's own series or summing the
+`List<Segment>` (a review caught both: when the element type equals the subject's the resolver collapses the set to
+an EIGEN ref, detected by the `alle …` onderwerp; a distinct element type is caught in `accumulate`); a **to-many**
+navigated totaal; and any gedurende the resolver could not structure (a NEGATED / comparison / compound / navigated
+/ non-temporal / **bezittelijk `heeft`** condition) which stays an `Onopgelost` marker. Carded follow-ons: the
+pre-existing resolver set→own collapse (the deeper fix), the bezittelijk `heeft` gedurende (the spec's verbatim §7.1
+example), the negated/compound `gedurende`, `tijdsevenredig deel` and `aantal dagen in` (which PRODUCE a timeline,
+reusing `rsTijdKnip`), and the per-period WRITE path ("voor elke maand gesteld worden op", a grammar gap); the
+helper truncates a sub-period-aligned segment (exact for boundary-aligned timelines) and does not union overlapping
+condition intervals (a contractually-disjoint kenmerk timeline).
 
 ### Elfproef predicate (§8.1.3) — lowered to a registered rsElfproef helper
 
 "voldoet aan de elfproef" type-checked but the transpiler's predicate switch markered it (a `false /* TODO */`
 no-op that never fired). It now lowers to a registered `rsElfproef(Object)` helper: per §8.1.3 it weights each
 digit by its position from the right (the controlecijfer −1, then 2, 3, …; an n-digit reeks weights its leftmost
-digit by n down to 2, the last by −1) and passes iff the weighted sum is divisible by 11 AND the number is not all
-zeros. It admits a Numeriek (geheel getal) — leading zeros already gone — or a Tekst of digits (preserving voor-/
-achterloopnullen); a null, fractional, or non-digit value fails. A boolean-returning function is valid in a pattern
-constraint and fires (the spec's 192837465 fails, sum 205 rest 7; 111222333 passes, sum 66). The sibling default-arm
+digit by n down to 2, the last by −1) and passes iff the weighted sum **divided by 11 is a positief geheel getal** —
+i.e. `sum > 0 && sum % 11 == 0` (a review caught that `% 11 == 0` alone wrongly accepts a weighted sum of 0, e.g.
+"12" or any not-all-zeros reeks summing to 0; the `sum > 0` guard also subsumes the not-all-zeros rule, and a
+negative multiple of 11 is unreachable). It admits a Numeriek (geheel getal) — leading zeros already gone — or a
+Tekst of digits (preserving voor-/achterloopnullen); a null, fractional, or non-digit value fails. A
+boolean-returning function is valid in a pattern constraint and fires (the spec's 192837465 fails, sum 205 rest 7;
+111222333 passes, sum 66; "12" fails, sum 0). The sibling default-arm
 predicates `numeriek met exact <n> cijfers` and the dagsoortcontrole stay markered — carded.
 
 ### Timed dedato literal is a Datum-tijd, not a Datum in dagen (§13.2.19/.21)
