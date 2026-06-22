@@ -3324,6 +3324,46 @@ class DroolsExecutionTest {
         assertFalse(leeg.isVol(), "een Vlucht zonder passagiers -> de gate vuurt niet (geen exists-match)");
     }
 
+    @Test void membership_far_side_kiest_de_juiste_backref_bij_meerdere_feittypen() {
+        // §8.1.7: when the filler references the subject through MORE THAN ONE feittype (a Passagier fills both
+        // "passagier" (reis) and "bonuspassagier" (bonusvlucht) of a Vlucht), the far-side backref must be the role
+        // of the SAME feittype as the named role — "passagier" -> reis, found by the written role name, not the
+        // ambiguous by-pair lookup (which used to leave the whole far-side a marker). Proof: the gate fires for a
+        // Vlucht reached via reis, NOT for one reached only via bonusvlucht.
+        String src = """
+                Objecttype de Passagier
+                Objecttype de Vlucht
+                    is vol kenmerk (bijvoeglijk);
+                Feittype Vlucht met passagiers
+                    de reis Vlucht
+                    de passagier Passagier
+                Eén reis heeft meerdere passagiers
+                Feittype Vlucht met bonuspassagiers
+                    de bonusvlucht Vlucht
+                    de bonuspassagier Passagier
+                Eén bonusvlucht heeft meerdere bonuspassagiers
+                Regel r
+                    geldig altijd
+                        Een Vlucht is vol indien hij heeft een passagier.
+                """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("exists Passagier( reis == $subject )"), () -> "verkeerde of ontbrekende backref:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "de far-side mag geen marker zijn bij meerdere feittypen:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht viaReis = new Vlucht();
+        Vlucht viaBonus = new Vlucht();
+        Passagier p = new Passagier();  p.setReis(viaReis);          // a real passagier of viaReis
+        Passagier b = new Passagier();  b.setBonusvlucht(viaBonus);  // only a bonuspassagier of viaBonus (reis null)
+        for (Object o : new Object[]{viaReis, viaBonus, p, b}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(viaReis.isVol(), "een Vlucht met een passagier via reis -> de gate vuurt");
+        assertFalse(viaBonus.isVol(), "een Vlucht met alleen een bonuspassagier -> 'heeft een passagier' (reis) geldt niet");
+    }
+
     @Test void membership_far_side_heeft_geen_rol_is_de_not_exists() {
         // the §8.1.7 negation "heeft geen passagier" -> "not Passagier(reis == $subject)": gated for an EMPTY vlucht.
         String drl = DrlTranspiler.transpile(Resolver.resolve(

@@ -925,7 +925,13 @@ final class RuleChecker {
         if (ander != null) return new Conditie.Rollidmaatschap(naam, ander, bron, negatie);
         Objecttype filler = model.rolDoeltypeNaarSubject(subject, naam);
         if (filler != null && model.naarVeelRol(subject, filler, naam)) {
-            String backref = model.verbindendeRol(filler, subject);   // the filler's reference field back to the subject
+            // The backref is the subject-side role of the SAME feittype as the named role — found by the written
+            // role name (verbindendeRolViaElementnaam), which disambiguates a filler that references the subject
+            // through MORE THAN ONE feittype (e.g. a Passagier that fills both "passagier" and "bonuspassagier" of
+            // a Vlucht): the by-pair verbindendeRol is then ambiguous and the far-side would wrongly stay a marker.
+            // Fall back to the by-pair lookup for the single-feittype case (both give the same role there).
+            String backref = model.verbindendeRolViaElementnaam(subject, naam);
+            if (backref == null) backref = model.verbindendeRol(filler, subject);
             if (backref != null) return new Conditie.VerreRollidmaatschap(filler, backref, negatie, bron);
         }
         return null;
