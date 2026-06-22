@@ -451,19 +451,38 @@ field lives on the to-MANY filler, not on the subject) now lowers too. When `rol
 does not FILL the role but the role reaches a to-many filler from it, it resolves a new `Conditie.VerreRollidmaatschap`
 (the filler type + its back-reference field), which the transpiler lowers to an **exists-join** — a SEPARATE
 when-clause `exists <Filler>( <backref> == $subject )` (the `heeft geen` negation is the `not` of it). Because an
-exists-join cannot live inside the subject pattern's inline constraint, it is peeled **only when it is a rule's
-TOP-LEVEL condition** (in `regel()`); nested in an AND/OR or a comparison the whole compound stays an honest marker
-(the exists cannot be expressed inline), and the deferred call sites (feitcreatie, consistentie, the die-filter)
-keep their markers. The "een" is optional and the IS/heeft verb no longer gates it (a kenmerk still binds first;
-only a role newly reaches the far side). Corpus byte-identical (no corpus condition uses the far-side form), proven
-on a synthetic fixture firing `exists`/`not` in real Drools. The §6.5/§6.6 deling-door-leeg / wortel-negatief
-Inconsistentie companions are **suppressed for a far-side-gated rule** (a slice review caught them over-firing — a
-companion is gated by the rule's INLINE constraint, but a far-side condition is the peeled exists-clause, so an
-ungated companion raised an Inconsistentie for subjects the rule never acts on). The value still degrades to leeg;
-only the fout signal is conservatively withheld — an extension of the existing companion scope limit (navigated /
-aggregation / parameter operands already raise none). **Carded:** the far-side as a NESTED/non-top-level condition
-(needs the `Conditie → List<Clause>` rule-assembly refactor to peel an exists out of an AND/OR), and threading the
-exists-join into the fout companions so a far-side-gated division can raise its fout when the membership holds.
+exists-join cannot live inside the subject pattern's inline constraint, condition lowering returns a
+`LoweredConditie{inline, extra}`: the inline mvel constraint plus zero or more hoisted when-clauses. A far-side
+membership yields an empty inline and one `exists`/`not` clause; everything else yields `extra=[]`. `regel()`
+appends the extra clauses to its when-list **after** the subject pattern, so the former top-level peel falls out of
+the general mechanism (the hand-rolled `verreClausule` special case is gone).
+
+**Nested in a PURE CONJUNCTION (§13.4.14 `alle` / `de`) the far-side now lowers too:** a `Samengesteld` joins its
+children's non-empty inlines with `&&` and concatenates their hoisted clauses, so "vol indien hij heeft een
+passagier én hij is internationaal" emits `internationaal == true` inline AND a separate `exists Passagier(...)`,
+firing only on the real AND. When **every** conjunct is a far-side membership the inline is empty (`Vlucht(  )`) and
+each rides out as its own `exists`. Under a **non-conjunction quantifier** (`geen` / `ten hoogste` / `precies`, and
+`ten minste` via its OR-fold) a hoisted clause — implicitly AND-ed as a separate pattern — would instead *assert*
+the membership unconditionally, a silently-wrong gate, so a far-side child there still no-ops the **whole compound**
+to a marker (keyed explicitly on `alle`/`de`, never the default arm). (`de` is the §10.2 singular single-criterion
+form, faithfully a conjunction of its one bullet.) Callers with nowhere to append a join (feitcreatie anker/$doel,
+objectcreatie guard, the §13.4.8 schending OR/negation, the die-filter accumulate source) go through a
+`conditieInline` adapter that degrades a would-be-hoisted condition to the same `false /* TODO */` marker those
+sites already detect — never a silent drop, never an over-creation. Still **only the conjunction case** lowers; a
+far-side nested under a negation/OR, or hosted by an inline-only caller, remains an honest marker.
+
+The "een" is optional and the IS/heeft verb no longer gates it (a kenmerk still binds first; only a role newly
+reaches the far side). Corpus byte-identical across all 193 files (no corpus condition uses the far-side form),
+proven on synthetic fixtures firing `exists`/`not` in real Drools (the mixed inline+far-side AND matrix, the
+all-far-side empty-inline AND, the negated-quantifier marker). The §6.5/§6.6 deling-door-leeg / wortel-negatief
+Inconsistentie companions are **suppressed whenever the condition contributed an extra clause** (a slice review
+caught them over-firing — a companion is gated by the rule's INLINE constraint, but a far-side condition is the
+hoisted exists-clause, so an ungated companion raised an Inconsistentie for subjects the rule never acts on). The
+value still degrades to leeg; only the fout signal is conservatively withheld — an extension of the existing
+companion scope limit (navigated / aggregation / parameter operands already raise none). **Carded:** the far-side
+nested under a non-conjunction quantifier or hosted by an inline-only caller (would need De Morgan restructuring /
+per-caller join hosting), and threading the exists-join into the fout companions so a far-side-gated division can
+raise its fout when the membership holds.
 
 **Navigated and negated forms are now lowered too.** A TO-ONE navigated kenmerk (`de partner van een
 Persoon gepensioneerd is`) resolves the kenmerk against the navigated type and lowers to the null-guarded
