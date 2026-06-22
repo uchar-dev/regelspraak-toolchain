@@ -496,6 +496,14 @@ public final class DrlTranspiler {
             aandeel = "$src." + getter(v.bronAttribuut()) + "().multiply($r." + wGet
                     + "()).divide($sum, java.math.MathContext.DECIMAL64)";
         }
+        if (v.maximumAttribuut() != null) {
+            // §9.7.3 maximale aanspraak (naar rato only): cap each share at the recipient's maximum — the surplus
+            // is NOT redistributed, it falls to the onverdeelde rest (the rest rule reads the capped shares). The
+            // cap precedes the §9.7.4 afronding ("als laatste … afgerond"). rsPlafond null-guards both sides (a
+            // recipient without a maximum is uncapped).
+            registreerPlafondFunctie();
+            aandeel = "rsPlafond(" + aandeel + ", $r." + getter(v.maximumAttribuut()) + "())";
+        }
         if (v.afrondingDecimalen() != null) {
             // §9.7.4 / §6.1.2: floor each share to N decimals ("naar beneden") — the explicit afronding the spec
             // requires before a division result may land in a bounded target. rsAfronding null-guards the basis.
@@ -1737,6 +1745,16 @@ public final class DrlTranspiler {
         hulpFuncties.putIfAbsent("rsAfronding",
                 "function java.math.BigDecimal rsAfronding(java.math.BigDecimal x, int scale, java.math.RoundingMode mode) {\n"
                 + "    return x == null ? null : x.setScale(scale, mode);\n"
+                + "}\n\n");
+    }
+
+    /** Register the §9.7.3 verdeel-plafond helper — cap a naar-rato share at the recipient's maximum (the
+     *  surplus is not redistributed, §9.7.3). A null share stays leeg; a recipient without a maximum is
+     *  uncapped. Idempotent. */
+    private void registreerPlafondFunctie() {
+        hulpFuncties.putIfAbsent("rsPlafond",
+                "function java.math.BigDecimal rsPlafond(java.math.BigDecimal waarde, java.math.BigDecimal max) {\n"
+                + "    return (waarde == null || max == null) ? waarde : waarde.min(max);\n"
                 + "}\n\n");
     }
 

@@ -922,13 +922,18 @@ however, ride on the equal-shares / naar-rato spine when no grouping and no maxi
    afronding is the author's explicit fix for it. A zero total weight (`Σ = 0`) is guarded (`signum() != 0`)
    so the divide cannot throw; the spec leaves a zero divisor undefined, so no-op-not-crash is the chosen reading.
 
-### §9.7.4/§9.7.5 verdeling met afronding en onverdeelde rest — floor the share, recomputable remainder
+### §9.7.3/§9.7.4/§9.7.5 verdeling met maximum, afronding en onverdeelde rest — cap, floor, recomputable remainder
 
-The bulleted `meervoudigCriterium` form "… waarbij wordt verdeeld: - naar rato van \<gewicht\>, - afgerond op N
-decimalen naar beneden. Als onverdeelde rest blijft \<attribuut van de bron\> over." (toka-36, the §9.7.4
-worked example: 1001 over 3:2 → 600/400, remainder 1) now lowers — the grammar already parsed the modifiers;
-the resolver had been discarding the whole `meervoudigCriterium` subtree. It rides on the equal-shares /
-naar-rato spine, with two additions:
+The bulleted `meervoudigCriterium` modifiers (toka-36 the §9.7.4 worked example, toka-35 the §9.7.3 one) now
+lower — the grammar already parsed them; the resolver had been discarding the whole `meervoudigCriterium`
+subtree. They ride on the equal-shares / naar-rato spine, with these additions (applied in spec order: cap, then
+floor):
+
+- **Maximum (§9.7.3, naar-rato only).** A per-recipient cap: `share_i = min(total·w_i/Σw, max_i)` via the
+  null-safe `rsPlafond(share, $r.getMax())`. The surplus is **not** redistributed (the §9.7.3 worked example,
+  1200 over 3:1:2 capped at 300 → 300/200/300, leaves 400 as the rest), so the existing remainder rule — which
+  reads the *capped* assigned shares — captures it for free. The maximum is naar-rato only ("niet mogelijk bij
+  gelijke verdeling", §9.7.3) and must name a getalachtig recipient attribute, else the verdeling stays a marker.
 
 - **Floor (§9.7.4).** Each share is wrapped in the null-safe `rsAfronding(share, N, RoundingMode.FLOOR)` —
   "naar beneden" is FLOOR, and since `verdeelAfronding` is grammatically always "naar beneden" the mode is
@@ -946,12 +951,18 @@ naar-rato spine, with two additions:
   `restant`, so its modify does not re-trigger the share rule (property reactivity) and the recomputation is a
   fixpoint. Caught by an adversarial review (the freeze-guard premature-partial bug) + regression-pinned.
 
-`op volgorde van` and a per-recipient `maximum` still keep the verdeling `COMPLEX`: toka-34 (volgorde), toka-35
-(maximum) and toka-37 (volgorde + maximum + afronding) remain markers, while toka-36 lights up.
+Only `op volgorde van` (group ordering, §9.7.2) still keeps the verdeling `COMPLEX` — toka-34 and toka-37 remain
+markers (they sort recipients into age groups and deplete in order, a genuinely multi-pass allocation). toka-36
+(afronding) lowers; toka-35 (maximum) lowers *structurally* but markers on the TOKA corpus because its cap
+attribute "maximaal aantal te ontvangen treinmiles" is referenced yet never declared (a spec omission, like the
+undeclared "passagier jonger dan 18 jaar" kenmerk) — proven instead on a synthetic fixture firing the §9.7.3
+worked example.
 
-**Carded:** §9.7.4 — "Als wordt afgerond, dan moet ook altijd een onverdeelde rest worden gespecificeerd." A
-model that floors with no (recognisable) bron-side remainder attribute now raises a WARNING (the leftover would
-otherwise be silently lost); the shares still floor, the remainder simply is not captured.
+**Warning:** §9.7.3/§9.7.4 — "Als een maximale aanspraak / afronding wordt gespecificeerd, dan moet ook altijd
+een onverdeelde rest worden gespecificeerd." A verdeling that caps or floors with no (recognisable) bron-side
+remainder attribute raises a WARNING (the leftover would otherwise be silently lost), but only when the verdeler
+resolves — an unresolved-verdeler fragment markers anyway, so warning there is noise. The shares still cap/floor;
+the remainder simply is not captured.
 
 ### §6.5 gedeeld door (ABS) — 5 decimals toward zero, and a table typo
 

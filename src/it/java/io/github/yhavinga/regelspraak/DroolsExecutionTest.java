@@ -1320,6 +1320,50 @@ class DroolsExecutionTest {
                 () -> "de onverdeelde rest moet zich naar 1 corrigeren, niet op 0 blijven staan, kreeg " + p.getRestant());
     }
 
+    static final String VERDELING_MAX_SRC = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+                de restant Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+                de maximum Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel met maximum
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - naar rato van de gewicht,
+                    - met een maximum van de maximum.
+                    Als onverdeelde rest blijft de restant van een pot over.
+            """;
+
+    @Test void verdeling_naar_rato_met_maximumaanspraak_capt_de_aandelen_en_houdt_de_rest() {
+        // §9.7.3 worked example: 1200 over woonregio factors 3:1:2 (Σ=6), max 300 per recipient. Wilma 3/6·1200=600
+        // -> capped to 300; Hans 1/6·1200=200 (under the max); Diederik 2/6·1200=400 -> capped to 300. The capped
+        // surplus is NOT redistributed — the 1200-300-200-300 = 400 left over is the onverdeelde rest.
+        RegelSpraakModel m = Resolver.resolve(VERDELING_MAX_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsPlafond("), () -> "aandeel niet op een maximum gecapt:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Pot p = new Pot(); p.setTotaal(new BigDecimal("1200"));
+        Deelnemer wilma = new Deelnemer(); wilma.setPot(p); wilma.setGewicht(new BigDecimal("3")); wilma.setMaximum(new BigDecimal("300"));
+        Deelnemer hans = new Deelnemer(); hans.setPot(p); hans.setGewicht(new BigDecimal("1")); hans.setMaximum(new BigDecimal("300"));
+        Deelnemer diederik = new Deelnemer(); diederik.setPot(p); diederik.setGewicht(new BigDecimal("2")); diederik.setMaximum(new BigDecimal("300"));
+        for (Object o : new Object[]{p, wilma, hans, diederik}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("300").compareTo(wilma.getAandeel()), () -> "wilma 600 -> cap 300, kreeg " + wilma.getAandeel());
+        assertEquals(0, new BigDecimal("200").compareTo(hans.getAandeel()), () -> "hans 200 (onder max), kreeg " + hans.getAandeel());
+        assertEquals(0, new BigDecimal("300").compareTo(diederik.getAandeel()), () -> "diederik 400 -> cap 300, kreeg " + diederik.getAandeel());
+        assertEquals(0, new BigDecimal("400").compareTo(p.getRestant()), () -> "onverdeelde rest 1200-300-200-300 = 400, kreeg " + p.getRestant());
+    }
+
     @Test void cross_unit_optelling_wordt_omgerekend_niet_rauw_geteld() {
         // duur(mnd) := looptijd(jr) + duur(mnd). looptijd must be scaled jr->mnd (×12),
         // NOT added raw: 2 jr + 3 mnd = 27 mnd, not 5.

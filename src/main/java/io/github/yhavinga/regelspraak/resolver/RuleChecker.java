@@ -399,29 +399,32 @@ final class RuleChecker {
 
         // The bare "in gelijke delen" / "naar rato van" names the method directly. The bulleted
         // meervoudigCriterium (§9.7.7) wraps that same method with optional modifiers; only the subset
-        // WITHOUT group ordering and WITHOUT a per-recipient maximum has a single forward-rule form, so a
-        // present verdelenOverGroepen or maximumAanspraak keeps the whole verdeling COMPLEX (a marker).
-        // The §9.7.4 afronding (floor) and §9.7.5 onverdeelde rest ride on the equal-shares / naar-rato spine.
+        // WITHOUT group ordering has a single forward-rule form, so a present verdelenOverGroepen keeps the
+        // whole verdeling COMPLEX (a marker). The §9.7.3 maximum (naar-rato only), the §9.7.4 afronding (floor)
+        // and the §9.7.5 onverdeelde rest ride on the equal-shares / naar-rato spine.
         VerdelenZonderGroepenContext z = v.verdelenZonderGroepen();
         Integer afrDec = null;
-        String restAttr = null;
+        String restAttr = null, maxAttr = null;
         MeervoudigCriteriumContext mc = v.meervoudigCriterium();
-        if (z == null && mc != null && mc.verdelenOverGroepen() == null && mc.maximumAanspraak() == null) {
+        if (z == null && mc != null && mc.verdelenOverGroepen() == null) {
             z = mc.verdelenZonderGroepen();
             if (mc.verdeelAfronding() != null)
                 try { afrDec = Integer.valueOf(mc.verdeelAfronding().NUMBER().getText()); }
                 catch (NumberFormatException ignore) {}
+            if (mc.maximumAanspraak() != null && mc.maximumAanspraak().attribuutMetLidwoord() != null
+                    && mc.maximumAanspraak().attribuutMetLidwoord().kaleNaam() != null)
+                maxAttr = src(mc.maximumAanspraak().attribuutMetLidwoord().kaleNaam());   // a recipient (doel) attribute
             if (mc.onverdeeldeRest() != null && b.objecttype() != null
                     && bouwer.bouwAttribuut(mc.onverdeeldeRest().attribuutVanOnderwerp()) instanceof Expr.AttribuutRef ra
                     && ra.objecttype() == b.objecttype())   // the remainder lives on the verdeler (the source)
                 restAttr = ra.attribuut();
-            if (afrDec != null && restAttr == null)
-                // §9.7.4: "Als wordt afgerond, dan moet ook altijd een onverdeelde rest worden gespecificeerd."
-                // Flooring can leave the plafond under-distributed, so without a captured remainder attribute the
-                // leftover is silently lost — surface that rather than drop it. (The shares still floor correctly.)
+            if ((afrDec != null || maxAttr != null) && restAttr == null && b.objecttype() != null)
+                // §9.7.3/§9.7.4: a maximum OR an afronding can leave the plafond under-distributed, so the spec
+                // REQUIRES an onverdeelde rest. Without a captured one the leftover is silently lost — surface it.
+                // Only when the bron resolves (an unresolved-verdeler fragment markers anyway, so warning is noise).
                 model.diagnostics.add(new Diagnostic(Severity.WARNING,
-                        "verdeling met afronding zonder herkenbare onverdeelde rest (§9.7.4): het restant na "
-                        + "afronding wordt niet vastgelegd (regel '" + naam + "')", v.getStart().getLine()));
+                        "verdeling met afronding/maximum zonder herkenbare onverdeelde rest (§9.7.3/§9.7.4): het "
+                        + "restant wordt niet vastgelegd (regel '" + naam + "')", v.getStart().getLine()));
         }
 
         ResolvedVerdeling.Methode methode = ResolvedVerdeling.Methode.COMPLEX;
@@ -433,6 +436,16 @@ final class RuleChecker {
             // exactly like b.attribuut()/d.attribuut() — "de woonregio factor" -> "woonregio factor".
             rato = z.attribuutMetLidwoord() != null && z.attribuutMetLidwoord().kaleNaam() != null
                     ? src(z.attribuutMetLidwoord().kaleNaam()) : null;
+        }
+        // §9.7.3: a maximale aanspraak is valid ONLY for naar rato ("niet mogelijk bij gelijke verdeling" — a
+        // gelijke verdeling met maximum is voor meerdere uitleg vatbaar) and only when it names a getalachtig
+        // recipient attribute (else the cap getter would not compile). Otherwise the verdeling stays COMPLEX.
+        if (maxAttr != null) {
+            Datatype maxType = d.objecttype() != null ? d.objecttype().attribuut(maxAttr) : null;
+            if (methode != ResolvedVerdeling.Methode.NAAR_RATO || maxType == null || !maxType.isGetalachtig()) {
+                methode = ResolvedVerdeling.Methode.COMPLEX;
+                maxAttr = null;
+            }
         }
         // §6.1.2 precision, consistent with the ordinary `regel` assignment: a share whose decimal count
         // exceeds the target attribute's must be explicitly rounded (the §9.7.4 afronding). Run it only when
@@ -452,7 +465,7 @@ final class RuleChecker {
             }
         }
         model.verdelingen.add(new ResolvedVerdeling(naam, b.objecttype(), b.attribuut(),
-                d.objecttype(), d.attribuut(), methode, rato, afrDec, restAttr, voorwaarde, geldigheid));
+                d.objecttype(), d.attribuut(), methode, rato, maxAttr, afrDec, restAttr, voorwaarde, geldigheid));
     }
 
     /** §13.4.6 objectcreatie: "<subject> heeft <het rol> met <attribuut> gelijk aan <expr>
