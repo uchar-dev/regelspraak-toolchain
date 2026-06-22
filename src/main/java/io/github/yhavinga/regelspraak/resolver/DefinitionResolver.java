@@ -80,14 +80,23 @@ public final class DefinitionResolver {
             // §13.3.6 a temporal attribute carries a tijdlijn ("voor elk jaar") — record its granularity so
             // the Phase-7 value model can later lower the periods; absent for an ordinary single-value attribute.
             Granulariteit g = granulariteitVan(a.tijdlijn());
-            if (g != null) ot.attribuutGranulariteit.put(naam, g);
+            if (g != null) {
+                ot.attribuutGranulariteit.put(naam, g);
+                int aantal = aantalVan(a.tijdlijn());   // §13.3.6.7 the "5" in "voor elke 5 maanden"; 1 otherwise
+                if (aantal != 1) ot.attribuutTijdlijnAantal.put(naam, aantal);
+            }
         } else if (m.kenmerkSpecificatie() != null) {
             String naam = kenmerkNaam(m.kenmerkSpecificatie());
             meldHoofdletterBotsing(ot, naam, ot.kenmerken, m.getStart().getLine());
             ot.kenmerken.add(naam);
             ot.kenmerkSoorten.put(naam, kenmerkSoortVan(m.kenmerkSpecificatie()));   // §3.5 drives the §8.1.8 predicate form
-            Granulariteit gk = granulariteitVan(tijdlijnVan(m.kenmerkSpecificatie()));
-            if (gk != null) ot.kenmerkGranulariteit.put(naam, gk);
+            TijdlijnContext kt = tijdlijnVan(m.kenmerkSpecificatie());
+            Granulariteit gk = granulariteitVan(kt);
+            if (gk != null) {
+                ot.kenmerkGranulariteit.put(naam, gk);
+                int aantal = aantalVan(kt);
+                if (aantal != 1) ot.kenmerkTijdlijnAantal.put(naam, aantal);
+            }
         }
         // koptekst carries no model information
     }
@@ -362,6 +371,15 @@ public final class DefinitionResolver {
         if (ctx.KWARTAAL() != null) return Granulariteit.KWARTAAL;
         if (ctx.JAAR() != null)     return Granulariteit.JAAR;
         return granulariteitVanMeervoud(ctx.tijdseenhedenMeervoud());
+    }
+
+    /** §13.3.6.7 the period count of a tijdlijn attachment: the "5" in "voor elke 5 maanden". A single-period
+     *  form ("voor elke maand") and the named form carry no count, so they are 1. */
+    private static int aantalVan(TijdlijnContext t) {
+        if (t == null || t.meervoudigePeriode() == null) return 1;
+        TijdseenhedenMeervoudContext m = t.meervoudigePeriode().tijdseenhedenMeervoud();
+        if (m == null || m.NUMBER() == null) return 1;
+        try { return Integer.parseInt(m.NUMBER().getText()); } catch (NumberFormatException e) { return 1; }
     }
 
     /** §13.3.6.8 the plural time-unit of a multi-period tijdlijn → its singular {@link Granulariteit}. */

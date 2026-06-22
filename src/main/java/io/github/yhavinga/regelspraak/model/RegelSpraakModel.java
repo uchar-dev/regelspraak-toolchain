@@ -318,13 +318,18 @@ public final class RegelSpraakModel {
          *  JAAR), keyed by its naam — absent for an ordinary single-value attribute. A temporal attribute
          *  holds one value per period of this granularity (§5.1); recording the declaration here is the
          *  IR-shape foundation for the Phase-7 value model that will lower the periods (knip-merge,
-         *  tijdsevenredig, gedurende). The period COUNT ("voor elke 5 maanden") and the startpunt are not
-         *  yet captured — only the unit. */
+         *  tijdsevenredig, gedurende). The startpunt is not yet captured. */
         public final Map<String, Granulariteit> attribuutGranulariteit = new LinkedHashMap<>();
+        /** §13.3.6.7 the period COUNT of a MULTI-period tijdlijn ("voor elke 5 maanden" -&gt; 5), keyed by the
+         *  attribute naam — absent (count 1) for a single-period "voor elke maand". Each tijdvak then spans
+         *  {@code aantal} units of {@link #attribuutGranulariteit}, so a temporal fold must divide by it. */
+        public final Map<String, Integer> attribuutTijdlijnAantal = new LinkedHashMap<>();
         public final List<String> kenmerken = new ArrayList<>();
         /** §13.3.6 the granularity of a temporal kenmerk's tijdlijn ("is duurzaam kenmerk voor elke dag"),
          *  keyed by its naam — the kenmerk analogue of {@link #attribuutGranulariteit}. */
         public final Map<String, Granulariteit> kenmerkGranulariteit = new LinkedHashMap<>();
+        /** §13.3.6.7 the kenmerk analogue of {@link #attribuutTijdlijnAantal}. */
+        public final Map<String, Integer> kenmerkTijdlijnAantal = new LinkedHashMap<>();
         /** §3.5 the soort of each kenmerk, keyed by its naam — drives the §8.1.8 predicate form: a
          *  BIJVOEGLIJK kenmerk is written "is &lt;k&gt;", a BEZITTELIJK one "heeft het &lt;k&gt;", a
          *  ZELFSTANDIG one "is een &lt;k&gt;" (so only a ZELFSTANDIG kenmerk binds the EEN-form). */

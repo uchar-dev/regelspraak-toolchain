@@ -114,6 +114,23 @@ class ModelTest {
                 () -> "verwachtte een dubbel-tijdlijn waarschuwing, kreeg: " + m.diagnostics);
     }
 
+    @Test void meer_periodieke_tijdlijn_legt_zijn_periodeaantal_vast() {
+        // §13.3.6.7: "voor elke 5 maanden" records granularity MAAND AND count 5; a single-period "voor elke
+        // maand" records no count (1 implicit, the map stays sparse).
+        String src = """
+            Domein Bedrag is van het type Numeriek (geheel getal)
+            Objecttype de Vlucht (mv: Vluchten)
+                de blokwaarde Bedrag voor elke 5 maanden startend op 9-3-2025;
+                de maandwaarde Bedrag voor elke maand;
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        Objecttype v = m.objecttypen.get("Vlucht");
+        assertEquals(RegelSpraakModel.Granulariteit.MAAND, v.attribuutGranulariteit.get("blokwaarde"));
+        assertEquals(Integer.valueOf(5), v.attribuutTijdlijnAantal.get("blokwaarde"));
+        assertNull(v.attribuutTijdlijnAantal.get("maandwaarde"), "een enkel-periodieke tijdlijn legt geen aantal vast");
+    }
+
     @Test void domein_typed_attribuut_lost_op() {
         RegelSpraakModel m = Resolver.resolve(SRC);
         // "belasting op basis van afstand" is typed by domain Bedrag = Numeriek(2 decimalen)

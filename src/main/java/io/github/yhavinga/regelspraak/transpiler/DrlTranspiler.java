@@ -1549,6 +1549,11 @@ public final class DrlTranspiler {
         if (a.objecttype() == null) return null;
         RegelSpraakModel.Granulariteit g = a.objecttype().attribuutGranulariteit.get(a.attribuut());
         if (g == null) return null;   // not a temporal attribute -> fall through to the instance-accumulate / marker
+        // §13.3.6.7 a MULTI-period attribute ("voor elke 5 maanden") weights each tijdvak by the period count,
+        // whose totaal semantics §7.1 does not work out — marker it rather than mis-count it as single-period.
+        if (a.objecttype().attribuutTijdlijnAantal.containsKey(a.attribuut()))
+            return todo("totaal van een meer-periodieke tijdreeks (§13.3.6.7, voor elke <n> " + g.name().toLowerCase()
+                    + "en)", a.bron());
         registreerTijdTotaalFunctie();
         return "rsTijdTotaal(" + SUBJECT + "." + getter(a.attribuut()) + "(), \"" + g.name() + "\")";
     }

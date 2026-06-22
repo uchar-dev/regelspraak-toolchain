@@ -2172,4 +2172,29 @@ class DrlTest {
         assertFalse(drl.contains("/* TODO aggregatie MAXIMUM"),
                 () -> "een enkel-operand max mag geen marker zijn:\n" + drl);
     }
+
+    @Test void totaal_van_een_meer_periodieke_tijdreeks_wordt_gemarkeerd_niet_mis_geteld() {
+        // §13.3.6.7: "het totaal van" a "voor elke 5 maanden" attribute cannot reuse the per-maand weighting
+        // (§7.1 does not work out the multi-period totaal), so it MARKERS rather than mis-counting 5x as
+        // single-period. A single-period "voor elke maand" totaal still lowers via rsTijdTotaal.
+        String meer = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de premie per blok Bedrag voor elke 5 maanden startend op 9-3-2025;
+                de totale premie Bedrag;
+            Regel Totale premie
+                geldig altijd
+                    De totale premie van een Passagier moet gesteld worden op het totaal van zijn premie per blok.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(meer));
+        assertTrue(drl.contains("/* TODO totaal van een meer-periodieke tijdreeks"),
+                () -> "een meer-periodieke totaal moet een marker zijn:\n" + drl);
+        assertFalse(drl.contains("rsTijdTotaal"),
+                () -> "een meer-periodieke totaal mag niet als enkel-periodiek lowereren:\n" + drl);
+
+        String enkel = meer.replace("de premie per blok Bedrag voor elke 5 maanden startend op 9-3-2025;",
+                                    "de premie per blok Bedrag voor elke maand;");
+        assertTrue(DrlTranspiler.transpile(Resolver.resolve(enkel)).contains("rsTijdTotaal"),
+                "een enkel-periodieke totaal moet via rsTijdTotaal lowereren");
+    }
 }
