@@ -78,6 +78,7 @@ public final class DefinitionResolver {
             String naam = kenmerkNaam(m.kenmerkSpecificatie());
             meldHoofdletterBotsing(ot, naam, ot.kenmerken, m.getStart().getLine());
             ot.kenmerken.add(naam);
+            ot.kenmerkSoorten.put(naam, kenmerkSoortVan(m.kenmerkSpecificatie()));   // §3.5 drives the §8.1.8 predicate form
         }
         // koptekst carries no model information
     }
@@ -101,6 +102,19 @@ public final class DefinitionResolver {
         if (k instanceof BijvoeglijkKenmerkContext b) return naam(b.lowerNaam());
         if (k instanceof NaamwoordKenmerkContext n) return naam(n.lowerNaam());
         return src(k);
+    }
+
+    /** §3.5 kenmerk soort from the declaration: the optional {@code (bijvoeglijk)}/{@code (bezittelijk)} marker
+     *  classifies it; an UNTAGGED kenmerk is ZELFSTANDIG (the "is een &lt;k&gt;" noch-noch form — including the
+     *  TOKA "is passagier van 18 … kenmerk", which the grammar admits via the IS-form without the tag). */
+    private static Objecttype.KenmerkSoort kenmerkSoortVan(KenmerkSpecificatieContext k) {
+        if (k instanceof BijvoeglijkKenmerkContext b)
+            return b.BIJVOEGLIJK() != null ? Objecttype.KenmerkSoort.BIJVOEGLIJK : Objecttype.KenmerkSoort.ZELFSTANDIG;
+        if (k instanceof NaamwoordKenmerkContext n)
+            return n.BEZITTELIJK() != null ? Objecttype.KenmerkSoort.BEZITTELIJK
+                 : n.BIJVOEGLIJK() != null ? Objecttype.KenmerkSoort.BIJVOEGLIJK
+                 : Objecttype.KenmerkSoort.ZELFSTANDIG;
+        return Objecttype.KenmerkSoort.ZELFSTANDIG;
     }
 
     // ---------------- §13.3.3/§13.3.4 datatypes & domains ----------------

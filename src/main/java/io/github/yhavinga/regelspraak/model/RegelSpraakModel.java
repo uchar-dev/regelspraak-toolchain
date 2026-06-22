@@ -315,7 +315,15 @@ public final class RegelSpraakModel {
          *  reference must pin every dimension and an aggregation ranges over a dimension's label set. */
         public final Map<String, List<String>> attribuutDimensies = new LinkedHashMap<>();
         public final List<String> kenmerken = new ArrayList<>();
+        /** §3.5 the soort of each kenmerk, keyed by its naam — drives the §8.1.8 predicate form: a
+         *  BIJVOEGLIJK kenmerk is written "is &lt;k&gt;", a BEZITTELIJK one "heeft het &lt;k&gt;", a
+         *  ZELFSTANDIG one "is een &lt;k&gt;" (so only a ZELFSTANDIG kenmerk binds the EEN-form). */
+        public final Map<String, KenmerkSoort> kenmerkSoorten = new LinkedHashMap<>();
         public Objecttype(String naam) { this.naam = naam; }
+
+        /** §3.5 kenmerk soort: bijvoeglijk ("is &lt;k&gt;"), bezittelijk ("heeft het &lt;k&gt;") or
+         *  zelfstandig/noch-noch ("is een &lt;k&gt;"). An untagged declaration is zelfstandig. */
+        public enum KenmerkSoort { BIJVOEGLIJK, BEZITTELIJK, ZELFSTANDIG }
 
         /** The declared datatype of attribute {@code naam}, matched case-INsensitively —
          *  object-type names already resolve this way (see {@link #objecttypeOpNaam}), so a
@@ -345,6 +353,16 @@ public final class RegelSpraakModel {
          *  or must stay an honest marker. */
         public boolean heeftLid(String naam) {
             return attribuut(naam) != null || kenmerken.stream().anyMatch(k -> k.equalsIgnoreCase(naam));
+        }
+
+        /** The §3.5 soort of kenmerk {@code naam} (case-insensitively), or null when no such kenmerk is
+         *  declared. An untagged kenmerk is {@link KenmerkSoort#ZELFSTANDIG}. */
+        public KenmerkSoort kenmerkSoort(String naam) {
+            KenmerkSoort exact = kenmerkSoorten.get(naam);
+            if (exact != null) return exact;
+            for (var e : kenmerkSoorten.entrySet())
+                if (e.getKey().equalsIgnoreCase(naam)) return e.getValue();
+            return null;
         }
     }
 

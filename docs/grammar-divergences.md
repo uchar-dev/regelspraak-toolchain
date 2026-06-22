@@ -406,21 +406,25 @@ operand (`de Meting bereikbaar per` + operator `trein`), so the resolver reconst
 from that absorbed prefix plus the operator's `kaleNaam`. The leading **`een`** article switches the
 reading to a **membership** test: see the §8.1.7 rolcheck section below.
 
-**`is een <rolnaam>` is a §8.1.7 rolcheck (`reis != null`).** The grammar conflates a rolnaam and a
-kenmerknaam after the optional `een`, so the resolver disambiguates by lookup. WITHOUT `een` the name is
-the subject's kenmerk (above). WITH `een` it is read as a rolcheck — the subject FILLS role `<naam>` iff
-it joins the other end of that feittype. `model.rolSiblingType` (the mirror of `rolDoeltypeNaarSubject`)
-returns that other end's object type; in the §9.4 reference-field fact model the subject participates iff
-its reference to that end is set, so `Conditie.Rollidmaatschap` lowers to a bare null-test on the
-subject's own pattern — toka-42 `hij is een passagier` → `reis != null`, lighting up a rule whose whole
-compound used to be a `false /* TODO */` dead gate. When the reference lives on the FAR side (the `heeft
-een <rol>` form) an exists-join is needed, which does not fit a single in-pattern constraint, so it stays
-an honest marker (carded). **Carded** alongside it: the §8.1.8.3 EEN-form *kenmerkcheck* (`is een
-<zelfstandig kenmerk>`) — taking it must NOT bind a bijvoeglijk kenmerk (which is written without `een`),
-and that needs the kenmerk **soort** the model still discards (the grammar already distinguishes
-`BijvoeglijkKenmerk` from `NaamwoordKenmerk`); the corpus EEN-form kenmerk bullets markered already
-through an undeclared sibling bullet, so leaving this carded costs no coverage. The negated `is geen
-<rol>` is carded too — its `geen` lexes into the `kaleNaam` with no `een`, so it never reaches this path.
+**The EEN-form is disambiguated kenmerk-first (Tabel 16): a §8.1.8.3 zelfstandig kenmerkcheck, else a §8.1.7
+rolcheck.** The grammar conflates a kenmerknaam and a rolnaam after the optional `een`, so the resolver
+disambiguates by lookup. WITHOUT `een` the name is the subject's kenmerk (above). WITH `een`: a ZELFSTANDIG
+kenmerk binds first (`is een <k>` → `k == true`), otherwise the name is a §8.1.7 rolcheck — the subject FILLS
+role `<naam>` iff it joins the other end of that feittype. `model.rolSiblingType` (the mirror of
+`rolDoeltypeNaarSubject`) returns that other end's object type; in the §9.4 reference-field fact model the
+subject participates iff its reference to that end is set, so `Conditie.Rollidmaatschap` lowers to a bare
+null-test on the subject's own pattern — toka-42 `hij is een passagier` → `reis != null`, lighting up a rule
+whose whole compound used to be a `false /* TODO */` dead gate.
+
+The §8.1.8.3 kenmerkcheck binds ONLY a ZELFSTANDIG kenmerk: the §3.5 soort, recorded on the model from the
+optional `(bijvoeglijk)`/`(bezittelijk)` tag (an untagged declaration is zelfstandig — incl. the TOKA `is
+passagier van 18 … kenmerk`, which the grammar admits via the IS-form without the tag), keeps a bijvoeglijk
+kenmerk (written `is <k>`, no `een`) and a bezittelijk one (`heeft het <k>`) from binding the EEN-form. The TOKA
+EEN-form kenmerk bullets resolve but their compounds still marker through an undeclared sibling kenmerk, so no
+corpus rule lights up yet. **Carded:** the NAVIGATED EEN-form kenmerkcheck (`zijn reis is een <kenmerk>`), the
+negated `is geen <rol>`/`is geen <kenmerk>` (its `geen` lexes into the `kaleNaam` with no `een`, so it never
+reaches this path), and the FAR-side rolcheck (`heeft een <rol>` — an exists-join that does not fit a single
+in-pattern constraint).
 
 **Navigated and negated forms are now lowered too.** A TO-ONE navigated kenmerk (`de partner van een
 Persoon gepensioneerd is`) resolves the kenmerk against the navigated type and lowers to the null-guarded

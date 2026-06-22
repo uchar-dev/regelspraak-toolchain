@@ -820,11 +820,11 @@ final class RuleChecker {
 
     /** §8.1.7/§8.1.8: "&lt;subject&gt; is/heeft (een)? &lt;naam&gt;" -> a {@link Conditie.Kenmerk} (the
      *  §8.1.8 kenmerkcheck) or a {@link Conditie.Rollidmaatschap} (the §8.1.7 rolcheck), when the operand
-     *  denotes the rule subject (or a to-one navigation from it). WITHOUT "een" the name is read as the
-     *  subject's kenmerk (own or navigated). WITH "een" it is read as a rolcheck: "is een &lt;rolnaam&gt;"
-     *  is true when the subject fills that role. The §8.1.8.3 EEN-form kenmerkcheck ("is een &lt;zelfstandig
-     *  kenmerk&gt;") is deliberately NOT taken here — it must not bind a bijvoeglijk kenmerk (written without
-     *  "een"), which needs the kenmerk soort the model discards today (carded). A name that resolves to
+     *  denotes the rule subject (or a to-one navigation from it). WITHOUT "een" the name is the subject's
+     *  kenmerk (own or navigated). WITH "een" the grammar conflates a kenmerknaam and a rolnaam, so the
+     *  resolver disambiguates by lookup, kenmerk-first (Tabel 16): a ZELFSTANDIG kenmerk (§8.1.8.3 "is een
+     *  &lt;k&gt;") binds first, otherwise a role the subject fills is the §8.1.7 rolcheck. A bijvoeglijk /
+     *  bezittelijk kenmerk is NOT written with "een", so the EEN-form never binds it. A name that resolves to
      *  neither stays Onopgelost (an honest marker), never a silently-true gate. */
     private Conditie kenmerkPredicaat(Expr lhs, KaleNaamContext naamCtx, boolean metEen, boolean heeftWerkwoord, String bron) {
         Objecttype subject = bouwer.subject();
@@ -840,10 +840,24 @@ final class RuleChecker {
         // the operator's kaleNaam; for "hij"/a bare subject the kop is empty and the name is the kaleNaam.
         String naam = kop.isEmpty() ? staart : kop + " " + staart;
         if (!metEen) return kenmerkConditie(subject, naam, null, heeftWerkwoord, bron);   // §8.1.8 is/heeft <kenmerk>
-        // §8.1.7 rolcheck: "is een <rolnaam>". The §8.1.8.3 "is een <zelfstandig kenmerk>" kenmerkcheck is
-        // carded: it must NOT bind a bijvoeglijk kenmerk (written without "een"), which needs the kenmerk soort
-        // the model discards today; the corpus EEN-form kenmerk bullets already markered via a sibling bullet.
-        return rolLidmaatschap(subject, naam, bron);
+        // EEN-form: the grammar conflates a kenmerknaam and a rolnaam after "een", so disambiguate by lookup,
+        // kenmerk-first (Tabel 16). §8.1.8.3: "is een <zelfstandig kenmerk>" binds a kenmerk ONLY when it is
+        // ZELFSTANDIG (a bijvoeglijk kenmerk is written "is <k>", a bezittelijk one "heeft het <k>", so neither
+        // takes "een"). Otherwise it is the §8.1.7 rolcheck "is een <rolnaam>".
+        Conditie k = zelfstandigKenmerk(subject, naam, bron);
+        return k != null ? k : rolLidmaatschap(subject, naam, bron);
+    }
+
+    /** §8.1.8.3 "&lt;subject&gt; is een &lt;zelfstandig kenmerk&gt;" -> a {@link Conditie.Kenmerk} ("k == true"),
+     *  but ONLY for a {@link Objecttype.KenmerkSoort#ZELFSTANDIG} kenmerk: a bijvoeglijk kenmerk ("is &lt;k&gt;")
+     *  and a bezittelijk one ("heeft het &lt;k&gt;") are not written with "een", so the EEN-form must not bind
+     *  them (that mis-binding was the reason the EEN-form kenmerkcheck was deferred). Positive only — the "is
+     *  geen" negation lexes into the kaleNaam with no "een" and reaches the non-EEN path (carded). Null when no
+     *  ZELFSTANDIG kenmerk of {@code subject} bears the name, so the caller falls back to the §8.1.7 rolcheck. */
+    private Conditie zelfstandigKenmerk(Objecttype subject, String naam, String bron) {
+        String g = KenmerkMatcher.vind(subject, naam);
+        return g != null && subject.kenmerkSoort(g) == Objecttype.KenmerkSoort.ZELFSTANDIG
+                ? new Conditie.Kenmerk(g, bron) : null;
     }
 
     /** §8.1.7 rolcheck: "&lt;subject&gt; is een &lt;rolnaam&gt;" — true when the subject fills that role.

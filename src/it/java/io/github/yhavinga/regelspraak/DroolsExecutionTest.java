@@ -2821,6 +2821,39 @@ class DroolsExecutionTest {
         build(drl);  // must COMPILE — an uncompilable `passagier != null` on Vlucht would throw here
     }
 
+    @Test void membership_eenvorm_kenmerkcheck_bindt_alleen_een_zelfstandig_kenmerk() {
+        // §8.1.8.3: "hij is een <zelfstandig kenmerk>" binds the boolean property (student == true); a BIJVOEGLIJK
+        // kenmerk (written "is <k>", no "een") must NOT bind the EEN-form — it stays a marker, so a rule gated on
+        // "is een <bijvoeglijk>" never fires. The soort comes from the §3.5 (bijvoeglijk)/(bezittelijk) tag.
+        String src = """
+            Objecttype de Passagier
+                is student kenmerk;
+                is minderjarig kenmerk (bijvoeglijk);
+                is kind kenmerk;
+            Regel zelfstandig
+                geldig altijd
+                    Een passagier is kind indien hij is een student.
+            Regel bijvoeglijk
+                geldig altijd
+                    Een passagier is kind indien hij is een minderjarig.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("student == true"), () -> "zelfstandig EEN-vorm kenmerkcheck niet gelowerd:\n" + drl);
+        assertTrue(drl.contains("/* TODO"), () -> "een bijvoeglijk kenmerk mag de EEN-vorm NIET binden:\n" + drl);
+        assertFalse(drl.contains("minderjarig == true"), () -> "bijvoeglijk 'is een minderjarig' mag niet binden:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier student = new Passagier(); student.setStudent(true);    // gates the zelfstandig rule
+        Passagier ander = new Passagier();                                // not a student
+        sessie.insert(student); sessie.insert(ander);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(student.isKind(), "een student -> de zelfstandige kenmerkgate vuurt");
+        assertFalse(ander.isKind(), "geen student -> de gate vuurt niet (en de bijvoeglijke regel is inert)");
+    }
+
     // ---------------- p29(1): §13.4.2 inflected kenmerk die-filter ----------------
 
     @Test void getelde_die_verbogen_kenmerk_filter_telt_alleen_de_minderjarige_passagiers() {
