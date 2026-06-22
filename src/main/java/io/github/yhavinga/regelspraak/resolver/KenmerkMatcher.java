@@ -55,10 +55,21 @@ final class KenmerkMatcher {
 
     /** The regular attributive/nominalized "-e" form of a bijvoeglijk-naamwoord base. Exactly one
      *  candidate: the syllable-opening shortened form for a long-vowel-digraph-plus-one-consonant
-     *  stem, otherwise the plain "-e" suffix. */
+     *  stem, otherwise the plain "-e" suffix.
+     *
+     *  <p>A MULTI-WORD bijvoeglijk kenmerk ("bereikbaar per trein", §3.5) inflects on its HEAD — the
+     *  adjective is the first word, the rest a prepositional/complement tail — so "bereikbare per trein",
+     *  not the tail-inflected non-word "bereikbaar per treine". So the head word is inflected and the
+     *  tail re-appended verbatim; a single-word phrase is just the head with no tail. */
     static List<String> verbogenVormen(String basis) {
         List<String> uit = new ArrayList<>();
         String b = basis.toLowerCase();
+        int spatie = b.indexOf(' ');
+        if (spatie > 0) {                                     // multi-word: inflect the head, keep the tail
+            String staart = b.substring(spatie);              // includes the leading space
+            for (String v : verbogenVormen(b.substring(0, spatie))) uit.add(v + staart);
+            return uit;
+        }
         if (b.isEmpty() || b.endsWith("e")) return uit;       // an -e base is already its inflected form
         // A long-vowel digraph (aa|ee|oo|uu) in the final closed syllable shortens when "-e" opens the
         // syllable: …VV + one consonant → single V + that consonant + e (groot→grote, duurzaam→duurzame).

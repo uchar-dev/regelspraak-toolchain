@@ -61,6 +61,21 @@ class KenmerkMatcherTest {
         assertNull(KenmerkMatcher.vind(met("hoog"), "hooge"));            // non-word does not
     }
 
+    @Test void meerwoordig_kenmerk_verbuigt_op_de_kop_niet_de_staart() {
+        // §3.5 a multi-word bijvoeglijk kenmerk inflects on its HEAD adjective, with the prepositional tail
+        // kept verbatim: "bereikbaar per trein" -> "bereikbare per trein", NOT the tail-inflected non-word
+        // "bereikbaar per treine". The head's digraph-shortening still applies ("groot bereik" -> "grote bereik").
+        assertEquals(List.of("bereikbare per trein"), KenmerkMatcher.verbogenVormen("bereikbaar per trein"));
+        assertEquals(List.of("grote bereik"), KenmerkMatcher.verbogenVormen("groot bereik"));
+        assertEquals("bereikbaar per trein", KenmerkMatcher.vind(met("bereikbaar per trein"), "bereikbare per trein"));
+        assertEquals("bereikbaar per trein", KenmerkMatcher.vind(met("bereikbaar per trein"), "Bereikbare per trein"));
+        // the tail-inflected non-word must NOT bind (proves the fix, not a looser match)
+        assertNull(KenmerkMatcher.vind(met("bereikbaar per trein"), "bereikbaar per treine"));
+        // the exact base still wins, and an unrelated phrase stays unmatched
+        assertEquals("bereikbaar per trein", KenmerkMatcher.vind(met("bereikbaar per trein"), "bereikbaar per trein"));
+        assertNull(KenmerkMatcher.vind(met("bereikbaar per trein"), "bereikbare per bus"));
+    }
+
     @Test void ambigue_verbuiging_bindt_niets() {
         // "grote" is the regular inflection of BOTH "groot" (shortened) and "grot" (plain +e, since
         // its doubled "grotte" is unmodelled). Binding either would make the result depend on
