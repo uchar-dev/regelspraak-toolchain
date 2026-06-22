@@ -2288,6 +2288,26 @@ class DrlTest {
         assertFalse(drl.contains("rsTijdKnip"), () -> "een attribuut-conditie mag geen tijdklip krijgen:\n" + drl);
     }
 
+    @Test void negated_gedurende_klipt_via_het_complement() {
+        // §8.1.8.1/.2 a "gedurende de tijd dat hij GEEN <kenmerk> heeft" clips the value timeline to the FALSE
+        // periods — rsTijdKnipNiet (the complement), never the positive rsTijdKnip. (Teeth: drop the negatie
+        // branch and it falls back to the positive clip, computing the wrong period.)
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat hij geen recht op belastingvermindering heeft).
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rsTijdTotaal(rsTijdKnipNiet($subject.getBelastingverminderingPerMaand(), "
+                        + "$subject.getRechtOpBelastingvermindering()), \"MAAND\")"),
+                () -> "de negatie moet via rsTijdKnipNiet (complement) klippen:\n" + drl);
+    }
+
     @Test void benoemde_meer_periodieke_tijdlijn_wordt_ook_gemarkeerd_niet_single_period_geteld() {
         // Review defect: a NAMED multi-period timeline ("voor elke blokperiode" -> "tijdvakken van 5 maanden")
         // must inherit the period count from its definition and marker, not slip past the guard into a

@@ -420,10 +420,21 @@ final class ExpressieBouwer {
             heeftVerb = op.HEEFT() != null || op.HEBBEN() != null;
         } else return null;
         if (kn == null || (!isVerb && !heeftVerb)) return null;         // an "is/heeft <kenmerk>" membership (§3.5)
-        String kenmerk = KenmerkMatcher.vind(huidigSubject, src(kn));
+        // §8.1.8.1/.2 a "geen"/"niet" before the kenmerk negates the membership ("hij geen recht ... heeft" / "hij
+        // niet rechthebbend is"); the negator lexes into the kaleNaam (no GEEN/NIET token here), so try the
+        // verbatim name first (a kenmerk literally beginning with geen/niet still binds positively), then a stripped
+        // form. A negated gedurende clips the value timeline to the kenmerk's FALSE periods (the complement).
+        String geschreven = src(kn);
+        boolean negatie = false;
+        String kenmerk = KenmerkMatcher.vind(huidigSubject, geschreven);
+        if (kenmerk == null && (geschreven.regionMatches(true, 0, "geen ", 0, 5)
+                || geschreven.regionMatches(true, 0, "niet ", 0, 5))) {
+            kenmerk = KenmerkMatcher.vind(huidigSubject, geschreven.substring(5).trim());
+            negatie = kenmerk != null;
+        }
         if (kenmerk == null || !huidigSubject.kenmerkGranulariteit.containsKey(kenmerk)
                 || huidigSubject.kenmerkTijdlijnAantal.containsKey(kenmerk)) return null;
-        return new Conditie.Kenmerk(kenmerk, src(cnd));
+        return new Conditie.Kenmerk(kenmerk, null, negatie, src(cnd));
     }
 
     private Conditie aggregatieFilter(FunctieAanroepContext f, Objecttype elem) {

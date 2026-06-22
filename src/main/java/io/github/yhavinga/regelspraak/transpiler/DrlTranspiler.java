@@ -1613,8 +1613,11 @@ public final class DrlTranspiler {
         // marker above; any OTHER non-null filter we do not lower is markered rather than silently dropped.
         if (f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null
                 && subject != null && subject.kenmerkGranulariteit.containsKey(k.kenmerk())) {
-            registreerTijdKnipFunctie();
-            waardeTijdreeks = "rsTijdKnip(" + waardeTijdreeks + ", " + SUBJECT + "." + getter(k.kenmerk()) + "())";
+            // §8.1.8.1/.2 a negated condition ("gedurende de tijd dat hij GEEN recht ... heeft") clips to the
+            // kenmerk's FALSE periods — the complement of its true-period timeline within each value segment.
+            String knip = k.negatie() ? "rsTijdKnipNiet" : "rsTijdKnip";
+            if (k.negatie()) registreerTijdKnipNietFunctie(); else registreerTijdKnipFunctie();
+            waardeTijdreeks = knip + "(" + waardeTijdreeks + ", " + SUBJECT + "." + getter(k.kenmerk()) + "())";
         } else if (f.filter() != null) {
             return null;   // a restriction we cannot lower -> marker, never a silently-unrestricted total
         }
@@ -1640,6 +1643,46 @@ public final class DrlTranspiler {
                 + "            java.time.LocalDate tot = w.getTot().isBefore(c.getTot()) ? w.getTot() : c.getTot();\n"
                 + "            if (van.isBefore(tot)) uit.add(new " + FACT_PACKAGE + ".Segment(van, tot, w.getWaarde()));\n"
                 + "        }\n"
+                + "    }\n"
+                + "    return uit;\n"
+                + "}");
+    }
+
+    /** Register the §8.1.8.1/.2 negated-gedurende complement-clip helper: keep each value Segment's parts where the
+     *  condition is FALSE — i.e. subtract the condition TRUE-intervals (the kenmerk's timeline lists only its true
+     *  periods) from each value segment and emit the gaps. The condition intervals overlapping a value segment are
+     *  clamped to it, selection-sorted by start (small lists; no anonymous Comparator — Drools function bodies stay
+     *  plain Java), then walked, emitting [cursor, next-true-start) and advancing past each true run. A null value
+     *  clips to empty; a null/empty condition leaves the whole value (the kenmerk is never true -> always FALSE). */
+    private void registreerTijdKnipNietFunctie() {
+        hulpFuncties.putIfAbsent("rsTijdKnipNiet",
+                "function java.util.List rsTijdKnipNiet(java.util.List waarde, java.util.List conditie) {\n"
+                + "    java.util.List uit = new java.util.ArrayList();\n"
+                + "    if (waarde == null) return uit;\n"
+                + "    for (Object wo : waarde) {\n"
+                + "        " + FACT_PACKAGE + ".Segment w = (" + FACT_PACKAGE + ".Segment) wo;\n"
+                + "        if (w.getVan() == null || w.getTot() == null) continue;\n"
+                + "        java.util.List knips = new java.util.ArrayList();\n"
+                + "        if (conditie != null) for (Object co : conditie) {\n"
+                + "            " + FACT_PACKAGE + ".Segment c = (" + FACT_PACKAGE + ".Segment) co;\n"
+                + "            if (c.getVan() == null || c.getTot() == null) continue;\n"
+                + "            java.time.LocalDate van = w.getVan().isAfter(c.getVan()) ? w.getVan() : c.getVan();\n"
+                + "            java.time.LocalDate tot = w.getTot().isBefore(c.getTot()) ? w.getTot() : c.getTot();\n"
+                + "            if (van.isBefore(tot)) knips.add(new " + FACT_PACKAGE + ".Segment(van, tot, null));\n"
+                + "        }\n"
+                + "        for (int i = 0; i < knips.size(); i++) {\n"
+                + "            int min = i;\n"
+                + "            for (int j = i + 1; j < knips.size(); j++)\n"
+                + "                if (((" + FACT_PACKAGE + ".Segment) knips.get(j)).getVan().isBefore(((" + FACT_PACKAGE + ".Segment) knips.get(min)).getVan())) min = j;\n"
+                + "            Object t = knips.get(i); knips.set(i, knips.get(min)); knips.set(min, t);\n"
+                + "        }\n"
+                + "        java.time.LocalDate cursor = w.getVan();\n"
+                + "        for (Object ko : knips) {\n"
+                + "            " + FACT_PACKAGE + ".Segment c = (" + FACT_PACKAGE + ".Segment) ko;\n"
+                + "            if (c.getVan().isAfter(cursor)) uit.add(new " + FACT_PACKAGE + ".Segment(cursor, c.getVan(), w.getWaarde()));\n"
+                + "            if (c.getTot().isAfter(cursor)) cursor = c.getTot();\n"
+                + "        }\n"
+                + "        if (cursor.isBefore(w.getTot())) uit.add(new " + FACT_PACKAGE + ".Segment(cursor, w.getTot(), w.getWaarde()));\n"
                 + "    }\n"
                 + "    return uit;\n"
                 + "}");
