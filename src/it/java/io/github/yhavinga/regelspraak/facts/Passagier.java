@@ -1,6 +1,7 @@
 package io.github.yhavinga.regelspraak.facts;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /** Fact POJO for a passenger. The feittype role "reis" (the flight it belongs to)
  *  is the reference field the generated accumulate join uses (reis == $subject). */
@@ -17,6 +18,12 @@ public class Passagier {
     private BigDecimal bodem;         // §6.1.4 begrenzing minimum
     private BigDecimal plafond;       // §6.1.4 begrenzing maximum
     private boolean duur;             // the kenmerk the begrenzing-condition rule sets
+    private List<Segment> belastingverminderingPerMaand; // §7.1 a temporal attribute ("voor elke maand") -> a Tijdreeks
+    private BigDecimal totaleBelastingvermindering;      // §7.1 "het totaal van" the timeline above
+    public List<Segment> getBelastingverminderingPerMaand() { return belastingverminderingPerMaand; }
+    public void setBelastingverminderingPerMaand(List<Segment> v) { this.belastingverminderingPerMaand = v; }
+    public BigDecimal getTotaleBelastingvermindering() { return totaleBelastingvermindering; }
+    public void setTotaleBelastingvermindering(BigDecimal v) { this.totaleBelastingvermindering = v; }
     public BigDecimal getBasistarief() { return basistarief; }
     public void setBasistarief(BigDecimal v) { this.basistarief = v; }
     public BigDecimal getBodem() { return bodem; }

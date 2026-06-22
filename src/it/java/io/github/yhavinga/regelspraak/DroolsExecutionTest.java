@@ -3,6 +3,7 @@ package io.github.yhavinga.regelspraak;
 import io.github.yhavinga.regelspraak.facts.Bemanningslid;
 import io.github.yhavinga.regelspraak.facts.Bestelling;
 import io.github.yhavinga.regelspraak.facts.Bestemming;
+import io.github.yhavinga.regelspraak.facts.Segment;
 import io.github.yhavinga.regelspraak.facts.Burger;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
@@ -42,6 +43,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -148,6 +150,60 @@ class DroolsExecutionTest {
 
         assertEquals(0, new BigDecimal("12.34").compareTo(v.getTotaalprijs()),
                 () -> "verwacht 12.34 ongewijzigd, kreeg " + v.getTotaalprijs());
+    }
+
+    @Test void totaal_van_een_temporeel_attribuut_weegt_elk_tijdvak_naar_zijn_lengte() {
+        // §7.1: "het totaal van <temporeel attribuut voor elke maand>" sums each tijdvak's value weighted by
+        // the number of months it spans. The timeline lives as a List<Segment> on the bean; the spec worked
+        // example: €10/maand over 12 months (2023) + €11/maand over 6 months (2024 H1) = 120 + 66 = €186.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel Totale belastingvermindering
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op het totaal van zijn belastingvermindering per maand.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsTijdTotaal($subject.getBelastingverminderingPerMaand(), \"MAAND\")"),
+                () -> "het totaal van een temporeel attribuut moet via rsTijdTotaal lowereren:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier p = new Passagier();
+        p.setBelastingverminderingPerMaand(List.of(
+                new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1), new BigDecimal("10.00")),  // 12 mnd x 10
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 7, 1), new BigDecimal("11.00")))); // 6 mnd x 11
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("186.00").compareTo(p.getTotaleBelastingvermindering()),
+                () -> "totaal moet 12x10 + 6x11 = 186 zijn, was " + p.getTotaleBelastingvermindering());
+    }
+
+    @Test void totaal_van_een_lege_tijdreeks_is_nul() {
+        // §4.20 leegwaarde: an empty (or null) timeline totals 0, not a crash.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel Totale belastingvermindering
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op het totaal van zijn belastingvermindering per maand.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        KieSession sessie = build(drl).newKieSession();
+        Passagier leeg = new Passagier(); leeg.setBelastingverminderingPerMaand(List.of());
+        Passagier nul  = new Passagier();   // null timeline
+        sessie.insert(leeg); sessie.insert(nul);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, BigDecimal.ZERO.compareTo(leeg.getTotaleBelastingvermindering()), "lege tijdreeks -> 0");
+        assertNull(nul.getTotaleBelastingvermindering(), "null tijdreeks -> leeg (geen crash)");
     }
 
     @Test void aggregatie_accumuleert_over_de_join() {

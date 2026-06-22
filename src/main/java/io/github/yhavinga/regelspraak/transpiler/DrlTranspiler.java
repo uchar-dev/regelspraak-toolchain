@@ -1137,6 +1137,8 @@ public final class DrlTranspiler {
             if (dim != null) return dim;
             String concat = concatenatieAggregatie(f, subject); // pairwise min/max over listed operands
             if (concat != null) return concat;
+            String tijd = tijdreeksAggregatie(f, subject);    // §7.1 "het totaal van" a temporal attribute's timeline
+            if (tijd != null) return tijd;
             String var = accumulate(f, subject);              // hoists an accumulate into the "when"
             return var != null ? var : todo("aggregatie " + f.kind(), f.bron());
         }
@@ -1533,6 +1535,47 @@ public final class DrlTranspiler {
                     + " : (" + acc + " " + cmp + " " + x + " ? " + acc + " : " + x + ")))";
         }
         return acc;
+    }
+
+    /** §7.1 "het totaal van &lt;temporeel attribuut&gt;": a TOTAAL over a single OWN temporal attribute read sums
+     *  each tijdvak's value weighted by the number of granularity periods it spans. The value is a piecewise
+     *  Tijdreeks held as a {@code List<Segment{van,tot,waarde}>} on the bean; rsTijdTotaal folds it (the period
+     *  count per segment from the attribute's declared {@link RegelSpraakModel.Granulariteit}). Returns null for
+     *  any other operand — a navigated or non-temporal attribute, a multi-arg fold — so the instance-accumulate
+     *  and marker paths are unchanged (a non-temporal TOTAAL still flows to {@link #accumulate}). */
+    private String tijdreeksAggregatie(Expr.Functie f, Objecttype subject) {
+        if (f.kind() != Expr.FunctieKind.TOTAAL || f.argumenten().size() != 1) return null;
+        if (!(f.argumenten().get(0) instanceof Expr.AttribuutRef a) || a.navigatieRol() != null) return null;
+        if (a.objecttype() == null) return null;
+        RegelSpraakModel.Granulariteit g = a.objecttype().attribuutGranulariteit.get(a.attribuut());
+        if (g == null) return null;   // not a temporal attribute -> fall through to the instance-accumulate / marker
+        registreerTijdTotaalFunctie();
+        return "rsTijdTotaal(" + SUBJECT + "." + getter(a.attribuut()) + "(), \"" + g.name() + "\")";
+    }
+
+    /** Register the §7.1 totaal-over-a-timeline helper: fold a {@code List<Segment>} by weighting each segment's
+     *  value by the count of whole granularity periods (DAG/WEEK/MAAND/KWARTAAL/JAAR) between its van and tot. A
+     *  null list, or a segment with a null bound/value, contributes nothing (§4.20 leegwaarde); an empty timeline
+     *  totals 0. A kwartaal is three maanden (ChronoUnit has no quarter). */
+    private void registreerTijdTotaalFunctie() {
+        hulpFuncties.putIfAbsent("rsTijdTotaal",
+                "function java.math.BigDecimal rsTijdTotaal(java.util.List segmenten, String granulariteit) {\n"
+                + "    if (segmenten == null) return null;\n"
+                + "    java.math.BigDecimal som = java.math.BigDecimal.ZERO;\n"
+                + "    for (Object o : segmenten) {\n"
+                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
+                + "        if (s.getWaarde() == null || s.getVan() == null || s.getTot() == null) continue;\n"
+                + "        long n;\n"
+                + "        if (\"DAG\".equals(granulariteit)) n = java.time.temporal.ChronoUnit.DAYS.between(s.getVan(), s.getTot());\n"
+                + "        else if (\"WEEK\".equals(granulariteit)) n = java.time.temporal.ChronoUnit.WEEKS.between(s.getVan(), s.getTot());\n"
+                + "        else if (\"MAAND\".equals(granulariteit)) n = java.time.temporal.ChronoUnit.MONTHS.between(s.getVan(), s.getTot());\n"
+                + "        else if (\"KWARTAAL\".equals(granulariteit)) n = java.time.temporal.ChronoUnit.MONTHS.between(s.getVan(), s.getTot()) / 3;\n"
+                + "        else if (\"JAAR\".equals(granulariteit)) n = java.time.temporal.ChronoUnit.YEARS.between(s.getVan(), s.getTot());\n"
+                + "        else n = 0;\n"
+                + "        som = som.add(s.getWaarde().multiply(java.math.BigDecimal.valueOf(n)));\n"
+                + "    }\n"
+                + "    return som;\n"
+                + "}");
     }
 
     /**
