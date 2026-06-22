@@ -1040,10 +1040,12 @@ Chosen readings where the spec is silent or self-inconsistent (flagged, not inve
   `max(w, 0)`: a negative-weight member claims nothing (like a weightless one) and cannot inflate the others, so
   `Σ(shares) ≤ pot` and the rest stays `≥ 0` by construction. (Caught by the slice's adversarial review.)
 
-**Restriction (carded):** the ordering key and the tie weight must be **getalachtig** — the helper `compareTo`-sorts
-the key and sums the weight, so a non-numeric (e.g. Datum) ordering criterium currently keeps the verdeling a
-marker, even though a `Comparable` date would sort fine. Generalising the ordering key to any `Comparable`
-datatype is a deferred follow-up.
+**Ordering key — orderable, not just getalachtig.** The ordering key need only be **orderable** by a scalar `<`
+(`Datatype.isOrdenbaar()` = `isGetalachtig() || isDatum()`): a `Datum` criterium ("op volgorde van toenemende de
+inschrijfdatum") sorts chronologically through the same `compareTo`-based helper, with nulls still last. Tekst,
+Booleaan and Enumeratie carry only `gelijk`/`ongelijk` in the typeringen matrix (§5.x) — no ordinal `<` — so a
+non-orderable key keeps the verdeling a COMPLEX marker rather than guessing a lexicographic order. The **tie weight**
+stays `getalachtig` (it is summed), and the `maximum` cap stays `getalachtig`.
 
 ### §6.5 gedeeld door (ABS) — 5 decimals toward zero, and a table typo
 

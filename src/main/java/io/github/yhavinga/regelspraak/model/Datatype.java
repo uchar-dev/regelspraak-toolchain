@@ -45,6 +45,11 @@ public sealed interface Datatype
     default boolean isBoolean()    { return this instanceof Booleaan; }
     default boolean isDatum()      { return this instanceof DatumInDagen || this instanceof DatumTijd; }
     default boolean isOnbekend()   { return this instanceof Onbekend; }
+    /** Orderable by a scalar &lt;/&gt; (so it can drive a §9.7.2 "op volgorde van toenemende/afnemende"
+     *  ordering): a number/percentage or a date. Tekst, Booleaan and Enumeratie carry only gelijk/ongelijk
+     *  in the typeringen matrix (§5.x), no ordinal {@code <}, so they are NOT orderable — a non-orderable
+     *  ordering key keeps the verdeling a COMPLEX marker rather than guessing a lexicographic order. */
+    default boolean isOrdenbaar()  { return isGetalachtig() || isDatum(); }
 
     /** §13.3.3 form (c) "getal": an unbounded numeriek/percentage — any number of decimals, no
      *  precision ceiling. The three getalspecificatie forms are encoded as: (a) "geheel getal"

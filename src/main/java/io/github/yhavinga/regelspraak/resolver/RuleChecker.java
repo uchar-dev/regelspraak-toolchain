@@ -458,7 +458,9 @@ final class RuleChecker {
             Datatype groepType = groepeerAttr != null && d.objecttype() != null ? d.objecttype().attribuut(groepeerAttr) : null;
             Datatype ratoType = rato != null && d.objecttype() != null ? d.objecttype().attribuut(rato) : null;
             boolean tieOk = rato == null || (ratoType != null && ratoType.isGetalachtig());
-            if (groepType != null && groepType.isGetalachtig() && tieOk)
+            // §9.7.2 the ordering key need only be ORDERABLE (a number or a date) — the helper compareTo-sorts it;
+            // the tie WEIGHT stays getalachtig (it is summed). A non-orderable key keeps the verdeling COMPLEX.
+            if (groepType != null && groepType.isOrdenbaar() && tieOk)
                 methode = ResolvedVerdeling.Methode.OP_VOLGORDE;
         }
         // §9.7.3: a maximale aanspraak is valid ONLY for a naar-rato split ("niet mogelijk bij gelijke verdeling"

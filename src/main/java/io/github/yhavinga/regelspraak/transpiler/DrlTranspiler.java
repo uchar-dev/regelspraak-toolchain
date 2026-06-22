@@ -456,13 +456,13 @@ public final class DrlTranspiler {
         Datatype gewichtType = doel != null && v.ratoAttribuut() != null ? doel.attribuut(v.ratoAttribuut()) : null;
         boolean rato = methode == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.NAAR_RATO && join != null
                 && gewichtType != null && gewichtType.isGetalachtig();
-        // §9.7.2 op volgorde van: the recipients are partitioned by a getalachtig ordering key and the pot is
-        // depleted group-by-group; a "naar rato" tie additionally needs a getalachtig tie weight. The whole
-        // ordered allocation is computed by rsVerdeelOpVolgorde; anything else stays the marker.
+        // §9.7.2 op volgorde van: the recipients are partitioned by an ORDERABLE ordering key (a number or a
+        // date — rsVerdeelOpVolgorde compareTo-sorts it) and the pot is depleted group-by-group; a "naar rato"
+        // tie additionally needs a getalachtig tie weight (it is summed). Anything else stays the marker.
         Datatype groepType = methode == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.OP_VOLGORDE
                 && doel != null && v.groepeerAttribuut() != null ? doel.attribuut(v.groepeerAttribuut()) : null;
         boolean opVolgorde = methode == io.github.yhavinga.regelspraak.ir.ResolvedVerdeling.Methode.OP_VOLGORDE && join != null
-                && groepType != null && groepType.isGetalachtig()
+                && groepType != null && groepType.isOrdenbaar()
                 && (v.ratoAttribuut() == null || (gewichtType != null && gewichtType.isGetalachtig()));
         if (!gelijk && !rato && !opVolgorde) {
             out.append(new Regel(v.naam())

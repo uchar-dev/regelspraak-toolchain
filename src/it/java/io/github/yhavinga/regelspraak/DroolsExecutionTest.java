@@ -1542,6 +1542,50 @@ class DroolsExecutionTest {
         assertEquals(0, BigDecimal.ZERO.compareTo(p.getRestant()), () -> "rest 1200-1200 = 0, kreeg " + p.getRestant());
     }
 
+    @Test void verdeling_op_volgorde_van_een_datum_sorteert_chronologisch() {
+        // §9.7.2: the ordering key need only be ORDERABLE — a Datum sorts chronologically, exactly like a number.
+        // "op volgorde van toenemende de inschrijfdatum" puts the earliest registrants first: 1200 over two
+        // 2026-01-01 deelnemers (gewicht 3:1 -> 900/300) exhausts the pot, so the later-date deelnemer gets 0. This
+        // proves a non-getalachtig (Datum) ordering key now reaches OP_VOLGORDE instead of the COMPLEX marker.
+        String src = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+                de restant Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+                de inschrijfdatum Datum in dagen;
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel op datum
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - op volgorde van toenemende de inschrijfdatum,
+                    - bij een even groot criterium naar rato van de gewicht.
+                    Als onverdeelde rest blijft de restant van een pot over.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("from rsVerdeelOpVolgorde("), () -> "een Datum-ordeningssleutel moet OP_VOLGORDE bereiken:\n" + drl);
+        assertTrue(drl.contains("collectList($p.getInschrijfdatum())"), () -> "de datum-sleutel niet verzameld:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Pot p = new Pot(); p.setTotaal(new BigDecimal("1200"));
+        Deelnemer vroeg1 = new Deelnemer(); vroeg1.setPot(p); vroeg1.setInschrijfdatum(LocalDate.of(2026, 1, 1)); vroeg1.setGewicht(new BigDecimal("3"));
+        Deelnemer vroeg2 = new Deelnemer(); vroeg2.setPot(p); vroeg2.setInschrijfdatum(LocalDate.of(2026, 1, 1)); vroeg2.setGewicht(new BigDecimal("1"));
+        Deelnemer laat = new Deelnemer(); laat.setPot(p); laat.setInschrijfdatum(LocalDate.of(2026, 6, 1)); laat.setGewicht(new BigDecimal("2"));
+        for (Object o : new Object[]{p, vroeg1, vroeg2, laat}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("900").compareTo(vroeg1.getAandeel()), () -> "vroegste groep 3/4·1200=900, kreeg " + vroeg1.getAandeel());
+        assertEquals(0, new BigDecimal("300").compareTo(vroeg2.getAandeel()), () -> "vroegste groep 1/4·1200=300, kreeg " + vroeg2.getAandeel());
+        assertEquals(0, BigDecimal.ZERO.compareTo(laat.getAandeel()), () -> "latere inschrijfdatum -> 0, kreeg " + laat.getAandeel());
+    }
+
     private static Deelnemer deelnemer(Pot p, String leeftijd, String gewicht, String maximum) {
         Deelnemer d = new Deelnemer();
         d.setPot(p);
