@@ -1882,7 +1882,7 @@ public final class DrlTranspiler {
                 + "        boolean naarRato = false;\n"
                 + "        for (int k = p; k < q; k++) {\n"
                 + "            Object w = gewicht == null ? null : gewicht.get(((Integer) idx.get(k)).intValue());\n"
-                + "            if (w != null) { naarRato = true; som = som.add((java.math.BigDecimal) w); }\n"
+                + "            if (w != null) { naarRato = true; som = som.add(((java.math.BigDecimal) w).max(java.math.BigDecimal.ZERO)); }\n"
                 + "        }\n"
                 + "        int n = q - p;\n"
                 + "        java.math.BigDecimal groepSom = java.math.BigDecimal.ZERO;\n"
@@ -1891,7 +1891,9 @@ public final class DrlTranspiler {
                 + "            java.math.BigDecimal aandeel;\n"
                 + "            if (naarRato) {\n"
                 + "                Object wo = gewicht == null ? null : gewicht.get(i);\n"
-                + "                java.math.BigDecimal w = wo == null ? java.math.BigDecimal.ZERO : (java.math.BigDecimal) wo;\n"
+                // a negative weight is no proportional basis: clamp it to 0 (the member then claims nothing) so it
+                // cannot shrink the weight-sum and over-allocate the others past the pot (-> a negative rest, §9.7.6)
+                + "                java.math.BigDecimal w = wo == null ? java.math.BigDecimal.ZERO : ((java.math.BigDecimal) wo).max(java.math.BigDecimal.ZERO);\n"
                 + "                aandeel = som.signum() == 0 ? java.math.BigDecimal.ZERO\n"
                 + "                        : groepPot.multiply(w).divide(som, java.math.MathContext.DECIMAL64);\n"
                 + "            } else {\n"

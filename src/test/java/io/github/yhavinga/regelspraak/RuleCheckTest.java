@@ -1002,4 +1002,38 @@ class RuleCheckTest {
                         && d.message().contains("beslistabel")),
                 () -> "een beslistabel moet een honest WARNING geven, niet stil verdwijnen: " + m.diagnostics);
     }
+
+    @Test void verdeling_met_dubbelzinnige_rol_geeft_geen_6_1_2_fout() {
+        // Every verdeling method markers when the verbindende rol between source and recipient is ambiguous
+        // (two feittypes relate Pot and Deelnemer -> verbindendeRol is null), so the transpiler assigns nothing.
+        // The §6.1.2 precision check must mirror that join gate, not just the method/weight, else it flags a share
+        // that is never computed (the over-precise 2-decimal totaal into an integer aandeel). Op-volgorde here, but
+        // the join gate is shared across methods.
+        String src = """
+            Objecttype de Pot
+                de totaal Numeriek (getal met 2 decimalen);
+                de restant Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Feittype Pot naast deelnemers
+                de buurpot Pot
+                de buurdeelnemer Deelnemer
+            Eén buurpot ligt naast meerdere buurdeelnemers
+            Regel deel op volgorde
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - op volgorde van toenemende de leeftijd,
+                    - bij een even groot criterium naar rato van de gewicht.
+                    Als onverdeelde rest blijft de restant van een pot over.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().noneMatch(d -> d.message().contains("6.1.2")),
+                () -> "een dubbelzinnige rol mag geen §6.1.2 verdeling-fout geven (de verdeling lowert niet): " + m.errors());
+    }
 }

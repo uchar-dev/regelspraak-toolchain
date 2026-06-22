@@ -1521,6 +1521,27 @@ class DroolsExecutionTest {
         assertEquals(0, BigDecimal.ZERO.compareTo(hans.getAandeel()), () -> "hans (20) krijgt 0, kreeg " + hans.getAandeel());
     }
 
+    @Test void verdeling_op_volgorde_negatief_gewicht_overschrijdt_het_plafond_niet() {
+        // A negative tie weight has no proportional meaning (a "factor" cannot be negative). The helper clamps each
+        // weight to 0, so a negative-weight member claims nothing AND cannot shrink the weight-sum to inflate the
+        // others past the pot — which would give Σ(shares) > plafond and a NEGATIVE onverdeelde rest, a state the
+        // §9.7 model cannot represent. One age group: A(gewicht -1) -> 0, B(gewicht 3) -> the full 1200 (Σw clamps
+        // to 3), rest exactly 0 (never -600). Regression for the review's negative-rest finding.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(VERDELING_OP_VOLGORDE_SRC));
+        KieSession sessie = build(drl).newKieSession();
+        Pot p = new Pot(); p.setTotaal(new BigDecimal("1200"));
+        Deelnemer a = new Deelnemer(); a.setPot(p); a.setLeeftijd(new BigDecimal("20")); a.setGewicht(new BigDecimal("-1"));
+        Deelnemer b = new Deelnemer(); b.setPot(p); b.setLeeftijd(new BigDecimal("20")); b.setGewicht(new BigDecimal("3"));
+        for (Object o : new Object[]{p, a, b}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, BigDecimal.ZERO.compareTo(a.getAandeel()), () -> "negatief gewicht -> geen aandeel, kreeg " + a.getAandeel());
+        assertEquals(0, new BigDecimal("1200").compareTo(b.getAandeel()), () -> "b krijgt het hele plafond (Σw=3), kreeg " + b.getAandeel());
+        assertTrue(p.getRestant().signum() >= 0, () -> "de onverdeelde rest mag nooit negatief zijn, kreeg " + p.getRestant());
+        assertEquals(0, BigDecimal.ZERO.compareTo(p.getRestant()), () -> "rest 1200-1200 = 0, kreeg " + p.getRestant());
+    }
+
     private static Deelnemer deelnemer(Pot p, String leeftijd, String gewicht, String maximum) {
         Deelnemer d = new Deelnemer();
         d.setPot(p);

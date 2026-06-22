@@ -1025,9 +1025,13 @@ Chosen readings where the spec is silent or self-inconsistent (flagged, not inve
 - **Maximum on a gelijke-delen tie → marker (strict reading).** §9.7.3 "niet mogelijk bij gelijke verdeling": we
   allow a maximum only when a naar-rato split is present (top-level naar rato, or an op-volgorde *naar-rato* tie),
   and keep a maximum on a gelijke-delen tie `COMPLEX` (a marker), matching the resolver's existing posture.
-- **Negative *tie* weight is not a Fout.** Tabel 19 lists `< 0` as a Fout only for the *maximum*, not the weight.
-  A negative tie weight yields a (possibly negative) provisional share that the helper clamps to `≥ 0`; we do not
-  raise a Fout the spec does not list.
+- **Negative *tie* weight is not a Fout, but is clamped to 0.** Tabel 19 lists `< 0` as a Fout only for the
+  *maximum*, not the weight, so we do not raise a Fout the spec does not list. But a negative weight has no
+  proportional meaning (a "naar rato van een factor" factor is inherently non-negative), and leaving it signed
+  would deflate the weight-sum and *over-allocate* the positive members past the pot — yielding `Σ(shares) > plafond`
+  and a **negative onverdeelde rest**, a state the §9.7 model cannot represent. So the helper clamps each weight to
+  `max(w, 0)`: a negative-weight member claims nothing (like a weightless one) and cannot inflate the others, so
+  `Σ(shares) ≤ pot` and the rest stays `≥ 0` by construction. (Caught by the slice's adversarial review.)
 
 **Restriction (carded):** the ordering key and the tie weight must be **getalachtig** — the helper `compareTo`-sorts
 the key and sums the weight, so a non-numeric (e.g. Datum) ordering criterium currently keeps the verdeling a

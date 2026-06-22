@@ -476,15 +476,18 @@ final class RuleChecker {
         }
         // §6.1.2 precision, consistent with the ordinary `regel` assignment: a share whose decimal count
         // exceeds the target attribute's must be explicitly rounded (the §9.7.4 afronding). Run it only when
-        // the verdeling actually ASSIGNS a share — a COMPLEX marker assigns nothing, and a naar-rato whose
-        // weight is not getalachtig is lowered to an honest no-op (so flagging the precision of a share that is
-        // never computed would be a false positive). (No-op for all-integer TOKA verdelingen.)
-        if (methode != ResolvedVerdeling.Methode.COMPLEX && b.objecttype() != null && d.objecttype() != null) {
+        // the verdeling actually ASSIGNS a share — a COMPLEX marker assigns nothing, a naar-rato whose weight is
+        // not getalachtig is lowered to an honest no-op, and EVERY method markers when the join is unresolvable
+        // (the transpiler gates all three on join != null), so flagging the precision of a share that is never
+        // computed would be a false positive. (No-op for all-integer TOKA verdelingen.)
+        boolean joinResolves = b.objecttype() != null && d.objecttype() != null
+                && model.verbindendeRol(d.objecttype(), b.objecttype()) != null;
+        if (methode != ResolvedVerdeling.Methode.COMPLEX && joinResolves) {
             Datatype gewType = (methode == ResolvedVerdeling.Methode.NAAR_RATO
                     || methode == ResolvedVerdeling.Methode.OP_VOLGORDE) && rato != null
                     ? d.objecttype().attribuut(rato) : null;   // op-volgorde naar-rato tie weighs like NAAR_RATO
             boolean lowert = methode == ResolvedVerdeling.Methode.GELIJKE_DELEN
-                    || methode == ResolvedVerdeling.Methode.OP_VOLGORDE     // gated above to always lower
+                    || methode == ResolvedVerdeling.Methode.OP_VOLGORDE     // both lower once the join resolves
                     || (gewType != null && gewType.isGetalachtig());   // mirror the transpiler's lowering gate
             if (lowert) {
                 String fout = Typering.verdeelToekenning(d.objecttype().attribuut(d.attribuut()),
