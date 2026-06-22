@@ -97,4 +97,28 @@ class TyperingTest {
     @Test void toekenning_eenheid_mismatch_fout() {
         assertNotNull(Typering.toekenning(num("jr", "Tijd"), num("km", "afstand")));
     }
+
+    // §3.3.5 a Percentage always carries the "%" unit, optionally a rate "%/jr"
+    static Datatype pct()        { return new Datatype.Percentage(true, 0); }
+    static Datatype pctPerJaar() { return new Datatype.Percentage(true, 0,
+            Eenheid.samengesteld(Datatype.Percentage.PROCENT, new Eenheid("jr", "Tijd"))); }
+
+    @Test void percentage_draagt_altijd_de_procent_eenheid() {
+        assertEquals("%", pct().eenheidOf().afkorting());
+        assertEquals("%/jr", pctPerJaar().eenheidOf().weergave());
+    }
+    @Test void percentage_kleiner_dan_percentage_blijft_ok() {
+        assertTrue(Typering.vergelijk(CmpOp.KLEINER, pct(), pct()).ok());
+    }
+    @Test void percentage_gelijk_aan_numeriek_blijft_familiefout() {
+        assertFalse(Typering.vergelijk(CmpOp.GELIJK, pct(), num()).ok());   // distinct families
+    }
+    @Test void percentage_toekenning_met_afwijkende_rate_is_eenheidfout() {
+        assertNotNull(Typering.toekenning(pct(), pctPerJaar()));   // "%" vs "%/jr": a simple unit vs a rate
+    }
+    @Test void percentage_plus_eenheidloos_getal_is_een_eenheidfout() {
+        // matrix-aligned (Tabel 32/34 list Percentage with Percentage, never with a unitless plain Numeriek):
+        // now that a Percentage carries "%", mixing it with a unitless number flags the §4 unit rule.
+        assertFalse(Typering.reken(BinOp.PLUS, pct(), num()).ok());
+    }
 }

@@ -1182,3 +1182,20 @@ radicand that is the subject's OWN attribute lowers to a plain `< 0` property co
 parameter / nested / aggregation radicand still degrades to leeg but raises no Inconsistentie (carded). A leeg
 radicand is leeg WITHOUT a fout (§6.6) — the `< 0` guard is false for a null, so the companion does not fire for
 leeg. `tot de macht` of a negative base is well-defined (a real power), so it has no analogous fout.
+
+### §3.3.5 Percentage carries its eenheid (always %, optionally a rate)
+
+A Percentage attribuut "heeft verder **altijd** als eenheid %" (§3.3.5), optionally specialized to a rate such as
+`%/jaar` (the grammar admits `met eenheid % ( / <eenheidAfkorting> )?` inside `percentageDatatype`). The resolver
+used to drop this — `Datatype.Percentage` carried no unit and `eenheidOf()` returned null for a percentage. It now
+threads the unit: `Datatype.Percentage` gains an `eenheid` field that defaults to a `"%"` constant
+(`Percentage.PROCENT`) and becomes `%/<eenheid>` when the rate form is declared; `eenheidOf()` returns it. A
+2-argument delegating constructor keeps the literal/inference sites (`Expr`, `ExpressieBouwer`) unchanged.
+
+This is the literal "altijd" reading (variant A), not "preserve only an explicitly-declared rate": measured
+zero regression — the full unit suite stays green and the corpus resolver-ERROR set is byte-identical (73 = 73).
+The only behavioural change is **matrix-aligned**: now that a Percentage carries `%`, mixing it with a *unitless*
+plain Numeriek in `+`/`-`/`<` flags the §4 "als één operand een eenheid heeft, moeten beide er een hebben" rule —
+which the typeringen tables (Tabel 32/34/39/41 list Percentage only against Percentage, never against a bare
+Numeriek) sanction. It fires on zero corpus files. `Typering` needed no edit: once `eenheidOf()` returns `%`, the
+existing `zelfdeFamilie` (Percentage and Numeriek are distinct families) + `eenhedenCompatibel` do the right thing.

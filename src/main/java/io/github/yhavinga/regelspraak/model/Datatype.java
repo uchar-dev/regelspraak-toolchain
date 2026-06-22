@@ -19,8 +19,14 @@ public sealed interface Datatype
     record Numeriek(boolean geheel, int decimalen, Teken teken, Eenheid eenheid) implements Datatype {
         public boolean heeftEenheid() { return eenheid != null; }
     }
-    /** §13.3.3.3 Percentage. */
-    record Percentage(boolean geheel, int decimalen) implements Datatype {}
+    /** §13.3.3.3 Percentage. A Percentage attribuut "heeft verder altijd als eenheid %" (§3.3.5),
+     *  optionally specialized as a rate ("%/jaar"); so its {@code eenheid} is never null. */
+    record Percentage(boolean geheel, int decimalen, Eenheid eenheid) implements Datatype {
+        /** The implicit "%" unit every Percentage carries (§3.3.5). */
+        public static final Eenheid PROCENT = new Eenheid("%", null);
+        /** A bare percentage, carrying the implicit "%" unit. */
+        public Percentage(boolean geheel, int decimalen) { this(geheel, decimalen, PROCENT); }
+    }
     /** §13.3.3.4 Tekst. */
     record Tekst() implements Datatype {}
     /** §13.3.3.5 Boolean. */
@@ -62,16 +68,19 @@ public sealed interface Datatype
         return false;
     }
 
-    /** The unit of a Numeriek, or null. */
+    /** The unit of a Numeriek or a Percentage (always "%", §3.3.5), or null. */
     default Eenheid eenheidOf() {
-        return (this instanceof Numeriek n) ? n.eenheid() : null;
+        if (this instanceof Numeriek n) return n.eenheid();
+        if (this instanceof Percentage p) return p.eenheid();
+        return null;
     }
 
     /** A short, human-readable name for diagnostics. */
     default String naam() {
         return switch (this) {
             case Numeriek n   -> "Numeriek" + (n.heeftEenheid() ? " (" + n.eenheid().afkorting() + ")" : "");
-            case Percentage p -> "Percentage";
+            case Percentage p -> "Percentage" + (p.eenheid() != null && p.eenheid().noemer() != null
+                                                  ? " (" + p.eenheid().weergave() + ")" : "");
             case Tekst t      -> "Tekst";
             case Booleaan b   -> "Boolean";
             case DatumInDagen d -> "Datum in dagen";

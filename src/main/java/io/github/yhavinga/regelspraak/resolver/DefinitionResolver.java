@@ -157,8 +157,14 @@ public final class DefinitionResolver {
             return new Datatype.Numeriek(g.geheel, g.decimalen, g.teken, e);
         }
         if (dt.percentageDatatype() != null) {
-            GetalInfo g = getalInfo(dt.percentageDatatype().getalSpecificatie());
-            return new Datatype.Percentage(g.geheel, g.decimalen);
+            var pd = dt.percentageDatatype();
+            GetalInfo g = getalInfo(pd.getalSpecificatie());
+            // §3.3.5: a Percentage is always "%", optionally specialized to a rate "%/<eenheid>"
+            // (grammar: "met eenheid % ( / <eenheidAfkorting> )?"); a bare or absent clause is "%".
+            Eenheid e = pd.SLASH() != null
+                    ? Eenheid.samengesteld(Datatype.Percentage.PROCENT, model.resolveEenheid(src(pd.eenheidAfkorting())))
+                    : Datatype.Percentage.PROCENT;
+            return new Datatype.Percentage(g.geheel, g.decimalen, e);
         }
         if (dt.tekstDatatype() != null) return new Datatype.Tekst();
         if (dt.booleanDatatype() != null) return new Datatype.Booleaan();
