@@ -512,6 +512,44 @@ class DroolsExecutionTest {
         assertEquals(0, BigDecimal.ZERO.compareTo(p19.getTotaleBelastingvermindering()), () -> "leeftijd != 18 -> 0, was " + p19.getTotaleBelastingvermindering());
     }
 
+    @Test void mixed_or_compound_verbreedt_de_totaal_naar_de_volle_span(){
+        // §8.4.2 a mixed "ten minste 1" (OR): "recht heeft OR leeftijd == 18". A TRUE static member (18) makes the OR
+        // hold over the WHOLE span -> the UN-clipped totaal (12×€10 + 6×€11 = €186); a FALSE one (19) leaves only the
+        // recht-clip [2023-07..2024-02) -> 6×€10 + 1×€11 = €71. The INVERSE of the ALLE case (18->€71, 19->0).
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de leeftijd Numeriek (geheel getal);
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat er aan ten minste 1 van de volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - zijn leeftijd is gelijk aan 18).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        java.util.List<Segment> waarde = List.of(
+                new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1), new BigDecimal("10.00")),
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 7, 1), new BigDecimal("11.00")));
+        java.util.List<Segment> recht = List.of(new Segment(LocalDate.of(2023, 7, 1), LocalDate.of(2024, 2, 1), null));
+
+        KieSession s1 = build(drl).newKieSession();
+        Passagier p18 = new Passagier();
+        p18.setBelastingverminderingPerMaand(waarde); p18.setRechtOpBelastingvermindering(recht); p18.setLeeftijd(new BigDecimal("18"));
+        s1.insert(p18); s1.fireAllRules(); s1.dispose();
+        assertEquals(0, new BigDecimal("186.00").compareTo(p18.getTotaleBelastingvermindering()), () -> "leeftijd 18 (OR waar) -> volle €186, was " + p18.getTotaleBelastingvermindering());
+
+        KieSession s2 = build(drl).newKieSession();
+        Passagier p19 = new Passagier();
+        p19.setBelastingverminderingPerMaand(waarde); p19.setRechtOpBelastingvermindering(recht); p19.setLeeftijd(new BigDecimal("19"));
+        s2.insert(p19); s2.fireAllRules(); s2.dispose();
+        assertEquals(0, new BigDecimal("71.00").compareTo(p19.getTotaleBelastingvermindering()), () -> "leeftijd 19 (OR onwaar) -> geclipte €71, was " + p19.getTotaleBelastingvermindering());
+    }
+
     @Test void mixed_compound_op_aantal_dagen_wordt_door_de_statische_guard_geleegd(){
         // §8.4 a mixed compound on a temporal-WRITE producer: the static comparison gates the WHOLE per-bucket write
         // (an empty timeline when it fails). recht [1-1..14-2-2024) -> Jan 31 / Feb 13 dg, gated by geboortedatum<2002.

@@ -1648,9 +1648,11 @@ public final class DrlTranspiler {
         } else if (f.filter() instanceof Conditie.Samengesteld s && subject != null) {
             // §8.4.2 a COMPOUND "gedurende de tijd dat er aan alle/ten minste 1 van de volgende voorwaarden wordt
             // voldaan": partition the members. TEMPORAL kenmerks clip the timeline (ALLE = intersect, ten minste 1 =
-            // union); a §8.4 NON-temporal comparison member (ALLE only, the spec's "geboortedatum eerder dan …")
-            // becomes a value-side STATIC guard on the whole totaal ("de samengestelde conditie is als geheel wel
-            // tijdsafhankelijk"). A member we cannot lower -> marker, never a wrong period.
+            // union); a §8.4 NON-temporal comparison member becomes a value-side STATIC guard ("de samengestelde
+            // conditie is als geheel wel tijdsafhankelijk"). For ALLE the static guard AND-gates the clipped totaal
+            // (false -> 0); for "ten minste 1" (OR) a TRUE static member WIDENS the result to the FULL value span
+            // (the OR holds everywhere a static member holds), FALSE leaves only the temporal-union clip. A member we
+            // cannot lower -> marker, never a wrong period.
             java.util.List<Conditie> temporeel = new java.util.ArrayList<>();
             java.util.List<Conditie.Vergelijking> statisch = new java.util.ArrayList<>();
             for (Conditie c : s.onderdelen()) {
@@ -1659,13 +1661,23 @@ public final class DrlTranspiler {
                 else return null;
             }
             if (temporeel.isEmpty()) return null;   // no clip -> not a temporal restriction
+            String volleReeks = waardeTijdreeks;    // the un-clipped timeline (the OR static-true span)
             Conditie.Samengesteld temporeelDeel = statisch.isEmpty() ? s
                     : new Conditie.Samengesteld(s.kwantor(), s.drempel(), temporeel, s.bron());
             String compound = samengesteldeTijdKnip(temporeelDeel, waardeTijdreeks, subject);
             if (compound == null) return null;
             waardeTijdreeks = compound;
             if (!statisch.isEmpty()) {
-                guard = statischeGuard(statisch, subject);
+                if (s.kwantor() == Conditie.Kwantor.TEN_MINSTE) {
+                    // mixed OR: the static guard ORs its members; TRUE -> the full span, FALSE -> the temporal clip.
+                    String orGuard = statischeGuard(statisch, subject, " || ");
+                    if (orGuard == null) return null;
+                    registreerTijdTotaalFunctie();
+                    return Frag.ok("(" + orGuard
+                            + " ? rsTijdTotaal(" + volleReeks + ", \"" + g.name() + "\")"
+                            + " : rsTijdTotaal(" + waardeTijdreeks + ", \"" + g.name() + "\"))");
+                }
+                guard = statischeGuard(statisch, subject);   // ALLE: AND-gate the clipped totaal
                 if (guard == null) return null;   // a static member we cannot lower -> marker, never an ungated totaal
             }
         } else if (f.filter() != null) {
@@ -1676,17 +1688,21 @@ public final class DrlTranspiler {
         return Frag.ok(guard == null ? totaal : "(" + guard + " ? " + totaal + " : java.math.BigDecimal.ZERO)");
     }
 
-    /** §8.4 the value-side static guard for a mixed ALLE gedurende: the AND of each non-temporal comparison member,
-     *  lowered as a {@code $subject.getX()}-form mvel boolean. Null when any member is not lowerable (the caller
-     *  markers the whole totaal). */
+    /** §8.4 the value-side static guard for a mixed gedurende: the AND ({@code " && "}) of each non-temporal
+     *  comparison member for an ALLE compound, or the OR ({@code " || "}) for a "ten minste 1" compound. Each member
+     *  lowers to a {@code $subject.getX()}-form mvel boolean. Null when any member is not lowerable (the caller markers
+     *  the whole totaal). */
     private String statischeGuard(java.util.List<Conditie.Vergelijking> leden, Objecttype subject) {
+        return statischeGuard(leden, subject, " && ");
+    }
+    private String statischeGuard(java.util.List<Conditie.Vergelijking> leden, Objecttype subject, String scheider) {
         java.util.List<String> termen = new java.util.ArrayList<>();
         for (Conditie.Vergelijking v : leden) {
             String t = statischeVergelijkingGuard(v, subject);
             if (t == null) return null;
             termen.add(t);
         }
-        return String.join(" && ", termen);
+        return String.join(scheider, termen);
     }
 
     /** §8.4 one non-temporal comparison member as a value-side ($subject.getX()-form) boolean. The guard rides in the
@@ -1783,7 +1799,9 @@ public final class DrlTranspiler {
             java.util.List<String> regios = new java.util.ArrayList<>();
             for (Conditie c : s.onderdelen()) {
                 // §8.4 a static (non-temporal) comparison member is the value-side guard (mixedGuardWrap), not part of
-                // the timeline — admitted only in an ALLE compound (a mixed OR has deferred semantics).
+                // the timeline — admitted only in an ALLE compound here. A mixed OR widens the span (the static-true
+                // case), which the WRITE producers do not yet express, so an OR-mixed markers here (only the totaal,
+                // tijdreeksAggregatie, handles it).
                 if (c instanceof Conditie.Vergelijking) { if (!alle) return null; continue; }
                 if (!(c instanceof Conditie.Kenmerk k)) return null;
                 String g = temporeelKenmerkTijdreeks(k, subject);

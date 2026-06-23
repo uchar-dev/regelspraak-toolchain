@@ -2669,9 +2669,13 @@ class DrlTest {
                 () -> "een mixed ALLE compound moet de statische vergelijking als value-side guard zetten:\n" + guard);
         assertFalse(guard.contains("/* TODO"), () -> "de mixed ALLE compound mag geen marker zijn:\n" + guard);
 
-        // a mixed OR (ten minste 1) has different, deferred semantics -> marker.
+        // a mixed OR (ten minste 1) now lowers: a TRUE static member WIDENS the result to the full span, FALSE leaves
+        // only the clip — NOT the ALLE clip-vs-ZERO. (Depth in compound_ten_minste_1_mixed_static_verbreedt_naar_de_volle_span.)
         String orMixed = mixedCompound("ten minste 1 van de volgende voorwaarden", "zijn geboortedatum is eerder dan 1-1-2002");
-        assertTrue(orMixed.contains("/* TODO"), () -> "een mixed ten-minste-1 compound moet markeren:\n" + orMixed);
+        assertTrue(orMixed.contains("? rsTijdTotaal($subject.getBelastingverminderingPerMaand(), \"MAAND\")")
+                        && orMixed.contains(": rsTijdTotaal(rsTijdKnip("),
+                () -> "een mixed ten-minste-1 compound moet de volle span vs de klip kiezen:\n" + orMixed);
+        assertFalse(orMixed.contains("/* TODO"), () -> "de mixed OR compound mag geen marker meer zijn:\n" + orMixed);
 
         // a GELIJK static member now lowers (numeriek both-empty -> waar, Tabel 37): both-empty OR both-gevuld-equal.
         String gelijk = mixedCompound("alle volgende voorwaarden", "zijn leeftijd is gelijk aan 18");
@@ -2717,10 +2721,25 @@ class DrlTest {
                 () -> "compound OR moet via rsTijdUnie verenigen:\n" + drl);
     }
 
+    @Test void compound_ten_minste_1_mixed_static_verbreedt_naar_de_volle_span() {
+        // §8.4.2 a mixed "ten minste 1" (OR): a temporal kenmerk OR a static comparison. A TRUE static member makes
+        // the OR hold across the WHOLE span (a static member has no time-variation), so the totaal widens to the
+        // UN-clipped timeline; a FALSE static member leaves only the temporal-union clip. So the static guard chooses
+        // full-vs-clip — NOT (as for ALLE) clip-vs-ZERO. (Teeth: restore the kwantor==ALLE gate on the comparison
+        // member in gedurendeSamengesteld and the whole compound markers.)
+        String drl = compoundGedurende("ten minste 1 van de volgende voorwaarden", "zijn geboortedatum is eerder dan 01-01-2002");
+        assertTrue(drl.contains("? rsTijdTotaal($subject.getBedragPerMaand(), \"MAAND\")"
+                        + " : rsTijdTotaal(rsTijdKnip($subject.getBedragPerMaand(), $subject.getRechthebbend()), \"MAAND\"))"),
+                () -> "OR-mixed: static-true -> de volle span, static-false -> de klip:\n" + drl);
+        assertFalse(drl.contains(": java.math.BigDecimal.ZERO)"),   // the helper body inits "= ...ZERO", so match the ternary else
+                () -> "OR-mixed mag niet naar ZERO gaten (dat is de ALLE-semantiek):\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "OR-mixed mag geen marker zijn:\n" + drl);
+    }
+
     @Test void compound_gedurende_markeert_de_niet_ondersteunde_kwantoren() {
         // The whole compound stays an honest marker — never a silently-dropped predicate — for any kwantor that is
         // not ALLE or "ten minste 1": ten minste >1, geen van de, ten hoogste, precies. (The mixed temporal+
-        // non-temporal ALLE and the OR-with-negation DO lower, tested separately.)
+        // non-temporal ALLE, the OR-with-negation, and the mixed OR-with-static DO lower, tested separately.)
         assertTrue(compoundGedurende("ten minste 2 van de volgende voorwaarden", "hij actief is")
                         .contains("/* TODO"), "ten minste 2 moet markeren");
         assertTrue(compoundGedurende("geen van de volgende voorwaarden", "hij actief is")

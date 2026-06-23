@@ -505,10 +505,12 @@ final class ExpressieBouwer {
      *  subject; an ALLE compound may ALSO mix in a NON-temporal comparison bullet (the spec's own §8.4 example,
      *  "zijn geboortedatum is eerder dan 1-1-2002") — built as a {@link Conditie.Vergelijking} — which the transpiler
      *  lowers to a value-side static guard wrapping the clipped totaal ("de samengestelde conditie is als geheel wel
-     *  tijdsafhankelijk"). An ALLE compound must still carry at least one temporal kenmerk (the actual clip). Any
-     *  OTHER kwantor (geen van de / ten hoogste / precies / ten minste &gt;1), a nested compound bullet, a non-temporal
-     *  bullet in a "ten minste 1" (a mixed OR is deferred), or a non-comparison non-temporal bullet returns null — the
-     *  whole compound stays an Onopgelost marker, never a silently-dropped predicate. */
+     *  tijdsafhankelijk"). A "ten minste 1" (OR) compound likewise admits a non-temporal comparison bullet — but its
+     *  TRUE case WIDENS the clip to the full value span (the transpiler branches on the kwantor; the WRITE producers
+     *  still marker an OR-mixed). Either compound must still carry at least one temporal kenmerk (the actual clip). Any
+     *  OTHER kwantor (geen van de / ten hoogste / precies / ten minste &gt;1), a nested compound bullet, or a
+     *  non-comparison non-temporal bullet returns null — the compound stays an Onopgelost marker, never a dropped
+     *  predicate. */
     private Conditie gedurendeSamengesteld(ToplevelSamengesteldeVoorwaardeContext sv, String bron) {
         VoorwaardeKwantificatieContext q = sv.voorwaardeKwantificatie();
         if (q == null || sv.samengesteldeVoorwaardeOnderdeel() == null) return null;
@@ -524,10 +526,12 @@ final class ExpressieBouwer {
             ElementaireVoorwaardeContext ev = g.elementaireVoorwaarde();
             Conditie.Kenmerk k = temporeelKenmerkUitOperator(ev.toplevelOperator(), ev.nonToplevelOperator(), src(ev));
             if (k != null) { delen.add(k); temporeel++; continue; }
-            // §8.4 only an ALLE compound admits a non-temporal member, lowered as a static value-side guard (an OR
-            // with a static member has different, deferred semantics). The non-temporal member must be a COMPARISON.
-            Conditie.Vergelijking v = kwantor == Conditie.Kwantor.ALLE ? nietTemporeleVergelijking(ev) : null;
-            if (v == null) return null;                                 // a non-comparison / OR non-temporal bullet -> marker
+            // §8.4 a non-temporal member (a COMPARISON) lowers to a static value-side guard. In an ALLE compound it
+            // AND-gates the clipped totaal; in a "ten minste 1" (OR) compound a TRUE static member instead WIDENS the
+            // result to the full value span (the transpiler branches on the kwantor). The WRITE producers still marker
+            // an OR-mixed (conditieTijdreeks returns null) — only the totaal handles it.
+            Conditie.Vergelijking v = nietTemporeleVergelijking(ev);
+            if (v == null) return null;                                 // a non-comparison non-temporal bullet -> marker
             delen.add(v);
         }
         if (delen.size() < 2 || temporeel == 0) return null;           // a single bullet is the elementaire path; a pure-static gedurende is not a clip
