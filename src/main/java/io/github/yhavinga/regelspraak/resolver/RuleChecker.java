@@ -1002,10 +1002,10 @@ final class RuleChecker {
      *  property path {@code rol.kenmerk} reads one object); a TO-MANY navigation needs an exists/forall and
      *  stays a marker, as does an unresolvable rol or a kenmerk the navigated type does not declare. The rol
      *  is normalised to its declared name (a plural "de passagiers" is the same role as "de passagier"), so
-     *  the to-many test and the emitted reference field are the canonical one. With {@code metEen} (the §8.1.8.3
-     *  "is een &lt;k&gt;" form) the navigated kenmerk binds ONLY when it is {@link Objecttype.KenmerkSoort#ZELFSTANDIG}
-     *  — exactly as {@link #zelfstandigKenmerk} gates the subject's own EEN-form — so a bijvoeglijk/bezittelijk
-     *  kenmerk (never written with "een") is not mis-bound; a navigated role membership stays out of scope (null). */
+     *  the to-many test and the emitted reference field are the canonical one. With {@code metEen} the verb selects
+     *  the soort, exactly as the subject's own EEN-form ({@link #kenmerkPredicaat}): "is een &lt;k&gt;" binds a
+     *  §8.1.8.3 ZELFSTANDIG kenmerk of the navigated type, "heeft een &lt;k&gt;" a §8.1.8.2 BEZITTELIJK one — neither
+     *  binds under the other verb, and a navigated role membership via "een" stays out of scope (null). */
     private Conditie navigatieKenmerk(Expr lhs, String staart, boolean heeftWerkwoord, boolean metEen, String bron) {
         if (!(lhs instanceof Expr.AttribuutRef a) || a.objecttype() == null) return null;
         Objecttype subject = a.objecttype();                                       // the onderwerp the navigation is from
@@ -1021,10 +1021,13 @@ final class RuleChecker {
         String tail = navigatieStaart(a);
         String kenmerk = tail.isEmpty() ? staart : tail + " " + staart;
         if (metEen) {
-            // §8.1.8.3 navigated EEN-form: bind ONLY a ZELFSTANDIG kenmerk of the navigated type; a navigated
-            // role membership ("zijn reis is een belaste reis" where "belaste reis" were a role) is out of scope.
+            // §8.1.8.2/.3 navigated EEN-form: the verb selects the soort (is -> ZELFSTANDIG, heeft -> BEZITTELIJK),
+            // the mirror of the subject's own EEN-form; neither soort binds under the other verb, and a navigated
+            // role membership via "een" stays out of scope -> all an honest marker, never a wrong gate.
             String g = KenmerkMatcher.vind(doel, kenmerk);
-            return g != null && doel.kenmerkSoort(g) == Objecttype.KenmerkSoort.ZELFSTANDIG
+            Objecttype.KenmerkSoort vereist = heeftWerkwoord
+                    ? Objecttype.KenmerkSoort.BEZITTELIJK : Objecttype.KenmerkSoort.ZELFSTANDIG;
+            return g != null && doel.kenmerkSoort(g) == vereist
                     ? new Conditie.Kenmerk(g, rol, false, bron) : null;
         }
         return kenmerkConditie(doel, kenmerk, rol, heeftWerkwoord, bron);

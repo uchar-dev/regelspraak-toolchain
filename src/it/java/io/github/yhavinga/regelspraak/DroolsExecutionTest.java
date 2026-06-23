@@ -289,6 +289,47 @@ class DroolsExecutionTest {
                 () -> "complement-totaal moet 6x10 + 5x11 = 115 zijn, was " + p.getTotaleBelastingvermindering());
     }
 
+    @Test void navigated_eenvorm_heeft_een_bezittelijk_kenmerk_vuurt_via_de_to_one_navigatie() {
+        // §8.1.8.2 navigated EEN-form: "de partner van een Persoon heeft een recht op duurzaamheidskorting" reads
+        // the to-one partner's bezittelijk kenmerk -> "partner != null && partner.rechtOpDuurzaamheidskorting".
+        // Fires for a person whose partner holds the kenmerk, not otherwise, and is null-safe for a partnerless one.
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                het recht op duurzaamheidskorting kenmerk (bezittelijk);
+                de uitkomst Numeriek (geheel getal);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel R
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 7 indien de partner van een Persoon een recht op duurzaamheidskorting heeft.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("partner.rechtOpDuurzaamheidskorting == true"),
+                () -> "navigated bezittelijk heeft-vorm niet gebonden:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Persoon metHoudendePartner = new Persoon();
+        Persoon houder = new Persoon(); houder.setRechtOpDuurzaamheidskorting(true);
+        metHoudendePartner.setPartner(houder);
+        Persoon metGewonePartner = new Persoon();
+        Persoon nietHouder = new Persoon(); nietHouder.setRechtOpDuurzaamheidskorting(false);
+        metGewonePartner.setPartner(nietHouder);
+        Persoon zonderPartner = new Persoon();   // partner == null -> null-safe, no fire, no NPE-abort
+        sessie.insert(metHoudendePartner); sessie.insert(houder);
+        sessie.insert(metGewonePartner); sessie.insert(nietHouder); sessie.insert(zonderPartner);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("7").compareTo(metHoudendePartner.getUitkomst()),
+                () -> "persoon met houdende partner moet uitkomst 7 krijgen, was " + metHoudendePartner.getUitkomst());
+        assertNull(metGewonePartner.getUitkomst(), "partner zonder kenmerk -> geen uitkomst");
+        assertNull(zonderPartner.getUitkomst(), "geen partner -> geen uitkomst (null-safe)");
+    }
+
     @Test void eenvorm_heeft_een_bezittelijk_kenmerk_vuurt_de_voorwaarde() {
         // §8.1.8.2 "indien hij EEN recht op duurzaamheidskorting HEEFT" — the EEN-form HEEFT membership over a
         // BEZITTELIJK kenmerk now BINDS (was an Onopgelost marker that no-op'd the rule), so the condition gates:

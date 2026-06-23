@@ -133,6 +133,39 @@ class DrlTest {
                 () -> "de bijvoeglijke navigated EEN-vorm moet een honest marker blijven:\n" + drl);
     }
 
+    @Test void navigatie_eenvorm_heeft_bindt_een_bezittelijk_kenmerk_van_het_genavigeerde_type() {
+        // §8.1.8.2 the navigated EEN-form HEEFT binds a BEZITTELIJK kenmerk of the to-one navigated type ("de reis
+        // van een Passagier heeft een recht op vergoeding"), the mirror of the subject's own EEN-form. The verb
+        // selects the soort on the navigated path too: a bezittelijk kenmerk under "is" and a zelfstandig one under
+        // "heeft" are wrong-verb forms that stay honest markers. (Teeth: hardcode the navigatieKenmerk metEen guard
+        // back to ZELFSTANDIG and the bezittelijk binding falls back to a marker.)
+        String src = """
+            Objecttype de Vlucht
+                het recht op vergoeding kenmerk (bezittelijk);
+                het vip kenmerk;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+                de toeslag Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel bezittelijk heeft
+                geldig altijd
+                    De prijs van een Passagier moet gesteld worden op 1
+                    indien de reis van een Passagier een recht op vergoeding heeft.
+            Regel bezittelijk onder is
+                geldig altijd
+                    De toeslag van een Passagier moet gesteld worden op 2
+                    indien de reis van een Passagier een recht op vergoeding is.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("reis != null && reis.rechtOpVergoeding == true"),
+                () -> "navigated bezittelijk heeft-EEN-vorm niet gebonden:\n" + drl);
+        assertTrue(drl.contains("/* TODO voorwaarde: de reis van een Passagier een recht op vergoeding is */"),
+                () -> "een bezittelijk navigated kenmerk onder 'is' moet een marker blijven:\n" + drl);
+    }
+
     @Test void eenvorm_heeft_bindt_een_bezittelijk_kenmerk_niet_de_zelfstandige_soort() {
         // §8.1.8.2 the EEN-form HEEFT binds a BEZITTELIJK kenmerk ("hij heeft een recht op duurzaamheidskorting" —
         // the §7.1 verbatim possession form), the mirror of the §8.1.8.3 "is een <zelfstandig kenmerk>". The verb
