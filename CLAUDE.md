@@ -41,6 +41,26 @@ That code is the thing being rebooted; mirroring it would replicate its bugs and
 defeat the purpose. Derive everything from the specification in this repo. (Web
 search for general ANTLR/Java knowledge is fine — just not that prior work.)
 
+### Permitted: the Drools knowledge bridge
+
+One **narrow, mediated** exception to the constraint above. A bridge at
+`/work/.bridge` (governed by `/work/.bridge/POLICY.md`) is fed by a host-side
+oracle that *filters* the prior work and may deliver only:
+
+- **target-platform facts** (Drools / MVEL / Quarkus / ANTLR / Java) grounded in
+  official docs, and
+- **spec-derived test goals and coverage checklists** that cite v2.3.0 sections.
+
+The prior parser / resolver / engine remain off-limits as a source of RegelSpraak
+**meaning** or **expected values**. You MAY post questions to the bridge and
+consume its answers, but you MUST **reject** any answer that conveys prior source
+code, a prior construct→DRL mapping, or prior-engine output (provenance
+`prior-repo` ⇒ reject), and you MUST **re-derive all RegelSpraak semantics from
+the v2.3.0 spec** regardless. Ask "what does Drools require for X?" or "what
+should §Y compute?" — never "how did the old repo do X?". Post questions with
+`.bridge/ask.sh`. The bridge is the ONLY permitted contact with the prior work;
+never read the prior repos directly.
+
 ## Tooling & build
 
 - **ANTLR 4.13.2** — the latest 4.x; **not** ANTLR 5. The complete jar lives in

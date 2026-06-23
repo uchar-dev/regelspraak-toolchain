@@ -10,9 +10,11 @@
 # Sessions live in the container's volume, not your host ~/.claude, so resume
 # from here -- `claude --resume <id>` on the host will not find them.
 #
-# Isolation: the repo is bind-mounted at /work and nothing else on the host is
-# mounted, so ~/.ssh, ~/.aws, other projects and the host shell are invisible to
-# the container.
+# Isolation: the repo is bind-mounted at /work and -- apart from the knowledge
+# bridge mailbox at /work/.bridge (see ../regelspraak-bridge/POLICY.md) -- nothing
+# else on the host is mounted, so ~/.ssh, ~/.aws, other projects and the host
+# shell are invisible to the container. The prior parser/transpiler are NEVER
+# mounted; the bridge is the only contact surface, and POLICY.md governs it.
 #
 # Login persists: the container user's whole HOME (/home/claude) is a named Docker
 # volume, so BOTH the OAuth token (~/.claude/.credentials.json) and the onboarding
@@ -27,6 +29,13 @@ set -euo pipefail
 IMAGE=rsr-sandbox
 VOLUME=rsr-claude-home
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # project root (this script lives here)
+
+# Knowledge-bridge mailbox shared with the container at /work/.bridge. It lives
+# OUTSIDE the repo (default: sibling ../regelspraak-bridge) so it never pollutes
+# the tree; the prior parser/transpiler are never mounted -- POLICY.md in it
+# governs what may cross. Override the host location with RSR_BRIDGE.
+BRIDGE="${RSR_BRIDGE:-$(cd "$ROOT/.." && pwd)/regelspraak-bridge}"
+mkdir -p "$BRIDGE"
 
 build() { docker build -t "$IMAGE" "$ROOT/docker"; }
 
@@ -45,4 +54,5 @@ docker image inspect "$IMAGE" >/dev/null 2>&1 || build
 exec docker run --rm -it \
   -v "$VOLUME:/home/claude" \
   -v "$ROOT:/work" \
+  -v "$BRIDGE:/work/.bridge" \
   "$IMAGE" ${cmd[@]+"${cmd[@]}"}
