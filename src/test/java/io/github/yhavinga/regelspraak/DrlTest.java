@@ -2468,6 +2468,70 @@ class DrlTest {
         assertTrue(mismatch.contains("/* TODO"), () -> "een operator/doel eenheid-mismatch moet markeren:\n" + mismatch);
     }
 
+    @Test void tijdsevenredig_deel_lowert_alleen_een_temporele_basis_en_markeert_de_rest() {
+        // §7.3.2/§13.4.17.58 the SECOND temporal-WRITE: "het tijdsevenredig deel per maand van <temporeel attribuut>
+        // gedurende de tijd dat <temporeel kenmerk>" prorates the base value-timeline per calendar bucket. Only a
+        // single-period temporal-ATTRIBUTE base of the subject lowers (its §5.1.2 value-timeline is intrinsic); a
+        // SCALAR/parameter base, a gran mismatch, and a negated condition all MARKER honestly.
+        String ok = DrlTranspiler.transpile(Resolver.resolve("""
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de standaardbedrag Bedrag voor elk jaar;
+                de belastingvermindering Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+            Regel R
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van zijn standaardbedrag gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """));
+        assertTrue(ok.contains("setBelastingvermindering( rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), $subject.getStandaardbedrag(), \"MAAND\") )"),
+                () -> "tijdsevenredig deel over een temporele basis moet via rsTijdsevenredig lowereren:\n" + ok);
+        assertFalse(ok.contains("/* TODO"), () -> "de tijdsevenredig WRITE mag geen marker zijn:\n" + ok);
+
+        // §5.1.2 a SCALAR (parameter) base has no modeled value-timeline -> marker (a constant proration would be
+        // silently wrong on the spec's time-varying examples), with the §13.4.17.51-.58 WARNING preserved.
+        String param = DrlTranspiler.transpile(Resolver.resolve("""
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Parameter de STANDAARD : Bedrag
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+            Regel R
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van de STANDAARD gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """));
+        assertFalse(param.contains("rsTijdsevenredig"), () -> "een scalaire (parameter) basis mag niet als constante prorateren:\n" + param);
+        assertTrue(param.contains("/* TODO"), () -> "een scalaire basis moet markeren:\n" + param);
+
+        // §7.3.2 the operator's "per <maand|jaar>" must MATCH the doel's tijdlijn — per jaar into a per-maand doel markers.
+        String mismatch = DrlTranspiler.transpile(Resolver.resolve("""
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de standaardbedrag Bedrag voor elk jaar;
+                de belastingvermindering Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+            Regel R
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per jaar van zijn standaardbedrag gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """));
+        assertFalse(mismatch.contains("rsTijdsevenredig"), () -> "een operator/doel gran-mismatch mag niet stil bucketen:\n" + mismatch);
+        assertTrue(mismatch.contains("/* TODO"), () -> "een gran-mismatch moet markeren:\n" + mismatch);
+
+        // §8.1.8.1/.2 a NEGATED gedurende ("geen") is not yet supported for tijdsevenredig -> marker (never a
+        // positive proration over the complement).
+        String negatie = DrlTranspiler.transpile(Resolver.resolve("""
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de standaardbedrag Bedrag voor elk jaar;
+                de belastingvermindering Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+            Regel R
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van zijn standaardbedrag gedurende de tijd dat hij geen recht op belastingvermindering heeft).
+            """));
+        assertFalse(negatie.contains("rsTijdsevenredig"), () -> "een genegeerde gedurende mag niet positief prorateren:\n" + negatie);
+        assertTrue(negatie.contains("/* TODO"), () -> "een genegeerde gedurende moet markeren:\n" + negatie);
+    }
+
     @Test void compound_alle_gedurende_nest_de_knippen_de_doorsnede() {
         // §8.4.2 a COMPOUND "er aan ALLE volgende voorwaarden wordt voldaan" intersects the bullets' true-period
         // sets by nesting rsTijdKnip (a negated bullet nests rsTijdKnipNiet). (Teeth: drop the Samengesteld branch

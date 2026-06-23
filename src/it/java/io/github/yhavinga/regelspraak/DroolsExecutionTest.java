@@ -328,6 +328,90 @@ class DroolsExecutionTest {
         assertEquals(0, new BigDecimal("13").compareTo(uit.get(1).getWaarde()), () -> "februari = 13 dg, was " + uit.get(1).getWaarde());
     }
 
+    @Test void tijdsevenredig_deel_per_maand_prorateert_de_basis_tijdreeks_per_maand(){
+        // §7.3.2/§13.4.17.58 the SECOND temporal-WRITE: "de belastingvermindering ... moet gesteld worden op (het
+        // tijdsevenredig deel per maand van zijn standaardbedrag gedurende de tijd dat hij een recht op
+        // belastingvermindering heeft)" prorates the base value-timeline per calendar month by (true-days/total-days).
+        // The spec worked example 1 numbers, reproduced via a temporal-ATTRIBUTE base (a parameter's §5.1.2
+        // value-timeline the model cannot carry — a scalar base markers): standaardbedrag €12 over 2024, €18 from
+        // 2025; recht true [1-1-2024 .. 8-2-2025). -> 12 months of €12 (2024, full), €18 (jan-2025, full), and
+        // €18 × 7/28 = €4,50 (feb-2025, 7 of 28 days). March-2025 on (condition false) emits nothing.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de standaardbedrag Bedrag voor elk jaar;
+                de belastingvermindering Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+            Regel Belastingvermindering
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van zijn standaardbedrag gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), $subject.getStandaardbedrag(), \"MAAND\")"),
+                () -> "tijdsevenredig deel moet via rsTijdsevenredig over de basis-tijdreeks lowereren:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier p = new Passagier();
+        p.setStandaardbedrag(List.of(
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("12.00")),
+                new Segment(LocalDate.of(2025, 1, 1), LocalDate.of(2026, 1, 1), new BigDecimal("18.00"))));
+        p.setRechtOpBelastingvermindering(List.of(
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 2, 8), null)));
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        java.util.List<Segment> uit = p.getBelastingvermindering();
+        assertNotNull(uit, "de doel-tijdreeks moet gezet zijn");
+        assertEquals(14, uit.size(), () -> "12 volle maanden 2024 + jan-2025 + feb-2025 = 14 segmenten, kreeg " + uit.size());
+        assertEquals(LocalDate.of(2024, 1, 1), uit.get(0).getVan());
+        assertEquals(0, new BigDecimal("12.00").compareTo(uit.get(0).getWaarde()), () -> "jan-2024 = €12 (volle maand), was " + uit.get(0).getWaarde());
+        assertEquals(LocalDate.of(2025, 1, 1), uit.get(12).getVan());
+        assertEquals(0, new BigDecimal("18.00").compareTo(uit.get(12).getWaarde()), () -> "jan-2025 = €18 (volle maand), was " + uit.get(12).getWaarde());
+        assertEquals(LocalDate.of(2025, 2, 1), uit.get(13).getVan());
+        assertEquals(LocalDate.of(2025, 3, 1), uit.get(13).getTot());
+        assertEquals(0, new BigDecimal("4.50").compareTo(uit.get(13).getWaarde()), () -> "feb-2025 = 7/28 × €18 = €4,50, was " + uit.get(13).getWaarde());
+    }
+
+    @Test void tijdsevenredig_deel_rondt_de_niet_eindigende_breuk_niet_af_op_de_doel_decimalen(){
+        // §4.22 Precisie: the result is an exact fraction, NOT auto-rounded to the doel's declared decimals (§6.1.2
+        // forbids auto-rounding). Spec example 2 (per jaar): €18 × 38/365 = 684/365 €/mnd, a NON-terminating fraction
+        // the spec keeps exact. The engine emits the DECIMAL64 value (no setScale to the Bedrag's 2 decimals), so the
+        // stored value carries far more than 2 decimals — proving the no-auto-round decision.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de standaardbedrag Bedrag voor elk jaar;
+                de jaardeel Bedrag voor elk jaar;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+            Regel Jaardeel
+                geldig altijd
+                    De jaardeel van een Passagier moet gesteld worden op (het tijdsevenredig deel per jaar van zijn standaardbedrag gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier p = new Passagier();
+        p.setStandaardbedrag(List.of(
+                new Segment(LocalDate.of(2025, 1, 1), LocalDate.of(2026, 1, 1), new BigDecimal("18.00"))));
+        p.setRechtOpBelastingvermindering(List.of(   // 38 days into 2025 (jan 31 + feb 1..7)
+                new Segment(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 2, 8), null)));
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        java.util.List<Segment> uit = p.getJaardeel();
+        assertNotNull(uit, "de doel-tijdreeks moet gezet zijn");
+        assertEquals(1, uit.size(), () -> "één jaar-bucket verwacht, kreeg " + uit);
+        BigDecimal w = uit.get(0).getWaarde();
+        assertTrue(w.scale() > 2, () -> "684/365 mag NIET op 2 decimalen worden afgerond (§4.22/§6.1.2), scale was " + w.scale() + " (" + w + ")");
+        assertEquals(0, new BigDecimal("1.873972602739726").compareTo(w), () -> "18 × 38/365 = 684/365 ≈ 1.873972602739726 (DECIMAL64), was " + w);
+    }
+
     @Test void compound_alle_gedurende_snijdt_de_ware_periodes(){
         // §8.4.2 a COMPOUND "gedurende de tijd dat er aan ALLE volgende voorwaarden wordt voldaan: …" intersects the
         // true-period sets of its temporal-kenmerk bullets (nested rsTijdKnip). value €10/mnd over 2023, €11/mnd

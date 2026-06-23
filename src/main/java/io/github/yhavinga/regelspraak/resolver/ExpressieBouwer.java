@@ -277,19 +277,24 @@ final class ExpressieBouwer {
         // single-period subject temporal-kenmerk membership into a Conditie.Kenmerk (reusing the gedurende path's
         // resolver) so the transpiler can count true-days per period; anything else (a comparison / compound /
         // navigated / non-temporal condition) leaves the filter unset -> the transpiler markers.
-        RegelSpraakModel.Granulariteit aantalDagenGran = null;
+        RegelSpraakModel.Granulariteit operatorGran = null;
         if (kind == Expr.FunctieKind.AANTAL_DAGEN_IN && f instanceof AantalDagenFuncContext adf) {
             // §13.4.17.57/§4.21 carry the operator's "in <de maand|het jaar>" bucket unit so the transpiler can
             // require it to MATCH the doel's tijdlijn rather than silently bucketing by the doel's unit.
-            aantalDagenGran = adf.MAAND() != null ? RegelSpraakModel.Granulariteit.MAAND
+            operatorGran = adf.MAAND() != null ? RegelSpraakModel.Granulariteit.MAAND
                     : (adf.JAAR() != null ? RegelSpraakModel.Granulariteit.JAAR : null);
             if (adf.toplevelElementaireVoorwaarde() != null && !(filter instanceof Conditie.Kenmerk)) {
                 ToplevelElementaireVoorwaardeContext c = adf.toplevelElementaireVoorwaarde();
                 Conditie.Kenmerk k = temporeelKenmerkUitOperator(c.toplevelOperator(), c.nonToplevelOperator(), src(adf));
                 if (k != null) filter = k;
             }
+        } else if (kind == Expr.FunctieKind.TIJDSEVENREDIG_DEEL && f instanceof TijdsevenredigFuncContext tvf) {
+            // §13.4.17.58/§7.3.2 carry the operator's "per <maand|jaar>" bucket unit; the transpiler requires it to
+            // MATCH the doel's tijdlijn ("de knips ... moeten passen op de tijdlijn van het attribuut", §7.3.2).
+            operatorGran = tvf.MAAND() != null ? RegelSpraakModel.Granulariteit.MAAND
+                    : (tvf.JAAR() != null ? RegelSpraakModel.Granulariteit.JAAR : null);
         }
-        Expr functie = new Expr.Functie(kind, argumenten, elem, leegwaarde, filter, null, type, bron, aantalDagenGran);
+        Expr functie = new Expr.Functie(kind, argumenten, elem, leegwaarde, filter, null, type, bron, operatorGran);
         // §13.4.17.13: the wortel's afronding is MANDATORY and rounds the ROOT (it is a sibling of the
         // radicand, not inside it). It was parsed but dropped; wrap the function so the rounding survives.
         if (f instanceof WortelFuncContext w) return afgerond(functie, w.afronding(), bron);
@@ -406,23 +411,27 @@ final class ExpressieBouwer {
      *  VALUE-fold has no single element filter — there a die belongs to one operand's own navigation
      *  (e.g. "de eerste passagier die …"), not the aggregation, and markering on it would kill a
      *  working accumulate (see p20b). With one operand a generic subtree scan is safe. */
-    /** §7.1 the "gedurende de tijd dat <voorwaarde>" restriction on "het totaal van <temporeel attribuut>",
-     *  when it is a SIMPLE single-period temporal-kenmerk membership of the subject ("hij rechthebbend is", or
-     *  the §7.1 verbatim example's bezittelijk "hij een recht op belastingvermindering heeft"), resolved to a
-     *  {@link Conditie.Kenmerk} the transpiler clips the value timeline by. Tightly gated: only a TOTAAL over the
-     *  subject's OWN single-period temporal attribute, with a non-navigated "is/heeft <kenmerk>" condition naming
-     *  a single-period temporal kenmerk of the subject. BOTH membership verbs bind: a bijvoeglijk/zelfstandig
-     *  kenmerk reads "is <k>", a bezittelijk one "heeft (een) <k>" (§3.5) — the verb is not the discriminator;
-     *  the granularity check below is (a role/possession "heeft een <rol>" names no temporal kenmerk, so it still
-     *  returns null). Everything else (a navigated/compound/comparison/multi-period condition, a non-temporal or
-     *  navigated operand) returns null and stays an Onopgelost marker — so the accumulate path never misreads this
-     *  subject-kenmerk as an element die-filter. */
+    /** §7.1/§7.3.2 the "gedurende de tijd dat <voorwaarde>" restriction on "het totaal van <temporeel attribuut>"
+     *  OR "het tijdsevenredig deel per <maand|jaar> van <temporeel attribuut>", when it is a SIMPLE single-period
+     *  temporal-kenmerk membership of the subject ("hij rechthebbend is", or the verbatim example's bezittelijk
+     *  "hij een recht op belastingvermindering heeft"), resolved to a {@link Conditie.Kenmerk} the transpiler clips
+     *  the value timeline by. Tightly gated: only a TOTAAL or TIJDSEVENREDIG_DEEL over the subject's OWN single-period
+     *  temporal attribute (the operand the operator ranges over — the totaled attribute, or the §7.3.2 base whose
+     *  value-timeline §5.1.2 makes intrinsic), with a non-navigated "is/heeft <kenmerk>" condition naming a
+     *  single-period temporal kenmerk of the subject. BOTH membership verbs bind: a bijvoeglijk/zelfstandig kenmerk
+     *  reads "is <k>", a bezittelijk one "heeft (een) <k>" (§3.5) — the verb is not the discriminator; the
+     *  granularity check below is (a role/possession "heeft een <rol>" names no temporal kenmerk, so it still returns
+     *  null). Everything else (a navigated/compound/comparison/multi-period condition, a non-temporal or navigated/
+     *  scalar operand) returns null and stays an Onopgelost marker — so a SCALAR (parameter) base, whose §5.1.2
+     *  value-timeline the model cannot carry, never lowers as a silently-constant proration. */
     private Conditie gedurendeKenmerkFilter(FunctieAanroepContext f, Expr.FunctieKind kind, List<Expr> argumenten) {
-        if (kind != Expr.FunctieKind.TOTAAL || argumenten.size() != 1 || huidigSubject == null) return null;
+        if ((kind != Expr.FunctieKind.TOTAAL && kind != Expr.FunctieKind.TIJDSEVENREDIG_DEEL)
+                || argumenten.size() != 1 || huidigSubject == null) return null;
         if (!(argumenten.get(0) instanceof Expr.AttribuutRef a) || a.navigatieRol() != null || a.set()
                 || a.objecttype() != huidigSubject || !huidigSubject.attribuutGranulariteit.containsKey(a.attribuut())
                 || huidigSubject.attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;
-        ConditieBijExpressieContext cnd = f instanceof TotaalFuncContext t ? t.conditieBijExpressie() : null;
+        ConditieBijExpressieContext cnd = f instanceof TotaalFuncContext t ? t.conditieBijExpressie()
+                : f instanceof TijdsevenredigFuncContext tv ? tv.conditieBijExpressie() : null;
         if (cnd == null) return null;
         // §7.1 a SIMPLE (single) membership, or §8.4.2 a COMPOUND ("er aan alle/ten minste 1 van de volgende
         // voorwaarden wordt voldaan: …") of such memberships. Each bullet must be a single-period temporal kenmerk

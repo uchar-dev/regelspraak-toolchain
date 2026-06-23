@@ -36,6 +36,15 @@ public class Passagier {
     private List<Segment> aantalDagenRechtOpBelastingvermindering; // §7.2 a temporal attribute WRITTEN by aantal-dagen-in
     public List<Segment> getAantalDagenRechtOpBelastingvermindering() { return aantalDagenRechtOpBelastingvermindering; }
     public void setAantalDagenRechtOpBelastingvermindering(List<Segment> v) { this.aantalDagenRechtOpBelastingvermindering = v; }
+    private List<Segment> standaardbedrag;               // §7.3.2 the BASE value-timeline a tijdsevenredig deel prorates
+    public List<Segment> getStandaardbedrag() { return standaardbedrag; }
+    public void setStandaardbedrag(List<Segment> v) { this.standaardbedrag = v; }
+    private List<Segment> belastingvermindering;         // §7.3.2 a per-maand temporal attribute WRITTEN by tijdsevenredig deel
+    public List<Segment> getBelastingvermindering() { return belastingvermindering; }
+    public void setBelastingvermindering(List<Segment> v) { this.belastingvermindering = v; }
+    private List<Segment> jaardeel;                       // §7.3.2 a per-jaar temporal attribute WRITTEN by tijdsevenredig deel
+    public List<Segment> getJaardeel() { return jaardeel; }
+    public void setJaardeel(List<Segment> v) { this.jaardeel = v; }
     public BigDecimal getBasistarief() { return basistarief; }
     public void setBasistarief(BigDecimal v) { this.basistarief = v; }
     public BigDecimal getBodem() { return bodem; }

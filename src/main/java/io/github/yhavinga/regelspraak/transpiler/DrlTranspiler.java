@@ -783,7 +783,7 @@ public final class DrlTranspiler {
             // §5.1.4 the doel is a SINGLE-period TEMPORAL attribute -> write a List<Segment> timeline, not a scalar.
             // A timeline-producing RHS we cannot lower stays an honest /* TODO */ marker (never a scalar setter on a
             // List<Segment> field, which would not compile).
-            String tl = temporeleWaarde(r.waarde(), subject, a.objecttype().attribuutGranulariteit.get(a.attribuut()));
+            String tl = temporeleWaarde(r.waarde(), subject, a.objecttype().attribuutGranulariteit.get(a.attribuut()), a.type());
             rule.dan("    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( "
                     + (tl != null ? tl : todo("temporele toekenning", r.waarde().bron())) + " )\n    }\n");
         } else if (valueStr != null && r.doel() instanceof Expr.AttribuutRef a) {
@@ -1637,7 +1637,7 @@ public final class DrlTranspiler {
      *  requires the expression's "in <maand|jaar>" to match the doel's tijdlijn, §7.2). Only a positive
      *  single-period subject temporal-kenmerk condition lowers; a negated/comparison/compound/navigated condition
      *  left the filter unset in the resolver -> null here. */
-    private String temporeleWaarde(Expr w, Objecttype subject, RegelSpraakModel.Granulariteit gran) {
+    private String temporeleWaarde(Expr w, Objecttype subject, RegelSpraakModel.Granulariteit gran, Datatype doelType) {
         if (w instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.AANTAL_DAGEN_IN
                 // §4.21/§7.2 the operator's "in <maand|jaar>" bucket unit MUST match the doel's tijdlijn — a
                 // mismatch ("in het jaar" into a per-maand doel) markers rather than silently bucketing by the doel.
@@ -1647,7 +1647,82 @@ public final class DrlTranspiler {
             registreerAantalDagenInFunctie();
             return "rsAantalDagenIn(" + SUBJECT + "." + getter(k.kenmerk()) + "(), \"" + gran.name() + "\")";
         }
+        // §13.4.17.58/§7.3.2 "het tijdsevenredig deel per <maand|jaar> van <temporeel attribuut> gedurende de tijd
+        // dat <temporeel kenmerk>": per calendar bucket, value = baseValueInBucket × (true-days / total-days). The
+        // base MUST be a single-period temporal attribute of the subject — its value-timeline is intrinsic (§5.1.2),
+        // so a SCALAR/parameter base (which the model carries as one constant) is NOT lowered here (the resolver left
+        // its filter unset -> the WARNING+marker path), never a silently-constant proration over the spec's
+        // time-varying examples. §4.22: NO auto-round (DECIMAL64, not the doel's decimals — §6.1.2 forbids it); a leeg
+        // base bucket yields no segment. A unit mismatch (the §7.3.2 ex.3 €/jr→€/mnd rate conversion) markers (the
+        // temporal WRITE path applies no omrekening); a negated/compound/navigated condition markers.
+        if (w instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.TIJDSEVENREDIG_DEEL
+                && f.granulariteit() == gran && f.argumenten().size() == 1
+                && f.argumenten().get(0) instanceof Expr.AttribuutRef base
+                && base.navigatieRol() == null && !base.set() && base.objecttype() == subject && subject != null
+                && subject.attribuutGranulariteit.containsKey(base.attribuut())
+                && !subject.attribuutTijdlijnAantal.containsKey(base.attribuut())
+                && base.type().isNumeriek()
+                && java.util.Objects.equals(base.type().eenheidOf(), doelType == null ? null : doelType.eenheidOf())
+                && f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null && !k.negatie()
+                && subject.kenmerkGranulariteit.containsKey(k.kenmerk())
+                && !subject.kenmerkTijdlijnAantal.containsKey(k.kenmerk())) {
+            registreerTijdsevenredigFunctie();
+            return "rsTijdsevenredig(" + SUBJECT + "." + getter(k.kenmerk()) + "(), "
+                    + SUBJECT + "." + getter(base.attribuut()) + "(), \"" + gran.name() + "\")";
+        }
         return null;
+    }
+
+    /** Register the §13.4.17.58 tijdsevenredig-deel helper: prorate a base value-timeline over each calendar bucket
+     *  by the fraction of the bucket the condition holds. Buckets are taken from the condition's TRUE {@code
+     *  List<Segment>} timeline (like rsAantalDagenIn); per non-empty bucket [start,eind) the output value is
+     *  {@code basisWaardeInBucket × trueDays / totalDays} at DECIMAL64 — §4.22 keeps the exact fraction, NEVER
+     *  auto-rounding to the doel's decimals (§6.1.2). The base value for a bucket is the basis segment covering the
+     *  bucket start; a leeg base there yields no segment (§4.22 leeg → leeg). Plain Java (TreeMap keeps the buckets
+     *  chronological) so a Drools function body compiles it. The §7.2 example: €18/mnd, recht 7 of Feb's 28 days →
+     *  7/28 × 18 = €4,5 for that month. */
+    private void registreerTijdsevenredigFunctie() {
+        hulpFuncties.putIfAbsent("rsTijdsevenredig",
+                "function java.util.List rsTijdsevenredig(java.util.List conditie, java.util.List basis, String granulariteit) {\n"
+                + "    java.util.List uit = new java.util.ArrayList();\n"
+                + "    if (conditie == null || basis == null) return uit;\n"
+                + "    boolean jaar = \"JAAR\".equals(granulariteit);\n"
+                + "    java.util.Map trueDagen = new java.util.TreeMap();\n"
+                + "    for (Object o : conditie) {\n"
+                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
+                + "        if (s.getVan() == null || s.getTot() == null || !s.getVan().isBefore(s.getTot())) continue;\n"
+                + "        java.time.LocalDate cursor = jaar ? s.getVan().withDayOfYear(1) : s.getVan().withDayOfMonth(1);\n"
+                + "        while (cursor.isBefore(s.getTot())) {\n"
+                + "            java.time.LocalDate next = jaar ? cursor.plusYears(1) : cursor.plusMonths(1);\n"
+                + "            java.time.LocalDate van = s.getVan().isAfter(cursor) ? s.getVan() : cursor;\n"
+                + "            java.time.LocalDate tot = s.getTot().isBefore(next) ? s.getTot() : next;\n"
+                + "            long dagen = java.time.temporal.ChronoUnit.DAYS.between(van, tot);\n"
+                + "            if (dagen > 0) {\n"
+                + "                Object prev = trueDagen.get(cursor);\n"
+                + "                long acc = prev == null ? 0L : ((Long) prev).longValue();\n"
+                + "                trueDagen.put(cursor, Long.valueOf(acc + dagen));\n"
+                + "            }\n"
+                + "            cursor = next;\n"
+                + "        }\n"
+                + "    }\n"
+                + "    java.util.Iterator it = trueDagen.entrySet().iterator();\n"
+                + "    while (it.hasNext()) {\n"
+                + "        java.util.Map.Entry en = (java.util.Map.Entry) it.next();\n"
+                + "        java.time.LocalDate start = (java.time.LocalDate) en.getKey();\n"
+                + "        java.time.LocalDate eind = jaar ? start.plusYears(1) : start.plusMonths(1);\n"
+                + "        long totaal = java.time.temporal.ChronoUnit.DAYS.between(start, eind);\n"
+                + "        long dagen = ((Long) en.getValue()).longValue();\n"
+                + "        java.math.BigDecimal w = null;\n"
+                + "        for (Object o : basis) {\n"
+                + "            " + FACT_PACKAGE + ".Segment b = (" + FACT_PACKAGE + ".Segment) o;\n"
+                + "            if (b.getVan() != null && b.getTot() != null && !b.getVan().isAfter(start) && b.getTot().isAfter(start)) { w = b.getWaarde(); break; }\n"
+                + "        }\n"
+                + "        if (w == null) continue;\n"
+                + "        java.math.BigDecimal deel = w.multiply(java.math.BigDecimal.valueOf(dagen)).divide(java.math.BigDecimal.valueOf(totaal), java.math.MathContext.DECIMAL64);\n"
+                + "        uit.add(new " + FACT_PACKAGE + ".Segment(start, eind, deel));\n"
+                + "    }\n"
+                + "    return uit;\n"
+                + "}");
     }
 
     /** Register the §13.4.17.57 aantal-dagen-in helper: bucket a condition's TRUE {@code List<Segment>} timeline
