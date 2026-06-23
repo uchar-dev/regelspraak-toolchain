@@ -693,14 +693,12 @@ not work out (the count rides on the `Tijdlijn` record + `attribuutTijdlijnAanta
 van `<temporeel attr>` van een set") — a per-element timeline fold (fold each element's series, then total) is not
 lowered, so it markers rather than mis-folding the subject's own series or summing the `List<Segment>` (when the
 element type equals the subject's the resolver collapses the set to an EIGEN ref, caught by the structural `set`
-flag; a distinct element type is caught in `accumulate`); a **to-many** navigated totaal; a **MIXED** compound (a
-temporal-kenmerk bullet plus a non-temporal comparison, the spec's own §8.4 `geboortedatum` example), a nested
+flag; a distinct element type is caught in `accumulate`); a **to-many** navigated totaal; a nested
 compound, or any other kwantor (`ten minste >1` / `geen van de` / `ten hoogste` / `precies`) — each leaves the WHOLE
 compound an `Onopgelost` marker, never a silently-dropped predicate; and any single gedurende the resolver could not
 structure (a comparison / navigated / non-temporal condition). Carded follow-ons: the pre-existing resolver set→own
 collapse (the deeper fix — the structural `set` flag now hardens the guard but the per-element fold is still
-unlowered), the **MIXED** compound (the non-temporal bullet as a value-side guard), the navigated EEN-form bezittelijk
-gedurende, and `tijdsevenredig deel` (§13.4.17.58, whose period-fraction proration is the next WRITE-path producer);
+unlowered) and the navigated EEN-form bezittelijk gedurende;
 `rsTijdTotaal` truncates a sub-period-aligned segment (exact for boundary-aligned timelines) and `rsTijdKnip` does not
 union overlapping condition intervals (a contractually-disjoint kenmerk timeline — `rsTijdKnipNiet`, `rsTijdUnie` and
 `rsAantalDagenIn` handle overlap by gap-walking/coalescing/bucketing).
@@ -774,7 +772,26 @@ generalization. Fired: an ALLE aantal-dagen intersection (Jan 22 / Feb 13 dg) an
 (€18 / €4,50, overlap coalesced). A **negated** compound member markers — unlike the `totaal` CLIP (where the value
 timeline bounds the complement via `rsTijdKnipNiet`), a WRITE producer has no value to bound a standalone `¬kenmerk`,
 so combining it would be ill-defined; an honest marker over a mis-count. A mixed / non-kenmerk / other-kwantor compound
-markers too.
+markers too (but the `totaal` path DOES lower a mixed ALLE compound — next).
+
+### The MIXED compound gedurende on a totaal (§8.4) — a static comparison as a value-side guard
+
+§8.4's *primary* illustration of a compound `gedurende de tijd dat` mixes a temporal kenmerk with a **non-temporal**
+comparison — "er aan **alle** volgende voorwaarden wordt voldaan: • hij heeft een recht op belastingvermindering •
+zijn geboortedatum is eerder dan 1-1-2002" — and states the compound "is als geheel wel tijdsafhankelijk". The whole
+compound used to marker. On the **`totaal`** path it now lowers: the resolver (`gedurendeSamengesteld`, **ALLE only**)
+admits a non-temporal **comparison** member, built as a `Conditie.Vergelijking` via RuleChecker's now package-static
+`cmpOf`/`naarOperator` (shared, not duplicated); the transpiler **partitions** the compound — temporal kenmerks clip
+the timeline (`rsTijdKnip`, intersection), the static comparison becomes a value-side guard wrapping the totaal:
+`(geboortedatum < 2002 ? rsTijdTotaal(clip, gran) : java.math.BigDecimal.ZERO)`. The guard rides in the **consequence**,
+so it uses the value-side `$subject.getX()` form (not the when-side bare property) and null-guards each operand
+(`lv != null && rv != null && lv <op> rv`); MVEL compares `LocalDate` via `Comparable`. Fired: born 1990 (< 2002) → the
+clipped €71; born 2005 (≥ 2002) → 0. **Scope**: only an **ALLE** compound, only an **ordering/datum** static comparison
+(where an empty operand makes the comparison *onwaar*, Tabel 40-43, matching the null-guards) — a **GELIJK/ONGELIJK**
+static member (whose both-empty semantics differ, Tabel 37/38/44), a mixed **OR** (`ten minste 1`), a non-comparison
+non-temporal member, or a compound with **no** temporal kenmerk all marker. The **WRITE** producers (aantal-dagen /
+tijdsevenredig) still marker a mixed compound (their `conditieTijdreeks` sees a non-kenmerk member). Pure-temporal
+compounds are byte-identical (the partition passes the original Samengesteld unchanged).
 
 ### Elfproef predicate (§8.1.3) — lowered to a registered rsElfproef helper
 
