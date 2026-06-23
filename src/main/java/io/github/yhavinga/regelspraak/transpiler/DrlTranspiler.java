@@ -1688,8 +1688,12 @@ public final class DrlTranspiler {
      *  caller markers rather than mis-count. */
     private String conditieTijdreeks(Conditie filter, Objecttype subject) {
         if (filter instanceof Conditie.Kenmerk k) return temporeelKenmerkTijdreeks(k, subject);
+        // §8.4.2 ALLE = intersection; "ten minste 1" = union. Only drempel 1 is a union — a "ten minste N>1" is a
+        // threshold, not an OR (the resolver already markers it, gedurendeSamengesteld gates telwoord==1; this guard
+        // keeps the union semantics honest if a drempel>1 Samengesteld ever reaches here).
         if (filter instanceof Conditie.Samengesteld s
-                && (s.kwantor() == Conditie.Kwantor.ALLE || s.kwantor() == Conditie.Kwantor.TEN_MINSTE)) {
+                && (s.kwantor() == Conditie.Kwantor.ALLE
+                    || (s.kwantor() == Conditie.Kwantor.TEN_MINSTE && s.drempel() == 1))) {
             java.util.List<String> regios = new java.util.ArrayList<>();
             for (Conditie c : s.onderdelen()) {
                 if (!(c instanceof Conditie.Kenmerk k)) return null;
