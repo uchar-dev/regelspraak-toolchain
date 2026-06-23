@@ -493,10 +493,14 @@ final class ExpressieBouwer {
     }
 
     /** §8.4.2 a COMPOUND tijdsafhankelijke conditie on a temporal totaal: an ALLE (intersect the true-period sets)
-     *  or "ten minste 1" (union them) of bullets, each a single-period temporal-kenmerk membership of the subject.
-     *  Any OTHER kwantor (geen van de / ten hoogste / precies / ten minste &gt;1), a nested compound bullet, or a
-     *  non-temporal/comparison bullet returns null — so the whole compound stays an Onopgelost marker (the spec's
-     *  own §8.4 mixed temporal+non-temporal example included), never a silently-dropped predicate. */
+     *  or "ten minste 1" (union them) of bullets. Each bullet is a single-period temporal-kenmerk membership of the
+     *  subject; an ALLE compound may ALSO mix in a NON-temporal comparison bullet (the spec's own §8.4 example,
+     *  "zijn geboortedatum is eerder dan 1-1-2002") — built as a {@link Conditie.Vergelijking} — which the transpiler
+     *  lowers to a value-side static guard wrapping the clipped totaal ("de samengestelde conditie is als geheel wel
+     *  tijdsafhankelijk"). An ALLE compound must still carry at least one temporal kenmerk (the actual clip). Any
+     *  OTHER kwantor (geen van de / ten hoogste / precies / ten minste &gt;1), a nested compound bullet, a non-temporal
+     *  bullet in a "ten minste 1" (a mixed OR is deferred), or a non-comparison non-temporal bullet returns null — the
+     *  whole compound stays an Onopgelost marker, never a silently-dropped predicate. */
     private Conditie gedurendeSamengesteld(ToplevelSamengesteldeVoorwaardeContext sv, String bron) {
         VoorwaardeKwantificatieContext q = sv.voorwaardeKwantificatie();
         if (q == null || sv.samengesteldeVoorwaardeOnderdeel() == null) return null;
@@ -506,15 +510,37 @@ final class ExpressieBouwer {
             kwantor = Conditie.Kwantor.TEN_MINSTE;                       // "ten minste 1" = OR (union)
         else return null;                                               // de / geen van de / ten hoogste / precies / ten minste >1
         List<Conditie> delen = new ArrayList<>();
+        int temporeel = 0;
         for (GenesteVoorwaardeContext g : sv.samengesteldeVoorwaardeOnderdeel().genesteVoorwaarde()) {
             if (g.elementaireVoorwaarde() == null) return null;         // a nested compound bullet -> marker
             ElementaireVoorwaardeContext ev = g.elementaireVoorwaarde();
             Conditie.Kenmerk k = temporeelKenmerkUitOperator(ev.toplevelOperator(), ev.nonToplevelOperator(), src(ev));
-            if (k == null) return null;                                 // a comparison / non-temporal bullet -> marker
-            delen.add(k);
+            if (k != null) { delen.add(k); temporeel++; continue; }
+            // §8.4 only an ALLE compound admits a non-temporal member, lowered as a static value-side guard (an OR
+            // with a static member has different, deferred semantics). The non-temporal member must be a COMPARISON.
+            Conditie.Vergelijking v = kwantor == Conditie.Kwantor.ALLE ? nietTemporeleVergelijking(ev) : null;
+            if (v == null) return null;                                 // a non-comparison / OR non-temporal bullet -> marker
+            delen.add(v);
         }
-        if (delen.size() < 2) return null;                             // a single bullet is the elementaire path
+        if (delen.size() < 2 || temporeel == 0) return null;           // a single bullet is the elementaire path; a pure-static gedurende is not a clip
         return new Conditie.Samengesteld(kwantor, 1, delen, bron);
+    }
+
+    /** §8.4 a NON-temporal COMPARISON bullet of a mixed ALLE gedurende ("zijn geboortedatum is eerder dan 1-1-2002")
+     *  built as a {@link Conditie.Vergelijking} (reusing RuleChecker's shared comparison-operator mapping), or null
+     *  when the bullet is not a plain comparison (a predicate / kenmerk / role membership — deferred). */
+    private Conditie.Vergelijking nietTemporeleVergelijking(ElementaireVoorwaardeContext ev) {
+        Expr links = ev.expressie() != null ? bouw(ev.expressie()) : null;
+        if (links == null) return null;
+        if (ev.toplevelOperator() != null && ev.toplevelOperator().vergelijkingsTekenGesplitst() != null
+                && ev.toplevelOperator().expressie() != null)
+            return new Conditie.Vergelijking(RuleChecker.naarOperator(RuleChecker.cmpOf(ev.toplevelOperator().vergelijkingsTekenGesplitst())),
+                    links, bouw(ev.toplevelOperator().expressie()), src(ev));
+        if (ev.nonToplevelOperator() != null && ev.nonToplevelOperator().vergelijkingsTeken() != null
+                && ev.nonToplevelOperator().expressie() != null)
+            return new Conditie.Vergelijking(RuleChecker.naarOperator(RuleChecker.cmpOf(ev.nonToplevelOperator().vergelijkingsTeken())),
+                    links, bouw(ev.nonToplevelOperator().expressie()), src(ev));
+        return null;
     }
 
     /** The integer value of a §13.4.14 telwoord (a digit literal or een/twee/drie/vier), or -1 if unrecognised. */

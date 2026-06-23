@@ -1081,7 +1081,7 @@ final class RuleChecker {
         return Conditie.Kwantor.DE;
     }
 
-    private static Conditie.Operator naarOperator(Typering.CmpOp op) {
+    static Conditie.Operator naarOperator(Typering.CmpOp op) {
         if (op == null) return Conditie.Operator.GELIJK;
         return switch (op) {
             case KLEINER -> Conditie.Operator.KLEINER;
@@ -1179,15 +1179,15 @@ final class RuleChecker {
         if (!res.ok()) model.diagnostics.add(new Diagnostic(Severity.ERROR, "voorwaarde: " + res.fout(), line));
     }
 
-    private Typering.CmpOp cmpOf(VergelijkingsTekenContext c) {
+    static Typering.CmpOp cmpOf(VergelijkingsTekenContext c) {
         return cmpOf(c.ONGELIJK() != null, c.GROTER() != null, c.KLEINER() != null,
                      c.LATER() != null, c.EERDER() != null, c.GELIJK() != null, c.OF() != null);
     }
-    private Typering.CmpOp cmpOf(VergelijkingsTekenGesplitstContext c) {
+    static Typering.CmpOp cmpOf(VergelijkingsTekenGesplitstContext c) {
         return cmpOf(c.ONGELIJK() != null, c.GROTER() != null, c.KLEINER() != null,
                      c.LATER() != null, c.EERDER() != null, c.GELIJK() != null, c.OF() != null);
     }
-    private Typering.CmpOp cmpOf(boolean ong, boolean gr, boolean kl, boolean la, boolean ee, boolean ge, boolean of) {
+    static Typering.CmpOp cmpOf(boolean ong, boolean gr, boolean kl, boolean la, boolean ee, boolean ge, boolean of) {
         if (ong) return Typering.CmpOp.ONGELIJK;
         if (gr)  return of ? Typering.CmpOp.GROTER_OF_GELIJK  : Typering.CmpOp.GROTER;
         if (kl)  return of ? Typering.CmpOp.KLEINER_OF_GELIJK : Typering.CmpOp.KLEINER;

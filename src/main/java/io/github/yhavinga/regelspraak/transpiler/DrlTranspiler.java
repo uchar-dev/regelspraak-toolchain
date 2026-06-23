@@ -1613,21 +1613,66 @@ public final class DrlTranspiler {
         // temporal Conditie.Kenmerk of the subject; clip the value timeline to that kenmerk's TRUE periods
         // before totalling (rsTijdKnip). A filter the resolver could not structure stays Onopgelost -> the
         // marker above; any OTHER non-null filter we do not lower is markered rather than silently dropped.
+        String guard = null;   // §8.4 a static (non-temporal) compound member gates the WHOLE totaal
         if (f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null
                 && subject != null && subject.kenmerkGranulariteit.containsKey(k.kenmerk())) {
             waardeTijdreeks = kenmerkTijdKnip(waardeTijdreeks, k);
         } else if (f.filter() instanceof Conditie.Samengesteld s && subject != null) {
             // §8.4.2 a COMPOUND "gedurende de tijd dat er aan alle/ten minste 1 van de volgende voorwaarden wordt
-            // voldaan": ALLE = intersect (nest the per-kenmerk clips), ten minste 1 = clip to the UNION of the
-            // true-period sets. A member the resolver/transpiler cannot clip -> marker, never a wrong period.
-            String compound = samengesteldeTijdKnip(s, waardeTijdreeks, subject);
+            // voldaan": partition the members. TEMPORAL kenmerks clip the timeline (ALLE = intersect, ten minste 1 =
+            // union); a §8.4 NON-temporal comparison member (ALLE only, the spec's "geboortedatum eerder dan …")
+            // becomes a value-side STATIC guard on the whole totaal ("de samengestelde conditie is als geheel wel
+            // tijdsafhankelijk"). A member we cannot lower -> marker, never a wrong period.
+            java.util.List<Conditie> temporeel = new java.util.ArrayList<>();
+            java.util.List<Conditie.Vergelijking> statisch = new java.util.ArrayList<>();
+            for (Conditie c : s.onderdelen()) {
+                if (c instanceof Conditie.Kenmerk) temporeel.add(c);
+                else if (c instanceof Conditie.Vergelijking v) statisch.add(v);
+                else return null;
+            }
+            if (temporeel.isEmpty()) return null;   // no clip -> not a temporal restriction
+            Conditie.Samengesteld temporeelDeel = statisch.isEmpty() ? s
+                    : new Conditie.Samengesteld(s.kwantor(), s.drempel(), temporeel, s.bron());
+            String compound = samengesteldeTijdKnip(temporeelDeel, waardeTijdreeks, subject);
             if (compound == null) return null;
             waardeTijdreeks = compound;
+            if (!statisch.isEmpty()) {
+                guard = statischeGuard(statisch, subject);
+                if (guard == null) return null;   // a static member we cannot lower -> marker, never an ungated totaal
+            }
         } else if (f.filter() != null) {
             return null;   // a restriction we cannot lower -> marker, never a silently-unrestricted total
         }
         registreerTijdTotaalFunctie();
-        return "rsTijdTotaal(" + waardeTijdreeks + ", \"" + g.name() + "\")";
+        String totaal = "rsTijdTotaal(" + waardeTijdreeks + ", \"" + g.name() + "\")";
+        return guard == null ? totaal : "(" + guard + " ? " + totaal + " : java.math.BigDecimal.ZERO)";
+    }
+
+    /** §8.4 the value-side static guard for a mixed ALLE gedurende: the AND of each non-temporal comparison member,
+     *  lowered as a {@code $subject.getX()}-form mvel boolean. Null when any member is not lowerable (the caller
+     *  markers the whole totaal). */
+    private String statischeGuard(java.util.List<Conditie.Vergelijking> leden, Objecttype subject) {
+        java.util.List<String> termen = new java.util.ArrayList<>();
+        for (Conditie.Vergelijking v : leden) {
+            String t = statischeVergelijkingGuard(v, subject);
+            if (t == null) return null;
+            termen.add(t);
+        }
+        return String.join(" && ", termen);
+    }
+
+    /** §8.4 one non-temporal comparison member as a value-side ($subject.getX()-form) boolean
+     *  ({@code lv != null && rv != null && lv <op> rv}). The guard rides in the totaal's CONSEQUENCE, so it uses the
+     *  value-side {@code waarde()} form, not the when-side bare property. Restricted to an ORDERING / datum
+     *  comparison, where an empty operand makes the comparison onwaar (Tabel 40-43) and so the null-guards match the
+     *  spec — a GELIJK/ONGELIJK static member (whose both-empty semantics differ, Tabel 37/38/44) is deferred to a
+     *  marker. A markered/unresolvable operand -> null. */
+    private String statischeVergelijkingGuard(Conditie.Vergelijking v, Objecttype subject) {
+        if (!ordeningOfDatum(v.op())) return null;
+        String lv = waarde(v.links(), subject), rv = waarde(v.rechts(), subject);
+        if (bevatMarker(lv) || bevatMarker(rv)) return null;
+        String[] ov = vergelijkingsOperanden(lv, v.links().type(), rv, v.rechts().type());
+        return "(" + lv + " != null && " + rv + " != null && " + ov[0] + " " + drlOp(v.op()) + " " + ov[1] + ")";
     }
 
     /** §5.1.4 lower a RHS that PRODUCES a timeline written to a single-period temporal doel attribute, into a

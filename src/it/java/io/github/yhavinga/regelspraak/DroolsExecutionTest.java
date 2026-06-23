@@ -412,6 +412,57 @@ class DroolsExecutionTest {
         assertEquals(0, new BigDecimal("1.873972602739726").compareTo(w), () -> "18 × 38/365 = 684/365 ≈ 1.873972602739726 (DECIMAL64), was " + w);
     }
 
+    @Test void mixed_compound_gedurende_gates_het_totaal_met_een_statische_vergelijking(){
+        // §8.4 the spec's CANONICAL mixed compound: "het totaal van zijn belastingvermindering per maand gedurende de
+        // tijd dat er aan alle volgende voorwaarden wordt voldaan: • hij een recht op belastingvermindering heeft
+        // (temporal) • zijn geboortedatum is eerder dan 1-1-2002 (non-temporal)". The temporal bullet CLIPS the
+        // timeline; the static date comparison GATES the whole totaal: (geboortedatum < 2002 ? rsTijdTotaal(clip) : 0).
+        // value €10/mnd over 2023 + €11/mnd over 2024 H1; recht [2023-07..2024-02) -> clip totals 6×10 + 1×11 = €71.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de geboortedatum Datum in dagen;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat er aan alle volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - zijn geboortedatum is eerder dan 1-1-2002).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("? rsTijdTotaal(rsTijdKnip(") && drl.contains(": java.math.BigDecimal.ZERO)"),
+                () -> "een mixed compound moet de totaal achter een statische guard zetten:\n" + drl);
+
+        java.util.List<Segment> waarde = List.of(
+                new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1), new BigDecimal("10.00")),
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 7, 1), new BigDecimal("11.00")));
+        java.util.List<Segment> recht = List.of(new Segment(LocalDate.of(2023, 7, 1), LocalDate.of(2024, 2, 1), null));
+
+        // geboortedatum 1990 < 2002 -> guard TRUE -> the clipped €71
+        KieSession s1 = build(drl).newKieSession();
+        Passagier jong = new Passagier();
+        jong.setBelastingverminderingPerMaand(waarde);
+        jong.setRechtOpBelastingvermindering(recht);
+        jong.setGeboortedatum(LocalDate.of(1990, 1, 1));
+        s1.insert(jong); s1.fireAllRules(); s1.dispose();
+        assertEquals(0, new BigDecimal("71.00").compareTo(jong.getTotaleBelastingvermindering()),
+                () -> "geboren < 2002 -> de geclipte €71, was " + jong.getTotaleBelastingvermindering());
+
+        // geboortedatum 2005 >= 2002 -> guard FALSE -> 0 (the static member fails, the whole compound is onwaar)
+        KieSession s2 = build(drl).newKieSession();
+        Passagier oud = new Passagier();
+        oud.setBelastingverminderingPerMaand(waarde);
+        oud.setRechtOpBelastingvermindering(recht);
+        oud.setGeboortedatum(LocalDate.of(2005, 1, 1));
+        s2.insert(oud); s2.fireAllRules(); s2.dispose();
+        assertEquals(0, BigDecimal.ZERO.compareTo(oud.getTotaleBelastingvermindering()),
+                () -> "geboren >= 2002 -> de guard sluit het totaal uit (0), was " + oud.getTotaleBelastingvermindering());
+    }
+
     @Test void aantal_dagen_in_de_maand_telt_de_doorsnede_van_een_ALLE_compound(){
         // §8.4.2 a COMPOUND "dat er aan ALLE volgende voorwaarden wordt voldaan" on the aantal-dagen-in WRITE: count
         // per month the days BOTH kenmerks hold (intersection via rsTijdKnip), not just one. recht [1-1..14-2),

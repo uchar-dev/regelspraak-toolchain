@@ -2583,6 +2583,41 @@ class DrlTest {
         assertTrue(negLid.contains("/* TODO"), () -> "een genegeerd compound-lid moet markeren:\n" + negLid);
     }
 
+    private static String mixedCompound(String kwantor, String tweedeLid) {
+        return DrlTranspiler.transpile(Resolver.resolve("""
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de geboortedatum Datum in dagen;
+                de leeftijd Numeriek (geheel getal);
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat er aan %s wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - %s).
+            """.formatted(kwantor, tweedeLid)));
+    }
+
+    @Test void mixed_compound_gedurende_zet_een_statische_vergelijking_als_guard_of_markeert() {
+        // §8.4 an ALLE compound mixing a temporal kenmerk + a NON-temporal ORDERING comparison ("zijn geboortedatum
+        // is eerder dan 1-1-2002") lowers to a value-side static guard wrapping the clipped totaal. Other forms marker.
+        String guard = mixedCompound("alle volgende voorwaarden", "zijn geboortedatum is eerder dan 1-1-2002");
+        assertTrue(guard.contains("$subject.getGeboortedatum() != null") && guard.contains("? rsTijdTotaal(rsTijdKnip(")
+                        && guard.contains(": java.math.BigDecimal.ZERO)"),
+                () -> "een mixed ALLE compound moet de statische vergelijking als value-side guard zetten:\n" + guard);
+        assertFalse(guard.contains("/* TODO"), () -> "de mixed ALLE compound mag geen marker zijn:\n" + guard);
+
+        // a mixed OR (ten minste 1) has different, deferred semantics -> marker.
+        String orMixed = mixedCompound("ten minste 1 van de volgende voorwaarden", "zijn geboortedatum is eerder dan 1-1-2002");
+        assertTrue(orMixed.contains("/* TODO"), () -> "een mixed ten-minste-1 compound moet markeren:\n" + orMixed);
+
+        // a GELIJK static member (both-empty semantics differ, deferred) -> marker.
+        String gelijk = mixedCompound("alle volgende voorwaarden", "zijn leeftijd is gelijk aan 18");
+        assertTrue(gelijk.contains("/* TODO"), () -> "een GELIJK statisch lid moet (nog) markeren:\n" + gelijk);
+    }
+
     @Test void compound_alle_gedurende_nest_de_knippen_de_doorsnede() {
         // §8.4.2 a COMPOUND "er aan ALLE volgende voorwaarden wordt voldaan" intersects the bullets' true-period
         // sets by nesting rsTijdKnip (a negated bullet nests rsTijdKnipNiet). (Teeth: drop the Samengesteld branch

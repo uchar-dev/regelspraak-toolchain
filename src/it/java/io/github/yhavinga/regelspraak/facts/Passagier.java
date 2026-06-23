@@ -1,6 +1,7 @@
 package io.github.yhavinga.regelspraak.facts;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 
 /** Fact POJO for a passenger. The feittype role "reis" (the flight it belongs to)
@@ -45,6 +46,9 @@ public class Passagier {
     private List<Segment> jaardeel;                       // §7.3.2 a per-jaar temporal attribute WRITTEN by tijdsevenredig deel
     public List<Segment> getJaardeel() { return jaardeel; }
     public void setJaardeel(List<Segment> v) { this.jaardeel = v; }
+    private LocalDate geboortedatum;                      // §8.4 a non-temporal attribute for the MIXED compound static guard
+    public LocalDate getGeboortedatum() { return geboortedatum; }
+    public void setGeboortedatum(LocalDate v) { this.geboortedatum = v; }
     public BigDecimal getBasistarief() { return basistarief; }
     public void setBasistarief(BigDecimal v) { this.basistarief = v; }
     public BigDecimal getBodem() { return bodem; }
