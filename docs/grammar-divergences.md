@@ -720,8 +720,48 @@ expression's `in <maand|jaar>` to match it). Tightly gated — a **non-temporal*
 **multi-period** / **navigated** doel, or a non-kenmerk (comparison/compound/navigated/negated) `dat`-condition,
 stays an honest `/* TODO */` marker, never a scalar setter on a `List<Segment>` field. The corpus is byte-identical
 (the only `aantal dagen in` file, spec-main-82, is a standalone fragment whose doel has no declared tijdlijn, so the
-gate does not fire — proven on the firing fixture instead). `tijdsevenredig deel` (§13.4.17.58) is the next producer
-on this path (its period-fraction proration is harder; carded).
+gate does not fire — proven on the firing fixture instead). `tijdsevenredig deel` (§13.4.17.58) is the second
+producer on this path (next section).
+
+### Tijdsevenredig deel (§13.4.17.58 / §7.3.2) — the second temporal-WRITE producer, over a TEMPORAL-attribute base
+
+"het tijdsevenredig deel per `<maand|jaar>` van `<expressie>` gedurende de tijd dat `<temporeel kenmerk>`" prorates a
+base value-timeline per calendar bucket by the fraction of the bucket the condition holds — `baseValueInBucket ×
+trueDays / totalDays` per month/year, written as a `List<Segment>` to a single-period temporal doel attribute. It
+lowers to a registered `rsTijdsevenredig(getKenmerk(), getBasis(), "MAAND"|"JAAR")` helper that buckets the
+condition's true-period timeline (like `rsAantalDagenIn`) and, per bucket, reads the base value from the base timeline
+(the segment covering the bucket start) and prorates it. Fired in real Drools: the spec's **example-1** numbers via a
+timeline base (12 full months of €12 in 2024, €18 jan-2025, **7/28 × €18 = €4,50** feb-2025) and the per-jaar
+**684/365** of example 2.
+
+Three deliberate readings, each the honest alternative to a silent miscompile (a scoping review flagged all three):
+
+- **The base must be a single-period TEMPORAL attribute of the subject; a SCALAR / parameter base markers.** §5.1.2
+  (spec line 1536) makes this the *only* operator that combines the Tijd unit-system with an operand's *value*-timeline
+  — the base's own timeline is intrinsic, not optional, and all three §7.3.2 examples use a *time-varying* parameter.
+  Our model carries a parameter as one scalar (there is no parameter-tijdlijn syntax), so prorating a scalar as a
+  constant across buckets would be **wrong on every spec example** (it loses the 12-vs-18 split) with no diagnostic.
+  Therefore a scalar base is **not** lowered: the resolver's `gedurendeKenmerkFilter` (whose operand gate already
+  requires the subject's own single-period temporal attribute) leaves the filter unset → the §13.4.17.51-.58 WARNING
+  **and** a `/* TODO */` marker both stand. This means the spec's *literal* §7.3.2 examples (a parameter base) all
+  marker — the slice lowers the operator's machinery over a temporal-attribute base, which reproduces the spec's
+  numbers; the parameter-tijdlijn model gap that would lower the literal examples is carded.
+- **No auto-rounding (§4.22 / §6.1.2).** §4.22 keeps the result an exact fraction (`684/365`, not a decimal); §6.1.2
+  forbids the engine rounding a result down to the doel's declared decimals (the author must add an explicit afronding,
+  for which `tijdsevenredig` has no syntactic slot). The per-bucket division therefore uses **`MathContext.DECIMAL64`**,
+  not `setScale` to the doel precision: terminating fractions (4,50 / 3,75) come out exact, the non-terminating
+  `684/365` is stored at DECIMAL64 precision. (The truly-irrational tail is the carded exact-rational gap, shared with
+  §6.5 division.)
+- **A base/doel unit mismatch markers.** §7.3.2 example 3 (€/jr base → €/mnd doel) requires a ÷12 rate conversion
+  *before* proration. The temporal-WRITE path applies no `omrekening`, and `TIJDSEVENREDIG_DEEL` types as `Onbekend`,
+  so an unconverted €/jr value would land in a €/mnd field off by 12. The lowering instead requires the base operand's
+  unit to **equal** the doel's (both unitless counts as equal) and markers otherwise — the rate conversion is deferred.
+
+Also markered (honest, never a wrong period): an operator/doel **granularity mismatch** (`per jaar` into a `per maand`
+doel — the resolver resolves the filter but the transpiler markers), a **negated** gedurende (`geen` — the complement
+proration is unsupported), a **compound** gedurende (§8.4.2), a **navigated** base or condition, and a **non-numeric**
+base. The corpus is byte-identical (the four `tijdsevenredig` files, spec-main-84..87, are standalone fragments whose
+base/doel are undeclared, so the gate does not fire — proven on firing fixtures instead).
 
 ### Elfproef predicate (§8.1.3) — lowered to a registered rsElfproef helper
 
