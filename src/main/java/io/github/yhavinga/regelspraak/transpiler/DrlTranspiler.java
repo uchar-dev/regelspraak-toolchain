@@ -2360,7 +2360,10 @@ public final class DrlTranspiler {
             if (isGedimensioneerd(a)) return todo("ongedimensioneerde lezing van gedimensioneerd attribuut (§3.6)", a.bron());
             return attribuutOperand(a, subject);
         }
-        if (e instanceof Expr.ParameterRef p) return ident(p.parameter().naam(), false);
+        if (e instanceof Expr.ParameterRef p)   // §13.3.6 a TEMPORAL parameter is a List<Segment> global — a scalar
+            // (condition-side) use is a List-in-scalar mismatch that would sink the whole DRL build; marker instead.
+            return p.parameter().granulariteit() != null ? todo("temporele parameter in scalaire context", p.bron())
+                    : ident(p.parameter().naam(), false);
         if (e instanceof Expr.Literal lit)    return literal(lit);
         if (e instanceof Expr.Afgerond af) {
             // §13.4.17.13/.25: an afronding wraps a getalexpressie — and "de wortel van X" carries a MANDATORY
