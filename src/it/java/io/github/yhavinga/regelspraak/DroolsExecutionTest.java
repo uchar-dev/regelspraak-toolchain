@@ -375,6 +375,28 @@ class DroolsExecutionTest {
         assertEquals(0, new BigDecimal("4.50").compareTo(uit.get(13).getWaarde()), () -> "feb-2025 = 7/28 × €18 = €4,50, was " + uit.get(13).getWaarde());
     }
 
+    @Test void temporele_parameter_in_een_conditie_bouwt_schoon_als_marker(){
+        // §13.3.6 a temporal parameter used as a CONDITION operand must MARKER (not leak the List<Segment> global into
+        // a scalar constraint), so the generated DRL still BUILDS in real Drools. (Adversarial review HIGH: the
+        // when-side operand() leaked `prijs > sTANDAARD` -> KieBuilder "BigDecimal vs java.util.List" error.)
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Parameter de STANDAARD : Bedrag voor elk jaar
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Bedrag;
+                het duur kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is duur indien de prijs van de Passagier groter is dan de STANDAARD.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        // build() asserts the KieBuilder has no ERROR -> this throws if the List<Segment> global leaks into the constraint.
+        build(drl);
+        assertFalse(drl.contains("> sTANDAARD"), () -> "geen kale List in een scalaire constraint:\n" + drl);
+    }
+
     @Test void tijdsevenredig_deel_over_een_temporele_PARAMETER_basis_de_letterlijke_spec_voorbeeld(){
         // §7.3.2 the LITERAL spec example 1: "het tijdsevenredig deel per maand van de STANDAARD BELASTINGVERMINDERING
         // gedurende de tijd dat hij een recht op belastingvermindering heeft". The base is a TEMPORAL PARAMETER ("kan

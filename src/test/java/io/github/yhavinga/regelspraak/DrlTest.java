@@ -2579,6 +2579,22 @@ class DrlTest {
         assertTrue(scalair.contains("/* TODO temporele parameter in scalaire context"),
                 () -> "een scalaire lezing van een temporele parameter moet markeren:\n" + scalair);
 
+        // a CONDITION-side scalar use must marker too (the when-side operand() path) — never a bare List<Segment>
+        // global in a numeric constraint, which would fail the whole KieBuilder. (Adversarial review HIGH.)
+        String conditie = DrlTranspiler.transpile(Resolver.resolve("""
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Parameter de STANDAARD : Bedrag voor elk jaar
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Bedrag;
+                het duur kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is duur indien de prijs van de Passagier groter is dan de STANDAARD.
+            """));
+        assertFalse(conditie.contains("> sTANDAARD") || conditie.contains("sTANDAARD >"),
+                () -> "een temporele parameter mag niet als List in een scalaire constraint lekken:\n" + conditie);
+        assertTrue(conditie.contains("/* TODO"), () -> "een conditie-zijde temporele parameter moet markeren:\n" + conditie);
+
         // a plain (non-temporal) parameter is unchanged: a scalar global, read directly.
         String scalarParam = DrlTranspiler.transpile(Resolver.resolve("""
             Parameter de grens : Numeriek (geheel getal)
