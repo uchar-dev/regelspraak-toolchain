@@ -2449,18 +2449,26 @@ class DrlTest {
                 () -> "compound OR moet via rsTijdUnie verenigen:\n" + drl);
     }
 
-    @Test void compound_gedurende_markeert_de_gemengde_en_niet_ondersteunde_vormen() {
-        // The whole compound stays an honest marker — never a silently-dropped predicate — for: a MIXED bullet (a
-        // non-temporal comparison, the spec's own §8.4 example), an OR with a negated member (span-dependent
-        // complement), and any other kwantor (ten minste >1 / geen van de / ten hoogste / precies).
-        assertTrue(compoundGedurende("alle volgende voorwaarden", "zijn geboortedatum eerder is dan 1-1-2002")
-                        .contains("/* TODO"), "een gemengde (niet-temporele) bullet moet de hele compound markeren");
-        assertTrue(compoundGedurende("ten minste 1 van de volgende voorwaarden", "hij niet actief is")
-                        .contains("/* TODO"), "OR met een genegeerde member moet markeren");
+    @Test void compound_gedurende_markeert_de_niet_ondersteunde_kwantoren() {
+        // The whole compound stays an honest marker — never a silently-dropped predicate — for any kwantor that is
+        // not ALLE or "ten minste 1": ten minste >1, geen van de, ten hoogste, precies. (The mixed temporal+
+        // non-temporal ALLE and the OR-with-negation DO lower, tested separately.)
         assertTrue(compoundGedurende("ten minste 2 van de volgende voorwaarden", "hij actief is")
                         .contains("/* TODO"), "ten minste 2 moet markeren");
         assertTrue(compoundGedurende("geen van de volgende voorwaarden", "hij actief is")
                         .contains("/* TODO"), "geen van de moet markeren");
+    }
+
+    @Test void compound_ten_minste_1_met_een_genegeerde_member_verenigt_het_complement() {
+        // §8.4.2 an OR ("ten minste 1") with a NEGATED member now lowers: a positive member contributes its getter,
+        // a negated member contributes the value clipped to its FALSE periods (rsTijdKnipNiet over the value — the
+        // span-bounded complement), unioned then clipped once. (Teeth: restore the negatie->return null guard.)
+        String drl = compoundGedurende("ten minste 1 van de volgende voorwaarden", "hij niet actief is");
+        assertTrue(drl.contains("rsTijdKnip($subject.getBedragPerMaand(), "
+                        + "rsTijdUnie($subject.getRechthebbend(), "
+                        + "rsTijdKnipNiet($subject.getBedragPerMaand(), $subject.getActief())))"),
+                () -> "OR met een genegeerde member moet het span-begrensde complement verenigen:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "OR-negatie mag geen marker meer zijn:\n" + drl);
     }
 
     @Test void benoemde_meer_periodieke_tijdlijn_wordt_ook_gemarkeerd_niet_single_period_geteld() {

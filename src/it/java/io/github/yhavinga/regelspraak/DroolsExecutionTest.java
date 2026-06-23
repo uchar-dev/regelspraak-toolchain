@@ -366,6 +366,43 @@ class DroolsExecutionTest {
                 () -> "AND-doorsnede moet 3x10 = 30 zijn, was " + p.getTotaleBelastingvermindering());
     }
 
+    @Test void compound_ten_minste_1_met_negatie_verenigt_het_span_begrensde_complement(){
+        // §8.4.2 OR ("ten minste 1") with a NEGATED member: rechthebbend ∪ ¬actief. value €10/mnd 2023, €11/mnd
+        // 2024 H1 (span [2023-01..2024-07)); rechthebbend [2023-07..2024-02), actief [2023-01..2023-10) so
+        // ¬actief-within-value = [2023-10..2024-07). union = [2023-07..2024-07) -> 6×€10 + 6×€11 = €126.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
+                is actief kenmerk (bijvoeglijk) voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat er aan ten minste 1 van de volgende voorwaarden wordt voldaan:
+                    • hij rechthebbend is
+                    • hij niet actief is).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsTijdKnipNiet"), () -> "de negatie-member moet het complement gebruiken:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier p = new Passagier();
+        p.setBelastingverminderingPerMaand(List.of(
+                new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1), new BigDecimal("10.00")),
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 7, 1), new BigDecimal("11.00"))));
+        p.setRechthebbend(List.of(new Segment(LocalDate.of(2023, 7, 1), LocalDate.of(2024, 2, 1), null)));
+        p.setActief(List.of(new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2023, 10, 1), null)));
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("126.00").compareTo(p.getTotaleBelastingvermindering()),
+                () -> "OR-met-negatie moet 6x10 + 6x11 = 126 zijn, was " + p.getTotaleBelastingvermindering());
+    }
+
     @Test void compound_ten_minste_1_gedurende_verenigt_de_ware_periodes(){
         // §8.4.2 a COMPOUND "ten minste 1 van de volgende voorwaarden" clips the value to the UNION of the bullets'
         // true-period sets (rsTijdUnie). Same data: rechthebbend [2023-07..2024-02) ∪ actief [2023-01..2023-10) =

@@ -1698,8 +1698,7 @@ public final class DrlTranspiler {
     /** §8.4.2 fold a COMPOUND gedurende over the value timeline. Every onderdeel must be a single-period temporal
      *  kenmerk of the subject (the resolver gated this; re-checked defensively) -> else null (marker). ALLE nests
      *  the per-kenmerk clips (the intersection of TRUE periods, negation per member). "ten minste 1" (TEN_MINSTE,
-     *  drempel 1) clips the value to the UNION of the kenmerk true-periods (rsTijdUnie) — POSITIVE members only,
-     *  since a negated member's true-period is a span-dependent complement (-> marker). */
+     *  drempel 1) clips the value to the UNION of the per-member true-periods. */
     private String samengesteldeTijdKnip(Conditie.Samengesteld s, String waarde, Objecttype subject) {
         for (Conditie c : s.onderdelen())
             if (!(c instanceof Conditie.Kenmerk k) || k.navigatie() != null
@@ -1710,16 +1709,28 @@ public final class DrlTranspiler {
             return expr;
         }
         if (s.kwantor() == Conditie.Kwantor.TEN_MINSTE) {
-            for (Conditie c : s.onderdelen()) if (((Conditie.Kenmerk) c).negatie()) return null;
+            // OR = clip the value to the UNION of each member's true-region. A positive member's region is its
+            // getter timeline; a NEGATED member's region within the value is rsTijdKnipNiet(value, getter) (the
+            // value ∩ ¬kenmerk — the span-dependent complement, materialised against the value's own segments). The
+            // union (rsTijdUnie coalesces the intervals) is then clipped once: value ∩ (A ∪ ¬B ∪ …) == the OR.
             registreerTijdUnieFunctie();
             registreerTijdKnipFunctie();
-            String unie = SUBJECT + "." + getter(((Conditie.Kenmerk) s.onderdelen().get(0)).kenmerk()) + "()";
+            String unie = lidSteun(waarde, (Conditie.Kenmerk) s.onderdelen().get(0));
             for (int i = 1; i < s.onderdelen().size(); i++)
-                unie = "rsTijdUnie(" + unie + ", " + SUBJECT + "."
-                        + getter(((Conditie.Kenmerk) s.onderdelen().get(i)).kenmerk()) + "())";
+                unie = "rsTijdUnie(" + unie + ", " + lidSteun(waarde, (Conditie.Kenmerk) s.onderdelen().get(i)) + ")";
             return "rsTijdKnip(" + waarde + ", " + unie + ")";
         }
         return null;
+    }
+
+    /** One OR-member's true-region timeline for the union: a positive member is its kenmerk getter; a negated
+     *  member is the value clipped to the kenmerk's FALSE periods (rsTijdKnipNiet over the value), so the complement
+     *  is bounded by the value's own span rather than an unbounded ¬kenmerk. */
+    private String lidSteun(String waarde, Conditie.Kenmerk k) {
+        String g = SUBJECT + "." + getter(k.kenmerk()) + "()";
+        if (!k.negatie()) return g;
+        registreerTijdKnipNietFunctie();
+        return "rsTijdKnipNiet(" + waarde + ", " + g + ")";
     }
 
     /** Register the §7.1 timeline-clip helper: intersect each value Segment with each condition TRUE-interval,
