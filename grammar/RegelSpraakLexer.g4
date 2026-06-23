@@ -352,8 +352,11 @@ RPAREN     : ')'   ;
 LBRACE     : '{'   ;
 RBRACE     : '}'   ;
 // «  is defined in TEKST_MODE (it only opens an «expressie» escape INSIDE a string, §5.4); »  closes that escape,
-// popping DEFAULT_MODE back to TEKST_MODE.
-R_ANGLE_QUOTE : '»' -> popMode ; // >> closes a «expressie» escape
+// popping the pushed DEFAULT_MODE back to TEKST_MODE — but ONLY when a mode was actually pushed (the stack is
+// non-empty). A top-level » or « (malformed input outside any string) is then just an ordinary token the parser
+// rejects with an honest syntax error, instead of underflowing the mode stack (an uncaught EmptyStackException
+// that crashed the whole resolver — adversarial-review regression).
+R_ANGLE_QUOTE : '»' { if (!_modeStack.isEmpty()) popMode(); } ; // >> closes a «expressie» escape
 COMMA      : ','   ;
 DOT        : '.'   ;
 COLON      : ':'   ;

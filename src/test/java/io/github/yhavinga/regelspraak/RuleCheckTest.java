@@ -55,6 +55,20 @@ class RuleCheckTest {
                 () -> "een gewone tekst-literal mag geen tekstreeks-fout geven: " + Resolver.resolve(schoon).errors());
     }
 
+    @Test void losse_guillemet_buiten_een_string_meldt_een_fout_niet_crasht() {
+        // Robustness (adversarial review): a stray » (or an «…» the author forgot to wrap in "…") at TOP level must be
+        // an honest syntaxfout, never an uncaught mode-stack underflow. The » lexer rule pops the mode ONLY inside an
+        // escape (the mode stack is non-empty); at top level it is just a token the parser rejects. (Teeth: drop the
+        // `!_modeStack.isEmpty()` guard on R_ANGLE_QUOTE and Resolver.resolve throws EmptyStackException on a stray ».)
+        String stray = MODEL + """
+            Regel r
+                geldig altijd
+                    De naam van een Ding moet berekend worden als »foutief.
+            """;
+        RegelSpraakModel m = assertDoesNotThrow(() -> Resolver.resolve(stray), "een losse » mag de lexer niet laten crashen");
+        assertFalse(m.errors().isEmpty(), "een losse » moet een syntaxfout opleveren");
+    }
+
     @Test void product_van_twee_eenheden_toegekend_aan_een_enkele_eenheid_wordt_gemeld() {
         // §4.4 / §6.1: "de prijs (€) maal de lengte (m)" is €·m, an opaque product unit convertible only to an
         // identical product — assigning it to a € attribute is a unit mismatch. Previously the product degraded
