@@ -556,11 +556,20 @@ final class ExpressieBouwer {
         return v;
     }
 
-    /** Whether an operand READS a TEMPORAL (tijdlijn) attribute — its runtime value is a {@code List<Segment>}, not a
-     *  scalar, so it cannot be a §8.4 static comparison member. */
+    /** Whether an operand READS a TEMPORAL (tijdlijn) attribute ANYWHERE — its runtime value is a {@code List<Segment>},
+     *  not a scalar, so it cannot be a §8.4 static comparison member. Recurses through arithmetic wrappers (a temporal
+     *  read nested in "X plus 1" or an afronding/begrenzing is just as time-varying), so the whole comparison markers
+     *  rather than leaking a List into a scalar guard term (which would break the DRL build). */
     private static boolean temporeelAttribuutOperand(Expr e) {
-        return e instanceof Expr.AttribuutRef a && a.objecttype() != null
-                && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut());
+        if (e instanceof Expr.AttribuutRef a)
+            return a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut());
+        if (e instanceof Expr.Binair b) return temporeelAttribuutOperand(b.links()) || temporeelAttribuutOperand(b.rechts());
+        if (e instanceof Expr.Afgerond af) return temporeelAttribuutOperand(af.basis());
+        if (e instanceof Expr.Begrensd bg) return temporeelAttribuutOperand(bg.basis())
+                || (bg.minimum() != null && temporeelAttribuutOperand(bg.minimum()))
+                || (bg.maximum() != null && temporeelAttribuutOperand(bg.maximum()));
+        if (e instanceof Expr.DimensieCel dc) return temporeelAttribuutOperand(dc.attribuut());
+        return false;
     }
 
     /** The integer value of a §13.4.14 telwoord (a digit literal or een/twee/drie/vier), or -1 if unrecognised. */

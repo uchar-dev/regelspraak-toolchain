@@ -2684,6 +2684,14 @@ class DrlTest {
         String temp = mixedCompound("alle volgende voorwaarden", "zijn belastingvermindering per maand is groter dan 1000");
         assertFalse(temp.contains("? rsTijdTotaal"), () -> "een vergelijking op een temporeel attribuut mag geen statische guard worden:\n" + temp);
         assertTrue(temp.contains("/* TODO"), () -> "een temporeel-attribuut lid moet markeren:\n" + temp);
+
+        // §8.4 a temporal read NESTED in arithmetic ("... per maand plus 1 ...") is just as time-varying -> marker, not
+        // a rsNul(List<Segment>) term that breaks the build. (Adversarial review MED: the temporal-operand gate must
+        // recurse through Binair/Afgerond, else the GELIJK/ORDERING guard leaks a List.)
+        String tempArith = mixedCompound("alle volgende voorwaarden", "zijn belastingvermindering per maand plus 1 is gelijk aan 1000");
+        assertFalse(tempArith.contains("rsNul") || tempArith.contains("? rsTijdTotaal"),
+                () -> "een temporeel attribuut in een rekenkundig statisch lid mag geen List lekken:\n" + tempArith);
+        assertTrue(tempArith.contains("/* TODO"), () -> "een genest temporeel-attribuut lid moet markeren:\n" + tempArith);
     }
 
     @Test void compound_alle_gedurende_nest_de_knippen_de_doorsnede() {
