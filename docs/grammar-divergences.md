@@ -836,6 +836,13 @@ millisecondes scaled to `nanoOfSecond` (× 1 000 000, the `rsDatumtijdMet` conve
 (`LocalDate.of`). Only the timed form is new — the bare date is the only form in the TOKA casus and every worked
 example — so the corpus DRL is byte-identical; proven on a synthetic fixture firing in real Drools.
 
+Date-literal components are emitted as **decimal ints**, not the raw captured strings: `08-09-2024` lowers to
+`LocalDate.of(2024, 9, 8)`, never `of(2024, 09, 08)` — a leading-zero `08`/`09` is an INVALID OCTAL literal in
+mvel/Java that fails the whole KieBuilder build (an accepted input must never compile to crashing DRL). The time
+components and the `datumLit()` geldigheid guard already used int parsing; only the date-component splice in
+`literal()` needed it. Corpus byte-identical (no corpus date uses a leading zero, so the difference only manifests on
+08/09 inputs); fired through KieBuilder.
+
 ### Tekstreeks `«…»` string-building (§13.4.17.9) — flagged, not silently mis-lowered
 
 A tekstreeks `"nummer «het identificatienummer …» einde"` builds a string by **substituting** each `«…»`
