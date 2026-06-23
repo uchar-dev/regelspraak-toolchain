@@ -437,8 +437,17 @@ type, `heeft een <k>` a BEZITTELIJK one ("de reis van een Passagier heeft een re
 → `<rol> != null && <rol>.<k> == true`; neither soort binds under the other verb (a bijvoeglijk one, or a wrong-verb
 form, stays a marker) and a navigated *role* membership via the EEN-form remains out of scope. Corpus-invisible (the
 TOKA navigated EEN-form compounds marker through an undeclared sibling), so proven on a synthetic fixture firing the
-to-one path (a holder partner → 7, a non-holder and a partnerless subject → no fire, null-safe). The **possessive**
-navigated form (`zijn reis heeft een <k>`) is a separate pre-existing path (carded).
+to-one path (a holder partner → 7, a non-holder and a partnerless subject → no fire, null-safe).
+
+The **POSSESSIVE** navigated form (`zijn <rol> …`, e.g. "indien zijn partner een recht op duurzaamheidskorting
+heeft") now binds too. `possessief()` resolves a possessive that is neither an own attribuut nor a dimensiecel but
+NAMES a feittype role the subject reaches into the same navigated `AttribuutRef` shape `bouwAttribuut` builds for the
+written "de `<rol>` van `<X>`" — so a possessive kenmerkcheck reaches `navigatieKenmerk` (`partner != null &&
+partner.<k> == true`, by the same verb→soort rule) and a possessive value read reaches the null-safe to-one getter
+(the symmetric mirror of the definite form; without it the possessive role stayed `Onopgelost` and markered). Fired
+(a holder partner → 7, a partnerless subject → null-safe no fire); corpus byte-identical (no corpus rule uses a
+possessive role this way). The article-absorbed `zijn <rol> het <k>` form stays a marker (the same class as the
+gedurende "heeft het" edge; carded).
 
 The **no-`een` rolcheck** (`<subject> is <rolnaam>`, §13.4.15.44 makes the `een` optional) now binds as well. The
 non-`een` name is resolved **kenmerk-first** (Tabel 16): `kenmerkConditie` claims a declared kenmerk (a bijvoeglijk
@@ -670,9 +679,12 @@ same root-guarded getter chain the navigated value read uses (a null reference �
 tijd dat er aan **alle** / **ten minste 1** van de volgende voorwaarden wordt voldaan: • … • …") now lowers when
 every bullet is a single-period temporal-kenmerk membership of the subject: `alle` (AND) nests the per-kenmerk clips
 (`rsTijdKnip` / `rsTijdKnipNiet` — the intersection of true-periods), and `ten minste 1` (OR) clips the value to the
-UNION of the true-period sets via a registered `rsTijdUnie` helper (sort + coalesce overlapping/adjacent half-open
-intervals; positive members only). The single-bullet resolution is factored into `temporeelKenmerkUitOperator`,
-reused per bullet. Fired the intersection (€30) and the union (€131). The **set guard** that tells a collapsed
+UNION of the per-member true-regions. A positive member's region is its getter timeline; a **NEGATED** member's
+region is `rsTijdKnipNiet(value, getter)` (= `value ∩ ¬kenmerk`, the complement bounded by the value's own span
+rather than an unbounded `¬kenmerk`); the regions are unioned (`rsTijdUnie` coalesces overlapping/adjacent half-open
+intervals) and clipped once, so `value ∩ (A ∪ ¬B ∪ …)` is exact with no double-count. The single-bullet resolution
+is factored into `temporeelKenmerkUitOperator`, reused per bullet. Fired the intersection (€30), the positive union
+(€131), and `rechthebbend ∪ ¬actief` (€126). The **set guard** that tells a collapsed
 set-totaal from a single-object timeline is now a structural `Expr.AttribuutRef.set` (from the onderwerp's §13.4.2
 quantifier — any kwantor that is not the bare `de`), not an `onderwerpBron "alle "` text scan, so it also catches the
 threshold quantifiers (`ten minste 2 van de passagiers`) the text scan missed and is immune to casing/spacing. Still
@@ -682,17 +694,34 @@ van `<temporeel attr>` van een set") — a per-element timeline fold (fold each 
 lowered, so it markers rather than mis-folding the subject's own series or summing the `List<Segment>` (when the
 element type equals the subject's the resolver collapses the set to an EIGEN ref, caught by the structural `set`
 flag; a distinct element type is caught in `accumulate`); a **to-many** navigated totaal; a **MIXED** compound (a
-temporal-kenmerk bullet plus a non-temporal comparison, the spec's own §8.4 `geboortedatum` example), an **OR with a
-negated member** (a span-dependent complement), a nested compound, or any other kwantor (`ten minste >1` / `geen van
-de` / `ten hoogste` / `precies`) — each leaves the WHOLE compound an `Onopgelost` marker, never a silently-dropped
-predicate; and any single gedurende the resolver could not structure (a comparison / navigated / non-temporal
-condition). Carded follow-ons: the pre-existing resolver set→own collapse (the deeper fix — the structural `set`
-flag now hardens the guard but the per-element fold is still unlowered), the **MIXED** compound (the non-temporal
-bullet as a value-side guard) and the **OR-with-negation** compound, the navigated EEN-form bezittelijk gedurende,
-`tijdsevenredig deel` and `aantal dagen in` (which PRODUCE a timeline — a §5.1.4 WRITE path the transpiler does not
-have), and the per-period WRITE path; `rsTijdTotaal` truncates a sub-period-aligned segment (exact for
-boundary-aligned timelines) and `rsTijdKnip` does not union overlapping condition intervals (a contractually-disjoint
-kenmerk timeline — `rsTijdKnipNiet` and `rsTijdUnie` handle overlap by gap-walking/coalescing).
+temporal-kenmerk bullet plus a non-temporal comparison, the spec's own §8.4 `geboortedatum` example), a nested
+compound, or any other kwantor (`ten minste >1` / `geen van de` / `ten hoogste` / `precies`) — each leaves the WHOLE
+compound an `Onopgelost` marker, never a silently-dropped predicate; and any single gedurende the resolver could not
+structure (a comparison / navigated / non-temporal condition). Carded follow-ons: the pre-existing resolver set→own
+collapse (the deeper fix — the structural `set` flag now hardens the guard but the per-element fold is still
+unlowered), the **MIXED** compound (the non-temporal bullet as a value-side guard), the navigated EEN-form bezittelijk
+gedurende, and `tijdsevenredig deel` (§13.4.17.58, whose period-fraction proration is the next WRITE-path producer);
+`rsTijdTotaal` truncates a sub-period-aligned segment (exact for boundary-aligned timelines) and `rsTijdKnip` does not
+union overlapping condition intervals (a contractually-disjoint kenmerk timeline — `rsTijdKnipNiet`, `rsTijdUnie` and
+`rsAantalDagenIn` handle overlap by gap-walking/coalescing/bucketing).
+
+**The first temporal-WRITE path is lowered: §13.4.17.57 "het aantal dagen in `<de maand|het jaar>` dat".** Writing a
+TIMELINE-valued result into a temporal (`voor elke maand`) attribute was unsupported — the `regel()` doel setter
+always emitted a SCALAR `setX(value)`, and the §7.2 day-count expression (whose `dat`-condition is a direct grammar
+child, not a `conditiebijexpressie`) was dropped to a marker. Now, when the doel is a single-period temporal
+attribute (granularity present, not multi-period, not navigated), the setter writes a `List<Segment>` via
+`temporeleWaarde()`. The first (and so far only) timeline producer, `het aantal dagen in de maand dat <temporeel
+kenmerk>`, lowers to a registered `rsAantalDagenIn(getKenmerk(), "MAAND"|"JAAR")` helper that buckets the kenmerk's
+true-period timeline into calendar months/years and counts, per bucket, the days the kenmerk holds — one output
+Segment per non-empty bucket carrying that day-count (the §7.2 example: true `[1-1..2-1)` + `[10-1..14-2)` → **23 dg
+in Jan, 13 dg in Feb**, fired in real Drools). The resolver structures the `dat`-condition into a `Conditie.Kenmerk`
+(reusing `temporeelKenmerkUitOperator`); the bucket granularity is taken from the DOEL's tijdlijn (§7.2 requires the
+expression's `in <maand|jaar>` to match it). Tightly gated — a **non-temporal** doel keeps the scalar path, and a
+**multi-period** / **navigated** doel, or a non-kenmerk (comparison/compound/navigated/negated) `dat`-condition,
+stays an honest `/* TODO */` marker, never a scalar setter on a `List<Segment>` field. The corpus is byte-identical
+(the only `aantal dagen in` file, spec-main-82, is a standalone fragment whose doel has no declared tijdlijn, so the
+gate does not fire — proven on the firing fixture instead). `tijdsevenredig deel` (§13.4.17.58) is the next producer
+on this path (its period-fraction proration is harder; carded).
 
 ### Elfproef predicate (§8.1.3) — lowered to a registered rsElfproef helper
 
