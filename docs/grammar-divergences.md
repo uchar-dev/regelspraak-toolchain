@@ -759,9 +759,22 @@ Three deliberate readings, each the honest alternative to a silent miscompile (a
 
 Also markered (honest, never a wrong period): an operator/doel **granularity mismatch** (`per jaar` into a `per maand`
 doel — the resolver resolves the filter but the transpiler markers), a **negated** gedurende (`geen` — the complement
-proration is unsupported), a **compound** gedurende (§8.4.2), a **navigated** base or condition, and a **non-numeric**
+proration is unsupported), a **navigated** base or condition, and a **non-numeric**
 base. The corpus is byte-identical (the four `tijdsevenredig` files, spec-main-84..87, are standalone fragments whose
 base/doel are undeclared, so the gate does not fire — proven on firing fixtures instead).
+
+**A COMPOUND condition on the temporal-WRITE producers (§8.4.2).** Both writers — `aantal dagen in <maand|jaar> dat …`
+and `tijdsevenredig deel … gedurende de tijd dat …` — accept a `§8.4.2` compound ("er aan **alle** / **ten minste 1**
+van de volgende voorwaarden wordt voldaan: • … • …") of single-period subject kenmerks, not only a single kenmerk. A
+shared `conditieTijdreeks()` builds the condition's TRUE-period timeline: a single positive kenmerk is its getter; a
+compound folds the members' getters into ONE boolean timeline — **ALLE** = intersection (nested `rsTijdKnip`, reusing
+the clip helper on two boolean timelines), **ten minste 1** = union (`rsTijdUnie`) — which then feeds `rsAantalDagenIn`
+/ `rsTijdsevenredig` unchanged. The single-kenmerk output stays byte-identical (the same getter string), so it is pure
+generalization. Fired: an ALLE aantal-dagen intersection (Jan 22 / Feb 13 dg) and a ten-minste-1 tijdsevenredig union
+(€18 / €4,50, overlap coalesced). A **negated** compound member markers — unlike the `totaal` CLIP (where the value
+timeline bounds the complement via `rsTijdKnipNiet`), a WRITE producer has no value to bound a standalone `¬kenmerk`,
+so combining it would be ill-defined; an honest marker over a mis-count. A mixed / non-kenmerk / other-kwantor compound
+markers too.
 
 ### Elfproef predicate (§8.1.3) — lowered to a registered rsElfproef helper
 
