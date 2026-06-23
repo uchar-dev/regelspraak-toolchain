@@ -772,8 +772,9 @@ the clip helper on two boolean timelines), **ten minste 1** = union (`rsTijdUnie
 generalization. Fired: an ALLE aantal-dagen intersection (Jan 22 / Feb 13 dg) and a ten-minste-1 tijdsevenredig union
 (€18 / €4,50, overlap coalesced). A **negated** compound member markers — unlike the `totaal` CLIP (where the value
 timeline bounds the complement via `rsTijdKnipNiet`), a WRITE producer has no value to bound a standalone `¬kenmerk`,
-so combining it would be ill-defined; an honest marker over a mis-count. A mixed / non-kenmerk / other-kwantor compound
-markers too (but the `totaal` path DOES lower a mixed ALLE compound — next).
+so combining it would be ill-defined; an honest marker over a mis-count. A mixed ALLE compound (a temporal kenmerk + a
+non-temporal comparison) DOES lower on both producers via a value-side static guard (see "the MIXED compound" below);
+a non-kenmerk / other-kwantor / mixed-OR compound still markers.
 
 ### The MIXED compound gedurende on a totaal (§8.4) — a static comparison as a value-side guard
 
@@ -787,12 +788,16 @@ the timeline (`rsTijdKnip`, intersection), the static comparison becomes a value
 `(geboortedatum < 2002 ? rsTijdTotaal(clip, gran) : java.math.BigDecimal.ZERO)`. The guard rides in the **consequence**,
 so it uses the value-side `$subject.getX()` form (not the when-side bare property) and null-guards each operand
 (`lv != null && rv != null && lv <op> rv`); MVEL compares `LocalDate` via `Comparable`. Fired: born 1990 (< 2002) → the
-clipped €71; born 2005 (≥ 2002) → 0. **Scope**: only an **ALLE** compound, only an **ordering/datum** static comparison
-(where an empty operand makes the comparison *onwaar*, Tabel 40-43, matching the null-guards) — a **GELIJK/ONGELIJK**
-static member (whose both-empty semantics differ, Tabel 37/38/44), a mixed **OR** (`ten minste 1`), a non-comparison
-non-temporal member, or a compound with **no** temporal kenmerk all marker. The **WRITE** producers (aantal-dagen /
-tijdsevenredig) still marker a mixed compound (their `conditieTijdreeks` sees a non-kenmerk member). Pure-temporal
-compounds are byte-identical (the partition passes the original Samengesteld unchanged).
+clipped €71; born 2005 (≥ 2002) → 0. The static comparison can be **ordering/datum** (empty → onwaar, Tabel 40-43),
+**GELIJK** (waar for both-empty numeriek, Tabel 37; onwaar for both-empty non-numeriek, Tabel 38), or **ONGELIJK**
+(waar for gevuld-vs-empty, onwaar for both-empty, Tabel 44) — `statischeVergelijkingGuard` builds each leegwaarde form.
+The mixed ALLE compound also lowers on the **WRITE producers** (aantal-dagen / tijdsevenredig): `conditieTijdreeks`
+takes the static member as the guard (not part of the timeline) and `mixedGuardWrap` wraps the per-bucket producer call
+— `(guard ? rsAantalDagenIn(clip, gran) : new java.util.ArrayList())` — so a false guard yields an empty doel timeline
+(fired: 31/13 dg when born <2002, an empty timeline otherwise). Still markered: a mixed **OR** (`ten minste 1`, the
+static-true-widens-the-span semantics deferred), a non-comparison non-temporal member, a compound with **no** temporal
+kenmerk, and (always) a comparison on a temporal attribute. Pure-temporal compounds are byte-identical (the partition
+passes the original Samengesteld unchanged; the WRITE timeline fold is unchanged for them).
 
 ### Elfproef predicate (§8.1.3) — lowered to a registered rsElfproef helper
 
