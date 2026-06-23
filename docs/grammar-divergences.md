@@ -811,6 +811,40 @@ non-comparison non-temporal member, a compound with **no** temporal kenmerk, `te
 on a temporal attribute. Pure-temporal compounds and the ALLE mixed compound are byte-identical (the partition passes
 the original Samengesteld unchanged for them; the corpus is byte-identical 73/27).
 
+### §8.2 / §13.4.15.70 — a tijdsafhankelijk read as a scalar markers (the gehele-periode check)
+
+A **tijdsafhankelijk** (temporal, `voor elk jaar` / `voor elke maand`) attribute or kenmerk is a `List<Segment>`
+timeline at runtime, **not** a scalar. A **bare** read of one in a scalar slot is unsupported and now MARKERS, on both
+the value/then side (`waarde`) and the condition/when side (`operand`), instead of leaking the `List` into a scalar DRL
+term. Before this guard, an **accepted** input (zero diagnostics) compiled to silently-wrong / build-sinking DRL — the
+recurring "List-in-scalar leak" class — in five forms, all confirmed: a when-side comparison (`loon == new
+BigDecimal("1000")`), an own-subject temporal-kenmerk check (`actief == true`), a to-one **navigated** temporal-kenmerk
+check (`reis.actief == true`), a then-side value into a scalar doel (`setPrijs($subject.getLoon())`), and a **navigated**
+temporal attribute in `is leeg`/`gevuld` (`reis.loon == null` — this one *compiles*, `List == null` being type-valid in
+mvel, but tests the timeline's nullness, so it is silent-wrong rather than a build break).
+
+This also resolves the **§8.2 gehele-periode check** (`<geheleperiodevergelijking> ::= [niet] gedurende (het gehele
+jaar | de gehele maand)`, §13.4.15.70). The grammar parses the optional `gehelePeriodevergelijking` qualifier on every
+predicate, but no lowering honoured it, so it was **silently dropped** — `… gedurende het gehele jaar gelijk is aan 10`
+resolved byte-identically to the bare `… gelijk is aan 10`. Per §8.2 the onderwerp of such a predicate is by definition
+tijdsafhankelijk, so the predicate now markers via the same guard rather than dropping the whole-period semantics. All
+§8.2 forms are covered — comparison, `leeg`/`gevuld`, `een <kenmerk>` check, and the negated `niet gedurende` — as is a
+temporal operand nested in condition-side arithmetic (the `operand`/`waarde` descent recurses through
+`Binair`/`Afgerond`/`Begrensd`).
+
+The guard (`isTemporeelAttribuut`, the `attribuutGranulariteit` membership test) lives at the leaves — `waarde`,
+`operand`, `genavigeerdLeegGevuld`, `operandDeel` — plus a `kenmerkGranulariteit` check in the scalar `Conditie.Kenmerk`
+lowering, whose owner is the subject for an own kenmerk or the reference role's far type
+(`model.rolDoeltypeNaarSubject`) for a navigated one. It cannot over-mark: the **legitimate** temporal reads — `het
+totaal van`, `het tijdsevenredig deel per …`, `het aantal dagen in … dat`, and the `gedurende de tijd dat <kenmerk>`
+clip — arrive as an `Expr.Functie` / structured filter and are intercepted **upstream** (`tijdreeksAggregatie` /
+`temporeleWaarde` / `temporeelKenmerkTijdreeks`), which build the timeline getter directly and never descend the guarded
+leaf; a non-temporal attribute/kenmerk (own or navigated) still lowers normally. Corpus byte-identical (73/27 — the
+corpus temporal reads are all aggregations). **Deferred** (not yet lowered, an honest marker): the *true* §8.2 semantics
+— a whole-period predicate over a timeline (the comparison/check holding at every moment of each calendar year/month),
+which needs a temporal-boolean reduction helper over the `List<Segment>`, like the gedurende clip but yielding a scalar
+per period.
+
 ### Elfproef predicate (§8.1.3) — lowered to a registered rsElfproef helper
 
 "voldoet aan de elfproef" type-checked but the transpiler's predicate switch markered it (a `false /* TODO */`

@@ -397,6 +397,82 @@ class DroolsExecutionTest {
         assertFalse(drl.contains("> sTANDAARD"), () -> "geen kale List in een scalaire constraint:\n" + drl);
     }
 
+    @Test void tijdsafhankelijk_attribuut_in_een_conditie_bouwt_schoon_als_marker(){
+        // §13.3.6/§8.2: a tijdsafhankelijk attribuut is a List<Segment> timeline, NOT a scalar. Read as a bare when-side
+        // comparison operand — the §8.2 "gedurende het gehele jaar gelijk is aan" whole-period form (the qualifier the
+        // grammar parses but no lowering honours) OR a plain comparison — it must MARKER, not leak the List into a scalar
+        // constraint. A neutered guard emits `belastingverminderingPerMaand == new BigDecimal(...)` against a List<Segment>
+        // field -> the KieBuilder "BigDecimal vs java.util.List" ERROR (the List-in-scalar leak class). build() pins it.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                het duur kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is duur indien zijn belastingvermindering per maand gedurende het gehele jaar gelijk is aan 10.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "geaccepteerde invoer (geen resolver-fout): " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        build(drl);   // throws if the temporal List<Segment> leaks into the scalar constraint
+        assertFalse(drl.contains("belastingverminderingPerMaand =="),
+                () -> "geen kale List<Segment> in een scalaire constraint:\n" + drl);
+        // the markered operand escalates the whole comparison to an honest "false /* TODO voorwaarde: <bron> */"
+        // (the §8.2 whole-period source rides in the comment), never a List-vs-scalar constraint.
+        assertTrue(drl.contains("/* TODO voorwaarde: zijn belastingvermindering per maand gedurende het gehele jaar"),
+                () -> "moet een eerlijke marker zijn (§8.2 hele-periode):\n" + drl);
+    }
+
+    @Test void tijdsafhankelijk_kenmerk_in_een_conditie_bouwt_schoon_als_marker(){
+        // §13.3.6/§8.2: a tijdsafhankelijk kenmerk is a List<Segment> boolean timeline — a bare "<k> == true" membership
+        // check (or the §8.2 "gedurende het gehele jaar rechthebbend is") would compare the List to a boolean and sink the
+        // build; it must MARKER. The gedurende CLIP reads the SAME kenmerk as a timeline (temporeelKenmerkTijdreeks), so
+        // the clip path is unaffected — only this scalar-check leak is closed.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
+                het duur kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is duur indien hij gedurende het gehele jaar rechthebbend is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "geaccepteerde invoer (geen resolver-fout): " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        build(drl);   // throws if the temporal kenmerk List<Segment> leaks into the boolean constraint
+        assertFalse(drl.contains("rechthebbend == true"),
+                () -> "geen kale List<Segment> kenmerk in een scalaire constraint:\n" + drl);
+        assertTrue(drl.contains("tijdsafhankelijk kenmerk in scalaire voorwaarde"),
+                () -> "moet een eerlijke §8.2 marker zijn:\n" + drl);
+    }
+
+    @Test void tijdsafhankelijk_attribuut_als_waarde_naar_een_scalair_doel_bouwt_schoon_als_marker(){
+        // §13.3.6: a then-side READ of a tijdsafhankelijk attribuut into a SCALAR doel would splice the List<Segment>
+        // into a BigDecimal setter (setPrijs($subject.getBelastingverminderingPerMaand())) — the value-side List-in-scalar
+        // leak. The waarde() guard markers it: setPrijs(/* TODO */ null), which builds. (A temporal DOEL is a separate,
+        // already-handled WRITE path; this is a temporal SOURCE into a scalar target.)
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de prijs Bedrag;
+            Regel R
+                geldig altijd
+                    De prijs van een Passagier moet gesteld worden op zijn belastingvermindering per maand.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "geaccepteerde invoer (geen resolver-fout): " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        build(drl);   // throws if the List<Segment> leaks into the BigDecimal setter
+        assertFalse(drl.contains("setPrijs( $subject.getBelastingverminderingPerMaand() )"),
+                () -> "geen kale List<Segment> in een scalaire setter:\n" + drl);
+        assertTrue(drl.contains("tijdsafhankelijk attribuut in scalaire context"),
+                () -> "moet een eerlijke marker zijn:\n" + drl);
+    }
+
     @Test void tijdsevenredig_deel_over_een_temporele_PARAMETER_basis_de_letterlijke_spec_voorbeeld(){
         // §7.3.2 the LITERAL spec example 1: "het tijdsevenredig deel per maand van de STANDAARD BELASTINGVERMINDERING
         // gedurende de tijd dat hij een recht op belastingvermindering heeft". The base is a TEMPORAL PARAMETER ("kan

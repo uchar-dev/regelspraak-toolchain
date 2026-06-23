@@ -352,6 +352,10 @@ public final class DrlTranspiler {
         if (e instanceof Expr.AttribuutRef a) {
             NaviRef n = naviResolve(a, subject);
             if (n.soort() == NaviSoort.GENAVIGEERD) {
+                // §13.3.6/§8.2: a navigated TEMPORAL attribute is a List<Segment> — its leeg/vol form ("reis.loon == null")
+                // would test the timeline's nullness, not its per-moment leegte, silently dropping the §8.2 period check.
+                // Marker it (the leeg/vol/waarde text is unused on a marker; companionDeel/schending bail on .marker()).
+                if (isTemporeelAttribuut(a)) return new OperandDeel(null, null, null, true, true);
                 String wortel = ident(n.rol(), false), pad = wortel + "." + ident(a.attribuut(), false);
                 return new OperandDeel("(" + wortel + " == null || " + pad + " == null)",
                         "(" + wortel + " != null && " + pad + " != null)", pad, true, false);
@@ -1000,6 +1004,22 @@ public final class DrlTranspiler {
         return a.objecttype() != null && !a.objecttype().dimensiesVan(a.attribuut()).isEmpty();
     }
 
+    /** §13.3.6/§8.2: whether {@code a} reads a tijdsafhankelijk (temporal) attribute — its runtime field is a
+     *  piecewise {@code List<Segment>} timeline, not a scalar. A BARE read of one in a scalar slot (a when-side
+     *  comparison/predicate operand, or a then-side value term) would splice the List into a scalar position — the
+     *  List-in-scalar mismatch that sinks the WHOLE KieBuilder package, an accepted input compiling to crashing/
+     *  silently-wrong DRL. The LEGITIMATE temporal reads (§7.1 het totaal van / §7.3.2 tijdsevenredig deel / the
+     *  §7.1 gedurende clip) intercept the {@link Expr.AttribuutRef} upstream ({@link #tijdreeksAggregatie} /
+     *  {@link #temporeleWaarde}) and build the timeline getter directly, so a temporal AttribuutRef reaching the
+     *  bare {@code waarde}/{@code operand} leaf is always the not-yet-lowered scalar read — marker it. This also
+     *  subsumes the §8.2 "gedurende het gehele jaar / de gehele maand" whole-period qualifier, which the grammar
+     *  parses (gehelePeriodevergelijking) but no lowering yet honours: its onderwerp is by definition tijdsafhankelijk
+     *  (§8.2 line 3437), so the predicate markers here rather than silently dropping the period check. Detects an own
+     *  OR a to-one navigated temporal read alike ({@code a.objecttype()} is the type that DECLARES the attribute). */
+    private static boolean isTemporeelAttribuut(Expr.AttribuutRef a) {
+        return a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut());
+    }
+
     /** The getter chain for an attribute read relative to the subject — the EIGEN own-attribute, a single
      *  navigated reference, or a marker for an absent/naar-veel/unresolvable navigation. Shared by the plain
      *  value read and the dimensioned-read forms (which need the bare getter — for a dimensioned attribute
@@ -1118,6 +1138,9 @@ public final class DrlTranspiler {
             // would emit a bare Map getter where a scalar is expected). A legitimate dimensioned read is an
             // Expr.DimensieCel; a bare AttribuutRef to a dimensioned attribute is therefore an error — marker.
             if (isGedimensioneerd(a)) return Frag.todo("ongedimensioneerde lezing van gedimensioneerd attribuut (§3.6)", a.bron());
+            // §13.3.6/§8.2: a bare scalar read of a tijdsafhankelijk attribuut (a List<Segment> timeline) markers —
+            // the legitimate temporal value reads are intercepted upstream (see isTemporeelAttribuut).
+            if (isTemporeelAttribuut(a)) return Frag.todo("tijdsafhankelijk attribuut in scalaire context (§8.2)", a.bron());
             NaviRef n = naviResolve(a, subject);
             if (n.soort() == NaviSoort.GENAVIGEERD) {
                 // §6.9 / §13.3.9: a value read THROUGH a to-one reference that is empty is leeg, not a crash. The
@@ -2291,6 +2314,15 @@ public final class DrlTranspiler {
             // (the single-subject rule) is unconstrained and emits on whatever pattern hosts the voorwaarde.
             if (k.eigenaar() != null && k.eigenaar() != subject)
                 return LoweredConditie.marker("kenmerk '" + k.kenmerk() + "' hoort bij " + k.eigenaar().naam, c.bron());
+            // §13.3.6/§8.2: a tijdsafhankelijk kenmerk is a List<Segment> boolean timeline — a bare "<k> == true"
+            // membership check (or the §8.2 "gedurende het gehele jaar <k> is/heeft") would compare the List to a
+            // boolean and sink the build; marker it. The gedurende CLIP path reads the same kenmerk as a timeline
+            // via temporeelKenmerkTijdreeks (not this scalar leaf), so the clip is unaffected. Covers an own-subject
+            // kenmerk AND a to-one navigated one (its owner is resolved from the reference role's far type).
+            Objecttype kHouder = k.navigatie() == null ? subject
+                    : (subject != null ? model.rolDoeltypeNaarSubject(subject, k.navigatie()) : null);
+            if (kHouder != null && kHouder.kenmerkGranulariteit.containsKey(k.kenmerk()))
+                return LoweredConditie.marker("tijdsafhankelijk kenmerk in scalaire voorwaarde (§8.2)", c.bron());
             String prop = ident(k.kenmerk(), false) + " == " + (k.negatie() ? "false" : "true");
             if (k.navigatie() == null) return LoweredConditie.van(prop);
             String nav = ident(k.navigatie(), false);
@@ -2409,6 +2441,9 @@ public final class DrlTranspiler {
         if (!(p.operand() instanceof Expr.AttribuutRef a)) return null;
         NaviRef n = naviResolve(a, subject);
         if (n.soort() != NaviSoort.GENAVIGEERD) return null;   // own/to-many/unresolved → the caller's plain form
+        // §13.3.6/§8.2: a navigated TEMPORAL attribute is a List<Segment> — fall through to operand(), which markers it,
+        // rather than emit "reis.loon == null" (a list-nullness test that silently drops the §8.2 whole-period leeg check).
+        if (isTemporeelAttribuut(a)) return null;
         String wortel = ident(n.rol(), false), pad = wortel + "." + ident(a.attribuut(), false);
         return p.soort() == Conditie.Predicaatsoort.LEEG
                 ? "(" + wortel + " == null || " + pad + " == null)"
@@ -2429,6 +2464,10 @@ public final class DrlTranspiler {
             // Map, so "prijsInJaar > 5" is a Map-vs-number type error that fails the whole DRL build). A
             // legitimate dimensioned read is an Expr.DimensieCel (above); a bare one is a marker.
             if (isGedimensioneerd(a)) return Frag.todo("ongedimensioneerde lezing van gedimensioneerd attribuut (§3.6)", a.bron());
+            // §13.3.6/§8.2: a tijdsafhankelijk attribuut is a List<Segment> timeline — a bare when-side comparison
+            // operand ("loon == 1000", or the §8.2 "gedurende het gehele jaar gelijk is aan") would leak the List
+            // into a scalar constraint and sink the build; marker it (see isTemporeelAttribuut).
+            if (isTemporeelAttribuut(a)) return Frag.todo("tijdsafhankelijk attribuut in scalaire voorwaarde (§8.2)", a.bron());
             return attribuutOperand(a, subject);
         }
         if (e instanceof Expr.ParameterRef p)   // §13.3.6 a TEMPORAL parameter is a List<Segment> global — a scalar

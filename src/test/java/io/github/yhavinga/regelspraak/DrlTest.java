@@ -2913,4 +2913,88 @@ class DrlTest {
         assertTrue(drl.contains("/* TODO aggregatie TOTAAL"),
                 () -> "een niet-'alle' set-totaal moet ook markeren:\n" + drl);
     }
+
+    @Test void tijdsafhankelijk_attribuut_en_kenmerk_in_een_scalaire_conditie_markeren_niet_lekken() {
+        // §13.3.6/§8.2: a tijdsafhankelijk attribuut/kenmerk is a List<Segment> timeline. A bare scalar read of one
+        // (a when-side comparison, the §8.2 "gedurende het gehele jaar" whole-period form, a temporal-kenmerk check,
+        // or a then-side value into a scalar doel) must MARKER — never a `field == scalar` / `setX(List)` that leaks
+        // the List into a scalar slot and sinks the KieBuilder. The legitimate temporal reads (totaal/tijdsevenredig/
+        // gedurende clip) intercept the AttribuutRef upstream, so they are unaffected.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
+                de prijs Bedrag;
+                het duur kenmerk (bijvoeglijk);
+            Regel A
+                geldig altijd
+                    Een Passagier is duur indien zijn belastingvermindering per maand gedurende het gehele jaar gelijk is aan 10.
+            Regel B
+                geldig altijd
+                    Een Passagier is duur indien hij gedurende het gehele jaar rechthebbend is.
+            Regel C
+                geldig altijd
+                    De prijs van een Passagier moet gesteld worden op zijn belastingvermindering per maand.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "geaccepteerde invoer (geen resolver-fout): " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        // none of the three leak forms may appear
+        assertFalse(drl.contains("belastingverminderingPerMaand =="), () -> "attribuut-vergelijking lekt een List:\n" + drl);
+        assertFalse(drl.contains("rechthebbend == true"), () -> "kenmerk-check lekt een List:\n" + drl);
+        assertFalse(drl.contains("setPrijs( $subject.getBelastingverminderingPerMaand() )"), () -> "scalaire setter lekt een List:\n" + drl);
+        // and each is an honest marker
+        assertTrue(drl.contains("/* TODO voorwaarde: zijn belastingvermindering per maand gedurende het gehele jaar"),
+                () -> "§8.2 attribuut-vergelijking niet gemarkeerd:\n" + drl);
+        assertTrue(drl.contains("tijdsafhankelijk kenmerk in scalaire voorwaarde"),
+                () -> "§8.2 kenmerk-check niet gemarkeerd:\n" + drl);
+        assertTrue(drl.contains("tijdsafhankelijk attribuut in scalaire context"),
+                () -> "scalaire waarde-lezing niet gemarkeerd:\n" + drl);
+    }
+
+    @Test void navigeerd_tijdsafhankelijk_kenmerk_in_een_conditie_markeert_niet_lekt() {
+        // §13.3.6/§8.2 the navigated edge: "zijn reis gedurende het gehele jaar actief is" reads a temporal kenmerk
+        // (a List<Segment> timeline) THROUGH a to-one reference. The owner is resolved from the reference role, so it
+        // markers rather than leaking "reis.actief == true" (List vs boolean). A NON-temporal navigated kenmerk
+        // ("zijn reis internationaal is") still lowers normally — the guard fires only on a temporal one.
+        String src = """
+            Objecttype de Vlucht (bezield)
+                actief kenmerk (bijvoeglijk) voor elk jaar;
+                internationaal kenmerk (bijvoeglijk);
+                het loon Numeriek (geheel getal) met eenheid € voor elk jaar;
+                de prijs Numeriek (geheel getal) met eenheid €;
+            Objecttype de Passagier (bezield)
+                is duur kenmerk (bijvoeglijk);
+            Feittype reis
+                de passagier    Passagier
+                de reis         Vlucht
+            één passagier heeft één reis;
+            Regel temporeel
+                geldig altijd
+                    Een Passagier is duur indien zijn reis gedurende het gehele jaar actief is.
+            Regel statisch
+                geldig altijd
+                    Een Passagier is duur indien zijn reis internationaal is.
+            Regel temporeel_leeg
+                geldig altijd
+                    Een Passagier is duur indien de loon van zijn reis leeg is.
+            Regel statisch_leeg
+                geldig altijd
+                    Een Passagier is duur indien de prijs van zijn reis leeg is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "geaccepteerde invoer (geen resolver-fout): " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("reis.actief == true"), () -> "navigeerd temporeel kenmerk lekt een List:\n" + drl);
+        assertTrue(drl.contains("tijdsafhankelijk kenmerk in scalaire voorwaarde"),
+                () -> "navigeerd temporeel kenmerk niet gemarkeerd:\n" + drl);
+        assertTrue(drl.contains("reis != null && reis.internationaal == true"),
+                () -> "een NIET-temporeel navigeerd kenmerk moet gewoon lowEren:\n" + drl);
+        // §8.2 navigated LEEG: a temporal navigated attr markers (no "reis.loon == null" list-nullness test); a
+        // non-temporal navigated attr still lowers to the plain null-pair guard.
+        assertFalse(drl.contains("reis.loon == null"), () -> "navigeerd temporeel attribuut LEEG lekt een List-nultest:\n" + drl);
+        assertTrue(drl.contains("(reis == null || reis.prijs == null)"),
+                () -> "een NIET-temporeel navigeerd LEEG moet gewoon lowEren:\n" + drl);
+    }
 }
