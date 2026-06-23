@@ -794,10 +794,22 @@ clipped €71; born 2005 (≥ 2002) → 0. The static comparison can be **orderi
 The mixed ALLE compound also lowers on the **WRITE producers** (aantal-dagen / tijdsevenredig): `conditieTijdreeks`
 takes the static member as the guard (not part of the timeline) and `mixedGuardWrap` wraps the per-bucket producer call
 — `(guard ? rsAantalDagenIn(clip, gran) : new java.util.ArrayList())` — so a false guard yields an empty doel timeline
-(fired: 31/13 dg when born <2002, an empty timeline otherwise). Still markered: a mixed **OR** (`ten minste 1`, the
-static-true-widens-the-span semantics deferred), a non-comparison non-temporal member, a compound with **no** temporal
-kenmerk, and (always) a comparison on a temporal attribute. Pure-temporal compounds are byte-identical (the partition
-passes the original Samengesteld unchanged; the WRITE timeline fold is unchanged for them).
+(fired: 31/13 dg when born <2002, an empty timeline otherwise).
+
+A mixed **OR** (`ten minste 1`) on the **`totaal`** now lowers too — with semantics *distinct* from ALLE. Because a
+static member has no time-variation, a TRUE static member satisfies the OR across the **entire** span, so the totaal
+WIDENS to the un-clipped value timeline; a FALSE static member leaves only the temporal-union clip. So the guard
+chooses **full-vs-clip**, not (as for ALLE) clip-vs-ZERO: `(orGuard ? rsTijdTotaal(volleReeks, gran) :
+rsTijdTotaal(clip, gran))`, where `orGuard` ORs (`||`) its static members (`statischeGuard` gained a separator
+overload), `volleReeks` is the un-clipped getter and `clip` the temporal-union (`rsTijdKnip`/`rsTijdUnie`). The
+resolver (`gedurendeSamengesteld`) admits the comparison member for `ten minste 1` too; `tijdreeksAggregatie` captures
+the pre-clip timeline and branches on the kwantor. Fired: "recht heeft OR leeftijd == 18", leeftijd 18 → the full €186,
+leeftijd 19 → the clipped €71 (the inverse of the ALLE case 18→€71/19→0). The OR-mixed is **not** lowered on the WRITE
+producers — `conditieTijdreeks` returns null on a comparison member when `!alle`, so an OR-mixed aantal-dagen /
+tijdsevenredig stays an honest marker (the static-widen is unexpressed there). Still markered everywhere: a
+non-comparison non-temporal member, a compound with **no** temporal kenmerk, `ten minste >1`, and (always) a comparison
+on a temporal attribute. Pure-temporal compounds and the ALLE mixed compound are byte-identical (the partition passes
+the original Samengesteld unchanged for them; the corpus is byte-identical 73/27).
 
 ### Elfproef predicate (§8.1.3) — lowered to a registered rsElfproef helper
 
