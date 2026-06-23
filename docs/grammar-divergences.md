@@ -843,18 +843,26 @@ components and the `datumLit()` geldigheid guard already used int parsing; only 
 `literal()` needed it. Corpus byte-identical (no corpus date uses a leading zero, so the difference only manifests on
 08/09 inputs); fired through KieBuilder.
 
-### Tekstreeks `«…»` string-building (§13.4.17.9) — flagged, not silently mis-lowered
+### Tekstreeks `«…»` string-building (§5.4/§13.4.17.9) — lowered via a lexer sub-mode
 
 A tekstreeks `"nummer «het identificatienummer …» einde"` builds a string by **substituting** each `«…»`
-part at evaluation time. The `STRING_LITERAL` lexer rule swallows the whole quoted span — guillemets and
-the inner reference — as one opaque token, and the resolver turned it into a plain `Tekst` literal, so the
-transpiler baked the guillemet *source* straight into the DRL string: at fire time every fact got the
-literal text `nummer «…» einde` instead of the substituted value (no error, a wrong runtime result — the
-worst class). The tekstWaarde branch now raises an **ERROR** ("tekstreeks … wordt nog niet ondersteund")
-when the literal contains a guillemet; an ordinary `"…"` literal has none and is untouched. This is the
-honest-marker tier; the real feature (a lexer string sub-mode splitting the literal into chunks and
-`«expressie»` escapes, a `TekstReeks` IR node, an mvel-concat lowering) is a separate multi-layer turn. No
-corpus file uses guillemets, so the corpus DRL is byte-identical and no example trips the new ERROR.
+part at evaluation time. This now lowers (Tier-2; the earlier honest-ERROR safety net is retired). The lexer
+gained a **`TEKST_MODE` sub-mode**: a `"` (`STRING_START`) enters it, where `STRING_TEXT` matches literal
+karakterreeks chunks, `«` (`L_ANGLE_QUOTE`) `pushMode(DEFAULT_MODE)` so the embedded **expressie** is lexed
+with the full token set, `»` (`R_ANGLE_QUOTE`) pops back, and `"` (`STRING_END`) closes. A plain `"…"` (no
+guillemets) re-tokenises as `STRING_START STRING_TEXT? STRING_END`, which the parser (`tekstWaarde : STRING_START
+tekstReeksDeel* STRING_END`) reassembles into the **same** `Tekst` literal — so the corpus DRL stays
+byte-identical (the only stderr delta is one syntax-error message naming the renamed `STRING_START`). An
+interpolated string builds an `Expr.TekstReeks` (literal-chunk + `«expressie»` parts, each a full recursively
+resolved expressie, §5.4 any datatype coerced to Tekst); the transpiler emits an mvel concat `("nummer " +
+rsTekst($subject.getX()) + " einde")`, each part coerced by the null-safe `rsTekst` helper (a leeg value → `""`,
+never `"null"`). A markered `«…»` part propagates (the `Frag` marker), so an unlowerable part makes the whole
+tekstreeks an honest marker. Because the embedded expression reuses `DEFAULT_MODE`, `»` pops the mode **only when
+the mode stack is non-empty** (`if (!_modeStack.isEmpty()) popMode()`); a stray top-level `»`/`«` is then an
+ordinary token the parser rejects with a syntaxfout, never a mode-stack-underflow crash. `STRING_LITERAL` was
+used in exactly one parser rule, so the blast radius was tiny. Carded refinements: `rsTekst`'s boolean/date/
+number text form is `o.toString()` (English `true`/`false`, ISO dates) — §5.4 mandates no specific format beyond
+the numeric example, refine if a fixture needs Dutch/locale text.
 
 ### Reading a single dimension cell (§3.6) — peel `<voorzetsel> <label>`, marker an under-specified read
 
