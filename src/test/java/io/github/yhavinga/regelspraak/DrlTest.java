@@ -707,6 +707,31 @@ class DrlTest {
                 () -> "datum met (leeg-veilig via helper):\n" + drl);
     }
 
+    @Test void datumliteral_met_voorloopnul_compileert_decimaal_niet_octaal() {
+        // §13.2.19: a Datum literal whose month or day is 08 or 09 must emit a DECIMAL int — a raw "08"/"09" splice
+        // is an INVALID OCTAL literal in mvel/Java (LocalDate.of(2024, 09, 08) fails the whole KieBuilder build),
+        // where only 01-07 happen to equal their decimal value. (Teeth: revert the Integer.parseInt splice in
+        // literal()'s Datum branch and the octal form returns.) Both the value side and a when-side comparison.
+        String drl = DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Vlucht (mv: Vluchten) (bezield)
+                de vertrekdatum Datum in dagen;
+                de aankomstdatum Datum in dagen;
+                is laat kenmerk (bijvoeglijk);
+            Regel a
+                geldig altijd
+                    De aankomstdatum van een Vlucht moet gesteld worden op 08-09-2024.
+            Regel b
+                geldig altijd
+                    Een Vlucht is laat indien zijn vertrekdatum gelijk is aan 09-08-2024.
+            """));
+        assertTrue(drl.contains("setAankomstdatum( java.time.LocalDate.of(2024, 9, 8) )"),
+                () -> "value-side datumliteral moet decimaal zijn:\n" + drl);
+        assertTrue(drl.contains("vertrekdatum == java.time.LocalDate.of(2024, 8, 9)"),
+                () -> "when-side datumliteral moet decimaal zijn:\n" + drl);
+        assertFalse(drl.contains(", 09,") || drl.contains(", 08)") || drl.contains(", 09)") || drl.contains(", 08,"),
+                () -> "geen octale voorloopnul-component in een datum:\n" + drl);
+    }
+
     @Test void tijd_builtins_eisen_een_datumtijd_en_datumtijd_met_telt_zeven_delen() {
         String src = """
             Objecttype de Klok

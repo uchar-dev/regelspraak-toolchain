@@ -5708,4 +5708,24 @@ class DroolsExecutionTest {
         assertNull(np.getBetaaldeBelastingOverDeAfgelopenVierJaar(),
                 "een gedimensioneerde lezing in een voorwaarde is (nog) een honest marker -> de regel mag niet vuren");
     }
+
+    @Test void datumliteral_met_voorloopnul_bouwt_en_vuurt_decimaal(){
+        // §13.2.19: a Datum literal whose month/day is 08 or 09 must compile DECIMAL (of(2024, 9, 8)); the raw octal
+        // form of(2024, 09, 08) is an invalid literal that fails the whole KieBuilder build. build() asserts no ERROR
+        // -> the octal form would fail HERE; then a when-side comparison fires on the date.
+        String drl = DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de geboortedatum Datum in dagen;
+                is duur kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is duur indien zijn geboortedatum gelijk is aan 08-09-2024.
+            """));
+        KieSession s = build(drl).newKieSession();
+        Passagier raak = new Passagier(); raak.setGeboortedatum(LocalDate.of(2024, 9, 8));
+        Passagier mis = new Passagier(); mis.setGeboortedatum(LocalDate.of(2024, 9, 7));
+        s.insert(raak); s.insert(mis); s.fireAllRules(); s.dispose();
+        assertTrue(raak.isDuur(), "geboortedatum 8-9-2024 == 08-09-2024 -> duur");
+        assertFalse(mis.isDuur(), "geboortedatum 7-9-2024 != 08-09-2024 -> niet duur");
+    }
 }

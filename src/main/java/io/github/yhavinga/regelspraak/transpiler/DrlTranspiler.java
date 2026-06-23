@@ -2526,7 +2526,10 @@ public final class DrlTranspiler {
         if (t.isDatum()) { // "dd. d-m-yyyy [hh:mm:ss.mmm]"
             java.util.regex.Matcher d = java.util.regex.Pattern.compile("(\\d{1,2})-(\\d{1,2})-(\\d{4})").matcher(lit.waarde());
             if (!d.find()) return Frag.todo("datumliteral", lit.waarde());
-            String datum = d.group(3) + ", " + d.group(2) + ", " + d.group(1);
+            // §13.2.19: emit each component as a DECIMAL int — a raw "08"/"09" splice is an INVALID OCTAL literal
+            // in mvel/Java (LocalDate.of(2024, 09, 08) fails the whole build), where only 01-07 happen to equal
+            // their decimal value. The time components below already go through Integer.parseInt; the date ones did not.
+            String datum = Integer.parseInt(d.group(3)) + ", " + Integer.parseInt(d.group(2)) + ", " + Integer.parseInt(d.group(1));
             if (t instanceof Datatype.DatumTijd) {
                 // §13.2.21 a timed dedato -> LocalDateTime; the captured millisecondes scale to nanoOfSecond
                 // (x1_000_000), reusing the rsDatumtijdMet convention, so the time-of-day is not dropped.
