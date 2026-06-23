@@ -762,6 +762,10 @@ aggregerenOverBereik        : DE dimensieNaamMeervoud IN LBRACE dimensieWaarde (
 rekenConstante : ( DE | HET )? ( REKENDATUM | REKENJAAR ) ;
 
 getalWaarde   : NUMBER ( PERCENT_SIGN | eenheidExpressie )? ; // §13.2.17/.18
-tekstWaarde   : STRING_LITERAL ;                              // §13.2.15
+// §13.2.15 tekstwaarde + §5.4/§13.4.17.9 tekstenwaardereeks. A plain "…" is STRING_START STRING_TEXT? STRING_END;
+// a "…«expressie»…" interleaves literal chunks with «expressie» escapes (each a full expressie, recursive).
+tekstWaarde     : STRING_START tekstReeksDeel* STRING_END ;
+tekstReeksDeel  : STRING_TEXT
+                | L_ANGLE_QUOTE expressie R_ANGLE_QUOTE ;
 booleanWaarde : WAAR | ONWAAR ;                               // §13.2.16
 deDato        : DATE ;                                        // §13.2.19

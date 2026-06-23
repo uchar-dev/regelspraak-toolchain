@@ -191,7 +191,11 @@ NUMBER
       // splits into NUMBER SLASH NUMBER and the parser rejects it) rather than lowering to a
       // fire-time divide-by-zero.
 
-STRING_LITERAL : '"' ~["\r\n]* '"' ;                       // §13.2.15 tekstwaarde
+// §13.2.15 tekstwaarde + §5.4/§13.4.17.9 tekstenwaardereeks. A '"' opens TEKST_MODE, which splits the quoted span
+// into literal STRING_TEXT chunks and «expressie» escapes (L_ANGLE_QUOTE re-enters DEFAULT_MODE for the embedded
+// expression, R_ANGLE_QUOTE returns). A plain "…" (no guillemets) re-tokenises identically: STRING_START STRING_TEXT?
+// STRING_END, which the parser reassembles into the same tekstWaarde — so the corpus DRL stays byte-identical.
+STRING_START : '"' -> pushMode(TEKST_MODE) ;
 ENUM_LITERAL   : '\'' ~['\r\n]* '\'' | '’' ~[‘\r\n]* '‘' ; // §13.2.14 (straight ' or typographic)
 
 // ============================================================================
@@ -347,8 +351,9 @@ LPAREN     : '('   ;
 RPAREN     : ')'   ;
 LBRACE     : '{'   ;
 RBRACE     : '}'   ;
-L_ANGLE_QUOTE : '«' ; // <<
-R_ANGLE_QUOTE : '»' ; // >>
+// «  is defined in TEKST_MODE (it only opens an «expressie» escape INSIDE a string, §5.4); »  closes that escape,
+// popping DEFAULT_MODE back to TEKST_MODE.
+R_ANGLE_QUOTE : '»' -> popMode ; // >> closes a «expressie» escape
 COMMA      : ','   ;
 DOT        : '.'   ;
 COLON      : ':'   ;
@@ -380,3 +385,13 @@ fragment DIGIT  : [0-9]          ; // §13.2.1 digit
 // ============================================================================
 WS           : [ \t\r\n]+ -> skip ;
 LINE_COMMENT : '//' ~[\r\n]* -> skip ;
+
+// ============================================================================
+// §5.4/§13.4.17.9 string interior (entered from STRING_START). A plain "…" is
+// STRING_START STRING_TEXT? STRING_END; an «expressie» escape re-enters DEFAULT_MODE
+// for the embedded expression and R_ANGLE_QUOTE pops back here.
+// ============================================================================
+mode TEKST_MODE;
+STRING_TEXT   : ~["«»\r\n]+ ;                    // a karakterreeks chunk (inner spaces preserved)
+L_ANGLE_QUOTE : '«' -> pushMode(DEFAULT_MODE) ;  // «expressie» — the embedded expr lexes in DEFAULT_MODE
+STRING_END    : '"' -> popMode ;

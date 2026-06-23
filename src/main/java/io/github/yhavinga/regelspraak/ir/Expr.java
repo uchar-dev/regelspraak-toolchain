@@ -31,6 +31,19 @@ public sealed interface Expr {
     /** §13.2 literal: a number, text, boolean, date, or enumeration value. */
     record Literal(String waarde, Datatype type, String bron) implements Expr {}
 
+    /** §5.4/§13.4.17.9 "reeks van teksten en waarden": an interleaving of literal karakterreeks chunks and
+     *  «expressie» parts, each coerced to Tekst and concatenated at runtime. A PLAIN "…" (no «…») stays an
+     *  {@link Literal}; this node is built ONLY when at least one «expressie» part is present. */
+    record TekstReeks(List<Deel> delen, String bron) implements Expr {
+        @Override public Datatype type() { return new Datatype.Tekst(); }
+        /** One piece of a tekstenwaardereeks: a literal chunk or an embedded expression. */
+        public sealed interface Deel {}
+        /** A literal karakterreeks chunk (already unquoted, no guillemets). */
+        public record Letterlijk(String tekst) implements Deel {}
+        /** A «expressie» part — its value is coerced to Tekst at evaluation. */
+        public record Ingevoegd(Expr expr) implements Deel {}
+    }
+
     /** §13.4.16 arithmetic operators and §13.4.17.12 percentage-of. */
     enum BinOp { PLUS, MIN, VERMINDERD_MET, MAAL, GEDEELD_DOOR, GEDEELD_DOOR_ABS, TOT_DE_MACHT, PERCENTAGE_VAN }
     record Binair(BinOp op, Expr links, Expr rechts, Datatype type, String bron) implements Expr {}

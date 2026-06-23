@@ -1108,6 +1108,7 @@ public final class DrlTranspiler {
     // ---------------- value expression ("then" side: getters) ----------------
     private Frag waarde(Expr e, Objecttype subject) {
         if (e instanceof Expr.Literal lit)      return literal(lit);
+        if (e instanceof Expr.TekstReeks tr)    return tekstReeks(tr, x -> waarde(x, subject));
         if (e instanceof Expr.ParameterRef p)   // §13.3.6 a TEMPORAL parameter is a List<Segment> global — only a
             // §7.3.2 tijdsevenredig base may read it (handled there); any scalar use is a List-in-scalar mismatch -> marker.
             return p.parameter().granulariteit() != null ? Frag.todo("temporele parameter in scalaire context", p.bron())
@@ -2435,6 +2436,7 @@ public final class DrlTranspiler {
             return p.parameter().granulariteit() != null ? Frag.todo("temporele parameter in scalaire context", p.bron())
                     : Frag.ok(ident(p.parameter().naam(), false));
         if (e instanceof Expr.Literal lit)    return literal(lit);
+        if (e instanceof Expr.TekstReeks tr)  return tekstReeks(tr, x -> operand(x, subject));
         if (e instanceof Expr.Afgerond af) {
             // §13.4.17.13/.25: an afronding wraps a getalexpressie — and "de wortel van X" carries a MANDATORY
             // afronding, so a condition-side wortel is always Afgerond(Functie(WORTEL)), never the bare Functie.
@@ -2555,6 +2557,34 @@ public final class DrlTranspiler {
             return Frag.ok("new java.math.BigDecimal(\"" + r[0].toPlainString() + "\").divide(new java.math.BigDecimal(\""
                     + r[1].toPlainString() + "\"), java.math.MathContext.DECIMAL64)");
         }
+    }
+
+    /** §5.4/§13.4.17.9 reeks van teksten en waarden: an mvel concatenation of the literal chunks (quoted) and the
+     *  «expressie» parts, each coerced to Tekst by the null-safe rsTekst helper (a leeg value -> "", never the string
+     *  "null"). {@code arg} lowers a sub-expression — {@link #waarde} on the value side, {@link #operand} on the
+     *  condition side. A markered sub-expression propagates (the Frag marker flag), so an unlowerable «…» part makes
+     *  the whole tekstreeks an honest marker. */
+    private Frag tekstReeks(Expr.TekstReeks tr, Function<Expr, Frag> arg) {
+        registreerTekstFunctie();
+        java.util.List<String> delen = new java.util.ArrayList<>();
+        boolean marker = false;
+        for (Expr.TekstReeks.Deel d : tr.delen()) {
+            if (d instanceof Expr.TekstReeks.Letterlijk lit)
+                delen.add("\"" + lit.tekst().replace("\\", "\\\\").replace("\"", "\\\"") + "\"");
+            else if (d instanceof Expr.TekstReeks.Ingevoegd ing) {
+                Frag f = arg.apply(ing.expr());
+                delen.add("rsTekst(" + f.text() + ")");
+                marker |= f.marker();
+            }
+        }
+        return new Frag("(" + String.join(" + ", delen) + ")", marker);
+    }
+
+    /** Register the §5.4 text-coercion helper: a value's text form, null-safe (a leeg value -> empty string, not the
+     *  literal "null"). A BigDecimal renders via toString (528 -> "528"); a date/boolean via its toString. Idempotent. */
+    private void registreerTekstFunctie() {
+        hulpFuncties.putIfAbsent("rsTekst",
+                "function String rsTekst(Object o) {\n    return o == null ? \"\" : o.toString();\n}\n\n");
     }
 
     /** Wrap an emitted value in a unit conversion when its unit differs from (but is

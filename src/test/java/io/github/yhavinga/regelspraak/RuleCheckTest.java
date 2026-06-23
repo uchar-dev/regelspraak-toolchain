@@ -30,18 +30,21 @@ class RuleCheckTest {
                 () -> "verwachtte een begrenzing-fout, kreeg: " + m.errors());
     }
 
-    @Test void tekstreeks_met_guillemets_wordt_gemeld_niet_stil_verkeerd_gelowered() {
-        // §13.4.17.9: a "…«expressie»…" tekstreeks SUBSTITUTES its «…» parts; the lexer swallows the whole
-        // quoted span as one literal, so lowering it verbatim emits the guillemet source as the runtime value
-        // (a silent wrong result). It must be a loud ERROR until the feature lands; a plain "…" stays clean.
+    @Test void tekstreeks_met_guillemets_lowert_naar_een_concat_niet_een_fout() {
+        // §5.4/§13.4.17.9: a "…«expressie»…" tekstreeks now SUBSTITUTES its «…» parts — the lexer splits the quoted
+        // span (TEKST_MODE) into literal chunks and «expressie» escapes, so it resolves without error and lowers to an
+        // mvel concat (each part rsTekst-coerced). No longer the old honest-ERROR safety net; a plain "…" stays clean.
         String src = MODEL + """
             Regel zet naam
                 geldig altijd
                     De naam van een Ding moet berekend worden als "teller is «de teller van een Ding» klaar".
             """;
         RegelSpraakModel m = Resolver.resolve(src);
-        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("tekstreeks")),
-                () -> "verwachtte een tekstreeks-fout, kreeg: " + m.errors());
+        assertTrue(m.errors().stream().noneMatch(d -> d.message().contains("tekstreeks")),
+                () -> "een tekstreeks mag geen fout meer geven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("\"teller is \" + rsTekst(") && drl.contains(") + \" klaar\""),
+                () -> "tekstreeks moet naar een rsTekst-concat lowereren:\n" + drl);
 
         String schoon = MODEL + """
             Regel zet naam schoon

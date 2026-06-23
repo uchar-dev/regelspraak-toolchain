@@ -732,6 +732,43 @@ class DrlTest {
                 () -> "geen octale voorloopnul-component in een datum:\n" + drl);
     }
 
+    @Test void tekstreeks_interpoleert_expressies_en_blijft_anders_een_plain_literal() {
+        // §5.4/§13.4.17.9: a "…«expressie»…" string lowers to an mvel concat of literal chunks (quoted) and the
+        // «…» parts (each coerced to Tekst by rsTekst, null-safe). A PLAIN "…" stays a plain string literal.
+        // (Teeth: revert the tekstWaarde grammar rule / the resolver TekstReeks branch and «…» falls back to a marker.)
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de leeftijd Numeriek (geheel getal);
+                de roepnaam Tekst;
+                de label Tekst;
+            Regel a
+                geldig altijd
+                    De roepnaam van een Persoon moet gesteld worden op "nr «de leeftijd van een Persoon» jaar".
+            Regel b
+                geldig altijd
+                    De label van een Persoon moet gesteld worden op "vast".
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("setRoepnaam( (\"nr \" + rsTekst($subject.getLeeftijd()) + \" jaar\") )"),
+                () -> "tekstreeks moet naar een mvel concat met rsTekst lowereren:\n" + drl);
+        assertTrue(drl.contains("function String rsTekst("), () -> "rsTekst helper moet geregistreerd zijn:\n" + drl);
+        assertTrue(drl.contains("setLabel( \"vast\" )"), () -> "een plain string blijft een plain literal:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "een resolvebare tekstreeks mag geen marker zijn:\n" + drl);
+    }
+
+    @Test void tekstreeks_met_onresolveerbaar_deel_blijft_een_marker() {
+        // honesty: an «expressie» part that cannot lower (an unknown attribute) propagates -> the whole tekstreeks
+        // markers (the Frag marker flag), never a silently-wrong concat baking the source.
+        String drl = DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de roepnaam Tekst;
+            Regel a
+                geldig altijd
+                    De roepnaam van een Persoon moet gesteld worden op "x«de onbekende van een Persoon»y".
+            """));
+        assertTrue(drl.contains("/* TODO"), () -> "een onresolveerbaar «…»-deel moet de tekstreeks markeren:\n" + drl);
+    }
+
     @Test void tijd_builtins_eisen_een_datumtijd_en_datumtijd_met_telt_zeven_delen() {
         String src = """
             Objecttype de Klok

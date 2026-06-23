@@ -5728,4 +5728,21 @@ class DroolsExecutionTest {
         assertTrue(raak.isDuur(), "geboortedatum 8-9-2024 == 08-09-2024 -> duur");
         assertFalse(mis.isDuur(), "geboortedatum 7-9-2024 != 08-09-2024 -> niet duur");
     }
+
+    @Test void tekstreeks_vuurt_een_geconcateneerde_tekstwaarde(){
+        // §5.4/§13.4.17.9: "nr «de leeftijd van een Persoon» jaar" with leeftijd 528 -> "nr 528 jaar", fired in real
+        // Drools (build() asserts no KieBuilder ERROR; rsTekst coerces the BigDecimal to its text form, null-safe).
+        String drl = DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de leeftijd Numeriek (geheel getal);
+                de roepnaam Tekst;
+            Regel R
+                geldig altijd
+                    De roepnaam van een Persoon moet gesteld worden op "nr «de leeftijd van een Persoon» jaar".
+            """));
+        KieSession s = build(drl).newKieSession();
+        Persoon p = new Persoon(); p.setLeeftijd(new BigDecimal("528"));
+        s.insert(p); s.fireAllRules(); s.dispose();
+        assertEquals("nr 528 jaar", p.getRoepnaam(), () -> "tekstreeks moet 'nr 528 jaar' opleveren, was " + p.getRoepnaam());
+    }
 }

@@ -150,16 +150,22 @@ final class ExpressieBouwer {
             return new Expr.Literal(bron, new Datatype.Numeriek(geheel, dec, Datatype.Teken.ONBEPAALD, null), bron);
         }
         if (p.tekstWaarde() != null) {
-            // §13.4.17.9 tekstreeks: a "…«expressie»…" string SUBSTITUTES its «…» parts at evaluation time.
-            // The STRING_LITERAL lexer rule swallows the whole quoted span — guillemets and the inner
-            // reference — as one opaque token, so a verbatim literal would bake the «…» source into the
-            // value (a silent WRONG runtime result, not an error). Flag it honestly until the feature lands;
-            // an ordinary "…" literal has no guillemet and is untouched.
-            if (bron.indexOf('«') >= 0 || bron.indexOf('»') >= 0)
-                model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
-                        "tekstreeks (reeks van teksten en waarden, §5.4/§13.4.17.9) wordt nog niet ondersteund; "
-                                + "de «…»-delen worden niet gesubstitueerd", p.getStart().getLine()));
-            return new Expr.Literal(bron, new Datatype.Tekst(), bron);
+            // §5.4/§13.4.17.9: the lexer now splits a "…" into literal STRING_TEXT chunks and «expressie» escapes.
+            // A PLAIN string (no «…») builds the same Expr.Literal(Tekst) as before (byte-identical). An interpolated
+            // string ("…«expressie»…") builds an Expr.TekstReeks whose «…» parts are each a full, recursively-resolved
+            // expressie (any datatype, coerced to Tekst at evaluation, §5.4).
+            java.util.List<Expr.TekstReeks.Deel> delen = new ArrayList<>();
+            boolean heeftExpressie = false;
+            for (var deel : p.tekstWaarde().tekstReeksDeel()) {
+                if (deel.expressie() != null) {
+                    heeftExpressie = true;
+                    delen.add(new Expr.TekstReeks.Ingevoegd(bouw(deel.expressie())));
+                } else if (deel.STRING_TEXT() != null) {
+                    delen.add(new Expr.TekstReeks.Letterlijk(deel.STRING_TEXT().getText()));
+                }
+            }
+            if (!heeftExpressie) return new Expr.Literal(bron, new Datatype.Tekst(), bron);
+            return new Expr.TekstReeks(delen, bron);
         }
         if (p.booleanWaarde() != null)  return new Expr.Literal(bron, new Datatype.Booleaan(), bron);
         if (p.deDato() != null) {
