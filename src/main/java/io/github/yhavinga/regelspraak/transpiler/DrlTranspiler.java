@@ -1606,16 +1606,54 @@ public final class DrlTranspiler {
         // marker above; any OTHER non-null filter we do not lower is markered rather than silently dropped.
         if (f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null
                 && subject != null && subject.kenmerkGranulariteit.containsKey(k.kenmerk())) {
-            // §8.1.8.1/.2 a negated condition ("gedurende de tijd dat hij GEEN recht ... heeft") clips to the
-            // kenmerk's FALSE periods — the complement of its true-period timeline within each value segment.
-            String knip = k.negatie() ? "rsTijdKnipNiet" : "rsTijdKnip";
-            if (k.negatie()) registreerTijdKnipNietFunctie(); else registreerTijdKnipFunctie();
-            waardeTijdreeks = knip + "(" + waardeTijdreeks + ", " + SUBJECT + "." + getter(k.kenmerk()) + "())";
+            waardeTijdreeks = kenmerkTijdKnip(waardeTijdreeks, k);
+        } else if (f.filter() instanceof Conditie.Samengesteld s && subject != null) {
+            // §8.4.2 a COMPOUND "gedurende de tijd dat er aan alle/ten minste 1 van de volgende voorwaarden wordt
+            // voldaan": ALLE = intersect (nest the per-kenmerk clips), ten minste 1 = clip to the UNION of the
+            // true-period sets. A member the resolver/transpiler cannot clip -> marker, never a wrong period.
+            String compound = samengesteldeTijdKnip(s, waardeTijdreeks, subject);
+            if (compound == null) return null;
+            waardeTijdreeks = compound;
         } else if (f.filter() != null) {
             return null;   // a restriction we cannot lower -> marker, never a silently-unrestricted total
         }
         registreerTijdTotaalFunctie();
         return "rsTijdTotaal(" + waardeTijdreeks + ", \"" + g.name() + "\")";
+    }
+
+    /** §7.1 clip a value timeline by ONE temporal-kenmerk membership: rsTijdKnip to its TRUE periods, or
+     *  rsTijdKnipNiet to the complement for a §8.1.8.1/.2 negated membership ("gedurende de tijd dat hij GEEN …"). */
+    private String kenmerkTijdKnip(String waarde, Conditie.Kenmerk k) {
+        String knip = k.negatie() ? "rsTijdKnipNiet" : "rsTijdKnip";
+        if (k.negatie()) registreerTijdKnipNietFunctie(); else registreerTijdKnipFunctie();
+        return knip + "(" + waarde + ", " + SUBJECT + "." + getter(k.kenmerk()) + "())";
+    }
+
+    /** §8.4.2 fold a COMPOUND gedurende over the value timeline. Every onderdeel must be a single-period temporal
+     *  kenmerk of the subject (the resolver gated this; re-checked defensively) -> else null (marker). ALLE nests
+     *  the per-kenmerk clips (the intersection of TRUE periods, negation per member). "ten minste 1" (TEN_MINSTE,
+     *  drempel 1) clips the value to the UNION of the kenmerk true-periods (rsTijdUnie) — POSITIVE members only,
+     *  since a negated member's true-period is a span-dependent complement (-> marker). */
+    private String samengesteldeTijdKnip(Conditie.Samengesteld s, String waarde, Objecttype subject) {
+        for (Conditie c : s.onderdelen())
+            if (!(c instanceof Conditie.Kenmerk k) || k.navigatie() != null
+                    || !subject.kenmerkGranulariteit.containsKey(k.kenmerk())) return null;
+        if (s.kwantor() == Conditie.Kwantor.ALLE) {
+            String expr = waarde;
+            for (Conditie c : s.onderdelen()) expr = kenmerkTijdKnip(expr, (Conditie.Kenmerk) c);
+            return expr;
+        }
+        if (s.kwantor() == Conditie.Kwantor.TEN_MINSTE) {
+            for (Conditie c : s.onderdelen()) if (((Conditie.Kenmerk) c).negatie()) return null;
+            registreerTijdUnieFunctie();
+            registreerTijdKnipFunctie();
+            String unie = SUBJECT + "." + getter(((Conditie.Kenmerk) s.onderdelen().get(0)).kenmerk()) + "()";
+            for (int i = 1; i < s.onderdelen().size(); i++)
+                unie = "rsTijdUnie(" + unie + ", " + SUBJECT + "."
+                        + getter(((Conditie.Kenmerk) s.onderdelen().get(i)).kenmerk()) + "())";
+            return "rsTijdKnip(" + waarde + ", " + unie + ")";
+        }
+        return null;
     }
 
     /** Register the §7.1 timeline-clip helper: intersect each value Segment with each condition TRUE-interval,
@@ -1677,6 +1715,42 @@ public final class DrlTranspiler {
                 + "        }\n"
                 + "        if (cursor.isBefore(w.getTot())) uit.add(new " + FACT_PACKAGE + ".Segment(cursor, w.getTot(), w.getWaarde()));\n"
                 + "    }\n"
+                + "    return uit;\n"
+                + "}");
+    }
+
+    /** Register the §8.4.2 OR-compound union helper: merge two true-period {@code List<Segment>} timelines into
+     *  their union — concatenate, drop empty/null-bounded segments, selection-sort by start (plain Java so a Drools
+     *  function body compiles it), then sweep coalescing overlapping OR ADJACENT intervals ([a,b) ∪ [b,c) = [a,c)
+     *  on the half-open convention). The result carries a null waarde (these are boolean true-periods, fed to
+     *  rsTijdKnip which re-stamps the value's waarde). A null input contributes nothing. */
+    private void registreerTijdUnieFunctie() {
+        hulpFuncties.putIfAbsent("rsTijdUnie",
+                "function java.util.List rsTijdUnie(java.util.List a, java.util.List b) {\n"
+                + "    java.util.List segs = new java.util.ArrayList();\n"
+                + "    if (a != null) for (Object o : a) {\n"
+                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
+                + "        if (s.getVan() != null && s.getTot() != null && s.getVan().isBefore(s.getTot())) segs.add(s);\n"
+                + "    }\n"
+                + "    if (b != null) for (Object o : b) {\n"
+                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
+                + "        if (s.getVan() != null && s.getTot() != null && s.getVan().isBefore(s.getTot())) segs.add(s);\n"
+                + "    }\n"
+                + "    for (int i = 0; i < segs.size(); i++) {\n"
+                + "        int min = i;\n"
+                + "        for (int j = i + 1; j < segs.size(); j++)\n"
+                + "            if (((" + FACT_PACKAGE + ".Segment) segs.get(j)).getVan().isBefore(((" + FACT_PACKAGE + ".Segment) segs.get(min)).getVan())) min = j;\n"
+                + "        Object t = segs.get(i); segs.set(i, segs.get(min)); segs.set(min, t);\n"
+                + "    }\n"
+                + "    java.util.List uit = new java.util.ArrayList();\n"
+                + "    java.time.LocalDate van = null; java.time.LocalDate tot = null;\n"
+                + "    for (Object o : segs) {\n"
+                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
+                + "        if (van == null) { van = s.getVan(); tot = s.getTot(); }\n"
+                + "        else if (!s.getVan().isAfter(tot)) { if (s.getTot().isAfter(tot)) tot = s.getTot(); }\n"
+                + "        else { uit.add(new " + FACT_PACKAGE + ".Segment(van, tot, null)); van = s.getVan(); tot = s.getTot(); }\n"
+                + "    }\n"
+                + "    if (van != null) uit.add(new " + FACT_PACKAGE + ".Segment(van, tot, null));\n"
                 + "    return uit;\n"
                 + "}");
     }

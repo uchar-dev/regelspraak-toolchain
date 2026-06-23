@@ -406,17 +406,33 @@ final class ExpressieBouwer {
                 || a.objecttype() != huidigSubject || !huidigSubject.attribuutGranulariteit.containsKey(a.attribuut())
                 || huidigSubject.attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;
         ConditieBijExpressieContext cnd = f instanceof TotaalFuncContext t ? t.conditieBijExpressie() : null;
-        if (cnd == null || cnd.toplevelElementaireVoorwaarde() == null) return null;
-        ToplevelElementaireVoorwaardeContext c = cnd.toplevelElementaireVoorwaarde();
+        if (cnd == null) return null;
+        // §7.1 a SIMPLE (single) membership, or §8.4.2 a COMPOUND ("er aan alle/ten minste 1 van de volgende
+        // voorwaarden wordt voldaan: …") of such memberships. Each bullet must be a single-period temporal kenmerk
+        // of the subject; anything else (a comparison, a non-temporal/navigated kenmerk, another kwantor, a nested
+        // compound) leaves the WHOLE condition an Onopgelost marker — so the spec's own mixed temporal+non-temporal
+        // §8.4 example never silently drops its non-temporal predicate.
+        if (cnd.toplevelElementaireVoorwaarde() != null) {
+            ToplevelElementaireVoorwaardeContext c = cnd.toplevelElementaireVoorwaarde();
+            return temporeelKenmerkUitOperator(c.toplevelOperator(), c.nonToplevelOperator(), src(cnd));
+        }
+        if (cnd.toplevelSamengesteldeVoorwaarde() != null)
+            return gedurendeSamengesteld(cnd.toplevelSamengesteldeVoorwaarde(), src(cnd));
+        return null;
+    }
+
+    /** Resolve an elementaire "is/heeft (geen/niet) (een/het) &lt;kenmerk&gt;" membership operator into a
+     *  single-period temporal {@link Conditie.Kenmerk} of the subject (negation + article-strip handled), or null
+     *  when it is not one — a comparison, a non-temporal / multi-period / navigated kenmerk, or a role/possession.
+     *  Shared by the single gedurende condition and each bullet of a compound one. */
+    private Conditie.Kenmerk temporeelKenmerkUitOperator(ToplevelOperatorContext top, NonToplevelOperatorContext non, String bron) {
         KaleNaamContext kn; boolean isVerb, heeftVerb;
-        if (c.toplevelOperator() != null) {
-            ToplevelOperatorContext op = c.toplevelOperator();
-            kn = op.kaleNaam(); isVerb = op.IS() != null || op.ZIJN() != null;
-            heeftVerb = op.HEEFT() != null || op.HEBBEN() != null;
-        } else if (c.nonToplevelOperator() != null) {
-            NonToplevelOperatorContext op = c.nonToplevelOperator();
-            kn = op.kaleNaam(); isVerb = op.IS() != null || op.ZIJN() != null;
-            heeftVerb = op.HEEFT() != null || op.HEBBEN() != null;
+        if (top != null) {
+            kn = top.kaleNaam(); isVerb = top.IS() != null || top.ZIJN() != null;
+            heeftVerb = top.HEEFT() != null || top.HEBBEN() != null;
+        } else if (non != null) {
+            kn = non.kaleNaam(); isVerb = non.IS() != null || non.ZIJN() != null;
+            heeftVerb = non.HEEFT() != null || non.HEBBEN() != null;
         } else return null;
         if (kn == null || (!isVerb && !heeftVerb)) return null;         // an "is/heeft <kenmerk>" membership (§3.5)
         // §8.1.8.1/.2 a "geen"/"niet" before the kenmerk negates the membership ("hij geen recht ... heeft" / "hij
@@ -441,7 +457,42 @@ final class ExpressieBouwer {
         }
         if (kenmerk == null || !huidigSubject.kenmerkGranulariteit.containsKey(kenmerk)
                 || huidigSubject.kenmerkTijdlijnAantal.containsKey(kenmerk)) return null;
-        return new Conditie.Kenmerk(kenmerk, null, negatie, src(cnd));
+        return new Conditie.Kenmerk(kenmerk, null, negatie, bron);
+    }
+
+    /** §8.4.2 a COMPOUND tijdsafhankelijke conditie on a temporal totaal: an ALLE (intersect the true-period sets)
+     *  or "ten minste 1" (union them) of bullets, each a single-period temporal-kenmerk membership of the subject.
+     *  Any OTHER kwantor (geen van de / ten hoogste / precies / ten minste &gt;1), a nested compound bullet, or a
+     *  non-temporal/comparison bullet returns null — so the whole compound stays an Onopgelost marker (the spec's
+     *  own §8.4 mixed temporal+non-temporal example included), never a silently-dropped predicate. */
+    private Conditie gedurendeSamengesteld(ToplevelSamengesteldeVoorwaardeContext sv, String bron) {
+        VoorwaardeKwantificatieContext q = sv.voorwaardeKwantificatie();
+        if (q == null || sv.samengesteldeVoorwaardeOnderdeel() == null) return null;
+        Conditie.Kwantor kwantor;
+        if (q.ALLE() != null) kwantor = Conditie.Kwantor.ALLE;
+        else if (q.TEN_MINSTE() != null && q.telwoord() != null && telwoordWaarde(q.telwoord()) == 1)
+            kwantor = Conditie.Kwantor.TEN_MINSTE;                       // "ten minste 1" = OR (union)
+        else return null;                                               // de / geen van de / ten hoogste / precies / ten minste >1
+        List<Conditie> delen = new ArrayList<>();
+        for (GenesteVoorwaardeContext g : sv.samengesteldeVoorwaardeOnderdeel().genesteVoorwaarde()) {
+            if (g.elementaireVoorwaarde() == null) return null;         // a nested compound bullet -> marker
+            ElementaireVoorwaardeContext ev = g.elementaireVoorwaarde();
+            Conditie.Kenmerk k = temporeelKenmerkUitOperator(ev.toplevelOperator(), ev.nonToplevelOperator(), src(ev));
+            if (k == null) return null;                                 // a comparison / non-temporal bullet -> marker
+            delen.add(k);
+        }
+        if (delen.size() < 2) return null;                             // a single bullet is the elementaire path
+        return new Conditie.Samengesteld(kwantor, 1, delen, bron);
+    }
+
+    /** The integer value of a §13.4.14 telwoord (a digit literal or een/twee/drie/vier), or -1 if unrecognised. */
+    private int telwoordWaarde(TelwoordContext t) {
+        if (t.NUMBER() != null) try { return Integer.parseInt(t.NUMBER().getText()); } catch (NumberFormatException e) { return -1; }
+        if (t.EEN_TELWOORD() != null) return 1;
+        if (t.TWEE_TELWOORD() != null) return 2;
+        if (t.DRIE_TELWOORD() != null) return 3;
+        if (t.VIER_TELWOORD() != null) return 4;
+        return -1;
     }
 
     private Conditie aggregatieFilter(FunctieAanroepContext f, Objecttype elem) {

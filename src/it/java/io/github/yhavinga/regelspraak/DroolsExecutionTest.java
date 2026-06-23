@@ -289,6 +289,81 @@ class DroolsExecutionTest {
                 () -> "complement-totaal moet 6x10 + 5x11 = 115 zijn, was " + p.getTotaleBelastingvermindering());
     }
 
+    @Test void compound_alle_gedurende_snijdt_de_ware_periodes(){
+        // §8.4.2 a COMPOUND "gedurende de tijd dat er aan ALLE volgende voorwaarden wordt voldaan: …" intersects the
+        // true-period sets of its temporal-kenmerk bullets (nested rsTijdKnip). value €10/mnd over 2023, €11/mnd
+        // over 2024 H1; rechthebbend [2023-07..2024-02), actief [2023-01..2023-10) -> intersection [2023-07..2023-10)
+        // = 3 × €10 = €30.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
+                is actief kenmerk (bijvoeglijk) voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat er aan alle volgende voorwaarden wordt voldaan:
+                    • hij rechthebbend is
+                    • hij actief is).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsTijdKnip(rsTijdKnip("), () -> "compound ALLE moet geneste knippen:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier p = new Passagier();
+        p.setBelastingverminderingPerMaand(List.of(
+                new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1), new BigDecimal("10.00")),
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 7, 1), new BigDecimal("11.00"))));
+        p.setRechthebbend(List.of(new Segment(LocalDate.of(2023, 7, 1), LocalDate.of(2024, 2, 1), null)));
+        p.setActief(List.of(new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2023, 10, 1), null)));
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("30.00").compareTo(p.getTotaleBelastingvermindering()),
+                () -> "AND-doorsnede moet 3x10 = 30 zijn, was " + p.getTotaleBelastingvermindering());
+    }
+
+    @Test void compound_ten_minste_1_gedurende_verenigt_de_ware_periodes(){
+        // §8.4.2 a COMPOUND "ten minste 1 van de volgende voorwaarden" clips the value to the UNION of the bullets'
+        // true-period sets (rsTijdUnie). Same data: rechthebbend [2023-07..2024-02) ∪ actief [2023-01..2023-10) =
+        // [2023-01..2024-02) -> 12 × €10 + 1 × €11 = €131.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
+                is actief kenmerk (bijvoeglijk) voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat er aan ten minste 1 van de volgende voorwaarden wordt voldaan:
+                    • hij rechthebbend is
+                    • hij actief is).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsTijdUnie("), () -> "compound OR moet rsTijdUnie gebruiken:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier p = new Passagier();
+        p.setBelastingverminderingPerMaand(List.of(
+                new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1), new BigDecimal("10.00")),
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 7, 1), new BigDecimal("11.00"))));
+        p.setRechthebbend(List.of(new Segment(LocalDate.of(2023, 7, 1), LocalDate.of(2024, 2, 1), null)));
+        p.setActief(List.of(new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2023, 10, 1), null)));
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("131.00").compareTo(p.getTotaleBelastingvermindering()),
+                () -> "OR-vereniging moet 12x10 + 1x11 = 131 zijn, was " + p.getTotaleBelastingvermindering());
+    }
+
     @Test void navigated_eenvorm_heeft_een_bezittelijk_kenmerk_vuurt_via_de_to_one_navigatie() {
         // §8.1.8.2 navigated EEN-form: "de partner van een Persoon heeft een recht op duurzaamheidskorting" reads
         // the to-one partner's bezittelijk kenmerk -> "partner != null && partner.rechtOpDuurzaamheidskorting".

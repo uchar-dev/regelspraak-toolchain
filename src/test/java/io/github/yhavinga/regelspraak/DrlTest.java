@@ -2381,6 +2381,59 @@ class DrlTest {
                 () -> "de negatie moet via rsTijdKnipNiet (complement) klippen:\n" + drl);
     }
 
+    private static String compoundGedurende(String kwantor, String tweedeBullet) {
+        return DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de bedrag per maand Numeriek (geheel getal) met eenheid € voor elke maand;
+                is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
+                is actief kenmerk (bijvoeglijk) voor elke maand;
+                de geboortedatum Datum in dagen;
+                de totaal Numeriek (geheel getal) met eenheid €;
+            Regel R
+                geldig altijd
+                    De totaal van een Passagier moet gesteld worden op (het totaal van zijn bedrag per maand gedurende de tijd dat er aan %s wordt voldaan:
+                    • hij rechthebbend is
+                    • %s).
+            """.formatted(kwantor, tweedeBullet)));
+    }
+
+    @Test void compound_alle_gedurende_nest_de_knippen_de_doorsnede() {
+        // §8.4.2 a COMPOUND "er aan ALLE volgende voorwaarden wordt voldaan" intersects the bullets' true-period
+        // sets by nesting rsTijdKnip (a negated bullet nests rsTijdKnipNiet). (Teeth: drop the Samengesteld branch
+        // in tijdreeksAggregatie/gedurendeSamengesteld and the whole compound falls back to a marker.)
+        String drl = compoundGedurende("alle volgende voorwaarden", "hij actief is");
+        assertTrue(drl.contains("rsTijdTotaal(rsTijdKnip(rsTijdKnip($subject.getBedragPerMaand(), "
+                        + "$subject.getRechthebbend()), $subject.getActief()), \"MAAND\")"),
+                () -> "compound ALLE moet geneste rsTijdKnip-doorsnede zijn:\n" + drl);
+        String neg = compoundGedurende("alle volgende voorwaarden", "hij niet actief is");
+        assertTrue(neg.contains("rsTijdKnipNiet(rsTijdKnip($subject.getBedragPerMaand(), $subject.getRechthebbend()), "
+                        + "$subject.getActief())"),
+                () -> "een genegeerde bullet moet rsTijdKnipNiet nesten:\n" + neg);
+    }
+
+    @Test void compound_ten_minste_1_gedurende_verenigt_via_rsTijdUnie() {
+        // §8.4.2 "ten minste 1 van de volgende voorwaarden" (OR) clips the value to the UNION of the bullets'
+        // true-period sets (rsTijdUnie), POSITIVE members only.
+        String drl = compoundGedurende("ten minste 1 van de volgende voorwaarden", "hij actief is");
+        assertTrue(drl.contains("rsTijdKnip($subject.getBedragPerMaand(), "
+                        + "rsTijdUnie($subject.getRechthebbend(), $subject.getActief()))"),
+                () -> "compound OR moet via rsTijdUnie verenigen:\n" + drl);
+    }
+
+    @Test void compound_gedurende_markeert_de_gemengde_en_niet_ondersteunde_vormen() {
+        // The whole compound stays an honest marker — never a silently-dropped predicate — for: a MIXED bullet (a
+        // non-temporal comparison, the spec's own §8.4 example), an OR with a negated member (span-dependent
+        // complement), and any other kwantor (ten minste >1 / geen van de / ten hoogste / precies).
+        assertTrue(compoundGedurende("alle volgende voorwaarden", "zijn geboortedatum eerder is dan 1-1-2002")
+                        .contains("/* TODO"), "een gemengde (niet-temporele) bullet moet de hele compound markeren");
+        assertTrue(compoundGedurende("ten minste 1 van de volgende voorwaarden", "hij niet actief is")
+                        .contains("/* TODO"), "OR met een genegeerde member moet markeren");
+        assertTrue(compoundGedurende("ten minste 2 van de volgende voorwaarden", "hij actief is")
+                        .contains("/* TODO"), "ten minste 2 moet markeren");
+        assertTrue(compoundGedurende("geen van de volgende voorwaarden", "hij actief is")
+                        .contains("/* TODO"), "geen van de moet markeren");
+    }
+
     @Test void benoemde_meer_periodieke_tijdlijn_wordt_ook_gemarkeerd_niet_single_period_geteld() {
         // Review defect: a NAMED multi-period timeline ("voor elke blokperiode" -> "tijdvakken van 5 maanden")
         // must inherit the period count from its definition and marker, not slip past the guard into a

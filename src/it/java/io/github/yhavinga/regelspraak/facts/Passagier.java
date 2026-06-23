@@ -30,6 +30,9 @@ public class Passagier {
     public void setRechthebbend(List<Segment> v) { this.rechthebbend = v; }
     public List<Segment> getRechtOpBelastingvermindering() { return rechtOpBelastingvermindering; }
     public void setRechtOpBelastingvermindering(List<Segment> v) { this.rechtOpBelastingvermindering = v; }
+    private List<Segment> actief;                        // §8.4.2 a second temporal kenmerk for the compound gedurende
+    public List<Segment> getActief() { return actief; }
+    public void setActief(List<Segment> v) { this.actief = v; }
     public BigDecimal getBasistarief() { return basistarief; }
     public void setBasistarief(BigDecimal v) { this.basistarief = v; }
     public BigDecimal getBodem() { return bodem; }
