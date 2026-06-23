@@ -277,13 +277,19 @@ final class ExpressieBouwer {
         // single-period subject temporal-kenmerk membership into a Conditie.Kenmerk (reusing the gedurende path's
         // resolver) so the transpiler can count true-days per period; anything else (a comparison / compound /
         // navigated / non-temporal condition) leaves the filter unset -> the transpiler markers.
-        if (kind == Expr.FunctieKind.AANTAL_DAGEN_IN && f instanceof AantalDagenFuncContext adf
-                && adf.toplevelElementaireVoorwaarde() != null && !(filter instanceof Conditie.Kenmerk)) {
-            ToplevelElementaireVoorwaardeContext c = adf.toplevelElementaireVoorwaarde();
-            Conditie.Kenmerk k = temporeelKenmerkUitOperator(c.toplevelOperator(), c.nonToplevelOperator(), src(adf));
-            if (k != null) filter = k;
+        RegelSpraakModel.Granulariteit aantalDagenGran = null;
+        if (kind == Expr.FunctieKind.AANTAL_DAGEN_IN && f instanceof AantalDagenFuncContext adf) {
+            // §13.4.17.57/§4.21 carry the operator's "in <de maand|het jaar>" bucket unit so the transpiler can
+            // require it to MATCH the doel's tijdlijn rather than silently bucketing by the doel's unit.
+            aantalDagenGran = adf.MAAND() != null ? RegelSpraakModel.Granulariteit.MAAND
+                    : (adf.JAAR() != null ? RegelSpraakModel.Granulariteit.JAAR : null);
+            if (adf.toplevelElementaireVoorwaarde() != null && !(filter instanceof Conditie.Kenmerk)) {
+                ToplevelElementaireVoorwaardeContext c = adf.toplevelElementaireVoorwaarde();
+                Conditie.Kenmerk k = temporeelKenmerkUitOperator(c.toplevelOperator(), c.nonToplevelOperator(), src(adf));
+                if (k != null) filter = k;
+            }
         }
-        Expr functie = new Expr.Functie(kind, argumenten, elem, leegwaarde, filter, type, bron);
+        Expr functie = new Expr.Functie(kind, argumenten, elem, leegwaarde, filter, null, type, bron, aantalDagenGran);
         // §13.4.17.13: the wortel's afronding is MANDATORY and rounds the ROOT (it is a sibling of the
         // radicand, not inside it). It was parsed but dropped; wrap the function so the rounding survives.
         if (f instanceof WortelFuncContext w) return afgerond(functie, w.afronding(), bron);

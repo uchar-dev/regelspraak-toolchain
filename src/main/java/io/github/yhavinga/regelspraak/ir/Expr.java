@@ -1,6 +1,7 @@
 package io.github.yhavinga.regelspraak.ir;
 
 import io.github.yhavinga.regelspraak.model.Datatype;
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Granulariteit;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
 
@@ -71,11 +72,19 @@ public sealed interface Expr {
      *  ordinary instance aggregation. */
     record Functie(FunctieKind kind, List<Expr> argumenten, Objecttype elementObjecttype,
                    Expr leegwaarde, Conditie filter, DimensieSelectie dimensieSelectie,
-                   Datatype type, String bron) implements Expr {
-        /** Most call sites build an instance aggregation with no dimensieselectie. */
+                   Datatype type, String bron, Granulariteit granulariteit) implements Expr {
+        /** {@code granulariteit} is the §13.4.17.57 aantal-dagen-in operator's stated bucket unit ("in <de maand|
+         *  het jaar>"); null for every other functie. The transpiler requires it to MATCH the doel's tijdlijn
+         *  (§4.21/§7.2), markering a mismatch rather than silently bucketing by the wrong unit. */
+        public Functie(FunctieKind kind, List<Expr> argumenten, Objecttype elementObjecttype,
+                       Expr leegwaarde, Conditie filter, DimensieSelectie dimensieSelectie,
+                       Datatype type, String bron) {
+            this(kind, argumenten, elementObjecttype, leegwaarde, filter, dimensieSelectie, type, bron, null);
+        }
+        /** Most call sites build an instance aggregation with no dimensieselectie and no granulariteit. */
         public Functie(FunctieKind kind, List<Expr> argumenten, Objecttype elementObjecttype,
                        Expr leegwaarde, Conditie filter, Datatype type, String bron) {
-            this(kind, argumenten, elementObjecttype, leegwaarde, filter, null, type, bron);
+            this(kind, argumenten, elementObjecttype, leegwaarde, filter, null, type, bron, null);
         }
     }
 

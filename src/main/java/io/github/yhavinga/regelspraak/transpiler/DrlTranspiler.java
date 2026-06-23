@@ -1639,6 +1639,9 @@ public final class DrlTranspiler {
      *  left the filter unset in the resolver -> null here. */
     private String temporeleWaarde(Expr w, Objecttype subject, RegelSpraakModel.Granulariteit gran) {
         if (w instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.AANTAL_DAGEN_IN
+                // §4.21/§7.2 the operator's "in <maand|jaar>" bucket unit MUST match the doel's tijdlijn — a
+                // mismatch ("in het jaar" into a per-maand doel) markers rather than silently bucketing by the doel.
+                && f.granulariteit() == gran
                 && f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null && !k.negatie()
                 && subject != null && subject.kenmerkGranulariteit.containsKey(k.kenmerk())) {
             registreerAantalDagenInFunctie();

@@ -2453,6 +2453,19 @@ class DrlTest {
             """));
         assertFalse(nonTemp.contains("rsAantalDagenIn"), () -> "een NIET-temporeel doel mag geen tijdreeks-write krijgen:\n" + nonTemp);
         assertTrue(nonTemp.contains("/* TODO"), () -> "aantal-dagen-in naar een scalair doel moet markeren:\n" + nonTemp);
+
+        // §4.21/§7.2 the operator's "in <maand|jaar>" must MATCH the doel's tijdlijn: "in het jaar" into a per-maand
+        // doel must MARKER, not silently bucket by month. (Review MED: the operator unit was parsed but dropped.)
+        String mismatch = DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                het aantal dagen recht Numeriek (geheel getal) met eenheid dg voor elke maand;
+            Regel R
+                geldig altijd
+                    Het aantal dagen recht van een passagier moet gesteld worden op het aantal dagen in het jaar dat hij een recht op belastingvermindering heeft.
+            """));
+        assertFalse(mismatch.contains("rsAantalDagenIn"), () -> "een eenheid-mismatch (jaar-in-maand) mag niet stil bucketen:\n" + mismatch);
+        assertTrue(mismatch.contains("/* TODO"), () -> "een operator/doel eenheid-mismatch moet markeren:\n" + mismatch);
     }
 
     @Test void compound_alle_gedurende_nest_de_knippen_de_doorsnede() {
