@@ -402,8 +402,7 @@ final class ExpressieBouwer {
      *  subject-kenmerk as an element die-filter. */
     private Conditie gedurendeKenmerkFilter(FunctieAanroepContext f, Expr.FunctieKind kind, List<Expr> argumenten) {
         if (kind != Expr.FunctieKind.TOTAAL || argumenten.size() != 1 || huidigSubject == null) return null;
-        if (!(argumenten.get(0) instanceof Expr.AttribuutRef a) || a.navigatieRol() != null
-                || (a.onderwerpBron() != null && a.onderwerpBron().trim().toLowerCase().startsWith("alle "))
+        if (!(argumenten.get(0) instanceof Expr.AttribuutRef a) || a.navigatieRol() != null || a.set()
                 || a.objecttype() != huidigSubject || !huidigSubject.attribuutGranulariteit.containsKey(a.attribuut())
                 || huidigSubject.attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;
         ConditieBijExpressieContext cnd = f instanceof TotaalFuncContext t ? t.conditieBijExpressie() : null;
@@ -736,7 +735,18 @@ final class ExpressieBouwer {
             if (viaRol != null && viaRol.attribuut(attr) != null) { ot = viaRol; navRol = noun; }
         }
         Datatype dt = ot != null && ot.attribuut(attr) != null ? ot.attribuut(attr) : onbekend();
-        return new Expr.AttribuutRef(attr, ot, onderwerpBron, navRol, dt, bron);
+        return new Expr.AttribuutRef(attr, ot, onderwerpBron, navRol, dt, bron, isSetOnderwerp(a.onderwerp()));
+    }
+
+    /** §13.4.2 whether {@code o}'s top-level quantifier ranges over a SET — a kwantificatie that is NOT the bare
+     *  definite "de" (alle / al / geen van de / ten minste … / ten hoogste … / precies …). A possessive, an
+     *  indefinite "een &lt;X&gt;" universal subject, or an onderwerpketen carries no kwantificatie and is a single
+     *  object. The structural replacement for the old onderwerpBron "alle " text scan, computed once from the parse
+     *  tree (so it also catches the threshold quantifiers the text scan missed, and is immune to casing/spacing). */
+    private static boolean isSetOnderwerp(OnderwerpContext o) {
+        if (o == null || o.kwantificatie() == null) return false;
+        KwantificatieContext q = o.kwantificatie();
+        return !(q.DE() != null && q.getChildCount() == 1);     // bare "de" = one object; every other quantor = a set
     }
 
     /** A possessive "zijn <kaleNaam>" resolves to the named attribute OF the rule subject,

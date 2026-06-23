@@ -111,7 +111,16 @@ public sealed interface Expr {
      * navigated type equals the subject's) from a plain own-attribute read (§13.3.9.2).
      */
     record AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
-                        String navigatieRol, Datatype type, String bron) implements Expr {}
+                        String navigatieRol, Datatype type, String bron, boolean set) implements Expr {
+        /** {@code set} marks an operand that ranges over a SET (a §13.4.2 set quantifier — alle/al/geen van de/
+         *  ten minste…/ten hoogste…/precies… — NOT the bare definite "de"), computed structurally from the
+         *  onderwerp's quantifier rather than re-scanned from the onderwerp text. Lets the transpiler/resolver
+         *  distinguish a set aggregation from a single-object read even when the element type equals the subject. */
+        public AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
+                            String navigatieRol, Datatype type, String bron) {
+            this(attribuut, objecttype, onderwerpBron, navigatieRol, type, bron, false);
+        }
+    }
 
     /** §3.6 a single cell of a gedimensioneerd attribuut: the bare attribute read plus the selected label
      *  for each of its dimensions (in the attribute's declared dimension order — one label for a
