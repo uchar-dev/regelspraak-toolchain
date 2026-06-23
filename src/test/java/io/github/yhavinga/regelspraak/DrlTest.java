@@ -2530,6 +2530,22 @@ class DrlTest {
             """));
         assertFalse(negatie.contains("rsTijdsevenredig"), () -> "een genegeerde gedurende mag niet positief prorateren:\n" + negatie);
         assertTrue(negatie.contains("/* TODO"), () -> "een genegeerde gedurende moet markeren:\n" + negatie);
+
+        // §7.3.2 (lines 3093/3123) the base must be CONSTANT within each output bucket: a base FINER than the bucket
+        // (a per-maand base into a per-jaar operator/doel) changes mid-bucket, so the bucket-start read would silently
+        // drop the rest -> marker, never a mis-proration over only January's base. (Adversarial review finding.)
+        String fijnerBasis = DrlTranspiler.transpile(Resolver.resolve("""
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de standaardbedrag Bedrag voor elke maand;
+                de jaardeel Bedrag voor elk jaar;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+            Regel R
+                geldig altijd
+                    De jaardeel van een Passagier moet gesteld worden op (het tijdsevenredig deel per jaar van zijn standaardbedrag gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """));
+        assertFalse(fijnerBasis.contains("rsTijdsevenredig"), () -> "een basis fijner dan de bucket mag niet stil prorateren:\n" + fijnerBasis);
+        assertTrue(fijnerBasis.contains("/* TODO"), () -> "een per-maand basis in een per-jaar bucket moet markeren:\n" + fijnerBasis);
     }
 
     @Test void compound_alle_gedurende_nest_de_knippen_de_doorsnede() {

@@ -1661,6 +1661,12 @@ public final class DrlTranspiler {
                 && base.navigatieRol() == null && !base.set() && base.objecttype() == subject && subject != null
                 && subject.attribuutGranulariteit.containsKey(base.attribuut())
                 && !subject.attribuutTijdlijnAantal.containsKey(base.attribuut())
+                // §7.3.2 (lines 3093/3123) the base value is read "voor de hele <maand|jaar>", so the base must be
+                // CONSTANT within each output bucket: its declared granularity must be COARSER-OR-EQUAL to the bucket
+                // (DAG<WEEK<MAAND<KWARTAAL<JAAR via ordinal). A FINER base (per-maand base into a per-jaar bucket)
+                // changes mid-bucket; the per-bucket read takes only the bucket-start segment and would silently drop
+                // the rest -> marker rather than mis-prorate. (The §7.3.2 examples use a coarser-or-equal base.)
+                && subject.attribuutGranulariteit.get(base.attribuut()).ordinal() >= gran.ordinal()
                 && base.type().isNumeriek()
                 && java.util.Objects.equals(base.type().eenheidOf(), doelType == null ? null : doelType.eenheidOf())
                 && f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null && !k.negatie()
