@@ -2673,9 +2673,11 @@ class DrlTest {
         String orMixed = mixedCompound("ten minste 1 van de volgende voorwaarden", "zijn geboortedatum is eerder dan 1-1-2002");
         assertTrue(orMixed.contains("/* TODO"), () -> "een mixed ten-minste-1 compound moet markeren:\n" + orMixed);
 
-        // a GELIJK static member (both-empty semantics differ, deferred) -> marker.
+        // a GELIJK static member now lowers (numeriek both-empty -> waar, Tabel 37): both-empty OR both-gevuld-equal.
         String gelijk = mixedCompound("alle volgende voorwaarden", "zijn leeftijd is gelijk aan 18");
-        assertTrue(gelijk.contains("/* TODO"), () -> "een GELIJK statisch lid moet (nog) markeren:\n" + gelijk);
+        assertTrue(gelijk.contains("? rsTijdTotaal(rsTijdKnip(") && gelijk.contains("$subject.getLeeftijd() == new java.math.BigDecimal(\"18\")"),
+                () -> "een GELIJK statisch lid moet als value-side guard lowereren:\n" + gelijk);
+        assertFalse(gelijk.contains("/* TODO"), () -> "een GELIJK statisch lid mag geen marker meer zijn:\n" + gelijk);
 
         // §8.4 a comparison on a TEMPORAL attribute is itself time-varying -> NOT a static member: it must MARKER, not
         // lower to a List<Segment>-vs-scalar term that fails the whole DRL build. (Adversarial review HIGH.)

@@ -475,6 +475,81 @@ class DroolsExecutionTest {
         assertEquals(0, new BigDecimal("1.873972602739726").compareTo(w), () -> "18 × 38/365 = 684/365 ≈ 1.873972602739726 (DECIMAL64), was " + w);
     }
 
+    @Test void gelijk_statisch_lid_lowert_als_value_side_guard_in_een_mixed_compound(){
+        // §8.4 a GELIJK static member ("zijn leeftijd is gelijk aan 18", numeriek) gates the totaal: both-empty -> waar
+        // (Tabel 37), else both-gevuld-equal. value €10/mnd 2023 + €11/mnd 2024H1, recht [2023-07..2024-02) -> clip €71.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de leeftijd Numeriek (geheel getal);
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat er aan alle volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - zijn leeftijd is gelijk aan 18).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        java.util.List<Segment> waarde = List.of(
+                new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2024, 1, 1), new BigDecimal("10.00")),
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 7, 1), new BigDecimal("11.00")));
+        java.util.List<Segment> recht = List.of(new Segment(LocalDate.of(2023, 7, 1), LocalDate.of(2024, 2, 1), null));
+
+        KieSession s1 = build(drl).newKieSession();
+        Passagier p18 = new Passagier();
+        p18.setBelastingverminderingPerMaand(waarde); p18.setRechtOpBelastingvermindering(recht); p18.setLeeftijd(new BigDecimal("18"));
+        s1.insert(p18); s1.fireAllRules(); s1.dispose();
+        assertEquals(0, new BigDecimal("71.00").compareTo(p18.getTotaleBelastingvermindering()), () -> "leeftijd 18 -> €71, was " + p18.getTotaleBelastingvermindering());
+
+        KieSession s2 = build(drl).newKieSession();
+        Passagier p19 = new Passagier();
+        p19.setBelastingverminderingPerMaand(waarde); p19.setRechtOpBelastingvermindering(recht); p19.setLeeftijd(new BigDecimal("19"));
+        s2.insert(p19); s2.fireAllRules(); s2.dispose();
+        assertEquals(0, BigDecimal.ZERO.compareTo(p19.getTotaleBelastingvermindering()), () -> "leeftijd != 18 -> 0, was " + p19.getTotaleBelastingvermindering());
+    }
+
+    @Test void mixed_compound_op_aantal_dagen_wordt_door_de_statische_guard_geleegd(){
+        // §8.4 a mixed compound on a temporal-WRITE producer: the static comparison gates the WHOLE per-bucket write
+        // (an empty timeline when it fails). recht [1-1..14-2-2024) -> Jan 31 / Feb 13 dg, gated by geboortedatum<2002.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de geboortedatum Datum in dagen;
+                het aantal dagen recht op belastingvermindering Numeriek (geheel getal) met eenheid dg voor elke maand;
+            Regel R
+                geldig altijd
+                    Het aantal dagen recht op belastingvermindering van een passagier moet gesteld worden op het aantal dagen in de maand dat er aan alle volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - zijn geboortedatum is eerder dan 1-1-2002.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("? rsAantalDagenIn(") && drl.contains(": new java.util.ArrayList())"),
+                () -> "een mixed compound op aantal-dagen moet door een statische guard worden omsloten:\n" + drl);
+        java.util.List<Segment> recht = List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 2, 14), null));
+
+        KieSession s1 = build(drl).newKieSession();
+        Passagier jong = new Passagier();
+        jong.setRechtOpBelastingvermindering(recht); jong.setGeboortedatum(LocalDate.of(1990, 1, 1));
+        s1.insert(jong); s1.fireAllRules(); s1.dispose();
+        java.util.List<Segment> uit = jong.getAantalDagenRechtOpBelastingvermindering();
+        assertEquals(2, uit.size(), () -> "guard waar -> twee maanden, kreeg " + uit);
+        assertEquals(0, new BigDecimal("31").compareTo(uit.get(0).getWaarde()), () -> "jan = 31 dg, was " + uit.get(0).getWaarde());
+        assertEquals(0, new BigDecimal("13").compareTo(uit.get(1).getWaarde()), () -> "feb = 13 dg, was " + uit.get(1).getWaarde());
+
+        KieSession s2 = build(drl).newKieSession();
+        Passagier oud = new Passagier();
+        oud.setRechtOpBelastingvermindering(recht); oud.setGeboortedatum(LocalDate.of(2005, 1, 1));
+        s2.insert(oud); s2.fireAllRules(); s2.dispose();
+        assertTrue(oud.getAantalDagenRechtOpBelastingvermindering().isEmpty(), () -> "guard onwaar -> lege tijdreeks, kreeg " + oud.getAantalDagenRechtOpBelastingvermindering());
+    }
+
     @Test void mixed_compound_gedurende_gates_het_totaal_met_een_statische_vergelijking(){
         // §8.4 the spec's CANONICAL mixed compound: "het totaal van zijn belastingvermindering per maand gedurende de
         // tijd dat er aan alle volgende voorwaarden wordt voldaan: • hij een recht op belastingvermindering heeft

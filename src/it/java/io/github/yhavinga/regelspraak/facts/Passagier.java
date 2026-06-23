@@ -49,6 +49,9 @@ public class Passagier {
     private LocalDate geboortedatum;                      // §8.4 a non-temporal attribute for the MIXED compound static guard
     public LocalDate getGeboortedatum() { return geboortedatum; }
     public void setGeboortedatum(LocalDate v) { this.geboortedatum = v; }
+    private BigDecimal leeftijd;                          // §8.4 a non-temporal numeriek attribute for a GELIJK static guard
+    public BigDecimal getLeeftijd() { return leeftijd; }
+    public void setLeeftijd(BigDecimal v) { this.leeftijd = v; }
     public BigDecimal getBasistarief() { return basistarief; }
     public void setBasistarief(BigDecimal v) { this.basistarief = v; }
     public BigDecimal getBodem() { return bodem; }

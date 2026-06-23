@@ -1666,18 +1666,24 @@ public final class DrlTranspiler {
         return String.join(" && ", termen);
     }
 
-    /** §8.4 one non-temporal comparison member as a value-side ($subject.getX()-form) boolean
-     *  ({@code lv != null && rv != null && lv <op> rv}). The guard rides in the totaal's CONSEQUENCE, so it uses the
-     *  value-side {@code waarde()} form, not the when-side bare property. Restricted to an ORDERING / datum
-     *  comparison, where an empty operand makes the comparison onwaar (Tabel 40-43) and so the null-guards match the
-     *  spec — a GELIJK/ONGELIJK static member (whose both-empty semantics differ, Tabel 37/38/44) is deferred to a
-     *  marker. A markered/unresolvable operand -> null. */
+    /** §8.4 one non-temporal comparison member as a value-side ($subject.getX()-form) boolean. The guard rides in the
+     *  totaal's CONSEQUENCE, so it uses the value-side {@code waarde()} form, not the when-side bare property, with the
+     *  leegwaarde semantics of the §5.1 comparison matrix: an ORDERING/datum comparison is onwaar if either operand is
+     *  empty (Tabel 40-43); a GELIJK is waar for both-empty NUMERIEK (Tabel 37) but onwaar for both-empty non-numeriek
+     *  (Tabel 38); an ONGELIJK is waar for gevuld-vs-empty and onwaar for both-empty (Tabel 44). A markered/unresolvable
+     *  operand -> null. */
     private String statischeVergelijkingGuard(Conditie.Vergelijking v, Objecttype subject) {
-        if (!ordeningOfDatum(v.op())) return null;
         String lv = waarde(v.links(), subject), rv = waarde(v.rechts(), subject);
         if (bevatMarker(lv) || bevatMarker(rv)) return null;
         String[] ov = vergelijkingsOperanden(lv, v.links().type(), rv, v.rechts().type());
-        return "(" + lv + " != null && " + rv + " != null && " + ov[0] + " " + drlOp(v.op()) + " " + ov[1] + ")";
+        String volBeide = "(" + lv + " != null && " + rv + " != null && " + ov[0] + " " + drlOp(v.op()) + " " + ov[1] + ")";
+        if (ordeningOfDatum(v.op())) return volBeide;
+        if (v.op() == Conditie.Operator.GELIJK)   // Tabel 37 numeriek both-empty -> waar; Tabel 38 non-numeriek -> onwaar
+            return nietNumeriekVergelijking(v) ? volBeide
+                    : "((" + lv + " == null && " + rv + " == null) || " + volBeide + ")";
+        if (v.op() == Conditie.Operator.ONGELIJK)   // Tabel 44 gevuld-vs-empty -> waar; both-empty -> onwaar
+            return "(((" + lv + " == null) != (" + rv + " == null)) || " + volBeide + ")";
+        return null;
     }
 
     /** §5.1.4 lower a RHS that PRODUCES a timeline written to a single-period temporal doel attribute, into a
@@ -1692,10 +1698,10 @@ public final class DrlTranspiler {
                 // §4.21/§7.2 the operator's "in <maand|jaar>" bucket unit MUST match the doel's tijdlijn — a
                 // mismatch ("in het jaar" into a per-maand doel) markers rather than silently bucketing by the doel.
                 && f.granulariteit() == gran && subject != null) {
-            String cond = conditieTijdreeks(f.filter(), subject);   // single kenmerk OR a §8.4.2 compound; null -> marker
+            String cond = conditieTijdreeks(f.filter(), subject);   // single kenmerk OR a §8.4.2 (mixed) compound; null -> marker
             if (cond != null) {
-                registreerAantalDagenInFunctie();
-                return "rsAantalDagenIn(" + cond + ", \"" + gran.name() + "\")";
+                String call = mixedGuardWrap("rsAantalDagenIn(" + cond + ", \"" + gran.name() + "\")", f.filter(), subject);
+                if (call != null) { registreerAantalDagenInFunctie(); return call; }
             }
         }
         // §13.4.17.58/§7.3.2 "het tijdsevenredig deel per <maand|jaar> van <basis> gedurende de tijd dat <conditie>":
@@ -1724,10 +1730,10 @@ public final class DrlTranspiler {
             }
             if (baseExpr != null && baseGran.ordinal() >= gran.ordinal() && baseType.isNumeriek()
                     && java.util.Objects.equals(baseType.eenheidOf(), doelType == null ? null : doelType.eenheidOf())) {
-                String cond = conditieTijdreeks(f.filter(), subject);   // single kenmerk OR a §8.4.2 compound; null -> marker
+                String cond = conditieTijdreeks(f.filter(), subject);   // single kenmerk OR a §8.4.2 (mixed) compound; null -> marker
                 if (cond != null) {
-                    registreerTijdsevenredigFunctie();
-                    return "rsTijdsevenredig(" + cond + ", " + baseExpr + ", \"" + gran.name() + "\")";
+                    String call = mixedGuardWrap("rsTijdsevenredig(" + cond + ", " + baseExpr + ", \"" + gran.name() + "\")", f.filter(), subject);
+                    if (call != null) { registreerTijdsevenredigFunctie(); return call; }
                 }
             }
         }
@@ -1749,15 +1755,19 @@ public final class DrlTranspiler {
         if (filter instanceof Conditie.Samengesteld s
                 && (s.kwantor() == Conditie.Kwantor.ALLE
                     || (s.kwantor() == Conditie.Kwantor.TEN_MINSTE && s.drempel() == 1))) {
+            boolean alle = s.kwantor() == Conditie.Kwantor.ALLE;
             java.util.List<String> regios = new java.util.ArrayList<>();
             for (Conditie c : s.onderdelen()) {
+                // §8.4 a static (non-temporal) comparison member is the value-side guard (mixedGuardWrap), not part of
+                // the timeline — admitted only in an ALLE compound (a mixed OR has deferred semantics).
+                if (c instanceof Conditie.Vergelijking) { if (!alle) return null; continue; }
                 if (!(c instanceof Conditie.Kenmerk k)) return null;
                 String g = temporeelKenmerkTijdreeks(k, subject);
                 if (g == null) return null;   // a negated/navigated/multi-period member -> marker (no standalone complement)
                 regios.add(g);
             }
-            if (regios.size() < 2) return null;
-            boolean alle = s.kwantor() == Conditie.Kwantor.ALLE;
+            if (regios.isEmpty()) return null;             // no temporal clip (a pure-static compound)
+            if (regios.size() == 1) return regios.get(0);  // one kenmerk (+ optional static members -> the guard)
             if (alle) registreerTijdKnipFunctie(); else registreerTijdUnieFunctie();
             String combiner = alle ? "rsTijdKnip" : "rsTijdUnie";
             String acc = regios.get(0);
@@ -1765,6 +1775,18 @@ public final class DrlTranspiler {
             return acc;
         }
         return null;
+    }
+
+    /** §8.4 wrap a temporal-WRITE producer call in a mixed compound's STATIC guard: a non-temporal comparison member
+     *  gates the whole per-bucket write — when it fails the doel gets an empty timeline. The call is unchanged for a
+     *  pure-temporal filter; null when a static member is not lowerable (the caller then markers). */
+    private String mixedGuardWrap(String call, Conditie filter, Objecttype subject) {
+        if (!(filter instanceof Conditie.Samengesteld s)) return call;
+        java.util.List<Conditie.Vergelijking> statisch = new java.util.ArrayList<>();
+        for (Conditie c : s.onderdelen()) if (c instanceof Conditie.Vergelijking v) statisch.add(v);
+        if (statisch.isEmpty()) return call;
+        String guard = statischeGuard(statisch, subject);
+        return guard == null ? null : "(" + guard + " ? " + call + " : new java.util.ArrayList())";
     }
 
     /** A single positive single-period subject kenmerk's TRUE-period getter ({@code $subject.getK()}), or null when it
