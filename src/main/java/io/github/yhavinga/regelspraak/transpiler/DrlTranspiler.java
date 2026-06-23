@@ -281,15 +281,15 @@ public final class DrlTranspiler {
             if (genav != null) return genav;
         }
         if (assertie instanceof Conditie.Vergelijking v && ordeningOfDatum(v.op())) {
-            String l = operand(v.links(), subject), r = operand(v.rechts(), subject);
+            Frag l = operand(v.links(), subject), r = operand(v.rechts(), subject);
             // An un-evaluable operand (a /* TODO */ marker) must NOT be wrapped in this
             // null-guard: the guard's "<marker> == null" reads as "null == null" — always
             // true — so the rule would flag EVERY instance inconsistent though its criterion
             // was never evaluated (§9.5: inconsistent only on a real violation). Drop to the
             // no-op path instead, like an assertion with no faithful negation.
-            if (bevatMarker(l) || bevatMarker(r)) return null;
-            String complement = conditie(new Conditie.Vergelijking(flip(v.op()), v.links(), v.rechts(), v.bron()), subject);
-            return "(" + l + " == null || " + r + " == null || " + complement + ")";
+            if (l.marker() || r.marker()) return null;
+            Frag complement = conditie(new Conditie.Vergelijking(flip(v.op()), v.links(), v.rechts(), v.bron()), subject);
+            return "(" + l.text() + " == null || " + r.text() + " == null || " + complement.text() + ")";
         }
         if (assertie instanceof Conditie.Vergelijking v && v.op() == Conditie.Operator.GELIJK
                 && nietNumeriekVergelijking(v)) {
@@ -297,16 +297,16 @@ public final class DrlTranspiler {
             // numeriek Tabel 37 case, which is "waar". So the criterion is NOT satisfied -> a violation. The
             // plain complement `l != r` reads `null != null` -> false, wrongly reporting the instance consistent
             // (§9.5 reading: a criterion is satisfied only when its comparison is "waar"; "fout" is a violation).
-            String l = operand(v.links(), subject), r = operand(v.rechts(), subject);
-            if (bevatMarker(l) || bevatMarker(r)) return null;
-            return "(" + l + " != " + r + " || (" + l + " == null && " + r + " == null))";
+            Frag l = operand(v.links(), subject), r = operand(v.rechts(), subject);
+            if (l.marker() || r.marker()) return null;
+            return "(" + l.text() + " != " + r.text() + " || (" + l.text() + " == null && " + r.text() + " == null))";
         }
         Conditie schending = negeer(assertie);
         if (schending == null) return null;
         // Same hazard via the negation: a gevuld→leeg predicate over a marker emits
         // "<marker> == null" (always true). An un-evaluable criterion flags nothing.
-        String c = conditie(schending, subject);
-        return bevatMarker(c) ? null : c;
+        Frag c = conditie(schending, subject);
+        return c.marker() ? null : c.text();
     }
 
     /** A comparison whose operands are a RESOLVED non-numeriek type (Tekst/Datum/Boolean/Enumeratie). For
@@ -319,15 +319,34 @@ public final class DrlTranspiler {
                 && !l.isNumeriek() && !l.isPercentage() && !r.isNumeriek() && !r.isPercentage();
     }
 
-    /** Does a lowered constraint string carry an unresolved-reference marker? Such a fragment
-     *  is not a usable boolean — wrapping it in a null-guard or negation flips it to a constant. */
-    private static boolean bevatMarker(String s) { return s.contains("/* TODO"); }
+    /**
+     * A lowered VALUE / OPERAND fragment: the mvel term to render, plus whether it is an inert
+     * {@code /* TODO … *​/} placeholder. A placeholder's {@link #text} is still compilable inert DRL
+     * (a {@code null} value term, or — for a condition — a {@code false} constraint), so a marker renders
+     * at the boundary exactly like a real fragment: it is a placeholder, not an absence. Callers branch on
+     * the typed {@link #marker} flag instead of scanning the rendered text for the sentinel; every
+     * combinator ORs the flag, so {@code marker} tracks "the text carries a placeholder" precisely (the
+     * invariant that makes this a pure refactor: {@code marker} ⟺ the old {@code text.contains("/* TODO")}).
+     */
+    private record Frag(String text, boolean marker) {
+        /** A fully-lowered fragment (no placeholder). */
+        static Frag ok(String text) { return new Frag(text, false); }
+        /** A value-side placeholder: {@code /* TODO wat: bron *​/ null}, an inert null term. */
+        static Frag todo(String wat, String bron) { return new Frag(DrlTranspiler.todo(wat, bron), true); }
+        /** A fragment assembled from {@code delen}: its marker is the OR of theirs (any placeholder
+         *  operand taints the whole, exactly as the old substring scan would have detected it). */
+        static Frag from(String text, Frag... delen) {
+            boolean m = false;
+            for (Frag d : delen) m |= d.marker;
+            return new Frag(text, m);
+        }
+    }
 
     /** A comparison operand decomposed for a leegwaarde-faithful violation. {@code leeg}/{@code vol}
      *  are the "is empty"/"is present" guards; {@code waarde} is the value via a plain "." (safe ONLY
      *  behind {@code !leeg}, which short-circuits a null root). A navigated to-one operand uses an
      *  explicit root guard; a direct attribute / literal / parameter uses its plain operand() form. */
-    private record OperandDeel(String leeg, String vol, String waarde, boolean genavigeerd) {}
+    private record OperandDeel(String leeg, String vol, String waarde, boolean genavigeerd, boolean marker) {}
 
     private OperandDeel operandDeel(Expr e, Objecttype subject) {
         if (e instanceof Expr.AttribuutRef a) {
@@ -335,11 +354,11 @@ public final class DrlTranspiler {
             if (n.soort() == NaviSoort.GENAVIGEERD) {
                 String wortel = ident(n.rol(), false), pad = wortel + "." + ident(a.attribuut(), false);
                 return new OperandDeel("(" + wortel + " == null || " + pad + " == null)",
-                        "(" + wortel + " != null && " + pad + " != null)", pad, true);
+                        "(" + wortel + " != null && " + pad + " != null)", pad, true, false);
             }
         }
-        String o = operand(e, subject);   // direct attribute / literal / parameter — never "!."
-        return new OperandDeel(o + " == null", o + " != null", o, false);
+        Frag o = operand(e, subject);   // direct attribute / literal / parameter — never "!."
+        return new OperandDeel(o.text() + " == null", o.text() + " != null", o.text(), false, o.marker());
     }
 
     /** The §6.5/§6.6 fout-companion decomposition for an operand that is the subject's OWN attribute or one
@@ -352,7 +371,7 @@ public final class DrlTranspiler {
         NaviSoort s = naviResolve(a, subject).soort();
         if (s != NaviSoort.EIGEN && s != NaviSoort.GENAVIGEERD) return null;
         OperandDeel d = operandDeel(e, subject);
-        return bevatMarker(d.waarde()) ? null : d;
+        return d.marker() ? null : d;
     }
 
     /** §13.3.9 to-one navigation + the typeringen leegwaarde rekentabellen (Tabel 37/38 gelijk,
@@ -365,7 +384,7 @@ public final class DrlTranspiler {
     private String genavigeerdeVergelijkingSchending(Conditie.Vergelijking v, Objecttype subject) {
         OperandDeel l = operandDeel(v.links(), subject), r = operandDeel(v.rechts(), subject);
         if (!l.genavigeerd() && !r.genavigeerd()) return null;
-        if (bevatMarker(l.waarde()) || bevatMarker(r.waarde())) return null;
+        if (l.marker() || r.marker()) return null;
         String[] ov = vergelijkingsOperanden(l.waarde(), v.links().type(), r.waarde(), v.rechts().type());
         String lv = ov[0], rv = ov[1];
         if (ordeningOfDatum(v.op()))   // Tabel 40-43: any empty operand -> onwaar -> violation
@@ -657,7 +676,7 @@ public final class DrlTranspiler {
         // reading `accumulates` into the clauses, even on the no-op path, to keep the side-channel order).
         java.util.List<String> setters = new ArrayList<>();
         for (var t : oc.toekenningen())
-            setters.add("    $new." + setter(t.attribuut()) + "( " + waarde(t.waarde(), subject) + " );");
+            setters.add("    $new." + setter(t.attribuut()) + "( " + waarde(t.waarde(), subject).text() + " );");
 
         if (subject == null || nieuw == null) {
             out.append(new Regel(oc.naam())
@@ -712,14 +731,14 @@ public final class DrlTranspiler {
             // after the anker pattern. conditieInline would degrade that join to a marker, dropping the rule to
             // an inert eval(false); a near anker guard yields empty extra and stays byte-identical.
             LoweredConditie opAnker = conditie(fc.voorwaarde(), anker, true);
-            if (!bevatMarker(opAnker.inline())) {
+            if (!opAnker.marker()) {
                 ankerC = opAnker.inline();
                 ankerExtra = opAnker.extra();
             } else {
                 resetAccumulates();   // discard the failed anker attempt
-                String opDoel = conditieInline(fc.voorwaarde(), doel, true);
-                if (!bevatMarker(opDoel)) {
-                    doelExtra = opDoel;
+                Frag opDoel = conditieInline(fc.voorwaarde(), doel, true);
+                if (!opDoel.marker()) {
+                    doelExtra = opDoel.text();
                 } else {
                     resetAccumulates();
                     noFire = "eval( false ) /* TODO voorwaarde niet naar anker of doel te lowereren — regel inert i.p.v. over-creatie */";
@@ -757,7 +776,7 @@ public final class DrlTranspiler {
         Objecttype subject = r.doel() instanceof Expr.AttribuutRef a ? a.objecttype() : null;
         // Translate the value first: any aggregation registers an accumulate pattern
         // for the "when" and yields the bound result variable used here in the "then".
-        String valueStr = subject != null && r.doel() instanceof Expr.AttribuutRef
+        Frag valueStr = subject != null && r.doel() instanceof Expr.AttribuutRef
                 ? waarde(r.waarde(), subject) : null;
 
         // A forward calculation should not retrigger itself on its own modify (no-loop, in the header);
@@ -793,7 +812,7 @@ public final class DrlTranspiler {
             // if the result has too many decimals the author must add an explicit afronding.
             if (r.waarde().type().isNumeriek())
                 valueStr = omrekenWaarde(valueStr, r.waarde().type(), a.type());
-            rule.dan("    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( " + valueStr + " )\n    }\n");
+            rule.dan("    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( " + valueStr.text() + " )\n    }\n");
         } else {
             rule.dan("    // onopgelost doel: " + r.doel().bron() + "\n");
         }
@@ -806,8 +825,8 @@ public final class DrlTranspiler {
         // companion is insert-only, so adding an exists/not clause is safe — it cancels no sibling activation,
         // unlike a modify+no-loop rule. The own-attribute operand scope limit is unchanged.)
         if (subject != null) {
-            deelDoorLeegFout(r, subject, constraint, lc.extra());
-            wortelNegatiefFout(r, subject, constraint, lc.extra());
+            deelDoorLeegFout(r, subject, constraint, lc.marker(), lc.extra());
+            wortelNegatiefFout(r, subject, constraint, lc.marker(), lc.extra());
         }
     }
 
@@ -819,8 +838,8 @@ public final class DrlTranspiler {
      *  plain re-readable property constraint; a navigated/parameter/nested/aggregation radicand still degrades
      *  to leeg but raises no Inconsistentie (carded). A leeg radicand is leeg, not a fout (§6.6), and the guard
      *  radicand &lt; 0 is false for a null, so it does not fire for leeg. */
-    private void wortelNegatiefFout(ResolvedRegel r, Objecttype subject, String voorwaarde, List<String> extraClausules) {
-        if (bevatMarker(voorwaarde)) return;
+    private void wortelNegatiefFout(ResolvedRegel r, Objecttype subject, String voorwaarde, boolean voorwaardeMarker, List<String> extraClausules) {
+        if (voorwaardeMarker) return;
         List<Expr.Functie> wortels = new ArrayList<>();
         verzamelWortels(r.waarde(), wortels);
         List<String> guards = new ArrayList<>();   // the "radicand < 0" guard per qualifying wortel
@@ -874,8 +893,8 @@ public final class DrlTranspiler {
      *  literal / parameter / to-many / unresolvable operand still degrades to leeg but raises no Inconsistentie
      *  (carded). An empty LEFT short-circuits to 0 (no fout), so the guard is dividend != null AND divisor ==
      *  null, never merely divisor == null. */
-    private void deelDoorLeegFout(ResolvedRegel r, Objecttype subject, String voorwaarde, List<String> extraClausules) {
-        if (bevatMarker(voorwaarde)) return;          // the host rule is itself a no-op marker -> no division fires
+    private void deelDoorLeegFout(ResolvedRegel r, Objecttype subject, String voorwaarde, boolean voorwaardeMarker, List<String> extraClausules) {
+        if (voorwaardeMarker) return;          // the host rule is itself a no-op marker -> no division fires
         List<Expr.Binair> delingen = new ArrayList<>();
         verzamelDelingen(r.waarde(), delingen);
         List<String> patronen = new ArrayList<>();   // "dividend-vol, divisor-leeg" per qualifying division
@@ -985,28 +1004,28 @@ public final class DrlTranspiler {
      *  navigated reference, or a marker for an absent/naar-veel/unresolvable navigation. Shared by the plain
      *  value read and the dimensioned-read forms (which need the bare getter — for a dimensioned attribute
      *  the Map field — before indexing a label), so the latter bypass the §3.6 under-specified guard. */
-    private String attribuutGetter(Expr.AttribuutRef a, Objecttype subject) {
+    private Frag attribuutGetter(Expr.AttribuutRef a, Objecttype subject) {
         NaviRef n = naviResolve(a, subject);
         return switch (n.soort()) {
-            case EIGEN       -> SUBJECT + "." + getter(a.attribuut()) + "()";
-            case GENAVIGEERD -> SUBJECT + "." + getter(n.rol()) + "()." + getter(a.attribuut()) + "()";
-            case NAAR_VEEL   -> todo("naar-veel-navigatie", a.bron());
-            default          -> todo("navigatie", a.bron());   // AFWEZIG / ONOPGELOST
+            case EIGEN       -> Frag.ok(SUBJECT + "." + getter(a.attribuut()) + "()");
+            case GENAVIGEERD -> Frag.ok(SUBJECT + "." + getter(n.rol()) + "()." + getter(a.attribuut()) + "()");
+            case NAAR_VEEL   -> Frag.todo("naar-veel-navigatie", a.bron());
+            default          -> Frag.todo("navigatie", a.bron());   // AFWEZIG / ONOPGELOST
         };
     }
 
     /** How a +/- right operand is restated in the left's unit — the null-guarded ternary form on the value side
      *  ({@link #omrekenWaarde}), the ternary-free / marker form in a constraint ({@link #omrekenConditie}). */
-    @FunctionalInterface private interface Omrekenen { String apply(String expr, Datatype van, Datatype naar); }
+    @FunctionalInterface private interface Omrekenen { Frag apply(Frag expr, Datatype van, Datatype naar); }
 
     /** §6.2-6.8 binary arithmetic, shared by the value side ({@link #waarde}) and the condition side
      *  ({@link #operand}). The sub-operands are lowered by {@code arg} (a $subject getter on the value side, a
      *  bare property on the condition side); a +/- right operand is restated in the left's unit by {@code omrekenen}.
      *  Every leegwaarde form is a registered helper or inline arithmetic (rsNul/rsGedeeld/rsGedeeldAbs/rsVerminderd/
      *  rsMacht), i.e. a method call valid in either a modify-block or a pattern constraint — the only ternary is in
-     *  {@code omrekenen}, which the condition side supplies ternary-free. A marker operand propagates unwrapped so
-     *  {@link #bevatMarker} still flags it. */
-    private String binairTerm(Expr.Binair b, Function<Expr, String> arg, Omrekenen omrekenen) {
+     *  {@code omrekenen}, which the condition side supplies ternary-free. A marker operand propagates unwrapped:
+     *  {@link Frag#from} ORs its {@link Frag#marker} flag into the result. */
+    private Frag binairTerm(Expr.Binair b, Function<Expr, Frag> arg, Omrekenen omrekenen) {
         if (b.op() == Expr.BinOp.TOT_DE_MACHT) {
             // §13.4.17.14: an INTEGER (literal) exponent — the common case — is computed exactly with
             // BigDecimal.pow(int); going through Math.pow (a double) would lose integer precision above 2^53
@@ -1015,89 +1034,89 @@ public final class DrlTranspiler {
             // propagates unwrapped, like the other operators.
             Integer n = geheelExponent(b.rechts());
             if (n != null) {
-                String l = arg.apply(b.links());
-                if (bevatMarker(l)) return "(" + l + ").pow(" + n + ")";
+                Frag l = arg.apply(b.links());
+                if (l.marker()) return Frag.from("(" + l.text() + ").pow(" + n + ")", l);
                 registreerMachtFunctie();
-                return "rsMacht(" + l + ", " + n + ")";
+                return Frag.from("rsMacht(" + l.text() + ", " + n + ")", l);
             }
             // a genuinely fractional/runtime exponent: Math.pow yields a double, wrapped as a BigDecimal.
-            String l = arg.apply(b.links()), r = arg.apply(b.rechts());
-            if (bevatMarker(l) || bevatMarker(r))
-                return "java.math.BigDecimal.valueOf(Math.pow((" + l + ").doubleValue(), (" + r + ").doubleValue()))";
+            Frag l = arg.apply(b.links()), r = arg.apply(b.rechts());
+            if (l.marker() || r.marker())
+                return Frag.from("java.math.BigDecimal.valueOf(Math.pow((" + l.text() + ").doubleValue(), (" + r.text() + ").doubleValue()))", l, r);
             registreerMachtReeelFunctie();
-            return "rsMachtReeel(" + l + ", " + r + ")";
+            return Frag.from("rsMachtReeel(" + l.text() + ", " + r.text() + ")", l, r);
         }
         if (b.op() == Expr.BinOp.PERCENTAGE_VAN) {
-            String l = arg.apply(b.links()), r = arg.apply(b.rechts());
-            if (bevatMarker(l) || bevatMarker(r)) return "(" + l + " / 100 * " + r + ")";
-            return "(" + nulVeilig(l) + " / 100 * " + nulVeilig(r) + ")";  // §6.8 Tabel 13: leeg telt als 0
+            Frag l = arg.apply(b.links()), r = arg.apply(b.rechts());
+            if (l.marker() || r.marker()) return Frag.from("(" + l.text() + " / 100 * " + r.text() + ")", l, r);
+            return Frag.from("(" + nulVeilig(l.text()) + " / 100 * " + nulVeilig(r.text()) + ")", l, r);  // §6.8 Tabel 13: leeg telt als 0
         }
         if (b.op() == Expr.BinOp.GEDEELD_DOOR) {
             // §6.5 Tabel 12 leegwaarde: an empty LEFT (dividend) short-circuits to 0 — even leeg/leeg = 0; a
             // non-empty value over an empty divisor is a "fout", lowered as leeg (null) and surfaced as an
             // Inconsistentie by the companion rule. rsGedeeld carries that order and the null-guard a bare .divide
             // would NPE on.
-            String l = arg.apply(b.links()), r = arg.apply(b.rechts());
-            if (bevatMarker(l) || bevatMarker(r))
-                return "(" + l + ").divide(" + r + ", java.math.MathContext.DECIMAL64)";
+            Frag l = arg.apply(b.links()), r = arg.apply(b.rechts());
+            if (l.marker() || r.marker())
+                return Frag.from("(" + l.text() + ").divide(" + r.text() + ", java.math.MathContext.DECIMAL64)", l, r);
             registreerGedeeldFunctie();
-            return "rsGedeeld(" + l + ", " + r + ")";
+            return Frag.from("rsGedeeld(" + l.text() + ", " + r.text() + ")", l, r);
         }
         if (b.op() == Expr.BinOp.GEDEELD_DOOR_ABS) {
             // §6.5: "gedeeld door (ABS)" has at most 5 decimals, rounded TOWARD ZERO (divide(d, 5, DOWN)); same
             // §6.5 leegwaarde as plain gedeeld door (left leeg -> 0, value/leeg -> leeg).
-            String l = arg.apply(b.links()), r = arg.apply(b.rechts());
-            if (bevatMarker(l) || bevatMarker(r))
-                return "(" + l + ").divide(" + r + ", 5, java.math.RoundingMode.DOWN)";
+            Frag l = arg.apply(b.links()), r = arg.apply(b.rechts());
+            if (l.marker() || r.marker())
+                return Frag.from("(" + l.text() + ").divide(" + r.text() + ", 5, java.math.RoundingMode.DOWN)", l, r);
             registreerGedeeldAbsFunctie();
-            return "rsGedeeldAbs(" + l + ", " + r + ")";
+            return Frag.from("rsGedeeldAbs(" + l.text() + ", " + r.text() + ")", l, r);
         }
         if (b.op() == Expr.BinOp.MAAL) {  // §6.4: units multiply, operands are NOT converted to match
-            String l = arg.apply(b.links()), r = arg.apply(b.rechts());
-            if (bevatMarker(l) || bevatMarker(r)) return "(" + l + " * " + r + ")";
-            return "(" + nulVeilig(l) + " * " + nulVeilig(r) + ")";  // §6.4 Tabel 10: any empty operand -> 0
+            Frag l = arg.apply(b.links()), r = arg.apply(b.rechts());
+            if (l.marker() || r.marker()) return Frag.from("(" + l.text() + " * " + r.text() + ")", l, r);
+            return Frag.from("(" + nulVeilig(l.text()) + " * " + nulVeilig(r.text()) + ")", l, r);  // §6.4 Tabel 10: any empty operand -> 0
         }
         // §13.4.16 date arithmetic (a datum ± a tijdsduur) is NOT mvel "+": "LocalDate + BigDecimal" is a type
         // error that breaks the Drools build. The correct form is .plusDays/.plusMonths/… keyed on the duration's
         // unit (deferred), so emit an honest marker rather than uncompilable DRL.
         if (b.links().type().isDatum() || b.rechts().type().isDatum())
-            return todo("datum-rekenkunde (datum ± tijdsduur vereist .plusX, geen mvel '+')", b.bron());
+            return Frag.todo("datum-rekenkunde (datum ± tijdsduur vereist .plusX, geen mvel '+')", b.bron());
         // §4: restate the right operand in the left operand's unit before +/- so a convertible-but-different unit
         // (mnd vs jr) is scaled, not added raw.
-        String links = arg.apply(b.links());
-        String rechts = omrekenen.apply(arg.apply(b.rechts()), b.rechts().type(), b.links().type());
-        if (bevatMarker(links) || bevatMarker(rechts))     // a marker propagates unwrapped (no leegwaarde noise)
-            return "(" + links + " " + infix(b.op()) + " " + rechts + ")";
+        Frag links = arg.apply(b.links());
+        Frag rechts = omrekenen.apply(arg.apply(b.rechts()), b.rechts().type(), b.links().type());
+        if (links.marker() || rechts.marker())     // a marker propagates unwrapped (no leegwaarde noise)
+            return Frag.from("(" + links.text() + " " + infix(b.op()) + " " + rechts.text() + ")", links, rechts);
         // §6.3 Tabel 7/8 — the ONE place "min" and "verminderd met" differ: both subtract, but a "verminderd met"
         // whose LEFT operand is empty yields empty (rsVerminderd), while "min" treats an empty operand as 0 like
         // plus (rsNul). Without this they lowered identically — a silent-wrong for a leeg-left case.
         if (b.op() == Expr.BinOp.VERMINDERD_MET) {
             registreerVerminderdFunctie();
-            return "rsVerminderd(" + links + ", " + rechts + ")";
+            return Frag.from("rsVerminderd(" + links.text() + ", " + rechts.text() + ")", links, rechts);
         }
-        return "(" + nulVeilig(links) + " " + infix(b.op()) + " " + nulVeilig(rechts) + ")"; // §6.2/§6.3 leeg=0
+        return Frag.from("(" + nulVeilig(links.text()) + " " + infix(b.op()) + " " + nulVeilig(rechts.text()) + ")", links, rechts); // §6.2/§6.3 leeg=0
     }
 
     /** Unit restatement for a CONDITION-side +/- operand: identity when no conversion is due (the common case —
      *  matching or absent units), else a marker. A pattern constraint cannot host the value-side null-guard
      *  ternary, and the ternary-free multiply would NPE-abort the session on a null operand, so a
      *  convertible-but-different-unit +/- in a condition stays an honest no-op rather than a crash. */
-    private static String omrekenConditie(String expr, Datatype van, Datatype naar) {
-        return omrekenFactor(van, naar) == null ? expr : todo("eenheidconversie in een rekenkundige voorwaarde", expr);
+    private static Frag omrekenConditie(Frag expr, Datatype van, Datatype naar) {
+        return omrekenFactor(van, naar) == null ? expr : Frag.todo("eenheidconversie in een rekenkundige voorwaarde", expr.text());
     }
 
     // ---------------- value expression ("then" side: getters) ----------------
-    private String waarde(Expr e, Objecttype subject) {
+    private Frag waarde(Expr e, Objecttype subject) {
         if (e instanceof Expr.Literal lit)      return literal(lit);
         if (e instanceof Expr.ParameterRef p)   // §13.3.6 a TEMPORAL parameter is a List<Segment> global — only a
             // §7.3.2 tijdsevenredig base may read it (handled there); any scalar use is a List-in-scalar mismatch -> marker.
-            return p.parameter().granulariteit() != null ? todo("temporele parameter in scalaire context", p.bron())
-                    : ident(p.parameter().naam(), false);
+            return p.parameter().granulariteit() != null ? Frag.todo("temporele parameter in scalaire context", p.bron())
+                    : Frag.ok(ident(p.parameter().naam(), false));
         if (e instanceof Expr.AttribuutRef a) {
             // §3.6: a gedimensioneerd attribuut read WITHOUT pinning its dimensions is under-specified (it
             // would emit a bare Map getter where a scalar is expected). A legitimate dimensioned read is an
             // Expr.DimensieCel; a bare AttribuutRef to a dimensioned attribute is therefore an error — marker.
-            if (isGedimensioneerd(a)) return todo("ongedimensioneerde lezing van gedimensioneerd attribuut (§3.6)", a.bron());
+            if (isGedimensioneerd(a)) return Frag.todo("ongedimensioneerde lezing van gedimensioneerd attribuut (§3.6)", a.bron());
             NaviRef n = naviResolve(a, subject);
             if (n.soort() == NaviSoort.GENAVIGEERD) {
                 // §6.9 / §13.3.9: a value read THROUGH a to-one reference that is empty is leeg, not a crash. The
@@ -1107,7 +1126,7 @@ public final class DrlTranspiler {
                 // so a null reference yields null (the leegwaarde), which the surrounding helpers then propagate.
                 // (The condition side already guards via genavigeerdLeegGevuld / "!."; only this value read did not.)
                 String root = SUBJECT + "." + getter(n.rol()) + "()";
-                return "(" + root + " == null ? null : " + root + "." + getter(a.attribuut()) + "())";
+                return Frag.ok("(" + root + " == null ? null : " + root + "." + getter(a.attribuut()) + "())");
             }
             return attribuutGetter(a, subject);
         }
@@ -1115,9 +1134,9 @@ public final class DrlTranspiler {
             // §3.6 a single dimensioned cell reads the attribute's Map<label,value> field and indexes the
             // selected label. Scope: a single-dimension attribute (one label); a multi-dimension composite
             // key is deferred to a marker. An unresolvable underlying read (e.g. a navigation) markers too.
-            String map = attribuutGetter(c.attribuut(), subject);
-            if (bevatMarker(map) || c.labels().size() != 1) return todo("dimensiecel", c.bron());
-            return "(" + map + ").get(\"" + c.labels().get(0).replace("\"", "") + "\")";
+            Frag map = attribuutGetter(c.attribuut(), subject);
+            if (map.marker() || c.labels().size() != 1) return Frag.todo("dimensiecel", c.bron());
+            return Frag.ok("(" + map.text() + ").get(\"" + c.labels().get(0).replace("\"", "") + "\")");
         }
         if (e instanceof Expr.Binair b)
             // §6.2-6.8 arithmetic, shared with the condition side: value getters for the sub-operands, and a
@@ -1131,32 +1150,32 @@ public final class DrlTranspiler {
             // §4/§6.1.4: a convertible-but-different bound unit (a jr bound on a mnd basis) is
             // restated in the basis unit before the clamp compares magnitudes, exactly as the
             // +/- path does. No-op when the units match or are absent.
-            String r = waarde(bg.basis(), subject);
+            Frag r = waarde(bg.basis(), subject);
             Datatype bt = bg.basis().type();
             if (bg.minimum() != null) {
-                String m = omrekenWaarde(waarde(bg.minimum(), subject), bg.minimum().type(), bt);
-                r = "(" + r + " < " + m + " ? " + m + " : " + r + ")";
+                Frag m = omrekenWaarde(waarde(bg.minimum(), subject), bg.minimum().type(), bt);
+                r = Frag.from("(" + r.text() + " < " + m.text() + " ? " + m.text() + " : " + r.text() + ")", r, m);
             }
             if (bg.maximum() != null) {
-                String m = omrekenWaarde(waarde(bg.maximum(), subject), bg.maximum().type(), bt);
-                r = "(" + r + " > " + m + " ? " + m + " : " + r + ")";
+                Frag m = omrekenWaarde(waarde(bg.maximum(), subject), bg.maximum().type(), bt);
+                r = Frag.from("(" + r.text() + " > " + m.text() + " ? " + m.text() + " : " + r.text() + ")", r, m);
             }
             return r;
         }
-        if (e instanceof Expr.Constante c)      return todo("constante", c.naam());
+        if (e instanceof Expr.Constante c)      return Frag.todo("constante", c.naam());
         if (e instanceof Expr.Functie f) {
-            String scalar = scalarFunctie(f, x -> waarde(x, subject)); // §13.4.17 single-value builtins (abs, datum-delen, datum-met)
+            Frag scalar = scalarFunctie(f, x -> waarde(x, subject)); // §13.4.17 single-value builtins (abs, datum-delen, datum-met)
             if (scalar != null) return scalar;
-            String dim = dimensieAggregatie(f, subject);      // SOM/min/max over a dimension's labels
+            Frag dim = dimensieAggregatie(f, subject);      // SOM/min/max over a dimension's labels
             if (dim != null) return dim;
-            String concat = concatenatieAggregatie(f, subject); // pairwise min/max over listed operands
+            Frag concat = concatenatieAggregatie(f, subject); // pairwise min/max over listed operands
             if (concat != null) return concat;
-            String tijd = tijdreeksAggregatie(f, subject);    // §7.1 "het totaal van" a temporal attribute's timeline
+            Frag tijd = tijdreeksAggregatie(f, subject);    // §7.1 "het totaal van" a temporal attribute's timeline
             if (tijd != null) return tijd;
-            String var = accumulate(f, subject);              // hoists an accumulate into the "when"
-            return var != null ? var : todo("aggregatie " + f.kind(), f.bron());
+            Frag var = accumulate(f, subject);              // hoists an accumulate into the "when"
+            return var != null ? var : Frag.todo("aggregatie " + f.kind(), f.bron());
         }
-        return todo("expressie", e.bron());
+        return Frag.todo("expressie", e.bron());
     }
 
     /**
@@ -1173,7 +1192,7 @@ public final class DrlTranspiler {
      * single mvel term valid in either position, so the one routine serves both — the aggregations, which need
      * a {@code when}-clause accumulate, stay null here and let each caller fall through to its marker.
      */
-    private String scalarFunctie(Expr.Functie f, Function<Expr, String> arg) {
+    private Frag scalarFunctie(Expr.Functie f, Function<Expr, Frag> arg) {
         List<Expr> a = f.argumenten();
         if (f.kind() == Expr.FunctieKind.TIJDSDUUR || f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR)
             return tijdsduur(f, arg);
@@ -1198,39 +1217,39 @@ public final class DrlTranspiler {
                 case UUR_UIT, MINUUT_UIT, SECONDE_UIT, MILLISECONDE_UIT -> true; default -> false;
             };
             if (tijdDeel && !(a.get(0).type() instanceof Datatype.DatumTijd))
-                return todo("tijd-component uit een niet-datum-tijd (§13.4.17.21-.24)", f.bron());
-            String d = arg.apply(a.get(0));
-            if (bevatMarker(d)) return d;
+                return Frag.todo("tijd-component uit een niet-datum-tijd (§13.4.17.21-.24)", f.bron());
+            Frag d = arg.apply(a.get(0));
+            if (d.marker()) return d;
             registreerDatumDeelFunctie();
-            return "rsDatumDeel(" + d + ", java.time.temporal.ChronoField." + chronoField + ")";
+            return Frag.from("rsDatumDeel(" + d.text() + ", java.time.temporal.ChronoField." + chronoField + ")", d);
         }
         return switch (f.kind()) {
             case ABSOLUTE_WAARDE -> {                 // §13.4.17.17 / §6.9 Tabel 20: |leeg| = leeg, so route
                 if (a.size() != 1) yield null;        // through rsAbs (a null guard a constraint cannot ternary).
-                String x = arg.apply(a.get(0));
-                if (bevatMarker(x)) yield x;
+                Frag x = arg.apply(a.get(0));
+                if (x.marker()) yield x;
                 registreerAbsFunctie();
-                yield "rsAbs(" + x + ")";
+                yield Frag.from("rsAbs(" + x.text() + ")", x);
             }
             case WORTEL -> {                          // §13.4.17.13 — the radicand's root, rounded by the
                 if (a.size() != 1) yield null;        // MANDATORY afronding (an Afgerond wrapper the resolver
-                String x = arg.apply(a.get(0));       // adds, now null-safe). rsWortel does BigDecimal.sqrt at
+                Frag x = arg.apply(a.get(0));         // adds, now null-safe). rsWortel does BigDecimal.sqrt at
                 // 34-digit precision, NOT Math.sqrt whose ~16-digit double noise can flip a directional
                 // (FLOOR/CEILING) afronding on a terminating root, and carries the §6.6 leegwaarde (leeg -> leeg)
                 // so a leeg radicand propagates through the afronding. A NEGATIVE radicand also yields leeg (no
                 // session-aborting throw); the §6.6 foutmelding is surfaced by wortelNegatiefFout's companion rule.
-                if (bevatMarker(x)) yield x;
+                if (x.marker()) yield x;
                 registreerWortelFunctie();
-                yield "rsWortel(" + x + ")";
+                yield Frag.from("rsWortel(" + x.text() + ")", x);
             }
             case DATUM_MET     -> datumConstructor(a, arg, "java.time.LocalDate", 3, false);     // §13.4.17.35 (3 parts)
             case DATUMTIJD_MET -> datumConstructor(a, arg, "java.time.LocalDateTime", 7, true);  // §13.4.17.36 (7 parts)
             case EERSTE_PAASDAG -> {                  // §13.4.17.37 — Easter Sunday of the given year
                 if (a.size() != 1) yield null;
-                String j = arg.apply(a.get(0));
-                if (bevatMarker(j)) yield j;
+                Frag j = arg.apply(a.get(0));
+                if (j.marker()) yield j;
                 registreerPaasdagFunctie();
-                yield "rsEerstePaasdag(" + j + ")";
+                yield Frag.from("rsEerstePaasdag(" + j.text() + ")", j);
             }
             default -> null;
         };
@@ -1243,17 +1262,17 @@ public final class DrlTranspiler {
      *  the constructor at fire time, aborting the whole session (the same leegwaarde class the date-component
      *  helpers already close). The helper null-guards every component and carries the §13.4.17.36 milli→nano
      *  scale (LocalDateTime.of's 7th arg is nanoOfSecond) in plain Java. A marker argument propagates. */
-    private String datumConstructor(List<Expr> a, Function<Expr, String> arg, String type, int n, boolean laatsteIsMilli) {
+    private Frag datumConstructor(List<Expr> a, Function<Expr, Frag> arg, String type, int n, boolean laatsteIsMilli) {
         if (a.size() != n) return null;
         List<String> args = new ArrayList<>();
         for (Expr e : a) {
-            String v = arg.apply(e);
-            if (bevatMarker(v)) return v;
-            args.add(v);
+            Frag v = arg.apply(e);
+            if (v.marker()) return v;
+            args.add(v.text());
         }
-        if (laatsteIsMilli) { registreerDatumtijdMetFunctie(); return "rsDatumtijdMet(" + String.join(", ", args) + ")"; }
+        if (laatsteIsMilli) { registreerDatumtijdMetFunctie(); return Frag.ok("rsDatumtijdMet(" + String.join(", ", args) + ")"); }
         registreerDatumMetFunctie();
-        return "rsDatumMet(" + String.join(", ", args) + ")";
+        return Frag.ok("rsDatumMet(" + String.join(", ", args) + ")");
     }
 
     /** Register the §13.4.17.35 "de datum met jaar/maand/dag" constructor helper: a LocalDate from three numeric
@@ -1292,22 +1311,22 @@ public final class DrlTranspiler {
      * milliseconde) needs Datum-en-tijd operands (ChronoUnit.HOURS.between throws on a LocalDate); a kwartaal
      * (no ChronoUnit) or an unrecognised unit markers honestly.
      */
-    private String tijdsduur(Expr.Functie f, Function<Expr, String> arg) {
+    private Frag tijdsduur(Expr.Functie f, Function<Expr, Frag> arg) {
         if (f.argumenten().size() != 2) return null;
         String unit = chronoUnit(f.type());
-        if (unit == null) return todo("tijdsduur-eenheid (kwartaal / onbekende tijdseenheid)", f.bron());
+        if (unit == null) return Frag.todo("tijdsduur-eenheid (kwartaal / onbekende tijdseenheid)", f.bron());
         boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
         Expr eVan = f.argumenten().get(0), eTot = f.argumenten().get(1);
         if (tijdEenheid && (!(eVan.type() instanceof Datatype.DatumTijd) || !(eTot.type() instanceof Datatype.DatumTijd)))
-            return todo("tijdsduur in een tijdseenheid vereist datum-tijd operanden (§6.10)", f.bron());
-        String van = arg.apply(eVan), tot = arg.apply(eTot);
-        if (bevatMarker(van) || bevatMarker(tot)) return todo("tijdsduur", f.bron());
+            return Frag.todo("tijdsduur in een tijdseenheid vereist datum-tijd operanden (§6.10)", f.bron());
+        Frag van = arg.apply(eVan), tot = arg.apply(eTot);
+        if (van.marker() || tot.marker()) return Frag.todo("tijdsduur", f.bron());
         // Lower via a registered Java-bodied helper, NOT inline mvel: a fully-qualified ChronoUnit.<U>.between
         // does not analyse in a Drools mvel modify-block, and the helper also carries the §6.10 null-guard and
         // the absolute/sign in plain Java where the enum and the overload resolve cleanly.
         registreerTijdsduurFunctie();
-        return "rsTijdsduur(" + van + ", " + tot + ", \"" + unit + "\", "
-                + (f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR) + ")";
+        return Frag.from("rsTijdsduur(" + van.text() + ", " + tot.text() + ", \"" + unit + "\", "
+                + (f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR) + ")", van, tot);
     }
 
     /** Register the Java-bodied DRL helper that computes a §6.10 tijdsduur — the whole-unit count between two
@@ -1387,8 +1406,8 @@ public final class DrlTranspiler {
     }
 
     /** Wrap a value-side arithmetic operand for the §6.2/§6.4/§6.8 "leeg telt als 0" rekentabel via the rsNul
-     *  helper. The caller has already excluded a marker operand (which must propagate unwrapped so bevatMarker
-     *  still flags it), so this only ever wraps a real value term. */
+     *  helper. The caller ({@link #binairTerm}) has already excluded a marker operand (which must propagate
+     *  unwrapped), so this only ever wraps a real value term. */
     private String nulVeilig(String operand) {
         registreerNulFunctie();
         return "rsNul(" + operand + ")";
@@ -1501,7 +1520,7 @@ public final class DrlTranspiler {
      * passing the attribute's Map and the selected label keys. Returns null for any function without a
      * dimensieselectie, so the caller falls through to the instance path.
      */
-    private String dimensieAggregatie(Expr.Functie f, Objecttype subject) {
+    private Frag dimensieAggregatie(Expr.Functie f, Objecttype subject) {
         Expr.DimensieSelectie sel = f.dimensieSelectie();
         if (sel == null) return null;
         String fn = switch (f.kind()) {
@@ -1512,18 +1531,20 @@ public final class DrlTranspiler {
         };
         if (fn == null || f.argumenten().size() != 1 || !(f.argumenten().get(0) instanceof Expr.AttribuutRef a))
             return null;
-        String map = attribuutGetter(a, subject);   // the dimensioned attribute reads as its Map<label,value> field
-        if (bevatMarker(map)) return null;
+        Frag map = attribuutGetter(a, subject);   // the dimensioned attribute reads as its Map<label,value> field
+        if (map.marker()) return null;
         registreerDimensieFunctie(fn);
         StringJoiner keys = new StringJoiner(", ");
         for (String label : sel.labels()) keys.add("\"" + label.replace("\"", "") + "\"");
-        String call = fn + "(" + map + ", java.util.Arrays.asList(" + keys + "))";
+        String call = fn + "(" + map.text() + ", java.util.Arrays.asList(" + keys + "))";
         // §5.8.2: an all-empty SOM is a leegwaarde — substitute the declared "of … als die er niet zijn"
         // fallback when present, else leave the helper's null (an empty sum, never a silent 0). MIN/MAX of
         // an empty set is likewise the helper's null (no §5.8.2 fallback form).
-        if (f.kind() == Expr.FunctieKind.SOM && f.leegwaarde() != null)
-            return "(" + call + " == null ? " + waarde(f.leegwaarde(), subject) + " : " + call + ")";
-        return call;
+        if (f.kind() == Expr.FunctieKind.SOM && f.leegwaarde() != null) {
+            Frag lw = waarde(f.leegwaarde(), subject);   // a markered fallback must still propagate
+            return Frag.from("(" + call + " == null ? " + lw.text() + " : " + call + ")", lw);
+        }
+        return Frag.ok(call);
     }
 
     /** Register the Java-bodied DRL helper that folds a dimensioned attribute's per-label values,
@@ -1547,7 +1568,7 @@ public final class DrlTranspiler {
                 + "}\n\n");
     }
 
-    private String concatenatieAggregatie(Expr.Functie f, Objecttype subject) {
+    private Frag concatenatieAggregatie(Expr.Functie f, Objecttype subject) {
         // An unlowered restriction (a dimensieselectie captured as an Onopgelost filter, p5) must marker
         // the whole fold too — otherwise the value-fold would emit its unrestricted ternary while the
         // resolver already WARNed that the aggregation is "buiten beschouwing". Bail so the caller falls
@@ -1560,17 +1581,19 @@ public final class DrlTranspiler {
         };
         if (cmp == null || f.argumenten().size() < 2) return null;
         Datatype doel = f.argumenten().get(0).type();          // Eenheid1: result carries the first operand's unit
-        String acc = waarde(f.argumenten().get(0), subject);
-        if (bevatMarker(acc)) return null;
+        Frag accF = waarde(f.argumenten().get(0), subject);
+        if (accF.marker()) return null;
+        String acc = accF.text();
         for (int i = 1; i < f.argumenten().size(); i++) {
             Expr arg = f.argumenten().get(i);
-            String x = omrekenWaarde(waarde(arg, subject), arg.type(), doel);
-            if (bevatMarker(x)) return null;
+            Frag xF = omrekenWaarde(waarde(arg, subject), arg.type(), doel);
+            if (xF.marker()) return null;
+            String x = xF.text();
             // null-skipping: acc empty → take x; x empty → keep acc; else compare. All-empty stays null.
             acc = "(" + acc + " == null ? " + x + " : (" + x + " == null ? " + acc
                     + " : (" + acc + " " + cmp + " " + x + " ? " + acc + " : " + x + ")))";
         }
-        return acc;
+        return Frag.ok(acc);
     }
 
     /** §7.1 "het totaal van &lt;temporeel attribuut&gt;": a TOTAAL over a single OWN temporal attribute read sums
@@ -1579,7 +1602,7 @@ public final class DrlTranspiler {
      *  count per segment from the attribute's declared {@link RegelSpraakModel.Granulariteit}). Returns null for
      *  any other operand — a navigated or non-temporal attribute, a multi-arg fold — so the instance-accumulate
      *  and marker paths are unchanged (a non-temporal TOTAAL still flows to {@link #accumulate}). */
-    private String tijdreeksAggregatie(Expr.Functie f, Objecttype subject) {
+    private Frag tijdreeksAggregatie(Expr.Functie f, Objecttype subject) {
         if (f.kind() != Expr.FunctieKind.TOTAAL || f.argumenten().size() != 1) return null;
         // §7.1 / §8.4 a "gedurende de tijd dat <voorwaarde>" restriction the resolver could not structure rides
         // as an Onopgelost filter with its WARNING ("blijft buiten beschouwing"); honour it like the sibling
@@ -1599,7 +1622,7 @@ public final class DrlTranspiler {
         // §13.3.6.7 a MULTI-period attribute ("voor elke 5 maanden") weights each tijdvak by the period count,
         // whose totaal semantics §7.1 does not work out — marker it rather than mis-count it as single-period.
         if (a.objecttype().attribuutTijdlijnAantal.containsKey(a.attribuut()))
-            return todo("totaal van een meer-periodieke tijdreeks (§13.3.6.7, voor elke <n> " + g.name().toLowerCase()
+            return Frag.todo("totaal van een meer-periodieke tijdreeks (§13.3.6.7, voor elke <n> " + g.name().toLowerCase()
                     + "en)", a.bron());
         // The timeline getter: the subject's own attribute, or a to-ONE navigated partner's, root-guarded so a
         // null reference is leeg (rsTijdTotaal returns null) rather than an NPE-abort. A to-many / unresolvable
@@ -1650,7 +1673,7 @@ public final class DrlTranspiler {
         }
         registreerTijdTotaalFunctie();
         String totaal = "rsTijdTotaal(" + waardeTijdreeks + ", \"" + g.name() + "\")";
-        return guard == null ? totaal : "(" + guard + " ? " + totaal + " : java.math.BigDecimal.ZERO)";
+        return Frag.ok(guard == null ? totaal : "(" + guard + " ? " + totaal + " : java.math.BigDecimal.ZERO)");
     }
 
     /** §8.4 the value-side static guard for a mixed ALLE gedurende: the AND of each non-temporal comparison member,
@@ -1673,8 +1696,9 @@ public final class DrlTranspiler {
      *  (Tabel 38); an ONGELIJK is waar for gevuld-vs-empty and onwaar for both-empty (Tabel 44). A markered/unresolvable
      *  operand -> null. */
     private String statischeVergelijkingGuard(Conditie.Vergelijking v, Objecttype subject) {
-        String lv = waarde(v.links(), subject), rv = waarde(v.rechts(), subject);
-        if (bevatMarker(lv) || bevatMarker(rv)) return null;
+        Frag lvF = waarde(v.links(), subject), rvF = waarde(v.rechts(), subject);
+        if (lvF.marker() || rvF.marker()) return null;
+        String lv = lvF.text(), rv = rvF.text();
         String[] ov = vergelijkingsOperanden(lv, v.links().type(), rv, v.rechts().type());
         String volBeide = "(" + lv + " != null && " + rv + " != null && " + ov[0] + " " + drlOp(v.op()) + " " + ov[1] + ")";
         if (ordeningOfDatum(v.op())) return volBeide;
@@ -2068,7 +2092,7 @@ public final class DrlTranspiler {
      * element scope — which instances relate to the subject — is left as a marker
      * here; navigation joins fill it. Returns null for aggregations not yet mappable.
      */
-    private String accumulate(Expr.Functie f, Objecttype subject) {
+    private Frag accumulate(Expr.Functie f, Objecttype subject) {
         // §4.11/§5.8.1 telling over a concatenation of expressies ("het aantal X, Y en Z"): the
         // count is the UNION of the per-operand sets. When the resolver could OR the per-operand
         // kenmerk filters (f.filter() is the disjunction), this lowers to ONE accumulate whose
@@ -2100,18 +2124,18 @@ public final class DrlTranspiler {
             default -> null;
         };
         if (elem == null || fn == null) return null;
-        String scope = scope(elem, subject, f);
-        if (bevatMarker(scope)) return null;   // unresolvable join -> marker, never a global aggregate
+        Frag scope = scope(elem, subject, f);
+        if (scope.marker()) return null;   // unresolvable join -> marker, never a global aggregate
         // §13.4.2 "die/dat <predicaat>" subselectie on the element ("… van de reis die een kind
         // zijn") -> an extra constraint on the accumulate source pattern, so only the matching
         // instances are aggregated. A filter the resolver could not structure (Onopgelost) lowers to
         // a marker here -> bail, so the aggregation is a visible no-op rather than counting EVERY
         // instance (a silent miscompile).
-        String filterScope = scope;
+        String filterScope = scope.text();
         if (f.filter() != null) {
-            String fc = conditie(f.filter(), elem);  // Kenmerk -> bare element property; Onopgelost -> marker
-            if (bevatMarker(fc)) return null;
-            filterScope = scope + ", " + fc;
+            Frag fc = conditie(f.filter(), elem);  // Kenmerk -> bare element property; Onopgelost -> marker
+            if (fc.marker()) return null;
+            filterScope = scope.text() + ", " + fc.text();
         }
         int n = ++accCount;
         String ev = "$e" + n, var = "$acc" + n;
@@ -2124,13 +2148,13 @@ public final class DrlTranspiler {
         // unconditional 0, which the plain sum() over an empty accumulate already yields.
         // Needs a resolved join and a plain attribute argument; otherwise fall through.
         if (f.kind() == Expr.FunctieKind.SOM
-                && arg instanceof Expr.AttribuutRef a && !scope.startsWith("/*")) {
+                && arg instanceof Expr.AttribuutRef a && !scope.marker()) {
             String cnt = "$n" + n;
             accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true)
                     + "( " + filterScope + ", " + ident(a.attribuut(), false) + " != null ) ; "
                     + cnt + " : count(" + ev + "), " + var + " : sum( " + ev + "." + getter(a.attribuut()) + "() ) )");
-            String fallback = f.leegwaarde() != null ? waarde(f.leegwaarde(), subject) : "null";
-            return "(" + cnt + " == 0 ? " + fallback + " : " + var + ")";
+            Frag fallback = f.leegwaarde() != null ? waarde(f.leegwaarde(), subject) : Frag.ok("null");
+            return Frag.from("(" + cnt + " == 0 ? " + fallback.text() + " : " + var + ")", fallback);
         }
 
         String elementExpr = ev;
@@ -2138,13 +2162,13 @@ public final class DrlTranspiler {
             elementExpr = ev + "." + getter(a.attribuut()) + "()";
         accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true)
                 + "( " + filterScope + " ) ; " + var + " : " + fn + "( " + elementExpr + " ) )");
-        return var;
+        return Frag.ok(var);
     }
 
     /** The element scope: the join binding the element to the subject ("the passagiers
      *  OF this reis" -> reis == $subject), if the connecting feittype is unambiguous;
      *  otherwise the source phrase as a marker. */
-    private String scope(Objecttype elem, Objecttype subject, Expr.Functie f) {
+    private Frag scope(Objecttype elem, Objecttype subject, Expr.Functie f) {
         Expr.AttribuutRef arg = !f.argumenten().isEmpty() && f.argumenten().get(0) instanceof Expr.AttribuutRef a ? a : null;
         // A count names its element role explicitly ("het aantal bestemming …"), so when more than
         // one feittype joins the (element, subject) pair the written name picks the unique join the
@@ -2153,12 +2177,12 @@ public final class DrlTranspiler {
         if (subject != null && arg != null && f.kind() == Expr.FunctieKind.AANTAL)
             rol = model.verbindendeRolViaElementnaam(subject, arg.attribuut());
         if (rol == null && subject != null) rol = model.verbindendeRol(elem, subject);
-        if (rol != null) return ident(rol, false) + " == " + SUBJECT;
-        // No join resolvable: emit a TODO marker, not a bare "/* van: */" comment. The marker is
-        // caught by bevatMarker so accumulate() returns null and the aggregation becomes a visible
-        // no-op — never a silently-wrong count over EVERY instance (§5.8.1: a count ranges over the
-        // subject's related instances). Consistent with the resolver's "unresolvable -> marker" rule.
-        return todo("aggregatie-bereik", arg != null ? arg.onderwerpBron() : f.bron());
+        if (rol != null) return Frag.ok(ident(rol, false) + " == " + SUBJECT);
+        // No join resolvable: emit a TODO marker, so accumulate() returns null and the aggregation
+        // becomes a visible no-op — never a silently-wrong count over EVERY instance (§5.8.1: a count
+        // ranges over the subject's related instances). Consistent with the resolver's "unresolvable
+        // -> marker" rule.
+        return Frag.todo("aggregatie-bereik", arg != null ? arg.onderwerpBron() : f.bron());
     }
 
     // ---------------- condition ("when" side: bare field constraints) ----------------
@@ -2168,22 +2192,28 @@ public final class DrlTranspiler {
      *  through a pure conjunction (§13.4.14 alle/de). An exists-join cannot live inside the in-pattern
      *  constraint, so it rides here instead; a caller that has nowhere to append it degrades to a marker
      *  via {@link #conditieInline}. */
-    private record LoweredConditie(String inline, List<String> extra) {
-        static LoweredConditie van(String inline) { return new LoweredConditie(inline, List.of()); }
+    private record LoweredConditie(String inline, List<String> extra, boolean marker) {
+        /** A fully-lowered constraint (no placeholder), with no hoisted clauses. */
+        static LoweredConditie van(String inline) { return new LoweredConditie(inline, List.of(), false); }
+        /** An unresolved constraint: the always-false {@code false /* TODO … *​/} placeholder, flagged. */
+        static LoweredConditie marker(String wat, String bron) {
+            return new LoweredConditie(onopgelosteConstraint(wat, bron), List.of(), true);
+        }
         boolean heeftExtra() { return !extra.isEmpty(); }
     }
 
     /** The inline constraint of a condition for a caller that has NO place to append an extra when-clause
      *  (the §13.4.8 schending OR/negation, an accumulate source pattern, the feitcreatie anker/$doel
      *  patterns, the objectcreatie guard). A condition that WANTS to hoist a join ({@code heeftExtra})
-     *  has no faithful inline form here, so it collapses to the always-false marker — exactly the
-     *  un-lowerable signal these sites already detect via {@link #bevatMarker}, never a silent drop. */
-    private String conditieInline(Conditie c, Objecttype subject, boolean alsVoorwaarde) {
+     *  has no faithful inline form here, so it collapses to the always-false marker {@link Frag} — exactly
+     *  the un-lowerable signal these sites already detect via {@link Frag#marker}, never a silent drop. */
+    private Frag conditieInline(Conditie c, Objecttype subject, boolean alsVoorwaarde) {
         LoweredConditie lc = conditie(c, subject, alsVoorwaarde);
-        return lc.heeftExtra() ? onopgelosteConstraint("voorwaarde", c.bron()) : lc.inline();
+        if (lc.heeftExtra()) return new Frag(onopgelosteConstraint("voorwaarde", c.bron()), true);
+        return new Frag(lc.inline(), lc.marker());
     }
 
-    private String conditie(Conditie c, Objecttype subject) { return conditieInline(c, subject, false); }
+    private Frag conditie(Conditie c, Objecttype subject) { return conditieInline(c, subject, false); }
 
     /** Lower a condition to an mvel constraint plus any hoisted join clauses. {@code alsVoorwaarde} marks a
      *  rule-GUARD / filter context, where the §5.3 both-empty rule applies; it is false when this is the
@@ -2192,15 +2222,16 @@ public final class DrlTranspiler {
      *  must NOT be added. */
     private LoweredConditie conditie(Conditie c, Objecttype subject, boolean alsVoorwaarde) {
         if (c instanceof Conditie.Vergelijking v) {
-            // §5.1 Tabel 32: a comparison across convertible-but-different units restates
-            // the right operand in the left's unit first ("24 mnd > 2 jr", not "24 > 2").
-            String[] o = vergelijkingsOperanden(operand(v.links(), subject), v.links().type(),
-                    operand(v.rechts(), subject), v.rechts().type());
             // An operand the resolver/transpiler could not lower (an unresolvable navigation, an
             // under-specified dimensioned read) makes the whole comparison unfaithful — and emitting it raw
             // would be uncompilable DRL (a Map-vs-number term sinks the package). Make the guard an honest
-            // always-false marker instead.
-            if (bevatMarker(o[0]) || bevatMarker(o[1])) return LoweredConditie.van(onopgelosteConstraint("voorwaarde", v.bron()));
+            // always-false marker instead. (Checked BEFORE the unit restatement, which a marker operand must
+            // never reach — its .multiply would wrap the placeholder.)
+            Frag lo = operand(v.links(), subject), ro = operand(v.rechts(), subject);
+            if (lo.marker() || ro.marker()) return LoweredConditie.marker("voorwaarde", v.bron());
+            // §5.1 Tabel 32: a comparison across convertible-but-different units restates
+            // the right operand in the left's unit first ("24 mnd > 2 jr", not "24 > 2").
+            String[] o = vergelijkingsOperanden(lo.text(), v.links().type(), ro.text(), v.rechts().type());
             String cmp = o[0] + " " + drlOp(v.op()) + " " + o[1];
             // §5.3 / typeringen Tabel 38: a NON-numeriek "gelijk aan" with BOTH operands empty is "fout"
             // (a foutmelding), NOT "waar" — so as a rule GUARD the condition is not satisfied and the rule
@@ -2208,7 +2239,6 @@ public final class DrlTranspiler {
             // both-empty case (p40). A numeriek both-empty stays "waar"/fires per Tabel 37 (the §5.3 prose
             // says "onwaar" there — a spec contradiction left to the existing Tabel-37 reading).
             if (alsVoorwaarde && v.op() == Conditie.Operator.GELIJK && nietNumeriekVergelijking(v)
-                    && !bevatMarker(o[0]) && !bevatMarker(o[1])
                     && !(v.links() instanceof Expr.Literal) && !(v.rechts() instanceof Expr.Literal))
                 return LoweredConditie.van("(" + cmp + " && !(" + o[0] + " == null && " + o[1] + " == null))");
             return LoweredConditie.van(cmp);
@@ -2221,14 +2251,14 @@ public final class DrlTranspiler {
             // != null && rol.attr != null) — the "." after the short-circuit guard never dereferences null.
             String navLeeg = genavigeerdLeegGevuld(p, subject);
             if (navLeeg != null) return LoweredConditie.van(navLeeg);
-            String o = operand(p.operand(), subject);
-            if (bevatMarker(o)) return LoweredConditie.van(onopgelosteConstraint("voorwaarde", p.bron()));  // e.g. an under-specified dimensioned read
-            return LoweredConditie.van(switch (p.soort()) {
-                case LEEG   -> o + " == null";
-                case GEVULD -> o + " != null";
-                case ELFPROEF -> { registreerElfproefFunctie(); yield "rsElfproef(" + o + ")"; }  // §8.1.3
-                default     -> onopgelosteConstraint("predicaat " + p.soort(), p.bron());
-            });
+            Frag o = operand(p.operand(), subject);
+            if (o.marker()) return LoweredConditie.marker("voorwaarde", p.bron());  // e.g. an under-specified dimensioned read
+            return switch (p.soort()) {
+                case LEEG   -> LoweredConditie.van(o.text() + " == null");
+                case GEVULD -> LoweredConditie.van(o.text() + " != null");
+                case ELFPROEF -> { registreerElfproefFunctie(); yield LoweredConditie.van("rsElfproef(" + o.text() + ")"); }  // §8.1.3
+                default     -> LoweredConditie.marker("predicaat " + p.soort(), p.bron());
+            };
         }
         // §8.1.8 kenmerk test: a boolean property constraint inside the subject pattern. The property form
         // (not getX()) resolves to the boolean isX() getter the fact declares. A navigated kenmerk reads
@@ -2241,7 +2271,7 @@ public final class DrlTranspiler {
             // anker — even when the anker happens to declare a same-named kenmerk. An untagged kenmerk
             // (the single-subject rule) is unconstrained and emits on whatever pattern hosts the voorwaarde.
             if (k.eigenaar() != null && k.eigenaar() != subject)
-                return LoweredConditie.van(onopgelosteConstraint("kenmerk '" + k.kenmerk() + "' hoort bij " + k.eigenaar().naam, c.bron()));
+                return LoweredConditie.marker("kenmerk '" + k.kenmerk() + "' hoort bij " + k.eigenaar().naam, c.bron());
             String prop = ident(k.kenmerk(), false) + " == " + (k.negatie() ? "false" : "true");
             if (k.navigatie() == null) return LoweredConditie.van(prop);
             String nav = ident(k.navigatie(), false);
@@ -2260,14 +2290,14 @@ public final class DrlTranspiler {
             // is the inverse null-test. The far-side / to-many case has no in-pattern reference -> marker.
             if (veld != null && !model.naarVeelRol(subject, r.anderTeFiller(), veld))
                 return LoweredConditie.van(ident(veld, false) + (r.negatie() ? " == null" : " != null"));
-            return LoweredConditie.van(onopgelosteConstraint("rollidmaatschap '" + r.rol() + "'", c.bron()));
+            return LoweredConditie.marker("rollidmaatschap '" + r.rol() + "'", c.bron());
         }
         // §8.1.7 far-side "heeft een <rol>": the reference lives on the to-many filler, so this is an EXISTS-join
         // — a separate when-clause that CANNOT live inside the subject pattern's inline constraint. It rides out as
         // an extra clause (empty inline); regel() appends it after the subject pattern, and a pure-conjunction
         // compound carries it up. Any caller without a place to host it (conditieInline) degrades it to a marker.
         if (c instanceof Conditie.VerreRollidmaatschap vr)
-            return new LoweredConditie("", List.of(verreRolClausule(vr)));
+            return new LoweredConditie("", List.of(verreRolClausule(vr)), false);
         if (c instanceof Conditie.Samengesteld s) {
             List<LoweredConditie> kinderen = new ArrayList<>();
             for (Conditie deel : s.onderdelen()) kinderen.add(conditie(deel, subject, alsVoorwaarde));
@@ -2285,8 +2315,8 @@ public final class DrlTranspiler {
             // operands in !(…)): there the dropped criterion flips into a positive firing decision. So mark the
             // WHOLE compound a no-op (rule never fires) rather than risk a silently-wrong gate — for every quantifier.
             boolean wilHoisten = kinderen.stream().anyMatch(LoweredConditie::heeftExtra);
-            if (kinderen.stream().anyMatch(k -> bevatMarker(k.inline())) || (wilHoisten && !conjunctie))
-                return LoweredConditie.van(onopgelosteConstraint("voorwaarde", s.bron()));
+            if (kinderen.stream().anyMatch(LoweredConditie::marker) || (wilHoisten && !conjunctie))
+                return LoweredConditie.marker("voorwaarde", s.bron());
             if (conjunctie) {
                 // Join ONLY the non-empty inlines (a pure far-side child has an empty inline — dropping it
                 // avoids a dangling "()" / " && "); concat every child's hoisted clauses. When every child is a
@@ -2295,7 +2325,7 @@ public final class DrlTranspiler {
                 List<String> inlineDelen = kinderen.stream().map(LoweredConditie::inline)
                         .filter(x -> !x.isEmpty()).map(x -> "(" + x + ")").toList();
                 List<String> extra = kinderen.stream().flatMap(k -> k.extra().stream()).toList();
-                return new LoweredConditie(String.join(" && ", inlineDelen), extra);
+                return new LoweredConditie(String.join(" && ", inlineDelen), extra, false);
             }
             // §13.4.14.4: geen = none holds (!OR); the counting quantifiers express "k of the criteria hold"
             // purely in booleans (a Drools pattern constraint accepts &&/||/! but not arithmetic over ternaries),
@@ -2311,13 +2341,13 @@ public final class DrlTranspiler {
                 default          -> String.join(" && ", delen); // unreachable (alle/de handled above), kept total
             });
         }
-        return LoweredConditie.van(onopgelosteConstraint("voorwaarde", c.bron()));
+        return LoweredConditie.marker("voorwaarde", c.bron());
     }
 
     /** An unresolved CONDITION lowers to an always-false constraint, so the rule is a visible no-op
      *  that COMPILES — unlike the value-side {@code … null} marker, a bare {@code null} is not a
      *  boolean pattern constraint ({@code Subject( null )} fails to compile, which would sink the
-     *  whole DRL). Still carries the "/* TODO *&#47;" text, so {@link #bevatMarker} flags it. */
+     *  whole DRL). Wrapped in a flagged {@link LoweredConditie#marker} so callers branch on the type. */
     private static String onopgelosteConstraint(String wat, String bron) {
         return "false /* TODO " + wat + ": " + bron + " */";
     }
@@ -2366,7 +2396,7 @@ public final class DrlTranspiler {
                 : "(" + wortel + " != null && " + pad + " != null)";
     }
 
-    private String operand(Expr e, Objecttype subject) {
+    private Frag operand(Expr e, Objecttype subject) {
         if (e instanceof Expr.DimensieCel c)
             // §3.6 a dimensioned cell on the CONDITION side is deferred to a marker (the value/then side
             // lowers it). A Drools PATTERN constraint cannot host the null-guarded ternary the value form
@@ -2374,18 +2404,18 @@ public final class DrlTranspiler {
             // and a correct null-safe cell comparison needs a guarded conjunction this single-operand path
             // cannot express. So it markers honestly (-> false voorwaarde): the rule does not fire, never a
             // wrong or uncompilable comparison. Carded.
-            return todo("dimensiecel in voorwaarde", c.bron());
+            return Frag.todo("dimensiecel in voorwaarde", c.bron());
         if (e instanceof Expr.AttribuutRef a) {
             // §3.6: a bare value read of a gedimensioneerd attribuut is under-specified (its property is a
             // Map, so "prijsInJaar > 5" is a Map-vs-number type error that fails the whole DRL build). A
             // legitimate dimensioned read is an Expr.DimensieCel (above); a bare one is a marker.
-            if (isGedimensioneerd(a)) return todo("ongedimensioneerde lezing van gedimensioneerd attribuut (§3.6)", a.bron());
+            if (isGedimensioneerd(a)) return Frag.todo("ongedimensioneerde lezing van gedimensioneerd attribuut (§3.6)", a.bron());
             return attribuutOperand(a, subject);
         }
         if (e instanceof Expr.ParameterRef p)   // §13.3.6 a TEMPORAL parameter is a List<Segment> global — a scalar
             // (condition-side) use is a List-in-scalar mismatch that would sink the whole DRL build; marker instead.
-            return p.parameter().granulariteit() != null ? todo("temporele parameter in scalaire context", p.bron())
-                    : ident(p.parameter().naam(), false);
+            return p.parameter().granulariteit() != null ? Frag.todo("temporele parameter in scalaire context", p.bron())
+                    : Frag.ok(ident(p.parameter().naam(), false));
         if (e instanceof Expr.Literal lit)    return literal(lit);
         if (e instanceof Expr.Afgerond af) {
             // §13.4.17.13/.25: an afronding wraps a getalexpressie — and "de wortel van X" carries a MANDATORY
@@ -2393,8 +2423,8 @@ public final class DrlTranspiler {
             // setScale is a pure method call (no ternary), valid in a pattern constraint, so descend with the
             // operand-side (bare-property) lowering. A marker basis (e.g. an afronding over a Begrensd clamp,
             // which still uses a ternary and markers here) propagates.
-            String b = operand(af.basis(), subject);
-            return bevatMarker(b) ? b : afgerondeTerm(b, af);
+            Frag b = operand(af.basis(), subject);
+            return b.marker() ? b : afgerondeTerm(b, af);
         }
         if (e instanceof Expr.Binair b)
             // §6.2-6.8 arithmetic in a CONDITION: the SAME lowering as the value side (binairTerm), with the
@@ -2412,11 +2442,11 @@ public final class DrlTranspiler {
             // +/- path); a marker basis/bound propagates.
             registreerBegrensFunctie();
             Datatype bt = bg.basis().type();
-            String basis = operand(bg.basis(), subject);
-            String min = bg.minimum() != null ? omrekenConditie(operand(bg.minimum(), subject), bg.minimum().type(), bt) : "null";
-            String max = bg.maximum() != null ? omrekenConditie(operand(bg.maximum(), subject), bg.maximum().type(), bt) : "null";
-            if (bevatMarker(basis) || bevatMarker(min) || bevatMarker(max)) return todo("begrenzing in voorwaarde", bg.bron());
-            return "rsBegrens(" + basis + ", " + min + ", " + max + ")";
+            Frag basis = operand(bg.basis(), subject);
+            Frag min = bg.minimum() != null ? omrekenConditie(operand(bg.minimum(), subject), bg.minimum().type(), bt) : Frag.ok("null");
+            Frag max = bg.maximum() != null ? omrekenConditie(operand(bg.maximum(), subject), bg.maximum().type(), bt) : Frag.ok("null");
+            if (basis.marker() || min.marker() || max.marker()) return Frag.todo("begrenzing in voorwaarde", bg.bron());
+            return Frag.ok("rsBegrens(" + basis.text() + ", " + min.text() + ", " + max.text() + ")");
         }
         if (e instanceof Expr.Functie f) {
             // §13.4.17 a SCALAR builtin (abs / date-component / datum-met / wortel / paasdag / tijdsduur) is a
@@ -2425,11 +2455,11 @@ public final class DrlTranspiler {
             // since $subject is not bound inside its own pattern). The AGGREGATIONS (som/min/max over instances)
             // return null there: they need a `when` accumulate and cannot live inside a single constraint, so
             // they fall through to an honest marker (-> the caller's `false /* TODO */`).
-            String scalar = scalarFunctie(f, x -> operand(x, subject));
+            Frag scalar = scalarFunctie(f, x -> operand(x, subject));
             if (scalar != null) return scalar;
-            return todo("aggregatie-functie in voorwaarde " + f.kind(), f.bron());
+            return Frag.todo("aggregatie-functie in voorwaarde " + f.kind(), f.bron());
         }
-        return todo("operand", e.bron());
+        return Frag.todo("operand", e.bron());
     }
 
     /** The condition-side property access for an attribute — the bare own-property, a null-safe "!." to-one
@@ -2437,13 +2467,13 @@ public final class DrlTranspiler {
      *  dimensioned-cell read (which needs the Map property before indexing a label), so the latter bypasses
      *  the §3.6 under-specified guard. Drools "!." yields null (a leegwaarde) for a null to-one reference
      *  instead of NPE-ing the mvel "." dereference. */
-    private String attribuutOperand(Expr.AttribuutRef a, Objecttype subject) {
+    private Frag attribuutOperand(Expr.AttribuutRef a, Objecttype subject) {
         NaviRef n = naviResolve(a, subject);
         return switch (n.soort()) {
-            case EIGEN       -> ident(a.attribuut(), false);
-            case GENAVIGEERD -> ident(n.rol(), false) + "!." + ident(a.attribuut(), false);
-            case NAAR_VEEL   -> todo("naar-veel-navigatie", a.bron());
-            default          -> todo("navigatie", a.bron());   // AFWEZIG / ONOPGELOST
+            case EIGEN       -> Frag.ok(ident(a.attribuut(), false));
+            case GENAVIGEERD -> Frag.ok(ident(n.rol(), false) + "!." + ident(a.attribuut(), false));
+            case NAAR_VEEL   -> Frag.todo("naar-veel-navigatie", a.bron());
+            default          -> Frag.todo("navigatie", a.bron());   // AFWEZIG / ONOPGELOST
         };
     }
 
@@ -2470,14 +2500,14 @@ public final class DrlTranspiler {
     }
 
 
-    private static String literal(Expr.Literal lit) {
+    private static Frag literal(Expr.Literal lit) {
         Datatype t = lit.type();
-        if (t.isTekst()) return "\"" + lit.waarde().replace("\"", "") + "\"";
-        if (t instanceof Datatype.Booleaan) return lit.waarde().toLowerCase().contains("waar")
-                && !lit.waarde().toLowerCase().contains("onwaar") ? "true" : "false";
+        if (t.isTekst()) return Frag.ok("\"" + lit.waarde().replace("\"", "") + "\"");
+        if (t instanceof Datatype.Booleaan) return Frag.ok(lit.waarde().toLowerCase().contains("waar")
+                && !lit.waarde().toLowerCase().contains("onwaar") ? "true" : "false");
         if (t.isDatum()) { // "dd. d-m-yyyy [hh:mm:ss.mmm]"
             java.util.regex.Matcher d = java.util.regex.Pattern.compile("(\\d{1,2})-(\\d{1,2})-(\\d{4})").matcher(lit.waarde());
-            if (!d.find()) return todo("datumliteral", lit.waarde());
+            if (!d.find()) return Frag.todo("datumliteral", lit.waarde());
             String datum = d.group(3) + ", " + d.group(2) + ", " + d.group(1);
             if (t instanceof Datatype.DatumTijd) {
                 // §13.2.21 a timed dedato -> LocalDateTime; the captured millisecondes scale to nanoOfSecond
@@ -2486,23 +2516,23 @@ public final class DrlTranspiler {
                         .compile("(\\d{1,2}):(\\d{2}):(\\d{2})(?:\\.(\\d{1,3}))?").matcher(lit.waarde());
                 if (tm.find()) {
                     int nanos = (tm.group(4) == null ? 0 : Integer.parseInt(tm.group(4))) * 1_000_000;
-                    return "java.time.LocalDateTime.of(" + datum + ", " + Integer.parseInt(tm.group(1)) + ", "
-                            + Integer.parseInt(tm.group(2)) + ", " + Integer.parseInt(tm.group(3)) + ", " + nanos + ")";
+                    return Frag.ok("java.time.LocalDateTime.of(" + datum + ", " + Integer.parseInt(tm.group(1)) + ", "
+                            + Integer.parseInt(tm.group(2)) + ", " + Integer.parseInt(tm.group(3)) + ", " + nanos + ")");
                 }
             }
-            return "java.time.LocalDate.of(" + datum + ")";
+            return Frag.ok("java.time.LocalDate.of(" + datum + ")");
         }
         // numeric (possibly "0 €"): the leading number AS A BigDecimal, so arithmetic,
         // unit scaling (.multiply) and rounding (.setScale) compile in mvel. A §13.2.5 rational
         // ("4/2", "3/2", "1_1/2") is lowered to its exact value when the quotient terminates, else
         // to a DECIMAL64 division so it still computes (e.g. 1/3).
         java.math.BigDecimal[] r = Rationaal.van(lit.waarde());
-        if (r == null) return todo("literal", lit.waarde());
+        if (r == null) return Frag.todo("literal", lit.waarde());
         try {
-            return "new java.math.BigDecimal(\"" + r[0].divide(r[1]).toPlainString() + "\")"; // exact
+            return Frag.ok("new java.math.BigDecimal(\"" + r[0].divide(r[1]).toPlainString() + "\")"); // exact
         } catch (ArithmeticException nietEindig) {
-            return "new java.math.BigDecimal(\"" + r[0].toPlainString() + "\").divide(new java.math.BigDecimal(\""
-                    + r[1].toPlainString() + "\"), java.math.MathContext.DECIMAL64)";
+            return Frag.ok("new java.math.BigDecimal(\"" + r[0].toPlainString() + "\").divide(new java.math.BigDecimal(\""
+                    + r[1].toPlainString() + "\"), java.math.MathContext.DECIMAL64)");
         }
     }
 
@@ -2527,12 +2557,13 @@ public final class DrlTranspiler {
     }
 
     /** Multiply {@code expr} by a unit-conversion {@code factor} — the one place the {@code .multiply(new
-     *  BigDecimal("…"))} restatement is emitted. Identity when there is no real conversion: a {@code null} or
-     *  unit (1) factor, or a placeholder-marker operand (wrapping which would NPE). When {@code nullVeilig}, the
+     *  BigDecimal("…"))} restatement is emitted. Identity when there is no real conversion (a {@code null} or
+     *  unit (1) factor). The callers (omrekenWaarde / omrekenConditie / naarCanoniek) guard a placeholder
+     *  {@link Frag} BEFORE calling, so {@code expr} here is always real text. When {@code nullVeilig}, the
      *  multiply is guarded so an empty value converts to empty rather than NPE-ing — the VALUE side only, since
      *  a Drools pattern constraint cannot host the {@code == null} ternary (it reads as a nested constraint). */
     private static String vermenigvuldigMetFactor(String expr, java.math.BigDecimal factor, boolean nullVeilig) {
-        if (factor == null || expr.contains("/* TODO") || factor.compareTo(java.math.BigDecimal.ONE) == 0) return expr;
+        if (factor == null || factor.compareTo(java.math.BigDecimal.ONE) == 0) return expr;
         String mul = "(" + expr + ").multiply(new java.math.BigDecimal(\"" + factor.toPlainString() + "\"))";
         return nullVeilig ? "(" + expr + " == null ? null : " + mul + ")" : mul;
     }
@@ -2560,8 +2591,8 @@ public final class DrlTranspiler {
     /** Unit conversion on the VALUE side, null-safe: a leegwaarde (an empty sommatie has no fallback) converts
      *  to a leegwaarde rather than an NPE on .multiply. Only for the "then"/value side — see
      *  {@link #vermenigvuldigMetFactor}; the constraint form is {@link #omreken}. */
-    private static String omrekenWaarde(String expr, Datatype van, Datatype naar) {
-        return vermenigvuldigMetFactor(expr, omrekenFactor(van, naar), true);
+    private static Frag omrekenWaarde(Frag expr, Datatype van, Datatype naar) {
+        return expr.marker() ? expr : Frag.ok(vermenigvuldigMetFactor(expr.text(), omrekenFactor(van, naar), true));
     }
 
     /** §13.4.17.25 afronding: round a basis term to {@code af.decimalen()} via the matching
@@ -2571,13 +2602,13 @@ public final class DrlTranspiler {
      *  afronding wrapper passes a null through. The helper (not an inline ternary) is also the form valid in a
      *  pattern constraint; shared by {@code waarde} and {@code operand} so an afronding lowers identically in
      *  either position. */
-    private String afgerondeTerm(String basis, Expr.Afgerond af) {
+    private Frag afgerondeTerm(Frag basis, Expr.Afgerond af) {
         String mode = switch (af.modus()) {
             case NAAR_BENEDEN -> "FLOOR"; case NAAR_BOVEN -> "CEILING";
             case REKENKUNDIG -> "HALF_UP"; case RICHTING_NUL -> "DOWN"; case WEG_VAN_NUL -> "UP";
         };
         registreerAfrondingFunctie();
-        return "rsAfronding(" + basis + ", " + af.decimalen() + ", java.math.RoundingMode." + mode + ")";
+        return Frag.from("rsAfronding(" + basis.text() + ", " + af.decimalen() + ", java.math.RoundingMode." + mode + ")", basis);
     }
 
     /** Register the §13.4.17.25 afronding helper — round to {@code scale} decimals, but a leeg (null) value
