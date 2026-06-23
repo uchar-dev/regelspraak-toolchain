@@ -2616,6 +2616,12 @@ class DrlTest {
         // a GELIJK static member (both-empty semantics differ, deferred) -> marker.
         String gelijk = mixedCompound("alle volgende voorwaarden", "zijn leeftijd is gelijk aan 18");
         assertTrue(gelijk.contains("/* TODO"), () -> "een GELIJK statisch lid moet (nog) markeren:\n" + gelijk);
+
+        // §8.4 a comparison on a TEMPORAL attribute is itself time-varying -> NOT a static member: it must MARKER, not
+        // lower to a List<Segment>-vs-scalar term that fails the whole DRL build. (Adversarial review HIGH.)
+        String temp = mixedCompound("alle volgende voorwaarden", "zijn belastingvermindering per maand is groter dan 1000");
+        assertFalse(temp.contains("? rsTijdTotaal"), () -> "een vergelijking op een temporeel attribuut mag geen statische guard worden:\n" + temp);
+        assertTrue(temp.contains("/* TODO"), () -> "een temporeel-attribuut lid moet markeren:\n" + temp);
     }
 
     @Test void compound_alle_gedurende_nest_de_knippen_de_doorsnede() {

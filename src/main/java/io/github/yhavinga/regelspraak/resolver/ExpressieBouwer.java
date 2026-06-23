@@ -528,19 +528,31 @@ final class ExpressieBouwer {
 
     /** §8.4 a NON-temporal COMPARISON bullet of a mixed ALLE gedurende ("zijn geboortedatum is eerder dan 1-1-2002")
      *  built as a {@link Conditie.Vergelijking} (reusing RuleChecker's shared comparison-operator mapping), or null
-     *  when the bullet is not a plain comparison (a predicate / kenmerk / role membership — deferred). */
+     *  when the bullet is not a plain comparison (a predicate / kenmerk / role membership — deferred) OR when an
+     *  operand is itself a TEMPORAL attribute (§8.4 admits the static member precisely because it "heeft geen
+     *  verschillende waarden op verschillende momenten"; a comparison on a List&lt;Segment&gt; read is time-varying and
+     *  would lower to a List-vs-scalar term that fails the whole DRL build — reject so the compound markers). */
     private Conditie.Vergelijking nietTemporeleVergelijking(ElementaireVoorwaardeContext ev) {
         Expr links = ev.expressie() != null ? bouw(ev.expressie()) : null;
         if (links == null) return null;
+        Conditie.Vergelijking v = null;
         if (ev.toplevelOperator() != null && ev.toplevelOperator().vergelijkingsTekenGesplitst() != null
                 && ev.toplevelOperator().expressie() != null)
-            return new Conditie.Vergelijking(RuleChecker.naarOperator(RuleChecker.cmpOf(ev.toplevelOperator().vergelijkingsTekenGesplitst())),
+            v = new Conditie.Vergelijking(RuleChecker.naarOperator(RuleChecker.cmpOf(ev.toplevelOperator().vergelijkingsTekenGesplitst())),
                     links, bouw(ev.toplevelOperator().expressie()), src(ev));
-        if (ev.nonToplevelOperator() != null && ev.nonToplevelOperator().vergelijkingsTeken() != null
+        else if (ev.nonToplevelOperator() != null && ev.nonToplevelOperator().vergelijkingsTeken() != null
                 && ev.nonToplevelOperator().expressie() != null)
-            return new Conditie.Vergelijking(RuleChecker.naarOperator(RuleChecker.cmpOf(ev.nonToplevelOperator().vergelijkingsTeken())),
+            v = new Conditie.Vergelijking(RuleChecker.naarOperator(RuleChecker.cmpOf(ev.nonToplevelOperator().vergelijkingsTeken())),
                     links, bouw(ev.nonToplevelOperator().expressie()), src(ev));
-        return null;
+        if (v == null || temporeelAttribuutOperand(v.links()) || temporeelAttribuutOperand(v.rechts())) return null;
+        return v;
+    }
+
+    /** Whether an operand READS a TEMPORAL (tijdlijn) attribute — its runtime value is a {@code List<Segment>}, not a
+     *  scalar, so it cannot be a §8.4 static comparison member. */
+    private static boolean temporeelAttribuutOperand(Expr e) {
+        return e instanceof Expr.AttribuutRef a && a.objecttype() != null
+                && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut());
     }
 
     /** The integer value of a §13.4.14 telwoord (a digit literal or een/twee/drie/vier), or -1 if unrecognised. */
