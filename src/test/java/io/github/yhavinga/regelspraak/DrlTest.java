@@ -2548,6 +2548,41 @@ class DrlTest {
         assertTrue(fijnerBasis.contains("/* TODO"), () -> "een per-maand basis in een per-jaar bucket moet markeren:\n" + fijnerBasis);
     }
 
+    @Test void compound_dat_op_de_write_producers_combineert_de_kenmerk_tijdreeksen() {
+        // §8.4.2 a COMPOUND condition on the temporal-WRITE producers (aantal-dagen-in / tijdsevenredig) combines the
+        // bullets' true-period timelines into ONE: ALLE = intersection (rsTijdKnip), ten minste 1 = union (rsTijdUnie).
+        // A NEGATED member markers (no standalone complement here, unlike the totaal CLIP bounded by its value).
+        String alle = DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                is actief kenmerk (bijvoeglijk) voor elke maand;
+                het aantal dagen recht op belastingvermindering Numeriek (geheel getal) met eenheid dg voor elke maand;
+            Regel R
+                geldig altijd
+                    Het aantal dagen recht op belastingvermindering van een passagier moet gesteld worden op het aantal dagen in de maand dat er aan alle volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - hij actief is.
+            """));
+        assertTrue(alle.contains("rsAantalDagenIn(rsTijdKnip($subject.getRechtOpBelastingvermindering(), $subject.getActief()), \"MAAND\")"),
+                () -> "een ALLE compound moet de doorsnede tellen via rsTijdKnip:\n" + alle);
+        assertFalse(alle.contains("/* TODO"), () -> "een ALLE compound mag geen marker zijn:\n" + alle);
+
+        // a NEGATED member ("hij niet actief is") has no standalone complement -> the whole compound markers.
+        String negLid = DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                is actief kenmerk (bijvoeglijk) voor elke maand;
+                het aantal dagen recht op belastingvermindering Numeriek (geheel getal) met eenheid dg voor elke maand;
+            Regel R
+                geldig altijd
+                    Het aantal dagen recht op belastingvermindering van een passagier moet gesteld worden op het aantal dagen in de maand dat er aan alle volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - hij niet actief is.
+            """));
+        assertFalse(negLid.contains("rsAantalDagenIn"), () -> "een genegeerd compound-lid mag niet stil combineren:\n" + negLid);
+        assertTrue(negLid.contains("/* TODO"), () -> "een genegeerd compound-lid moet markeren:\n" + negLid);
+    }
+
     @Test void compound_alle_gedurende_nest_de_knippen_de_doorsnede() {
         // §8.4.2 a COMPOUND "er aan ALLE volgende voorwaarden wordt voldaan" intersects the bullets' true-period
         // sets by nesting rsTijdKnip (a negated bullet nests rsTijdKnipNiet). (Teeth: drop the Samengesteld branch

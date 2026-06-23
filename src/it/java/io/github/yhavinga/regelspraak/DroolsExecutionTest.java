@@ -412,6 +412,81 @@ class DroolsExecutionTest {
         assertEquals(0, new BigDecimal("1.873972602739726").compareTo(w), () -> "18 × 38/365 = 684/365 ≈ 1.873972602739726 (DECIMAL64), was " + w);
     }
 
+    @Test void aantal_dagen_in_de_maand_telt_de_doorsnede_van_een_ALLE_compound(){
+        // §8.4.2 a COMPOUND "dat er aan ALLE volgende voorwaarden wordt voldaan" on the aantal-dagen-in WRITE: count
+        // per month the days BOTH kenmerks hold (intersection via rsTijdKnip), not just one. recht [1-1..14-2),
+        // actief [10-1..1-3) -> intersection [10-1..14-2): Jan = 22 dg (10-1..1-2), Feb = 13 dg (1-2..14-2).
+        String src = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                is actief kenmerk (bijvoeglijk) voor elke maand;
+                het aantal dagen recht op belastingvermindering Numeriek (geheel getal) met eenheid dg voor elke maand;
+            Regel R
+                geldig altijd
+                    Het aantal dagen recht op belastingvermindering van een passagier moet gesteld worden op het aantal dagen in de maand dat er aan alle volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - hij actief is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsAantalDagenIn(rsTijdKnip($subject.getRechtOpBelastingvermindering(), $subject.getActief()), \"MAAND\")"),
+                () -> "een ALLE compound moet de doorsnede tellen via rsTijdKnip:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier p = new Passagier();
+        p.setRechtOpBelastingvermindering(List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 2, 14), null)));
+        p.setActief(List.of(new Segment(LocalDate.of(2024, 1, 10), LocalDate.of(2024, 3, 1), null)));
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        java.util.List<Segment> uit = p.getAantalDagenRechtOpBelastingvermindering();
+        assertNotNull(uit, "de doel-tijdreeks moet gezet zijn");
+        assertEquals(2, uit.size(), () -> "twee maanden in de doorsnede, kreeg " + uit);
+        assertEquals(0, new BigDecimal("22").compareTo(uit.get(0).getWaarde()), () -> "jan-doorsnede = 22 dg (10-1..1-2), was " + uit.get(0).getWaarde());
+        assertEquals(0, new BigDecimal("13").compareTo(uit.get(1).getWaarde()), () -> "feb-doorsnede = 13 dg (1-2..14-2), was " + uit.get(1).getWaarde());
+    }
+
+    @Test void tijdsevenredig_deel_prorateert_over_de_unie_van_een_ten_minste_1_compound(){
+        // §8.4.2 a COMPOUND "dat er aan ten minste 1 van de volgende voorwaarden wordt voldaan" on tijdsevenredig:
+        // prorate over the UNION of the kenmerks' true-periods (rsTijdUnie coalesces overlap). recht [1-1..5-2),
+        // actief [1-2..8-2) -> union [1-1..8-2): Jan full -> €18, Feb 7/28 -> €4,50 (base €18 per jaar).
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de standaardbedrag Bedrag voor elk jaar;
+                de belastingvermindering Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                is actief kenmerk (bijvoeglijk) voor elke maand;
+            Regel R
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van zijn standaardbedrag gedurende de tijd dat er aan ten minste 1 van de volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - hij actief is).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsTijdsevenredig(rsTijdUnie($subject.getRechtOpBelastingvermindering(), $subject.getActief())"),
+                () -> "een ten-minste-1 compound moet over de unie prorateren via rsTijdUnie:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier p = new Passagier();
+        p.setStandaardbedrag(List.of(new Segment(LocalDate.of(2025, 1, 1), LocalDate.of(2026, 1, 1), new BigDecimal("18.00"))));
+        p.setRechtOpBelastingvermindering(List.of(new Segment(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 2, 5), null)));
+        p.setActief(List.of(new Segment(LocalDate.of(2025, 2, 1), LocalDate.of(2025, 2, 8), null)));   // overlaps recht in feb 1..5
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        java.util.List<Segment> uit = p.getBelastingvermindering();
+        assertNotNull(uit, "de doel-tijdreeks moet gezet zijn");
+        assertEquals(2, uit.size(), () -> "jan + feb verwacht, kreeg " + uit);
+        assertEquals(0, new BigDecimal("18.00").compareTo(uit.get(0).getWaarde()), () -> "jan-2025 (volledig in de unie) = €18, was " + uit.get(0).getWaarde());
+        assertEquals(0, new BigDecimal("4.50").compareTo(uit.get(1).getWaarde()), () -> "feb-2025 unie [1-2..8-2) = 7/28 × €18 = €4,50, was " + uit.get(1).getWaarde());
+    }
+
     @Test void compound_alle_gedurende_snijdt_de_ware_periodes(){
         // §8.4.2 a COMPOUND "gedurende de tijd dat er aan ALLE volgende voorwaarden wordt voldaan: …" intersects the
         // true-period sets of its temporal-kenmerk bullets (nested rsTijdKnip). value €10/mnd over 2023, €11/mnd

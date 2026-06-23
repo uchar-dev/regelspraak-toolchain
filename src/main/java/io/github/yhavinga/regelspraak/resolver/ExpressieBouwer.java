@@ -287,6 +287,12 @@ final class ExpressieBouwer {
                 ToplevelElementaireVoorwaardeContext c = adf.toplevelElementaireVoorwaarde();
                 Conditie.Kenmerk k = temporeelKenmerkUitOperator(c.toplevelOperator(), c.nonToplevelOperator(), src(adf));
                 if (k != null) filter = k;
+            } else if (adf.toplevelSamengesteldeVoorwaarde() != null && !(filter instanceof Conditie.Samengesteld)) {
+                // §8.4.2 a COMPOUND "dat er aan alle / ten minste 1 van de volgende voorwaarden wordt voldaan: …" —
+                // the same temporal-kenmerk compound as a gedurende; the transpiler buckets the days the COMBINED
+                // condition (intersection for ALLE / union for ten-minste-1 of the bullets) holds.
+                Conditie samengesteld = gedurendeSamengesteld(adf.toplevelSamengesteldeVoorwaarde(), src(adf));
+                if (samengesteld != null) filter = samengesteld;
             }
         } else if (kind == Expr.FunctieKind.TIJDSEVENREDIG_DEEL && f instanceof TijdsevenredigFuncContext tvf) {
             // §13.4.17.58/§7.3.2 carry the operator's "per <maand|jaar>" bucket unit; the transpiler requires it to

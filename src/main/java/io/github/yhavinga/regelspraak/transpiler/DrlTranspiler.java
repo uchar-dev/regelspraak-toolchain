@@ -1641,11 +1641,12 @@ public final class DrlTranspiler {
         if (w instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.AANTAL_DAGEN_IN
                 // §4.21/§7.2 the operator's "in <maand|jaar>" bucket unit MUST match the doel's tijdlijn — a
                 // mismatch ("in het jaar" into a per-maand doel) markers rather than silently bucketing by the doel.
-                && f.granulariteit() == gran
-                && f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null && !k.negatie()
-                && subject != null && subject.kenmerkGranulariteit.containsKey(k.kenmerk())) {
-            registreerAantalDagenInFunctie();
-            return "rsAantalDagenIn(" + SUBJECT + "." + getter(k.kenmerk()) + "(), \"" + gran.name() + "\")";
+                && f.granulariteit() == gran && subject != null) {
+            String cond = conditieTijdreeks(f.filter(), subject);   // single kenmerk OR a §8.4.2 compound; null -> marker
+            if (cond != null) {
+                registreerAantalDagenInFunctie();
+                return "rsAantalDagenIn(" + cond + ", \"" + gran.name() + "\")";
+            }
         }
         // §13.4.17.58/§7.3.2 "het tijdsevenredig deel per <maand|jaar> van <temporeel attribuut> gedurende de tijd
         // dat <temporeel kenmerk>": per calendar bucket, value = baseValueInBucket × (true-days / total-days). The
@@ -1668,15 +1669,53 @@ public final class DrlTranspiler {
                 // the rest -> marker rather than mis-prorate. (The §7.3.2 examples use a coarser-or-equal base.)
                 && subject.attribuutGranulariteit.get(base.attribuut()).ordinal() >= gran.ordinal()
                 && base.type().isNumeriek()
-                && java.util.Objects.equals(base.type().eenheidOf(), doelType == null ? null : doelType.eenheidOf())
-                && f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null && !k.negatie()
-                && subject.kenmerkGranulariteit.containsKey(k.kenmerk())
-                && !subject.kenmerkTijdlijnAantal.containsKey(k.kenmerk())) {
-            registreerTijdsevenredigFunctie();
-            return "rsTijdsevenredig(" + SUBJECT + "." + getter(k.kenmerk()) + "(), "
-                    + SUBJECT + "." + getter(base.attribuut()) + "(), \"" + gran.name() + "\")";
+                && java.util.Objects.equals(base.type().eenheidOf(), doelType == null ? null : doelType.eenheidOf())) {
+            String cond = conditieTijdreeks(f.filter(), subject);   // single kenmerk OR a §8.4.2 compound; null -> marker
+            if (cond != null) {
+                registreerTijdsevenredigFunctie();
+                return "rsTijdsevenredig(" + cond + ", " + SUBJECT + "." + getter(base.attribuut()) + "(), \"" + gran.name() + "\")";
+            }
         }
         return null;
+    }
+
+    /** The TRUE-period {@code List<Segment>} timeline of a temporal WRITE-producer's condition — the periods whose
+     *  days/value get bucketed by rsAantalDagenIn / rsTijdsevenredig. A single positive single-period subject kenmerk
+     *  is its getter; a §8.4.2 COMPOUND of such kenmerks is their combined boolean timeline (ALLE = intersection via
+     *  rsTijdKnip, "ten minste 1" = union via rsTijdUnie — both fold over the members' getters). Null when unsupported
+     *  (a negated / navigated / multi-period kenmerk, or a mixed / non-kenmerk / other-kwantor compound): a negated
+     *  member has no standalone complement here (unlike the totaal CLIP, where the value timeline bounds it), so the
+     *  caller markers rather than mis-count. */
+    private String conditieTijdreeks(Conditie filter, Objecttype subject) {
+        if (filter instanceof Conditie.Kenmerk k) return temporeelKenmerkTijdreeks(k, subject);
+        if (filter instanceof Conditie.Samengesteld s
+                && (s.kwantor() == Conditie.Kwantor.ALLE || s.kwantor() == Conditie.Kwantor.TEN_MINSTE)) {
+            java.util.List<String> regios = new java.util.ArrayList<>();
+            for (Conditie c : s.onderdelen()) {
+                if (!(c instanceof Conditie.Kenmerk k)) return null;
+                String g = temporeelKenmerkTijdreeks(k, subject);
+                if (g == null) return null;   // a negated/navigated/multi-period member -> marker (no standalone complement)
+                regios.add(g);
+            }
+            if (regios.size() < 2) return null;
+            boolean alle = s.kwantor() == Conditie.Kwantor.ALLE;
+            if (alle) registreerTijdKnipFunctie(); else registreerTijdUnieFunctie();
+            String combiner = alle ? "rsTijdKnip" : "rsTijdUnie";
+            String acc = regios.get(0);
+            for (int i = 1; i < regios.size(); i++) acc = combiner + "(" + acc + ", " + regios.get(i) + ")";
+            return acc;
+        }
+        return null;
+    }
+
+    /** A single positive single-period subject kenmerk's TRUE-period getter ({@code $subject.getK()}), or null when it
+     *  is not lowerable as a standalone true-period timeline: a navigated, negated, multi-period, or non-subject
+     *  kenmerk. */
+    private String temporeelKenmerkTijdreeks(Conditie.Kenmerk k, Objecttype subject) {
+        if (k.navigatie() != null || k.negatie() || subject == null
+                || !subject.kenmerkGranulariteit.containsKey(k.kenmerk())
+                || subject.kenmerkTijdlijnAantal.containsKey(k.kenmerk())) return null;
+        return SUBJECT + "." + getter(k.kenmerk()) + "()";
     }
 
     /** Register the §13.4.17.58 tijdsevenredig-deel helper: prorate a base value-timeline over each calendar bucket
