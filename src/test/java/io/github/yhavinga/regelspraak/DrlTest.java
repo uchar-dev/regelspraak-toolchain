@@ -166,6 +166,35 @@ class DrlTest {
                 () -> "een bezittelijk navigated kenmerk onder 'is' moet een marker blijven:\n" + drl);
     }
 
+    @Test void possessieve_navigatie_zijn_rol_bereikt_de_navigatie_kenmerkcheck() {
+        // §8.1.7/§8.1.8 a POSSESSIVE "zijn <rol>" that names a feittype role is a to-one navigation, the mirror of
+        // the written "de <rol> van <X>"; possessief() resolves it to the navigated AttribuutRef so a kenmerkcheck
+        // reaches navigatieKenmerk (-> "rol != null && rol.<k> == true") and a value read reaches the to-one getter.
+        // (Teeth: drop the role-navigation fallback in possessief() and "zijn partner heeft een <k>" markers again.)
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                het recht op duurzaamheidskorting kenmerk (bezittelijk);
+                is rechthebbend kenmerk (bijvoeglijk);
+                de uitkomst Numeriek (geheel getal);
+                de toeslag Numeriek (geheel getal);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel bezittelijk
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 7 indien zijn partner een recht op duurzaamheidskorting heeft.
+            Regel bijvoeglijk
+                geldig altijd
+                    De toeslag van een Persoon moet gesteld worden op 3 indien zijn partner rechthebbend is.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("partner.rechtOpDuurzaamheidskorting == true"),
+                () -> "possessieve navigatie 'zijn partner heeft een <k>' niet gebonden:\n" + drl);
+        assertTrue(drl.contains("partner.rechthebbend == true"),
+                () -> "possessieve navigatie 'zijn partner rechthebbend is' niet gebonden:\n" + drl);
+    }
+
     @Test void eenvorm_heeft_bindt_een_bezittelijk_kenmerk_niet_de_zelfstandige_soort() {
         // §8.1.8.2 the EEN-form HEEFT binds a BEZITTELIJK kenmerk ("hij heeft een recht op duurzaamheidskorting" —
         // the §7.1 verbatim possession form), the mirror of the §8.1.8.3 "is een <zelfstandig kenmerk>". The verb

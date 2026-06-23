@@ -440,6 +440,42 @@ class DroolsExecutionTest {
                 () -> "OR-vereniging moet 12x10 + 1x11 = 131 zijn, was " + p.getTotaleBelastingvermindering());
     }
 
+    @Test void possessieve_navigatie_zijn_partner_heeft_een_bezittelijk_kenmerk_vuurt() {
+        // §8.1.7/§8.1.8 the POSSESSIVE navigated membership "indien ZIJN PARTNER een recht op duurzaamheidskorting
+        // heeft" — "zijn <rol>" is a to-one navigation, the symmetric mirror of the working "de <rol> van <X>" form.
+        // possessief() now resolves a possessive that names a feittype role to the navigated AttribuutRef, so it
+        // reaches navigatieKenmerk -> "partner != null && partner.rechtOpDuurzaamheidskorting == true".
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                het recht op duurzaamheidskorting kenmerk (bezittelijk);
+                de uitkomst Numeriek (geheel getal);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel R
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 7 indien zijn partner een recht op duurzaamheidskorting heeft.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("partner.rechtOpDuurzaamheidskorting == true"),
+                () -> "possessieve navigatie 'zijn partner heeft een <k>' niet gebonden:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Persoon metHouder = new Persoon(); Persoon houder = new Persoon(); houder.setRechtOpDuurzaamheidskorting(true);
+        metHouder.setPartner(houder);
+        Persoon zonder = new Persoon();   // partner == null -> null-safe, no fire
+        sessie.insert(metHouder); sessie.insert(houder); sessie.insert(zonder);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("7").compareTo(metHouder.getUitkomst()),
+                () -> "persoon met houdende partner moet uitkomst 7 krijgen, was " + metHouder.getUitkomst());
+        assertNull(zonder.getUitkomst(), "geen partner -> geen uitkomst (null-safe)");
+    }
+
     @Test void navigated_eenvorm_heeft_een_bezittelijk_kenmerk_vuurt_via_de_to_one_navigatie() {
         // §8.1.8.2 navigated EEN-form: "de partner van een Persoon heeft een recht op duurzaamheidskorting" reads
         // the to-one partner's bezittelijk kenmerk -> "partner != null && partner.rechtOpDuurzaamheidskorting".
