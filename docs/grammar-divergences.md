@@ -734,16 +734,17 @@ timeline base (12 full months of €12 in 2024, €18 jan-2025, **7/28 × €18 
 
 Three deliberate readings, each the honest alternative to a silent miscompile (a scoping review flagged all three):
 
-- **The base must be a single-period TEMPORAL attribute of the subject; a SCALAR / parameter base markers.** §5.1.2
-  (spec line 1536) makes this the *only* operator that combines the Tijd unit-system with an operand's *value*-timeline
-  — the base's own timeline is intrinsic, not optional, and all three §7.3.2 examples use a *time-varying* parameter.
-  Our model carries a parameter as one scalar (there is no parameter-tijdlijn syntax), so prorating a scalar as a
-  constant across buckets would be **wrong on every spec example** (it loses the 12-vs-18 split) with no diagnostic.
-  Therefore a scalar base is **not** lowered: the resolver's `gedurendeKenmerkFilter` (whose operand gate already
-  requires the subject's own single-period temporal attribute) leaves the filter unset → the §13.4.17.51-.58 WARNING
-  **and** a `/* TODO */` marker both stand. This means the spec's *literal* §7.3.2 examples (a parameter base) all
-  marker — the slice lowers the operator's machinery over a temporal-attribute base, which reproduces the spec's
-  numbers; the parameter-tijdlijn model gap that would lower the literal examples is carded.
+- **The base must be a single-period TIMELINE — a temporal attribute OR a temporal parameter; a plain SCALAR base
+  markers.** §5.1.2 (spec line 1536) makes this the *only* operator that combines the Tijd unit-system with an
+  operand's *value*-timeline — the base's own timeline is intrinsic, not optional, and all three §7.3.2 examples use a
+  *time-varying* parameter (`de STANDAARD BELASTINGVERMINDERING`, "kan jaarlijks wijzigen"). A genuinely scalar base
+  prorated as a constant would be **wrong on those examples** (it loses the 12-vs-18 split), so it is **not** lowered:
+  the resolver's `gedurendeKenmerkFilter` operand gate accepts only the subject's own single-period temporal attribute
+  or a temporal parameter; a scalar operand leaves the filter unset → the §13.4.17.51-.58 WARNING **and** a `/* TODO */`
+  marker both stand. The **temporal parameter** is now modeled (a `tijdlijn` on `parameterDefinition`, a `Granulariteit`
+  on `Parameter`, emitted as a `global java.util.List` the runtime supplies) — so the **literal §7.3.2 examples** (a
+  parameter base) now lower and fire (`rsTijdsevenredig(cond, <param-list-global>, gran)`; €12/€18/€4,50). Any **scalar**
+  read of a temporal parameter markers (a `List` in a scalar slot would not compile).
 - **No auto-rounding (§4.22 / §6.1.2).** §4.22 keeps the result an exact fraction (`684/365`, not a decimal); §6.1.2
   forbids the engine rounding a result down to the doel's declared decimals (the author must add an explicit afronding,
   for which `tijdsevenredig` has no syntactic slot). The per-bucket division therefore uses **`MathContext.DECIMAL64`**,
