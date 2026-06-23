@@ -2502,21 +2502,24 @@ class DrlTest {
     @Test void temporeel_totaal_over_een_niet_alle_set_kwantor_markeert_via_de_structurele_set_vlag() {
         // The set guard is now a STRUCTURAL flag (Expr.AttribuutRef.set, from the onderwerp's §13.4.2 quantifier),
         // not an onderwerpBron "alle " text scan — so it also catches the THRESHOLD quantifiers the text scan
-        // missed ("ten minste 2 van de", "geen van de"), which would otherwise mis-fold the subject's own timeline
-        // for an element==subject set. (Teeth: revert a.set() to the "alle " startsWith and this lowers a wrong
-        // rsTijdTotaal.)
+        // missed ("ten minste 2 van de passagiers"), which over an element==subject set would otherwise mis-fold
+        // the subject's OWN timeline. Uses the objecttype-plural onderwerp (element type == subject Passagier), the
+        // load-bearing shape; the old "alle " startsWith would NOT match "ten minste 2 …" and lower a wrong
+        // rsTijdTotaal. (Teeth: revert a.set() to the "alle " startsWith and this folds instead of marking.)
         String src = """
             Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Vlucht (mv: Vluchten)
+                de naam Tekst;
             Objecttype de Passagier (mv: Passagiers) (bezield)
-                de bonus per maand Bedrag voor elke maand;
-                de totale bonus Bedrag;
-            Feittype groep
-                de groep Passagier
-                het lid Passagier
-            Eén groep bevat meerdere leden
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Feittype reis met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
             Regel R
                 geldig altijd
-                    De totale bonus van een Passagier moet gesteld worden op het totaal van de bonus per maand van ten minste 2 van de leden.
+                    De totale belastingvermindering van een Passagier moet gesteld worden op het totaal van de belastingvermindering per maand van ten minste 2 van de passagiers van de reis.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertFalse(drl.contains("rsTijdTotaal"),
