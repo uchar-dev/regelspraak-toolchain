@@ -430,12 +430,15 @@ compounds still marker through an undeclared sibling kenmerk, so no corpus rule 
 EEN-form bezittelijk (`zijn reis heeft een <bezittelijk k>`) stays a marker too (`navigatieKenmerk` is still
 zelfstandig-only — a carded follow-on), never a wrong gate.
 
-The NAVIGATED EEN-form (`de <rol> van <X> is een <kenmerk>`, e.g. "de reis van een Passagier is een reis met
+The NAVIGATED EEN-form (`de <rol> van <X> is/heeft een <kenmerk>`, e.g. "de reis van een Passagier is een reis met
 paaskorting") now binds too, through the same to-one navigation as the non-EEN navigated kenmerkcheck and gated by
-the SAME soort rule: only a ZELFSTANDIG kenmerk of the navigated type binds (→ `<rol> != null && <rol>.<k> == true`),
-while a bijvoeglijk one stays a marker. A navigated *role* membership via the EEN-form remains out of scope (a
-marker). Corpus-invisible (the TOKA navigated EEN-form compounds marker through the same undeclared sibling), so
-proven on a synthetic fixture firing the to-one path.
+the SAME verb→soort rule the subject's own EEN-form uses: `is een <k>` binds a ZELFSTANDIG kenmerk of the navigated
+type, `heeft een <k>` a BEZITTELIJK one ("de reis van een Passagier heeft een recht op vergoeding"), each
+→ `<rol> != null && <rol>.<k> == true`; neither soort binds under the other verb (a bijvoeglijk one, or a wrong-verb
+form, stays a marker) and a navigated *role* membership via the EEN-form remains out of scope. Corpus-invisible (the
+TOKA navigated EEN-form compounds marker through an undeclared sibling), so proven on a synthetic fixture firing the
+to-one path (a holder partner → 7, a non-holder and a partnerless subject → no fire, null-safe). The **possessive**
+navigated form (`zijn reis heeft een <k>`) is a separate pre-existing path (carded).
 
 The **no-`een` rolcheck** (`<subject> is <rolnaam>`, §13.4.15.44 makes the `een` optional) now binds as well. The
 non-`een` name is resolved **kenmerk-first** (Tabel 16): `kenmerkConditie` claims a declared kenmerk (a bijvoeglijk
@@ -663,21 +666,33 @@ true-intervals from each value segment and keeps the gaps (clamp-overlap + selec
 a Drools function body compiles it; a null/empty condition leaves the whole value). A **navigated** to-ONE temporal
 totaal ("het totaal van de X per maand van zijn partner") folds the partner's timeline via `rsTijdTotaal` over the
 same root-guarded getter chain the navigated value read uses (a null reference → leeg). All fire (the €71 clip; the
-€115 complement = €186 − €71; a partner's 12-month series → 120). Still **markered, not faked**: a **multi-period**
-attribute ("voor elke 5 maanden", inline OR named) — semantics §7.1 does not work out (the count rides on the
-`Tijdlijn` record + `attribuutTijdlijnAantal`); a **set** totaal ("het totaal van `<temporeel attr>` van **alle**
-`<set>`") — a per-element timeline fold (fold each element's series, then total) is not lowered, so it markers
-rather than mis-folding the subject's own series or summing the `List<Segment>` (a review caught both: when the
-element type equals the subject's the resolver collapses the set to an EIGEN ref, detected by the `alle …`
-onderwerp; a distinct element type is caught in `accumulate`); a **to-many** navigated totaal; and any gedurende the
-resolver could not structure (a comparison / **compound** / navigated / non-temporal condition) which stays an
-`Onopgelost` marker. Carded follow-ons: the pre-existing resolver set→own collapse (the deeper fix, now only the
-elegance of replacing the `alle …` text heuristic with a structural set flag), the **compound** `gedurende` ("er aan
-alle volgende voorwaarden wordt voldaan" — intersecting timelines), the navigated EEN-form bezittelijk gedurende,
-`tijdsevenredig deel` and `aantal dagen in` (which PRODUCE a timeline, reusing `rsTijdKnip`), and the per-period
-WRITE path ("voor elke maand gesteld worden op", a grammar gap); `rsTijdTotaal` truncates a sub-period-aligned
-segment (exact for boundary-aligned timelines) and `rsTijdKnip` does not union overlapping condition intervals (a
-contractually-disjoint kenmerk timeline — `rsTijdKnipNiet` handles overlap by gap-walking).
+€115 complement = €186 − €71; a partner's 12-month series → 120). A **§8.4.2 COMPOUND** condition ("gedurende de
+tijd dat er aan **alle** / **ten minste 1** van de volgende voorwaarden wordt voldaan: • … • …") now lowers when
+every bullet is a single-period temporal-kenmerk membership of the subject: `alle` (AND) nests the per-kenmerk clips
+(`rsTijdKnip` / `rsTijdKnipNiet` — the intersection of true-periods), and `ten minste 1` (OR) clips the value to the
+UNION of the true-period sets via a registered `rsTijdUnie` helper (sort + coalesce overlapping/adjacent half-open
+intervals; positive members only). The single-bullet resolution is factored into `temporeelKenmerkUitOperator`,
+reused per bullet. Fired the intersection (€30) and the union (€131). The **set guard** that tells a collapsed
+set-totaal from a single-object timeline is now a structural `Expr.AttribuutRef.set` (from the onderwerp's §13.4.2
+quantifier — any kwantor that is not the bare `de`), not an `onderwerpBron "alle "` text scan, so it also catches the
+threshold quantifiers (`ten minste 2 van de passagiers`) the text scan missed and is immune to casing/spacing. Still
+**markered, not faked**: a **multi-period** attribute ("voor elke 5 maanden", inline OR named) — semantics §7.1 does
+not work out (the count rides on the `Tijdlijn` record + `attribuutTijdlijnAantal`); a **set** totaal ("het totaal
+van `<temporeel attr>` van een set") — a per-element timeline fold (fold each element's series, then total) is not
+lowered, so it markers rather than mis-folding the subject's own series or summing the `List<Segment>` (when the
+element type equals the subject's the resolver collapses the set to an EIGEN ref, caught by the structural `set`
+flag; a distinct element type is caught in `accumulate`); a **to-many** navigated totaal; a **MIXED** compound (a
+temporal-kenmerk bullet plus a non-temporal comparison, the spec's own §8.4 `geboortedatum` example), an **OR with a
+negated member** (a span-dependent complement), a nested compound, or any other kwantor (`ten minste >1` / `geen van
+de` / `ten hoogste` / `precies`) — each leaves the WHOLE compound an `Onopgelost` marker, never a silently-dropped
+predicate; and any single gedurende the resolver could not structure (a comparison / navigated / non-temporal
+condition). Carded follow-ons: the pre-existing resolver set→own collapse (the deeper fix — the structural `set`
+flag now hardens the guard but the per-element fold is still unlowered), the **MIXED** compound (the non-temporal
+bullet as a value-side guard) and the **OR-with-negation** compound, the navigated EEN-form bezittelijk gedurende,
+`tijdsevenredig deel` and `aantal dagen in` (which PRODUCE a timeline — a §5.1.4 WRITE path the transpiler does not
+have), and the per-period WRITE path; `rsTijdTotaal` truncates a sub-period-aligned segment (exact for
+boundary-aligned timelines) and `rsTijdKnip` does not union overlapping condition intervals (a contractually-disjoint
+kenmerk timeline — `rsTijdKnipNiet` and `rsTijdUnie` handle overlap by gap-walking/coalescing).
 
 ### Elfproef predicate (§8.1.3) — lowered to a registered rsElfproef helper
 
