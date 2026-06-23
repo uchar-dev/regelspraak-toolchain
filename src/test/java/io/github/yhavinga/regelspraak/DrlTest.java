@@ -2548,6 +2548,50 @@ class DrlTest {
         assertTrue(fijnerBasis.contains("/* TODO"), () -> "een per-maand basis in een per-jaar bucket moet markeren:\n" + fijnerBasis);
     }
 
+    @Test void temporele_parameter_is_een_lijst_global_en_alleen_een_tijdsevenredig_basis() {
+        // §13.3.6/§7.3.2 a TEMPORAL parameter ("voor elk jaar") is a List<Segment> global, readable ONLY as a
+        // tijdsevenredig base (the spec's literal STANDAARD BELASTINGVERMINDERING); any SCALAR use markers.
+        String tev = DrlTranspiler.transpile(Resolver.resolve("""
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Parameter de STANDAARD : Bedrag voor elk jaar
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+            Regel R
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van de STANDAARD gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """));
+        assertTrue(tev.contains("global java.util.List sTANDAARD;"), () -> "een temporele parameter moet een List<Segment> global zijn:\n" + tev);
+        assertTrue(tev.contains("rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), sTANDAARD, \"MAAND\")"),
+                () -> "een temporele-parameter basis moet de List global lezen:\n" + tev);
+        assertFalse(tev.contains("/* TODO"), () -> "de temporele-parameter tijdsevenredig mag geen marker zijn:\n" + tev);
+
+        // a SCALAR use of a temporal parameter -> marker (a List in a scalar slot would not compile).
+        String scalair = DrlTranspiler.transpile(Resolver.resolve("""
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Parameter de STANDAARD : Bedrag voor elk jaar
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Bedrag;
+            Regel R
+                geldig altijd
+                    De prijs van een Passagier moet gesteld worden op de STANDAARD.
+            """));
+        assertTrue(scalair.contains("/* TODO temporele parameter in scalaire context"),
+                () -> "een scalaire lezing van een temporele parameter moet markeren:\n" + scalair);
+
+        // a plain (non-temporal) parameter is unchanged: a scalar global, read directly.
+        String scalarParam = DrlTranspiler.transpile(Resolver.resolve("""
+            Parameter de grens : Numeriek (geheel getal)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    De prijs van een Passagier moet gesteld worden op de grens.
+            """));
+        assertTrue(scalarParam.contains("global java.math.BigDecimal grens;"), () -> "een gewone parameter blijft een scalaire global:\n" + scalarParam);
+        assertFalse(scalarParam.contains("/* TODO"), () -> "een gewone parameter-lezing mag geen marker zijn:\n" + scalarParam);
+    }
+
     @Test void compound_dat_op_de_write_producers_combineert_de_kenmerk_tijdreeksen() {
         // §8.4.2 a COMPOUND condition on the temporal-WRITE producers (aantal-dagen-in / tijdsevenredig) combines the
         // bullets' true-period timelines into ONE: ALLE = intersection (rsTijdKnip), ten minste 1 = union (rsTijdUnie).

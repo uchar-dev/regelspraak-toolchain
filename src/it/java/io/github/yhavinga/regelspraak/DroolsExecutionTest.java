@@ -375,6 +375,47 @@ class DroolsExecutionTest {
         assertEquals(0, new BigDecimal("4.50").compareTo(uit.get(13).getWaarde()), () -> "feb-2025 = 7/28 × €18 = €4,50, was " + uit.get(13).getWaarde());
     }
 
+    @Test void tijdsevenredig_deel_over_een_temporele_PARAMETER_basis_de_letterlijke_spec_voorbeeld(){
+        // §7.3.2 the LITERAL spec example 1: "het tijdsevenredig deel per maand van de STANDAARD BELASTINGVERMINDERING
+        // gedurende de tijd dat hij een recht op belastingvermindering heeft". The base is a TEMPORAL PARAMETER ("kan
+        // jaarlijks wijzigen" -> "voor elk jaar"), supplied at runtime as a List<Segment> global. §12/€18 over 2024/2025,
+        // recht true [1-1-2024 .. 8-2-2025) -> €12 (2024, full), €18 (jan-2025), €18 × 7/28 = €4,50 (feb-2025).
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Parameter de STANDAARD BELASTINGVERMINDERING : Bedrag voor elk jaar
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+            Regel Belastingvermindering
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van de STANDAARD BELASTINGVERMINDERING gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("global java.util.List sTANDAARDBELASTINGVERMINDERING;"),
+                () -> "een temporele parameter moet een List<Segment> global worden:\n" + drl);
+        assertTrue(drl.contains("rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), sTANDAARDBELASTINGVERMINDERING, \"MAAND\")"),
+                () -> "de tijdsevenredig basis moet de parameter-tijdreeks global lezen:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        sessie.setGlobal("sTANDAARDBELASTINGVERMINDERING", List.of(
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("12.00")),
+                new Segment(LocalDate.of(2025, 1, 1), LocalDate.of(2026, 1, 1), new BigDecimal("18.00"))));
+        Passagier p = new Passagier();
+        p.setRechtOpBelastingvermindering(List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 2, 8), null)));
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        java.util.List<Segment> uit = p.getBelastingvermindering();
+        assertNotNull(uit, "de doel-tijdreeks moet gezet zijn");
+        assertEquals(14, uit.size(), () -> "12 maanden 2024 + jan + feb 2025 = 14, kreeg " + uit.size());
+        assertEquals(0, new BigDecimal("12.00").compareTo(uit.get(0).getWaarde()), () -> "jan-2024 = €12, was " + uit.get(0).getWaarde());
+        assertEquals(0, new BigDecimal("18.00").compareTo(uit.get(12).getWaarde()), () -> "jan-2025 = €18, was " + uit.get(12).getWaarde());
+        assertEquals(0, new BigDecimal("4.50").compareTo(uit.get(13).getWaarde()), () -> "feb-2025 = 7/28 × €18 = €4,50, was " + uit.get(13).getWaarde());
+    }
+
     @Test void tijdsevenredig_deel_rondt_de_niet_eindigende_breuk_niet_af_op_de_doel_decimalen(){
         // §4.22 Precisie: the result is an exact fraction, NOT auto-rounded to the doel's declared decimals (§6.1.2
         // forbids auto-rounding). Spec example 2 (per jaar): €18 × 38/365 = 684/365 €/mnd, a NON-terminating fraction

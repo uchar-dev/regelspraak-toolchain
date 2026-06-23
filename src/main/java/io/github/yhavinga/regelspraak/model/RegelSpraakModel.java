@@ -381,7 +381,12 @@ public final class RegelSpraakModel {
         }
     }
 
-    public record Parameter(String naam, Datatype datatype) {}
+    /** §13.3.8 a declared parameter. {@code granulariteit} is its §13.3.6 tijdlijn ("kan jaarlijks wijzigen", written
+     *  "voor elk jaar") when the parameter is tijdsafhankelijk — its runtime value is then a timeline (a
+     *  {@code List<Segment>}) rather than a scalar; null for an ordinary scalar parameter. */
+    public record Parameter(String naam, Datatype datatype, Granulariteit granulariteit) {
+        public Parameter(String naam, Datatype datatype) { this(naam, datatype, null); }
+    }
 
     public static final class Feittype {
         public final String naam;

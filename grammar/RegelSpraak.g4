@@ -295,7 +295,7 @@ dimensieWaardeWoord
 // §13.3.8 Parameters
 // ====================================================================
 parameterDefinition // §13.3.8.1 — name bounded by ':'; article optional (spec examples omit it)
-    : PARAMETER bepaaldLidwoord? parameterNaam COLON ( datatype | domeinNaam ) SEMICOLON?
+    : PARAMETER bepaaldLidwoord? parameterNaam COLON ( datatype | domeinNaam ) tijdlijn? SEMICOLON?
     ;
 parameterNaam : vrijeNaam ; // §13.3.8.3
 

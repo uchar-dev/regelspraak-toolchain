@@ -55,9 +55,11 @@ public final class DrlTranspiler {
         for (Objecttype ot : model.objecttypen.values())
             out.append("import ").append(FACT_PACKAGE).append('.').append(ident(ot.naam, true)).append(";\n");
         if (!model.objecttypen.isEmpty()) out.append('\n');
-        // Parameters become globals the runtime supplies.
+        // Parameters become globals the runtime supplies. A §13.3.6 TEMPORAL parameter ("voor elk jaar") supplies a
+        // timeline (a List<Segment>) rather than a scalar — only a §7.3.2 tijdsevenredig base reads it (any scalar use
+        // markers in waarde()).
         for (Parameter p : model.parameters.values())
-            out.append("global ").append(javaType(p.datatype())).append(' ')
+            out.append("global ").append(p.granulariteit() != null ? "java.util.List" : javaType(p.datatype())).append(' ')
                .append(ident(p.naam(), false)).append(";\n");
         if (!model.parameters.isEmpty()) out.append('\n');
         // §4.2 version selection: a time-bounded rule version guards on the Rekendatum the
@@ -1087,7 +1089,10 @@ public final class DrlTranspiler {
     // ---------------- value expression ("then" side: getters) ----------------
     private String waarde(Expr e, Objecttype subject) {
         if (e instanceof Expr.Literal lit)      return literal(lit);
-        if (e instanceof Expr.ParameterRef p)   return ident(p.parameter().naam(), false);
+        if (e instanceof Expr.ParameterRef p)   // §13.3.6 a TEMPORAL parameter is a List<Segment> global — only a
+            // §7.3.2 tijdsevenredig base may read it (handled there); any scalar use is a List-in-scalar mismatch -> marker.
+            return p.parameter().granulariteit() != null ? todo("temporele parameter in scalaire context", p.bron())
+                    : ident(p.parameter().naam(), false);
         if (e instanceof Expr.AttribuutRef a) {
             // §3.6: a gedimensioneerd attribuut read WITHOUT pinning its dimensions is under-specified (it
             // would emit a bare Map getter where a scalar is expected). A legitimate dimensioned read is an
@@ -1693,32 +1698,37 @@ public final class DrlTranspiler {
                 return "rsAantalDagenIn(" + cond + ", \"" + gran.name() + "\")";
             }
         }
-        // §13.4.17.58/§7.3.2 "het tijdsevenredig deel per <maand|jaar> van <temporeel attribuut> gedurende de tijd
-        // dat <temporeel kenmerk>": per calendar bucket, value = baseValueInBucket × (true-days / total-days). The
-        // base MUST be a single-period temporal attribute of the subject — its value-timeline is intrinsic (§5.1.2),
-        // so a SCALAR/parameter base (which the model carries as one constant) is NOT lowered here (the resolver left
-        // its filter unset -> the WARNING+marker path), never a silently-constant proration over the spec's
-        // time-varying examples. §4.22: NO auto-round (DECIMAL64, not the doel's decimals — §6.1.2 forbids it); a leeg
-        // base bucket yields no segment. A unit mismatch (the §7.3.2 ex.3 €/jr→€/mnd rate conversion) markers (the
-        // temporal WRITE path applies no omrekening); a negated/compound/navigated condition markers.
+        // §13.4.17.58/§7.3.2 "het tijdsevenredig deel per <maand|jaar> van <basis> gedurende de tijd dat <conditie>":
+        // per calendar bucket, value = baseValueInBucket × (true-days / total-days). The base must be a single-period
+        // TIMELINE — its value-timeline is intrinsic (§5.1.2): either the subject's own temporal attribute, OR a
+        // TEMPORAL PARAMETER (the spec's literal STANDAARD BELASTINGVERMINDERING base, a List<Segment> global). A
+        // plain scalar base markers (the resolver left its filter unset). §4.22: NO auto-round (DECIMAL64, not the
+        // doel's decimals — §6.1.2 forbids it); a leeg base bucket yields no segment. The base must be CONSTANT within
+        // each output bucket (§7.3.2 lines 3093/3123 read it "voor de hele maand/jaar"), so its granularity must be
+        // COARSER-OR-EQUAL to the bucket (DAG<WEEK<MAAND<KWARTAAL<JAAR via ordinal); a unit mismatch (the §7.3.2 ex.3
+        // €/jr→€/mnd rate conversion) or a negated/navigated condition markers.
         if (w instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.TIJDSEVENREDIG_DEEL
-                && f.granulariteit() == gran && f.argumenten().size() == 1
-                && f.argumenten().get(0) instanceof Expr.AttribuutRef base
-                && base.navigatieRol() == null && !base.set() && base.objecttype() == subject && subject != null
-                && subject.attribuutGranulariteit.containsKey(base.attribuut())
-                && !subject.attribuutTijdlijnAantal.containsKey(base.attribuut())
-                // §7.3.2 (lines 3093/3123) the base value is read "voor de hele <maand|jaar>", so the base must be
-                // CONSTANT within each output bucket: its declared granularity must be COARSER-OR-EQUAL to the bucket
-                // (DAG<WEEK<MAAND<KWARTAAL<JAAR via ordinal). A FINER base (per-maand base into a per-jaar bucket)
-                // changes mid-bucket; the per-bucket read takes only the bucket-start segment and would silently drop
-                // the rest -> marker rather than mis-prorate. (The §7.3.2 examples use a coarser-or-equal base.)
-                && subject.attribuutGranulariteit.get(base.attribuut()).ordinal() >= gran.ordinal()
-                && base.type().isNumeriek()
-                && java.util.Objects.equals(base.type().eenheidOf(), doelType == null ? null : doelType.eenheidOf())) {
-            String cond = conditieTijdreeks(f.filter(), subject);   // single kenmerk OR a §8.4.2 compound; null -> marker
-            if (cond != null) {
-                registreerTijdsevenredigFunctie();
-                return "rsTijdsevenredig(" + cond + ", " + SUBJECT + "." + getter(base.attribuut()) + "(), \"" + gran.name() + "\")";
+                && f.granulariteit() == gran && f.argumenten().size() == 1 && subject != null) {
+            Expr base = f.argumenten().get(0);
+            RegelSpraakModel.Granulariteit baseGran = null; Datatype baseType = null; String baseExpr = null;
+            if (base instanceof Expr.AttribuutRef ba && ba.navigatieRol() == null && !ba.set() && ba.objecttype() == subject
+                    && subject.attribuutGranulariteit.containsKey(ba.attribuut())
+                    && !subject.attribuutTijdlijnAantal.containsKey(ba.attribuut())) {
+                baseGran = subject.attribuutGranulariteit.get(ba.attribuut());
+                baseType = ba.type();
+                baseExpr = SUBJECT + "." + getter(ba.attribuut()) + "()";
+            } else if (base instanceof Expr.ParameterRef bp && bp.parameter().granulariteit() != null) {
+                baseGran = bp.parameter().granulariteit();
+                baseType = bp.parameter().datatype();
+                baseExpr = ident(bp.parameter().naam(), false);   // the List<Segment> global the runtime supplies
+            }
+            if (baseExpr != null && baseGran.ordinal() >= gran.ordinal() && baseType.isNumeriek()
+                    && java.util.Objects.equals(baseType.eenheidOf(), doelType == null ? null : doelType.eenheidOf())) {
+                String cond = conditieTijdreeks(f.filter(), subject);   // single kenmerk OR a §8.4.2 compound; null -> marker
+                if (cond != null) {
+                    registreerTijdsevenredigFunctie();
+                    return "rsTijdsevenredig(" + cond + ", " + baseExpr + ", \"" + gran.name() + "\")";
+                }
             }
         }
         return null;

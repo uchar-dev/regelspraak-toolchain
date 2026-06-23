@@ -304,7 +304,9 @@ public final class DefinitionResolver {
     // ---------------- §13.3.8 parameters ----------------
     private void parameter(ParameterDefinitionContext ctx) {
         String naam = src(ctx.parameterNaam());
-        model.parameters.put(naam, new Parameter(naam, datatypeVan(ctx.datatype(), ctx.domeinNaam())));
+        // §13.3.6/§13.3.8 a parameter may carry a tijdlijn ("voor elk jaar") -> its runtime value is a timeline.
+        Granulariteit g = ctx.tijdlijn() != null ? granulariteitVan(ctx.tijdlijn()) : null;
+        model.parameters.put(naam, new Parameter(naam, datatypeVan(ctx.datatype(), ctx.domeinNaam()), g));
     }
 
     // ---------------- §13.3.6 timelines ----------------

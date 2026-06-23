@@ -433,9 +433,17 @@ final class ExpressieBouwer {
     private Conditie gedurendeKenmerkFilter(FunctieAanroepContext f, Expr.FunctieKind kind, List<Expr> argumenten) {
         if ((kind != Expr.FunctieKind.TOTAAL && kind != Expr.FunctieKind.TIJDSEVENREDIG_DEEL)
                 || argumenten.size() != 1 || huidigSubject == null) return null;
-        if (!(argumenten.get(0) instanceof Expr.AttribuutRef a) || a.navigatieRol() != null || a.set()
-                || a.objecttype() != huidigSubject || !huidigSubject.attribuutGranulariteit.containsKey(a.attribuut())
-                || huidigSubject.attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;
+        Expr operand = argumenten.get(0);
+        // The operand the operator ranges over must be a single-period TIMELINE: the subject's own temporal attribute
+        // (totaal + tijdsevenredig), OR — for §7.3.2 tijdsevenredig only — a TEMPORAL PARAMETER (the spec's STANDAARD
+        // BELASTINGVERMINDERING base, "kan jaarlijks wijzigen"), whose runtime value is itself a timeline (§5.1.2).
+        boolean okOperand = operand instanceof Expr.AttribuutRef a && a.navigatieRol() == null && !a.set()
+                && a.objecttype() == huidigSubject && huidigSubject.attribuutGranulariteit.containsKey(a.attribuut())
+                && !huidigSubject.attribuutTijdlijnAantal.containsKey(a.attribuut());
+        if (!okOperand && kind == Expr.FunctieKind.TIJDSEVENREDIG_DEEL
+                && operand instanceof Expr.ParameterRef p && p.parameter().granulariteit() != null)
+            okOperand = true;
+        if (!okOperand) return null;
         ConditieBijExpressieContext cnd = f instanceof TotaalFuncContext t ? t.conditieBijExpressie()
                 : f instanceof TijdsevenredigFuncContext tv ? tv.conditieBijExpressie() : null;
         if (cnd == null) return null;
