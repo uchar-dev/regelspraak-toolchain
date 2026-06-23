@@ -777,7 +777,16 @@ public final class DrlTranspiler {
             rule.clausules(accumulates)
                 .geldigheid(r.geldigheid());   // §4.2: a time-bounded version fires only inside its window
         }
-        if (valueStr != null && r.doel() instanceof Expr.AttribuutRef a) {
+        if (r.doel() instanceof Expr.AttribuutRef a && a.navigatieRol() == null && a.objecttype() != null
+                && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())
+                && !a.objecttype().attribuutTijdlijnAantal.containsKey(a.attribuut())) {
+            // §5.1.4 the doel is a SINGLE-period TEMPORAL attribute -> write a List<Segment> timeline, not a scalar.
+            // A timeline-producing RHS we cannot lower stays an honest /* TODO */ marker (never a scalar setter on a
+            // List<Segment> field, which would not compile).
+            String tl = temporeleWaarde(r.waarde(), subject, a.objecttype().attribuutGranulariteit.get(a.attribuut()));
+            rule.dan("    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( "
+                    + (tl != null ? tl : todo("temporele toekenning", r.waarde().bron())) + " )\n    }\n");
+        } else if (valueStr != null && r.doel() instanceof Expr.AttribuutRef a) {
             // restate the value in the target's unit (§4); §6.1.2 forbids AUTO-rounding —
             // if the result has too many decimals the author must add an explicit afronding.
             if (r.waarde().type().isNumeriek())
@@ -1619,6 +1628,63 @@ public final class DrlTranspiler {
         }
         registreerTijdTotaalFunctie();
         return "rsTijdTotaal(" + waardeTijdreeks + ", \"" + g.name() + "\")";
+    }
+
+    /** §5.1.4 lower a RHS that PRODUCES a timeline written to a single-period temporal doel attribute, into a
+     *  {@code List<Segment>} expression — or null when it is not a supported timeline producer (the caller then
+     *  markers). The first writer: §13.4.17.57 "het aantal dagen in <de maand|het jaar> dat <temporeel kenmerk>"
+     *  -> rsAantalDagenIn over the kenmerk's true-period timeline, bucketed by the DOEL's granularity (the spec
+     *  requires the expression's "in <maand|jaar>" to match the doel's tijdlijn, §7.2). Only a positive
+     *  single-period subject temporal-kenmerk condition lowers; a negated/comparison/compound/navigated condition
+     *  left the filter unset in the resolver -> null here. */
+    private String temporeleWaarde(Expr w, Objecttype subject, RegelSpraakModel.Granulariteit gran) {
+        if (w instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.AANTAL_DAGEN_IN
+                && f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null && !k.negatie()
+                && subject != null && subject.kenmerkGranulariteit.containsKey(k.kenmerk())) {
+            registreerAantalDagenInFunctie();
+            return "rsAantalDagenIn(" + SUBJECT + "." + getter(k.kenmerk()) + "(), \"" + gran.name() + "\")";
+        }
+        return null;
+    }
+
+    /** Register the §13.4.17.57 aantal-dagen-in helper: bucket a condition's TRUE {@code List<Segment>} timeline
+     *  into calendar months (or years) and count, per bucket, the days the condition holds — emitting one output
+     *  Segment per non-empty bucket [bucketStart, bucketEnd) whose waarde is that day-count (the §7.2 example yields
+     *  23 dg in Jan, 13 dg in Feb). A null condition -> empty. Plain Java (TreeMap keeps the buckets chronological)
+     *  so a Drools function body compiles it. */
+    private void registreerAantalDagenInFunctie() {
+        hulpFuncties.putIfAbsent("rsAantalDagenIn",
+                "function java.util.List rsAantalDagenIn(java.util.List conditie, String granulariteit) {\n"
+                + "    java.util.Map tellingen = new java.util.TreeMap();\n"
+                + "    if (conditie == null) return new java.util.ArrayList();\n"
+                + "    boolean jaar = \"JAAR\".equals(granulariteit);\n"
+                + "    for (Object o : conditie) {\n"
+                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
+                + "        if (s.getVan() == null || s.getTot() == null || !s.getVan().isBefore(s.getTot())) continue;\n"
+                + "        java.time.LocalDate cursor = jaar ? s.getVan().withDayOfYear(1) : s.getVan().withDayOfMonth(1);\n"
+                + "        while (cursor.isBefore(s.getTot())) {\n"
+                + "            java.time.LocalDate next = jaar ? cursor.plusYears(1) : cursor.plusMonths(1);\n"
+                + "            java.time.LocalDate van = s.getVan().isAfter(cursor) ? s.getVan() : cursor;\n"
+                + "            java.time.LocalDate tot = s.getTot().isBefore(next) ? s.getTot() : next;\n"
+                + "            long dagen = java.time.temporal.ChronoUnit.DAYS.between(van, tot);\n"
+                + "            if (dagen > 0) {\n"
+                + "                Object prev = tellingen.get(cursor);\n"
+                + "                long acc = prev == null ? 0L : ((Long) prev).longValue();\n"
+                + "                tellingen.put(cursor, Long.valueOf(acc + dagen));\n"
+                + "            }\n"
+                + "            cursor = next;\n"
+                + "        }\n"
+                + "    }\n"
+                + "    java.util.List uit = new java.util.ArrayList();\n"
+                + "    java.util.Iterator it = tellingen.entrySet().iterator();\n"
+                + "    while (it.hasNext()) {\n"
+                + "        java.util.Map.Entry en = (java.util.Map.Entry) it.next();\n"
+                + "        java.time.LocalDate start = (java.time.LocalDate) en.getKey();\n"
+                + "        java.time.LocalDate eind = jaar ? start.plusYears(1) : start.plusMonths(1);\n"
+                + "        uit.add(new " + FACT_PACKAGE + ".Segment(start, eind, new java.math.BigDecimal(((Long) en.getValue()).longValue())));\n"
+                + "    }\n"
+                + "    return uit;\n"
+                + "}");
     }
 
     /** §7.1 clip a value timeline by ONE temporal-kenmerk membership: rsTijdKnip to its TRUE periods, or

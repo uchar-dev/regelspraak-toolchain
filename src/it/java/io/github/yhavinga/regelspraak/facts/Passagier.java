@@ -33,6 +33,9 @@ public class Passagier {
     private List<Segment> actief;                        // §8.4.2 a second temporal kenmerk for the compound gedurende
     public List<Segment> getActief() { return actief; }
     public void setActief(List<Segment> v) { this.actief = v; }
+    private List<Segment> aantalDagenRechtOpBelastingvermindering; // §7.2 a temporal attribute WRITTEN by aantal-dagen-in
+    public List<Segment> getAantalDagenRechtOpBelastingvermindering() { return aantalDagenRechtOpBelastingvermindering; }
+    public void setAantalDagenRechtOpBelastingvermindering(List<Segment> v) { this.aantalDagenRechtOpBelastingvermindering = v; }
     public BigDecimal getBasistarief() { return basistarief; }
     public void setBasistarief(BigDecimal v) { this.basistarief = v; }
     public BigDecimal getBodem() { return bodem; }

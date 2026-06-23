@@ -289,6 +289,45 @@ class DroolsExecutionTest {
                 () -> "complement-totaal moet 6x10 + 5x11 = 115 zijn, was " + p.getTotaleBelastingvermindering());
     }
 
+    @Test void aantal_dagen_in_de_maand_schrijft_een_per_maand_telling_tijdreeks(){
+        // §7.2/§13.4.17.57 the FIRST temporal-WRITE: "Het aantal dagen recht op belastingvermindering ... moet
+        // gesteld worden op het aantal dagen in de maand dat hij een recht op belastingvermindering heeft" writes a
+        // List<Segment> of per-month true-day counts into the temporal doel attribute. For true-periods
+        // [1-1..2-1) and [10-1..14-2): Jan = 1 + 22 = 23 dg, Feb = 13 dg (spec line 3000-3001).
+        String src = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                het aantal dagen recht op belastingvermindering Numeriek (geheel getal) met eenheid dg voor elke maand;
+            Regel Aantal dagen recht op belastingvermindering
+                geldig altijd
+                    Het aantal dagen recht op belastingvermindering van een passagier moet gesteld worden op het aantal dagen in de maand dat hij een recht op belastingvermindering heeft.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsAantalDagenIn($subject.getRechtOpBelastingvermindering(), \"MAAND\")"),
+                () -> "aantal-dagen-in moet een tijdreeks schrijven:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier p = new Passagier();
+        p.setRechtOpBelastingvermindering(List.of(
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 1, 2), null),
+                new Segment(LocalDate.of(2024, 1, 10), LocalDate.of(2024, 2, 14), null)));
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        java.util.List<Segment> uit = p.getAantalDagenRechtOpBelastingvermindering();
+        assertNotNull(uit, "de doel-tijdreeks moet gezet zijn");
+        assertEquals(2, uit.size(), () -> "twee maanden verwacht, kreeg " + uit);
+        assertEquals(LocalDate.of(2024, 1, 1), uit.get(0).getVan());
+        assertEquals(LocalDate.of(2024, 2, 1), uit.get(0).getTot());
+        assertEquals(0, new BigDecimal("23").compareTo(uit.get(0).getWaarde()), () -> "januari = 23 dg, was " + uit.get(0).getWaarde());
+        assertEquals(LocalDate.of(2024, 2, 1), uit.get(1).getVan());
+        assertEquals(LocalDate.of(2024, 3, 1), uit.get(1).getTot());
+        assertEquals(0, new BigDecimal("13").compareTo(uit.get(1).getWaarde()), () -> "februari = 13 dg, was " + uit.get(1).getWaarde());
+    }
+
     @Test void compound_alle_gedurende_snijdt_de_ware_periodes(){
         // §8.4.2 a COMPOUND "gedurende de tijd dat er aan ALLE volgende voorwaarden wordt voldaan: …" intersects the
         // true-period sets of its temporal-kenmerk bullets (nested rsTijdKnip). value €10/mnd over 2023, €11/mnd

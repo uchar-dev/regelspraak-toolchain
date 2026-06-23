@@ -1,0 +1,1 @@
+  WARNING (line 8): een dimensieselectie / 'gedurende de tijd dat' op een aggregatie wordt nog niet omgezet; de aggregatie blijft buiten beschouwing in plaats van de selectie te negeren (§13.4.17.51-.58) — 'gedurende de tijd dat er aan alle volgende voorwaarden wordt voldaan: • hij rechthebbend is • zijn geboortedatum eerder is dan 1-1-2002'

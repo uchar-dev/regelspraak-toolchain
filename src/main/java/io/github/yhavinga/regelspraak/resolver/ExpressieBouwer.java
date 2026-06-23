@@ -272,6 +272,17 @@ final class ExpressieBouwer {
                 if (!(filter instanceof Conditie.Onopgelost)) filter = new Conditie.Onopgelost(dimBron);
             }
         }
+        // §13.4.17.57 "het aantal dagen in <de maand|het jaar> dat <conditie>": the post-"dat" condition is a
+        // DIRECT grammar child (not a conditiebijexpressie), so it is otherwise dropped. Structure a simple
+        // single-period subject temporal-kenmerk membership into a Conditie.Kenmerk (reusing the gedurende path's
+        // resolver) so the transpiler can count true-days per period; anything else (a comparison / compound /
+        // navigated / non-temporal condition) leaves the filter unset -> the transpiler markers.
+        if (kind == Expr.FunctieKind.AANTAL_DAGEN_IN && f instanceof AantalDagenFuncContext adf
+                && adf.toplevelElementaireVoorwaarde() != null && !(filter instanceof Conditie.Kenmerk)) {
+            ToplevelElementaireVoorwaardeContext c = adf.toplevelElementaireVoorwaarde();
+            Conditie.Kenmerk k = temporeelKenmerkUitOperator(c.toplevelOperator(), c.nonToplevelOperator(), src(adf));
+            if (k != null) filter = k;
+        }
         Expr functie = new Expr.Functie(kind, argumenten, elem, leegwaarde, filter, type, bron);
         // §13.4.17.13: the wortel's afronding is MANDATORY and rounds the ROOT (it is a sibling of the
         // radicand, not inside it). It was parsed but dropped; wrap the function so the rounding survives.
@@ -814,7 +825,16 @@ final class ExpressieBouwer {
         // §3.6 the bare name may be a gedimensioneerd attribuut READ with the label woven in
         // ("zijn betaalde belasting in jaar van huidig jaar"): peel "<voorzetsel> <label>" off the run. An
         // own-attribute read carries no navigation role (navRol null), exactly as the scalar branch above.
-        return dimensieCel(attr, huidigSubject, null, "zijn", bron);
+        Expr cel = dimensieCel(attr, huidigSubject, null, "zijn", bron);
+        if (cel != null) return cel;
+        // §8.1.7/§8.1.8 a possessive that names a feittype ROLE the subject reaches ("zijn partner een <k>
+        // heeft") is a to-one navigation, not an own attribute — emit the SAME navigated AttribuutRef shape
+        // bouwAttribuut produces for the written "de <rol> van <X>", so a navigated kenmerkcheck reaches
+        // navigatieKenmerk and a navigated value read reaches the to-one getter (the symmetric mirror of the
+        // working "de <rol> van <X>" form; without it the possessive role stayed Onopgelost and markered).
+        if (model.rolDoeltypeNaarSubject(huidigSubject, attr) != null)
+            return new Expr.AttribuutRef(attr, huidigSubject, "zijn", model.navigatieRolNaam(attr), onbekend(), bron);
+        return null;
     }
 
     /** §3.6 resolve {@code kaleNaam} as a single-cell read of a gedimensioneerd attribuut of {@code ot} —

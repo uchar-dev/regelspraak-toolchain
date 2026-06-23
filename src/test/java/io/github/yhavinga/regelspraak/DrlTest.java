@@ -2397,6 +2397,35 @@ class DrlTest {
             """.formatted(kwantor, tweedeBullet)));
     }
 
+    @Test void aantal_dagen_in_schrijft_een_tijdreeks_naar_een_temporeel_doel() {
+        // §7.2/§13.4.17.57 the FIRST temporal-WRITE path: a temporal doel attribute ("voor elke maand") set to
+        // "het aantal dagen in de maand dat <temporeel kenmerk>" writes a List<Segment> via rsAantalDagenIn, not a
+        // scalar setter. (Teeth: remove the temporal-doel branch in regel() and it falls back to the scalar
+        // marker path.) The gate stays a marker for a non-temporal doel.
+        String ok = DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                het aantal dagen recht Numeriek (geheel getal) met eenheid dg voor elke maand;
+            Regel R
+                geldig altijd
+                    Het aantal dagen recht van een passagier moet gesteld worden op het aantal dagen in de maand dat hij een recht op belastingvermindering heeft.
+            """));
+        assertTrue(ok.contains("setAantalDagenRecht( rsAantalDagenIn($subject.getRechtOpBelastingvermindering(), \"MAAND\") )"),
+                () -> "aantal-dagen-in moet een rsAantalDagenIn tijdreeks naar het temporele doel schrijven:\n" + ok);
+        assertFalse(ok.contains("/* TODO"), () -> "de aantal-dagen WRITE mag geen marker zijn:\n" + ok);
+
+        String nonTemp = DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                het aantal dagen recht Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    Het aantal dagen recht van een passagier moet gesteld worden op het aantal dagen in de maand dat hij een recht op belastingvermindering heeft.
+            """));
+        assertFalse(nonTemp.contains("rsAantalDagenIn"), () -> "een NIET-temporeel doel mag geen tijdreeks-write krijgen:\n" + nonTemp);
+        assertTrue(nonTemp.contains("/* TODO"), () -> "aantal-dagen-in naar een scalair doel moet markeren:\n" + nonTemp);
+    }
+
     @Test void compound_alle_gedurende_nest_de_knippen_de_doorsnede() {
         // §8.4.2 a COMPOUND "er aan ALLE volgende voorwaarden wordt voldaan" intersects the bullets' true-period
         // sets by nesting rsTijdKnip (a negated bullet nests rsTijdKnipNiet). (Teeth: drop the Samengesteld branch
