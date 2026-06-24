@@ -3,6 +3,7 @@ package io.github.yhavinga.regelspraak.transpiler.model;
 import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
+import io.github.yhavinga.regelspraak.ir.ResolvedVerdeling;
 import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.Eenheid;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
@@ -26,6 +27,7 @@ import org.drools.model.functions.Predicate2;
 import org.drools.model.impl.ModelImpl;
 
 import org.drools.core.base.accumulators.BigDecimalSumAccumulateFunction;
+import org.drools.core.base.accumulators.CollectListAccumulateFunction;
 import org.drools.core.base.accumulators.CountAccumulateFunction;
 import org.drools.core.base.accumulators.MaxAccumulateFunction;
 import org.drools.core.base.accumulators.MinAccumulateFunction;
@@ -59,10 +61,15 @@ public final class ExecModelTranspiler {
     private final RegelSpraakModel model;
     private final Map<String, Global<BigDecimal>> globals = new LinkedHashMap<>();
     private final List<String> overgeslagen = new ArrayList<>();
-    /** Monotonic within ONE rule (reset per {@link #regel}) — keeps every {@code .expr}/declaration id unique so
-     *  two constraints on the SAME attribute (e.g. an ALLE of {@code leeftijd > 5} and {@code leeftijd < 18}) do
-     *  not collide on a shared id and silently drop one (Drools shares constraints by id). */
+    /** Monotonic within ONE rule (reset per rule) — keeps each rule's declaration NAMES ({@code $e_0}, {@code $inc_1})
+     *  unique. Declaration names are per-rule scoped, so they may repeat across rules. */
     private int seq;
+    /** Model-wide, NEVER reset — the source of {@link #nextId} constraint ids. Drools shares {@code .expr} constraints
+     *  by id across the WHOLE package, so two DIFFERENT rules emitting the same id (e.g. the {@code (leeg gewicht)} and
+     *  {@code (leeg of negatief maximum)} fout companions both starting at {@code fp_1}) would collapse to ONE
+     *  constraint and silently use the first rule's predicate for both — the cross-rule analog of the within-rule
+     *  id-collision. A global counter makes every constraint id unique, so no rule ever inherits another's predicate. */
+    private int idSeq;
 
     /** A lowered voorwaarde: the subject pattern with its in-pattern constraints, plus zero or more SEPARATE
      *  rule items (the §8.1.7 far-side {@code exists}/{@code not} joins) appended after it — the model analog of
@@ -103,10 +110,12 @@ public final class ExecModelTranspiler {
             Rule rule = uniciteit(u);
             if (rule != null) m.addRule(rule);
         }
-        // the remaining resolved kinds (objectcreatie/verdeling/uniciteit-unie/feitcreatie) are later phases
-        int later = model.objectCreaties.size() + model.verdelingen.size()
-                + model.uniciteitUnies.size() + model.feitCreaties.size();
-        if (later > 0) overgeslagen.add(later + " niet-regel resultaatdelen (objectcreatie/verdeling/uniciteit-unie/feitcreatie) — latere fase");
+        for (io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v : model.verdelingen) {        // §9.7 / §13.4.10 (Phase E)
+            for (Rule rule : verdeling(v)) m.addRule(rule);
+        }
+        // the remaining resolved kinds (objectcreatie/uniciteit-unie/feitcreatie) are later phases
+        int later = model.objectCreaties.size() + model.uniciteitUnies.size() + model.feitCreaties.size();
+        if (later > 0) overgeslagen.add(later + " niet-regel resultaatdelen (objectcreatie/uniciteit-unie/feitcreatie) — latere fase");
         return m;
     }
 
@@ -435,8 +444,8 @@ public final class ExecModelTranspiler {
         return null;
     }
 
-    /** A unique id within the current rule (see {@link #seq}). */
-    private String nextId(String prefix) { return prefix + "_" + (seq++); }
+    /** A globally-unique constraint id (see {@link #idSeq}) — unique across the whole model, not just one rule. */
+    private String nextId(String prefix) { return prefix + "_" + (idSeq++); }
 
     /** A lowered scalar value: a {@code (subject, globalValuesByName) -> value} function plus the set of
      *  Parameter-global names it reads (so {@link #regel} can bind them on the consequence). */
@@ -730,6 +739,192 @@ public final class ExecModelTranspiler {
                 drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, naam, s));
         return PatternDSL.rule(naam).build(subjPat, accItem, cntPat, DSL.not(guard), DSL.on(sVar).execute(body));
     }
+
+    // ---------------- §9.7 / §13.4.10 verdeling (Phase E) ----------------
+    /** §13.4.10 verdeling: a source amount ({@code bronAttribuut} of {@code bronType}) is distributed over a
+     *  recipient attribute ({@code doelAttribuut} of the related {@code doelType}) by a method. GELIJKE_DELEN
+     *  (total/count) and NAAR_RATO (total·weight/Σweight) each fold the recipients in one accumulate share rule;
+     *  OP_VOLGORDE (§9.7.2) collects the recipients and lowers the whole ordered group-by-group allocation through
+     *  {@link RegelSpraakRuntime#rsVerdeelOpVolgorde}. The §9.7.3 cap / §9.7.4 floor ride on every fireable method;
+     *  the §9.7.6 empty-weight and leeg/negatief-maximum Fouten are SEPARATE insert-only Inconsistentie companions.
+     *  Mirrors DrlTranspiler.verdeling. Returns the rules, or an empty list (recording an honest skip) for an
+     *  unresolvable join / non-numeric target/weight / non-orderable ordering key / a §9.7.5 onverdeelde-rest
+     *  modifier (the rest rule is a source-modify that forms a share↔rest cycle DRL breaks via property-reactive
+     *  {@code modify}; the reflective model's opaque lambdas are class-reactive, so it lands as a focused follow-up). */
+    private List<Rule> verdeling(ResolvedVerdeling v) {
+        Objecttype bron = v.bronType(), doel = v.doelType();
+        if (!io.github.yhavinga.regelspraak.ir.Geldigheid.ALTIJD.equals(v.geldigheid())) return skipList("verdeling (versie-geldigheid): " + v.naam());
+        String join = bron != null && doel != null ? model.verbindendeRol(doel, bron) : null;
+        ResolvedVerdeling.Methode methode = v.methode();
+        Datatype doelType = doel != null && v.doelAttribuut() != null ? doel.attribuut(v.doelAttribuut()) : null;
+        boolean doelOk = doelType != null && doelType.isGetalachtig();
+        Datatype gewichtType = doel != null && v.ratoAttribuut() != null ? doel.attribuut(v.ratoAttribuut()) : null;
+        boolean gelijk = methode == ResolvedVerdeling.Methode.GELIJKE_DELEN && join != null && doelOk;
+        boolean rato = methode == ResolvedVerdeling.Methode.NAAR_RATO && join != null && doelOk
+                && gewichtType != null && gewichtType.isGetalachtig();
+        Datatype groepType = methode == ResolvedVerdeling.Methode.OP_VOLGORDE && doel != null && v.groepeerAttribuut() != null
+                ? doel.attribuut(v.groepeerAttribuut()) : null;
+        boolean opVolgorde = methode == ResolvedVerdeling.Methode.OP_VOLGORDE && join != null && doelOk
+                && groepType != null && groepType.isOrdenbaar()
+                && (v.ratoAttribuut() == null || (gewichtType != null && gewichtType.isGetalachtig()));
+        if (!gelijk && !rato && !opVolgorde)
+            return skipList("verdeling (onopgelost " + (bron == null || doel == null ? "referentie" : methode.name().toLowerCase()) + "): " + v.naam());
+        // §9.7.5 onverdeelde rest: the rest rule modifies the SOURCE, forming a share↔rest modify cycle. DRL breaks
+        // it with property-reactive modify; the reflective model's opaque lambdas are class-reactive (no inferable
+        // reactOn), so the cycle would infinite-loop under the proven update()+NO_LOOP convention. Honest skip until
+        // the follow-up lands the property-scoped break.
+        if (v.restantAttribuut() != null) return skipList("verdeling (onverdeelde rest — share↔rest modify-cycle, follow-up): " + v.naam());
+        Class<?> bronClass = factClass(bron), doelClass = factClass(doel);
+        if (bronClass == null || doelClass == null) return skipList("verdeling (geen fact-class): " + v.naam());
+
+        List<Rule> rules = new ArrayList<>();
+        rules.add(opVolgorde ? opVolgordeRegel(v, join, bronClass, doelClass)
+                             : gelijkOfRatoRegel(v, join, gelijk, bronClass, doelClass));
+        // §9.7.6 Tabel 19 Fouten: surface an empty weight (whenever a naar-rato split is present) or a leeg/negatief
+        // maximum at ANY recipient as a SEPARATE insert-only Inconsistentie companion (the value side already
+        // degrades a bad cap to uncapped via rsPlafond — never a negative share).
+        Class<?> incClass = inconsistentieClass();
+        boolean tieNaarRato = rato || (opVolgorde && v.ratoAttribuut() != null);
+        if (tieNaarRato && incClass != null) {
+            String w = v.ratoAttribuut();
+            rules.add(existsFoutRegel(v.naam() + " (leeg gewicht)", v.naam(), bronClass, doelClass, join, incClass,
+                    d -> RegelSpraakRuntime.get(d, w) == null));
+        }
+        if (v.maximumAttribuut() != null && incClass != null) {
+            String mx = v.maximumAttribuut();
+            rules.add(existsFoutRegel(v.naam() + " (leeg of negatief maximum)", v.naam(), bronClass, doelClass, join, incClass,
+                    d -> { Object m = RegelSpraakRuntime.get(d, mx); return m == null || ((BigDecimal) m).signum() < 0; }));
+        }
+        return rules;
+    }
+
+    /** §13.4.10 GELIJKE_DELEN / NAAR_RATO: one accumulate folds the recipients joined to {@code $src} (count, or the
+     *  Σ of the present weights); each recipient {@code $r} gets total/count or total·weight/Σweight, then the §9.7.3
+     *  cap (naar rato) and §9.7.4 floor. A non-zero weight-sum guards the naar-rato divide (a weightless recipient is
+     *  excluded — left unset — and the §9.7.6 empty-weight Fout is the separate companion). Mirrors gelijkOfRatoRegel. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Rule gelijkOfRatoRegel(ResolvedVerdeling v, String join, boolean gelijk, Class<?> bronClass, Class<?> doelClass) {
+        seq = 0;
+        String bronAttr = v.bronAttribuut(), doelAttr = v.doelAttribuut(), gewAttr = v.ratoAttribuut(), maxAttr = v.maximumAttribuut();
+        Integer dec = v.afrondingDecimalen();
+        Variable srcVar = DSL.declarationOf(bronClass, "$src");
+        PatternDSL.PatternDef srcPat = PatternDSL.pattern(srcVar);
+
+        // accumulate the recipients joined to $src: count (gelijke delen) or sum of the present weights (naar rato).
+        Variable cVar = DSL.declarationOf(doelClass, "$c_" + (seq++));
+        PatternDSL.PatternDef accSrc = PatternDSL.pattern(cVar).expr(nextId("join"), (Variable) srcVar,
+                (Predicate2) (c, s) -> RegelSpraakRuntime.get(c, join) == s);
+        Variable foldVar = DSL.declarationOf(Object.class, "$fold_" + (seq++));
+        RuleItemBuilder<?> acc;
+        if (gelijk) {
+            acc = DSL.accumulate(accSrc, DSL.accFunction(CountAccumulateFunction.class).as(foldVar));
+        } else {
+            accSrc = accSrc.expr(nextId("wnn"), (Predicate1) c -> RegelSpraakRuntime.get(c, gewAttr) != null);
+            Variable wVar = DSL.declarationOf(BigDecimal.class, "$w_" + (seq++));
+            accSrc = accSrc.bind(wVar, (Function1) c -> RegelSpraakRuntime.get(c, gewAttr));
+            acc = DSL.accumulate(accSrc, DSL.accFunction(BigDecimalSumAccumulateFunction.class, wVar).as(foldVar));
+        }
+
+        // the recipient pattern: $r joined to $src (naar rato additionally requires a present weight).
+        Variable rVar = DSL.declarationOf(doelClass, "$r");
+        PatternDSL.PatternDef rPat = PatternDSL.pattern(rVar).expr(nextId("rjoin"), (Variable) srcVar,
+                (Predicate2) (r, s) -> RegelSpraakRuntime.get(r, join) == s);
+        if (!gelijk) rPat = rPat.expr(nextId("rwnn"), (Predicate1) r -> RegelSpraakRuntime.get(r, gewAttr) != null);
+
+        List<RuleItemBuilder<?>> items = new ArrayList<>();
+        items.add(srcPat); items.add(acc); items.add(rPat);
+        if (!gelijk)   // a zero weight-sum would divide-by-zero (the spec leaves it undefined): guard it out.
+            items.add(PatternDSL.pattern(foldVar).expr(nextId("sumnz"),
+                    (Predicate1) s -> s != null && ((BigDecimal) s).signum() != 0));
+
+        final boolean gelijkF = gelijk;
+        Block4<org.drools.model.Drools, Object, Object, Object> body = (drools, s, r, fold) -> {
+            BigDecimal totaal = (BigDecimal) RegelSpraakRuntime.get(s, bronAttr);
+            BigDecimal aandeel;
+            if (gelijkF) {
+                aandeel = totaal.divide(RegelSpraakRuntime.toBd(fold), java.math.MathContext.DECIMAL64);
+            } else {
+                BigDecimal gewicht = (BigDecimal) RegelSpraakRuntime.get(r, gewAttr);
+                aandeel = totaal.multiply(gewicht).divide((BigDecimal) fold, java.math.MathContext.DECIMAL64);
+            }
+            if (maxAttr != null) aandeel = RegelSpraakRuntime.rsPlafond(aandeel, (BigDecimal) RegelSpraakRuntime.get(r, maxAttr));
+            if (dec != null) aandeel = RegelSpraakRuntime.rsAfronding(aandeel, dec, java.math.RoundingMode.FLOOR);
+            RegelSpraakRuntime.set(r, doelAttr, aandeel);
+            drools.update(r);
+        };
+        items.add(DSL.on(srcVar, (Variable) rVar, (Variable) foldVar).execute(body));
+        return PatternDSL.rule(v.naam()).attribute(Rule.Attribute.NO_LOOP, true).build(items.toArray(new RuleItemBuilder[0]));
+    }
+
+    /** §9.7.2 "op volgorde van": one share rule whose accumulate collects every recipient joined to {@code $src} into
+     *  a list, then the consequence recomputes the whole ordered allocation via {@link RegelSpraakRuntime#rsVerdeelOpVolgorde}
+     *  (reading the ordering criterium / tie weight / cap reflectively off the collected facts) and assigns each
+     *  recipient {@code $r} its identity-keyed share. The cap+floor are applied inside the helper, group by group, so
+     *  a future onverdeelde-rest reflects the carried-down pot (§9.7.5 Tabel 18). Mirrors opVolgordeRegel. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Rule opVolgordeRegel(ResolvedVerdeling v, String join, Class<?> bronClass, Class<?> doelClass) {
+        seq = 0;
+        String bronAttr = v.bronAttribuut(), doelAttr = v.doelAttribuut(), groepAttr = v.groepeerAttribuut(),
+                gewAttr = v.ratoAttribuut(), maxAttr = v.maximumAttribuut();
+        Integer dec = v.afrondingDecimalen();
+        boolean toenemend = !v.afnemend();
+        Variable srcVar = DSL.declarationOf(bronClass, "$src");
+        PatternDSL.PatternDef srcPat = PatternDSL.pattern(srcVar);
+
+        // collect every recipient joined to $src into one index-stable list.
+        Variable pVar = DSL.declarationOf(doelClass, "$p_" + (seq++));
+        Variable idVar = DSL.declarationOf(Object.class, "$id_" + (seq++));
+        PatternDSL.PatternDef accSrc = PatternDSL.pattern(pVar)
+                .expr(nextId("join"), (Variable) srcVar, (Predicate2) (p, s) -> RegelSpraakRuntime.get(p, join) == s)
+                .bind(idVar, (Function1) p -> p);
+        Variable factsVar = DSL.declarationOf(java.util.List.class, "$facts_" + (seq++));
+        RuleItemBuilder<?> acc = DSL.accumulate(accSrc, DSL.accFunction(CollectListAccumulateFunction.class, idVar).as(factsVar));
+
+        Variable rVar = DSL.declarationOf(doelClass, "$r");
+        PatternDSL.PatternDef rPat = PatternDSL.pattern(rVar).expr(nextId("rjoin"), (Variable) srcVar,
+                (Predicate2) (r, s) -> RegelSpraakRuntime.get(r, join) == s);
+
+        Block4<org.drools.model.Drools, Object, Object, Object> body = (drools, s, r, facts) -> {
+            List<Object> fl = (List<Object>) facts;
+            BigDecimal totaal = (BigDecimal) RegelSpraakRuntime.get(s, bronAttr);
+            List<Object> groepL = new ArrayList<>();
+            for (Object f : fl) groepL.add(RegelSpraakRuntime.get(f, groepAttr));
+            List<Object> gewL = null, maxL = null;
+            if (gewAttr != null) { gewL = new ArrayList<>(); for (Object f : fl) gewL.add(RegelSpraakRuntime.get(f, gewAttr)); }
+            if (maxAttr != null) { maxL = new ArrayList<>(); for (Object f : fl) maxL.add(RegelSpraakRuntime.get(f, maxAttr)); }
+            Map<Object, BigDecimal> shares = RegelSpraakRuntime.rsVerdeelOpVolgorde(totaal, fl, groepL, toenemend, gewL, maxL, dec);
+            RegelSpraakRuntime.set(r, doelAttr, shares.get(r));
+            drools.update(r);
+        };
+        return PatternDSL.rule(v.naam()).attribute(Rule.Attribute.NO_LOOP, true)
+                .build(srcPat, acc, rPat, DSL.on(srcVar, (Variable) rVar, (Variable) factsVar).execute(body));
+    }
+
+    /** §9.7.6 build a verdeling Fout companion: an insert-only rule (NO no-loop, idempotency-guarded) firing once per
+     *  source that has a recipient matching {@code recipientFout} (an empty weight, or a leeg/negatief maximum),
+     *  inserting an Inconsistentie carrying the verdeling's name. The distribution still runs (the §9.7.6 "degrade +
+     *  flag" representation); this only surfaces the Fout. Mirrors the DRL "(leeg gewicht)"/"(leeg of negatief maximum)" rules. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Rule existsFoutRegel(String compNaam, String hostNaam, Class<?> bronClass, Class<?> doelClass, String join,
+                                 Class<?> incClass, Predicate1<Object> recipientFout) {
+        seq = 0;
+        String fqcn = FACTS + ".Inconsistentie";
+        Variable srcVar = DSL.declarationOf(bronClass, "$src");
+        PatternDSL.PatternDef srcPat = PatternDSL.pattern(srcVar);
+        Variable dVar = DSL.declarationOf(doelClass, "$d_" + (seq++));
+        PatternDSL.PatternDef dPat = PatternDSL.pattern(dVar)
+                .expr(nextId("fj"), (Variable) srcVar, (Predicate2) (d, s) -> RegelSpraakRuntime.get(d, join) == s)
+                .expr(nextId("fp"), (Predicate1) recipientFout);
+        Variable incVar = DSL.declarationOf(incClass, "$inc_" + (seq++));
+        PatternDSL.PatternDef guard = PatternDSL.pattern(incVar)
+                .expr(nextId("ig"), (Predicate1) i -> hostNaam.equals(RegelSpraakRuntime.get(i, "regel")))
+                .expr(nextId("ig"), (Variable) srcVar, (Predicate2) (i, s) -> RegelSpraakRuntime.get(i, "subject") == s);
+        Block2<org.drools.model.Drools, Object> body = (drools, s) ->
+                drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, hostNaam, s));
+        return PatternDSL.rule(compNaam).build(srcPat, DSL.exists(dPat), DSL.not(guard), DSL.on(srcVar).execute(body));
+    }
+
+    private List<Rule> skipList(String reason) { overgeslagen.add(reason); return List.of(); }
 
     /** §6.5 Tabel 12 "waarde gedeeld door leeg" companion: the value side already degrades the division to leeg
      *  (rsGedeeld), so this surfaces the Fout via the §9.5 Inconsistentie channel — a SEPARATE insert-only rule per

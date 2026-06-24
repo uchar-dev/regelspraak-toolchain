@@ -109,6 +109,91 @@ public final class RegelSpraakRuntime {
         return x == null ? null : ((BigDecimal) x).setScale(scale, mode);
     }
 
+    // ---- §9.7 verdeling (allocation) helpers (ported from the DRL helper bodies for Phase E) ----
+    /** §9.7.3 cap a naar-rato share at the recipient's maximum (the surplus is NOT redistributed). A null share
+     *  stays leeg; a leeg or NEGATIVE maximum degrades to UNCAPPED — never a negative share — with the §9.7.6
+     *  Tabel 19 Fout surfaced by the separate companion rule. A zero maximum is valid (the recipient gets nothing).
+     *  Mirrors the DRL {@code rsPlafond}. */
+    public static BigDecimal rsPlafond(BigDecimal waarde, BigDecimal max) {
+        return (waarde == null || max == null || max.signum() < 0) ? waarde : waarde.min(max);
+    }
+
+    /** §9.7.2 "op volgorde van" ordered allocation: given the verdeelplafond {@code totaal}, the index-aligned
+     *  recipient lists (the facts for identity keying, the ordering criterium {@code groep}, the optional tie weight
+     *  {@code gewicht} and optional cap {@code max}), the sort direction and the optional floor decimals, compute the
+     *  whole distribution and return an identity-keyed share map. Recipients are partitioned into groups of equal
+     *  criterium and processed in sort order; every member of a tie-group splits the SAME group-entry pot (§9.7.2,
+     *  Wilma 3/4·1200 and Hans 1/4·1200 both off 1200), naar rato of {@code gewicht} or in gelijke delen when no
+     *  weight is present. The §9.7.3 cap and §9.7.4 floor are applied per share, the pot is then depleted by the group
+     *  total, so the undistributed remainder carries to the next group (§9.7.5 Tabel 18: 1800 → 500/500/433/250/91,
+     *  rest 26). A leeg/negative cap degrades to uncapped; a null ordering criterium sorts last; a leeg plafond yields
+     *  an empty map (§9.7.6 row 1); a zero weight-sum gives that group ZERO; recipients past an empty pot get an
+     *  assigned ZERO (never null). Mirrors the DRL {@code rsVerdeelOpVolgorde}. */
+    public static java.util.Map<Object, BigDecimal> rsVerdeelOpVolgorde(BigDecimal totaal, java.util.List<Object> facts,
+            java.util.List<Object> groep, boolean toenemend, java.util.List<Object> gewicht, java.util.List<Object> max, Integer decimals) {
+        java.util.IdentityHashMap<Object, BigDecimal> result = new java.util.IdentityHashMap<>();
+        if (totaal == null) return result;                       // §9.7.6 row 1: leeg verdeelplafond -> niet toegepast
+        int aantal = facts.size();
+        java.util.List<Integer> idx = new java.util.ArrayList<>();
+        for (int i = 0; i < aantal; i++) idx.add(i);
+        for (int a = 1; a < aantal; a++) {                       // stable insertion sort of idx by groep value (nulls last)
+            Integer cur = idx.get(a);
+            Object curKey = groep.get(cur);
+            int b = a - 1;
+            while (b >= 0) {
+                Object bKey = groep.get(idx.get(b));
+                int cmp;
+                if (bKey == null && curKey == null) cmp = 0;
+                else if (bKey == null) cmp = 1;                  // a null criterium sorts after a present one
+                else if (curKey == null) cmp = -1;
+                else { @SuppressWarnings("unchecked") int c = ((Comparable<Object>) bKey).compareTo(curKey); cmp = toenemend ? c : -c; }
+                if (cmp > 0) { idx.set(b + 1, idx.get(b)); b--; } else break;
+            }
+            idx.set(b + 1, cur);
+        }
+        BigDecimal pot = totaal;
+        int p = 0;
+        while (p < aantal) {
+            int q = p;
+            Object key = groep.get(idx.get(p));
+            while (q < aantal && java.util.Objects.equals(key, groep.get(idx.get(q)))) q++;
+            BigDecimal groepPot = pot;                            // §9.7.2: every member of the group splits this same pot
+            BigDecimal som = BigDecimal.ZERO;
+            boolean naarRato = false;
+            for (int k = p; k < q; k++) {
+                Object w = gewicht == null ? null : gewicht.get(idx.get(k));
+                if (w != null) { naarRato = true; som = som.add(((BigDecimal) w).max(BigDecimal.ZERO)); }
+            }
+            int n = q - p;
+            BigDecimal groepSom = BigDecimal.ZERO;
+            for (int k = p; k < q; k++) {
+                int i = idx.get(k);
+                BigDecimal aandeel;
+                if (naarRato) {
+                    Object wo = gewicht == null ? null : gewicht.get(i);
+                    // a negative weight is no proportional basis: clamp it to 0 so it cannot shrink the weight-sum and
+                    // over-allocate the others past the pot (-> a negative rest, §9.7.6).
+                    BigDecimal w = wo == null ? BigDecimal.ZERO : ((BigDecimal) wo).max(BigDecimal.ZERO);
+                    aandeel = som.signum() == 0 ? BigDecimal.ZERO
+                            : groepPot.multiply(w).divide(som, java.math.MathContext.DECIMAL64);
+                } else {
+                    aandeel = groepPot.divide(BigDecimal.valueOf(n), java.math.MathContext.DECIMAL64);
+                }
+                Object cap = max == null ? null : max.get(i);
+                if (cap != null && ((BigDecimal) cap).signum() >= 0
+                        && aandeel.compareTo((BigDecimal) cap) > 0) aandeel = (BigDecimal) cap;   // §9.7.3 cap
+                if (decimals != null) aandeel = aandeel.setScale(decimals, java.math.RoundingMode.FLOOR);   // §9.7.4 floor
+                if (aandeel.signum() < 0) aandeel = BigDecimal.ZERO;
+                result.put(facts.get(i), aandeel);
+                groepSom = groepSom.add(aandeel);
+            }
+            pot = pot.subtract(groepSom);                         // §9.7.5: carry the undistributed remainder to the next group
+            if (pot.signum() < 0) pot = BigDecimal.ZERO;
+            p = q;
+        }
+        return result;
+    }
+
     // ---- identifier convention (matches the transpiler's ident()/getter() Pascal-casing) ----
     /** Strip a leading lidwoord, PascalCase the whitespace-separated words (so a getter/setter name matches the
      *  hand-written fact bean: "leeftijd" -> "Leeftijd", "recht op korting" -> "RechtOpKorting"). */

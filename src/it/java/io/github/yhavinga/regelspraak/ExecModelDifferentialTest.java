@@ -1,8 +1,10 @@
 package io.github.yhavinga.regelspraak;
 
+import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Heffing;
 import io.github.yhavinga.regelspraak.facts.Inconsistentie;
 import io.github.yhavinga.regelspraak.facts.Konto;
+import io.github.yhavinga.regelspraak.facts.Pot;
 import io.github.yhavinga.regelspraak.facts.Meting;
 import io.github.yhavinga.regelspraak.facts.NatuurlijkPersoon;
 import io.github.yhavinga.regelspraak.facts.Passagier;
@@ -670,6 +672,8 @@ class ExecModelDifferentialTest {
     @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 7); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
+    @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 6); }
+    @Test void phase_E_verdeling_fouten_match_drl_back_end()       { runFoutDifferential("Phase E fout", PHASE_E_FOUT, 2); }
 
     // ---- Phase D: §9.5/§13.4.8 consistentieregel — the VIOLATION inserts an Inconsistentie. The observable is the
     //      SET of flagged subjects (not a subject field), so a FoutFixture maps each inserted Inconsistentie to a
@@ -923,6 +927,224 @@ class ExecModelDifferentialTest {
             },
             Map.of(),
             l -> ((Rekensom) l.get(0)).getMaalResultaat()),
+    };
+
+    // ---- Phase E: §9.7/§13.4.10 verdeling — share-rule value parity (gelijke delen / naar rato / op volgorde + cap
+    //      + floor). Restant-free sources: the §9.7.5 onverdeelde-rest rule is a source-modify that forms a share↔rest
+    //      cycle (a focused follow-up), so a verdeling carrying it SKIPS. Facts are [pot, d1, d2, ...]; uit reads the
+    //      recipients' aandeel in insertion order. ----
+    private static Deelnemer deeln(Pot pot, String gewicht, String leeftijd, String maximum) {
+        Deelnemer d = new Deelnemer(); d.setPot(pot);
+        if (gewicht != null) d.setGewicht(new BigDecimal(gewicht));
+        if (leeftijd != null) d.setLeeftijd(new BigDecimal(leeftijd));
+        if (maximum != null) d.setMaximum(new BigDecimal(maximum));
+        return d;
+    }
+    static final Fixture[] PHASE_E = {
+        // §13.4.10 GELIJKE DELEN: 90 over 3 deelnemers -> 30 each (total/count).
+        new Fixture("verdeling gelijke delen (90/3 = 30 ieder)",
+            """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel gelijk
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld in gelijke delen.
+            """,
+            () -> { Pot p = new Pot(); p.setTotaal(new BigDecimal(90));
+                    return List.of(p, deeln(p, null, null, null), deeln(p, null, null, null), deeln(p, null, null, null)); },
+            Map.of(),
+            l -> vals(((Deelnemer) l.get(1)).getAandeel(), ((Deelnemer) l.get(2)).getAandeel(), ((Deelnemer) l.get(3)).getAandeel())),
+
+        // §13.4.10 NAAR RATO: 120 over weights 1/2/3 (Σ6) -> 20/40/60 (total·weight/Σweight).
+        new Fixture("verdeling naar rato (120, gewicht 1:2:3 -> 20/40/60)",
+            """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel rato
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld naar rato van de gewicht.
+            """,
+            () -> { Pot p = new Pot(); p.setTotaal(new BigDecimal(120));
+                    return List.of(p, deeln(p, "1", null, null), deeln(p, "2", null, null), deeln(p, "3", null, null)); },
+            Map.of(),
+            l -> vals(((Deelnemer) l.get(1)).getAandeel(), ((Deelnemer) l.get(2)).getAandeel(), ((Deelnemer) l.get(3)).getAandeel())),
+
+        // §9.7.3 cap + §9.7.4 floor (naar rato): 1200 over 3:1:2 (Σ6) -> 600/200/400, each capped at 300, floor 0 dec
+        // -> 300/200/300 (the capped surplus is NOT redistributed). Maxima all valid -> no Inconsistentie.
+        new Fixture("verdeling naar rato + maximum + afronding (cap 300, floor 0)",
+            """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+                de maximum Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel rato max
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - naar rato van de gewicht,
+                    - met een maximum van de maximum,
+                    - afgerond op 0 decimalen naar beneden.
+            """,
+            () -> { Pot p = new Pot(); p.setTotaal(new BigDecimal(1200));
+                    return List.of(p, deeln(p, "3", null, "300"), deeln(p, "1", null, "300"), deeln(p, "2", null, "300")); },
+            Map.of(),
+            l -> vals(((Deelnemer) l.get(1)).getAandeel(), ((Deelnemer) l.get(2)).getAandeel(), ((Deelnemer) l.get(3)).getAandeel())),
+
+        // §9.7.2 OP VOLGORDE toenemend: 1200 over ages 20/20/22, tie naar rato van gewicht 3:1. The youngest group
+        // {20,20} splits the WHOLE 1200 (Σ4 -> 900/300), exhausting it, so age 22 gets 0 (group-entry-pot reading).
+        new Fixture("verdeling op volgorde toenemend (1200, jongste groep neemt alles)",
+            """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel volgorde
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - op volgorde van toenemende de leeftijd,
+                    - bij een even groot criterium naar rato van de gewicht.
+            """,
+            () -> { Pot p = new Pot(); p.setTotaal(new BigDecimal(1200));
+                    return List.of(p, deeln(p, "3", "20", null), deeln(p, "1", "20", null), deeln(p, "2", "22", null)); },
+            Map.of(),
+            l -> vals(((Deelnemer) l.get(1)).getAandeel(), ((Deelnemer) l.get(2)).getAandeel(), ((Deelnemer) l.get(3)).getAandeel())),
+
+        // §9.7.5 Tabel 18 (op volgorde + cap + floor): 1800 over ages 22/39/39/66/66, tie naar rato 3/2/1/3/1, max
+        // 500/500/500/250/250, floor 0. Group-by-group: 500 (pot 1300); 500/433 (pot 367); 250/91. The cap+floor are
+        // applied INSIDE the helper so the carry-down pot is right — pins against a post-hoc clamp on the full plafond.
+        new Fixture("verdeling op volgorde + max + afronding (Tabel 18: 500/500/433/250/91)",
+            """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal);
+                de maximum Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel volgorde max
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - op volgorde van toenemende de leeftijd,
+                    - bij een even groot criterium naar rato van de gewicht,
+                    - met een maximum van de maximum,
+                    - afgerond op 0 decimalen naar beneden.
+            """,
+            () -> { Pot p = new Pot(); p.setTotaal(new BigDecimal(1800));
+                    return List.of(p, deeln(p, "3", "22", "500"), deeln(p, "2", "39", "500"), deeln(p, "1", "39", "500"),
+                                      deeln(p, "3", "66", "250"), deeln(p, "1", "66", "250")); },
+            Map.of(),
+            l -> vals(((Deelnemer) l.get(1)).getAandeel(), ((Deelnemer) l.get(2)).getAandeel(), ((Deelnemer) l.get(3)).getAandeel(),
+                      ((Deelnemer) l.get(4)).getAandeel(), ((Deelnemer) l.get(5)).getAandeel())),
+
+        // §9.7.2 OP VOLGORDE afnemend: the OLDEST group is served first. Age 22 alone takes the whole 1200, so the
+        // age-20 group gets 0 (the sort direction flips the depletion order).
+        new Fixture("verdeling op volgorde afnemend (oudste groep neemt alles)",
+            """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel volgorde afnemend
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - op volgorde van afnemende de leeftijd,
+                    - bij een even groot criterium naar rato van de gewicht.
+            """,
+            () -> { Pot p = new Pot(); p.setTotaal(new BigDecimal(1200));
+                    return List.of(p, deeln(p, "3", "20", null), deeln(p, "1", "20", null), deeln(p, "2", "22", null)); },
+            Map.of(),
+            l -> vals(((Deelnemer) l.get(1)).getAandeel(), ((Deelnemer) l.get(2)).getAandeel(), ((Deelnemer) l.get(3)).getAandeel())),
+    };
+
+    // ---- Phase E fout: §9.7.6 Tabel 19 — an empty weight (naar rato) or a leeg/negatief maximum at ANY recipient is
+    //      a Fout, surfaced as a SEPARATE insert-only Inconsistentie (the distribution still runs / degrades). Observe
+    //      the SET of flagged pots; subjectKey = the pot's totaal (distinguishing the fout-pot from the goede). ----
+    static final FoutFixture[] PHASE_E_FOUT = {
+        // empty weight: the fout-pot (120) has a weightless recipient -> flagged; the goede pot (100) is fully weighted.
+        new FoutFixture("verdeling naar rato: leeg gewicht (alleen de fout-pot gemeld)",
+            """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel rato fout
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld naar rato van de gewicht.
+            """,
+            () -> {
+                Pot fout = new Pot(); fout.setTotaal(new BigDecimal(120));
+                Pot goed = new Pot(); goed.setTotaal(new BigDecimal(100));
+                return List.of(fout, deeln(fout, "1", null, null), deeln(fout, "2", null, null), deeln(fout, null, null, null),
+                               goed, deeln(goed, "1", null, null), deeln(goed, "1", null, null));
+            },
+            o -> "totaal=" + ((Pot) o).getTotaal()),
+
+        // leeg/negatief maximum: the fout-pot (1200) has a no-maximum and a negative-maximum recipient -> flagged; the
+        // goede pot (120) has only valid maxima. (All recipients are weighted, so the empty-weight fout does not fire.)
+        new FoutFixture("verdeling naar rato: leeg of negatief maximum (alleen de fout-pot)",
+            """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+                de maximum Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel rato max fout
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - naar rato van de gewicht,
+                    - met een maximum van de maximum.
+            """,
+            () -> {
+                Pot fout = new Pot(); fout.setTotaal(new BigDecimal(1200));
+                Pot goed = new Pot(); goed.setTotaal(new BigDecimal(120));
+                return List.of(fout, deeln(fout, "3", null, null), deeln(fout, "2", null, "-5"), deeln(fout, "1", null, "300"),
+                               goed, deeln(goed, "1", null, "300"));
+            },
+            o -> "totaal=" + ((Pot) o).getTotaal()),
     };
 
     private void runDifferential(String label, Fixture[] fixtures, int minDiffed) {
