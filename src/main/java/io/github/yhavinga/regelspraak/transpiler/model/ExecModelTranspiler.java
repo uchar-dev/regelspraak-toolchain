@@ -149,11 +149,26 @@ public final class ExecModelTranspiler {
         }
 
         RuleItemBuilder<?> consequence;
+        // §5.1.4 a single-period TEMPORAL doel (a List<Segment> timeline attribute) is WRITTEN a timeline, not a
+        // scalar: the value must be a §13.4.17.57/.58 timeline producer (aantal-dagen-in / tijdsevenredig deel).
+        RegelSpraakModel.Granulariteit doelGran = doel.objecttype().attribuutGranulariteit.get(doel.attribuut());
+        boolean temporalDoel = doelGran != null && !doel.objecttype().attribuutTijdlijnAantal.containsKey(doel.attribuut());
         // §5.8/§13.4.17 AGGREGATION value (SOM/TOTAAL/AANTAL/MIN/MAX over related elements): an accumulate CE binds
         // the result in the when, read in the consequence — distinct from a scalar fact-local value.
-        WaardeFn tijdTotaal = isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie ftt
+        WaardeFn tijdTotaal = !temporalDoel && isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie ftt
                 && ftt.kind() == Expr.FunctieKind.TOTAAL ? tijdreeksTotaal(ftt, doel.objecttype()) : null;
-        if (tijdTotaal != null) {
+        if (temporalDoel) {
+            // §13.4.17.57/.58 lower the timeline-producing RHS to a (subject -> List<Segment>) function and set it.
+            // A producer we cannot lower is an honest skip (never a scalar setter on a List field, which would not
+            // even reflect cleanly). NO_LOOP guards the modify; the List property is read by no pattern, so nothing
+            // reacts to the write (Oracle-confirmed).
+            java.util.function.Function<Object, Object> tw = temporeleWaarde(r.waarde(), doel.objecttype(), doelGran, doel.type());
+            if (tw == null) return skip("regel (temporele toekenning buiten Phase-F scope): " + r.naam());
+            consequence = DSL.on(sVar).execute((Block2<org.drools.model.Drools, Object>) (drools, s) -> {
+                RegelSpraakRuntime.set(s, doelProp, tw.apply(s));
+                drools.update(s);
+            });
+        } else if (tijdTotaal != null) {
             // §7.1 a TOTAAL over a TEMPORAL attribute is a SCALAR timeline fold (rsTijdTotaal over the subject's own/
             // navigated List<Segment>, optionally gedurende-clipped) — NOT an instance accumulate, and reads no globals.
             BigDecimal vf = valueFactor(r.waarde().type(), doel.type());
@@ -436,6 +451,51 @@ public final class ExecModelTranspiler {
     static Class<?> segmentClass() {
         try { return Class.forName(FACTS + ".Segment"); }
         catch (ClassNotFoundException e) { return null; }
+    }
+
+    // ---------------- §13.4.17.57/.58 temporal WRITE producers (Phase F) ----------------
+    /** §5.1.4 lower a RHS that PRODUCES a timeline written to a single-period temporal doel attribute, into a
+     *  {@code (subject -> List<Segment>)} function — or null when it is not a supported producer (caller skips). The
+     *  first writer: §13.4.17.57 "het aantal dagen in &lt;de maand|het jaar&gt; dat &lt;temporeel kenmerk&gt;" ->
+     *  {@link RegelSpraakRuntime#rsAantalDagenIn} over the kenmerk's true-period timeline, bucketed by the DOEL's
+     *  granularity (the operator's "in &lt;maand|jaar&gt;" MUST match the doel tijdlijn, §7.2 — a mismatch skips
+     *  rather than silently bucketing by the doel). Mirrors DrlTranspiler.temporeleWaarde. (§13.4.17.58
+     *  tijdsevenredig deel is a later increment.) */
+    private java.util.function.Function<Object, Object> temporeleWaarde(Expr w, Objecttype subject,
+            RegelSpraakModel.Granulariteit gran, Datatype doelType) {
+        if (w instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.AANTAL_DAGEN_IN
+                && f.granulariteit() == gran && subject != null) {
+            java.util.function.Function<Object, List<?>> cond = conditieTijdreeks(f.filter(), subject);   // single kenmerk / §8.4 compound
+            if (cond != null) {
+                Class<?> segCls = segmentClass();
+                if (segCls != null) {
+                    final String granName = gran.name();
+                    return s -> RegelSpraakRuntime.rsAantalDagenIn(cond.apply(s), granName, segCls);
+                }
+            }
+        }
+        return null;
+    }
+
+    /** The TRUE-period {@code (subject -> List<Segment>)} timeline of a temporal WRITE-producer's condition. A single
+     *  positive single-period subject kenmerk is its getter; a §8.4.2 compound is a later increment. null when
+     *  unsupported (a negated / navigated / multi-period / non-kenmerk condition) — the caller markers, never a
+     *  mis-count. Mirrors DrlTranspiler.conditieTijdreeks. */
+    private java.util.function.Function<Object, List<?>> conditieTijdreeks(Conditie filter, Objecttype subject) {
+        if (filter instanceof Conditie.Kenmerk k) return temporeelKenmerkTijdreeks(k, subject);
+        return null;   // §8.4.2 compound -> later increment
+    }
+
+    /** A single positive single-period subject kenmerk's TRUE-period reader ({@code s -> the kenmerk's List<Segment>}),
+     *  or null when not lowerable as a standalone true-period timeline (a navigated / negated / multi-period /
+     *  non-subject kenmerk — a negated member has no standalone complement here, so the caller markers). Mirrors
+     *  DrlTranspiler.temporeelKenmerkTijdreeks. */
+    private java.util.function.Function<Object, List<?>> temporeelKenmerkTijdreeks(Conditie.Kenmerk k, Objecttype subject) {
+        if (k.navigatie() != null || k.negatie() || subject == null
+                || !subject.kenmerkGranulariteit.containsKey(k.kenmerk())
+                || subject.kenmerkTijdlijnAantal.containsKey(k.kenmerk())) return null;
+        String kenmerk = k.kenmerk();
+        return s -> (List<?>) RegelSpraakRuntime.get(s, kenmerk);
     }
 
     /** Lower a voorwaarde into the subject pattern's in-pattern constraints (plus far-side exists/not joins as

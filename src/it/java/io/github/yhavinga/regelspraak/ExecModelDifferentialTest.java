@@ -708,6 +708,17 @@ class ExecModelDifferentialTest {
     private static Segment seg(int y1, int m1, int d1, int y2, int m2, int d2, String w) {
         return new Segment(LocalDate.of(y1, m1, d1), LocalDate.of(y2, m2, d2), w == null ? null : new BigDecimal(w));
     }
+    /** Canonicalise a List&lt;Segment&gt; read-back so the two back-ends' distinct Segment instances compare
+     *  element-wise by van|tot|waarde (Segment has no equals); waarde is scale-insensitive, null shown as "leeg". */
+    private static Object tl(Object segments) {
+        List<Object> out = new ArrayList<>();
+        if (segments != null) for (Object o : (List<?>) segments) {
+            Segment s = (Segment) o;
+            out.add(s.getVan() + "|" + s.getTot() + "|"
+                    + (s.getWaarde() == null ? "leeg" : s.getWaarde().stripTrailingZeros().toPlainString()));
+        }
+        return out;
+    }
     private static final String TOTAAL_HDR =
             "Domein Bedrag is van het type Numeriek (getal met 2 decimalen)\n";
 
@@ -823,6 +834,39 @@ class ExecModelDifferentialTest {
             l -> vals(((Passagier) l.get(0)).getTotaleBelastingvermindering(), ((Passagier) l.get(1)).getTotaleBelastingvermindering())),   // 0, null
     };
 
+    // ---- Phase F2 fixtures: §13.4.17.57 "het aantal dagen in <maand|jaar> dat <kenmerk>" — a temporal WRITE ----
+    static final Fixture[] PHASE_F2 = {
+        // A5 §7.2/§13.4.17.57: write a per-month true-day-count timeline — 23 dg in Jan (1 + 22), 13 dg in Feb [1-2,14-2).
+        single("§13.4.17.57 aantal dagen in de maand (Jan 23 / Feb 13)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                het aantal dagen recht op belastingvermindering Numeriek (geheel getal) met eenheid dg voor elke maand;
+            Regel Aantal dagen recht op belastingvermindering
+                geldig altijd
+                    Het aantal dagen recht op belastingvermindering van een passagier moet gesteld worden op het aantal dagen in de maand dat hij een recht op belastingvermindering heeft.
+            """,
+            () -> passagier(p -> p.setRechtOpBelastingvermindering(List.of(
+                    seg(2024, 1, 1, 2024, 1, 2, null), seg(2024, 1, 10, 2024, 2, 14, null)))),
+            Map.of(),
+            p -> tl(p.getAantalDagenRechtOpBelastingvermindering())),   // [Jan→23, Feb→13]
+
+        // §4.21 a null kenmerk timeline -> an empty result (no true days), no crash.
+        single("§4.21 aantal dagen over een leeg kenmerk = lege tijdreeks",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                het aantal dagen recht op belastingvermindering Numeriek (geheel getal) met eenheid dg voor elke maand;
+            Regel Aantal dagen recht op belastingvermindering
+                geldig altijd
+                    Het aantal dagen recht op belastingvermindering van een passagier moet gesteld worden op het aantal dagen in de maand dat hij een recht op belastingvermindering heeft.
+            """,
+            () -> new Passagier(),
+            Map.of(),
+            p -> tl(p.getAantalDagenRechtOpBelastingvermindering())),   // []
+    };
+
+    @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 4); }
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }
