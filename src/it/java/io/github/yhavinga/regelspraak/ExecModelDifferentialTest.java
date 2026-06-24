@@ -949,6 +949,15 @@ class ExecModelDifferentialTest {
             l -> vals(((Passagier) l.get(0)).getBasistarief(), ((Passagier) l.get(1)).getBasistarief(),
                       ((Passagier) l.get(2)).getBasistarief())),   // 50, null, null
 
+        // (adversary) datum EERDER_OF_GELIJK boundary: geboortedatum exactly == 1-1-2000 satisfies "eerder of gelijk
+        // aan 1-1-2000" (inclusive), so it fires; 2005 does not.
+        new Fixture("datum eerder-of-gelijk boundary (geboortedatum exactly 1-1-2000 fires)",
+            "Objecttype de Passagier\n    de geboortedatum Datum in dagen;\n    het basistarief Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        Het basistarief van een passagier moet gesteld worden op 50 indien zijn geboortedatum eerder of gelijk is aan 1-1-2000.\n",
+            () -> List.of(passagier(p -> p.setGeboortedatum(dat(2000, 1, 1))), passagier(p -> p.setGeboortedatum(dat(2005, 1, 1)))),
+            Map.of(),
+            l -> vals(((Passagier) l.get(0)).getBasistarief(), ((Passagier) l.get(1)).getBasistarief())),   // 50, null
+
         // §8.1.1 NAVIGATED datum ordering: vluchtdatum van zijn reis later dan 1-1-2020. A null reis short-circuits
         // (mvel `reis!.vluchtdatum`). 2025 > 2020 fires, 2010 does not, null reis no fire.
         new Fixture("datum ordering condition (navigated: vluchtdatum van zijn reis later dan 1-1-2020)",
@@ -1602,6 +1611,27 @@ class ExecModelDifferentialTest {
             MULTI_REGEL, () -> List.of(new Passagier()), Map.of("rekendatum", LocalDate.of(2021, 6, 1)),
             l -> ((Passagier) l.get(0)).getPrijs()),   // 20
 
+        // (adversary) boundary: rekendatum exactly on the inclusive `vanaf` (geldig vanaf 2018 = 2018-01-01) fires.
+        new Fixture("geldig vanaf 2018, rekendatum exactly on 2018-01-01 -> fires",
+            DATED_REGEL, () -> List.of(new Passagier()), Map.of("rekendatum", LocalDate.of(2018, 1, 1)),
+            l -> ((Passagier) l.get(0)).getPrijs()),   // 50
+
+        // (adversary) an ALTIJD rule COEXISTS with a dated rule: the rekendatum global is registered (a dated rule
+        // exists), but the altijd rule must NOT be guarded — it fires regardless of rekendatum. rekendatum 2010 is
+        // before the dated window, so basistarief := 7 (altijd) fires and prijs (dated) does not.
+        new Fixture("altijd rule unguarded while a sibling dated rule is window-guarded",
+            "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    het basistarief Numeriek (geheel getal);\n"
+            + "Regel A\n    geldig altijd\n        Het basistarief van een passagier moet gesteld worden op 7.\n"
+            + "Regel D\n    geldig vanaf 2018\n        De prijs van een passagier moet gesteld worden op 50.\n",
+            () -> List.of(new Passagier()), Map.of("rekendatum", LocalDate.of(2010, 1, 1)),
+            l -> vals(((Passagier) l.get(0)).getBasistarief(), ((Passagier) l.get(0)).getPrijs())),   // 7, null
+
+        // (adversary) an UNSET rekendatum (the global is declared but never set): the dated rule does not fire — DRL's
+        // `rekendatum != null` guard and the model's `rd instanceof LocalDate` guard both no-match. No global in the map.
+        new Fixture("dated rule with an UNSET rekendatum -> no fire (both back-ends)",
+            DATED_REGEL, () -> List.of(new Passagier()), Map.of(),
+            l -> ((Passagier) l.get(0)).getPrijs()),   // null
+
         // cross-family: a dated FEITCREATIE — the relation is created only inside the window (the guard rides the anker).
         new Fixture("dated feitcreatie, rekendatum 2020 inside -> relation created",
             FEIT_HDR + "Regel ken bonus toe\n    geldig vanaf 2018\n        Een bonuspassagier van een vlucht is een passagier van de vlucht.\n",
@@ -1762,8 +1792,8 @@ class ExecModelDifferentialTest {
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 3); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
-    @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 11); }
-    @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 9); }
+    @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 12); }
+    @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 4); }
     @Test void beslistabel_rows_match_drl_back_end()          { runDifferential("Beslistabel", BESLISTABEL, 6); }
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }
