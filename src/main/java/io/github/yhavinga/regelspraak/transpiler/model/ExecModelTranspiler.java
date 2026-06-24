@@ -481,11 +481,15 @@ public final class ExecModelTranspiler {
             Set<String> g = new LinkedHashSet<>(lf.globals()); g.addAll(rf.globals());
             return new WaardeFn((s, gm) -> {
                 Object lv = lfn.apply(s, gm), rv = rfn.apply(s, gm);
+                // PLUS/MIN/MAAL mirror DRL's mvel INFIX (+/-/*), which rounds to MathContext.DECIMAL128 — NOT
+                // Java's exact BigDecimal arithmetic (which diverges once the exact result exceeds 34 sig digits).
+                // VERMINDERD_MET uses the EXACT rsVerminderd helper and GEDEELD_DOOR the DECIMAL64 rsGedeeld — as DRL.
+                java.math.MathContext mc = java.math.MathContext.DECIMAL128;
                 return switch (op) {
-                    case PLUS           -> RegelSpraakRuntime.rsNul(lv).add(RegelSpraakRuntime.rsNul(rv));
-                    case MIN            -> RegelSpraakRuntime.rsNul(lv).subtract(RegelSpraakRuntime.rsNul(rv));
+                    case PLUS           -> RegelSpraakRuntime.rsNul(lv).add(RegelSpraakRuntime.rsNul(rv), mc);
+                    case MIN            -> RegelSpraakRuntime.rsNul(lv).subtract(RegelSpraakRuntime.rsNul(rv), mc);
                     case VERMINDERD_MET -> RegelSpraakRuntime.rsVerminderd(lv, rv);
-                    case MAAL           -> RegelSpraakRuntime.rsNul(lv).multiply(RegelSpraakRuntime.rsNul(rv));
+                    case MAAL           -> RegelSpraakRuntime.rsNul(lv).multiply(RegelSpraakRuntime.rsNul(rv), mc);
                     case GEDEELD_DOOR   -> RegelSpraakRuntime.rsGedeeld(lv, rv);
                     default             -> null;   // unreachable (arithmeticOp gates)
                 };
@@ -707,12 +711,12 @@ public final class ExecModelTranspiler {
         for (int i = 0; i < u.sleutels().size(); i++) {
             String key = u.sleutels().get(i);
             src = src.expr(nextId("kj"), (Variable) keyVars.get(i),
-                    (Predicate2) (o, k) -> java.util.Objects.equals(RegelSpraakRuntime.get(o, key), k));
+                    (Predicate2) (o, k) -> RegelSpraakRuntime.gelijkWaarde(RegelSpraakRuntime.get(o, key), k));
         }
         if (scopeVar != null) {
             String sv = u.scopeVeld();
             src = src.expr(nextId("sj"), (Variable) scopeVar,
-                    (Predicate2) (o, sc) -> java.util.Objects.equals(RegelSpraakRuntime.get(o, sv), sc));
+                    (Predicate2) (o, sc) -> RegelSpraakRuntime.gelijkWaarde(RegelSpraakRuntime.get(o, sv), sc));
         }
         Variable cntVar = DSL.declarationOf(Object.class, "$cnt_" + (seq++));
         RuleItemBuilder<?> accItem = DSL.accumulate(src, DSL.accFunction(CountAccumulateFunction.class).as(cntVar));

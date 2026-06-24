@@ -48,6 +48,14 @@ public final class RegelSpraakRuntime {
 
     public static BigDecimal num(Object o) { return (BigDecimal) o; }
 
+    /** §8.1.6 value equality matching mvel's {@code ==}: two BigDecimals compare by VALUE (scale-insensitive,
+     *  100 == 100.0), everything else by {@code equals}. Used for the uniciteit key join (mvel reads
+     *  {@code key == $k0} as compareTo==0, not the scale-sensitive BigDecimal.equals). */
+    public static boolean gelijkWaarde(Object a, Object b) {
+        if (a instanceof BigDecimal x && b instanceof BigDecimal y) return x.compareTo(y) == 0;
+        return java.util.Objects.equals(a, b);
+    }
+
     /** §9.5 build an Inconsistentie fact reflectively (the fact class is a runtime objecttype, unknown at
      *  transpiler-compile time) — {@code new <fqcn>(regel, subject)} — for a consistentie/uniciteit companion
      *  rule to insert. The model back-end's analog of the DRL {@code insert(new ….Inconsistentie(...))}. */

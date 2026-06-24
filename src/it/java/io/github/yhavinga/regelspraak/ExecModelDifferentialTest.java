@@ -667,9 +667,9 @@ class ExecModelDifferentialTest {
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 3); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 8); }
-    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 6); }
+    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 7); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
-    @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 1); }
+    @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
 
     // ---- Phase D: §9.5/§13.4.8 consistentieregel — the VIOLATION inserts an Inconsistentie. The observable is the
     //      SET of flagged subjects (not a subject field), so a FoutFixture maps each inserted Inconsistentie to a
@@ -756,6 +756,24 @@ class ExecModelDifferentialTest {
                 return List.of(a, b, c, d, e);
             },
             o -> "bsn=" + ((NatuurlijkPersoon) o).getBurgerservicenummer()),
+
+        // (adversary repro) uniciteit keys of different SCALE (100 vs 100.0): mvel '==' is scale-INSENSITIVE
+        // (compareTo), so DRL flags BOTH as a duplicate. Agrees only after the model's key join uses gelijkWaarde
+        // (compareTo) instead of the scale-sensitive Objects.equals.
+        new FoutFixture("uniciteit: keys of different scale (100 vs 100.0)",
+            """
+            Objecttype de Natuurlijk persoon
+                het burgerservicenummer Numeriek (geheel getal);
+            Regel bsn uniek
+                geldig altijd
+                    De burgerservicenummers van alle Natuurlijk persoon moeten uniek zijn.
+            """,
+            () -> {
+                NatuurlijkPersoon a = new NatuurlijkPersoon(); a.setBurgerservicenummer(new BigDecimal("100"));
+                NatuurlijkPersoon b = new NatuurlijkPersoon(); b.setBurgerservicenummer(new BigDecimal("100.0")); // same value, scale 1
+                return List.of(a, b);
+            },
+            o -> "bsn=" + ((NatuurlijkPersoon) o).getBurgerservicenummer().stripTrailingZeros().toPlainString()),
 
         // §6.5 deling-door-leeg COMPANION: "deelResultaat := grondslag gedeeld door aftrek". 12/leeg is a fout
         // (flagged); leeg/4 short-circuits to 0 (no fout); 12/4 is fine (no fout). The Inconsistentie carries the
@@ -884,6 +902,27 @@ class ExecModelDifferentialTest {
             },
             Map.of(),
             l -> vals(((Heffing) l.get(0)).getNetto(), ((Heffing) l.get(1)).getNetto())),   // 4.47, null
+
+        // (adversary repro) MAAL of two high-precision decimals: mvel's infix '*' rounds to DECIMAL128; an EXACT
+        // .multiply diverges once the product exceeds 34 sig digits. Agrees only after the model uses DECIMAL128.
+        new Fixture("MAAL high-precision (DECIMAL128 parity)",
+            """
+            Objecttype de Rekensom
+                de grondslag Numeriek (getal met 9 decimalen);
+                de aftrek Numeriek (getal met 9 decimalen);
+                de maalResultaat Numeriek (getal met 18 decimalen);
+            Regel rx
+                geldig altijd
+                    De maalResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom maal de aftrek van een Rekensom.
+            """,
+            () -> {
+                Rekensom r = new Rekensom();
+                r.setGrondslag(new BigDecimal("123456789.123456789"));
+                r.setAftrek(new BigDecimal("987654321.987654321"));
+                return List.of(r);
+            },
+            Map.of(),
+            l -> ((Rekensom) l.get(0)).getMaalResultaat()),
     };
 
     private void runDifferential(String label, Fixture[] fixtures, int minDiffed) {
