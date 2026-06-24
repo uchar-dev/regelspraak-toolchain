@@ -147,8 +147,8 @@ public final class ExecModelTranspiler {
             Rule rule = feitCreatie(fc);
             if (rule != null) m.addRule(rule);
         }
-        if (!model.uniciteitUnies.isEmpty())   // §8.1.6 union uniqueness across sources — later phase
-            overgeslagen.add(model.uniciteitUnies.size() + " uniciteit-unie(s) — latere fase");
+        for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie u : model.uniciteitUnies)  // §8.1.6 "verenigd met" (Phase H)
+            for (Rule rule : uniciteitUnie(u)) m.addRule(rule);
         return m;
     }
 
@@ -1846,6 +1846,83 @@ public final class ExecModelTranspiler {
         Block2<org.drools.model.Drools, Object> body = (drools, s) ->
                 drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, naam, s));
         return PatternDSL.rule(naam).build(subjPat, accItem, cntPat, DSL.not(guard), DSL.on(sVar).execute(body));
+    }
+
+    /** §8.1.6 "verenigd met" cross-type union uniqueness ("de namen van alle Cirkels verenigd met de namen van alle
+     *  Vierkanten moeten uniek zijn"): the key (or key tuple) must be unique across the UNION of every source's key
+     *  space. One rule per source — a subject of that source binds its non-null key parts, an accumulate per source
+     *  counts the instances (of that source) whose key matches, and the rule flags the subject when the SUM of the
+     *  counts over all sources exceeds 1. The Inconsistentie carries the SHARED union name (so the flagged-set spans
+     *  the sources); the rule NAME is disambiguated by the 1-based source index (rule names must be unique). The sum
+     *  is gated in the consequence (insert iff >1) — same observable as DRL's {@code eval(sum>1)} when-gate, but
+     *  general over any source count. Mirrors DrlTranspiler.uniciteitUnie. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private List<Rule> uniciteitUnie(io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie u) {
+        var bronnen = u.bronnen();
+        if (bronnen.isEmpty()) return skipList("uniciteit-unie (geen bronnen): " + u.naam());
+        int arity = bronnen.get(0).sleutels().size();
+        Class<?> incClass = inconsistentieClass();
+        if (incClass == null) return skipList("uniciteit-unie (geen Inconsistentie-fact): " + u.naam());
+        for (var b : bronnen) {
+            if (b.sleutels().size() != arity) return skipList("uniciteit-unie (sleutel-ariteit verschilt): " + u.naam());
+            if (factClass(b.type()) == null) return skipList("uniciteit-unie (geen fact-class " + b.type().naam + "): " + u.naam());
+            for (String k : b.sleutels())
+                if (b.type().attribuutGranulariteit.containsKey(k)) return skipList("uniciteit-unie (temporele sleutel): " + u.naam());
+        }
+        String naam = u.naam();
+        String fqcn = FACTS + ".Inconsistentie";
+        List<Rule> rules = new ArrayList<>();
+        for (int s = 0; s < bronnen.size(); s++) {
+            var subj = bronnen.get(s);
+            Class<?> subjClass = factClass(subj.type());
+            seq = 0;
+            Variable sVar = DSL.declarationOf(subjClass, "$subject");
+            PatternDSL.PatternDef subjPat = geldigGuard(PatternDSL.pattern(sVar), u.geldigheid());   // §4.2 window
+            List<Variable> keyVars = new ArrayList<>();
+            for (int i = 0; i < arity; i++) {
+                String key = subj.sleutels().get(i);
+                Variable kVar = DSL.declarationOf(Object.class, "$k_" + (seq++));
+                subjPat = subjPat.bind(kVar, (Function1) o -> RegelSpraakRuntime.get(o, key))
+                        .expr(nextId("uknn"), (Predicate1) o -> RegelSpraakRuntime.get(o, key) != null);   // null key cannot collide
+                keyVars.add(kVar);
+            }
+            List<RuleItemBuilder<?>> items = new ArrayList<>();
+            items.add(subjPat);
+            List<Variable> countVars = new ArrayList<>();
+            for (int j = 0; j < bronnen.size(); j++) {                 // one count per source, matched by key value
+                var b = bronnen.get(j);
+                Variable oVar = DSL.declarationOf(factClass(b.type()), "$o" + j + "_" + (seq++));
+                PatternDSL.PatternDef src = PatternDSL.pattern(oVar);
+                for (int i = 0; i < arity; i++) {
+                    String key = b.sleutels().get(i);
+                    src = src.expr(nextId("ukj"), (Variable) keyVars.get(i),
+                            (Predicate2) (e, k) -> RegelSpraakRuntime.gelijkWaarde(RegelSpraakRuntime.get(e, key), k));
+                }
+                Variable cntVar = DSL.declarationOf(Object.class, "$c" + j + "_" + (seq++));
+                items.add(DSL.accumulate(src, DSL.accFunction(CountAccumulateFunction.class).as(cntVar)));
+                countVars.add(cntVar);
+            }
+            // idempotency guard: not Inconsistentie( regel == naam, subject == $subject )
+            Variable incVar = DSL.declarationOf(incClass, "$inc_" + (seq++));
+            PatternDSL.PatternDef guard = PatternDSL.pattern(incVar)
+                    .expr(nextId("uig"), (Predicate1) i -> naam.equals(RegelSpraakRuntime.get(i, "regel")))
+                    .expr(nextId("uig"), (Variable) sVar, (Predicate2) (i, ss) -> RegelSpraakRuntime.get(i, "subject") == ss);
+            items.add(DSL.not(guard));
+            // consequence: sum the per-source counts; insert iff > 1 (insert-only -> NO no-loop).
+            List<Variable> vars = new ArrayList<>();
+            vars.add(sVar);
+            vars.addAll(countVars);
+            final int nC = countVars.size();
+            RuleItemBuilder<?> consequence = consequenceOf(vars.toArray(new Variable[0]), (drools, args) -> {
+                int sum = 0;
+                for (int c = 0; c < nC; c++) sum += ((Number) args[1 + c]).intValue();
+                if (sum > 1) drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, naam, args[0]));
+            });
+            if (consequence == null) { overgeslagen.add("uniciteit-unie (te veel bronnen): " + u.naam()); return rules; }
+            items.add(consequence);
+            rules.add(PatternDSL.rule(naam + " (" + subj.type().naam + " " + (s + 1) + ")").build(items.toArray(new RuleItemBuilder[0])));
+        }
+        return rules;
     }
 
     // ---------------- §9.7 / §13.4.10 verdeling (Phase E) ----------------

@@ -1954,7 +1954,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 8); }
     @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 7); }
-    @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 3); }
+    @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 4); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
     @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
@@ -2535,6 +2535,26 @@ class ExecModelDifferentialTest {
                     Persoon zonder = new Persoon(); zonder.setLeeftijd(new BigDecimal(35));                        // partner leeg -> violation
                     return List.of(ouder, jong, oud, zonder); },
             o -> "lft=" + ((Persoon) o).getLeeftijd()),
+
+        // §8.1.6 "verenigd met" cross-type union uniqueness: names unique across the UNION of Cirkels and Vierkanten.
+        // "A" appears in BOTH a Cirkel and a Vierkant -> both flagged; "B" (Cirkel only) and "C" (Vierkant only) unique.
+        new FoutFixture("uniciteit-unie: namen van Cirkels verenigd met namen van Vierkanten",
+            """
+            Objecttype de Cirkel
+                de naam Tekst;
+            Objecttype het Vierkant
+                de naam Tekst;
+            Regel uniek
+                geldig altijd
+                    De namen van alle Cirkels verenigd met de namen van alle Vierkanten moeten uniek zijn.
+            """,
+            () -> { io.github.yhavinga.regelspraak.facts.Cirkel ca = new io.github.yhavinga.regelspraak.facts.Cirkel(); ca.setNaam("A");
+                    io.github.yhavinga.regelspraak.facts.Cirkel cb = new io.github.yhavinga.regelspraak.facts.Cirkel(); cb.setNaam("B");
+                    io.github.yhavinga.regelspraak.facts.Vierkant va = new io.github.yhavinga.regelspraak.facts.Vierkant(); va.setNaam("A");
+                    io.github.yhavinga.regelspraak.facts.Vierkant vc = new io.github.yhavinga.regelspraak.facts.Vierkant(); vc.setNaam("C");
+                    return List.of(ca, cb, va, vc); },
+            o -> (o instanceof io.github.yhavinga.regelspraak.facts.Cirkel c ? "Cirkel:" + c.getNaam()
+                                                                 : "Vierkant:" + ((io.github.yhavinga.regelspraak.facts.Vierkant) o).getNaam())),
     };
 
     // ---- Phase E fout: §9.7.6 Tabel 19 — an empty weight (naar rato) or a leeg/negatief maximum at ANY recipient is
