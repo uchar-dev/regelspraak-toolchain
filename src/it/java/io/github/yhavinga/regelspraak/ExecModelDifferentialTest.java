@@ -1682,6 +1682,40 @@ class ExecModelDifferentialTest {
             Map.of(), l -> vals(((Passagier) l.get(0)).getPrijs(), ((Passagier) l.get(1)).getPrijs(), ((Passagier) l.get(2)).getPrijs())),   // 10, 50, 100
     };
 
+    // ---- Phase H builtin scalar Functies: §13.4.17.17 abs, §13.4.17.18-.20 date components, §13.4.17.37 paasdag
+    //      (ported rsAbs/rsDatumDeel/rsEerstePaasdag). ----
+    static final Fixture[] PHASE_H_FUNC = {
+        new Fixture("absolute waarde (|-5| = 5, |leeg| = leeg)",
+            "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    het basistarief Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De prijs van een passagier moet gesteld worden op de absolute waarde van (zijn basistarief).\n",
+            () -> List.of(passagier(p -> p.setBasistarief(new BigDecimal(-5))), new Passagier()),
+            Map.of(), l -> vals(((Passagier) l.get(0)).getPrijs(), ((Passagier) l.get(1)).getPrijs())),   // 5, null
+
+        new Fixture("maand uit (geboortedatum 2020-06-15 -> 6)",
+            "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    de geboortedatum Datum in dagen;\n"
+            + "Regel R\n    geldig altijd\n        De prijs van een passagier moet gesteld worden op de maand uit (zijn geboortedatum).\n",
+            () -> List.of(passagier(p -> p.setGeboortedatum(dat(2020, 6, 15))), new Passagier()),
+            Map.of(), l -> vals(((Passagier) l.get(0)).getPrijs(), ((Passagier) l.get(1)).getPrijs())),   // 6, null (leeg datum -> leeg)
+
+        new Fixture("eerste paasdag van 2024 = 2024-03-31",
+            "Objecttype de Passagier\n    de geboortedatum Datum in dagen;\n"
+            + "Regel R\n    geldig altijd\n        De geboortedatum van een passagier moet gesteld worden op de eerste paasdag van 2024.\n",
+            () -> List.of(new Passagier()),
+            Map.of(), l -> String.valueOf(((Passagier) l.get(0)).getGeboortedatum())),   // 2024-03-31
+
+        // §8.1.1 a builtin-Functie LHS COMPARISON in a condition: "de maand uit (zijn geboortedatum) gelijk is aan 6"
+        // (the toka-26/spec-main-78 shape). June -> fires (50); July -> no fire; a leeg datum -> rsDatumDeel leeg ->
+        // GELIJK-vs-6 is false (vergelijk null) -> no fire.
+        new Fixture("maand uit comparison in a condition (month == 6 fires)",
+            "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    de geboortedatum Datum in dagen;\n"
+            + "Regel R\n    geldig altijd\n        De prijs van een passagier moet gesteld worden op 50 indien de maand uit (zijn geboortedatum) gelijk is aan 6.\n",
+            () -> List.of(passagier(p -> p.setGeboortedatum(dat(2020, 6, 15))),
+                          passagier(p -> p.setGeboortedatum(dat(2020, 7, 15))),
+                          new Passagier()),
+            Map.of(), l -> vals(((Passagier) l.get(0)).getPrijs(), ((Passagier) l.get(1)).getPrijs(),
+                                ((Passagier) l.get(2)).getPrijs())),   // 50, null, null
+    };
+
     private static String bdStr(BigDecimal x) { return x == null ? "null" : x.stripTrailingZeros().toPlainString(); }
     static final ObjFixture[] PHASE_G_OBJ = {
         // O1 §13.4.6: a Bestelling creates a linked Factuur (bedrag = its waarde) and back-references it.
@@ -1831,6 +1865,7 @@ class ExecModelDifferentialTest {
     @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 12); }
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
     @Test void phase_H_value_ops_matches_drl_back_end()             { runDifferential("Phase H val", PHASE_H_VAL, 5); }
+    @Test void phase_H_builtin_functies_match_drl_back_end()        { runDifferential("Phase H func", PHASE_H_FUNC, 4); }
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 4); }
     @Test void beslistabel_rows_match_drl_back_end()          { runDifferential("Beslistabel", BESLISTABEL, 6); }
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }

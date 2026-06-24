@@ -155,6 +155,47 @@ public final class RegelSpraakRuntime {
         return x;
     }
 
+    /** §13.4.17.17/§6.9 Tabel 20 "de absolute waarde van": |leeg| = leeg. Mirrors the DRL {@code rsAbs}. */
+    public static BigDecimal rsAbs(Object x) { return x == null ? null : ((BigDecimal) x).abs(); }
+
+    /** §13.4.17.18-.24/§6.12 a DATE/TIME component (jaar/maand/dag/uur/… uit) read via one ChronoField; a leeg
+     *  date -> leeg. Mirrors the DRL {@code rsDatumDeel}. */
+    public static BigDecimal rsDatumDeel(Object d, java.time.temporal.TemporalField f) {
+        return d == null ? null : BigDecimal.valueOf(((java.time.temporal.TemporalAccessor) d).getLong(f));
+    }
+
+    /** §13.4.17.35 "de datum met jaar/maand/dag": a LocalDate from three numeric parts; any empty part -> leeg.
+     *  Mirrors the DRL {@code rsDatumMet}. */
+    public static java.time.LocalDate rsDatumMet(Object jaar, Object maand, Object dag) {
+        if (jaar == null || maand == null || dag == null) return null;
+        return java.time.LocalDate.of(((BigDecimal) jaar).intValue(), ((BigDecimal) maand).intValue(), ((BigDecimal) dag).intValue());
+    }
+
+    /** §13.4.17.36 "de datumtijd met jaar/…/milliseconde": a LocalDateTime from seven parts (the 7th, a
+     *  millisecond, scaled to nanoOfSecond); any empty part -> leeg. Mirrors the DRL {@code rsDatumtijdMet}. */
+    public static java.time.LocalDateTime rsDatumtijdMet(Object jaar, Object maand, Object dag, Object uur,
+            Object minuut, Object seconde, Object milli) {
+        if (jaar == null || maand == null || dag == null || uur == null || minuut == null || seconde == null || milli == null) return null;
+        return java.time.LocalDateTime.of(((BigDecimal) jaar).intValue(), ((BigDecimal) maand).intValue(), ((BigDecimal) dag).intValue(),
+                ((BigDecimal) uur).intValue(), ((BigDecimal) minuut).intValue(), ((BigDecimal) seconde).intValue(), ((BigDecimal) milli).intValue() * 1_000_000);
+    }
+
+    /** §13.4.17.37 "de eerste paasdag van" a year — Gauss/Anonymous Easter algorithm; a leeg year -> leeg.
+     *  Mirrors the DRL {@code rsEerstePaasdag}. */
+    public static java.time.LocalDate rsEerstePaasdag(Object jaar) {
+        if (jaar == null) return null;
+        int y = ((BigDecimal) jaar).intValue();
+        int a = y % 19, b = y / 100, c = y % 100, d = b / 4, e = b % 4;
+        int f = (b + 8) / 25, g = (b - f + 1) / 3;
+        int h = (19 * a + b - d - g + 15) % 30;
+        int i = c / 4, k = c % 4;
+        int l = (32 + 2 * e + 2 * i - h - k) % 7;
+        int m = (a + 11 * h + 22 * l) / 451;
+        int maand = (h + l - 7 * m + 114) / 31;
+        int dag = ((h + l - 7 * m + 114) % 31) + 1;
+        return java.time.LocalDate.of(y, maand, dag);
+    }
+
     // ---- §9.7 verdeling (allocation) helpers (ported from the DRL helper bodies for Phase E) ----
     /** §9.7.3 cap a naar-rato share at the recipient's maximum (the surplus is NOT redistributed). A null share
      *  stays leeg; a leeg or NEGATIVE maximum degrades to UNCAPPED — never a negative share — with the §9.7.6

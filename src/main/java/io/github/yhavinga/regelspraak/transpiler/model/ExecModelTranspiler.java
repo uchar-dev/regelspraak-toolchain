@@ -1061,6 +1061,25 @@ public final class ExecModelTranspiler {
                 return a instanceof java.time.LocalDate ld && datumVergelijk(ld, rhs, op);
             };
         }
+        // §8.1.1 a comparison whose LHS is a NUMERIC EXPRESSION — a builtin Functie ("de maand uit (...)", abs), an
+        // arithmetic Binair ("de prijs plus 10"), a §6.1.4 begrenzing or a §13.4.17.25 afronding — vs a numeric
+        // literal. Lower the LHS via scalarWaarde (which now covers these); a fact-only reader (0 globals) makes it a
+        // Predicate1, then vergelijk + restatement. DRL lowers the same expression as a constraint operand. (A
+        // param-reading LHS would need the global as a pattern var -> not a fact-only leaf; skipped here.)
+        if (c instanceof Conditie.Vergelijking v && isNumeriekOp(v.op()) && v.links().type().isNumeriek()
+                && (v.links() instanceof Expr.Functie || v.links() instanceof Expr.Binair
+                    || v.links() instanceof Expr.Begrensd || v.links() instanceof Expr.Afgerond)
+                && v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
+            WaardeFn lw = scalarWaarde(v.links());
+            if (lw == null || !lw.globals().isEmpty()) return null;   // unlowerable / needs a global -> skip
+            BigDecimal rhs = bd(lit);
+            if (rhs == null) return null;
+            BigDecimal[] f = restatement(v.links().type(), lit.type());
+            BigDecimal rhsScaled = scale(rhs, f[1]);
+            BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn();
+            Conditie.Operator op = v.op();
+            return s -> vergelijk(scale((BigDecimal) lfn.apply(s, Map.of()), f[0]), rhsScaled, op);
+        }
         // §5.3 an own-attribute equality vs a §13.3.3.4 Tekst literal OR a §13.2.14 enumeratiewaarde 'X' (the §12
         // beslistabel "is gelijk aan X" cell, and the §12 OR-list of them). An enumeratie compares by VALUE equality
         // on its label, so it lowers exactly like a Tekst. mvel string '==' is VALUE equality (.equals); ONGELIJK is
@@ -1251,7 +1270,77 @@ public final class ExecModelTranspiler {
                 };
             }, g);
         }
+        if (e instanceof Expr.Functie fnc) {
+            WaardeFn sf = scalarFunctie(fnc);   // §13.4.17 abs / date-component / datum-met / paasdag
+            if (sf != null) return sf;
+        }
         return scalarWrapper(e);   // §13.4.17.25 afronding / §13.4.17.13 wortel
+    }
+
+    /** §13.4.17 single-value builtin Functies as a value: §13.4.17.17 ABSOLUTE_WAARDE (rsAbs), §13.4.17.18-.24
+     *  date/time component (rsDatumDeel via a ChronoField — a time part off a plain Datum markers), §13.4.17.35/.36
+     *  DATUM_MET/DATUMTIJD_MET (rsDatumMet/rsDatumtijdMet), §13.4.17.37 EERSTE_PAASDAG. Each argument lowers through
+     *  scalarWaarde; null for an unsupported kind/arity or an unlowerable argument. WORTEL is handled by scalarWrapper
+     *  (its mandatory afronding); the aggregations/tijdsduur go through other paths. Mirrors DrlTranspiler.scalarFunctie. */
+    private WaardeFn scalarFunctie(Expr.Functie f) {
+        List<Expr> a = f.argumenten();
+        java.time.temporal.ChronoField cf = switch (f.kind()) {
+            case JAAR_UIT         -> java.time.temporal.ChronoField.YEAR;
+            case MAAND_UIT        -> java.time.temporal.ChronoField.MONTH_OF_YEAR;
+            case DAG_UIT          -> java.time.temporal.ChronoField.DAY_OF_MONTH;
+            case UUR_UIT          -> java.time.temporal.ChronoField.HOUR_OF_DAY;
+            case MINUUT_UIT       -> java.time.temporal.ChronoField.MINUTE_OF_HOUR;
+            case SECONDE_UIT      -> java.time.temporal.ChronoField.SECOND_OF_MINUTE;
+            case MILLISECONDE_UIT -> java.time.temporal.ChronoField.MILLI_OF_SECOND;
+            default               -> null;
+        };
+        if (cf != null) {
+            if (a.size() != 1) return null;
+            boolean tijdDeel = switch (f.kind()) { case UUR_UIT, MINUUT_UIT, SECONDE_UIT, MILLISECONDE_UIT -> true; default -> false; };
+            if (tijdDeel && !(a.get(0).type() instanceof Datatype.DatumTijd)) return null;   // a time part off a plain Datum markers
+            WaardeFn arg = scalarWaarde(a.get(0));
+            if (arg == null) return null;
+            BiFunction<Object, Map<String, BigDecimal>, Object> fn = arg.fn();
+            return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsDatumDeel(fn.apply(s, gm), cf), arg.globals());
+        }
+        switch (f.kind()) {
+            case ABSOLUTE_WAARDE -> {
+                if (a.size() != 1) return null;
+                WaardeFn arg = scalarWaarde(a.get(0));
+                if (arg == null) return null;
+                BiFunction<Object, Map<String, BigDecimal>, Object> fn = arg.fn();
+                return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsAbs(fn.apply(s, gm)), arg.globals());
+            }
+            case EERSTE_PAASDAG -> {
+                if (a.size() != 1) return null;
+                WaardeFn arg = scalarWaarde(a.get(0));
+                if (arg == null) return null;
+                BiFunction<Object, Map<String, BigDecimal>, Object> fn = arg.fn();
+                return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsEerstePaasdag(fn.apply(s, gm)), arg.globals());
+            }
+            case DATUM_MET     -> { return datumConstructor(a, 3); }
+            case DATUMTIJD_MET -> { return datumConstructor(a, 7); }
+            default            -> { return null; }
+        }
+    }
+
+    /** §13.4.17.35/.36 lower a DATUM_MET (3 parts) / DATUMTIJD_MET (7 parts) constructor to a WaardeFn over its
+     *  numeric component value-fns (rsDatumMet/rsDatumtijdMet, §6.9 any empty part -> leeg). null on arity/argument. */
+    private WaardeFn datumConstructor(List<Expr> a, int n) {
+        if (a.size() != n) return null;
+        List<BiFunction<Object, Map<String, BigDecimal>, Object>> fns = new ArrayList<>();
+        Set<String> g = new LinkedHashSet<>();
+        for (Expr e : a) {
+            WaardeFn p = scalarWaarde(e);
+            if (p == null) return null;
+            fns.add(p.fn());
+            g.addAll(p.globals());
+        }
+        if (n == 3) return new WaardeFn((s, gm) ->
+                RegelSpraakRuntime.rsDatumMet(fns.get(0).apply(s, gm), fns.get(1).apply(s, gm), fns.get(2).apply(s, gm)), g);
+        return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsDatumtijdMet(
+                fns.get(0).apply(s, gm), fns.get(1).apply(s, gm), fns.get(2).apply(s, gm), fns.get(3).apply(s, gm),
+                fns.get(4).apply(s, gm), fns.get(5).apply(s, gm), fns.get(6).apply(s, gm)), g);
     }
     private static boolean arithmeticOp(Expr.BinOp op) {
         return op == Expr.BinOp.PLUS || op == Expr.BinOp.MIN || op == Expr.BinOp.VERMINDERD_MET
