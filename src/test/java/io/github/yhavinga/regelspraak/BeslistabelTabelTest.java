@@ -116,6 +116,34 @@ class BeslistabelTabelTest {
         assertEquals(1, m.resolvedRegels.size());
     }
 
+    @Test void the_spec_exact_reisduur_table_parses_desugars_and_resolves() {
+        // the spec's flagship §12 table (main-spec L4744) VERBATIM — incl. the "in minuten" unit qualifier and the
+        // "het percentage <schijf> van …" percentage-function-without-'%'. The beslistabel parses, desugars (one
+        // regel/row), and RESOLVES with no errors: navigation through the feittype, n.v.t., AND, params, geldig-vanaf.
+        // (Those two cells marker only at TRANSPILE — known general grammar/resolver limitations, beslistabel-
+        // transparent: a hand-written rule markers them identically. The desugar adds no gap.)
+        String src = "Domein Bedrag is van het type Numeriek (getal met 2 decimalen)\n"
+                + "Objecttype de Vlucht (mv: Vluchten)\n    de reisduur per trein Numeriek (geheel getal) met eenheid minuut;\n"
+                + "Objecttype de Natuurlijk persoon (mv: Natuurlijke personen) (bezield)\n"
+                + "    de belasting op basis van afstand Bedrag;\n    de belasting op basis van reisduur Bedrag;\n"
+                + "Feittype Vlucht van natuurlijke personen\n    de reis Vlucht\n    de passagier Natuurlijk persoon\n"
+                + "Eén reis betreft de verplaatsing van meerdere passagiers\n"
+                + "Parameter het percentage reisduur eerste schijf : Percentage (geheel getal)\n"
+                + "Parameter het percentage reisduur tweede schijf : Percentage (geheel getal)\n"
+                + "Parameter het percentage reisduur derde schijf : Percentage (geheel getal)\n"
+                + "Parameter de bovengrens reisduur eerste schijf : Numeriek (geheel getal) met eenheid minuut\n"
+                + "Parameter de bovengrens reisduur tweede schijf : Numeriek (geheel getal) met eenheid minuut\n\n"
+                + "Beslistabel Belasting op basis van reisduur\n  geldig vanaf 2018\n"
+                + "  |   | de belasting op basis van reisduur van een Natuurlijk persoon moet gesteld worden op | indien de reisduur per trein in minuten van zijn reis groter is dan | indien de reisduur per trein in minuten van zijn reis kleiner of gelijk is aan |\n"
+                + "  |---|---|---|---|\n"
+                + "  | 1 | het percentage reisduur eerste schijf van zijn belasting op basis van afstand naar beneden afgerond op 0 decimalen | n.v.t. | de bovengrens reisduur eerste schijf |\n"
+                + "  | 2 | het percentage reisduur tweede schijf van zijn belasting op basis van afstand naar beneden afgerond op 0 decimalen | de bovengrens reisduur eerste schijf | de bovengrens reisduur tweede schijf |\n"
+                + "  | 3 | het percentage reisduur derde schijf van zijn belasting op basis van afstand naar beneden afgerond op 0 decimalen | de bovengrens reisduur tweede schijf | n.v.t. |\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "fouten: " + m.errors());
+        assertEquals(3, m.resolvedRegels.size());
+    }
+
     @Test void header_only_beslistabel_warns_it_is_empty_rather_than_silently_dropping() {
         // the pre-body corpus shape (a bare "Beslistabel … / geldig …" shell) must still parse AND surface a warning,
         // never vanish without IR or diagnostic.
