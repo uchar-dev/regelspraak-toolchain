@@ -48,6 +48,15 @@ public final class RegelSpraakRuntime {
 
     public static BigDecimal num(Object o) { return (BigDecimal) o; }
 
+    /** Coerce a Drools accumulate result (a Long count, a BigDecimal sum, a min/max BigDecimal) to BigDecimal for
+     *  assignment into a Numeriek attribute — mirrors the mvel widening the DRL consequence does. null stays null. */
+    public static BigDecimal toBd(Object o) {
+        if (o == null) return null;
+        if (o instanceof BigDecimal b) return b;
+        if (o instanceof Number n) return new BigDecimal(n.toString());
+        throw new IllegalStateException("kan accumulate-resultaat niet naar BigDecimal omzetten: " + o.getClass());
+    }
+
     // ---- §6.x leegwaarde / arithmetic (ported from the DRL helper bodies as phases land) ----
     /** §6.2-6.4 Tabel: an empty (null) numeric operand counts as 0 in +/-. Mirrors the DRL {@code rsNul}. */
     public static BigDecimal rsNul(Object o) { return o == null ? BigDecimal.ZERO : (BigDecimal) o; }

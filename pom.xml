@@ -55,6 +55,16 @@
       <version>${drools.version}</version>
     </dependency>
 
+    <!-- Phase C (aggregations): the executable model references the built-in accumulate-function impls
+         (org.drools.core.base.accumulators.{Count,BigDecimalSum,Min,NumericMax}AccumulateFunction) by Class in
+         DSL.accFunction(...). Those live in drools-core, so the model back-end needs it at COMPILE scope. Engine
+         /compiler stay test-scoped (below). [Phase H: revisit this coupling to a core-internal package.] -->
+    <dependency>
+      <groupId>org.drools</groupId>
+      <artifactId>drools-core</artifactId>
+      <version>${drools.version}</version>
+    </dependency>
+
     <!-- Drools is needed only to COMPILE AND RUN the generated DRL in the
          integration test (the transpiler itself emits text); hence test scope.
          drools-engine pulls core + compiler (KieHelper); drools-mvel supplies the

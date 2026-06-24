@@ -19,9 +19,16 @@ import org.drools.model.RuleItemBuilder;
 import org.drools.model.Variable;
 import org.drools.model.functions.Block2;
 import org.drools.model.functions.Block3;
+import org.drools.model.functions.Block4;
+import org.drools.model.functions.Function1;
 import org.drools.model.functions.Predicate1;
 import org.drools.model.functions.Predicate2;
 import org.drools.model.impl.ModelImpl;
+
+import org.drools.core.base.accumulators.BigDecimalSumAccumulateFunction;
+import org.drools.core.base.accumulators.CountAccumulateFunction;
+import org.drools.core.base.accumulators.MaxAccumulateFunction;
+import org.drools.core.base.accumulators.MinAccumulateFunction;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -101,66 +108,88 @@ public final class ExecModelTranspiler {
         Class<?> factClass = factClass(doel.objecttype());
         if (factClass == null) return skip("regel (geen fact-class " + doel.objecttype().naam + "): " + r.naam());
 
-        // the value to assign: a WaardeFn(subject, global-values -> value) plus the set of Parameter-globals the
-        // value references (Phase A read only the fact; the THEN-side global is wired into the consequence below).
-        WaardeFn wf = switch (r.soort()) {
-            case KENMERKTOEKENNING -> WaardeFn.constant(Boolean.TRUE);      // "is <kenmerk>" -> kenmerk == true
-            case GELIJKSTELLING, BEREKENING, INITIALISATIE -> scalarWaarde(r.waarde());
-            default -> null;
-        };
-        if (wf == null) return skip("regel (waarde buiten scope): " + r.naam());
-        // §4 value-side unit restatement: convert the value expression into the doel attribute's unit (a kenmerk
-        // value is Boolean, no unit). Mirrors DrlTranspiler.omrekenWaarde (a single van->naar factor, null-safe).
-        if (r.soort() != ResolvedRegel.Soort.KENMERKTOEKENNING) {
-            BigDecimal vf = valueFactor(r.waarde().type(), doel.type());
-            if (vf != null) wf = wf.scaledBy(vf);
-        }
         String doelProp = doel.attribuut();
-
-        // resolve the referenced globals to their registered Variables; an unregistered one (e.g. a temporal
-        // parameter) cannot be bound -> skip the rule honestly.
-        List<Global<BigDecimal>> globalVars = new ArrayList<>();
-        for (String gn : wf.globals()) {
-            Global<BigDecimal> g = globals.get(gn);
-            if (g == null) return skip("regel (THEN-waarde refereert niet-geregistreerde global " + gn + "): " + r.naam());
-            globalVars.add(g);
-        }
-        if (globalVars.size() > 1)
-            return skip("regel (THEN-waarde refereert >1 global — latere fase): " + r.naam());
-
         seq = 0;
         Variable sVar = DSL.declarationOf(factClass, "$subject");
         PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
-        List<RuleItemBuilder<?>> extra = List.of();
+        List<RuleItemBuilder<?>> extra = new ArrayList<>();
 
         if (r.voorwaarde() != null) {
             Gate gate = voorwaarde(r.voorwaarde(), pattern, doel.objecttype(), sVar);
             if (gate == null) return skip("regel (voorwaarde buiten Phase-B scope): " + r.naam());
             pattern = gate.pattern();
-            extra = gate.extra();
+            extra.addAll(gate.extra());
         }
 
-        // The consequence reads the value through the global-value map. A global IS a Variable, so it rides in the
-        // same DSL.on(...) list and arrives as a lambda param (bridge-confirmed: on(sVar, g).execute((drools, s, g))).
-        BiFunction<Object, Map<String, BigDecimal>, Object> fn = wf.fn();
         RuleItemBuilder<?> consequence;
-        if (globalVars.isEmpty()) {
-            Block2<org.drools.model.Drools, Object> body = (drools, s) -> {
-                RegelSpraakRuntime.set(s, doelProp, fn.apply(s, Map.of()));
-                drools.update(s);
-            };
-            consequence = DSL.on(sVar).execute(body);
+        // §5.8/§13.4.17 AGGREGATION value (SOM/TOTAAL/AANTAL/MIN/MAX over related elements): an accumulate CE binds
+        // the result in the when, read in the consequence — distinct from a scalar fact-local value.
+        if (isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie fx) {
+            Agg agg = aggregatie(fx, doel.objecttype(), sVar);
+            if (agg == null) return skip("regel (aggregatie buiten Phase-C scope): " + r.naam());
+            extra.add(agg.accItem());
+            BigDecimal vf = valueFactor(fx.type(), doel.type());   // §4 restate the aggregate into the doel unit
+            if (agg.isSom()) {
+                // §5.8.2 sommatie: an empty sum (0 non-empty contributors) is the leegwaarde fallback, not 0.
+                Variable cntVar = agg.countVar(), sumVar = agg.resultVar();
+                BigDecimal fallback = agg.somFallback();
+                Block4<org.drools.model.Drools, Object, Object, Object> body = (drools, s, cnt, sum) -> {
+                    BigDecimal v = ((Number) cnt).longValue() == 0L ? fallback : RegelSpraakRuntime.toBd(sum);
+                    if (vf != null && v != null) v = v.multiply(vf);
+                    RegelSpraakRuntime.set(s, doelProp, v);
+                    drools.update(s);
+                };
+                consequence = DSL.on(sVar, (Variable) cntVar, (Variable) sumVar).execute(body);
+            } else {
+                Variable resVar = agg.resultVar();
+                Block3<org.drools.model.Drools, Object, Object> body = (drools, s, res) -> {
+                    BigDecimal v = RegelSpraakRuntime.toBd(res);
+                    if (vf != null && v != null) v = v.multiply(vf);
+                    RegelSpraakRuntime.set(s, doelProp, v);
+                    drools.update(s);
+                };
+                consequence = DSL.on(sVar, (Variable) resVar).execute(body);
+            }
         } else {
-            String gn = wf.globals().iterator().next();
-            Block3<org.drools.model.Drools, Object, Object> body = (drools, s, gv) -> {
-                RegelSpraakRuntime.set(s, doelProp, fn.apply(s, Map.of(gn, (BigDecimal) gv)));
-                drools.update(s);
+            // scalar value path: a WaardeFn(subject, global-values -> value) plus the Parameter-globals it reads.
+            WaardeFn wf = switch (r.soort()) {
+                case KENMERKTOEKENNING -> WaardeFn.constant(Boolean.TRUE);      // "is <kenmerk>" -> kenmerk == true
+                case GELIJKSTELLING, BEREKENING, INITIALISATIE -> scalarWaarde(r.waarde());
+                default -> null;
             };
-            consequence = DSL.on(sVar, (Variable) globalVars.get(0)).execute(body);
+            if (wf == null) return skip("regel (waarde buiten scope): " + r.naam());
+            // §4 value-side unit restatement (a kenmerk value is Boolean, no unit). Mirrors DrlTranspiler.omrekenWaarde.
+            if (r.soort() != ResolvedRegel.Soort.KENMERKTOEKENNING) {
+                BigDecimal vf = valueFactor(r.waarde().type(), doel.type());
+                if (vf != null) wf = wf.scaledBy(vf);
+            }
+            // resolve the referenced globals; an unregistered one (e.g. a temporal parameter) -> honest skip.
+            List<Global<BigDecimal>> globalVars = new ArrayList<>();
+            for (String gn : wf.globals()) {
+                Global<BigDecimal> g = globals.get(gn);
+                if (g == null) return skip("regel (THEN-waarde refereert niet-geregistreerde global " + gn + "): " + r.naam());
+                globalVars.add(g);
+            }
+            if (globalVars.size() > 1) return skip("regel (THEN-waarde refereert >1 global — latere fase): " + r.naam());
+            BiFunction<Object, Map<String, BigDecimal>, Object> fn = wf.fn();
+            if (globalVars.isEmpty()) {
+                Block2<org.drools.model.Drools, Object> body = (drools, s) -> {
+                    RegelSpraakRuntime.set(s, doelProp, fn.apply(s, Map.of()));
+                    drools.update(s);
+                };
+                consequence = DSL.on(sVar).execute(body);
+            } else {
+                String gn = wf.globals().iterator().next();
+                Block3<org.drools.model.Drools, Object, Object> body = (drools, s, gv) -> {
+                    RegelSpraakRuntime.set(s, doelProp, fn.apply(s, Map.of(gn, (BigDecimal) gv)));
+                    drools.update(s);
+                };
+                consequence = DSL.on(sVar, (Variable) globalVars.get(0)).execute(body);
+            }
         }
-        // The subject pattern first (binds $subject), then any far-side exists/not joins (which reference
-        // $subject), then the consequence — matching the DRL clause order. NO_LOOP is mandatory: the modify must
-        // not re-activate this rule (else fireAllRules infinite-loops).
+
+        // The subject pattern first (binds $subject), then far-side exists/not joins and any accumulate (which
+        // reference $subject), then the consequence. NO_LOOP is mandatory (the modify must not re-fire this rule).
         List<RuleItemBuilder<?>> items = new ArrayList<>();
         items.add(pattern);
         items.addAll(extra);
@@ -168,6 +197,92 @@ public final class ExecModelTranspiler {
         return PatternDSL.rule(r.naam())
                 .attribute(Rule.Attribute.NO_LOOP, true)
                 .build(items.toArray(new RuleItemBuilder[0]));
+    }
+
+    private static boolean isAggregatieWaarde(ResolvedRegel r) {
+        return (r.soort() == ResolvedRegel.Soort.GELIJKSTELLING || r.soort() == ResolvedRegel.Soort.BEREKENING
+                || r.soort() == ResolvedRegel.Soort.INITIALISATIE)
+                && r.waarde() instanceof Expr.Functie fx && isAggregatieKind(fx.kind());
+    }
+    private static boolean isAggregatieKind(Expr.FunctieKind k) {
+        return k == Expr.FunctieKind.SOM || k == Expr.FunctieKind.TOTAAL || k == Expr.FunctieKind.AANTAL
+                || k == Expr.FunctieKind.MINIMUM || k == Expr.FunctieKind.MAXIMUM;
+    }
+
+    /** A lowered aggregation: the accumulate rule item, the result Variable, and (for §5.8.2 SOM) the contributor
+     *  count Variable + the empty-sum fallback. */
+    private record Agg(RuleItemBuilder<?> accItem, Variable resultVar, Variable countVar, BigDecimal somFallback, boolean isSom) {}
+
+    /** §5.8/§13.4.17 lower an aggregation over the subject's related elements to a {@code DSL.accumulate} CE: the
+     *  source pattern joins the element to {@code $subject} (the §9.4 backref role), an optional §13.4.2 die-filter
+     *  becomes a source constraint, and the accumulate function (count / BigDecimal sum / min / max) binds the
+     *  result. Mirrors DrlTranspiler.accumulate. null -> skip (unresolvable join, unstructured filter, a temporal /
+     *  multi-operand fold, or a non-literal SOM fallback) — never a silently-wrong aggregate over EVERY instance. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Agg aggregatie(Expr.Functie f, Objecttype subject, Variable subjectVar) {
+        Objecttype elem = f.elementObjecttype();
+        if (elem == null) return null;
+        Class<?> elemClass = factClass(elem);
+        if (elemClass == null) return null;
+        boolean count = f.kind() == Expr.FunctieKind.AANTAL;
+        // §5.8.3 a multi-operand min/max, or a multi-operand count without a resolved union filter, drops operands -> skip.
+        if ((f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM) && f.argumenten().size() > 1) return null;
+        if (count && f.argumenten().size() > 1 && f.filter() == null) return null;
+        Expr.AttribuutRef arg = !f.argumenten().isEmpty() && f.argumenten().get(0) instanceof Expr.AttribuutRef a ? a : null;
+        // a SOM/MIN/MAX over a TEMPORAL attribute would aggregate the List<Segment> itself -> Phase F skip.
+        if (arg != null && arg.objecttype() != null && arg.objecttype().attribuutGranulariteit.containsKey(arg.attribuut())) return null;
+        if (!count && arg == null) return null;   // sum/min/max need an attribute to fold
+
+        // §9.4 the join role binding the element to the subject (a count may name its element role explicitly).
+        String rol = null;
+        if (subject != null && arg != null && count) rol = model.verbindendeRolViaElementnaam(subject, arg.attribuut());
+        if (rol == null && subject != null) rol = model.verbindendeRol(elem, subject);
+        if (rol == null) return null;
+        final String backref = rol;
+
+        Variable elemVar = DSL.declarationOf(elemClass, "$e_" + (seq++));
+        PatternDSL.PatternDef src = PatternDSL.pattern(elemVar).expr(nextId("join"), (Variable) subjectVar,
+                (Predicate2) (e, subj) -> RegelSpraakRuntime.get(e, backref) == subj);
+        if (f.filter() != null) {                       // §13.4.2 die/dat <predicaat> on the element
+            Predicate1<Object> fp = leafPredicate(f.filter(), elem);
+            if (fp == null) return null;                // unstructured filter -> skip (mirror the DRL marker)
+            src = src.expr(nextId("filter"), (Predicate1) fp);
+        }
+
+        Variable resultVar = DSL.declarationOf(Object.class, "$acc_" + (seq++));
+        if (count)
+            return new Agg(DSL.accumulate(src, DSL.accFunction(CountAccumulateFunction.class).as(resultVar)),
+                    resultVar, null, null, false);
+
+        final String attr = arg.attribuut();
+        Variable amtVar = DSL.declarationOf(BigDecimal.class, "$amt_" + (seq++));
+        if (f.kind() == Expr.FunctieKind.SOM) {
+            // §5.8.2: empty SOM -> the leegwaarde (null, or a literal "of N als die er niet zijn"), not 0. Filter to
+            // non-empty contributors, count them, and sum; the consequence branches on the count.
+            BigDecimal fallback = null;
+            if (f.leegwaarde() != null) {
+                if (!(f.leegwaarde() instanceof Expr.Literal lit) || !lit.type().isNumeriek()) return null;
+                fallback = bd(lit);
+                if (fallback == null) return null;
+            }
+            PatternDSL.PatternDef src2 = src.expr(nextId("nn"), (Predicate1) (e) -> RegelSpraakRuntime.get(e, attr) != null)
+                    .bind(amtVar, (Function1) (e) -> RegelSpraakRuntime.get(e, attr));
+            Variable cntVar = DSL.declarationOf(Object.class, "$cnt_" + (seq++));
+            RuleItemBuilder acc = DSL.accumulate(src2,
+                    DSL.accFunction(CountAccumulateFunction.class).as(cntVar),
+                    DSL.accFunction(BigDecimalSumAccumulateFunction.class, amtVar).as(resultVar));
+            return new Agg(acc, resultVar, cntVar, fallback, true);
+        }
+        // TOTAAL (empty -> 0) / MIN / MAX: bind the per-element value and fold it.
+        Class<?> accClass = switch (f.kind()) {
+            case TOTAAL  -> BigDecimalSumAccumulateFunction.class;
+            case MINIMUM -> MinAccumulateFunction.class;
+            case MAXIMUM -> MaxAccumulateFunction.class;
+            default      -> null;
+        };
+        if (accClass == null) return null;
+        PatternDSL.PatternDef src2 = src.bind(amtVar, (Function1) (e) -> RegelSpraakRuntime.get(e, attr));
+        return new Agg(DSL.accumulate(src2, DSL.accFunction(accClass, amtVar).as(resultVar)), resultVar, null, null, false);
     }
 
     /** Lower a voorwaarde into the subject pattern's in-pattern constraints (plus far-side exists/not joins as
