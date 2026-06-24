@@ -91,10 +91,14 @@ public final class ExecModelTranspiler {
             Rule rule = regel(r);
             if (rule != null) m.addRule(rule);
         }
-        // the other resolved kinds (objectcreatie/verdeling/consistentie/uniciteit/feitcreatie) are later phases
-        int later = model.objectCreaties.size() + model.verdelingen.size() + model.consistenties.size()
+        for (io.github.yhavinga.regelspraak.ir.ResolvedConsistentie c : model.consistenties) {   // §9.5 / §13.4.8 (Phase D)
+            Rule rule = consistentie(c);
+            if (rule != null) m.addRule(rule);
+        }
+        // the remaining resolved kinds (objectcreatie/verdeling/uniciteit/feitcreatie) are later phases
+        int later = model.objectCreaties.size() + model.verdelingen.size()
                 + model.uniciteiten.size() + model.uniciteitUnies.size() + model.feitCreaties.size();
-        if (later > 0) overgeslagen.add(later + " niet-regel resultaatdelen (objectcreatie/verdeling/consistentie/uniciteit/feitcreatie) — latere fase");
+        if (later > 0) overgeslagen.add(later + " niet-regel resultaatdelen (objectcreatie/verdeling/uniciteit/feitcreatie) — latere fase");
         return m;
     }
 
@@ -519,6 +523,92 @@ public final class ExecModelTranspiler {
     private static BigDecimal nz(BigDecimal f) { return f == null ? BigDecimal.ONE : f; }
     /** Restate one operand by its unit factor; a leeg (null) operand stays leeg (no NPE on .multiply). */
     private static BigDecimal scale(BigDecimal x, BigDecimal f) { return x == null ? null : x.multiply(f); }
+
+    // ---------------- §9.5 / §13.4.8 consistentie (Phase D) ----------------
+    /** §13.4.8 consistentieregel: the assertie MUST hold, so the rule fires on its VIOLATION (the negated
+     *  assertie) and INSERTS an Inconsistentie(naam, subject). Insert-only -> NO no-loop; an idempotency guard
+     *  (not Inconsistentie(regel==naam, subject==$s)) keeps it from re-flagging an already-flagged subject.
+     *  Mirrors DrlTranspiler.consistentie + schendingConstraint. null -> skip (no faithful violation predicate). */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Rule consistentie(io.github.yhavinga.regelspraak.ir.ResolvedConsistentie c) {
+        Objecttype subject = c.subject();
+        if (subject == null) return skip("consistentie (geen subject): " + c.naam());
+        if (!io.github.yhavinga.regelspraak.ir.Geldigheid.ALTIJD.equals(c.geldigheid()))
+            return skip("consistentie (versie-geldigheid): " + c.naam());
+        Class<?> factClass = factClass(subject);
+        if (factClass == null) return skip("consistentie (geen fact-class " + subject.naam + "): " + c.naam());
+        Class<?> incClass = inconsistentieClass();
+        if (incClass == null) return skip("consistentie (geen Inconsistentie-fact): " + c.naam());
+        Predicate1<Object> schending = schending(c.assertie(), subject);
+        if (schending == null) return skip("consistentie (schending buiten Phase-D scope): " + c.naam());
+
+        seq = 0;
+        String naam = c.naam();
+        String fqcn = FACTS + ".Inconsistentie";
+        Variable sVar = DSL.declarationOf(factClass, "$subject");
+        PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar).expr(nextId("schending"), (Predicate1) schending);
+        // idempotency guard: not Inconsistentie( regel == naam, subject == $subject )
+        Variable incVar = DSL.declarationOf(incClass, "$inc_" + (seq++));
+        PatternDSL.PatternDef guard = PatternDSL.pattern(incVar)
+                .expr(nextId("ig"), (Predicate1) i -> naam.equals(RegelSpraakRuntime.get(i, "regel")))
+                .expr(nextId("ig"), (Variable) sVar, (Predicate2) (i, s) -> RegelSpraakRuntime.get(i, "subject") == s);
+        Block2<org.drools.model.Drools, Object> body = (drools, s) ->
+                drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, naam, s));
+        return PatternDSL.rule(naam).build(pattern, DSL.not(guard), DSL.on(sVar).execute(body));
+    }
+
+    /** The §9.5 VIOLATION predicate of an assertie: the negation that fires the Inconsistentie. Phase D scope = a
+     *  single own-attribute numeric comparison (vs another own attribute or a numeric literal), unit-restated:
+     *  equality (gelijk/ongelijk) flips the operator (vergelijk's mvel null semantics make an empty operand a
+     *  violation of "gelijk aan", per typeringen Tabel 37); an ordering comparison is ALSO violated when either
+     *  operand is leeg (the typeringen leegwaarde tables make it onwaar -> inconsistent). null -> skip. */
+    private Predicate1<Object> schending(Conditie assertie, Objecttype subject) {
+        if (!(assertie instanceof Conditie.Vergelijking v)) return null;     // compound/predicate negation: later
+        if (!isNumeriekOp(v.op())) return null;                              // datum/other: later
+        if (!(v.links() instanceof Expr.AttribuutRef la) || la.navigatieRol() != null) return null;
+        if (subject != null && subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+        String lattr = la.attribuut();
+        Conditie.Operator flip = flip(v.op());
+        boolean gelijkheid = v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK;
+        if (v.rechts() instanceof Expr.AttribuutRef ra && ra.navigatieRol() == null) {
+            if (subject != null && subject.attribuutGranulariteit.containsKey(ra.attribuut())) return null;
+            String rattr = ra.attribuut();
+            BigDecimal[] f = restatement(la.type(), ra.type());
+            return s -> {
+                BigDecimal a = scale(num(s, lattr), f[0]), b = scale(num(s, rattr), f[1]);
+                return gelijkheid ? vergelijk(a, b, flip) : (a == null || b == null || vergelijk(a, b, flip));
+            };
+        }
+        if (v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
+            BigDecimal rhs = bd(lit);
+            if (rhs == null) return null;
+            BigDecimal[] f = restatement(la.type(), lit.type());
+            BigDecimal rhsS = scale(rhs, f[1]);
+            return s -> {
+                BigDecimal a = scale(num(s, lattr), f[0]);
+                return gelijkheid ? vergelijk(a, rhsS, flip) : (a == null || rhsS == null || vergelijk(a, rhsS, flip));
+            };
+        }
+        return null;
+    }
+
+    /** §13.4.8 operator negation (the complement that detects a violation). Mirrors DrlTranspiler.flip. */
+    private static Conditie.Operator flip(Conditie.Operator op) {
+        return switch (op) {
+            case GELIJK            -> Conditie.Operator.ONGELIJK;
+            case ONGELIJK          -> Conditie.Operator.GELIJK;
+            case KLEINER           -> Conditie.Operator.GROTER_OF_GELIJK;
+            case KLEINER_OF_GELIJK -> Conditie.Operator.GROTER;
+            case GROTER            -> Conditie.Operator.KLEINER_OF_GELIJK;
+            case GROTER_OF_GELIJK  -> Conditie.Operator.KLEINER;
+            default                -> op;  // EERDER/LATER unused (isNumeriekOp gates the caller)
+        };
+    }
+    private static Class<?> inconsistentieClass() {
+        try { return Class.forName(FACTS + ".Inconsistentie"); }
+        catch (ClassNotFoundException e) { return null; }
+    }
+
     private Rule skip(String reason) { overgeslagen.add(reason); return null; }
     static Class<?> factClass(Objecttype ot) {
         try { return Class.forName(FACTS + "." + RegelSpraakRuntime.pascal(ot.naam)); }

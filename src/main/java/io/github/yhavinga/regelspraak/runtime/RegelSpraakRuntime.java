@@ -48,6 +48,17 @@ public final class RegelSpraakRuntime {
 
     public static BigDecimal num(Object o) { return (BigDecimal) o; }
 
+    /** §9.5 build an Inconsistentie fact reflectively (the fact class is a runtime objecttype, unknown at
+     *  transpiler-compile time) — {@code new <fqcn>(regel, subject)} — for a consistentie/uniciteit companion
+     *  rule to insert. The model back-end's analog of the DRL {@code insert(new ….Inconsistentie(...))}. */
+    public static Object newInconsistentie(String fqcn, String regel, Object subject) {
+        try {
+            return Class.forName(fqcn).getConstructor(String.class, Object.class).newInstance(regel, subject);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("kan geen " + fqcn + "(String, Object) construeren", e);
+        }
+    }
+
     /** Coerce a Drools accumulate result (a Long count, a BigDecimal sum, a min/max BigDecimal) to BigDecimal for
      *  assignment into a Numeriek attribute — mirrors the mvel widening the DRL consequence does. null stays null. */
     public static BigDecimal toBd(Object o) {

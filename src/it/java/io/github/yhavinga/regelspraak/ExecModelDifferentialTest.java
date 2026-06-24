@@ -1,5 +1,7 @@
 package io.github.yhavinga.regelspraak;
 
+import io.github.yhavinga.regelspraak.facts.Inconsistentie;
+import io.github.yhavinga.regelspraak.facts.Meting;
 import io.github.yhavinga.regelspraak.facts.Passagier;
 import io.github.yhavinga.regelspraak.facts.Persoon;
 import io.github.yhavinga.regelspraak.facts.Vlucht;
@@ -661,6 +663,52 @@ class ExecModelDifferentialTest {
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 3); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 8); }
+    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 2); }
+
+    // ---- Phase D: §9.5/§13.4.8 consistentieregel — the VIOLATION inserts an Inconsistentie. The observable is the
+    //      SET of flagged subjects (not a subject field), so a FoutFixture maps each inserted Inconsistentie to a
+    //      stable "regel/<subject-key>" string the two back-ends can compare across their fresh fact instances. ----
+    record FoutFixture(String naam, String src, Supplier<List<Object>> facts, Function<Object, String> subjectKey) {}
+    static final FoutFixture[] PHASE_D = {
+        // own-attribute equality assertion across CONVERTIBLE units: grensjr(jr) gelijk aan duurmnd(mnd). 2 jr == 24
+        // mnd is consistent (NOT flagged); 2 jr != 25 mnd is a real violation (flagged). Exercises flip + restatement.
+        new FoutFixture("consistentie: cross-unit own-attr equality",
+            """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Objecttype de Meting
+                de duurmnd Numeriek (geheel getal) met eenheid mnd;
+                de grensjr Numeriek (geheel getal) met eenheid jr;
+            Regel gelijkcheck
+                geldig altijd
+                    De grensjr van een Meting moet gelijk zijn aan de duurmnd van een Meting.
+            """,
+            () -> {
+                Meting gelijk = new Meting(); gelijk.setGrensjr(new BigDecimal(2)); gelijk.setDuurmnd(new BigDecimal(24));
+                Meting anders = new Meting(); anders.setGrensjr(new BigDecimal(2)); anders.setDuurmnd(new BigDecimal(25));
+                return List.of(gelijk, anders);
+            },
+            o -> "duurmnd=" + ((Meting) o).getDuurmnd()),   // distinguishes the two Metingen
+
+        // ordering assertion vs a literal: "de uitkomst moet groter zijn dan 0". A leeg (null) operand is ALSO a
+        // violation (typeringen: an ordering comparison with an empty operand is onwaar -> inconsistent).
+        new FoutFixture("consistentie: ordering vs literal (null is a violation)",
+            """
+            Objecttype de Meting
+                de uitkomst Numeriek (geheel getal);
+            Regel positief
+                geldig altijd
+                    De uitkomst van een Meting moet groter zijn dan 0.
+            """,
+            () -> {
+                Meting pos = new Meting(); pos.setUitkomst(new BigDecimal(5));    // 5 > 0 -> consistent
+                Meting neg = new Meting(); neg.setUitkomst(new BigDecimal(-3));   // -3 > 0 false -> flagged
+                Meting leeg = new Meting();                                       // uitkomst null -> flagged
+                return List.of(pos, neg, leeg);
+            },
+            o -> "uitkomst=" + ((Meting) o).getUitkomst()),
+    };
 
     private void runDifferential(String label, Fixture[] fixtures, int minDiffed) {
         int diffed = 0, skipped = 0;
@@ -685,6 +733,44 @@ class ExecModelDifferentialTest {
         final int agreed = diffed;
         assertTrue(agreed >= minDiffed, () -> "verwacht >=" + minDiffed + " gediffte " + label + " fixtures, kreeg " + agreed + skips);
         System.out.println("[differential] " + label + ": " + agreed + " agreed, " + skipped + " skipped" + skips);
+    }
+
+    /** As {@link #runDifferential} but the observable is the SET of inserted Inconsistentie facts (Phase D). */
+    private void runFoutDifferential(String label, FoutFixture[] fixtures, int minDiffed) {
+        int diffed = 0, skipped = 0;
+        StringBuilder skips = new StringBuilder();
+        for (FoutFixture f : fixtures) {
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            if (!em.overgeslagen().isEmpty()) {
+                skipped++; skips.append("\n  SKIP ").append(f.naam()).append(": ").append(em.overgeslagen());
+                continue;
+            }
+            List<String> viaDrl   = fireFout(drlBase(m), f);
+            List<String> viaModel = fireFout(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(viaDrl, viaModel,
+                    () -> "back-ends DIVERGE on '" + f.naam() + "': DRL flagged=" + viaDrl + " model flagged=" + viaModel);
+            diffed++;
+        }
+        final int agreed = diffed;
+        assertTrue(agreed >= minDiffed, () -> "verwacht >=" + minDiffed + " gediffte " + label + " fixtures, kreeg " + agreed + skips);
+        System.out.println("[differential] " + label + ": " + agreed + " agreed, " + skipped + " skipped" + skips);
+    }
+
+    /** Fire and return the SORTED "regel/<subject-key>" descriptors of every inserted Inconsistentie — comparable
+     *  across the two back-ends' fresh fact instances (the subject identity differs, the key does not). */
+    private List<String> fireFout(KieBase kb, FoutFixture f) {
+        KieSession s = kb.newKieSession();
+        List<Object> facts = f.facts().get();
+        for (Object o : facts) s.insert(o);
+        s.fireAllRules();
+        List<String> flagged = s.getObjects().stream()
+                .filter(o -> o instanceof Inconsistentie)
+                .map(o -> ((Inconsistentie) o).getRegel() + "/" + f.subjectKey().apply(((Inconsistentie) o).getSubject()))
+                .sorted().toList();
+        s.dispose();
+        return flagged;
     }
 
     // ---- harness plumbing ----
