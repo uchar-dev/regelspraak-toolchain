@@ -1216,11 +1216,12 @@ class ExecModelDifferentialTest {
             l -> vals(((Deelnemer) l.get(1)).getAandeel(), ((Deelnemer) l.get(2)).getAandeel(), ((Deelnemer) l.get(3)).getAandeel(),
                       ((Deelnemer) l.get(4)).getAandeel(), ((Deelnemer) l.get(5)).getAandeel(), ((Pot) l.get(0)).getRestant())),
 
-        // (adversary-confirmed divergence, GUARDED -> honest skip) TWO verdelingen writing the SAME recipient
-        // attribuut 'aandeel' infinite-loop in the model (class-reactive reflective lambdas: each update(r)
-        // re-activates the sibling; DRL's property-reactive modify reaches a fixpoint). The model SKIPS such a
-        // multi-writer target (overgeslagen non-empty) rather than emit a hanging KieBase, so this fixture is an
-        // explicit logged skip — never fired. Regression for the guard; revisit when property-reactive model lands.
+        // (adversary-confirmed) TWO verdelingen writing the SAME recipient attribuut 'aandeel'. The model SKIPS such a
+        // multi-writer target (overgeslagen non-empty), so this fixture is an explicit logged skip — never fired. The
+        // skip is PRINCIPLED, not just a hang-guard: .watch(join) on the Deelnemer patterns breaks the sibling loop,
+        // but the back-ends then DIVERGE on the value (which verdeling wins the shared attribute is agenda-order
+        // dependent — DRL 25/75 vs model 50/50 for 100 over 1:3). The construct is degenerate (RegelSpraak defines no
+        // value for two conflicting distribution rules), so an honest skip is the right call. Regression for the guard.
         new Fixture("verdeling: twee verdelingen op hetzelfde doel -> honest skip (geen hang)",
             """
             Objecttype de Pot

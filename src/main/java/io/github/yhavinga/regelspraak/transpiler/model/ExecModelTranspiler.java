@@ -923,16 +923,18 @@ public final class ExecModelTranspiler {
                 && (v.ratoAttribuut() == null || (gewichtType != null && gewichtType.isGetalachtig()));
         if (!gelijk && !rato && !opVolgorde)
             return skipList("verdeling (onopgelost " + (bron == null || doel == null ? "referentie" : methode.name().toLowerCase()) + "): " + v.naam());
-        // CONFIRMED divergence (Phase E adversarial review): TWO verdelingen writing the SAME recipient (doelType,
-        // doelAttribuut) infinite-loop in the model while DRL terminates — the reflective share rules are class-reactive
-        // (the opaque lambdas expose no reactOn property scope), so each update(r) re-activates the SIBLING verdeling
-        // (NO_LOOP blocks only self-retrigger). DRL's property-reactive modify reaches a fixpoint once aandeel stops
-        // changing. Until the property-reactive-model conversion lands (reactOn + property-scoped update — it also
-        // unblocks the onverdeelde-rest cycle), a multi-writer recipient attribute is an HONEST skip rather than a
-        // silently hanging KieBase. (The single-writer case — every fixture — is unaffected.)
+        // TWO verdelingen writing the SAME recipient (doelType, doelAttribuut) infinite-loop in the model — the
+        // reflective share rules are class-reactive, so each update(r) re-activates the SIBLING (NO_LOOP blocks only
+        // self-retrigger). Adding .watch(join) to the Deelnemer patterns DOES break the loop (empirically verified),
+        // but then the back-ends DIVERGE on the VALUE: which verdeling "wins" the shared attribute is agenda-order
+        // dependent, and DRL (KieHelper) and the model (createKieBaseFromModel) order the rules differently — e.g. 100
+        // over 1:3 gave DRL a1=25/a2=75 (naar-rato won) vs model a1=50/a2=50 (gelijke-delen won). The construct is
+        // DEGENERATE (two distribution rules conflicting on one attribute is a modeling error; RegelSpraak defines no
+        // value for it), so the principled choice is an HONEST skip — not a fragile agenda-order parity. (Single-writer
+        // — every real fixture — is unaffected.)
         long writers = model.verdelingen.stream().filter(o -> o.doelType() != null && doel != null
                 && o.doelType().naam.equals(doel.naam) && java.util.Objects.equals(o.doelAttribuut(), v.doelAttribuut())).count();
-        if (writers > 1) return skipList("verdeling (>1 verdeling schrijft hetzelfde doel-attribuut — class-reactive sibling-loop, property-reactive follow-up): " + v.naam());
+        if (writers > 1) return skipList("verdeling (>1 verdeling schrijft hetzelfde doel-attribuut — agenda-order-afhankelijke waarde, principiële skip): " + v.naam());
         Class<?> bronClass = factClass(bron), doelClass = factClass(doel);
         if (bronClass == null || doelClass == null) return skipList("verdeling (geen fact-class): " + v.naam());
 
