@@ -268,27 +268,24 @@ public final class ExecModelTranspiler {
             List<Variable> accVars = new ArrayList<>();
             Eval eval = lowerVal(r.waarde(), doel.objecttype(), sVar, aggGlobals, accItems, accVars);
             if (eval == null) return skip("regel (aggregatie-in-arithmetiek buiten scope): " + r.naam());
-            List<Global<BigDecimal>> gVars = new ArrayList<>();
-            for (String gn : aggGlobals) {
-                Global<BigDecimal> g = globals.get(gn);
-                if (g == null) return skip("regel (aggregatie-waarde refereert niet-geregistreerde global " + gn + "): " + r.naam());
-                gVars.add(g);
-            }
-            if (gVars.size() > 1) return skip("regel (aggregatie-waarde refereert >1 global — latere fase): " + r.naam());
+            List<String> gnames = new ArrayList<>(aggGlobals);
             BigDecimal vf = valueFactor(r.waarde().type(), doel.type());   // §4 restate the whole value into the doel unit
-            String gn = aggGlobals.isEmpty() ? null : aggGlobals.iterator().next();
-            // consequence vars: [subject, (global?), acc0, acc1, ...]; the body rebuilds the global map + agg array.
+            // consequence vars: [subject, g0, g1, ..., acc0, acc1, ...]; the body rebuilds the global map + agg array.
             List<Variable> vars = new ArrayList<>();
             vars.add(sVar);
-            if (gn != null) vars.add((Variable) gVars.get(0));
+            for (String gn : gnames) {
+                Global<BigDecimal> g = globals.get(gn);
+                if (g == null) return skip("regel (aggregatie-waarde refereert niet-geregistreerde global " + gn + "): " + r.naam());
+                vars.add((Variable) g);
+            }
             vars.addAll(accVars);
-            final String fgn = gn; final boolean hasG = gn != null; final int nAgg = accVars.size();
+            final List<String> fgn = gnames; final int nG = gnames.size(); final int nAgg = accVars.size();
             consequence = consequenceOf(vars.toArray(new Variable[0]), (drools, args) -> {
                 Object s = args[0];
-                Map<String, BigDecimal> gm = hasG ? Map.of(fgn, (BigDecimal) args[1]) : Map.of();
+                Map<String, BigDecimal> gm = new LinkedHashMap<>();
+                for (int i = 0; i < nG; i++) gm.put(fgn.get(i), (BigDecimal) args[1 + i]);
                 Object[] aggs = new Object[nAgg];
-                int base = hasG ? 2 : 1;
-                for (int i = 0; i < nAgg; i++) aggs[i] = args[base + i];
+                for (int i = 0; i < nAgg; i++) aggs[i] = args[1 + nG + i];
                 Object v = eval.apply(s, gm, aggs);
                 if (vf != null && v != null) v = ((BigDecimal) v).multiply(vf);
                 RegelSpraakRuntime.set(s, doelProp, v);
@@ -309,29 +306,27 @@ public final class ExecModelTranspiler {
                 BigDecimal vf = valueFactor(r.waarde().type(), doel.type());
                 if (vf != null) wf = wf.scaledBy(vf);
             }
-            // resolve the referenced globals; an unregistered one (e.g. a temporal parameter) -> honest skip.
-            List<Global<BigDecimal>> globalVars = new ArrayList<>();
-            for (String gn : wf.globals()) {
+            // resolve the referenced globals; an unregistered one (e.g. a temporal parameter) -> honest skip. The
+            // consequence binds [subject, g0, g1, ...] via consequenceOf (up to Block10 = 9 vars); the body rebuilds
+            // the name->value map. >1 distinct global is now supported (e.g. a value of two parameters).
+            List<String> gnames = new ArrayList<>(wf.globals());
+            List<Variable> vars = new ArrayList<>();
+            vars.add(sVar);
+            for (String gn : gnames) {
                 Global<BigDecimal> g = globals.get(gn);
                 if (g == null) return skip("regel (THEN-waarde refereert niet-geregistreerde global " + gn + "): " + r.naam());
-                globalVars.add(g);
+                vars.add((Variable) g);
             }
-            if (globalVars.size() > 1) return skip("regel (THEN-waarde refereert >1 global — latere fase): " + r.naam());
             BiFunction<Object, Map<String, BigDecimal>, Object> fn = wf.fn();
-            if (globalVars.isEmpty()) {
-                Block2<org.drools.model.Drools, Object> body = (drools, s) -> {
-                    RegelSpraakRuntime.set(s, doelProp, fn.apply(s, Map.of()));
-                    drools.update(s);
-                };
-                consequence = DSL.on(sVar).execute(body);
-            } else {
-                String gn = wf.globals().iterator().next();
-                Block3<org.drools.model.Drools, Object, Object> body = (drools, s, gv) -> {
-                    RegelSpraakRuntime.set(s, doelProp, fn.apply(s, Map.of(gn, (BigDecimal) gv)));
-                    drools.update(s);
-                };
-                consequence = DSL.on(sVar, (Variable) globalVars.get(0)).execute(body);
-            }
+            final List<String> fgn = gnames;
+            consequence = consequenceOf(vars.toArray(new Variable[0]), (drools, args) -> {
+                Object s = args[0];
+                Map<String, BigDecimal> gm = new LinkedHashMap<>();
+                for (int i = 0; i < fgn.size(); i++) gm.put(fgn.get(i), (BigDecimal) args[1 + i]);
+                RegelSpraakRuntime.set(s, doelProp, fn.apply(s, gm));
+                drools.update(s);
+            });
+            if (consequence == null) return skip("regel (THEN-waarde: te veel gebonden globals): " + r.naam());
         }
 
         // The subject pattern first (binds $subject), then far-side exists/not joins and any accumulate (which
@@ -2062,13 +2057,7 @@ public final class ExecModelTranspiler {
             fns.add(wf.fn());
             gNames.addAll(wf.globals());
         }
-        if (gNames.size() > 1) return skip("objectcreatie (toekenning refereert >1 global): " + oc.naam());
-        Global<BigDecimal> g = null;
-        if (!gNames.isEmpty()) {
-            g = globals.get(gNames.iterator().next());
-            if (g == null) return skip("objectcreatie (niet-geregistreerde global): " + oc.naam());
-        }
-        final String gName = gNames.isEmpty() ? null : gNames.iterator().next();
+        List<String> gList = new ArrayList<>(gNames);
 
         seq = 0;
         Variable sVar = DSL.declarationOf(subjClass, "$subject");
@@ -2084,9 +2073,11 @@ public final class ExecModelTranspiler {
 
         final List<String> fAttrs = attrs; final List<BiFunction<Object, Map<String, BigDecimal>, Object>> fFns = fns;
         final String fBackRef = backRef; final Class<?> fNieuwClass = nieuwClass;
+        final List<String> fG = gList; final int nG = gList.size();
         java.util.function.BiConsumer<org.drools.model.Drools, Object[]> body = (drools, args) -> {
             Object s = args[0];
-            Map<String, BigDecimal> gm = gName != null ? Map.of(gName, (BigDecimal) args[1]) : Map.of();
+            Map<String, BigDecimal> gm = new LinkedHashMap<>();
+            for (int i = 0; i < nG; i++) gm.put(fG.get(i), (BigDecimal) args[1 + i]);
             Object newObj = RegelSpraakRuntime.newInstance(fNieuwClass);
             for (int i = 0; i < fAttrs.size(); i++) RegelSpraakRuntime.set(newObj, fAttrs.get(i), fFns.get(i).apply(s, gm));
             if (fBackRef != null) RegelSpraakRuntime.set(newObj, fBackRef, s);
@@ -2094,7 +2085,11 @@ public final class ExecModelTranspiler {
         };
         List<Variable> vars = new ArrayList<>();
         vars.add(sVar);
-        if (g != null) vars.add((Variable) g);
+        for (String gn : gList) {
+            Global<BigDecimal> g = globals.get(gn);
+            if (g == null) return skip("objectcreatie (niet-geregistreerde global): " + oc.naam());
+            vars.add((Variable) g);
+        }
         RuleItemBuilder<?> consequence = consequenceOf(vars.toArray(new Variable[0]), body);
         if (consequence == null) return skip("objectcreatie (te veel gebonden variabelen): " + oc.naam());
 

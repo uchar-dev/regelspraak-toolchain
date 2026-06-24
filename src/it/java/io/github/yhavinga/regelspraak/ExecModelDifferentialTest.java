@@ -653,8 +653,9 @@ class ExecModelDifferentialTest {
             l -> ((Passagier) l.get(0)).getLeeftijd()),
 
         // Honesty boundary: a value over >1 distinct global is NOT yet bound -> the model SKIPS the rule
-        // (overgeslagen), so the harness logs a skip rather than a divergence. (DRL would fire it.)
-        new Fixture("THEN value over two globals -> honest skip",
+        // §13.3.8 a THEN value over TWO Parameter-globals — Phase H closed the >1-global limit (consequenceOf binds
+        // [subject, g0, g1]; the body rebuilds the name->value map). toeslag 5 + korting 3 = 8 (now AGREES, not a skip).
+        new Fixture("THEN value over two globals (toeslag 5 + korting 3 = 8)",
             """
             Parameter de toeslag : Numeriek (geheel getal) met eenheid EUR
             Parameter de korting : Numeriek (geheel getal) met eenheid EUR
@@ -666,7 +667,7 @@ class ExecModelDifferentialTest {
             """,
             () -> List.of(new Passagier()),
             Map.of("toeslag", new BigDecimal(5), "korting", new BigDecimal(3)),
-            l -> ((Passagier) l.get(0)).getPrijs()),
+            l -> ((Passagier) l.get(0)).getPrijs()),   // 8
     };
 
     // ---- Phase C: aggregations over related elements — an accumulate CE binds the result. SOM (empty -> leegwaarde),
@@ -1923,7 +1924,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B2_quantifiers_match_drl_back_end()       { runDifferential("Phase B2", PHASE_B2, 5); }
     @Test void phase_B3_relational_match_drl_back_end()        { runDifferential("Phase B3", PHASE_B3, 5); }
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
-    @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 3); }
+    @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 8); }
     @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 7); }
     @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 2); }
