@@ -1954,7 +1954,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 8); }
     @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 7); }
-    @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 5); }
+    @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 6); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
     @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
@@ -2572,6 +2572,14 @@ class ExecModelDifferentialTest {
                     return List.of(jong, oud, new Persoon()); },   // leeg leeftijd -> violation
             o -> "lft=" + ((Persoon) o).getLeeftijd(),
             Map.of("grens", new BigDecimal(18))),
+
+        // §9.5 a LEEG/GEVULD assertie ("de roepnaam moet gevuld zijn"): the violation is its negation — a leeg
+        // roepnaam violates GEVULD. metNaam ok; the nameless persoon flagged.
+        new FoutFixture("consistentie: GEVULD assertie (roepnaam moet gevuld zijn)",
+            "Objecttype de Persoon (mv: Personen) (bezield)\n    de roepnaam Tekst;\n"
+            + "Regel check\n    geldig altijd\n        De roepnaam van een Persoon moet gevuld zijn.\n",
+            () -> { Persoon metNaam = new Persoon(); metNaam.setRoepnaam("Maria"); return List.of(metNaam, new Persoon()); },
+            o -> "naam=" + ((Persoon) o).getRoepnaam()),
     };
 
     // ---- Phase E fout: §9.7.6 Tabel 19 — an empty weight (naar rato) or a leeg/negatief maximum at ANY recipient is

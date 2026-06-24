@@ -1719,7 +1719,19 @@ public final class ExecModelTranspiler {
             if (schendingen.isEmpty()) return null;
             return obj -> { for (Predicate1<Object> sp : schendingen) if (sp.test(obj)) return true; return false; };
         }
-        if (!(assertie instanceof Conditie.Vergelijking v)) return null;     // other compound/predicate negation: later
+        // §9.5 a LEEG/GEVULD assertie criterion ("X moet gevuld/leeg zijn", also as a nested ALLE criterion): the
+        // violation is its negation — a GEVULD assertie is violated when the operand is leeg, a LEEG one when it is
+        // gevuld. Own or to-one navigated operand (consistentieReader; navReader's null == leeg). Mirrors negeer(LEEG/
+        // GEVULD) + DRL's genavigeerdLeegGevuld (absent reference reads leeg).
+        if (assertie instanceof Conditie.Predicaat p
+                && (p.soort() == Conditie.Predicaatsoort.LEEG || p.soort() == Conditie.Predicaatsoort.GEVULD)
+                && p.operand() instanceof Expr.AttribuutRef pa) {
+            java.util.function.Function<Object, Object> read = consistentieReader(pa, subject);
+            if (read == null) return null;
+            boolean assertGevuld = p.soort() == Conditie.Predicaatsoort.GEVULD;
+            return s -> (read.apply(s) == null) == assertGevuld;   // leeg violates GEVULD; gevuld violates LEEG
+        }
+        if (!(assertie instanceof Conditie.Vergelijking v)) return null;     // other compound: later
         if (!(v.links() instanceof Expr.AttribuutRef la)) return null;
         // OWN or to-ONE NAVIGATED operand readers (navReader's null == DRL's `l.leeg` = rol==null || attr==null, so
         // the explicit leeg/vol semantics of DrlTranspiler.genavigeerdeVergelijkingSchending fall out of a null check).
