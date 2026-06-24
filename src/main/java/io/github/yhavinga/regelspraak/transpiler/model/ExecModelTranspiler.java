@@ -423,24 +423,34 @@ public final class ExecModelTranspiler {
         java.util.function.Function<Object, Object> reader = navReader(a, subject);   // own or to-one navigated, root-guarded
         if (reader == null) return null;
         final String gran = g.name();
-        // §7.1 optional gedurende clip on a single temporal kenmerk of the subject (positive intersect / negated complement).
+        // §7.1/§8.4 optional gedurende clip: a single temporal kenmerk (positive intersect / negated complement), or a
+        // §8.4.2 pure-kenmerk compound (ALLE intersect / ten-minste-1 union). A mixed-static compound -> skip (next inc).
         String kenmerk = null; boolean negatie = false; Class<?> segCls = null;
+        BiFunction<Object, List<?>, List<?>> compoundClip = null;
         if (f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null
                 && subject != null && subject.kenmerkGranulariteit.containsKey(k.kenmerk())) {
             segCls = segmentClass();
             if (segCls == null) return null;
             kenmerk = k.kenmerk();
             negatie = k.negatie();
+        } else if (f.filter() instanceof Conditie.Samengesteld sc) {
+            segCls = segmentClass();
+            if (segCls == null) return null;
+            compoundClip = samengesteldeTijdKnip(sc, subject, segCls);
+            if (compoundClip == null) return null;   // a §8.4 mixed-static / unsupported compound -> honest skip
         } else if (f.filter() != null) {
-            return null;   // a §8.4 compound or other restriction -> honest skip (later increment)
+            return null;   // any other restriction -> honest skip
         }
         final String fKenmerk = kenmerk; final boolean fNeg = negatie; final Class<?> fSeg = segCls;
+        final BiFunction<Object, List<?>, List<?>> fClip = compoundClip;
         BiFunction<Object, Map<String, BigDecimal>, Object> fn = (s, gm) -> {
             List<?> tl = (List<?>) reader.apply(s);
             if (fKenmerk != null) {
                 List<?> cond = (List<?>) RegelSpraakRuntime.get(s, fKenmerk);
                 tl = fNeg ? RegelSpraakRuntime.rsTijdKnipNiet(tl, cond, fSeg)
                           : RegelSpraakRuntime.rsTijdKnip(tl, cond, fSeg);
+            } else if (fClip != null) {
+                tl = fClip.apply(s, tl);
             }
             return RegelSpraakRuntime.rsTijdTotaal(tl, gran);
         };
@@ -539,12 +549,79 @@ public final class ExecModelTranspiler {
     }
 
     /** The TRUE-period {@code (subject -> List<Segment>)} timeline of a temporal WRITE-producer's condition. A single
-     *  positive single-period subject kenmerk is its getter; a §8.4.2 compound is a later increment. null when
-     *  unsupported (a negated / navigated / multi-period / non-kenmerk condition) — the caller markers, never a
-     *  mis-count. Mirrors DrlTranspiler.conditieTijdreeks. */
+     *  positive single-period subject kenmerk is its getter; a §8.4.2 pure-kenmerk compound is their combined
+     *  timeline (ALLE = intersection via rsTijdKnip, "ten minste 1" = union via rsTijdUnie, both over the members'
+     *  getters). null when unsupported (a negated / navigated / multi-period kenmerk, or a mixed-static / non-kenmerk
+     *  / other-kwantor compound): a negated member has no standalone complement here (unlike the totaal CLIP, where
+     *  the value bounds it), so the caller markers rather than mis-count. Mirrors DrlTranspiler.conditieTijdreeks. */
     private java.util.function.Function<Object, List<?>> conditieTijdreeks(Conditie filter, Objecttype subject) {
         if (filter instanceof Conditie.Kenmerk k) return temporeelKenmerkTijdreeks(k, subject);
-        return null;   // §8.4.2 compound -> later increment
+        if (filter instanceof Conditie.Samengesteld s
+                && (s.kwantor() == Conditie.Kwantor.ALLE
+                    || (s.kwantor() == Conditie.Kwantor.TEN_MINSTE && s.drempel() == 1))) {
+            boolean alle = s.kwantor() == Conditie.Kwantor.ALLE;
+            List<java.util.function.Function<Object, List<?>>> regios = new ArrayList<>();
+            for (Conditie c : s.onderdelen()) {
+                if (!(c instanceof Conditie.Kenmerk k)) return null;   // a static member -> the mixedGuardWrap path (next inc); else unsupported
+                java.util.function.Function<Object, List<?>> g = temporeelKenmerkTijdreeks(k, subject);
+                if (g == null) return null;   // a negated / navigated / multi-period member -> marker (no standalone complement)
+                regios.add(g);
+            }
+            if (regios.isEmpty()) return null;
+            if (regios.size() == 1) return regios.get(0);
+            Class<?> segCls = segmentClass();
+            if (segCls == null) return null;
+            return s2 -> {
+                List<?> acc = regios.get(0).apply(s2);
+                for (int i = 1; i < regios.size(); i++)
+                    acc = alle ? RegelSpraakRuntime.rsTijdKnip(acc, regios.get(i).apply(s2), segCls)
+                               : RegelSpraakRuntime.rsTijdUnie(acc, regios.get(i).apply(s2), segCls);
+                return acc;
+            };
+        }
+        return null;
+    }
+
+    /** §8.4.2 the clip a (pure-kenmerk) compound gedurende applies to a value timeline: ALLE nests the per-kenmerk
+     *  rsTijdKnip (negation per member); "ten minste 1" (drempel 1) clips the value to the UNION of each member's
+     *  true-region (a negated member's region is the value's rsTijdKnipNiet complement, value-bounded). Returns a
+     *  {@code (subject, value) -> clipped-value} function, or null when a member is not a single-period subject kenmerk
+     *  (a static / navigated / mixed / other-kwantor compound is the caller's skip). Mirrors DrlTranspiler.samengesteldeTijdKnip. */
+    private BiFunction<Object, List<?>, List<?>> samengesteldeTijdKnip(Conditie.Samengesteld s, Objecttype subject, Class<?> segCls) {
+        List<Conditie.Kenmerk> leden = new ArrayList<>();
+        for (Conditie c : s.onderdelen()) {
+            if (!(c instanceof Conditie.Kenmerk k) || k.navigatie() != null
+                    || subject == null || !subject.kenmerkGranulariteit.containsKey(k.kenmerk())) return null;
+            leden.add(k);
+        }
+        if (leden.isEmpty()) return null;
+        if (s.kwantor() == Conditie.Kwantor.ALLE) {
+            return (sub, value) -> {
+                List<?> r = value;
+                for (Conditie.Kenmerk k : leden) {
+                    List<?> g = (List<?>) RegelSpraakRuntime.get(sub, k.kenmerk());
+                    r = k.negatie() ? RegelSpraakRuntime.rsTijdKnipNiet(r, g, segCls)
+                                    : RegelSpraakRuntime.rsTijdKnip(r, g, segCls);
+                }
+                return r;
+            };
+        }
+        if (s.kwantor() == Conditie.Kwantor.TEN_MINSTE && s.drempel() == 1) {
+            return (sub, value) -> {
+                List<?> unie = lidSteun(sub, value, leden.get(0), segCls);
+                for (int i = 1; i < leden.size(); i++)
+                    unie = RegelSpraakRuntime.rsTijdUnie(unie, lidSteun(sub, value, leden.get(i), segCls), segCls);
+                return RegelSpraakRuntime.rsTijdKnip(value, unie, segCls);
+            };
+        }
+        return null;
+    }
+
+    /** One OR-member's true-region for the union: a positive member is its kenmerk getter; a negated member is the
+     *  value clipped to the kenmerk's FALSE periods (value-bounded complement). Mirrors DrlTranspiler.lidSteun. */
+    private static List<?> lidSteun(Object sub, List<?> value, Conditie.Kenmerk k, Class<?> segCls) {
+        List<?> g = (List<?>) RegelSpraakRuntime.get(sub, k.kenmerk());
+        return k.negatie() ? RegelSpraakRuntime.rsTijdKnipNiet(value, g, segCls) : g;
     }
 
     /** A single positive single-period subject kenmerk's TRUE-period reader ({@code s -> the kenmerk's List<Segment>}),

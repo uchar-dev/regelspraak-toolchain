@@ -923,6 +923,100 @@ class ExecModelDifferentialTest {
             p -> tl(p.getJaardeel())),
     };
 
+    // ---- Phase F4 fixtures: §8.4.2 pure-kenmerk compound gedurende (ALLE intersect / ten-minste-1 union) ----
+    private static final String CMP_OT =
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n"
+            + "    de belastingvermindering per maand Bedrag voor elke maand;\n"
+            + "    is rechthebbend kenmerk (bijvoeglijk) voor elke maand;\n"
+            + "    is actief kenmerk (bijvoeglijk) voor elke maand;\n"
+            + "    de totale belastingvermindering Bedrag;\n";
+    /** The shared waarde/kenmerk facts for A19–A21: value 10/11; rechthebbend [2023-07,2024-02); actief [2023-01,2023-10). */
+    private static Passagier cmpPax() {
+        return passagier(p -> {
+            p.setBelastingverminderingPerMaand(List.of(seg(2023, 1, 1, 2024, 1, 1, "10.00"), seg(2024, 1, 1, 2024, 7, 1, "11.00")));
+            p.setRechthebbend(List.of(seg(2023, 7, 1, 2024, 2, 1, null)));
+            p.setActief(List.of(seg(2023, 1, 1, 2023, 10, 1, null)));
+        });
+    }
+    static final Fixture[] PHASE_F4 = {
+        // A19 §8.4.2 ALLE compound clips the value to the INTERSECTION of the kenmerks' true periods — [2023-07,2023-10) = 3×10 = 30.
+        single("§8.4.2 ALLE gedurende = doorsnede (3×10 = 30)",
+            TOTAAL_HDR + CMP_OT + """
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat er aan alle volgende voorwaarden wordt voldaan:
+                    • hij rechthebbend is
+                    • hij actief is).
+            """,
+            ExecModelDifferentialTest::cmpPax, Map.of(), Passagier::getTotaleBelastingvermindering),   // 30.00
+
+        // A21 §8.4.2 "ten minste 1" clips to the UNION of the kenmerks' true periods — [2023-01,2024-02) = 12×10 + 1×11 = 131.
+        single("§8.4.2 ten-minste-1 gedurende = unie (12×10 + 1×11 = 131)",
+            TOTAAL_HDR + CMP_OT + """
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat er aan ten minste 1 van de volgende voorwaarden wordt voldaan:
+                    • hij rechthebbend is
+                    • hij actief is).
+            """,
+            ExecModelDifferentialTest::cmpPax, Map.of(), Passagier::getTotaleBelastingvermindering),   // 131.00
+
+        // A20 §8.4.2 "ten minste 1" with a NEGATED member: rechthebbend ∪ ¬actief (value-bounded complement) — [2023-07,2024-07) = 6×10+6×11 = 126.
+        single("§8.4.2 ten-minste-1 met negatie = unie van het span-begrensde complement (126)",
+            TOTAAL_HDR + CMP_OT + """
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat er aan ten minste 1 van de volgende voorwaarden wordt voldaan:
+                    • hij rechthebbend is
+                    • hij niet actief is).
+            """,
+            ExecModelDifferentialTest::cmpPax, Map.of(), Passagier::getTotaleBelastingvermindering),   // 126.00
+
+        // A17 §8.4.2 ALLE compound on the aantal-dagen-in WRITE: count per month the days BOTH kenmerks hold (rsTijdKnip).
+        single("§8.4.2 ALLE compound op aantal-dagen-in (doorsnede: Jan 22 / Feb 13)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                is actief kenmerk (bijvoeglijk) voor elke maand;
+                het aantal dagen recht op belastingvermindering Numeriek (geheel getal) met eenheid dg voor elke maand;
+            Regel R
+                geldig altijd
+                    Het aantal dagen recht op belastingvermindering van een passagier moet gesteld worden op het aantal dagen in de maand dat er aan alle volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - hij actief is.
+            """,
+            () -> passagier(p -> {
+                p.setRechtOpBelastingvermindering(List.of(seg(2024, 1, 1, 2024, 2, 14, null)));
+                p.setActief(List.of(seg(2024, 1, 10, 2024, 3, 1, null)));
+            }),
+            Map.of(),
+            p -> tl(p.getAantalDagenRechtOpBelastingvermindering())),   // [Jan→22, Feb→13]
+
+        // A18 §8.4.2 "ten minste 1" compound on the tijdsevenredig WRITE: prorate over the UNION (rsTijdUnie).
+        single("§8.4.2 ten-minste-1 compound op tijdsevenredig (unie: Jan 18,00 / Feb 4,50)",
+            """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de standaardbedrag Bedrag voor elk jaar;
+                de belastingvermindering Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                is actief kenmerk (bijvoeglijk) voor elke maand;
+            Regel R
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van zijn standaardbedrag gedurende de tijd dat er aan ten minste 1 van de volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - hij actief is).
+            """,
+            () -> passagier(p -> {
+                p.setStandaardbedrag(List.of(seg(2025, 1, 1, 2026, 1, 1, "18.00")));
+                p.setRechtOpBelastingvermindering(List.of(seg(2025, 1, 1, 2025, 2, 5, null)));
+                p.setActief(List.of(seg(2025, 2, 1, 2025, 2, 8, null)));
+            }),
+            Map.of(),
+            p -> tl(p.getBelastingvermindering())),   // [Jan→18.00, Feb→4.50]
+    };
+
+    @Test void phase_F4_compound_gedurende_matches_drl_back_end()  { runDifferential("Phase F4", PHASE_F4, 5); }
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 3); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
