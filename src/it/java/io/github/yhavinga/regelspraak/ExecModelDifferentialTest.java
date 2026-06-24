@@ -830,6 +830,15 @@ class ExecModelDifferentialTest {
             () -> { Vlucht v = new Vlucht(); return List.of(v, pax(v), pax(v), pax(v)); },
             Map.of(),
             l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 9
+
+        // §5.8.2 SOM inside arithmetic: "2 maal de som van de prijs van alle passagiers ..." (the maal on the LEFT so
+        // it binds OUTSIDE the SOM). sum 100 * 2 = 200; an empty reis -> SOM leegwaarde (null) -> rsNul -> 0. Binds
+        // BOTH the count and sum vars of the SOM accumulate.
+        new Fixture("SOM inside arithmetic (2 maal som van prijs = 200; empty -> 0)",
+            AGG_HDR + "De totaalprijs van een reis moet berekend worden als 2 maal de som van de prijs van alle passagiers van de reis.\n",
+            () -> { Vlucht v = new Vlucht(); Vlucht leeg = new Vlucht(); return List.of(v, leeg, pas(v, 30), pas(v, 70)); },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).getTotaalprijs(), ((Vlucht) l.get(1)).getTotaalprijs())),   // 200, 0
     };
 
     // ---- Phase H: §8.1.1 NAVIGATED + attr-vs-attr numeric comparison in a CONDITION (the model conditie back-end
@@ -1935,7 +1944,7 @@ class ExecModelDifferentialTest {
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
     @Test void phase_H_value_ops_matches_drl_back_end()             { runDifferential("Phase H val", PHASE_H_VAL, 7); }
     @Test void phase_H_builtin_functies_match_drl_back_end()        { runDifferential("Phase H func", PHASE_H_FUNC, 4); }
-    @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 4); }
+    @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 5); }
     @Test void beslistabel_rows_match_drl_back_end()          { runDifferential("Beslistabel", BESLISTABEL, 6); }
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }
     @Test void phase_B_model_back_end_matches_drl_back_end()  { runDifferential("Phase B", PHASE_B, 3); }

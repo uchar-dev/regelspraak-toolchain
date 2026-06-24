@@ -1489,7 +1489,16 @@ public final class ExecModelTranspiler {
         }
         if (e instanceof Expr.Functie f && isAggregatieKind(f.kind())) {
             Agg agg = aggregatie(f, subject, sVar);
-            if (agg == null || agg.isSom()) return null;   // unresolvable / SOM-in-arithmetic -> skip
+            if (agg == null) return null;
+            if (agg.isSom()) {
+                // §5.8.2 SOM inside arithmetic: ONE accumulate CE binds BOTH the contributor count and the sum;
+                // the eval branches count==0 -> the leegwaarde fallback, else toBd(sum).
+                accItemsOut.add(agg.accItem());
+                int idxCnt = accVarsOut.size(); accVarsOut.add(agg.countVar());
+                int idxSum = accVarsOut.size(); accVarsOut.add(agg.resultVar());
+                BigDecimal fallback = agg.somFallback();
+                return (s, g, a) -> ((Number) a[idxCnt]).longValue() == 0L ? fallback : RegelSpraakRuntime.toBd(a[idxSum]);
+            }
             int idx = accVarsOut.size();
             accItemsOut.add(agg.accItem());
             accVarsOut.add(agg.resultVar());
