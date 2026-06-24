@@ -992,10 +992,11 @@ public final class ExecModelTranspiler {
      *  Parameter-global names it reads (so {@link #regel} can bind them on the consequence). */
     private record WaardeFn(BiFunction<Object, Map<String, BigDecimal>, Object> fn, Set<String> globals) {
         static WaardeFn constant(Object v) { return new WaardeFn((s, gm) -> v, Set.of()); }
-        /** A copy whose numeric result is multiplied by a unit factor (null result stays null — a leegwaarde). */
+        /** A copy whose NUMERIC result is multiplied by a unit factor (null stays null — a leegwaarde; a non-number,
+         *  e.g. a Tekst/enumeratiewaarde String value, passes through unscaled). */
         WaardeFn scaledBy(BigDecimal f) {
             BiFunction<Object, Map<String, BigDecimal>, Object> inner = fn;
-            return new WaardeFn((s, gm) -> { Object v = inner.apply(s, gm); return v == null ? null : ((BigDecimal) v).multiply(f); }, globals);
+            return new WaardeFn((s, gm) -> { Object v = inner.apply(s, gm); return v instanceof BigDecimal bd ? bd.multiply(f) : v; }, globals);
         }
     }
 
@@ -1006,6 +1007,11 @@ public final class ExecModelTranspiler {
             BigDecimal val = bd(lit);
             return val == null ? null : WaardeFn.constant(val);
         }
+        // §13.3.3.4 Tekst / §13.2.14 enumeratiewaarde literal value -> its String label (an enumeratie/Tekst field is
+        // a String; the §12 beslistabel may SET such an attribute). DRL renders the same string, so both back-ends
+        // store the identical label; the value-side unit restatement is a no-op (scaledBy passes a non-number through).
+        String tekstLabel = tekstOfEnumLabel(e);
+        if (tekstLabel != null) return WaardeFn.constant(tekstLabel);
         if (e instanceof Expr.AttribuutRef a && a.navigatieRol() == null) {
             // §8.2 a tijdsafhankelijk (List<Segment>) attribute read in a SCALAR slot is NOT a scalar — only the §7.1
             // "het totaal van" collapses a timeline to a scalar (handled in regel() before this path). Splicing the

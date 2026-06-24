@@ -216,6 +216,20 @@ class BeslistabelDesugarTest {
         assertTrue(warns.get(3).contains("indien"));
     }
 
+    @Test void c9_indien_rejection_is_token_and_quote_aware() {
+        // §12 C-9 must reject only a STANDALONE "indien" OUTSIDE quotes — not the substring in an attribute name
+        // ("indientermijn") nor an "indien" inside a Tekst literal ("indien nodig") (review false-positives).
+        List<String> warns = new ArrayList<>();
+        java.util.function.Function<String, List<String>> conclusie = cell ->
+                BeslistabelDesugar.desugar("T", "altijd",
+                        List.of("", "de korting van een Passagier moet gesteld worden op", "indien zijn leeftijd kleiner is dan"),
+                        List.of(List.of("1", cell, "18")), warns::add);
+        assertEquals(1, conclusie.apply("zijn indientermijn").size(), () -> "indientermijn afgewezen: " + warns);
+        assertEquals(1, conclusie.apply("\"indien nodig\"").size(), () -> "quoted indien afgewezen: " + warns);
+        assertTrue(conclusie.apply("10 indien iets").isEmpty());   // a genuine standalone inline indien -> rejected
+        assertTrue(warns.stream().anyMatch(w -> w.contains("indien")));
+    }
+
     @Test void desugared_rows_resolve_through_the_existing_pipeline() {
         List<String> headers = List.of("",
                 "de korting van een Passagier moet gesteld worden op",

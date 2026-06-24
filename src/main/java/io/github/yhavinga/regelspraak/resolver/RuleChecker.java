@@ -126,13 +126,16 @@ final class RuleChecker {
     private static List<String> splitRij(String rij) {
         String s = rij.strip();
         if (s.startsWith("|")) s = s.substring(1);
-        if (s.endsWith("|") && !eindigtInQuote(s)) s = s.substring(0, s.length() - 1);
+        // Only a BALANCED quote char (even count) opens spans — so a stray apostrophe (a §13.2 ' that is NOT an
+        // enumeratiewaarde delimiter, e.g. in "1's") stays a literal char and never swallows the following pipes.
+        boolean dq = even(s, '"'), sq = even(s, '\'');
+        if (s.endsWith("|") && !eindigtInQuote(s, dq, sq)) s = s.substring(0, s.length() - 1);
         List<String> cellen = new ArrayList<>();
         StringBuilder cur = new StringBuilder();
         char quote = 0;   // 0 = outside any quote; '"' or '\'' = the char that opened the current span
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
-            if (quote == 0 && (c == '"' || c == '\'')) quote = c;
+            if (quote == 0 && ((c == '"' && dq) || (c == '\'' && sq))) quote = c;
             else if (quote == c) quote = 0;
             if (c == '|' && quote == 0) { cellen.add(cur.toString().trim()); cur.setLength(0); }
             else cur.append(c);
@@ -140,13 +143,20 @@ final class RuleChecker {
         cellen.add(cur.toString().trim());
         return cellen;
     }
-    /** True when the final '|' of {@code s} sits INSIDE a quoted span (so it is part of a value rather than the row's
-     *  trailing edge pipe). Tracks which quote char opened the span (an apostrophe inside "…" does not toggle). */
-    private static boolean eindigtInQuote(String s) {
+    /** True when {@code q} occurs an even number of times in {@code s} (so its spans are balanced and may be tracked
+     *  as quotes; an odd count means an unbalanced ' / " that must be treated as an ordinary character). */
+    static boolean even(String s, char q) {
+        int n = 0;
+        for (int i = 0; i < s.length(); i++) if (s.charAt(i) == q) n++;
+        return (n & 1) == 0;
+    }
+    /** True when the final '|' of {@code s} sits INSIDE a (balanced) quoted span, so it is part of a value rather than
+     *  the row's trailing edge pipe. */
+    private static boolean eindigtInQuote(String s, boolean dq, boolean sq) {
         char quote = 0;
         for (int i = 0; i < s.length() - 1; i++) {
             char c = s.charAt(i);
-            if (quote == 0 && (c == '"' || c == '\'')) quote = c;
+            if (quote == 0 && ((c == '"' && dq) || (c == '\'' && sq))) quote = c;
             else if (quote == c) quote = 0;
         }
         return quote != 0;

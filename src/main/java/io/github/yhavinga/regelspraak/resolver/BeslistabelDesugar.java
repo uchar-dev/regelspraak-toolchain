@@ -178,21 +178,23 @@ public final class BeslistabelDesugar {
      *  (objectcreatie/feitcreatie/verdeling/consistentie/…). */
     private static String resultaatdeel(String header, String cell, String nr, java.util.function.Consumer<String> waarschuw) {
         String h = header.toLowerCase();
-        if (h.contains("berekend als")) {   // §12 C-7
-            waarschuw.accept("rij " + nr + ": een beslistabel-conclusie moet 'moet gesteld worden op' gebruiken, "
-                    + "niet 'berekend als' (§12)");
-            return null;
-        }
         if (h.contains("moet gesteld worden op")) {   // §9.1 gelijkstelling
             if (cell.isEmpty()) {   // §12 C-8: n.v.t. is conditie-only, a resultaatdeel is mandatory
                 waarschuw.accept("rij " + nr + ": lege conclusie-cel — een resultaatdeel is verplicht (§12)");
                 return null;
             }
-            if (cell.toLowerCase().contains("indien")) {   // §12 C-9: voorwaarden horen in de conditie-kolommen
+            // §12 C-9: voorwaarden horen in de conditie-kolommen — reject only a STANDALONE "indien" word OUTSIDE any
+            // quoted span (so an attribute "het indienjaar" or a Tekst "indien nodig" value is NOT a false positive).
+            if (LOS_INDIEN.matcher(maskerQuotes(cell)).find()) {
                 waarschuw.accept("rij " + nr + ": 'indien' mag niet in een conclusie-cel staan (§12)");
                 return null;
             }
             return header + " " + cell;
+        }
+        if (h.contains("berekend als")) {   // §12 C-7 — only the forbidden connective (NOT an incidental substring of a gelijkstelling header)
+            waarschuw.accept("rij " + nr + ": een beslistabel-conclusie moet 'moet gesteld worden op' gebruiken, "
+                    + "niet 'berekend als' (§12)");
+            return null;
         }
         // §9.2 kenmerktoekenning: the header IS the assertion ("een passagier is een passagier jonger dan 18 jaar").
         if (cell.equalsIgnoreCase("waar")) return header;
@@ -212,12 +214,15 @@ public final class BeslistabelDesugar {
      *  is NOT a separator, so the literal stays intact. A single-value cell returns a 1-element list. */
     private static List<String> splitReeks(String cell, boolean ongelijk) {
         String connector = ongelijk ? "en" : "of";
+        // Only a BALANCED quote char (even count) opens a value span — a stray apostrophe stays a literal char and
+        // does NOT suppress the §5.7 separators for the rest of the cell.
+        boolean dq = even(cell, '"'), sq = even(cell, '\'');
         List<String> waarden = new ArrayList<>();
         StringBuilder cur = new StringBuilder();
         char quote = 0;   // 0 = outside any quote; '"' (tekstwaarde) or '\'' (enumeratiewaarde) = the opening char
         for (int i = 0; i < cell.length(); ) {
             char c = cell.charAt(i);
-            if (quote == 0 && (c == '"' || c == '\'')) { quote = c; cur.append(c); i++; continue; }
+            if (quote == 0 && ((c == '"' && dq) || (c == '\'' && sq))) { quote = c; cur.append(c); i++; continue; }
             if (quote == c) { quote = 0; cur.append(c); i++; continue; }
             if (quote == 0 && c == ',') { duwWaarde(waarden, cur); i++; continue; }
             if (quote == 0 && c == ' ' && connectorOp(cell, i, connector)) {
@@ -231,6 +236,30 @@ public final class BeslistabelDesugar {
         if (waarden.isEmpty()) waarden.add(cell.trim());
         return waarden;
     }
+    /** True when {@code q} occurs an even number of times in {@code s} (balanced spans, safe to track as quotes). */
+    private static boolean even(String s, char q) {
+        int n = 0;
+        for (int i = 0; i < s.length(); i++) if (s.charAt(i) == q) n++;
+        return (n & 1) == 0;
+    }
+    /** Mask the chars inside every BALANCED quoted span with spaces, so a keyword like "indien" inside a tekstwaarde
+     *  or enumeratiewaarde is not seen as a standalone token (used by the §12 C-9 check). */
+    private static String maskerQuotes(String s) {
+        boolean dq = even(s, '"'), sq = even(s, '\'');
+        StringBuilder m = new StringBuilder(s.length());
+        char quote = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            boolean opener = quote == 0 && ((c == '"' && dq) || (c == '\'' && sq));
+            boolean closer = quote == c;
+            if (opener) { quote = c; m.append(' '); }
+            else if (closer) { quote = 0; m.append(' '); }
+            else m.append(quote == 0 ? c : ' ');
+        }
+        return m.toString();
+    }
+    private static final java.util.regex.Pattern LOS_INDIEN =
+            java.util.regex.Pattern.compile("(?i)(^|\\s)indien(\\s|$)");
     /** True when {@code cell} has the standalone connector word (surrounded by spaces) starting at the space {@code i}. */
     private static boolean connectorOp(String cell, int i, String connector) {
         int w = i + 1, end = w + connector.length();

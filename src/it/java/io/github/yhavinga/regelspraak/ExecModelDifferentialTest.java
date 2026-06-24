@@ -202,6 +202,26 @@ class ExecModelDifferentialTest {
             () -> { Persoon p = new Persoon(); p.setRoepnaam("Maria"); return List.of(p); },
             Map.of(),
             l -> ((Persoon) l.get(0)).getUitkomst()),
+
+        // enumeratiewaarde on the VALUE side: a gelijkstelling SETTING an enum attribute. Both back-ends store the
+        // String label (DRL setRoepnaam("Maria"); the model lowers tekstOfEnumLabel + a non-numeric-safe scaledBy).
+        new Fixture("enumeratiewaarde conclusie (set roepnaam -> 'Maria')",
+            """
+            Domein Naam is van het type Enumeratie
+                'Tom'
+                'Maria'
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de roepnaam Naam;
+                de uitkomst Numeriek (geheel getal);
+            Beslistabel Naamzetting
+              geldig altijd
+              |   | de roepnaam van een Persoon moet gesteld worden op | indien zijn uitkomst groter is dan |
+              |---|---|---|
+              | 1 | 'Maria' | 0 |
+            """,
+            () -> { Persoon p = new Persoon(); p.setUitkomst(new BigDecimal(5)); return List.of(p); },
+            Map.of(),
+            l -> ((Persoon) l.get(0)).getRoepnaam()),
     };
 
     // ---- Phase B fixtures: ALLE-compound (AND), kenmerkcheck, LEEG/GEVULD as in-pattern constraints ----
@@ -1523,7 +1543,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 4); }
-    @Test void beslistabel_rows_match_drl_back_end()          { runDifferential("Beslistabel", BESLISTABEL, 4); }
+    @Test void beslistabel_rows_match_drl_back_end()          { runDifferential("Beslistabel", BESLISTABEL, 5); }
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }
     @Test void phase_B_model_back_end_matches_drl_back_end()  { runDifferential("Phase B", PHASE_B, 3); }
     @Test void phase_B2_quantifiers_match_drl_back_end()       { runDifferential("Phase B2", PHASE_B2, 5); }

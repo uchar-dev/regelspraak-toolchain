@@ -103,6 +103,19 @@ class BeslistabelTabelTest {
                 () -> "verwacht een 'berekend als' waarschuwing: " + m.diagnostics);
     }
 
+    @Test void an_unbalanced_apostrophe_in_a_cell_does_not_merge_cells() {
+        // the quote-aware split must only treat a BALANCED quote char as a delimiter — a stray apostrophe ("1's")
+        // must stay a literal and NOT swallow the following '|' (which silently merged columns before the fix).
+        String src = "Objecttype de Bestemming (mv: Bestemmingen)\n    de naam Tekst;\n    de rang Numeriek (geheel getal);\n\n"
+                + "Beslistabel T\n  geldig altijd\n"
+                + "  |   | de rang van een Bestemming moet gesteld worden op | indien zijn naam gelijk is aan |\n"
+                + "  |---|---|---|\n"
+                + "  | 1's | 1 | \"Amsterdam\" |\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "fouten: " + m.errors());
+        assertEquals(1, m.resolvedRegels.size());
+    }
+
     @Test void header_only_beslistabel_warns_it_is_empty_rather_than_silently_dropping() {
         // the pre-body corpus shape (a bare "Beslistabel … / geldig …" shell) must still parse AND surface a warning,
         // never vanish without IR or diagnostic.
