@@ -672,7 +672,7 @@ class ExecModelDifferentialTest {
     @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 7); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
-    @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 6); }
+    @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
     @Test void phase_E_verdeling_fouten_match_drl_back_end()       { runFoutDifferential("Phase E fout", PHASE_E_FOUT, 2); }
 
     // ---- Phase D: §9.5/§13.4.8 consistentieregel — the VIOLATION inserts an Inconsistentie. The observable is the
@@ -1088,6 +1088,93 @@ class ExecModelDifferentialTest {
                     return List.of(p, deeln(p, "3", "20", null), deeln(p, "1", "20", null), deeln(p, "2", "22", null)); },
             Map.of(),
             l -> vals(((Deelnemer) l.get(1)).getAandeel(), ((Deelnemer) l.get(2)).getAandeel(), ((Deelnemer) l.get(3)).getAandeel())),
+
+        // §9.7.5 ONVERDEELDE REST (naar rato + afronding): 1001 over 3:2 (Σ5) -> 600,6/400,4 floored 600/400; the
+        // source keeps the undistributed 1001-1000 = 1. The rest rule is a SOURCE-modify; the share↔rest cycle is
+        // broken by the source pattern watching only 'totaal' (not the 'restant' it writes).
+        new Fixture("verdeling naar rato + afronding + onverdeelde rest (600/400 rest 1)",
+            """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+                de restant Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel rest
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - naar rato van de gewicht,
+                    - afgerond op 0 decimalen naar beneden.
+                    Als onverdeelde rest blijft de restant van een pot over.
+            """,
+            () -> { Pot p = new Pot(); p.setTotaal(new BigDecimal(1001));
+                    return List.of(p, deeln(p, "3", null, null), deeln(p, "2", null, null)); },
+            Map.of(),
+            l -> vals(((Deelnemer) l.get(1)).getAandeel(), ((Deelnemer) l.get(2)).getAandeel(), ((Pot) l.get(0)).getRestant())),
+
+        // §9.7.3 cap + §9.7.5 rest: 1200 over 3:1:2 capped 300 -> 300/200/300; the capped surplus is NOT
+        // redistributed, the 1200-800 = 400 is the onverdeelde rest.
+        new Fixture("verdeling naar rato + maximum + onverdeelde rest (300/200/300 rest 400)",
+            """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+                de restant Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+                de maximum Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel max rest
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - naar rato van de gewicht,
+                    - met een maximum van de maximum.
+                    Als onverdeelde rest blijft de restant van een pot over.
+            """,
+            () -> { Pot p = new Pot(); p.setTotaal(new BigDecimal(1200));
+                    return List.of(p, deeln(p, "3", null, "300"), deeln(p, "1", null, "300"), deeln(p, "2", null, "300")); },
+            Map.of(),
+            l -> vals(((Deelnemer) l.get(1)).getAandeel(), ((Deelnemer) l.get(2)).getAandeel(), ((Deelnemer) l.get(3)).getAandeel(),
+                      ((Pot) l.get(0)).getRestant())),
+
+        // §9.7.5 Tabel 18 op-volgorde + max + afronding + REST: shares 500/500/433/250/91, rest 1800-1774 = 26 (the
+        // cap+floor are applied group-by-group INSIDE the helper, so the carry-down pot — and the rest — are right).
+        new Fixture("verdeling op volgorde + max + afronding + rest (Tabel 18 rest 26)",
+            """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+                de restant Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal);
+                de maximum Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel volgorde max rest
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - op volgorde van toenemende de leeftijd,
+                    - bij een even groot criterium naar rato van de gewicht,
+                    - met een maximum van de maximum,
+                    - afgerond op 0 decimalen naar beneden.
+                    Als onverdeelde rest blijft de restant van een pot over.
+            """,
+            () -> { Pot p = new Pot(); p.setTotaal(new BigDecimal(1800));
+                    return List.of(p, deeln(p, "3", "22", "500"), deeln(p, "2", "39", "500"), deeln(p, "1", "39", "500"),
+                                      deeln(p, "3", "66", "250"), deeln(p, "1", "66", "250")); },
+            Map.of(),
+            l -> vals(((Deelnemer) l.get(1)).getAandeel(), ((Deelnemer) l.get(2)).getAandeel(), ((Deelnemer) l.get(3)).getAandeel(),
+                      ((Deelnemer) l.get(4)).getAandeel(), ((Deelnemer) l.get(5)).getAandeel(), ((Pot) l.get(0)).getRestant())),
 
         // (adversary-confirmed divergence, GUARDED -> honest skip) TWO verdelingen writing the SAME recipient
         // attribuut 'aandeel' infinite-loop in the model (class-reactive reflective lambdas: each update(r)

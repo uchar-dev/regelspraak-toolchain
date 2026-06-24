@@ -769,11 +769,6 @@ public final class ExecModelTranspiler {
                 && (v.ratoAttribuut() == null || (gewichtType != null && gewichtType.isGetalachtig()));
         if (!gelijk && !rato && !opVolgorde)
             return skipList("verdeling (onopgelost " + (bron == null || doel == null ? "referentie" : methode.name().toLowerCase()) + "): " + v.naam());
-        // §9.7.5 onverdeelde rest: the rest rule modifies the SOURCE, forming a share↔rest modify cycle. DRL breaks
-        // it with property-reactive modify; the reflective model's opaque lambdas are class-reactive (no inferable
-        // reactOn), so the cycle would infinite-loop under the proven update()+NO_LOOP convention. Honest skip until
-        // the follow-up lands the property-scoped break.
-        if (v.restantAttribuut() != null) return skipList("verdeling (onverdeelde rest — share↔rest modify-cycle, follow-up): " + v.naam());
         // CONFIRMED divergence (Phase E adversarial review): TWO verdelingen writing the SAME recipient (doelType,
         // doelAttribuut) infinite-loop in the model while DRL terminates — the reflective share rules are class-reactive
         // (the opaque lambdas expose no reactOn property scope), so each update(r) re-activates the SIBLING verdeling
@@ -790,6 +785,10 @@ public final class ExecModelTranspiler {
         List<Rule> rules = new ArrayList<>();
         rules.add(opVolgorde ? opVolgordeRegel(v, join, bronClass, doelClass)
                              : gelijkOfRatoRegel(v, join, gelijk, bronClass, doelClass));
+        // §9.7.5 onverdeelde rest: the source keeps total − Σ(assigned shares). naar-rato's recipient filter excludes
+        // the weightless (they get no share); gelijke/op-volgorde collect every recipient.
+        if (v.restantAttribuut() != null)
+            rules.add(restantRegel(v, join, rato, bronClass, doelClass));
         // §9.7.6 Tabel 19 Fouten: surface an empty weight (whenever a naar-rato split is present) or a leeg/negatief
         // maximum at ANY recipient as a SEPARATE insert-only Inconsistentie companion (the value side already
         // degrades a bad cap to uncapped via rsPlafond — never a negative share).
@@ -817,8 +816,14 @@ public final class ExecModelTranspiler {
         seq = 0;
         String bronAttr = v.bronAttribuut(), doelAttr = v.doelAttribuut(), gewAttr = v.ratoAttribuut(), maxAttr = v.maximumAttribuut();
         Integer dec = v.afrondingDecimalen();
+        // §9.7.5 cycle break: the SOURCE pattern watches ONLY the source amount, NOT the restant a rest rule writes —
+        // so a rest rule's update(src) (mask=restant) does not re-wake this share rule (the share↔rest Pot cycle).
+        // The Deelnemer accumulate/recipient patterns stay class-reactive (they must react to recipient inserts); they
+        // never drive a loop here (NO_LOOP blocks the share's own aandeel-write re-trigger, and a rest writes the Pot,
+        // not a Deelnemer). The multi-writer-same-attribute loop is separately GUARDED above. watch(...) is honoured by
+        // the default model base (empirically verified, Phase E review).
         Variable srcVar = DSL.declarationOf(bronClass, "$src");
-        PatternDSL.PatternDef srcPat = PatternDSL.pattern(srcVar);
+        PatternDSL.PatternDef srcPat = PatternDSL.pattern(srcVar).watch(prop(bronAttr));
 
         // accumulate the recipients joined to $src: count (gelijke delen) or sum of the present weights (naar rato).
         Variable cVar = DSL.declarationOf(doelClass, "$c_" + (seq++));
@@ -878,8 +883,9 @@ public final class ExecModelTranspiler {
                 gewAttr = v.ratoAttribuut(), maxAttr = v.maximumAttribuut();
         Integer dec = v.afrondingDecimalen();
         boolean toenemend = !v.afnemend();
+        // cycle break: the SOURCE pattern watches only the source amount (NOT restant); see gelijkOfRatoRegel.
         Variable srcVar = DSL.declarationOf(bronClass, "$src");
-        PatternDSL.PatternDef srcPat = PatternDSL.pattern(srcVar);
+        PatternDSL.PatternDef srcPat = PatternDSL.pattern(srcVar).watch(prop(bronAttr));
 
         // collect every recipient joined to $src into one index-stable list.
         Variable pVar = DSL.declarationOf(doelClass, "$p_" + (seq++));
@@ -932,6 +938,57 @@ public final class ExecModelTranspiler {
         Block2<org.drools.model.Drools, Object> body = (drools, s) ->
                 drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, hostNaam, s));
         return PatternDSL.rule(compNaam).build(srcPat, DSL.exists(dPat), DSL.not(guard), DSL.on(srcVar).execute(body));
+    }
+
+    /** The §9.7.5 recipient filter shared by the rest rule's {@code not} guard and its sum accumulate: the join,
+     *  plus (naar rato) a present weight — the SAME set the share rule distributed over. Left class-reactive (the
+     *  caller adds the {@code doelAttr ==/!= null} constraint); it writes no Deelnemer, so it cannot loop. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private PatternDSL.PatternDef recipientFilterPattern(Variable var, Variable srcVar, String join, boolean vereisGewicht,
+                                                         String gewAttr, String doelAttr) {
+        PatternDSL.PatternDef p = PatternDSL.pattern(var).expr(nextId("rfj"), (Variable) srcVar,
+                (Predicate2) (d, s) -> RegelSpraakRuntime.get(d, join) == s);
+        if (vereisGewicht) p = p.expr(nextId("rfw"), (Predicate1) d -> RegelSpraakRuntime.get(d, gewAttr) != null);
+        return p;
+    }
+
+    /** §9.7.5 onverdeelde rest: the source keeps {@code total − Σ(assigned shares)}. A SEPARATE rule that modifies the
+     *  SOURCE (so it cannot cancel the per-recipient share activations); method-agnostic and RECOMPUTABLE — it re-fires
+     *  whenever the share set changes (a §9.4 rule-derived recipient may arrive late, so a fire-once freeze would lock
+     *  in a partial sum). The {@code not Doel(filter, doelAttr == null)} guard keeps it from summing a recipient
+     *  mid-assignment. Termination: the source pattern watches the source amount only (NOT the restant it writes), so
+     *  its own update does not re-wake it (and the share rule's source pattern likewise does not watch restant); the
+     *  recipient patterns watch the join + the assigned share, so the rest recomputes exactly when a share lands.
+     *  Mirrors the DRL "(onverdeelde rest)" rule. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Rule restantRegel(ResolvedVerdeling v, String join, boolean vereisGewicht, Class<?> bronClass, Class<?> doelClass) {
+        seq = 0;
+        String bronAttr = v.bronAttribuut(), doelAttr = v.doelAttribuut(), restAttr = v.restantAttribuut(), gewAttr = v.ratoAttribuut();
+        Variable srcVar = DSL.declarationOf(bronClass, "$src");
+        PatternDSL.PatternDef srcPat = PatternDSL.pattern(srcVar)
+                .expr(nextId("bnn"), (Predicate1) s -> RegelSpraakRuntime.get(s, bronAttr) != null)
+                .watch(prop(bronAttr));   // NOT prop(restAttr): the rest's own write must not re-wake it / the share rule
+        // not Doel( filter, doelAttr == null ) — no recipient is mid-assignment. The Deelnemer patterns stay
+        // class-reactive (they MUST react to aandeel becoming set); they write no Deelnemer, so they cannot loop.
+        Variable notVar = DSL.declarationOf(doelClass, "$u0_" + (seq++));
+        PatternDSL.PatternDef notPat = recipientFilterPattern(notVar, srcVar, join, vereisGewicht, gewAttr, doelAttr)
+                .expr(nextId("unset"), (Predicate1) d -> RegelSpraakRuntime.get(d, doelAttr) == null);
+        // accumulate Σ of the assigned shares.
+        Variable uVar = DSL.declarationOf(doelClass, "$u_" + (seq++));
+        PatternDSL.PatternDef accSrc = recipientFilterPattern(uVar, srcVar, join, vereisGewicht, gewAttr, doelAttr)
+                .expr(nextId("set"), (Predicate1) d -> RegelSpraakRuntime.get(d, doelAttr) != null);
+        Variable amtVar = DSL.declarationOf(BigDecimal.class, "$amt_" + (seq++));
+        accSrc = accSrc.bind(amtVar, (Function1) d -> RegelSpraakRuntime.get(d, doelAttr));
+        Variable sumVar = DSL.declarationOf(Object.class, "$uit_" + (seq++));
+        RuleItemBuilder<?> acc = DSL.accumulate(accSrc, DSL.accFunction(BigDecimalSumAccumulateFunction.class, amtVar).as(sumVar));
+        Block3<org.drools.model.Drools, Object, Object> body = (drools, s, uit) -> {
+            BigDecimal totaal = (BigDecimal) RegelSpraakRuntime.get(s, bronAttr);
+            BigDecimal sum = RegelSpraakRuntime.toBd(uit);
+            RegelSpraakRuntime.set(s, restAttr, totaal.subtract(sum == null ? BigDecimal.ZERO : sum));
+            drools.update(s);
+        };
+        return PatternDSL.rule(v.naam() + " (onverdeelde rest)").attribute(Rule.Attribute.NO_LOOP, true)
+                .build(srcPat, DSL.not(notPat), acc, DSL.on(srcVar, (Variable) sumVar).execute(body));
     }
 
     private List<Rule> skipList(String reason) { overgeslagen.add(reason); return List.of(); }
@@ -1079,5 +1136,11 @@ public final class ExecModelTranspiler {
         StringBuilder b = new StringBuilder(w[0]);
         for (int i = 1; i < w.length; i++) if (!w[i].isEmpty()) b.append(Character.toUpperCase(w[i].charAt(0))).append(w[i].substring(1));
         return b.toString();
+    }
+    /** The JAVABEAN property name Drools watches for property reactivity (the lowercase-first form of {@link #ident}):
+     *  "de aandeel" -> "aandeel", "het saldo" -> "saldo". Matches the get/set the reflective bridge uses. */
+    static String prop(String naam) {
+        String p = RegelSpraakRuntime.pascal(naam);
+        return p.isEmpty() ? p : Character.toLowerCase(p.charAt(0)) + p.substring(1);
     }
 }
