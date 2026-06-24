@@ -1945,7 +1945,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 8); }
     @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 7); }
-    @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 2); }
+    @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 3); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
     @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
@@ -2504,6 +2504,28 @@ class ExecModelDifferentialTest {
                     io.github.yhavinga.regelspraak.facts.Bestemming anders = new io.github.yhavinga.regelspraak.facts.Bestemming(); anders.setNaam("Rotterdam");
                     return List.of(ok, anders, new io.github.yhavinga.regelspraak.facts.Bestemming()); },
             o -> "naam=" + ((io.github.yhavinga.regelspraak.facts.Bestemming) o).getNaam()),
+
+        // §13.4.8 a NAVIGATED numeric ordering assertie "de leeftijd ... kleiner dan de leeftijd van zijn partner"
+        // (toka-30 shape). 30<40 ok; 50<40 violated; a partnerless persoon -> partner.leeftijd leeg -> ordering
+        // violation (navReader null == DRL's l.leeg). flagged = {ouder(no partner), oud(50), zonder(no partner)}.
+        new FoutFixture("consistentie: navigated numeric ordering (leeftijd < die van zijn partner)",
+            """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de leeftijd Numeriek (geheel getal);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel check
+                geldig altijd
+                    De leeftijd van een Persoon moet kleiner zijn dan de leeftijd van zijn partner.
+            """,
+            () -> { Persoon ouder = new Persoon(); ouder.setLeeftijd(new BigDecimal(40));
+                    Persoon jong = new Persoon(); jong.setLeeftijd(new BigDecimal(30)); jong.setPartner(ouder);   // 30<40 ok
+                    Persoon oud = new Persoon(); oud.setLeeftijd(new BigDecimal(50)); oud.setPartner(ouder);       // 50<40 violation
+                    Persoon zonder = new Persoon(); zonder.setLeeftijd(new BigDecimal(35));                        // partner leeg -> violation
+                    return List.of(ouder, jong, oud, zonder); },
+            o -> "lft=" + ((Persoon) o).getLeeftijd()),
     };
 
     // ---- Phase E fout: §9.7.6 Tabel 19 — an empty weight (naar rato) or a leeg/negatief maximum at ANY recipient is

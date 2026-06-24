@@ -1701,24 +1701,26 @@ public final class ExecModelTranspiler {
             return obj -> { for (Predicate1<Object> sp : schendingen) if (sp.test(obj)) return true; return false; };
         }
         if (!(assertie instanceof Conditie.Vergelijking v)) return null;     // other compound/predicate negation: later
-        if (!(v.links() instanceof Expr.AttribuutRef la) || la.navigatieRol() != null) return null;
-        if (subject != null && subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
-        String lattr = la.attribuut();
+        if (!(v.links() instanceof Expr.AttribuutRef la)) return null;
+        // OWN or to-ONE NAVIGATED operand readers (navReader's null == DRL's `l.leeg` = rol==null || attr==null, so
+        // the explicit leeg/vol semantics of DrlTranspiler.genavigeerdeVergelijkingSchending fall out of a null check).
+        java.util.function.Function<Object, Object> lRead = consistentieReader(la, subject);
+        if (lRead == null) return null;
 
         // §13.4.8 DATUM ordering assertie ("X moet eerder/later zijn dan Y"): violated when either operand is empty
-        // OR the flipped (negated) ordering holds — the datum mirror of the numeric ordering schending below.
+        // OR the flipped (negated) ordering holds (own or navigated operands).
         if (la.type().isDatum() && isDatumOp(v.op())) {
             Conditie.Operator flipOp = flip(v.op());
             if (v.rechts() instanceof Expr.Literal dl && dl.type().isDatum()) {
                 java.time.LocalDate rhs = parseDatum(dl.waarde());
                 if (rhs == null) return null;
-                return s -> { Object a = RegelSpraakRuntime.get(s, lattr);
+                return s -> { Object a = lRead.apply(s);
                     return !(a instanceof java.time.LocalDate ld) || datumVergelijk(ld, rhs, flipOp); };
             }
-            if (v.rechts() instanceof Expr.AttribuutRef ra && ra.navigatieRol() == null && ra.type().isDatum()) {
-                if (subject != null && subject.attribuutGranulariteit.containsKey(ra.attribuut())) return null;
-                String rattr = ra.attribuut();
-                return s -> { Object a = RegelSpraakRuntime.get(s, lattr), b = RegelSpraakRuntime.get(s, rattr);
+            if (v.rechts() instanceof Expr.AttribuutRef ra && ra.type().isDatum()) {
+                java.util.function.Function<Object, Object> rRead = consistentieReader(ra, subject);
+                if (rRead == null) return null;
+                return s -> { Object a = lRead.apply(s), b = rRead.apply(s);
                     return !(a instanceof java.time.LocalDate la2) || !(b instanceof java.time.LocalDate lb2)
                             || datumVergelijk(la2, lb2, flipOp); };
             }
@@ -1726,27 +1728,24 @@ public final class ExecModelTranspiler {
         }
         // §13.4.8 / typeringen Tabel 38 a NON-numeriek (Tekst / §13.2.14 enumeratiewaarde) equality assertie vs a
         // literal ("X moet gelijk/ongelijk zijn aan 'lit'"): the criterion is satisfied when (attr equals the label)
-        // == (op is GELIJK); a violation otherwise. A leeg attr never equals the non-null literal, so a GELIJK
-        // assertie over a leeg attr IS a violation (Tabel 38) — mirrors DRL's non-numeriek schending (the literal is
-        // never null, so the both-empty term cannot fire).
+        // == (op is GELIJK); a violation otherwise. A leeg operand never equals the non-null literal, so a GELIJK
+        // assertie over a leeg operand IS a violation (Tabel 38). Own or navigated LHS.
         if ((v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)
                 && v.rechts() instanceof Expr.Literal tl && tekstOfEnumLabel(tl) != null) {
-            if (subject == null || !subject.heeftLid(lattr)) return null;
-            if (!subject.dimensiesVan(lattr).isEmpty()) return null;   // §3.6 gedimensioneerd -> later
             String rhs = tekstOfEnumLabel(tl);
             boolean assertGelijk = v.op() == Conditie.Operator.GELIJK;
-            return s -> rhs.equals(RegelSpraakRuntime.get(s, lattr)) != assertGelijk;   // violation = criterion not satisfied
+            return s -> rhs.equals(lRead.apply(s)) != assertGelijk;   // violation = criterion not satisfied
         }
 
-        if (!isNumeriekOp(v.op())) return null;                              // remaining non-numeric (own-vs-own equality): later
+        if (!isNumeriekOp(v.op())) return null;                              // remaining non-numeric (own/nav-vs-own equality): later
         Conditie.Operator flip = flip(v.op());
         boolean gelijkheid = v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK;
-        if (v.rechts() instanceof Expr.AttribuutRef ra && ra.navigatieRol() == null) {
-            if (subject != null && subject.attribuutGranulariteit.containsKey(ra.attribuut())) return null;
-            String rattr = ra.attribuut();
+        if (v.rechts() instanceof Expr.AttribuutRef ra) {
+            java.util.function.Function<Object, Object> rRead = consistentieReader(ra, subject);
+            if (rRead == null) return null;
             BigDecimal[] f = restatement(la.type(), ra.type());
             return s -> {
-                BigDecimal a = scale(num(s, lattr), f[0]), b = scale(num(s, rattr), f[1]);
+                BigDecimal a = scale(RegelSpraakRuntime.toBd(lRead.apply(s)), f[0]), b = scale(RegelSpraakRuntime.toBd(rRead.apply(s)), f[1]);
                 return gelijkheid ? vergelijk(a, b, flip) : (a == null || b == null || vergelijk(a, b, flip));
             };
         }
@@ -1756,11 +1755,26 @@ public final class ExecModelTranspiler {
             BigDecimal[] f = restatement(la.type(), lit.type());
             BigDecimal rhsS = scale(rhs, f[1]);
             return s -> {
-                BigDecimal a = scale(num(s, lattr), f[0]);
+                BigDecimal a = scale(RegelSpraakRuntime.toBd(lRead.apply(s)), f[0]);
                 return gelijkheid ? vergelijk(a, rhsS, flip) : (a == null || rhsS == null || vergelijk(a, rhsS, flip));
             };
         }
         return null;
+    }
+
+    /** A §13.4.8 consistentie comparison-operand reader: the subject's OWN attribute (get) or a to-ONE NAVIGATED read
+     *  (navReader — its null IS the operand's leeg, since DRL's {@code l.leeg} = {@code rol == null || rol.attr ==
+     *  null}, exactly what navReader collapses). null for a temporal / dimensioned / unresolvable / to-many operand. */
+    private java.util.function.Function<Object, Object> consistentieReader(Expr.AttribuutRef a, Objecttype subject) {
+        if (a.objecttype() == null) return null;
+        if (a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;   // temporal -> Phase F
+        if (!a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;               // §3.6 gedimensioneerd -> later
+        if (a.navigatieRol() == null) {
+            if (subject == null || !subject.heeftLid(a.attribuut())) return null;
+            String attr = a.attribuut();
+            return s -> RegelSpraakRuntime.get(s, attr);
+        }
+        return navReader(a, subject);   // to-one navigated; null == leeg
     }
 
     /** §8.1.6 uniciteitscontrole: "is uniek" is violated when ≥2 DISTINCT instances share a (non-null) key. The
