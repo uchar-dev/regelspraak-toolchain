@@ -18,6 +18,7 @@ import org.drools.model.Rule;
 import org.drools.model.RuleItemBuilder;
 import org.drools.model.Variable;
 import org.drools.model.functions.Block2;
+import org.drools.model.functions.Block3;
 import org.drools.model.functions.Predicate1;
 import org.drools.model.functions.Predicate2;
 import org.drools.model.impl.ModelImpl;
@@ -25,9 +26,11 @@ import org.drools.model.impl.ModelImpl;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.Set;
+import java.util.function.BiFunction;
 
 /**
  * The EXECUTABLE-MODEL back-end (migration roadmap 20260624) — produces an {@link org.drools.model.Model}
@@ -98,14 +101,32 @@ public final class ExecModelTranspiler {
         Class<?> factClass = factClass(doel.objecttype());
         if (factClass == null) return skip("regel (geen fact-class " + doel.objecttype().naam + "): " + r.naam());
 
-        // the value to assign: a Function<bean, value> (Phase A reads only the fact — globals in the THEN are a later phase)
-        Function<Object, Object> waarde = switch (r.soort()) {
-            case KENMERKTOEKENNING -> bean -> Boolean.TRUE;                 // "is <kenmerk>" -> kenmerk == true
+        // the value to assign: a WaardeFn(subject, global-values -> value) plus the set of Parameter-globals the
+        // value references (Phase A read only the fact; the THEN-side global is wired into the consequence below).
+        WaardeFn wf = switch (r.soort()) {
+            case KENMERKTOEKENNING -> WaardeFn.constant(Boolean.TRUE);      // "is <kenmerk>" -> kenmerk == true
             case GELIJKSTELLING, BEREKENING, INITIALISATIE -> scalarWaarde(r.waarde());
             default -> null;
         };
-        if (waarde == null) return skip("regel (waarde buiten Phase-A scope): " + r.naam());
+        if (wf == null) return skip("regel (waarde buiten scope): " + r.naam());
+        // §4 value-side unit restatement: convert the value expression into the doel attribute's unit (a kenmerk
+        // value is Boolean, no unit). Mirrors DrlTranspiler.omrekenWaarde (a single van->naar factor, null-safe).
+        if (r.soort() != ResolvedRegel.Soort.KENMERKTOEKENNING) {
+            BigDecimal vf = valueFactor(r.waarde().type(), doel.type());
+            if (vf != null) wf = wf.scaledBy(vf);
+        }
         String doelProp = doel.attribuut();
+
+        // resolve the referenced globals to their registered Variables; an unregistered one (e.g. a temporal
+        // parameter) cannot be bound -> skip the rule honestly.
+        List<Global<BigDecimal>> globalVars = new ArrayList<>();
+        for (String gn : wf.globals()) {
+            Global<BigDecimal> g = globals.get(gn);
+            if (g == null) return skip("regel (THEN-waarde refereert niet-geregistreerde global " + gn + "): " + r.naam());
+            globalVars.add(g);
+        }
+        if (globalVars.size() > 1)
+            return skip("regel (THEN-waarde refereert >1 global — latere fase): " + r.naam());
 
         seq = 0;
         Variable sVar = DSL.declarationOf(factClass, "$subject");
@@ -119,17 +140,31 @@ public final class ExecModelTranspiler {
             extra = gate.extra();
         }
 
-        Block2<org.drools.model.Drools, Object> body = (drools, s) -> {
-            RegelSpraakRuntime.set(s, doelProp, waarde.apply(s));
-            drools.update(s);
-        };
+        // The consequence reads the value through the global-value map. A global IS a Variable, so it rides in the
+        // same DSL.on(...) list and arrives as a lambda param (bridge-confirmed: on(sVar, g).execute((drools, s, g))).
+        BiFunction<Object, Map<String, BigDecimal>, Object> fn = wf.fn();
+        RuleItemBuilder<?> consequence;
+        if (globalVars.isEmpty()) {
+            Block2<org.drools.model.Drools, Object> body = (drools, s) -> {
+                RegelSpraakRuntime.set(s, doelProp, fn.apply(s, Map.of()));
+                drools.update(s);
+            };
+            consequence = DSL.on(sVar).execute(body);
+        } else {
+            String gn = wf.globals().iterator().next();
+            Block3<org.drools.model.Drools, Object, Object> body = (drools, s, gv) -> {
+                RegelSpraakRuntime.set(s, doelProp, fn.apply(s, Map.of(gn, (BigDecimal) gv)));
+                drools.update(s);
+            };
+            consequence = DSL.on(sVar, (Variable) globalVars.get(0)).execute(body);
+        }
         // The subject pattern first (binds $subject), then any far-side exists/not joins (which reference
         // $subject), then the consequence — matching the DRL clause order. NO_LOOP is mandatory: the modify must
         // not re-activate this rule (else fireAllRules infinite-loops).
         List<RuleItemBuilder<?>> items = new ArrayList<>();
         items.add(pattern);
         items.addAll(extra);
-        items.add(DSL.on(sVar).execute(body));
+        items.add(consequence);
         return PatternDSL.rule(r.naam())
                 .attribute(Rule.Attribute.NO_LOOP, true)
                 .build(items.toArray(new RuleItemBuilder[0]));
@@ -271,22 +306,48 @@ public final class ExecModelTranspiler {
     /** A unique id within the current rule (see {@link #seq}). */
     private String nextId(String prefix) { return prefix + "_" + (seq++); }
 
-    /** Phase A scalar value: Literal | own-attr read | a {@code +} of those (rsNul leegwaarde). null -> skip. */
-    private Function<Object, Object> scalarWaarde(Expr e) {
+    /** A lowered scalar value: a {@code (subject, globalValuesByName) -> value} function plus the set of
+     *  Parameter-global names it reads (so {@link #regel} can bind them on the consequence). */
+    private record WaardeFn(BiFunction<Object, Map<String, BigDecimal>, Object> fn, Set<String> globals) {
+        static WaardeFn constant(Object v) { return new WaardeFn((s, gm) -> v, Set.of()); }
+        /** A copy whose numeric result is multiplied by a unit factor (null result stays null — a leegwaarde). */
+        WaardeFn scaledBy(BigDecimal f) {
+            BiFunction<Object, Map<String, BigDecimal>, Object> inner = fn;
+            return new WaardeFn((s, gm) -> { Object v = inner.apply(s, gm); return v == null ? null : ((BigDecimal) v).multiply(f); }, globals);
+        }
+    }
+
+    /** Scalar value: Literal | own-attr read | Parameter-global read | a {@code +} of those (rsNul leegwaarde).
+     *  null -> skip. The global read pulls its value from the consequence-bound map (see {@link #regel}). */
+    private WaardeFn scalarWaarde(Expr e) {
         if (e instanceof Expr.Literal lit && lit.type().isNumeriek()) {
             BigDecimal val = bd(lit);
-            return val == null ? null : bean -> val;
+            return val == null ? null : WaardeFn.constant(val);
         }
         if (e instanceof Expr.AttribuutRef a && a.navigatieRol() == null) {
             String attr = a.attribuut();
-            return bean -> RegelSpraakRuntime.get(bean, attr);
+            return new WaardeFn((s, gm) -> RegelSpraakRuntime.get(s, attr), Set.of());
+        }
+        if (e instanceof Expr.ParameterRef pr) {
+            String gn = ident(pr.parameter().naam());
+            return new WaardeFn((s, gm) -> gm.get(gn), Set.of(gn));
         }
         if (e instanceof Expr.Binair b && b.op() == Expr.BinOp.PLUS) {
-            Function<Object, Object> lf = scalarWaarde(b.links()), rf = scalarWaarde(b.rechts());
+            WaardeFn lf = scalarWaarde(b.links()), rf = scalarWaarde(b.rechts());
             if (lf == null || rf == null) return null;
-            return bean -> RegelSpraakRuntime.rsNul(lf.apply(bean)).add(RegelSpraakRuntime.rsNul(rf.apply(bean)));
+            BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lf.fn(), rfn = rf.fn();
+            Set<String> g = new LinkedHashSet<>(lf.globals()); g.addAll(rf.globals());
+            return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsNul(lfn.apply(s, gm)).add(RegelSpraakRuntime.rsNul(rfn.apply(s, gm))), g);
         }
         return null;
+    }
+
+    /** §4 value-side unit conversion factor (van -> naar), or null when no conversion applies — the mirror of
+     *  DrlTranspiler.omrekenFactor. Restates the value expression in the doel attribute's unit before assignment. */
+    private static BigDecimal valueFactor(Datatype van, Datatype naar) {
+        Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();
+        if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return null;
+        return ev.omrekenfactorNaar(en);
     }
 
     // ---- small helpers ----

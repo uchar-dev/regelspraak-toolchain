@@ -464,11 +464,79 @@ class ExecModelDifferentialTest {
             l -> vals(((Passagier) l.get(0)).isMinderjarig(), ((Passagier) l.get(1)).isMinderjarig())),
     };
 
+    // ---- Phase B5: the THEN-side value referencing a Parameter-GLOBAL (the last remaining Phase B construct).
+    //      The global is bound on the consequence (DSL.on(sVar, g)); a value over >1 distinct global stays an honest
+    //      skip; value-side unit restatement converts the value into the doel attribute's unit (§4). ----
+    static final Fixture[] PHASE_B5 = {
+        // THEN value IS a global: prijs := de toeslag.
+        new Fixture("THEN value is a global (prijs := toeslag)",
+            """
+            Parameter de toeslag : Numeriek (geheel getal) met eenheid EUR
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal) met eenheid EUR;
+            Regel R
+                geldig altijd
+                    De prijs van een Passagier moet gesteld worden op de toeslag.
+            """,
+            () -> List.of(new Passagier()),
+            Map.of("toeslag", new BigDecimal(7)),
+            l -> ((Passagier) l.get(0)).getPrijs()),
+
+        // THEN value = own-attr + global: prijs := basistarief plus de toeslag.
+        new Fixture("THEN value own-attr plus global",
+            """
+            Parameter de toeslag : Numeriek (geheel getal) met eenheid EUR
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal) met eenheid EUR;
+                het basistarief Numeriek (geheel getal) met eenheid EUR;
+            Regel R
+                geldig altijd
+                    De prijs van een Passagier moet gesteld worden op zijn basistarief plus de toeslag.
+            """,
+            () -> List.of(passagier(p -> p.setBasistarief(new BigDecimal(42)))),
+            Map.of("toeslag", new BigDecimal(5)),
+            l -> ((Passagier) l.get(0)).getPrijs()),
+
+        // §4 value-side unit restatement: a jr-typed global assigned to a mnd attribute restates 2 jr -> 24 mnd.
+        new Fixture("THEN value-side unit restatement (jr global -> mnd attr)",
+            """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Parameter de looptijd : Numeriek (geheel getal) met eenheid jr
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal) met eenheid mnd;
+            Regel R
+                geldig altijd
+                    De leeftijd van een Passagier moet gesteld worden op de looptijd.
+            """,
+            () -> List.of(new Passagier()),
+            Map.of("looptijd", new BigDecimal(2)),
+            l -> ((Passagier) l.get(0)).getLeeftijd()),
+
+        // Honesty boundary: a value over >1 distinct global is NOT yet bound -> the model SKIPS the rule
+        // (overgeslagen), so the harness logs a skip rather than a divergence. (DRL would fire it.)
+        new Fixture("THEN value over two globals -> honest skip",
+            """
+            Parameter de toeslag : Numeriek (geheel getal) met eenheid EUR
+            Parameter de korting : Numeriek (geheel getal) met eenheid EUR
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal) met eenheid EUR;
+            Regel R
+                geldig altijd
+                    De prijs van een Passagier moet gesteld worden op de toeslag plus de korting.
+            """,
+            () -> List.of(new Passagier()),
+            Map.of("toeslag", new BigDecimal(5), "korting", new BigDecimal(3)),
+            l -> ((Passagier) l.get(0)).getPrijs()),
+    };
+
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }
     @Test void phase_B_model_back_end_matches_drl_back_end()  { runDifferential("Phase B", PHASE_B, 3); }
     @Test void phase_B2_quantifiers_match_drl_back_end()       { runDifferential("Phase B2", PHASE_B2, 5); }
     @Test void phase_B3_relational_match_drl_back_end()        { runDifferential("Phase B3", PHASE_B3, 5); }
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
+    @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 3); }
 
     private void runDifferential(String label, Fixture[] fixtures, int minDiffed) {
         int diffed = 0, skipped = 0;
