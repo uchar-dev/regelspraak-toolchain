@@ -44,6 +44,17 @@
       <scope>test</scope>
     </dependency>
 
+    <!-- The EXECUTABLE-MODEL back-end (ExecModelTranspiler) BUILDS org.drools.model.Model objects, so it
+         needs the canonical-model DSL at COMPILE scope (the DSL + Model/Rule/Global/PatternDSL interfaces).
+         This is the deliberate coupling of the model back-end to Drools; the legacy DRL-string transpiler
+         needs no Drools dep (it emits text). Compiling/firing the Model (KieBaseBuilder.createKieBaseFromModel)
+         needs drools-model-compiler + engine, which stay test-scoped (transitive via drools-engine below). -->
+    <dependency>
+      <groupId>org.drools</groupId>
+      <artifactId>drools-canonical-model</artifactId>
+      <version>${drools.version}</version>
+    </dependency>
+
     <!-- Drools is needed only to COMPILE AND RUN the generated DRL in the
          integration test (the transpiler itself emits text); hence test scope.
          drools-engine pulls core + compiler (KieHelper); drools-mvel supplies the
