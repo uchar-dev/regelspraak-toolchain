@@ -56,6 +56,53 @@ class BeslistabelTabelTest {
         assertEquals(3, m.resolvedRegels.size());
     }
 
+    @Test void geldig_vanaf_jaar_is_not_swallowed_into_the_table_name() {
+        // the §12 reisduur table uses "geldig vanaf 2018"; the beslistabel name must NOT eat the versie (it did
+        // before beslistabelNaam excluded GELDIG — "altijd" stopped it as a keyword, "vanaf <jaar>" did not).
+        String src = "Objecttype de Passagier (mv: Passagiers) (bezield)\n"
+                + "    de belasting Numeriek (geheel getal);\n"
+                + "    de basis Numeriek (geheel getal);\n\n"
+                + "Beslistabel Belasting op basis van reisduur\n"
+                + "  geldig vanaf 2018\n"
+                + "  |   | de belasting van een Passagier moet gesteld worden op | indien zijn basis groter is dan |\n"
+                + "  |---|---|---|\n"
+                + "  | 1 | 10 | 5 |\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "fouten: " + m.errors());
+        assertEquals(1, m.resolvedRegels.size());
+    }
+
+    @Test void single_quoted_enumeratiewaarde_cells_resolve_through_the_grammar() {
+        // §13.2.14: the §12 conditie values are single-quoted enumeratiewaarden over an enumeratie domein, not
+        // double-quoted Tekst. The quote-aware split must protect them, and the comparison lowers as value equality.
+        String src = "Domein Provincie is van het type Enumeratie\n    'Friesland'\n    'Groningen'\n    'Utrecht'\n"
+                + "Objecttype de Persoon (mv: Personen) (bezield)\n"
+                + "    de factor Numeriek (geheel getal);\n"
+                + "    de woonprovincie Provincie;\n\n"
+                + "Beslistabel Woonregio\n  geldig altijd\n"
+                + "  |   | de factor van een Persoon moet gesteld worden op | indien zijn woonprovincie gelijk is aan |\n"
+                + "  |---|---|---|\n"
+                + "  | 1 | 1 | 'Friesland' of 'Groningen' |\n"
+                + "  | 2 | 2 | 'Utrecht' |\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "fouten: " + m.errors());
+        assertEquals(2, m.resolvedRegels.size());
+    }
+
+    @Test void forbidden_conclusie_is_warned_and_dropped_through_the_grammar() {
+        // §12 C-6: a non-gelijkstelling/non-kenmerk conclusie must surface a WARNING, never resolve to a rule.
+        RegelSpraakModel m = Resolver.resolve(
+                "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de belasting Numeriek (geheel getal);\n"
+                + "    de basis Numeriek (geheel getal);\n\n"
+                + "Beslistabel T\n  geldig altijd\n"
+                + "  |   | de belasting van een Passagier wordt berekend als | indien zijn basis groter is dan |\n"
+                + "  |---|---|---|\n"
+                + "  | 1 | 5 | 10 |\n");
+        assertTrue(m.resolvedRegels.isEmpty(), () -> "verwacht geen regel: " + m.resolvedRegels);
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("berekend als")),
+                () -> "verwacht een 'berekend als' waarschuwing: " + m.diagnostics);
+    }
+
     @Test void header_only_beslistabel_warns_it_is_empty_rather_than_silently_dropping() {
         // the pre-body corpus shape (a bare "Beslistabel … / geldig …" shell) must still parse AND surface a warning,
         // never vanish without IR or diagnostic.

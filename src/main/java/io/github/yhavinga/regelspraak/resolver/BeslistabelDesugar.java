@@ -65,12 +65,8 @@ public final class BeslistabelDesugar {
             String nr = row.isEmpty() ? "" : row.get(0).trim();
             for (int ci = 0; ci < conclusieKol.size(); ci++) {
                 int cc = conclusieKol.get(ci);
-                String resultaat = resultaatdeel(headers.get(cc).trim(), cel(row, cc).trim());
-                if (resultaat == null) {   // a kenmerk "onwaar" conclusie has no RegelSpraak negatieve-toekenning form
-                    waarschuw.accept("rij " + nr + ": een kenmerk-conclusie 'onwaar' kan niet als negatieve toekenning "
-                            + "worden uitgedrukt — rij overgeslagen");
-                    continue;
-                }
+                String resultaat = resultaatdeel(headers.get(cc).trim(), cel(row, cc).trim(), nr, waarschuw);
+                if (resultaat == null) continue;   // a forbidden / un-renderable conclusie — resultaatdeel already warned
 
                 // each non-n.v.t. conditie cell -> a Voorwaarde (a predicate kop + its 0..n alternative values).
                 List<Voorwaarde> condities = new ArrayList<>();
@@ -174,15 +170,40 @@ public final class BeslistabelDesugar {
         return b.toString();
     }
 
-    /** A conclusie cell → its resultaatdeel source. A §9.1 gelijkstelling header ("… moet gesteld worden op") takes
-     *  the cell as its value; a §9.2 kenmerk header ("een X is …") takes "waar" (assert it) / "onwaar" (null —
-     *  RegelSpraak has no negatieve-toekenning form, so the caller warns + skips the row rather than mis-render it). */
-    private static String resultaatdeel(String header, String cell) {
-        if (header.toLowerCase().contains("moet gesteld worden op")) return header + " " + cell;
-        // a kenmerk conclusie: the header IS the assertion ("een passagier is een passagier jonger dan 18 jaar").
+    /** A conclusie cell → its resultaatdeel source, or null (with a warning) when §12 forbids it. §12 permits ONLY a
+     *  §9.1 gelijkstelling (header "… moet gesteld worden op", cell = the value) or a §9.2 kenmerktoekenning (header
+     *  is the assertion, cell = "waar"); everything else is rejected, not silently mis-rendered:
+     *  C-7 "(wordt) berekend als" (§12 mandates "moet gesteld worden op"); C-8 an empty conclusie cell; C-9 an inline
+     *  "indien" in a value cell; "onwaar" (no RegelSpraak negatieve toekenning); and C-6 any other resultaatdeel
+     *  (objectcreatie/feitcreatie/verdeling/consistentie/…). */
+    private static String resultaatdeel(String header, String cell, String nr, java.util.function.Consumer<String> waarschuw) {
+        String h = header.toLowerCase();
+        if (h.contains("berekend als")) {   // §12 C-7
+            waarschuw.accept("rij " + nr + ": een beslistabel-conclusie moet 'moet gesteld worden op' gebruiken, "
+                    + "niet 'berekend als' (§12)");
+            return null;
+        }
+        if (h.contains("moet gesteld worden op")) {   // §9.1 gelijkstelling
+            if (cell.isEmpty()) {   // §12 C-8: n.v.t. is conditie-only, a resultaatdeel is mandatory
+                waarschuw.accept("rij " + nr + ": lege conclusie-cel — een resultaatdeel is verplicht (§12)");
+                return null;
+            }
+            if (cell.toLowerCase().contains("indien")) {   // §12 C-9: voorwaarden horen in de conditie-kolommen
+                waarschuw.accept("rij " + nr + ": 'indien' mag niet in een conclusie-cel staan (§12)");
+                return null;
+            }
+            return header + " " + cell;
+        }
+        // §9.2 kenmerktoekenning: the header IS the assertion ("een passagier is een passagier jonger dan 18 jaar").
         if (cell.equalsIgnoreCase("waar")) return header;
-        if (cell.equalsIgnoreCase("onwaar")) return null;
-        return header + " " + cell;   // a non-boolean cell under a non-gelijkstelling header: append it (defensive)
+        if (cell.equalsIgnoreCase("onwaar")) {
+            waarschuw.accept("rij " + nr + ": een kenmerk-conclusie 'onwaar' kan niet als negatieve toekenning "
+                    + "worden uitgedrukt — rij overgeslagen");
+            return null;
+        }
+        waarschuw.accept("rij " + nr + ": alleen een gelijkstelling ('… moet gesteld worden op') of een "   // §12 C-6
+                + "kenmerktoekenning ('… is …' met cel 'waar') is toegestaan in een beslistabel-conclusie (§12)");
+        return null;
     }
 
     /** Split a §5.7 concatenatie cell into its values: at TOP-LEVEL commas and the connector word — " of " for an
@@ -193,12 +214,13 @@ public final class BeslistabelDesugar {
         String connector = ongelijk ? "en" : "of";
         List<String> waarden = new ArrayList<>();
         StringBuilder cur = new StringBuilder();
-        boolean inQuote = false;
+        char quote = 0;   // 0 = outside any quote; '"' (tekstwaarde) or '\'' (enumeratiewaarde) = the opening char
         for (int i = 0; i < cell.length(); ) {
             char c = cell.charAt(i);
-            if (c == '"') { inQuote = !inQuote; cur.append(c); i++; continue; }
-            if (!inQuote && c == ',') { duwWaarde(waarden, cur); i++; continue; }
-            if (!inQuote && c == ' ' && connectorOp(cell, i, connector)) {
+            if (quote == 0 && (c == '"' || c == '\'')) { quote = c; cur.append(c); i++; continue; }
+            if (quote == c) { quote = 0; cur.append(c); i++; continue; }
+            if (quote == 0 && c == ',') { duwWaarde(waarden, cur); i++; continue; }
+            if (quote == 0 && c == ' ' && connectorOp(cell, i, connector)) {
                 duwWaarde(waarden, cur);
                 i += 2 + connector.length();   // skip " <connector> " (leading space + word + trailing space)
                 continue;

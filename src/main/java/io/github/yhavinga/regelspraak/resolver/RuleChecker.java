@@ -90,7 +90,7 @@ final class RuleChecker {
      *  the honest WARNING — restoring the never-silently-dropped invariant (toka-46/47, spec-main-133-139). */
     private void beslistabellen(RegelSpraakDocumentContext doc) {
         for (BeslistabelContext b : doc.beslistabel()) {
-            String naam = DefinitionResolver.src(b.vrijeNaam());
+            String naam = DefinitionResolver.src(b.beslistabelNaam());
             // Split each captured row on '|', dropping the markdown '---' separator row(s).
             List<List<String>> grid = new ArrayList<>();
             for (TerminalNode rij : b.TABEL_RIJ()) {
@@ -120,30 +120,36 @@ final class RuleChecker {
 
     /** Split a captured markdown table row into trimmed cells: strip the surrounding pipes/whitespace (a continuation
      *  row carries a leading newline), then split on each TOP-LEVEL '|'. The split is QUOTE-AWARE — a '|' inside a
-     *  double-quoted tekstwaarde (a legal §5.4 value the lexer preserves verbatim inside TABEL_MODE) is NOT a cell
-     *  boundary. The empty col-0 header and the numbering cell are interior, so only the outer pipes are removed. */
+     *  double-quoted tekstwaarde ("…", §5.4) or a single-quoted enumeratiewaarde ('…', §13.2.14), both preserved
+     *  verbatim by the lexer inside TABEL_MODE, is NOT a cell boundary. The empty col-0 header and the numbering cell
+     *  are interior, so only the outer pipes are removed. */
     private static List<String> splitRij(String rij) {
         String s = rij.strip();
         if (s.startsWith("|")) s = s.substring(1);
         if (s.endsWith("|") && !eindigtInQuote(s)) s = s.substring(0, s.length() - 1);
         List<String> cellen = new ArrayList<>();
         StringBuilder cur = new StringBuilder();
-        boolean inQuote = false;
+        char quote = 0;   // 0 = outside any quote; '"' or '\'' = the char that opened the current span
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
-            if (c == '"') inQuote = !inQuote;
-            if (c == '|' && !inQuote) { cellen.add(cur.toString().trim()); cur.setLength(0); }
+            if (quote == 0 && (c == '"' || c == '\'')) quote = c;
+            else if (quote == c) quote = 0;
+            if (c == '|' && quote == 0) { cellen.add(cur.toString().trim()); cur.setLength(0); }
             else cur.append(c);
         }
         cellen.add(cur.toString().trim());
         return cellen;
     }
-    /** True when the final '|' of {@code s} sits INSIDE a double-quoted span (an odd number of '"' precede it), so
-     *  it is part of a tekstwaarde value rather than the row's trailing edge pipe. */
+    /** True when the final '|' of {@code s} sits INSIDE a quoted span (so it is part of a value rather than the row's
+     *  trailing edge pipe). Tracks which quote char opened the span (an apostrophe inside "…" does not toggle). */
     private static boolean eindigtInQuote(String s) {
-        int quotes = 0;
-        for (int i = 0; i < s.length() - 1; i++) if (s.charAt(i) == '"') quotes++;
-        return (quotes & 1) == 1;
+        char quote = 0;
+        for (int i = 0; i < s.length() - 1; i++) {
+            char c = s.charAt(i);
+            if (quote == 0 && (c == '"' || c == '\'')) quote = c;
+            else if (quote == c) quote = 0;
+        }
+        return quote != 0;
     }
 
     /** A markdown separator row ("| --- | :--: | --- |"): every non-empty cell is dashes/colons and at least one is a

@@ -434,7 +434,11 @@ variabeleNaam      : vrijeNaam ;                                               /
 // the grid and desugars each data row to an ordinary regel (BeslistabelDesugar),
 // so both back-ends get the rows for free. The table is optional — a header-only
 // shell (the pre-body corpus) still parses and the resolver warns it is empty.
-beslistabel : BESLISTABEL vrijeNaam versie? TABEL_RIJ* ;
+beslistabel : BESLISTABEL beslistabelNaam versie? TABEL_RIJ* ;
+// The name must NOT greedily swallow the "geldig <versie>" (mirrors regelNaam's ~GELDIG+
+// exclusion) NOR the pipe-table — without excluding GELDIG, "geldig vanaf 2018" is eaten
+// into the name (the keyword 'altijd' happened to stop it, 'vanaf'/<jaar> do not).
+beslistabelNaam : ~( GELDIG | TABEL_RIJ )+ ;
 
 // ====================================================================
 // §13.4.3 Resultaatdeel

@@ -197,6 +197,25 @@ class BeslistabelDesugarTest {
         assertTrue(r.contains("hij is niet gepensioneerd"), r);
     }
 
+    @Test void forbidden_conclusies_are_rejected_with_a_warning_not_mis_rendered() {
+        // §12 C-6/C-7/C-8/C-9: only gelijkstelling ("moet gesteld worden op") + kenmerktoekenning ("waar") are
+        // allowed; "berekend als", any other resultaatdeel, an empty conclusie cell, and an inline "indien" are out.
+        List<String> warns = new ArrayList<>();
+        java.util.function.BiFunction<String, String, List<String>> run = (conclHeader, conclCell) ->
+                BeslistabelDesugar.desugar("T", "altijd",
+                        List.of("", conclHeader, "indien zijn leeftijd kleiner is dan"),
+                        List.of(List.of("1", conclCell, "18")), warns::add);
+        assertTrue(run.apply("de korting van een Passagier wordt berekend als", "5").isEmpty());          // C-7
+        assertTrue(run.apply("de korting van een Passagier wordt verdeeld over de passagiers", "x").isEmpty()); // C-6
+        assertTrue(run.apply("de korting van een Passagier moet gesteld worden op", "").isEmpty());        // C-8
+        assertTrue(run.apply("de korting van een Passagier moet gesteld worden op", "5 indien iets").isEmpty()); // C-9
+        assertEquals(4, warns.size(), () -> "elke verboden rij waarschuwt: " + warns);
+        assertTrue(warns.get(0).contains("berekend als"));
+        assertTrue(warns.get(1).contains("toegestaan"));
+        assertTrue(warns.get(2).contains("lege conclusie-cel"));
+        assertTrue(warns.get(3).contains("indien"));
+    }
+
     @Test void desugared_rows_resolve_through_the_existing_pipeline() {
         List<String> headers = List.of("",
                 "de korting van een Passagier moet gesteld worden op",
