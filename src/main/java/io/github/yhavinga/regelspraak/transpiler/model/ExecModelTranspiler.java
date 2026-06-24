@@ -1673,15 +1673,25 @@ public final class ExecModelTranspiler {
         if (factClass == null) return skip("consistentie (geen fact-class " + subject.naam + "): " + c.naam());
         Class<?> incClass = inconsistentieClass();
         if (incClass == null) return skip("consistentie (geen Inconsistentie-fact): " + c.naam());
-        Predicate1<Object> schending = schending(c.assertie(), subject);
-        if (schending == null) return skip("consistentie (schending buiten Phase-D scope): " + c.naam());
-
         seq = 0;
         String naam = c.naam();
         String fqcn = FACTS + ".Inconsistentie";
         Variable sVar = DSL.declarationOf(factClass, "$subject");
-        PatternDSL.PatternDef pattern = geldigGuard(
-                PatternDSL.pattern(sVar).expr(nextId("schending"), (Predicate1) schending), c.geldigheid());   // §4.2 window
+        PatternDSL.PatternDef pattern;
+        Predicate1<Object> schending = schending(c.assertie(), subject);
+        if (schending != null) {
+            pattern = PatternDSL.pattern(sVar).expr(nextId("schending"), (Predicate1) schending);
+        } else {
+            // §9.5 a vs-PARAMETER assertie ("X moet kleiner zijn dan de <parameter>") needs the global bound as a
+            // pattern variable (a 2-var expr) — schending returns a fact-only Predicate1, so it cannot carry it.
+            SchendingGlobal sg = schendingMetGlobal(c.assertie(), subject);
+            if (sg == null) return skip("consistentie (schending buiten Phase-D scope): " + c.naam());
+            Global<BigDecimal> g = globals.get(sg.global());
+            java.util.function.BiPredicate<Object, BigDecimal> pred = sg.pred();
+            pattern = PatternDSL.pattern(sVar).expr(nextId("schending"), (Variable) g,
+                    (Predicate2) (s, gv) -> pred.test(s, (BigDecimal) gv));
+        }
+        pattern = geldigGuard(pattern, c.geldigheid());   // §4.2 window
         // idempotency guard: not Inconsistentie( regel == naam, subject == $subject )
         Variable incVar = DSL.declarationOf(incClass, "$inc_" + (seq++));
         PatternDSL.PatternDef guard = PatternDSL.pattern(incVar)
@@ -1769,6 +1779,31 @@ public final class ExecModelTranspiler {
             };
         }
         return null;
+    }
+
+    /** A §9.5 consistentie violation predicate that reads a Parameter-GLOBAL: the global name + a {@code (subject,
+     *  globalValue) -> violated} test. */
+    private record SchendingGlobal(String global, java.util.function.BiPredicate<Object, BigDecimal> pred) {}
+
+    /** §9.5 the violation predicate of a single numeric comparison assertie whose RHS is a scalar Parameter ("X moet
+     *  kleiner zijn dan de volwassenleeftijd") — the global is bound as a pattern variable by the caller. Own or
+     *  navigated LHS (consistentieReader); null when not this shape. The leeg/violation semantics match the own-attr
+     *  numeric schending (an ordering with an empty operand is a violation). */
+    private SchendingGlobal schendingMetGlobal(Conditie assertie, Objecttype subject) {
+        if (!(assertie instanceof Conditie.Vergelijking v)) return null;
+        if (!(v.links() instanceof Expr.AttribuutRef la) || !isNumeriekOp(v.op())) return null;
+        if (!(v.rechts() instanceof Expr.ParameterRef pr) || pr.parameter().granulariteit() != null) return null;
+        java.util.function.Function<Object, Object> lRead = consistentieReader(la, subject);
+        if (lRead == null) return null;
+        String gn = ident(pr.parameter().naam());
+        if (!globals.containsKey(gn)) return null;
+        Conditie.Operator flip = flip(v.op());
+        boolean gelijkheid = v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK;
+        BigDecimal[] f = restatement(la.type(), pr.parameter().datatype());
+        return new SchendingGlobal(gn, (s, gv) -> {
+            BigDecimal a = scale(RegelSpraakRuntime.toBd(lRead.apply(s)), f[0]), b = scale(gv, f[1]);
+            return gelijkheid ? vergelijk(a, b, flip) : (a == null || b == null || vergelijk(a, b, flip));
+        });
     }
 
     /** A §13.4.8 consistentie comparison-operand reader: the subject's OWN attribute (get) or a to-ONE NAVIGATED read

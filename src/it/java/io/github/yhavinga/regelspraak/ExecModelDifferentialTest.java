@@ -1954,7 +1954,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 8); }
     @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 7); }
-    @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 4); }
+    @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 5); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
     @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
@@ -1963,7 +1963,12 @@ class ExecModelDifferentialTest {
     // ---- Phase D: §9.5/§13.4.8 consistentieregel — the VIOLATION inserts an Inconsistentie. The observable is the
     //      SET of flagged subjects (not a subject field), so a FoutFixture maps each inserted Inconsistentie to a
     //      stable "regel/<subject-key>" string the two back-ends can compare across their fresh fact instances. ----
-    record FoutFixture(String naam, String src, Supplier<List<Object>> facts, Function<Object, String> subjectKey) {}
+    record FoutFixture(String naam, String src, Supplier<List<Object>> facts, Function<Object, String> subjectKey,
+                       Map<String, Object> globals) {
+        FoutFixture(String naam, String src, Supplier<List<Object>> facts, Function<Object, String> subjectKey) {
+            this(naam, src, facts, subjectKey, Map.of());
+        }
+    }
     static final FoutFixture[] PHASE_D = {
         // own-attribute equality assertion across CONVERTIBLE units: grensjr(jr) gelijk aan duurmnd(mnd). 2 jr == 24
         // mnd is consistent (NOT flagged); 2 jr != 25 mnd is a real violation (flagged). Exercises flip + restatement.
@@ -2555,6 +2560,18 @@ class ExecModelDifferentialTest {
                     return List.of(ca, cb, va, vc); },
             o -> (o instanceof io.github.yhavinga.regelspraak.facts.Cirkel c ? "Cirkel:" + c.getNaam()
                                                                  : "Vierkant:" + ((io.github.yhavinga.regelspraak.facts.Vierkant) o).getNaam())),
+
+        // §9.5 a vs-PARAMETER assertie (spec-main-90 "leeftijd moet kleiner zijn dan de grens"): the global is bound
+        // as a pattern variable. grens 18 -> 10 ok, 30 violated, a leeg leeftijd -> ordering violation.
+        new FoutFixture("consistentie: own attr vs Parameter-global (leeftijd < de grens)",
+            "Parameter de grens : Numeriek (geheel getal)\n"
+            + "Objecttype de Persoon (mv: Personen) (bezield)\n    de leeftijd Numeriek (geheel getal);\n"
+            + "Regel check\n    geldig altijd\n        De leeftijd van een Persoon moet kleiner zijn dan de grens.\n",
+            () -> { Persoon jong = new Persoon(); jong.setLeeftijd(new BigDecimal(10));
+                    Persoon oud = new Persoon(); oud.setLeeftijd(new BigDecimal(30));
+                    return List.of(jong, oud, new Persoon()); },   // leeg leeftijd -> violation
+            o -> "lft=" + ((Persoon) o).getLeeftijd(),
+            Map.of("grens", new BigDecimal(18))),
     };
 
     // ---- Phase E fout: §9.7.6 Tabel 19 — an empty weight (naar rato) or a leeg/negatief maximum at ANY recipient is
@@ -2707,6 +2724,7 @@ class ExecModelDifferentialTest {
      *  across the two back-ends' fresh fact instances (the subject identity differs, the key does not). */
     private List<String> fireFout(KieBase kb, FoutFixture f) {
         KieSession s = kb.newKieSession();
+        f.globals().forEach(s::setGlobal);
         List<Object> facts = f.facts().get();
         for (Object o : facts) s.insert(o);
         s.fireAllRules();
