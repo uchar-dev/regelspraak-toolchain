@@ -1057,7 +1057,58 @@ class ExecModelDifferentialTest {
                     return List.of(pVol, pLeegAttr, pGeenPartner); },
             Map.of(),
             l -> vals(((Persoon) l.get(0)).getUitkomst(), ((Persoon) l.get(1)).getUitkomst(), ((Persoon) l.get(2)).getUitkomst())),   // null, 1, 1
+
+        // §6.x navigated VALUE read "de leeftijd van zijn partner". Both partners are mutually linked (a non-null
+        // relation), so DRL's unguarded getter chain reads cleanly and AGREES with navReader. a.uitkomst = b.leeftijd
+        // = 30; b.uitkomst = a.leeftijd = 40. (The null-relation case is model-only — DRL NPEs — see the @Test below.)
+        new Fixture("navigated value read (de leeftijd van zijn partner)",
+            """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de leeftijd Numeriek (geheel getal);
+                de uitkomst Numeriek (geheel getal);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel R
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op de leeftijd van zijn partner.
+            """,
+            () -> { Persoon a = new Persoon(); a.setLeeftijd(new BigDecimal(40));
+                    Persoon b = new Persoon(); b.setLeeftijd(new BigDecimal(30));
+                    a.setPartner(b); b.setPartner(a);
+                    return List.of(a, b); },
+            Map.of(),
+            l -> vals(((Persoon) l.get(0)).getUitkomst(), ((Persoon) l.get(1)).getUitkomst())),   // 30, 40
     };
+
+    /** §6.9 a NAVIGATED value read over a NULL relation: the model is the correct null-safe side (-> leeg), while DRL
+     *  renders an unguarded getter chain that NPEs and aborts the session (a latent DRL bug, like the DimensieCel
+     *  null-Map). So this is NOT differentially testable — assert the model fires cleanly and leaves the doel leeg. */
+    @Test void phase_H_navigated_value_read_over_null_relation_is_null_safe_in_model() {
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de leeftijd Numeriek (geheel getal);
+                de uitkomst Numeriek (geheel getal);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel R
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op de leeftijd van zijn partner.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> "model moet de navigatie-lezing loweren: " + em.overgeslagen());
+        KieSession s = KieBaseBuilder.createKieBaseFromModel(em.model()).newKieSession();
+        Persoon zonder = new Persoon(); zonder.setLeeftijd(new BigDecimal(40));   // partner == null
+        s.insert(zonder);
+        s.fireAllRules();   // must NOT throw (DRL would NPE here)
+        s.dispose();
+        assertNull(zonder.getUitkomst(), "een null-relatie leest leeg (§6.9), niet een NPE");
+    }
 
     // ---- Phase F fixtures: §7.1 "het totaal van" a temporal attribute (scalar timeline fold) ----
     /** A Segment(van, tot, waarde) — a null waarde marks a kenmerk's true-period; a string waarde is a value tijdvak. */
@@ -1959,7 +2010,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 3); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
-    @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 14); }
+    @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 15); }
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
     @Test void phase_H_value_ops_matches_drl_back_end()             { runDifferential("Phase H val", PHASE_H_VAL, 8); }
     @Test void phase_H_builtin_functies_match_drl_back_end()        { runDifferential("Phase H func", PHASE_H_FUNC, 4); }

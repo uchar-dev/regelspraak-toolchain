@@ -73,6 +73,12 @@ public final class ExecModelTranspiler {
      *  {@code geldig vanaf/tot} version), read by the per-construct {@link #geldigGuard} window guard. null when
      *  every construct is {@code geldig altijd} (no guard needed). Mirrors DrlTranspiler's {@code rekendatum} global. */
     private Global<java.time.LocalDate> rekendatumGlobal;
+    /** The subject a VALUE-path {@link #scalarWaarde} is lowering for, set tightly around the regel value-path call so
+     *  a to-one NAVIGATED value read ("de X van zijn partner") can resolve its role. null everywhere else (the
+     *  condition path, aggregation fallbacks, creatie/verdeling values) so a navigated read SKIPS there rather than
+     *  resolving against a stale subject — the value side's getter-chain null semantics differ from the condition
+     *  side's {@code !.}, so the two must not share this. */
+    private Objecttype valueSubject;
     private final List<String> overgeslagen = new ArrayList<>();
     /** Monotonic within ONE rule (reset per rule) — keeps each rule's declaration NAMES ({@code $e_0}, {@code $inc_1})
      *  unique. Declaration names are per-rule scoped, so they may repeat across rules. */
@@ -299,11 +305,14 @@ public final class ExecModelTranspiler {
             extra.addAll(accItems);
         } else {
             // scalar value path: a WaardeFn(subject, global-values -> value) plus the Parameter-globals it reads.
+            // valueSubject is set tightly around the lowering so a to-one navigated value read can resolve its role.
+            valueSubject = doel.objecttype();
             WaardeFn wf = switch (r.soort()) {
                 case KENMERKTOEKENNING -> WaardeFn.constant(Boolean.TRUE);      // "is <kenmerk>" -> kenmerk == true
                 case GELIJKSTELLING, BEREKENING, INITIALISATIE -> scalarWaarde(r.waarde());
                 default -> null;
             };
+            valueSubject = null;
             if (wf == null) return skip("regel (waarde buiten scope): " + r.naam());
             // §4 value-side unit restatement (a kenmerk value is Boolean, no unit). Mirrors DrlTranspiler.omrekenWaarde.
             if (r.soort() != ResolvedRegel.Soort.KENMERKTOEKENNING) {
@@ -1241,6 +1250,18 @@ public final class ExecModelTranspiler {
             if (a.objecttype() != null && !a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;
             String attr = a.attribuut();
             return new WaardeFn((s, gm) -> RegelSpraakRuntime.get(s, attr), Set.of());
+        }
+        if (e instanceof Expr.AttribuutRef a && a.navigatieRol() != null && valueSubject != null) {
+            // §6.x a to-ONE NAVIGATED value read ("de X van zijn partner"). DRL renders a PLAIN getter chain
+            // ($subject.getRol().getX()) — NOT null-safe — so a null relation NPEs and aborts the session (a latent
+            // DRL bug, like the §6.9 DimensieCel null-Map). navReader is null-safe (-> leeg), the CORRECT side: the
+            // non-null read AGREES with DRL, the null-relation read is a model-is-better divergence (not differentially
+            // testable — DRL crashes). Only reached on the VALUE path (valueSubject set); the condition path skips it.
+            if (a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;   // temporal -> Phase F
+            if (a.objecttype() != null && !a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;             // §3.6 gedimensioneerd -> marker
+            java.util.function.Function<Object, Object> reader = navReader(a, valueSubject);
+            if (reader == null) return null;
+            return new WaardeFn((s, gm) -> reader.apply(s), Set.of());
         }
         if (e instanceof Expr.DimensieCel c && c.attribuut() instanceof Expr.AttribuutRef ca && ca.navigatieRol() == null
                 && c.labels().size() == 1) {
