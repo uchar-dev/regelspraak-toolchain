@@ -1210,6 +1210,26 @@ public final class ExecModelTranspiler {
         // store the identical label; the value-side unit restatement is a no-op (scaledBy passes a non-number through).
         String tekstLabel = tekstOfEnumLabel(e);
         if (tekstLabel != null) return WaardeFn.constant(tekstLabel);
+        // §5.4/§13.4.17.9 tekstreeks "de reeks van <tekst> en <waarde> …": concatenate each part's text — a literal
+        // segment verbatim, an inserted expression via rsTekst (leeg -> ""). Mirrors DrlTranspiler.tekstReeks.
+        if (e instanceof Expr.TekstReeks tr) {
+            List<BiFunction<Object, Map<String, BigDecimal>, Object>> parts = new ArrayList<>();
+            Set<String> g = new LinkedHashSet<>();
+            for (Expr.TekstReeks.Deel d : tr.delen()) {
+                if (d instanceof Expr.TekstReeks.Letterlijk lit) { String t = lit.tekst(); parts.add((s, gm) -> t); }
+                else if (d instanceof Expr.TekstReeks.Ingevoegd ing) {
+                    WaardeFn wf = scalarWaarde(ing.expr());
+                    if (wf == null) return null;
+                    g.addAll(wf.globals());
+                    parts.add(wf.fn());
+                } else return null;
+            }
+            return new WaardeFn((s, gm) -> {
+                StringBuilder sb = new StringBuilder();
+                for (BiFunction<Object, Map<String, BigDecimal>, Object> p : parts) sb.append(RegelSpraakRuntime.rsTekst(p.apply(s, gm)));
+                return sb.toString();
+            }, g);
+        }
         if (e instanceof Expr.AttribuutRef a && a.navigatieRol() == null) {
             // §8.2 a tijdsafhankelijk (List<Segment>) attribute read in a SCALAR slot is NOT a scalar — only the §7.1
             // "het totaal van" collapses a timeline to a scalar (handled in regel() before this path). Splicing the

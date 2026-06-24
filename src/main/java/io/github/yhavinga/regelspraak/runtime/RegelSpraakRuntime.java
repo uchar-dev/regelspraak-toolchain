@@ -158,6 +158,10 @@ public final class RegelSpraakRuntime {
     /** §13.4.17.17/§6.9 Tabel 20 "de absolute waarde van": |leeg| = leeg. Mirrors the DRL {@code rsAbs}. */
     public static BigDecimal rsAbs(Object x) { return x == null ? null : ((BigDecimal) x).abs(); }
 
+    /** §5.4 text coercion for a §13.4.17.9 tekstreeks: a value's text form, null-safe (leeg -> "", not "null"); a
+     *  BigDecimal via toString (528 -> "528"), a date/boolean via its toString. Mirrors the DRL {@code rsTekst}. */
+    public static String rsTekst(Object o) { return o == null ? "" : o.toString(); }
+
     /** §13.4.17.18-.24/§6.12 a DATE/TIME component (jaar/maand/dag/uur/… uit) read via one ChronoField; a leeg
      *  date -> leeg. Mirrors the DRL {@code rsDatumDeel}. */
     public static BigDecimal rsDatumDeel(Object d, java.time.temporal.TemporalField f) {

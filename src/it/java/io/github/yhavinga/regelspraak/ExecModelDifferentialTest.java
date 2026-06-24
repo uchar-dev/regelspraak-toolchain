@@ -1769,6 +1769,14 @@ class ExecModelDifferentialTest {
             + "Regel R\n    geldig altijd\n        De vroegste vertrek van een Vlucht moet gesteld worden op de eerste van zijn verwacht vertrek en zijn daadwerkelijk vertrek.\n",
             () -> { Vlucht v = new Vlucht(); v.setVerwachtVertrek(dat(2020, 6, 1)); v.setDaadwerkelijkVertrek(dat(2020, 3, 1)); return List.of(v); },
             Map.of(), l -> String.valueOf(((Vlucht) l.get(0)).getVroegsteVertrek())),   // 2020-03-01
+
+        // §5.4/§13.4.17.9 tekstreeks value: a literal segment + an inserted «expressie» (rsTekst-coerced, leeg -> "").
+        // leeftijd 30 -> "leeftijd: 30"; a leeg leeftijd -> "leeftijd: ".
+        new Fixture("tekstreeks value (literal + inserted leeftijd)",
+            "Objecttype de Persoon (mv: Personen) (bezield)\n    de roepnaam Tekst;\n    de leeftijd Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De roepnaam van een Persoon moet gesteld worden op \"leeftijd: «zijn leeftijd»\".\n",
+            () -> { Persoon p = new Persoon(); p.setLeeftijd(new BigDecimal(30)); return List.of(p, new Persoon()); },
+            Map.of(), l -> vals(((Persoon) l.get(0)).getRoepnaam(), ((Persoon) l.get(1)).getRoepnaam())),   // "leeftijd: 30", "leeftijd: "
     };
 
     // ---- Phase H builtin scalar Functies: §13.4.17.17 abs, §13.4.17.18-.20 date components, §13.4.17.37 paasdag
@@ -1953,7 +1961,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
     @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 14); }
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
-    @Test void phase_H_value_ops_matches_drl_back_end()             { runDifferential("Phase H val", PHASE_H_VAL, 7); }
+    @Test void phase_H_value_ops_matches_drl_back_end()             { runDifferential("Phase H val", PHASE_H_VAL, 8); }
     @Test void phase_H_builtin_functies_match_drl_back_end()        { runDifferential("Phase H func", PHASE_H_FUNC, 4); }
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 5); }
     @Test void beslistabel_rows_match_drl_back_end()          { runDifferential("Beslistabel", BESLISTABEL, 6); }
