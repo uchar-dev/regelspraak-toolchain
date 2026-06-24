@@ -243,6 +243,19 @@ public final class RegelSpraakRuntime {
                 ((BigDecimal) uur).intValue(), ((BigDecimal) minuut).intValue(), ((BigDecimal) seconde).intValue(), ((BigDecimal) milli).intValue() * 1_000_000);
     }
 
+    /** §6/§13.4.16 date arithmetic (§6 spec / Tabel 15): a datum/datumtijd plus or minus a whole number of a time
+     *  unit (dag/week/maand/jaar; uur/… only on a datumtijd) -> a new date(time). Leegwaarde per Tabel 15: an empty
+     *  DATUM -> empty ("niet te gebruiken"), but an empty DURATION is treated as the number 0 -> the date unchanged
+     *  (as is a 0 duration, §6). The aantal is taken as whole units (date arithmetic operates on integer time
+     *  units; a fractional value truncates toward zero). Verbatim mirror of the DRL {@code rsDatumReken}. */
+    public static java.time.temporal.Temporal rsDatumReken(java.time.temporal.Temporal datum, BigDecimal aantal, String eenheid, boolean optellen) {
+        if (datum == null) return null;        // leeg datum -> leeg
+        if (aantal == null) return datum;      // leeg tijdseenheid -> behandeld als 0 -> datum onveranderd (Tabel 15)
+        long n = aantal.longValue();
+        java.time.temporal.ChronoUnit u = java.time.temporal.ChronoUnit.valueOf(eenheid);
+        return optellen ? datum.plus(n, u) : datum.minus(n, u);
+    }
+
     /** §13.4.17.37 "de eerste paasdag van" a year — Gauss/Anonymous Easter algorithm; a leeg year -> leeg.
      *  Mirrors the DRL {@code rsEerstePaasdag}. */
     public static java.time.LocalDate rsEerstePaasdag(Object jaar) {

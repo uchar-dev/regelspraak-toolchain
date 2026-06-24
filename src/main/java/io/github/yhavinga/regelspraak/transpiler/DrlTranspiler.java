@@ -1096,11 +1096,30 @@ public final class DrlTranspiler {
             if (l.marker() || r.marker()) return Frag.from("(" + l.text() + " * " + r.text() + ")", l, r);
             return Frag.from("(" + nulVeilig(l.text()) + " * " + nulVeilig(r.text()) + ")", l, r);  // §6.4 Tabel 10: any empty operand -> 0
         }
-        // §13.4.16 date arithmetic (a datum ± a tijdsduur) is NOT mvel "+": "LocalDate + BigDecimal" is a type
-        // error that breaks the Drools build. The correct form is .plusDays/.plusMonths/… keyed on the duration's
-        // unit (deferred), so emit an honest marker rather than uncompilable DRL.
-        if (b.links().type().isDatum() || b.rechts().type().isDatum())
-            return Frag.todo("datum-rekenkunde (datum ± tijdsduur vereist .plusX, geen mvel '+')", b.bron());
+        // §6/§13.4.16 date arithmetic: a datum/datumtijd ± a numeric-with-time-unit -> a new date (optellen=later,
+        // aftrekken=earlier; an aantal of 0 leaves the date unchanged). NOT mvel "+": "LocalDate + BigDecimal" is a
+        // type error that breaks the Drools build. Lower via the Java-bodied rsDatumReken helper (.plus/.minus keyed
+        // on the ChronoUnit), exactly like rsTijdsduur — the enum/overload resolve cleanly in plain Java, not mvel.
+        if (b.links().type().isDatum() || b.rechts().type().isDatum()) {
+            boolean datumLinks = b.links().type().isDatum();
+            Expr datumExpr = datumLinks ? b.links() : b.rechts();
+            Expr durExpr   = datumLinks ? b.rechts() : b.links();
+            boolean optellen = b.op() == Expr.BinOp.PLUS;
+            // "datum - duur" subtracts; "duur - datum" is not a date, and two datums added/subtracted is not date
+            // arithmetic (a datum-difference is the §6.10 tijdsduur expression) -> honest marker.
+            if (durExpr.type().isDatum() || (!optellen && !datumLinks))
+                return Frag.todo("datum-rekenkunde (datum +/- tijdsduur; geen datum-datum)", b.bron());
+            String unit = chronoUnit(durExpr.type());
+            if (unit == null) return Frag.todo("datum-rekenkunde (kwartaal/dagsoort/onbekende tijdseenheid)", b.bron());
+            boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
+            if (tijdEenheid && !(datumExpr.type() instanceof Datatype.DatumTijd))
+                return Frag.todo("datum-rekenkunde: een tijdseenheid vereist een datum-tijd operand (§6.10)", b.bron());
+            Frag d = arg.apply(datumExpr), n = arg.apply(durExpr);
+            if (d.marker() || n.marker()) return Frag.todo("datum-rekenkunde", b.bron());
+            registreerDatumRekenFunctie();
+            String cast = datumExpr.type() instanceof Datatype.DatumTijd ? "java.time.LocalDateTime" : "java.time.LocalDate";
+            return Frag.from("((" + cast + ") rsDatumReken(" + d.text() + ", " + n.text() + ", \"" + unit + "\", " + optellen + "))", d, n);
+        }
         // §4: restate the right operand in the left operand's unit before +/- so a convertible-but-different unit
         // (mnd vs jr) is scaled, not added raw.
         Frag links = arg.apply(b.links());
@@ -1362,6 +1381,21 @@ public final class DrlTranspiler {
                 + "    if (van == null || tot == null) return null;\n"
                 + "    long n = java.time.temporal.ChronoUnit.valueOf(eenheid).between(van, tot);\n"
                 + "    return java.math.BigDecimal.valueOf(absoluut ? Math.abs(n) : n);\n"
+                + "}\n\n");
+    }
+
+    /** Register the Java-bodied DRL helper for §6/§13.4.16 date arithmetic: a datum/datumtijd plus/minus a whole
+     *  number of a ChronoUnit -> a new date(time), empty when either operand is empty. The aantal is taken as whole
+     *  units (truncated toward zero). Byte-identical to {@code RegelSpraakRuntime.rsDatumReken}. Idempotent. */
+    private void registreerDatumRekenFunctie() {
+        hulpFuncties.putIfAbsent("rsDatumReken",
+                "function java.time.temporal.Temporal rsDatumReken(java.time.temporal.Temporal datum, "
+                + "java.math.BigDecimal aantal, String eenheid, boolean optellen) {\n"
+                + "    if (datum == null) return null;\n"           // leeg datum -> leeg
+                + "    if (aantal == null) return datum;\n"         // leeg tijdseenheid -> als 0 -> datum onveranderd (Tabel 15)
+                + "    long n = aantal.longValue();\n"
+                + "    java.time.temporal.ChronoUnit u = java.time.temporal.ChronoUnit.valueOf(eenheid);\n"
+                + "    return optellen ? datum.plus(n, u) : datum.minus(n, u);\n"
                 + "}\n\n");
     }
 

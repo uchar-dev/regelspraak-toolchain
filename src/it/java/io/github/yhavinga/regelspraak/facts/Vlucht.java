@@ -2,6 +2,7 @@ package io.github.yhavinga.regelspraak.facts;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /** A fact POJO matching the transpiler's naming convention (Pascal-case class,
  *  getX/setX per attribute). Hand-written here to give the generated DRL a runtime
@@ -20,6 +21,18 @@ public class Vlucht {
     private boolean reisMetPaaskorting;      // the kenmerk that rule sets
     private boolean inHetHoogseizoen;        // toka-26: numeric == over a builtin (maand uit) in a quantifier
     private boolean vol;                     // §8.1.7 far-side rolcheck head ("een Vlucht is vol indien hij heeft een passagier")
+    private BigDecimal uitstelduur;          // §6/§13.4.16 date-arithmetic duration (eenheid mnd)
+    public BigDecimal getUitstelduur() { return uitstelduur; }
+    public void setUitstelduur(BigDecimal v) { this.uitstelduur = v; }
+    private LocalDateTime vertrekmoment;     // §6/§13.4.16 datum-tijd + minuten -> datum-tijd
+    private LocalDateTime aankomstmoment;
+    private BigDecimal reisduur;             // duration in minuut (a time unit -> needs a datum-tijd operand)
+    public LocalDateTime getVertrekmoment() { return vertrekmoment; }
+    public void setVertrekmoment(LocalDateTime v) { this.vertrekmoment = v; }
+    public LocalDateTime getAankomstmoment() { return aankomstmoment; }
+    public void setAankomstmoment(LocalDateTime v) { this.aankomstmoment = v; }
+    public BigDecimal getReisduur() { return reisduur; }
+    public void setReisduur(BigDecimal v) { this.reisduur = v; }
     public boolean isInternationaal() { return internationaal; }
     public void setInternationaal(boolean v) { this.internationaal = v; }
     public boolean isVol() { return vol; }

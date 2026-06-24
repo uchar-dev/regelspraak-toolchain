@@ -854,6 +854,49 @@ public final class ExecModelTranspiler {
         catch (RuntimeException e) { return null; }
     }
 
+    /** Map a duration unit (its Datatype's eenheid) to a {@link java.time.temporal.ChronoUnit} name — byte-identical
+     *  to DrlTranspiler.chronoUnit, so both back-ends key date arithmetic on the SAME unit. null for kwartaal / a
+     *  dagsoort / an unrecognised unit (the caller then skips). */
+    private static String chronoUnit(Datatype t) {
+        Eenheid e = t.eenheidOf();
+        if (e == null) return null;
+        return switch (RegelSpraakModel.normaliseerTijdseenheid(e.afkorting())) {
+            case "jaar", "jr"             -> "YEARS";
+            case "maand", "mnd"           -> "MONTHS";
+            case "week", "wk"             -> "WEEKS";
+            case "dag"                    -> "DAYS";
+            case "uur", "u"               -> "HOURS";
+            case "minuut", "min"          -> "MINUTES";
+            case "seconde", "secondes", "sec", "s"     -> "SECONDS";
+            case "milliseconde", "millisecondes", "ms" -> "MILLIS";
+            default -> null;
+        };
+    }
+
+    /** §6/§13.4.16 date arithmetic as a value: a datum/datumtijd ± a numeric-with-time-unit -> a new date(time) via
+     *  {@link RegelSpraakRuntime#rsDatumReken} (optellen=PLUS=later; MIN/VERMINDERD_MET=earlier; aantal 0 -> unchanged;
+     *  leeg operand -> leeg). Mirrors DrlTranspiler.binairTerm's datum branch and its guards: only +/-, no datum-datum,
+     *  a time unit (uur/…) needs a datum-tijd operand, and a kwartaal/dagsoort/unresolvable operand -> null (skip). */
+    private WaardeFn datumRekenWaarde(Expr.Binair b) {
+        Expr.BinOp op = b.op();
+        if (op != Expr.BinOp.PLUS && op != Expr.BinOp.MIN && op != Expr.BinOp.VERMINDERD_MET) return null;
+        boolean datumLinks = b.links().type().isDatum();
+        Expr datumExpr = datumLinks ? b.links() : b.rechts();
+        Expr durExpr   = datumLinks ? b.rechts() : b.links();
+        boolean optellen = op == Expr.BinOp.PLUS;
+        if (durExpr.type().isDatum() || (!optellen && !datumLinks)) return null;   // datum-datum / duur-min-datum
+        String unit = chronoUnit(durExpr.type());
+        if (unit == null) return null;
+        boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
+        if (tijdEenheid && !(datumExpr.type() instanceof Datatype.DatumTijd)) return null;
+        WaardeFn df = scalarWaarde(datumExpr), nf = scalarWaarde(durExpr);
+        if (df == null || nf == null) return null;
+        BiFunction<Object, Map<String, BigDecimal>, Object> dfn = df.fn(), nfn = nf.fn();
+        Set<String> g = new LinkedHashSet<>(df.globals()); g.addAll(nf.globals());
+        return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsDatumReken(
+                (java.time.temporal.Temporal) dfn.apply(s, gm), (BigDecimal) nfn.apply(s, gm), unit, optellen), g);
+    }
+
     /** A single positive single-period subject kenmerk's TRUE-period reader ({@code s -> the kenmerk's List<Segment>}),
      *  or null when not lowerable as a standalone true-period timeline (a navigated / negated / multi-period /
      *  non-subject kenmerk — a negated member has no standalone complement here, so the caller markers). Mirrors
@@ -1248,6 +1291,12 @@ public final class ExecModelTranspiler {
             BigDecimal val = bd(lit);
             return val == null ? null : WaardeFn.constant(val);
         }
+        if (e instanceof Expr.Literal dl && dl.type() instanceof Datatype.DatumInDagen) {
+            // §13.2.19 a date literal as a VALUE (e.g. a datum-arithmetic operand) -> its LocalDate constant; DRL
+            // lowers the same LocalDate.of(...). A datum-tijd literal is deferred (parseDatum is date-only).
+            java.time.LocalDate d = parseDatum(dl.waarde());
+            return d == null ? null : WaardeFn.constant(d);
+        }
         // §13.3.3.4 Tekst / §13.2.14 enumeratiewaarde literal value -> its String label (an enumeratie/Tekst field is
         // a String; the §12 beslistabel may SET such an attribute). DRL renders the same string, so both back-ends
         // store the identical label; the value-side unit restatement is a no-op (scaledBy passes a non-number through).
@@ -1358,11 +1407,11 @@ public final class ExecModelTranspiler {
                     mxfn == null ? null : (BigDecimal) mxfn.apply(s, gm)), g);
         }
         if (e instanceof Expr.Binair b && arithmeticOp(b.op())) {
-            // §6.2-6.5 binary arithmetic with the leegwaarde tables. Datum arithmetic (datum ± tijdsduur) needs
-            // .plusX, not "+", so skip it (Phase F). +/- restate the right operand into the LEFT's unit (§4);
+            // §6.2-6.5 binary arithmetic with the leegwaarde tables. Datum arithmetic (datum ± tijdsduur) lowers
+            // via datumRekenWaarde (.plus/.minus, not "+"). +/- restate the right operand into the LEFT's unit (§4);
             // MAAL does not (units multiply). The op's empty-operand rule: PLUS/MIN/MAAL = leeg counts as 0;
             // VERMINDERD_MET = empty LEFT -> leeg; GEDEELD_DOOR = empty LEFT -> 0, value/empty -> leeg.
-            if (b.links().type().isDatum() || b.rechts().type().isDatum()) return null;
+            if (b.links().type().isDatum() || b.rechts().type().isDatum()) return datumRekenWaarde(b);
             WaardeFn lf = scalarWaarde(b.links()), rf = scalarWaarde(b.rechts());
             if (lf == null || rf == null) return null;
             Expr.BinOp op = b.op();

@@ -123,6 +123,70 @@ class ExecModelDifferentialTest {
             Passagier::getPrijs),
     };
 
+    // ---- §6/§13.4.16 DATE ARITHMETIC: a datum/datumtijd +/- a numeric-with-time-unit -> a new date(time) via
+    //      rsDatumReken (.plus/.minus keyed on the ChronoUnit). Both back-ends call the byte-identical helper.
+    //      Covers: LocalDate + MONTHS (later), - MONTHS (earlier); the DatumTijd + MINUTES spec example (the
+    //      time-unit-needs-datum-tijd path); and Tabel 15 leegwaarde — leeg DATUM -> leeg, leeg DURATION -> 0
+    //      (date unchanged). ----
+    static final String DATUM_SRC_PLUS = """
+            Objecttype de Vlucht (mv: Vluchten)
+                de vluchtdatum Datum in dagen;
+                de uitstelduur Numeriek (geheel getal) met eenheid mnd;
+                de vroegste vertrek Datum in dagen;
+            Regel R
+                geldig altijd
+                    De vroegste vertrek van een Vlucht moet berekend worden als de vluchtdatum van de Vlucht plus de uitstelduur van de Vlucht.
+            """;
+    static final String DATUM_SRC_MIN = DATUM_SRC_PLUS.replace(" plus de uitstelduur", " min de uitstelduur");
+    static final String DATUM_SRC_LIT = """
+            Objecttype de Vlucht (mv: Vluchten)
+                de vluchtdatum Datum in dagen;
+                de vroegste vertrek Datum in dagen;
+            Regel R
+                geldig altijd
+                    De vroegste vertrek van een Vlucht moet berekend worden als de vluchtdatum van de Vlucht plus 3 mnd.
+            """;
+    static final String DATUM_SRC_LITDATE = """
+            Objecttype de Vlucht (mv: Vluchten)
+                de uitstelduur Numeriek (geheel getal) met eenheid mnd;
+                de vroegste vertrek Datum in dagen;
+            Regel R
+                geldig altijd
+                    De vroegste vertrek van een Vlucht moet berekend worden als 15-06-2022 plus de uitstelduur van de Vlucht.
+            """;
+    static final String DATUMTIJD_SRC = """
+            Objecttype de Vlucht (mv: Vluchten)
+                de vertrekmoment Datum en tijd in millisecondes;
+                de reisduur Numeriek (geheel getal) met eenheid minuut;
+                de aankomstmoment Datum en tijd in millisecondes;
+            Regel R
+                geldig altijd
+                    De aankomstmoment van een Vlucht moet berekend worden als de vertrekmoment van de Vlucht plus de reisduur van de Vlucht.
+            """;
+
+    static Fixture datumFix(String naam, String src, java.time.LocalDate datum, BigDecimal maanden) {
+        return new Fixture(naam, src,
+                () -> { Vlucht v = new Vlucht(); v.setVluchtdatum(datum); v.setUitstelduur(maanden); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).getVroegsteVertrek());
+    }
+
+    static final Fixture[] PHASE_DATUM = {
+        datumFix("datum plus N maanden -> later (2022-06-15 + 3mnd)", DATUM_SRC_PLUS, java.time.LocalDate.of(2022, 6, 15), new BigDecimal(3)),
+        datumFix("datum min N maanden -> earlier (2022-06-15 - 3mnd)", DATUM_SRC_MIN, java.time.LocalDate.of(2022, 6, 15), new BigDecimal(3)),
+        datumFix("leeg duration -> date unchanged (Tabel 15)", DATUM_SRC_PLUS, java.time.LocalDate.of(2022, 6, 15), null),
+        datumFix("leeg datum -> leeg (Tabel 15)", DATUM_SRC_PLUS, null, new BigDecimal(3)),
+        new Fixture("datum-tijd plus N minuten (spec §6 example)", DATUMTIJD_SRC,
+                () -> { Vlucht v = new Vlucht(); v.setVertrekmoment(java.time.LocalDateTime.of(2022, 6, 15, 9, 30, 0)); v.setReisduur(new BigDecimal(95)); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).getAankomstmoment()),
+        new Fixture("datum plus LITERAL duration (3 mnd)", DATUM_SRC_LIT,
+                () -> { Vlucht v = new Vlucht(); v.setVluchtdatum(java.time.LocalDate.of(2022, 6, 15)); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).getVroegsteVertrek()),
+        new Fixture("datum LITERAL operand (15-06-2022) plus attr", DATUM_SRC_LITDATE,
+                () -> { Vlucht v = new Vlucht(); v.setUitstelduur(new BigDecimal(3)); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).getVroegsteVertrek()),
+        datumFix("month-end overflow (2022-01-31 + 1mnd -> 02-28)", DATUM_SRC_PLUS, java.time.LocalDate.of(2022, 1, 31), new BigDecimal(1)),
+    };
+
     // ---- §12 BESLISTABEL fixtures: a captured pipe-table desugars (BeslistabelDesugar) to one regel per row, fed
     //      through the SAME resolver -> both back-ends fire the rows. Mutually-exclusive bands keep the result
     //      deterministic regardless of row firing order. Exercises: one-conditie, multi-conditie AND + n.v.t. omission,
@@ -2040,6 +2104,7 @@ class ExecModelDifferentialTest {
     @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 7); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
+    @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 8); }
     @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
     @Test void phase_E_verdeling_fouten_match_drl_back_end()       { runFoutDifferential("Phase E fout", PHASE_E_FOUT, 2); }
 
