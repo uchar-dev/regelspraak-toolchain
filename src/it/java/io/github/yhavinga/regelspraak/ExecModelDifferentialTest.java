@@ -662,6 +662,46 @@ class ExecModelDifferentialTest {
             l -> vals(((Vlucht) l.get(0)).getTotaalprijs(), ((Vlucht) l.get(1)).getTotaalprijs())),   // 100, 0
     };
 
+    // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
+    //      arithmetic tree whose leaf is an AANTAL/TOTAAL/MIN/MAX). Each embedded aggregation lowers to its own
+    //      accumulate CE; the consequence combines the bound results + scalars + a (≤1) global. Facts: [Vlucht, pax...].
+    static Passagier pax(Vlucht reis) { Passagier p = new Passagier(); p.setReis(reis); return p; }
+    static final String AGG_HDR = "Objecttype de Vlucht\n    de totaalprijs Numeriek (geheel getal);\n"
+            + "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n" + AGG_FEIT
+            + "Regel tel\n    geldig altijd\n        ";
+    static final Fixture[] PHASE_C2 = {
+        // §13.4.17.47 "het aantal passagiers van de reis maal de factor" = (count) * factor — the maal binds OUTSIDE
+        // the telling. 2 passagiers maal global 10 = 20 (an empty reis -> 0). Exercises an aggregation MAAL a global.
+        new Fixture("aantal passagiers MAAL global factor (2*10=20)",
+            "Parameter de factor : Numeriek (geheel getal)\n" + AGG_HDR
+            + "De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis maal de factor.\n",
+            () -> { Vlucht v = new Vlucht(); Vlucht leeg = new Vlucht(); return List.of(v, leeg, pax(v), pax(v)); },
+            Map.of("factor", new BigDecimal(10)),
+            l -> vals(((Vlucht) l.get(0)).getTotaalprijs(), ((Vlucht) l.get(1)).getTotaalprijs())),   // 20, 0
+
+        // an aggregation MAAL a literal: 3 passagiers maal 5 = 15.
+        new Fixture("aantal passagiers MAAL literal 5 (3*5=15)",
+            AGG_HDR + "De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis maal 5.\n",
+            () -> { Vlucht v = new Vlucht(); return List.of(v, pax(v), pax(v), pax(v)); },
+            Map.of(),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 15
+
+        // an aggregation PLUS a literal (leegwaarde rsNul): 3 passagiers plus 1 = 4.
+        new Fixture("aantal passagiers PLUS literal 1 (3+1=4)",
+            AGG_HDR + "De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis plus 1.\n",
+            () -> { Vlucht v = new Vlucht(); return List.of(v, pax(v), pax(v), pax(v)); },
+            Map.of(),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 4
+
+        // TWO aggregations in one arithmetic (binds two accumulate result vars): count * count = 3*3 = 9.
+        new Fixture("aantal passagiers MAAL aantal passagiers (3*3=9)",
+            AGG_HDR + "De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis maal het aantal passagiers van de reis.\n",
+            () -> { Vlucht v = new Vlucht(); return List.of(v, pax(v), pax(v), pax(v)); },
+            Map.of(),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 9
+    };
+
+    @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 4); }
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }
     @Test void phase_B_model_back_end_matches_drl_back_end()  { runDifferential("Phase B", PHASE_B, 3); }
     @Test void phase_B2_quantifiers_match_drl_back_end()       { runDifferential("Phase B2", PHASE_B2, 5); }

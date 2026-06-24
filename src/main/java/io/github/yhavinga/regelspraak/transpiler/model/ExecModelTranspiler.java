@@ -21,6 +21,12 @@ import org.drools.model.Variable;
 import org.drools.model.functions.Block2;
 import org.drools.model.functions.Block3;
 import org.drools.model.functions.Block4;
+import org.drools.model.functions.Block5;
+import org.drools.model.functions.Block6;
+import org.drools.model.functions.Block7;
+import org.drools.model.functions.Block8;
+import org.drools.model.functions.Block9;
+import org.drools.model.functions.Block10;
 import org.drools.model.functions.Function1;
 import org.drools.model.functions.Predicate1;
 import org.drools.model.functions.Predicate2;
@@ -171,6 +177,44 @@ public final class ExecModelTranspiler {
                 };
                 consequence = DSL.on(sVar, (Variable) resVar).execute(body);
             }
+        } else if (isScalarSoort(r.soort()) && containsAggregatie(r.waarde())) {
+            // §5.8 AGGREGATION INSIDE ARITHMETIC ("het aantal passagiers maal de factor", "de totaal van X plus Y"):
+            // the value is an arithmetic tree whose operand is an aggregation. Lower each embedded aggregation to its
+            // own accumulate CE (binding a result var), then the consequence combines the bound results + own-attr
+            // reads + a (≤1) global. Mirrors DrlTranspiler.waarde recursing through binairTerm into accumulate.
+            Set<String> aggGlobals = new LinkedHashSet<>();
+            List<RuleItemBuilder<?>> accItems = new ArrayList<>();
+            List<Variable> accVars = new ArrayList<>();
+            Eval eval = lowerVal(r.waarde(), doel.objecttype(), sVar, aggGlobals, accItems, accVars);
+            if (eval == null) return skip("regel (aggregatie-in-arithmetiek buiten scope): " + r.naam());
+            List<Global<BigDecimal>> gVars = new ArrayList<>();
+            for (String gn : aggGlobals) {
+                Global<BigDecimal> g = globals.get(gn);
+                if (g == null) return skip("regel (aggregatie-waarde refereert niet-geregistreerde global " + gn + "): " + r.naam());
+                gVars.add(g);
+            }
+            if (gVars.size() > 1) return skip("regel (aggregatie-waarde refereert >1 global — latere fase): " + r.naam());
+            BigDecimal vf = valueFactor(r.waarde().type(), doel.type());   // §4 restate the whole value into the doel unit
+            String gn = aggGlobals.isEmpty() ? null : aggGlobals.iterator().next();
+            // consequence vars: [subject, (global?), acc0, acc1, ...]; the body rebuilds the global map + agg array.
+            List<Variable> vars = new ArrayList<>();
+            vars.add(sVar);
+            if (gn != null) vars.add((Variable) gVars.get(0));
+            vars.addAll(accVars);
+            final String fgn = gn; final boolean hasG = gn != null; final int nAgg = accVars.size();
+            consequence = consequenceOf(vars.toArray(new Variable[0]), (drools, args) -> {
+                Object s = args[0];
+                Map<String, BigDecimal> gm = hasG ? Map.of(fgn, (BigDecimal) args[1]) : Map.of();
+                Object[] aggs = new Object[nAgg];
+                int base = hasG ? 2 : 1;
+                for (int i = 0; i < nAgg; i++) aggs[i] = args[base + i];
+                Object v = eval.apply(s, gm, aggs);
+                if (vf != null && v != null) v = ((BigDecimal) v).multiply(vf);
+                RegelSpraakRuntime.set(s, doelProp, v);
+                drools.update(s);
+            });
+            if (consequence == null) return skip("regel (aggregatie-waarde: te veel gebonden variabelen): " + r.naam());
+            extra.addAll(accItems);
         } else {
             // scalar value path: a WaardeFn(subject, global-values -> value) plus the Parameter-globals it reads.
             WaardeFn wf = switch (r.soort()) {
@@ -509,6 +553,116 @@ public final class ExecModelTranspiler {
     private static boolean arithmeticOp(Expr.BinOp op) {
         return op == Expr.BinOp.PLUS || op == Expr.BinOp.MIN || op == Expr.BinOp.VERMINDERD_MET
                 || op == Expr.BinOp.MAAL || op == Expr.BinOp.GEDEELD_DOOR;
+    }
+
+    // ---------------- §5.8 aggregation inside arithmetic (Phase C follow-up) ----------------
+    /** A lowered value-tree node: given the subject, the resolved global values, and the bound aggregation results
+     *  (index-aligned with the accVars the lowering collected), produce the value. */
+    @FunctionalInterface
+    interface Eval { Object apply(Object subject, Map<String, BigDecimal> globals, Object[] aggResults); }
+
+    private static boolean isScalarSoort(ResolvedRegel.Soort s) {
+        return s == ResolvedRegel.Soort.GELIJKSTELLING || s == ResolvedRegel.Soort.BEREKENING || s == ResolvedRegel.Soort.INITIALISATIE;
+    }
+
+    /** True when the value CONTAINS an aggregation Functie somewhere in its arithmetic tree (a BARE aggregation at the
+     *  root is the separate {@link #isAggregatieWaarde} path) — the trigger for the embedded-aggregation value path. */
+    private static boolean containsAggregatie(Expr e) {
+        if (e instanceof Expr.Functie f) {
+            if (isAggregatieKind(f.kind())) return true;
+            for (Expr a : f.argumenten()) if (containsAggregatie(a)) return true;
+            return false;
+        }
+        if (e instanceof Expr.Binair b) return containsAggregatie(b.links()) || containsAggregatie(b.rechts());
+        if (e instanceof Expr.Afgerond a) return containsAggregatie(a.basis());
+        if (e instanceof Expr.Begrensd g) return containsAggregatie(g.basis());
+        return false;
+    }
+
+    /** Recursively lower a value tree to an {@link Eval}, collecting each embedded aggregation as its own accumulate CE
+     *  (accItem + result Variable, index-aligned with accVarsOut) and the Parameter-globals it reads. null -> out of
+     *  scope (caller skips). Mirrors {@link #scalarWaarde}/{@link #scalarWrapper} for the scalar leaves, but threads
+     *  aggregation result vars through the {@code aggResults[]} the consequence binds. A SOM (count+fallback two-var
+     *  fold) inside arithmetic is not lowered here -> null (honest skip). */
+    private Eval lowerVal(Expr e, Objecttype subject, Variable sVar, Set<String> globalsOut,
+                          List<RuleItemBuilder<?>> accItemsOut, List<Variable> accVarsOut) {
+        if (e instanceof Expr.Literal lit && lit.type().isNumeriek()) {
+            BigDecimal val = bd(lit);
+            return val == null ? null : (s, g, a) -> val;
+        }
+        if (e instanceof Expr.AttribuutRef ar && ar.navigatieRol() == null) {
+            if (subject != null && subject.attribuutGranulariteit.containsKey(ar.attribuut())) return null;   // temporal -> Phase F
+            String attr = ar.attribuut();
+            return (s, g, a) -> RegelSpraakRuntime.get(s, attr);
+        }
+        if (e instanceof Expr.ParameterRef pr) {
+            String gn = ident(pr.parameter().naam());
+            globalsOut.add(gn);
+            return (s, g, a) -> g.get(gn);
+        }
+        if (e instanceof Expr.Functie f && isAggregatieKind(f.kind())) {
+            Agg agg = aggregatie(f, subject, sVar);
+            if (agg == null || agg.isSom()) return null;   // unresolvable / SOM-in-arithmetic -> skip
+            int idx = accVarsOut.size();
+            accItemsOut.add(agg.accItem());
+            accVarsOut.add(agg.resultVar());
+            return (s, g, a) -> RegelSpraakRuntime.toBd(a[idx]);
+        }
+        if (e instanceof Expr.Binair b && arithmeticOp(b.op())) {
+            if (b.links().type().isDatum() || b.rechts().type().isDatum()) return null;   // datum arithmetic -> Phase F
+            Eval l = lowerVal(b.links(), subject, sVar, globalsOut, accItemsOut, accVarsOut);
+            Eval r = lowerVal(b.rechts(), subject, sVar, globalsOut, accItemsOut, accVarsOut);
+            if (l == null || r == null) return null;
+            Expr.BinOp op = b.op();
+            if (op == Expr.BinOp.PLUS || op == Expr.BinOp.MIN || op == Expr.BinOp.VERMINDERD_MET) {
+                BigDecimal vf = valueFactor(b.rechts().type(), b.links().type());   // restate rhs into lhs unit
+                if (vf != null) { Eval inner = r; r = (s, g, a) -> { Object x = inner.apply(s, g, a); return x == null ? null : ((BigDecimal) x).multiply(vf); }; }
+            }
+            Eval lf = l, rf = r;
+            return (s, g, a) -> {
+                Object lv = lf.apply(s, g, a), rv = rf.apply(s, g, a);
+                java.math.MathContext mc = java.math.MathContext.DECIMAL128;   // mirror mvel infix +/-/* (DECIMAL128)
+                return switch (op) {
+                    case PLUS           -> RegelSpraakRuntime.rsNul(lv).add(RegelSpraakRuntime.rsNul(rv), mc);
+                    case MIN            -> RegelSpraakRuntime.rsNul(lv).subtract(RegelSpraakRuntime.rsNul(rv), mc);
+                    case VERMINDERD_MET -> RegelSpraakRuntime.rsVerminderd(lv, rv);
+                    case MAAL           -> RegelSpraakRuntime.rsNul(lv).multiply(RegelSpraakRuntime.rsNul(rv), mc);
+                    case GEDEELD_DOOR   -> RegelSpraakRuntime.rsGedeeld(lv, rv);
+                    default             -> null;
+                };
+            };
+        }
+        if (e instanceof Expr.Afgerond af) {
+            Eval base = lowerVal(af.basis(), subject, sVar, globalsOut, accItemsOut, accVarsOut);
+            if (base == null) return null;
+            int dec = af.decimalen();
+            java.math.RoundingMode mode = afrondMode(af.modus());
+            return (s, g, a) -> RegelSpraakRuntime.rsAfronding(base.apply(s, g, a), dec, mode);
+        }
+        if (e instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.WORTEL && f.argumenten().size() == 1) {
+            Eval rad = lowerVal(f.argumenten().get(0), subject, sVar, globalsOut, accItemsOut, accVarsOut);
+            if (rad == null) return null;
+            return (s, g, a) -> RegelSpraakRuntime.rsWortel(rad.apply(s, g, a));
+        }
+        return null;
+    }
+
+    /** Build the consequence binding {@code v} (subject, then optional global, then the accumulate result vars) and
+     *  invoking {@code body} with the matched fact array. Switches on arity (Block2..Block10); null if too many vars. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private RuleItemBuilder<?> consequenceOf(Variable[] v, java.util.function.BiConsumer<org.drools.model.Drools, Object[]> body) {
+        return switch (v.length) {
+            case 1 -> DSL.on(v[0]).execute((Block2<org.drools.model.Drools, Object>) (d, a0) -> body.accept(d, new Object[]{a0}));
+            case 2 -> DSL.on(v[0], v[1]).execute((Block3<org.drools.model.Drools, Object, Object>) (d, a0, a1) -> body.accept(d, new Object[]{a0, a1}));
+            case 3 -> DSL.on(v[0], v[1], v[2]).execute((Block4<org.drools.model.Drools, Object, Object, Object>) (d, a0, a1, a2) -> body.accept(d, new Object[]{a0, a1, a2}));
+            case 4 -> DSL.on(v[0], v[1], v[2], v[3]).execute((Block5<org.drools.model.Drools, Object, Object, Object, Object>) (d, a0, a1, a2, a3) -> body.accept(d, new Object[]{a0, a1, a2, a3}));
+            case 5 -> DSL.on(v[0], v[1], v[2], v[3], v[4]).execute((Block6<org.drools.model.Drools, Object, Object, Object, Object, Object>) (d, a0, a1, a2, a3, a4) -> body.accept(d, new Object[]{a0, a1, a2, a3, a4}));
+            case 6 -> DSL.on(v[0], v[1], v[2], v[3], v[4], v[5]).execute((Block7<org.drools.model.Drools, Object, Object, Object, Object, Object, Object>) (d, a0, a1, a2, a3, a4, a5) -> body.accept(d, new Object[]{a0, a1, a2, a3, a4, a5}));
+            case 7 -> DSL.on(v[0], v[1], v[2], v[3], v[4], v[5], v[6]).execute((Block8<org.drools.model.Drools, Object, Object, Object, Object, Object, Object, Object>) (d, a0, a1, a2, a3, a4, a5, a6) -> body.accept(d, new Object[]{a0, a1, a2, a3, a4, a5, a6}));
+            case 8 -> DSL.on(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]).execute((Block9<org.drools.model.Drools, Object, Object, Object, Object, Object, Object, Object, Object>) (d, a0, a1, a2, a3, a4, a5, a6, a7) -> body.accept(d, new Object[]{a0, a1, a2, a3, a4, a5, a6, a7}));
+            case 9 -> DSL.on(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]).execute((Block10<org.drools.model.Drools, Object, Object, Object, Object, Object, Object, Object, Object, Object>) (d, a0, a1, a2, a3, a4, a5, a6, a7, a8) -> body.accept(d, new Object[]{a0, a1, a2, a3, a4, a5, a6, a7, a8}));
+            default -> null;
+        };
     }
 
     /** Extends {@link #scalarWaarde} with §13.4.17.25 afronding (an Afgerond wrapper) and §13.4.17.13 wortel (a scalar
