@@ -1080,6 +1080,19 @@ class ExecModelDifferentialTest {
                     return List.of(a, b); },
             Map.of(),
             l -> vals(((Persoon) l.get(0)).getUitkomst(), ((Persoon) l.get(1)).getUitkomst())),   // 30, 40
+
+        // §8.1.1 a NAVIGATED LHS vs an OWN-attr RHS ("de vertrektijd van zijn reis groter is dan zijn basistarief").
+        // 150>100 fires; 150>200 not; a null reis short-circuits -> no fire.
+        new Fixture("navigated LHS vs own-attr RHS comparison",
+            NAV_HDR + "Regel R\n    geldig altijd\n"
+            + "        De prijs van een passagier moet gesteld worden op 50 indien de vertrektijd van zijn reis groter is dan zijn basistarief.\n",
+            () -> { Vlucht v = new Vlucht(); v.setVertrektijd(new BigDecimal(150));
+                    Passagier laag = paxReis(v); laag.setBasistarief(new BigDecimal(100));   // 150>100 -> fire
+                    Passagier hoog = paxReis(v); hoog.setBasistarief(new BigDecimal(200));   // 150>200 -> no fire
+                    Passagier geen = paxReis(null); geen.setBasistarief(new BigDecimal(0));   // null reis -> no fire
+                    return List.of(v, laag, hoog, geen); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(1)).getPrijs(), ((Passagier) l.get(2)).getPrijs(), ((Passagier) l.get(3)).getPrijs())),   // 50, null, null
     };
 
     /** §6.9 a NAVIGATED value read over a NULL relation: the model is the correct null-safe side (-> leeg), while DRL
@@ -2010,7 +2023,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 3); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
-    @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 15); }
+    @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 16); }
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
     @Test void phase_H_value_ops_matches_drl_back_end()             { runDifferential("Phase H val", PHASE_H_VAL, 8); }
     @Test void phase_H_builtin_functies_match_drl_back_end()        { runDifferential("Phase H func", PHASE_H_FUNC, 4); }

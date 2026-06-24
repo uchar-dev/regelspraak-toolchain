@@ -1056,6 +1056,28 @@ public final class ExecModelTranspiler {
                 return vergelijk(scale(RegelSpraakRuntime.toBd(RegelSpraakRuntime.get(rel, attr)), f[0]), rhsScaled, op);
             };
         }
+        // §8.1.1 a to-ONE NAVIGATED numeric comparison vs an OWN attribute ("de reisduur van zijn reis groter is dan
+        // zijn drempel"): the navigated LHS read null-safely (a null relation short-circuits the whole term), the own
+        // RHS fact-local. Mirrors DRL `rol!.x op ownAttr`.
+        if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() != null
+                && la.type().isNumeriek() && isNumeriekOp(v.op())
+                && v.rechts() instanceof Expr.AttribuutRef ra && ra.navigatieRol() == null && ra.type().isNumeriek()) {
+            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 -> marker
+            if (subject == null || !subject.heeftLid(ra.attribuut())) return null;                                          // own RHS member
+            if (subject.attribuutGranulariteit.containsKey(ra.attribuut())) return null;                                    // temporal RHS -> Phase F
+            if (!subject.dimensiesVan(ra.attribuut()).isEmpty()) return null;                                               // §3.6 RHS -> marker
+            String rol = navComparisonRole(la, subject);
+            if (rol == null) return null;
+            String lattr = la.attribuut(), rattr = ra.attribuut();
+            Conditie.Operator op = v.op();
+            BigDecimal[] f = restatement(la.type(), ra.type());
+            return s -> {
+                Object rel = RegelSpraakRuntime.get(s, rol);
+                if (rel == null) return false;   // mvel `rol!.attr` short-circuits the whole term on a null reference
+                return vergelijk(scale(RegelSpraakRuntime.toBd(RegelSpraakRuntime.get(rel, lattr)), f[0]), scale(num(s, rattr), f[1]), op);
+            };
+        }
         // §8.1.1 an OWN-attribute numeric comparison vs ANOTHER own attribute ("de prijs groter is dan de drempel"):
         // both fact-local reads, unit-restated, vergelijk (mvel's null semantics — ordering no-match on a leeg
         // operand, GELIJK true only both-leeg). Mirrors DRL's `attrA op attrB`. (vs-literal handled above; a global
