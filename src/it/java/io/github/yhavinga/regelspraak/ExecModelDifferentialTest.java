@@ -123,6 +123,65 @@ class ExecModelDifferentialTest {
             Passagier::getPrijs),
     };
 
+    // ---- §12 BESLISTABEL fixtures: a captured pipe-table desugars (BeslistabelDesugar) to one regel per row, fed
+    //      through the SAME resolver -> both back-ends fire the rows. Mutually-exclusive bands keep the result
+    //      deterministic regardless of row firing order. Exercises: one-conditie, multi-conditie AND + n.v.t. omission,
+    //      and a §5.7 multi-value "of" cell -> a "tenminste één" OR-list. ----
+    static final Fixture[] BESLISTABEL = {
+        // multi-conditie AND with n.v.t. open bands (the §12 reisduur shape): prijs 150 lands in band 2 -> 20.
+        single("AND band table (prijs 150 -> tarief 20)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+                het basistarief Numeriek (geheel getal);
+            Beslistabel Tarief
+              geldig altijd
+              |   | het basistarief van een Passagier moet gesteld worden op | indien zijn prijs groter is dan | indien zijn prijs kleiner of gelijk is aan |
+              |---|---|---|---|
+              | 1 | 10 | n.v.t. | 100 |
+              | 2 | 20 | 100 | 200 |
+              | 3 | 30 | 200 | n.v.t. |
+            """,
+            () -> passagier(p -> p.setPrijs(new BigDecimal(150))),
+            Map.of(),
+            Passagier::getBasistarief),
+
+        // open lower band (n.v.t. on the '>' side): prijs 40 -> band 1 -> 10.
+        single("AND band table, open first band (prijs 40 -> tarief 10)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+                het basistarief Numeriek (geheel getal);
+            Beslistabel Tarief
+              geldig altijd
+              |   | het basistarief van een Passagier moet gesteld worden op | indien zijn prijs groter is dan | indien zijn prijs kleiner of gelijk is aan |
+              |---|---|---|---|
+              | 1 | 10 | n.v.t. | 100 |
+              | 2 | 20 | 100 | 200 |
+              | 3 | 30 | 200 | n.v.t. |
+            """,
+            () -> passagier(p -> p.setPrijs(new BigDecimal(40))),
+            Map.of(),
+            Passagier::getBasistarief),
+
+        // §5.7 multi-value "of" cell -> an OR-list; text equality on a Tekst attribute. roepnaam "Maria" -> 1.
+        new Fixture("OR-list text equality (roepnaam Maria -> 1)",
+            """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de roepnaam Tekst;
+                de uitkomst Numeriek (geheel getal);
+            Beslistabel Indeling
+              geldig altijd
+              |   | de uitkomst van een Persoon moet gesteld worden op | indien zijn roepnaam gelijk is aan |
+              |---|---|---|
+              | 1 | 1 | "Tom" of "Maria" |
+              | 2 | 2 | "Wilma" |
+            """,
+            () -> { Persoon p = new Persoon(); p.setRoepnaam("Maria"); return List.of(p); },
+            Map.of(),
+            l -> ((Persoon) l.get(0)).getUitkomst()),
+    };
+
     // ---- Phase B fixtures: ALLE-compound (AND), kenmerkcheck, LEEG/GEVULD as in-pattern constraints ----
     static final Fixture[] PHASE_B = {
         single("ALLE compound (AND of two comparisons)",
@@ -1442,6 +1501,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 4); }
+    @Test void beslistabel_rows_match_drl_back_end()          { runDifferential("Beslistabel", BESLISTABEL, 3); }
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }
     @Test void phase_B_model_back_end_matches_drl_back_end()  { runDifferential("Phase B", PHASE_B, 3); }
     @Test void phase_B2_quantifiers_match_drl_back_end()       { runDifferential("Phase B2", PHASE_B2, 5); }

@@ -370,6 +370,19 @@ EURO       : '€' ; // unit abbreviation
 APOSTROPHE : '\''  ;
 
 // ============================================================================
+// §12 BESLISTABEL table body — the inline markdown pipe-table (Option A surface
+// syntax). '|' occurs NOWHERE ELSE in RegelSpraak, so the first '|' unambiguously
+// opens a decision-table row block. A whole row is captured as ONE TABEL_RIJ token
+// (cells never contain '|', per §12); the resolver splits it on '|' and hands the
+// grid to BeslistabelDesugar. Newlines are globally skipped (header note 1), so the
+// TABEL_MODE sub-mode (defined at the end) re-introduces line structure locally:
+// each further pipe line is another TABEL_RIJ, and the first newline NOT followed
+// by a pipe line pops back to DEFAULT_MODE. A '|' inside a "…" string stays part of
+// STRING_TEXT (TEKST_MODE), so a string never triggers the table.
+// ============================================================================
+TABEL_RIJ : '|' ~[\r\n]* -> pushMode(TABEL_MODE) ;
+
+// ============================================================================
 // Identifiers — single words, split by case so the parser can use the
 // capitalisation convention as a name boundary (see header note 2). UPPER_ID is
 // listed first; LOWER_ID accepts any letter start but is only reached for
@@ -398,3 +411,15 @@ mode TEKST_MODE;
 STRING_TEXT   : ~["«»\r\n]+ ;                    // a karakterreeks chunk (inner spaces preserved)
 L_ANGLE_QUOTE : '«' -> pushMode(DEFAULT_MODE) ;  // «expressie» — the embedded expr lexes in DEFAULT_MODE
 STRING_END    : '"' -> popMode ;
+
+// ============================================================================
+// §12 beslistabel pipe-table capture (entered from TABEL_RIJ in DEFAULT_MODE).
+// Each further pipe line is the SAME TABEL_RIJ token (re-typed); a newline NOT
+// followed by a pipe line ends the table and returns to DEFAULT_MODE. The longest
+// match decides: when a pipe row follows, TABEL_RIJ_VERVOLG (which also consumes
+// the line) outruns TABEL_EINDE (the bare break), so blank lines between rows are
+// tolerated; when no pipe row follows, only TABEL_EINDE matches.
+// ============================================================================
+mode TABEL_MODE;
+TABEL_RIJ_VERVOLG : ('\r'? '\n')+ [ \t]* '|' ~[\r\n]* -> type(TABEL_RIJ) ; // next data/separator row
+TABEL_EINDE       : ('\r'? '\n')+                     -> popMode, skip ;   // table over -> back to DEFAULT_MODE

@@ -947,6 +947,20 @@ public final class ExecModelTranspiler {
             BigDecimal rhsScaled = scale(rhs, f[1]);
             return s -> vergelijk(scale(num(s, attr), f[0]), rhsScaled, op);
         }
+        // §5.3 an own-attribute equality vs a §13.3.3.4 Tekst literal (the §12 beslistabel "is gelijk aan X" cell, and
+        // the spec-12 OR-list of them). mvel string '==' is VALUE equality (.equals); ONGELIJK is null-asymmetric
+        // (mvel reads `null != "x"` as TRUE) — mirror DrlTranspiler's `prop == "lit"` and the numeric vergelijk above.
+        if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
+                && v.rechts() instanceof Expr.Literal lit && lit.type().isTekst()
+                && (v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)) {
+            if (subject == null || !subject.heeftLid(la.attribuut())) return null;            // not the subject's own member
+            if (subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;      // temporal -> Phase F
+            if (!subject.dimensiesVan(la.attribuut()).isEmpty()) return null;                 // §3.6 gedimensioneerd -> marker
+            String attr = la.attribuut();
+            String rhs = lit.waarde().replace("\"", "");   // the DRL strips the tekstwaarde quotes the same way
+            boolean gelijk = v.op() == Conditie.Operator.GELIJK;
+            return s -> rhs.equals(RegelSpraakRuntime.get(s, attr)) == gelijk;   // attr may be null; rhs non-null
+        }
         // §8.1.7 near-side rolcheck: the subject fills the role iff its to-ONE forward reference is set. The far-side
         // (the reference lives on the MANY side) is not a fact-only leaf -> null (handled as an exists-join above).
         if (c instanceof Conditie.Rollidmaatschap r) {
