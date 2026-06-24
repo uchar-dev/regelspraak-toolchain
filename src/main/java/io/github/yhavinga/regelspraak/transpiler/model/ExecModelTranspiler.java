@@ -1015,6 +1015,31 @@ public final class ExecModelTranspiler {
                 return vergelijk(scale(RegelSpraakRuntime.toBd(RegelSpraakRuntime.get(rel, attr)), f[0]), scale((BigDecimal) gv, f[1]), op);
             }), List.of());
         }
+        // §8.1.1 a DATUM comparison where an operand is a §6/§13.4.16 date-arithmetic expression that reads EXACTLY
+        // ONE Parameter-GLOBAL (the duration is a parameter, e.g. "de geboortedatum plus de MEERDERJARIGHEIDSLEEFTIJD
+        // eerder is dan de peildatum"): bind that global as a pattern variable (a 2-var expr) and evaluate
+        // datumVergelijkTemporal. DRL binds the global directly in the rsDatumReken constraint. 0 globals -> the
+        // fact-only leafPredicate below; >1 global -> skip (a condition expr binds at most one global, like the
+        // numeric vs-global branches above).
+        if (c instanceof Conditie.Vergelijking v && isDatumVergelijkOp(v.op())
+                && v.links().type().isDatum() && v.rechts().type().isDatum()
+                && (isDatumRekenExpr(v.links()) || isDatumRekenExpr(v.rechts()))) {
+            WaardeFn lw = scalarWaarde(v.links()), rw = scalarWaarde(v.rechts());
+            if (lw != null && rw != null) {
+                Set<String> gset = new LinkedHashSet<>(lw.globals()); gset.addAll(rw.globals());
+                if (gset.size() == 1) {
+                    String gn = gset.iterator().next();
+                    Global<BigDecimal> g = globals.get(gn);
+                    if (g != null) {
+                        BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
+                        Conditie.Operator op = v.op();
+                        return new Gate(pattern.expr(nextId("c"), (Variable) g, (Predicate2) (s, gv) ->
+                                datumVergelijkTemporal(lfn.apply(s, Map.of(gn, (BigDecimal) gv)), rfn.apply(s, Map.of(gn, (BigDecimal) gv)), op)), List.of());
+                    }
+                }
+            }
+            // 0 globals -> falls through to leafPredicate (covered); >1 / unresolved -> falls through -> skip
+        }
         // every other supported condition is a fact-only leaf.
         Predicate1<Object> lp = leafPredicate(c, subject);
         if (lp != null) return new Gate(pattern.expr(nextId("c"), (Predicate1) lp), List.of());
@@ -2009,6 +2034,26 @@ public final class ExecModelTranspiler {
      *  numeric schending (an ordering with an empty operand is a violation). */
     private SchendingGlobal schendingMetGlobal(Conditie assertie, Objecttype subject) {
         if (!(assertie instanceof Conditie.Vergelijking v)) return null;
+        // §13.4.8 a DATUM comparison assertie where an operand is a §6/§13.4.16 date-arithmetic expression reading
+        // EXACTLY ONE Parameter-GLOBAL (the duration is a parameter): the violation is !datumVergelijkTemporal; the
+        // global is bound as a pattern variable by the caller. Mirrors DRL's negated rsDatumReken constraint.
+        if (isDatumVergelijkOp(v.op()) && v.links().type().isDatum() && v.rechts().type().isDatum()
+                && (isDatumRekenExpr(v.links()) || isDatumRekenExpr(v.rechts()))) {
+            WaardeFn lw = scalarWaarde(v.links()), rw = scalarWaarde(v.rechts());
+            if (lw != null && rw != null) {
+                Set<String> gset = new LinkedHashSet<>(lw.globals()); gset.addAll(rw.globals());
+                if (gset.size() == 1) {
+                    String gn = gset.iterator().next();
+                    if (globals.containsKey(gn)) {
+                        BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
+                        Conditie.Operator op = v.op();
+                        return new SchendingGlobal(gn, (s, gv) ->
+                                !datumVergelijkTemporal(lfn.apply(s, Map.of(gn, gv)), rfn.apply(s, Map.of(gn, gv)), op));
+                    }
+                }
+            }
+            return null;   // 0 globals -> handled by schending; >1 global -> skip
+        }
         if (!(v.links() instanceof Expr.AttribuutRef la) || !isNumeriekOp(v.op())) return null;
         if (!(v.rechts() instanceof Expr.ParameterRef pr) || pr.parameter().granulariteit() != null) return null;
         java.util.function.Function<Object, Object> lRead = consistentieReader(la, subject);

@@ -220,6 +220,21 @@ class ExecModelDifferentialTest {
         new Fixture("datum-tijd LITERAL operand (15-06-2022 09:30) plus minuten", DATUMTIJD_LIT_SRC,
                 () -> { Vlucht v = new Vlucht(); v.setReisduur(new BigDecimal(95)); return List.of(v); },
                 Map.of(), l -> ((Vlucht) l.get(0)).getAankomstmoment()),
+        // date arithmetic whose DURATION is a Parameter-GLOBAL, as a CONDITION operand: the model binds the global
+        // (voorwaarde's date-arith-with-global branch). threshold = vluchtdatum + marge (3 mnd).
+        new Fixture("CONDITION date-arith with GLOBAL duration (later than vluchtdatum + marge)",
+                """
+                Parameter de marge : Numeriek (geheel getal) met eenheid mnd
+                Objecttype de Vlucht (mv: Vluchten)
+                    de vluchtdatum Datum in dagen;
+                    de daadwerkelijk vertrek Datum in dagen;
+                    is laat kenmerk (bijvoeglijk);
+                Regel R
+                    geldig altijd
+                        Een Vlucht is laat indien de daadwerkelijk vertrek van de Vlucht later is dan de vluchtdatum van de Vlucht plus de marge.
+                """,
+                () -> { Vlucht v = new Vlucht(); v.setVluchtdatum(java.time.LocalDate.of(2022, 6, 15)); v.setDaadwerkelijkVertrek(java.time.LocalDate.of(2022, 10, 1)); return List.of(v); },
+                Map.of("marge", new BigDecimal(3)), l -> ((Vlucht) l.get(0)).isLaat()),
     };
 
     // ---- §12 BESLISTABEL fixtures: a captured pipe-table desugars (BeslistabelDesugar) to one regel per row, fed
@@ -2135,11 +2150,11 @@ class ExecModelDifferentialTest {
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 9); }
-    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 8); }
+    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 9); }
     @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 7); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
-    @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 13); }
+    @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 14); }
     @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
     @Test void phase_E_verdeling_fouten_match_drl_back_end()       { runFoutDifferential("Phase E fout", PHASE_E_FOUT, 2); }
 
@@ -2309,6 +2324,26 @@ class ExecModelDifferentialTest {
                 return List.of(ok, bad);
             },
             o -> "dav=" + ((Vlucht) o).getDaadwerkelijkVertrek()),
+
+        // §13.4.8 consistentie with a date-arith assertie whose DURATION is a Parameter-GLOBAL: the model binds the
+        // global (schendingMetGlobal's date-arith branch). Violated when daadwerkelijk vertrek is NOT after vluchtdatum+marge.
+        new FoutFixture("consistentie: datum ordening vs date-arith with GLOBAL duration",
+            """
+            Parameter de marge : Numeriek (geheel getal) met eenheid mnd
+            Objecttype de Vlucht (mv: Vluchten)
+                de vluchtdatum Datum in dagen;
+                de daadwerkelijk vertrek Datum in dagen;
+            Regel R
+                geldig altijd
+                    De daadwerkelijk vertrek van een Vlucht moet later zijn dan de vluchtdatum van de Vlucht plus de marge.
+            """,
+            () -> {
+                Vlucht ok = new Vlucht(); ok.setVluchtdatum(java.time.LocalDate.of(2022, 6, 15)); ok.setDaadwerkelijkVertrek(java.time.LocalDate.of(2022, 10, 1));   // after 09-15 -> consistent
+                Vlucht bad = new Vlucht(); bad.setVluchtdatum(java.time.LocalDate.of(2022, 6, 15)); bad.setDaadwerkelijkVertrek(java.time.LocalDate.of(2022, 8, 1));   // before 09-15 -> violation
+                return List.of(ok, bad);
+            },
+            o -> "dav=" + ((Vlucht) o).getDaadwerkelijkVertrek(),
+            Map.of("marge", new BigDecimal(3))),
     };
 
     // ---- division value (§6.5 rsGedeeld) — the value-side of the deling, checked by reading the result field ----
