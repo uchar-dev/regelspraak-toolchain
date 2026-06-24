@@ -28,7 +28,16 @@ import java.util.function.Function;
  * Sites whose runtime class is genuinely dynamic (navigation targets of unknown type, {@code Segment} /
  * {@code Inconsistentie} fields, multi-hop joins) keep the {@link RegelSpraakRuntime} cached-MethodHandle bridge,
  * which is itself reflection-free after the first resolve. Resolution rules (get-then-is for reads; the unique
- * single-arg {@code set<Prop>} for writes) mirror the bridge exactly, so the two paths stay behaviour-identical.
+ * single-arg {@code set<Prop>} for writes) mirror the bridge exactly, so the two paths return byte-identical
+ * VALUES for every well-typed read/write the model produces (verified corpus-wide by {@code AccessorsTest}).
+ *
+ * <p>The only differences from the old reflective bridge are on inputs the model never produces, and are
+ * exception SHAPE, never a wrong value: a type-mismatched write or a null into a primitive setter throws
+ * {@code ClassCastException}/{@code NullPointerException} here vs {@code IllegalArgumentException} via reflection
+ * (both abort the fire identically); and a getter whose BODY throws propagates the real exception rather than
+ * being masked. A missing getter on the declared class fails FAST at model-build (a clear bean/spec mismatch)
+ * instead of at first fire. None is reachable by the value pipeline (kenmerks only ever get {@code TRUE}, the only
+ * primitive setters are boolean kenmerks, and the fact-bean getters are pure field reads).
  */
 public final class Accessors {
     private Accessors() {}
@@ -75,7 +84,10 @@ public final class Accessors {
                     mh.type());                                            // specialized: (Owner)Ret
             @SuppressWarnings("unchecked")
             Function<Object, Object> raw = (Function<Object, Object>) cs.getTarget().invoke();
-            return o -> o == null ? null : raw.apply(o);                   // preserve get's null-bean -> null
+            // null owner -> null (leeg). A non-owner instance (only possible if a future objecttype specialisatie /
+            // a relation field broader than the navigation target ever feeds a SUBTYPE/sibling here) defers to the
+            // bridge, which re-resolves on the ACTUAL class -- so the typed path stays a true drop-in, not a cast trap.
+            return o -> o == null ? null : owner.isInstance(o) ? raw.apply(o) : RegelSpraakRuntime.get(o, prop);
         } catch (Throwable t) {
             // a signature LMF cannot bind -> the cached reflective bridge (still correct, just untyped)
             lmfFallbacks++;
@@ -95,6 +107,7 @@ public final class Accessors {
             // typed + reflection-free (NOT an lmfFallback — a principled path, not a binding regression).
             final MethodHandle fmh = mh;
             return (o, v) -> {
+                if (!owner.isInstance(o)) { RegelSpraakRuntime.set(o, prop, v); return; }   // subtype-safe drop-in
                 try { fmh.invoke(o, v); }
                 catch (RuntimeException | Error e) { throw e; }
                 catch (Throwable t) { throw new IllegalStateException("setter '" + prop + "' faalde op " + owner.getName(), t); }
@@ -109,7 +122,7 @@ public final class Accessors {
                     mh.type());                                                    // specialized: (Owner, ParamT)void
             @SuppressWarnings("unchecked")
             BiConsumer<Object, Object> bc = (BiConsumer<Object, Object>) cs.getTarget().invoke();
-            return bc;
+            return (o, v) -> { if (owner.isInstance(o)) bc.accept(o, v); else RegelSpraakRuntime.set(o, prop, v); };
         } catch (Throwable t) {
             lmfFallbacks++;
             return (o, v) -> RegelSpraakRuntime.set(o, prop, v);

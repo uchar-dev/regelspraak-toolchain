@@ -75,6 +75,34 @@ public class AccessorsTest {
         assertThrows(IllegalStateException.class, () -> Accessors.getter(Bean.class, "nietBestaand"));
     }
 
+    /** A second bean, unrelated to {@link Bean} but exposing the same-named accessors. */
+    public static class OtherBean {
+        private BigDecimal saldo;
+        private boolean vip;
+        public BigDecimal getSaldo() { return saldo; }
+        public void setSaldo(BigDecimal v) { this.saldo = v; }
+        public boolean isVip() { return vip; }
+        public void setVip(boolean v) { this.vip = v; }
+    }
+
+    /** Subtype-safe drop-in: a typed accessor built for class A, applied to an object that is NOT an A but has the
+     *  same getter/setter, must DEFER to the reflective bridge (re-resolve on the actual class) and read/write
+     *  correctly -- exactly as the old bridge did -- rather than throw ClassCastException. Guards the one
+     *  assumption the typed path would otherwise add (no objecttype specialisatie / no broadened relation field). */
+    @Test
+    void typed_accessor_on_a_non_owner_instance_defers_to_the_bridge() {
+        Function<Object, Object> getSaldoA = Accessors.getter(Bean.class, "saldo");
+        BiConsumer<Object, Object> setSaldoA = Accessors.setter(Bean.class, "saldo");
+        Function<Object, Object> getVipA = Accessors.getter(Bean.class, "vip");
+        BiConsumer<Object, Object> setVipA = Accessors.setter(Bean.class, "vip");   // primitive direct-handle path
+
+        OtherBean other = new OtherBean();
+        setSaldoA.accept(other, new BigDecimal("7.25"));                 // ref setter: not an A -> bridge writes B
+        assertEquals(new BigDecimal("7.25"), getSaldoA.apply(other));    // ref getter: not an A -> bridge reads B
+        setVipA.accept(other, Boolean.TRUE);                            // primitive setter: not an A -> bridge
+        assertEquals(Boolean.TRUE, getVipA.apply(other));
+    }
+
     /** Corpus-wide: every getter/setter on every real fact bean (the actual objecttype shapes the model drives —
      *  BigDecimal & boolean attributes, Map&lt;String,BigDecimal&gt; dimensioned cells, List&lt;Segment&gt;
      *  timelines, reference roles) must land on the TYPED path (LMF, or the direct-handle path for primitive
