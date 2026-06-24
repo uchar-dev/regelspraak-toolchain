@@ -879,6 +879,78 @@ class ExecModelDifferentialTest {
                     return List.of(vuurt, niet); },
             Map.of(),
             l -> vals(((Passagier) l.get(0)).getPlafond(), ((Passagier) l.get(1)).getPlafond())),   // 9, null
+
+        // (adversary) cross-unit NAVIGATED comparison (§5.1 Tabel 32): vertrektijd[mnd] van zijn reis < 1 jr must
+        // restate 1 jr -> 12 mnd first, so 6 mnd < 12 fires and 18 mnd < 12 does not — the SAME restatement DRL's
+        // vergelijkingsOperanden applies, now reached through the navigated read.
+        new Fixture("cross-unit navigated comparison (mnd nav attr vs jr literal)",
+            """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Objecttype de Vlucht
+                de vertrektijd Numeriek (geheel getal) met eenheid mnd;
+            Objecttype de Passagier
+                het basistarief Numeriek (geheel getal);
+            """ + AGG_FEIT + """
+            Regel R
+                geldig altijd
+                    Het basistarief van een passagier moet gesteld worden op 50 indien de vertrektijd van zijn reis kleiner is dan 1 jr.
+            """,
+            () -> { Vlucht kort = new Vlucht(); kort.setVertrektijd(new BigDecimal(6));
+                    Vlucht lang = new Vlucht(); lang.setVertrektijd(new BigDecimal(18));
+                    return List.of(kort, lang, paxReis(kort), paxReis(lang)); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(2)).getBasistarief(), ((Passagier) l.get(3)).getBasistarief())),   // 50, null
+
+        // (adversary) navigated GELIJK vs literal: vertrektijd 100 == 100 fires; a NULL reis -> leeg, mvel `null ==
+        // 100` is false (vergelijk GELIJK true only both-leeg), so the partnerless passenger does NOT fire.
+        new Fixture("navigated GELIJK vs literal (null reis no match)",
+            NAV_HDR + "Regel R\n    geldig altijd\n"
+            + "        Het basistarief van een passagier moet gesteld worden op 50 indien de vertrektijd van zijn reis gelijk is aan 100.\n",
+            () -> { Vlucht v = new Vlucht(); v.setVertrektijd(new BigDecimal(100)); return List.of(v, paxReis(v), paxReis(null)); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(1)).getBasistarief(), ((Passagier) l.get(2)).getBasistarief())),   // 50, null
+
+        // (adversary, the null-asymmetry flagship) navigated ONGELIJK vs literal: mvel reads `reis!.x != 100` as TRUE
+        // for a NULL reis (null != 100), so the partnerless passenger DOES fire — vergelijk's ONGELIJK matches
+        // (aNull -> !(both-leeg)). Equal (100) -> no fire; different (80) and null -> fire. Both back-ends agree.
+        new Fixture("navigated ONGELIJK vs literal (null reis still fires, mvel null != x)",
+            NAV_HDR + "Regel R\n    geldig altijd\n"
+            + "        Het basistarief van een passagier moet gesteld worden op 50 indien de vertrektijd van zijn reis ongelijk is aan 100.\n",
+            () -> { Vlucht gelijk = new Vlucht(); gelijk.setVertrektijd(new BigDecimal(100));
+                    Vlucht anders = new Vlucht(); anders.setVertrektijd(new BigDecimal(80));
+                    return List.of(gelijk, anders, paxReis(gelijk), paxReis(anders), paxReis(null)); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(2)).getBasistarief(), ((Passagier) l.get(3)).getBasistarief(),
+                      ((Passagier) l.get(4)).getBasistarief())),   // null, 50, 50
+
+        // (adversary) the SUB-case that proves the relation-null short-circuit does not over-apply: a PRESENT reis
+        // whose vertrektijd is itself null. mvel only null-guards the `reis` deref — `reis.vertrektijd` then yields
+        // null, and `null != 100` is a normal mvel compare (TRUE), so an ONGELIJK fires for a present-but-empty
+        // attribute, UNLIKE the null-reis case. Distinguishes a null RELATION (false) from a null ATTRIBUTE (vergelijk).
+        new Fixture("navigated ONGELIJK, present reis but null vertrektijd (attribute leeg, still fires)",
+            NAV_HDR + "Regel R\n    geldig altijd\n"
+            + "        Het basistarief van een passagier moet gesteld worden op 50 indien de vertrektijd van zijn reis ongelijk is aan 100.\n",
+            () -> { Vlucht leegAttr = new Vlucht(); /* vertrektijd null */ return List.of(leegAttr, paxReis(leegAttr)); },
+            Map.of(),
+            l -> ((Passagier) l.get(1)).getBasistarief()),   // 50 (null != 100 -> true)
+
+        // (adversary) a NAVIGATED comparison nested in a GEEN counting quantifier — the navigated leaf must fold into
+        // the count exactly as DRL folds its inline. "geen van [vertrektijd van zijn reis > 100, zijn prijs > 50]":
+        // a reis at 80 with prijs 30 satisfies neither -> GEEN holds -> fires; a reis at 150 -> a bullet holds -> no fire.
+        new Fixture("navigated comparison inside a GEEN quantifier (folds into the count)",
+            NAV_HDR + "Regel R\n    geldig altijd\n"
+            + "        Het basistarief van een passagier moet gesteld worden op 50 indien hij aan geen van de volgende voorwaarden voldoet:\n"
+            + "          • de vertrektijd van zijn reis is groter dan 100\n"
+            + "          • zijn prijs is groter dan 50.\n",
+            () -> { Vlucht laag = new Vlucht(); laag.setVertrektijd(new BigDecimal(80));
+                    Vlucht hoog = new Vlucht(); hoog.setVertrektijd(new BigDecimal(150));
+                    Passagier a = paxReis(laag); a.setPrijs(new BigDecimal(30));   // neither bullet -> GEEN -> fire
+                    Passagier b = paxReis(hoog); b.setPrijs(new BigDecimal(30));   // nav bullet holds -> no fire
+                    return List.of(laag, hoog, a, b); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(2)).getBasistarief(), ((Passagier) l.get(3)).getBasistarief())),   // 50, null
     };
 
     // ---- Phase F fixtures: §7.1 "het totaal van" a temporal attribute (scalar timeline fold) ----
@@ -1609,7 +1681,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 3); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
-    @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 4); }
+    @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 9); }
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 4); }
     @Test void beslistabel_rows_match_drl_back_end()          { runDifferential("Beslistabel", BESLISTABEL, 6); }
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }

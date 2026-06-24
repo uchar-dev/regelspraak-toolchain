@@ -562,6 +562,23 @@ public final class ExecModelTranspiler {
         return s -> { Object rel = RegelSpraakRuntime.get(s, fRol); return rel == null ? null : RegelSpraakRuntime.get(rel, attr); };
     }
 
+    /** Resolve the to-ONE navigation role of a navigated AttribuutRef (navigatieRol != null), mirroring
+     *  {@link #navReader}'s GENAVIGEERD case — or null when absent / unresolvable / to-many. The navigated
+     *  COMPARISON branches use this (rather than {@link #navReader}) because they must null-check the RELATION
+     *  EXPLICITLY: DRL renders a navigated comparison operand as mvel's null-safe {@code rol!.attr}, which
+     *  short-circuits the WHOLE pattern constraint to a NON-match when the reference is null — i.e. a null
+     *  relation is {@code false} for EVERY operator (incl. ONGELIJK), NOT "read leeg then apply vergelijk's
+     *  null semantics". (A present relation with a null ATTRIBUTE value IS read, and then gets vergelijk's
+     *  null semantics — only the reference deref is null-safe.) navReader collapses both nulls, so it cannot
+     *  distinguish them; the comparison must. */
+    private String navComparisonRole(Expr.AttribuutRef a, Objecttype subject) {
+        if (a.objecttype() == null || a.navigatieRol() == null || !a.objecttype().heeftLid(a.attribuut())) return null;
+        String rol = model.verbindendeRolViaNaam(subject, a.objecttype(), a.navigatieRol());
+        if (rol == null) return null;
+        if (subject != null && model.naarVeelRol(subject, a.objecttype(), rol)) return null;   // NAAR_VEEL
+        return rol;
+    }
+
     /** The fact {@code Segment} class (a runtime objecttype) reflectively, or null when absent — needed by the
      *  timeline-constructing helpers (rsTijdKnip/rsTijdUnie/rsAantalDagenIn/rsTijdsevenredig) to build new segments. */
     static Class<?> segmentClass() {
@@ -899,14 +916,18 @@ public final class ExecModelTranspiler {
                 && la.type().isNumeriek() && isNumeriekOp(v.op()) && v.rechts() instanceof Expr.ParameterRef pr) {
             if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 gedimensioneerd -> marker
-            java.util.function.Function<Object, Object> reader = navReader(la, subject);
-            if (reader == null) return null;
+            String rol = navComparisonRole(la, subject);
+            if (rol == null) return null;
             Global<BigDecimal> g = globals.get(ident(pr.parameter().naam()));
             if (g == null) return null;
+            String attr = la.attribuut();
             Conditie.Operator op = v.op();
             BigDecimal[] f = restatement(la.type(), pr.parameter().datatype());  // §5.1 Tabel 32 unit restatement
-            return new Gate(pattern.expr(nextId("c"), (Variable) g,
-                    (Predicate2) (s, gv) -> vergelijk(scale(RegelSpraakRuntime.toBd(reader.apply(s)), f[0]), scale((BigDecimal) gv, f[1]), op)), List.of());
+            return new Gate(pattern.expr(nextId("c"), (Variable) g, (Predicate2) (s, gv) -> {
+                Object rel = RegelSpraakRuntime.get(s, rol);
+                if (rel == null) return false;   // mvel `rol!.attr` short-circuits the whole term on a null reference
+                return vergelijk(scale(RegelSpraakRuntime.toBd(RegelSpraakRuntime.get(rel, attr)), f[0]), scale((BigDecimal) gv, f[1]), op);
+            }), List.of());
         }
         // every other supported condition is a fact-only leaf.
         Predicate1<Object> lp = leafPredicate(c, subject);
@@ -984,14 +1005,19 @@ public final class ExecModelTranspiler {
                 && v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
             if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 gedimensioneerd (Map) -> marker
-            java.util.function.Function<Object, Object> reader = navReader(la, subject);
-            if (reader == null) return null;
+            String rol = navComparisonRole(la, subject);
+            if (rol == null) return null;
             BigDecimal rhs = bd(lit);
             if (rhs == null) return null;
+            String attr = la.attribuut();
             Conditie.Operator op = v.op();
             BigDecimal[] f = restatement(la.type(), lit.type());
             BigDecimal rhsScaled = scale(rhs, f[1]);
-            return s -> vergelijk(scale(RegelSpraakRuntime.toBd(reader.apply(s)), f[0]), rhsScaled, op);
+            return s -> {
+                Object rel = RegelSpraakRuntime.get(s, rol);
+                if (rel == null) return false;   // mvel `rol!.attr` short-circuits the whole term on a null reference
+                return vergelijk(scale(RegelSpraakRuntime.toBd(RegelSpraakRuntime.get(rel, attr)), f[0]), rhsScaled, op);
+            };
         }
         // §8.1.1 an OWN-attribute numeric comparison vs ANOTHER own attribute ("de prijs groter is dan de drempel"):
         // both fact-local reads, unit-restated, vergelijk (mvel's null semantics — ordering no-match on a leeg
