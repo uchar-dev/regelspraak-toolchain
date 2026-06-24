@@ -95,10 +95,14 @@ public final class ExecModelTranspiler {
             Rule rule = consistentie(c);
             if (rule != null) m.addRule(rule);
         }
-        // the remaining resolved kinds (objectcreatie/verdeling/uniciteit/feitcreatie) are later phases
+        for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteit u : model.uniciteiten) {        // §8.1.6 (Phase D)
+            Rule rule = uniciteit(u);
+            if (rule != null) m.addRule(rule);
+        }
+        // the remaining resolved kinds (objectcreatie/verdeling/uniciteit-unie/feitcreatie) are later phases
         int later = model.objectCreaties.size() + model.verdelingen.size()
-                + model.uniciteiten.size() + model.uniciteitUnies.size() + model.feitCreaties.size();
-        if (later > 0) overgeslagen.add(later + " niet-regel resultaatdelen (objectcreatie/verdeling/uniciteit/feitcreatie) — latere fase");
+                + model.uniciteitUnies.size() + model.feitCreaties.size();
+        if (later > 0) overgeslagen.add(later + " niet-regel resultaatdelen (objectcreatie/verdeling/uniciteit-unie/feitcreatie) — latere fase");
         return m;
     }
 
@@ -563,7 +567,18 @@ public final class ExecModelTranspiler {
      *  violation of "gelijk aan", per typeringen Tabel 37); an ordering comparison is ALSO violated when either
      *  operand is leeg (the typeringen leegwaarde tables make it onwaar -> inconsistent). null -> skip. */
     private Predicate1<Object> schending(Conditie assertie, Objecttype subject) {
-        if (!(assertie instanceof Conditie.Vergelijking v)) return null;     // compound/predicate negation: later
+        // §13.4.8: "alle criteria moeten gelden" -> inconsistent when ANY criterion is violated (OR the schendingen).
+        if (assertie instanceof Conditie.Samengesteld s && s.kwantor() == Conditie.Kwantor.ALLE) {
+            List<Predicate1<Object>> schendingen = new ArrayList<>();
+            for (Conditie deel : s.onderdelen()) {
+                Predicate1<Object> sp = schending(deel, subject);
+                if (sp == null) return null;                                // an un-negatable criterion no-ops the rule
+                schendingen.add(sp);
+            }
+            if (schendingen.isEmpty()) return null;
+            return obj -> { for (Predicate1<Object> sp : schendingen) if (sp.test(obj)) return true; return false; };
+        }
+        if (!(assertie instanceof Conditie.Vergelijking v)) return null;     // other compound/predicate negation: later
         if (!isNumeriekOp(v.op())) return null;                              // datum/other: later
         if (!(v.links() instanceof Expr.AttribuutRef la) || la.navigatieRol() != null) return null;
         if (subject != null && subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
@@ -590,6 +605,69 @@ public final class ExecModelTranspiler {
             };
         }
         return null;
+    }
+
+    /** §8.1.6 uniciteitscontrole: "is uniek" is violated when ≥2 DISTINCT instances share a (non-null) key. The
+     *  subject binds each non-null key part (+ a parent scope field), an accumulate COUNTS the instances whose key
+     *  matches, and the rule fires (inserts an Inconsistentie) when that count > 1 — flagging every instance in the
+     *  duplicate group. A null key cannot establish a duplicate (§8.1.6) so it is filtered out. Mirrors
+     *  DrlTranspiler.uniciteit. null -> skip (no fact class / a temporal key). */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Rule uniciteit(io.github.yhavinga.regelspraak.ir.ResolvedUniciteit u) {
+        Objecttype subject = u.subject();
+        if (subject == null || u.sleutels().isEmpty()) return skip("uniciteit (geen subject/sleutel): " + u.naam());
+        if (!io.github.yhavinga.regelspraak.ir.Geldigheid.ALTIJD.equals(u.geldigheid())) return skip("uniciteit (versie-geldigheid): " + u.naam());
+        Class<?> factClass = factClass(subject);
+        if (factClass == null) return skip("uniciteit (geen fact-class " + subject.naam + "): " + u.naam());
+        Class<?> incClass = inconsistentieClass();
+        if (incClass == null) return skip("uniciteit (geen Inconsistentie-fact): " + u.naam());
+        for (String sleutel : u.sleutels())
+            if (subject.attribuutGranulariteit.containsKey(sleutel)) return skip("uniciteit (temporele sleutel): " + u.naam());
+
+        seq = 0;
+        String naam = u.naam();
+        String fqcn = FACTS + ".Inconsistentie";
+        Variable sVar = DSL.declarationOf(factClass, "$subject");
+        PatternDSL.PatternDef subjPat = PatternDSL.pattern(sVar);
+        // bind + non-null each key part (and the parent scope field, if any).
+        List<Variable> keyVars = new ArrayList<>();
+        for (String key : u.sleutels()) {
+            Variable kVar = DSL.declarationOf(Object.class, "$k_" + (seq++));
+            subjPat = subjPat.bind(kVar, (Function1) s -> RegelSpraakRuntime.get(s, key))
+                    .expr(nextId("knn"), (Predicate1) s -> RegelSpraakRuntime.get(s, key) != null);
+            keyVars.add(kVar);
+        }
+        Variable scopeVar = null;
+        if (u.scopeVeld() != null) {
+            String sv = u.scopeVeld();
+            scopeVar = DSL.declarationOf(Object.class, "$scope_" + (seq++));
+            subjPat = subjPat.bind(scopeVar, (Function1) s -> RegelSpraakRuntime.get(s, sv))
+                    .expr(nextId("snn"), (Predicate1) s -> RegelSpraakRuntime.get(s, sv) != null);
+        }
+        // accumulate source: every instance whose key (and scope) matches the subject's; count them.
+        Variable oVar = DSL.declarationOf(factClass, "$o_" + (seq++));
+        PatternDSL.PatternDef src = PatternDSL.pattern(oVar);
+        for (int i = 0; i < u.sleutels().size(); i++) {
+            String key = u.sleutels().get(i);
+            src = src.expr(nextId("kj"), (Variable) keyVars.get(i),
+                    (Predicate2) (o, k) -> java.util.Objects.equals(RegelSpraakRuntime.get(o, key), k));
+        }
+        if (scopeVar != null) {
+            String sv = u.scopeVeld();
+            src = src.expr(nextId("sj"), (Variable) scopeVar,
+                    (Predicate2) (o, sc) -> java.util.Objects.equals(RegelSpraakRuntime.get(o, sv), sc));
+        }
+        Variable cntVar = DSL.declarationOf(Object.class, "$cnt_" + (seq++));
+        RuleItemBuilder<?> accItem = DSL.accumulate(src, DSL.accFunction(CountAccumulateFunction.class).as(cntVar));
+        PatternDSL.PatternDef cntPat = PatternDSL.pattern(cntVar).expr(nextId("gt1"), (Predicate1) c -> ((Number) c).intValue() > 1);
+        // idempotency guard + insert (insert-only -> NO no-loop).
+        Variable incVar = DSL.declarationOf(incClass, "$inc_" + (seq++));
+        PatternDSL.PatternDef guard = PatternDSL.pattern(incVar)
+                .expr(nextId("ig"), (Predicate1) i -> naam.equals(RegelSpraakRuntime.get(i, "regel")))
+                .expr(nextId("ig"), (Variable) sVar, (Predicate2) (i, s) -> RegelSpraakRuntime.get(i, "subject") == s);
+        Block2<org.drools.model.Drools, Object> body = (drools, s) ->
+                drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, naam, s));
+        return PatternDSL.rule(naam).build(subjPat, accItem, cntPat, DSL.not(guard), DSL.on(sVar).execute(body));
     }
 
     /** §13.4.8 operator negation (the complement that detects a violation). Mirrors DrlTranspiler.flip. */

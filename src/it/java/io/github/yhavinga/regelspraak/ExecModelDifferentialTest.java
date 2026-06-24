@@ -1,7 +1,9 @@
 package io.github.yhavinga.regelspraak;
 
 import io.github.yhavinga.regelspraak.facts.Inconsistentie;
+import io.github.yhavinga.regelspraak.facts.Konto;
 import io.github.yhavinga.regelspraak.facts.Meting;
+import io.github.yhavinga.regelspraak.facts.NatuurlijkPersoon;
 import io.github.yhavinga.regelspraak.facts.Passagier;
 import io.github.yhavinga.regelspraak.facts.Persoon;
 import io.github.yhavinga.regelspraak.facts.Vlucht;
@@ -663,7 +665,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 3); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 8); }
-    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 2); }
+    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 4); }
 
     // ---- Phase D: §9.5/§13.4.8 consistentieregel — the VIOLATION inserts an Inconsistentie. The observable is the
     //      SET of flagged subjects (not a subject field), so a FoutFixture maps each inserted Inconsistentie to a
@@ -708,6 +710,48 @@ class ExecModelDifferentialTest {
                 return List.of(pos, neg, leeg);
             },
             o -> "uitkomst=" + ((Meting) o).getUitkomst()),
+
+        // §13.4.8 COMPOUND (ALLE) assertion: a Konto is inconsistent when ANY criterion fails (violation = OR of the
+        // per-criterion schendingen). In band -> consistent; over limiet / under minimum / leeg saldo -> flagged.
+        new FoutFixture("consistentie: compound ALLE (OR of violations)",
+            """
+            Objecttype de Konto
+                de saldo Numeriek (geheel getal);
+                de limiet Numeriek (geheel getal);
+                de minimum Numeriek (geheel getal);
+            Regel grenzen
+                geldig altijd
+                    Een Konto moet voldoen aan alle volgende criteria:
+                        - het saldo van een Konto is kleiner dan de limiet van een Konto.
+                        - het saldo van een Konto is groter dan het minimum van een Konto.
+            """,
+            () -> {
+                Konto binnen = new Konto(); binnen.setSaldo(new BigDecimal(50)); binnen.setLimiet(new BigDecimal(100)); binnen.setMinimum(BigDecimal.ZERO);
+                Konto teHoog = new Konto(); teHoog.setSaldo(new BigDecimal(150)); teHoog.setLimiet(new BigDecimal(100)); teHoog.setMinimum(BigDecimal.ZERO);
+                Konto teLaag = new Konto(); teLaag.setSaldo(new BigDecimal(-10)); teLaag.setLimiet(new BigDecimal(100)); teLaag.setMinimum(BigDecimal.ZERO);
+                Konto leeg = new Konto(); leeg.setLimiet(new BigDecimal(100)); leeg.setMinimum(BigDecimal.ZERO);   // saldo null -> violation
+                return List.of(binnen, teHoog, teLaag, leeg);
+            },
+            o -> "saldo=" + ((Konto) o).getSaldo()),
+
+        // §8.1.6 UNICITEIT: two persons sharing a BSN both flagged; a unique BSN not; two null BSNs do NOT collide.
+        new FoutFixture("uniciteit: shared key flagged, null key not",
+            """
+            Objecttype de Natuurlijk persoon
+                het burgerservicenummer Numeriek (geheel getal);
+            Regel bsn uniek
+                geldig altijd
+                    De burgerservicenummers van alle Natuurlijk persoon moeten uniek zijn.
+            """,
+            () -> {
+                NatuurlijkPersoon a = new NatuurlijkPersoon(); a.setBurgerservicenummer(new BigDecimal(100));
+                NatuurlijkPersoon b = new NatuurlijkPersoon(); b.setBurgerservicenummer(new BigDecimal(100));  // deelt BSN
+                NatuurlijkPersoon c = new NatuurlijkPersoon(); c.setBurgerservicenummer(new BigDecimal(200));  // uniek
+                NatuurlijkPersoon d = new NatuurlijkPersoon();   // BSN leeg
+                NatuurlijkPersoon e = new NatuurlijkPersoon();   // BSN leeg
+                return List.of(a, b, c, d, e);
+            },
+            o -> "bsn=" + ((NatuurlijkPersoon) o).getBurgerservicenummer()),
     };
 
     private void runDifferential(String label, Fixture[] fixtures, int minDiffed) {
