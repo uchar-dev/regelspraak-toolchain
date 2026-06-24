@@ -831,6 +831,56 @@ class ExecModelDifferentialTest {
             l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 9
     };
 
+    // ---- Phase H: §8.1.1 NAVIGATED + attr-vs-attr numeric comparison in a CONDITION (the model conditie back-end
+    //      only lowered an OWN-attr-vs-literal/global comparison; DRL lowers `reis!.x op y` and `attrA op attrB`).
+    //      The subject Passagier navigates "zijn reis" (a to-ONE role to Vlucht); a null reis reads leeg (mvel `!.`
+    //      short-circuits, vergelijk no-matches on an ordering / leeg operand). Facts: [Vlucht..., Passagier...]. ----
+    static final String NAV_HDR =
+            "Objecttype de Vlucht\n    de vertrektijd Numeriek (geheel getal);\n"
+            + "Objecttype de Passagier\n    het basistarief Numeriek (geheel getal);\n    de prijs Numeriek (geheel getal);\n" + AGG_FEIT;
+    static Passagier paxReis(Vlucht reis) { Passagier p = new Passagier(); p.setReis(reis); return p; }
+    static final Fixture[] PHASE_H = {
+        // navigated comparison vs a LITERAL: vertrektijd 150 > 100 fires (basistarief := 50); a null reis -> leeg ->
+        // no match (mvel `null!.x > 100` is false), basistarief stays null — both back-ends agree.
+        new Fixture("navigated comparison vs literal (vertrektijd van zijn reis > 100)",
+            NAV_HDR + "Regel R\n    geldig altijd\n"
+            + "        Het basistarief van een passagier moet gesteld worden op 50 indien de vertrektijd van zijn reis groter is dan 100.\n",
+            () -> { Vlucht v = new Vlucht(); v.setVertrektijd(new BigDecimal(150)); Passagier p1 = paxReis(v); Passagier p2 = paxReis(null);
+                    return List.of(v, p1, p2); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(1)).getBasistarief(), ((Passagier) l.get(2)).getBasistarief())),   // 50, null
+
+        // navigated comparison below the threshold: vertrektijd 80 > 100 is false -> no fire.
+        new Fixture("navigated comparison vs literal below threshold (no fire)",
+            NAV_HDR + "Regel R\n    geldig altijd\n"
+            + "        Het basistarief van een passagier moet gesteld worden op 50 indien de vertrektijd van zijn reis groter is dan 100.\n",
+            () -> { Vlucht v = new Vlucht(); v.setVertrektijd(new BigDecimal(80)); return List.of(v, paxReis(v)); },
+            Map.of(),
+            l -> ((Passagier) l.get(1)).getBasistarief()),   // null
+
+        // navigated comparison vs a Parameter-GLOBAL — the §12 reisduur "... van zijn reis groter is dan <grens>"
+        // shape: the global is a pattern variable, navReader reads the navigated value. 150 > 120 fires, 100 > 120 not.
+        new Fixture("navigated comparison vs global (vertrektijd van zijn reis > de grens)",
+            "Parameter de grens : Numeriek (geheel getal)\n" + NAV_HDR + "Regel R\n    geldig altijd\n"
+            + "        Het basistarief van een passagier moet gesteld worden op 50 indien de vertrektijd van zijn reis groter is dan de grens.\n",
+            () -> { Vlucht hoog = new Vlucht(); hoog.setVertrektijd(new BigDecimal(150));
+                    Vlucht laag = new Vlucht(); laag.setVertrektijd(new BigDecimal(100));
+                    return List.of(hoog, laag, paxReis(hoog), paxReis(laag)); },
+            Map.of("grens", new BigDecimal(120)),
+            l -> vals(((Passagier) l.get(2)).getBasistarief(), ((Passagier) l.get(3)).getBasistarief())),   // 50, null
+
+        // OWN-attr vs OWN-attr numeric comparison ("zijn prijs groter is dan zijn basistarief"): both fact-local reads.
+        // prijs 90 > basistarief 50 fires (plafond := 9); prijs 30 > 50 does not — both back-ends agree.
+        new Fixture("own-attr vs own-attr comparison (prijs > basistarief)",
+            "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    het basistarief Numeriek (geheel getal);\n    het plafond Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        Het plafond van een passagier moet gesteld worden op 9 indien zijn prijs groter is dan zijn basistarief.\n",
+            () -> { Passagier vuurt = passagier(p -> { p.setPrijs(new BigDecimal(90)); p.setBasistarief(new BigDecimal(50)); });
+                    Passagier niet  = passagier(p -> { p.setPrijs(new BigDecimal(30)); p.setBasistarief(new BigDecimal(50)); });
+                    return List.of(vuurt, niet); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(0)).getPlafond(), ((Passagier) l.get(1)).getPlafond())),   // 9, null
+    };
+
     // ---- Phase F fixtures: §7.1 "het totaal van" a temporal attribute (scalar timeline fold) ----
     /** A Segment(van, tot, waarde) — a null waarde marks a kenmerk's true-period; a string waarde is a value tijdvak. */
     private static Segment seg(int y1, int m1, int d1, int y2, int m2, int d2, String w) {
@@ -1559,6 +1609,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 3); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
+    @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 4); }
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 4); }
     @Test void beslistabel_rows_match_drl_back_end()          { runDifferential("Beslistabel", BESLISTABEL, 6); }
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }

@@ -892,6 +892,22 @@ public final class ExecModelTranspiler {
             return new Gate(pattern.expr(nextId("c"), (Variable) g,
                     (Predicate2) (s, gv) -> vergelijk(scale(num(s, attr), f[0]), scale((BigDecimal) gv, f[1]), op)), List.of());
         }
+        // §8.1.1 a to-ONE NAVIGATED numeric comparison vs a Parameter-GLOBAL — the §12 reisduur "de reisduur van
+        // zijn reis groter is dan <de bovengrens schijf>" shape. The global is a pattern variable (2-var expr),
+        // navReader reads the navigated value null-safely. Mirrors DRL `reis!.x op global`.
+        if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() != null
+                && la.type().isNumeriek() && isNumeriekOp(v.op()) && v.rechts() instanceof Expr.ParameterRef pr) {
+            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 gedimensioneerd -> marker
+            java.util.function.Function<Object, Object> reader = navReader(la, subject);
+            if (reader == null) return null;
+            Global<BigDecimal> g = globals.get(ident(pr.parameter().naam()));
+            if (g == null) return null;
+            Conditie.Operator op = v.op();
+            BigDecimal[] f = restatement(la.type(), pr.parameter().datatype());  // §5.1 Tabel 32 unit restatement
+            return new Gate(pattern.expr(nextId("c"), (Variable) g,
+                    (Predicate2) (s, gv) -> vergelijk(scale(RegelSpraakRuntime.toBd(reader.apply(s)), f[0]), scale((BigDecimal) gv, f[1]), op)), List.of());
+        }
         // every other supported condition is a fact-only leaf.
         Predicate1<Object> lp = leafPredicate(c, subject);
         if (lp != null) return new Gate(pattern.expr(nextId("c"), (Predicate1) lp), List.of());
@@ -958,6 +974,40 @@ public final class ExecModelTranspiler {
             BigDecimal[] f = restatement(la.type(), lit.type());   // §5.1 Tabel 32 unit restatement (e.g. mnd vs jr)
             BigDecimal rhsScaled = scale(rhs, f[1]);
             return s -> vergelijk(scale(num(s, attr), f[0]), rhsScaled, op);
+        }
+        // §8.1.1 a to-ONE NAVIGATED numeric comparison vs a numeric literal ("de reisduur van zijn reis groter is dan
+        // 60"): read the navigated value null-safely (mvel's `reis!.x`), restate units, and vergelijk. navReader
+        // resolves the to-one role and root-guards a null relation (-> leeg -> ordering no-match / GELIJK-both-leeg,
+        // matching mvel `null op x`); a to-many / unresolvable navigation -> null (skip). Mirrors DRL `reis!.x op lit`.
+        if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() != null
+                && la.type().isNumeriek() && isNumeriekOp(v.op())
+                && v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
+            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 gedimensioneerd (Map) -> marker
+            java.util.function.Function<Object, Object> reader = navReader(la, subject);
+            if (reader == null) return null;
+            BigDecimal rhs = bd(lit);
+            if (rhs == null) return null;
+            Conditie.Operator op = v.op();
+            BigDecimal[] f = restatement(la.type(), lit.type());
+            BigDecimal rhsScaled = scale(rhs, f[1]);
+            return s -> vergelijk(scale(RegelSpraakRuntime.toBd(reader.apply(s)), f[0]), rhsScaled, op);
+        }
+        // §8.1.1 an OWN-attribute numeric comparison vs ANOTHER own attribute ("de prijs groter is dan de drempel"):
+        // both fact-local reads, unit-restated, vergelijk (mvel's null semantics — ordering no-match on a leeg
+        // operand, GELIJK true only both-leeg). Mirrors DRL's `attrA op attrB`. (vs-literal handled above; a global
+        // or navigated operand lives in voorwaarde / the navigated branch.)
+        if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
+                && la.type().isNumeriek() && isNumeriekOp(v.op())
+                && v.rechts() instanceof Expr.AttribuutRef ra && ra.navigatieRol() == null && ra.type().isNumeriek()) {
+            if (subject == null || !subject.heeftLid(la.attribuut()) || !subject.heeftLid(ra.attribuut())) return null;
+            if (subject.attribuutGranulariteit.containsKey(la.attribuut())
+                    || subject.attribuutGranulariteit.containsKey(ra.attribuut())) return null;          // temporal -> Phase F
+            if (!subject.dimensiesVan(la.attribuut()).isEmpty() || !subject.dimensiesVan(ra.attribuut()).isEmpty()) return null;  // §3.6 -> marker
+            String lattr = la.attribuut(), rattr = ra.attribuut();
+            Conditie.Operator op = v.op();
+            BigDecimal[] f = restatement(la.type(), ra.type());
+            return s -> vergelijk(scale(num(s, lattr), f[0]), scale(num(s, rattr), f[1]), op);
         }
         // §5.3 an own-attribute equality vs a §13.3.3.4 Tekst literal OR a §13.2.14 enumeratiewaarde 'X' (the §12
         // beslistabel "is gelijk aan X" cell, and the §12 OR-list of them). An enumeratie compares by VALUE equality
