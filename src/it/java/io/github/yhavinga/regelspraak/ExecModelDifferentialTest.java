@@ -1,6 +1,10 @@
 package io.github.yhavinga.regelspraak;
 
+import io.github.yhavinga.regelspraak.facts.Bemanningslid;
+import io.github.yhavinga.regelspraak.facts.Bestelling;
+import io.github.yhavinga.regelspraak.facts.Contingent;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
+import io.github.yhavinga.regelspraak.facts.Factuur;
 import io.github.yhavinga.regelspraak.facts.Heffing;
 import io.github.yhavinga.regelspraak.facts.Inconsistentie;
 import io.github.yhavinga.regelspraak.facts.Konto;
@@ -51,6 +55,12 @@ class ExecModelDifferentialTest {
      *  so the DRL fire and the model fire each get pristine facts), session globals, and what to read back from
      *  the fired facts (a single value, or a {@link #vals} list when a fixture must check more than one bean). */
     record Fixture(String naam, String src, Supplier<List<Object>> facts, Map<String, Object> globals, Function<List<Object>, Object> uit) {}
+
+    /** A §13.4.6 objectcreatie fixture: the observable is the SET of NEW objects the run INSERTED (those in
+     *  getObjects() not among the seeded facts), each mapped to a canonical descriptor (which may reference the seed
+     *  facts for a stable back-reference index) — mirroring {@link FoutFixture} for inserted Inconsistentie. */
+    record ObjFixture(String naam, String src, Supplier<List<Object>> facts, Map<String, Object> globals,
+                      java.util.function.BiFunction<Object, List<Object>, String> canon) {}
 
     /** A single-Passagier fixture: the common case — one fresh Passagier, read one field back. */
     static Fixture single(String naam, String src, Supplier<Passagier> fact, Map<String, Object> globals, Function<Passagier, Object> uit) {
@@ -1127,6 +1137,219 @@ class ExecModelDifferentialTest {
         }
     }
 
+    // ---- Phase G fixtures: §13.4.7 feitcreatie (a created relation = a reference field set on the doel) ----
+    /** The index of {@code ref} within the facts list (stable across both back-ends' fresh facts), or null when the
+     *  reference is unset — so a created relation compares by WHICH fact it points at, not by (per-fire) identity. */
+    private static Object refIndex(List<Object> facts, Object ref) {
+        if (ref == null) return null;
+        for (int i = 0; i < facts.size(); i++) if (facts.get(i) == ref) return i;
+        return -1;
+    }
+    private static final String FEIT_HDR = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+                is student kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            """;
+    static final Fixture[] PHASE_G_FEIT = {
+        // F1 §13.4.7 1-hop: every passenger of a vlucht gets the bonus relation set to its vlucht.
+        new Fixture("§13.4.7 feitcreatie 1-hop legt de relatie op alle passagiers van de vlucht",
+            FEIT_HDR + """
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht.
+            """,
+            () -> {
+                Vlucht v1 = new Vlucht(), v2 = new Vlucht();
+                Passagier p1 = new Passagier(), p2 = new Passagier(), p3 = new Passagier(), zonder = new Passagier();
+                p1.setReis(v1); p2.setReis(v1); p3.setReis(v2);
+                return List.of(v1, v2, p1, p2, p3, zonder);
+            },
+            Map.of(),
+            l -> vals(refIndex(l, ((Passagier) l.get(2)).getBonusvlucht()), refIndex(l, ((Passagier) l.get(3)).getBonusvlucht()),
+                      refIndex(l, ((Passagier) l.get(4)).getBonusvlucht()), refIndex(l, ((Passagier) l.get(5)).getBonusvlucht()))),   // [0,0,1,null]
+
+        // F2 §13.4.7 doel comparison guard: only passengers with prijs > 18 get the relation.
+        new Fixture("§13.4.7 feitcreatie doel-vergelijking-voorwaarde koppelt alleen prijs>18",
+            FEIT_HDR + """
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht indien de prijs van de passagier groter is dan 18.
+            """,
+            () -> {
+                Vlucht v = new Vlucht();
+                Passagier rijk = new Passagier(), arm = new Passagier();
+                rijk.setReis(v); rijk.setPrijs(new BigDecimal(99));
+                arm.setReis(v); arm.setPrijs(new BigDecimal(5));
+                return List.of(v, rijk, arm);
+            },
+            Map.of(),
+            l -> vals(refIndex(l, ((Passagier) l.get(1)).getBonusvlucht()), refIndex(l, ((Passagier) l.get(2)).getBonusvlucht()))),   // [0, null]
+
+        // F3 §13.4.7 doel kenmerk guard: only student passengers get the relation.
+        new Fixture("§13.4.7 feitcreatie doel-kenmerk-voorwaarde koppelt alleen studenten",
+            FEIT_HDR + """
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht indien de passagier student is.
+            """,
+            () -> {
+                Vlucht v = new Vlucht();
+                Passagier a = new Passagier(), b = new Passagier();
+                a.setReis(v); a.setStudent(true);
+                b.setReis(v);
+                return List.of(v, a, b);
+            },
+            Map.of(),
+            l -> vals(refIndex(l, ((Passagier) l.get(1)).getBonusvlucht()), refIndex(l, ((Passagier) l.get(2)).getBonusvlucht()))),   // [0, null]
+
+        // F9 §13.4.7 anker kenmerk guard: only internationale vluchten's passengers get the relation.
+        new Fixture("§13.4.7 feitcreatie anker-kenmerk-voorwaarde vuurt alleen voor internationale vluchten",
+            """
+            Objecttype de Vlucht
+                de naam Tekst;
+                is internationaal kenmerk (bijvoeglijk);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype bonusrelatie
+                de bonusvlucht Vlucht
+                de bonuspassagier Passagier
+            Eén bonusvlucht kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht indien de vlucht internationaal is.
+            """,
+            () -> {
+                Vlucht intl = new Vlucht(), binnen = new Vlucht();
+                intl.setInternationaal(true);
+                Passagier p1 = new Passagier(), p2 = new Passagier();
+                p1.setReis(intl); p2.setReis(binnen);
+                return List.of(intl, binnen, p1, p2);
+            },
+            Map.of(),
+            l -> vals(refIndex(l, ((Passagier) l.get(2)).getBonusvlucht()), refIndex(l, ((Passagier) l.get(3)).getBonusvlucht()))),   // [0, null]
+
+        // F8 §9.4 multi-hop chain Contingent -> Vlucht -> passagier: the relation rides the navigation path.
+        new Fixture("§9.4 feitcreatie meerstaps legt de relatie over de navigatieketen",
+            """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Objecttype de Contingent
+                de naam Tekst;
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype contingentrelatie
+                de contingentvlucht Vlucht
+                de contingent Contingent
+            Eén contingentvlucht heeft meerdere contingenten
+            Feittype bonusrelatie
+                de bonuscontingent Contingent
+                de bonuspassagier Passagier
+            Eén bonuscontingent kent meerdere bonuspassagiers
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een contingent is een passagier van de contingentvlucht van het contingent.
+            """,
+            () -> {
+                Vlucht vlucht = new Vlucht(), andere = new Vlucht();
+                Contingent c = new Contingent(); c.setContingentvlucht(vlucht);
+                Passagier p1 = new Passagier(), p2 = new Passagier(), q = new Passagier();
+                p1.setReis(vlucht); p2.setReis(vlucht); q.setReis(andere);
+                return List.of(vlucht, andere, c, p1, p2, q);
+            },
+            Map.of(),
+            l -> vals(refIndex(l, ((Passagier) l.get(3)).getBonuscontingent()), refIndex(l, ((Passagier) l.get(4)).getBonuscontingent()),
+                      refIndex(l, ((Passagier) l.get(5)).getBonuscontingent()))),   // [2,2,null]
+
+        // F4 §13.4.7 an un-lowerable voorwaarde makes the rule INERT — no over-creation.
+        new Fixture("§13.4.7 feitcreatie met onlowerbare voorwaarde creeert niets (geen over-creatie)",
+            FEIT_HDR + """
+            Regel ken bonus toe
+                geldig altijd
+                    Een bonuspassagier van een vlucht is een passagier van de vlucht indien de passagier een werkdag is.
+            """,
+            () -> {
+                Vlucht v = new Vlucht();
+                Passagier a = new Passagier(), b = new Passagier();
+                a.setReis(v); b.setReis(v);
+                return List.of(v, a, b);
+            },
+            Map.of(),
+            l -> vals(refIndex(l, ((Passagier) l.get(1)).getBonusvlucht()), refIndex(l, ((Passagier) l.get(2)).getBonusvlucht()))),   // [null, null]
+    };
+
+    private static String bdStr(BigDecimal x) { return x == null ? "null" : x.stripTrailingZeros().toPlainString(); }
+    static final ObjFixture[] PHASE_G_OBJ = {
+        // O1 §13.4.6: a Bestelling creates a linked Factuur (bedrag = its waarde) and back-references it.
+        new ObjFixture("§13.4.6 objectcreatie voegt een gekoppelde factuur toe (bedrag = waarde)",
+            """
+            Objecttype de Bestelling
+                de waarde Numeriek (geheel getal);
+            Objecttype de Factuur
+                de bedrag Numeriek (geheel getal);
+            Feittype Bestelling met factuur
+                de bestelling Bestelling
+                de factuur Factuur
+            Eén bestelling heeft één factuur
+            Regel maak factuur
+                geldig altijd
+                    Een Bestelling heeft een factuur met bedrag gelijk aan de waarde van een Bestelling.
+            """,
+            () -> { Bestelling b = new Bestelling(); b.setWaarde(new BigDecimal(50)); return List.<Object>of(b); },
+            Map.of(),
+            (o, facts) -> { Factuur f = (Factuur) o; return "Factuur|bedrag=" + bdStr(f.getBedrag()) + "|best=" + refIndex(facts, f.getBestelling()); }),
+            // -> ["Factuur|bedrag=50|best=0"]
+
+        // O2 §13.4.6 + §8.1.7: a Passagier (prijs 10) is created only for a Vlucht that HAS crew (a far-side exists guard).
+        new ObjFixture("§13.4.6 objectcreatie met far-side voorwaarde maakt alleen voor bemande vluchten",
+            """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Objecttype het Bemanningslid
+                de naam Tekst;
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype Vlucht met bemanning
+                de bemande vlucht Vlucht
+                het bemanningslid Bemanningslid
+            Eén bemande vlucht heeft meerdere bemanningsleden
+            Regel maak passagier
+                geldig altijd
+                    Een Vlucht heeft een passagier met prijs gelijk aan 10 indien de vlucht heeft een bemanningslid.
+            """,
+            () -> {
+                Vlucht bemand = new Vlucht(), onbemand = new Vlucht();
+                Bemanningslid crew = new Bemanningslid(); crew.setBemandeVlucht(bemand);
+                return List.of(bemand, onbemand, crew);
+            },
+            Map.of(),
+            (o, facts) -> { Passagier p = (Passagier) o; return "Passagier|prijs=" + bdStr(p.getPrijs()) + "|reis=" + refIndex(facts, p.getReis()); }),
+            // -> ["Passagier|prijs=10|reis=0"]
+    };
+
+    @Test void phase_G_objectcreatie_matches_drl_back_end()        { runObjDifferential("Phase G obj", PHASE_G_OBJ, 2); }
+    @Test void phase_G_feitcreatie_matches_drl_back_end()          { runDifferential("Phase G feit", PHASE_G_FEIT, 6); }
     @Test void phase_F4b_mixed_static_guard_matches_drl_back_end() { runDifferential("Phase F4b", PHASE_F4B, 4); }
     @Test void phase_F4_compound_gedurende_matches_drl_back_end()  { runDifferential("Phase F4", PHASE_F4, 5); }
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 3); }
@@ -1780,6 +2003,47 @@ class ExecModelDifferentialTest {
         final int agreed = diffed;
         assertTrue(agreed >= minDiffed, () -> "verwacht >=" + minDiffed + " gediffte " + label + " fixtures, kreeg " + agreed + skips);
         System.out.println("[differential] " + label + ": " + agreed + " agreed, " + skipped + " skipped" + skips);
+    }
+
+    /** As {@link #runDifferential} but the observable is the SET of NEW objects an objectcreatie inserted (Phase G). */
+    private void runObjDifferential(String label, ObjFixture[] fixtures, int minDiffed) {
+        int diffed = 0, skipped = 0;
+        StringBuilder skips = new StringBuilder();
+        for (ObjFixture f : fixtures) {
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            if (!em.overgeslagen().isEmpty()) {
+                skipped++; skips.append("\n  SKIP ").append(f.naam()).append(": ").append(em.overgeslagen());
+                continue;
+            }
+            List<String> viaDrl   = fireCreated(drlBase(m), f);
+            List<String> viaModel = fireCreated(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(viaDrl, viaModel,
+                    () -> "back-ends DIVERGE on '" + f.naam() + "': DRL created=" + viaDrl + " model created=" + viaModel);
+            diffed++;
+        }
+        final int agreed = diffed;
+        assertTrue(agreed >= minDiffed, () -> "verwacht >=" + minDiffed + " gediffte " + label + " fixtures, kreeg " + agreed + skips);
+        System.out.println("[differential] " + label + ": " + agreed + " agreed, " + skipped + " skipped" + skips);
+    }
+
+    /** Fire and return the SORTED canonical descriptors of every NEW object inserted (not among the seeded facts) —
+     *  comparable across the two back-ends' fresh fact instances (the canon maps a back-reference to its seed index). */
+    private List<String> fireCreated(KieBase kb, ObjFixture f) {
+        KieSession s = kb.newKieSession();
+        f.globals().forEach(s::setGlobal);
+        List<Object> facts = f.facts().get();
+        java.util.Set<Object> seeded = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        seeded.addAll(facts);
+        for (Object o : facts) s.insert(o);
+        s.fireAllRules();
+        List<String> created = s.getObjects().stream()
+                .filter(o -> !seeded.contains(o))
+                .map(o -> f.canon().apply(o, facts))
+                .sorted().toList();
+        s.dispose();
+        return created;
     }
 
     /** Fire and return the SORTED "regel/<subject-key>" descriptors of every inserted Inconsistentie — comparable

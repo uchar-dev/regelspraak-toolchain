@@ -129,9 +129,16 @@ public final class ExecModelTranspiler {
         for (io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v : model.verdelingen) {        // §9.7 / §13.4.10 (Phase E)
             for (Rule rule : verdeling(v)) m.addRule(rule);
         }
-        // the remaining resolved kinds (objectcreatie/uniciteit-unie/feitcreatie) are later phases
-        int later = model.objectCreaties.size() + model.uniciteitUnies.size() + model.feitCreaties.size();
-        if (later > 0) overgeslagen.add(later + " niet-regel resultaatdelen (objectcreatie/uniciteit-unie/feitcreatie) — latere fase");
+        for (io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc : model.objectCreaties) {  // §13.4.6 (Phase G)
+            Rule rule = objectCreatie(oc);
+            if (rule != null) m.addRule(rule);
+        }
+        for (io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie fc : model.feitCreaties) {       // §13.4.7 (Phase G)
+            Rule rule = feitCreatie(fc);
+            if (rule != null) m.addRule(rule);
+        }
+        if (!model.uniciteitUnies.isEmpty())   // §8.1.6 union uniqueness across sources — later phase
+            overgeslagen.add(model.uniciteitUnies.size() + " uniciteit-unie(s) — latere fase");
         return m;
     }
 
@@ -826,7 +833,8 @@ public final class ExecModelTranspiler {
         // so it stays here rather than in leafPredicate (a vs-literal comparison IS a fact-only leaf).
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
                 && v.rechts() instanceof Expr.ParameterRef pr) {
-            if (subject != null && subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (subject == null || !subject.heeftLid(la.attribuut())) return null;   // not the subject's own member (feitcreatie anker-first probe)
+            if (subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!isNumeriekOp(v.op())) return null;   // EERDER/LATER (datum) -> Phase later
             Global<BigDecimal> g = globals.get(ident(pr.parameter().naam()));
             if (g == null) return null;
@@ -869,7 +877,8 @@ public final class ExecModelTranspiler {
         if (c instanceof Conditie.Predicaat p
                 && (p.soort() == Conditie.Predicaatsoort.LEEG || p.soort() == Conditie.Predicaatsoort.GEVULD)
                 && p.operand() instanceof Expr.AttribuutRef pa && pa.navigatieRol() == null) {
-            if (subject != null && subject.attribuutGranulariteit.containsKey(pa.attribuut())) return null;  // temporal -> Phase F
+            if (subject == null || !subject.heeftLid(pa.attribuut())) return null;   // not the subject's own member (e.g. a feitcreatie anker-first probe of a doel condition)
+            if (subject.attribuutGranulariteit.containsKey(pa.attribuut())) return null;  // temporal -> Phase F
             String attr = pa.attribuut();
             boolean leeg = p.soort() == Conditie.Predicaatsoort.LEEG;
             return s -> (RegelSpraakRuntime.get(s, attr) == null) == leeg;
@@ -877,7 +886,8 @@ public final class ExecModelTranspiler {
         // §8.1.1 an own-attribute scalar comparison vs a numeric literal.
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
                 && v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
-            if (subject != null && subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (subject == null || !subject.heeftLid(la.attribuut())) return null;   // not the subject's own member (feitcreatie anker-first probe)
+            if (subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!isNumeriekOp(v.op())) return null;   // EERDER/LATER (datum) -> Phase later
             BigDecimal rhs = bd(lit);
             if (rhs == null) return null;
@@ -1563,6 +1573,146 @@ public final class ExecModelTranspiler {
     }
 
     private List<Rule> skipList(String reason) { overgeslagen.add(reason); return List.of(); }
+
+    // ---------------- §13.4.6 objectcreatie / §13.4.7 feitcreatie (Phase G) ----------------
+    /** §13.4.6 objectcreatie: the subject creates a NEW object of {@code nieuwType}, sets each toekenning value, sets
+     *  the back-reference to {@code $subject} (the §9.4 feittype role on the new object), and inserts it. An
+     *  insert-only rule (NO no-loop — it never modifies the subject, so it cannot self-retrigger), gated by the
+     *  voorwaarde (incl. a §8.1.7 far-side exists). null -> skip (unresolved type / no fact class / a toekenning value
+     *  out of the scalar scope / >1 global). Mirrors DrlTranspiler.objectCreatie. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Rule objectCreatie(io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc) {
+        Objecttype nieuw = oc.nieuwType(), subject = oc.subject();
+        if (subject == null || nieuw == null) return skip("objectcreatie (onopgelost type): " + oc.naam());
+        if (!io.github.yhavinga.regelspraak.ir.Geldigheid.ALTIJD.equals(oc.geldigheid())) return skip("objectcreatie (versie-geldigheid): " + oc.naam());
+        Class<?> subjClass = factClass(subject), nieuwClass = factClass(nieuw);
+        if (subjClass == null || nieuwClass == null) return skip("objectcreatie (geen fact-class): " + oc.naam());
+        String backRef = model.verbindendeRol(nieuw, subject);   // field on $new -> subject (null -> orphan insert, like DRL)
+
+        // lower each toekenning value to a (subject, globals) -> value function; collect the Parameter-globals read.
+        List<String> attrs = new ArrayList<>();
+        List<BiFunction<Object, Map<String, BigDecimal>, Object>> fns = new ArrayList<>();
+        Set<String> gNames = new LinkedHashSet<>();
+        for (var t : oc.toekenningen()) {
+            WaardeFn wf = scalarWaarde(t.waarde());
+            if (wf == null) return skip("objectcreatie (toekenning-waarde buiten scope): " + oc.naam());
+            attrs.add(t.attribuut());
+            fns.add(wf.fn());
+            gNames.addAll(wf.globals());
+        }
+        if (gNames.size() > 1) return skip("objectcreatie (toekenning refereert >1 global): " + oc.naam());
+        Global<BigDecimal> g = null;
+        if (!gNames.isEmpty()) {
+            g = globals.get(gNames.iterator().next());
+            if (g == null) return skip("objectcreatie (niet-geregistreerde global): " + oc.naam());
+        }
+        final String gName = gNames.isEmpty() ? null : gNames.iterator().next();
+
+        seq = 0;
+        Variable sVar = DSL.declarationOf(subjClass, "$subject");
+        PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
+        List<RuleItemBuilder<?>> extra = new ArrayList<>();
+        if (oc.voorwaarde() != null) {
+            Gate gate = voorwaarde(oc.voorwaarde(), pattern, subject, sVar);
+            if (gate == null) return skip("objectcreatie (voorwaarde buiten scope): " + oc.naam());
+            pattern = gate.pattern();
+            extra.addAll(gate.extra());
+        }
+
+        final List<String> fAttrs = attrs; final List<BiFunction<Object, Map<String, BigDecimal>, Object>> fFns = fns;
+        final String fBackRef = backRef; final Class<?> fNieuwClass = nieuwClass;
+        java.util.function.BiConsumer<org.drools.model.Drools, Object[]> body = (drools, args) -> {
+            Object s = args[0];
+            Map<String, BigDecimal> gm = gName != null ? Map.of(gName, (BigDecimal) args[1]) : Map.of();
+            Object newObj = RegelSpraakRuntime.newInstance(fNieuwClass);
+            for (int i = 0; i < fAttrs.size(); i++) RegelSpraakRuntime.set(newObj, fAttrs.get(i), fFns.get(i).apply(s, gm));
+            if (fBackRef != null) RegelSpraakRuntime.set(newObj, fBackRef, s);
+            drools.insert(newObj);
+        };
+        List<Variable> vars = new ArrayList<>();
+        vars.add(sVar);
+        if (g != null) vars.add((Variable) g);
+        RuleItemBuilder<?> consequence = consequenceOf(vars.toArray(new Variable[0]), body);
+        if (consequence == null) return skip("objectcreatie (te veel gebonden variabelen): " + oc.naam());
+
+        List<RuleItemBuilder<?>> items = new ArrayList<>();
+        items.add(pattern); items.addAll(extra); items.add(consequence);
+        return PatternDSL.rule(oc.naam()).build(items.toArray(new RuleItemBuilder[0]));
+    }
+
+    /** §13.4.7 feitcreatie: for each {@code anker} and each {@code doel} ALREADY related to it (the §9.4 path: the
+     *  optional multi-hop {@code tussenstappen} then the final {@code joinVeld}), CREATE the new relation by setting
+     *  {@code zetVeld} on the doel -> {@code modify($doel){ set zetVeld($subject) }}, NO_LOOP. The voorwaarde gates the
+     *  anker (its pattern) or the doel (its pattern); a guard lowerable to NEITHER makes the rule INERT (a never-true
+     *  guard) rather than over-creating. Mirrors DrlTranspiler.feitCreatie. null -> skip (unresolved). */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Rule feitCreatie(io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie fc) {
+        Objecttype anker = fc.anker(), doel = fc.doel();
+        if (anker == null || doel == null || fc.zetVeld() == null || fc.joinVeld() == null)
+            return skip("feitcreatie (onopgelost): " + fc.naam());
+        if (!io.github.yhavinga.regelspraak.ir.Geldigheid.ALTIJD.equals(fc.geldigheid())) return skip("feitcreatie (versie-geldigheid): " + fc.naam());
+        Class<?> ankerClass = factClass(anker), doelClass = factClass(doel);
+        if (ankerClass == null || doelClass == null) return skip("feitcreatie (geen fact-class): " + fc.naam());
+
+        seq = 0;
+        Variable sVar = DSL.declarationOf(ankerClass, "$subject");
+        PatternDSL.PatternDef ankerPat = PatternDSL.pattern(sVar);
+        List<RuleItemBuilder<?>> ankerExtra = new ArrayList<>();
+        // §8.1.7 the voorwaarde: try the ANKER side first (its constraints + any far-side exists ride the anker
+        // pattern); if it cannot lower there, try the DOEL side (an in-pattern predicate on $doel); else INERT.
+        Predicate1<Object> doelGuard = null;
+        boolean inert = false;
+        if (fc.voorwaarde() != null) {
+            Gate g = voorwaarde(fc.voorwaarde(), ankerPat, anker, sVar);
+            if (g != null) {
+                ankerPat = g.pattern();
+                ankerExtra.addAll(g.extra());
+            } else {
+                doelGuard = leafPredicate(fc.voorwaarde(), doel);   // a fact-only predicate on the doel
+                if (doelGuard == null) inert = true;                // lowerable to NEITHER -> never-fire, never over-create
+            }
+        }
+        // An inert voorwaarde is a CORRECT lowering (create NOTHING — the model analog of DRL's eval(false) no-op),
+        // NOT an unmigrated skip: emit no rule and do NOT record overgeslagen, so the differential FIRES it (both
+        // back-ends create nothing -> agree). A model that wrongly goes inert where DRL lowers then surfaces as a real
+        // divergence rather than a hidden skip.
+        if (inert) return null;
+
+        // §9.4 multi-hop: bind each intermediate object, joining to the previous; $prev starts at the anker.
+        List<RuleItemBuilder<?>> items = new ArrayList<>();
+        items.add(ankerPat);
+        items.addAll(ankerExtra);
+        Variable vorige = sVar;
+        for (io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie.Tussenstap stap : fc.tussenstappen()) {
+            Class<?> stapClass = factClass(stap.type());
+            if (stapClass == null) return skip("feitcreatie (geen fact-class tussenstap): " + fc.naam());
+            String veld = stap.veld();
+            boolean viaOuder = stap.viaOuderVeld();
+            Variable stapVar = DSL.declarationOf(stapClass, "$t_" + (seq++));
+            Variable prev = vorige;
+            // a to-one hop reads the PARENT's forward ref (this == $prev.veld); a to-many hop reads the CHILD's backref (veld == $prev).
+            PatternDSL.PatternDef stapPat = PatternDSL.pattern(stapVar).expr(nextId("hop"), (Variable) prev,
+                    (Predicate2) (o, p) -> viaOuder ? RegelSpraakRuntime.get(p, veld) == o : RegelSpraakRuntime.get(o, veld) == p);
+            items.add(stapPat);
+            vorige = stapVar;
+        }
+
+        String joinVeld = fc.joinVeld(), zetVeld = fc.zetVeld();
+        Variable doelVar = DSL.declarationOf(doelClass, "$doel");
+        Variable laatste = vorige;
+        PatternDSL.PatternDef doelPat = PatternDSL.pattern(doelVar).expr(nextId("djoin"), (Variable) laatste,
+                (Predicate2) (d, p) -> RegelSpraakRuntime.get(d, joinVeld) == p);
+        if (doelGuard != null) doelPat = doelPat.expr(nextId("dg"), (Predicate1) doelGuard);
+        items.add(doelPat);
+
+        // create the relation: set the anker-role reference on $doel; NO_LOOP (the modify must not re-fire the rule).
+        Block3<org.drools.model.Drools, Object, Object> body = (drools, subj, d) -> {
+            RegelSpraakRuntime.set(d, zetVeld, subj);
+            drools.update(d);
+        };
+        items.add(DSL.on(sVar, (Variable) doelVar).execute(body));
+        return PatternDSL.rule(fc.naam()).attribute(Rule.Attribute.NO_LOOP, true).build(items.toArray(new RuleItemBuilder[0]));
+    }
 
     /** §6.5 Tabel 12 "waarde gedeeld door leeg" companion: the value side already degrades the division to leeg
      *  (rsGedeeld), so this surfaces the Fout via the §9.5 Inconsistentie channel — a SEPARATE insert-only rule per
