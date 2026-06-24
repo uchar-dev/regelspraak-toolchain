@@ -184,8 +184,10 @@ class ExecModelDifferentialTest {
                 geldig altijd
                     De aankomstmoment van een Vlucht moet berekend worden als 15-06-2022 09:30:00.000 plus de reisduur van de Vlucht.
             """;
-    static Fixture condFix(String naam, java.time.LocalDate daadwerkelijk) {
-        return new Fixture(naam, DATUM_COND_SRC,
+    static final String DATUM_COND_EQ_SRC = DATUM_COND_SRC.replace("later is dan", "gelijk is aan");
+    static Fixture condFix(String naam, java.time.LocalDate daadwerkelijk) { return condFix(naam, DATUM_COND_SRC, daadwerkelijk); }
+    static Fixture condFix(String naam, String src, java.time.LocalDate daadwerkelijk) {
+        return new Fixture(naam, src,
                 () -> { Vlucht v = new Vlucht(); v.setVluchtdatum(java.time.LocalDate.of(2022, 6, 15)); v.setUitstelduur(new BigDecimal(3)); v.setDaadwerkelijkVertrek(daadwerkelijk); return List.of(v); },
                 Map.of(), l -> ((Vlucht) l.get(0)).isLaat());
     }
@@ -213,6 +215,8 @@ class ExecModelDifferentialTest {
         datumFix("month-end overflow (2022-01-31 + 1mnd -> 02-28)", DATUM_SRC_PLUS, java.time.LocalDate.of(2022, 1, 31), new BigDecimal(1)),
         condFix("CONDITION date-arith TRUE (10-01 later than 06-15+3mnd)", java.time.LocalDate.of(2022, 10, 1)),
         condFix("CONDITION date-arith FALSE (08-01 not later than 06-15+3mnd)", java.time.LocalDate.of(2022, 8, 1)),
+        condFix("CONDITION date-arith GELIJK TRUE (09-15 == 06-15+3mnd)", DATUM_COND_EQ_SRC, java.time.LocalDate.of(2022, 9, 15)),
+        condFix("CONDITION date-arith GELIJK FALSE (09-16 != 06-15+3mnd)", DATUM_COND_EQ_SRC, java.time.LocalDate.of(2022, 9, 16)),
         new Fixture("datum-tijd LITERAL operand (15-06-2022 09:30) plus minuten", DATUMTIJD_LIT_SRC,
                 () -> { Vlucht v = new Vlucht(); v.setReisduur(new BigDecimal(95)); return List.of(v); },
                 Map.of(), l -> ((Vlucht) l.get(0)).getAankomstmoment()),
@@ -2131,11 +2135,11 @@ class ExecModelDifferentialTest {
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 9); }
-    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 7); }
+    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 8); }
     @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 7); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
-    @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 11); }
+    @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 13); }
     @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
     @Test void phase_E_verdeling_fouten_match_drl_back_end()       { runFoutDifferential("Phase E fout", PHASE_E_FOUT, 2); }
 
@@ -2285,6 +2289,26 @@ class ExecModelDifferentialTest {
                 return List.of(neg, pos);
             },
             o -> "basis=" + ((Heffing) o).getBasis()),
+
+        // §13.4.8 a consistentie assertie whose operand is a §6/§13.4.16 date-arithmetic expression: "X moet later
+        // zijn dan Y plus Z". Violated when daadwerkelijk vertrek is NOT after vluchtdatum+uitstelduur. Both
+        // back-ends lower the negated date comparison (DRL the constraint, the model !datumVergelijkTemporal).
+        new FoutFixture("consistentie: datum ordening vs date-arith (later dan vluchtdatum + uitstelduur)",
+            """
+            Objecttype de Vlucht (mv: Vluchten)
+                de vluchtdatum Datum in dagen;
+                de daadwerkelijk vertrek Datum in dagen;
+                de uitstelduur Numeriek (geheel getal) met eenheid mnd;
+            Regel R
+                geldig altijd
+                    De daadwerkelijk vertrek van een Vlucht moet later zijn dan de vluchtdatum van de Vlucht plus de uitstelduur van de Vlucht.
+            """,
+            () -> {
+                Vlucht ok = new Vlucht(); ok.setVluchtdatum(java.time.LocalDate.of(2022, 6, 15)); ok.setUitstelduur(new BigDecimal(3)); ok.setDaadwerkelijkVertrek(java.time.LocalDate.of(2022, 10, 1));   // after 09-15 -> consistent
+                Vlucht bad = new Vlucht(); bad.setVluchtdatum(java.time.LocalDate.of(2022, 6, 15)); bad.setUitstelduur(new BigDecimal(3)); bad.setDaadwerkelijkVertrek(java.time.LocalDate.of(2022, 8, 1));   // before 09-15 -> violation
+                return List.of(ok, bad);
+            },
+            o -> "dav=" + ((Vlucht) o).getDaadwerkelijkVertrek()),
     };
 
     // ---- division value (§6.5 rsGedeeld) — the value-side of the deling, checked by reading the result field ----

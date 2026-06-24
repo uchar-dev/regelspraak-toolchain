@@ -1191,7 +1191,7 @@ public final class ExecModelTranspiler {
         // is handled above; here at least one side is a date-arith Binair, so BOTH sides lower via scalarWaarde
         // (-> a Temporal) and compare via datumVergelijkTemporal. A fact-only reader (0 globals). DRL lowers the
         // same expression as the constraint operand (`attr > ((LocalDate) rsDatumReken(...))`).
-        if (c instanceof Conditie.Vergelijking v && isDatumOp(v.op())
+        if (c instanceof Conditie.Vergelijking v && isDatumVergelijkOp(v.op())
                 && v.links().type().isDatum() && v.rechts().type().isDatum()
                 && (isDatumRekenExpr(v.links()) || isDatumRekenExpr(v.rechts()))) {
             WaardeFn lw = scalarWaarde(v.links()), rw = scalarWaarde(v.rechts());
@@ -1821,13 +1821,19 @@ public final class ExecModelTranspiler {
             default               -> false;   // never reached (isDatumOp gates the caller)
         };
     }
-    /** §5.1 datum-ordening over ANY Temporal (LocalDate or LocalDateTime), for a date-arithmetic EXPRESSION operand
-     *  whose runtime type the caller does not pin: both present operands compare via {@link Comparable#compareTo}
-     *  (matching DRL mvel {@code <}/{@code >} on Comparables), a leeg (null/non-Comparable) operand is the
-     *  ordering's no-match (false), mirroring mvel. isDatumOp gates the op to the EERDER/LATER family. */
+    /** §8.1.1 datum comparison over ANY Temporal (LocalDate or LocalDateTime), for a date-arithmetic EXPRESSION
+     *  operand whose runtime type the caller does not pin. Mirrors DRL's mvel rendering exactly: ORDERING
+     *  (EERDER/LATER) compares two present operands via {@link Comparable#compareTo}, a leeg operand is the no-match
+     *  (false); GELIJK is {@code a==b && !(both null)} (two leeg dates are NOT equal); ONGELIJK is {@code a!=b ||
+     *  both null} (mvel's null-asymmetric {@code !=}). */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static boolean datumVergelijkTemporal(Object a, Object b, Conditie.Operator op) {
-        if (!(a instanceof Comparable) || b == null) return false;
+        switch (op) {
+            case GELIJK:   return java.util.Objects.equals(a, b) && !(a == null && b == null);
+            case ONGELIJK: return !java.util.Objects.equals(a, b) || (a == null && b == null);
+            default: break;
+        }
+        if (!(a instanceof Comparable) || b == null) return false;   // ordering: a leeg operand -> no-match (mvel)
         int c = ((Comparable) a).compareTo(b);
         return switch (op) {
             case EERDER           -> c < 0;
@@ -1836,6 +1842,11 @@ public final class ExecModelTranspiler {
             case LATER_OF_GELIJK  -> c >= 0;
             default               -> false;
         };
+    }
+    /** The datum comparison ops the {@link #datumVergelijkTemporal} date-expression branch covers: the EERDER/LATER
+     *  ordering family plus GELIJK/ONGELIJK (date equality). */
+    private static boolean isDatumVergelijkOp(Conditie.Operator op) {
+        return isDatumOp(op) || op == Conditie.Operator.GELIJK || op == Conditie.Operator.ONGELIJK;
     }
     /** True for a §6/§13.4.16 date-arithmetic Binair (a +/- whose result is a datum because one operand is a datum):
      *  the operand form the leafPredicate datum branch handles via scalarWaarde rather than a bare attribute/literal. */
@@ -1915,6 +1926,18 @@ public final class ExecModelTranspiler {
             return s -> (read.apply(s) == null) == assertGevuld;   // leeg violates GEVULD; gevuld violates LEEG
         }
         if (!(assertie instanceof Conditie.Vergelijking v)) return null;     // other compound: later
+        // §13.4.8 a DATUM comparison assertie where an operand is a §6/§13.4.16 date-arithmetic EXPRESSION ("X moet
+        // later zijn dan Y plus Z"): the violation is the negation of the assertion. datumVergelijkTemporal already
+        // encodes mvel's leeg/ordering/equality semantics, so !it IS the schending (either operand leeg, or the
+        // flipped comparison) — matching DRL's negated constraint. (Checked before the bare-AttribuutRef-LHS forms.)
+        if (isDatumVergelijkOp(v.op()) && v.links().type().isDatum() && v.rechts().type().isDatum()
+                && (isDatumRekenExpr(v.links()) || isDatumRekenExpr(v.rechts()))) {
+            WaardeFn lw = scalarWaarde(v.links()), rw = scalarWaarde(v.rechts());
+            if (lw == null || rw == null || !lw.globals().isEmpty() || !rw.globals().isEmpty()) return null;
+            BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
+            Conditie.Operator op = v.op();
+            return s -> !datumVergelijkTemporal(lfn.apply(s, Map.of()), rfn.apply(s, Map.of()), op);
+        }
         if (!(v.links() instanceof Expr.AttribuutRef la)) return null;
         // OWN or to-ONE NAVIGATED operand readers (navReader's null == DRL's `l.leeg` = rol==null || attr==null, so
         // the explicit leeg/vol semantics of DrlTranspiler.genavigeerdeVergelijkingSchending fall out of a null check).
