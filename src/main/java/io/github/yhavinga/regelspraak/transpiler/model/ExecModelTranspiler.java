@@ -853,6 +853,19 @@ public final class ExecModelTranspiler {
         try { return java.time.LocalDate.of(Integer.parseInt(d.group(3)), Integer.parseInt(d.group(2)), Integer.parseInt(d.group(1))); }
         catch (RuntimeException e) { return null; }
     }
+    /** Parse a §13.2.21 datum-tijd literal ("dd-m-yyyy hh:mm:ss[.SSS]") to a LocalDateTime — mirrors DrlTranspiler's
+     *  datetime literal (the captured millisecondes scale x1e6 to nanoOfSecond). null when the date or time is absent. */
+    private static java.time.LocalDateTime parseDatumTijd(String waarde) {
+        java.util.regex.Matcher d = java.util.regex.Pattern.compile("(\\d{1,2})-(\\d{1,2})-(\\d{4})").matcher(waarde);
+        if (!d.find()) return null;
+        java.util.regex.Matcher tm = java.util.regex.Pattern.compile("(\\d{1,2}):(\\d{2}):(\\d{2})(?:\\.(\\d{1,3}))?").matcher(waarde);
+        if (!tm.find()) return null;
+        try {
+            int nanos = (tm.group(4) == null ? 0 : Integer.parseInt(tm.group(4))) * 1_000_000;
+            return java.time.LocalDateTime.of(Integer.parseInt(d.group(3)), Integer.parseInt(d.group(2)), Integer.parseInt(d.group(1)),
+                    Integer.parseInt(tm.group(1)), Integer.parseInt(tm.group(2)), Integer.parseInt(tm.group(3)), nanos);
+        } catch (RuntimeException e) { return null; }
+    }
 
     /** Map a duration unit (its Datatype's eenheid) to a {@link java.time.temporal.ChronoUnit} name — byte-identical
      *  to DrlTranspiler.chronoUnit, so both back-ends key date arithmetic on the SAME unit. null for kwartaal / a
@@ -1173,6 +1186,20 @@ public final class ExecModelTranspiler {
                 return a instanceof java.time.LocalDate ld && datumVergelijk(ld, rhs, op);
             };
         }
+        // §8.1.1 a DATUM ordering comparison where an operand is a §6/§13.4.16 date-arithmetic EXPRESSION ("de
+        // daadwerkelijke vertrek later is dan de vluchtdatum plus de uitstelduur"). The simple attr-vs-literal form
+        // is handled above; here at least one side is a date-arith Binair, so BOTH sides lower via scalarWaarde
+        // (-> a Temporal) and compare via datumVergelijkTemporal. A fact-only reader (0 globals). DRL lowers the
+        // same expression as the constraint operand (`attr > ((LocalDate) rsDatumReken(...))`).
+        if (c instanceof Conditie.Vergelijking v && isDatumOp(v.op())
+                && v.links().type().isDatum() && v.rechts().type().isDatum()
+                && (isDatumRekenExpr(v.links()) || isDatumRekenExpr(v.rechts()))) {
+            WaardeFn lw = scalarWaarde(v.links()), rw = scalarWaarde(v.rechts());
+            if (lw == null || rw == null || !lw.globals().isEmpty() || !rw.globals().isEmpty()) return null;
+            BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
+            Conditie.Operator op = v.op();
+            return s -> datumVergelijkTemporal(lfn.apply(s, Map.of()), rfn.apply(s, Map.of()), op);
+        }
         // §8.1.1 a comparison whose LHS is a NUMERIC EXPRESSION — a builtin Functie ("de maand uit (...)", abs), an
         // arithmetic Binair ("de prijs plus 10"), a §6.1.4 begrenzing or a §13.4.17.25 afronding — vs a numeric
         // literal. Lower the LHS via scalarWaarde (which now covers these); a fact-only reader (0 globals) makes it a
@@ -1293,9 +1320,15 @@ public final class ExecModelTranspiler {
         }
         if (e instanceof Expr.Literal dl && dl.type() instanceof Datatype.DatumInDagen) {
             // §13.2.19 a date literal as a VALUE (e.g. a datum-arithmetic operand) -> its LocalDate constant; DRL
-            // lowers the same LocalDate.of(...). A datum-tijd literal is deferred (parseDatum is date-only).
+            // lowers the same LocalDate.of(...).
             java.time.LocalDate d = parseDatum(dl.waarde());
             return d == null ? null : WaardeFn.constant(d);
+        }
+        if (e instanceof Expr.Literal dtl && dtl.type() instanceof Datatype.DatumTijd) {
+            // §13.2.21 a datum-tijd literal as a VALUE -> its LocalDateTime constant; DRL lowers the same
+            // LocalDateTime.of(...) (date + HH:mm:ss[.SSS], millis -> nanoOfSecond).
+            java.time.LocalDateTime dt = parseDatumTijd(dtl.waarde());
+            return dt == null ? null : WaardeFn.constant(dt);
         }
         // §13.3.3.4 Tekst / §13.2.14 enumeratiewaarde literal value -> its String label (an enumeratie/Tekst field is
         // a String; the §12 beslistabel may SET such an attribute). DRL renders the same string, so both back-ends
@@ -1787,6 +1820,27 @@ public final class ExecModelTranspiler {
             case LATER_OF_GELIJK  -> !a.isBefore(b);
             default               -> false;   // never reached (isDatumOp gates the caller)
         };
+    }
+    /** §5.1 datum-ordening over ANY Temporal (LocalDate or LocalDateTime), for a date-arithmetic EXPRESSION operand
+     *  whose runtime type the caller does not pin: both present operands compare via {@link Comparable#compareTo}
+     *  (matching DRL mvel {@code <}/{@code >} on Comparables), a leeg (null/non-Comparable) operand is the
+     *  ordering's no-match (false), mirroring mvel. isDatumOp gates the op to the EERDER/LATER family. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static boolean datumVergelijkTemporal(Object a, Object b, Conditie.Operator op) {
+        if (!(a instanceof Comparable) || b == null) return false;
+        int c = ((Comparable) a).compareTo(b);
+        return switch (op) {
+            case EERDER           -> c < 0;
+            case EERDER_OF_GELIJK -> c <= 0;
+            case LATER            -> c > 0;
+            case LATER_OF_GELIJK  -> c >= 0;
+            default               -> false;
+        };
+    }
+    /** True for a §6/§13.4.16 date-arithmetic Binair (a +/- whose result is a datum because one operand is a datum):
+     *  the operand form the leafPredicate datum branch handles via scalarWaarde rather than a bare attribute/literal. */
+    private static boolean isDatumRekenExpr(Expr e) {
+        return e instanceof Expr.Binair b && (b.links().type().isDatum() || b.rechts().type().isDatum());
     }
 
     // ---------------- §9.5 / §13.4.8 consistentie (Phase D) ----------------

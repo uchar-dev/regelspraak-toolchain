@@ -163,6 +163,32 @@ class ExecModelDifferentialTest {
                 geldig altijd
                     De aankomstmoment van een Vlucht moet berekend worden als de vertrekmoment van de Vlucht plus de reisduur van de Vlucht.
             """;
+    // date arithmetic as a CONDITION operand (a shared-binairTerm path DRL lowers; the model now lowers it too via
+    // leafPredicate's datum-expression branch). threshold = vluchtdatum + uitstelduur months.
+    static final String DATUM_COND_SRC = """
+            Objecttype de Vlucht (mv: Vluchten)
+                de vluchtdatum Datum in dagen;
+                de daadwerkelijk vertrek Datum in dagen;
+                de uitstelduur Numeriek (geheel getal) met eenheid mnd;
+                is laat kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Vlucht is laat indien de daadwerkelijk vertrek van de Vlucht later is dan de vluchtdatum van de Vlucht plus de uitstelduur van de Vlucht.
+            """;
+    // a datum-TIJD LITERAL operand in value-side date arithmetic (the model now parses the datetime literal).
+    static final String DATUMTIJD_LIT_SRC = """
+            Objecttype de Vlucht (mv: Vluchten)
+                de reisduur Numeriek (geheel getal) met eenheid minuut;
+                de aankomstmoment Datum en tijd in millisecondes;
+            Regel R
+                geldig altijd
+                    De aankomstmoment van een Vlucht moet berekend worden als 15-06-2022 09:30:00.000 plus de reisduur van de Vlucht.
+            """;
+    static Fixture condFix(String naam, java.time.LocalDate daadwerkelijk) {
+        return new Fixture(naam, DATUM_COND_SRC,
+                () -> { Vlucht v = new Vlucht(); v.setVluchtdatum(java.time.LocalDate.of(2022, 6, 15)); v.setUitstelduur(new BigDecimal(3)); v.setDaadwerkelijkVertrek(daadwerkelijk); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).isLaat());
+    }
 
     static Fixture datumFix(String naam, String src, java.time.LocalDate datum, BigDecimal maanden) {
         return new Fixture(naam, src,
@@ -185,6 +211,11 @@ class ExecModelDifferentialTest {
                 () -> { Vlucht v = new Vlucht(); v.setUitstelduur(new BigDecimal(3)); return List.of(v); },
                 Map.of(), l -> ((Vlucht) l.get(0)).getVroegsteVertrek()),
         datumFix("month-end overflow (2022-01-31 + 1mnd -> 02-28)", DATUM_SRC_PLUS, java.time.LocalDate.of(2022, 1, 31), new BigDecimal(1)),
+        condFix("CONDITION date-arith TRUE (10-01 later than 06-15+3mnd)", java.time.LocalDate.of(2022, 10, 1)),
+        condFix("CONDITION date-arith FALSE (08-01 not later than 06-15+3mnd)", java.time.LocalDate.of(2022, 8, 1)),
+        new Fixture("datum-tijd LITERAL operand (15-06-2022 09:30) plus minuten", DATUMTIJD_LIT_SRC,
+                () -> { Vlucht v = new Vlucht(); v.setReisduur(new BigDecimal(95)); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).getAankomstmoment()),
     };
 
     // ---- §12 BESLISTABEL fixtures: a captured pipe-table desugars (BeslistabelDesugar) to one regel per row, fed
@@ -2104,7 +2135,7 @@ class ExecModelDifferentialTest {
     @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 7); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
-    @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 8); }
+    @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 11); }
     @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
     @Test void phase_E_verdeling_fouten_match_drl_back_end()       { runFoutDifferential("Phase E fout", PHASE_E_FOUT, 2); }
 
