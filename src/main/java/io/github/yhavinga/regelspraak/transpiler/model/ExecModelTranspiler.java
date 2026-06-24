@@ -92,6 +92,7 @@ public final class ExecModelTranspiler {
             if (rule != null) {
                 m.addRule(rule);
                 for (Rule comp : delingCompanions(r)) m.addRule(comp);   // §6.5 deling-door-leeg fout (Phase D)
+                for (Rule comp : wortelCompanions(r)) m.addRule(comp);   // §6.6 wortel-van-negatief fout (Phase D)
             }
         }
         for (io.github.yhavinga.regelspraak.ir.ResolvedConsistentie c : model.consistenties) {   // §9.5 / §13.4.8 (Phase D)
@@ -490,11 +491,40 @@ public final class ExecModelTranspiler {
                 };
             }, g);
         }
-        return null;
+        return scalarWrapper(e);   // §13.4.17.25 afronding / §13.4.17.13 wortel
     }
     private static boolean arithmeticOp(Expr.BinOp op) {
         return op == Expr.BinOp.PLUS || op == Expr.BinOp.MIN || op == Expr.BinOp.VERMINDERD_MET
                 || op == Expr.BinOp.MAAL || op == Expr.BinOp.GEDEELD_DOOR;
+    }
+
+    /** Extends {@link #scalarWaarde} with §13.4.17.25 afronding (an Afgerond wrapper) and §13.4.17.13 wortel (a scalar
+     *  WORTEL Functie, leeg/negatief -> leeg) — the wortel ALWAYS sits under its mandatory afronding. */
+    private WaardeFn scalarWrapper(Expr e) {
+        if (e instanceof Expr.Afgerond af) {
+            WaardeFn base = scalarWaarde(af.basis());
+            if (base == null) return null;
+            BiFunction<Object, Map<String, BigDecimal>, Object> bfn = base.fn();
+            int dec = af.decimalen();
+            java.math.RoundingMode mode = afrondMode(af.modus());
+            return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsAfronding(bfn.apply(s, gm), dec, mode), base.globals());
+        }
+        if (e instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.WORTEL && f.argumenten().size() == 1) {
+            WaardeFn rad = scalarWaarde(f.argumenten().get(0));
+            if (rad == null) return null;
+            BiFunction<Object, Map<String, BigDecimal>, Object> rfn = rad.fn();
+            return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsWortel(rfn.apply(s, gm)), rad.globals());
+        }
+        return null;
+    }
+    private static java.math.RoundingMode afrondMode(Expr.AfrondModus m) {
+        return switch (m) {
+            case NAAR_BENEDEN -> java.math.RoundingMode.FLOOR;
+            case NAAR_BOVEN   -> java.math.RoundingMode.CEILING;
+            case REKENKUNDIG  -> java.math.RoundingMode.HALF_UP;
+            case RICHTING_NUL -> java.math.RoundingMode.DOWN;
+            case WEG_VAN_NUL  -> java.math.RoundingMode.UP;
+        };
     }
 
     /** §4 value-side unit conversion factor (van -> naar), or null when no conversion applies — the mirror of
@@ -714,7 +744,6 @@ public final class ExecModelTranspiler {
         List<Rule> companions = new ArrayList<>();
         int idx = 0;
         String naam = r.naam();
-        String fqcn = FACTS + ".Inconsistentie";
         for (Expr.Binair d : delingen) {
             if (!(d.links() instanceof Expr.AttribuutRef dvd) || dvd.navigatieRol() != null) continue;
             if (!(d.rechts() instanceof Expr.AttribuutRef dvs) || dvs.navigatieRol() != null) continue;
@@ -731,17 +760,75 @@ public final class ExecModelTranspiler {
             // dividend present AND divisor empty (an empty LEFT short-circuits to 0 -> no fout, so guard the dividend too).
             pattern = pattern.expr(nextId("dvd"), (Predicate1) s -> RegelSpraakRuntime.get(s, dividend) != null)
                     .expr(nextId("dvs"), (Predicate1) s -> RegelSpraakRuntime.get(s, divisor) == null);
-            Variable incVar = DSL.declarationOf(incClass, "$inc_" + (seq++));
-            PatternDSL.PatternDef guard = PatternDSL.pattern(incVar)
-                    .expr(nextId("ig"), (Predicate1) i -> naam.equals(RegelSpraakRuntime.get(i, "regel")))
-                    .expr(nextId("ig"), (Variable) sVar, (Predicate2) (i, s) -> RegelSpraakRuntime.get(i, "subject") == s);
-            Block2<org.drools.model.Drools, Object> body = (drools, s) ->
-                    drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, naam, s));
-            // the RULE name is unique (a separate companion) but the Inconsistentie carries the HOST rule name.
             String compNaam = naam + " (deling door leeg" + (delingen.size() > 1 ? " " + (++idx) : "") + ")";
-            companions.add(PatternDSL.rule(compNaam).build(pattern, DSL.not(guard), DSL.on(sVar).execute(body)));
+            companions.add(companionRule(compNaam, naam, incClass, sVar, pattern));
         }
         return companions;
+    }
+
+    /** §6.6 "wortel van een negatief getal" companion: the value side degrades a negative-radicand root to leeg
+     *  (rsWortel), so this surfaces the Fout via the §9.5 Inconsistentie channel — a SEPARATE insert-only rule per
+     *  wortel whose own-attribute radicand is &lt; 0 (and the host voorwaarde holds). Mirrors DrlTranspiler.wortelNegatiefFout. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private List<Rule> wortelCompanions(ResolvedRegel r) {
+        if (!(r.doel() instanceof Expr.AttribuutRef doel) || doel.objecttype() == null) return List.of();
+        if (!io.github.yhavinga.regelspraak.ir.Geldigheid.ALTIJD.equals(r.geldigheid())) return List.of();
+        Objecttype subject = doel.objecttype();
+        Class<?> factClass = factClass(subject);
+        Class<?> incClass = inconsistentieClass();
+        if (factClass == null || incClass == null) return List.of();
+        List<Expr.Functie> wortels = new ArrayList<>();
+        verzamelWortels(r.waarde(), wortels);
+        List<Rule> companions = new ArrayList<>();
+        int idx = 0;
+        String naam = r.naam();
+        for (Expr.Functie w : wortels) {
+            if (w.argumenten().size() != 1 || !(w.argumenten().get(0) instanceof Expr.AttribuutRef rad) || rad.navigatieRol() != null) continue;
+            if (subject.attribuutGranulariteit.containsKey(rad.attribuut())) continue;
+            String radicand = rad.attribuut();
+            seq = 0;
+            Variable sVar = DSL.declarationOf(factClass, "$subject");
+            PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
+            if (r.voorwaarde() != null) {
+                Gate gate = voorwaarde(r.voorwaarde(), pattern, subject, sVar);
+                if (gate == null || !gate.extra().isEmpty()) continue;
+                pattern = gate.pattern();
+            }
+            // radicand < 0 (a null radicand is leeg, not negative -> no fout; compareTo guards null out).
+            pattern = pattern.expr(nextId("rad"), (Predicate1) s -> {
+                Object v = RegelSpraakRuntime.get(s, radicand);
+                return v != null && ((BigDecimal) v).signum() < 0;
+            });
+            String compNaam = naam + " (wortel van negatief" + (wortels.size() > 1 ? " " + (++idx) : "") + ")";
+            companions.add(companionRule(compNaam, naam, incClass, sVar, pattern));
+        }
+        return companions;
+    }
+    private static void verzamelWortels(Expr e, List<Expr.Functie> uit) {
+        if (e instanceof Expr.Functie f) {
+            if (f.kind() == Expr.FunctieKind.WORTEL) uit.add(f);
+            for (Expr a : f.argumenten()) verzamelWortels(a, uit);
+        } else if (e instanceof Expr.Binair b) {
+            verzamelWortels(b.links(), uit); verzamelWortels(b.rechts(), uit);
+        } else if (e instanceof Expr.Afgerond a) {
+            verzamelWortels(a.basis(), uit);
+        } else if (e instanceof Expr.Begrensd g) {
+            verzamelWortels(g.basis(), uit);
+        }
+    }
+
+    /** Build a §9.5 fout-companion rule: an insert-only rule (NO no-loop) on the given subject pattern that inserts
+     *  an Inconsistentie carrying the HOST rule name, idempotency-guarded against re-flagging the same subject. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Rule companionRule(String compNaam, String hostNaam, Class<?> incClass, Variable sVar, PatternDSL.PatternDef pattern) {
+        String fqcn = FACTS + ".Inconsistentie";
+        Variable incVar = DSL.declarationOf(incClass, "$inc_" + (seq++));
+        PatternDSL.PatternDef guard = PatternDSL.pattern(incVar)
+                .expr(nextId("ig"), (Predicate1) i -> hostNaam.equals(RegelSpraakRuntime.get(i, "regel")))
+                .expr(nextId("ig"), (Variable) sVar, (Predicate2) (i, s) -> RegelSpraakRuntime.get(i, "subject") == s);
+        Block2<org.drools.model.Drools, Object> body = (drools, s) ->
+                drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, hostNaam, s));
+        return PatternDSL.rule(compNaam).build(pattern, DSL.not(guard), DSL.on(sVar).execute(body));
     }
     /** Collect the GEDEELD_DOOR nodes through the arithmetic-wrapper layers of a value (for the §6.5 fout). */
     private static void verzamelDelingen(Expr e, List<Expr.Binair> uit) {

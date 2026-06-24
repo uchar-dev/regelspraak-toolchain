@@ -1,5 +1,6 @@
 package io.github.yhavinga.regelspraak;
 
+import io.github.yhavinga.regelspraak.facts.Heffing;
 import io.github.yhavinga.regelspraak.facts.Inconsistentie;
 import io.github.yhavinga.regelspraak.facts.Konto;
 import io.github.yhavinga.regelspraak.facts.Meting;
@@ -666,7 +667,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 3); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 8); }
-    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 5); }
+    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 6); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 1); }
 
@@ -776,6 +777,23 @@ class ExecModelDifferentialTest {
                 return List.of(waardeLeeg, leegRecht, beide);
             },
             o -> "g=" + ((Rekensom) o).getGrondslag() + ",a=" + ((Rekensom) o).getAftrek()),
+
+        // §6.6 wortel-van-negatief COMPANION: a negative radicand is a fout (flagged); a non-negative is fine.
+        new FoutFixture("wortel-van-negatief companion",
+            """
+            Objecttype de Heffing
+                de basis Numeriek (geheel getal);
+                de netto Numeriek (getal met 2 decimalen);
+            Regel w
+                geldig altijd
+                    De netto van een Heffing moet gesteld worden op de wortel van de basis van een Heffing naar beneden afgerond op 2 decimalen.
+            """,
+            () -> {
+                Heffing neg = new Heffing(); neg.setBasis(new BigDecimal(-9));   // wortel van -9 -> fout
+                Heffing pos = new Heffing(); pos.setBasis(new BigDecimal(20));   // ok
+                return List.of(neg, pos);
+            },
+            o -> "basis=" + ((Heffing) o).getBasis()),
     };
 
     // ---- division value (§6.5 rsGedeeld) — the value-side of the deling, checked by reading the result field ----
@@ -847,6 +865,25 @@ class ExecModelDifferentialTest {
                 return vals(a.getVerminderdResultaat(), a.getMinResultaat(), a.getPlusResultaat(), a.getMaalResultaat(),
                             b.getVerminderdResultaat(), b.getMinResultaat(), b.getPlusResultaat(), b.getMaalResultaat());
             }),
+
+        // §13.4.17.13 wortel + its mandatory afronding: wortel(20) naar beneden op 2 dec = 4.47; a negative
+        // radicand -> leeg (the §6.6 Inconsistentie is the companion, checked separately in Phase D).
+        new Fixture("wortel + afronding value (neg -> leeg)",
+            """
+            Objecttype de Heffing
+                de basis Numeriek (geheel getal);
+                de netto Numeriek (getal met 2 decimalen);
+            Regel w
+                geldig altijd
+                    De netto van een Heffing moet gesteld worden op de wortel van de basis van een Heffing naar beneden afgerond op 2 decimalen.
+            """,
+            () -> {
+                Heffing pos = new Heffing(); pos.setBasis(new BigDecimal(20));
+                Heffing neg = new Heffing(); neg.setBasis(new BigDecimal(-9));
+                return List.of(pos, neg);
+            },
+            Map.of(),
+            l -> vals(((Heffing) l.get(0)).getNetto(), ((Heffing) l.get(1)).getNetto())),   // 4.47, null
     };
 
     private void runDifferential(String label, Fixture[] fixtures, int minDiffed) {

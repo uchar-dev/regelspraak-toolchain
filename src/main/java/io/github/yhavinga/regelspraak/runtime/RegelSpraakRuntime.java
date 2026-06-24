@@ -87,6 +87,20 @@ public final class RegelSpraakRuntime {
         return rechts == null ? null : ((BigDecimal) links).divide((BigDecimal) rechts, java.math.MathContext.DECIMAL64);
     }
 
+    /** §13.4.17.13/§6.6 square root: a leeg OR negative radicand -> leeg (the negative is a Fout surfaced by the
+     *  companion rule, never a session-aborting sqrt throw); else the 34-digit sqrt (NOT Math.sqrt double-noise,
+     *  which can flip a directional afronding). Mirrors the DRL {@code rsWortel}. */
+    public static BigDecimal rsWortel(Object x) {
+        BigDecimal b = (BigDecimal) x;
+        return (b == null || b.signum() < 0) ? null : b.sqrt(java.math.MathContext.DECIMAL128);
+    }
+
+    /** §13.4.17.25 afronding: round to {@code scale} decimals; a leeg (null) value rounds to leeg (so a wortel/
+     *  macht/division leeg result propagates instead of NPE-ing .setScale). Mirrors the DRL {@code rsAfronding}. */
+    public static BigDecimal rsAfronding(Object x, int scale, java.math.RoundingMode mode) {
+        return x == null ? null : ((BigDecimal) x).setScale(scale, mode);
+    }
+
     // ---- identifier convention (matches the transpiler's ident()/getter() Pascal-casing) ----
     /** Strip a leading lidwoord, PascalCase the whitespace-separated words (so a getter/setter name matches the
      *  hand-written fact bean: "leeftijd" -> "Leeftijd", "recht op korting" -> "RechtOpKorting"). */
