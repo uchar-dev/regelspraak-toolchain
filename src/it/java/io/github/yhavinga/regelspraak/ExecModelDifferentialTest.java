@@ -1088,6 +1088,34 @@ class ExecModelDifferentialTest {
                     return List.of(p, deeln(p, "3", "20", null), deeln(p, "1", "20", null), deeln(p, "2", "22", null)); },
             Map.of(),
             l -> vals(((Deelnemer) l.get(1)).getAandeel(), ((Deelnemer) l.get(2)).getAandeel(), ((Deelnemer) l.get(3)).getAandeel())),
+
+        // (adversary-confirmed divergence, GUARDED -> honest skip) TWO verdelingen writing the SAME recipient
+        // attribuut 'aandeel' infinite-loop in the model (class-reactive reflective lambdas: each update(r)
+        // re-activates the sibling; DRL's property-reactive modify reaches a fixpoint). The model SKIPS such a
+        // multi-writer target (overgeslagen non-empty) rather than emit a hanging KieBase, so this fixture is an
+        // explicit logged skip — never fired. Regression for the guard; revisit when property-reactive model lands.
+        new Fixture("verdeling: twee verdelingen op hetzelfde doel -> honest skip (geen hang)",
+            """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel een
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld naar rato van de gewicht.
+            Regel verdeel twee
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld in gelijke delen.
+            """,
+            () -> { Pot p = new Pot(); p.setTotaal(new BigDecimal(100));
+                    return List.of(p, deeln(p, "1", null, null), deeln(p, "3", null, null)); },
+            Map.of(),
+            l -> vals(((Deelnemer) l.get(1)).getAandeel(), ((Deelnemer) l.get(2)).getAandeel())),
     };
 
     // ---- Phase E fout: §9.7.6 Tabel 19 — an empty weight (naar rato) or a leeg/negatief maximum at ANY recipient is

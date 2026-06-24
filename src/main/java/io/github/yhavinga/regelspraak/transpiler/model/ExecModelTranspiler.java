@@ -774,6 +774,16 @@ public final class ExecModelTranspiler {
         // reactOn), so the cycle would infinite-loop under the proven update()+NO_LOOP convention. Honest skip until
         // the follow-up lands the property-scoped break.
         if (v.restantAttribuut() != null) return skipList("verdeling (onverdeelde rest — share↔rest modify-cycle, follow-up): " + v.naam());
+        // CONFIRMED divergence (Phase E adversarial review): TWO verdelingen writing the SAME recipient (doelType,
+        // doelAttribuut) infinite-loop in the model while DRL terminates — the reflective share rules are class-reactive
+        // (the opaque lambdas expose no reactOn property scope), so each update(r) re-activates the SIBLING verdeling
+        // (NO_LOOP blocks only self-retrigger). DRL's property-reactive modify reaches a fixpoint once aandeel stops
+        // changing. Until the property-reactive-model conversion lands (reactOn + property-scoped update — it also
+        // unblocks the onverdeelde-rest cycle), a multi-writer recipient attribute is an HONEST skip rather than a
+        // silently hanging KieBase. (The single-writer case — every fixture — is unaffected.)
+        long writers = model.verdelingen.stream().filter(o -> o.doelType() != null && doel != null
+                && o.doelType().naam.equals(doel.naam) && java.util.Objects.equals(o.doelAttribuut(), v.doelAttribuut())).count();
+        if (writers > 1) return skipList("verdeling (>1 verdeling schrijft hetzelfde doel-attribuut — class-reactive sibling-loop, property-reactive follow-up): " + v.naam());
         Class<?> bronClass = factClass(bron), doelClass = factClass(doel);
         if (bronClass == null || doelClass == null) return skipList("verdeling (geen fact-class): " + v.naam());
 
