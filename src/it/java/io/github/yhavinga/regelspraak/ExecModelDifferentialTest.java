@@ -866,6 +866,64 @@ class ExecModelDifferentialTest {
             p -> tl(p.getAantalDagenRechtOpBelastingvermindering())),   // []
     };
 
+    // ---- Phase F3 fixtures: §13.4.17.58 "het tijdsevenredig deel per <maand|jaar> van <basis> gedurende ..." ----
+    static final Fixture[] PHASE_F3 = {
+        // A6 §7.3.2: per maand, OWN-attribute base — 12 full months ×12, 1 full ×18, 1 partial (7/28×18 = 4,50).
+        single("§13.4.17.58 tijdsevenredig deel per maand, eigen basis (14 segmenten, laatste 4,50)",
+            """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de standaardbedrag Bedrag voor elk jaar;
+                de belastingvermindering Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+            Regel Belastingvermindering
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van zijn standaardbedrag gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """,
+            () -> passagier(p -> {
+                p.setStandaardbedrag(List.of(seg(2024, 1, 1, 2025, 1, 1, "12.00"), seg(2025, 1, 1, 2026, 1, 1, "18.00")));
+                p.setRechtOpBelastingvermindering(List.of(seg(2024, 1, 1, 2025, 2, 8, null)));
+            }),
+            Map.of(),
+            p -> tl(p.getBelastingvermindering())),
+
+        // A11 §7.3.2 ex.1: the base is a TEMPORAL PARAMETER (a List<Segment> global) — same 14-segment result.
+        single("§7.3.2 tijdsevenredig deel over een temporele PARAMETER-basis (List-global)",
+            """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Parameter de STANDAARD BELASTINGVERMINDERING : Bedrag voor elk jaar
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+            Regel Belastingvermindering
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van de STANDAARD BELASTINGVERMINDERING gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """,
+            () -> passagier(p -> p.setRechtOpBelastingvermindering(List.of(seg(2024, 1, 1, 2025, 2, 8, null)))),
+            Map.of("sTANDAARDBELASTINGVERMINDERING", List.of(seg(2024, 1, 1, 2025, 1, 1, "12.00"), seg(2025, 1, 1, 2026, 1, 1, "18.00"))),
+            p -> tl(p.getBelastingvermindering())),
+
+        // A12 §7.3.2 ex.2: per jaar, a non-terminating fraction kept EXACT (DECIMAL64), NOT rounded to doel decimals (18×38/365).
+        single("§7.3.2 tijdsevenredig deel per jaar, niet-eindigende breuk exact (18×38/365)",
+            """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de standaardbedrag Bedrag voor elk jaar;
+                de jaardeel Bedrag voor elk jaar;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+            Regel Jaardeel
+                geldig altijd
+                    De jaardeel van een Passagier moet gesteld worden op (het tijdsevenredig deel per jaar van zijn standaardbedrag gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """,
+            () -> passagier(p -> {
+                p.setStandaardbedrag(List.of(seg(2025, 1, 1, 2026, 1, 1, "18.00")));
+                p.setRechtOpBelastingvermindering(List.of(seg(2025, 1, 1, 2025, 2, 8, null)));
+            }),
+            Map.of(),
+            p -> tl(p.getJaardeel())),
+    };
+
+    @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 3); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 4); }

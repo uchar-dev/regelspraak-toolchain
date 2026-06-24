@@ -66,6 +66,9 @@ public final class ExecModelTranspiler {
 
     private final RegelSpraakModel model;
     private final Map<String, Global<BigDecimal>> globals = new LinkedHashMap<>();
+    /** §13.3.6 temporal parameters: a tijdlijn parameter is a {@code List<Segment>} global (only a §7.3.2
+     *  tijdsevenredig base reads it), kept apart from the scalar BigDecimal {@link #globals}. */
+    private final Map<String, Global<java.util.List>> listGlobals = new LinkedHashMap<>();
     private final List<String> overgeslagen = new ArrayList<>();
     /** Monotonic within ONE rule (reset per rule) — keeps each rule's declaration NAMES ({@code $e_0}, {@code $inc_1})
      *  unique. Declaration names are per-rule scoped, so they may repeat across rules. */
@@ -92,10 +95,17 @@ public final class ExecModelTranspiler {
     public Model model() { return model0; }
     public List<String> overgeslagen() { return overgeslagen; }
 
+    @SuppressWarnings("rawtypes")
     private Model run() {
         ModelImpl m = new ModelImpl(PKG);
         for (Parameter p : model.parameters.values()) {
-            if (p.granulariteit() != null) { overgeslagen.add("parameter (tijdlijn): " + p.naam()); continue; }
+            if (p.granulariteit() != null) {
+                // §13.3.6 a TEMPORAL parameter is a List<Segment> global — only a §7.3.2 tijdsevenredig base reads it.
+                Global<java.util.List> g = DSL.globalOf(java.util.List.class, PKG, ident(p.naam()));
+                listGlobals.put(ident(p.naam()), g);
+                m.addGlobal(g);
+                continue;
+            }
             Global<BigDecimal> g = DSL.globalOf(BigDecimal.class, PKG, ident(p.naam()));
             globals.put(ident(p.naam()), g);
             m.addGlobal(g);
@@ -162,12 +172,23 @@ public final class ExecModelTranspiler {
             // A producer we cannot lower is an honest skip (never a scalar setter on a List field, which would not
             // even reflect cleanly). NO_LOOP guards the modify; the List property is read by no pattern, so nothing
             // reacts to the write (Oracle-confirmed).
-            java.util.function.Function<Object, Object> tw = temporeleWaarde(r.waarde(), doel.objecttype(), doelGran, doel.type());
+            TemporeleWaarde tw = temporeleWaarde(r.waarde(), doel.objecttype(), doelGran, doel.type());
             if (tw == null) return skip("regel (temporele toekenning buiten Phase-F scope): " + r.naam());
-            consequence = DSL.on(sVar).execute((Block2<org.drools.model.Drools, Object>) (drools, s) -> {
-                RegelSpraakRuntime.set(s, doelProp, tw.apply(s));
-                drools.update(s);
-            });
+            BiFunction<Object, Object, Object> twf = tw.fn();
+            if (tw.global() == null) {
+                consequence = DSL.on(sVar).execute((Block2<org.drools.model.Drools, Object>) (drools, s) -> {
+                    RegelSpraakRuntime.set(s, doelProp, twf.apply(s, null));
+                    drools.update(s);
+                });
+            } else {
+                // §7.3.2 the tijdsevenredig base is a TEMPORAL PARAMETER (a List<Segment> global) — bind it.
+                Global<java.util.List> g = listGlobals.get(tw.global());
+                if (g == null) return skip("regel (temporele basis-parameter niet geregistreerd " + tw.global() + "): " + r.naam());
+                consequence = DSL.on(sVar, (Variable) g).execute((Block3<org.drools.model.Drools, Object, Object>) (drools, s, gv) -> {
+                    RegelSpraakRuntime.set(s, doelProp, twf.apply(s, gv));
+                    drools.update(s);
+                });
+            }
         } else if (tijdTotaal != null) {
             // §7.1 a TOTAAL over a TEMPORAL attribute is a SCALAR timeline fold (rsTijdTotaal over the subject's own/
             // navigated List<Segment>, optionally gedurende-clipped) — NOT an instance accumulate, and reads no globals.
@@ -454,14 +475,21 @@ public final class ExecModelTranspiler {
     }
 
     // ---------------- §13.4.17.57/.58 temporal WRITE producers (Phase F) ----------------
+    /** A lowered timeline producer: {@code fn(subject, globalValue)} -> the {@code List<Segment>} to write, plus the
+     *  name of the (≤1) List-global it reads (a §7.3.2 tijdsevenredig PARAMETER base), or null. */
+    private record TemporeleWaarde(BiFunction<Object, Object, Object> fn, String global) {}
+
     /** §5.1.4 lower a RHS that PRODUCES a timeline written to a single-period temporal doel attribute, into a
-     *  {@code (subject -> List<Segment>)} function — or null when it is not a supported producer (caller skips). The
-     *  first writer: §13.4.17.57 "het aantal dagen in &lt;de maand|het jaar&gt; dat &lt;temporeel kenmerk&gt;" ->
-     *  {@link RegelSpraakRuntime#rsAantalDagenIn} over the kenmerk's true-period timeline, bucketed by the DOEL's
-     *  granularity (the operator's "in &lt;maand|jaar&gt;" MUST match the doel tijdlijn, §7.2 — a mismatch skips
-     *  rather than silently bucketing by the doel). Mirrors DrlTranspiler.temporeleWaarde. (§13.4.17.58
-     *  tijdsevenredig deel is a later increment.) */
-    private java.util.function.Function<Object, Object> temporeleWaarde(Expr w, Objecttype subject,
+     *  {@link TemporeleWaarde} — or null when it is not a supported producer (caller skips). Two writers:
+     *  §13.4.17.57 "het aantal dagen in &lt;de maand|het jaar&gt; dat &lt;temporeel kenmerk&gt;" ->
+     *  {@link RegelSpraakRuntime#rsAantalDagenIn} over the kenmerk's true-period timeline; §13.4.17.58 "het
+     *  tijdsevenredig deel per &lt;maand|jaar&gt; van &lt;basis&gt; gedurende ..." -> {@link
+     *  RegelSpraakRuntime#rsTijdsevenredig} prorating a base value-timeline (the subject's own temporal attribute, or
+     *  a temporal PARAMETER's List global). Both bucket by the DOEL's granularity (the operator's "per/in
+     *  &lt;maand|jaar&gt;" MUST match the doel tijdlijn, §7.2 — a mismatch skips). For tijdsevenredig the base must be
+     *  numeriek, COARSER-OR-EQUAL to the bucket (§7.3.2 reads it "voor de hele maand/jaar"), and in the SAME unit as
+     *  the doel (no rate conversion — §7.3.2 ex.3 markers). Mirrors DrlTranspiler.temporeleWaarde. */
+    private TemporeleWaarde temporeleWaarde(Expr w, Objecttype subject,
             RegelSpraakModel.Granulariteit gran, Datatype doelType) {
         if (w instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.AANTAL_DAGEN_IN
                 && f.granulariteit() == gran && subject != null) {
@@ -470,7 +498,40 @@ public final class ExecModelTranspiler {
                 Class<?> segCls = segmentClass();
                 if (segCls != null) {
                     final String granName = gran.name();
-                    return s -> RegelSpraakRuntime.rsAantalDagenIn(cond.apply(s), granName, segCls);
+                    return new TemporeleWaarde((s, gv) -> RegelSpraakRuntime.rsAantalDagenIn(cond.apply(s), granName, segCls), null);
+                }
+            }
+        }
+        if (w instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.TIJDSEVENREDIG_DEEL
+                && f.granulariteit() == gran && f.argumenten().size() == 1 && subject != null) {
+            Expr base = f.argumenten().get(0);
+            RegelSpraakModel.Granulariteit baseGran = null; Datatype baseType = null; String baseGlobal = null;
+            BiFunction<Object, Object, List<?>> baseReader = null;   // (subject, globalValue) -> the base List<Segment>
+            if (base instanceof Expr.AttribuutRef ba && ba.navigatieRol() == null && !ba.set() && ba.objecttype() == subject
+                    && subject.attribuutGranulariteit.containsKey(ba.attribuut())
+                    && !subject.attribuutTijdlijnAantal.containsKey(ba.attribuut())) {
+                baseGran = subject.attribuutGranulariteit.get(ba.attribuut());
+                baseType = ba.type();
+                String baseAttr = ba.attribuut();
+                baseReader = (s, gv) -> (List<?>) RegelSpraakRuntime.get(s, baseAttr);
+            } else if (base instanceof Expr.ParameterRef bp && bp.parameter().granulariteit() != null) {
+                baseGran = bp.parameter().granulariteit();
+                baseType = bp.parameter().datatype();
+                baseGlobal = ident(bp.parameter().naam());
+                baseReader = (s, gv) -> (List<?>) gv;   // the List<Segment> global the runtime supplies
+            }
+            if (baseReader != null && baseGran.ordinal() >= gran.ordinal() && baseType.isNumeriek()
+                    && java.util.Objects.equals(baseType.eenheidOf(), doelType == null ? null : doelType.eenheidOf())) {
+                java.util.function.Function<Object, List<?>> cond = conditieTijdreeks(f.filter(), subject);
+                if (cond != null) {
+                    Class<?> segCls = segmentClass();
+                    if (segCls != null) {
+                        final String granName = gran.name();
+                        final BiFunction<Object, Object, List<?>> br = baseReader;
+                        return new TemporeleWaarde(
+                                (s, gv) -> RegelSpraakRuntime.rsTijdsevenredig(cond.apply(s), br.apply(s, gv), granName, segCls),
+                                baseGlobal);
+                    }
                 }
             }
         }
@@ -1431,10 +1492,16 @@ public final class ExecModelTranspiler {
     }
     static String ident(String naam) {
         String s = naam.replaceFirst("^(?i)(de|het|een)\\s+", "").trim();
-        String[] w = s.split("\\s+");
-        StringBuilder b = new StringBuilder(w[0]);
-        for (int i = 1; i < w.length; i++) if (!w[i].isEmpty()) b.append(Character.toUpperCase(w[i].charAt(0))).append(w[i].substring(1));
-        return b.toString();
+        StringBuilder b = new StringBuilder();
+        for (String w : s.split("\\s+")) {
+            if (w.isEmpty()) continue;
+            // lowercase the VERY first character, PascalCase the rest — matching DrlTranspiler.ident(.., false), so the
+            // model's parameter-GLOBAL name equals the DRL's (e.g. "STANDAARD BELASTINGVERMINDERING" -> the shared
+            // "sTANDAARDBELASTINGVERMINDERING"); the differential session sets one global by that single name.
+            boolean hoofd = b.length() > 0;
+            b.append(hoofd ? Character.toUpperCase(w.charAt(0)) : Character.toLowerCase(w.charAt(0))).append(w.substring(1));
+        }
+        return b.isEmpty() ? "x" : b.toString();
     }
     /** The JAVABEAN property name Drools watches for property reactivity (the lowercase-first form of {@link #ident}):
      *  "de aandeel" -> "aandeel", "het saldo" -> "saldo". Matches the get/set the reflective bridge uses. */
