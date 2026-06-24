@@ -308,12 +308,167 @@ class ExecModelDifferentialTest {
             },
             Map.of(),
             l -> vals(((Vlucht) l.get(0)).isVol(), ((Vlucht) l.get(1)).isVol())),
+
+        // §13.4.14 far-side membership NESTED in an ALLE: the hoisted exists must ride up as a Gate extra and AND with
+        // an in-pattern kenmerk leaf. Fires only for a Vlucht that BOTH is internationaal AND has a passagier.
+        new Fixture("far-side exists carried up through ALLE + kenmerk leaf",
+            """
+            Objecttype de Passagier
+            Objecttype de Vlucht
+                is vol kenmerk (bijvoeglijk);
+                is internationaal kenmerk (bijvoeglijk);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Een Vlucht is vol indien hij aan alle volgende voorwaarden voldoet:
+                      • hij heeft een passagier
+                      • hij internationaal is.
+            """,
+            () -> {
+                Vlucht v1 = new Vlucht(); v1.setInternationaal(true);   // internationaal + passagier -> fires
+                Vlucht v2 = new Vlucht(); v2.setInternationaal(false);  // passagier but not internationaal -> no
+                Vlucht v3 = new Vlucht(); v3.setInternationaal(true);   // internationaal but no passagier -> no
+                Passagier p1 = new Passagier(); p1.setReis(v1);
+                Passagier p2 = new Passagier(); p2.setReis(v2);
+                return List.of(v1, v2, v3, p1, p2);
+            },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).isVol(), ((Vlucht) l.get(1)).isVol(), ((Vlucht) l.get(2)).isVol())),
+    };
+
+    // ---- Phase B4: comparison correctness — mvel null semantics for != (a leeg operand DIFFERS from a number) and
+    //      §5.1 Tabel 32 cross-unit restatement. These are the two divergences the adversarial review caught in the
+    //      first Phase B drop; each AGREES with the DRL oracle only after the bothNonNull->vergelijk + restatement fix. ----
+    static final Fixture[] PHASE_B4 = {
+        // A bare ONGELIJK leaf with a NULL attribute: mvel reads `null != 0` as TRUE, so the rule fires for a
+        // leeftijd-less passagier. (Before the fix the model read it as no-match -> divergence.)
+        new Fixture("ONGELIJK vs literal with a null attribute (mvel null != x)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal);
+                is minderjarig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien zijn leeftijd ongelijk is aan 0.
+            """,
+            () -> List.of(passagier(p -> { /* leeftijd null */ }), passagier(p -> p.setLeeftijd(BigDecimal.ZERO))),
+            Map.of(),
+            l -> vals(((Passagier) l.get(0)).isMinderjarig(), ((Passagier) l.get(1)).isMinderjarig())),
+
+        // GEEN over ONGELIJK leaves with a null operand — the negated-quantifier polarity flip (the flagship finding).
+        new Fixture("GEEN over ONGELIJK with a null operand (polarity flip)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal);
+                is minderjarig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien hij aan geen van de volgende voorwaarden voldoet:
+                      • zijn leeftijd is ongelijk aan 18
+                      • zijn leeftijd is groter dan 99.
+            """,
+            () -> List.of(passagier(p -> { /* null */ }), passagier(p -> p.setLeeftijd(new BigDecimal(18)))),
+            Map.of(),
+            l -> vals(((Passagier) l.get(0)).isMinderjarig(), ((Passagier) l.get(1)).isMinderjarig())),
+
+        // TEN MINSTE 2 of 3 ONGELIJK where the null operand is exactly the one mvel counts as satisfied (count tips 1<->2).
+        new Fixture("TEN MINSTE 2 of 3 ONGELIJK, one operand null (count vs threshold)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal);
+                de prijs Numeriek (geheel getal);
+                het basistarief Numeriek (geheel getal);
+                is minderjarig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien hij aan ten minste 2 van de volgende voorwaarden voldoet:
+                      • zijn leeftijd is ongelijk aan 0
+                      • zijn prijs is ongelijk aan 0
+                      • zijn basistarief is ongelijk aan 0.
+            """,
+            () -> List.of(passagier(p -> { p.setPrijs(new BigDecimal(5)); p.setBasistarief(BigDecimal.ZERO); /* leeftijd null */ })),
+            Map.of(),
+            l -> ((Passagier) l.get(0)).isMinderjarig()),
+
+        // PRECIES 1 ONGELIJK with a null operand (exactly-one fold over the != null-asymmetry).
+        new Fixture("PRECIES 1 ONGELIJK with a null operand",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal);
+                de prijs Numeriek (geheel getal);
+                is minderjarig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien hij aan precies 1 van de volgende voorwaarden voldoet:
+                      • zijn leeftijd is ongelijk aan 0
+                      • zijn prijs is ongelijk aan 0.
+            """,
+            () -> List.of(passagier(p -> p.setPrijs(BigDecimal.ZERO) /* leeftijd null */)),
+            Map.of(),
+            l -> ((Passagier) l.get(0)).isMinderjarig()),
+
+        // Control: GEEN over ORDERING comparisons with a null operand — mvel orders null as no-match (false), which the
+        // model already matched. Confirms the != fix did not perturb the ordering null semantics.
+        new Fixture("GEEN over ordering comparisons with a null operand (control)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal) met eenheid jr;
+                is minderjarig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien hij aan geen van de volgende voorwaarden voldoet:
+                      • zijn leeftijd is groter dan 18 jr
+                      • zijn leeftijd is kleiner dan 5 jr.
+            """,
+            () -> List.of(passagier(p -> { /* null */ }), pass(10), pass(20)),
+            Map.of(),
+            l -> vals(((Passagier) l.get(0)).isMinderjarig(), ((Passagier) l.get(1)).isMinderjarig(), ((Passagier) l.get(2)).isMinderjarig())),
+
+        // §5.1 Tabel 32 cross-unit comparison vs a LITERAL: leeftijd in mnd vs "1 jr" must restate 1 jr -> 12 mnd first,
+        // so 6 mnd < 12 mnd fires and 18 mnd < 12 mnd does not (a raw 6<1 / 18<1 would be wrong).
+        new Fixture("cross-unit comparison vs literal (mnd attr vs jr literal)",
+            """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal) met eenheid mnd;
+                is minderjarig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien zijn leeftijd kleiner is dan 1 jr.
+            """,
+            () -> List.of(pass(6), pass(18)),
+            Map.of(),
+            l -> vals(((Passagier) l.get(0)).isMinderjarig(), ((Passagier) l.get(1)).isMinderjarig())),
+
+        // §5.1 Tabel 32 cross-unit comparison vs a GLOBAL: same restatement on the 2-var (fact vs global) expr.
+        new Fixture("cross-unit comparison vs global (mnd attr vs jr global)",
+            """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Parameter de drempel : Numeriek (geheel getal) met eenheid jr
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal) met eenheid mnd;
+                is minderjarig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien zijn leeftijd kleiner is dan de drempel.
+            """,
+            () -> List.of(pass(6), pass(18)),
+            Map.of("drempel", new BigDecimal(1)),
+            l -> vals(((Passagier) l.get(0)).isMinderjarig(), ((Passagier) l.get(1)).isMinderjarig())),
     };
 
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }
     @Test void phase_B_model_back_end_matches_drl_back_end()  { runDifferential("Phase B", PHASE_B, 3); }
     @Test void phase_B2_quantifiers_match_drl_back_end()       { runDifferential("Phase B2", PHASE_B2, 5); }
-    @Test void phase_B3_relational_match_drl_back_end()        { runDifferential("Phase B3", PHASE_B3, 4); }
+    @Test void phase_B3_relational_match_drl_back_end()        { runDifferential("Phase B3", PHASE_B3, 5); }
+    @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
 
     private void runDifferential(String label, Fixture[] fixtures, int minDiffed) {
         int diffed = 0, skipped = 0;

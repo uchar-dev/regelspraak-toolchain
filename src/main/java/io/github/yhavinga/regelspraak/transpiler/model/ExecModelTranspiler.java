@@ -3,6 +3,8 @@ package io.github.yhavinga.regelspraak.transpiler.model;
 import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
+import io.github.yhavinga.regelspraak.model.Datatype;
+import io.github.yhavinga.regelspraak.model.Eenheid;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
@@ -195,13 +197,14 @@ public final class ExecModelTranspiler {
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
                 && v.rechts() instanceof Expr.ParameterRef pr) {
             if (subject != null && subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
-            java.util.function.BiPredicate<BigDecimal, BigDecimal> cmp = comparator(v.op());
-            if (cmp == null) return null;
+            if (!isNumeriekOp(v.op())) return null;   // EERDER/LATER (datum) -> Phase later
             Global<BigDecimal> g = globals.get(ident(pr.parameter().naam()));
             if (g == null) return null;
             String attr = la.attribuut();
+            Conditie.Operator op = v.op();
+            BigDecimal[] f = restatement(la.type(), pr.parameter().datatype());  // §5.1 Tabel 32 unit restatement
             return new Gate(pattern.expr(nextId("c"), (Variable) g,
-                    (Predicate2) (s, gv) -> bothNonNull(num(s, attr), (BigDecimal) gv, cmp)), List.of());
+                    (Predicate2) (s, gv) -> vergelijk(scale(num(s, attr), f[0]), scale((BigDecimal) gv, f[1]), op)), List.of());
         }
         // every other supported condition is a fact-only leaf.
         Predicate1<Object> lp = leafPredicate(c, subject);
@@ -245,12 +248,14 @@ public final class ExecModelTranspiler {
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
                 && v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
             if (subject != null && subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
-            java.util.function.BiPredicate<BigDecimal, BigDecimal> cmp = comparator(v.op());
-            if (cmp == null) return null;
+            if (!isNumeriekOp(v.op())) return null;   // EERDER/LATER (datum) -> Phase later
             BigDecimal rhs = bd(lit);
             if (rhs == null) return null;
             String attr = la.attribuut();
-            return s -> bothNonNull(num(s, attr), rhs, cmp);
+            Conditie.Operator op = v.op();
+            BigDecimal[] f = restatement(la.type(), lit.type());   // §5.1 Tabel 32 unit restatement (e.g. mnd vs jr)
+            BigDecimal rhsScaled = scale(rhs, f[1]);
+            return s -> vergelijk(scale(num(s, attr), f[0]), rhsScaled, op);
         }
         // §8.1.7 near-side rolcheck: the subject fills the role iff its to-ONE forward reference is set. The far-side
         // (the reference lives on the MANY side) is not a fact-only leaf -> null (handled as an exists-join above).
@@ -293,22 +298,46 @@ public final class ExecModelTranspiler {
         if (!mm.find()) return null;
         try { return new BigDecimal(mm.group(1)); } catch (NumberFormatException e) { return null; }
     }
-    /** A comparison constraint is unsatisfied when either operand is leeg (null) — matching the DRL/mvel
-     *  constraint behaviour where a null operand simply does not match (no NPE, no spurious true). */
-    private static boolean bothNonNull(BigDecimal a, BigDecimal b, java.util.function.BiPredicate<BigDecimal, BigDecimal> cmp) {
-        return a != null && b != null && cmp.test(a, b);
-    }
-    private static java.util.function.BiPredicate<BigDecimal, BigDecimal> comparator(Conditie.Operator op) {
+    /** The six numeric comparison operators the model lowers; EERDER/LATER (datum) are a later phase (caller skips). */
+    private static boolean isNumeriekOp(Conditie.Operator op) {
         return switch (op) {
-            case KLEINER           -> (a, b) -> a.compareTo(b) < 0;
-            case KLEINER_OF_GELIJK -> (a, b) -> a.compareTo(b) <= 0;
-            case GROTER            -> (a, b) -> a.compareTo(b) > 0;
-            case GROTER_OF_GELIJK  -> (a, b) -> a.compareTo(b) >= 0;
-            case GELIJK            -> (a, b) -> a.compareTo(b) == 0;
-            case ONGELIJK          -> (a, b) -> a.compareTo(b) != 0;
-            default -> null;  // EERDER/LATER (datum) — later phase
+            case KLEINER, KLEINER_OF_GELIJK, GROTER, GROTER_OF_GELIJK, GELIJK, ONGELIJK -> true;
+            default -> false;
         };
     }
+    /** Compare two (already unit-restated) numbers with the SAME null semantics the DRL/mvel constraint has —
+     *  the subtle case being {@code !=}: mvel reads {@code null != 18} as TRUE (a leeg value DIFFERS from a number),
+     *  so ONGELIJK must be true when exactly one operand is leeg, while {@code ==} is false there and BOTH-leeg makes
+     *  {@code ==} true / {@code !=} false. The ordering ops do NOT match when either operand is leeg (mvel returns
+     *  false, no NPE). Getting this wrong flips firing decisions under the negated quantifiers (geen/precies/ten hoogste). */
+    private static boolean vergelijk(BigDecimal a, BigDecimal b, Conditie.Operator op) {
+        boolean aNull = a == null, bNull = b == null;
+        return switch (op) {
+            case GELIJK            -> aNull || bNull ? (aNull && bNull) : a.compareTo(b) == 0;
+            case ONGELIJK          -> aNull || bNull ? !(aNull && bNull) : a.compareTo(b) != 0;
+            case KLEINER           -> !aNull && !bNull && a.compareTo(b) < 0;
+            case KLEINER_OF_GELIJK -> !aNull && !bNull && a.compareTo(b) <= 0;
+            case GROTER            -> !aNull && !bNull && a.compareTo(b) > 0;
+            case GROTER_OF_GELIJK  -> !aNull && !bNull && a.compareTo(b) >= 0;
+            default                -> false;  // EERDER/LATER — never reached (isNumeriekOp gates the caller)
+        };
+    }
+    /** §5.1 Tabel 32: the multipliers that restate the left/right comparison operands into a common unit before
+     *  comparing (so "24 mnd > 2 jr" compares 24 vs 24, not 24 vs 2) — the BigDecimal mirror of the DRL oracle's
+     *  {@code vergelijkingsOperanden}: no conversion when either side is unitless / not convertible / already the
+     *  same unit; both sides to their canonical unit for simple units; the rate (noemer) unit restates only the
+     *  right in the left's unit. The factors are the DECLARED exact factors, so the multiply is lossless. */
+    private static BigDecimal[] restatement(Datatype lt, Datatype rt) {
+        Eenheid el = lt.eenheidOf(), er = rt.eenheidOf();
+        if (el == null || er == null || !el.convertibleNaar(er) || !el.vereistOmrekening(er))
+            return new BigDecimal[]{BigDecimal.ONE, BigDecimal.ONE};
+        if (el.noemer() == null && er.noemer() == null)
+            return new BigDecimal[]{nz(el.factorNaarCanoniek()), nz(er.factorNaarCanoniek())};
+        return new BigDecimal[]{BigDecimal.ONE, nz(er.omrekenfactorNaar(el))};  // composite (rate) unit: restate rhs in lhs unit
+    }
+    private static BigDecimal nz(BigDecimal f) { return f == null ? BigDecimal.ONE : f; }
+    /** Restate one operand by its unit factor; a leeg (null) operand stays leeg (no NPE on .multiply). */
+    private static BigDecimal scale(BigDecimal x, BigDecimal f) { return x == null ? null : x.multiply(f); }
     private Rule skip(String reason) { overgeslagen.add(reason); return null; }
     static Class<?> factClass(Objecttype ot) {
         try { return Class.forName(FACTS + "." + RegelSpraakRuntime.pascal(ot.naam)); }
