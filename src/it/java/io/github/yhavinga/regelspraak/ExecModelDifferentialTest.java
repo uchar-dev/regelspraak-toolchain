@@ -1405,6 +1405,34 @@ class ExecModelDifferentialTest {
             l -> ((NatuurlijkPersoon) l.get(0)).getBetaaldeBelastingOverDeAfgelopenVierJaar()),   // 222
     };
 
+    /** §3.6/§6.9 regression (Phase G adversarial review): a DimensieCel read over a NULL gedimensioneerd Map must
+     *  yield leeg (null), not crash. The model is null-guarded (spec-correct); the DRL oracle is NOT (a latent
+     *  ConsequenceException on a null Map — carded in backlog), so this is a MODEL-only robustness guard, not a
+     *  differential (the back-ends cannot be compared where the oracle crashes). */
+    @Test void phase_G_dimensiecel_over_null_map_is_null_safe_in_model() {
+        String src = """
+            Objecttype de Natuurlijk persoon (mv: Natuurlijke personen)
+                de betaalde belasting over de afgelopen vier jaar Numeriek (geheel getal);
+                de betaalde belasting in jaar Numeriek (geheel getal) gedimensioneerd met jaardimensie;
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. vorig jaar
+                2. huidig jaar
+            Regel lees
+              geldig altijd
+                De betaalde belasting over de afgelopen vier jaar van een Natuurlijk persoon moet gesteld worden op zijn betaalde belasting in jaar van huidig jaar.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> "model moet de cel-lezing loweren: " + em.overgeslagen());
+        KieSession s = KieBaseBuilder.createKieBaseFromModel(em.model()).newKieSession();
+        NatuurlijkPersoon np = new NatuurlijkPersoon();   // betaaldeBelastingInJaar == null
+        s.insert(np);
+        s.fireAllRules();   // must NOT throw on the null Map
+        s.dispose();
+        assertNull(np.getBetaaldeBelastingOverDeAfgelopenVierJaar(), "null-Map DimensieCel -> leeg, niet crash");
+    }
+
     @Test void phase_G_dimensie_matches_drl_back_end()             { runDifferential("Phase G dim", PHASE_G_DIM, 3); }
     @Test void phase_G_objectcreatie_matches_drl_back_end()        { runObjDifferential("Phase G obj", PHASE_G_OBJ, 2); }
     @Test void phase_G_feitcreatie_matches_drl_back_end()          { runDifferential("Phase G feit", PHASE_G_FEIT, 6); }
