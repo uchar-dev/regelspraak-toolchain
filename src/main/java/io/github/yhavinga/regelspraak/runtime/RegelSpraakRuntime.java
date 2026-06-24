@@ -1,5 +1,7 @@
 package io.github.yhavinga.regelspraak.runtime;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.MathContext;
@@ -9,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Shippable runtime support for the EXECUTABLE-MODEL back-end ({@code ExecModelTranspiler}). Two roles:
@@ -26,25 +29,77 @@ import java.util.TreeMap;
 public final class RegelSpraakRuntime {
     private RegelSpraakRuntime() {}
 
-    // ---- reflective fact bridge ----
+    // ---- reflective fact bridge (cached: Phase-H optimization) ----
+    // The constraint/consequence lambdas read/write fact beans by property NAME (a RegelSpraak objecttype is
+    // unknown at transpiler-compile time). A naive bridge re-runs getClass().getMethod(...) on EVERY fire; instead
+    // we resolve each (class, property) ONCE to an unreflected MethodHandle and cache it. invoke() on the cached
+    // handle does the same widening/boxing Method.invoke did, so the bridge is behaviour-identical — only faster.
+    // {@link Accessors} layers TYPED LMF accessors on top of this for the statically-known objecttype sites.
+    private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
+    private static final Map<Class<?>, Map<String, MethodHandle>> GETTERS = new ConcurrentHashMap<>();
+    private static final Map<Class<?>, Map<String, MethodHandle>> SETTERS = new ConcurrentHashMap<>();
+    /** Marks a (class, prop) that has NO unique cacheable accessor (0 getters, or 0/>1 1-arg setters) so the slow
+     *  path runs without re-resolving every call — cannot store null in a ConcurrentHashMap. */
+    private static final MethodHandle NONE;
+    static { try { NONE = LOOKUP.findStatic(RegelSpraakRuntime.class, "noneSentinel", java.lang.invoke.MethodType.methodType(void.class)); }
+             catch (ReflectiveOperationException e) { throw new ExceptionInInitializerError(e); } }
+    private static void noneSentinel() {}
+
+    /** The unreflected getter handle for (cls, prop) — {@code get<Prop>} then {@code is<Prop>} — or {@link #NONE}. */
+    static MethodHandle getterHandle(Class<?> cls, String prop) {
+        MethodHandle h = GETTERS.computeIfAbsent(cls, c -> new ConcurrentHashMap<>())
+                                .computeIfAbsent(prop, p -> resolveGetter(cls, p));
+        return h == NONE ? null : h;
+    }
+    private static MethodHandle resolveGetter(Class<?> cls, String prop) {
+        String p = pascal(prop);
+        for (String pre : new String[]{"get", "is"}) {
+            try { return LOOKUP.unreflect(cls.getMethod(pre + p)); }
+            catch (NoSuchMethodException ignore) { }
+            catch (IllegalAccessException e) { throw new IllegalStateException(e); }
+        }
+        return NONE;
+    }
+    /** The unreflected setter handle for (cls, prop) when EXACTLY ONE 1-arg {@code set<Prop>} exists (the universal
+     *  case for these POJOs); {@link #NONE} when 0 or >1, so {@link #set} keeps the original per-call resolution. */
+    static MethodHandle setterHandle(Class<?> cls, String prop) {
+        MethodHandle h = SETTERS.computeIfAbsent(cls, c -> new ConcurrentHashMap<>())
+                                .computeIfAbsent(prop, p -> resolveSetter(cls, p));
+        return h == NONE ? null : h;
+    }
+    private static MethodHandle resolveSetter(Class<?> cls, String prop) {
+        String name = "set" + pascal(prop);
+        Method only = null; int n = 0;
+        for (Method m : cls.getMethods())
+            if (m.getName().equals(name) && m.getParameterCount() == 1) { only = m; n++; }
+        if (n != 1) return NONE;   // 0 or overloaded -> let set() fall back to the original reflective resolution
+        try { return LOOKUP.unreflect(only); }
+        catch (IllegalAccessException e) { throw new IllegalStateException(e); }
+    }
+
     /** A property read: tries {@code get<Prop>} then {@code is<Prop>} (boolean). Null bean -> null (a null
      *  to-one navigation reads as leeg, never an NPE). */
     public static Object get(Object bean, String prop) {
         if (bean == null) return null;
-        String p = pascal(prop);
-        for (String pre : new String[]{"get", "is"}) {
-            try { Method m = bean.getClass().getMethod(pre + p); return m.invoke(bean); }
-            catch (ReflectiveOperationException ignore) { }
-        }
-        throw new IllegalStateException("geen getter voor '" + prop + "' op " + bean.getClass().getName());
+        MethodHandle mh = getterHandle(bean.getClass(), prop);
+        if (mh == null) throw new IllegalStateException("geen getter voor '" + prop + "' op " + bean.getClass().getName());
+        try { return mh.invoke(bean); }
+        catch (RuntimeException | Error e) { throw e; }
+        catch (Throwable t) { throw new IllegalStateException("getter '" + prop + "' faalde op " + bean.getClass().getName(), t); }
     }
 
     /** A property write via {@code set<Prop>}; a Boolean value targets a {@code boolean} setter. */
     public static void set(Object bean, String prop, Object val) {
+        MethodHandle mh = setterHandle(bean.getClass(), prop);
+        if (mh != null) {
+            try { mh.invoke(bean, val); return; }
+            catch (RuntimeException | Error e) { throw e; }
+            catch (Throwable t) { throw new IllegalStateException("setter '" + prop + "' faalde op " + bean.getClass().getName(), t); }
+        }
+        // 0 or >1 single-arg setters: preserve the original reflective resolution exactly (value-type directed).
         Class<?> argT = val instanceof Boolean ? boolean.class : val == null ? Object.class : val.getClass();
         try { bean.getClass().getMethod("set" + pascal(prop), argT).invoke(bean, val); return; }
         catch (ReflectiveOperationException first) {
-            // fall back to a single-arg setter of any type (e.g. a BigDecimal subtype, or a null value)
             for (Method m : bean.getClass().getMethods())
                 if (m.getName().equals("set" + pascal(prop)) && m.getParameterCount() == 1) {
                     try { m.invoke(bean, val); return; } catch (ReflectiveOperationException ignore) { }
