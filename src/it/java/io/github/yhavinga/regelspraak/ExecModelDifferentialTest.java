@@ -10,6 +10,7 @@ import io.github.yhavinga.regelspraak.facts.NatuurlijkPersoon;
 import io.github.yhavinga.regelspraak.facts.Passagier;
 import io.github.yhavinga.regelspraak.facts.Persoon;
 import io.github.yhavinga.regelspraak.facts.Rekensom;
+import io.github.yhavinga.regelspraak.facts.Segment;
 import io.github.yhavinga.regelspraak.facts.Vlucht;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
@@ -24,6 +25,7 @@ import org.kie.api.runtime.KieSession;
 import org.kie.internal.utils.KieHelper;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -701,6 +703,127 @@ class ExecModelDifferentialTest {
             l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 9
     };
 
+    // ---- Phase F fixtures: §7.1 "het totaal van" a temporal attribute (scalar timeline fold) ----
+    /** A Segment(van, tot, waarde) — a null waarde marks a kenmerk's true-period; a string waarde is a value tijdvak. */
+    private static Segment seg(int y1, int m1, int d1, int y2, int m2, int d2, String w) {
+        return new Segment(LocalDate.of(y1, m1, d1), LocalDate.of(y2, m2, d2), w == null ? null : new BigDecimal(w));
+    }
+    private static final String TOTAAL_HDR =
+            "Domein Bedrag is van het type Numeriek (getal met 2 decimalen)\n";
+
+    static final Fixture[] PHASE_F = {
+        // A1 §7.1: the total weights each tijdvak by its month span — 12×10 + 6×11 = 186.
+        single("§7.1 totaal van temporeel attribuut (12×10 + 6×11 = 186)",
+            TOTAAL_HDR + """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel Totale belastingvermindering
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op het totaal van zijn belastingvermindering per maand.
+            """,
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(
+                    seg(2023, 1, 1, 2024, 1, 1, "10.00"), seg(2024, 1, 1, 2024, 7, 1, "11.00")))),
+            Map.of(),
+            Passagier::getTotaleBelastingvermindering),   // 186.00
+
+        // A2 §7.1: "gedurende de tijd dat hij rechthebbend is" clips to the bijvoeglijk kenmerk's true periods — 6×10 + 1×11 = 71.
+        single("§7.1 gedurende (bijvoeglijk kenmerk) klipt (6×10 + 1×11 = 71)",
+            TOTAAL_HDR + """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat hij rechthebbend is).
+            """,
+            () -> passagier(p -> {
+                p.setBelastingverminderingPerMaand(List.of(seg(2023, 1, 1, 2024, 1, 1, "10.00"), seg(2024, 1, 1, 2024, 7, 1, "11.00")));
+                p.setRechthebbend(List.of(seg(2023, 7, 1, 2024, 2, 1, null)));
+            }),
+            Map.of(),
+            Passagier::getTotaleBelastingvermindering),   // 71.00
+
+        // A3 §7.1: "gedurende ... een recht ... heeft" clips on a bezittelijk kenmerk — 71.
+        single("§7.1 gedurende (bezittelijk kenmerk, heeft) klipt (71)",
+            TOTAAL_HDR + """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """,
+            () -> passagier(p -> {
+                p.setBelastingverminderingPerMaand(List.of(seg(2023, 1, 1, 2024, 1, 1, "10.00"), seg(2024, 1, 1, 2024, 7, 1, "11.00")));
+                p.setRechtOpBelastingvermindering(List.of(seg(2023, 7, 1, 2024, 2, 1, null)));
+            }),
+            Map.of(),
+            Passagier::getTotaleBelastingvermindering),   // 71.00
+
+        // A4 §8.1.8: the NEGATED "gedurende ... geen recht ... heeft" clips to the complement (false periods) — 6×10 + 5×11 = 115.
+        single("§8.1.8 negated gedurende klipt het complement (6×10 + 5×11 = 115)",
+            TOTAAL_HDR + """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat hij geen recht op belastingvermindering heeft).
+            """,
+            () -> passagier(p -> {
+                p.setBelastingverminderingPerMaand(List.of(seg(2023, 1, 1, 2024, 1, 1, "10.00"), seg(2024, 1, 1, 2024, 7, 1, "11.00")));
+                p.setRechtOpBelastingvermindering(List.of(seg(2023, 7, 1, 2024, 2, 1, null)));
+            }),
+            Map.of(),
+            Passagier::getTotaleBelastingvermindering),   // 115.00
+
+        // A22 §7.1: "het totaal van de <attr> van zijn partner" reads a to-one navigated timeline, root-guarded — 120 / null.
+        new Fixture("§7.1 navigated totaal van zijn partner (12×10 = 120 / partnerloos = null)",
+            TOTAAL_HDR + """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de bedrag per maand Bedrag voor elke maand;
+                de totaal partner bedrag Bedrag;
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel R
+                geldig altijd
+                    De totaal partner bedrag van een Persoon moet gesteld worden op het totaal van de bedrag per maand van zijn partner.
+            """,
+            () -> {
+                Persoon p1 = new Persoon(), p2 = new Persoon();
+                p1.setPartner(p2);
+                p2.setBedragPerMaand(List.of(seg(2023, 1, 1, 2024, 1, 1, "10.00")));
+                return List.of(p1, p2);
+            },
+            Map.of(),
+            l -> vals(((Persoon) l.get(0)).getTotaalPartnerBedrag(), ((Persoon) l.get(1)).getTotaalPartnerBedrag())),   // 120.00, null
+
+        // A23 §4.20: an empty timeline totals 0; a null timeline totals leeg (null) — no crash.
+        new Fixture("§4.20 totaal van lege tijdreeks = 0 / null tijdreeks = leeg",
+            TOTAAL_HDR + """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel Totale belastingvermindering
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op het totaal van zijn belastingvermindering per maand.
+            """,
+            () -> {
+                Passagier leeg = passagier(p -> p.setBelastingverminderingPerMaand(List.of()));
+                Passagier nul = new Passagier();
+                return List.of(leeg, nul);
+            },
+            Map.of(),
+            l -> vals(((Passagier) l.get(0)).getTotaleBelastingvermindering(), ((Passagier) l.get(1)).getTotaleBelastingvermindering())),   // 0, null
+    };
+
+    @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 4); }
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }
     @Test void phase_B_model_back_end_matches_drl_back_end()  { runDifferential("Phase B", PHASE_B, 3); }

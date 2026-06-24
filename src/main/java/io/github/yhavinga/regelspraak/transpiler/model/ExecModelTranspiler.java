@@ -151,7 +151,19 @@ public final class ExecModelTranspiler {
         RuleItemBuilder<?> consequence;
         // §5.8/§13.4.17 AGGREGATION value (SOM/TOTAAL/AANTAL/MIN/MAX over related elements): an accumulate CE binds
         // the result in the when, read in the consequence — distinct from a scalar fact-local value.
-        if (isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie fx) {
+        WaardeFn tijdTotaal = isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie ftt
+                && ftt.kind() == Expr.FunctieKind.TOTAAL ? tijdreeksTotaal(ftt, doel.objecttype()) : null;
+        if (tijdTotaal != null) {
+            // §7.1 a TOTAAL over a TEMPORAL attribute is a SCALAR timeline fold (rsTijdTotaal over the subject's own/
+            // navigated List<Segment>, optionally gedurende-clipped) — NOT an instance accumulate, and reads no globals.
+            BigDecimal vf = valueFactor(r.waarde().type(), doel.type());
+            if (vf != null) tijdTotaal = tijdTotaal.scaledBy(vf);
+            BiFunction<Object, Map<String, BigDecimal>, Object> fn = tijdTotaal.fn();
+            consequence = DSL.on(sVar).execute((Block2<org.drools.model.Drools, Object>) (drools, s) -> {
+                RegelSpraakRuntime.set(s, doelProp, fn.apply(s, Map.of()));
+                drools.update(s);
+            });
+        } else if (isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie fx) {
             Agg agg = aggregatie(fx, doel.objecttype(), sVar);
             if (agg == null) return skip("regel (aggregatie buiten Phase-C scope): " + r.naam());
             extra.add(agg.accItem());
@@ -353,6 +365,77 @@ public final class ExecModelTranspiler {
         if (accClass == null) return null;
         PatternDSL.PatternDef src2 = src.bind(amtVar, (Function1) (e) -> RegelSpraakRuntime.get(e, attr));
         return new Agg(DSL.accumulate(src2, DSL.accFunction(accClass, amtVar).as(resultVar)), resultVar, null, null, false);
+    }
+
+    // ---------------- §7.1 temporal totaal (Phase F) ----------------
+    /** §7.1 "het totaal van &lt;temporeel attribuut&gt;": a TOTAAL over a single OWN (or to-one navigated) TEMPORAL
+     *  attribute is a SCALAR fold of its {@code List<Segment>} timeline ({@link RegelSpraakRuntime#rsTijdTotaal}
+     *  weighting each tijdvak by its granularity-period count), optionally clipped to a §7.1 "gedurende de tijd dat
+     *  &lt;temporeel kenmerk&gt;" condition ({@code rsTijdKnip}, or {@code rsTijdKnipNiet} for a negated membership).
+     *  Returns a (subject -&gt; BigDecimal) {@link WaardeFn} that reads no globals, or null for any other operand —
+     *  a non-temporal attribute (-&gt; the instance {@link #aggregatie}), a §13.3.6.7 multi-period / set / unresolvable
+     *  navigation, or a compound / unstructured filter (-&gt; honest skip; §8.4 compounds are a later increment).
+     *  Mirrors DrlTranspiler.tijdreeksAggregatie — the only temporal expression that collapses to a scalar (§5.1.1). */
+    private WaardeFn tijdreeksTotaal(Expr.Functie f, Objecttype subject) {
+        if (f.kind() != Expr.FunctieKind.TOTAAL || f.argumenten().size() != 1) return null;
+        if (f.filter() instanceof Conditie.Onopgelost) return null;   // unstructured restriction -> skip (never an unconditioned total)
+        if (!(f.argumenten().get(0) instanceof Expr.AttribuutRef a) || a.objecttype() == null) return null;
+        if (a.set()) return null;     // "het totaal van <attr> van een SET" is an instance aggregation, not an own timeline
+        RegelSpraakModel.Granulariteit g = a.objecttype().attribuutGranulariteit.get(a.attribuut());
+        if (g == null) return null;   // not temporal -> fall through to the instance accumulate
+        if (a.objecttype().attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;   // §13.3.6.7 multi-period -> skip
+        java.util.function.Function<Object, Object> reader = navReader(a, subject);   // own or to-one navigated, root-guarded
+        if (reader == null) return null;
+        final String gran = g.name();
+        // §7.1 optional gedurende clip on a single temporal kenmerk of the subject (positive intersect / negated complement).
+        String kenmerk = null; boolean negatie = false; Class<?> segCls = null;
+        if (f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null
+                && subject != null && subject.kenmerkGranulariteit.containsKey(k.kenmerk())) {
+            segCls = segmentClass();
+            if (segCls == null) return null;
+            kenmerk = k.kenmerk();
+            negatie = k.negatie();
+        } else if (f.filter() != null) {
+            return null;   // a §8.4 compound or other restriction -> honest skip (later increment)
+        }
+        final String fKenmerk = kenmerk; final boolean fNeg = negatie; final Class<?> fSeg = segCls;
+        BiFunction<Object, Map<String, BigDecimal>, Object> fn = (s, gm) -> {
+            List<?> tl = (List<?>) reader.apply(s);
+            if (fKenmerk != null) {
+                List<?> cond = (List<?>) RegelSpraakRuntime.get(s, fKenmerk);
+                tl = fNeg ? RegelSpraakRuntime.rsTijdKnipNiet(tl, cond, fSeg)
+                          : RegelSpraakRuntime.rsTijdKnip(tl, cond, fSeg);
+            }
+            return RegelSpraakRuntime.rsTijdTotaal(tl, gran);
+        };
+        return new WaardeFn(fn, Set.of());
+    }
+
+    /** Resolve an {@link Expr.AttribuutRef} to a {@code (subject -> value)} reader: the subject's OWN attribute, or a
+     *  to-ONE navigated read (root-guarded so a null relation reads as leeg, never an NPE). null for an absent /
+     *  to-many / unresolvable navigation — the model analog of DrlTranspiler.naviResolve's EIGEN / GENAVIGEERD vs the
+     *  marker cases. (The self-anaphora "van de &lt;subject-role&gt;" is resolved the same way DRL does, so the two
+     *  back-ends agree.) */
+    private java.util.function.Function<Object, Object> navReader(Expr.AttribuutRef a, Objecttype subject) {
+        if (a.objecttype() == null || !a.objecttype().heeftLid(a.attribuut())) return null;   // AFWEZIG
+        String rol = null;
+        if (a.navigatieRol() != null) rol = model.verbindendeRolViaNaam(subject, a.objecttype(), a.navigatieRol());
+        final String attr = a.attribuut();
+        if (rol == null) {
+            if (a.objecttype() == subject) return s -> RegelSpraakRuntime.get(s, attr);   // EIGEN
+            rol = subject != null ? model.verbindendeRol(subject, a.objecttype()) : null;
+            if (rol == null) return null;   // ONOPGELOST
+        }
+        if (subject != null && model.naarVeelRol(subject, a.objecttype(), rol)) return null;   // NAAR_VEEL
+        final String fRol = rol;
+        return s -> { Object rel = RegelSpraakRuntime.get(s, fRol); return rel == null ? null : RegelSpraakRuntime.get(rel, attr); };
+    }
+
+    /** The fact {@code Segment} class (a runtime objecttype) reflectively, or null when absent — needed by the
+     *  timeline-constructing helpers (rsTijdKnip/rsTijdUnie/rsAantalDagenIn/rsTijdsevenredig) to build new segments. */
+    static Class<?> segmentClass() {
+        try { return Class.forName(FACTS + ".Segment"); }
+        catch (ClassNotFoundException e) { return null; }
     }
 
     /** Lower a voorwaarde into the subject pattern's in-pattern constraints (plus far-side exists/not joins as

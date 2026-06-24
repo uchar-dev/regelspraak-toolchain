@@ -2,6 +2,13 @@ package io.github.yhavinga.regelspraak.runtime;
 
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import java.math.MathContext;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Shippable runtime support for the EXECUTABLE-MODEL back-end ({@code ExecModelTranspiler}). Two roles:
@@ -192,6 +199,206 @@ public final class RegelSpraakRuntime {
             p = q;
         }
         return result;
+    }
+
+    // ---- §7 temporal (Tijdreeks / List<Segment>) helpers (ported from the DRL helper bodies for Phase F) ----
+    // A temporal attribute is a piecewise-constant timeline held as an ordered List of Segment beans
+    // ({van, tot, waarde}, half-open [van, tot)). The fact Segment class is a runtime objecttype unknown at
+    // transpiler-compile time, so these read its van/tot/waarde REFLECTIVELY (the bridge below) and build new
+    // segments via {@link #newSegment}; the per-segment values + arithmetic are identical to the DRL functions,
+    // so both back-ends fold a timeline to the SAME result (the differential gate). The DRL `function` bodies are
+    // plain Java (dialect java), so a verbatim Java port computes byte-identically (no mvel DECIMAL128 infix).
+    private static LocalDate segVan(Object seg) { return (LocalDate) get(seg, "van"); }
+    private static LocalDate segTot(Object seg) { return (LocalDate) get(seg, "tot"); }
+    private static BigDecimal segWaarde(Object seg) { return (BigDecimal) get(seg, "waarde"); }
+    /** Construct a Segment(van, tot, waarde) of the given fact class reflectively — the model analog of the DRL
+     *  {@code new ….Segment(van, tot, waarde)} (the class is a runtime objecttype, unknown at compile time). */
+    public static Object newSegment(Class<?> segCls, LocalDate van, LocalDate tot, BigDecimal waarde) {
+        try {
+            return segCls.getConstructor(LocalDate.class, LocalDate.class, BigDecimal.class).newInstance(van, tot, waarde);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("kan geen Segment construeren op " + segCls.getName(), e);
+        }
+    }
+
+    /** §7.1 "het totaal van" a temporal attribute: fold a {@code List<Segment>} by weighting each segment's value
+     *  by the count of whole granularity periods (DAG/WEEK/MAAND/KWARTAAL/JAAR) between its van and tot. A null
+     *  list -> null (leeg); a segment with a null bound/value contributes nothing (§4.20 leeg telt als 0); an empty
+     *  timeline totals 0. Kwartaal = three maanden (ChronoUnit has no quarter). Mirrors the DRL {@code rsTijdTotaal}. */
+    public static BigDecimal rsTijdTotaal(List<?> segmenten, String granulariteit) {
+        if (segmenten == null) return null;
+        BigDecimal som = BigDecimal.ZERO;
+        for (Object o : segmenten) {
+            BigDecimal w = segWaarde(o);
+            LocalDate van = segVan(o), tot = segTot(o);
+            if (w == null || van == null || tot == null) continue;
+            long n;
+            switch (granulariteit) {
+                case "DAG":      n = ChronoUnit.DAYS.between(van, tot); break;
+                case "WEEK":     n = ChronoUnit.WEEKS.between(van, tot); break;
+                case "MAAND":    n = ChronoUnit.MONTHS.between(van, tot); break;
+                case "KWARTAAL": n = ChronoUnit.MONTHS.between(van, tot) / 3; break;
+                case "JAAR":     n = ChronoUnit.YEARS.between(van, tot); break;
+                default:         n = 0;
+            }
+            som = som.add(w.multiply(BigDecimal.valueOf(n)));
+        }
+        return som;
+    }
+
+    /** §7.1 clip a value timeline by a condition's TRUE-period timeline: intersect each value Segment with each
+     *  condition interval, emitting the overlap [max(van), min(tot)) carrying the value's waarde. A null value or
+     *  condition clips to empty. Mirrors the DRL {@code rsTijdKnip}. */
+    public static List<Object> rsTijdKnip(List<?> waarde, List<?> conditie, Class<?> segCls) {
+        List<Object> uit = new ArrayList<>();
+        if (waarde == null || conditie == null) return uit;
+        for (Object wo : waarde) {
+            LocalDate wv = segVan(wo), wt = segTot(wo);
+            if (wv == null || wt == null) continue;
+            for (Object co : conditie) {
+                LocalDate cv = segVan(co), ct = segTot(co);
+                if (cv == null || ct == null) continue;
+                LocalDate van = wv.isAfter(cv) ? wv : cv;
+                LocalDate tot = wt.isBefore(ct) ? wt : ct;
+                if (van.isBefore(tot)) uit.add(newSegment(segCls, van, tot, segWaarde(wo)));
+            }
+        }
+        return uit;
+    }
+
+    /** §8.1.8.1/.2 negated-gedurende complement-clip: keep each value Segment's parts where the condition is FALSE
+     *  (subtract the condition TRUE-intervals from each value segment, emitting the gaps). The condition intervals
+     *  overlapping a value segment are clamped to it, selection-sorted by start, then walked. A null value clips to
+     *  empty; a null/empty condition leaves the whole value. Mirrors the DRL {@code rsTijdKnipNiet}. */
+    public static List<Object> rsTijdKnipNiet(List<?> waarde, List<?> conditie, Class<?> segCls) {
+        List<Object> uit = new ArrayList<>();
+        if (waarde == null) return uit;
+        for (Object wo : waarde) {
+            LocalDate wv = segVan(wo), wt = segTot(wo);
+            if (wv == null || wt == null) continue;
+            List<LocalDate[]> knips = new ArrayList<>();
+            if (conditie != null) for (Object co : conditie) {
+                LocalDate cv = segVan(co), ct = segTot(co);
+                if (cv == null || ct == null) continue;
+                LocalDate van = wv.isAfter(cv) ? wv : cv;
+                LocalDate tot = wt.isBefore(ct) ? wt : ct;
+                if (van.isBefore(tot)) knips.add(new LocalDate[]{van, tot});
+            }
+            for (int i = 0; i < knips.size(); i++) {   // selection sort by start (small lists; plain, like the DRL body)
+                int min = i;
+                for (int j = i + 1; j < knips.size(); j++)
+                    if (knips.get(j)[0].isBefore(knips.get(min)[0])) min = j;
+                LocalDate[] t = knips.get(i); knips.set(i, knips.get(min)); knips.set(min, t);
+            }
+            LocalDate cursor = wv;
+            for (LocalDate[] c : knips) {
+                if (c[0].isAfter(cursor)) uit.add(newSegment(segCls, cursor, c[0], segWaarde(wo)));
+                if (c[1].isAfter(cursor)) cursor = c[1];
+            }
+            if (cursor.isBefore(wt)) uit.add(newSegment(segCls, cursor, wt, segWaarde(wo)));
+        }
+        return uit;
+    }
+
+    /** §8.4.2 OR-compound union: merge two TRUE-period timelines into their union — drop empty/null-bounded
+     *  segments, selection-sort by start, then sweep coalescing overlapping OR ADJACENT intervals ([a,b) ∪ [b,c)
+     *  = [a,c)). The result carries a null waarde (boolean true-periods, re-stamped by a later rsTijdKnip). A null
+     *  input contributes nothing. Mirrors the DRL {@code rsTijdUnie}. */
+    public static List<Object> rsTijdUnie(List<?> a, List<?> b, Class<?> segCls) {
+        List<LocalDate[]> segs = new ArrayList<>();
+        if (a != null) for (Object o : a) {
+            LocalDate v = segVan(o), t = segTot(o);
+            if (v != null && t != null && v.isBefore(t)) segs.add(new LocalDate[]{v, t});
+        }
+        if (b != null) for (Object o : b) {
+            LocalDate v = segVan(o), t = segTot(o);
+            if (v != null && t != null && v.isBefore(t)) segs.add(new LocalDate[]{v, t});
+        }
+        for (int i = 0; i < segs.size(); i++) {
+            int min = i;
+            for (int j = i + 1; j < segs.size(); j++)
+                if (segs.get(j)[0].isBefore(segs.get(min)[0])) min = j;
+            LocalDate[] t = segs.get(i); segs.set(i, segs.get(min)); segs.set(min, t);
+        }
+        List<Object> uit = new ArrayList<>();
+        LocalDate van = null, tot = null;
+        for (LocalDate[] s : segs) {
+            if (van == null) { van = s[0]; tot = s[1]; }
+            else if (!s[0].isAfter(tot)) { if (s[1].isAfter(tot)) tot = s[1]; }
+            else { uit.add(newSegment(segCls, van, tot, null)); van = s[0]; tot = s[1]; }
+        }
+        if (van != null) uit.add(newSegment(segCls, van, tot, null));
+        return uit;
+    }
+
+    /** §7.2/§13.4.17.57 "het aantal dagen in <de maand|het jaar> dat <conditie>": bucket a condition's TRUE
+     *  timeline into calendar months (or years) and count, per bucket, the days the condition holds — one output
+     *  Segment per non-empty bucket [start, eind) whose waarde is that day-count. A null condition -> empty.
+     *  Mirrors the DRL {@code rsAantalDagenIn}. */
+    public static List<Object> rsAantalDagenIn(List<?> conditie, String granulariteit, Class<?> segCls) {
+        if (conditie == null) return new ArrayList<>();
+        boolean jaar = "JAAR".equals(granulariteit);
+        TreeMap<LocalDate, Long> tellingen = new TreeMap<>();
+        for (Object o : conditie) {
+            LocalDate sv = segVan(o), st = segTot(o);
+            if (sv == null || st == null || !sv.isBefore(st)) continue;
+            LocalDate cursor = jaar ? sv.withDayOfYear(1) : sv.withDayOfMonth(1);
+            while (cursor.isBefore(st)) {
+                LocalDate next = jaar ? cursor.plusYears(1) : cursor.plusMonths(1);
+                LocalDate van = sv.isAfter(cursor) ? sv : cursor;
+                LocalDate tot = st.isBefore(next) ? st : next;
+                long dagen = ChronoUnit.DAYS.between(van, tot);
+                if (dagen > 0) tellingen.merge(cursor, dagen, Long::sum);
+                cursor = next;
+            }
+        }
+        List<Object> uit = new ArrayList<>();
+        for (Map.Entry<LocalDate, Long> en : tellingen.entrySet()) {
+            LocalDate start = en.getKey();
+            LocalDate eind = jaar ? start.plusYears(1) : start.plusMonths(1);
+            uit.add(newSegment(segCls, start, eind, new BigDecimal(en.getValue().longValue())));
+        }
+        return uit;
+    }
+
+    /** §7.3.2/§13.4.17.58 "het tijdsevenredig deel per <maand|jaar> van <basis> gedurende de tijd dat <conditie>":
+     *  per calendar bucket, value = baseValueInBucket × (true-days / total-days) at DECIMAL64 — §4.22 keeps the
+     *  exact fraction, NEVER auto-rounding to the doel's decimals (§6.1.2). The base value for a bucket is the basis
+     *  segment covering the bucket start; a leeg base there yields no segment. A null conditie/basis -> empty.
+     *  Mirrors the DRL {@code rsTijdsevenredig}. */
+    public static List<Object> rsTijdsevenredig(List<?> conditie, List<?> basis, String granulariteit, Class<?> segCls) {
+        List<Object> uit = new ArrayList<>();
+        if (conditie == null || basis == null) return uit;
+        boolean jaar = "JAAR".equals(granulariteit);
+        TreeMap<LocalDate, Long> trueDagen = new TreeMap<>();
+        for (Object o : conditie) {
+            LocalDate sv = segVan(o), st = segTot(o);
+            if (sv == null || st == null || !sv.isBefore(st)) continue;
+            LocalDate cursor = jaar ? sv.withDayOfYear(1) : sv.withDayOfMonth(1);
+            while (cursor.isBefore(st)) {
+                LocalDate next = jaar ? cursor.plusYears(1) : cursor.plusMonths(1);
+                LocalDate van = sv.isAfter(cursor) ? sv : cursor;
+                LocalDate tot = st.isBefore(next) ? st : next;
+                long dagen = ChronoUnit.DAYS.between(van, tot);
+                if (dagen > 0) trueDagen.merge(cursor, dagen, Long::sum);
+                cursor = next;
+            }
+        }
+        for (Map.Entry<LocalDate, Long> en : trueDagen.entrySet()) {
+            LocalDate start = en.getKey();
+            LocalDate eind = jaar ? start.plusYears(1) : start.plusMonths(1);
+            long totaal = ChronoUnit.DAYS.between(start, eind);
+            long dagen = en.getValue().longValue();
+            BigDecimal w = null;
+            for (Object o : basis) {
+                LocalDate bv = segVan(o), bt = segTot(o);
+                if (bv != null && bt != null && !bv.isAfter(start) && bt.isAfter(start)) { w = segWaarde(o); break; }
+            }
+            if (w == null) continue;
+            BigDecimal deel = w.multiply(BigDecimal.valueOf(dagen)).divide(BigDecimal.valueOf(totaal), MathContext.DECIMAL64);
+            uit.add(newSegment(segCls, start, eind, deel));
+        }
+        return uit;
     }
 
     // ---- identifier convention (matches the transpiler's ident()/getter() Pascal-casing) ----
