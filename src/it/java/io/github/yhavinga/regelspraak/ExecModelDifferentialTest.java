@@ -6,6 +6,7 @@ import io.github.yhavinga.regelspraak.facts.Meting;
 import io.github.yhavinga.regelspraak.facts.NatuurlijkPersoon;
 import io.github.yhavinga.regelspraak.facts.Passagier;
 import io.github.yhavinga.regelspraak.facts.Persoon;
+import io.github.yhavinga.regelspraak.facts.Rekensom;
 import io.github.yhavinga.regelspraak.facts.Vlucht;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
@@ -665,7 +666,8 @@ class ExecModelDifferentialTest {
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 3); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 8); }
-    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 4); }
+    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 5); }
+    @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
 
     // ---- Phase D: §9.5/§13.4.8 consistentieregel — the VIOLATION inserts an Inconsistentie. The observable is the
     //      SET of flagged subjects (not a subject field), so a FoutFixture maps each inserted Inconsistentie to a
@@ -752,6 +754,58 @@ class ExecModelDifferentialTest {
                 return List.of(a, b, c, d, e);
             },
             o -> "bsn=" + ((NatuurlijkPersoon) o).getBurgerservicenummer()),
+
+        // §6.5 deling-door-leeg COMPANION: "deelResultaat := grondslag gedeeld door aftrek". 12/leeg is a fout
+        // (flagged); leeg/4 short-circuits to 0 (no fout); 12/4 is fine (no fout). The Inconsistentie carries the
+        // HOST rule name "deel". Exercises the value-side rsGedeeld + the separate insert-only companion rule.
+        new FoutFixture("deling-door-leeg companion (dividend vol, divisor leeg)",
+            """
+            Objecttype de Rekensom
+                de grondslag Numeriek (geheel getal);
+                de aftrek Numeriek (geheel getal);
+                de deelResultaat Numeriek (getal met 2 decimalen);
+            Regel deel
+                geldig altijd
+                    De deelResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom gedeeld door de aftrek van een Rekensom.
+            """,
+            () -> {
+                Rekensom waardeLeeg = new Rekensom(); waardeLeeg.setGrondslag(new BigDecimal(12));   // 12 / leeg -> fout
+                Rekensom leegRecht = new Rekensom(); leegRecht.setAftrek(new BigDecimal(4));         // leeg / 4 -> 0, geen fout
+                Rekensom beide = new Rekensom(); beide.setGrondslag(new BigDecimal(12)); beide.setAftrek(new BigDecimal(4)); // geen fout
+                return List.of(waardeLeeg, leegRecht, beide);
+            },
+            o -> "g=" + ((Rekensom) o).getGrondslag() + ",a=" + ((Rekensom) o).getAftrek()),
+    };
+
+    // ---- division value (§6.5 rsGedeeld) — the value-side of the deling, checked by reading the result field ----
+    static final Fixture[] PHASE_DIV = {
+        new Fixture("division value (rsGedeeld: left-empty->0, right-empty->leeg)",
+            """
+            Objecttype de Rekensom
+                de grondslag Numeriek (geheel getal);
+                de aftrek Numeriek (geheel getal);
+                de deelResultaat Numeriek (getal met 2 decimalen);
+            Regel deel
+                geldig altijd
+                    De deelResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom gedeeld door de aftrek van een Rekensom.
+            """,
+            () -> { Rekensom r = new Rekensom(); r.setGrondslag(new BigDecimal(12)); r.setAftrek(new BigDecimal(4)); return List.of(r); },
+            Map.of(),
+            l -> ((Rekensom) l.get(0)).getDeelResultaat()),   // 12 / 4 = 3
+
+        new Fixture("division value: non-empty over empty -> leeg",
+            """
+            Objecttype de Rekensom
+                de grondslag Numeriek (geheel getal);
+                de aftrek Numeriek (geheel getal);
+                de deelResultaat Numeriek (getal met 2 decimalen);
+            Regel deel
+                geldig altijd
+                    De deelResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom gedeeld door de aftrek van een Rekensom.
+            """,
+            () -> { Rekensom r = new Rekensom(); r.setGrondslag(new BigDecimal(12)); return List.of(r); },  // aftrek null -> leeg
+            Map.of(),
+            l -> ((Rekensom) l.get(0)).getDeelResultaat()),
     };
 
     private void runDifferential(String label, Fixture[] fixtures, int minDiffed) {

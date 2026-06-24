@@ -72,6 +72,14 @@ public final class RegelSpraakRuntime {
     /** §6.2-6.4 Tabel: an empty (null) numeric operand counts as 0 in +/-. Mirrors the DRL {@code rsNul}. */
     public static BigDecimal rsNul(Object o) { return o == null ? BigDecimal.ZERO : (BigDecimal) o; }
 
+    /** §6.5 Tabel 12 division: an empty LEFT short-circuits to 0; an empty RIGHT (deling door leeg) is a Fout that
+     *  degrades to leeg (null) on the value side — the §9.5 Inconsistentie is raised separately by the companion
+     *  rule. Mirrors the DRL {@code rsGedeeld}. */
+    public static BigDecimal rsGedeeld(Object links, Object rechts) {
+        if (links == null) return BigDecimal.ZERO;
+        return rechts == null ? null : ((BigDecimal) links).divide((BigDecimal) rechts, java.math.MathContext.DECIMAL64);
+    }
+
     // ---- identifier convention (matches the transpiler's ident()/getter() Pascal-casing) ----
     /** Strip a leading lidwoord, PascalCase the whitespace-separated words (so a getter/setter name matches the
      *  hand-written fact bean: "leeftijd" -> "Leeftijd", "recht op korting" -> "RechtOpKorting"). */

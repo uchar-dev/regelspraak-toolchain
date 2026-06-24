@@ -89,7 +89,10 @@ public final class ExecModelTranspiler {
         }
         for (ResolvedRegel r : model.resolvedRegels) {
             Rule rule = regel(r);
-            if (rule != null) m.addRule(rule);
+            if (rule != null) {
+                m.addRule(rule);
+                for (Rule comp : delingCompanions(r)) m.addRule(comp);   // §6.5 deling-door-leeg fout (Phase D)
+            }
         }
         for (io.github.yhavinga.regelspraak.ir.ResolvedConsistentie c : model.consistenties) {   // §9.5 / §13.4.8 (Phase D)
             Rule rule = consistentie(c);
@@ -467,6 +470,14 @@ public final class ExecModelTranspiler {
             Set<String> g = new LinkedHashSet<>(lf.globals()); g.addAll(rf.globals());
             return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsNul(lfn.apply(s, gm)).add(RegelSpraakRuntime.rsNul(rfn.apply(s, gm))), g);
         }
+        if (e instanceof Expr.Binair b && b.op() == Expr.BinOp.GEDEELD_DOOR) {
+            // §6.5 Tabel 12: left-empty -> 0, right-empty (deling door leeg) -> leeg (the §9.5 fout is the companion).
+            WaardeFn lf = scalarWaarde(b.links()), rf = scalarWaarde(b.rechts());
+            if (lf == null || rf == null) return null;
+            BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lf.fn(), rfn = rf.fn();
+            Set<String> g = new LinkedHashSet<>(lf.globals()); g.addAll(rf.globals());
+            return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsGedeeld(lfn.apply(s, gm), rfn.apply(s, gm)), g);
+        }
         return null;
     }
 
@@ -668,6 +679,64 @@ public final class ExecModelTranspiler {
         Block2<org.drools.model.Drools, Object> body = (drools, s) ->
                 drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, naam, s));
         return PatternDSL.rule(naam).build(subjPat, accItem, cntPat, DSL.not(guard), DSL.on(sVar).execute(body));
+    }
+
+    /** §6.5 Tabel 12 "waarde gedeeld door leeg" companion: the value side already degrades the division to leeg
+     *  (rsGedeeld), so this surfaces the Fout via the §9.5 Inconsistentie channel — a SEPARATE insert-only rule per
+     *  division that fires when the dividend is present and the divisor is empty (and the host voorwaarde holds).
+     *  Scope: both operands are the subject's OWN attribute. Mirrors DrlTranspiler.deelDoorLeegFout. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private List<Rule> delingCompanions(ResolvedRegel r) {
+        if (!(r.doel() instanceof Expr.AttribuutRef doel) || doel.objecttype() == null) return List.of();
+        if (!io.github.yhavinga.regelspraak.ir.Geldigheid.ALTIJD.equals(r.geldigheid())) return List.of();
+        Objecttype subject = doel.objecttype();
+        Class<?> factClass = factClass(subject);
+        Class<?> incClass = inconsistentieClass();
+        if (factClass == null || incClass == null) return List.of();
+        List<Expr.Binair> delingen = new ArrayList<>();
+        verzamelDelingen(r.waarde(), delingen);
+        List<Rule> companions = new ArrayList<>();
+        int idx = 0;
+        String naam = r.naam();
+        String fqcn = FACTS + ".Inconsistentie";
+        for (Expr.Binair d : delingen) {
+            if (!(d.links() instanceof Expr.AttribuutRef dvd) || dvd.navigatieRol() != null) continue;
+            if (!(d.rechts() instanceof Expr.AttribuutRef dvs) || dvs.navigatieRol() != null) continue;
+            if (subject.attribuutGranulariteit.containsKey(dvd.attribuut()) || subject.attribuutGranulariteit.containsKey(dvs.attribuut())) continue;
+            String dividend = dvd.attribuut(), divisor = dvs.attribuut();
+            seq = 0;
+            Variable sVar = DSL.declarationOf(factClass, "$subject");
+            PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
+            if (r.voorwaarde() != null) {                       // the division only fires when the host gate holds
+                Gate gate = voorwaarde(r.voorwaarde(), pattern, subject, sVar);
+                if (gate == null || !gate.extra().isEmpty()) continue;   // unlowerable / far-side gate -> skip companion
+                pattern = gate.pattern();
+            }
+            // dividend present AND divisor empty (an empty LEFT short-circuits to 0 -> no fout, so guard the dividend too).
+            pattern = pattern.expr(nextId("dvd"), (Predicate1) s -> RegelSpraakRuntime.get(s, dividend) != null)
+                    .expr(nextId("dvs"), (Predicate1) s -> RegelSpraakRuntime.get(s, divisor) == null);
+            Variable incVar = DSL.declarationOf(incClass, "$inc_" + (seq++));
+            PatternDSL.PatternDef guard = PatternDSL.pattern(incVar)
+                    .expr(nextId("ig"), (Predicate1) i -> naam.equals(RegelSpraakRuntime.get(i, "regel")))
+                    .expr(nextId("ig"), (Variable) sVar, (Predicate2) (i, s) -> RegelSpraakRuntime.get(i, "subject") == s);
+            Block2<org.drools.model.Drools, Object> body = (drools, s) ->
+                    drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, naam, s));
+            // the RULE name is unique (a separate companion) but the Inconsistentie carries the HOST rule name.
+            String compNaam = naam + " (deling door leeg" + (delingen.size() > 1 ? " " + (++idx) : "") + ")";
+            companions.add(PatternDSL.rule(compNaam).build(pattern, DSL.not(guard), DSL.on(sVar).execute(body)));
+        }
+        return companions;
+    }
+    /** Collect the GEDEELD_DOOR nodes through the arithmetic-wrapper layers of a value (for the §6.5 fout). */
+    private static void verzamelDelingen(Expr e, List<Expr.Binair> uit) {
+        if (e instanceof Expr.Binair b) {
+            if (b.op() == Expr.BinOp.GEDEELD_DOOR) uit.add(b);
+            verzamelDelingen(b.links(), uit); verzamelDelingen(b.rechts(), uit);
+        } else if (e instanceof Expr.Afgerond a) {
+            verzamelDelingen(a.basis(), uit);
+        } else if (e instanceof Expr.Begrensd g) {
+            verzamelDelingen(g.basis(), uit);
+        }
     }
 
     /** §13.4.8 operator negation (the complement that detects a violation). Mirrors DrlTranspiler.flip. */
