@@ -126,6 +126,35 @@ public final class RegelSpraakRuntime {
         return x == null ? null : ((BigDecimal) x).setScale(scale, mode);
     }
 
+    /** §6.5 "gedeeld door (ABS)": the same Tabel 12 leegwaarde as {@link #rsGedeeld} (empty LEFT -> 0, value/empty
+     *  -> leeg), but the divide truncates TOWARD ZERO at 5 decimals. Mirrors the DRL {@code rsGedeeldAbs}. */
+    public static BigDecimal rsGedeeldAbs(Object links, Object rechts) {
+        if (links == null) return BigDecimal.ZERO;
+        return rechts == null ? null : ((BigDecimal) links).divide((BigDecimal) rechts, 5, java.math.RoundingMode.DOWN);
+    }
+
+    /** §13.4.17.14 "tot de macht" with an INTEGER exponent: BigDecimal.pow(int) (exact, unlike Math.pow's double
+     *  noise above 2^53); §6.7 a leeg base -> leeg. Mirrors the DRL {@code rsMacht}. */
+    public static BigDecimal rsMacht(Object basis, int exponent) {
+        return basis == null ? null : ((BigDecimal) basis).pow(exponent);
+    }
+
+    /** §13.4.17.14 "tot de macht" with a FRACTIONAL/runtime exponent: Math.pow at double precision; any leeg
+     *  operand -> leeg. Mirrors the DRL {@code rsMachtReeel}. */
+    public static BigDecimal rsMachtReeel(Object basis, Object exponent) {
+        if (basis == null || exponent == null) return null;
+        return BigDecimal.valueOf(Math.pow(((BigDecimal) basis).doubleValue(), ((BigDecimal) exponent).doubleValue()));
+    }
+
+    /** §6.1.4 begrenzing (clamp): a leeg value stays leeg, a null bound is no bound; clamps min-then-max (the value
+     *  side's order). Mirrors the DRL {@code rsBegrens}. */
+    public static BigDecimal rsBegrens(BigDecimal x, BigDecimal min, BigDecimal max) {
+        if (x == null) return null;
+        if (min != null && x.compareTo(min) < 0) x = min;
+        if (max != null && x.compareTo(max) > 0) x = max;
+        return x;
+    }
+
     // ---- §9.7 verdeling (allocation) helpers (ported from the DRL helper bodies for Phase E) ----
     /** §9.7.3 cap a naar-rato share at the recipient's maximum (the surplus is NOT redistributed). A null share
      *  stays leeg; a leeg or NEGATIVE maximum degrades to UNCAPPED — never a negative share — with the §9.7.6

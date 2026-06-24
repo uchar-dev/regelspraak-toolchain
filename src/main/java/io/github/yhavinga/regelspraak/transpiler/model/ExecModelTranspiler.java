@@ -1169,6 +1169,54 @@ public final class ExecModelTranspiler {
             String gn = ident(pr.parameter().naam());
             return new WaardeFn((s, gm) -> gm.get(gn), Set.of(gn));
         }
+        if (e instanceof Expr.Binair b && b.op() == Expr.BinOp.TOT_DE_MACHT) {
+            // §13.4.17.14 power: an INTEGER literal exponent -> exact BigDecimal.pow (rsMacht); else Math.pow
+            // (rsMachtReeel). §6.7 a leeg base/operand -> leeg. No unit restatement. Mirrors DrlTranspiler.binairTerm.
+            if (b.links().type().isDatum()) return null;
+            WaardeFn base = scalarWaarde(b.links());
+            if (base == null) return null;
+            BiFunction<Object, Map<String, BigDecimal>, Object> bfn = base.fn();
+            Integer n = geheelExponent(b.rechts());
+            if (n != null) {
+                int exp = n;
+                return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsMacht(bfn.apply(s, gm), exp), base.globals());
+            }
+            WaardeFn rf = scalarWaarde(b.rechts());
+            if (rf == null) return null;
+            BiFunction<Object, Map<String, BigDecimal>, Object> rfn = rf.fn();
+            Set<String> g = new LinkedHashSet<>(base.globals()); g.addAll(rf.globals());
+            return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsMachtReeel(bfn.apply(s, gm), rfn.apply(s, gm)), g);
+        }
+        if (e instanceof Expr.Begrensd bg) {
+            // §6.1.4 begrenzing (clamp): restate the bounds into the basis unit (§4, like +/-) then rsBegrens
+            // (min-then-max, a leeg basis stays leeg). Mirrors DrlTranspiler's value-side clamp ternaries.
+            WaardeFn baseF = scalarWaarde(bg.basis());
+            if (baseF == null) return null;
+            Datatype bt = bg.basis().type();
+            WaardeFn minF = null, maxF = null;
+            if (bg.minimum() != null) {
+                minF = scalarWaarde(bg.minimum());
+                if (minF == null) return null;
+                BigDecimal vf = valueFactor(bg.minimum().type(), bt);
+                if (vf != null) minF = minF.scaledBy(vf);
+            }
+            if (bg.maximum() != null) {
+                maxF = scalarWaarde(bg.maximum());
+                if (maxF == null) return null;
+                BigDecimal vf = valueFactor(bg.maximum().type(), bt);
+                if (vf != null) maxF = maxF.scaledBy(vf);
+            }
+            BiFunction<Object, Map<String, BigDecimal>, Object> bfn = baseF.fn();
+            BiFunction<Object, Map<String, BigDecimal>, Object> mnfn = minF == null ? null : minF.fn();
+            BiFunction<Object, Map<String, BigDecimal>, Object> mxfn = maxF == null ? null : maxF.fn();
+            Set<String> g = new LinkedHashSet<>(baseF.globals());
+            if (minF != null) g.addAll(minF.globals());
+            if (maxF != null) g.addAll(maxF.globals());
+            return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsBegrens(
+                    (BigDecimal) bfn.apply(s, gm),
+                    mnfn == null ? null : (BigDecimal) mnfn.apply(s, gm),
+                    mxfn == null ? null : (BigDecimal) mxfn.apply(s, gm)), g);
+        }
         if (e instanceof Expr.Binair b && arithmeticOp(b.op())) {
             // §6.2-6.5 binary arithmetic with the leegwaarde tables. Datum arithmetic (datum ± tijdsduur) needs
             // .plusX, not "+", so skip it (Phase F). +/- restate the right operand into the LEFT's unit (§4);
@@ -1196,6 +1244,9 @@ public final class ExecModelTranspiler {
                     case VERMINDERD_MET -> RegelSpraakRuntime.rsVerminderd(lv, rv);
                     case MAAL           -> RegelSpraakRuntime.rsNul(lv).multiply(RegelSpraakRuntime.rsNul(rv), mc);
                     case GEDEELD_DOOR   -> RegelSpraakRuntime.rsGedeeld(lv, rv);
+                    case GEDEELD_DOOR_ABS -> RegelSpraakRuntime.rsGedeeldAbs(lv, rv);   // §6.5 (5 dec, toward zero)
+                    // §6.8 Tabel 13 percentage: leeg counts as 0; mvel infix `l/100*r` (DECIMAL128). The /100 is exact.
+                    case PERCENTAGE_VAN -> RegelSpraakRuntime.rsNul(lv).divide(java.math.BigDecimal.valueOf(100), mc).multiply(RegelSpraakRuntime.rsNul(rv), mc);
                     default             -> null;   // unreachable (arithmeticOp gates)
                 };
             }, g);
@@ -1204,7 +1255,18 @@ public final class ExecModelTranspiler {
     }
     private static boolean arithmeticOp(Expr.BinOp op) {
         return op == Expr.BinOp.PLUS || op == Expr.BinOp.MIN || op == Expr.BinOp.VERMINDERD_MET
-                || op == Expr.BinOp.MAAL || op == Expr.BinOp.GEDEELD_DOOR;
+                || op == Expr.BinOp.MAAL || op == Expr.BinOp.GEDEELD_DOOR
+                || op == Expr.BinOp.GEDEELD_DOOR_ABS || op == Expr.BinOp.PERCENTAGE_VAN;
+    }
+    /** A non-negative INTEGER literal exponent for §13.4.17.14 "tot de macht" (exact BigDecimal.pow(int)), or null for
+     *  a fractional/negative/runtime exponent (-> the Math.pow rsMachtReeel path). Mirrors DrlTranspiler.geheelExponent
+     *  (via bd() — a fraction-literal exponent therefore falls through to scalarWaarde(rechts)). */
+    private static Integer geheelExponent(Expr e) {
+        if (!(e instanceof Expr.Literal lit) || !lit.type().isNumeriek()) return null;
+        BigDecimal v = bd(lit);
+        if (v == null || v.signum() < 0 || v.stripTrailingZeros().scale() > 0) return null;
+        try { int n = v.intValueExact(); return n <= 999_999_999 ? n : null; }
+        catch (ArithmeticException ignore) { return null; }
     }
 
     // ---------------- §5.8 aggregation inside arithmetic (Phase C follow-up) ----------------

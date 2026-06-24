@@ -1646,6 +1646,42 @@ class ExecModelDifferentialTest {
             l -> refIndex(l, ((Passagier) l.get(1)).getBonusvlucht())),   // null
     };
 
+    // ---- Phase H value-path ops: §13.4.17.14 tot de macht, §6.8 percentage (% van), §6.5 gedeeld door (ABS),
+    //      §6.1.4 begrenzing — ported runtime helpers rsMacht/rsMachtReeel/rsGedeeldAbs/rsBegrens. ----
+    static final Fixture[] PHASE_H_VAL = {
+        new Fixture("tot de macht (basistarief 3 ^ 2 = 9)",
+            "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    het basistarief Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De prijs van een passagier moet gesteld worden op zijn basistarief tot de macht 2 rekenkundig afgerond op 0 decimalen.\n",
+            () -> List.of(passagier(p -> p.setBasistarief(new BigDecimal(3)))),
+            Map.of(), l -> ((Passagier) l.get(0)).getPrijs()),   // 9
+
+        new Fixture("percentage (basistarief 50 % van bodem 200 = 100)",
+            "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    het basistarief Numeriek (geheel getal);\n    de bodem Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De prijs van een passagier moet gesteld worden op zijn basistarief % van zijn bodem.\n",
+            () -> List.of(passagier(p -> { p.setBasistarief(new BigDecimal(50)); p.setBodem(new BigDecimal(200)); })),
+            Map.of(), l -> ((Passagier) l.get(0)).getPrijs()),   // 100
+
+        new Fixture("gedeeld door (ABS) (10 / 3 = 3.33333, 5 dec toward zero)",
+            "Objecttype de Passagier\n    de prijs Numeriek (getal met 5 decimalen);\n    het basistarief Numeriek (geheel getal);\n    de bodem Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De prijs van een passagier moet gesteld worden op zijn basistarief gedeeld door (ABS) zijn bodem.\n",
+            () -> List.of(passagier(p -> { p.setBasistarief(new BigDecimal(10)); p.setBodem(new BigDecimal(3)); })),
+            Map.of(), l -> ((Passagier) l.get(0)).getPrijs()),   // 3.33333
+
+        new Fixture("begrenzing met een maximum van 100 (150 -> 100, 50 -> 50)",
+            "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    het basistarief Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De prijs van een passagier moet gesteld worden op zijn basistarief, met een maximum van 100.\n",
+            () -> List.of(passagier(p -> p.setBasistarief(new BigDecimal(150))), passagier(p -> p.setBasistarief(new BigDecimal(50)))),
+            Map.of(), l -> vals(((Passagier) l.get(0)).getPrijs(), ((Passagier) l.get(1)).getPrijs())),   // 100, 50
+
+        // a min+max begrenzing: clamp to [10, 100]. 5 -> 10, 50 -> 50, 150 -> 100.
+        new Fixture("begrenzing met minimum 10 en maximum 100",
+            "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    het basistarief Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De prijs van een passagier moet gesteld worden op zijn basistarief, met een minimum van 10 en een maximum van 100.\n",
+            () -> List.of(passagier(p -> p.setBasistarief(new BigDecimal(5))), passagier(p -> p.setBasistarief(new BigDecimal(50))),
+                          passagier(p -> p.setBasistarief(new BigDecimal(150)))),
+            Map.of(), l -> vals(((Passagier) l.get(0)).getPrijs(), ((Passagier) l.get(1)).getPrijs(), ((Passagier) l.get(2)).getPrijs())),   // 10, 50, 100
+    };
+
     private static String bdStr(BigDecimal x) { return x == null ? "null" : x.stripTrailingZeros().toPlainString(); }
     static final ObjFixture[] PHASE_G_OBJ = {
         // O1 §13.4.6: a Bestelling creates a linked Factuur (bedrag = its waarde) and back-references it.
@@ -1794,6 +1830,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
     @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 12); }
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
+    @Test void phase_H_value_ops_matches_drl_back_end()             { runDifferential("Phase H val", PHASE_H_VAL, 5); }
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 4); }
     @Test void beslistabel_rows_match_drl_back_end()          { runDifferential("Beslistabel", BESLISTABEL, 6); }
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }
