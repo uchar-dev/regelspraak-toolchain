@@ -1016,6 +1016,96 @@ class ExecModelDifferentialTest {
             p -> tl(p.getBelastingvermindering())),   // [Jan→18.00, Feb→4.50]
     };
 
+    // ---- Phase F4b fixtures: §8.4 mixed compound — a static (non-temporal) comparison member as the value-side guard ----
+    private static LocalDate dat(int y, int m, int d) { return LocalDate.of(y, m, d); }
+    /** waarde 10/11 + recht [2023-07,2024-02), plus the static-guard attribute the caller sets (leeftijd / geboortedatum). */
+    private static Passagier mixedPax(Consumer<Passagier> extra) {
+        Passagier p = passagier(q -> {
+            q.setBelastingverminderingPerMaand(List.of(seg(2023, 1, 1, 2024, 1, 1, "10.00"), seg(2024, 1, 1, 2024, 7, 1, "11.00")));
+            q.setRechtOpBelastingvermindering(List.of(seg(2023, 7, 1, 2024, 2, 1, null)));
+        });
+        extra.accept(p);
+        return p;
+    }
+    private static final String MIXED_LEEFTIJD_OT = TOTAAL_HDR
+            + "Objecttype de Passagier (mv: Passagiers) (bezield)\n"
+            + "    de belastingvermindering per maand Bedrag voor elke maand;\n"
+            + "    het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;\n"
+            + "    de leeftijd Numeriek (geheel getal);\n"
+            + "    de totale belastingvermindering Bedrag;\n";
+    private static final String MIXED_GEB_OT = TOTAAL_HDR
+            + "Objecttype de Passagier (mv: Passagiers) (bezield)\n"
+            + "    de belastingvermindering per maand Bedrag voor elke maand;\n"
+            + "    het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;\n"
+            + "    de geboortedatum Datum in dagen;\n"
+            + "    de totale belastingvermindering Bedrag;\n";
+    private static Object bothTotaal(List<Object> l) {
+        return vals(((Passagier) l.get(0)).getTotaleBelastingvermindering(), ((Passagier) l.get(1)).getTotaleBelastingvermindering());
+    }
+    static final Fixture[] PHASE_F4B = {
+        // A13 §8.4 ALLE mixed: a numeric GELIJK static member gates the totaal — leeftijd 18 -> 71, else 0.
+        new Fixture("§8.4 ALLE mixed numeric guard (leeftijd==18 -> 71 / anders 0)",
+            MIXED_LEEFTIJD_OT + """
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat er aan alle volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - zijn leeftijd is gelijk aan 18).
+            """,
+            () -> List.of(mixedPax(p -> p.setLeeftijd(new BigDecimal(18))), mixedPax(p -> p.setLeeftijd(new BigDecimal(19)))),
+            Map.of(),
+            ExecModelDifferentialTest::bothTotaal),   // 71.00, 0
+
+        // A14 §8.4.2 ten-minste-1 mixed: a TRUE static member WIDENS to the full span (186); FALSE leaves the clip (71).
+        new Fixture("§8.4.2 ten-minste-1 mixed verbreedt naar de volle span (18 -> 186 / 19 -> 71)",
+            MIXED_LEEFTIJD_OT + """
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat er aan ten minste 1 van de volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - zijn leeftijd is gelijk aan 18).
+            """,
+            () -> List.of(mixedPax(p -> p.setLeeftijd(new BigDecimal(18))), mixedPax(p -> p.setLeeftijd(new BigDecimal(19)))),
+            Map.of(),
+            ExecModelDifferentialTest::bothTotaal),   // 186.00, 71.00
+
+        // A16 §8.4 ALLE mixed: a DATUM ordering static member gates the totaal — geboortedatum < 2002 -> 71, else 0.
+        new Fixture("§8.4 ALLE mixed datum guard (geboortedatum eerder dan 2002 -> 71 / anders 0)",
+            MIXED_GEB_OT + """
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat er aan alle volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - zijn geboortedatum is eerder dan 1-1-2002).
+            """,
+            () -> List.of(mixedPax(p -> p.setGeboortedatum(dat(1990, 1, 1))), mixedPax(p -> p.setGeboortedatum(dat(2005, 1, 1)))),
+            Map.of(),
+            ExecModelDifferentialTest::bothTotaal),   // 71.00, 0
+
+        // A15 §8.4 ALLE mixed on the aantal-dagen WRITE: the static date guard empties the whole write when false.
+        new Fixture("§8.4 mixed datum guard op aantal-dagen-in (jong -> [Jan 31, Feb 13] / oud -> leeg)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de geboortedatum Datum in dagen;
+                het aantal dagen recht op belastingvermindering Numeriek (geheel getal) met eenheid dg voor elke maand;
+            Regel R
+                geldig altijd
+                    Het aantal dagen recht op belastingvermindering van een passagier moet gesteld worden op het aantal dagen in de maand dat er aan alle volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - zijn geboortedatum is eerder dan 1-1-2002.
+            """,
+            () -> {
+                Passagier jong = passagier(p -> { p.setRechtOpBelastingvermindering(List.of(seg(2024, 1, 1, 2024, 2, 14, null))); p.setGeboortedatum(dat(1990, 1, 1)); });
+                Passagier oud = passagier(p -> { p.setRechtOpBelastingvermindering(List.of(seg(2024, 1, 1, 2024, 2, 14, null))); p.setGeboortedatum(dat(2005, 1, 1)); });
+                return List.of(jong, oud);
+            },
+            Map.of(),
+            l -> vals(tl(((Passagier) l.get(0)).getAantalDagenRechtOpBelastingvermindering()),
+                      tl(((Passagier) l.get(1)).getAantalDagenRechtOpBelastingvermindering()))),   // [Jan 31, Feb 13], []
+    };
+
+    @Test void phase_F4b_mixed_static_guard_matches_drl_back_end() { runDifferential("Phase F4b", PHASE_F4B, 4); }
     @Test void phase_F4_compound_gedurende_matches_drl_back_end()  { runDifferential("Phase F4", PHASE_F4, 5); }
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 3); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }

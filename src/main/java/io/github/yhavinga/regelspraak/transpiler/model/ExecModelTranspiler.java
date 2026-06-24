@@ -427,6 +427,8 @@ public final class ExecModelTranspiler {
         // §8.4.2 pure-kenmerk compound (ALLE intersect / ten-minste-1 union). A mixed-static compound -> skip (next inc).
         String kenmerk = null; boolean negatie = false; Class<?> segCls = null;
         BiFunction<Object, List<?>, List<?>> compoundClip = null;
+        java.util.function.Predicate<Object> staticGuard = null;   // §8.4 mixed-static value-side gate
+        boolean orWiden = false;                                   // ten-minste-1: a TRUE static member widens to the full span
         if (f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null
                 && subject != null && subject.kenmerkGranulariteit.containsKey(k.kenmerk())) {
             segCls = segmentClass();
@@ -436,23 +438,47 @@ public final class ExecModelTranspiler {
         } else if (f.filter() instanceof Conditie.Samengesteld sc) {
             segCls = segmentClass();
             if (segCls == null) return null;
-            compoundClip = samengesteldeTijdKnip(sc, subject, segCls);
-            if (compoundClip == null) return null;   // a §8.4 mixed-static / unsupported compound -> honest skip
+            // §8.4.2 partition: temporal kenmerks (the clip) + static comparisons (the value-side guard). Any other
+            // member -> skip; no temporal member -> not a temporal restriction (skip).
+            List<Conditie.Kenmerk> kenmerken = new ArrayList<>();
+            List<Conditie.Vergelijking> statisch = new ArrayList<>();
+            for (Conditie c : sc.onderdelen()) {
+                if (c instanceof Conditie.Kenmerk kk) kenmerken.add(kk);
+                else if (c instanceof Conditie.Vergelijking vv) statisch.add(vv);
+                else return null;
+            }
+            if (kenmerken.isEmpty()) return null;
+            compoundClip = kenmerkClip(kenmerken, sc.kwantor(), sc.drempel(), subject, segCls);
+            if (compoundClip == null) return null;
+            if (!statisch.isEmpty()) {
+                boolean alle = sc.kwantor() == Conditie.Kwantor.ALLE;
+                staticGuard = statischeGuard(statisch, subject, alle);
+                if (staticGuard == null) return null;   // a static member we cannot lower -> skip, never an ungated totaal
+                orWiden = !alle;   // ten-minste-1: a TRUE static member widens the result to the full (unclipped) span
+            }
         } else if (f.filter() != null) {
             return null;   // any other restriction -> honest skip
         }
         final String fKenmerk = kenmerk; final boolean fNeg = negatie; final Class<?> fSeg = segCls;
         final BiFunction<Object, List<?>, List<?>> fClip = compoundClip;
+        final java.util.function.Predicate<Object> fGuard = staticGuard; final boolean fOrWiden = orWiden;
         BiFunction<Object, Map<String, BigDecimal>, Object> fn = (s, gm) -> {
             List<?> tl = (List<?>) reader.apply(s);
+            List<?> clipped;
             if (fKenmerk != null) {
                 List<?> cond = (List<?>) RegelSpraakRuntime.get(s, fKenmerk);
-                tl = fNeg ? RegelSpraakRuntime.rsTijdKnipNiet(tl, cond, fSeg)
-                          : RegelSpraakRuntime.rsTijdKnip(tl, cond, fSeg);
+                clipped = fNeg ? RegelSpraakRuntime.rsTijdKnipNiet(tl, cond, fSeg) : RegelSpraakRuntime.rsTijdKnip(tl, cond, fSeg);
             } else if (fClip != null) {
-                tl = fClip.apply(s, tl);
+                clipped = fClip.apply(s, tl);
+            } else {
+                clipped = tl;
             }
-            return RegelSpraakRuntime.rsTijdTotaal(tl, gran);
+            if (fGuard != null) {
+                boolean guardHeld = fGuard.test(s);
+                if (fOrWiden) return RegelSpraakRuntime.rsTijdTotaal(guardHeld ? tl : clipped, gran);   // ten-minste-1: TRUE -> full span
+                if (!guardHeld) return java.math.BigDecimal.ZERO;                                       // ALLE: FALSE -> 0
+            }
+            return RegelSpraakRuntime.rsTijdTotaal(clipped, gran);
         };
         return new WaardeFn(fn, Set.of());
     }
@@ -504,11 +530,14 @@ public final class ExecModelTranspiler {
         if (w instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.AANTAL_DAGEN_IN
                 && f.granulariteit() == gran && subject != null) {
             java.util.function.Function<Object, List<?>> cond = conditieTijdreeks(f.filter(), subject);   // single kenmerk / §8.4 compound
-            if (cond != null) {
+            java.util.function.Predicate<Object> guard = cond == null ? null : mixedGuardWrite(f.filter(), subject);   // §8.4 static gate
+            if (cond != null && guard != null) {
                 Class<?> segCls = segmentClass();
                 if (segCls != null) {
                     final String granName = gran.name();
-                    return new TemporeleWaarde((s, gv) -> RegelSpraakRuntime.rsAantalDagenIn(cond.apply(s), granName, segCls), null);
+                    final java.util.function.Predicate<Object> fGuard = guard;
+                    return new TemporeleWaarde((s, gv) -> fGuard.test(s)
+                            ? RegelSpraakRuntime.rsAantalDagenIn(cond.apply(s), granName, segCls) : new ArrayList<>(), null);
                 }
             }
         }
@@ -533,13 +562,17 @@ public final class ExecModelTranspiler {
             if (baseReader != null && baseGran.ordinal() >= gran.ordinal() && baseType.isNumeriek()
                     && java.util.Objects.equals(baseType.eenheidOf(), doelType == null ? null : doelType.eenheidOf())) {
                 java.util.function.Function<Object, List<?>> cond = conditieTijdreeks(f.filter(), subject);
-                if (cond != null) {
+                java.util.function.Predicate<Object> guard = cond == null ? null : mixedGuardWrite(f.filter(), subject);   // §8.4 static gate
+                if (cond != null && guard != null) {
                     Class<?> segCls = segmentClass();
                     if (segCls != null) {
                         final String granName = gran.name();
                         final BiFunction<Object, Object, List<?>> br = baseReader;
+                        final java.util.function.Predicate<Object> fGuard = guard;
                         return new TemporeleWaarde(
-                                (s, gv) -> RegelSpraakRuntime.rsTijdsevenredig(cond.apply(s), br.apply(s, gv), granName, segCls),
+                                (s, gv) -> fGuard.test(s)
+                                        ? RegelSpraakRuntime.rsTijdsevenredig(cond.apply(s), br.apply(s, gv), granName, segCls)
+                                        : new ArrayList<>(),
                                 baseGlobal);
                     }
                 }
@@ -562,7 +595,11 @@ public final class ExecModelTranspiler {
             boolean alle = s.kwantor() == Conditie.Kwantor.ALLE;
             List<java.util.function.Function<Object, List<?>>> regios = new ArrayList<>();
             for (Conditie c : s.onderdelen()) {
-                if (!(c instanceof Conditie.Kenmerk k)) return null;   // a static member -> the mixedGuardWrap path (next inc); else unsupported
+                // §8.4 a static comparison member is the value-side guard (the mixedGuardWrite gate), not part of the
+                // timeline — admitted only in an ALLE compound (an OR-mixed write widens the span, which the producers
+                // do not express, so it markers).
+                if (c instanceof Conditie.Vergelijking) { if (!alle) return null; continue; }
+                if (!(c instanceof Conditie.Kenmerk k)) return null;
                 java.util.function.Function<Object, List<?>> g = temporeelKenmerkTijdreeks(k, subject);
                 if (g == null) return null;   // a negated / navigated / multi-period member -> marker (no standalone complement)
                 regios.add(g);
@@ -586,16 +623,13 @@ public final class ExecModelTranspiler {
      *  rsTijdKnip (negation per member); "ten minste 1" (drempel 1) clips the value to the UNION of each member's
      *  true-region (a negated member's region is the value's rsTijdKnipNiet complement, value-bounded). Returns a
      *  {@code (subject, value) -> clipped-value} function, or null when a member is not a single-period subject kenmerk
-     *  (a static / navigated / mixed / other-kwantor compound is the caller's skip). Mirrors DrlTranspiler.samengesteldeTijdKnip. */
-    private BiFunction<Object, List<?>, List<?>> samengesteldeTijdKnip(Conditie.Samengesteld s, Objecttype subject, Class<?> segCls) {
-        List<Conditie.Kenmerk> leden = new ArrayList<>();
-        for (Conditie c : s.onderdelen()) {
-            if (!(c instanceof Conditie.Kenmerk k) || k.navigatie() != null
-                    || subject == null || !subject.kenmerkGranulariteit.containsKey(k.kenmerk())) return null;
-            leden.add(k);
-        }
+     *  or the kwantor is unsupported. Mirrors DrlTranspiler.samengesteldeTijdKnip. */
+    private BiFunction<Object, List<?>, List<?>> kenmerkClip(List<Conditie.Kenmerk> leden, Conditie.Kwantor kw, int drempel,
+                                                             Objecttype subject, Class<?> segCls) {
         if (leden.isEmpty()) return null;
-        if (s.kwantor() == Conditie.Kwantor.ALLE) {
+        for (Conditie.Kenmerk k : leden)
+            if (k.navigatie() != null || subject == null || !subject.kenmerkGranulariteit.containsKey(k.kenmerk())) return null;
+        if (kw == Conditie.Kwantor.ALLE) {
             return (sub, value) -> {
                 List<?> r = value;
                 for (Conditie.Kenmerk k : leden) {
@@ -606,7 +640,7 @@ public final class ExecModelTranspiler {
                 return r;
             };
         }
-        if (s.kwantor() == Conditie.Kwantor.TEN_MINSTE && s.drempel() == 1) {
+        if (kw == Conditie.Kwantor.TEN_MINSTE && drempel == 1) {
             return (sub, value) -> {
                 List<?> unie = lidSteun(sub, value, leden.get(0), segCls);
                 for (int i = 1; i < leden.size(); i++)
@@ -622,6 +656,96 @@ public final class ExecModelTranspiler {
     private static List<?> lidSteun(Object sub, List<?> value, Conditie.Kenmerk k, Class<?> segCls) {
         List<?> g = (List<?>) RegelSpraakRuntime.get(sub, k.kenmerk());
         return k.negatie() ? RegelSpraakRuntime.rsTijdKnipNiet(value, g, segCls) : g;
+    }
+
+    /** §8.4 the value-side static guard for a temporal-WRITE compound: the AND of the non-temporal comparison members
+     *  (only an ALLE compound admits statics on the write side). Returns a {@code (subject -> Boolean)} gate (a
+     *  constant-true gate when there are no statics), or null when a static member is not lowerable (caller skips). */
+    private java.util.function.Predicate<Object> mixedGuardWrite(Conditie filter, Objecttype subject) {
+        if (!(filter instanceof Conditie.Samengesteld s)) return o -> true;
+        List<Conditie.Vergelijking> statisch = new ArrayList<>();
+        for (Conditie c : s.onderdelen()) if (c instanceof Conditie.Vergelijking v) statisch.add(v);
+        if (statisch.isEmpty()) return o -> true;
+        return statischeGuard(statisch, subject, true);   // AND (an ALLE compound — the OR-mixed write markers in conditieTijdreeks)
+    }
+
+    /** §8.4 combine the static comparison members into one {@code (subject -> Boolean)} gate — the AND ({@code and}) for
+     *  an ALLE compound, the OR for a "ten minste 1". null when any member is not lowerable. Mirrors DrlTranspiler.statischeGuard. */
+    private java.util.function.Predicate<Object> statischeGuard(List<Conditie.Vergelijking> leden, Objecttype subject, boolean and) {
+        List<java.util.function.Predicate<Object>> ps = new ArrayList<>();
+        for (Conditie.Vergelijking v : leden) {
+            java.util.function.Predicate<Object> p = statischeVergelijking(v, subject);
+            if (p == null) return null;
+            ps.add(p);
+        }
+        return s -> {
+            for (java.util.function.Predicate<Object> p : ps) {
+                boolean r = p.test(s);
+                if (and && !r) return false;
+                if (!and && r) return true;
+            }
+            return and;
+        };
+    }
+
+    /** §8.4 one non-temporal comparison member as a value-side {@code (subject -> Boolean)} predicate, with the §5.1
+     *  comparison-matrix leegwaarde semantics. A NUMERIC comparison reuses {@link #vergelijk} (which already matches
+     *  the value-side rule: GELIJK both-empty true, ONGELIJK gevuld-vs-empty true, ordering onwaar if either empty). A
+     *  DATUM ordering (eerder/later) is true only when both operands are present (an empty operand -> onwaar). null
+     *  when the operand is temporal / navigated / not an own attribute vs a literal/own-attribute, or the op/operand is
+     *  out of scope. Mirrors DrlTranspiler.statischeVergelijkingGuard. */
+    private java.util.function.Predicate<Object> statischeVergelijking(Conditie.Vergelijking v, Objecttype subject) {
+        if (!(v.links() instanceof Expr.AttribuutRef la) || la.navigatieRol() != null) return null;
+        if (subject != null && subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;   // a temporal operand is no static member
+        String lattr = la.attribuut();
+        if (isNumeriekOp(v.op())) {
+            Conditie.Operator op = v.op();
+            if (v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
+                BigDecimal rhs = bd(lit);
+                if (rhs == null) return null;
+                BigDecimal[] f = restatement(la.type(), lit.type());
+                BigDecimal rhsS = scale(rhs, f[1]);
+                return s -> vergelijk(scale(num(s, lattr), f[0]), rhsS, op);
+            }
+            if (v.rechts() instanceof Expr.AttribuutRef ra && ra.navigatieRol() == null) {
+                if (subject != null && subject.attribuutGranulariteit.containsKey(ra.attribuut())) return null;
+                String rattr = ra.attribuut();
+                BigDecimal[] f = restatement(la.type(), ra.type());
+                return s -> vergelijk(scale(num(s, lattr), f[0]), scale(num(s, rattr), f[1]), op);
+            }
+            return null;
+        }
+        if (isDatumOp(v.op()) && la.type().isDatum() && v.rechts() instanceof Expr.Literal lit && lit.type().isDatum()) {
+            java.time.LocalDate rhs = parseDatum(lit.waarde());
+            if (rhs == null) return null;
+            Conditie.Operator op = v.op();
+            return s -> {
+                Object a = RegelSpraakRuntime.get(s, lattr);
+                if (!(a instanceof java.time.LocalDate ld)) return false;   // an empty datum operand -> onwaar (ordening)
+                return switch (op) {
+                    case EERDER           -> ld.isBefore(rhs);
+                    case EERDER_OF_GELIJK -> !ld.isAfter(rhs);
+                    case LATER            -> ld.isAfter(rhs);
+                    case LATER_OF_GELIJK  -> !ld.isBefore(rhs);
+                    default               -> false;
+                };
+            };
+        }
+        return null;
+    }
+    private static boolean isDatumOp(Conditie.Operator op) {
+        return switch (op) {
+            case EERDER, EERDER_OF_GELIJK, LATER, LATER_OF_GELIJK -> true;
+            default -> false;
+        };
+    }
+    /** Parse a §13.2.19 date literal ("dd. d-m-yyyy ...") to a LocalDate — its d-m-yyyy core, or null when absent.
+     *  Mirrors the date core of DrlTranspiler.literal. */
+    private static java.time.LocalDate parseDatum(String waarde) {
+        java.util.regex.Matcher d = java.util.regex.Pattern.compile("(\\d{1,2})-(\\d{1,2})-(\\d{4})").matcher(waarde);
+        if (!d.find()) return null;
+        try { return java.time.LocalDate.of(Integer.parseInt(d.group(3)), Integer.parseInt(d.group(2)), Integer.parseInt(d.group(1))); }
+        catch (RuntimeException e) { return null; }
     }
 
     /** A single positive single-period subject kenmerk's TRUE-period reader ({@code s -> the kenmerk's List<Segment>}),
