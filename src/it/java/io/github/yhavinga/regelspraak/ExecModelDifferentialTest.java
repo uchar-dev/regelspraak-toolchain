@@ -90,10 +90,57 @@ class ExecModelDifferentialTest {
             Passagier::getPrijs),
     };
 
-    @Test void phase_A_model_back_end_matches_drl_back_end() {
+    // ---- Phase B fixtures: ALLE-compound (AND), kenmerkcheck, LEEG/GEVULD as in-pattern constraints ----
+    static final Fixture[] PHASE_B = {
+        new Fixture("ALLE compound (AND of two comparisons)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal) met eenheid jr;
+                is minderjarig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien hij aan alle volgende voorwaarden voldoet:
+                      • zijn leeftijd is groter dan 5 jr
+                      • zijn leeftijd is kleiner dan 18 jr.
+            """,
+            () -> passagier(p -> p.setLeeftijd(new BigDecimal(16))),
+            Map.of(),
+            Passagier::isMinderjarig),
+
+        new Fixture("kenmerkcheck (hij kind is)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                is minderjarig kenmerk (bijvoeglijk);
+                kind kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien hij kind is.
+            """,
+            () -> passagier(p -> p.setKind(true)),
+            Map.of(),
+            Passagier::isMinderjarig),
+
+        new Fixture("LEEG predicate (leeftijd leeg is)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal) met eenheid jr;
+                is minderjarig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien zijn leeftijd leeg is.
+            """,
+            () -> passagier(p -> { /* leeftijd null -> leeg */ }),
+            Map.of(),
+            Passagier::isMinderjarig),
+    };
+
+    @Test void phase_A_model_back_end_matches_drl_back_end() { runDifferential("Phase A", PHASE_A, 3); }
+    @Test void phase_B_model_back_end_matches_drl_back_end() { runDifferential("Phase B", PHASE_B, 3); }
+
+    private void runDifferential(String label, Fixture[] fixtures, int minDiffed) {
         int diffed = 0, skipped = 0;
         StringBuilder skips = new StringBuilder();
-        for (Fixture f : PHASE_A) {
+        for (Fixture f : fixtures) {
             RegelSpraakModel m = Resolver.resolve(f.src());
             assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
 
@@ -109,10 +156,10 @@ class ExecModelDifferentialTest {
                     () -> "back-ends DIVERGE on '" + f.naam() + "': DRL=" + viaDrl + " model=" + viaModel);
             diffed++;
         }
-        // Phase A must actually exercise the model path (not silently skip everything)
+        // the phase must actually exercise the model path (not silently skip everything)
         final int agreed = diffed;
-        assertTrue(agreed >= 3, () -> "verwacht >=3 gediffte Phase-A fixtures, kreeg " + agreed + skips);
-        System.out.println("[differential] Phase A: " + agreed + " agreed, " + skipped + " skipped" + skips);
+        assertTrue(agreed >= minDiffed, () -> "verwacht >=" + minDiffed + " gediffte " + label + " fixtures, kreeg " + agreed + skips);
+        System.out.println("[differential] " + label + ": " + agreed + " agreed, " + skipped + " skipped" + skips);
     }
 
     // ---- harness plumbing ----

@@ -114,25 +114,54 @@ public final class ExecModelTranspiler {
                 .build(pattern, DSL.on(sVar).execute(body));
     }
 
-    /** Phase A: a single own-attribute comparison vs a numeric Parameter-global or Literal -> one expr constraint.
-     *  Returns the augmented pattern, or null when the condition is outside Phase-A scope (caller skips the rule). */
+    /** Lower a voorwaarde into in-pattern constraints (added with .expr — multiple exprs AND). Returns the augmented
+     *  pattern, or null when ANY part is outside scope (caller skips the whole rule — never a partial gate).
+     *  Phase A: a single own-attribute scalar comparison vs a numeric global/literal. Phase B: an ALLE/DE compound
+     *  (AND of supported parts), an own non-temporal kenmerkcheck (boolean property), and LEEG/GEVULD on an own attr.
+     *  A temporal (List<Segment>) operand SKIPS (Phase F) — never a List spliced into a scalar lambda. */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private PatternDSL.PatternDef voorwaarde(Conditie c, PatternDSL.PatternDef pattern, Objecttype subject) {
-        if (!(c instanceof Conditie.Vergelijking v) || !(v.links() instanceof Expr.AttribuutRef la)
-                || la.navigatieRol() != null) return null;
-        java.util.function.BiPredicate<BigDecimal, BigDecimal> cmp = comparator(v.op());
-        if (cmp == null) return null;
-        String attr = la.attribuut();
-        if (v.rechts() instanceof Expr.ParameterRef pr) {
-            Global<BigDecimal> g = globals.get(ident(pr.parameter().naam()));
-            if (g == null) return null;
-            return pattern.expr("c_" + attr, (Variable) g,
-                    (Predicate2) (s, gv) -> bothNonNull(num(s, attr), (BigDecimal) gv, cmp));
+        // §13.4.14 ALLE / DE compound: AND its parts as successive in-pattern constraints.
+        if (c instanceof Conditie.Samengesteld s) {
+            if (s.kwantor() != Conditie.Kwantor.ALLE && s.kwantor() != Conditie.Kwantor.DE) return null;  // OR/quantifiers later
+            for (Conditie sub : s.onderdelen()) {
+                pattern = voorwaarde(sub, pattern, subject);
+                if (pattern == null) return null;
+            }
+            return pattern;
         }
-        if (v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
-            BigDecimal rhs = bd(lit);
-            if (rhs == null) return null;
-            return pattern.expr("c_" + attr, (Predicate1) s -> bothNonNull(num(s, attr), rhs, cmp));
+        // §8.1.8 kenmerkcheck: an own, non-temporal kenmerk -> a boolean property constraint (kenmerk == !negatie).
+        if (c instanceof Conditie.Kenmerk k) {
+            if (k.navigatie() != null || (k.eigenaar() != null && k.eigenaar() != subject)) return null;  // navigated/foreign later
+            if (subject != null && subject.kenmerkGranulariteit.containsKey(k.kenmerk())) return null;     // temporal kenmerk -> Phase F
+            String kenmerk = k.kenmerk(); boolean wanted = !k.negatie();
+            return pattern.expr("k_" + kenmerk, (Predicate1) s -> Boolean.TRUE.equals(RegelSpraakRuntime.get(s, kenmerk)) == wanted);
+        }
+        // §8.1.2 LEEG/GEVULD on an own attribute -> a null / non-null constraint.
+        if (c instanceof Conditie.Predicaat p
+                && (p.soort() == Conditie.Predicaatsoort.LEEG || p.soort() == Conditie.Predicaatsoort.GEVULD)
+                && p.operand() instanceof Expr.AttribuutRef pa && pa.navigatieRol() == null) {
+            if (subject != null && subject.attribuutGranulariteit.containsKey(pa.attribuut())) return null;  // temporal -> Phase F
+            String attr = pa.attribuut(); boolean leeg = p.soort() == Conditie.Predicaatsoort.LEEG;
+            return pattern.expr("p_" + attr, (Predicate1) s -> (RegelSpraakRuntime.get(s, attr) == null) == leeg);
+        }
+        // §8.1.1 a single own-attribute scalar comparison vs a numeric global / literal.
+        if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null) {
+            if (subject != null && subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            java.util.function.BiPredicate<BigDecimal, BigDecimal> cmp = comparator(v.op());
+            if (cmp == null) return null;
+            String attr = la.attribuut();
+            if (v.rechts() instanceof Expr.ParameterRef pr) {
+                Global<BigDecimal> g = globals.get(ident(pr.parameter().naam()));
+                if (g == null) return null;
+                return pattern.expr("c_" + attr, (Variable) g,
+                        (Predicate2) (s, gv) -> bothNonNull(num(s, attr), (BigDecimal) gv, cmp));
+            }
+            if (v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
+                BigDecimal rhs = bd(lit);
+                if (rhs == null) return null;
+                return pattern.expr("c_" + attr, (Predicate1) s -> bothNonNull(num(s, attr), rhs, cmp));
+            }
         }
         return null;
     }
