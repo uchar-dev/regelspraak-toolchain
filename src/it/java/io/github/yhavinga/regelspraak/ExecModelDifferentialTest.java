@@ -1731,6 +1731,24 @@ class ExecModelDifferentialTest {
             () -> List.of(passagier(p -> p.setBasistarief(new BigDecimal(5))), passagier(p -> p.setBasistarief(new BigDecimal(50))),
                           passagier(p -> p.setBasistarief(new BigDecimal(150)))),
             Map.of(), l -> vals(((Passagier) l.get(0)).getPrijs(), ((Passagier) l.get(1)).getPrijs(), ((Passagier) l.get(2)).getPrijs())),   // 10, 50, 100
+
+        // §5.8.3 listed MINIMUM over two operands "de minimale waarde van A en B": min(10,20)=10; a leeg operand is
+        // SKIPPED (null,20 -> 20); all-leeg -> leeg.
+        new Fixture("minimale waarde van twee operanden (min-skip leeg)",
+            "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    het basistarief Numeriek (geheel getal);\n    het plafond Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        Het plafond van een passagier moet gesteld worden op de minimale waarde van zijn prijs en zijn basistarief.\n",
+            () -> List.of(passagier(p -> { p.setPrijs(new BigDecimal(10)); p.setBasistarief(new BigDecimal(20)); }),
+                          passagier(p -> p.setBasistarief(new BigDecimal(20))),   // prijs leeg -> skip -> 20
+                          new Passagier()),                                        // both leeg -> leeg
+            Map.of(), l -> vals(((Passagier) l.get(0)).getPlafond(), ((Passagier) l.get(1)).getPlafond(),
+                                ((Passagier) l.get(2)).getPlafond())),   // 10, 20, null
+
+        // §4.14 listed EERSTE over two dates "de eerste van A en B": the earliest. 2020-03-01 < 2020-06-01.
+        new Fixture("eerste van twee data (earliest)",
+            "Objecttype de Vlucht\n    de verwacht vertrek Datum in dagen;\n    de daadwerkelijk vertrek Datum in dagen;\n    de vroegste vertrek Datum in dagen;\n"
+            + "Regel R\n    geldig altijd\n        De vroegste vertrek van een Vlucht moet gesteld worden op de eerste van zijn verwacht vertrek en zijn daadwerkelijk vertrek.\n",
+            () -> { Vlucht v = new Vlucht(); v.setVerwachtVertrek(dat(2020, 6, 1)); v.setDaadwerkelijkVertrek(dat(2020, 3, 1)); return List.of(v); },
+            Map.of(), l -> String.valueOf(((Vlucht) l.get(0)).getVroegsteVertrek())),   // 2020-03-01
     };
 
     // ---- Phase H builtin scalar Functies: §13.4.17.17 abs, §13.4.17.18-.20 date components, §13.4.17.37 paasdag
@@ -1915,7 +1933,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
     @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 14); }
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
-    @Test void phase_H_value_ops_matches_drl_back_end()             { runDifferential("Phase H val", PHASE_H_VAL, 5); }
+    @Test void phase_H_value_ops_matches_drl_back_end()             { runDifferential("Phase H val", PHASE_H_VAL, 7); }
     @Test void phase_H_builtin_functies_match_drl_back_end()        { runDifferential("Phase H func", PHASE_H_FUNC, 4); }
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 4); }
     @Test void beslistabel_rows_match_drl_back_end()          { runDifferential("Beslistabel", BESLISTABEL, 6); }

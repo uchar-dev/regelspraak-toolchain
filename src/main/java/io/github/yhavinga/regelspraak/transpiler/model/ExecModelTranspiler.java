@@ -232,7 +232,9 @@ public final class ExecModelTranspiler {
                 RegelSpraakRuntime.set(s, doelProp, fn.apply(s, Map.of()));
                 drools.update(s);
             });
-        } else if (isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie fx) {
+        } else if (isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie fx && !isGelisteFold(fx)) {
+            // (a ≥2-operand MINIMUM/MAXIMUM is a §5.8.3 LISTED concatenation fold, not an instance accumulate — it
+            //  flows to the scalar path / concatenatieFold below.)
             Agg agg = aggregatie(fx, doel.objecttype(), sVar);
             if (agg == null) return skip("regel (aggregatie buiten Phase-C scope): " + r.naam());
             extra.add(agg.accItem());
@@ -348,6 +350,13 @@ public final class ExecModelTranspiler {
     private static boolean isAggregatieKind(Expr.FunctieKind k) {
         return k == Expr.FunctieKind.SOM || k == Expr.FunctieKind.TOTAAL || k == Expr.FunctieKind.AANTAL
                 || k == Expr.FunctieKind.MINIMUM || k == Expr.FunctieKind.MAXIMUM;
+    }
+    /** §5.8.3-.4 a LISTED concatenation fold ("de minimale/maximale/eerste/laatste van A en B …") — ≥2 listed scalar
+     *  operands, no restriction — handled on the scalar path by {@link #concatenatieFold}, NOT an instance aggregation. */
+    private static boolean isGelisteFold(Expr.Functie f) {
+        return (f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM
+                || f.kind() == Expr.FunctieKind.EERSTE || f.kind() == Expr.FunctieKind.LAATSTE)
+                && f.argumenten().size() >= 2 && f.filter() == null;
     }
 
     /** A lowered aggregation: the accumulate rule item, the result Variable, and (for §5.8.2 SOM) the contributor
@@ -1318,6 +1327,8 @@ public final class ExecModelTranspiler {
      *  (its mandatory afronding); the aggregations/tijdsduur go through other paths. Mirrors DrlTranspiler.scalarFunctie. */
     private WaardeFn scalarFunctie(Expr.Functie f) {
         List<Expr> a = f.argumenten();
+        WaardeFn fold = concatenatieFold(f);   // §4.12-4.15/§5.8.3 "de minimale/maximale/eerste/laatste van A en B …"
+        if (fold != null) return fold;
         java.time.temporal.ChronoField cf = switch (f.kind()) {
             case JAAR_UIT         -> java.time.temporal.ChronoField.YEAR;
             case MAAND_UIT        -> java.time.temporal.ChronoField.MONTH_OF_YEAR;
@@ -1376,6 +1387,42 @@ public final class ExecModelTranspiler {
                 fns.get(0).apply(s, gm), fns.get(1).apply(s, gm), fns.get(2).apply(s, gm), fns.get(3).apply(s, gm),
                 fns.get(4).apply(s, gm), fns.get(5).apply(s, gm), fns.get(6).apply(s, gm)), g);
     }
+
+    /** §4.12-4.15/§5.8.3-.4 the concatenation-of-expressies fold "de minimale/maximale/eerste/laatste van A en B
+     *  [en C …]" over ≥2 LISTED scalar operands (distinct from a single-operand instance aggregation). A left fold:
+     *  MINIMUM/EERSTE keep the smaller/earlier (Comparable compareTo — BigDecimal value-wise, LocalDate(Time)
+     *  natural), MAXIMUM/LAATSTE the larger/later; §4.12-4.15 leegwaarde — a null operand is SKIPPED, all-null yields
+     *  null. Numeric operands 1..n are restated into the first operand's unit (§Tabel 22/23, the result unit). null
+     *  for <2 operands / a restricted (filter) fold / an unlowerable operand. Mirrors DrlTranspiler.concatenatieAggregatie. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private WaardeFn concatenatieFold(Expr.Functie f) {
+        boolean kleinste = f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.EERSTE;
+        boolean grootste = f.kind() == Expr.FunctieKind.MAXIMUM || f.kind() == Expr.FunctieKind.LAATSTE;
+        if ((!kleinste && !grootste) || f.argumenten().size() < 2 || f.filter() != null) return null;
+        Datatype doel = f.argumenten().get(0).type();   // Eenheid1: result carries the first operand's unit
+        List<BiFunction<Object, Map<String, BigDecimal>, Object>> fns = new ArrayList<>();
+        Set<String> g = new LinkedHashSet<>();
+        for (int i = 0; i < f.argumenten().size(); i++) {
+            Expr arg = f.argumenten().get(i);
+            WaardeFn wf = scalarWaarde(arg);
+            if (wf == null) return null;   // a set/instance-aggregation or unlowerable operand -> skip (DRL markers too)
+            if (i > 0) { BigDecimal vf = valueFactor(arg.type(), doel); if (vf != null) wf = wf.scaledBy(vf); }
+            fns.add(wf.fn());
+            g.addAll(wf.globals());
+        }
+        final boolean fKlein = kleinste;
+        return new WaardeFn((s, gm) -> {
+            Comparable acc = null;
+            for (BiFunction<Object, Map<String, BigDecimal>, Object> fn : fns) {
+                Object x = fn.apply(s, gm);
+                if (x == null) continue;                       // §4.12-4.15: skip a leeg operand
+                if (acc == null) { acc = (Comparable) x; continue; }
+                int c = acc.compareTo(x);                      // ties take x, mirroring DRL's `acc < x ? acc : x`
+                acc = fKlein ? (c < 0 ? acc : (Comparable) x) : (c > 0 ? acc : (Comparable) x);
+            }
+            return acc;
+        }, g);
+    }
     private static boolean arithmeticOp(Expr.BinOp op) {
         return op == Expr.BinOp.PLUS || op == Expr.BinOp.MIN || op == Expr.BinOp.VERMINDERD_MET
                 || op == Expr.BinOp.MAAL || op == Expr.BinOp.GEDEELD_DOOR
@@ -1406,6 +1453,9 @@ public final class ExecModelTranspiler {
      *  root is the separate {@link #isAggregatieWaarde} path) — the trigger for the embedded-aggregation value path. */
     private static boolean containsAggregatie(Expr e) {
         if (e instanceof Expr.Functie f) {
+            // a §5.8.3 LISTED MIN/MAX/EERSTE/LAATSTE fold (≥2 operands) is NOT an instance aggregation — it lowers via
+            // concatenatieFold on the scalar path; only recurse into its listed operands.
+            if (isGelisteFold(f)) { for (Expr a : f.argumenten()) if (containsAggregatie(a)) return true; return false; }
             if (isAggregatieKind(f.kind())) return true;
             for (Expr a : f.argumenten()) if (containsAggregatie(a)) return true;
             return false;
