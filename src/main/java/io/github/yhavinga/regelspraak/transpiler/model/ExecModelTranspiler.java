@@ -1914,8 +1914,8 @@ public final class ExecModelTranspiler {
         if (factClass == null) return skip("uniciteit (geen fact-class " + subject.naam + "): " + u.naam());
         Class<?> incClass = inconsistentieClass();
         if (incClass == null) return skip("uniciteit (geen Inconsistentie-fact): " + u.naam());
-        for (String sleutel : u.sleutels())
-            if (subject.attribuutGranulariteit.containsKey(sleutel)) return skip("uniciteit (temporele sleutel): " + u.naam());
+        // A temporal (List<Segment>) key is NOT special-cased: gelijkWaarde -> List.equals matches DRL's mvel
+        // `timeline == $k` (only instance-equal timelines collide, so it is degenerate but parity-faithful).
 
         seq = 0;
         String naam = u.naam();

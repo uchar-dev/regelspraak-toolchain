@@ -2037,7 +2037,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 9); }
     @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 7); }
-    @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 6); }
+    @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 7); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
     @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
@@ -2663,6 +2663,20 @@ class ExecModelDifferentialTest {
             + "Regel check\n    geldig altijd\n        De roepnaam van een Persoon moet gevuld zijn.\n",
             () -> { Persoon metNaam = new Persoon(); metNaam.setRoepnaam("Maria"); return List.of(metNaam, new Persoon()); },
             o -> "naam=" + ((Persoon) o).getRoepnaam()),
+
+        // §8.1.6 a TEMPORAL (List<Segment>) uniciteit key — DRL is NOT special-cased (`timeline == $k`, List.equals,
+        // so only instance-equal timelines collide). p1/p2 SHARE the same List instance -> both flagged; p3 has a
+        // distinct (content-equal) timeline -> matches only itself -> not flagged. The model's gelijkWaarde matches.
+        new FoutFixture("uniciteit: temporal key (shared timeline instance collides)",
+            "Objecttype de Persoon (mv: Personen) (bezield)\n    de leeftijd Numeriek (geheel getal);\n"
+            + "    de bedrag per maand Numeriek (geheel getal) voor elke maand;\n"
+            + "Regel uniek\n    geldig altijd\n        De bedrag per maand van alle Personen moeten uniek zijn.\n",
+            () -> { List<Segment> shared = List.of(seg(2024, 1, 1, 2024, 6, 1, "100"));
+                    Persoon p1 = new Persoon(); p1.setLeeftijd(new BigDecimal(1)); p1.setBedragPerMaand(shared);
+                    Persoon p2 = new Persoon(); p2.setLeeftijd(new BigDecimal(2)); p2.setBedragPerMaand(shared);
+                    Persoon p3 = new Persoon(); p3.setLeeftijd(new BigDecimal(3)); p3.setBedragPerMaand(List.of(seg(2024, 1, 1, 2024, 6, 1, "100")));
+                    return List.of(p1, p2, p3); },
+            o -> "lft=" + ((Persoon) o).getLeeftijd()),
     };
 
     // ---- Phase E fout: §9.7.6 Tabel 19 — an empty weight (naar rato) or a leeg/negatief maximum at ANY recipient is
