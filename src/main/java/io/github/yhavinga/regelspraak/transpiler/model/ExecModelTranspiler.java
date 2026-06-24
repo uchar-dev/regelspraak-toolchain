@@ -179,6 +179,8 @@ public final class ExecModelTranspiler {
         // the result in the when, read in the consequence — distinct from a scalar fact-local value.
         WaardeFn tijdTotaal = !temporalDoel && isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie ftt
                 && ftt.kind() == Expr.FunctieKind.TOTAAL ? tijdreeksTotaal(ftt, doel.objecttype()) : null;
+        WaardeFn dimAgg = !temporalDoel && isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie fda
+                && fda.dimensieSelectie() != null ? dimensieAggregatie(fda, doel.objecttype()) : null;
         if (temporalDoel) {
             // §13.4.17.57/.58 lower the timeline-producing RHS to a (subject -> List<Segment>) function and set it.
             // A producer we cannot lower is an honest skip (never a scalar setter on a List field, which would not
@@ -201,6 +203,16 @@ public final class ExecModelTranspiler {
                     drools.update(s);
                 });
             }
+        } else if (dimAgg != null) {
+            // §5.8.5 a dimensie-fold (SOM/MIN/MAX over a gedimensioneerd attribuut's selected labels) collapses a
+            // Map<label,value> to a SCALAR — a fixed fold, NOT an instance accumulate, reading no globals.
+            BigDecimal vf = valueFactor(r.waarde().type(), doel.type());
+            if (vf != null) dimAgg = dimAgg.scaledBy(vf);
+            BiFunction<Object, Map<String, BigDecimal>, Object> fn = dimAgg.fn();
+            consequence = DSL.on(sVar).execute((Block2<org.drools.model.Drools, Object>) (drools, s) -> {
+                RegelSpraakRuntime.set(s, doelProp, fn.apply(s, Map.of()));
+                drools.update(s);
+            });
         } else if (tijdTotaal != null) {
             // §7.1 a TOTAAL over a TEMPORAL attribute is a SCALAR timeline fold (rsTijdTotaal over the subject's own/
             // navigated List<Segment>, optionally gedurende-clipped) — NOT an instance accumulate, and reads no globals.
@@ -493,6 +505,41 @@ public final class ExecModelTranspiler {
             return RegelSpraakRuntime.rsTijdTotaal(clipped, gran);
         };
         return new WaardeFn(fn, Set.of());
+    }
+
+    /** §5.8.5/§13.4.17.51-.54 a SOM / MINIMUM / MAXIMUM over a gedimensioneerd attribuut, restricted to a
+     *  {@link Expr.DimensieSelectie}'s labels — a FIXED fold of the attribute's {@code Map<label,value>} over the
+     *  selected keys ({@link RegelSpraakRuntime#rsDimSom}/{@code rsDimMin}/{@code rsDimMax}, null-skipping empties),
+     *  NOT an instance accumulate. §5.8.2: an all-empty SOM yields the declared numeric-literal "of … als die er niet
+     *  zijn" fallback (else null — an empty sum is a leegwaarde, not 0). Returns a (subject -> BigDecimal) WaardeFn
+     *  reading no globals, or null (no selectie / unresolvable map / non-literal SOM fallback). Mirrors
+     *  DrlTranspiler.dimensieAggregatie. */
+    private WaardeFn dimensieAggregatie(Expr.Functie f, Objecttype subject) {
+        if (f.dimensieSelectie() == null) return null;
+        Expr.FunctieKind kind = f.kind();
+        if (kind != Expr.FunctieKind.SOM && kind != Expr.FunctieKind.MINIMUM && kind != Expr.FunctieKind.MAXIMUM) return null;
+        if (f.argumenten().size() != 1 || !(f.argumenten().get(0) instanceof Expr.AttribuutRef a)) return null;
+        java.util.function.Function<Object, Object> reader = navReader(a, subject);   // the dimensioned attribute's Map field
+        if (reader == null) return null;
+        final List<String> labels = new ArrayList<>(f.dimensieSelectie().labels());
+        BigDecimal fallback = null;
+        if (kind == Expr.FunctieKind.SOM && f.leegwaarde() != null) {
+            if (!(f.leegwaarde() instanceof Expr.Literal lit) || !lit.type().isNumeriek()) return null;
+            fallback = bd(lit);
+            if (fallback == null) return null;
+        }
+        final BigDecimal fFallback = fallback; final Expr.FunctieKind fKind = kind;
+        BiFunction<Object, Map<String, BigDecimal>, Object> vf = (s, gm) -> {
+            Map<?, ?> map = (Map<?, ?>) reader.apply(s);
+            BigDecimal r = switch (fKind) {
+                case SOM     -> RegelSpraakRuntime.rsDimSom(map, labels);
+                case MINIMUM -> RegelSpraakRuntime.rsDimMin(map, labels);
+                case MAXIMUM -> RegelSpraakRuntime.rsDimMax(map, labels);
+                default      -> null;
+            };
+            return fKind == Expr.FunctieKind.SOM && r == null ? fFallback : r;
+        };
+        return new WaardeFn(vf, Set.of());
     }
 
     /** Resolve an {@link Expr.AttribuutRef} to a {@code (subject -> value)} reader: the subject's OWN attribute, or a
@@ -835,6 +882,7 @@ public final class ExecModelTranspiler {
                 && v.rechts() instanceof Expr.ParameterRef pr) {
             if (subject == null || !subject.heeftLid(la.attribuut())) return null;   // not the subject's own member (feitcreatie anker-first probe)
             if (subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (!subject.dimensiesVan(la.attribuut()).isEmpty()) return null;   // §3.6 gedimensioneerd (a Map) -> marker
             if (!isNumeriekOp(v.op())) return null;   // EERDER/LATER (datum) -> Phase later
             Global<BigDecimal> g = globals.get(ident(pr.parameter().naam()));
             if (g == null) return null;
@@ -879,6 +927,7 @@ public final class ExecModelTranspiler {
                 && p.operand() instanceof Expr.AttribuutRef pa && pa.navigatieRol() == null) {
             if (subject == null || !subject.heeftLid(pa.attribuut())) return null;   // not the subject's own member (e.g. a feitcreatie anker-first probe of a doel condition)
             if (subject.attribuutGranulariteit.containsKey(pa.attribuut())) return null;  // temporal -> Phase F
+            if (!subject.dimensiesVan(pa.attribuut()).isEmpty()) return null;   // §3.6 gedimensioneerd (a Map) -> marker
             String attr = pa.attribuut();
             boolean leeg = p.soort() == Conditie.Predicaatsoort.LEEG;
             return s -> (RegelSpraakRuntime.get(s, attr) == null) == leeg;
@@ -888,6 +937,7 @@ public final class ExecModelTranspiler {
                 && v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
             if (subject == null || !subject.heeftLid(la.attribuut())) return null;   // not the subject's own member (feitcreatie anker-first probe)
             if (subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (!subject.dimensiesVan(la.attribuut()).isEmpty()) return null;   // §3.6 gedimensioneerd (a Map) -> marker
             if (!isNumeriekOp(v.op())) return null;   // EERDER/LATER (datum) -> Phase later
             BigDecimal rhs = bd(lit);
             if (rhs == null) return null;
@@ -935,8 +985,19 @@ public final class ExecModelTranspiler {
             // List into a scalar setter would throw at fire time (setX(List) on a BigDecimal field); skip it instead
             // (DRL honestly markers the same read). Mirrors DrlTranspiler.isTemporeelAttribuut / lowerVal's guard.
             if (a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;
+            // §3.6 a bare read of a gedimensioneerd attribuut (its field is a Map<label,value>) is under-specified —
+            // a scalar slot needs a pinned label (a DimensieCel) or a dimensie-fold. Skip (DRL markers it likewise).
+            if (a.objecttype() != null && !a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;
             String attr = a.attribuut();
             return new WaardeFn((s, gm) -> RegelSpraakRuntime.get(s, attr), Set.of());
+        }
+        if (e instanceof Expr.DimensieCel c && c.attribuut() instanceof Expr.AttribuutRef ca && ca.navigatieRol() == null
+                && c.labels().size() == 1) {
+            // §3.6 a single labeled cell read of a gedimensioneerd attribuut: ((Map) map).get(label). A multi-label
+            // (multi-dimension) or navigated cell stays a skip (DRL markers it). Mirrors DrlTranspiler.waarde(DimensieCel).
+            String attr = ca.attribuut();
+            String label = c.labels().get(0);
+            return new WaardeFn((s, gm) -> { Object m = RegelSpraakRuntime.get(s, attr); return m == null ? null : ((Map<?, ?>) m).get(label); }, Set.of());
         }
         if (e instanceof Expr.ParameterRef pr) {
             String gn = ident(pr.parameter().naam());

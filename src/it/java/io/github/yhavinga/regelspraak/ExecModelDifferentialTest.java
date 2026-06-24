@@ -1348,6 +1348,64 @@ class ExecModelDifferentialTest {
             // -> ["Passagier|prijs=10|reis=0"]
     };
 
+    // ---- Phase G dimensie fixtures: §5.8.5 dimensie-fold (rsDimSom) + §3.6 DimensieCel read (Map.get) ----
+    private static NatuurlijkPersoon np(Map<String, BigDecimal> m) {
+        NatuurlijkPersoon n = new NatuurlijkPersoon(); n.setBetaaldeBelastingInJaar(m); return n;
+    }
+    private static final String DIM7_HDR = """
+            Objecttype de Natuurlijk persoon (mv: Natuurlijke personen)
+                de betaalde belasting over de afgelopen vier jaar Numeriek (geheel getal);
+                de betaalde belasting in jaar Numeriek (geheel getal) gedimensioneerd met jaardimensie;
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. zes jaar geleden
+                2. vijf jaar geleden
+                3. vier jaar geleden
+                4. drie jaar geleden
+                5. twee jaar geleden
+                6. een jaar geleden
+                7. heden
+            """;
+    private static final String DIM_SOM_REGEL = """
+            Regel Totaal betaalde belasting over 4 jaar
+              geldig altijd
+                De betaalde belasting over de afgelopen vier jaar van een Natuurlijk persoon moet berekend worden als de som van zijn betaalde belasting in jaar vanaf vier jaar geleden t/m een jaar geleden.
+            """;
+    static final Fixture[] PHASE_G_DIM = {
+        // D1 §5.8.5 interval fold: sum only the labels in [vier jaar geleden … een jaar geleden] = 100+200+300+400 = 1000.
+        new Fixture("§5.8.5 dimensie-som vanaf/t-m telt alleen het interval (1000)",
+            DIM7_HDR + DIM_SOM_REGEL,
+            () -> List.<Object>of(np(Map.of("zes jaar geleden", new BigDecimal(11), "vijf jaar geleden", new BigDecimal(22),
+                    "vier jaar geleden", new BigDecimal(100), "drie jaar geleden", new BigDecimal(200),
+                    "twee jaar geleden", new BigDecimal(300), "een jaar geleden", new BigDecimal(400), "heden", new BigDecimal(9999)))),
+            Map.of(),
+            l -> ((NatuurlijkPersoon) l.get(0)).getBetaaldeBelastingOverDeAfgelopenVierJaar()),   // 1000
+
+        // D2 §5.8.2 null-skip: labels with no value are SKIPPED (not 0) — only drie/een present = 200+400 = 600.
+        new Fixture("§5.8.2 dimensie-som slaat lege labels over (600)",
+            DIM7_HDR + DIM_SOM_REGEL,
+            () -> List.<Object>of(np(Map.of("drie jaar geleden", new BigDecimal(200), "een jaar geleden", new BigDecimal(400)))),
+            Map.of(),
+            l -> ((NatuurlijkPersoon) l.get(0)).getBetaaldeBelastingOverDeAfgelopenVierJaar()),   // 600
+
+        // D3 §3.6 DimensieCel read: "… van huidig jaar" lowers to map.get("huidig jaar") = 222.
+        new Fixture("§3.6 dimensiecel lezen pakt het juiste label (222)",
+            """
+            Objecttype de Natuurlijk persoon (mv: Natuurlijke personen)
+                de betaalde belasting over de afgelopen vier jaar Numeriek (geheel getal);
+                de betaalde belasting in jaar Numeriek (geheel getal) gedimensioneerd met jaardimensie;
+            Dimensie de jaardimensie, bestaande uit de jaardimensies (na het attribuut met voorzetsel van):
+                1. vorig jaar
+                2. huidig jaar
+            Regel lees
+              geldig altijd
+                De betaalde belasting over de afgelopen vier jaar van een Natuurlijk persoon moet gesteld worden op zijn betaalde belasting in jaar van huidig jaar.
+            """,
+            () -> List.<Object>of(np(Map.of("vorig jaar", new BigDecimal(111), "huidig jaar", new BigDecimal(222)))),
+            Map.of(),
+            l -> ((NatuurlijkPersoon) l.get(0)).getBetaaldeBelastingOverDeAfgelopenVierJaar()),   // 222
+    };
+
+    @Test void phase_G_dimensie_matches_drl_back_end()             { runDifferential("Phase G dim", PHASE_G_DIM, 3); }
     @Test void phase_G_objectcreatie_matches_drl_back_end()        { runObjDifferential("Phase G obj", PHASE_G_OBJ, 2); }
     @Test void phase_G_feitcreatie_matches_drl_back_end()          { runDifferential("Phase G feit", PHASE_G_FEIT, 6); }
     @Test void phase_F4b_mixed_static_guard_matches_drl_back_end() { runDifferential("Phase F4b", PHASE_F4B, 4); }

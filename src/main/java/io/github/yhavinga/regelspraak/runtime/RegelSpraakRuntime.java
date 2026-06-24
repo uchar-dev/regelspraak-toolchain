@@ -411,6 +411,38 @@ public final class RegelSpraakRuntime {
         return uit;
     }
 
+    // ---- §13.4.17.51-.54 dimensie folds (a gedimensioneerd attribuut is a Map<label,value>) ----
+    /** §5.8.5 fold a dimensioned attribute's per-label values over the SELECTED label keys, null-skipping empties
+     *  (an absent label / null value is skipped, NOT 0) and returning null for an all-empty selection (§5.8.2 an
+     *  empty sum is a leegwaarde). Exact add (no MathContext), matching the DRL {@code rsDimSom} function (Java). */
+    public static BigDecimal rsDimSom(Map<?, ?> m, List<?> keys) {
+        BigDecimal acc = null;
+        for (Object k : keys) {
+            BigDecimal v = m == null ? null : (BigDecimal) m.get(k);
+            if (v != null) acc = acc == null ? v : acc.add(v);
+        }
+        return acc;
+    }
+    /** §5.8.5 minimum of a dimensioned attribute's per-label values over the selected keys (null-skipping; null when
+     *  all-empty). Mirrors the DRL {@code rsDimMin}. */
+    public static BigDecimal rsDimMin(Map<?, ?> m, List<?> keys) {
+        BigDecimal acc = null;
+        for (Object k : keys) {
+            BigDecimal v = m == null ? null : (BigDecimal) m.get(k);
+            if (v != null && (acc == null || v.compareTo(acc) < 0)) acc = v;
+        }
+        return acc;
+    }
+    /** §5.8.5 maximum of a dimensioned attribute's per-label values over the selected keys. Mirrors the DRL {@code rsDimMax}. */
+    public static BigDecimal rsDimMax(Map<?, ?> m, List<?> keys) {
+        BigDecimal acc = null;
+        for (Object k : keys) {
+            BigDecimal v = m == null ? null : (BigDecimal) m.get(k);
+            if (v != null && (acc == null || v.compareTo(acc) > 0)) acc = v;
+        }
+        return acc;
+    }
+
     // ---- identifier convention (matches the transpiler's ident()/getter() Pascal-casing) ----
     /** Strip a leading lidwoord, PascalCase the whitespace-separated words (so a getter/setter name matches the
      *  hand-written fact bean: "leeftijd" -> "Leeftijd", "recht op korting" -> "RechtOpKorting"). */
