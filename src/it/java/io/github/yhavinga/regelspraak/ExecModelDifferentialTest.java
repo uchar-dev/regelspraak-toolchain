@@ -791,6 +791,17 @@ class ExecModelDifferentialTest {
             },
             Map.of(),
             l -> vals(((Vlucht) l.get(0)).getTotaalprijs(), ((Vlucht) l.get(1)).getTotaalprijs())),   // 100, 0
+
+        // §5.8.2 SOM with a NON-LITERAL empty-set fallback ("of zijn vertrektijd als die er niet zijn" — the reis's
+        // OWN attribute, not a numeric literal). vol -> sum 100; empty reis -> fallback = its vertrektijd 42.
+        new Fixture("SOM with a non-literal (own-attr) fallback",
+            "Objecttype de Vlucht\n    de totaalprijs Numeriek (geheel getal);\n    de vertrektijd Numeriek (geheel getal);\n"
+            + "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n" + AGG_FEIT
+            + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis of zijn vertrektijd als die er niet zijn.\n",
+            () -> { Vlucht vol = new Vlucht(); Vlucht leeg = new Vlucht(); leeg.setVertrektijd(new BigDecimal(42));
+                    return List.of(vol, leeg, pas(vol, 30), pas(vol, 70)); },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).getTotaalprijs(), ((Vlucht) l.get(1)).getTotaalprijs())),   // 100, 42
     };
 
     // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
@@ -1952,7 +1963,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B3_relational_match_drl_back_end()        { runDifferential("Phase B3", PHASE_B3, 5); }
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
-    @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 8); }
+    @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 9); }
     @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 7); }
     @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 6); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }

@@ -242,9 +242,11 @@ public final class ExecModelTranspiler {
             if (agg.isSom()) {
                 // §5.8.2 sommatie: an empty sum (0 non-empty contributors) is the leegwaarde fallback, not 0.
                 Variable cntVar = agg.countVar(), sumVar = agg.resultVar();
-                BigDecimal fallback = agg.somFallback();
+                WaardeFn fallback = agg.somFallback();
                 Block4<org.drools.model.Drools, Object, Object, Object> body = (drools, s, cnt, sum) -> {
-                    BigDecimal v = ((Number) cnt).longValue() == 0L ? fallback : RegelSpraakRuntime.toBd(sum);
+                    BigDecimal v = ((Number) cnt).longValue() == 0L
+                            ? (fallback == null ? null : (BigDecimal) fallback.fn().apply(s, Map.of()))
+                            : RegelSpraakRuntime.toBd(sum);
                     if (vf != null && v != null) v = v.multiply(vf);
                     RegelSpraakRuntime.set(s, doelProp, v);
                     drools.update(s);
@@ -361,7 +363,7 @@ public final class ExecModelTranspiler {
 
     /** A lowered aggregation: the accumulate rule item, the result Variable, and (for §5.8.2 SOM) the contributor
      *  count Variable + the empty-sum fallback. */
-    private record Agg(RuleItemBuilder<?> accItem, Variable resultVar, Variable countVar, BigDecimal somFallback, boolean isSom) {}
+    private record Agg(RuleItemBuilder<?> accItem, Variable resultVar, Variable countVar, WaardeFn somFallback, boolean isSom) {}
 
     /** §5.8/§13.4.17 lower an aggregation over the subject's related elements to a {@code DSL.accumulate} CE: the
      *  source pattern joins the element to {@code $subject} (the §9.4 backref role), an optional §13.4.2 die-filter
@@ -414,11 +416,12 @@ public final class ExecModelTranspiler {
         if (f.kind() == Expr.FunctieKind.SOM) {
             // §5.8.2: empty SOM -> the leegwaarde (null, or a literal "of N als die er niet zijn"), not 0. Filter to
             // non-empty contributors, count them, and sum; the consequence branches on the count.
-            BigDecimal fallback = null;
+            // §5.8.2 "of <expr> als die er niet zijn": the fallback may be a numeric literal OR a fact-local
+            // expression (an own attribute / arithmetic) read from the subject — but not one reading a global.
+            WaardeFn fallback = null;
             if (f.leegwaarde() != null) {
-                if (!(f.leegwaarde() instanceof Expr.Literal lit) || !lit.type().isNumeriek()) return null;
-                fallback = bd(lit);
-                if (fallback == null) return null;
+                fallback = scalarWaarde(f.leegwaarde());
+                if (fallback == null || !fallback.globals().isEmpty()) return null;   // unlowerable / global fallback -> skip
             }
             PatternDSL.PatternDef src2 = src.expr(nextId("nn"), (Predicate1) (e) -> RegelSpraakRuntime.get(e, attr) != null)
                     .bind(amtVar, (Function1) (e) -> RegelSpraakRuntime.get(e, attr));
@@ -1496,8 +1499,10 @@ public final class ExecModelTranspiler {
                 accItemsOut.add(agg.accItem());
                 int idxCnt = accVarsOut.size(); accVarsOut.add(agg.countVar());
                 int idxSum = accVarsOut.size(); accVarsOut.add(agg.resultVar());
-                BigDecimal fallback = agg.somFallback();
-                return (s, g, a) -> ((Number) a[idxCnt]).longValue() == 0L ? fallback : RegelSpraakRuntime.toBd(a[idxSum]);
+                WaardeFn fallback = agg.somFallback();
+                return (s, g, a) -> ((Number) a[idxCnt]).longValue() == 0L
+                        ? (fallback == null ? null : (BigDecimal) fallback.fn().apply(s, Map.of()))
+                        : RegelSpraakRuntime.toBd(a[idxSum]);
             }
             int idx = accVarsOut.size();
             accItemsOut.add(agg.accItem());
