@@ -1105,6 +1105,28 @@ class ExecModelDifferentialTest {
                       tl(((Passagier) l.get(1)).getAantalDagenRechtOpBelastingvermindering()))),   // [Jan 31, Feb 13], []
     };
 
+    /** §8.2 regression (Phase F adversarial review): a temporal attribute read into a SCALAR doel must be an HONEST
+     *  SKIP, not a firing rule that calls setX(List<Segment>) and throws (the one scalarWaarde gap the review caught,
+     *  where DRL honestly markers the read). The model must record overgeslagen, never mis-render. */
+    @Test void phase_F_temporal_read_into_scalar_doel_is_honestly_skipped() {
+        for (String soort : new String[]{"moet gesteld worden op", "moet berekend worden als"}) {
+            String src = """
+                Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+                Objecttype de Passagier (mv: Passagiers) (bezield)
+                    de belastingvermindering per maand Bedrag voor elke maand;
+                    de prijs Bedrag;
+                Regel R
+                    geldig altijd
+                        De prijs van een Passagier %s zijn belastingvermindering per maand.
+                """.formatted(soort);
+            RegelSpraakModel m = Resolver.resolve(src);
+            assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertFalse(em.overgeslagen().isEmpty(),
+                    () -> "model moet de temporele-lezing-in-scalair-doel SKIPPEN (" + soort + "), niet mis-renderen tot een crashende regel");
+        }
+    }
+
     @Test void phase_F4b_mixed_static_guard_matches_drl_back_end() { runDifferential("Phase F4b", PHASE_F4B, 4); }
     @Test void phase_F4_compound_gedurende_matches_drl_back_end()  { runDifferential("Phase F4", PHASE_F4, 5); }
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 3); }

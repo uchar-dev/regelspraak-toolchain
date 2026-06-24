@@ -163,6 +163,11 @@ public final class ExecModelTranspiler {
         // scalar: the value must be a §13.4.17.57/.58 timeline producer (aantal-dagen-in / tijdsevenredig deel).
         RegelSpraakModel.Granulariteit doelGran = doel.objecttype().attribuutGranulariteit.get(doel.attribuut());
         boolean temporalDoel = doelGran != null && !doel.objecttype().attribuutTijdlijnAantal.containsKey(doel.attribuut());
+        // §8.2 a temporal KENMERK doel (a List<Segment> true-period timeline) cannot be written a scalar boolean —
+        // setX(true) on a List field throws at fire time. No producer for it yet, so skip honestly (never mis-render).
+        if (r.soort() == ResolvedRegel.Soort.KENMERKTOEKENNING
+                && doel.objecttype().kenmerkGranulariteit.containsKey(doel.attribuut()))
+            return skip("regel (temporele kenmerktoekenning — latere fase): " + r.naam());
         // §5.8/§13.4.17 AGGREGATION value (SOM/TOTAAL/AANTAL/MIN/MAX over related elements): an accumulate CE binds
         // the result in the when, read in the consequence — distinct from a scalar fact-local value.
         WaardeFn tijdTotaal = !temporalDoel && isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie ftt
@@ -915,6 +920,11 @@ public final class ExecModelTranspiler {
             return val == null ? null : WaardeFn.constant(val);
         }
         if (e instanceof Expr.AttribuutRef a && a.navigatieRol() == null) {
+            // §8.2 a tijdsafhankelijk (List<Segment>) attribute read in a SCALAR slot is NOT a scalar — only the §7.1
+            // "het totaal van" collapses a timeline to a scalar (handled in regel() before this path). Splicing the
+            // List into a scalar setter would throw at fire time (setX(List) on a BigDecimal field); skip it instead
+            // (DRL honestly markers the same read). Mirrors DrlTranspiler.isTemporeelAttribuut / lowerVal's guard.
+            if (a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;
             String attr = a.attribuut();
             return new WaardeFn((s, gm) -> RegelSpraakRuntime.get(s, attr), Set.of());
         }
