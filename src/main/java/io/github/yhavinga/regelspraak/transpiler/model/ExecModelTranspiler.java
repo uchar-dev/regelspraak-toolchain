@@ -69,6 +69,10 @@ public final class ExecModelTranspiler {
     /** §13.3.6 temporal parameters: a tijdlijn parameter is a {@code List<Segment>} global (only a §7.3.2
      *  tijdsevenredig base reads it), kept apart from the scalar BigDecimal {@link #globals}. */
     private final Map<String, Global<java.util.List>> listGlobals = new LinkedHashMap<>();
+    /** §4.2 the Rekendatum global (a {@code LocalDate}) — registered iff ANY construct is time-bounded (a dated
+     *  {@code geldig vanaf/tot} version), read by the per-construct {@link #geldigGuard} window guard. null when
+     *  every construct is {@code geldig altijd} (no guard needed). Mirrors DrlTranspiler's {@code rekendatum} global. */
+    private Global<java.time.LocalDate> rekendatumGlobal;
     private final List<String> overgeslagen = new ArrayList<>();
     /** Monotonic within ONE rule (reset per rule) — keeps each rule's declaration NAMES ({@code $e_0}, {@code $inc_1})
      *  unique. Declaration names are per-rule scoped, so they may repeat across rules. */
@@ -110,6 +114,12 @@ public final class ExecModelTranspiler {
             globals.put(ident(p.naam()), g);
             m.addGlobal(g);
         }
+        // §4.2 register the Rekendatum global iff any construct of any family is time-bounded (mirrors
+        // DrlTranspiler's `tijdgebonden` test); each dated construct then guards its pattern via geldigGuard.
+        if (heeftTijdgebonden()) {
+            rekendatumGlobal = DSL.globalOf(java.time.LocalDate.class, PKG, "rekendatum");
+            m.addGlobal(rekendatumGlobal);
+        }
         for (ResolvedRegel r : model.resolvedRegels) {
             Rule rule = regel(r);
             if (rule != null) {
@@ -147,8 +157,6 @@ public final class ExecModelTranspiler {
         if (!(r.doel() instanceof Expr.AttribuutRef doel) || doel.navigatieRol() != null || doel.objecttype() == null) {
             return skip("regel (doel geen eigen attribuut/kenmerk): " + r.naam());
         }
-        if (!io.github.yhavinga.regelspraak.ir.Geldigheid.ALTIJD.equals(r.geldigheid()))
-            return skip("regel (versie-geldigheid): " + r.naam());  // §4.2 window — later phase
         Class<?> factClass = factClass(doel.objecttype());
         if (factClass == null) return skip("regel (geen fact-class " + doel.objecttype().naam + "): " + r.naam());
 
@@ -164,6 +172,7 @@ public final class ExecModelTranspiler {
             pattern = gate.pattern();
             extra.addAll(gate.extra());
         }
+        pattern = geldigGuard(pattern, r.geldigheid());   // §4.2 version validity window
 
         RuleItemBuilder<?> consequence;
         // §5.1.4 a single-period TEMPORAL doel (a List<Segment> timeline attribute) is WRITTEN a timeline, not a
@@ -1064,6 +1073,37 @@ public final class ExecModelTranspiler {
     /** A globally-unique constraint id (see {@link #idSeq}) — unique across the whole model, not just one rule. */
     private String nextId(String prefix) { return prefix + "_" + (idSeq++); }
 
+    /** §4.2: true when ANY construct of ANY family carries a time-bounded (dated) version — the trigger for
+     *  registering the Rekendatum global. Mirrors DrlTranspiler's `tijdgebonden` disjunction over every family. */
+    private boolean heeftTijdgebonden() {
+        java.util.function.Predicate<io.github.yhavinga.regelspraak.ir.Geldigheid> dated = g -> g != null && !g.altijd();
+        return model.resolvedRegels.stream().anyMatch(r -> dated.test(r.geldigheid()))
+                || model.objectCreaties.stream().anyMatch(o -> dated.test(o.geldigheid()))
+                || model.verdelingen.stream().anyMatch(v -> dated.test(v.geldigheid()))
+                || model.consistenties.stream().anyMatch(c -> dated.test(c.geldigheid()))
+                || model.uniciteiten.stream().anyMatch(u -> dated.test(u.geldigheid()))
+                || model.uniciteitUnies.stream().anyMatch(u -> dated.test(u.geldigheid()))
+                || model.feitCreaties.stream().anyMatch(f -> dated.test(f.geldigheid()));
+    }
+
+    /** §4.2 add the validity-window guard to a construct's pattern: an {@code .expr} over the Rekendatum global
+     *  matching only when the rekendatum is inside the version's inclusive {@code [vanaf, tot]} window (an unset
+     *  rekendatum never matches, so the dated rule simply does not fire) — the exec-model mirror of
+     *  DrlTranspiler.geldigheidGuard ({@code eval( rekendatum != null && !rekendatum.isBefore(vanaf) &&
+     *  !rekendatum.isAfter(tot) )}). A no-op (returns the pattern unchanged) for an {@code altijd} version. The
+     *  predicate ignores the subject — it reads only the global — so it composes with any pattern (subject, anker,
+     *  Pot source). The global is constant per session, so the guard introduces no extra reactivity. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private PatternDSL.PatternDef geldigGuard(PatternDSL.PatternDef pattern, io.github.yhavinga.regelspraak.ir.Geldigheid g) {
+        if (g == null || g.altijd() || rekendatumGlobal == null) return pattern;
+        java.time.LocalDate vanaf = g.vanaf(), tot = g.tot();
+        return pattern.expr(nextId("geldig"), (Variable) rekendatumGlobal, (Predicate2) (s, rd) -> {
+            if (!(rd instanceof java.time.LocalDate d)) return false;   // unset rekendatum -> no match (no NPE)
+            if (vanaf != null && d.isBefore(vanaf)) return false;
+            return tot == null || !d.isAfter(tot);
+        });
+    }
+
     /** A lowered scalar value: a {@code (subject, globalValuesByName) -> value} function plus the set of
      *  Parameter-global names it reads (so {@link #regel} can bind them on the consequence). */
     private record WaardeFn(BiFunction<Object, Map<String, BigDecimal>, Object> fn, Set<String> globals) {
@@ -1356,8 +1396,6 @@ public final class ExecModelTranspiler {
     private Rule consistentie(io.github.yhavinga.regelspraak.ir.ResolvedConsistentie c) {
         Objecttype subject = c.subject();
         if (subject == null) return skip("consistentie (geen subject): " + c.naam());
-        if (!io.github.yhavinga.regelspraak.ir.Geldigheid.ALTIJD.equals(c.geldigheid()))
-            return skip("consistentie (versie-geldigheid): " + c.naam());
         Class<?> factClass = factClass(subject);
         if (factClass == null) return skip("consistentie (geen fact-class " + subject.naam + "): " + c.naam());
         Class<?> incClass = inconsistentieClass();
@@ -1369,7 +1407,8 @@ public final class ExecModelTranspiler {
         String naam = c.naam();
         String fqcn = FACTS + ".Inconsistentie";
         Variable sVar = DSL.declarationOf(factClass, "$subject");
-        PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar).expr(nextId("schending"), (Predicate1) schending);
+        PatternDSL.PatternDef pattern = geldigGuard(
+                PatternDSL.pattern(sVar).expr(nextId("schending"), (Predicate1) schending), c.geldigheid());   // §4.2 window
         // idempotency guard: not Inconsistentie( regel == naam, subject == $subject )
         Variable incVar = DSL.declarationOf(incClass, "$inc_" + (seq++));
         PatternDSL.PatternDef guard = PatternDSL.pattern(incVar)
@@ -1435,7 +1474,6 @@ public final class ExecModelTranspiler {
     private Rule uniciteit(io.github.yhavinga.regelspraak.ir.ResolvedUniciteit u) {
         Objecttype subject = u.subject();
         if (subject == null || u.sleutels().isEmpty()) return skip("uniciteit (geen subject/sleutel): " + u.naam());
-        if (!io.github.yhavinga.regelspraak.ir.Geldigheid.ALTIJD.equals(u.geldigheid())) return skip("uniciteit (versie-geldigheid): " + u.naam());
         Class<?> factClass = factClass(subject);
         if (factClass == null) return skip("uniciteit (geen fact-class " + subject.naam + "): " + u.naam());
         Class<?> incClass = inconsistentieClass();
@@ -1447,7 +1485,7 @@ public final class ExecModelTranspiler {
         String naam = u.naam();
         String fqcn = FACTS + ".Inconsistentie";
         Variable sVar = DSL.declarationOf(factClass, "$subject");
-        PatternDSL.PatternDef subjPat = PatternDSL.pattern(sVar);
+        PatternDSL.PatternDef subjPat = geldigGuard(PatternDSL.pattern(sVar), u.geldigheid());   // §4.2 window
         // bind + non-null each key part (and the parent scope field, if any).
         List<Variable> keyVars = new ArrayList<>();
         for (String key : u.sleutels()) {
@@ -1502,7 +1540,6 @@ public final class ExecModelTranspiler {
      *  {@code modify}; the reflective model's opaque lambdas are class-reactive, so it lands as a focused follow-up). */
     private List<Rule> verdeling(ResolvedVerdeling v) {
         Objecttype bron = v.bronType(), doel = v.doelType();
-        if (!io.github.yhavinga.regelspraak.ir.Geldigheid.ALTIJD.equals(v.geldigheid())) return skipList("verdeling (versie-geldigheid): " + v.naam());
         String join = bron != null && doel != null ? model.verbindendeRol(doel, bron) : null;
         ResolvedVerdeling.Methode methode = v.methode();
         Datatype doelType = doel != null && v.doelAttribuut() != null ? doel.attribuut(v.doelAttribuut()) : null;
@@ -1548,12 +1585,12 @@ public final class ExecModelTranspiler {
         if (tieNaarRato && incClass != null) {
             String w = v.ratoAttribuut();
             rules.add(existsFoutRegel(v.naam() + " (leeg gewicht)", v.naam(), bronClass, doelClass, join, incClass,
-                    d -> RegelSpraakRuntime.get(d, w) == null));
+                    d -> RegelSpraakRuntime.get(d, w) == null, v.geldigheid()));
         }
         if (v.maximumAttribuut() != null && incClass != null) {
             String mx = v.maximumAttribuut();
             rules.add(existsFoutRegel(v.naam() + " (leeg of negatief maximum)", v.naam(), bronClass, doelClass, join, incClass,
-                    d -> { Object m = RegelSpraakRuntime.get(d, mx); return m == null || ((BigDecimal) m).signum() < 0; }));
+                    d -> { Object m = RegelSpraakRuntime.get(d, mx); return m == null || ((BigDecimal) m).signum() < 0; }, v.geldigheid()));
         }
         return rules;
     }
@@ -1575,6 +1612,7 @@ public final class ExecModelTranspiler {
         // the default model base (empirically verified, Phase E review).
         Variable srcVar = DSL.declarationOf(bronClass, "$src");
         PatternDSL.PatternDef srcPat = PatternDSL.pattern(srcVar).watch(prop(bronAttr));
+        srcPat = geldigGuard(srcPat, v.geldigheid());   // §4.2 window (Pot source; the rekendatum global is constant, no extra reactivity)
 
         // accumulate the recipients joined to $src: count (gelijke delen) or sum of the present weights (naar rato).
         Variable cVar = DSL.declarationOf(doelClass, "$c_" + (seq++));
@@ -1637,6 +1675,7 @@ public final class ExecModelTranspiler {
         // cycle break: the SOURCE pattern watches only the source amount (NOT restant); see gelijkOfRatoRegel.
         Variable srcVar = DSL.declarationOf(bronClass, "$src");
         PatternDSL.PatternDef srcPat = PatternDSL.pattern(srcVar).watch(prop(bronAttr));
+        srcPat = geldigGuard(srcPat, v.geldigheid());   // §4.2 window (Pot source; the rekendatum global is constant, no extra reactivity)
 
         // collect every recipient joined to $src into one index-stable list.
         Variable pVar = DSL.declarationOf(doelClass, "$p_" + (seq++));
@@ -1673,11 +1712,11 @@ public final class ExecModelTranspiler {
      *  flag" representation); this only surfaces the Fout. Mirrors the DRL "(leeg gewicht)"/"(leeg of negatief maximum)" rules. */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private Rule existsFoutRegel(String compNaam, String hostNaam, Class<?> bronClass, Class<?> doelClass, String join,
-                                 Class<?> incClass, Predicate1<Object> recipientFout) {
+                                 Class<?> incClass, Predicate1<Object> recipientFout, io.github.yhavinga.regelspraak.ir.Geldigheid geldigheid) {
         seq = 0;
         String fqcn = FACTS + ".Inconsistentie";
         Variable srcVar = DSL.declarationOf(bronClass, "$src");
-        PatternDSL.PatternDef srcPat = PatternDSL.pattern(srcVar);
+        PatternDSL.PatternDef srcPat = geldigGuard(PatternDSL.pattern(srcVar), geldigheid);   // §4.2 window
         Variable dVar = DSL.declarationOf(doelClass, "$d_" + (seq++));
         PatternDSL.PatternDef dPat = PatternDSL.pattern(dVar)
                 .expr(nextId("fj"), (Variable) srcVar, (Predicate2) (d, s) -> RegelSpraakRuntime.get(d, join) == s)
@@ -1719,6 +1758,7 @@ public final class ExecModelTranspiler {
         PatternDSL.PatternDef srcPat = PatternDSL.pattern(srcVar)
                 .expr(nextId("bnn"), (Predicate1) s -> RegelSpraakRuntime.get(s, bronAttr) != null)
                 .watch(prop(bronAttr));   // NOT prop(restAttr): the rest's own write must not re-wake it / the share rule
+        srcPat = geldigGuard(srcPat, v.geldigheid());   // §4.2 window
         // not Doel( filter, doelAttr == null ) — no recipient is mid-assignment. The Deelnemer patterns stay
         // class-reactive (they MUST react to aandeel becoming set); they write no Deelnemer, so they cannot loop.
         Variable notVar = DSL.declarationOf(doelClass, "$u0_" + (seq++));
@@ -1754,7 +1794,6 @@ public final class ExecModelTranspiler {
     private Rule objectCreatie(io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc) {
         Objecttype nieuw = oc.nieuwType(), subject = oc.subject();
         if (subject == null || nieuw == null) return skip("objectcreatie (onopgelost type): " + oc.naam());
-        if (!io.github.yhavinga.regelspraak.ir.Geldigheid.ALTIJD.equals(oc.geldigheid())) return skip("objectcreatie (versie-geldigheid): " + oc.naam());
         Class<?> subjClass = factClass(subject), nieuwClass = factClass(nieuw);
         if (subjClass == null || nieuwClass == null) return skip("objectcreatie (geen fact-class): " + oc.naam());
         String backRef = model.verbindendeRol(nieuw, subject);   // field on $new -> subject (null -> orphan insert, like DRL)
@@ -1788,6 +1827,7 @@ public final class ExecModelTranspiler {
             pattern = gate.pattern();
             extra.addAll(gate.extra());
         }
+        pattern = geldigGuard(pattern, oc.geldigheid());   // §4.2 version validity window
 
         final List<String> fAttrs = attrs; final List<BiFunction<Object, Map<String, BigDecimal>, Object>> fFns = fns;
         final String fBackRef = backRef; final Class<?> fNieuwClass = nieuwClass;
@@ -1820,13 +1860,12 @@ public final class ExecModelTranspiler {
         Objecttype anker = fc.anker(), doel = fc.doel();
         if (anker == null || doel == null || fc.zetVeld() == null || fc.joinVeld() == null)
             return skip("feitcreatie (onopgelost): " + fc.naam());
-        if (!io.github.yhavinga.regelspraak.ir.Geldigheid.ALTIJD.equals(fc.geldigheid())) return skip("feitcreatie (versie-geldigheid): " + fc.naam());
         Class<?> ankerClass = factClass(anker), doelClass = factClass(doel);
         if (ankerClass == null || doelClass == null) return skip("feitcreatie (geen fact-class): " + fc.naam());
 
         seq = 0;
         Variable sVar = DSL.declarationOf(ankerClass, "$subject");
-        PatternDSL.PatternDef ankerPat = PatternDSL.pattern(sVar);
+        PatternDSL.PatternDef ankerPat = geldigGuard(PatternDSL.pattern(sVar), fc.geldigheid());   // §4.2 window (on the anker)
         List<RuleItemBuilder<?>> ankerExtra = new ArrayList<>();
         // §8.1.7 the voorwaarde: try the ANKER side first (its constraints + any far-side exists ride the anker
         // pattern); if it cannot lower there, try the DOEL side (an in-pattern predicate on $doel); else INERT.
@@ -1891,7 +1930,6 @@ public final class ExecModelTranspiler {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private List<Rule> delingCompanions(ResolvedRegel r) {
         if (!(r.doel() instanceof Expr.AttribuutRef doel) || doel.objecttype() == null) return List.of();
-        if (!io.github.yhavinga.regelspraak.ir.Geldigheid.ALTIJD.equals(r.geldigheid())) return List.of();
         Objecttype subject = doel.objecttype();
         Class<?> factClass = factClass(subject);
         Class<?> incClass = inconsistentieClass();
@@ -1914,6 +1952,7 @@ public final class ExecModelTranspiler {
                 if (gate == null || !gate.extra().isEmpty()) continue;   // unlowerable / far-side gate -> skip companion
                 pattern = gate.pattern();
             }
+            pattern = geldigGuard(pattern, r.geldigheid());   // §4.2 the companion only flags inside the host's window
             // dividend present AND divisor empty (an empty LEFT short-circuits to 0 -> no fout, so guard the dividend too).
             pattern = pattern.expr(nextId("dvd"), (Predicate1) s -> RegelSpraakRuntime.get(s, dividend) != null)
                     .expr(nextId("dvs"), (Predicate1) s -> RegelSpraakRuntime.get(s, divisor) == null);
@@ -1929,7 +1968,6 @@ public final class ExecModelTranspiler {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private List<Rule> wortelCompanions(ResolvedRegel r) {
         if (!(r.doel() instanceof Expr.AttribuutRef doel) || doel.objecttype() == null) return List.of();
-        if (!io.github.yhavinga.regelspraak.ir.Geldigheid.ALTIJD.equals(r.geldigheid())) return List.of();
         Objecttype subject = doel.objecttype();
         Class<?> factClass = factClass(subject);
         Class<?> incClass = inconsistentieClass();
@@ -1951,6 +1989,7 @@ public final class ExecModelTranspiler {
                 if (gate == null || !gate.extra().isEmpty()) continue;
                 pattern = gate.pattern();
             }
+            pattern = geldigGuard(pattern, r.geldigheid());   // §4.2 the companion only flags inside the host's window
             // radicand < 0 (a null radicand is leeg, not negative -> no fout; compareTo guards null out).
             pattern = pattern.expr(nextId("rad"), (Predicate1) s -> {
                 Object v = RegelSpraakRuntime.get(s, radicand);

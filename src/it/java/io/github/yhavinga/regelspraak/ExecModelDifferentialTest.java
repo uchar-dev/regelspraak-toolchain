@@ -1535,6 +1535,61 @@ class ExecModelDifferentialTest {
             l -> vals(refIndex(l, ((Passagier) l.get(1)).getBonusvlucht()), refIndex(l, ((Passagier) l.get(2)).getBonusvlucht()))),   // [null, null]
     };
 
+    // ---- Phase H §4.2 VERSIE-GELDIGHEID: a dated (geldig vanaf/tot/t-m) construct fires only when the rekendatum
+    //      global is inside its [vanaf, tot] window. The model now registers a LocalDate `rekendatum` global + a
+    //      per-construct window guard (geldigGuard), mirroring DrlTranspiler.geldigheidGuard. The Fixture globals map
+    //      sets rekendatum on BOTH sessions; an out-of-window rekendatum -> the rule does not fire (attr stays null). ----
+    static final String PRIJS_OT = "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n";
+    static final String DATED_REGEL = PRIJS_OT + "Regel R\n    geldig vanaf 2018\n        De prijs van een passagier moet gesteld worden op 50.\n";
+    static final String WINDOW_REGEL = PRIJS_OT + "Regel R\n    geldig vanaf 01-07-2022 t/m 31-12-2022\n        De prijs van een passagier moet gesteld worden op 50.\n";
+    static final String MULTI_REGEL = PRIJS_OT + "Regel R\n    geldig t/m 2019\n        De prijs van een passagier moet gesteld worden op 10.\n"
+            + "    geldig vanaf 2020\n        De prijs van een passagier moet gesteld worden op 20.\n";
+    static final Fixture[] PHASE_GELDIG = {
+        new Fixture("geldig vanaf 2018, rekendatum 2020 inside -> fires",
+            DATED_REGEL, () -> List.of(new Passagier()), Map.of("rekendatum", LocalDate.of(2020, 1, 1)),
+            l -> ((Passagier) l.get(0)).getPrijs()),   // 50
+
+        new Fixture("geldig vanaf 2018, rekendatum 2010 before vanaf -> no fire",
+            DATED_REGEL, () -> List.of(new Passagier()), Map.of("rekendatum", LocalDate.of(2010, 1, 1)),
+            l -> ((Passagier) l.get(0)).getPrijs()),   // null
+
+        new Fixture("geldig window 01-07-2022 t/m 31-12-2022, rekendatum 2022-09 inside -> fires",
+            WINDOW_REGEL, () -> List.of(new Passagier()), Map.of("rekendatum", LocalDate.of(2022, 9, 1)),
+            l -> ((Passagier) l.get(0)).getPrijs()),   // 50
+
+        new Fixture("geldig window 01-07-2022 t/m 31-12-2022, rekendatum 2023-01 after tot -> no fire",
+            WINDOW_REGEL, () -> List.of(new Passagier()), Map.of("rekendatum", LocalDate.of(2023, 1, 1)),
+            l -> ((Passagier) l.get(0)).getPrijs()),   // null
+
+        // a boundary: rekendatum exactly on the inclusive `tot` (31-12-2022) still fires (isAfter is strict).
+        new Fixture("geldig window, rekendatum exactly on the inclusive tot -> fires",
+            WINDOW_REGEL, () -> List.of(new Passagier()), Map.of("rekendatum", LocalDate.of(2022, 12, 31)),
+            l -> ((Passagier) l.get(0)).getPrijs()),   // 50
+
+        // multi-version rule (resolver disambiguates "R #1"/"R #2"): each version's window guards it; the rekendatum
+        // selects which fires. The model builds two distinct guarded rules — no name collision.
+        new Fixture("multi-version rule, rekendatum 2018 selects the t/m-2019 version (10)",
+            MULTI_REGEL, () -> List.of(new Passagier()), Map.of("rekendatum", LocalDate.of(2018, 6, 1)),
+            l -> ((Passagier) l.get(0)).getPrijs()),   // 10
+
+        new Fixture("multi-version rule, rekendatum 2021 selects the vanaf-2020 version (20)",
+            MULTI_REGEL, () -> List.of(new Passagier()), Map.of("rekendatum", LocalDate.of(2021, 6, 1)),
+            l -> ((Passagier) l.get(0)).getPrijs()),   // 20
+
+        // cross-family: a dated FEITCREATIE — the relation is created only inside the window (the guard rides the anker).
+        new Fixture("dated feitcreatie, rekendatum 2020 inside -> relation created",
+            FEIT_HDR + "Regel ken bonus toe\n    geldig vanaf 2018\n        Een bonuspassagier van een vlucht is een passagier van de vlucht.\n",
+            () -> { Vlucht v = new Vlucht(); Passagier p = new Passagier(); p.setReis(v); return List.of(v, p); },
+            Map.of("rekendatum", LocalDate.of(2020, 1, 1)),
+            l -> refIndex(l, ((Passagier) l.get(1)).getBonusvlucht())),   // 0
+
+        new Fixture("dated feitcreatie, rekendatum 2010 before vanaf -> no relation",
+            FEIT_HDR + "Regel ken bonus toe\n    geldig vanaf 2018\n        Een bonuspassagier van een vlucht is een passagier van de vlucht.\n",
+            () -> { Vlucht v = new Vlucht(); Passagier p = new Passagier(); p.setReis(v); return List.of(v, p); },
+            Map.of("rekendatum", LocalDate.of(2010, 1, 1)),
+            l -> refIndex(l, ((Passagier) l.get(1)).getBonusvlucht())),   // null
+    };
+
     private static String bdStr(BigDecimal x) { return x == null ? "null" : x.stripTrailingZeros().toPlainString(); }
     static final ObjFixture[] PHASE_G_OBJ = {
         // O1 §13.4.6: a Bestelling creates a linked Factuur (bedrag = its waarde) and back-references it.
@@ -1682,6 +1737,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
     @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 9); }
+    @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 9); }
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 4); }
     @Test void beslistabel_rows_match_drl_back_end()          { runDifferential("Beslistabel", BESLISTABEL, 6); }
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }
