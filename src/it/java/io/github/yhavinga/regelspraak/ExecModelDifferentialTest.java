@@ -1841,6 +1841,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 3); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 8); }
     @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 7); }
+    @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 2); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
     @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
@@ -2375,6 +2376,30 @@ class ExecModelDifferentialTest {
                     return List.of(p, deeln(p, "1", null, null), deeln(p, "3", null, null)); },
             Map.of(),
             l -> vals(((Deelnemer) l.get(1)).getAandeel(), ((Deelnemer) l.get(2)).getAandeel())),
+    };
+
+    // ---- Phase H fout: §13.4.8 consistentie schending generality — datum ordering + non-numeriek (Tekst) equality
+    //      assertions (the model only flagged own-numeric comparisons before). Observe the SET of flagged subjects. ----
+    static final FoutFixture[] PHASE_H_FOUT = {
+        // §13.4.8 datum ordering vs a literal: geboortedatum moet eerder zijn dan 1-1-2000. 1990 ok (not flagged),
+        // 2005 violated, a leeg geboortedatum violated (an empty ordering operand is a violation).
+        new FoutFixture("consistentie: datum ordering vs literal (leeg is a violation)",
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de geboortedatum Datum in dagen;\n"
+            + "Regel datcheck\n    geldig altijd\n        De geboortedatum van een Passagier moet eerder zijn dan 1-1-2000.\n",
+            () -> List.of(passagier(p -> p.setGeboortedatum(dat(1990, 1, 1))),
+                          passagier(p -> p.setGeboortedatum(dat(2005, 1, 1))),
+                          new Passagier()),
+            o -> "gb=" + ((Passagier) o).getGeboortedatum()),
+
+        // §13.4.8 / Tabel 38 Tekst equality vs a literal: naam moet gelijk zijn aan "Amsterdam". A leeg naam is a
+        // violation (a leeg attr never equals the non-null literal).
+        new FoutFixture("consistentie: Tekst equality vs literal (leeg is a violation)",
+            "Objecttype de Bestemming (mv: Bestemmingen)\n    de naam Tekst;\n"
+            + "Regel naamcheck\n    geldig altijd\n        De naam van een Bestemming moet gelijk zijn aan \"Amsterdam\".\n",
+            () -> { io.github.yhavinga.regelspraak.facts.Bestemming ok = new io.github.yhavinga.regelspraak.facts.Bestemming(); ok.setNaam("Amsterdam");
+                    io.github.yhavinga.regelspraak.facts.Bestemming anders = new io.github.yhavinga.regelspraak.facts.Bestemming(); anders.setNaam("Rotterdam");
+                    return List.of(ok, anders, new io.github.yhavinga.regelspraak.facts.Bestemming()); },
+            o -> "naam=" + ((io.github.yhavinga.regelspraak.facts.Bestemming) o).getNaam()),
     };
 
     // ---- Phase E fout: §9.7.6 Tabel 19 — an empty weight (naar rato) or a leeg/negatief maximum at ANY recipient is
