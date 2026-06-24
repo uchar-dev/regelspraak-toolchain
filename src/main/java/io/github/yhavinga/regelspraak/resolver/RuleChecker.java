@@ -106,23 +106,44 @@ final class RuleChecker {
             String geldig = b.versie() != null ? DefinitionResolver.src(b.versie().versieGeldigheid()) : "altijd";
             List<String> headers = grid.get(0);
             List<List<String>> data = grid.subList(1, grid.size());
-            for (String regelSrc : BeslistabelDesugar.desugar(naam, geldig, headers, data)) {
-                RegelContext rc = parseRegel(regelSrc, b.getStart().getLine());
+            int line = b.getStart().getLine();
+            // a row the desugar cannot faithfully render (kenmerk "onwaar" conclusie, >1 OR-cel in an EN-rij) is
+            // surfaced as a WARNING — never silently dropped.
+            java.util.function.Consumer<String> waarschuw = msg -> model.diagnostics.add(
+                    new Diagnostic(Severity.WARNING, "beslistabel '" + naam + "': " + msg, line));
+            for (String regelSrc : BeslistabelDesugar.desugar(naam, geldig, headers, data, waarschuw)) {
+                RegelContext rc = parseRegel(regelSrc, line);
                 if (rc != null) regelVersies(rc);
             }
         }
     }
 
     /** Split a captured markdown table row into trimmed cells: strip the surrounding pipes/whitespace (a continuation
-     *  row carries a leading newline), then split on '|' (cells never contain '|', §12). The empty col-0 header and the
-     *  numbering cell are interior, so they survive — only the outer pipes are removed. */
+     *  row carries a leading newline), then split on each TOP-LEVEL '|'. The split is QUOTE-AWARE — a '|' inside a
+     *  double-quoted tekstwaarde (a legal §5.4 value the lexer preserves verbatim inside TABEL_MODE) is NOT a cell
+     *  boundary. The empty col-0 header and the numbering cell are interior, so only the outer pipes are removed. */
     private static List<String> splitRij(String rij) {
         String s = rij.strip();
         if (s.startsWith("|")) s = s.substring(1);
-        if (s.endsWith("|")) s = s.substring(0, s.length() - 1);
+        if (s.endsWith("|") && !eindigtInQuote(s)) s = s.substring(0, s.length() - 1);
         List<String> cellen = new ArrayList<>();
-        for (String c : s.split("\\|", -1)) cellen.add(c.trim());
+        StringBuilder cur = new StringBuilder();
+        boolean inQuote = false;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '"') inQuote = !inQuote;
+            if (c == '|' && !inQuote) { cellen.add(cur.toString().trim()); cur.setLength(0); }
+            else cur.append(c);
+        }
+        cellen.add(cur.toString().trim());
         return cellen;
+    }
+    /** True when the final '|' of {@code s} sits INSIDE a double-quoted span (an odd number of '"' precede it), so
+     *  it is part of a tekstwaarde value rather than the row's trailing edge pipe. */
+    private static boolean eindigtInQuote(String s) {
+        int quotes = 0;
+        for (int i = 0; i < s.length() - 1; i++) if (s.charAt(i) == '"') quotes++;
+        return (quotes & 1) == 1;
     }
 
     /** A markdown separator row ("| --- | :--: | --- |"): every non-empty cell is dashes/colons and at least one is a

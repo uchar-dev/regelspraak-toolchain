@@ -43,6 +43,18 @@ public final class BeslistabelDesugar {
      * @param rows    the data rows, each a cell list aligned to {@code headers} (cell[0] = the row numbering)
      */
     public static List<String> desugar(String naam, String geldig, List<String> headers, List<List<String>> rows) {
+        return desugar(naam, geldig, headers, rows, w -> {});
+    }
+
+    /**
+     * As {@link #desugar(String, String, List, List)} but reporting any row it cannot faithfully render to the
+     * {@code waarschuw} sink (the caller surfaces these as diagnostics) — so an un-renderable row is an HONEST skip,
+     * never a silent mis-render. Reported: a kenmerk "onwaar" conclusie (RegelSpraak has no negatieve toekenning),
+     * and more than one §5.7 disjunction cell in a single EN-row (the nested OR-lists cannot coexist in the bullet
+     * grammar — see {@link #voorwaardeClausule}).
+     */
+    public static List<String> desugar(String naam, String geldig, List<String> headers, List<List<String>> rows,
+                                        java.util.function.Consumer<String> waarschuw) {
         List<Integer> conclusieKol = new ArrayList<>(), conditieKol = new ArrayList<>();
         for (int c = 1; c < headers.size(); c++) {
             if (headers.get(c).trim().toLowerCase().startsWith("indien")) conditieKol.add(c);
@@ -54,7 +66,11 @@ public final class BeslistabelDesugar {
             for (int ci = 0; ci < conclusieKol.size(); ci++) {
                 int cc = conclusieKol.get(ci);
                 String resultaat = resultaatdeel(headers.get(cc).trim(), cel(row, cc).trim());
-                if (resultaat == null) continue;   // a kenmerk "onwaar" cell asserts nothing -> no regel for this row/column
+                if (resultaat == null) {   // a kenmerk "onwaar" conclusie has no RegelSpraak negatieve-toekenning form
+                    waarschuw.accept("rij " + nr + ": een kenmerk-conclusie 'onwaar' kan niet als negatieve toekenning "
+                            + "worden uitgedrukt — rij overgeslagen");
+                    continue;
+                }
 
                 // each non-n.v.t. conditie cell -> a Voorwaarde (a predicate kop + its 0..n alternative values).
                 List<Voorwaarde> condities = new ArrayList<>();
@@ -66,14 +82,24 @@ public final class BeslistabelDesugar {
                         condities.add(new Voorwaarde(kop, List.of()));
                     else if (cell.equalsIgnoreCase("onwaar"))  // a kenmerk conditie that must NOT hold -> negate the check
                         condities.add(new Voorwaarde(negeerKenmerkKop(kop), List.of()));
-                    else                                       // a comparison: the kop + the cell's 1..n §5.7 value(s)
-                        condities.add(new Voorwaarde(kop, splitConcatenatie(cell)));
+                    else {
+                        // §5.7: "is gelijk aan" series uses "of" (a DISJUNCTION, ≤1 value matches); "is ongelijk aan"
+                        // uses "en" (§12-note L4702: a CONJUNCTION of !=, must differ from ALL), which flattens into
+                        // the row's AND as separate conditions. Split respects double quotes (a value may contain , / of).
+                        boolean ongelijk = kop.toLowerCase().contains("ongelijk");
+                        List<String> waarden = splitReeks(cell, ongelijk);
+                        if (ongelijk && waarden.size() > 1)
+                            for (String w : waarden) condities.add(new Voorwaarde(kop, List.of(w)));
+                        else
+                            condities.add(new Voorwaarde(kop, waarden));
+                    }
                 }
 
-                String body = resultaat + voorwaardeClausule(condities);
+                String clausule = voorwaardeClausule(condities, nr, waarschuw);
+                if (clausule == null) continue;   // un-renderable (>1 disjunction in one EN-row) — warned + skipped
                 // name: "<naam> <rij>" (+ a conclusie-column suffix only when a row yields more than one regel).
                 String regelNaam = naam + (nr.isEmpty() ? "" : " " + nr) + (conclusieKol.size() > 1 ? " (" + (ci + 1) + ")" : "");
-                uit.add("Regel " + regelNaam + "\n  geldig " + geldig + "\n    " + body + ".\n");
+                uit.add("Regel " + regelNaam + "\n  geldig " + geldig + "\n    " + resultaat + clausule + ".\n");
             }
         }
         return uit;
@@ -88,7 +114,7 @@ public final class BeslistabelDesugar {
     /** Build the "&nbsp;indien …" clause for a row's conditions (empty if none). One condition → inline (or a §13.4.14
      *  "tenminste één van de volgende voorwaarden" list for a §5.7 disjunction); several → an "alle volgende
      *  voorwaarden" AND-list, any disjunction reordered LAST and nested as a §13.4.14.2 sub-list. */
-    private static String voorwaardeClausule(List<Voorwaarde> condities) {
+    private static String voorwaardeClausule(List<Voorwaarde> condities, String nr, java.util.function.Consumer<String> waarschuw) {
         if (condities.isEmpty()) return "";
         if (condities.size() == 1) {
             Voorwaarde v = condities.get(0);
@@ -96,7 +122,15 @@ public final class BeslistabelDesugar {
                     ? " indien " + disjunctieLijst(v, "      • ", "er aan tenminste één van de volgende voorwaarden wordt voldaan")
                     : " indien " + elementair(v);
         }
-        // AND of several: single-value conditions first, any disjunction last (so its greedy bullet capture is harmless).
+        // AND of several. At most ONE disjunction can be nested (reordered last so its greedy bullet capture is
+        // harmless); two nested OR-lists would silently swallow each other's bullets in the §13.4.14 bullet grammar,
+        // so a row with >1 disjunction cell is an honest skip rather than a silent collapse.
+        long disjuncties = condities.stream().filter(Voorwaarde::disjunctie).count();
+        if (disjuncties > 1) {
+            waarschuw.accept("rij " + nr + ": meer dan één concatenatie-cel (OR-lijst) in één EN-rij wordt niet "
+                    + "ondersteund — rij overgeslagen");
+            return null;
+        }
         List<Voorwaarde> geordend = new ArrayList<>();
         for (Voorwaarde v : condities) if (!v.disjunctie()) geordend.add(v);
         for (Voorwaarde v : condities) if (v.disjunctie()) geordend.add(v);
@@ -116,13 +150,19 @@ public final class BeslistabelDesugar {
     }
 
     /** Negate a kenmerk-check kop (an "onwaar" conditie cell): a §3.4 bezittelijk check "hij een recht … heeft" →
-     *  "hij geen recht … heeft"; a §3.3 bijvoeglijk check "hij is X" → "hij is niet X". A kop that matches neither
-     *  shape is returned with a leading "niet " (a best-effort the resolver rejects → an honest skip of that row,
-     *  not a silent mis-render — "onwaar" conditie cells are outside the §12 worked tables). */
+     *  "hij geen recht … heeft"; a §3.3 bijvoeglijk check with a leading verb "hij is X" → "hij is niet X" or a
+     *  trailing verb "hij X is" → "hij X is niet". A kop that matches none is returned with a leading "niet "
+     *  (a best-effort the resolver rejects → an honest skip of that row, not a silent mis-render). */
     private static String negeerKenmerkKop(String kop) {
-        if (kop.contains(" een ")) return kop.replaceFirst(" een ", " geen ");
-        if (kop.contains(" is ")) return kop.replaceFirst(" is ", " is niet ");
-        return "niet " + kop;
+        if (kop.contains(" een ")) return kop.replaceFirst(" een ", " geen ");   // bezittelijk: "heeft een" -> "heeft geen"
+        // trailing-verb bijvoeglijk "<vnw> <kenmerk> is" -> the VERIFIED leading-verb negation "<vnw> is niet <kenmerk>"
+        // ("hij gepensioneerd is" -> "hij is niet gepensioneerd"). Appending "is niet" instead is parsed as POSITIVE
+        // (the trailing "niet" is dropped) — a silent mis-render, hence the rebuild.
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("(?i)^(hij|zij|ze|het|die|er)\\s+(.+?)\\s+(is|zijn)$").matcher(kop);
+        if (m.matches()) return m.group(1) + " " + m.group(3) + " niet " + m.group(2);
+        if (kop.contains(" is ")) return kop.replaceFirst(" is ", " is niet ");  // leading-verb: "hij is X" -> "hij is niet X"
+        return "niet " + kop;   // best-effort -> the resolver rejects -> an HONEST skip of the row (not silent)
     }
 
     /** A disjunction over one cell's values: a §13.4.14 "… volgende voorwaarden[:]" opener + one bullet per value
@@ -135,8 +175,8 @@ public final class BeslistabelDesugar {
     }
 
     /** A conclusie cell → its resultaatdeel source. A §9.1 gelijkstelling header ("… moet gesteld worden op") takes
-     *  the cell as its value; a §9.2 kenmerk header ("een X is …") takes "waar" (assert it) / "onwaar" (null: assert
-     *  nothing — the §12 negative form is left to a later refinement). */
+     *  the cell as its value; a §9.2 kenmerk header ("een X is …") takes "waar" (assert it) / "onwaar" (null —
+     *  RegelSpraak has no negatieve-toekenning form, so the caller warns + skips the row rather than mis-render it). */
     private static String resultaatdeel(String header, String cell) {
         if (header.toLowerCase().contains("moet gesteld worden op")) return header + " " + cell;
         // a kenmerk conclusie: the header IS the assertion ("een passagier is een passagier jonger dan 18 jaar").
@@ -145,17 +185,40 @@ public final class BeslistabelDesugar {
         return header + " " + cell;   // a non-boolean cell under a non-gelijkstelling header: append it (defensive)
     }
 
-    /** Split a §5.7 concatenatie cell into its values: on commas and the final " of " (cells never contain '|', and a
-     *  value is a double-quoted literal / numeric / attribute reference without an embedded comma). A single-value
-     *  cell returns a 1-element list. */
-    private static List<String> splitConcatenatie(String cell) {
+    /** Split a §5.7 concatenatie cell into its values: at TOP-LEVEL commas and the connector word — " of " for an
+     *  equality series, " en " for an inequality series (§12-note L4702). The split is QUOTE-AWARE: a ',' or the
+     *  word inside a double-quoted tekstwaarde (a legal §5.4 value, e.g. {@code "Holland, Noord"} or {@code "A of B"})
+     *  is NOT a separator, so the literal stays intact. A single-value cell returns a 1-element list. */
+    private static List<String> splitReeks(String cell, boolean ongelijk) {
+        String connector = ongelijk ? "en" : "of";
         List<String> waarden = new ArrayList<>();
-        for (String w : cell.split("\\s*,\\s*|\\s+of\\s+")) {
-            String t = w.trim();
-            if (!t.isEmpty()) waarden.add(t);
+        StringBuilder cur = new StringBuilder();
+        boolean inQuote = false;
+        for (int i = 0; i < cell.length(); ) {
+            char c = cell.charAt(i);
+            if (c == '"') { inQuote = !inQuote; cur.append(c); i++; continue; }
+            if (!inQuote && c == ',') { duwWaarde(waarden, cur); i++; continue; }
+            if (!inQuote && c == ' ' && connectorOp(cell, i, connector)) {
+                duwWaarde(waarden, cur);
+                i += 2 + connector.length();   // skip " <connector> " (leading space + word + trailing space)
+                continue;
+            }
+            cur.append(c); i++;
         }
-        if (waarden.isEmpty()) waarden.add(cell);
+        duwWaarde(waarden, cur);
+        if (waarden.isEmpty()) waarden.add(cell.trim());
         return waarden;
+    }
+    /** True when {@code cell} has the standalone connector word (surrounded by spaces) starting at the space {@code i}. */
+    private static boolean connectorOp(String cell, int i, String connector) {
+        int w = i + 1, end = w + connector.length();
+        return cell.regionMatches(w, connector, 0, connector.length())
+                && end < cell.length() && cell.charAt(end) == ' ';
+    }
+    private static void duwWaarde(List<String> waarden, StringBuilder cur) {
+        String t = cur.toString().trim();
+        if (!t.isEmpty()) waarden.add(t);
+        cur.setLength(0);
     }
 
     /** Strip a leading "indien " (the conditie header carries it; a bullet / repeated predicate kop does not). */

@@ -7,6 +7,7 @@ import io.github.yhavinga.regelspraak.resolver.BeslistabelDesugar;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -131,6 +132,69 @@ class BeslistabelDesugarTest {
                 + "        •• zijn klasse gelijk is aan \"eerste\"\n"
                 + "        •• zijn klasse gelijk is aan \"tweede\".\n",
                 regels.get(0));
+    }
+
+    @Test void multi_value_cell_split_is_quote_aware() {
+        // §5.4: a tekstwaarde may legally contain a comma, the word "of", or '|'; none of those split the value.
+        List<String> headers = List.of("",
+                "de woonregio factor van een Natuurlijk persoon moet gesteld worden op",
+                "indien zijn woonprovincie gelijk is aan");
+        List<List<String>> rows = List.of(List.of("1", "1", "\"Holland, Noord\", \"A of B\" of \"Fries|land\""));
+        List<String> regels = BeslistabelDesugar.desugar("W", "altijd", headers, rows);
+        assertEquals(1, regels.size());
+        String r = regels.get(0);
+        assertTrue(r.contains("• zijn woonprovincie gelijk is aan \"Holland, Noord\""), r);
+        assertTrue(r.contains("• zijn woonprovincie gelijk is aan \"A of B\""), r);
+        assertTrue(r.contains("• zijn woonprovincie gelijk is aan \"Fries|land\""), r);
+    }
+
+    @Test void ongelijk_series_uses_en_and_becomes_an_and_of_inequalities() {
+        // §12-note L4702: a concatenatie under "is ongelijk aan" uses "en" and means !=A AND !=B AND !=C.
+        List<String> headers = List.of("",
+                "de woonregio factor van een Natuurlijk persoon moet gesteld worden op",
+                "indien zijn woonprovincie ongelijk is aan");
+        List<List<String>> rows = List.of(List.of("1", "1", "\"Friesland\", \"Groningen\" en \"Drenthe\""));
+        List<String> regels = BeslistabelDesugar.desugar("W", "altijd", headers, rows);
+        assertEquals("Regel W 1\n  geldig altijd\n    "
+                + "de woonregio factor van een Natuurlijk persoon moet gesteld worden op 1 indien hij aan alle volgende voorwaarden voldoet:\n"
+                + "      • zijn woonprovincie ongelijk is aan \"Friesland\"\n"
+                + "      • zijn woonprovincie ongelijk is aan \"Groningen\"\n"
+                + "      • zijn woonprovincie ongelijk is aan \"Drenthe\".\n",
+                regels.get(0));
+    }
+
+    @Test void more_than_one_disjunction_in_one_and_row_is_skipped_with_a_warning() {
+        List<String> headers = List.of("",
+                "de woonregio factor van een Natuurlijk persoon moet gesteld worden op",
+                "indien zijn woonprovincie gelijk is aan",
+                "indien zijn taal gelijk is aan");
+        List<List<String>> rows = List.of(List.of("1", "1",
+                "\"Friesland\" of \"Groningen\"", "\"Fries\" of \"Nedersaksisch\""));
+        List<String> warns = new ArrayList<>();
+        List<String> regels = BeslistabelDesugar.desugar("W", "altijd", headers, rows, warns::add);
+        assertTrue(regels.isEmpty(), () -> "verwacht geen regel (niet stil renderen): " + regels);
+        assertEquals(1, warns.size(), () -> "" + warns);
+        assertTrue(warns.get(0).contains("meer dan één concatenatie-cel"), warns.get(0));
+    }
+
+    @Test void kenmerk_conclusie_onwaar_is_skipped_with_a_warning_not_silently() {
+        List<String> headers = List.of("", "een passagier is minderjarig", "indien zijn leeftijd kleiner is dan");
+        List<List<String>> rows = List.of(List.of("1", "waar", "18 jr"), List.of("2", "onwaar", "65 jr"));
+        List<String> warns = new ArrayList<>();
+        List<String> regels = BeslistabelDesugar.desugar("M", "altijd", headers, rows, warns::add);
+        assertEquals(1, regels.size(), () -> "alleen rij 1 (waar) levert een regel: " + regels);
+        assertEquals(1, warns.size());
+        assertTrue(warns.get(0).contains("onwaar"), warns.get(0));
+    }
+
+    @Test void kenmerk_conditie_onwaar_negates_each_kenmerk_shape() {
+        // bezittelijk "een"->"geen"; trailing-verb "X is"->"is niet X" (NOT a silently-positive "X is niet").
+        List<String> headers = List.of("", "de belasting van een Passagier moet gesteld worden op",
+                "indien hij een recht op duurzaamheidskorting heeft", "indien hij gepensioneerd is");
+        List<List<String>> rows = List.of(List.of("1", "10", "onwaar", "onwaar"));
+        String r = BeslistabelDesugar.desugar("X", "altijd", headers, rows).get(0);
+        assertTrue(r.contains("hij geen recht op duurzaamheidskorting heeft"), r);
+        assertTrue(r.contains("hij is niet gepensioneerd"), r);
     }
 
     @Test void desugared_rows_resolve_through_the_existing_pipeline() {
