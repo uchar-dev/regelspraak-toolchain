@@ -13,6 +13,7 @@ import org.drools.model.Global;
 import org.drools.model.Model;
 import org.drools.model.PatternDSL;
 import org.drools.model.Rule;
+import org.drools.model.RuleItemBuilder;
 import org.drools.model.Variable;
 import org.drools.model.functions.Block2;
 import org.drools.model.functions.Predicate1;
@@ -46,6 +47,15 @@ public final class ExecModelTranspiler {
     private final RegelSpraakModel model;
     private final Map<String, Global<BigDecimal>> globals = new LinkedHashMap<>();
     private final List<String> overgeslagen = new ArrayList<>();
+    /** Monotonic within ONE rule (reset per {@link #regel}) — keeps every {@code .expr}/declaration id unique so
+     *  two constraints on the SAME attribute (e.g. an ALLE of {@code leeftijd > 5} and {@code leeftijd < 18}) do
+     *  not collide on a shared id and silently drop one (Drools shares constraints by id). */
+    private int seq;
+
+    /** A lowered voorwaarde: the subject pattern with its in-pattern constraints, plus zero or more SEPARATE
+     *  rule items (the §8.1.7 far-side {@code exists}/{@code not} joins) appended after it — the model analog of
+     *  {@code DrlTranspiler.LoweredConditie}'s inline + extra split. */
+    private record Gate(PatternDSL.PatternDef pattern, List<RuleItemBuilder<?>> extra) {}
 
     private ExecModelTranspiler(RegelSpraakModel m) { this.model = m; }
 
@@ -95,76 +105,166 @@ public final class ExecModelTranspiler {
         if (waarde == null) return skip("regel (waarde buiten Phase-A scope): " + r.naam());
         String doelProp = doel.attribuut();
 
+        seq = 0;
         Variable sVar = DSL.declarationOf(factClass, "$subject");
         PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
+        List<RuleItemBuilder<?>> extra = List.of();
 
         if (r.voorwaarde() != null) {
-            PatternDSL.PatternDef p2 = voorwaarde(r.voorwaarde(), pattern, doel.objecttype());
-            if (p2 == null) return skip("regel (voorwaarde buiten Phase-A scope): " + r.naam());
-            pattern = p2;
+            Gate gate = voorwaarde(r.voorwaarde(), pattern, doel.objecttype(), sVar);
+            if (gate == null) return skip("regel (voorwaarde buiten Phase-B scope): " + r.naam());
+            pattern = gate.pattern();
+            extra = gate.extra();
         }
 
         Block2<org.drools.model.Drools, Object> body = (drools, s) -> {
             RegelSpraakRuntime.set(s, doelProp, waarde.apply(s));
             drools.update(s);
         };
-        // NO_LOOP is mandatory: the modify must not re-activate this rule (else fireAllRules infinite-loops).
+        // The subject pattern first (binds $subject), then any far-side exists/not joins (which reference
+        // $subject), then the consequence — matching the DRL clause order. NO_LOOP is mandatory: the modify must
+        // not re-activate this rule (else fireAllRules infinite-loops).
+        List<RuleItemBuilder<?>> items = new ArrayList<>();
+        items.add(pattern);
+        items.addAll(extra);
+        items.add(DSL.on(sVar).execute(body));
         return PatternDSL.rule(r.naam())
                 .attribute(Rule.Attribute.NO_LOOP, true)
-                .build(pattern, DSL.on(sVar).execute(body));
+                .build(items.toArray(new RuleItemBuilder[0]));
     }
 
-    /** Lower a voorwaarde into in-pattern constraints (added with .expr — multiple exprs AND). Returns the augmented
-     *  pattern, or null when ANY part is outside scope (caller skips the whole rule — never a partial gate).
-     *  Phase A: a single own-attribute scalar comparison vs a numeric global/literal. Phase B: an ALLE/DE compound
-     *  (AND of supported parts), an own non-temporal kenmerkcheck (boolean property), and LEEG/GEVULD on an own attr.
-     *  A temporal (List<Segment>) operand SKIPS (Phase F) — never a List spliced into a scalar lambda. */
+    /** Lower a voorwaarde into the subject pattern's in-pattern constraints (plus far-side exists/not joins as
+     *  extra rule items). Returns a {@link Gate}, or null when ANY part is outside scope (caller skips the whole
+     *  rule — never a partial gate). A constraint that needs a pattern variable (a comparison vs a Parameter-global)
+     *  or hosts an exists-join lives HERE; every fact-only leaf flows through {@link #leafPredicate}, shared with
+     *  the counting-quantifier path. A temporal (List<Segment>) operand SKIPS (Phase F) — never a List in a scalar lambda.
+     *  Coverage: §13.4.14 ALLE/DE (AND), GEEN/TEN_MINSTE/TEN_HOOGSTE/PRECIES (counting), §8.1.7 near- and far-side
+     *  rolcheck, §8.1.8 own + to-one navigated kenmerkcheck, §8.1.2 LEEG/GEVULD, §8.1.1 comparison vs global/literal. */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private PatternDSL.PatternDef voorwaarde(Conditie c, PatternDSL.PatternDef pattern, Objecttype subject) {
-        // §13.4.14 ALLE / DE compound: AND its parts as successive in-pattern constraints.
+    private Gate voorwaarde(Conditie c, PatternDSL.PatternDef pattern, Objecttype subject, Variable subjectVar) {
         if (c instanceof Conditie.Samengesteld s) {
-            if (s.kwantor() != Conditie.Kwantor.ALLE && s.kwantor() != Conditie.Kwantor.DE) return null;  // OR/quantifiers later
-            for (Conditie sub : s.onderdelen()) {
-                pattern = voorwaarde(sub, pattern, subject);
-                if (pattern == null) return null;
+            // §13.4.14 ALLE / DE: AND its parts as successive in-pattern constraints; carry up far-side joins.
+            if (s.kwantor() == Conditie.Kwantor.ALLE || s.kwantor() == Conditie.Kwantor.DE) {
+                List<RuleItemBuilder<?>> extra = new ArrayList<>();
+                for (Conditie sub : s.onderdelen()) {
+                    Gate g = voorwaarde(sub, pattern, subject, subjectVar);
+                    if (g == null) return null;
+                    pattern = g.pattern();
+                    extra.addAll(g.extra());
+                }
+                return new Gate(pattern, extra);
             }
-            return pattern;
+            // §13.4.14.4 counting quantifiers: GEEN = none hold, TEN_MINSTE/TEN_HOOGSTE/PRECIES = count vs N. The
+            // children fold with ||/!/count, so a hoisted exists/not (or any non-leaf) cannot ride along — every
+            // onderdeel must reduce to a fact-only Predicate1, else the WHOLE compound skips (never a partial gate).
+            List<Predicate1<Object>> kinderen = new ArrayList<>();
+            for (Conditie sub : s.onderdelen()) {
+                Predicate1<Object> lp = leafPredicate(sub, subject);
+                if (lp == null) return null;
+                kinderen.add(lp);
+            }
+            final Conditie.Kwantor kw = s.kwantor();
+            final int n = s.drempel();
+            Predicate1<Object> combined = sObj -> {
+                int telling = 0;
+                for (Predicate1<Object> p : kinderen) if (p.test(sObj)) telling++;
+                return switch (kw) {
+                    case GEEN        -> telling == 0;
+                    case TEN_MINSTE  -> telling >= n;
+                    case TEN_HOOGSTE -> telling <= n;
+                    case PRECIES     -> telling == n;
+                    default          -> false;   // unreachable (alle/de handled above)
+                };
+            };
+            return new Gate(pattern.expr(nextId("q"), (Predicate1) combined), List.of());
         }
-        // §8.1.8 kenmerkcheck: an own, non-temporal kenmerk -> a boolean property constraint (kenmerk == !negatie).
+        // §8.1.7 far-side "heeft een <rol>": the reference lives on the to-many filler, so this is an exists-join —
+        // a SEPARATE rule item that cannot live inside the subject pattern. It binds the filler against $subject.
+        if (c instanceof Conditie.VerreRollidmaatschap vr) {
+            Class<?> fillerClass = factClass(vr.filler());
+            if (fillerClass == null) return null;
+            String backref = vr.backref();
+            Variable fVar = DSL.declarationOf(fillerClass, "$filler_" + (seq++));
+            PatternDSL.PatternDef fp = PatternDSL.pattern(fVar).expr(nextId("br"), (Variable) subjectVar,
+                    (Predicate2) (f, subj) -> RegelSpraakRuntime.get(f, backref) == subj);
+            RuleItemBuilder<?> item = vr.negatie() ? DSL.not(fp) : DSL.exists(fp);
+            return new Gate(pattern, List.of(item));
+        }
+        // §8.1.1 a comparison vs a numeric Parameter-GLOBAL needs a 2-var expr (the global as a pattern variable),
+        // so it stays here rather than in leafPredicate (a vs-literal comparison IS a fact-only leaf).
+        if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
+                && v.rechts() instanceof Expr.ParameterRef pr) {
+            if (subject != null && subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            java.util.function.BiPredicate<BigDecimal, BigDecimal> cmp = comparator(v.op());
+            if (cmp == null) return null;
+            Global<BigDecimal> g = globals.get(ident(pr.parameter().naam()));
+            if (g == null) return null;
+            String attr = la.attribuut();
+            return new Gate(pattern.expr(nextId("c"), (Variable) g,
+                    (Predicate2) (s, gv) -> bothNonNull(num(s, attr), (BigDecimal) gv, cmp)), List.of());
+        }
+        // every other supported condition is a fact-only leaf.
+        Predicate1<Object> lp = leafPredicate(c, subject);
+        if (lp != null) return new Gate(pattern.expr(nextId("c"), (Predicate1) lp), List.of());
+        return null;
+    }
+
+    /** A condition that reduces to a fact-only {@code Predicate1<subject>} (no pattern variable, no exists-join), or
+     *  null when it is outside scope / needs a global / hoists a join. Shared by the single-constraint path and the
+     *  counting-quantifier fold, so the two stay in lock-step. Covers §8.1.8 own + to-one navigated kenmerkcheck,
+     *  §8.1.2 LEEG/GEVULD on an own attribute, §8.1.1 comparison of an own attribute vs a numeric literal, and the
+     *  §8.1.7 near-side rolcheck. A temporal (List<Segment>) operand returns null (Phase F). */
+    private Predicate1<Object> leafPredicate(Conditie c, Objecttype subject) {
+        // §8.1.8 kenmerkcheck — an own kenmerk (boolean property == !negatie) or a to-one navigated one
+        // ("zijn partner heeft een <k>"), read null-safely through the reference (a null relation never matches).
         if (c instanceof Conditie.Kenmerk k) {
-            if (k.navigatie() != null || (k.eigenaar() != null && k.eigenaar() != subject)) return null;  // navigated/foreign later
-            if (subject != null && subject.kenmerkGranulariteit.containsKey(k.kenmerk())) return null;     // temporal kenmerk -> Phase F
-            String kenmerk = k.kenmerk(); boolean wanted = !k.negatie();
-            return pattern.expr("k_" + kenmerk, (Predicate1) s -> Boolean.TRUE.equals(RegelSpraakRuntime.get(s, kenmerk)) == wanted);
+            if (k.eigenaar() != null && k.eigenaar() != subject) return null;   // a feitcreatie doel-kenmerk hosts elsewhere
+            Objecttype kHouder = k.navigatie() == null ? subject
+                    : (subject != null ? model.rolDoeltypeNaarSubject(subject, k.navigatie()) : null);
+            if (kHouder != null && kHouder.kenmerkGranulariteit.containsKey(k.kenmerk())) return null;  // temporal -> Phase F
+            String kenmerk = k.kenmerk();
+            boolean wanted = !k.negatie();
+            if (k.navigatie() == null)
+                return s -> Boolean.TRUE.equals(RegelSpraakRuntime.get(s, kenmerk)) == wanted;
+            String nav = k.navigatie();
+            return s -> {
+                Object rel = RegelSpraakRuntime.get(s, nav);
+                return rel != null && Boolean.TRUE.equals(RegelSpraakRuntime.get(rel, kenmerk)) == wanted;
+            };
         }
         // §8.1.2 LEEG/GEVULD on an own attribute -> a null / non-null constraint.
         if (c instanceof Conditie.Predicaat p
                 && (p.soort() == Conditie.Predicaatsoort.LEEG || p.soort() == Conditie.Predicaatsoort.GEVULD)
                 && p.operand() instanceof Expr.AttribuutRef pa && pa.navigatieRol() == null) {
             if (subject != null && subject.attribuutGranulariteit.containsKey(pa.attribuut())) return null;  // temporal -> Phase F
-            String attr = pa.attribuut(); boolean leeg = p.soort() == Conditie.Predicaatsoort.LEEG;
-            return pattern.expr("p_" + attr, (Predicate1) s -> (RegelSpraakRuntime.get(s, attr) == null) == leeg);
+            String attr = pa.attribuut();
+            boolean leeg = p.soort() == Conditie.Predicaatsoort.LEEG;
+            return s -> (RegelSpraakRuntime.get(s, attr) == null) == leeg;
         }
-        // §8.1.1 a single own-attribute scalar comparison vs a numeric global / literal.
-        if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null) {
+        // §8.1.1 an own-attribute scalar comparison vs a numeric literal.
+        if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
+                && v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
             if (subject != null && subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
             java.util.function.BiPredicate<BigDecimal, BigDecimal> cmp = comparator(v.op());
             if (cmp == null) return null;
+            BigDecimal rhs = bd(lit);
+            if (rhs == null) return null;
             String attr = la.attribuut();
-            if (v.rechts() instanceof Expr.ParameterRef pr) {
-                Global<BigDecimal> g = globals.get(ident(pr.parameter().naam()));
-                if (g == null) return null;
-                return pattern.expr("c_" + attr, (Variable) g,
-                        (Predicate2) (s, gv) -> bothNonNull(num(s, attr), (BigDecimal) gv, cmp));
-            }
-            if (v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
-                BigDecimal rhs = bd(lit);
-                if (rhs == null) return null;
-                return pattern.expr("c_" + attr, (Predicate1) s -> bothNonNull(num(s, attr), rhs, cmp));
-            }
+            return s -> bothNonNull(num(s, attr), rhs, cmp);
+        }
+        // §8.1.7 near-side rolcheck: the subject fills the role iff its to-ONE forward reference is set. The far-side
+        // (the reference lives on the MANY side) is not a fact-only leaf -> null (handled as an exists-join above).
+        if (c instanceof Conditie.Rollidmaatschap r) {
+            String veld = subject != null ? model.verbindendeRol(subject, r.anderTeFiller()) : null;
+            if (veld == null || model.naarVeelRol(subject, r.anderTeFiller(), veld)) return null;
+            boolean gevuldWanted = !r.negatie();
+            return s -> (RegelSpraakRuntime.get(s, veld) != null) == gevuldWanted;
         }
         return null;
     }
+
+    /** A unique id within the current rule (see {@link #seq}). */
+    private String nextId(String prefix) { return prefix + "_" + (seq++); }
 
     /** Phase A scalar value: Literal | own-attr read | a {@code +} of those (rsNul leegwaarde). null -> skip. */
     private Function<Object, Object> scalarWaarde(Expr e) {

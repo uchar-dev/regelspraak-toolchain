@@ -1,6 +1,8 @@
 package io.github.yhavinga.regelspraak;
 
 import io.github.yhavinga.regelspraak.facts.Passagier;
+import io.github.yhavinga.regelspraak.facts.Persoon;
+import io.github.yhavinga.regelspraak.facts.Vlucht;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
 import io.github.yhavinga.regelspraak.transpiler.DrlTranspiler;
@@ -14,7 +16,11 @@ import org.kie.api.runtime.KieSession;
 import org.kie.internal.utils.KieHelper;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -31,12 +37,19 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ExecModelDifferentialTest {
 
-    /** A differential fixture: a rule source, a fresh-fact supplier, session globals, and what to read back. */
-    record Fixture(String naam, String src, Supplier<Passagier> fact, Map<String, Object> globals, Function<Passagier, Object> uit) {}
+    /** A differential fixture: a rule source, a fresh-facts supplier (every call returns a NEW list of NEW beans,
+     *  so the DRL fire and the model fire each get pristine facts), session globals, and what to read back from
+     *  the fired facts (a single value, or a {@link #vals} list when a fixture must check more than one bean). */
+    record Fixture(String naam, String src, Supplier<List<Object>> facts, Map<String, Object> globals, Function<List<Object>, Object> uit) {}
+
+    /** A single-Passagier fixture: the common case — one fresh Passagier, read one field back. */
+    static Fixture single(String naam, String src, Supplier<Passagier> fact, Map<String, Object> globals, Function<Passagier, Object> uit) {
+        return new Fixture(naam, src, () -> List.of(fact.get()), globals, l -> uit.apply((Passagier) l.get(0)));
+    }
 
     // ---- Phase A fixtures: comparison conditions (vs global / vs literal) + gelijkstelling + kenmerktoekenning ----
     static final Fixture[] PHASE_A = {
-        new Fixture("kenmerk vs global (minderjarig)",
+        single("kenmerk vs global (minderjarig)",
             """
             Parameter de volwassenleeftijd : Numeriek (geheel getal) met eenheid jr
             Objecttype de Passagier (mv: Passagiers) (bezield)
@@ -50,7 +63,7 @@ class ExecModelDifferentialTest {
             Map.of("volwassenleeftijd", new BigDecimal(18)),
             Passagier::isMinderjarig),
 
-        new Fixture("kenmerk vs literal",
+        single("kenmerk vs literal",
             """
             Objecttype de Passagier (mv: Passagiers) (bezield)
                 de leeftijd Numeriek (geheel getal) met eenheid jr;
@@ -63,7 +76,7 @@ class ExecModelDifferentialTest {
             Map.of(),
             Passagier::isMinderjarig),
 
-        new Fixture("gelijkstelling: own-attribuut kopie",
+        single("gelijkstelling: own-attribuut kopie",
             """
             Objecttype de Passagier (mv: Passagiers) (bezield)
                 de prijs Numeriek (geheel getal) met eenheid EUR;
@@ -76,7 +89,7 @@ class ExecModelDifferentialTest {
             Map.of(),
             Passagier::getPrijs),
 
-        new Fixture("gelijkstelling: own-attribuut plus literal",
+        single("gelijkstelling: own-attribuut plus literal",
             """
             Objecttype de Passagier (mv: Passagiers) (bezield)
                 de prijs Numeriek (geheel getal) met eenheid EUR;
@@ -92,7 +105,7 @@ class ExecModelDifferentialTest {
 
     // ---- Phase B fixtures: ALLE-compound (AND), kenmerkcheck, LEEG/GEVULD as in-pattern constraints ----
     static final Fixture[] PHASE_B = {
-        new Fixture("ALLE compound (AND of two comparisons)",
+        single("ALLE compound (AND of two comparisons)",
             """
             Objecttype de Passagier (mv: Passagiers) (bezield)
                 de leeftijd Numeriek (geheel getal) met eenheid jr;
@@ -107,7 +120,7 @@ class ExecModelDifferentialTest {
             Map.of(),
             Passagier::isMinderjarig),
 
-        new Fixture("kenmerkcheck (hij kind is)",
+        single("kenmerkcheck (hij kind is)",
             """
             Objecttype de Passagier (mv: Passagiers) (bezield)
                 is minderjarig kenmerk (bijvoeglijk);
@@ -120,7 +133,7 @@ class ExecModelDifferentialTest {
             Map.of(),
             Passagier::isMinderjarig),
 
-        new Fixture("LEEG predicate (leeftijd leeg is)",
+        single("LEEG predicate (leeftijd leeg is)",
             """
             Objecttype de Passagier (mv: Passagiers) (bezield)
                 de leeftijd Numeriek (geheel getal) met eenheid jr;
@@ -134,8 +147,173 @@ class ExecModelDifferentialTest {
             Passagier::isMinderjarig),
     };
 
-    @Test void phase_A_model_back_end_matches_drl_back_end() { runDifferential("Phase A", PHASE_A, 3); }
-    @Test void phase_B_model_back_end_matches_drl_back_end() { runDifferential("Phase B", PHASE_B, 3); }
+    // ---- Phase B2: the §13.4.14.4 quantifier family (geen / ten minste / ten hoogste / precies) + the same-attribute
+    //      collision guard. Each onderdeel is a fact-only leaf, so the whole compound lowers (no skip); the model
+    //      folds the leaves by COUNTING and must reach the DRL oracle's boolean for every fact. ----
+    static final String QUANT_OBJ = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal) met eenheid jr;
+                is minderjarig kenmerk (bijvoeglijk);
+                kind kenmerk (bijvoeglijk);
+            """;
+    static final Fixture[] PHASE_B2 = {
+        // GEEN = none of the bullets hold. {>18, <5} are both false in [5,18], so a mid-range passagier fires and an
+        // out-of-range one does not. A dropped constraint would make GEEN trivially false -> caught by the >18 fact.
+        new Fixture("GEEN (none of the bullets hold)",
+            QUANT_OBJ + """
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien hij aan geen van de volgende voorwaarden voldoet:
+                      • zijn leeftijd is groter dan 18 jr
+                      • zijn leeftijd is kleiner dan 5 jr.
+            """,
+            () -> List.of(pass(10), pass(20)), Map.of(),
+            l -> vals(((Passagier) l.get(0)).isMinderjarig(), ((Passagier) l.get(1)).isMinderjarig())),
+
+        // TEN MINSTE 1 (the OR) over a comparison and a kenmerk leaf — exercises mixed leaf kinds in the count.
+        new Fixture("TEN MINSTE 1 (OR of comparison + kenmerk)",
+            QUANT_OBJ + """
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien hij aan ten minste 1 van de volgende voorwaarden voldoet:
+                      • zijn leeftijd is groter dan 18 jr
+                      • hij kind is.
+            """,
+            () -> List.of(pass(20, false), pass(10, false), pass(10, true)), Map.of(),
+            l -> vals(((Passagier) l.get(0)).isMinderjarig(), ((Passagier) l.get(1)).isMinderjarig(), ((Passagier) l.get(2)).isMinderjarig())),
+
+        // TEN HOOGSTE 1: at most one of {>5, <18} holds. A mid-range passagier (both hold -> count 2) does NOT fire;
+        // an extreme one (one holds -> count 1) does. A dropped constraint would lower the count and wrongly fire mid-range.
+        new Fixture("TEN HOOGSTE 1 (at most one bullet holds)",
+            QUANT_OBJ + """
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien hij aan ten hoogste 1 van de volgende voorwaarden voldoet:
+                      • zijn leeftijd is groter dan 5 jr
+                      • zijn leeftijd is kleiner dan 18 jr.
+            """,
+            () -> List.of(pass(10), pass(20)), Map.of(),
+            l -> vals(((Passagier) l.get(0)).isMinderjarig(), ((Passagier) l.get(1)).isMinderjarig())),
+
+        // PRECIES 1: exactly one of {>5, <18}. Mid-range (count 2) no; extreme (count 1) yes.
+        new Fixture("PRECIES 1 (exactly one bullet holds)",
+            QUANT_OBJ + """
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien hij aan precies 1 van de volgende voorwaarden voldoet:
+                      • zijn leeftijd is groter dan 5 jr
+                      • zijn leeftijd is kleiner dan 18 jr.
+            """,
+            () -> List.of(pass(10), pass(20)), Map.of(),
+            l -> vals(((Passagier) l.get(0)).isMinderjarig(), ((Passagier) l.get(1)).isMinderjarig())),
+
+        // The same-ATTRIBUTE collision guard: an ALLE of two constraints on `leeftijd`. If the two .expr ids collided
+        // (Drools shares by id), one constraint would be dropped — a leeftijd=3 passagier would wrongly fire (3<18).
+        // With unique ids it must NOT fire (3 is not >5). leeftijd=10 fires (both hold).
+        new Fixture("ALLE same-attribute (id-collision guard)",
+            QUANT_OBJ + """
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien hij aan alle volgende voorwaarden voldoet:
+                      • zijn leeftijd is groter dan 5 jr
+                      • zijn leeftijd is kleiner dan 18 jr.
+            """,
+            () -> List.of(pass(3), pass(10)), Map.of(),
+            l -> vals(((Passagier) l.get(0)).isMinderjarig(), ((Passagier) l.get(1)).isMinderjarig())),
+    };
+
+    // ---- Phase B3: relational conditions — to-one navigated kenmerk, near-side rolcheck, far-side exists/not joins.
+    //      These need a multi-fact session (the subject plus its related instances), which the generalized harness now supports. ----
+    static final String FAR_SIDE_SRC = """
+            Objecttype de Passagier
+            Objecttype de Vlucht
+                is vol kenmerk (bijvoeglijk);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Een Vlucht is vol indien hij heeft een passagier.
+            """;
+    static final Fixture[] PHASE_B3 = {
+        // §8.1.8 to-one navigated kenmerk "zijn partner heeft een <k>": null-safe through the partner reference.
+        // metHouder (partner holds the kenmerk) -> uitkomst 7; the holder itself and a partnerless persoon -> null.
+        new Fixture("navigated kenmerk (zijn partner heeft een recht)",
+            """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                het recht op duurzaamheidskorting kenmerk (bezittelijk);
+                de uitkomst Numeriek (geheel getal);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel R
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 7 indien zijn partner een recht op duurzaamheidskorting heeft.
+            """,
+            () -> {
+                Persoon houder = new Persoon(); houder.setRechtOpDuurzaamheidskorting(true);
+                Persoon metHouder = new Persoon(); metHouder.setPartner(houder);
+                Persoon zonder = new Persoon();
+                return List.of(metHouder, houder, zonder);
+            },
+            Map.of(),
+            l -> vals(((Persoon) l.get(0)).getUitkomst(), ((Persoon) l.get(1)).getUitkomst(), ((Persoon) l.get(2)).getUitkomst())),
+
+        // §8.1.7 near-side rolcheck "hij is een passagier" -> "reis != null": fires only for a passagier with a reis.
+        new Fixture("near-side rolcheck (hij is een passagier)",
+            """
+            Objecttype de Passagier
+                de leeftijd Numeriek (geheel getal);
+                is minderjarig kenmerk;
+            Objecttype de Vlucht
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            Regel rolgate
+                geldig altijd
+                    Een passagier is minderjarig indien hij is een passagier.
+            """,
+            () -> {
+                Vlucht v = new Vlucht();
+                Passagier p1 = new Passagier(); p1.setReis(v);   // fills the role
+                Passagier p2 = new Passagier();                  // no reis
+                return List.of(v, p1, p2);
+            },
+            Map.of(),
+            l -> vals(((Passagier) l.get(1)).isMinderjarig(), ((Passagier) l.get(2)).isMinderjarig())),
+
+        // §8.1.7 far-side "hij heeft een passagier" -> exists Passagier(reis == $subject): fires for a non-empty Vlucht.
+        new Fixture("far-side membership (heeft een passagier)",
+            FAR_SIDE_SRC,
+            () -> {
+                Vlucht bezet = new Vlucht();
+                Vlucht leeg = new Vlucht();
+                Passagier p = new Passagier(); p.setReis(bezet);
+                return List.of(bezet, leeg, p);
+            },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).isVol(), ((Vlucht) l.get(1)).isVol())),
+
+        // §8.1.7 far-side negation "hij heeft geen passagier" -> not Passagier(reis == $subject): fires for an EMPTY Vlucht.
+        new Fixture("far-side negation (heeft geen passagier)",
+            FAR_SIDE_SRC.replace("hij heeft een passagier", "hij heeft geen passagier"),
+            () -> {
+                Vlucht leeg = new Vlucht();
+                Vlucht bezet = new Vlucht();
+                Passagier p = new Passagier(); p.setReis(bezet);
+                return List.of(leeg, bezet, p);
+            },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).isVol(), ((Vlucht) l.get(1)).isVol())),
+    };
+
+    @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }
+    @Test void phase_B_model_back_end_matches_drl_back_end()  { runDifferential("Phase B", PHASE_B, 3); }
+    @Test void phase_B2_quantifiers_match_drl_back_end()       { runDifferential("Phase B2", PHASE_B2, 5); }
+    @Test void phase_B3_relational_match_drl_back_end()        { runDifferential("Phase B3", PHASE_B3, 4); }
 
     private void runDifferential(String label, Fixture[] fixtures, int minDiffed) {
         int diffed = 0, skipped = 0;
@@ -175,17 +353,28 @@ class ExecModelDifferentialTest {
     private Object fire(KieBase kb, Fixture f) {
         KieSession s = kb.newKieSession();
         f.globals().forEach(s::setGlobal);
-        Passagier p = f.fact().get();
-        s.insert(p);
+        List<Object> facts = f.facts().get();
+        for (Object o : facts) s.insert(o);
         s.fireAllRules();
         s.dispose();
-        return f.uit().apply(p);
+        return f.uit().apply(facts);
     }
 
-    /** Compare BigDecimals by value (scale-insensitive), everything else by equals — so 42 == 42.00. */
-    private static Object eq(Object o) { return o instanceof BigDecimal b ? b.stripTrailingZeros() : o; }
+    /** Compare BigDecimals by value (scale-insensitive), everything else by equals — recursing into a {@link #vals}
+     *  list so a multi-bean read compares element-wise (42 == 42.00, null stays null). */
+    private static Object eq(Object o) {
+        if (o instanceof List<?> l) { List<Object> out = new ArrayList<>(); for (Object e : l) out.add(eq(e)); return out; }
+        return o instanceof BigDecimal b ? b.stripTrailingZeros() : o;
+    }
 
-    private static Passagier passagier(java.util.function.Consumer<Passagier> setup) {
+    /** A multi-value read-back (allows nulls, unlike List.of). */
+    private static List<Object> vals(Object... vs) { return Arrays.asList(vs); }
+
+    private static Passagier passagier(Consumer<Passagier> setup) {
         Passagier p = new Passagier(); setup.accept(p); return p;
+    }
+    private static Passagier pass(int leeftijd) { return passagier(p -> p.setLeeftijd(new BigDecimal(leeftijd))); }
+    private static Passagier pass(int leeftijd, boolean kind) {
+        return passagier(p -> { p.setLeeftijd(new BigDecimal(leeftijd)); p.setKind(kind); });
     }
 }
