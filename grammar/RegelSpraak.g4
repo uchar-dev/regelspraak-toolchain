@@ -428,9 +428,17 @@ variabeleDeel      : DAARBIJ_GELDT COLON variabeleOnderdeel+ DOT? ;            /
 variabeleOnderdeel : bepaaldLidwoord? variabeleNaam IS expressie DOT? ;        // §13.4.2.11
 variabeleNaam      : vrijeNaam ;                                               // §13.4.2.12
 
-// Beslistabel: the tabular body is markdown outside grammar scope (Ch.12); the
-// header (name + validity) is all that appears inside a regelspraak code block.
-beslistabel : BESLISTABEL vrijeNaam versie? ;
+// §12 Beslistabel: the header (name + optional validity) followed by the inline
+// markdown pipe-table body (Option A surface syntax). The lexer captures each pipe
+// line WHOLE as a TABEL_RIJ token (cells never contain '|'); the resolver splits
+// the grid and desugars each data row to an ordinary regel (BeslistabelDesugar),
+// so both back-ends get the rows for free. The table is optional — a header-only
+// shell (the pre-body corpus) still parses and the resolver warns it is empty.
+beslistabel : BESLISTABEL beslistabelNaam versie? TABEL_RIJ* ;
+// The name must NOT greedily swallow the "geldig <versie>" (mirrors regelNaam's ~GELDIG+
+// exclusion) NOR the pipe-table — without excluding GELDIG, "geldig vanaf 2018" is eaten
+// into the name (the keyword 'altijd' happened to stop it, 'vanaf'/<jaar> do not).
+beslistabelNaam : ~( GELDIG | TABEL_RIJ )+ ;
 
 // ====================================================================
 // §13.4.3 Resultaatdeel

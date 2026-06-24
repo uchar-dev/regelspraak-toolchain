@@ -94,6 +94,57 @@ class DroolsExecutionTest {
                 () -> "verwacht 110, kreeg " + v.getTotaalprijs());
     }
 
+    @Test void beslistabel_band_en_or_lijst_vuren_naar_de_verwachte_waarde() {
+        // §12 beslistabel end-to-end through the DRL back-end: a captured pipe-table desugars (BeslistabelDesugar) to
+        // one regel per row and fires. Pins the EXACT computed value (the differential test only checks DRL==model).
+        // (a) multi-conditie AND band with n.v.t. open ends: prijs 150 -> band 2 -> 20.
+        String band = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+                het basistarief Numeriek (geheel getal);
+            Beslistabel Tarief
+              geldig altijd
+              |   | het basistarief van een Passagier moet gesteld worden op | indien zijn prijs groter is dan | indien zijn prijs kleiner of gelijk is aan |
+              |---|---|---|---|
+              | 1 | 10 | n.v.t. | 100 |
+              | 2 | 20 | 100 | 200 |
+              | 3 | 30 | 200 | n.v.t. |
+            """;
+        RegelSpraakModel mb = Resolver.resolve(band);
+        assertTrue(mb.errors().isEmpty(), () -> "" + mb.errors());
+        KieSession sb = build(DrlTranspiler.transpile(mb)).newKieSession();
+        Passagier p = new Passagier();
+        p.setPrijs(new BigDecimal("150"));
+        sb.insert(p);
+        sb.fireAllRules();
+        sb.dispose();
+        assertEquals(0, new BigDecimal("20").compareTo(p.getBasistarief()),
+                () -> "band: verwacht 20, kreeg " + p.getBasistarief());
+
+        // (b) a §5.7 multi-value "of" cell -> a "tenminste één" OR-list of text equalities: roepnaam Maria -> 1.
+        String orLijst = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de roepnaam Tekst;
+                de uitkomst Numeriek (geheel getal);
+            Beslistabel Indeling
+              geldig altijd
+              |   | de uitkomst van een Persoon moet gesteld worden op | indien zijn roepnaam gelijk is aan |
+              |---|---|---|
+              | 1 | 1 | "Tom" of "Maria" |
+              | 2 | 2 | "Wilma" |
+            """;
+        RegelSpraakModel mo = Resolver.resolve(orLijst);
+        assertTrue(mo.errors().isEmpty(), () -> "" + mo.errors());
+        KieSession so = build(DrlTranspiler.transpile(mo)).newKieSession();
+        Persoon pe = new Persoon();
+        pe.setRoepnaam("Maria");
+        so.insert(pe);
+        so.fireAllRules();
+        so.dispose();
+        assertEquals(0, new BigDecimal("1").compareTo(pe.getUitkomst()),
+                () -> "or-lijst: verwacht 1, kreeg " + pe.getUitkomst());
+    }
+
     @Test void parameter_numeriek_zonder_getalspecificatie_vuurt_als_drempel() {
         // The §4.4 worked-example form "Numeriek met eenheid jr" (no getalspecificatie) used to NPE the
         // resolver (p31). Once it degrades gracefully it must still be a usable, well-typed global: this

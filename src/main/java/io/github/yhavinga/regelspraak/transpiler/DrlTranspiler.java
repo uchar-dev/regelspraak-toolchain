@@ -2559,9 +2559,24 @@ public final class DrlTranspiler {
     }
 
 
+    /** The label of a §13.2.14 enumeratiewaarde literal — its inner text with the delimiting quotes removed —
+     *  or null when {@code waarde} is not a single-quoted enum literal (straight {@code '…'} or typographic
+     *  {@code ’…‘}, matching the ENUM_LITERAL lexer rule). */
+    static String enumLiteralLabel(String waarde) {
+        int n = waarde.length();
+        if (n >= 2 && waarde.charAt(0) == '\'' && waarde.charAt(n - 1) == '\'') return waarde.substring(1, n - 1);
+        if (n >= 2 && waarde.charAt(0) == '’' && waarde.charAt(n - 1) == '‘') return waarde.substring(1, n - 1);
+        return null;
+    }
+
     private static Frag literal(Expr.Literal lit) {
         Datatype t = lit.type();
         if (t.isTekst()) return Frag.ok("\"" + lit.waarde().replace("\"", "") + "\"");
+        // §13.2.14 enumeratiewaarde 'X' (typed Onbekend at parse — "which Enumeratie is context-dependent"): an
+        // enumeratie compares by VALUE equality on its label (§8.1.1, only gelijk/ongelijk), so render the label as
+        // a double-quoted string, exactly like a Tekst (the fact field of an enumeratie attribuut is a String).
+        String enumLabel = enumLiteralLabel(lit.waarde());
+        if (enumLabel != null) return Frag.ok("\"" + enumLabel.replace("\"", "") + "\"");
         if (t instanceof Datatype.Booleaan) return Frag.ok(lit.waarde().toLowerCase().contains("waar")
                 && !lit.waarde().toLowerCase().contains("onwaar") ? "true" : "false");
         if (t.isDatum()) { // "dd. d-m-yyyy [hh:mm:ss.mmm]"

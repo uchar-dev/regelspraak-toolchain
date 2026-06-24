@@ -11,9 +11,17 @@ import io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie.Bron;
 import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.*;
+import io.github.yhavinga.regelspraak.parser.RegelSpraak;
 import io.github.yhavinga.regelspraak.parser.RegelSpraak.*;
+import io.github.yhavinga.regelspraak.parser.RegelSpraakLexer;
+import org.antlr.v4.runtime.BaseErrorListener;
+import org.antlr.v4.runtime.CharStreams;
+import org.antlr.v4.runtime.CommonTokenStream;
 import org.antlr.v4.runtime.ParserRuleContext;
+import org.antlr.v4.runtime.RecognitionException;
+import org.antlr.v4.runtime.Recognizer;
 import org.antlr.v4.runtime.tree.ParseTree;
+import org.antlr.v4.runtime.tree.TerminalNode;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -44,38 +52,147 @@ final class RuleChecker {
 
     void check(RegelSpraakDocumentContext doc) {
         domeinReferenties(doc);
-        for (RegelContext r : doc.regel()) {
-            String naam = DefinitionResolver.src(r.regelNaam());
-            List<RegelVersieContext> versies = r.regelVersie();
-            // §13.4.2.5 validity per version, computed up front so §4.2's non-overlap
-            // invariant can be checked across the rule's versions. A version whose validity
-            // bound is malformed is null here (already diagnosed) and is not emitted.
-            List<Geldigheid> gelden = new ArrayList<>();
-            for (RegelVersieContext v : versies) gelden.add(geldigheidVan(v.versie()));
-            if (versies.size() > 1) meldOverlap(naam, gelden, r.getStart().getLine());
-            for (int i = 0; i < versies.size(); i++) {
-                Geldigheid geldigheid = gelden.get(i);
-                if (geldigheid == null) continue; // malformed validity bound — already reported
-                RegelVersieContext v = versies.get(i);
-                RegelSpraakRegelContext rsr = v.regelSpraakRegel();
-                // Each §13.4.2.3 version is a distinct rule selected by Rekendatum (§4.2):
-                // when a rule has several, give each a unique name.
-                String versieNaam = versies.size() > 1 ? naam + " #" + (i + 1) : naam;
-                bouwer.setSubject(subjectVan(rsr.resultaatDeel())); // so "zijn …" resolves against the rule subject
-                Conditie voorwaarde = rsr.voorwaardeDeel() != null ? bouwVoorwaarde(rsr.voorwaardeDeel()) : null;
-                resultaat(naam, versieNaam, rsr.resultaatDeel(), rsr.voorwaardeDeel(), voorwaarde, geldigheid);
-                voorwaarden(rsr);   // exhaustive condition type-check (§5), unchanged
+        for (RegelContext r : doc.regel()) regelVersies(r);
+        beslistabellen(doc);
+    }
+
+    /** Process one §13.4.2 regel's versions into the model. Reused for each §12 beslistabel row, which
+     *  {@link BeslistabelDesugar} lowers to an ordinary regel and {@link #beslistabellen} re-parses to a
+     *  {@link RegelContext} — so a table row reuses the WHOLE rule pipeline (and both back-ends) unchanged. */
+    private void regelVersies(RegelContext r) {
+        String naam = DefinitionResolver.src(r.regelNaam());
+        List<RegelVersieContext> versies = r.regelVersie();
+        // §13.4.2.5 validity per version, computed up front so §4.2's non-overlap
+        // invariant can be checked across the rule's versions. A version whose validity
+        // bound is malformed is null here (already diagnosed) and is not emitted.
+        List<Geldigheid> gelden = new ArrayList<>();
+        for (RegelVersieContext v : versies) gelden.add(geldigheidVan(v.versie()));
+        if (versies.size() > 1) meldOverlap(naam, gelden, r.getStart().getLine());
+        for (int i = 0; i < versies.size(); i++) {
+            Geldigheid geldigheid = gelden.get(i);
+            if (geldigheid == null) continue; // malformed validity bound — already reported
+            RegelVersieContext v = versies.get(i);
+            RegelSpraakRegelContext rsr = v.regelSpraakRegel();
+            // Each §13.4.2.3 version is a distinct rule selected by Rekendatum (§4.2):
+            // when a rule has several, give each a unique name.
+            String versieNaam = versies.size() > 1 ? naam + " #" + (i + 1) : naam;
+            bouwer.setSubject(subjectVan(rsr.resultaatDeel())); // so "zijn …" resolves against the rule subject
+            Conditie voorwaarde = rsr.voorwaardeDeel() != null ? bouwVoorwaarde(rsr.voorwaardeDeel()) : null;
+            resultaat(naam, versieNaam, rsr.resultaatDeel(), rsr.voorwaardeDeel(), voorwaarde, geldigheid);
+            voorwaarden(rsr);   // exhaustive condition type-check (§5), unchanged
+        }
+    }
+
+    /** §12 Beslistabel (Ch.12 decision tables): desugar the captured inline pipe-table body — one ordinary regel
+     *  per (data-row × conclusie-column) via {@link BeslistabelDesugar} — re-parse each synthetic regel and process
+     *  it through {@link #regelVersies}, so a beslistabel reuses the WHOLE rule pipeline and BOTH back-ends get its
+     *  rows for free, with zero new IR. A header-only shell (the pre-body corpus, or a table with no data rows) keeps
+     *  the honest WARNING — restoring the never-silently-dropped invariant (toka-46/47, spec-main-133-139). */
+    private void beslistabellen(RegelSpraakDocumentContext doc) {
+        for (BeslistabelContext b : doc.beslistabel()) {
+            String naam = DefinitionResolver.src(b.beslistabelNaam());
+            // Split each captured row on '|', dropping the markdown '---' separator row(s).
+            List<List<String>> grid = new ArrayList<>();
+            for (TerminalNode rij : b.TABEL_RIJ()) {
+                List<String> cellen = splitRij(rij.getText());
+                if (!isScheidingsRij(cellen)) grid.add(cellen);
+            }
+            if (grid.size() < 2) { // need a header row + ≥1 data row to produce anything
+                model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                        "beslistabel '" + naam + "' heeft geen tabelinhoud (alleen een kop) — wordt niet naar IR/DRL omgezet",
+                        b.getStart().getLine()));
+                continue;
+            }
+            String geldig = b.versie() != null ? DefinitionResolver.src(b.versie().versieGeldigheid()) : "altijd";
+            List<String> headers = grid.get(0);
+            List<List<String>> data = grid.subList(1, grid.size());
+            int line = b.getStart().getLine();
+            // a row the desugar cannot faithfully render (kenmerk "onwaar" conclusie, >1 OR-cel in an EN-rij) is
+            // surfaced as a WARNING — never silently dropped.
+            java.util.function.Consumer<String> waarschuw = msg -> model.diagnostics.add(
+                    new Diagnostic(Severity.WARNING, "beslistabel '" + naam + "': " + msg, line));
+            for (String regelSrc : BeslistabelDesugar.desugar(naam, geldig, headers, data, waarschuw)) {
+                RegelContext rc = parseRegel(regelSrc, line);
+                if (rc != null) regelVersies(rc);
             }
         }
-        // §13 Beslistabel (Ch.12 decision tables): the grammar parses only a name+versie shell, and the loop
-        // above visits ONLY doc.regel(), so a beslistabel would otherwise vanish with NO IR, NO DRL, and NOT
-        // EVEN a diagnostic — the project's one true SILENT drop (toka-46/47, spec-main-133-139). Surface it
-        // as an honest WARNING until decision-table semantics are implemented, restoring the never-silently-
-        // dropped invariant. (The table BODY is not in the grammar yet; the name shell is all we can name.)
-        for (BeslistabelContext b : doc.beslistabel())
-            model.diagnostics.add(new Diagnostic(Severity.WARNING,
-                    "beslistabel '" + DefinitionResolver.src(b.vrijeNaam()) + "' wordt nog niet naar IR/DRL omgezet "
-                            + "(beslistabel-semantiek, Ch.12, ontbreekt)", b.getStart().getLine()));
+    }
+
+    /** Split a captured markdown table row into trimmed cells: strip the surrounding pipes/whitespace (a continuation
+     *  row carries a leading newline), then split on each TOP-LEVEL '|'. The split is QUOTE-AWARE — a '|' inside a
+     *  double-quoted tekstwaarde ("…", §5.4) or a single-quoted enumeratiewaarde ('…', §13.2.14), both preserved
+     *  verbatim by the lexer inside TABEL_MODE, is NOT a cell boundary. The empty col-0 header and the numbering cell
+     *  are interior, so only the outer pipes are removed. */
+    private static List<String> splitRij(String rij) {
+        String s = rij.strip();
+        if (s.startsWith("|")) s = s.substring(1);
+        // Only a BALANCED quote char (even count) opens spans — so a stray apostrophe (a §13.2 ' that is NOT an
+        // enumeratiewaarde delimiter, e.g. in "1's") stays a literal char and never swallows the following pipes.
+        boolean dq = even(s, '"'), sq = even(s, '\'');
+        if (s.endsWith("|") && !eindigtInQuote(s, dq, sq)) s = s.substring(0, s.length() - 1);
+        List<String> cellen = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        char quote = 0;   // 0 = outside any quote; '"' or '\'' = the char that opened the current span
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (quote == 0 && ((c == '"' && dq) || (c == '\'' && sq))) quote = c;
+            else if (quote == c) quote = 0;
+            if (c == '|' && quote == 0) { cellen.add(cur.toString().trim()); cur.setLength(0); }
+            else cur.append(c);
+        }
+        cellen.add(cur.toString().trim());
+        return cellen;
+    }
+    /** True when {@code q} occurs an even number of times in {@code s} (so its spans are balanced and may be tracked
+     *  as quotes; an odd count means an unbalanced ' / " that must be treated as an ordinary character). */
+    static boolean even(String s, char q) {
+        int n = 0;
+        for (int i = 0; i < s.length(); i++) if (s.charAt(i) == q) n++;
+        return (n & 1) == 0;
+    }
+    /** True when the final '|' of {@code s} sits INSIDE a (balanced) quoted span, so it is part of a value rather than
+     *  the row's trailing edge pipe. */
+    private static boolean eindigtInQuote(String s, boolean dq, boolean sq) {
+        char quote = 0;
+        for (int i = 0; i < s.length() - 1; i++) {
+            char c = s.charAt(i);
+            if (quote == 0 && ((c == '"' && dq) || (c == '\'' && sq))) quote = c;
+            else if (quote == c) quote = 0;
+        }
+        return quote != 0;
+    }
+
+    /** A markdown separator row ("| --- | :--: | --- |"): every non-empty cell is dashes/colons and at least one is a
+     *  dash run. Such rows are layout, not data, and are dropped before desugaring. */
+    private static boolean isScheidingsRij(List<String> cellen) {
+        boolean streep = false;
+        for (String c : cellen) {
+            if (c.isEmpty()) continue;
+            if (!c.matches("[:\\-\\s]+")) return false;
+            if (c.indexOf('-') >= 0) streep = true;
+        }
+        return streep;
+    }
+
+    /** Parse a synthetic regel source (from {@link BeslistabelDesugar}) into a {@link RegelContext}. A syntax error
+     *  lands in the model's diagnostics tagged to the beslistabel's line and yields null (the row is skipped, never
+     *  silently mis-rendered). */
+    private RegelContext parseRegel(String src, int line) {
+        RegelSpraakLexer lexer = new RegelSpraakLexer(CharStreams.fromString(src));
+        RegelSpraak parser = new RegelSpraak(new CommonTokenStream(lexer));
+        boolean[] fout = {false};
+        BaseErrorListener listener = new BaseErrorListener() {
+            @Override public void syntaxError(Recognizer<?, ?> r, Object sym, int l, int col,
+                                              String msg, RecognitionException e) {
+                fout[0] = true;
+                model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                        "beslistabel-desugar: syntaxfout in gegenereerde regel: " + msg, line));
+            }
+        };
+        lexer.removeErrorListeners(); lexer.addErrorListener(listener);
+        parser.removeErrorListeners(); parser.addErrorListener(listener);
+        RegelContext rc = parser.regel();
+        return fout[0] ? null : rc;
     }
 
     /** §4.2 (spec line 1387): the validity periods of a rule's versions must not overlap —

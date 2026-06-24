@@ -25,7 +25,12 @@ JUNIT_JAR     := $(LIB_DIR)/junit-platform-console-standalone-$(JUNIT_VERSION).j
 JUNIT_URL     := https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/$(JUNIT_VERSION)/junit-platform-console-standalone-$(JUNIT_VERSION).jar
 
 # Resolver (typed AST + typeringen enforcement) sources and tests.
-RESOLVER_SRC := $(shell find src/main/java -name '*.java' 2>/dev/null)
+# The executable-model back-end (transpiler/model/*) links against the Drools canonical
+# model (org.drools.model.*), a JVM dependency graph this jar-only build deliberately does
+# NOT carry — per CLAUDE.md it is a Maven artifact. So exclude it here; `mvn -B test` (with
+# the Drools deps) compiles and differential-tests it. The parser, resolver, IR and the DRL
+# *text* emitter all stay pure jar-only, so `make test` remains the offline parser/resolver gate.
+RESOLVER_SRC := $(shell find src/main/java -name '*.java' -not -path '*/transpiler/model/*' 2>/dev/null)
 TEST_SRC     := $(shell find src/test/java -name '*.java' 2>/dev/null)
 
 # Java package for the generated parser, and the dirs that follow from it.
