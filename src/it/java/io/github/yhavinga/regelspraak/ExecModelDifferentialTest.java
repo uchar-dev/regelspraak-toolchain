@@ -986,6 +986,56 @@ class ExecModelDifferentialTest {
                     return List.of(laag, hoog, a, b); },
             Map.of(),
             l -> vals(((Passagier) l.get(2)).getBasistarief(), ((Passagier) l.get(3)).getBasistarief())),   // 50, null
+
+        // §5.3 navigated TEKST equality: "de roepnaam van zijn partner gelijk is aan 'Maria'". partner.roepnaam=Maria
+        // fires; =Anna no fire; NULL partner short-circuits (mvel rol!.attr) -> no fire.
+        new Fixture("navigated Tekst equality (roepnaam van zijn partner == Maria)",
+            """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de roepnaam Tekst;
+                de uitkomst Numeriek (geheel getal);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel R
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 1 indien de roepnaam van zijn partner gelijk is aan "Maria".
+            """,
+            () -> { Persoon maria = new Persoon(); maria.setRoepnaam("Maria");
+                    Persoon anna = new Persoon(); anna.setRoepnaam("Anna");
+                    Persoon pMaria = new Persoon(); pMaria.setPartner(maria);
+                    Persoon pAnna = new Persoon(); pAnna.setPartner(anna);
+                    Persoon pGeen = new Persoon();   // no partner -> null relation
+                    return List.of(pMaria, pAnna, pGeen, maria, anna); },
+            Map.of(),
+            l -> vals(((Persoon) l.get(0)).getUitkomst(), ((Persoon) l.get(1)).getUitkomst(), ((Persoon) l.get(2)).getUitkomst())),   // 1, null, null
+
+        // §8.1.2 navigated LEEG: "de roepnaam van zijn partner is leeg". The KEY semantic — an ABSENT partner reads
+        // the value as LEEG (typeringen Tabel 53/54), so a partnerless persoon FIRES (unlike a comparison's !.
+        // short-circuit). partner.roepnaam=Maria -> not leeg (no fire); partner.roepnaam=null -> leeg (fire); no
+        // partner -> leeg (fire).
+        new Fixture("navigated leeg (absent partner reads the value as leeg)",
+            """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de roepnaam Tekst;
+                de uitkomst Numeriek (geheel getal);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel R
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op 1 indien de roepnaam van zijn partner leeg is.
+            """,
+            () -> { Persoon metNaam = new Persoon(); metNaam.setRoepnaam("Maria");
+                    Persoon zonderNaam = new Persoon();   // roepnaam null
+                    Persoon pVol = new Persoon(); pVol.setPartner(metNaam);
+                    Persoon pLeegAttr = new Persoon(); pLeegAttr.setPartner(zonderNaam);
+                    Persoon pGeenPartner = new Persoon();   // absent reference -> reads leeg -> fires
+                    return List.of(pVol, pLeegAttr, pGeenPartner); },
+            Map.of(),
+            l -> vals(((Persoon) l.get(0)).getUitkomst(), ((Persoon) l.get(1)).getUitkomst(), ((Persoon) l.get(2)).getUitkomst())),   // null, 1, 1
     };
 
     // ---- Phase F fixtures: §7.1 "het totaal van" a temporal attribute (scalar timeline fold) ----
@@ -1862,7 +1912,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 3); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
-    @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 12); }
+    @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 14); }
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
     @Test void phase_H_value_ops_matches_drl_back_end()             { runDifferential("Phase H val", PHASE_H_VAL, 5); }
     @Test void phase_H_builtin_functies_match_drl_back_end()        { runDifferential("Phase H func", PHASE_H_FUNC, 4); }

@@ -983,6 +983,25 @@ public final class ExecModelTranspiler {
             boolean leeg = p.soort() == Conditie.Predicaatsoort.LEEG;
             return s -> (RegelSpraakRuntime.get(s, attr) == null) == leeg;
         }
+        // §8.1.2 LEEG/GEVULD over a to-ONE NAVIGATED operand ("de woonplaats van zijn partner is leeg"). Unlike a
+        // comparison, this is NOT the mvel `!.` short-circuit: an ABSENT reference reads the value as EMPTY (typeringen
+        // Tabel 53/54 — an absent value IS leeg -> waar), so DRL guards the reference explicitly (genavigeerdLeegGevuld).
+        // leeg = (rol == null || rol.attr == null); gevuld = (rol != null && rol.attr != null).
+        if (c instanceof Conditie.Predicaat p
+                && (p.soort() == Conditie.Predicaatsoort.LEEG || p.soort() == Conditie.Predicaatsoort.GEVULD)
+                && p.operand() instanceof Expr.AttribuutRef pa && pa.navigatieRol() != null) {
+            if (pa.objecttype() == null || pa.objecttype().attribuutGranulariteit.containsKey(pa.attribuut())) return null;  // temporal -> Phase F
+            if (!pa.objecttype().dimensiesVan(pa.attribuut()).isEmpty()) return null;   // §3.6 gedimensioneerd -> marker
+            String rol = navComparisonRole(pa, subject);
+            if (rol == null) return null;
+            String attr = pa.attribuut();
+            boolean leeg = p.soort() == Conditie.Predicaatsoort.LEEG;
+            return s -> {
+                Object rel = RegelSpraakRuntime.get(s, rol);
+                boolean isLeeg = rel == null || RegelSpraakRuntime.get(rel, attr) == null;
+                return isLeeg == leeg;
+            };
+        }
         // §8.1.1 an own-attribute scalar comparison vs a numeric literal.
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
                 && v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
@@ -1094,6 +1113,26 @@ public final class ExecModelTranspiler {
             String rhs = tekstOfEnumLabel(lit);   // the DRL strips the tekstwaarde "/enumeratiewaarde ' delimiters the same way
             boolean gelijk = v.op() == Conditie.Operator.GELIJK;
             return s -> rhs.equals(RegelSpraakRuntime.get(s, attr)) == gelijk;   // attr may be null; rhs non-null
+        }
+        // §5.3 the to-ONE NAVIGATED Tekst/enumeratiewaarde equality ("de woonplaats van zijn partner is gelijk aan
+        // 'X'"): DRL renders `rol!.attr == "lit"`, so a null relation short-circuits the WHOLE term to a non-match
+        // (false) for BOTH operators; a present relation with a null attr gets mvel string equality (null == "x" ->
+        // false, null != "x" -> true). Mirrors the navigated numeric comparison's null-relation handling.
+        if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() != null
+                && v.rechts() instanceof Expr.Literal lit && tekstOfEnumLabel(lit) != null
+                && (v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)) {
+            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 gedimensioneerd -> marker
+            String rol = navComparisonRole(la, subject);
+            if (rol == null) return null;
+            String attr = la.attribuut();
+            String rhs = tekstOfEnumLabel(lit);
+            boolean gelijk = v.op() == Conditie.Operator.GELIJK;
+            return s -> {
+                Object rel = RegelSpraakRuntime.get(s, rol);
+                if (rel == null) return false;   // mvel `rol!.attr` short-circuits the whole term on a null reference
+                return rhs.equals(RegelSpraakRuntime.get(rel, attr)) == gelijk;
+            };
         }
         // §8.1.7 near-side rolcheck: the subject fills the role iff its to-ONE forward reference is set. The far-side
         // (the reference lives on the MANY side) is not a fact-only leaf -> null (handled as an exists-join above).
