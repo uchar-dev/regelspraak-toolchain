@@ -463,22 +463,38 @@ public final class ExecModelTranspiler {
             String gn = ident(pr.parameter().naam());
             return new WaardeFn((s, gm) -> gm.get(gn), Set.of(gn));
         }
-        if (e instanceof Expr.Binair b && b.op() == Expr.BinOp.PLUS) {
+        if (e instanceof Expr.Binair b && arithmeticOp(b.op())) {
+            // §6.2-6.5 binary arithmetic with the leegwaarde tables. Datum arithmetic (datum ± tijdsduur) needs
+            // .plusX, not "+", so skip it (Phase F). +/- restate the right operand into the LEFT's unit (§4);
+            // MAAL does not (units multiply). The op's empty-operand rule: PLUS/MIN/MAAL = leeg counts as 0;
+            // VERMINDERD_MET = empty LEFT -> leeg; GEDEELD_DOOR = empty LEFT -> 0, value/empty -> leeg.
+            if (b.links().type().isDatum() || b.rechts().type().isDatum()) return null;
             WaardeFn lf = scalarWaarde(b.links()), rf = scalarWaarde(b.rechts());
             if (lf == null || rf == null) return null;
+            Expr.BinOp op = b.op();
+            if (op == Expr.BinOp.PLUS || op == Expr.BinOp.MIN || op == Expr.BinOp.VERMINDERD_MET) {
+                BigDecimal vf = valueFactor(b.rechts().type(), b.links().type());   // restate rhs into lhs unit
+                if (vf != null) rf = rf.scaledBy(vf);
+            }
             BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lf.fn(), rfn = rf.fn();
             Set<String> g = new LinkedHashSet<>(lf.globals()); g.addAll(rf.globals());
-            return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsNul(lfn.apply(s, gm)).add(RegelSpraakRuntime.rsNul(rfn.apply(s, gm))), g);
-        }
-        if (e instanceof Expr.Binair b && b.op() == Expr.BinOp.GEDEELD_DOOR) {
-            // §6.5 Tabel 12: left-empty -> 0, right-empty (deling door leeg) -> leeg (the §9.5 fout is the companion).
-            WaardeFn lf = scalarWaarde(b.links()), rf = scalarWaarde(b.rechts());
-            if (lf == null || rf == null) return null;
-            BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lf.fn(), rfn = rf.fn();
-            Set<String> g = new LinkedHashSet<>(lf.globals()); g.addAll(rf.globals());
-            return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsGedeeld(lfn.apply(s, gm), rfn.apply(s, gm)), g);
+            return new WaardeFn((s, gm) -> {
+                Object lv = lfn.apply(s, gm), rv = rfn.apply(s, gm);
+                return switch (op) {
+                    case PLUS           -> RegelSpraakRuntime.rsNul(lv).add(RegelSpraakRuntime.rsNul(rv));
+                    case MIN            -> RegelSpraakRuntime.rsNul(lv).subtract(RegelSpraakRuntime.rsNul(rv));
+                    case VERMINDERD_MET -> RegelSpraakRuntime.rsVerminderd(lv, rv);
+                    case MAAL           -> RegelSpraakRuntime.rsNul(lv).multiply(RegelSpraakRuntime.rsNul(rv));
+                    case GEDEELD_DOOR   -> RegelSpraakRuntime.rsGedeeld(lv, rv);
+                    default             -> null;   // unreachable (arithmeticOp gates)
+                };
+            }, g);
         }
         return null;
+    }
+    private static boolean arithmeticOp(Expr.BinOp op) {
+        return op == Expr.BinOp.PLUS || op == Expr.BinOp.MIN || op == Expr.BinOp.VERMINDERD_MET
+                || op == Expr.BinOp.MAAL || op == Expr.BinOp.GEDEELD_DOOR;
     }
 
     /** §4 value-side unit conversion factor (van -> naar), or null when no conversion applies — the mirror of

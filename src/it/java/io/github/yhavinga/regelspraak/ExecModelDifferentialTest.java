@@ -668,6 +668,7 @@ class ExecModelDifferentialTest {
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 8); }
     @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 5); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
+    @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 1); }
 
     // ---- Phase D: §9.5/§13.4.8 consistentieregel — the VIOLATION inserts an Inconsistentie. The observable is the
     //      SET of flagged subjects (not a subject field), so a FoutFixture maps each inserted Inconsistentie to a
@@ -806,6 +807,46 @@ class ExecModelDifferentialTest {
             () -> { Rekensom r = new Rekensom(); r.setGrondslag(new BigDecimal(12)); return List.of(r); },  // aftrek null -> leeg
             Map.of(),
             l -> ((Rekensom) l.get(0)).getDeelResultaat()),
+    };
+
+    // ---- scalar arithmetic (§6.2-6.4): plus / min / verminderd met / maal, with the leegwaarde tables ----
+    static final String ARITH_SRC = """
+            Objecttype de Rekensom
+                de grondslag Numeriek (geheel getal);
+                de aftrek Numeriek (geheel getal);
+                de verminderdResultaat Numeriek (geheel getal);
+                de minResultaat Numeriek (geheel getal);
+                de plusResultaat Numeriek (geheel getal);
+                de maalResultaat Numeriek (geheel getal);
+            Regel rv
+                geldig altijd
+                    De verminderdResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom verminderd met de aftrek van een Rekensom.
+            Regel rm
+                geldig altijd
+                    De minResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom min de aftrek van een Rekensom.
+            Regel rp
+                geldig altijd
+                    De plusResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom plus de aftrek van een Rekensom.
+            Regel rx
+                geldig altijd
+                    De maalResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom maal de aftrek van een Rekensom.
+            """;
+    static final Fixture[] PHASE_ARITH = {
+        // §6.2-6.4 leegwaarde tables across all four ops, for a leeg-left and a fully-filled Rekensom:
+        // leeg-left -> verminderd=leeg, min=-4, plus=4, maal=0; filled (10,4) -> 6/6/14/40.
+        new Fixture("plus/min/verminderd/maal leegwaarde tables",
+            ARITH_SRC,
+            () -> {
+                Rekensom leegLinks = new Rekensom(); leegLinks.setAftrek(new BigDecimal(4));   // grondslag leeg
+                Rekensom gevuld = new Rekensom(); gevuld.setGrondslag(new BigDecimal(10)); gevuld.setAftrek(new BigDecimal(4));
+                return List.of(leegLinks, gevuld);
+            },
+            Map.of(),
+            l -> {
+                Rekensom a = (Rekensom) l.get(0), b = (Rekensom) l.get(1);
+                return vals(a.getVerminderdResultaat(), a.getMinResultaat(), a.getPlusResultaat(), a.getMaalResultaat(),
+                            b.getVerminderdResultaat(), b.getMinResultaat(), b.getPlusResultaat(), b.getMaalResultaat());
+            }),
     };
 
     private void runDifferential(String label, Fixture[] fixtures, int minDiffed) {
