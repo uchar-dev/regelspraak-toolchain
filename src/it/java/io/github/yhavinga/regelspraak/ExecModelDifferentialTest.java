@@ -607,6 +607,51 @@ class ExecModelDifferentialTest {
             () -> { Vlucht v = new Vlucht(); return List.of(v, pas(v, 30), pas(v, 70)); },
             Map.of(),
             l -> ((Vlucht) l.get(0)).getTotaalprijs()),
+
+        // (adversary lock) two feittypen join Luchthaven to Reiziger; the count NAMES its element role ("aantal
+        // VERTREK"), so verbindendeRolViaElementnaam must pick vertrekkendeReiziger — NOT the by-pair ambiguity.
+        new Fixture("AANTAL element-named role disambiguates >1 feittype",
+            """
+            Objecttype de Reiziger
+                het aantal vertrekluchthavens Numeriek (geheel getal);
+            Objecttype de Luchthaven
+            Feittype Reiziger en vertrekluchthaven
+                de vertrekkende reiziger Reiziger
+                de vertrek Luchthaven
+            Eén vertrekkende reiziger betreft meerdere vertrekken
+            Feittype Reiziger en aankomstluchthaven
+                de aankomende reiziger Reiziger
+                de aankomst Luchthaven
+            Eén aankomende reiziger betreft meerdere aankomsten
+            Regel tel
+                geldig altijd
+                    Het aantal vertrekluchthavens van een Reiziger moet gesteld worden op het aantal vertrek van de reiziger.
+            """,
+            () -> {
+                io.github.yhavinga.regelspraak.facts.Reiziger r = new io.github.yhavinga.regelspraak.facts.Reiziger();
+                io.github.yhavinga.regelspraak.facts.Luchthaven v1 = new io.github.yhavinga.regelspraak.facts.Luchthaven(); v1.setVertrekkendeReiziger(r);
+                io.github.yhavinga.regelspraak.facts.Luchthaven v2 = new io.github.yhavinga.regelspraak.facts.Luchthaven(); v2.setVertrekkendeReiziger(r);
+                io.github.yhavinga.regelspraak.facts.Luchthaven a = new io.github.yhavinga.regelspraak.facts.Luchthaven(); a.setAankomendeReiziger(r);  // an arrival, not counted
+                return List.of(r, v1, v2, a);
+            },
+            Map.of(),
+            l -> ((io.github.yhavinga.regelspraak.facts.Reiziger) l.get(0)).getAantalVertrekluchthavens()),   // expect 2
+
+        // (adversary lock) SOM with a die-filter kenmerk AND a literal fallback: sum only the kind passagiers; an
+        // empty (no-kind) reis -> the literal 0 fallback.
+        new Fixture("SOM with die-filter AND literal fallback",
+            "Objecttype de Vlucht\n    de totaalprijs Numeriek (geheel getal);\nObjecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    is kind kenmerk (bijvoeglijk);\n" + AGG_FEIT
+            + "Regel r\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die een kind zijn of 0 als die er niet zijn.\n",
+            () -> {
+                Vlucht vol = new Vlucht(); Vlucht leeg = new Vlucht();
+                Passagier a = pas(vol, 30); a.setKind(true);
+                Passagier b = pas(vol, 70); b.setKind(true);
+                Passagier c = pas(vol, 999); c.setKind(false);   // not a kind -> excluded
+                Passagier d = pas(leeg, 50); d.setKind(false);   // leeg has only non-kind -> empty SOM -> fallback 0
+                return List.of(vol, leeg, a, b, c, d);
+            },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).getTotaalprijs(), ((Vlucht) l.get(1)).getTotaalprijs())),   // 100, 0
     };
 
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }
@@ -615,7 +660,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B3_relational_match_drl_back_end()        { runDifferential("Phase B3", PHASE_B3, 5); }
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 3); }
-    @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 6); }
+    @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 8); }
 
     private void runDifferential(String label, Fixture[] fixtures, int minDiffed) {
         int diffed = 0, skipped = 0;

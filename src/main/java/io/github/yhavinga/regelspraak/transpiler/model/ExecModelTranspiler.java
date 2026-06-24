@@ -255,6 +255,11 @@ public final class ExecModelTranspiler {
                     resultVar, null, null, false);
 
         final String attr = arg.attribuut();
+        // The fold always uses the BigDecimal accumulate variant: a Numeriek attribute maps to a BigDecimal getter
+        // (the §6 exact-precision invariant), and BigDecimalSum/Min/Max skip nulls — matching what the DRL `sum`/
+        // `min`/`max` keyword resolves to for a BigDecimal arg. (Seam, adversary-noted: if a future objecttype ever
+        // lowered a Numeriek to a Double/Integer getter, DRL's keyword would fall back to the generic null-NPEing
+        // Double sum while this stays BigDecimal — re-introduce an `attr != null` source guard if that invariant breaks.)
         Variable amtVar = DSL.declarationOf(BigDecimal.class, "$amt_" + (seq++));
         if (f.kind() == Expr.FunctieKind.SOM) {
             // §5.8.2: empty SOM -> the leegwaarde (null, or a literal "of N als die er niet zijn"), not 0. Filter to
