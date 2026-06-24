@@ -936,6 +936,32 @@ class ExecModelDifferentialTest {
             Map.of(),
             l -> ((Passagier) l.get(1)).getBasistarief()),   // 50 (null != 100 -> true)
 
+        // §8.1.1 DATUM ordering comparison of an OWN datum attribute vs a datum literal (eerder dan): geboortedatum
+        // 1990 < 2000 fires, 2005 does not, a null geboortedatum -> ordering no-match (no fire). DRL lowers
+        // `geboortedatum < LocalDate.of(2000,1,1)`.
+        new Fixture("datum ordering condition (own attr: geboortedatum eerder dan 1-1-2000)",
+            "Objecttype de Passagier\n    de geboortedatum Datum in dagen;\n    het basistarief Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        Het basistarief van een passagier moet gesteld worden op 50 indien zijn geboortedatum is eerder dan 1-1-2000.\n",
+            () -> List.of(passagier(p -> p.setGeboortedatum(dat(1990, 1, 1))),
+                          passagier(p -> p.setGeboortedatum(dat(2005, 1, 1))),
+                          new Passagier()),   // null geboortedatum
+            Map.of(),
+            l -> vals(((Passagier) l.get(0)).getBasistarief(), ((Passagier) l.get(1)).getBasistarief(),
+                      ((Passagier) l.get(2)).getBasistarief())),   // 50, null, null
+
+        // §8.1.1 NAVIGATED datum ordering: vluchtdatum van zijn reis later dan 1-1-2020. A null reis short-circuits
+        // (mvel `reis!.vluchtdatum`). 2025 > 2020 fires, 2010 does not, null reis no fire.
+        new Fixture("datum ordering condition (navigated: vluchtdatum van zijn reis later dan 1-1-2020)",
+            "Objecttype de Vlucht\n    de vluchtdatum Datum in dagen;\n"
+            + "Objecttype de Passagier\n    het basistarief Numeriek (geheel getal);\n" + AGG_FEIT
+            + "Regel R\n    geldig altijd\n        Het basistarief van een passagier moet gesteld worden op 50 indien de vluchtdatum van zijn reis later is dan 1-1-2020.\n",
+            () -> { Vlucht laat = new Vlucht(); laat.setVluchtdatum(dat(2025, 1, 1));
+                    Vlucht vroeg = new Vlucht(); vroeg.setVluchtdatum(dat(2010, 1, 1));
+                    return List.of(laat, vroeg, paxReis(laat), paxReis(vroeg), paxReis(null)); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(2)).getBasistarief(), ((Passagier) l.get(3)).getBasistarief(),
+                      ((Passagier) l.get(4)).getBasistarief())),   // 50, null, null
+
         // (adversary) a NAVIGATED comparison nested in a GEEN counting quantifier — the navigated leaf must fold into
         // the count exactly as DRL folds its inline. "geen van [vertrektijd van zijn reis > 100, zijn prijs > 50]":
         // a reis at 80 with prijs 30 satisfies neither -> GEEN holds -> fires; a reis at 150 -> a bullet holds -> no fire.
@@ -1736,7 +1762,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 3); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
-    @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 9); }
+    @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 11); }
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 9); }
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 4); }
     @Test void beslistabel_rows_match_drl_back_end()          { runDifferential("Beslistabel", BESLISTABEL, 6); }

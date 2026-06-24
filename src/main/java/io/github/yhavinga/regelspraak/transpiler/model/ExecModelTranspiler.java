@@ -806,14 +806,7 @@ public final class ExecModelTranspiler {
             Conditie.Operator op = v.op();
             return s -> {
                 Object a = RegelSpraakRuntime.get(s, lattr);
-                if (!(a instanceof java.time.LocalDate ld)) return false;   // an empty datum operand -> onwaar (ordening)
-                return switch (op) {
-                    case EERDER           -> ld.isBefore(rhs);
-                    case EERDER_OF_GELIJK -> !ld.isAfter(rhs);
-                    case LATER            -> ld.isAfter(rhs);
-                    case LATER_OF_GELIJK  -> !ld.isBefore(rhs);
-                    default               -> false;
-                };
+                return a instanceof java.time.LocalDate ld && datumVergelijk(ld, rhs, op);   // empty datum operand -> onwaar (ordening)
             };
         }
         return null;
@@ -1043,6 +1036,30 @@ public final class ExecModelTranspiler {
             Conditie.Operator op = v.op();
             BigDecimal[] f = restatement(la.type(), ra.type());
             return s -> vergelijk(scale(num(s, lattr), f[0]), scale(num(s, rattr), f[1]), op);
+        }
+        // §8.1.1 a DATUM ordering comparison (eerder/later/eerder-of-gelijk/later-of-gelijk) of an OWN or to-one
+        // NAVIGATED datum attribute vs a §13.2.19 datum literal. DRL lowers `attr < LocalDate.of(...)` (LocalDate is
+        // Comparable); an absent datum -> onwaar (ordering no-match), matching mvel. A navigated null relation
+        // short-circuits the whole term (mvel `rol!.attr`), like the navigated numeric comparison.
+        if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.type().isDatum()
+                && isDatumOp(v.op()) && v.rechts() instanceof Expr.Literal lit && lit.type().isDatum()) {
+            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            java.time.LocalDate rhs = parseDatum(lit.waarde());
+            if (rhs == null) return null;
+            Conditie.Operator op = v.op();
+            String attr = la.attribuut();
+            if (la.navigatieRol() == null) {
+                if (!subject.heeftLid(la.attribuut())) return null;   // not the subject's own member
+                return s -> { Object a = RegelSpraakRuntime.get(s, attr); return a instanceof java.time.LocalDate ld && datumVergelijk(ld, rhs, op); };
+            }
+            String rol = navComparisonRole(la, subject);
+            if (rol == null) return null;
+            return s -> {
+                Object rel = RegelSpraakRuntime.get(s, rol);
+                if (rel == null) return false;   // mvel `rol!.attr` short-circuits the whole term on a null reference
+                Object a = RegelSpraakRuntime.get(rel, attr);
+                return a instanceof java.time.LocalDate ld && datumVergelijk(ld, rhs, op);
+            };
         }
         // §5.3 an own-attribute equality vs a §13.3.3.4 Tekst literal OR a §13.2.14 enumeratiewaarde 'X' (the §12
         // beslistabel "is gelijk aan X" cell, and the §12 OR-list of them). An enumeratie compares by VALUE equality
@@ -1386,6 +1403,18 @@ public final class ExecModelTranspiler {
     private static BigDecimal nz(BigDecimal f) { return f == null ? BigDecimal.ONE : f; }
     /** Restate one operand by its unit factor; a leeg (null) operand stays leeg (no NPE on .multiply). */
     private static BigDecimal scale(BigDecimal x, BigDecimal f) { return x == null ? null : x.multiply(f); }
+    /** §5.1 datum-ordening: compare two present dates with the EERDER/LATER operator (LocalDate is Comparable, so DRL
+     *  mvel {@code <}/{@code <=}/{@code >}/{@code >=} use compareTo). The caller guards both operands present — an
+     *  empty datum operand is the ordering's no-match (false), handled at the call site. */
+    private static boolean datumVergelijk(java.time.LocalDate a, java.time.LocalDate b, Conditie.Operator op) {
+        return switch (op) {
+            case EERDER           -> a.isBefore(b);
+            case EERDER_OF_GELIJK -> !a.isAfter(b);
+            case LATER            -> a.isAfter(b);
+            case LATER_OF_GELIJK  -> !a.isBefore(b);
+            default               -> false;   // never reached (isDatumOp gates the caller)
+        };
+    }
 
     // ---------------- §9.5 / §13.4.8 consistentie (Phase D) ----------------
     /** §13.4.8 consistentieregel: the assertie MUST hold, so the rule fires on its VIOLATION (the negated
