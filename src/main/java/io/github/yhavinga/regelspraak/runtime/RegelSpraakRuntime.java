@@ -18,9 +18,13 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <ol>
  *   <li><b>The reflective fact bridge</b> — the model's constraint/consequence lambdas reach a RegelSpraak
- *       fact bean by REFLECTION ({@link #get}/{@link #set}), because the fact classes are RegelSpraak
- *       objecttypes, unknown at transpiler-compile time. (A future codegen pass could replace these with typed
- *       getters per objecttype; for now reflection keeps the renderer generic — migration roadmap Phase H.)</li>
+ *       fact bean by name ({@link #get}/{@link #set}), because the fact classes are RegelSpraak objecttypes,
+ *       unknown at transpiler-compile time. Each (class, property) is resolved ONCE to an unreflected
+ *       {@link java.lang.invoke.MethodHandle} and cached, so the bridge is reflection-scan-free after the first
+ *       touch. Where the transpiler knows an objecttype's fact class at model-build time it goes one better and
+ *       uses {@link Accessors} — TYPED LambdaMetafactory accessors that inline to a direct call (the Phase-H
+ *       codegen path). This bridge serves the genuinely dynamic sites (navigation targets, Segment/Inconsistentie
+ *       fields, multi-hop joins).</li>
  *   <li><b>The leegwaarde + arithmetic helpers</b> — the DRL {@code function} bodies reborn as plain Java static
  *       methods the lambdas call directly. Each is ported from its DRL-function string in {@code DrlTranspiler}
  *       as its migration phase lands, so the two back-ends compute the SAME value (the differential gate).</li>

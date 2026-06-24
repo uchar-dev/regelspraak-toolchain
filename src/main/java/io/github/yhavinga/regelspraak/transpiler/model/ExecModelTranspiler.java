@@ -9,6 +9,7 @@ import io.github.yhavinga.regelspraak.model.Eenheid;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
+import io.github.yhavinga.regelspraak.runtime.Accessors;
 import io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime;
 
 import org.drools.model.DSL;
@@ -45,6 +46,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 
 /**
@@ -167,6 +169,7 @@ public final class ExecModelTranspiler {
         if (factClass == null) return skip("regel (geen fact-class " + doel.objecttype().naam + "): " + r.naam());
 
         String doelProp = doel.attribuut();
+        BiConsumer<Object, Object> doelSetter = Accessors.setter(factClass, doelProp);   // typed write (Phase-H codegen)
         seq = 0;
         Variable sVar = DSL.declarationOf(factClass, "$subject");
         PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
@@ -206,7 +209,7 @@ public final class ExecModelTranspiler {
             BiFunction<Object, Object, Object> twf = tw.fn();
             if (tw.global() == null) {
                 consequence = DSL.on(sVar).execute((Block2<org.drools.model.Drools, Object>) (drools, s) -> {
-                    RegelSpraakRuntime.set(s, doelProp, twf.apply(s, null));
+                    doelSetter.accept(s, twf.apply(s, null));
                     drools.update(s);
                 });
             } else {
@@ -214,7 +217,7 @@ public final class ExecModelTranspiler {
                 Global<java.util.List> g = listGlobals.get(tw.global());
                 if (g == null) return skip("regel (temporele basis-parameter niet geregistreerd " + tw.global() + "): " + r.naam());
                 consequence = DSL.on(sVar, (Variable) g).execute((Block3<org.drools.model.Drools, Object, Object>) (drools, s, gv) -> {
-                    RegelSpraakRuntime.set(s, doelProp, twf.apply(s, gv));
+                    doelSetter.accept(s, twf.apply(s, gv));
                     drools.update(s);
                 });
             }
@@ -225,7 +228,7 @@ public final class ExecModelTranspiler {
             if (vf != null) dimAgg = dimAgg.scaledBy(vf);
             BiFunction<Object, Map<String, BigDecimal>, Object> fn = dimAgg.fn();
             consequence = DSL.on(sVar).execute((Block2<org.drools.model.Drools, Object>) (drools, s) -> {
-                RegelSpraakRuntime.set(s, doelProp, fn.apply(s, Map.of()));
+                doelSetter.accept(s, fn.apply(s, Map.of()));
                 drools.update(s);
             });
         } else if (tijdTotaal != null) {
@@ -235,7 +238,7 @@ public final class ExecModelTranspiler {
             if (vf != null) tijdTotaal = tijdTotaal.scaledBy(vf);
             BiFunction<Object, Map<String, BigDecimal>, Object> fn = tijdTotaal.fn();
             consequence = DSL.on(sVar).execute((Block2<org.drools.model.Drools, Object>) (drools, s) -> {
-                RegelSpraakRuntime.set(s, doelProp, fn.apply(s, Map.of()));
+                doelSetter.accept(s, fn.apply(s, Map.of()));
                 drools.update(s);
             });
         } else if (isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie fx && !isGelisteFold(fx)) {
@@ -254,7 +257,7 @@ public final class ExecModelTranspiler {
                             ? (fallback == null ? null : (BigDecimal) fallback.fn().apply(s, Map.of()))
                             : RegelSpraakRuntime.toBd(sum);
                     if (vf != null && v != null) v = v.multiply(vf);
-                    RegelSpraakRuntime.set(s, doelProp, v);
+                    doelSetter.accept(s, v);
                     drools.update(s);
                 };
                 consequence = DSL.on(sVar, (Variable) cntVar, (Variable) sumVar).execute(body);
@@ -263,7 +266,7 @@ public final class ExecModelTranspiler {
                 Block3<org.drools.model.Drools, Object, Object> body = (drools, s, res) -> {
                     BigDecimal v = RegelSpraakRuntime.toBd(res);
                     if (vf != null && v != null) v = v.multiply(vf);
-                    RegelSpraakRuntime.set(s, doelProp, v);
+                    doelSetter.accept(s, v);
                     drools.update(s);
                 };
                 consequence = DSL.on(sVar, (Variable) resVar).execute(body);
@@ -298,7 +301,7 @@ public final class ExecModelTranspiler {
                 for (int i = 0; i < nAgg; i++) aggs[i] = args[1 + nG + i];
                 Object v = eval.apply(s, gm, aggs);
                 if (vf != null && v != null) v = ((BigDecimal) v).multiply(vf);
-                RegelSpraakRuntime.set(s, doelProp, v);
+                doelSetter.accept(s, v);
                 drools.update(s);
             });
             if (consequence == null) return skip("regel (aggregatie-waarde: te veel gebonden variabelen): " + r.naam());
@@ -336,7 +339,7 @@ public final class ExecModelTranspiler {
                 Object s = args[0];
                 Map<String, BigDecimal> gm = new LinkedHashMap<>();
                 for (int i = 0; i < fgn.size(); i++) gm.put(fgn.get(i), (BigDecimal) args[1 + i]);
-                RegelSpraakRuntime.set(s, doelProp, fn.apply(s, gm));
+                doelSetter.accept(s, fn.apply(s, gm));
                 drools.update(s);
             });
             if (consequence == null) return skip("regel (THEN-waarde: te veel gebonden globals): " + r.naam());
@@ -578,13 +581,22 @@ public final class ExecModelTranspiler {
         if (a.navigatieRol() != null) rol = model.verbindendeRolViaNaam(subject, a.objecttype(), a.navigatieRol());
         final String attr = a.attribuut();
         if (rol == null) {
-            if (a.objecttype() == subject) return s -> RegelSpraakRuntime.get(s, attr);   // EIGEN
+            if (a.objecttype() == subject) return typedGetter(factClass(subject), attr);   // EIGEN
             rol = subject != null ? model.verbindendeRol(subject, a.objecttype()) : null;
             if (rol == null) return null;   // ONOPGELOST
         }
         if (subject != null && model.naarVeelRol(subject, a.objecttype(), rol)) return null;   // NAAR_VEEL
-        final String fRol = rol;
-        return s -> { Object rel = RegelSpraakRuntime.get(s, fRol); return rel == null ? null : RegelSpraakRuntime.get(rel, attr); };
+        // GENAVIGEERD: read the relation field on the subject, then the attribute on the (known) target type — both
+        // typed (Accessors LMF) when the fact class is known at build time. Null relation -> leeg (null-safe).
+        java.util.function.Function<Object, Object> roleGet = typedGetter(factClass(subject), rol);
+        java.util.function.Function<Object, Object> attrGet = typedGetter(factClass(a.objecttype()), attr);
+        return s -> { Object rel = roleGet.apply(s); return rel == null ? null : attrGet.apply(rel); };
+    }
+
+    /** A getter for {@code prop} on {@code cls}: a TYPED {@link Accessors} LMF accessor when the fact class is known
+     *  at model-build time, else the cached reflective bridge. Both are null-owner-safe (null -> null). */
+    private static java.util.function.Function<Object, Object> typedGetter(Class<?> cls, String prop) {
+        return cls != null ? Accessors.getter(cls, prop) : (s -> RegelSpraakRuntime.get(s, prop));
     }
 
     /** Resolve the to-ONE navigation role of a navigated AttribuutRef (navigatieRol != null), mirroring
