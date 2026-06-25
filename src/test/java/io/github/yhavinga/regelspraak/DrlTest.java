@@ -265,6 +265,45 @@ class DrlTest {
         assertTrue(drl.contains("reis != null"), () -> "'is passagier' (rol, geen kenmerk) moet de rolcheck binden:\n" + drl);
     }
 
+    @Test void navigatie_negatie_de_negeert_de_bezittelijke_navigatie_niet_markeert() {
+        // §8.1.8.1 a NAVIGATED negated kenmerk "zijn reis niet internationaal is": the greedy POSSESSIVE onderwerp
+        // absorbs the "niet" into the role ("reis niet"), which used to leave the navigation unresolvable -> a marker.
+        // The resolver now splits the trailing negator back onto the kenmerk -> reis != null && reis.internationaal
+        // == false. A NULL reis -> the whole AND is false (onwaar) — the negation does NOT flip an absent navigation
+        // to true (the §3.5-faithful reading: a kenmerk tests an instance's presence; no instance -> nothing aanwezig
+        // -> onwaar for BOTH polarities, decided BEFORE the polarity flip). The affirmative stays "== true".
+        String src = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                is kind kenmerk (bijvoeglijk);
+            Objecttype de Vlucht (mv: Vluchten)
+                is internationaal kenmerk (bijvoeglijk);
+            Feittype reis van passagier
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Een passagier is kind indien zijn reis niet internationaal is.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("reis != null && reis.internationaal == false"),
+                () -> "navigated negatie moet null-veilig de-negeren (reis != null && reis.X == false), niet markeren:\n" + drl);
+        assertFalse(drl.contains("/* TODO"), () -> "de navigated negatie mag geen marker zijn:\n" + drl);
+
+        // VERBATIM-FIRST edge (bridge matrix #9): a kenmerk literally named "geen toegang" binds POSITIVELY — only a
+        // name that fails to bind is de-negated, so a legitimate geen/niet-named kenmerk is never silently inverted.
+        String verbatim = DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de geen toegang kenmerk;
+                is gemarkeerd kenmerk (bijvoeglijk);
+            Regel r
+                geldig altijd
+                    Een Passagier is gemarkeerd indien hij een geen toegang is.
+            """));
+        assertTrue(verbatim.contains("geenToegang == true"),
+                () -> "een kenmerk dat letterlijk 'geen toegang' heet moet POSITIEF binden (verbatim-first):\n" + verbatim);
+    }
+
     private static final String FAR_SIDE_ALLE_SRC = """
             Objecttype de Passagier
             Objecttype de Vlucht

@@ -1019,6 +1019,18 @@ final class ExpressieBouwer {
         // working "de <rol> van <X>" form; without it the possessive role stayed Onopgelost and markered).
         if (model.rolDoeltypeNaarSubject(huidigSubject, attr) != null)
             return new Expr.AttribuutRef(attr, huidigSubject, "zijn", model.navigatieRolNaam(attr), onbekend(), bron);
+        // §8.1.8.1 the greedy onderwerp can absorb a TRAILING "niet"/"geen" negator into the possessive role
+        // ("zijn reis niet <kenmerk>" -> role "reis niet", unresolvable). Strip it to resolve the role, but keep the
+        // FULL bron so navigatieKenmerk/navigatieStaart recover the negator onto the kenmerk and the §8.1.8 navigated
+        // negation de-negates (instead of markering). Verbatim-first above means a role literally ending in
+        // niet/geen still binds (it resolved there); only an unresolvable role reaches this split.
+        for (String neg : new String[]{"niet", "geen"}) {
+            if (attr.regionMatches(true, attr.length() - neg.length(), neg, 0, neg.length()) && attr.length() > neg.length() + 1) {
+                String rolAlleen = attr.substring(0, attr.length() - neg.length()).trim();
+                if (!rolAlleen.isEmpty() && model.rolDoeltypeNaarSubject(huidigSubject, rolAlleen) != null)
+                    return new Expr.AttribuutRef(rolAlleen, huidigSubject, "zijn", model.navigatieRolNaam(rolAlleen), onbekend(), bron);
+            }
+        }
         return null;
     }
 

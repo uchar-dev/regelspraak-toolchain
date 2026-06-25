@@ -1161,8 +1161,8 @@ final class RuleChecker {
         if (model.naarVeelRol(subject, doel, rol)) return null;                     // to-many -> marker (needs exists/forall)
         // The greedy onderwerp parse can absorb a multi-word kenmerk's leading words — or a "niet" — into
         // the operand AFTER the navigated onderwerp. Reconstruct the full kenmerk = that absorbed tail + the
-        // operator's kaleNaam, so a multi-word kenmerk binds and an unsupported "niet …" simply fails to
-        // match the declared kenmerk and stays a marker (never a silently-inverted positive constraint).
+        // operator's kaleNaam, so a multi-word kenmerk binds (and a §8.1.8.1 "niet <kenmerk>" de-negates in
+        // kenmerkConditie). navigatieStaart recovers the absorbed tail past the role/type anchor.
         String tail = navigatieStaart(a);
         String kenmerk = tail.isEmpty() ? staart : tail + " " + staart;
         if (metEen) {
@@ -1183,13 +1183,20 @@ final class RuleChecker {
      *  operand text following the onderwerp's object-type name. */
     private static String navigatieStaart(Expr.AttribuutRef a) {
         String b = a.bron() == null ? "" : a.bron();
-        // The onderwerp type name as a WHOLE word (so a kenmerk word merely containing it as a substring
-        // does not mis-split); take the text after its last occurrence.
-        java.util.regex.Matcher m = java.util.regex.Pattern
-                .compile("(?i)\\b" + java.util.regex.Pattern.quote(a.objecttype().naam) + "\\b").matcher(b);
-        int eind = -1;
-        while (m.find()) eind = m.end();
-        return eind < 0 ? "" : b.substring(eind).trim();
+        // Anchor on the onderwerp TYPE name ("de <rol> van <Type> <kenmerkwoorden>"); for a POSSESSIVE
+        // ("zijn <rol> <kenmerkwoorden>") there is no type name, so fall back to the ROLE name. Take the text
+        // after the anchor's LAST whole-word occurrence (so a kenmerk word merely containing it does not
+        // mis-split). The role fallback recovers a "niet"/"geen" the greedy possessive onderwerp absorbed
+        // ("zijn reis niet" -> "niet"), so a navigated §8.1.8 negation de-negates instead of markering.
+        for (String anker : new String[]{a.objecttype() != null ? a.objecttype().naam : null, a.attribuut()}) {
+            if (anker == null || anker.isEmpty()) continue;
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("(?i)\\b" + java.util.regex.Pattern.quote(anker) + "\\b").matcher(b);
+            int eind = -1;
+            while (m.find()) eind = m.end();
+            if (eind >= 0) return b.substring(eind).trim();
+        }
+        return "";
     }
 
     /** When the condition operand denotes the rule subject, the part of a multi-word kenmerk the

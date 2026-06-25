@@ -619,6 +619,110 @@ class ExecModelDifferentialTest {
             l -> vals(((Vlucht) l.get(0)).isVol(), ((Vlucht) l.get(1)).isVol(), ((Vlucht) l.get(2)).isVol())),
     };
 
+    // ---- Phase NEG: §8.1.8 KENMERKCHECK negation matrix. "geen"/"niet" has no standalone token (only GEEN_VAN_DE),
+    //      so the negator lexes into the kaleNaam and the resolver de-negates it VERBATIM-FIRST (RuleChecker.bindKenmerk:
+    //      a kenmerk literally named "geen …" still binds positively; only after the whole name fails is a leading
+    //      niet/geen stripped to a Conditie.Kenmerk(negatie=true) == "== !negatie"). This is intentionally a RESOLVER
+    //      construct, not a grammar one — the grammar cannot consult the symbol table to tell a "geen X" NAME from the
+    //      negation. Both back-ends lower the negated kenmerk identically (DRL `== false`; model leafPredicate
+    //      `wanted = !k.negatie()`). The rolcheck negation is covered by Phase B3; this phase pins the kenmerkcheck
+    //      soorts (bijvoeglijk/bezittelijk/zelfstandig) + the stellende bullet register. ----
+    private static final String NEG_OT = "Objecttype de Passagier (mv: Passagiers) (bezield)\n"
+            + "    de student kenmerk;\n"                       // no marker -> ZELFSTANDIG (the EEN-form "is een student")
+            + "    is minderjarig kenmerk (bijvoeglijk);\n"
+            + "    het duur kenmerk (bezittelijk);\n"
+            + "    is kind kenmerk (bijvoeglijk);\n";           // the head the rule sets
+    private static Object negKind2(List<Object> l) {
+        return vals(((Passagier) l.get(0)).isKind(), ((Passagier) l.get(1)).isKind());
+    }
+    static final Fixture[] PHASE_NEG = {
+        // §8.1.8.1 bijvoeglijk negation "hij niet minderjarig is" -> minderjarig == false (vragende, under 'indien').
+        new Fixture("§8.1.8.1 bijvoeglijk negatie (hij niet minderjarig is -> ==false)",
+            NEG_OT + """
+            Regel r
+                geldig altijd
+                    Een passagier is kind indien hij niet minderjarig is.
+            """,
+            () -> List.of(passagier(p -> p.setMinderjarig(true)), passagier(p -> p.setMinderjarig(false))),
+            Map.of(), ExecModelDifferentialTest::negKind2),   // minderjarig -> not kind; not-minderjarig -> kind: [false, true]
+        // §8.1.8.3 zelfstandig EEN-form negation "hij geen student is" -> student == false.
+        new Fixture("§8.1.8.3 zelfstandig negatie (hij geen student is -> ==false)",
+            NEG_OT + """
+            Regel r
+                geldig altijd
+                    Een passagier is kind indien hij geen student is.
+            """,
+            () -> List.of(passagier(p -> p.setStudent(true)), passagier(p -> p.setStudent(false))),
+            Map.of(), ExecModelDifferentialTest::negKind2),   // [false, true]
+        // §8.1.8.2 bezittelijk negation "hij geen duur heeft" -> duur == false.
+        new Fixture("§8.1.8.2 bezittelijk negatie (hij geen duur heeft -> ==false)",
+            NEG_OT + """
+            Regel r
+                geldig altijd
+                    Een passagier is kind indien hij geen duur heeft.
+            """,
+            () -> List.of(passagier(p -> p.setDuur(true)), passagier(p -> p.setDuur(false))),
+            Map.of(), ExecModelDifferentialTest::negKind2),   // [false, true]
+        // §8.3.2 stellende (bullet) negation: BOTH members negated under ALLE -> kind iff (¬minderjarig ∧ ¬student).
+        new Fixture("§8.3.2 stellende bullet negatie (is niet minderjarig + is geen student)",
+            NEG_OT + """
+            Regel r
+                geldig altijd
+                    Een passagier is kind indien hij aan alle volgende voorwaarden voldoet:
+                    - hij is niet minderjarig
+                    - hij is geen student.
+            """,
+            () -> List.of(passagier(p -> { p.setMinderjarig(false); p.setStudent(false); }),   // both false -> kind
+                          passagier(p -> { p.setMinderjarig(true); p.setStudent(false); })),   // minderjarig -> not kind
+            Map.of(), ExecModelDifferentialTest::negKind2),   // [true, false]
+        // §8.1.8 NAVIGATED negation "zijn reis niet internationaal is" -> reis != null && reis.internationaal == false
+        // (the greedy possessive onderwerp absorbs the "niet" into the role; the resolver splits it back onto the
+        // kenmerk). A NULL reis -> onwaar (the navigated predicate needs the relation, mirroring the affirmative;
+        // standing "null nav read/check -> onwaar" decision). Both back-ends: DRL `reis != null && reis.x == false`,
+        // model leafPredicate `nav != null && nav.x == !negatie`.
+        new Fixture("§8.1.8 navigated negatie (zijn reis niet internationaal is)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                is kind kenmerk (bijvoeglijk);
+            Objecttype de Vlucht (mv: Vluchten)
+                is internationaal kenmerk (bijvoeglijk);
+            Feittype reis van passagier
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Een passagier is kind indien zijn reis niet internationaal is.
+            """,
+            () -> {
+                Vlucht intl = new Vlucht(); intl.setInternationaal(true);
+                Vlucht binnen = new Vlucht(); binnen.setInternationaal(false);
+                Passagier p1 = new Passagier(); p1.setReis(intl);     // reis IS internationaal -> niet -> NOT kind
+                Passagier p2 = new Passagier(); p2.setReis(binnen);   // reis NIET internationaal -> kind
+                Passagier p3 = new Passagier();                        // geen reis -> reis==null -> onwaar -> NOT kind
+                return List.of(intl, binnen, p1, p2, p3);
+            },
+            Map.of(),
+            l -> vals(((Passagier) l.get(2)).isKind(), ((Passagier) l.get(3)).isKind(), ((Passagier) l.get(4)).isKind())),
+    };
+    /** §8.1.8 negation is a closed-form transform (== false); assert the ABSOLUTE firing (a shared ==true-instead-of-
+     *  ==false bug would pass a pure differential) AND that both back-ends agree. */
+    static final Object[] PHASE_NEG_EXPECTED = { vals(false, true), vals(false, true), vals(false, true), vals(true, false),
+                                                 vals(false, true, false) };
+    @Test void phase_NEG_negation_is_spec_correct() {
+        for (int i = 0; i < PHASE_NEG.length; i++) {
+            Fixture f = PHASE_NEG[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_NEG_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+
     // ---- Phase B4: comparison correctness — mvel null semantics for != (a leeg operand DIFFERS from a number) and
     //      §5.1 Tabel 32 cross-unit restatement. These are the two divergences the adversarial review caught in the
     //      first Phase B drop; each AGREES with the DRL oracle only after the bothNonNull->vergelijk + restatement fix. ----
