@@ -2773,10 +2773,23 @@ public final class ExecModelTranspiler {
         return PatternDSL.rule(fc.naam()).attribute(Rule.Attribute.NO_LOOP, true).build(items.toArray(new RuleItemBuilder[0]));
     }
 
+    /** A null-safe {@code (subject -> value)} reader for a §6.5/§6.6 fout-companion OPERAND, or null when the operand
+     *  has no re-readable leeg/vol guard. Accepts the subject's OWN attribute and a to-ONE NAVIGATED attribute
+     *  (root-guarded -> a null relation reads leeg), mirroring DrlTranspiler.companionDeel's EIGEN / GENAVIGEERD
+     *  acceptance. Null for a literal / parameter / to-many / unresolvable operand and for a TEMPORAL attribute (whose
+     *  List leeg/vol would test the timeline's nullness, not per-moment leegte — DRL markers it too), so such a
+     *  division/wortel raises no Inconsistentie in EITHER back-end. */
+    private java.util.function.Function<Object, Object> companionOperand(Expr e, Objecttype subject) {
+        if (!(e instanceof Expr.AttribuutRef a) || a.objecttype() == null) return null;
+        if (a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;   // temporal -> no re-readable guard
+        return navReader(a, subject);   // own attribute or to-one navigated (null for to-many / absent / unresolvable)
+    }
+
     /** §6.5 Tabel 12 "waarde gedeeld door leeg" companion: the value side already degrades the division to leeg
      *  (rsGedeeld), so this surfaces the Fout via the §9.5 Inconsistentie channel — a SEPARATE insert-only rule per
      *  division that fires when the dividend is present and the divisor is empty (and the host voorwaarde holds).
-     *  Scope: both operands are the subject's OWN attribute. Mirrors DrlTranspiler.deelDoorLeegFout. */
+     *  Scope: each operand is the subject's OWN attribute or one reached by a to-ONE navigation (companionOperand).
+     *  Mirrors DrlTranspiler.deelDoorLeegFout. */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private List<Rule> delingCompanions(ResolvedRegel r) {
         if (!(r.doel() instanceof Expr.AttribuutRef doel) || doel.objecttype() == null) return List.of();
@@ -2786,23 +2799,23 @@ public final class ExecModelTranspiler {
         if (factClass == null || incClass == null) return List.of();
         List<Expr.Binair> delingen = new ArrayList<>();
         verzamelDelingen(r.waarde(), delingen);
-        // First collect the QUALIFYING divisions (both operands own non-temporal attributes), mirroring DRL's
-        // `patronen`, so the companion-name suffix indexes over the SAME filtered list in BOTH back-ends. Indexing
-        // over the raw `delingen` count (as before) diverged from DRL when a rule mixes qualifying and non-qualifying
-        // divisions (e.g. a §11 division variable inlined next to a navigated/parameter division): DRL named the lone
-        // qualifier "(deling door leeg)", the model "(deling door leeg 1)" -> divergent Inconsistentie regel names.
+        // First collect the QUALIFYING divisions (both operands a re-readable own OR to-one navigated attribute),
+        // mirroring DRL's `patronen` (companionDeel accepts EIGEN and GENAVIGEERD), so the companion-name suffix
+        // indexes over the SAME filtered list in BOTH back-ends. Indexing over the raw `delingen` count diverged from
+        // DRL when a rule mixes qualifying and non-qualifying divisions (e.g. a §11 division variable inlined next to a
+        // parameter division): DRL named the lone qualifier "(deling door leeg)", the model "(deling door leeg 1)".
         List<Expr.Binair> kwalificeren = new ArrayList<>();
-        for (Expr.Binair d : delingen) {
-            if (!(d.links() instanceof Expr.AttribuutRef dvd) || dvd.navigatieRol() != null) continue;
-            if (!(d.rechts() instanceof Expr.AttribuutRef dvs) || dvs.navigatieRol() != null) continue;
-            if (subject.attribuutGranulariteit.containsKey(dvd.attribuut()) || subject.attribuutGranulariteit.containsKey(dvs.attribuut())) continue;
-            kwalificeren.add(d);
-        }
+        for (Expr.Binair d : delingen)
+            if (companionOperand(d.links(), subject) != null && companionOperand(d.rechts(), subject) != null)
+                kwalificeren.add(d);
         List<Rule> companions = new ArrayList<>();
         String naam = r.naam();
         for (int i = 0; i < kwalificeren.size(); i++) {
             Expr.Binair d = kwalificeren.get(i);
-            String dividend = ((Expr.AttribuutRef) d.links()).attribuut(), divisor = ((Expr.AttribuutRef) d.rechts()).attribuut();
+            // null-safe readers for the dividend/divisor — own attribute or a to-one navigated read (a null relation
+            // collapses to leeg, exactly as DRL's root-guarded "(reis != null && reis.x != null)" / "reis.x" forms).
+            java.util.function.Function<Object, Object> dividend = companionOperand(d.links(), subject);
+            java.util.function.Function<Object, Object> divisor = companionOperand(d.rechts(), subject);
             seq = 0;
             Variable sVar = DSL.declarationOf(factClass, "$subject");
             PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
@@ -2815,8 +2828,8 @@ public final class ExecModelTranspiler {
             }
             pattern = geldigGuard(pattern, r.geldigheid());   // §4.2 the companion only flags inside the host's window
             // dividend present AND divisor empty (an empty LEFT short-circuits to 0 -> no fout, so guard the dividend too).
-            pattern = pattern.expr(nextId("dvd"), (Predicate1) s -> RegelSpraakRuntime.get(s, dividend) != null)
-                    .expr(nextId("dvs"), (Predicate1) s -> RegelSpraakRuntime.get(s, divisor) == null);
+            pattern = pattern.expr(nextId("dvd"), (Predicate1) s -> dividend.apply(s) != null)
+                    .expr(nextId("dvs"), (Predicate1) s -> divisor.apply(s) == null);
             String compNaam = naam + " (deling door leeg" + (kwalificeren.size() > 1 ? " " + (i + 1) : "") + ")";
             companions.add(companionRule(compNaam, naam, incClass, sVar, pattern, gateExtra));
         }
@@ -2825,7 +2838,8 @@ public final class ExecModelTranspiler {
 
     /** §6.6 "wortel van een negatief getal" companion: the value side degrades a negative-radicand root to leeg
      *  (rsWortel), so this surfaces the Fout via the §9.5 Inconsistentie channel — a SEPARATE insert-only rule per
-     *  wortel whose own-attribute radicand is &lt; 0 (and the host voorwaarde holds). Mirrors DrlTranspiler.wortelNegatiefFout. */
+     *  wortel whose radicand (own attribute or a to-ONE navigation, companionOperand) is &lt; 0 (and the host
+     *  voorwaarde holds). Mirrors DrlTranspiler.wortelNegatiefFout. */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private List<Rule> wortelCompanions(ResolvedRegel r) {
         if (!(r.doel() instanceof Expr.AttribuutRef doel) || doel.objecttype() == null) return List.of();
@@ -2835,13 +2849,17 @@ public final class ExecModelTranspiler {
         if (factClass == null || incClass == null) return List.of();
         List<Expr.Functie> wortels = new ArrayList<>();
         verzamelWortels(r.waarde(), wortels);
+        // Collect the QUALIFYING wortels (radicand a re-readable own OR to-one navigated attribute), so the
+        // companion-name suffix indexes over the SAME filtered list as DRL's wortelNegatiefFout `guards`.
+        List<Expr.Functie> kwalificeren = new ArrayList<>();
+        for (Expr.Functie w : wortels)
+            if (w.argumenten().size() == 1 && companionOperand(w.argumenten().get(0), subject) != null)
+                kwalificeren.add(w);
         List<Rule> companions = new ArrayList<>();
-        int idx = 0;
         String naam = r.naam();
-        for (Expr.Functie w : wortels) {
-            if (w.argumenten().size() != 1 || !(w.argumenten().get(0) instanceof Expr.AttribuutRef rad) || rad.navigatieRol() != null) continue;
-            if (subject.attribuutGranulariteit.containsKey(rad.attribuut())) continue;
-            String radicand = rad.attribuut();
+        for (int i = 0; i < kwalificeren.size(); i++) {
+            // null-safe reader for the radicand — own attribute or a to-one navigated read (null relation -> leeg).
+            java.util.function.Function<Object, Object> radicand = companionOperand(kwalificeren.get(i).argumenten().get(0), subject);
             seq = 0;
             Variable sVar = DSL.declarationOf(factClass, "$subject");
             PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
@@ -2853,12 +2871,12 @@ public final class ExecModelTranspiler {
                 gateExtra = gate.extra();                       // a §8.1.7 far-side membership exists/not -> thread it into the companion (mirror DRL lc.extra())
             }
             pattern = geldigGuard(pattern, r.geldigheid());   // §4.2 the companion only flags inside the host's window
-            // radicand < 0 (a null radicand is leeg, not negative -> no fout; compareTo guards null out).
+            // radicand < 0 (a null radicand is leeg, not negative -> no fout; signum guards null out).
             pattern = pattern.expr(nextId("rad"), (Predicate1) s -> {
-                Object v = RegelSpraakRuntime.get(s, radicand);
+                Object v = radicand.apply(s);
                 return v != null && ((BigDecimal) v).signum() < 0;
             });
-            String compNaam = naam + " (wortel van negatief" + (wortels.size() > 1 ? " " + (++idx) : "") + ")";
+            String compNaam = naam + " (wortel van negatief" + (kwalificeren.size() > 1 ? " " + (i + 1) : "") + ")";
             companions.add(companionRule(compNaam, naam, incClass, sVar, pattern, gateExtra));
         }
         return companions;

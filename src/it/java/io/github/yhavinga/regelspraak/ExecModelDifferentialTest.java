@@ -2802,6 +2802,84 @@ class ExecModelDifferentialTest {
         }
     }
 
+    // ---- Phase D NAV: a §6.5/§6.6 fout companion whose operand is a to-ONE NAVIGATED attribute ("de X van zijn
+    //      partner"). DRL's companionDeel accepts EIGEN and GENAVIGEERD, so it root-guards "(partner != null &&
+    //      partner.x != null)" / "partner.x"; the model previously REJECTED any navigated operand (continue, no
+    //      overgeslagen) -> a masked under-fire (DRL flagged the Inconsistentie, the model did not). The model now
+    //      admits a to-one navigated operand via navReader. Mutual partnership so every Persoon HAS a partner (a
+    //      navigated VALUE is not yet root-null-guarded; a partnerless Persoon would NPE the main rule — orthogonal). ----
+    static final FoutFixture[] PHASE_D_NAV = {
+        // §6.5 navigated deling-door-leeg: ratio = inkomen-of-partner / aftrek-of-partner. p navigates q (12/leeg ->
+        // fout); q navigates p (10/5 -> geen fout). Flagged subject = p (its partner q has a leeg aftrek).
+        new FoutFixture("§6.5 navigated deling-door-leeg (de X van zijn partner / de Y van zijn partner)",
+            """
+            Objecttype de Persoon
+                de inkomen Numeriek (geheel getal);
+                de aftrek Numeriek (geheel getal);
+                de ratio Numeriek (getal met 2 decimalen);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel ratioregel
+                geldig altijd
+                    De ratio van een Persoon moet gesteld worden op de inkomen van zijn partner gedeeld door de aftrek van zijn partner.
+            """,
+            () -> {
+                Persoon p = new Persoon(); Persoon q = new Persoon();
+                p.setPartner(q); q.setPartner(p);
+                q.setInkomen(new BigDecimal(12));                            // p navigates q: 12 / leeg -> fout
+                p.setInkomen(new BigDecimal(10)); p.setAftrek(new BigDecimal(5)); // q navigates p: 10 / 5 -> geen fout
+                return List.of(p, q);
+            },
+            o -> "inkomen=" + ((Persoon) o).getInkomen()),   // flagged = p (inkomen=10)
+
+        // §6.6 navigated wortel-van-negatief: ratio = wortel van inkomen-of-partner. p navigates q (wortel(-9) ->
+        // fout); q navigates p (wortel(16)=4 -> geen fout). Flagged subject = p (its partner q has a negative inkomen).
+        new FoutFixture("§6.6 navigated wortel-van-negatief (de wortel van de X van zijn partner)",
+            """
+            Objecttype de Persoon
+                de inkomen Numeriek (geheel getal);
+                de ratio Numeriek (getal met 2 decimalen);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel wortelnav
+                geldig altijd
+                    De ratio van een Persoon moet gesteld worden op de wortel van de inkomen van zijn partner naar beneden afgerond op 2 decimalen.
+            """,
+            () -> {
+                Persoon p = new Persoon(); Persoon q = new Persoon();
+                p.setPartner(q); q.setPartner(p);
+                q.setInkomen(new BigDecimal(-9));   // p navigates q: wortel(-9) -> fout
+                p.setInkomen(new BigDecimal(16));   // q navigates p: wortel(16)=4 -> geen fout
+                return List.of(p, q);
+            },
+            o -> "inkomen=" + ((Persoon) o).getInkomen()),   // flagged = p (inkomen=16)
+    };
+    static final List<List<String>> PHASE_D_NAV_EXPECTED = List.of(
+        List.of("ratioregel/inkomen=10"),
+        List.of("wortelnav/inkomen=16"));
+
+    /** §6.5/§6.6 fout companion over a to-ONE NAVIGATED operand: assert the DRL oracle raises EXACTLY the spec-expected
+     *  Inconsistentie set (absolute) AND the model agrees (parity). Fails before the model admits navigated operands
+     *  (the model raised nothing, a masked under-fire the differential harness compared without skipping). */
+    @Test void phase_D_navigated_fout_companion_is_spec_correct() {
+        for (int i = 0; i < PHASE_D_NAV.length; i++) {
+            FoutFixture f = PHASE_D_NAV[i];
+            List<String> expected = PHASE_D_NAV_EXPECTED.get(i);
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            List<String> viaDrl   = fireFout(drlBase(m), f);
+            List<String> viaModel = fireFout(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(expected, viaDrl, () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(viaDrl, viaModel, () -> "back-ends DIVERGE on '" + f.naam() + "': DRL=" + viaDrl + " model=" + viaModel);
+        }
+    }
+
     // ---- division value (§6.5 rsGedeeld) — the value-side of the deling, checked by reading the result field ----
     static final Fixture[] PHASE_DIV = {
         new Fixture("division value (rsGedeeld: left-empty->0, right-empty->leeg)",
