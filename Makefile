@@ -8,7 +8,7 @@
 # the Drools transpiler grow into real JVM code (see CLAUDE.md / docs/ANTLR-HOWTO.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus drl drools-it grun gui tokens clean clean-jar run-sandbox
+.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus drl drools-it engine grun gui tokens clean clean-jar run-sandbox
 
 ANTLR4_VERSION := 4.13.2
 ANTLR4_URL     := https://www.antlr.org/download/antlr-$(ANTLR4_VERSION)-complete.jar
@@ -139,6 +139,13 @@ drl: resolver
 MVN ?= mvn
 drools-it:
 	$(MVN) -B test
+
+# Build + test the shippable engine consumer (engine/): install the lean transpiler artifact
+# (regelspraak-parser, drools-canonical-model only), then build+test the engine module on top of it
+# (drools-engine runtime). Proves the RegelSpraak -> exec-model -> KieBase -> fire integration end-to-end.
+engine:
+	$(MVN) -B -f pom.xml install -DskipTests
+	$(MVN) -B -f engine/pom.xml test
 
 # Token dump (no parse tree), for lexer debugging.
 tokens: compile

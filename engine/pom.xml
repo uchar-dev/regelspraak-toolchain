@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.github.yhavinga.regelspraak</groupId>
+  <artifactId>regelspraak-engine</artifactId>
+  <version>2.3.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+  <name>RegelSpraak v2.3.0 executable-model engine (consumer)</name>
+
+  <!--
+    The CONSUMER of the RegelSpraak -> Drools executable-model back-end: the shippable side of the split.
+
+      * regelspraak-parser (the transpiler) is LEAN — it compiles against drools-canonical-model alone and only
+        BUILDS an org.drools.model.Model (it never fires it). Build it first with `mvn -f ../pom.xml install`
+        (or `make engine` from the repo root, which chains both).
+      * THIS module adds the Drools RUNTIME (drools-engine) and FIRES the Model: RegelSpraakEngine.compile(src)
+        resolves + transpiles + KieBaseBuilder.createKieBaseFromModel, then a Session inserts facts and fires.
+
+    A Quarkus application wires the model in exactly this way — depend on regelspraak-parser + drools-engine,
+    call RegelSpraakEngine, expose it behind a REST/CDI bean. (drools-quarkus-* would replace drools-engine for a
+    native/Quarkus build; the RegelSpraakEngine facade is unchanged.)
+  -->
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <drools.version>8.44.0.Final</drools.version>
+    <junit.version>5.10.2</junit.version>
+  </properties>
+
+  <dependencies>
+    <!-- The transpiler front-end (parser + resolver + ExecModelTranspiler). Brings drools-canonical-model
+         transitively (compile) — the Model-building DSL — but NOT the engine (its drools-core/engine/mvel are
+         test-scoped, hence not transitive). -->
+    <dependency>
+      <groupId>io.github.yhavinga.regelspraak</groupId>
+      <artifactId>regelspraak-parser</artifactId>
+      <version>2.3.0-SNAPSHOT</version>
+    </dependency>
+
+    <!-- The Drools RUNTIME that COMPILES (KieBaseBuilder, drools-model-compiler) and FIRES (kiesession, core) the
+         executable Model. The exec-model path is pure Java lambdas — it needs NO drools-mvel (that is the legacy
+         DRL-string dialect). drools-engine brings drools-core (the accumulate-function impls accFn resolves at
+         runtime) + drools-model-compiler + drools-kiesession transitively. -->
+    <dependency>
+      <groupId>org.drools</groupId>
+      <artifactId>drools-engine</artifactId>
+      <version>${drools.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+      </plugin>
+    </plugins>
+  </build>
+</project>
