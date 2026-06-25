@@ -3024,4 +3024,51 @@ class DrlTest {
                 () -> "§11 lidwoord-referentie van een lokale variabele die een parameter shadowt moet inlinen naar getPrijs():\n" + drl);
         assertFalse(drl.contains("setUitkomst( drempel )"), () -> "de globale parameter 'drempel' mag de lokale variabele niet winnen:\n" + drl);
     }
+
+    @Test void percentage_functie_zonder_procent_lowert_als_PV_door_100() {
+        // §13.4.17.12/§6.8 "het percentage P van V" WITHOUT the '%': our grammar requires '%' on percentageVanExpr to
+        // disambiguate from a 'van' navigation, so the no-'%' form parses as a navigation; the resolver reinterprets it
+        // as PERCENTAGE_VAN when the leftmost name is a Percentage-typed PARAMETER -> (rsNul(P)/100 * rsNul(V)).
+        String src = """
+            Parameter de korting : Percentage (geheel getal)
+            Objecttype de Reis
+                de prijs Numeriek (geheel getal);
+                de uitkomst Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    De uitkomst van een Reis moet gesteld worden op de korting van de prijs van een Reis.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("setUitkomst( (rsNul(korting) / 100 * rsNul($subject.getPrijs())) )"),
+                () -> "'de korting van de prijs' (korting een Percentage-parameter) moet als PERCENTAGE_VAN loweren:\n" + drl);
+    }
+
+    @Test void percentage_param_naambotsing_met_navigatie_attribuut_blijft_navigatie() {
+        // §4.8 Tabel 18 requires a NUMERIEK right operand, so the percentage reinterpretation only fires when V is
+        // getalachtig. When a Percentage parameter shares its name with an attribute reachable via a to-one role
+        // ("de korting van zijn bestelling", 'korting' also a Bestelling attribute), V is an OBJECT navigation (type
+        // onbekend) -> the percentage reading is rejected and the construct stays the correct attribute navigation.
+        String src = """
+            Parameter de korting : Percentage (geheel getal)
+            Objecttype de Bestelling
+                de korting Numeriek (geheel getal);
+            Objecttype de Klant
+                de uitkomst Numeriek (geheel getal);
+            Feittype plaatst
+                de klant Klant
+                de bestelling Bestelling
+            Eén klant heeft één bestelling
+            Regel R
+                geldig altijd
+                    De uitkomst van een Klant moet gesteld worden op de korting van zijn bestelling.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("getBestelling()") && drl.contains(".getKorting()"),
+                () -> "een naam-botsing moet de NAVIGATIE behouden (bestelling.korting), niet de percentage-functie:\n" + drl);
+        assertFalse(drl.contains("/ 100"), () -> "de percentage-functie mag NIET vuren bij een object-V (geen getalachtige V):\n" + drl);
+    }
 }

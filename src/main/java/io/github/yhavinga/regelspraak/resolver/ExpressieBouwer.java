@@ -902,7 +902,12 @@ final class ExpressieBouwer {
             Expr v = delen.size() == 1 ? onderwerpAlsWaarde(a.onderwerp())
                    : delen.size() == 2 ? attribuutRef(stripArtikel(src(delen.get(1))), a.onderwerp(), bron)
                    : null;   // a deeper navigation chain in the V part stays a marker (rare)
-            if (v != null && !(v instanceof Expr.Onopgelost)) {
+            // §4.8 Tabel 18 requires a NUMERIEK right operand: only reinterpret as the percentage function when V is
+            // a getalachtig value. This guards the name collision where the leftmost name is BOTH a Percentage
+            // parameter AND a real attribute reachable through the onderwerp ("de korting van zijn bestelling", korting
+            // also a Bestelling attribute): there V is a to-one ROLE navigation (type onbekend), so the percentage
+            // reading is rejected and the construct stays the correct attribute navigation.
+            if (v != null && !(v instanceof Expr.Onopgelost) && v.type().isGetalachtig()) {
                 // §4.8 Tabel 18: the result carries V's unit; §4.8 Precisie makes it an exact fraction, so drop V's
                 // declared decimal count (the same typing the '%' form uses, lines above).
                 Datatype t = v.type() instanceof Datatype.Numeriek n
