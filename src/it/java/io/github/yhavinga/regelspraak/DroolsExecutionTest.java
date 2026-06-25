@@ -448,12 +448,12 @@ class DroolsExecutionTest {
         assertFalse(drl.contains("> sTANDAARD"), () -> "geen kale List in een scalaire constraint:\n" + drl);
     }
 
-    @Test void tijdsafhankelijk_attribuut_in_een_conditie_bouwt_schoon_als_marker(){
-        // §13.3.6/§8.2: a tijdsafhankelijk attribuut is a List<Segment> timeline, NOT a scalar. Read as a bare when-side
-        // comparison operand — the §8.2 "gedurende het gehele jaar gelijk is aan" whole-period form (the qualifier the
-        // grammar parses but no lowering honours) OR a plain comparison — it must MARKER, not leak the List into a scalar
-        // constraint. A neutered guard emits `belastingverminderingPerMaand == new BigDecimal(...)` against a List<Segment>
-        // field -> the KieBuilder "BigDecimal vs java.util.List" ERROR (the List-in-scalar leak class). build() pins it.
+    @Test void gehele_periode_attribuut_vergelijking_lowEred_en_bouwt_schoon(){
+        // §8.2/§13.4.15.70: a "gedurende het gehele jaar gelijk is aan" whole-period qualifier over a tijdsafhankelijk
+        // attribuut LOWERS to a boolean rsGeheelPeriode(timeline, "JAAR", toets, grens) check — NOT a
+        // `belastingverminderingPerMaand == new BigDecimal(...)` leak of the List<Segment> field into a scalar
+        // constraint (which would be the KieBuilder "BigDecimal vs java.util.List" ERROR). build() proves the lowered
+        // DRL — the registered rsGeheelPeriode function included — actually COMPILES in Drools.
         String src = """
             Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
             Objecttype de Passagier (mv: Passagiers) (bezield)
@@ -466,20 +466,17 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "geaccepteerde invoer (geen resolver-fout): " + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        build(drl);   // throws if the temporal List<Segment> leaks into the scalar constraint
+        build(drl);   // throws if the lowered §8.2 DRL (or the rsGeheelPeriode function) does not compile
         assertFalse(drl.contains("belastingverminderingPerMaand =="),
                 () -> "geen kale List<Segment> in een scalaire constraint:\n" + drl);
-        // the markered operand escalates the whole comparison to an honest "false /* TODO voorwaarde: <bron> */"
-        // (the §8.2 whole-period source rides in the comment), never a List-vs-scalar constraint.
-        assertTrue(drl.contains("/* TODO voorwaarde: zijn belastingvermindering per maand gedurende het gehele jaar"),
-                () -> "moet een eerlijke marker zijn (§8.2 hele-periode):\n" + drl);
+        assertTrue(drl.contains("rsGeheelPeriode($subject.getBelastingverminderingPerMaand(), \"JAAR\", 4,"),
+                () -> "§8.2 attribuut-vergelijking moet lowEren naar rsGeheelPeriode:\n" + drl);
     }
 
-    @Test void tijdsafhankelijk_kenmerk_in_een_conditie_bouwt_schoon_als_marker(){
-        // §13.3.6/§8.2: a tijdsafhankelijk kenmerk is a List<Segment> boolean timeline — a bare "<k> == true" membership
-        // check (or the §8.2 "gedurende het gehele jaar rechthebbend is") would compare the List to a boolean and sink the
-        // build; it must MARKER. The gedurende CLIP reads the SAME kenmerk as a timeline (temporeelKenmerkTijdreeks), so
-        // the clip path is unaffected — only this scalar-check leak is closed.
+    @Test void gehele_periode_kenmerk_check_lowEred_en_bouwt_schoon(){
+        // §8.2: a "gedurende het gehele jaar rechthebbend is" check over a tijdsafhankelijk kenmerk LOWERS to
+        // rsGeheelPeriode(timeline, "JAAR", 7, null) (toets 7 = covered) — NOT a "rechthebbend == true" leak of the
+        // List<Segment> boolean timeline into a scalar constraint. build() proves the lowered DRL compiles in Drools.
         String src = """
             Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
             Objecttype de Passagier (mv: Passagiers) (bezield)
@@ -496,8 +493,8 @@ class DroolsExecutionTest {
         build(drl);   // throws if the temporal kenmerk List<Segment> leaks into the boolean constraint
         assertFalse(drl.contains("rechthebbend == true"),
                 () -> "geen kale List<Segment> kenmerk in een scalaire constraint:\n" + drl);
-        assertTrue(drl.contains("tijdsafhankelijk kenmerk in scalaire voorwaarde"),
-                () -> "moet een eerlijke §8.2 marker zijn:\n" + drl);
+        assertTrue(drl.contains("rsGeheelPeriode($subject.getRechthebbend(), \"JAAR\", 7, null)"),
+                () -> "§8.2 kenmerk-check moet lowEren naar rsGeheelPeriode:\n" + drl);
     }
 
     @Test void tijdsafhankelijk_attribuut_als_waarde_naar_een_scalair_doel_bouwt_schoon_als_marker(){

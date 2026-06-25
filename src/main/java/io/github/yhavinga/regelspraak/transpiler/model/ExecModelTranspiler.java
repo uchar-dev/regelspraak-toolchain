@@ -916,6 +916,100 @@ public final class ExecModelTranspiler {
         return s -> (List<?>) RegelSpraakRuntime.get(s, kenmerk);
     }
 
+    // ---------------- §8.2 / §13.4.15.70 gehele-periodevergelijking (mirrors DrlTranspiler.geheelPeriodeCall) ------
+    /** The §8.2 whole-period qualifier on a predicate, or null when it carries none. */
+    private static Conditie.GeheelPeriode geheelPeriodeVan(Conditie c) {
+        if (c instanceof Conditie.Vergelijking v) return v.periode();
+        if (c instanceof Conditie.Predicaat p)    return p.periode();
+        if (c instanceof Conditie.Kenmerk k)      return k.periode();
+        return null;
+    }
+
+    /** Whether an AttribuutRef reads a tijdsafhankelijk attribuut (its field is a List&lt;Segment&gt; timeline). */
+    private static boolean isTemporeel82(Expr.AttribuutRef a) {
+        return a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut());
+    }
+
+    /** §8.2 rsGeheelPeriode toets code for a comparison operator, or null for a DATUM ordering (out of scope — the
+     *  Segment carries a BigDecimal). Mirrors DrlTranspiler.toetsCode. */
+    private static Integer toetsCode82(Conditie.Operator op) {
+        return switch (op) {
+            case KLEINER -> 0; case KLEINER_OF_GELIJK -> 1;
+            case GROTER  -> 2; case GROTER_OF_GELIJK  -> 3;
+            case GELIJK  -> 4; case ONGELIJK          -> 5;
+            default -> null;
+        };
+    }
+
+    /** The §8.2 timeline reader for a temporal attribute — the subject's own List&lt;Segment&gt;, or a to-ONE
+     *  navigated partner's (null reference -> null timeline -> rsGeheelPeriode returns true). null for a to-many /
+     *  unresolvable navigation. Mirrors DrlTranspiler.temporeelTijdlijnGetter. */
+    private java.util.function.Function<Object, Object> temporeelTijdlijnReader(Expr.AttribuutRef a, Objecttype subject) {
+        if (a.navigatieRol() == null) {
+            if (subject == null || !subject.heeftLid(a.attribuut())) return null;
+            String attr = a.attribuut();
+            return s -> RegelSpraakRuntime.get(s, attr);
+        }
+        String rol = navComparisonRole(a, subject);
+        if (rol == null) return null;
+        String attr = a.attribuut();
+        return s -> { Object rel = RegelSpraakRuntime.get(s, rol); return rel == null ? null : RegelSpraakRuntime.get(rel, attr); };
+    }
+
+    /** A resolved §8.2 whole-period predicate: the subject-&gt;timeline reader, the toets code, the grenswaarde
+     *  (null for gevuld/kenmerk), the granularity, and the NIET flag. */
+    private record Gp82(java.util.function.Function<Object, Object> timeline, int toets, WaardeFn grens, String gran, boolean niet) {}
+
+    /** Build the §8.2 model representation of a whole-period-qualified predicate, or null when outside the supported
+     *  set (mirrors DrlTranspiler.geheelPeriodeCall exactly): a numeric comparison of a temporal attribute vs a scalar
+     *  grens, a GEVULD over a temporal attribute, or a temporal kenmerkcheck; a mixed-unit comparison / DATUM ordering
+     *  / LEEG / ELFPROEF / NUMERIEK-met-exact whole-period form -> null (an honest skip, symmetric with the DRL marker). */
+    private Gp82 geheelPeriode82(Conditie c, Conditie.GeheelPeriode gp, Objecttype subject) {
+        String gran = gp.jaar() ? "JAAR" : "MAAND";
+        if (c instanceof Conditie.Vergelijking v) {
+            Expr.AttribuutRef tijd; Expr ander; boolean linksTemp;
+            if (v.links() instanceof Expr.AttribuutRef la && isTemporeel82(la))       { tijd = la; ander = v.rechts(); linksTemp = true; }
+            else if (v.rechts() instanceof Expr.AttribuutRef ra && isTemporeel82(ra)) { tijd = ra; ander = v.links();  linksTemp = false; }
+            else return null;
+            if (!(tijd.type().isNumeriek() || tijd.type().isPercentage())) return null;
+            io.github.yhavinga.regelspraak.model.Eenheid el = tijd.type().eenheidOf(), er = ander.type().eenheidOf();
+            if (el != null && er != null && el.vereistOmrekening(er)) return null;   // mixed unit -> marker (DRL too)
+            Integer code = toetsCode82(linksTemp ? v.op() : flip(v.op()));
+            if (code == null) return null;
+            java.util.function.Function<Object, Object> tl = temporeelTijdlijnReader(tijd, subject);
+            if (tl == null) return null;
+            WaardeFn g = scalarWaarde(ander);
+            if (g == null) return null;
+            return new Gp82(tl, code, g, gran, gp.niet());
+        }
+        if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.GEVULD
+                && p.operand() instanceof Expr.AttribuutRef pa && isTemporeel82(pa)) {
+            java.util.function.Function<Object, Object> tl = temporeelTijdlijnReader(pa, subject);
+            if (tl == null) return null;
+            return new Gp82(tl, 6, null, gran, gp.niet());
+        }
+        if (c instanceof Conditie.Kenmerk k) {
+            java.util.function.Function<Object, List<?>> tl = temporeelKenmerkTijdreeks(k, subject);
+            if (tl == null) return null;
+            return new Gp82(s -> tl.apply(s), 7, null, gran, gp.niet());
+        }
+        return null;
+    }
+
+    /** A fact-only Predicate1 for "the §8.2 check holds" (the NIET prefix complements the rsGeheelPeriode result), or
+     *  null when the grens reads a Parameter-global (the caller binds it as a pattern variable). */
+    private Predicate1<Object> geheelPeriodeLeaf(Gp82 g) {
+        if (g == null) return null;
+        if (g.grens() != null && !g.grens().globals().isEmpty()) return null;   // needs a global -> 2-var expr
+        java.util.function.Function<Object, Object> tl = g.timeline();
+        WaardeFn gf = g.grens(); int toets = g.toets(); String gran = g.gran(); boolean niet = g.niet();
+        return s -> {
+            BigDecimal grens = gf == null ? null : RegelSpraakRuntime.toBd(gf.fn().apply(s, java.util.Map.of()));
+            boolean b = RegelSpraakRuntime.rsGeheelPeriode((List<?>) tl.apply(s), gran, toets, grens);
+            return niet ? !b : b;
+        };
+    }
+
     /** Lower a voorwaarde into the subject pattern's in-pattern constraints (plus far-side exists/not joins as
      *  extra rule items). Returns a {@link Gate}, or null when ANY part is outside scope (caller skips the whole
      *  rule — never a partial gate). A constraint that needs a pattern variable (a comparison vs a Parameter-global)
@@ -960,6 +1054,30 @@ public final class ExecModelTranspiler {
                 };
             };
             return new Gate(pattern.expr(nextId("q"), (Predicate1) combined), List.of());
+        }
+        // §8.2 / §13.4.15.70 "gedurende de/het gehele jaar|maand": a whole-period check over a tijdsafhankelijk
+        // onderwerp. A literal/own-attr grens (0 globals) is a fact-only leaf (handled in leafPredicate, reached by
+        // the fallthrough); a Parameter-global grens binds the global as a pattern variable (a 2-var expr), like the
+        // §6 datum-arith branch. An unsupported form -> skip the whole rule (symmetric with the DRL marker -> no fire).
+        Conditie.GeheelPeriode gp82 = geheelPeriodeVan(c);
+        if (gp82 != null) {
+            Gp82 g = geheelPeriode82(c, gp82, subject);
+            if (g == null) return null;
+            Predicate1<Object> leaf = geheelPeriodeLeaf(g);
+            if (leaf != null) return new Gate(pattern.expr(nextId("c"), (Predicate1) leaf), List.of());
+            if (g.grens() != null && g.grens().globals().size() == 1) {
+                String gn = g.grens().globals().iterator().next();
+                Global<BigDecimal> gg = globals.get(gn);
+                if (gg == null) return null;
+                java.util.function.Function<Object, Object> tl = g.timeline(); WaardeFn gf = g.grens();
+                int toets = g.toets(); String gran = g.gran(); boolean niet = g.niet();
+                return new Gate(pattern.expr(nextId("c"), (Variable) gg, (Predicate2) (s, gv) -> {
+                    BigDecimal grens = RegelSpraakRuntime.toBd(gf.fn().apply(s, java.util.Map.of(gn, (BigDecimal) gv)));
+                    boolean b = RegelSpraakRuntime.rsGeheelPeriode((List<?>) tl.apply(s), gran, toets, grens);
+                    return niet ? !b : b;
+                }), List.of());
+            }
+            return null;   // >1 global / unresolved -> skip
         }
         // §8.1.7 far-side "heeft een <rol>": the reference lives on the to-many filler, so this is an exists-join —
         // a SEPARATE rule item that cannot live inside the subject pattern. It binds the filler against $subject.
@@ -1058,6 +1176,11 @@ public final class ExecModelTranspiler {
     }
 
     private Predicate1<Object> leafPredicate(Conditie c, Objecttype subject) {
+        // §8.2 a whole-period-qualified predicate over a tijdsafhankelijk onderwerp, with a literal/own-attr grens
+        // (0 globals) -> a fact-only "the check holds" predicate. A grens reading a Parameter-global returns null here
+        // (handled with a bound global in voorwaarde); inside a counting quantifier that null skips the whole compound.
+        Conditie.GeheelPeriode gp82 = geheelPeriodeVan(c);
+        if (gp82 != null) return geheelPeriodeLeaf(geheelPeriode82(c, gp82, subject));
         // §8.1.8 kenmerkcheck — an own kenmerk (boolean property == !negatie) or a to-one navigated one
         // ("zijn partner heeft een <k>"), read null-safely through the reference (a null relation never matches).
         if (c instanceof Conditie.Kenmerk k) {
@@ -1932,6 +2055,14 @@ public final class ExecModelTranspiler {
             if (schendingen.isEmpty()) return null;
             return obj -> { for (Predicate1<Object> sp : schendingen) if (sp.test(obj)) return true; return false; };
         }
+        // §8.2 a whole-period-qualified criterium ("X moet gedurende het gehele jaar gelijk zijn aan Y"): the criterium
+        // is satisfied iff the §8.2 check holds, so the VIOLATION is its negation. A literal/own-attr grens (0 globals)
+        // is fact-only; a Parameter-global grens is handled by schendingMetGlobal. Symmetric with DrlTranspiler.
+        Conditie.GeheelPeriode gp82 = geheelPeriodeVan(assertie);
+        if (gp82 != null) {
+            Predicate1<Object> hold = geheelPeriodeLeaf(geheelPeriode82(assertie, gp82, subject));
+            return hold == null ? null : s -> !hold.test(s);
+        }
         // §9.5 a LEEG/GEVULD assertie criterion ("X moet gevuld/leeg zijn", also as a nested ALLE criterion): the
         // violation is its negation — a GEVULD assertie is violated when the operand is leeg, a LEEG one when it is
         // gevuld. Own or to-one navigated operand (consistentieReader; navReader's null == leeg). Mirrors negeer(LEEG/
@@ -2027,6 +2158,22 @@ public final class ExecModelTranspiler {
      *  navigated LHS (consistentieReader); null when not this shape. The leeg/violation semantics match the own-attr
      *  numeric schending (an ordering with an empty operand is a violation). */
     private SchendingGlobal schendingMetGlobal(Conditie assertie, Objecttype subject) {
+        // §8.2 a whole-period-qualified criterium whose grens reads EXACTLY ONE Parameter-global ("X moet gedurende
+        // het gehele jaar gelijk zijn aan <de parameter>"): the global binds as a pattern variable, the violation is
+        // !(§8.2 check holds). Mirrors DrlTranspiler.schendingConstraint lowering the global grens via operand().
+        Conditie.GeheelPeriode gp82 = geheelPeriodeVan(assertie);
+        if (gp82 != null) {
+            Gp82 g = geheelPeriode82(assertie, gp82, subject);
+            if (g == null || g.grens() == null || g.grens().globals().size() != 1) return null;
+            String gn = g.grens().globals().iterator().next();
+            java.util.function.Function<Object, Object> tl = g.timeline(); WaardeFn gf = g.grens();
+            int toets = g.toets(); String gran = g.gran(); boolean niet = g.niet();
+            return new SchendingGlobal(gn, (s, gv) -> {
+                BigDecimal grens = RegelSpraakRuntime.toBd(gf.fn().apply(s, java.util.Map.of(gn, gv)));
+                boolean b = RegelSpraakRuntime.rsGeheelPeriode((List<?>) tl.apply(s), gran, toets, grens);
+                return !(niet ? !b : b);
+            });
+        }
         if (!(assertie instanceof Conditie.Vergelijking v)) return null;
         // §13.4.8 a DATUM comparison assertie where an operand is a §6/§13.4.16 date-arithmetic expression reading
         // EXACTLY ONE Parameter-GLOBAL (the duration is a parameter): the violation is !datumVergelijkTemporal; the

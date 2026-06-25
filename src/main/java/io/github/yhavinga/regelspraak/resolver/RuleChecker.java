@@ -942,31 +942,46 @@ final class RuleChecker {
         return new Conditie.Onopgelost(src(c));
     }
 
+    /** §8.2 / §13.4.15.70: the optional "(niet) gedurende de/het gehele jaar|maand" whole-period qualifier that
+     *  precedes a predicate (verb-split or verb-leading); null when absent. {@code jaar} reads the JAAR vs MAAND
+     *  keyword, {@code niet} the leading negation. The transpilers honour it on a tijdsafhankelijk onderwerp. */
+    private static Conditie.GeheelPeriode geheelPeriode(GehelePeriodevergelijkingContext g) {
+        if (g == null) return null;
+        boolean jaar = g.JAAR() != null;   // else MAAND
+        // the negation is either the bare NIET prefix (stellende vorm "is niet gedurende …") or the combined
+        // NIET_GEDURENDE_*_GEHELE token (vragende vorm "… niet gedurende …", lexed as one token so the onderwerp
+        // kaleNaam cannot absorb the leading "niet").
+        boolean niet = g.NIET() != null || g.NIET_GEDURENDE_HET_GEHELE() != null || g.NIET_GEDURENDE_DE_GEHELE() != null;
+        return new Conditie.GeheelPeriode(jaar, niet);
+    }
+
     private Conditie uitToplevel(Expr lhs, ToplevelOperatorContext op, String bron) {
+        Conditie.GeheelPeriode periode = geheelPeriode(op.gehelePeriodevergelijking());   // §8.2 whole-period check
         if (op.vergelijkingsTekenGesplitst() != null && op.expressie() != null)
             return new Conditie.Vergelijking(naarOperator(cmpOf(op.vergelijkingsTekenGesplitst())),
-                    lhs, bouwer.bouw(op.expressie()), bron);
-        if (op.LEEG() != null)   return new Conditie.Predicaat(Conditie.Predicaatsoort.LEEG, lhs, bron);
-        if (op.GEVULD() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.GEVULD, lhs, bron);
-        if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, bron);
+                    lhs, bouwer.bouw(op.expressie()), periode, bron);
+        if (op.LEEG() != null)   return new Conditie.Predicaat(Conditie.Predicaatsoort.LEEG, lhs, periode, bron);
+        if (op.GEVULD() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.GEVULD, lhs, periode, bron);
+        if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, periode, bron);
         if (op.NUMERIEK_IS_MET_EXACT() != null || op.NUMERIEK_ZIJN_MET_EXACT() != null)
-            return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, bron);
+            return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, periode, bron);
         Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null,
-                op.HEEFT() != null || op.HEBBEN() != null, bron); // EEN? kaleNaam (is|heeft): §8.1.8
+                op.HEEFT() != null || op.HEBBEN() != null, periode, bron); // EEN? kaleNaam (is|heeft): §8.1.8
         return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
     }
 
     private Conditie uitNonToplevel(Expr lhs, NonToplevelOperatorContext op, String bron) {
+        Conditie.GeheelPeriode periode = geheelPeriode(op.gehelePeriodevergelijking());   // §8.2 whole-period check
         if (op.vergelijkingsTeken() != null && op.expressie() != null)
             return new Conditie.Vergelijking(naarOperator(cmpOf(op.vergelijkingsTeken())),
-                    lhs, bouwer.bouw(op.expressie()), bron);
-        if (op.LEEG() != null)   return new Conditie.Predicaat(Conditie.Predicaatsoort.LEEG, lhs, bron);
-        if (op.GEVULD() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.GEVULD, lhs, bron);
-        if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, bron);
+                    lhs, bouwer.bouw(op.expressie()), periode, bron);
+        if (op.LEEG() != null)   return new Conditie.Predicaat(Conditie.Predicaatsoort.LEEG, lhs, periode, bron);
+        if (op.GEVULD() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.GEVULD, lhs, periode, bron);
+        if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, periode, bron);
         if (op.NUMERIEK_MET_EXACT() != null)
-            return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, bron);
+            return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, periode, bron);
         Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null,
-                op.HEEFT() != null || op.HEBBEN() != null, bron); // (is|heeft) een? kaleNaam: §8.1.8
+                op.HEEFT() != null || op.HEBBEN() != null, periode, bron); // (is|heeft) een? kaleNaam: §8.1.8
         return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
     }
 
@@ -978,7 +993,19 @@ final class RuleChecker {
      *  &lt;k&gt;") binds first, otherwise a role the subject fills is the §8.1.7 rolcheck. A bijvoeglijk /
      *  bezittelijk kenmerk is NOT written with "een", so the EEN-form never binds it. A name that resolves to
      *  neither stays Onopgelost (an honest marker), never a silently-true gate. */
-    private Conditie kenmerkPredicaat(Expr lhs, KaleNaamContext naamCtx, boolean metEen, boolean heeftWerkwoord, String bron) {
+    private Conditie kenmerkPredicaat(Expr lhs, KaleNaamContext naamCtx, boolean metEen, boolean heeftWerkwoord,
+                                      Conditie.GeheelPeriode periode, String bron) {
+        Conditie c = kenmerkPredicaatKaal(lhs, naamCtx, metEen, heeftWerkwoord, bron);
+        if (periode == null || c == null) return c;
+        // §8.2 "is/heeft gedurende het gehele jaar een <kenmerk>" attaches the whole-period qualifier ONLY to a
+        // §8.1.8 kenmerkcheck (its onderwerp is a tijdsafhankelijk kenmerk). Over any other membership form (a
+        // §8.1.7 rolcheck) the qualifier has no defined meaning -> an honest marker, never silently dropped.
+        return c instanceof Conditie.Kenmerk k
+                ? new Conditie.Kenmerk(k.kenmerk(), k.navigatie(), k.negatie(), k.eigenaar(), periode, k.bron())
+                : new Conditie.Onopgelost(bron);
+    }
+
+    private Conditie kenmerkPredicaatKaal(Expr lhs, KaleNaamContext naamCtx, boolean metEen, boolean heeftWerkwoord, String bron) {
         Objecttype subject = bouwer.subject();
         if (naamCtx == null || subject == null) return null;
         String staart = stripArtikel(src(naamCtx));

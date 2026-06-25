@@ -2914,12 +2914,12 @@ class DrlTest {
                 () -> "een niet-'alle' set-totaal moet ook markeren:\n" + drl);
     }
 
-    @Test void tijdsafhankelijk_attribuut_en_kenmerk_in_een_scalaire_conditie_markeren_niet_lekken() {
-        // §13.3.6/§8.2: a tijdsafhankelijk attribuut/kenmerk is a List<Segment> timeline. A bare scalar read of one
-        // (a when-side comparison, the §8.2 "gedurende het gehele jaar" whole-period form, a temporal-kenmerk check,
-        // or a then-side value into a scalar doel) must MARKER — never a `field == scalar` / `setX(List)` that leaks
-        // the List into a scalar slot and sinks the KieBuilder. The legitimate temporal reads (totaal/tijdsevenredig/
-        // gedurende clip) intercept the AttribuutRef upstream, so they are unaffected.
+    @Test void tijdsafhankelijk_attribuut_en_kenmerk_in_een_gehele_periode_conditie_lowEren_zonder_lekken() {
+        // §8.2/§13.4.15.70: a "gedurende het gehele jaar" whole-period qualifier over a tijdsafhankelijk attribuut/
+        // kenmerk LOWERS to a boolean rsGeheelPeriode(...) check — never a `field == scalar` that leaks the
+        // List<Segment> into a scalar slot. The own-attribute comparison (Regel A) and the own-kenmerk check (Regel B)
+        // both lower; a BARE temporal read into a scalar doel WITHOUT a §8.2 qualifier (Regel C) still markers (the
+        // value side has no whole-period meaning), proving the §8.2 lowering is the qualifier's doing, not a blanket pass.
         String src = """
             Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
             Objecttype de Passagier (mv: Passagiers) (bezield)
@@ -2940,15 +2940,16 @@ class DrlTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "geaccepteerde invoer (geen resolver-fout): " + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        // none of the three leak forms may appear
+        // no raw List-in-scalar leak may appear
         assertFalse(drl.contains("belastingverminderingPerMaand =="), () -> "attribuut-vergelijking lekt een List:\n" + drl);
         assertFalse(drl.contains("rechthebbend == true"), () -> "kenmerk-check lekt een List:\n" + drl);
         assertFalse(drl.contains("setPrijs( $subject.getBelastingverminderingPerMaand() )"), () -> "scalaire setter lekt een List:\n" + drl);
-        // and each is an honest marker
-        assertTrue(drl.contains("/* TODO voorwaarde: zijn belastingvermindering per maand gedurende het gehele jaar"),
-                () -> "§8.2 attribuut-vergelijking niet gemarkeerd:\n" + drl);
-        assertTrue(drl.contains("tijdsafhankelijk kenmerk in scalaire voorwaarde"),
-                () -> "§8.2 kenmerk-check niet gemarkeerd:\n" + drl);
+        // §8.2 comparison + kenmerk-check now LOWER to the whole-period helper (toets 4 = GELIJK, 7 = covered/kenmerk)
+        assertTrue(drl.contains("rsGeheelPeriode($subject.getBelastingverminderingPerMaand(), \"JAAR\", 4,"),
+                () -> "§8.2 attribuut-vergelijking niet gelowEred:\n" + drl);
+        assertTrue(drl.contains("rsGeheelPeriode($subject.getRechthebbend(), \"JAAR\", 7, null)"),
+                () -> "§8.2 kenmerk-check niet gelowEred:\n" + drl);
+        // the value-side temporal read (no §8.2 qualifier) is still an honest marker
         assertTrue(drl.contains("tijdsafhankelijk attribuut in scalaire context"),
                 () -> "scalaire waarde-lezing niet gemarkeerd:\n" + drl);
     }
@@ -2987,8 +2988,10 @@ class DrlTest {
         assertTrue(m.errors().isEmpty(), () -> "geaccepteerde invoer (geen resolver-fout): " + m.errors());
         String drl = DrlTranspiler.transpile(m);
         assertFalse(drl.contains("reis.actief == true"), () -> "navigeerd temporeel kenmerk lekt een List:\n" + drl);
-        assertTrue(drl.contains("tijdsafhankelijk kenmerk in scalaire voorwaarde"),
-                () -> "navigeerd temporeel kenmerk niet gemarkeerd:\n" + drl);
+        // §8.2 over a NAVIGATED temporal kenmerk is not lowerable as a standalone timeline (temporeelKenmerkTijdreeks
+        // returns null for a navigated kenmerk) -> an honest §8.2 marker, never a "reis.actief == true" List leak.
+        assertTrue(drl.contains("TODO §8.2 gehele-periode"),
+                () -> "navigeerd temporeel §8.2 kenmerk niet gemarkeerd:\n" + drl);
         assertTrue(drl.contains("reis != null && reis.internationaal == true"),
                 () -> "een NIET-temporeel navigeerd kenmerk moet gewoon lowEren:\n" + drl);
         // §8.2 navigated LEEG: a temporal navigated attr markers (no "reis.loon == null" list-nullness test); a

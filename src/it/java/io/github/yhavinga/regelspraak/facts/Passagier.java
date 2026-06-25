@@ -76,4 +76,7 @@ public class Passagier {
     public void setBonusvlucht(Vlucht v) { this.bonusvlucht = v; }
     public Contingent getBonuscontingent() { return bonuscontingent; }
     public void setBonuscontingent(Contingent v) { this.bonuscontingent = v; }
+    private boolean gemarkeerd;   // §8.2 the bijvoeglijk kenmerk a whole-period-qualified voorwaarde sets
+    public boolean isGemarkeerd() { return gemarkeerd; }
+    public void setGemarkeerd(boolean v) { this.gemarkeerd = v; }
 }

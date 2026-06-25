@@ -557,6 +557,66 @@ public final class RegelSpraakRuntime {
         return uit;
     }
 
+    /** §8.2/§13.4.15.70 "gedurende de/het gehele &lt;periode&gt;": is the predicate {@code true at EVERY moment} of
+     *  each calendar bucket (MAAND|JAAR) the timeline touches? Bucket the {@code List<Segment>} timeline by calendar
+     *  period (like {@link #rsAantalDagenIn}); a bucket is "touched" if any segment overlaps it, and PASSES only when
+     *  the per-segment check holds for the bucket's WHOLE calendar length (a gap, or a contrary/leeg segment, leaves
+     *  fewer satisfying days than the period has → fail). Returns the AND over all touched buckets — and {@code true}
+     *  for an empty/leeg timeline (no period to violate; the caller's NIET-prefix complements). {@code toets}: 0..5 =
+     *  KLEINER/KLEINER_OF_GELIJK/GROTER/GROTER_OF_GELIJK/GELIJK/ONGELIJK of {@code waarde} vs {@code grens} (a leeg
+     *  waarde never satisfies), 6 = GEVULD (any non-leeg waarde), 7 = covered (a §8.2 kenmerk true-period — any
+     *  covering segment). Mirrors the DRL {@code rsGeheelPeriode}; no Segment construction, so no segCls. */
+    public static boolean rsGeheelPeriode(List<?> tijdlijn, String granulariteit, int toets, BigDecimal grens) {
+        if (tijdlijn == null) return true;
+        boolean jaar = "JAAR".equals(granulariteit);
+        TreeMap<LocalDate, Long> geraaktDagen = new TreeMap<>();   // calendar buckets the timeline touches
+        TreeMap<LocalDate, Long> goedDagen = new TreeMap<>();      // satisfying days per bucket
+        for (Object o : tijdlijn) {
+            LocalDate van = segVan(o), tot = segTot(o);
+            if (van == null || tot == null || !van.isBefore(tot)) continue;
+            boolean ok = segmentVoldoet(toets, segWaarde(o), grens);
+            LocalDate cursor = jaar ? van.withDayOfYear(1) : van.withDayOfMonth(1);
+            while (cursor.isBefore(tot)) {
+                LocalDate next = jaar ? cursor.plusYears(1) : cursor.plusMonths(1);
+                LocalDate a = van.isAfter(cursor) ? van : cursor;
+                LocalDate b = tot.isBefore(next) ? tot : next;
+                long dagen = ChronoUnit.DAYS.between(a, b);
+                if (dagen > 0) {
+                    geraaktDagen.merge(cursor, dagen, Long::sum);
+                    if (ok) goedDagen.merge(cursor, dagen, Long::sum);
+                }
+                cursor = next;
+            }
+        }
+        for (Map.Entry<LocalDate, Long> en : geraaktDagen.entrySet()) {
+            LocalDate bucket = en.getKey();
+            LocalDate eind = jaar ? bucket.plusYears(1) : bucket.plusMonths(1);
+            long totaal = ChronoUnit.DAYS.between(bucket, eind);
+            long goed = goedDagen.getOrDefault(bucket, 0L);
+            if (goed < totaal) return false;   // a moment in this calendar period fails the check
+        }
+        return true;
+    }
+
+    /** Whether one timeline segment's value satisfies the §8.2 per-moment check ({@code toets} encoding per
+     *  {@link #rsGeheelPeriode}). A leeg (null) value satisfies only the "covered" check (toets 7); every value
+     *  comparison treats leeg as not-holding. */
+    private static boolean segmentVoldoet(int toets, BigDecimal w, BigDecimal grens) {
+        if (toets == 7) return true;       // §8.2 kenmerk: a covering segment = the kenmerk holds here
+        if (w == null) return false;       // leeg: no value at this moment -> the check does not hold
+        if (toets == 6) return true;       // §8.2 gevuld: a non-leeg value
+        int c = w.compareTo(grens);
+        switch (toets) {
+            case 0:  return c < 0;
+            case 1:  return c <= 0;
+            case 2:  return c > 0;
+            case 3:  return c >= 0;
+            case 4:  return c == 0;
+            case 5:  return c != 0;
+            default: return false;
+        }
+    }
+
     // ---- §13.4.17.51-.54 dimensie folds (a gedimensioneerd attribuut is a Map<label,value>) ----
     /** §5.8.5 fold a dimensioned attribute's per-label values over the SELECTED label keys, null-skipping empties
      *  (an absent label / null value is skipped, NOT 0) and returning null for an all-empty selection (§5.8.2 an

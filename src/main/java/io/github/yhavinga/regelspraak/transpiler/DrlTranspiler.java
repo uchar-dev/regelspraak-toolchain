@@ -272,6 +272,15 @@ public final class DrlTranspiler {
             }
             return schendingen.isEmpty() ? null : "(" + String.join(" || ", schendingen) + ")";
         }
+        // §8.2 a whole-period-qualified criterium ("X moet gedurende het gehele jaar gelijk zijn aan Y"): the
+        // criterium is satisfied iff rsGeheelPeriode(...) holds, so the VIOLATION is its negation — the same boolean
+        // term as the voorwaarde form with the "== true|false" comparison FLIPPED (the NIET prefix flips it back).
+        // A §8.2 form this transpiler cannot lower no-ops the rule (null), never flagging a never-evaluated criterium.
+        Conditie.GeheelPeriode gp82 = geheelPeriodeVan(assertie);
+        if (gp82 != null) {
+            Frag f = geheelPeriodeCall(assertie, gp82, subject);
+            return f.marker() ? null : f.text() + " == " + (gp82.niet() ? "true" : "false");
+        }
         // A comparison with a TO-ONE navigated operand cannot use the simple null-guard forms below: those
         // emit the operand via operand()'s Drools "!." which short-circuits the WHOLE term to a non-match on
         // a null reference, hiding a real gevuld-vs-leeg violation (p41). Handle it with explicit leegwaarde
@@ -1899,6 +1908,82 @@ public final class DrlTranspiler {
         return SUBJECT + "." + getter(k.kenmerk()) + "()";
     }
 
+    /** The §8.2 whole-period qualifier on a predicate, or null when the predicate carries none. */
+    private static Conditie.GeheelPeriode geheelPeriodeVan(Conditie c) {
+        if (c instanceof Conditie.Vergelijking v) return v.periode();
+        if (c instanceof Conditie.Predicaat p)    return p.periode();
+        if (c instanceof Conditie.Kenmerk k)      return k.periode();
+        return null;
+    }
+
+    /** The §8.2 timeline getter for a temporal attribute read — the subject's own {@code List<Segment>} field, or a
+     *  to-ONE navigated partner's, root-guarded so a null reference reads as a leeg (null) timeline rather than NPE.
+     *  null for a to-many / unresolvable navigation. Mirrors {@link #tijdreeksAggregatie}'s timeline getter. */
+    private String temporeelTijdlijnGetter(Expr.AttribuutRef a, Objecttype subject) {
+        NaviRef n = naviResolve(a, subject);
+        if (n.soort() == NaviSoort.EIGEN) return SUBJECT + "." + getter(a.attribuut()) + "()";
+        if (n.soort() == NaviSoort.GENAVIGEERD) {
+            String root = SUBJECT + "." + getter(n.rol()) + "()";
+            return "(" + root + " == null ? null : " + root + "." + getter(a.attribuut()) + "())";
+        }
+        return null;
+    }
+
+    /** §8.2 {@code rsGeheelPeriode} toets code for a comparison operator, or null for a DATUM ordering (EERDER/LATER)
+     *  — the runtime Segment carries a BigDecimal waarde, so a date-valued whole-period comparison is out of scope. */
+    private static Integer toetsCode(Conditie.Operator op) {
+        return switch (op) {
+            case KLEINER -> 0; case KLEINER_OF_GELIJK -> 1;
+            case GROTER  -> 2; case GROTER_OF_GELIJK  -> 3;
+            case GELIJK  -> 4; case ONGELIJK          -> 5;
+            default -> null;
+        };
+    }
+
+    /** §8.2 / §13.4.15.70: the RAW boolean {@code rsGeheelPeriode(timeline, "JAAR"|"MAAND", toets, grens)} call for a
+     *  whole-period-qualified predicate (the caller appends {@code == true|false}, NIET flips which), or a marker Frag
+     *  when the form is outside the supported set. Supported: a numeric comparison of a temporal attribute vs a scalar
+     *  grens (§8.2 line 3467), a GEVULD over a temporal attribute, and a temporal kenmerkcheck (§8.2 line 3469). A
+     *  LEEG / ELFPROEF / NUMERIEK-met-exact whole-period form is degenerate without a bounding period -> marker. */
+    private Frag geheelPeriodeCall(Conditie c, Conditie.GeheelPeriode gp, Objecttype subject) {
+        String gran = gp.jaar() ? "JAAR" : "MAAND";
+        String getter; int toets; String grens = "null";
+        if (c instanceof Conditie.Vergelijking v) {
+            Expr.AttribuutRef tijd; Expr ander; boolean linksTemp;
+            if (v.links() instanceof Expr.AttribuutRef la && isTemporeelAttribuut(la))      { tijd = la; ander = v.rechts(); linksTemp = true; }
+            else if (v.rechts() instanceof Expr.AttribuutRef ra && isTemporeelAttribuut(ra)) { tijd = ra; ander = v.links();  linksTemp = false; }
+            else return Frag.todo("§8.2 zonder tijdsafhankelijk attribuut", c.bron());
+            if (!(tijd.type().isNumeriek() || tijd.type().isPercentage()))
+                return Frag.todo("§8.2 niet-numerieke gehele-periodevergelijking", c.bron());
+            // The grenswaarde is compared raw against the Segment's value, so a convertible-but-DIFFERENT unit would
+            // compare unscaled magnitudes (silently wrong). The common §8.2 case is same-unit; a unit mismatch is an
+            // honest marker (carded), never a mis-scaled comparison — kept symmetric in both back-ends.
+            io.github.yhavinga.regelspraak.model.Eenheid el = tijd.type().eenheidOf(), er = ander.type().eenheidOf();
+            if (el != null && er != null && el.vereistOmrekening(er))
+                return Frag.todo("§8.2 gehele-periodevergelijking met eenheidsomrekening", c.bron());
+            Integer code = toetsCode(linksTemp ? v.op() : flip(v.op()));   // put the temporal operand on the left
+            if (code == null) return Frag.todo("§8.2 datum-gehele-periodevergelijking", c.bron());
+            getter = temporeelTijdlijnGetter(tijd, subject);
+            if (getter == null) return Frag.todo("§8.2 navigatie", c.bron());
+            Frag g = operand(ander, subject);    // the scalar grenswaarde (literal / parameter-global / own attribute)
+            if (g.marker()) return Frag.todo("§8.2 grenswaarde", c.bron());
+            toets = code; grens = g.text();
+        } else if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.GEVULD
+                && p.operand() instanceof Expr.AttribuutRef pa && isTemporeelAttribuut(pa)) {
+            getter = temporeelTijdlijnGetter(pa, subject);
+            if (getter == null) return Frag.todo("§8.2 navigatie", c.bron());
+            toets = 6;
+        } else if (c instanceof Conditie.Kenmerk k) {
+            getter = temporeelKenmerkTijdreeks(k, subject);   // null for a navigated/negated/non-temporal kenmerk
+            if (getter == null) return Frag.todo("§8.2 kenmerk", c.bron());
+            toets = 7;
+        } else {
+            return Frag.todo("§8.2 predicaat", c.bron());     // LEEG / ELFPROEF / NUMERIEK-met-exact whole-period
+        }
+        registreerGeheelPeriodeFunctie();
+        return Frag.ok("rsGeheelPeriode(" + getter + ", \"" + gran + "\", " + toets + ", " + grens + ")");
+    }
+
     /** Register the §13.4.17.58 tijdsevenredig-deel helper: prorate a base value-timeline over each calendar bucket
      *  by the fraction of the bucket the condition holds. Buckets are taken from the condition's TRUE {@code
      *  List<Segment>} timeline (like rsAantalDagenIn); per non-empty bucket [start,eind) the output value is
@@ -1988,6 +2073,67 @@ public final class DrlTranspiler {
                 + "        uit.add(new " + FACT_PACKAGE + ".Segment(start, eind, new java.math.BigDecimal(((Long) en.getValue()).longValue())));\n"
                 + "    }\n"
                 + "    return uit;\n"
+                + "}");
+    }
+
+    /** Register the §8.2/§13.4.15.70 gehele-periode helper: is the per-segment check true at EVERY moment of each
+     *  calendar bucket (MAAND|JAAR) the timeline touches? Buckets like rsAantalDagenIn; a bucket PASSES only when the
+     *  satisfying days equal the bucket's full calendar length (a gap or contrary/leeg segment fails it). AND over
+     *  buckets; an empty timeline -> true. {@code toets}: 0..5 = </>/==/!= of waarde vs grens (leeg never satisfies),
+     *  6 = gevuld, 7 = covered (a §8.2 kenmerk true-period). Byte-identical compute to {@code RegelSpraakRuntime
+     *  .rsGeheelPeriode} (the differential gate); plain Java (java dialect) so a Drools function body runs it. */
+    private void registreerGeheelPeriodeFunctie() {
+        hulpFuncties.putIfAbsent("rsGeheelPeriode",
+                "function boolean rsGeheelPeriode(java.util.List tijdlijn, String granulariteit, int toets, java.math.BigDecimal grens) {\n"
+                + "    if (tijdlijn == null) return true;\n"
+                + "    boolean jaar = \"JAAR\".equals(granulariteit);\n"
+                + "    java.util.Map geraaktDagen = new java.util.TreeMap();\n"
+                + "    java.util.Map goedDagen = new java.util.TreeMap();\n"
+                + "    for (Object o : tijdlijn) {\n"
+                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
+                + "        if (s.getVan() == null || s.getTot() == null || !s.getVan().isBefore(s.getTot())) continue;\n"
+                + "        boolean ok;\n"
+                + "        if (toets == 7) ok = true;\n"
+                + "        else if (s.getWaarde() == null) ok = false;\n"
+                + "        else if (toets == 6) ok = true;\n"
+                + "        else {\n"
+                + "            int c = s.getWaarde().compareTo(grens);\n"
+                + "            if (toets == 0) ok = c < 0;\n"
+                + "            else if (toets == 1) ok = c <= 0;\n"
+                + "            else if (toets == 2) ok = c > 0;\n"
+                + "            else if (toets == 3) ok = c >= 0;\n"
+                + "            else if (toets == 4) ok = c == 0;\n"
+                + "            else if (toets == 5) ok = c != 0;\n"
+                + "            else ok = false;\n"
+                + "        }\n"
+                + "        java.time.LocalDate cursor = jaar ? s.getVan().withDayOfYear(1) : s.getVan().withDayOfMonth(1);\n"
+                + "        while (cursor.isBefore(s.getTot())) {\n"
+                + "            java.time.LocalDate next = jaar ? cursor.plusYears(1) : cursor.plusMonths(1);\n"
+                + "            java.time.LocalDate van = s.getVan().isAfter(cursor) ? s.getVan() : cursor;\n"
+                + "            java.time.LocalDate tot = s.getTot().isBefore(next) ? s.getTot() : next;\n"
+                + "            long dagen = java.time.temporal.ChronoUnit.DAYS.between(van, tot);\n"
+                + "            if (dagen > 0) {\n"
+                + "                Object pg = geraaktDagen.get(cursor);\n"
+                + "                geraaktDagen.put(cursor, Long.valueOf((pg == null ? 0L : ((Long) pg).longValue()) + dagen));\n"
+                + "                if (ok) {\n"
+                + "                    Object pgo = goedDagen.get(cursor);\n"
+                + "                    goedDagen.put(cursor, Long.valueOf((pgo == null ? 0L : ((Long) pgo).longValue()) + dagen));\n"
+                + "                }\n"
+                + "            }\n"
+                + "            cursor = next;\n"
+                + "        }\n"
+                + "    }\n"
+                + "    java.util.Iterator it = geraaktDagen.entrySet().iterator();\n"
+                + "    while (it.hasNext()) {\n"
+                + "        java.util.Map.Entry en = (java.util.Map.Entry) it.next();\n"
+                + "        java.time.LocalDate bucket = (java.time.LocalDate) en.getKey();\n"
+                + "        java.time.LocalDate eind = jaar ? bucket.plusYears(1) : bucket.plusMonths(1);\n"
+                + "        long totaal = java.time.temporal.ChronoUnit.DAYS.between(bucket, eind);\n"
+                + "        Object g = goedDagen.get(bucket);\n"
+                + "        long goed = g == null ? 0L : ((Long) g).longValue();\n"
+                + "        if (goed < totaal) return false;\n"
+                + "    }\n"
+                + "    return true;\n"
                 + "}");
     }
 
@@ -2297,6 +2443,15 @@ public final class DrlTranspiler {
      *  tail), because there a both-empty "fout" must still FIRE the violation (Tabel 44), so the guard
      *  must NOT be added. */
     private LoweredConditie conditie(Conditie c, Objecttype subject, boolean alsVoorwaarde) {
+        // §8.2 / §13.4.15.70 "gedurende de/het gehele jaar|maand": a whole-period check over a tijdsafhankelijk
+        // onderwerp (a List<Segment> timeline). Lower to a boolean rsGeheelPeriode(...) term BEFORE the scalar paths
+        // below (which would marker the temporal operand). A form §8.2 cannot lower stays an honest marker.
+        Conditie.GeheelPeriode gp = geheelPeriodeVan(c);
+        if (gp != null) {
+            Frag f = geheelPeriodeCall(c, gp, subject);
+            if (f.marker()) return LoweredConditie.marker("§8.2 gehele-periode", c.bron());
+            return LoweredConditie.van(f.text() + " == " + (gp.niet() ? "false" : "true"));
+        }
         if (c instanceof Conditie.Vergelijking v) {
             // An operand the resolver/transpiler could not lower (an unresolvable navigation, an
             // under-specified dimensioned read) makes the whole comparison unfaithful — and emitting it raw

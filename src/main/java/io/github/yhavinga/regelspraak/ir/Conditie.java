@@ -23,17 +23,29 @@ public sealed interface Conditie {
     /** The original source slice this condition was built from (whitespace-normalised). */
     String bron();
 
+    /** §8.2 / §13.4.15.70 "gedurende de/het gehele &lt;periode&gt;" whole-period qualifier on a predicate over a
+     *  tijdsafhankelijk onderwerp (§8.2 line 3437). The qualified predicate yields "waar" only if the underlying
+     *  check holds at EVERY moment of each named calendar period the subject's timeline touches (§8.2 line 3448).
+     *  {@code jaar} = "gedurende het gehele jaar" (false = "de gehele maand"); {@code niet} = the §8.2
+     *  "niet gedurende …" form, which complements the whole-period result. Attached to the temporal predicate it
+     *  qualifies — a {@link Vergelijking}, a {@link Predicaat}, or a {@link Kenmerk}; null on an ordinary predicate. */
+    record GeheelPeriode(boolean jaar, boolean niet) {}
+
     /** §5.1-5.10 comparison operators (the typeringen ordering/equality/date families). */
     enum Operator {
         KLEINER, KLEINER_OF_GELIJK, GROTER, GROTER_OF_GELIJK,
         GELIJK, ONGELIJK,
         EERDER, EERDER_OF_GELIJK, LATER, LATER_OF_GELIJK
     }
-    record Vergelijking(Operator op, Expr links, Expr rechts, String bron) implements Conditie {}
+    record Vergelijking(Operator op, Expr links, Expr rechts, GeheelPeriode periode, String bron) implements Conditie {
+        public Vergelijking(Operator op, Expr links, Expr rechts, String bron) { this(op, links, rechts, null, bron); }
+    }
 
     /** §5.11-5.16 one-sided predicates. */
     enum Predicaatsoort { LEEG, GEVULD, ELFPROEF, NUMERIEK_MET_EXACT, DAGSOORT }
-    record Predicaat(Predicaatsoort soort, Expr operand, String bron) implements Conditie {}
+    record Predicaat(Predicaatsoort soort, Expr operand, GeheelPeriode periode, String bron) implements Conditie {
+        public Predicaat(Predicaatsoort soort, Expr operand, String bron) { this(soort, operand, null, bron); }
+    }
 
     /** §8.1.8 kenmerk-membership test ("de Meting is oud" / "hij heeft het recht …"): true when the
      *  named object carries the boolean kenmerk. {@code navigatie} is null for the subject's OWN kenmerk
@@ -44,9 +56,10 @@ public sealed interface Conditie {
      *  constraint must attach to — a §13.4.7 feitcreatie hosts a doel-kenmerk on the {@code $doel} pattern,
      *  so the transpiler emits it only on that type and markers it elsewhere (never on the anker, even when
      *  the anker declares a same-named kenmerk). null leaves it unconstrained (the single-subject rule). */
-    record Kenmerk(String kenmerk, String navigatie, boolean negatie, Objecttype eigenaar, String bron) implements Conditie {
-        public Kenmerk(String kenmerk, String navigatie, boolean negatie, String bron) { this(kenmerk, navigatie, negatie, null, bron); }
-        public Kenmerk(String kenmerk, String bron) { this(kenmerk, null, false, null, bron); }
+    record Kenmerk(String kenmerk, String navigatie, boolean negatie, Objecttype eigenaar, GeheelPeriode periode, String bron) implements Conditie {
+        public Kenmerk(String kenmerk, String navigatie, boolean negatie, Objecttype eigenaar, String bron) { this(kenmerk, navigatie, negatie, eigenaar, null, bron); }
+        public Kenmerk(String kenmerk, String navigatie, boolean negatie, String bron) { this(kenmerk, navigatie, negatie, null, null, bron); }
+        public Kenmerk(String kenmerk, String bron) { this(kenmerk, null, false, null, null, bron); }
     }
 
     /** §8.1.7 rolcheck ("hij is een passagier"): true when the subject FILLS the role {@code rol}.

@@ -1639,6 +1639,127 @@ class ExecModelDifferentialTest {
                       tl(((Passagier) l.get(1)).getAantalDagenRechtOpBelastingvermindering()))),   // [Jan 31, Feb 13], []
     };
 
+    // ---- Phase 82 fixtures: §8.2/§13.4.15.70 "gedurende de/het gehele jaar|maand" — a whole-period check over a
+    //      tijdsafhankelijk onderwerp, reduced to a scalar boolean (rsGeheelPeriode: forall complete calendar bucket
+    //      touched, the per-moment check holds). The voorwaarde gates a scalar kenmerk (gemarkeerd). Both back-ends
+    //      call the byte-identical rsGeheelPeriode helper. ----
+    private static final String G82_ATTR_HDR = TOTAAL_HDR + """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                is gemarkeerd kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is gemarkeerd
+                    indien """;
+    private static String g82attr(String conditie) { return G82_ATTR_HDR + " " + conditie + ".\n"; }   // space: the text block strips "indien "'s trailing space
+
+    static final Fixture[] PHASE_82 = {
+        // JAAR comparison TRUE: loon == 10 for the WHOLE of 2024 -> the year is satisfied -> gemarkeerd.
+        single("§8.2 JAAR == TRUE (heel 2024 == 10)",
+            g82attr("zijn belastingvermindering per maand gedurende het gehele jaar gelijk is aan 10"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00")))),
+            Map.of(), Passagier::isGemarkeerd),   // true
+        // JAAR comparison FALSE: ==10 only Jan-Jun, ==11 Jul-Dec -> 2024 not wholly ==10 -> not gemarkeerd.
+        single("§8.2 JAAR == FALSE (half 10, half 11)",
+            g82attr("zijn belastingvermindering per maand gedurende het gehele jaar gelijk is aan 10"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(
+                    seg(2024, 1, 1, 2024, 7, 1, "10.00"), seg(2024, 7, 1, 2025, 1, 1, "11.00")))),
+            Map.of(), Passagier::isGemarkeerd),   // false
+        // NIET (vragende vorm) over the partial timeline: NOT(whole year ==10) is TRUE -> gemarkeerd.
+        single("§8.2 NIET vragende TRUE (niet heel jaar 10)",
+            g82attr("zijn belastingvermindering per maand niet gedurende het gehele jaar gelijk is aan 10"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(
+                    seg(2024, 1, 1, 2024, 7, 1, "10.00"), seg(2024, 7, 1, 2025, 1, 1, "11.00")))),
+            Map.of(), Passagier::isGemarkeerd),   // true
+        // NIET over a wholly-10 timeline: NOT(whole year ==10) is FALSE -> not gemarkeerd.
+        single("§8.2 NIET vragende FALSE (heel jaar 10)",
+            g82attr("zijn belastingvermindering per maand niet gedurende het gehele jaar gelijk is aan 10"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00")))),
+            Map.of(), Passagier::isGemarkeerd),   // false
+        // NIET stellende vorm ("is niet gedurende …"): same as the vragende NIET (the verb-leading form).
+        single("§8.2 NIET stellende TRUE",
+            g82attr("zijn belastingvermindering per maand is niet gedurende het gehele jaar gelijk aan 10"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(
+                    seg(2024, 1, 1, 2024, 7, 1, "10.00"), seg(2024, 7, 1, 2025, 1, 1, "11.00")))),
+            Map.of(), Passagier::isGemarkeerd),   // true
+        // MAAND TRUE where JAAR would be FALSE: ==10 for Jan-Jun only; every TOUCHED month is wholly ==10 (Jul-Dec
+        // untouched -> not tested), but the year is not wholly covered. Distinguishes the MAAND bucketing.
+        single("§8.2 MAAND TRUE (Jan-Jun wholly 10; jaar zou FALSE zijn)",
+            g82attr("zijn belastingvermindering per maand gedurende de gehele maand gelijk is aan 10"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 7, 1, "10.00")))),
+            Map.of(), Passagier::isGemarkeerd),   // true
+        // GEVULD TRUE: a value present for the whole of 2024.
+        single("§8.2 GEVULD TRUE (heel jaar gevuld)",
+            g82attr("zijn belastingvermindering per maand gedurende het gehele jaar gevuld is"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00")))),
+            Map.of(), Passagier::isGemarkeerd),   // true
+        // GEVULD FALSE: a gap (Jul-Dec) means the year is not wholly gevuld.
+        single("§8.2 GEVULD FALSE (gat Jul-Dec)",
+            g82attr("zijn belastingvermindering per maand gedurende het gehele jaar gevuld is"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 7, 1, "10.00")))),
+            Map.of(), Passagier::isGemarkeerd),   // false
+        // multi-year FALSE: 2024 wholly ==10, 2025 wholly ==11 -> 2025 violates -> not gemarkeerd.
+        single("§8.2 multi-jaar FALSE (2024 ok, 2025 != 10)",
+            g82attr("zijn belastingvermindering per maand gedurende het gehele jaar gelijk is aan 10"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(
+                    seg(2024, 1, 1, 2025, 1, 1, "10.00"), seg(2025, 1, 1, 2026, 1, 1, "11.00")))),
+            Map.of(), Passagier::isGemarkeerd),   // false
+        // empty / null timeline: no calendar period is touched -> vacuously TRUE (no period violates).
+        single("§8.2 null tijdlijn -> vacuously TRUE",
+            g82attr("zijn belastingvermindering per maand gedurende het gehele jaar gelijk is aan 10"),
+            () -> passagier(p -> {}),   // belastingverminderingPerMaand stays null
+            Map.of(), Passagier::isGemarkeerd),   // true
+        // grens reads a Parameter-GLOBAL ("gelijk is aan de drempel"): the model binds the global (2-var expr).
+        new Fixture("§8.2 grens is parameter-global (== drempel)",
+            "Parameter de drempel : Numeriek (geheel getal)\n" + g82attr(
+                "zijn belastingvermindering per maand gedurende het gehele jaar gelijk is aan de drempel"),
+            () -> List.of(passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00"))))),
+            Map.of("drempel", new BigDecimal(10)),
+            l -> ((Passagier) l.get(0)).isGemarkeerd()),   // true
+    };
+
+    // ---- Phase 82 KENMERK fixtures: "is gedurende het gehele jaar een <kenmerk>" over a temporal kenmerk timeline ----
+    private static final String G82_KENMERK_HDR = TOTAAL_HDR + """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
+                is gemarkeerd kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is gemarkeerd
+                    indien """;
+    static final Fixture[] PHASE_82_KENMERK = {
+        // kenmerk TRUE: rechthebbend the WHOLE of 2024 -> gemarkeerd.
+        single("§8.2 kenmerk TRUE (heel jaar rechthebbend)",
+            G82_KENMERK_HDR + " hij gedurende het gehele jaar rechthebbend is.\n",
+            () -> passagier(p -> p.setRechthebbend(List.of(seg(2024, 1, 1, 2025, 1, 1, null)))),
+            Map.of(), Passagier::isGemarkeerd),   // true
+        // kenmerk FALSE: rechthebbend only Mar-Sep 2024 -> the touched year is not wholly true.
+        single("§8.2 kenmerk FALSE (alleen Mar-Sep)",
+            G82_KENMERK_HDR + " hij gedurende het gehele jaar rechthebbend is.\n",
+            () -> passagier(p -> p.setRechthebbend(List.of(seg(2024, 3, 1, 2024, 9, 1, null)))),
+            Map.of(), Passagier::isGemarkeerd),   // false
+    };
+
+    // ---- Phase 82 FOUT fixtures: a §8.2-qualified consistentie criterium — the VIOLATION inserts an Inconsistentie ----
+    static final FoutFixture[] PHASE_82_FOUT = {
+        new FoutFixture("§8.2 consistentie criterium (whole-year == 10)",
+            TOTAAL_HDR + """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de leeftijd Numeriek (geheel getal) met eenheid jr;
+            Regel R
+                geldig altijd
+                    De belastingvermindering per maand van een Passagier moet gedurende het gehele jaar gelijk zijn aan 10.
+            """,
+            () -> {
+                Passagier ok = passagier(p -> { p.setLeeftijd(new BigDecimal(1)); p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00"))); });    // consistent
+                Passagier bad = passagier(p -> { p.setLeeftijd(new BigDecimal(2)); p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 7, 1, "10.00"), seg(2024, 7, 1, 2025, 1, 1, "11.00"))); });   // flagged
+                Passagier leeg = passagier(p -> p.setLeeftijd(new BigDecimal(3)));   // null timeline -> vacuously consistent (no fout)
+                return List.of(ok, bad, leeg);
+            },
+            o -> "leeftijd=" + ((Passagier) o).getLeeftijd()),   // only leeftijd=2 flagged
+    };
+
     /** §8.2 regression (Phase F adversarial review): a temporal attribute read into a SCALAR doel must be an HONEST
      *  SKIP, not a firing rule that calls setX(List<Segment>) and throws (the one scalarWaarde gap the review caught,
      *  where DRL honestly markers the read). The model must record overgeslagen, never mis-render. */
@@ -2137,6 +2258,9 @@ class ExecModelDifferentialTest {
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 3); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
+    @Test void phase_82_gehele_periode_matches_drl_back_end()      { runDifferential("Phase 82", PHASE_82, 11); }
+    @Test void phase_82_kenmerk_matches_drl_back_end()             { runDifferential("Phase 82 kenmerk", PHASE_82_KENMERK, 2); }
+    @Test void phase_82_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase 82 fout", PHASE_82_FOUT, 1); }
     @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 16); }
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
     @Test void phase_H_value_ops_matches_drl_back_end()             { runDifferential("Phase H val", PHASE_H_VAL, 8); }

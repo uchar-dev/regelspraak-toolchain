@@ -609,6 +609,8 @@ consistentieVoorwaarde : REGELVERSIE vrijeNaam IS ( GEVUURD | INCONSISTENT ) ; /
 
 gehelePeriodevergelijking // §13.4.15.70
     : NIET? ( GEDURENDE_HET_GEHELE JAAR | GEDURENDE_DE_GEHELE MAAND )
+    | NIET_GEDURENDE_HET_GEHELE JAAR   // vragende-vorm negatie (the "niet" lexed with the phrase, §13.4.15.70)
+    | NIET_GEDURENDE_DE_GEHELE MAAND
     ;
 
 // verb-leading operator phrase (non-toplevel)

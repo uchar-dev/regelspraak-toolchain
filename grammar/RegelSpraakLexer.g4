@@ -131,6 +131,11 @@ NUMERIEK_MET_EXACT: 'numeriek' WSP 'met' WSP 'exact'     ; // §13.4.15.84 non-t
 // §5.8.2 leegwaarde fallback on a "som van": "… of 0 als die er niet zijn".
 ALS_DIE_ER_NIET_ZIJN  : 'als' WSP 'die' WSP 'er' WSP 'niet' WSP 'zijn' ;
 GEDURENDE_DE_TIJD_DAT : 'gedurende' WSP 'de' WSP 'tijd' WSP 'dat' ; // §13.4.17.55
+// §13.4.15.70 vragende-vorm negatie: the "niet" must lex WITH "gedurende … gehele" as one token, else the greedy
+// onderwerp kaleNaam (NIET is a kaleNaamWoord, for "is niet <kenmerk>") swallows the leading "niet" of the §8.2
+// qualifier. Longest-match keeps "niet <kenmerk>" (no "gedurende … gehele" follows) on the bare NIET token.
+NIET_GEDURENDE_HET_GEHELE : 'niet' WSP 'gedurende' WSP 'het' WSP 'gehele' ; // §13.4.15.70
+NIET_GEDURENDE_DE_GEHELE  : 'niet' WSP 'gedurende' WSP 'de' WSP 'gehele'  ; // §13.4.15.70
 GEDURENDE_HET_GEHELE  : 'gedurende' WSP 'het' WSP 'gehele'  ; // §13.4.15.70
 GEDURENDE_DE_GEHELE   : 'gedurende' WSP 'de' WSP 'gehele'   ; // §13.4.15.70
 VOLGENDE_VOORWAARDEN  : 'volgende' WSP 'voorwaarden'  ; // §13.4.14
