@@ -2754,7 +2754,12 @@ public final class ExecModelTranspiler {
      *  {@code src/main} compiling against {@code drools-canonical-model} ALONE (the Model-building DSL) — the
      *  accumulator impls live in {@code drools-core}, which only needs to be on the RUNTIME classpath of whoever
      *  fires the Model (the consumer engine), not the compile classpath of the transpiler. {@code DSL.accFunction}
-     *  accepts an unbounded {@code Class<?>}, so the runtime-resolved class flows through unchanged. */
+     *  accepts an unbounded {@code Class<?>}, so the runtime-resolved class flows through unchanged.
+     *
+     *  <p>VERSION-PINNED to Drools 8.44: this package is a drools-core-INTERNAL FQN (not {@code kie-api}). On later
+     *  Drools the same classes relocate to {@code org.drools.base.accumulators} (a separate {@code drools-base}
+     *  module). Centralized here behind this one constant + a fail-fast {@link ClassNotFoundException} guard, so an
+     *  engine upgrade surfaces as a clear model-build error naming the missing class — never a silent miscompile. */
     private static final String ACC_PKG = "org.drools.core.base.accumulators.";
     static Class<?> accFn(String simpleName) {
         try { return Class.forName(ACC_PKG + simpleName); }
