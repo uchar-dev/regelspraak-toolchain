@@ -641,6 +641,46 @@ class DroolsExecutionTest {
         assertEquals(0, new BigDecimal("3.75").compareTo(uit.get(13).getWaarde()), () -> "feb-2025: 15 × 7/28 = 3,75 €/mnd, was " + uit.get(13).getWaarde());
     }
 
+    @Test void tijdsevenredig_rate_omrekening_deelt_exact_door_12_niet_maal_een_pre_afgeronde_breuk(){
+        // §7.3.1 specifies the €/jr->€/mnd restatement as a DIVISION ("gedeeld door de omrekenfactor 12"), NOT a
+        // multiply by the pre-rounded 1/12: at DECIMAL64 those DIVERGE for ~13% of bases — e.g. 5 €/jr ÷ 12 =
+        // 0.4166666666666667, but 5 × 0.08333333333333333 = 0.4166666666666666 (1 ULP low). A non-clean base over a
+        // FULL month must give the exact ÷12 value. (rsTijdSchaal is a SHARED helper, so a ×reciprocal bug would pass
+        // the pure differential — assert the ABSOLUTE spec value.)
+        String src = """
+            Eenheidsysteem Geld
+                de euro EUR
+            Eenheidsysteem Tijd
+                de maand mnd
+                het jaar jr = 12 mnd
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de standaardbedrag Numeriek (geheel getal) met eenheid EUR/jr voor elk jaar;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de belastingvermindering Numeriek (getal met 2 decimalen) met eenheid EUR/mnd voor elke maand;
+            Regel R
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van zijn standaardbedrag gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("new java.math.BigDecimal(\"12\"), true)"), () -> "de rate-omrekening moet EXACT DELEN door 12 (niet ×0.0833):\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier p = new Passagier();
+        p.setStandaardbedrag(List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("5"))));  // 5 €/jr — a non-clean ÷12
+        p.setRechtOpBelastingvermindering(List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 2, 1), null)));   // jan-2024 only (full month)
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        java.util.List<Segment> uit = p.getBelastingvermindering();
+        assertNotNull(uit, "de doel-tijdreeks moet gezet zijn");
+        assertEquals(1, uit.size(), () -> "één maand (jan-2024), kreeg " + uit.size());
+        assertEquals(0, new BigDecimal("0.4166666666666667").compareTo(uit.get(0).getWaarde()),
+                () -> "5 €/jr ÷ 12 = 0,4166666666666667 (exact DECIMAL64, NIET 0,4166666666666666), was " + uit.get(0).getWaarde());
+    }
+
     @Test void gelijk_statisch_lid_lowert_als_value_side_guard_in_een_mixed_compound(){
         // §8.4 a GELIJK static member ("zijn leeftijd is gelijk aan 18", numeriek) gates the totaal: both-empty -> waar
         // (Tabel 37), else both-gevuld-equal. value €10/mnd 2023 + €11/mnd 2024H1, recht [2023-07..2024-02) -> clip €71.

@@ -558,15 +558,18 @@ public final class RegelSpraakRuntime {
     }
 
     /** §7.3.1 the standaard jaar/maand omrekening: restate a per-tijdseenheid RATE timeline into another rate unit by
-     *  multiplying every segment value by the unit factor (e.g. €/jr -&gt; €/mnd = ÷12) at DECIMAL64 (§4.22, no
-     *  auto-round); a leeg segment stays leeg. Applied to the §7.3.2 tijdsevenredig BASE BEFORE proration ("convert
-     *  first, then the day fraction"). Mirrors the DRL {@code rsTijdSchaal}. */
-    public static List<Object> rsTijdSchaal(List<?> tijdlijn, BigDecimal factor) {
+     *  scaling every segment value by the EXACT integer unit ratio at DECIMAL64 (§4.22, no auto-round); a leeg segment
+     *  stays leeg. §7.3.1 specifies a DIVISION ("120 gedeeld door de omrekenfactor 12"), so when the restatement is
+     *  ÷N the caller passes {@code deel=true} (divide by the exact 12), and ×N passes {@code deel=false} — never a
+     *  pre-rounded reciprocal (1/12), which would lose precision for non-clean bases. Applied to the §7.3.2
+     *  tijdsevenredig BASE BEFORE proration. Mirrors the DRL {@code rsTijdSchaal}. */
+    public static List<Object> rsTijdSchaal(List<?> tijdlijn, BigDecimal factor, boolean deel) {
         List<Object> uit = new ArrayList<>();
         if (tijdlijn == null) return uit;
         for (Object o : tijdlijn) {
             BigDecimal w = segWaarde(o);
-            uit.add(newSegment(o.getClass(), segVan(o), segTot(o), w == null ? null : w.multiply(factor, MathContext.DECIMAL64)));
+            BigDecimal nw = w == null ? null : (deel ? w.divide(factor, MathContext.DECIMAL64) : w.multiply(factor, MathContext.DECIMAL64));
+            uit.add(newSegment(o.getClass(), segVan(o), segTot(o), nw));
         }
         return uit;
     }

@@ -1860,11 +1860,22 @@ public final class DrlTranspiler {
                 // the unit factor BEFORE proration. Same unit -> factor null (no scale); convertible-different -> a
                 // factor; not convertible -> marker (omrekenFactor null AND the units differ).
                 boolean zelfdeEenheid = java.util.Objects.equals(baseType.eenheidOf(), doelType == null ? null : doelType.eenheidOf());
-                java.math.BigDecimal factor = zelfdeEenheid ? null : omrekenFactor(baseType, doelType);
+                // §4.22 the tijdsevenredig operand must be "numeriek met een eenheid per tijdseenheid" (a RATE). A unit
+                // MISMATCH is a §7.3.2 rate conversion ONLY when the base unit is a rate (has a noemer); a non-rate
+                // mismatch (cm -> m) is NOT a rate restatement and stays a marker (never a silent unit-rebase).
+                boolean baseIsRate = baseType.eenheidOf() != null && baseType.eenheidOf().noemer() != null;
+                java.math.BigDecimal fwd = (zelfdeEenheid || !baseIsRate) ? null : omrekenFactor(baseType, doelType);
+                // §7.3.1 specifies the restatement as a DIVISION ("gedeeld door de omrekenfactor 12"): one of the two
+                // reciprocal factors is the EXACT integer ratio (12) and the other is the lossy 1/12 — pick the exact
+                // direction (fewer significant digits) and DIVIDE by it when it is the inverse, so a non-clean base
+                // stays exact (a pre-rounded ×0.0833 diverges from ÷12 for ~13% of bases).
+                java.math.BigDecimal inv = fwd == null ? null : omrekenFactor(doelType, baseType);
+                boolean deel = inv != null && inv.precision() < fwd.precision();
+                java.math.BigDecimal factor = fwd == null ? null : (deel ? inv : fwd);
                 String cond = (zelfdeEenheid || factor != null) ? conditieTijdreeks(f.filter(), subject) : null;
                 if (cond != null) {
                     String basis = factor == null ? baseExpr
-                            : "rsTijdSchaal(" + baseExpr + ", new java.math.BigDecimal(\"" + factor.toPlainString() + "\"))";
+                            : "rsTijdSchaal(" + baseExpr + ", new java.math.BigDecimal(\"" + factor.toPlainString() + "\"), " + deel + ")";
                     String call = mixedGuardWrap("rsTijdsevenredig(" + cond + ", " + basis + ", \"" + gran.name() + "\")", f.filter(), subject);
                     if (call != null) { registreerTijdsevenredigFunctie(); if (factor != null) registreerTijdSchaalFunctie(); return call; }
                 }
@@ -2066,13 +2077,14 @@ public final class DrlTranspiler {
      *  byte-identical DRL mirror of {@link RegelSpraakRuntime#rsTijdSchaal}. */
     private void registreerTijdSchaalFunctie() {
         hulpFuncties.putIfAbsent("rsTijdSchaal",
-                "function java.util.List rsTijdSchaal(java.util.List tijdlijn, java.math.BigDecimal factor) {\n"
+                "function java.util.List rsTijdSchaal(java.util.List tijdlijn, java.math.BigDecimal factor, boolean deel) {\n"
                 + "    java.util.List uit = new java.util.ArrayList();\n"
                 + "    if (tijdlijn == null) return uit;\n"
                 + "    for (Object o : tijdlijn) {\n"
                 + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
                 + "        java.math.BigDecimal w = s.getWaarde();\n"
-                + "        uit.add(new " + FACT_PACKAGE + ".Segment(s.getVan(), s.getTot(), w == null ? null : w.multiply(factor, java.math.MathContext.DECIMAL64)));\n"
+                + "        java.math.BigDecimal nw = w == null ? null : (deel ? w.divide(factor, java.math.MathContext.DECIMAL64) : w.multiply(factor, java.math.MathContext.DECIMAL64));\n"
+                + "        uit.add(new " + FACT_PACKAGE + ".Segment(s.getVan(), s.getTot(), nw));\n"
                 + "    }\n"
                 + "    return uit;\n"
                 + "}");

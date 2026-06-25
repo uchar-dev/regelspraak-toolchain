@@ -672,7 +672,15 @@ public final class ExecModelTranspiler {
                 // fraction. Same unit -> factor null (no scale); convertible-different -> a factor; not convertible ->
                 // marker. Mirrors DRL.
                 boolean zelfdeEenheid = java.util.Objects.equals(baseType.eenheidOf(), doelType == null ? null : doelType.eenheidOf());
-                BigDecimal factor = zelfdeEenheid ? null : valueFactor(baseType, doelType);
+                // §4.22 the operand must be a RATE (eenheid per tijdseenheid): a unit mismatch is a §7.3.2 rate
+                // conversion only when the base unit has a noemer; a non-rate mismatch (cm -> m) stays a marker. Mirrors DRL.
+                boolean baseIsRate = baseType.eenheidOf() != null && baseType.eenheidOf().noemer() != null;
+                BigDecimal fwd = (zelfdeEenheid || !baseIsRate) ? null : valueFactor(baseType, doelType);
+                // §7.3.1 DIVISION: pick the EXACT integer direction (fewer sig digits) and divide by it — never the
+                // pre-rounded reciprocal (1/12), which would diverge from ÷12 for ~13% of bases. Mirrors DrlTranspiler.
+                BigDecimal inv = fwd == null ? null : valueFactor(doelType, baseType);
+                boolean deel = inv != null && inv.precision() < fwd.precision();
+                BigDecimal factor = fwd == null ? null : (deel ? inv : fwd);
                 java.util.function.Function<Object, List<?>> cond = (zelfdeEenheid || factor != null) ? conditieTijdreeks(f.filter(), subject) : null;
                 java.util.function.Predicate<Object> guard = cond == null ? null : mixedGuardWrite(f.filter(), subject);   // §8.4 static gate
                 if (cond != null && guard != null) {
@@ -681,9 +689,10 @@ public final class ExecModelTranspiler {
                         final String granName = gran.name();
                         final BiFunction<Object, Object, List<?>> br0 = baseReader;
                         final BigDecimal fFactor = factor;
+                        final boolean fDeel = deel;
                         // scale the base by the unit factor when a rate conversion is needed (§7.3.1), else read it raw.
                         final BiFunction<Object, Object, List<?>> br = fFactor == null ? br0
-                                : (s, gv) -> RegelSpraakRuntime.rsTijdSchaal(br0.apply(s, gv), fFactor);
+                                : (s, gv) -> RegelSpraakRuntime.rsTijdSchaal(br0.apply(s, gv), fFactor, fDeel);
                         final java.util.function.Predicate<Object> fGuard = guard;
                         return new TemporeleWaarde(
                                 (s, gv) -> fGuard.test(s)
