@@ -2806,17 +2806,19 @@ public final class ExecModelTranspiler {
             seq = 0;
             Variable sVar = DSL.declarationOf(factClass, "$subject");
             PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
+            List<RuleItemBuilder<?>> gateExtra = List.of();
             if (r.voorwaarde() != null) {                       // the division only fires when the host gate holds
                 Gate gate = voorwaarde(r.voorwaarde(), pattern, subject, sVar);
-                if (gate == null || !gate.extra().isEmpty()) continue;   // unlowerable / far-side gate -> skip companion
+                if (gate == null) continue;                     // unlowerable host voorwaarde -> no companion (DRL: voorwaardeMarker -> return)
                 pattern = gate.pattern();
+                gateExtra = gate.extra();                       // a §8.1.7 far-side membership exists/not -> thread it into the companion (mirror DRL lc.extra())
             }
             pattern = geldigGuard(pattern, r.geldigheid());   // §4.2 the companion only flags inside the host's window
             // dividend present AND divisor empty (an empty LEFT short-circuits to 0 -> no fout, so guard the dividend too).
             pattern = pattern.expr(nextId("dvd"), (Predicate1) s -> RegelSpraakRuntime.get(s, dividend) != null)
                     .expr(nextId("dvs"), (Predicate1) s -> RegelSpraakRuntime.get(s, divisor) == null);
             String compNaam = naam + " (deling door leeg" + (kwalificeren.size() > 1 ? " " + (i + 1) : "") + ")";
-            companions.add(companionRule(compNaam, naam, incClass, sVar, pattern));
+            companions.add(companionRule(compNaam, naam, incClass, sVar, pattern, gateExtra));
         }
         return companions;
     }
@@ -2843,10 +2845,12 @@ public final class ExecModelTranspiler {
             seq = 0;
             Variable sVar = DSL.declarationOf(factClass, "$subject");
             PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
+            List<RuleItemBuilder<?>> gateExtra = List.of();
             if (r.voorwaarde() != null) {
                 Gate gate = voorwaarde(r.voorwaarde(), pattern, subject, sVar);
-                if (gate == null || !gate.extra().isEmpty()) continue;
+                if (gate == null) continue;                     // unlowerable host voorwaarde -> no companion (DRL: voorwaardeMarker -> return)
                 pattern = gate.pattern();
+                gateExtra = gate.extra();                       // a §8.1.7 far-side membership exists/not -> thread it into the companion (mirror DRL lc.extra())
             }
             pattern = geldigGuard(pattern, r.geldigheid());   // §4.2 the companion only flags inside the host's window
             // radicand < 0 (a null radicand is leeg, not negative -> no fout; compareTo guards null out).
@@ -2855,7 +2859,7 @@ public final class ExecModelTranspiler {
                 return v != null && ((BigDecimal) v).signum() < 0;
             });
             String compNaam = naam + " (wortel van negatief" + (wortels.size() > 1 ? " " + (++idx) : "") + ")";
-            companions.add(companionRule(compNaam, naam, incClass, sVar, pattern));
+            companions.add(companionRule(compNaam, naam, incClass, sVar, pattern, gateExtra));
         }
         return companions;
     }
@@ -2873,9 +2877,14 @@ public final class ExecModelTranspiler {
     }
 
     /** Build a §9.5 fout-companion rule: an insert-only rule (NO no-loop) on the given subject pattern that inserts
-     *  an Inconsistentie carrying the HOST rule name, idempotency-guarded against re-flagging the same subject. */
+     *  an Inconsistentie carrying the HOST rule name, idempotency-guarded against re-flagging the same subject. The
+     *  {@code gateExtra} items are the host rule's §8.1.7 FAR-side membership exists/not joins (a non-empty
+     *  {@link Gate#extra()}): a fout companion under a far-side voorwaarde must carry that gate too, else it loses the
+     *  membership and over-fires for subjects the host rule never acts on (mirror of DrlTranspiler's extraClausules
+     *  threading). The companion is insert-only, so an extra exists/not clause is safe (it cancels no sibling). */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private Rule companionRule(String compNaam, String hostNaam, Class<?> incClass, Variable sVar, PatternDSL.PatternDef pattern) {
+    private Rule companionRule(String compNaam, String hostNaam, Class<?> incClass, Variable sVar,
+                              PatternDSL.PatternDef pattern, List<RuleItemBuilder<?>> gateExtra) {
         String fqcn = FACTS + ".Inconsistentie";
         Variable incVar = DSL.declarationOf(incClass, "$inc_" + (seq++));
         PatternDSL.PatternDef guard = PatternDSL.pattern(incVar)
@@ -2883,7 +2892,12 @@ public final class ExecModelTranspiler {
                 .expr(nextId("ig"), (Variable) sVar, (Predicate2) (i, s) -> RegelSpraakRuntime.get(i, "subject") == s);
         Block2<org.drools.model.Drools, Object> body = (drools, s) ->
                 drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, hostNaam, s));
-        return PatternDSL.rule(compNaam).build(pattern, DSL.not(guard), DSL.on(sVar).execute(body));
+        List<RuleItemBuilder<?>> items = new ArrayList<>();
+        items.add(pattern);
+        items.addAll(gateExtra);                          // the host rule's far-side membership gate, if any
+        items.add(DSL.not(guard));
+        items.add(DSL.on(sVar).execute(body));
+        return PatternDSL.rule(compNaam).build(items.toArray(new RuleItemBuilder[0]));
     }
     /** Collect the GEDEELD_DOOR nodes through the arithmetic-wrapper layers of a value (for the §6.5 fout). */
     private static void verzamelDelingen(Expr e, List<Expr.Binair> uit) {

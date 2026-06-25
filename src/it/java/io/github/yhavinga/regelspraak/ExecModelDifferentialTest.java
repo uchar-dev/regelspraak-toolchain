@@ -513,8 +513,10 @@ class ExecModelDifferentialTest {
             Map.of(),
             l -> vals(((Persoon) l.get(0)).getUitkomst(), ((Persoon) l.get(1)).getUitkomst(), ((Persoon) l.get(2)).getUitkomst())),
 
-        // §8.1.7 near-side rolcheck "hij is een passagier" -> "reis != null": fires only for a passagier with a reis.
-        new Fixture("near-side rolcheck (hij is een passagier)",
+        // §8.1.7 near-side rolcheck "hij een passagier is" -> "reis != null": fires only for a passagier with a reis.
+        // (§8.3.1 enkele "indien" voorwaarde = VRAGENDE vorm, verb at the back; the stellende "hij is een passagier"
+        // is the §8.3.2 samengestelde-bullet register. Both parse; the vragende form is canon for an enkele indien.)
+        new Fixture("near-side rolcheck (hij een passagier is)",
             """
             Objecttype de Passagier
                 de leeftijd Numeriek (geheel getal);
@@ -526,12 +528,38 @@ class ExecModelDifferentialTest {
             Eén reis heeft meerdere passagiers
             Regel rolgate
                 geldig altijd
-                    Een passagier is minderjarig indien hij is een passagier.
+                    Een passagier is minderjarig indien hij een passagier is.
             """,
             () -> {
                 Vlucht v = new Vlucht();
                 Passagier p1 = new Passagier(); p1.setReis(v);   // fills the role
                 Passagier p2 = new Passagier();                  // no reis
+                return List.of(v, p1, p2);
+            },
+            Map.of(),
+            l -> vals(((Passagier) l.get(1)).isMinderjarig(), ((Passagier) l.get(2)).isMinderjarig())),
+
+        // §8.1.7 near-side NEGATION "hij geen passagier is" -> "reis == null": fires for a passagier WITHOUT a reis
+        // (the inverse of the positive form). "geen" has no standalone token, so it rides the non-EEN path that
+        // explicitly preserves the negation -> Rollidmaatschap(negatie=true). (§8.3.1 vragende vorm, verb at the back.)
+        new Fixture("near-side negation rolcheck (hij geen passagier is)",
+            """
+            Objecttype de Passagier
+                de leeftijd Numeriek (geheel getal);
+                is minderjarig kenmerk;
+            Objecttype de Vlucht
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            Regel rolgate
+                geldig altijd
+                    Een passagier is minderjarig indien hij geen passagier is.
+            """,
+            () -> {
+                Vlucht v = new Vlucht();
+                Passagier p1 = new Passagier(); p1.setReis(v);   // fills the role -> "geen passagier is" FALSE -> not flagged
+                Passagier p2 = new Passagier();                  // no reis -> "geen passagier is" TRUE -> minderjarig
                 return List.of(v, p1, p2);
             },
             Map.of(),
@@ -2480,7 +2508,7 @@ class ExecModelDifferentialTest {
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }
     @Test void phase_B_model_back_end_matches_drl_back_end()  { runDifferential("Phase B", PHASE_B, 3); }
     @Test void phase_B2_quantifiers_match_drl_back_end()       { runDifferential("Phase B2", PHASE_B2, 5); }
-    @Test void phase_B3_relational_match_drl_back_end()        { runDifferential("Phase B3", PHASE_B3, 5); }
+    @Test void phase_B3_relational_match_drl_back_end()        { runDifferential("Phase B3", PHASE_B3, 6); }
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 9); }
@@ -2679,6 +2707,100 @@ class ExecModelDifferentialTest {
             o -> "dav=" + ((Vlucht) o).getDaadwerkelijkVertrek(),
             Map.of("marge", new BigDecimal(3))),
     };
+
+    // ---- Phase D FAR-SIDE: a §6.5/§6.6 fout companion whose HOST rule is gated by a §8.1.7 FAR-side membership
+    //      ("indien hij (geen) een passagier heeft" -> a VerreRollidmaatschap exists/not join, a non-empty Gate.extra).
+    //      The enkele "indien" voorwaarde uses the §8.3.1 VRAGENDE vorm (verb at the back: "… passagier heeft"), not
+    //      the §8.3.2 stellende/bullet form ("hij heeft … passagier"). Both parse (permissive grammar); this is canon.
+    //      The companion must CARRY that membership gate, so it raises the Inconsistentie only for a subject the host
+    //      rule actually acts on. Before the fix the model `continue`-DROPPED the companion on a non-empty Gate.extra
+    //      (without recording overgeslagen, so the harness compared anyway) -> DRL fired the fout, the model did not.
+    //      These pin the ABSOLUTE spec firing set on the DRL oracle AND that the model now agrees. ----
+    private static final String FARSIDE_FOUT_HDR = """
+            Objecttype de Passagier
+            Objecttype de Vlucht
+                de somMet Numeriek (geheel getal);
+                de somZonder Numeriek (geheel getal);
+                de totaalprijs Numeriek (getal met 2 decimalen);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            """;
+    static final FoutFixture[] PHASE_D_FARSIDE = {
+        // §6.5 deling-door-leeg under a far-side POSITIVE membership. Fires only for a Vlucht with a leeg divisor AND a
+        // passagier; a divisor-leeg Vlucht WITHOUT a passagier (the negative control) is never acted on -> no fout.
+        new FoutFixture("§6.5 deling-door-leeg gated by far-side 'een passagier heeft'",
+            FARSIDE_FOUT_HDR + """
+            Regel deel
+                geldig altijd
+                    De totaalprijs van een Vlucht moet gesteld worden op de somMet van een Vlucht gedeeld door de somZonder van een Vlucht indien hij een passagier heeft.
+            """,
+            () -> {
+                Vlucht metPax = new Vlucht();    metPax.setSomMet(new BigDecimal(12));                                    // somZonder leeg + heeft passagier -> fout
+                Vlucht zonderPax = new Vlucht(); zonderPax.setSomMet(new BigDecimal(99));                                 // somZonder leeg, GEEN passagier -> gate suppresses
+                Vlucht beide = new Vlucht();     beide.setSomMet(new BigDecimal(7)); beide.setSomZonder(new BigDecimal(4)); // divisor gevuld -> geen fout
+                Passagier p = new Passagier();   p.setReis(metPax);
+                return List.of(metPax, zonderPax, beide, p);
+            },
+            o -> "somMet=" + ((Vlucht) o).getSomMet()),
+
+        // §6.6 wortel-van-negatief under a far-side POSITIVE membership (radicand = somMet, result = totaalprijs).
+        new FoutFixture("§6.6 wortel-van-negatief gated by far-side 'een passagier heeft'",
+            FARSIDE_FOUT_HDR + """
+            Regel wortelregel
+                geldig altijd
+                    De totaalprijs van een Vlucht moet gesteld worden op de wortel van de somMet van een Vlucht naar beneden afgerond op 2 decimalen indien hij een passagier heeft.
+            """,
+            () -> {
+                Vlucht negPax = new Vlucht();    negPax.setSomMet(new BigDecimal(-9));    // negatief radicand + heeft passagier -> fout
+                Vlucht negZonder = new Vlucht(); negZonder.setSomMet(new BigDecimal(-4)); // negatief, GEEN passagier -> gate suppresses
+                Vlucht posPax = new Vlucht();    posPax.setSomMet(new BigDecimal(20));    // niet-negatief -> geen fout
+                Passagier p = new Passagier();   p.setReis(negPax);
+                return List.of(negPax, negZonder, posPax, p);
+            },
+            o -> "somMet=" + ((Vlucht) o).getSomMet()),
+
+        // §6.5 deling-door-leeg under a far-side NEGATION ("geen passagier heeft" -> a `not(...)` join): the companion
+        // must keep the negation, so it fires for an EMPTY Vlucht with a leeg divisor and NOT for one with a passagier.
+        new FoutFixture("§6.5 deling-door-leeg gated by far-side negation 'geen passagier heeft'",
+            FARSIDE_FOUT_HDR + """
+            Regel deelgeen
+                geldig altijd
+                    De totaalprijs van een Vlucht moet gesteld worden op de somMet van een Vlucht gedeeld door de somZonder van een Vlucht indien hij geen passagier heeft.
+            """,
+            () -> {
+                Vlucht leegPax = new Vlucht(); leegPax.setSomMet(new BigDecimal(12));   // somZonder leeg, GEEN passagier -> negation holds -> fout
+                Vlucht metPax = new Vlucht();  metPax.setSomMet(new BigDecimal(99));    // somZonder leeg, HEEFT passagier -> negation false -> geen fout
+                Passagier p = new Passagier(); p.setReis(metPax);
+                return List.of(leegPax, metPax, p);
+            },
+            o -> "somMet=" + ((Vlucht) o).getSomMet()),
+    };
+    // the ABSOLUTE spec-correct flagged set per fixture (the DRL oracle must match this, not merely the model) — a
+    // model-only omission IS caught by the pure differential, but pinning the oracle absolute guards both at once.
+    static final List<List<String>> PHASE_D_FARSIDE_EXPECTED = List.of(
+        List.of("deel/somMet=12"),
+        List.of("wortelregel/somMet=-9"),
+        List.of("deelgeen/somMet=12"));
+
+    /** §6.5/§6.6 fout companion under a §8.1.7 FAR-side membership voorwaarde: assert the DRL oracle raises EXACTLY the
+     *  spec-expected Inconsistentie set (absolute) AND that the model agrees (parity). Fails before the companion
+     *  threads the far-side Gate.extra (the model raised nothing for the gated case). */
+    @Test void phase_D_farside_gated_fout_companion_is_spec_correct() {
+        for (int i = 0; i < PHASE_D_FARSIDE.length; i++) {
+            FoutFixture f = PHASE_D_FARSIDE[i];
+            List<String> expected = PHASE_D_FARSIDE_EXPECTED.get(i);
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            List<String> viaDrl   = fireFout(drlBase(m), f);
+            List<String> viaModel = fireFout(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(expected, viaDrl, () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(viaDrl, viaModel, () -> "back-ends DIVERGE on '" + f.naam() + "': DRL=" + viaDrl + " model=" + viaModel);
+        }
+    }
 
     // ---- division value (§6.5 rsGedeeld) — the value-side of the deling, checked by reading the result field ----
     static final Fixture[] PHASE_DIV = {
