@@ -485,6 +485,25 @@ public final class DrlTranspiler {
         };
     }
 
+    /** Operand REVERSAL (swap LHS/RHS) of a comparison operator — distinct from {@link #flip} (the logical negation):
+     *  "a = b" reverses to "b = a" (GELIJK stays GELIJK), "a &gt; b" to "b &lt; a" (GROTER -&gt; KLEINER). Used by §8.2 to
+     *  put the temporal operand on the LEFT (rsGeheelPeriode compares segWaarde OP grens) when it was written on the
+     *  RIGHT — flip() there would WRONGLY negate (GELIJK -&gt; ONGELIJK, the &gt;-boundary off by the OF_GELIJK). */
+    private static Conditie.Operator omkeren(Conditie.Operator op) {
+        return switch (op) {
+            case GELIJK -> Conditie.Operator.GELIJK;
+            case ONGELIJK -> Conditie.Operator.ONGELIJK;
+            case KLEINER -> Conditie.Operator.GROTER;
+            case KLEINER_OF_GELIJK -> Conditie.Operator.GROTER_OF_GELIJK;
+            case GROTER -> Conditie.Operator.KLEINER;
+            case GROTER_OF_GELIJK -> Conditie.Operator.KLEINER_OF_GELIJK;
+            case EERDER -> Conditie.Operator.LATER;
+            case EERDER_OF_GELIJK -> Conditie.Operator.LATER_OF_GELIJK;
+            case LATER -> Conditie.Operator.EERDER;
+            case LATER_OF_GELIJK -> Conditie.Operator.EERDER_OF_GELIJK;
+        };
+    }
+
     /** §13.4.10 verdeling. Two methods have a single forward-rule form: EQUAL SHARES binds the source,
      *  counts the recipients joined to it, and gives each total/count; NAAR RATO (proportional) instead
      *  SUMS each recipient's weight attribute and gives each total·weight/sum. Both fold the recipients in
@@ -1961,7 +1980,7 @@ public final class DrlTranspiler {
             io.github.yhavinga.regelspraak.model.Eenheid el = tijd.type().eenheidOf(), er = ander.type().eenheidOf();
             if (el != null && er != null && el.vereistOmrekening(er))
                 return Frag.todo("§8.2 gehele-periodevergelijking met eenheidsomrekening", c.bron());
-            Integer code = toetsCode(linksTemp ? v.op() : flip(v.op()));   // put the temporal operand on the left
+            Integer code = toetsCode(linksTemp ? v.op() : omkeren(v.op()));   // put the temporal operand on the left (REVERSE, not negate)
             if (code == null) return Frag.todo("§8.2 datum-gehele-periodevergelijking", c.bron());
             getter = temporeelTijdlijnGetter(tijd, subject);
             if (getter == null) return Frag.todo("§8.2 navigatie", c.bron());
@@ -2096,6 +2115,7 @@ public final class DrlTranspiler {
                 + "        if (toets == 7) ok = true;\n"
                 + "        else if (s.getWaarde() == null) ok = false;\n"
                 + "        else if (toets == 6) ok = true;\n"
+                + "        else if (grens == null) ok = false;\n"   // §5.1 leeg grens -> onwaar (never compareTo(null))
                 + "        else {\n"
                 + "            int c = s.getWaarde().compareTo(grens);\n"
                 + "            if (toets == 0) ok = c < 0;\n"

@@ -974,12 +974,25 @@ public final class ExecModelTranspiler {
             if (!(tijd.type().isNumeriek() || tijd.type().isPercentage())) return null;
             io.github.yhavinga.regelspraak.model.Eenheid el = tijd.type().eenheidOf(), er = ander.type().eenheidOf();
             if (el != null && er != null && el.vereistOmrekening(er)) return null;   // mixed unit -> marker (DRL too)
-            Integer code = toetsCode82(linksTemp ? v.op() : flip(v.op()));
+            Integer code = toetsCode82(linksTemp ? v.op() : omkeren(v.op()));   // REVERSE (operand swap), not negate
             if (code == null) return null;
             java.util.function.Function<Object, Object> tl = temporeelTijdlijnReader(tijd, subject);
             if (tl == null) return null;
             WaardeFn g = scalarWaarde(ander);
-            if (g == null) return null;
+            if (g == null) {
+                // scalarWaarde's navigated branch is value-path-only (valueSubject is null here), so a to-ONE navigated
+                // grenswaarde ("… gelijk is aan de drempel van zijn reis") would skip while the DRL oracle FIRES it via
+                // reis!.attr. Lower it with the same condition-aware null-safe role reader the timeline side uses, so
+                // both back-ends agree (a null relation -> null grens -> the §8.2 check fails, matching mvel's reis!.attr).
+                if (ander instanceof Expr.AttribuutRef ar && ar.navigatieRol() != null && (ar.type().isNumeriek() || ar.type().isPercentage())) {
+                    String rol = navComparisonRole(ar, subject);
+                    if (rol != null) {
+                        String gattr = ar.attribuut();
+                        g = new WaardeFn((s, gm) -> { Object rel = RegelSpraakRuntime.get(s, rol); return rel == null ? null : RegelSpraakRuntime.get(rel, gattr); }, java.util.Set.of());
+                    }
+                }
+                if (g == null) return null;
+            }
             return new Gp82(tl, code, g, gran, gp.niet());
         }
         if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.GEVULD
@@ -2888,6 +2901,25 @@ public final class ExecModelTranspiler {
             case EERDER_OF_GELIJK  -> Conditie.Operator.LATER;
             case LATER             -> Conditie.Operator.EERDER_OF_GELIJK;
             case LATER_OF_GELIJK   -> Conditie.Operator.EERDER;
+            default                -> op;
+        };
+    }
+
+    /** Operand REVERSAL (swap LHS/RHS) of a comparison operator — distinct from {@link #flip} (logical negation):
+     *  "a = b" reverses to "b = a" (GELIJK stays GELIJK), "a &gt; b" to "b &lt; a" (GROTER -&gt; KLEINER). Mirrors
+     *  DrlTranspiler.omkeren; used by §8.2 to put the temporal operand on the left when it was written on the right. */
+    private static Conditie.Operator omkeren(Conditie.Operator op) {
+        return switch (op) {
+            case GELIJK            -> Conditie.Operator.GELIJK;
+            case ONGELIJK          -> Conditie.Operator.ONGELIJK;
+            case KLEINER           -> Conditie.Operator.GROTER;
+            case KLEINER_OF_GELIJK -> Conditie.Operator.GROTER_OF_GELIJK;
+            case GROTER            -> Conditie.Operator.KLEINER;
+            case GROTER_OF_GELIJK  -> Conditie.Operator.KLEINER_OF_GELIJK;
+            case EERDER            -> Conditie.Operator.LATER;
+            case EERDER_OF_GELIJK  -> Conditie.Operator.LATER_OF_GELIJK;
+            case LATER             -> Conditie.Operator.EERDER;
+            case LATER_OF_GELIJK   -> Conditie.Operator.EERDER_OF_GELIJK;
             default                -> op;
         };
     }

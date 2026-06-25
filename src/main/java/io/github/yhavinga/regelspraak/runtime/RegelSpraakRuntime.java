@@ -605,6 +605,7 @@ public final class RegelSpraakRuntime {
         if (toets == 7) return true;       // §8.2 kenmerk: a covering segment = the kenmerk holds here
         if (w == null) return false;       // leeg: no value at this moment -> the check does not hold
         if (toets == 6) return true;       // §8.2 gevuld: a non-leeg value
+        if (grens == null) return false;   // §5.1 a comparison with a leeg grens is onwaar (never crash on compareTo(null))
         int c = w.compareTo(grens);
         switch (toets) {
             case 0:  return c < 0;

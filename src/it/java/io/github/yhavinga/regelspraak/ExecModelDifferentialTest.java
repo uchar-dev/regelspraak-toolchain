@@ -1760,6 +1760,111 @@ class ExecModelDifferentialTest {
             o -> "leeftijd=" + ((Passagier) o).getLeeftijd()),   // only leeftijd=2 flagged
     };
 
+    // ---- Phase 82 NAV: the §8.2 grenswaarde is a NAVIGATED to-one attribute ("… gelijk is aan de totaalprijs van
+    //      zijn reis"). DRL fires reis!.totaalprijs; the model must lower the same null-safe nav read (not skip). A
+    //      null relation -> null grens -> the check fails (no NPE) — exercises both the navigated-grens + null-grens fixes. ----
+    private static final String G82_NAV_HDR = TOTAAL_HDR + """
+            Objecttype de Vlucht (mv: Vluchten) (bezield)
+                de totaalprijs Bedrag;
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                is gemarkeerd kenmerk (bijvoeglijk);
+            Feittype reis
+                de passagier Passagier
+                de reis Vlucht
+            één passagier heeft één reis;
+            Regel R
+                geldig altijd
+                    Een Passagier is gemarkeerd
+                    indien zijn belastingvermindering per maand gedurende het gehele jaar gelijk is aan de totaalprijs van zijn reis.
+            """;
+    static final Fixture[] PHASE_82_NAV = {
+        new Fixture("§8.2 navigated grens TRUE (timeline 10 == reis.totaalprijs 10)",
+            G82_NAV_HDR,
+            () -> { Vlucht v = new Vlucht(); v.setTotaalprijs(new BigDecimal("10.00"));
+                    Passagier p = passagier(x -> { x.setReis(v); x.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00"))); });
+                    return List.of(v, p); },
+            Map.of(), l -> ((Passagier) l.get(1)).isGemarkeerd()),   // true
+        new Fixture("§8.2 navigated grens FALSE (timeline 10 != reis.totaalprijs 20)",
+            G82_NAV_HDR,
+            () -> { Vlucht v = new Vlucht(); v.setTotaalprijs(new BigDecimal("20.00"));
+                    Passagier p = passagier(x -> { x.setReis(v); x.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00"))); });
+                    return List.of(v, p); },
+            Map.of(), l -> ((Passagier) l.get(1)).isGemarkeerd()),   // false
+        new Fixture("§8.2 navigated grens null relation -> leeg grens -> FALSE (no NPE)",
+            G82_NAV_HDR,
+            () -> List.of(passagier(x -> x.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00"))))),   // reis = null
+            Map.of(), l -> ((Passagier) l.get(0)).isGemarkeerd()),   // false (grens null -> check fails, never crashes)
+    };
+
+    // The §8.2 RIGHT-temporal operand absolute-correctness guard. A pure differential cannot catch a bug SHARED by
+    // both back-ends (e.g. the operand-reversal of the toets) — so assert the DRL oracle against the SPEC-correct
+    // boolean as well. "10 gedurende het gehele jaar gelijk is aan <temporal>": the literal is the LHS, the temporal
+    // the RHS, so the per-moment toets must be the REVERSE (GELIJK->GELIJK, GROTER->KLEINER), not the negation.
+    static final Fixture[] PHASE_82_RIGHT = {
+        single("§8.2 right-temporal GELIJK 10==tl(10) -> TRUE",
+            g82attr("10 gedurende het gehele jaar gelijk is aan zijn belastingvermindering per maand"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00")))),
+            Map.of(), Passagier::isGemarkeerd),
+        single("§8.2 right-temporal GROTER 20>tl(10) -> TRUE",
+            g82attr("20 gedurende het gehele jaar groter is dan zijn belastingvermindering per maand"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00")))),
+            Map.of(), Passagier::isGemarkeerd),
+        single("§8.2 right-temporal GROTER 10>tl(10) boundary -> FALSE",
+            g82attr("10 gedurende het gehele jaar groter is dan zijn belastingvermindering per maand"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00")))),
+            Map.of(), Passagier::isGemarkeerd),
+    };
+    static final boolean[] PHASE_82_RIGHT_EXPECTED = { true, true, false };
+
+    // ---- Phase 82 COUNTING: a §8.2 leaf (literal grens) INSIDE a structured counting quantifier ("hij aan ten minste
+    //      1 van de volgende voorwaarden voldoet"). DRL folds rsGeheelPeriode(...) into the minstens(); the model's
+    //      leafPredicate lowers the same §8.2 Predicate1 into the counting fold -> both agree. (A §8.2 grens reading a
+    //      Parameter-global inside a counting fold is the pre-existing globals-in-a-counting-fold model limitation —
+    //      the model cannot bind a global in a Predicate1, same as any vs-global comparison there — and is out of scope.) ----
+    private static final String G82_COUNT_HDR = TOTAAL_HDR + """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                is student kenmerk (bijvoeglijk);
+                is gemarkeerd kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is gemarkeerd indien hij aan ten minste 1 van de volgende voorwaarden voldoet:
+                      - zijn belastingvermindering per maand gedurende het gehele jaar gelijk is aan 10
+                      - hij student is.
+            """;
+    static final Fixture[] PHASE_82_COUNTING = {
+        single("§8.2 in TEN_MINSTE: §8.2 holds (10) -> TRUE",
+            G82_COUNT_HDR,
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00")))),
+            Map.of(), Passagier::isGemarkeerd),   // true (§8.2 member holds)
+        single("§8.2 in TEN_MINSTE: neither holds (11, not student) -> FALSE",
+            G82_COUNT_HDR,
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "11.00")))),
+            Map.of(), Passagier::isGemarkeerd),   // false
+        single("§8.2 in TEN_MINSTE: only student holds -> TRUE",
+            G82_COUNT_HDR,
+            () -> passagier(p -> { p.setStudent(true); p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "11.00"))); }),
+            Map.of(), Passagier::isGemarkeerd),   // true (student member holds)
+    };
+
+    /** §8.2 right-temporal: assert the DRL oracle against the SPEC-correct boolean (catches an operand-reversal bug
+     *  SHARED by both back-ends, which a pure differential would miss) AND that the model agrees. */
+    @Test void phase_82_right_temporal_operand_is_spec_correct() {
+        for (int i = 0; i < PHASE_82_RIGHT.length; i++) {
+            Fixture f = PHASE_82_RIGHT[i];
+            boolean expected = PHASE_82_RIGHT_EXPECTED[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(expected, eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+
     /** §8.2 regression (Phase F adversarial review): a temporal attribute read into a SCALAR doel must be an HONEST
      *  SKIP, not a firing rule that calls setX(List<Segment>) and throws (the one scalarWaarde gap the review caught,
      *  where DRL honestly markers the read). The model must record overgeslagen, never mis-render. */
@@ -2261,6 +2366,8 @@ class ExecModelDifferentialTest {
     @Test void phase_82_gehele_periode_matches_drl_back_end()      { runDifferential("Phase 82", PHASE_82, 11); }
     @Test void phase_82_kenmerk_matches_drl_back_end()             { runDifferential("Phase 82 kenmerk", PHASE_82_KENMERK, 2); }
     @Test void phase_82_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase 82 fout", PHASE_82_FOUT, 1); }
+    @Test void phase_82_navigated_grens_matches_drl_back_end()     { runDifferential("Phase 82 nav", PHASE_82_NAV, 3); }
+    @Test void phase_82_in_counting_quantifier_matches_drl_back_end() { runDifferential("Phase 82 counting", PHASE_82_COUNTING, 3); }
     @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 16); }
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
     @Test void phase_H_value_ops_matches_drl_back_end()             { runDifferential("Phase H val", PHASE_H_VAL, 8); }
