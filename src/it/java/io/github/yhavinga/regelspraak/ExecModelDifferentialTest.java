@@ -2952,6 +2952,66 @@ class ExecModelDifferentialTest {
             l -> ((Rekensom) l.get(0)).getDeelResultaat()),
     };
 
+    // ---- Phase PCT: §13.4.17.12/§6.8 "het percentage P van V" WITHOUT the '%'. Our grammar requires '%' on
+    //      percentageVanExpr (to disambiguate from a 'van' navigation), so the no-'%' form parses as a navigation; the
+    //      resolver reinterprets it as PERCENTAGE_VAN when the leftmost name is a Percentage-typed PARAMETER. Value =
+    //      V*P/100 (§4.8 Tabel 19); a leeg V telts als 0 (§4.8 — the bridge's leegwaarde divergence: percentage->0,
+    //      UNLIKE tijdsevenredig->leeg). korting = 10 (%) is supplied as a BigDecimal global. ----
+    private static final String PCT_HDR = """
+            Parameter de korting : Percentage (geheel getal)
+            Objecttype de Rekensom
+                de grondslag Numeriek (geheel getal);
+                de maalResultaat Numeriek (geheel getal);
+            """;
+    static final Fixture[] PHASE_PCT = {
+        new Fixture("§13.4.17.12 percentage 'P van V' (navigated V) = V*P/100",
+            PCT_HDR + """
+            Regel r
+                geldig altijd
+                    De maalResultaat van een Rekensom moet gesteld worden op de korting van de grondslag van een Rekensom.
+            """,
+            () -> { Rekensom r = new Rekensom(); r.setGrondslag(new BigDecimal(200)); return List.of(r); },
+            Map.of("korting", new BigDecimal(10)),
+            l -> ((Rekensom) l.get(0)).getMaalResultaat()),   // 200 * 10 / 100 = 20
+        new Fixture("§13.4.17.12 percentage 'P van zijn V' (possessive)",
+            PCT_HDR + """
+            Regel r
+                geldig altijd
+                    De maalResultaat van een Rekensom moet gesteld worden op de korting van zijn grondslag.
+            """,
+            () -> { Rekensom r = new Rekensom(); r.setGrondslag(new BigDecimal(150)); return List.of(r); },
+            Map.of("korting", new BigDecimal(10)),
+            l -> ((Rekensom) l.get(0)).getMaalResultaat()),   // 150 * 10 / 100 = 15
+        new Fixture("§13.4.17.12 percentage leeg V -> 0 (leeg telt als 0, §4.8)",
+            PCT_HDR + """
+            Regel r
+                geldig altijd
+                    De maalResultaat van een Rekensom moet gesteld worden op de korting van de grondslag van een Rekensom.
+            """,
+            () -> List.of(new Rekensom()),   // grondslag null -> 0
+            Map.of("korting", new BigDecimal(10)),
+            l -> ((Rekensom) l.get(0)).getMaalResultaat()),   // 0
+    };
+    static final BigDecimal[] PHASE_PCT_EXPECTED = { new BigDecimal(20), new BigDecimal(15), BigDecimal.ZERO };
+
+    /** §13.4.17.12 percentage 'P van V' (no '%'): assert the DRL oracle computes V*P/100 (and leeg->0) per §4.8 — an
+     *  ABSOLUTE spec value, not only DRL==model (PERCENTAGE_VAN is a SHARED transform, so a pure differential would miss
+     *  a shared bug; see the differential-masks-shared-bugs discipline) — AND that the model agrees. */
+    @Test void phase_PCT_is_spec_correct() {
+        for (int i = 0; i < PHASE_PCT.length; i++) {
+            Fixture f = PHASE_PCT[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            BigDecimal viaDrl = (BigDecimal) fire(drlBase(m), f);
+            BigDecimal viaModel = (BigDecimal) fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertNotNull(viaDrl, () -> f.naam() + " DRL produced null");
+            assertEquals(0, PHASE_PCT_EXPECTED[i].compareTo(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "': " + viaDrl);
+            assertEquals(0, viaDrl.compareTo(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "': DRL=" + viaDrl + " model=" + viaModel);
+        }
+    }
+
     // ---- scalar arithmetic (§6.2-6.4): plus / min / verminderd met / maal, with the leegwaarde tables ----
     static final String ARITH_SRC = """
             Objecttype de Rekensom

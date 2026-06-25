@@ -887,14 +887,43 @@ final class ExpressieBouwer {
         if (a == null || a.attribuutMetLidwoord() == null || a.attribuutMetLidwoord().kaleNaam() == null)
             return onopgelost(a);
         String attr = src(a.attribuutMetLidwoord().kaleNaam());
-        String onderwerpBron = a.onderwerp() != null ? src(a.onderwerp()) : "";
-        Objecttype ot = resolveOnderwerp(a.onderwerp());
+        // §13.4.17.12/§6.8 "het percentage P van V" WITHOUT the '%': our grammar requires '%' on percentageVanExpr to
+        // disambiguate from a 'van' navigation (docs/grammar-divergences.md), so the no-'%' form parses HERE as a
+        // navigation. But when the leftmost name P is a Percentage-typed PARAMETER (never a real attribuut of any
+        // objecttype), this IS the percentage function, not a navigation — reinterpret it as PERCENTAGE_VAN(P, V) with
+        // V the onderwerp built as a value (V·P/100, §4.8 Tabel 19; leeg telt als 0). A name that is no Percentage
+        // parameter, or a V we cannot build, falls through to the normal navigation (an honest marker, never a wrong gate).
+        // The greedy kaleNaam absorbs an inner 'van' ("korting van de prijs" -> ONE kaleNaam of two delen), so the
+        // percentage P is the LEFTMOST kaleNaamDeel and V is "<remaining deel> van <onderwerp>"; with no inner 'van'
+        // (one deel) V is just the onderwerp built as a value.
+        java.util.List<KaleNaamDeelContext> delen = a.attribuutMetLidwoord().kaleNaam().kaleNaamDeel();
+        Parameter pct = percentageParameter(src(delen.get(0)));
+        if (pct != null) {
+            Expr v = delen.size() == 1 ? onderwerpAlsWaarde(a.onderwerp())
+                   : delen.size() == 2 ? attribuutRef(stripArtikel(src(delen.get(1))), a.onderwerp(), bron)
+                   : null;   // a deeper navigation chain in the V part stays a marker (rare)
+            if (v != null && !(v instanceof Expr.Onopgelost)) {
+                // §4.8 Tabel 18: the result carries V's unit; §4.8 Precisie makes it an exact fraction, so drop V's
+                // declared decimal count (the same typing the '%' form uses, lines above).
+                Datatype t = v.type() instanceof Datatype.Numeriek n
+                        ? new Datatype.Numeriek(false, 0, Datatype.Teken.ONBEPAALD, n.eenheid()) : onbekend();
+                return new Expr.Binair(Expr.BinOp.PERCENTAGE_VAN, new Expr.ParameterRef(pct, bron), v, t, bron);
+            }
+        }
+        return attribuutRef(attr, a.onderwerp(), bron);
+    }
+
+    /** Build "&lt;attr&gt; van &lt;onderwerp&gt;" into an {@link Expr.AttribuutRef} — the shared core of
+     *  {@link #bouwAttribuut} and {@link #onderwerpAlsWaarde}. */
+    private Expr attribuutRef(String attr, OnderwerpContext onderwerp, String bron) {
+        String onderwerpBron = onderwerp != null ? src(onderwerp) : "";
+        Objecttype ot = resolveOnderwerp(onderwerp);
         // The role the author wrote to reach `ot` (the noun of a DEFINITE reference or a
         // possessive, when it names a feittype role) — threaded so the transpiler
         // navigates the exact field even when the (subject, ot) pair is connected by more
         // than one feittype/role. An indefinite "een <X>" is the universal subject, not a
         // navigation, so it is excluded (it stays an own-attribute read).
-        String noun = navigatieNoun(a.onderwerp());
+        String noun = navigatieNoun(onderwerp);
         String navRol = model.navigatieRolNaam(noun);
         // §13.4.1.2/.3: a navigation filler may name an objecttype OR a role. Take the
         // role reading only when the objecttype reading is NOT the navigation the author
@@ -912,7 +941,39 @@ final class ExpressieBouwer {
             if (viaRol != null && viaRol.attribuut(attr) != null) { ot = viaRol; navRol = noun; }
         }
         Datatype dt = ot != null && ot.attribuut(attr) != null ? ot.attribuut(attr) : onbekend();
-        return new Expr.AttribuutRef(attr, ot, onderwerpBron, navRol, dt, bron, isSetOnderwerp(a.onderwerp()));
+        return new Expr.AttribuutRef(attr, ot, onderwerpBron, navRol, dt, bron, isSetOnderwerp(onderwerp));
+    }
+
+    /** The {@link Parameter} named {@code naam} (lidwoord-stripped) when it is Percentage-typed — the §13.4.17.12
+     *  "het percentage P van V" left operand. Null otherwise. */
+    private Parameter percentageParameter(String naam) {
+        String stripped = stripArtikel(naam);
+        Parameter p = model.parameters.get(stripped);
+        if (p == null) p = model.parameters.get(naam);
+        return p != null && p.datatype() != null && p.datatype().isPercentage() ? p : null;
+    }
+
+    private static String stripArtikel(String naam) {
+        return naam.replaceFirst("^(?i)(de|het|een)\\s+", "");
+    }
+
+    /** Build an onderwerp as a VALUE expression — the V in "het percentage P van V". Handles the
+     *  "de &lt;attr&gt; van &lt;subject&gt;" navigation ({@code selector VAN onderwerp}), the possessive
+     *  "zijn &lt;attr&gt;", and a bare subject-own "de &lt;attr&gt;"; otherwise null (the caller keeps the marker). */
+    private Expr onderwerpAlsWaarde(OnderwerpContext o) {
+        if (o == null) return null;
+        OnderwerpKetenContext k = o.onderwerpKeten();
+        if (k != null && k.selector() != null && k.selector().kaleNaam() != null && k.onderwerp() != null)
+            return attribuutRef(src(k.selector().kaleNaam()), k.onderwerp(), src(o));   // "de <attr> van <subject>"
+        Expr poss = possessief(o, src(o));
+        if (poss != null) return poss;                                                  // "zijn <attr>"
+        if (k != null && k.onderwerpVerwijzing() != null && k.onderwerpVerwijzing().kaleNaam() != null
+                && huidigSubject != null) {
+            String attr = src(k.onderwerpVerwijzing().kaleNaam());
+            Datatype dt = huidigSubject.attribuut(attr);
+            if (dt != null) return new Expr.AttribuutRef(attr, huidigSubject, src(o), null, dt, src(o));   // subject-own "de <attr>"
+        }
+        return null;
     }
 
     /** §13.4.2 whether {@code o}'s top-level quantifier ranges over a SET — a kwantificatie that is NOT the bare
