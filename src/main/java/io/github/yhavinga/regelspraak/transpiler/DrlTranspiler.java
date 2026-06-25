@@ -2384,17 +2384,14 @@ public final class DrlTranspiler {
         // than fake a partial fold over the first set; the single-operand set MIN/MAX (size 1) is untouched.
         if ((f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM)
                 && f.argumenten().size() > 1) return null;
-        // §7.1+§5.8 a SOM/TOTAAL over a TEMPORAL attribute of a SET ("de som van het totaal van <attr per maand> van
-        // alle <set>") is a PER-ELEMENT timeline fold: each element's tijdreeks is summed over time (rsTijdTotaal)
-        // to a scalar, and those scalars are summed over the set. A bare Drools sum() over the getter would aggregate
-        // the List<Segment> itself (a ClassCastException), so the element value is wrapped in rsTijdTotaal below.
-        // MIN/MAX over a temporal attribute is ambiguous (min/max of which moment?) -> still a marker.
-        // The temporal element value is the argument DIRECTLY ("het totaal van <attr> van alle") or wrapped in a
-        // nested "het totaal van" Functie ("de som van het totaal van <attr> van alle") — unwrap to the inner attr.
-        Expr ruwArg = f.argumenten().isEmpty() ? null : f.argumenten().get(0);
-        Expr argExpr = ruwArg instanceof Expr.Functie tf && tf.kind() == Expr.FunctieKind.TOTAAL && tf.argumenten().size() == 1
-                ? tf.argumenten().get(0) : ruwArg;
-        boolean temporeelArg = argExpr instanceof Expr.AttribuutRef ta0
+        // §7.1+§5.8 a SOM/TOTAAL over a TEMPORAL attribute of a SET ("het totaal van <attr per maand> van alle <set>")
+        // is a PER-ELEMENT timeline fold: each element's tijdreeks is summed over time (rsTijdTotaal) to a scalar, and
+        // those scalars are summed over the set. A bare Drools sum() over the getter would aggregate the List<Segment>
+        // itself (a ClassCastException), so the element value is wrapped in rsTijdTotaal below. MIN/MAX over a temporal
+        // attribute is ambiguous (min/max of which moment?) -> still a marker. (The explicit "de som van het totaal van
+        // X van alle" phrasing attaches the set to the INNER totaal, leaving the outer SOM element-less -> elem == null
+        // markers it; the inner totaal is then a single-object operand, not this set fold.)
+        boolean temporeelArg = !f.argumenten().isEmpty() && f.argumenten().get(0) instanceof Expr.AttribuutRef ta0
                 && ta0.objecttype() != null && ta0.objecttype().attribuutGranulariteit.containsKey(ta0.attribuut());
         if (temporeelArg && f.kind() != Expr.FunctieKind.SOM && f.kind() != Expr.FunctieKind.TOTAAL)
             return null;
@@ -2422,7 +2419,7 @@ public final class DrlTranspiler {
         }
         int n = ++accCount;
         String ev = "$e" + n, var = "$acc" + n;
-        Expr arg = argExpr;   // the (possibly TOTAAL-unwrapped) aggregation argument
+        Expr arg = f.argumenten().isEmpty() ? null : f.argumenten().get(0);
         // §7.1 a per-element timeline fold: a temporal-attribute element value is summed over time (rsTijdTotaal at the
         // attribute's granularity) to a scalar BEFORE the set aggregate, instead of the bare List<Segment> getter.
         java.util.function.Function<Expr.AttribuutRef, String> elemWaarde = a -> {

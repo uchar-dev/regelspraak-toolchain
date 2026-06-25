@@ -386,15 +386,11 @@ public final class ExecModelTranspiler {
         // §5.8.3 a multi-operand min/max, or a multi-operand count without a resolved union filter, drops operands -> skip.
         if ((f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM) && f.argumenten().size() > 1) return null;
         if (count && f.argumenten().size() > 1 && f.filter() == null) return null;
-        // the argument is a temporal attribute DIRECTLY ("het totaal van <attr> van alle") or wrapped in a nested
-        // "het totaal van" Functie ("de som van het totaal van <attr> van alle") — unwrap to the inner attribute.
-        Expr ruwArg = f.argumenten().isEmpty() ? null : f.argumenten().get(0);
-        Expr argExpr = ruwArg instanceof Expr.Functie tf && tf.kind() == Expr.FunctieKind.TOTAAL && tf.argumenten().size() == 1
-                ? tf.argumenten().get(0) : ruwArg;
-        Expr.AttribuutRef arg = argExpr instanceof Expr.AttribuutRef a ? a : null;
+        Expr.AttribuutRef arg = !f.argumenten().isEmpty() && f.argumenten().get(0) instanceof Expr.AttribuutRef a ? a : null;
         boolean temporeel = arg != null && arg.objecttype() != null && arg.objecttype().attribuutGranulariteit.containsKey(arg.attribuut());
-        // §7.1 a SOM/TOTAAL over a temporal attribute is a PER-ELEMENT timeline fold (rsTijdTotaal per element, then
-        // sum); MIN/MAX over a temporal attribute is ambiguous -> skip (mirror the DRL marker).
+        // §7.1 a SOM/TOTAAL over a temporal attribute of a set is a PER-ELEMENT timeline fold (rsTijdTotaal per element,
+        // then sum); MIN/MAX over a temporal attribute is ambiguous -> skip (mirror the DRL marker). ("de som van het
+        // totaal van X van alle" attaches the set to the inner totaal -> the outer SOM is element-less -> markers.)
         if (temporeel && f.kind() != Expr.FunctieKind.SOM && f.kind() != Expr.FunctieKind.TOTAAL) return null;
         if (!count && arg == null) return null;   // sum/min/max need an attribute to fold
 
