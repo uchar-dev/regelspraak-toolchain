@@ -486,7 +486,7 @@ class ExecModelDifferentialTest {
             Eén reis heeft meerdere passagiers
             Regel r
                 geldig altijd
-                    Een Vlucht is vol indien hij heeft een passagier.
+                    Een Vlucht is vol indien hij een passagier heeft.
             """;
     static final Fixture[] PHASE_B3 = {
         // §8.1.8 to-one navigated kenmerk "zijn partner heeft een <k>": null-safe through the partner reference.
@@ -1104,7 +1104,7 @@ class ExecModelDifferentialTest {
         // `geboortedatum < LocalDate.of(2000,1,1)`.
         new Fixture("datum ordering condition (own attr: geboortedatum eerder dan 1-1-2000)",
             "Objecttype de Passagier\n    de geboortedatum Datum in dagen;\n    het basistarief Numeriek (geheel getal);\n"
-            + "Regel R\n    geldig altijd\n        Het basistarief van een passagier moet gesteld worden op 50 indien zijn geboortedatum is eerder dan 1-1-2000.\n",
+            + "Regel R\n    geldig altijd\n        Het basistarief van een passagier moet gesteld worden op 50 indien zijn geboortedatum eerder is dan 1-1-2000.\n",
             () -> List.of(passagier(p -> p.setGeboortedatum(dat(1990, 1, 1))),
                           passagier(p -> p.setGeboortedatum(dat(2005, 1, 1))),
                           new Passagier()),   // null geboortedatum
@@ -1758,12 +1758,10 @@ class ExecModelDifferentialTest {
             g82attr("zijn belastingvermindering per maand niet gedurende het gehele jaar gelijk is aan 10"),
             () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00")))),
             Map.of(), Passagier::isGemarkeerd),   // false
-        // NIET stellende vorm ("is niet gedurende …"): same as the vragende NIET (the verb-leading form).
-        single("§8.2 NIET stellende TRUE",
-            g82attr("zijn belastingvermindering per maand is niet gedurende het gehele jaar gelijk aan 10"),
-            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(
-                    seg(2024, 1, 1, 2024, 7, 1, "10.00"), seg(2024, 7, 1, 2025, 1, 1, "11.00")))),
-            Map.of(), Passagier::isGemarkeerd),   // true
+        // (The §8.2 NIET STELLENDE form "is niet gedurende het gehele jaar gelijk aan 10" — verb-leading — is no
+        // longer valid under a bare 'indien' (§8.3.1 = vragende, the tightening); the stellende register is bullet-only
+        // (§8.3.2). Its semantics are already covered by the vragende NIET above; a bullet-context §8.2 test is a
+        // separate §8.2-coverage follow-up. See 20260625-verb-order-tightening.md.)
         // MAAND TRUE where JAAR would be FALSE: ==10 for Jan-Jun only; every TOUCHED month is wholly ==10 (Jul-Dec
         // untouched -> not tested), but the year is not wholly covered. Distinguishes the MAAND bucketing.
         single("§8.2 MAAND TRUE (Jan-Jun wholly 10; jaar zou FALSE zijn)",
@@ -2443,7 +2441,7 @@ class ExecModelDifferentialTest {
             Eén bemande vlucht heeft meerdere bemanningsleden
             Regel maak passagier
                 geldig altijd
-                    Een Vlucht heeft een passagier met prijs gelijk aan 10 indien de vlucht heeft een bemanningslid.
+                    Een Vlucht heeft een passagier met prijs gelijk aan 10 indien de vlucht een bemanningslid heeft.
             """,
             () -> {
                 Vlucht bemand = new Vlucht(), onbemand = new Vlucht();
@@ -2548,7 +2546,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 4); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
-    @Test void phase_82_gehele_periode_matches_drl_back_end()      { runDifferential("Phase 82", PHASE_82, 11); }
+    @Test void phase_82_gehele_periode_matches_drl_back_end()      { runDifferential("Phase 82", PHASE_82, 10); }
     @Test void phase_82_kenmerk_matches_drl_back_end()             { runDifferential("Phase 82 kenmerk", PHASE_82_KENMERK, 2); }
     @Test void phase_82_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase 82 fout", PHASE_82_FOUT, 1); }
     @Test void phase_82_navigated_grens_matches_drl_back_end()     { runDifferential("Phase 82 nav", PHASE_82_NAV, 3); }

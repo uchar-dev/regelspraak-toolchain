@@ -2203,7 +2203,7 @@ class DroolsExecutionTest {
     }
 
     @Test void far_side_gegate_deling_door_leeg_meldt_alleen_als_het_lidmaatschap_geldt() {
-        // §6.5 + §8.1.7: a division gated on a FAR-side membership ("indien hij heeft een passagier"). The
+        // §6.5 + §8.1.7: a division gated on a FAR-side membership ("indien hij een passagier heeft"). The
         // deling-door-leeg companion now CARRIES the exists-join, so it raises the Inconsistentie only for a
         // Vlucht that (a) has a leeg divisor AND (b) actually has a passagier — exactly when the division would
         // execute. A divisor-leeg Vlucht with NO passagier is never acted on by the rule, so it raises nothing.
@@ -2219,7 +2219,7 @@ class DroolsExecutionTest {
                 Eén reis heeft meerdere passagiers
                 Regel deel
                     geldig altijd
-                        De totaalprijs van een Vlucht moet gesteld worden op de somMet van een Vlucht gedeeld door de somZonder van een Vlucht indien hij heeft een passagier.
+                        De totaalprijs van een Vlucht moet gesteld worden op de somMet van een Vlucht gedeeld door de somZonder van een Vlucht indien hij een passagier heeft.
                 """;
         KieSession sessie = build(DrlTranspiler.transpile(Resolver.resolve(src))).newKieSession();
         Vlucht metPax = new Vlucht(); metPax.setSomMet(new BigDecimal("12"));   // somZonder leeg -> fout, EN heeft passagier
@@ -2551,7 +2551,7 @@ class DroolsExecutionTest {
             Regel maak passagier
                 geldig altijd
                     Een Vlucht heeft een passagier met prijs gelijk aan 10
-                    indien de vlucht heeft een bemanningslid.
+                    indien de vlucht een bemanningslid heeft.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
@@ -4405,7 +4405,7 @@ class DroolsExecutionTest {
             Eén reis heeft meerdere passagiers
             Regel rolgate
                 geldig altijd
-                    Een passagier is minderjarig indien hij is een passagier.
+                    Een passagier is minderjarig indien hij een passagier is.
             """;
 
     @Test void membership_rolcheck_gate_de_regel_op_rolvervulling() {
@@ -4434,7 +4434,7 @@ class DroolsExecutionTest {
         // "reis != null" near-side test as "hij is een passagier", and discriminates identically (fires only for
         // a passagier that actually has a reis). Kenmerk-first means a bare bijvoeglijk kenmerk still binds the
         // kenmerk, not a role (asserted structurally in DrlTest).
-        String src = MEMBERSHIP_SRC.replace("indien hij is een passagier", "indien hij is passagier");
+        String src = MEMBERSHIP_SRC.replace("indien hij een passagier is", "indien hij passagier is");
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
@@ -4467,7 +4467,7 @@ class DroolsExecutionTest {
             Eén reis heeft meerdere passagiers
             Regel vol
                 geldig altijd
-                    Een Vlucht is internationaal indien hij is een reis.
+                    Een Vlucht is internationaal indien hij een reis is.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
@@ -4487,7 +4487,7 @@ class DroolsExecutionTest {
             Eén reis heeft meerdere passagiers
             Regel r
                 geldig altijd
-                    Een Vlucht is vol indien hij heeft een passagier.
+                    Een Vlucht is vol indien hij een passagier heeft.
             """;
 
     @Test void membership_far_side_heeft_een_rol_lowert_naar_een_exists_join() {
@@ -4532,7 +4532,7 @@ class DroolsExecutionTest {
                 Eén bonusvlucht heeft meerdere bonuspassagiers
                 Regel r
                     geldig altijd
-                        Een Vlucht is vol indien hij heeft een passagier.
+                        Een Vlucht is vol indien hij een passagier heeft.
                 """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
@@ -4555,7 +4555,7 @@ class DroolsExecutionTest {
     @Test void membership_far_side_heeft_geen_rol_is_de_not_exists() {
         // the §8.1.7 negation "heeft geen passagier" -> "not Passagier(reis == $subject)": gated for an EMPTY vlucht.
         String drl = DrlTranspiler.transpile(Resolver.resolve(
-                FAR_SIDE_SRC.replace("hij heeft een passagier", "hij heeft geen passagier")));
+                FAR_SIDE_SRC.replace("hij een passagier heeft", "hij geen passagier heeft")));
         assertTrue(drl.contains("not Passagier( reis == $subject )"), () -> "geen not-exists clausule:\n" + drl);
 
         KieSession sessie = build(drl).newKieSession();
@@ -4667,10 +4667,10 @@ class DroolsExecutionTest {
                 is kind kenmerk;
             Regel zelfstandig
                 geldig altijd
-                    Een passagier is kind indien hij is een student.
+                    Een passagier is kind indien hij een student is.
             Regel bijvoeglijk
                 geldig altijd
-                    Een passagier is kind indien hij is een minderjarig.
+                    Een passagier is kind indien hij een minderjarig is.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
@@ -4910,7 +4910,7 @@ class DroolsExecutionTest {
                 is geldig kenmerk (bijvoeglijk);
             Regel R
                 geldig altijd
-                    Een Natuurlijk persoon is geldig indien zijn burgerservicenummer voldoet aan de elfproef.
+                    Een Natuurlijk persoon is geldig indien zijn burgerservicenummer aan de elfproef voldoet.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
@@ -5351,7 +5351,7 @@ class DroolsExecutionTest {
             Regel ken bonus toe
                 geldig altijd
                     Een bonuspassagier van een vlucht is een passagier van de vlucht
-                    indien de vlucht heeft een bemanningslid.
+                    indien de vlucht een bemanningslid heeft.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());

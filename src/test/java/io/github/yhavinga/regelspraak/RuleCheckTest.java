@@ -327,10 +327,9 @@ class RuleCheckTest {
     }
 
     @Test void elfproef_op_datum_in_voorwaarde_wordt_gemeld() {
-        // p34: "voldoet aan de elfproef" is a VERB-LEADING (nonToplevel) operator, but under INDIEN it
-        // sits in a toplevelElementaireVoorwaarde. The type-check used to read only c.toplevelOperator(),
-        // so this predicate was silently UNCHECKED. §5.13 Tabel 55 admits only Numeriek (geheel getal) or
-        // Tekst — a Datum operand must now be flagged.
+        // p34: under INDIEN the elfproef predicate takes the vragende (verb-trailing) form "aan de elfproef
+        // voldoet" (toplevelOperator). §5.13 Tabel 55 admits only Numeriek (geheel getal) or Tekst — a Datum
+        // operand must be flagged.
         String src = """
             Objecttype de Ding
                 de datum Datum in dagen;
@@ -338,7 +337,7 @@ class RuleCheckTest {
             Regel r
                 geldig altijd
                     Een Ding is ok
-                    indien de datum van een Ding voldoet aan de elfproef.
+                    indien de datum van een Ding aan de elfproef voldoet.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("elfproef")),
@@ -425,15 +424,15 @@ class RuleCheckTest {
             Regel r
                 geldig altijd
                     Een Ding is ok
-                    indien de saldo van een Ding voldoet aan de elfproef.
+                    indien de saldo van een Ding aan de elfproef voldoet.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "een geheel-getal elfproef-operand is geldig: " + m.errors());
     }
 
     @Test void numeriek_met_exact_op_numeriek_in_voorwaarde_wordt_gemeld() {
-        // p34 sibling: §5.16 numeriek-met-exact is Tekst-only; the verb-leading form under INDIEN was
-        // likewise unchecked. A Numeriek operand must be flagged.
+        // p34 sibling: §5.16 numeriek-met-exact is Tekst-only; under INDIEN it takes the vragende form
+        // "numeriek is met exact N cijfers". A Numeriek operand must be flagged.
         String src = """
             Objecttype de Ding
                 de saldo Numeriek (geheel getal);
@@ -441,26 +440,36 @@ class RuleCheckTest {
             Regel r
                 geldig altijd
                     Een Ding is ok
-                    indien de saldo van een Ding is numeriek met exact 9 cijfers.
+                    indien de saldo van een Ding numeriek is met exact 9 cijfers.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("met exact")),
                 () -> "verwachtte een §5.16-fout in de voorwaarde, kreeg: " + m.errors());
     }
 
-    @Test void verb_leidende_vergelijking_in_toplevel_positie_wordt_getypeerd() {
-        // The broader root cause (p34): a VERB-LEADING comparison ("is groter dan", a nonToplevelOperator)
-        // under INDIEN was unchecked because checkTopVoorwaarde only inspected the toplevelOperator. The
-        // check must dispatch on whichever operator is present — a Tekst vs numeric ordering is a fout.
-        String src = MODEL + """
+    @Test void verb_leidende_vergelijking_onder_indien_wordt_afgewezen() {
+        // §8.3.1: a TOPLEVEL voorwaarde (after 'indien') takes ONLY the vragende (verb-trailing) form. The
+        // verb-LEADING "is groter dan" is the stellende register, reserved for samengestelde bullets (§8.3.2),
+        // so under INDIEN it is now a SYNTAX error — it used to be over-accepted.
+        String verbLeidend = MODEL + """
             Regel r
                 geldig altijd
                     De teller van een Ding moet gesteld worden op 0
                     indien de naam van een Ding is groter dan 0.
             """;
-        RegelSpraakModel m = Resolver.resolve(src);
-        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("voorwaarde")),
-                () -> "verwachtte een voorwaarde-fout voor de verb-leidende vergelijking, kreeg: " + m.errors());
+        RegelSpraakModel m = Resolver.resolve(verbLeidend);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("syntaxfout")),
+                () -> "een verb-leidende vergelijking onder 'indien' moet nu een syntaxfout zijn, kreeg: " + m.errors());
+        // the canonical vragende form (verb-trailing) still parses AND type-checks — a Tekst ordered vs Numeriek is a fout.
+        String vragend = MODEL + """
+            Regel r
+                geldig altijd
+                    De teller van een Ding moet gesteld worden op 0
+                    indien de naam van een Ding groter is dan 0.
+            """;
+        RegelSpraakModel mv = Resolver.resolve(vragend);
+        assertTrue(mv.errors().stream().anyMatch(d -> d.message().contains("voorwaarde")),
+                () -> "de vragende vorm moet parsen én de Tekst-vs-Numeriek ordening als voorwaarde-fout typeren, kreeg: " + mv.errors());
     }
 
     @Test void elfproef_op_min_van_onbeperkte_operanden_wordt_gemeld() {
@@ -476,7 +485,7 @@ class RuleCheckTest {
             Regel r
                 geldig altijd
                     Een Ding is ok
-                    indien de minimale waarde van de a van een Ding en de b van een Ding voldoet aan de elfproef.
+                    indien de minimale waarde van de a van een Ding en de b van een Ding aan de elfproef voldoet.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("elfproef")),
@@ -493,7 +502,7 @@ class RuleCheckTest {
             Regel r
                 geldig altijd
                     Een Ding is ok
-                    indien de minimale waarde van de a van een Ding en de b van een Ding voldoet aan de elfproef.
+                    indien de minimale waarde van de a van een Ding en de b van een Ding aan de elfproef voldoet.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("elfproef")),
@@ -510,7 +519,7 @@ class RuleCheckTest {
             Regel r
                 geldig altijd
                     Een Ding is ok
-                    indien de minimale waarde van de a van een Ding en de b van een Ding voldoet aan de elfproef.
+                    indien de minimale waarde van de a van een Ding en de b van een Ding aan de elfproef voldoet.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "een min van gehele getallen is geheel: " + m.errors());

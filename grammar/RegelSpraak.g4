@@ -553,13 +553,20 @@ samengesteldPredicaat // §13.4.13.4
       samengesteldeVoorwaardeOnderdeel
     ;
 
-// The toplevel/non-toplevel split is a word-order convention (verb trailing vs
-// leading), not a structural one: worked examples mix the two in both positions
-// ("… groter of gelijk is aan …" in a nested bullet). Both families are admitted
-// in both positions; operator/operand legality stays a resolver concern.
-toplevelElementaireVoorwaarde // §13.4.15.1
+// §8.3.1/§8.1 Tabel 16: an ENKELE conditie used as a voorwaarde (after 'indien', or
+// after 'dat'/'gedurende de tijd dat', which reuse this rule) takes the VRAGENDE vorm
+// — "het werkwoord staat achteraan" (§8.3.1 line 3488, §10.1 line 4333): "indien hij
+// een passagier is", "… gelijk is aan …", "… leeg is". So the TOPLEVEL elementaire
+// voorwaarde admits ONLY the verb-trailing toplevelOperator; the verb-leading
+// (stellende) register is reserved for samengestelde-voorwaarde BULLETS
+// (elementaireVoorwaarde, §8.3.2 line 3575). The BULLET rule deliberately stays
+// permissive (admits BOTH families) — the spec-for-ANTLR corpus mixes registers in a
+// bullet ("… groter of gelijk is aan 500 km", spec-antlr-04), and over-acceptance
+// there is harmless (the resolver gives the right meaning); operator/operand legality
+// stays a resolver concern in both positions.
+toplevelElementaireVoorwaarde // §13.4.15.1 (§8.3.1 vragende = verb-trailing only)
     : consistentieVoorwaarde
-    | expressie ( toplevelOperator | nonToplevelOperator )
+    | expressie toplevelOperator
     ;
 // The ':' before the bullet list is lenient: with the 'gedurende de tijd dat …
 // wordt voldaan' opener two worked examples omit it, and the bullets unambiguously

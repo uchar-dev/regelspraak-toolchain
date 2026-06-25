@@ -20,7 +20,7 @@ public class Vlucht {
     private LocalDate vluchtdatum;           // §13.4.17 condition-side builtin (toka-27 Paaskorting)
     private boolean reisMetPaaskorting;      // the kenmerk that rule sets
     private boolean inHetHoogseizoen;        // toka-26: numeric == over a builtin (maand uit) in a quantifier
-    private boolean vol;                     // §8.1.7 far-side rolcheck head ("een Vlucht is vol indien hij heeft een passagier")
+    private boolean vol;                     // §8.1.7 far-side rolcheck head ("een Vlucht is vol indien hij een passagier heeft")
     private BigDecimal uitstelduur;          // §6/§13.4.16 date-arithmetic duration (eenheid mnd)
     public BigDecimal getUitstelduur() { return uitstelduur; }
     public void setUitstelduur(BigDecimal v) { this.uitstelduur = v; }

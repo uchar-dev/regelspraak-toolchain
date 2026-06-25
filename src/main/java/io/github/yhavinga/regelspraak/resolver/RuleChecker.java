@@ -832,10 +832,10 @@ final class RuleChecker {
                 v.toplevelSamengesteldeVoorwaarde().samengesteldeVoorwaardeOnderdeel(), v.toplevelSamengesteldeVoorwaarde());
         if (v.toplevelElementaireVoorwaarde() != null) {
             ToplevelElementaireVoorwaardeContext c = v.toplevelElementaireVoorwaarde();
+            // §8.3.1: after 'indien'/'dat'/'gedurende de tijd dat' the grammar admits ONLY the verb-trailing
+            // (vragende) toplevelOperator — the verb-leading register is reserved for samengestelde bullets.
             if (c.expressie() != null && c.toplevelOperator() != null)
                 return uitToplevel(bouwer.bouw(c.expressie()), c.toplevelOperator(), src(c));
-            if (c.expressie() != null && c.nonToplevelOperator() != null)
-                return uitNonToplevel(bouwer.bouw(c.expressie()), c.nonToplevelOperator(), src(c));
         }
         return new Conditie.Onopgelost(src(v));
     }
@@ -1270,18 +1270,15 @@ final class RuleChecker {
             meldPredicaat(Typering.UnairePred.NUMERIEK_MET_EXACT, lhs, line);
     }
 
-    // §13.4.15: the toplevel/non-toplevel split is word-order, not structure, so BOTH operator families
-    // are admitted in BOTH voorwaarde positions (grammar: toplevelElementaireVoorwaarde and
-    // elementaireVoorwaarde each allow `toplevelOperator | nonToplevelOperator`). The type-check must
-    // therefore dispatch on whichever operator is actually present, not on the voorwaarde's name —
-    // otherwise an operator in the "other" position (e.g. the verb-leading "voldoet aan de elfproef" under
-    // INDIEN) is silently unchecked, letting an ill-typed predicate through (p34).
+    // §8.3.1/§13.4.15: a TOPLEVEL voorwaarde (after 'indien'/'dat'/'gedurende de tijd dat') takes ONLY the
+    // verb-trailing (vragende) toplevelOperator — the grammar no longer admits the verb-leading register here
+    // (that is reserved for samengestelde bullets, checkElemVoorwaarde, which keeps both families). So only the
+    // toplevelOperator needs checking; an ill-typed predicate is still caught by checkToplevelOp.
     private void checkTopVoorwaarde(ToplevelElementaireVoorwaardeContext c) {
         if (c.expressie() == null) return;
         Datatype lhs = infer(c.expressie());
         int line = c.getStart().getLine();
         checkToplevelOp(lhs, c.toplevelOperator(), line);
-        checkNonToplevelOp(lhs, c.nonToplevelOperator(), line);
     }
 
     private void checkElemVoorwaarde(ElementaireVoorwaardeContext c) {

@@ -320,7 +320,7 @@ final class ExpressieBouwer {
                     : (adf.JAAR() != null ? RegelSpraakModel.Granulariteit.JAAR : null);
             if (adf.toplevelElementaireVoorwaarde() != null && !(filter instanceof Conditie.Kenmerk)) {
                 ToplevelElementaireVoorwaardeContext c = adf.toplevelElementaireVoorwaarde();
-                Conditie.Kenmerk k = temporeelKenmerkUitOperator(c.toplevelOperator(), c.nonToplevelOperator(), src(adf));
+                Conditie.Kenmerk k = temporeelKenmerkUitOperator(c.toplevelOperator(), null, src(adf));  // §8.3.1 toplevel = vragende only
                 if (k != null) filter = k;
             } else if (adf.toplevelSamengesteldeVoorwaarde() != null && !(filter instanceof Conditie.Samengesteld)) {
                 // §8.4.2 a COMPOUND "dat er aan alle / ten minste 1 van de volgende voorwaarden wordt voldaan: …" —
@@ -489,7 +489,7 @@ final class ExpressieBouwer {
         // §8.4 example never silently drops its non-temporal predicate.
         if (cnd.toplevelElementaireVoorwaarde() != null) {
             ToplevelElementaireVoorwaardeContext c = cnd.toplevelElementaireVoorwaarde();
-            return temporeelKenmerkUitOperator(c.toplevelOperator(), c.nonToplevelOperator(), src(cnd));
+            return temporeelKenmerkUitOperator(c.toplevelOperator(), null, src(cnd));  // §8.3.1 toplevel = vragende only
         }
         if (cnd.toplevelSamengesteldeVoorwaarde() != null)
             return gedurendeSamengesteld(cnd.toplevelSamengesteldeVoorwaarde(), src(cnd));

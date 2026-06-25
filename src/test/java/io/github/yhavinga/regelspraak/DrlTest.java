@@ -255,10 +255,10 @@ class DrlTest {
             Eén reis heeft meerdere passagiers
             Regel kenmerk
                 geldig altijd
-                    Een passagier is volwassen indien hij is minderjarig.
+                    Een passagier is volwassen indien hij minderjarig is.
             Regel rol
                 geldig altijd
-                    Een passagier is volwassen indien hij is passagier.
+                    Een passagier is volwassen indien hij passagier is.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertTrue(drl.contains("minderjarig == true"), () -> "'is minderjarig' moet kenmerk-eerst binden:\n" + drl);
@@ -322,7 +322,7 @@ class DrlTest {
             Eén reis heeft meerdere passagiers
             Regel deel
                 geldig altijd
-                    De totaalprijs van een Vlucht moet gesteld worden op de somMet van een Vlucht gedeeld door de somZonder van een Vlucht indien hij heeft een passagier.
+                    De totaalprijs van een Vlucht moet gesteld worden op de somMet van een Vlucht gedeeld door de somZonder van een Vlucht indien hij een passagier heeft.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertTrue(drl.contains("rsGedeeld"), () -> "de deling moet herkend zijn (anders bewijst de test niets):\n" + drl);
