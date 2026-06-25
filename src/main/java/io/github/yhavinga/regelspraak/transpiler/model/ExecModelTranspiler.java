@@ -33,12 +33,6 @@ import org.drools.model.functions.Predicate1;
 import org.drools.model.functions.Predicate2;
 import org.drools.model.impl.ModelImpl;
 
-import org.drools.core.base.accumulators.BigDecimalSumAccumulateFunction;
-import org.drools.core.base.accumulators.CollectListAccumulateFunction;
-import org.drools.core.base.accumulators.CountAccumulateFunction;
-import org.drools.core.base.accumulators.MaxAccumulateFunction;
-import org.drools.core.base.accumulators.MinAccumulateFunction;
-
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -415,7 +409,7 @@ public final class ExecModelTranspiler {
 
         Variable resultVar = DSL.declarationOf(Object.class, "$acc_" + (seq++));
         if (count)
-            return new Agg(DSL.accumulate(src, DSL.accFunction(CountAccumulateFunction.class).as(resultVar)),
+            return new Agg(DSL.accumulate(src, DSL.accFunction(accFn("CountAccumulateFunction")).as(resultVar)),
                     resultVar, null, null, false);
 
         final String attr = arg.attribuut();
@@ -439,15 +433,15 @@ public final class ExecModelTranspiler {
                     .bind(amtVar, (Function1) (e) -> RegelSpraakRuntime.get(e, attr));
             Variable cntVar = DSL.declarationOf(Object.class, "$cnt_" + (seq++));
             RuleItemBuilder acc = DSL.accumulate(src2,
-                    DSL.accFunction(CountAccumulateFunction.class).as(cntVar),
-                    DSL.accFunction(BigDecimalSumAccumulateFunction.class, amtVar).as(resultVar));
+                    DSL.accFunction(accFn("CountAccumulateFunction")).as(cntVar),
+                    DSL.accFunction(accFn("BigDecimalSumAccumulateFunction"), amtVar).as(resultVar));
             return new Agg(acc, resultVar, cntVar, fallback, true);
         }
         // TOTAAL (empty -> 0) / MIN / MAX: bind the per-element value and fold it.
         Class<?> accClass = switch (f.kind()) {
-            case TOTAAL  -> BigDecimalSumAccumulateFunction.class;
-            case MINIMUM -> MinAccumulateFunction.class;
-            case MAXIMUM -> MaxAccumulateFunction.class;
+            case TOTAAL  -> accFn("BigDecimalSumAccumulateFunction");
+            case MINIMUM -> accFn("MinAccumulateFunction");
+            case MAXIMUM -> accFn("MaxAccumulateFunction");
             default      -> null;
         };
         if (accClass == null) return null;
@@ -2134,7 +2128,7 @@ public final class ExecModelTranspiler {
                     (Predicate2) (o, sc) -> RegelSpraakRuntime.gelijkWaarde(RegelSpraakRuntime.get(o, sv), sc));
         }
         Variable cntVar = DSL.declarationOf(Object.class, "$cnt_" + (seq++));
-        RuleItemBuilder<?> accItem = DSL.accumulate(src, DSL.accFunction(CountAccumulateFunction.class).as(cntVar));
+        RuleItemBuilder<?> accItem = DSL.accumulate(src, DSL.accFunction(accFn("CountAccumulateFunction")).as(cntVar));
         PatternDSL.PatternDef cntPat = PatternDSL.pattern(cntVar).expr(nextId("gt1"), (Predicate1) c -> ((Number) c).intValue() > 1);
         // idempotency guard + insert (insert-only -> NO no-loop).
         Variable incVar = DSL.declarationOf(incClass, "$inc_" + (seq++));
@@ -2197,7 +2191,7 @@ public final class ExecModelTranspiler {
                             (Predicate2) (e, k) -> RegelSpraakRuntime.gelijkWaarde(RegelSpraakRuntime.get(e, key), k));
                 }
                 Variable cntVar = DSL.declarationOf(Object.class, "$c" + j + "_" + (seq++));
-                items.add(DSL.accumulate(src, DSL.accFunction(CountAccumulateFunction.class).as(cntVar)));
+                items.add(DSL.accumulate(src, DSL.accFunction(accFn("CountAccumulateFunction")).as(cntVar)));
                 countVars.add(cntVar);
             }
             // idempotency guard: not Inconsistentie( regel == naam, subject == $subject )
@@ -2317,12 +2311,12 @@ public final class ExecModelTranspiler {
         Variable foldVar = DSL.declarationOf(Object.class, "$fold_" + (seq++));
         RuleItemBuilder<?> acc;
         if (gelijk) {
-            acc = DSL.accumulate(accSrc, DSL.accFunction(CountAccumulateFunction.class).as(foldVar));
+            acc = DSL.accumulate(accSrc, DSL.accFunction(accFn("CountAccumulateFunction")).as(foldVar));
         } else {
             accSrc = accSrc.expr(nextId("wnn"), (Predicate1) c -> RegelSpraakRuntime.get(c, gewAttr) != null);
             Variable wVar = DSL.declarationOf(BigDecimal.class, "$w_" + (seq++));
             accSrc = accSrc.bind(wVar, (Function1) c -> RegelSpraakRuntime.get(c, gewAttr));
-            acc = DSL.accumulate(accSrc, DSL.accFunction(BigDecimalSumAccumulateFunction.class, wVar).as(foldVar));
+            acc = DSL.accumulate(accSrc, DSL.accFunction(accFn("BigDecimalSumAccumulateFunction"), wVar).as(foldVar));
         }
 
         // the recipient pattern: $r joined to $src (naar rato additionally requires a present weight).
@@ -2380,7 +2374,7 @@ public final class ExecModelTranspiler {
                 .expr(nextId("join"), (Variable) srcVar, (Predicate2) (p, s) -> RegelSpraakRuntime.get(p, join) == s)
                 .bind(idVar, (Function1) p -> p);
         Variable factsVar = DSL.declarationOf(java.util.List.class, "$facts_" + (seq++));
-        RuleItemBuilder<?> acc = DSL.accumulate(accSrc, DSL.accFunction(CollectListAccumulateFunction.class, idVar).as(factsVar));
+        RuleItemBuilder<?> acc = DSL.accumulate(accSrc, DSL.accFunction(accFn("CollectListAccumulateFunction"), idVar).as(factsVar));
 
         Variable rVar = DSL.declarationOf(doelClass, "$r");
         PatternDSL.PatternDef rPat = PatternDSL.pattern(rVar).expr(nextId("rjoin"), (Variable) srcVar,
@@ -2467,7 +2461,7 @@ public final class ExecModelTranspiler {
         Variable amtVar = DSL.declarationOf(BigDecimal.class, "$amt_" + (seq++));
         accSrc = accSrc.bind(amtVar, (Function1) d -> RegelSpraakRuntime.get(d, doelAttr));
         Variable sumVar = DSL.declarationOf(Object.class, "$uit_" + (seq++));
-        RuleItemBuilder<?> acc = DSL.accumulate(accSrc, DSL.accFunction(BigDecimalSumAccumulateFunction.class, amtVar).as(sumVar));
+        RuleItemBuilder<?> acc = DSL.accumulate(accSrc, DSL.accFunction(accFn("BigDecimalSumAccumulateFunction"), amtVar).as(sumVar));
         Block3<org.drools.model.Drools, Object, Object> body = (drools, s, uit) -> {
             BigDecimal totaal = (BigDecimal) RegelSpraakRuntime.get(s, bronAttr);
             BigDecimal sum = RegelSpraakRuntime.toBd(uit);
@@ -2753,6 +2747,21 @@ public final class ExecModelTranspiler {
     private static Class<?> inconsistentieClass() {
         try { return Class.forName(FACTS + ".Inconsistentie"); }
         catch (ClassNotFoundException e) { return null; }
+    }
+
+    /** A built-in Drools accumulate function ({@code org.drools.core.base.accumulators.*}) by simple name, resolved
+     *  at MODEL-BUILD time via {@link Class#forName} rather than a compile-time {@code .class} literal. This keeps
+     *  {@code src/main} compiling against {@code drools-canonical-model} ALONE (the Model-building DSL) — the
+     *  accumulator impls live in {@code drools-core}, which only needs to be on the RUNTIME classpath of whoever
+     *  fires the Model (the consumer engine), not the compile classpath of the transpiler. {@code DSL.accFunction}
+     *  accepts an unbounded {@code Class<?>}, so the runtime-resolved class flows through unchanged. */
+    private static final String ACC_PKG = "org.drools.core.base.accumulators.";
+    static Class<?> accFn(String simpleName) {
+        try { return Class.forName(ACC_PKG + simpleName); }
+        catch (ClassNotFoundException e) {
+            throw new IllegalStateException("Drools accumulate-functie " + simpleName + " ontbreekt op het classpath"
+                    + " (drools-core is een RUNTIME-afhankelijkheid van de uitvoerende engine)", e);
+        }
     }
 
     private Rule skip(String reason) { overgeslagen.add(reason); return null; }

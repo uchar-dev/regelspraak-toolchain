@@ -55,14 +55,17 @@
       <version>${drools.version}</version>
     </dependency>
 
-    <!-- Phase C (aggregations): the executable model references the built-in accumulate-function impls
-         (org.drools.core.base.accumulators.{Count,BigDecimalSum,Min,NumericMax}AccumulateFunction) by Class in
-         DSL.accFunction(...). Those live in drools-core, so the model back-end needs it at COMPILE scope. Engine
-         /compiler stay test-scoped (below). [Phase H: revisit this coupling to a core-internal package.] -->
+    <!-- The executable model references the built-in accumulate-function impls
+         (org.drools.core.base.accumulators.{Count,BigDecimalSum,Min,Max,CollectList}AccumulateFunction) only
+         through ExecModelTranspiler.accFn(simpleName) = Class.forName(...), resolved at MODEL-BUILD time from the
+         RUNTIME classpath — NOT a compile-time .class literal. So src/main compiles against drools-canonical-model
+         ALONE; drools-core is a RUNTIME concern of whoever FIRES the Model (the consumer engine module pulls it via
+         drools-engine). Here it is TEST-scoped so the differential test can fire the Model in-process. -->
     <dependency>
       <groupId>org.drools</groupId>
       <artifactId>drools-core</artifactId>
       <version>${drools.version}</version>
+      <scope>test</scope>
     </dependency>
 
     <!-- Drools is needed only to COMPILE AND RUN the generated DRL in the
