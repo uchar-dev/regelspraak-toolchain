@@ -1560,8 +1560,9 @@ public final class DrlTranspiler {
 
     /** Map a tijdsduur's declared unit (its result {@link Datatype}'s eenheid, e.g. TOKA's "jr" or a bare
      *  "jaar") to a {@link java.time.temporal.ChronoUnit} name. Normalised through the shared plural->singular
-     *  reducer so "jaren"/"jaar"/"jr" all land on YEARS; returns null for kwartaal (no ChronoUnit) or any
-     *  unrecognised unit, so the caller markers. */
+     *  reducer so "jaren"/"jaar"/"jr" all land on YEARS; a kwartaal maps to the pseudo-unit "KWARTAAL"
+     *  (rsDatumReken/rsTijdsduur special-case it as 3×MONTHS — no ChronoUnit.QUARTERS); returns null only for a
+     *  dagsoort or an unrecognised unit, so the caller markers. */
     private static String chronoUnit(Datatype t) {
         io.github.yhavinga.regelspraak.model.Eenheid e = t.eenheidOf();
         if (e == null) return null;

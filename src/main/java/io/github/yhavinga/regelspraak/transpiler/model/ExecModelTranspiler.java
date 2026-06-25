@@ -935,8 +935,9 @@ public final class ExecModelTranspiler {
     }
 
     /** Map a duration unit (its Datatype's eenheid) to a {@link java.time.temporal.ChronoUnit} name — byte-identical
-     *  to DrlTranspiler.chronoUnit, so both back-ends key date arithmetic on the SAME unit. null for kwartaal / a
-     *  dagsoort / an unrecognised unit (the caller then skips). */
+     *  to DrlTranspiler.chronoUnit, so both back-ends key date arithmetic on the SAME unit. A kwartaal maps to the
+     *  pseudo-unit "KWARTAAL" (rsDatumReken special-cases it as 3×MONTHS); null only for a dagsoort / an unrecognised
+     *  unit (the caller then skips). */
     private static String chronoUnit(Datatype t) {
         Eenheid e = t.eenheidOf();
         if (e == null) return null;
@@ -957,7 +958,8 @@ public final class ExecModelTranspiler {
     /** §6/§13.4.16 date arithmetic as a value: a datum/datumtijd ± a numeric-with-time-unit -> a new date(time) via
      *  {@link RegelSpraakRuntime#rsDatumReken} (optellen=PLUS=later; MIN/VERMINDERD_MET=earlier; aantal 0 -> unchanged;
      *  leeg operand -> leeg). Mirrors DrlTranspiler.binairTerm's datum branch and its guards: only +/-, no datum-datum,
-     *  a time unit (uur/…) needs a datum-tijd operand, and a kwartaal/dagsoort/unresolvable operand -> null (skip). */
+     *  a time unit (uur/…) needs a datum-tijd operand, kwartaal lowers (3×MONTHS via rsDatumReken), and a
+     *  dagsoort/unresolvable operand -> null (skip). */
     private WaardeFn datumRekenWaarde(Expr.Binair b) {
         Expr.BinOp op = b.op();
         if (op != Expr.BinOp.PLUS && op != Expr.BinOp.MIN && op != Expr.BinOp.VERMINDERD_MET) return null;
