@@ -386,9 +386,16 @@ public final class ExecModelTranspiler {
         // §5.8.3 a multi-operand min/max, or a multi-operand count without a resolved union filter, drops operands -> skip.
         if ((f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM) && f.argumenten().size() > 1) return null;
         if (count && f.argumenten().size() > 1 && f.filter() == null) return null;
-        Expr.AttribuutRef arg = !f.argumenten().isEmpty() && f.argumenten().get(0) instanceof Expr.AttribuutRef a ? a : null;
-        // a SOM/MIN/MAX over a TEMPORAL attribute would aggregate the List<Segment> itself -> Phase F skip.
-        if (arg != null && arg.objecttype() != null && arg.objecttype().attribuutGranulariteit.containsKey(arg.attribuut())) return null;
+        // the argument is a temporal attribute DIRECTLY ("het totaal van <attr> van alle") or wrapped in a nested
+        // "het totaal van" Functie ("de som van het totaal van <attr> van alle") — unwrap to the inner attribute.
+        Expr ruwArg = f.argumenten().isEmpty() ? null : f.argumenten().get(0);
+        Expr argExpr = ruwArg instanceof Expr.Functie tf && tf.kind() == Expr.FunctieKind.TOTAAL && tf.argumenten().size() == 1
+                ? tf.argumenten().get(0) : ruwArg;
+        Expr.AttribuutRef arg = argExpr instanceof Expr.AttribuutRef a ? a : null;
+        boolean temporeel = arg != null && arg.objecttype() != null && arg.objecttype().attribuutGranulariteit.containsKey(arg.attribuut());
+        // §7.1 a SOM/TOTAAL over a temporal attribute is a PER-ELEMENT timeline fold (rsTijdTotaal per element, then
+        // sum); MIN/MAX over a temporal attribute is ambiguous -> skip (mirror the DRL marker).
+        if (temporeel && f.kind() != Expr.FunctieKind.SOM && f.kind() != Expr.FunctieKind.TOTAAL) return null;
         if (!count && arg == null) return null;   // sum/min/max need an attribute to fold
 
         // §9.4 the join role binding the element to the subject (a count may name its element role explicitly).
@@ -413,6 +420,12 @@ public final class ExecModelTranspiler {
                     resultVar, null, null, false);
 
         final String attr = arg.attribuut();
+        // §7.1 per-element timeline fold: a temporal element value is summed over time (rsTijdTotaal at the attribute's
+        // granularity) to a scalar BEFORE the set fold, instead of the bare List<Segment> getter.
+        final String tijdGran = temporeel ? arg.objecttype().attribuutGranulariteit.get(attr).name() : null;
+        final Function1<Object, Object> elemWaarde = temporeel
+                ? (e) -> RegelSpraakRuntime.rsTijdTotaal((List<?>) RegelSpraakRuntime.get(e, attr), tijdGran)
+                : (e) -> RegelSpraakRuntime.get(e, attr);
         // The fold always uses the BigDecimal accumulate variant: a Numeriek attribute maps to a BigDecimal getter
         // (the §6 exact-precision invariant), and BigDecimalSum/Min/Max skip nulls — matching what the DRL `sum`/
         // `min`/`max` keyword resolves to for a BigDecimal arg. (Seam, adversary-noted: if a future objecttype ever
@@ -430,7 +443,7 @@ public final class ExecModelTranspiler {
                 if (fallback == null || !fallback.globals().isEmpty()) return null;   // unlowerable / global fallback -> skip
             }
             PatternDSL.PatternDef src2 = src.expr(nextId("nn"), (Predicate1) (e) -> RegelSpraakRuntime.get(e, attr) != null)
-                    .bind(amtVar, (Function1) (e) -> RegelSpraakRuntime.get(e, attr));
+                    .bind(amtVar, (Function1) elemWaarde);
             Variable cntVar = DSL.declarationOf(Object.class, "$cnt_" + (seq++));
             RuleItemBuilder acc = DSL.accumulate(src2,
                     DSL.accFunction(accFn("CountAccumulateFunction")).as(cntVar),
@@ -445,7 +458,7 @@ public final class ExecModelTranspiler {
             default      -> null;
         };
         if (accClass == null) return null;
-        PatternDSL.PatternDef src2 = src.bind(amtVar, (Function1) (e) -> RegelSpraakRuntime.get(e, attr));
+        PatternDSL.PatternDef src2 = src.bind(amtVar, (Function1) elemWaarde);
         return new Agg(DSL.accumulate(src2, DSL.accFunction(accClass, amtVar).as(resultVar)), resultVar, null, null, false);
     }
 

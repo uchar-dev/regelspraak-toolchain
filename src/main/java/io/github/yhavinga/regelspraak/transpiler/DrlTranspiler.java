@@ -2384,13 +2384,19 @@ public final class DrlTranspiler {
         // than fake a partial fold over the first set; the single-operand set MIN/MAX (size 1) is untouched.
         if ((f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM)
                 && f.argumenten().size() > 1) return null;
-        // A SOM/TOTAAL/MIN/MAX over a TEMPORAL attribute ("de <attr> per maand van alle <set>") cannot be a
-        // Drools sum/min/max over the getter — that aggregates the List<Segment> timeline itself (a
-        // ClassCastException at fire time), never period-weighting the tijdvakken. A per-element timeline fold
-        // (fold each element's tijdreeks, then aggregate) is not lowered yet -> marker, never a crashing/wrong
-        // aggregate. (The single-object §7.1 totaal is handled upstream by tijdreeksAggregatie.)
-        if (!f.argumenten().isEmpty() && f.argumenten().get(0) instanceof Expr.AttribuutRef ta
-                && ta.objecttype() != null && ta.objecttype().attribuutGranulariteit.containsKey(ta.attribuut()))
+        // §7.1+§5.8 a SOM/TOTAAL over a TEMPORAL attribute of a SET ("de som van het totaal van <attr per maand> van
+        // alle <set>") is a PER-ELEMENT timeline fold: each element's tijdreeks is summed over time (rsTijdTotaal)
+        // to a scalar, and those scalars are summed over the set. A bare Drools sum() over the getter would aggregate
+        // the List<Segment> itself (a ClassCastException), so the element value is wrapped in rsTijdTotaal below.
+        // MIN/MAX over a temporal attribute is ambiguous (min/max of which moment?) -> still a marker.
+        // The temporal element value is the argument DIRECTLY ("het totaal van <attr> van alle") or wrapped in a
+        // nested "het totaal van" Functie ("de som van het totaal van <attr> van alle") — unwrap to the inner attr.
+        Expr ruwArg = f.argumenten().isEmpty() ? null : f.argumenten().get(0);
+        Expr argExpr = ruwArg instanceof Expr.Functie tf && tf.kind() == Expr.FunctieKind.TOTAAL && tf.argumenten().size() == 1
+                ? tf.argumenten().get(0) : ruwArg;
+        boolean temporeelArg = argExpr instanceof Expr.AttribuutRef ta0
+                && ta0.objecttype() != null && ta0.objecttype().attribuutGranulariteit.containsKey(ta0.attribuut());
+        if (temporeelArg && f.kind() != Expr.FunctieKind.SOM && f.kind() != Expr.FunctieKind.TOTAAL)
             return null;
         Objecttype elem = f.elementObjecttype();
         String fn = switch (f.kind()) {
@@ -2416,7 +2422,15 @@ public final class DrlTranspiler {
         }
         int n = ++accCount;
         String ev = "$e" + n, var = "$acc" + n;
-        Expr arg = f.argumenten().isEmpty() ? null : f.argumenten().get(0);
+        Expr arg = argExpr;   // the (possibly TOTAAL-unwrapped) aggregation argument
+        // §7.1 a per-element timeline fold: a temporal-attribute element value is summed over time (rsTijdTotaal at the
+        // attribute's granularity) to a scalar BEFORE the set aggregate, instead of the bare List<Segment> getter.
+        java.util.function.Function<Expr.AttribuutRef, String> elemWaarde = a -> {
+            String getr = ev + "." + getter(a.attribuut()) + "()";
+            if (!temporeelArg) return getr;
+            registreerTijdTotaalFunctie();
+            return "rsTijdTotaal(" + getr + ", \"" + a.objecttype().attribuutGranulariteit.get(a.attribuut()).name() + "\")";
+        };
 
         // §4.10/§5.8.2 sommatie ("som van"): an empty sum (no non-empty contributors) is a
         // leegwaarde, not 0 — unless "of … als die er niet zijn" supplies a fallback. Drools
@@ -2429,14 +2443,14 @@ public final class DrlTranspiler {
             String cnt = "$n" + n;
             accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true)
                     + "( " + filterScope + ", " + ident(a.attribuut(), false) + " != null ) ; "
-                    + cnt + " : count(" + ev + "), " + var + " : sum( " + ev + "." + getter(a.attribuut()) + "() ) )");
+                    + cnt + " : count(" + ev + "), " + var + " : sum( " + elemWaarde.apply(a) + " ) )");
             Frag fallback = f.leegwaarde() != null ? waarde(f.leegwaarde(), subject) : Frag.ok("null");
             return Frag.from("(" + cnt + " == 0 ? " + fallback.text() + " : " + var + ")", fallback);
         }
 
         String elementExpr = ev;
         if (!fn.equals("count") && arg instanceof Expr.AttribuutRef a)
-            elementExpr = ev + "." + getter(a.attribuut()) + "()";
+            elementExpr = elemWaarde.apply(a);
         accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true)
                 + "( " + filterScope + " ) ; " + var + " : " + fn + "( " + elementExpr + " ) )");
         return Frag.ok(var);

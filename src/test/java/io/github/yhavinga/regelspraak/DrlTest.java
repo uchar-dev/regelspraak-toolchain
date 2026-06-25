@@ -2841,11 +2841,12 @@ class DrlTest {
                 () -> "geen single-period rsTijdTotaal voor een benoemde 5-maanden tijdlijn:\n" + drl);
     }
 
-    @Test void temporeel_totaal_over_een_set_markeert_niet_vouwt_de_eigen_tijdreeks_of_sumt_de_lijst() {
-        // Review defect: "het totaal van <temporeel attr> van ALLE <set>" is a SET aggregation, not a single
-        // timeline. When the element type EQUALS the subject's, the resolver collapses it to an EIGEN-looking ref
-        // (onderwerp "alle …"); it must MARKER, never fold the subject's OWN series (silent wrong) nor — for a
-        // DIFFERENT element type — sum the List<Segment> (a fire-time ClassCastException).
+    @Test void temporeel_totaal_over_een_set_vouwt_per_element_de_tijdreeks() {
+        // §7.1+§5.8 "het totaal van <temporeel attr> van ALLE <set>" is a PER-ELEMENT timeline fold: each element's
+        // tijdreeks is summed over time (rsTijdTotaal) to a scalar, then those scalars are summed over the set — NEVER
+        // a raw sum() over the List<Segment> (a fire-time ClassCastException). The same-type case still markers (the
+        // separate set->own collapse: when the element type EQUALS the subject's the resolver loses the "alle"
+        // quantifier — carded), so it must not fold the subject's OWN series either.
         String sameType = """
             Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
             Objecttype de Vlucht (mv: Vluchten)
@@ -2880,9 +2881,10 @@ class DrlTest {
                     De totaalprijs van een Vlucht moet gesteld worden op het totaal van de belastingvermindering per maand van alle passagiers van de reis.
             """;
         String drl2 = DrlTranspiler.transpile(Resolver.resolve(diffType));
-        assertFalse(drl2.contains("getBelastingverminderingPerMaand()"),
-                () -> "een set-totaal over een ander type mag de List<Segment> niet sommen:\n" + drl2);
-        assertTrue(drl2.contains("/* TODO aggregatie TOTAAL"), () -> "een set-totaal (ander type) moet markeren:\n" + drl2);
+        assertTrue(drl2.contains("sum( rsTijdTotaal($e1.getBelastingverminderingPerMaand(), \"MAAND\") )"),
+                () -> "een set-totaal over een temporeel attribuut moet per element de tijdreeks vouwen (rsTijdTotaal):\n" + drl2);
+        assertFalse(drl2.contains("sum( $e1.getBelastingverminderingPerMaand() )"),
+                () -> "het mag de List<Segment> niet RAUW sommen (ClassCastException):\n" + drl2);
     }
 
     @Test void temporeel_totaal_over_een_niet_alle_set_kwantor_markeert_via_de_structurele_set_vlag() {

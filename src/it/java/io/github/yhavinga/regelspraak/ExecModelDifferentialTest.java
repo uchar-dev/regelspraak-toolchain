@@ -3046,6 +3046,52 @@ class ExecModelDifferentialTest {
         }
     }
 
+    // ---- Phase PE: §7.1+§5.8 PER-ELEMENT timeline fold — "het totaal van <temporeel attr> van alle <set>". Each
+    //      element's tijdreeks is summed over time (rsTijdTotaal) to a scalar, then those scalars are summed over the
+    //      set (a Drools accumulate sum over rsTijdTotaal($e.getX(), gran)). Subject = Vlucht, set = its passagiers. ----
+    static final Fixture[] PHASE_PE = {
+        new Fixture("§7.1 per-element timeline fold: het totaal van <temporeel attr> van alle <set>",
+            """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+            Objecttype de Vlucht (mv: Vluchten) (bezield)
+                de totaalprijs Bedrag;
+            Feittype reis
+                de passagier Passagier
+                de reis Vlucht
+            Eén reis heeft meerdere passagiers
+            Regel R
+                geldig altijd
+                    De totaalprijs van een Vlucht moet gesteld worden op het totaal van de belastingvermindering per maand van alle passagiers.
+            """,
+            () -> {
+                Vlucht v = new Vlucht();
+                Passagier p1 = new Passagier(); p1.setReis(v);
+                p1.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00")));   // €10/mnd × 12 = 120
+                Passagier p2 = new Passagier(); p2.setReis(v);
+                p2.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 7, 1, "5.00")));    // €5/mnd × 6 = 30
+                Passagier leeg = new Passagier(); leeg.setReis(v);                                     // null timeline -> 0
+                return List.of(v, p1, p2, leeg);
+            },
+            Map.of(),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 120 + 30 + 0 = 150
+    };
+
+    /** §7.1 per-element timeline fold: assert the DRL oracle sums the per-element rsTijdTotaal to the spec value (150)
+     *  AND the model agrees (rsTijdTotaal is a shared helper — assert the absolute value, not only DRL==model). */
+    @Test void phase_PE_per_element_timeline_fold_is_spec_correct() {
+        Fixture f = PHASE_PE[0];
+        RegelSpraakModel m = Resolver.resolve(f.src());
+        assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+        BigDecimal viaDrl = (BigDecimal) fire(drlBase(m), f);
+        BigDecimal viaModel = (BigDecimal) fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+        assertEquals(0, new BigDecimal("150").compareTo(viaDrl), () -> "DRL (oracle) wrong vs spec (120+30+0=150): " + viaDrl);
+        assertEquals(0, viaDrl.compareTo(viaModel), () -> "back-ends DIVERGE: DRL=" + viaDrl + " model=" + viaModel);
+    }
+
     // ---- scalar arithmetic (§6.2-6.4): plus / min / verminderd met / maal, with the leegwaarde tables ----
     static final String ARITH_SRC = """
             Objecttype de Rekensom
