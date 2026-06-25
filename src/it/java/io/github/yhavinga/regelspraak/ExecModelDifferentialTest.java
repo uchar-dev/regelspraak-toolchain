@@ -2512,7 +2512,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 9); }
-    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 10); }
+    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 11); }
     @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 7); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
@@ -2725,6 +2725,26 @@ class ExecModelDifferentialTest {
                 Rekensom leegLinks = new Rekensom(); leegLinks.setAftrek(new BigDecimal(4));         // leeg / |4| -> 0, geen fout
                 Rekensom beide = new Rekensom(); beide.setGrondslag(new BigDecimal(12)); beide.setAftrek(new BigDecimal(-4)); // 12 / |−4| = 3, geen fout
                 return List.of(waardeLeeg, leegLinks, beide);
+            },
+            o -> "g=" + ((Rekensom) o).getGrondslag() + ",a=" + ((Rekensom) o).getAftrek()),
+
+        // §6.5 a division INSIDE a §13.4.17.28 begrenzing BOUND (parenthesised, "met een minimum van (a / b)"). DRL's
+        // verzamelDelingen recurses into Begrensd.minimum()/maximum(); the model previously recursed only into basis(),
+        // dropping the bound's deling-door-leeg companion (masked under-fire — the rsBegrens value still lowers).
+        new FoutFixture("deling-door-leeg INSIDE a begrenzing bound (minimum van (a / b))",
+            """
+            Objecttype de Rekensom
+                de grondslag Numeriek (geheel getal);
+                de aftrek Numeriek (geheel getal);
+                de deelResultaat Numeriek (getal met 2 decimalen);
+            Regel deelbound
+                geldig altijd
+                    De deelResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom, met een minimum van (de grondslag van een Rekensom gedeeld door de aftrek van een Rekensom).
+            """,
+            () -> {
+                Rekensom leegDeler = new Rekensom(); leegDeler.setGrondslag(new BigDecimal(12));   // bound 12 / leeg -> fout
+                Rekensom okDeler = new Rekensom(); okDeler.setGrondslag(new BigDecimal(12)); okDeler.setAftrek(new BigDecimal(4)); // bound 12/4 -> geen fout
+                return List.of(leegDeler, okDeler);
             },
             o -> "g=" + ((Rekensom) o).getGrondslag() + ",a=" + ((Rekensom) o).getAftrek()),
     };
