@@ -692,7 +692,10 @@ public final class ExecModelTranspiler {
                 BigDecimal factor = fwd == null ? null : (deel ? inv : fwd);
                 java.util.function.Function<Object, List<?>> cond = (zelfdeEenheid || factor != null) ? conditieTijdreeks(f.filter(), subject) : null;
                 java.util.function.Predicate<Object> guard = cond == null ? null : mixedGuardWrite(f.filter(), subject);   // §8.4 static gate
-                if (cond != null && guard != null) {
+                // §8.4.2 OR-mixed (ten minste 1: a temporal kenmerk OR a static comparison): conditieTijdreeks markers
+                // the mixed OR, but tijdsevenredig's base bounds the static-true span. Mirrors DrlTranspiler.orMixedTijdsevenredig.
+                OrMixed orMixed = (cond == null && (zelfdeEenheid || factor != null)) ? orMixedTijdsevenredig(f.filter(), subject) : null;
+                if ((cond != null && guard != null) || orMixed != null) {
                     Class<?> segCls = segmentClass();
                     if (segCls != null) {
                         final String granName = gran.name();
@@ -702,6 +705,18 @@ public final class ExecModelTranspiler {
                         // scale the base by the unit factor when a rate conversion is needed (§7.3.1), else read it raw.
                         final BiFunction<Object, Object, List<?>> br = fFactor == null ? br0
                                 : (s, gv) -> RegelSpraakRuntime.rsTijdSchaal(br0.apply(s, gv), fFactor, fDeel);
+                        if (orMixed != null) {
+                            // static TRUE -> prorate the base over its FULL extent (base AS its own all-true condition,
+                            // rsTijdsevenredig reading the base's segments as true periods); static FALSE -> the temporal
+                            // union only. Mirrors DrlTranspiler.orMixedTijdsevenredig.
+                            final OrMixed om = orMixed;
+                            return new TemporeleWaarde((s, gv) -> {
+                                List<?> baseList = br.apply(s, gv);
+                                return om.orGuard().test(s)
+                                        ? RegelSpraakRuntime.rsTijdsevenredig(baseList, baseList, granName, segCls)
+                                        : RegelSpraakRuntime.rsTijdsevenredig(om.unionCond().apply(s), baseList, granName, segCls);
+                            }, baseGlobal);
+                        }
                         final java.util.function.Predicate<Object> fGuard = guard;
                         return new TemporeleWaarde(
                                 (s, gv) -> fGuard.test(s)
@@ -790,6 +805,34 @@ public final class ExecModelTranspiler {
     private static List<?> lidSteun(Object sub, List<?> value, Conditie.Kenmerk k, Class<?> segCls) {
         List<?> g = (List<?>) RegelSpraakRuntime.get(sub, k.kenmerk());
         return k.negatie() ? RegelSpraakRuntime.rsTijdKnipNiet(value, g, segCls) : g;
+    }
+
+    /** The two pieces of a lowered OR-mixed tijdsevenredig: the temporal union's true-period timeline (the static-FALSE
+     *  condition) and the static members' OR gate (true -> widen to the base's full extent). */
+    private record OrMixed(java.util.function.Function<Object, List<?>> unionCond, java.util.function.Predicate<Object> orGuard) {}
+
+    /** §8.4.2 lower an OR-mixed ("ten minste 1": a temporal kenmerk OR a static comparison) gating the §13.4.17.58
+     *  tijdsevenredig WRITE producer. A TRUE static member satisfies the OR for the WHOLE span; tijdsevenredig's base
+     *  bounds that span, so static TRUE prorates the base over its full extent (base AS its own all-true condition) and
+     *  static FALSE prorates over the temporal union only. Returns the (union-cond, OR-guard) pair, or null when the
+     *  compound is not a temporal+static OR-mix or a member is not lowerable. Mirrors DrlTranspiler.orMixedTijdsevenredig. */
+    private OrMixed orMixedTijdsevenredig(Conditie filter, Objecttype subject) {
+        if (!(filter instanceof Conditie.Samengesteld s) || s.kwantor() != Conditie.Kwantor.TEN_MINSTE || s.drempel() != 1)
+            return null;
+        List<Conditie> temporeel = new ArrayList<>();
+        List<Conditie.Vergelijking> statisch = new ArrayList<>();
+        for (Conditie c : s.onderdelen()) {
+            if (c instanceof Conditie.Kenmerk) temporeel.add(c);
+            else if (c instanceof Conditie.Vergelijking v) statisch.add(v);
+            else return null;   // an unsupported member type -> marker
+        }
+        if (temporeel.isEmpty() || statisch.isEmpty()) return null;   // not a temporal+static mixed compound
+        Conditie.Samengesteld temporeelDeel = new Conditie.Samengesteld(s.kwantor(), s.drempel(), temporeel, s.bron());
+        java.util.function.Function<Object, List<?>> unionCond = conditieTijdreeks(temporeelDeel, subject);
+        if (unionCond == null) return null;   // a negated / navigated / multi-period temporal member -> marker
+        java.util.function.Predicate<Object> orGuard = statischeGuard(statisch, subject, false);   // OR
+        if (orGuard == null) return null;     // a static member we cannot lower -> marker
+        return new OrMixed(unionCond, orGuard);
     }
 
     /** §8.4 the value-side static guard for a temporal-WRITE compound: the AND of the non-temporal comparison members

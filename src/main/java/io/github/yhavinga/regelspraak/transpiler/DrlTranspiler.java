@@ -1872,13 +1872,22 @@ public final class DrlTranspiler {
                 java.math.BigDecimal inv = fwd == null ? null : omrekenFactor(doelType, baseType);
                 boolean deel = inv != null && inv.precision() < fwd.precision();
                 java.math.BigDecimal factor = fwd == null ? null : (deel ? inv : fwd);
+                String basis = factor == null ? baseExpr
+                        : "rsTijdSchaal(" + baseExpr + ", new java.math.BigDecimal(\"" + factor.toPlainString() + "\"), " + deel + ")";
                 String cond = (zelfdeEenheid || factor != null) ? conditieTijdreeks(f.filter(), subject) : null;
+                String call = null;
                 if (cond != null) {
-                    String basis = factor == null ? baseExpr
-                            : "rsTijdSchaal(" + baseExpr + ", new java.math.BigDecimal(\"" + factor.toPlainString() + "\"), " + deel + ")";
-                    String call = mixedGuardWrap("rsTijdsevenredig(" + cond + ", " + basis + ", \"" + gran.name() + "\")", f.filter(), subject);
-                    if (call != null) { registreerTijdsevenredigFunctie(); if (factor != null) registreerTijdSchaalFunctie(); return call; }
+                    call = mixedGuardWrap("rsTijdsevenredig(" + cond + ", " + basis + ", \"" + gran.name() + "\")", f.filter(), subject);
+                } else if (zelfdeEenheid || factor != null) {
+                    // §8.4.2 OR-mixed (ten minste 1: a temporal kenmerk OR a static comparison): conditieTijdreeks
+                    // markers a mixed OR, but a tijdsevenredig HAS a base whose value-timeline bounds the static-true
+                    // span (unlike aantal-dagen-in, which has no base/extent), so it lowers like the totaal-READ
+                    // OR-mixed (~line 1757): a TRUE static member -> prorate the base over its FULL extent (the base AS
+                    // its own all-true condition — rsTijdsevenredig reads a condition's SEGMENTS as the true periods,
+                    // so basis-as-condition is factor 1 per fully-covered bucket); FALSE -> the temporal-union clip.
+                    call = orMixedTijdsevenredig(f.filter(), subject, basis, gran);
                 }
+                if (call != null) { registreerTijdsevenredigFunctie(); if (factor != null) registreerTijdSchaalFunctie(); return call; }
             }
         }
         return null;
@@ -1921,6 +1930,37 @@ public final class DrlTranspiler {
             return acc;
         }
         return null;
+    }
+
+    /** §8.4.2 lower an OR-mixed ("ten minste 1": a temporal kenmerk OR a static comparison) gating the §13.4.17.58
+     *  tijdsevenredig WRITE producer. The disjunction is span-dependent: a TRUE static member satisfies the OR for the
+     *  WHOLE span, a FALSE one leaves only the temporal-union periods. tijdsevenredig HAS a base value-timeline that
+     *  bounds the "full span", so (mirroring the totaal-READ OR-mixed at ~line 1757): static TRUE -> prorate the base
+     *  over its full extent ({@code rsTijdsevenredig(basis, basis)} — basis-as-condition feeds rsTijdsevenredig the
+     *  base's segments as the true periods, i.e. factor 1 per fully-covered bucket); static FALSE -> prorate over the
+     *  temporal union only. Null when the compound is not a temporal+static OR-mix or a member is not lowerable (a
+     *  negated/navigated temporal member, an unliftable static comparison) -> the caller markers. (aantal-dagen-in has
+     *  no base/extent, so its OR-mixed static-true "count all days" is under-defined and stays markered.) */
+    private String orMixedTijdsevenredig(Conditie filter, Objecttype subject, String basis, RegelSpraakModel.Granulariteit gran) {
+        if (!(filter instanceof Conditie.Samengesteld s) || s.kwantor() != Conditie.Kwantor.TEN_MINSTE || s.drempel() != 1)
+            return null;
+        java.util.List<Conditie> temporeel = new java.util.ArrayList<>();
+        java.util.List<Conditie.Vergelijking> statisch = new java.util.ArrayList<>();
+        for (Conditie c : s.onderdelen()) {
+            if (c instanceof Conditie.Kenmerk) temporeel.add(c);
+            else if (c instanceof Conditie.Vergelijking v) statisch.add(v);
+            else return null;   // an unsupported member type -> marker
+        }
+        if (temporeel.isEmpty() || statisch.isEmpty()) return null;   // not a temporal+static mixed compound
+        Conditie.Samengesteld temporeelDeel = new Conditie.Samengesteld(s.kwantor(), s.drempel(), temporeel, s.bron());
+        String unionCond = conditieTijdreeks(temporeelDeel, subject);
+        if (unionCond == null) return null;   // a negated / navigated / multi-period temporal member -> marker
+        String orGuard = statischeGuard(statisch, subject, " || ");
+        if (orGuard == null) return null;     // a static member we cannot lower -> marker
+        String g = "\"" + gran.name() + "\"";
+        return "(" + orGuard
+                + " ? rsTijdsevenredig(" + basis + ", " + basis + ", " + g + ")"
+                + " : rsTijdsevenredig(" + unionCond + ", " + basis + ", " + g + "))";
     }
 
     /** §8.4 wrap a temporal-WRITE producer call in a mixed compound's STATIC guard: a non-temporal comparison member

@@ -2705,6 +2705,49 @@ class DrlTest {
         assertTrue(negLid.contains("/* TODO"), () -> "een genegeerd compound-lid moet markeren:\n" + negLid);
     }
 
+    @Test void or_mixed_op_tijdsevenredig_write_verbreedt_de_basis_span_aantal_dagen_markeert() {
+        // §8.4.2 an OR-mixed ("ten minste 1": a temporal kenmerk OR a static comparison) gating a temporal-WRITE
+        // producer. tijdsevenredig HAS a base whose value-timeline bounds the static-true "full span", so it lowers
+        // like the totaal-READ OR-mixed: static TRUE -> prorate the base over its FULL extent (base AS its own all-true
+        // condition, rsTijdsevenredig reading a condition's segments as the true periods); static FALSE -> the temporal
+        // union. aantal-dagen-in has NO base/extent, so its OR-mixed static-true "count all days" is under-defined and
+        // stays an HONEST marker.
+        String tev = DrlTranspiler.transpile(Resolver.resolve("""
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de standaardbedrag Bedrag voor elk jaar;
+                de belastingvermindering Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de leeftijd Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van zijn standaardbedrag gedurende de tijd dat er aan ten minste 1 van de volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - zijn leeftijd is gelijk aan 18).
+            """));
+        assertTrue(tev.contains("? rsTijdsevenredig($subject.getStandaardbedrag(), $subject.getStandaardbedrag(), \"MAAND\")"),
+                () -> "static-TRUE moet de basis over de volle span prorateren (basis-als-eigen-conditie):\n" + tev);
+        assertTrue(tev.contains(": rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), $subject.getStandaardbedrag(), \"MAAND\")"),
+                () -> "static-FALSE moet over de temporele unie prorateren:\n" + tev);
+        assertFalse(tev.contains("/* TODO"), () -> "de OR-mixed tijdsevenredig WRITE mag geen marker zijn:\n" + tev);
+
+        // aantal-dagen-in OR-mixed: no base/extent for the static-true full count -> an HONEST marker, never a silent
+        // (wrong) union that would drop the static-true case.
+        String adi = DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de leeftijd Numeriek (geheel getal);
+                het aantal dagen recht op belastingvermindering Numeriek (geheel getal) met eenheid dg voor elke maand;
+            Regel R
+                geldig altijd
+                    Het aantal dagen recht op belastingvermindering van een passagier moet gesteld worden op het aantal dagen in de maand dat er aan ten minste 1 van de volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - zijn leeftijd is gelijk aan 18.
+            """));
+        assertFalse(adi.contains("rsAantalDagenIn"), () -> "OR-mixed aantal-dagen-in mag niet stil verenigen (de static-true span ontbreekt):\n" + adi);
+        assertTrue(adi.contains("/* TODO temporele toekenning"), () -> "OR-mixed aantal-dagen-in moet eerlijk markeren:\n" + adi);
+    }
+
     private static String mixedCompound(String kwantor, String tweedeLid) {
         return DrlTranspiler.transpile(Resolver.resolve("""
             Domein Bedrag is van het type Numeriek (getal met 2 decimalen)

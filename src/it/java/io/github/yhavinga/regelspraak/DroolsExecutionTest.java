@@ -920,6 +920,68 @@ class DroolsExecutionTest {
         assertEquals(0, new BigDecimal("4.50").compareTo(uit.get(1).getWaarde()), () -> "feb-2025 unie [1-2..8-2) = 7/28 × €18 = €4,50, was " + uit.get(1).getWaarde());
     }
 
+    @Test void tijdsevenredig_or_mixed_verbreedt_naar_de_volle_basis_span_bij_ware_static(){
+        // §8.4.2 an OR-mixed ("ten minste 1": a temporal kenmerk OR a static comparison) gating the tijdsevenredig
+        // WRITE. A TRUE static member satisfies the OR for the WHOLE span -> prorate the base over its FULL extent (the
+        // base AS its own all-true condition — rsTijdsevenredig reads a condition's segments as the true periods, so
+        // basis-as-condition is factor 1 per fully-covered bucket); a FALSE one leaves only the temporal union. This is
+        // the WRITE analogue of the totaal-READ OR-mixed (which widens to the un-clipped totaal). aantal-dagen-in has no
+        // base/extent, so its OR-mixed static-true "count all days" is under-defined and stays markered (verified).
+        // base €10 over 2024 (per jaar), recht [1-1..1-4) (Jan-Mar):
+        //   leeftijd 18 (static TRUE)  -> 12 × €10 (every month of 2024, the OR holds everywhere).
+        //   leeftijd 19 (static FALSE) ->  3 × €10 (only Jan-Mar, the temporal union of the kenmerk).
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de standaardbedrag Bedrag voor elk jaar;
+                de belastingvermindering Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de leeftijd Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van zijn standaardbedrag gedurende de tijd dat er aan ten minste 1 van de volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - zijn leeftijd is gelijk aan 18).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("? rsTijdsevenredig($subject.getStandaardbedrag(), $subject.getStandaardbedrag(), \"MAAND\")"),
+                () -> "static-TRUE moet de basis over de volle span prorateren (basis-als-eigen-conditie):\n" + drl);
+        assertTrue(drl.contains(": rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), $subject.getStandaardbedrag(), \"MAAND\")"),
+                () -> "static-FALSE moet over de temporele unie prorateren:\n" + drl);
+
+        var kb = build(drl);
+
+        // static TRUE (leeftijd 18): the OR holds the whole year -> 12 months of €10.
+        KieSession sWaar = kb.newKieSession();
+        Passagier waar = new Passagier();
+        waar.setStandaardbedrag(List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("10.00"))));
+        waar.setRechtOpBelastingvermindering(List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 4, 1), null)));
+        waar.setLeeftijd(new BigDecimal(18));
+        sWaar.insert(waar); sWaar.fireAllRules(); sWaar.dispose();
+        java.util.List<Segment> uitWaar = waar.getBelastingvermindering();
+        assertNotNull(uitWaar, "de doel-tijdreeks moet gezet zijn (static true)");
+        assertEquals(12, uitWaar.size(), () -> "static-true: 12 volle maanden 2024 verwacht, kreeg " + uitWaar.size());
+        for (Segment s : uitWaar)
+            assertEquals(0, new BigDecimal("10.00").compareTo(s.getWaarde()), () -> "elke maand €10 (volle span), was " + s.getWaarde());
+
+        // static FALSE (leeftijd 19): only the temporal union (recht Jan-Mar) -> 3 months of €10.
+        KieSession sOnwaar = kb.newKieSession();
+        Passagier onwaar = new Passagier();
+        onwaar.setStandaardbedrag(List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("10.00"))));
+        onwaar.setRechtOpBelastingvermindering(List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 4, 1), null)));
+        onwaar.setLeeftijd(new BigDecimal(19));
+        sOnwaar.insert(onwaar); sOnwaar.fireAllRules(); sOnwaar.dispose();
+        java.util.List<Segment> uitOnwaar = onwaar.getBelastingvermindering();
+        assertNotNull(uitOnwaar, "de doel-tijdreeks moet gezet zijn (static false)");
+        assertEquals(3, uitOnwaar.size(), () -> "static-false: 3 maanden (Jan-Mrt, de temporele unie) verwacht, kreeg " + uitOnwaar.size());
+        assertEquals(LocalDate.of(2024, 1, 1), uitOnwaar.get(0).getVan());
+        assertEquals(LocalDate.of(2024, 4, 1), uitOnwaar.get(2).getTot());
+        for (Segment s : uitOnwaar)
+            assertEquals(0, new BigDecimal("10.00").compareTo(s.getWaarde()), () -> "elke maand €10 (unie), was " + s.getWaarde());
+    }
+
     @Test void compound_alle_gedurende_snijdt_de_ware_periodes(){
         // §8.4.2 a COMPOUND "gedurende de tijd dat er aan ALLE volgende voorwaarden wordt voldaan: …" intersects the
         // true-period sets of its temporal-kenmerk bullets (nested rsTijdKnip). value €10/mnd over 2023, €11/mnd

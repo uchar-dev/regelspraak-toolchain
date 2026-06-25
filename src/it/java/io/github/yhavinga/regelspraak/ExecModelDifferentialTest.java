@@ -1601,6 +1601,35 @@ class ExecModelDifferentialTest {
             }),
             Map.of(),
             p -> tl(p.getBelastingvermindering())),   // [Jan→18.00, Feb→4.50]
+
+        // A22 §8.4.2 OR-mixed (ten minste 1: a temporal kenmerk OR a static comparison) on the tijdsevenredig WRITE:
+        // a TRUE static member (leeftijd 18) satisfies the OR for the WHOLE span -> prorate the base over its full
+        // extent (base AS its own all-true condition); FALSE (19) leaves only the temporal union (recht Jan-Mar).
+        // base €10/2024 -> [12×€10] (true) vs [3×€10, Jan-Mar] (false). (aantal-dagen-in has no base/extent -> markers.)
+        new Fixture("§8.4.2 OR-mixed op tijdsevenredig WRITE (18 -> 12×10 / 19 -> 3×10)",
+            """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de standaardbedrag Bedrag voor elk jaar;
+                de belastingvermindering Bedrag voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de leeftijd Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van zijn standaardbedrag gedurende de tijd dat er aan ten minste 1 van de volgende voorwaarden wordt voldaan:
+                    - hij een recht op belastingvermindering heeft
+                    - zijn leeftijd is gelijk aan 18).
+            """,
+            () -> List.of(
+                passagier(p -> { p.setStandaardbedrag(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00")));
+                                 p.setRechtOpBelastingvermindering(List.of(seg(2024, 1, 1, 2024, 4, 1, null)));
+                                 p.setLeeftijd(new BigDecimal(18)); }),
+                passagier(p -> { p.setStandaardbedrag(List.of(seg(2024, 1, 1, 2025, 1, 1, "10.00")));
+                                 p.setRechtOpBelastingvermindering(List.of(seg(2024, 1, 1, 2024, 4, 1, null)));
+                                 p.setLeeftijd(new BigDecimal(19)); })),
+            Map.of(),
+            l -> vals(tl(((Passagier) l.get(0)).getBelastingvermindering()),
+                      tl(((Passagier) l.get(1)).getBelastingvermindering()))),   // [12×10], [3×10]
     };
 
     // ---- Phase F4b fixtures: §8.4 mixed compound — a static (non-temporal) comparison member as the value-side guard ----
@@ -2515,7 +2544,7 @@ class ExecModelDifferentialTest {
     @Test void phase_G_objectcreatie_matches_drl_back_end()        { runObjDifferential("Phase G obj", PHASE_G_OBJ, 2); }
     @Test void phase_G_feitcreatie_matches_drl_back_end()          { runDifferential("Phase G feit", PHASE_G_FEIT, 6); }
     @Test void phase_F4b_mixed_static_guard_matches_drl_back_end() { runDifferential("Phase F4b", PHASE_F4B, 4); }
-    @Test void phase_F4_compound_gedurende_matches_drl_back_end()  { runDifferential("Phase F4", PHASE_F4, 5); }
+    @Test void phase_F4_compound_gedurende_matches_drl_back_end()  { runDifferential("Phase F4", PHASE_F4, 6); }
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 4); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
