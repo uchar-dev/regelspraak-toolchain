@@ -1024,8 +1024,8 @@ final class ExpressieBouwer {
         // FULL bron so navigatieKenmerk/navigatieStaart recover the negator onto the kenmerk and the §8.1.8 navigated
         // negation de-negates (instead of markering). Verbatim-first above means a role literally ending in
         // niet/geen still binds (it resolved there); only an unresolvable role reaches this split.
-        for (String neg : new String[]{"niet", "geen"}) {
-            if (attr.regionMatches(true, attr.length() - neg.length(), neg, 0, neg.length()) && attr.length() > neg.length() + 1) {
+        for (String neg : new String[]{" niet", " geen"}) {   // SPACE-bounded (mirror bindKenmerk) — never split a glued "<rol>geen"
+            if (attr.regionMatches(true, attr.length() - neg.length(), neg, 0, neg.length())) {
                 String rolAlleen = attr.substring(0, attr.length() - neg.length()).trim();
                 if (!rolAlleen.isEmpty() && model.rolDoeltypeNaarSubject(huidigSubject, rolAlleen) != null)
                     return new Expr.AttribuutRef(rolAlleen, huidigSubject, "zijn", model.navigatieRolNaam(rolAlleen), onbekend(), bron);
