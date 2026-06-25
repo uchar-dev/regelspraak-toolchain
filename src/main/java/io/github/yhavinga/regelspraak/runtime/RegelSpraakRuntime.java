@@ -557,6 +557,20 @@ public final class RegelSpraakRuntime {
         return uit;
     }
 
+    /** §7.3.1 the standaard jaar/maand omrekening: restate a per-tijdseenheid RATE timeline into another rate unit by
+     *  multiplying every segment value by the unit factor (e.g. €/jr -&gt; €/mnd = ÷12) at DECIMAL64 (§4.22, no
+     *  auto-round); a leeg segment stays leeg. Applied to the §7.3.2 tijdsevenredig BASE BEFORE proration ("convert
+     *  first, then the day fraction"). Mirrors the DRL {@code rsTijdSchaal}. */
+    public static List<Object> rsTijdSchaal(List<?> tijdlijn, BigDecimal factor) {
+        List<Object> uit = new ArrayList<>();
+        if (tijdlijn == null) return uit;
+        for (Object o : tijdlijn) {
+            BigDecimal w = segWaarde(o);
+            uit.add(newSegment(o.getClass(), segVan(o), segTot(o), w == null ? null : w.multiply(factor, MathContext.DECIMAL64)));
+        }
+        return uit;
+    }
+
     /** §8.2/§13.4.15.70 "gedurende de/het gehele &lt;periode&gt;": is the predicate {@code true at EVERY moment} of
      *  each calendar bucket (MAAND|JAAR) the timeline touches? Bucket the {@code List<Segment>} timeline by calendar
      *  period (like {@link #rsAantalDagenIn}); a bucket is "touched" if any segment overlaps it, and PASSES only when

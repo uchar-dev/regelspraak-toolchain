@@ -1854,12 +1854,19 @@ public final class DrlTranspiler {
                 baseType = bp.parameter().datatype();
                 baseExpr = ident(bp.parameter().naam(), false);   // the List<Segment> global the runtime supplies
             }
-            if (baseExpr != null && baseGran.ordinal() >= gran.ordinal() && baseType.isNumeriek()
-                    && java.util.Objects.equals(baseType.eenheidOf(), doelType == null ? null : doelType.eenheidOf())) {
-                String cond = conditieTijdreeks(f.filter(), subject);   // single kenmerk OR a §8.4.2 (mixed) compound; null -> marker
+            if (baseExpr != null && baseGran.ordinal() >= gran.ordinal() && baseType.isNumeriek()) {
+                // §7.3.2 ex.3 rate conversion: the base's per-tijdseenheid unit may DIFFER from the doel's (€/jr base
+                // into a €/mnd doel). §7.3.1 restates the base FIRST (÷12) — rsTijdSchaal scales the base timeline by
+                // the unit factor BEFORE proration. Same unit -> factor null (no scale); convertible-different -> a
+                // factor; not convertible -> marker (omrekenFactor null AND the units differ).
+                boolean zelfdeEenheid = java.util.Objects.equals(baseType.eenheidOf(), doelType == null ? null : doelType.eenheidOf());
+                java.math.BigDecimal factor = zelfdeEenheid ? null : omrekenFactor(baseType, doelType);
+                String cond = (zelfdeEenheid || factor != null) ? conditieTijdreeks(f.filter(), subject) : null;
                 if (cond != null) {
-                    String call = mixedGuardWrap("rsTijdsevenredig(" + cond + ", " + baseExpr + ", \"" + gran.name() + "\")", f.filter(), subject);
-                    if (call != null) { registreerTijdsevenredigFunctie(); return call; }
+                    String basis = factor == null ? baseExpr
+                            : "rsTijdSchaal(" + baseExpr + ", new java.math.BigDecimal(\"" + factor.toPlainString() + "\"))";
+                    String call = mixedGuardWrap("rsTijdsevenredig(" + cond + ", " + basis + ", \"" + gran.name() + "\")", f.filter(), subject);
+                    if (call != null) { registreerTijdsevenredigFunctie(); if (factor != null) registreerTijdSchaalFunctie(); return call; }
                 }
             }
         }
@@ -2050,6 +2057,22 @@ public final class DrlTranspiler {
                 + "        if (w == null) continue;\n"
                 + "        java.math.BigDecimal deel = w.multiply(java.math.BigDecimal.valueOf(dagen)).divide(java.math.BigDecimal.valueOf(totaal), java.math.MathContext.DECIMAL64);\n"
                 + "        uit.add(new " + FACT_PACKAGE + ".Segment(start, eind, deel));\n"
+                + "    }\n"
+                + "    return uit;\n"
+                + "}");
+    }
+
+    /** §7.3.1: scale every segment value of a rate timeline by a unit factor (€/jr -&gt; €/mnd) at DECIMAL64 — the
+     *  byte-identical DRL mirror of {@link RegelSpraakRuntime#rsTijdSchaal}. */
+    private void registreerTijdSchaalFunctie() {
+        hulpFuncties.putIfAbsent("rsTijdSchaal",
+                "function java.util.List rsTijdSchaal(java.util.List tijdlijn, java.math.BigDecimal factor) {\n"
+                + "    java.util.List uit = new java.util.ArrayList();\n"
+                + "    if (tijdlijn == null) return uit;\n"
+                + "    for (Object o : tijdlijn) {\n"
+                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
+                + "        java.math.BigDecimal w = s.getWaarde();\n"
+                + "        uit.add(new " + FACT_PACKAGE + ".Segment(s.getVan(), s.getTot(), w == null ? null : w.multiply(factor, java.math.MathContext.DECIMAL64)));\n"
                 + "    }\n"
                 + "    return uit;\n"
                 + "}");

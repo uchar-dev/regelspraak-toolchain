@@ -1483,6 +1483,31 @@ class ExecModelDifferentialTest {
             }),
             Map.of(),
             p -> tl(p.getJaardeel())),
+
+        // §7.3.2 ex.3 RATE CONVERSION: the base is €/jr, the doel €/mnd — the base is restated ÷12 (rsTijdSchaal, §7.3.1)
+        // BEFORE proration. 120 €/jr -> 10 €/mnd full months 2024; 180 €/jr -> 15 full (jan-2025) and 15×7/28 = 3,75
+        // (feb-2025). The ABSOLUTE values are pinned by DroolsExecutionTest; here the shared rsTijdSchaal stays at parity.
+        single("§7.3.2 ex.3 tijdsevenredig met rate-omrekening (€/jr basis -> €/mnd doel, ÷12)",
+            """
+            Eenheidsysteem Geld
+                de euro EUR
+            Eenheidsysteem Tijd
+                de maand mnd
+                het jaar jr = 12 mnd
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de standaardbedrag Numeriek (geheel getal) met eenheid EUR/jr voor elk jaar;
+                de belastingvermindering Numeriek (getal met 2 decimalen) met eenheid EUR/mnd voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+            Regel Belastingvermindering
+                geldig altijd
+                    De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van zijn standaardbedrag gedurende de tijd dat hij een recht op belastingvermindering heeft).
+            """,
+            () -> passagier(p -> {
+                p.setStandaardbedrag(List.of(seg(2024, 1, 1, 2025, 1, 1, "120"), seg(2025, 1, 1, 2026, 1, 1, "180")));
+                p.setRechtOpBelastingvermindering(List.of(seg(2024, 1, 1, 2025, 2, 8, null)));
+            }),
+            Map.of(),
+            p -> tl(p.getBelastingvermindering())),
     };
 
     // ---- Phase F4 fixtures: §8.4.2 pure-kenmerk compound gedurende (ALLE intersect / ten-minste-1 union) ----
@@ -2491,7 +2516,7 @@ class ExecModelDifferentialTest {
     @Test void phase_G_feitcreatie_matches_drl_back_end()          { runDifferential("Phase G feit", PHASE_G_FEIT, 6); }
     @Test void phase_F4b_mixed_static_guard_matches_drl_back_end() { runDifferential("Phase F4b", PHASE_F4B, 4); }
     @Test void phase_F4_compound_gedurende_matches_drl_back_end()  { runDifferential("Phase F4", PHASE_F4, 5); }
-    @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 3); }
+    @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 4); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
     @Test void phase_82_gehele_periode_matches_drl_back_end()      { runDifferential("Phase 82", PHASE_82, 11); }
