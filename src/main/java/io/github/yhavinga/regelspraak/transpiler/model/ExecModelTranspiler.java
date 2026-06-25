@@ -2782,6 +2782,7 @@ public final class ExecModelTranspiler {
     private java.util.function.Function<Object, Object> companionOperand(Expr e, Objecttype subject) {
         if (!(e instanceof Expr.AttribuutRef a) || a.objecttype() == null) return null;
         if (a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;   // temporal -> no re-readable guard
+        if (!a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;              // §3.6 gedimensioneerd (a Map) -> DRL markers it too
         return navReader(a, subject);   // own attribute or to-one navigated (null for to-many / absent / unresolvable)
     }
 
@@ -2891,6 +2892,8 @@ public final class ExecModelTranspiler {
             verzamelWortels(a.basis(), uit);
         } else if (e instanceof Expr.Begrensd g) {
             verzamelWortels(g.basis(), uit);
+            verzamelWortels(g.minimum(), uit);   // mirror DRL verzamelWortels — a wortel inside a min/max bound
+            verzamelWortels(g.maximum(), uit);
         }
     }
 
@@ -2917,15 +2920,19 @@ public final class ExecModelTranspiler {
         items.add(DSL.on(sVar).execute(body));
         return PatternDSL.rule(compNaam).build(items.toArray(new RuleItemBuilder[0]));
     }
-    /** Collect the GEDEELD_DOOR nodes through the arithmetic-wrapper layers of a value (for the §6.5 fout). */
+    /** Collect the GEDEELD_DOOR / GEDEELD_DOOR_ABS nodes through the arithmetic-wrapper layers of a value (for the
+     *  §6.5 fout) — byte-identical to DrlTranspiler.verzamelDelingen so both back-ends surface the SAME divisions. */
     private static void verzamelDelingen(Expr e, List<Expr.Binair> uit) {
         if (e instanceof Expr.Binair b) {
-            if (b.op() == Expr.BinOp.GEDEELD_DOOR) uit.add(b);
+            // §6.5 "gedeeld door" AND "gedeeld door (ABS)" both lower to a leeg-divisor fout (mirror DRL).
+            if (b.op() == Expr.BinOp.GEDEELD_DOOR || b.op() == Expr.BinOp.GEDEELD_DOOR_ABS) uit.add(b);
             verzamelDelingen(b.links(), uit); verzamelDelingen(b.rechts(), uit);
         } else if (e instanceof Expr.Afgerond a) {
             verzamelDelingen(a.basis(), uit);
         } else if (e instanceof Expr.Begrensd g) {
             verzamelDelingen(g.basis(), uit);
+            verzamelDelingen(g.minimum(), uit);   // mirror DRL — a division inside a min/max bound
+            verzamelDelingen(g.maximum(), uit);
         }
     }
 

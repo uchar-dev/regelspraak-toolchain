@@ -2512,7 +2512,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 9); }
-    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 9); }
+    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 10); }
     @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 7); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
@@ -2706,6 +2706,27 @@ class ExecModelDifferentialTest {
             },
             o -> "dav=" + ((Vlucht) o).getDaadwerkelijkVertrek(),
             Map.of("marge", new BigDecimal(3))),
+
+        // §6.5 "gedeeld door (ABS)" — an ABS division is a leeg-divisor fout exactly like a plain division. The model's
+        // verzamelDelingen previously collected only GEDEELD_DOOR, dropping the ABS companion DRL emits (masked under-
+        // fire, main rule lowers via rsGedeeldAbs). dividend present + divisor leeg -> fout; leeg dividend -> 0, geen fout.
+        new FoutFixture("deling door (ABS) door leeg companion",
+            """
+            Objecttype de Rekensom
+                de grondslag Numeriek (geheel getal);
+                de aftrek Numeriek (geheel getal);
+                de deelResultaat Numeriek (getal met 2 decimalen);
+            Regel deelabs
+                geldig altijd
+                    De deelResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom gedeeld door (ABS) de aftrek van een Rekensom.
+            """,
+            () -> {
+                Rekensom waardeLeeg = new Rekensom(); waardeLeeg.setGrondslag(new BigDecimal(12));   // 12 / |leeg| -> fout
+                Rekensom leegLinks = new Rekensom(); leegLinks.setAftrek(new BigDecimal(4));         // leeg / |4| -> 0, geen fout
+                Rekensom beide = new Rekensom(); beide.setGrondslag(new BigDecimal(12)); beide.setAftrek(new BigDecimal(-4)); // 12 / |−4| = 3, geen fout
+                return List.of(waardeLeeg, leegLinks, beide);
+            },
+            o -> "g=" + ((Rekensom) o).getGrondslag() + ",a=" + ((Rekensom) o).getAftrek()),
     };
 
     // ---- Phase D FAR-SIDE: a §6.5/§6.6 fout companion whose HOST rule is gated by a §8.1.7 FAR-side membership
