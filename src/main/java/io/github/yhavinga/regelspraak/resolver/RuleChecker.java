@@ -77,6 +77,7 @@ final class RuleChecker {
             // when a rule has several, give each a unique name.
             String versieNaam = versies.size() > 1 ? naam + " #" + (i + 1) : naam;
             bouwer.setSubject(subjectVan(rsr.resultaatDeel())); // so "zijn …" resolves against the rule subject
+            bouwer.zetVariabelen(rsr.variabeleDeel());          // §11 inline "Daarbij geldt:" vars into voorwaarde + resultaat (clears per rule)
             Conditie voorwaarde = rsr.voorwaardeDeel() != null ? bouwVoorwaarde(rsr.voorwaardeDeel()) : null;
             resultaat(naam, versieNaam, rsr.resultaatDeel(), rsr.voorwaardeDeel(), voorwaarde, geldigheid);
             voorwaarden(rsr);   // exhaustive condition type-check (§5), unchanged

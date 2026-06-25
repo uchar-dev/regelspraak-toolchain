@@ -1865,6 +1865,109 @@ class ExecModelDifferentialTest {
         }
     }
 
+    // ---- Phase 11 fixtures: §11/§13.4.2.10 "Daarbij geldt: X is <expressie>" local rule variables, INLINE-
+    //      substituted at each VariabeleRef site (voorwaarde + resultaat). Both back-ends consume the same inlined
+    //      IR, so this checks the substitution lowers + fires identically. ----
+    static final Fixture[] PHASE_11 = {
+        // X used in the CONDITION: "minderjarig indien X < 18" with X = zijn leeftijd.
+        single("§11 var in condition (X = zijn leeftijd, X < 18)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal) met eenheid jr;
+                is minderjarig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is minderjarig indien X kleiner is dan 18 jr.
+                    Daarbij geldt: X is zijn leeftijd.
+            """,
+            () -> passagier(p -> p.setLeeftijd(new BigDecimal(16))),
+            Map.of(), Passagier::isMinderjarig),   // true
+        // a variable referencing an EARLIER variable, inlined in the RESULT: Y = X plus X, X = zijn prijs.
+        single("§11 var refs earlier var in result (Y = X+X, X = prijs)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal) met eenheid EUR;
+                het basistarief Numeriek (geheel getal) met eenheid EUR;
+            Regel R
+                geldig altijd
+                    Het basistarief van een Passagier moet gesteld worden op Y.
+                    Daarbij geldt:
+                        X is zijn prijs
+                        Y is X plus X.
+            """,
+            () -> passagier(p -> p.setPrijs(new BigDecimal(21))),
+            Map.of(), Passagier::getBasistarief),   // 42
+        // X used in BOTH the condition and the result (the canonical §11 use): plafond = X + 5 indien X > 10.
+        single("§11 var in condition AND result (plafond = X+5 if X>10, X = prijs)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+                het plafond Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet gesteld worden op X plus 5 indien X groter is dan 10.
+                    Daarbij geldt: X is zijn prijs.
+            """,
+            () -> passagier(p -> p.setPrijs(new BigDecimal(20))),
+            Map.of(), Passagier::getPlafond),   // 25
+    };
+
+    // The §11.1 rekenvolgorde example (B references the earlier A; the "A != 0" condition guards the b/A division).
+    // A pure differential can't catch an inline-substitution bug shared by both back-ends, so assert the absolute
+    // spec result too: prijs=5,basistarief=20 -> A=5, A!=0 -> B=20/5=4 -> plafond=4+1=5; prijs=0 -> A=0 -> no fire.
+    static final Fixture[] PHASE_11_ABS = {
+        single("§11.1 B=basistarief/A, A=prijs, plafond=B+1 if A!=0 (5)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+                het basistarief Numeriek (geheel getal);
+                het plafond Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet berekend worden als B plus 1 indien A ongelijk is aan 0.
+                    Daarbij geldt:
+                        A is zijn prijs
+                        B is zijn basistarief gedeeld door A.
+            """,
+            () -> passagier(p -> { p.setPrijs(new BigDecimal(5)); p.setBasistarief(new BigDecimal(20)); }),
+            Map.of(), Passagier::getPlafond),
+        single("§11.1 A=0 -> no fire (plafond null)",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+                het basistarief Numeriek (geheel getal);
+                het plafond Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet berekend worden als B plus 1 indien A ongelijk is aan 0.
+                    Daarbij geldt:
+                        A is zijn prijs
+                        B is zijn basistarief gedeeld door A.
+            """,
+            () -> passagier(p -> { p.setPrijs(new BigDecimal(0)); p.setBasistarief(new BigDecimal(20)); }),
+            Map.of(), Passagier::getPlafond),
+    };
+    static final Object[] PHASE_11_ABS_EXPECTED = { new BigDecimal(5), null };
+
+    @Test void phase_11_daarbij_geldt_matches_drl_back_end()   { runDifferential("Phase 11", PHASE_11, 3); }
+
+    /** §11.1: assert the DRL oracle against the absolute spec value (an inline-substitution bug shared by both
+     *  back-ends would pass a pure differential), and that the model agrees. */
+    @Test void phase_11_inline_substitution_is_spec_correct() {
+        for (int i = 0; i < PHASE_11_ABS.length; i++) {
+            Fixture f = PHASE_11_ABS[i];
+            Object expected = PHASE_11_ABS_EXPECTED[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(expected), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+
     /** §8.2 regression (Phase F adversarial review): a temporal attribute read into a SCALAR doel must be an HONEST
      *  SKIP, not a firing rule that calls setX(List<Segment>) and throws (the one scalarWaarde gap the review caught,
      *  where DRL honestly markers the read). The model must record overgeslagen, never mis-render. */

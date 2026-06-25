@@ -36,7 +36,19 @@ class CasusTest {
         }
 
         RegelSpraakModel m = Resolver.resolve(bron);
-        assertTrue(m.errors().isEmpty(), () -> "false positives op de TOKA casus: " + m.errors());
+        // §11 "Daarbij geldt:" variabelen now inline into the rule, so the casus' variable DEFINITIONS get
+        // type-checked (they were invisible while the references markered). This surfaces ONE genuine spec-internal
+        // inconsistency in the TOKA casus itself: "A is het uiterste boekingstijdstip … plus bevestigingsinterval"
+        // (toka-23) adds a Datum-tijd PARAMETER (bevestigingsinterval, modelled as "Datum en tijd in millisecondes"
+        // but used as a duration) to a Datum-tijd — which typeringen §4.1 Tabel 2 forbids (a datum-tijd plus needs a
+        // Numeriek tijdswaarde RHS). The resolver is CORRECT to flag it (the rule degrades to an honest marker); the
+        // casus, not the resolver, carries the quirk. Tolerate exactly this one known diagnostic; any OTHER error fails.
+        var onverwacht = m.errors().stream()
+                .filter(d -> !d.message().contains("kreeg Datum-tijd en Datum-tijd"))
+                .toList();
+        assertTrue(onverwacht.isEmpty(), () -> "false positives op de TOKA casus: " + onverwacht);
+        assertEquals(1, m.errors().size() - onverwacht.size(),
+                () -> "verwachtte precies de bekende §4.1 datum+datum casus-quirk (toka-23 bevestigingsinterval): " + m.errors());
 
         // the casus' GegevensSpraak, faithfully modelled
         assertEquals(3, m.objecttypen.size(), "Natuurlijk persoon, Vlucht, Contingent treinmiles");

@@ -11,7 +11,9 @@ import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.tree.ParseTree;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Builds the resolved, typed {@link Expr} IR from a parsed §13.4.17 expressie,
@@ -32,11 +34,38 @@ final class ExpressieBouwer {
     // The object type the current rule is about, so a possessive "zijn <attribuut>"
     // (and "hij") resolve against the rule subject. Set per rule by the checker.
     private Objecttype huidigSubject;
+    // §11 the current rule's "Daarbij geldt:" variabelen, keyed by normalized name -> the resolved definition Expr,
+    // INLINED at each VariabeleRef site (naamRef). Per-rule; cleared and re-set by zetVariabelen each rule.
+    private final Map<String, Expr> variabelen = new LinkedHashMap<>();
 
     ExpressieBouwer(RegelSpraakModel model) { this.model = model; }
 
     void setSubject(Objecttype subject) { this.huidigSubject = subject; }
     Objecttype subject() { return huidigSubject; }
+
+    /** §11 capture the "Daarbij geldt: [lidwoord] X is &lt;expressie&gt;" variabelendeel of the current rule as a
+     *  per-rule map of resolved definitions, INLINED at each {@link Expr.VariabeleRef} site by {@link #naamRef}.
+     *  CLEARS first (so a previous rule's variables never leak — call it for EVERY rule, even one with no
+     *  variabeleDeel: a null ctx just clears), then resolves each definition IN DECLARATION ORDER (§11.1 rule 1):
+     *  an earlier variable is already in the map when a later one is built, so a later definition may reference an
+     *  earlier one; a forward/cyclic reference finds nothing and stays an Onbekend VariabeleRef (the transpiler
+     *  markers it). Subject-relative "zijn X" inside a definition resolves against the subject, so {@link #setSubject}
+     *  must be called BEFORE this. */
+    void zetVariabelen(VariabeleDeelContext ctx) {
+        variabelen.clear();
+        if (ctx == null) return;
+        for (VariabeleOnderdeelContext vo : ctx.variabeleOnderdeel()) {
+            if (vo.variabeleNaam() == null || vo.expressie() == null) continue;
+            variabelen.put(variabeleSleutel(src(vo.variabeleNaam())), bouw(vo.expressie()));
+        }
+    }
+
+    /** Normalize a variabele name to its lookup key: strip a leading bepaald lidwoord (§11 "Mogelijkheid van
+     *  lidwoord bij naam variabele"), lowercase, collapse whitespace — so "het Lage tarief" and "lage  tarief"
+     *  map to the same variable. Mirrors {@link #naamRef}'s parameter-name strip. */
+    private static String variabeleSleutel(String naam) {
+        return naam.replaceFirst("^(?i)(de|het|een)\\s+", "").trim().toLowerCase().replaceAll("\\s+", " ");
+    }
 
     // ---------------- §13.4.16/.17 expressie ----------------
     Expr bouw(ExpressieContext e) {
@@ -966,7 +995,12 @@ final class ExpressieBouwer {
         Parameter p = model.parameters.get(stripped);
         if (p == null) p = model.parameters.get(naam);
         if (p != null) return new Expr.ParameterRef(p, bron);
-        if (isVariabele) return new Expr.VariabeleRef(naam, onbekend(), bron);
+        if (isVariabele) {
+            // §11 inline the captured "Daarbij geldt:" definition (its type flows from the definition Expr); a name
+            // with no definition (or a forward/cyclic reference, not yet in the map) stays an Onbekend VariabeleRef.
+            Expr inlined = variabelen.get(variabeleSleutel(naam));
+            return inlined != null ? inlined : new Expr.VariabeleRef(naam, onbekend(), bron);
+        }
         return onopgelost(bron);
     }
 
