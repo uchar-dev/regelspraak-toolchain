@@ -544,8 +544,18 @@ voorwaardeDeel // §13.4.13.1
     : ( INDIEN | GEDURENDE_DE_TIJD_DAT ) ( toplevelSamengesteldeVoorwaarde | toplevelElementaireVoorwaarde )
     | periodevergelijkingEnkelvoudig
     ;
+// §13.4.13.2-.8: a subselectie predicaat is the COMPOUND form or an ELEMENTAIR predicate.
+// The spec's elementairpredicaat (§13.4.13.5-.8: getal/tekst/datum/object) is the
+// VRAGENDE-MEERVOUD (verb-trailing) operator — "die kleiner zijn dan X", "die gelijk zijn
+// aan Y", "die een minderjarige zijn" — i.e. the toplevelOperator register. The verb-leading
+// nonToplevelOperator is kept as a permissive tail: the corpus also writes a possession query
+// verb-leading after 'die'/'dat' ("die heeft een kind"), and (as with the §8.3.2 bullet rule)
+// over-acceptance of the verb-leading register here is harmless — the resolver gives the right
+// meaning. toplevelOperator is listed first so the spec form is the preferred parse of an
+// ambiguous kenmerk ("een minderjarige zijn"); elementKenmerkFilter reads either register.
 predicaat // §13.4.13.2 (used in subselectie)
     : samengesteldPredicaat
+    | toplevelOperator
     | nonToplevelOperator
     ;
 samengesteldPredicaat // §13.4.13.4

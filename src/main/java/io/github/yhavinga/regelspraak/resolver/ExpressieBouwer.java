@@ -684,15 +684,25 @@ final class ExpressieBouwer {
      *  {@link Conditie.Kenmerk}; null when the predicaat is not such a kenmerk of the element (a
      *  comparison, an objecttype/role membership, an unknown name — all left to the marker path). */
     private Conditie elementKenmerkFilter(PredicaatContext p, Objecttype elem) {
-        NonToplevelOperatorContext op = p.nonToplevelOperator();
-        if (elem == null || op == null || op.kaleNaam() == null) return null;
-        // §8.1.8: a kenmerk membership is "is/zijn (een) <kenmerk>". A "heeft/hebben een <X>" predicaat
-        // is a possession/role query ("die een kind hebben" = that HAVE a child), a different predicate
-        // class — not the element's boolean kenmerk; leave it to the marker path.
-        if (op.IS() == null && op.ZIJN() == null) return null;
+        if (elem == null) return null;
+        // §13.4.13.5-.8: a kenmerk membership predicate is "(een) <kenmerk> is/zijn" — the spec's
+        // verb-trailing toplevelOperator register ("die een minderjarige zijn") — OR, in the permissive
+        // verb-leading register, "is/zijn (een) <kenmerk>". Either way the kaleNaam is the kenmerk and the
+        // verb is is/zijn. A "heeft/hebben een <X>" predicaat is a possession/role query ("die een kind
+        // hebben" / "die heeft een kind" = that HAVE a child), a different predicate class — not the
+        // element's boolean kenmerk; its kaleNaam carries no is/zijn here, so it falls through to the marker.
+        String naamBron = null;
+        if (p.toplevelOperator() != null) {                  // EEN? kaleNaam (IS | HEEFT | ZIJN | HEBBEN)
+            ToplevelOperatorContext op = p.toplevelOperator();
+            if (op.kaleNaam() != null && (op.IS() != null || op.ZIJN() != null)) naamBron = src(op.kaleNaam());
+        } else if (p.nonToplevelOperator() != null) {        // (IS | HEEFT | ZIJN | HEBBEN) EEN? kaleNaam, or EEN kaleNaam (IS | ZIJN)
+            NonToplevelOperatorContext op = p.nonToplevelOperator();
+            if (op.kaleNaam() != null && (op.IS() != null || op.ZIJN() != null)) naamBron = src(op.kaleNaam());
+        }
+        if (naamBron == null) return null;
         // §5.6: the written form may be the kenmerk's inflected/nominalized spelling
         // ("die een minderjarige zijn" against the declared "minderjarig") — bind it morphologically.
-        String kenmerk = KenmerkMatcher.vind(elem, src(op.kaleNaam()));
+        String kenmerk = KenmerkMatcher.vind(elem, naamBron);
         return kenmerk != null ? new Conditie.Kenmerk(kenmerk, src(p)) : null;
     }
 

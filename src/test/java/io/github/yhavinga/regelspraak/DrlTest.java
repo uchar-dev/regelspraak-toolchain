@@ -1372,6 +1372,94 @@ class DrlTest {
         assertFalse(drl.contains("accumulate("), () -> "een type-mismatch union mag niet stil tellen:\n" + drl);
     }
 
+    @Test void subselectie_vragende_meervoud_vergelijking_parseert_voortaan() {
+        // §13.4.13.5-.8: the elementair predicate after 'die'/'dat' is the VRAGENDE-MEERVOUD
+        // (verb-trailing) operator — "die kleiner zijn dan X". The grammar used to route the
+        // predicaat through the verb-LEADING nonToplevelOperator only, so this spec form was a
+        // syntax error ("input not fully consumed at 'die'"). It must now PARSE. A comparison filter
+        // over a counted element is not yet lowered, so it stays an HONEST marker (a visible no-op),
+        // never a silent count over EVERY passenger.
+        String src = """
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                de leeftijd Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel tel
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis die kleiner zijn dan 18.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(),
+                () -> "de vragende-meervoud vergelijking moet voortaan parseren (geen syntaxfout): " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("/* TODO aggregatie AANTAL"),
+                () -> "een nog-niet-verlaagde vergelijkingsfilter blijft een eerlijke marker:\n" + drl);
+        assertFalse(drl.contains("accumulate("),
+                () -> "de vergelijkingsfilter mag niet stil over ALLE passagiers tellen:\n" + drl);
+    }
+
+    @Test void subselectie_kenmerk_via_vragende_register_lowert_naar_kenmerkfilter() {
+        // Guard against a MASKED regression: routing the predicaat through toplevelOperator means a
+        // kenmerk subselectie "die een minderjarige zijn" now parses via the verb-trailing register
+        // instead of nonToplevelOperator. elementKenmerkFilter must read EITHER register, so the
+        // §13.4.2 kenmerk filter still binds (minderjarig == true) and the count is not silently lost.
+        String src = """
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                is minderjarig kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel tel
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis die een minderjarige zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("minderjarig == true"),
+                () -> "de kenmerkfilter moet ook via het vragende register een accumulate-constraint blijven:\n" + drl);
+        assertFalse(drl.contains("/* TODO aggregatie AANTAL"),
+                () -> "de oplosbare kenmerk-subselectie mag geen marker worden:\n" + drl);
+    }
+
+    @Test void subselectie_verbleidende_bezit_die_heeft_een_kind_blijft_parsebaar() {
+        // The grammar fix is ADDITIVE: the verb-leading nonToplevelOperator is kept, so a possession
+        // query written verb-leading after 'die' ("die heeft een kind") still PARSES. A possession is
+        // not the element's boolean kenmerk, so it stays an honest marker — unchanged behaviour.
+        String src = """
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Kind
+                de leeftijd Numeriek (geheel getal);
+            Objecttype de Passagier
+                de naam Tekst;
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype Passagier met kinderen
+                de ouder Passagier
+                het kind Kind
+            Eén ouder betreft meerdere kinderen
+            Regel tel
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis die heeft een kind.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(),
+                () -> "de verb-leidende bezit-subselectie 'die heeft een kind' moet blijven parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("/* TODO aggregatie AANTAL"),
+                () -> "een bezit-subselectie blijft een eerlijke marker:\n" + drl);
+    }
+
     @Test void uniciteit_lowert_naar_een_accumulate_count() {
         // §8.1.6: a uniqueness check becomes a rule that binds the non-null key on the subject and
         // counts the instances whose key equals it; more than one (the subject plus a twin) is the
