@@ -967,11 +967,15 @@ final class ExpressieBouwer {
             return attribuutRef(src(k.selector().kaleNaam()), k.onderwerp(), src(o));   // "de <attr> van <subject>"
         Expr poss = possessief(o, src(o));
         if (poss != null) return poss;                                                  // "zijn <attr>"
-        if (k != null && k.onderwerpVerwijzing() != null && k.onderwerpVerwijzing().kaleNaam() != null
-                && huidigSubject != null) {
-            String attr = src(k.onderwerpVerwijzing().kaleNaam());
-            Datatype dt = huidigSubject.attribuut(attr);
-            if (dt != null) return new Expr.AttribuutRef(attr, huidigSubject, src(o), null, dt, src(o));   // subject-own "de <attr>"
+        // §5.5.3 a bare definite subject-own attribute referring to the rule subject ("de <attr>") — either the
+        // onderwerpVerwijzing form (under an onderwerpKeten) or the kwantificatie+kaleNaam form (k == null). Only the
+        // bare definite (NOT a set quantifier alle/geen/…) and only an attribute the subject actually carries.
+        String bare = k != null && k.onderwerpVerwijzing() != null && k.onderwerpVerwijzing().kaleNaam() != null
+                ? src(k.onderwerpVerwijzing().kaleNaam())
+                : (o.kaleNaam() != null && !isSetOnderwerp(o) ? src(o.kaleNaam()) : null);
+        if (bare != null && huidigSubject != null) {
+            Datatype dt = huidigSubject.attribuut(bare);
+            if (dt != null) return new Expr.AttribuutRef(bare, huidigSubject, src(o), null, dt, src(o));
         }
         return null;
     }

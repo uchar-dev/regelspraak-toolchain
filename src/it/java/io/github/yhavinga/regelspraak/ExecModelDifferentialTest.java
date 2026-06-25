@@ -2991,8 +2991,17 @@ class ExecModelDifferentialTest {
             () -> List.of(new Rekensom()),   // grondslag null -> 0
             Map.of("korting", new BigDecimal(10)),
             l -> ((Rekensom) l.get(0)).getMaalResultaat()),   // 0
+        new Fixture("§13.4.17.12 percentage 'P van de V' (bare subject-own V, §5.5.3)",
+            PCT_HDR + """
+            Regel r
+                geldig altijd
+                    De maalResultaat van een Rekensom moet gesteld worden op de korting van de grondslag.
+            """,
+            () -> { Rekensom r = new Rekensom(); r.setGrondslag(new BigDecimal(300)); return List.of(r); },
+            Map.of("korting", new BigDecimal(10)),
+            l -> ((Rekensom) l.get(0)).getMaalResultaat()),   // 300 * 10 / 100 = 30
     };
-    static final BigDecimal[] PHASE_PCT_EXPECTED = { new BigDecimal(20), new BigDecimal(15), BigDecimal.ZERO };
+    static final BigDecimal[] PHASE_PCT_EXPECTED = { new BigDecimal(20), new BigDecimal(15), BigDecimal.ZERO, new BigDecimal(30) };
 
     /** §13.4.17.12 percentage 'P van V' (no '%'): assert the DRL oracle computes V*P/100 (and leeg->0) per §4.8 — an
      *  ABSOLUTE spec value, not only DRL==model (PERCENTAGE_VAN is a SHARED transform, so a pure differential would miss
