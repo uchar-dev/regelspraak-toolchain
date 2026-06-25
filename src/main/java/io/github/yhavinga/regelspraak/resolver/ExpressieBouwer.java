@@ -991,16 +991,18 @@ final class ExpressieBouwer {
     /** A bare name: a known parameter binds to a ParameterRef; a variabeleNaam that is
      *  not a parameter stays a (so-far untyped) VariabeleRef; anything else is unresolved. */
     private Expr naamRef(String naam, boolean isVariabele, String bron) {
+        // §11 inline the captured "Daarbij geldt:" definition FIRST: a local variable reference works WITH or WITHOUT
+        // a leading article (the spec explicitly allows a lidwoord at a variable reference — "de drempel" arrives via
+        // the onderwerp path with isVariabele=false; variabeleSleutel strips the lidwoord so both forms hit one key),
+        // and it SHADOWS a same-named global parameter (a variable "geldt alleen binnen de regel"). A name with no
+        // definition (or a forward/cyclic reference, not yet in the map) falls through to the parameter / VariabeleRef.
+        Expr inlined = variabelen.get(variabeleSleutel(naam));
+        if (inlined != null) return inlined;
         String stripped = naam.replaceFirst("^(?i)(de|het|een)\\s+", "");
         Parameter p = model.parameters.get(stripped);
         if (p == null) p = model.parameters.get(naam);
         if (p != null) return new Expr.ParameterRef(p, bron);
-        if (isVariabele) {
-            // §11 inline the captured "Daarbij geldt:" definition (its type flows from the definition Expr); a name
-            // with no definition (or a forward/cyclic reference, not yet in the map) stays an Onbekend VariabeleRef.
-            Expr inlined = variabelen.get(variabeleSleutel(naam));
-            return inlined != null ? inlined : new Expr.VariabeleRef(naam, onbekend(), bron);
-        }
+        if (isVariabele) return new Expr.VariabeleRef(naam, onbekend(), bron);
         return onopgelost(bron);
     }
 

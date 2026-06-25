@@ -3000,4 +3000,28 @@ class DrlTest {
         assertTrue(drl.contains("(reis == null || reis.prijs == null)"),
                 () -> "een NIET-temporeel navigeerd LEEG moet gewoon lowEren:\n" + drl);
     }
+
+    @Test void variabele_met_lidwoord_en_shadowing_van_parameter() {
+        // §11 (review): a local "Daarbij geldt:" variable inlines at a reference written WITH a leading article
+        // ("de drempel" — the spec explicitly allows a lidwoord at a variable reference), AND it SHADOWS a same-named
+        // global parameter (a variable "geldt alleen binnen de regel"). Both arrive via the onderwerp path
+        // (isVariabele=false), so naamRef must consult the variabelen map FIRST.
+        String src = """
+            Parameter de drempel : Numeriek (geheel getal)
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de prijs Numeriek (geheel getal);
+                de uitkomst Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    De uitkomst van een Persoon moet gesteld worden op de drempel.
+                    Daarbij geldt: de drempel is zijn prijs.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "geaccepteerde invoer (geen resolver-fout): " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        // "de drempel" inlines to the local definition (zijn prijs) — NOT the global parameter, NOT a TODO marker
+        assertTrue(drl.contains("setUitkomst( $subject.getPrijs() )"),
+                () -> "§11 lidwoord-referentie van een lokale variabele die een parameter shadowt moet inlinen naar getPrijs():\n" + drl);
+        assertFalse(drl.contains("setUitkomst( drempel )"), () -> "de globale parameter 'drempel' mag de lokale variabele niet winnen:\n" + drl);
+    }
 }

@@ -2786,14 +2786,23 @@ public final class ExecModelTranspiler {
         if (factClass == null || incClass == null) return List.of();
         List<Expr.Binair> delingen = new ArrayList<>();
         verzamelDelingen(r.waarde(), delingen);
-        List<Rule> companions = new ArrayList<>();
-        int idx = 0;
-        String naam = r.naam();
+        // First collect the QUALIFYING divisions (both operands own non-temporal attributes), mirroring DRL's
+        // `patronen`, so the companion-name suffix indexes over the SAME filtered list in BOTH back-ends. Indexing
+        // over the raw `delingen` count (as before) diverged from DRL when a rule mixes qualifying and non-qualifying
+        // divisions (e.g. a §11 division variable inlined next to a navigated/parameter division): DRL named the lone
+        // qualifier "(deling door leeg)", the model "(deling door leeg 1)" -> divergent Inconsistentie regel names.
+        List<Expr.Binair> kwalificeren = new ArrayList<>();
         for (Expr.Binair d : delingen) {
             if (!(d.links() instanceof Expr.AttribuutRef dvd) || dvd.navigatieRol() != null) continue;
             if (!(d.rechts() instanceof Expr.AttribuutRef dvs) || dvs.navigatieRol() != null) continue;
             if (subject.attribuutGranulariteit.containsKey(dvd.attribuut()) || subject.attribuutGranulariteit.containsKey(dvs.attribuut())) continue;
-            String dividend = dvd.attribuut(), divisor = dvs.attribuut();
+            kwalificeren.add(d);
+        }
+        List<Rule> companions = new ArrayList<>();
+        String naam = r.naam();
+        for (int i = 0; i < kwalificeren.size(); i++) {
+            Expr.Binair d = kwalificeren.get(i);
+            String dividend = ((Expr.AttribuutRef) d.links()).attribuut(), divisor = ((Expr.AttribuutRef) d.rechts()).attribuut();
             seq = 0;
             Variable sVar = DSL.declarationOf(factClass, "$subject");
             PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
@@ -2806,7 +2815,7 @@ public final class ExecModelTranspiler {
             // dividend present AND divisor empty (an empty LEFT short-circuits to 0 -> no fout, so guard the dividend too).
             pattern = pattern.expr(nextId("dvd"), (Predicate1) s -> RegelSpraakRuntime.get(s, dividend) != null)
                     .expr(nextId("dvs"), (Predicate1) s -> RegelSpraakRuntime.get(s, divisor) == null);
-            String compNaam = naam + " (deling door leeg" + (delingen.size() > 1 ? " " + (++idx) : "") + ")";
+            String compNaam = naam + " (deling door leeg" + (kwalificeren.size() > 1 ? " " + (i + 1) : "") + ")";
             companions.add(companionRule(compNaam, naam, incClass, sVar, pattern));
         }
         return companions;
