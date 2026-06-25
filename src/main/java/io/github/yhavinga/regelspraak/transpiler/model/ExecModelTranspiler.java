@@ -949,6 +949,7 @@ public final class ExecModelTranspiler {
             case "minuut", "min"          -> "MINUTES";
             case "seconde", "secondes", "sec", "s"     -> "SECONDS";
             case "milliseconde", "millisecondes", "ms" -> "MILLIS";
+            case "kwartaal", "kwartalen" -> "KWARTAAL";   // §3.7 3×MONTHS — rsDatumReken special-cases it (no ChronoUnit.QUARTERS)
             default -> null;
         };
     }

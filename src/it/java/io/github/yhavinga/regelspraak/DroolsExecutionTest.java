@@ -1931,6 +1931,51 @@ class DroolsExecutionTest {
         assertNull(leeg.getMaandnr(), "een lege peildatum maakt de absolute tijdsduur leeg, niet 0");
     }
 
+    @Test void kwartaal_telt_als_drie_maanden_in_datumrekenkunde_en_tijdsduur() {
+        // §3.7 a kwartaal = 3 maanden; java.time has no ChronoUnit.QUARTERS, so rsDatumReken / rsTijdsduur special-case
+        // the pseudo-unit "KWARTAAL" as 3×MONTHS. Both forms were honest markers before. ABSOLUTE values (the shared
+        // helper makes a ==true-instead-of-3× bug invisible to a pure differential, so assert the concrete result).
+        // (a) DATE ARITHMETIC: 2022-06-15 + 2 kwartaal = +6 mnd = 2022-12-15.
+        RegelSpraakModel md = Resolver.resolve("""
+            Objecttype de Vlucht (mv: Vluchten)
+                de vluchtdatum Datum in dagen;
+                de uitstelduur Numeriek (geheel getal) met eenheid kwartaal;
+                de vroegste vertrek Datum in dagen;
+            Regel R
+                geldig altijd
+                    De vroegste vertrek van een Vlucht moet berekend worden als de vluchtdatum van de Vlucht plus de uitstelduur van de Vlucht.
+            """);
+        assertTrue(md.errors().isEmpty(), () -> "" + md.errors());
+        String drlD = DrlTranspiler.transpile(md);
+        assertTrue(drlD.contains("rsDatumReken($subject.getVluchtdatum(), $subject.getUitstelduur(), \"KWARTAAL\", true)"),
+                () -> "datum + N kwartaal moet via rsDatumReken(\"KWARTAAL\") lowereren:\n" + drlD);
+        KieSession sd = build(drlD).newKieSession();
+        Vlucht v = new Vlucht(); v.setVluchtdatum(LocalDate.of(2022, 6, 15)); v.setUitstelduur(new BigDecimal(2));
+        sd.insert(v); sd.fireAllRules(); sd.dispose();
+        assertEquals(LocalDate.of(2022, 12, 15), v.getVroegsteVertrek(),
+                () -> "2022-06-15 + 2 kwartaal = +6 mnd = 2022-12-15, kreeg " + v.getVroegsteVertrek());
+
+        // (b) TIJDSDUUR: 2024-01-01 -> 2024-10-01 = 9 mnd / 3 = 3 hele kwartalen.
+        RegelSpraakModel mt = Resolver.resolve("""
+            Objecttype de Klok
+                de reisdatum Datum in dagen;
+                de peildatum Datum in dagen;
+                de jaartal Numeriek (geheel getal) met eenheid kwartaal;
+            Regel k
+                geldig altijd
+                    De jaartal van een Klok moet gesteld worden op de tijdsduur van de reisdatum van een Klok tot de peildatum van een Klok in hele kwartalen.
+            """);
+        assertTrue(mt.errors().isEmpty(), () -> "" + mt.errors());
+        String drlT = DrlTranspiler.transpile(mt);
+        assertTrue(drlT.contains("rsTijdsduur($subject.getReisdatum(), $subject.getPeildatum(), \"KWARTAAL\", false)"),
+                () -> "tijdsduur in hele kwartalen moet via rsTijdsduur(\"KWARTAAL\") lowereren:\n" + drlT);
+        KieSession st = build(drlT).newKieSession();
+        Klok k = new Klok(); k.setReisdatum(LocalDate.of(2024, 1, 1)); k.setPeildatum(LocalDate.of(2024, 10, 1));
+        st.insert(k); st.fireAllRules(); st.dispose();
+        assertEquals(0, new BigDecimal("3").compareTo(k.getJaartal()),
+                () -> "2024-01-01 -> 2024-10-01 = 9 mnd / 3 = 3 hele kwartalen, kreeg " + k.getJaartal());
+    }
+
     @Test void eerste_paasdag_berekent_paaszondag_via_de_computus() {
         // §13.4.17.37: the first day of Easter (Easter Sunday) for a year, via the Gregorian computus.
         // 2023 -> 9 apr, 2024 -> 31 mrt, 2025 -> 20 apr.

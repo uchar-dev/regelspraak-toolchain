@@ -1138,7 +1138,7 @@ public final class DrlTranspiler {
             if (durExpr.type().isDatum() || (!optellen && !datumLinks))
                 return Frag.todo("datum-rekenkunde (datum +/- tijdsduur; geen datum-datum)", b.bron());
             String unit = chronoUnit(durExpr.type());
-            if (unit == null) return Frag.todo("datum-rekenkunde (kwartaal/dagsoort/onbekende tijdseenheid)", b.bron());
+            if (unit == null) return Frag.todo("datum-rekenkunde (dagsoort/onbekende tijdseenheid)", b.bron());
             boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
             if (tijdEenheid && !(datumExpr.type() instanceof Datatype.DatumTijd))
                 return Frag.todo("datum-rekenkunde: een tijdseenheid vereist een datum-tijd operand (§6.10)", b.bron());
@@ -1385,7 +1385,7 @@ public final class DrlTranspiler {
     private Frag tijdsduur(Expr.Functie f, Function<Expr, Frag> arg) {
         if (f.argumenten().size() != 2) return null;
         String unit = chronoUnit(f.type());
-        if (unit == null) return Frag.todo("tijdsduur-eenheid (kwartaal / onbekende tijdseenheid)", f.bron());
+        if (unit == null) return Frag.todo("tijdsduur-eenheid (dagsoort / onbekende tijdseenheid)", f.bron());
         boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
         Expr eVan = f.argumenten().get(0), eTot = f.argumenten().get(1);
         if (tijdEenheid && (!(eVan.type() instanceof Datatype.DatumTijd) || !(eTot.type() instanceof Datatype.DatumTijd)))
@@ -1407,7 +1407,9 @@ public final class DrlTranspiler {
                 "function java.math.BigDecimal rsTijdsduur(java.time.temporal.Temporal van, "
                 + "java.time.temporal.Temporal tot, String eenheid, boolean absoluut) {\n"
                 + "    if (van == null || tot == null) return null;\n"
-                + "    long n = java.time.temporal.ChronoUnit.valueOf(eenheid).between(van, tot);\n"
+                + "    long n = \"KWARTAAL\".equals(eenheid)\n"   // §3.7 kwartaal = 3 maanden (geen ChronoUnit.QUARTERS)
+                + "            ? java.time.temporal.ChronoUnit.MONTHS.between(van, tot) / 3\n"
+                + "            : java.time.temporal.ChronoUnit.valueOf(eenheid).between(van, tot);\n"
                 + "    return java.math.BigDecimal.valueOf(absoluut ? Math.abs(n) : n);\n"
                 + "}\n\n");
     }
@@ -1422,7 +1424,9 @@ public final class DrlTranspiler {
                 + "    if (datum == null) return null;\n"           // leeg datum -> leeg
                 + "    if (aantal == null) return datum;\n"         // leeg tijdseenheid -> als 0 -> datum onveranderd (Tabel 15)
                 + "    long n = aantal.longValue();\n"
-                + "    java.time.temporal.ChronoUnit u = java.time.temporal.ChronoUnit.valueOf(eenheid);\n"
+                + "    boolean kwartaal = \"KWARTAAL\".equals(eenheid);\n"   // §3.7 kwartaal = 3 maanden (geen ChronoUnit.QUARTERS)
+                + "    java.time.temporal.ChronoUnit u = kwartaal ? java.time.temporal.ChronoUnit.MONTHS : java.time.temporal.ChronoUnit.valueOf(eenheid);\n"
+                + "    if (kwartaal) n = n * 3;\n"
                 + "    return optellen ? datum.plus(n, u) : datum.minus(n, u);\n"
                 + "}\n\n");
     }
@@ -1570,7 +1574,10 @@ public final class DrlTranspiler {
             case "minuut", "min"          -> "MINUTES";
             case "seconde", "secondes", "sec", "s"     -> "SECONDS";
             case "milliseconde", "millisecondes", "ms" -> "MILLIS"; // §6.10 spells the plural with -s, which
-            default -> null;   // the -en reducer leaves unchanged; kwartaal (no ChronoUnit) / custom -> marker
+            // §3.7 a kwartaal is 3 maanden; java.time has no ChronoUnit.QUARTERS, so it carries a pseudo-unit
+            // "KWARTAAL" that rsDatumReken / rsTijdsduur special-case as 3×MONTHS (a date unit, not a time unit).
+            case "kwartaal", "kwartalen" -> "KWARTAAL";
+            default -> null;   // the -en reducer leaves unchanged; dagsoort / custom -> marker
         };
     }
 

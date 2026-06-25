@@ -252,7 +252,9 @@ public final class RegelSpraakRuntime {
         if (datum == null) return null;        // leeg datum -> leeg
         if (aantal == null) return datum;      // leeg tijdseenheid -> behandeld als 0 -> datum onveranderd (Tabel 15)
         long n = aantal.longValue();
-        java.time.temporal.ChronoUnit u = java.time.temporal.ChronoUnit.valueOf(eenheid);
+        boolean kwartaal = "KWARTAAL".equals(eenheid);   // §3.7 kwartaal = 3 maanden (geen ChronoUnit.QUARTERS)
+        java.time.temporal.ChronoUnit u = kwartaal ? java.time.temporal.ChronoUnit.MONTHS : java.time.temporal.ChronoUnit.valueOf(eenheid);
+        if (kwartaal) n = n * 3;
         return optellen ? datum.plus(n, u) : datum.minus(n, u);
     }
 

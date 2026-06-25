@@ -138,6 +138,7 @@ class ExecModelDifferentialTest {
                     De vroegste vertrek van een Vlucht moet berekend worden als de vluchtdatum van de Vlucht plus de uitstelduur van de Vlucht.
             """;
     static final String DATUM_SRC_MIN = DATUM_SRC_PLUS.replace(" plus de uitstelduur", " min de uitstelduur");
+    static final String DATUM_SRC_KWARTAAL = DATUM_SRC_PLUS.replace("met eenheid mnd", "met eenheid kwartaal");   // §3.7 1 kwartaal = 3 mnd
     static final String DATUM_SRC_LIT = """
             Objecttype de Vlucht (mv: Vluchten)
                 de vluchtdatum Datum in dagen;
@@ -201,6 +202,8 @@ class ExecModelDifferentialTest {
     static final Fixture[] PHASE_DATUM = {
         datumFix("datum plus N maanden -> later (2022-06-15 + 3mnd)", DATUM_SRC_PLUS, java.time.LocalDate.of(2022, 6, 15), new BigDecimal(3)),
         datumFix("datum min N maanden -> earlier (2022-06-15 - 3mnd)", DATUM_SRC_MIN, java.time.LocalDate.of(2022, 6, 15), new BigDecimal(3)),
+        // §3.7 a kwartaal = 3 maanden (no ChronoUnit.QUARTERS): 2022-06-15 + 2 kwartaal = +6 mnd = 2022-12-15.
+        datumFix("datum plus N kwartalen -> +3mnd/kwartaal (2022-06-15 + 2 = 2022-12-15)", DATUM_SRC_KWARTAAL, java.time.LocalDate.of(2022, 6, 15), new BigDecimal(2)),
         datumFix("leeg duration -> date unchanged (Tabel 15)", DATUM_SRC_PLUS, java.time.LocalDate.of(2022, 6, 15), null),
         datumFix("leeg datum -> leeg (Tabel 15)", DATUM_SRC_PLUS, null, new BigDecimal(3)),
         new Fixture("datum-tijd plus N minuten (spec §6 example)", DATUMTIJD_SRC,
@@ -2672,7 +2675,7 @@ class ExecModelDifferentialTest {
     @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 7); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
-    @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 14); }
+    @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 15); }
     @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
     @Test void phase_E_verdeling_fouten_match_drl_back_end()       { runFoutDifferential("Phase E fout", PHASE_E_FOUT, 2); }
 
