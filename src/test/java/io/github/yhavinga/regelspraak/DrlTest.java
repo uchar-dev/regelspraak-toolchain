@@ -2731,8 +2731,11 @@ class DrlTest {
                 () -> "static-FALSE moet over de temporele unie prorateren:\n" + tev);
         assertFalse(tev.contains("/* TODO"), () -> "de OR-mixed tijdsevenredig WRITE mag geen marker zijn:\n" + tev);
 
-        // aantal-dagen-in OR-mixed: no base/extent for the static-true full count -> an HONEST marker, never a silent
-        // (wrong) union that would drop the static-true case.
+        // aantal-dagen-in OR-mixed: §7.2 has NO value base — the result is bounded ONLY by the condition's true-periods
+        // (the spec's own §7.2 line 3005 caveat: an ever-true / "zeer lange periode" condition yields a "zeer groot
+        // aantal resultaten"). A static-TRUE OR is true for ALL time -> unbounded, no finite List<Segment>; unioning
+        // by the kenmerk segments would drop the static-true full-day months and under-count. So it stays an HONEST
+        // marker, never a silent (wrong) union. This is the spec-correct completion of OR-mixed on this producer.
         String adi = DrlTranspiler.transpile(Resolver.resolve("""
             Objecttype de Passagier (mv: Passagiers) (bezield)
                 het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;

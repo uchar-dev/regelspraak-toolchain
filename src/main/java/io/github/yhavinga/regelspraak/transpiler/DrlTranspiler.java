@@ -1939,8 +1939,12 @@ public final class DrlTranspiler {
      *  over its full extent ({@code rsTijdsevenredig(basis, basis)} — basis-as-condition feeds rsTijdsevenredig the
      *  base's segments as the true periods, i.e. factor 1 per fully-covered bucket); static FALSE -> prorate over the
      *  temporal union only. Null when the compound is not a temporal+static OR-mix or a member is not lowerable (a
-     *  negated/navigated temporal member, an unliftable static comparison) -> the caller markers. (aantal-dagen-in has
-     *  no base/extent, so its OR-mixed static-true "count all days" is under-defined and stays markered.) */
+     *  negated/navigated temporal member, an unliftable static comparison) -> the caller markers. ONLY tijdsevenredig
+     *  lowers an OR-mix: §7.2 aantal-dagen-in has NO value base — its result is intrinsically bounded by the condition's
+     *  true-periods (the spec's own caveat at §7.2 line 3005: an ever-true / "zeer lange periode" condition yields a
+     *  "zeer groot aantal resultaten"), so a static-TRUE OR (true for ALL time) is UNBOUNDED with no finite
+     *  List<Segment>; bounding it by the kenmerk segments would drop the full-day months and under-count, so it stays
+     *  an honest marker (verified: aantal-dagen-in OR-mixed markers in both back-ends). */
     private String orMixedTijdsevenredig(Conditie filter, Objecttype subject, String basis, RegelSpraakModel.Granulariteit gran) {
         if (!(filter instanceof Conditie.Samengesteld s) || s.kwantor() != Conditie.Kwantor.TEN_MINSTE || s.drempel() != 1)
             return null;

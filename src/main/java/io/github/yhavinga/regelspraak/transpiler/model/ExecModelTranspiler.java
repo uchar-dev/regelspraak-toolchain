@@ -815,7 +815,10 @@ public final class ExecModelTranspiler {
      *  tijdsevenredig WRITE producer. A TRUE static member satisfies the OR for the WHOLE span; tijdsevenredig's base
      *  bounds that span, so static TRUE prorates the base over its full extent (base AS its own all-true condition) and
      *  static FALSE prorates over the temporal union only. Returns the (union-cond, OR-guard) pair, or null when the
-     *  compound is not a temporal+static OR-mix or a member is not lowerable. Mirrors DrlTranspiler.orMixedTijdsevenredig. */
+     *  compound is not a temporal+static OR-mix or a member is not lowerable. ONLY tijdsevenredig lowers an OR-mix:
+     *  §7.2 aantal-dagen-in has no value base, so its result is bounded only by the condition's true-periods (§7.2 line
+     *  3005's "zeer groot aantal resultaten" caveat) -> a static-TRUE OR is unbounded and stays an honest marker.
+     *  Mirrors DrlTranspiler.orMixedTijdsevenredig. */
     private OrMixed orMixedTijdsevenredig(Conditie filter, Objecttype subject) {
         if (!(filter instanceof Conditie.Samengesteld s) || s.kwantor() != Conditie.Kwantor.TEN_MINSTE || s.drempel() != 1)
             return null;
