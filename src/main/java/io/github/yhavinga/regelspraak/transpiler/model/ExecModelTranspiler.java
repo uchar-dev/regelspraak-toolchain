@@ -597,14 +597,21 @@ public final class ExecModelTranspiler {
         else if (v.rechts() instanceof Expr.AttribuutRef ra && isTemporeel82(ra)) { tijd = ra; ander = v.links();  linksTemp = false; }
         else return null;
         if (!(tijd.type().isNumeriek() || tijd.type().isPercentage())) return null;
+        if (ander instanceof Expr.AttribuutRef ar && isTemporeel82(ar)) return null;   // both-temporal (timeline vs timeline) -> skip
         io.github.yhavinga.regelspraak.model.Eenheid el = tijd.type().eenheidOf(), er = ander.type().eenheidOf();
         if (el != null && er != null && el.vereistOmrekening(er)) return null;   // cross-unit -> skip (raw-magnitude would be wrong)
         Integer code = toetsCode82(linksTemp ? v.op() : omkeren(v.op()));        // temporal operand on the left (REVERSE)
         if (code == null) return null;                                           // datum ordering -> skip
         java.util.function.Function<Object, Object> tl = temporeelTijdlijnReader(tijd, subject);
         if (tl == null) return null;                                             // navigated/unresolvable -> skip
+        // the grens is read value-side (own attr / to-one navigated / literal / global); scalarWaarde's navigated
+        // branch needs valueSubject set (tijdreeksTotaal runs before regel() sets it), so set it around the call so a
+        // navigated grens ("... groter is dan de inkomen van zijn partner") lowers — symmetric with DRL's waarde().
+        Objecttype bewaardeValueSubject = valueSubject;
+        valueSubject = subject;
         WaardeFn g = scalarWaarde(ander);
-        if (g == null) return null;                                              // unlowerable / navigated grens -> skip
+        valueSubject = bewaardeValueSubject;
+        if (g == null) return null;                                              // unlowerable grens -> skip
         return new VergClip(tl, code, g);
     }
     private record VergClip(java.util.function.Function<Object, Object> timeline, int toets, WaardeFn grens) {}

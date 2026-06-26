@@ -477,7 +477,10 @@ public final class RegelSpraakRuntime {
             LocalDate van = segVan(o), tot = segTot(o);
             if (van == null || tot == null || !van.isBefore(tot)) continue;
             BigDecimal w = segWaarde(o);
-            if (w == null) continue;
+            if (w == null) {
+                if (toets == 5) uit.add(newSegment(segCls, van, tot, w));   // §5.6 Tabel 44: leeg ONGELIJK een gevulde grens = WAAR
+                continue;
+            }
             int c = w.compareTo(grens);
             boolean ok;
             if (toets == 0) ok = c < 0;

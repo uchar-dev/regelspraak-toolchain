@@ -498,6 +498,12 @@ final class ExpressieBouwer {
             // the subject's own same-named kenmerk; temporeelKenmerkUitOperator (own) only sees the operator's kaleNaam.
             Conditie nav = gedurendeNavigatieKenmerk(c, src(cnd));
             if (nav != null) return nav;
+            // If the onderwerp IS a navigation that the navigated path could NOT structure (a to-many role, a negated
+            // or non-temporal kenmerk), MARKER — never fall through to temporeelKenmerkUitOperator, which inspects only
+            // the operator's kaleNaam and would silently bind the SUBJECT's own same-named kenmerk (a self-relation
+            // shadow, a silently-wrong clip).
+            if (c.expressie() != null && bouw(c.expressie()) instanceof Expr.AttribuutRef a && a.navigatieRol() != null)
+                return null;
             Conditie.Kenmerk k = temporeelKenmerkUitOperator(c.toplevelOperator(), null, src(cnd));  // §8.3.1 toplevel = vragende only
             if (k != null) return k;
             return gedurendeVergelijking(c, src(cnd));   // §7.1 a temporal-attribute COMPARISON condition (EUR71)

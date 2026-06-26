@@ -34,6 +34,9 @@ public class Passagier {
     private List<Segment> actief;                        // §8.4.2 a second temporal kenmerk for the compound gedurende
     public List<Segment> getActief() { return actief; }
     public void setActief(List<Segment> v) { this.actief = v; }
+    private List<Segment> inkomenPerMaand;               // §7.1 EUR71 a SECOND temporal value attribute (the comparison side of a cross-attribute gedurende)
+    public List<Segment> getInkomenPerMaand() { return inkomenPerMaand; }
+    public void setInkomenPerMaand(List<Segment> v) { this.inkomenPerMaand = v; }
     private List<Segment> aantalDagenRechtOpBelastingvermindering; // §7.2 a temporal attribute WRITTEN by aantal-dagen-in
     public List<Segment> getAantalDagenRechtOpBelastingvermindering() { return aantalDagenRechtOpBelastingvermindering; }
     public void setAantalDagenRechtOpBelastingvermindering(List<Segment> v) { this.aantalDagenRechtOpBelastingvermindering = v; }

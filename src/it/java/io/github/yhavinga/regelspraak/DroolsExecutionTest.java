@@ -341,6 +341,70 @@ class DroolsExecutionTest {
                 () -> "totaal gedurende >1000 moet 1200x3 = 3600 zijn (niet 5200), was " + p.getTotaleBelastingvermindering());
     }
 
+    @Test void totaal_gedurende_ongelijk_includeert_de_lege_periode_tabel44() {
+        // §5.6 Tabel 44: ONGELIJK with a leeg operand vs a gevulde grens is WAAR. So "gedurende de tijd dat <temporeel>
+        // ongelijk is aan 1000" must INCLUDE a leeg (null-value) period. Cross-attribute: bv {Jan-Jun: 100 (5 mnd)},
+        // inkomen {Jan-Apr LEEG, Apr-Jun 800}; both periods qualify (leeg≠1000 + 800≠1000) -> 100×5 = 500 (NOT 200 if
+        // the leeg period were dropped). The differential masks this (shared rsTijdConditie), so this absolute is the
+        // teeth. RED-before-green: the blanket "leeg -> onwaar" drops Jan-Apr -> 200.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de inkomen per maand Bedrag voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat zijn inkomen per maand ongelijk is aan 1000).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        KieSession sessie = build(drl).newKieSession();
+        Passagier p = new Passagier();
+        p.setBelastingverminderingPerMaand(List.of(new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2023, 6, 1), new BigDecimal("100.00"))));  // Jan-Jun: 100 (5 mnd)
+        p.setInkomenPerMaand(List.of(
+                new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2023, 4, 1), null),                      // Jan-Apr LEEG
+                new Segment(LocalDate.of(2023, 4, 1), LocalDate.of(2023, 6, 1), new BigDecimal("800.00")))); // Apr-Jun 800
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("500.00").compareTo(p.getTotaleBelastingvermindering()),
+                () -> "ONGELIJK moet de lege periode includeren (Tabel 44) -> 100x5 = 500 (niet 200), was " + p.getTotaleBelastingvermindering());
+    }
+
+    @Test void eur71_eigen_attribuut_grens_compileert_in_de_then_block() {
+        // Review fix (blocker): an OWN-attribute grens ("... groter is dan zijn basistarief") lands in the THEN block;
+        // it must lower value-side ($subject.getBasistarief()), not as a bare field name (which aborts the KieBase
+        // build). Proven by build() succeeding (it asserts the DRL has no compile ERROR) + firing 1200×3 = 3600.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                het basistarief Numeriek (geheel getal);
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat zijn belastingvermindering per maand groter is dan zijn basistarief).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("$subject.getBasistarief()"),
+                () -> "de eigen-attribuut grens moet value-side ($subject.getBasistarief()) lowereren:\n" + drl);
+        KieSession sessie = build(drl).newKieSession();   // build() fails if the DRL does not compile (the original bug)
+        Passagier p = new Passagier();
+        p.setBasistarief(new BigDecimal(1000));
+        p.setBelastingverminderingPerMaand(List.of(
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 4, 1), new BigDecimal("1200.00")),
+                new Segment(LocalDate.of(2024, 4, 1), LocalDate.of(2024, 6, 1), new BigDecimal("800.00"))));
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("3600.00").compareTo(p.getTotaleBelastingvermindering()),
+                () -> "totaal gedurende > basistarief(1000) moet 1200x3 = 3600 zijn, was " + p.getTotaleBelastingvermindering());
+    }
+
     @Test void totaal_gedurende_een_navigated_temporeel_kenmerk_klipt_via_de_to_one_navigatie() {
         // §7.1 a NAVIGATED temporal kenmerk inside gedurende ("... gedurende de tijd dat zijn partner een recht op
         // korting heeft") clips the subject's value timeline to the to-one partner's kenmerk true-periods, read

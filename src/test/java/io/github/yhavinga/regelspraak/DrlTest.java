@@ -163,6 +163,32 @@ class DrlTest {
                 () -> "de HET-vorm mag geen marker meer zijn:\n" + drl);
     }
 
+    @Test void to_many_self_relatie_navigated_gedurende_kenmerk_markert_niet_de_eigen_kenmerk() {
+        // Review fix (major): a TO-MANY navigated kenmerk inside gedurende ("... gedurende de tijd dat zijn partner een
+        // recht op korting heeft", partner to-many) must MARKER — it must NOT silently fall through to the subject's
+        // OWN same-named kenmerk (a self-relation shadow that clips by the wrong timeline). RED-before-green: before the
+        // fix it lowered to $subject.getRechtOpKorting() (own) with no marker.
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de bedrag per maand Bedrag voor elke maand;
+                het recht op korting kenmerk (bezittelijk) voor elke maand;
+                de totaal partner bedrag Bedrag;
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft meerdere partners
+            Regel R
+                geldig altijd
+                    De totaal partner bedrag van een Persoon moet gesteld worden op (het totaal van zijn bedrag per maand gedurende de tijd dat zijn partner een recht op korting heeft).
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertFalse(drl.contains("$subject.getRechtOpKorting()"),
+                () -> "een to-many navigated gedurende-kenmerk mag NIET stil de eigen kenmerk binden:\n" + drl);
+        assertTrue(drl.contains("/* TODO aggregatie TOTAAL"),
+                () -> "een to-many navigated gedurende-kenmerk moet een honest marker blijven:\n" + drl);
+    }
+
     @Test void navigatie_eenvorm_heeft_bindt_een_bezittelijk_kenmerk_van_het_genavigeerde_type() {
         // §8.1.8.2 the navigated EEN-form HEEFT binds a BEZITTELIJK kenmerk of the to-one navigated type ("de reis
         // van een Passagier heeft een recht op vergoeding"), the mirror of the subject's own EEN-form. The verb

@@ -1759,6 +1759,64 @@ class ExecModelDifferentialTest {
             Map.of(),
             l -> vals(((Persoon) l.get(0)).getTotaalPartnerBedrag(), ((Persoon) l.get(1)).getTotaalPartnerBedrag())),   // 20.00, null
 
+        // EUR71 grens forms beyond literal/global (review fixes). An OWN-attribute grens: "... groter is dan zijn
+        // basistarief" — the grens lands in the THEN block, lowered value-side ($subject.getBasistarief()), NOT a
+        // bare field name (which aborts the KieBase build). bv {Jan-Apr: 1200 (3 mnd), Apr-Jun: 800} > 1000 -> 3600.
+        single("§7.1 EUR71 eigen-attribuut grens (1200×3 = 3600)",
+            TOTAAL_HDR + """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                het basistarief Numeriek (geheel getal);
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat zijn belastingvermindering per maand groter is dan zijn basistarief).
+            """,
+            () -> passagier(p -> { p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 4, 1, "1200.00"), seg(2024, 4, 1, 2024, 6, 1, "800.00"))); p.setBasistarief(new BigDecimal(1000)); }),
+            Map.of(),
+            Passagier::getTotaleBelastingvermindering),   // 3600.00
+
+        // §5.6 Tabel 44 ONGELIJK: a leeg (null-value) condition segment vs a gevulde grens is WAAR, so it must be
+        // INCLUDED. Cross-attribute: bv {Jan-Jun: 100 (5 mnd)} gedurende inkomen {Jan-Apr LEEG, Apr-Jun 800} != 1000
+        // -> both periods qualify (leeg!=1000=waar, 800!=1000=waar) -> 100×5 = 500 (not the 200 if leeg were dropped).
+        single("§7.1 EUR71 ONGELIJK includeert de lege periode (Tabel 44) (100×5 = 500)",
+            TOTAAL_HDR + """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de inkomen per maand Bedrag voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat zijn inkomen per maand ongelijk is aan 1000).
+            """,
+            () -> passagier(p -> {
+                p.setBelastingverminderingPerMaand(List.of(seg(2023, 1, 1, 2023, 6, 1, "100.00")));   // Jan-Jun: 100 (5 mnd)
+                p.setInkomenPerMaand(List.of(seg(2023, 1, 1, 2023, 4, 1, null), seg(2023, 4, 1, 2023, 6, 1, "800.00")));  // Jan-Apr LEEG, Apr-Jun 800
+            }),
+            Map.of(),
+            Passagier::getTotaleBelastingvermindering),   // 500.00
+
+        // EUR71 a to-ONE NAVIGATED grens ("... groter is dan de vertrektijd van zijn reis"): the grens lowers
+        // root-guarded value-side in BOTH back-ends (DRL waarde -> reis!.vertrektijd; exec scalarWaarde with
+        // valueSubject set). 1200×3 = 3600 (vertrektijd 1000).
+        new Fixture("§7.1 EUR71 genavigeerde grens (vertrektijd van zijn reis) (1200×3 = 3600)",
+            TOTAAL_HDR + """
+            Objecttype de Vlucht
+                de vertrektijd Numeriek (geheel getal);
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de totale belastingvermindering Bedrag;
+            """ + AGG_FEIT + """
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat zijn belastingvermindering per maand groter is dan de vertrektijd van zijn reis).
+            """,
+            () -> { Vlucht v = new Vlucht(); v.setVertrektijd(new BigDecimal(1000));
+                    Passagier p = passagier(x -> x.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 4, 1, "1200.00"), seg(2024, 4, 1, 2024, 6, 1, "800.00")))); p.setReis(v);
+                    return List.of(v, p); },
+            Map.of(),
+            l -> ((Passagier) l.get(1)).getTotaleBelastingvermindering()),   // 3600.00
+
         // §4 robustness: rsTijdTotaal must skip a zero-length (van==tot) or reversed (tot<van) segment — it
         // contributes 0, never a negative period count. {Jan-Jul: 10 (6 mnd)} + zero-length 100 + reversed 50 -> 60.
         single("§4 totaal negeert nul/negatieve-lengte segmenten (6×10 = 60)",
@@ -2927,7 +2985,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F4_compound_gedurende_matches_drl_back_end()  { runDifferential("Phase F4", PHASE_F4, 6); }
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 4); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
-    @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 10); }
+    @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 13); }
     @Test void phase_82_gehele_periode_matches_drl_back_end()      { runDifferential("Phase 82", PHASE_82, 10); }
     @Test void phase_82_kenmerk_matches_drl_back_end()             { runDifferential("Phase 82 kenmerk", PHASE_82_KENMERK, 2); }
     @Test void phase_82_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase 82 fout", PHASE_82_FOUT, 1); }

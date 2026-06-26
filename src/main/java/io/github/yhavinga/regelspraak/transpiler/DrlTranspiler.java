@@ -1837,12 +1837,16 @@ public final class DrlTranspiler {
         else return null;
         if (!(tijd.type().isNumeriek() || tijd.type().isPercentage())) return null;   // datum/tekst temporal cmp -> marker
         io.github.yhavinga.regelspraak.model.Eenheid el = tijd.type().eenheidOf(), er = ander.type().eenheidOf();
+        if (ander instanceof Expr.AttribuutRef ar && isTemporeelAttribuut(ar)) return null;   // both-temporal (timeline vs timeline) -> marker
         if (el != null && er != null && el.vereistOmrekening(er)) return null;        // cross-unit -> marker (raw-magnitude would be wrong)
         Integer code = toetsCode(linksTemp ? v.op() : omkeren(v.op()));               // temporal operand on the left (REVERSE, not negate)
         if (code == null) return null;                                                // a datum ordering op -> marker
         String getter = temporeelTijdlijnGetter(tijd, subject);
         if (getter == null) return null;                                              // navigated -> marker
-        Frag g = operand(ander, subject);                                             // the scalar grens (literal / parameter / own attr)
+        // the scalar grens lands in the VALUE/then block (rsTijdTotaal(...)), so lower it value-side (waarde ->
+        // $subject.getX() / a root-guarded navigated getter / a literal / a global), NOT operand()'s when-side bare
+        // field name (which does not resolve in a then block — KieBase build abort).
+        Frag g = waarde(ander, subject);
         if (g.marker()) return null;
         registreerTijdConditieFunctie();
         return "rsTijdConditie(" + getter + ", " + code + ", " + g.text() + ")";
@@ -1861,7 +1865,10 @@ public final class DrlTranspiler {
                 + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
                 + "        if (s.getVan() == null || s.getTot() == null || !s.getVan().isBefore(s.getTot())) continue;\n"
                 + "        Object wo = s.getWaarde();\n"
-                + "        if (wo == null) continue;\n"
+                + "        if (wo == null) {\n"
+                + "            if (toets == 5) uit.add(new " + FACT_PACKAGE + ".Segment(s.getVan(), s.getTot(), s.getWaarde()));\n"   // §5.6 Tabel 44: leeg ONGELIJK een gevulde grens = WAAR
+                + "            continue;\n"
+                + "        }\n"
                 + "        int c = ((java.math.BigDecimal) wo).compareTo(grens);\n"
                 + "        boolean ok;\n"
                 + "        if (toets == 0) ok = c < 0;\n"
