@@ -466,6 +466,32 @@ public final class RegelSpraakRuntime {
         return uit;
     }
 
+    /** §7.1 EUR71 the TRUE-period timeline of a temporal-attribute comparison: keep each value Segment whose value
+     *  satisfies the toets (0..5 = KLEINER..ONGELIJK) against the scalar grens — the periods where the comparison
+     *  holds. A leeg (null) value or a null grens is onwaar (§5.1 ordering leegwaarde). Mirrors the DRL
+     *  {@code rsTijdConditie}; the caller then rsTijdKnips the value timeline by this result. */
+    public static List<Object> rsTijdConditie(List<?> reeks, int toets, BigDecimal grens, Class<?> segCls) {
+        List<Object> uit = new ArrayList<>();
+        if (reeks == null || grens == null) return uit;
+        for (Object o : reeks) {
+            LocalDate van = segVan(o), tot = segTot(o);
+            if (van == null || tot == null || !van.isBefore(tot)) continue;
+            BigDecimal w = segWaarde(o);
+            if (w == null) continue;
+            int c = w.compareTo(grens);
+            boolean ok;
+            if (toets == 0) ok = c < 0;
+            else if (toets == 1) ok = c <= 0;
+            else if (toets == 2) ok = c > 0;
+            else if (toets == 3) ok = c >= 0;
+            else if (toets == 4) ok = c == 0;
+            else if (toets == 5) ok = c != 0;
+            else ok = false;
+            if (ok) uit.add(newSegment(segCls, van, tot, w));
+        }
+        return uit;
+    }
+
     /** §8.1.8.1/.2 negated-gedurende complement-clip: keep each value Segment's parts where the condition is FALSE
      *  (subtract the condition TRUE-intervals from each value segment, emitting the gaps). The condition intervals
      *  overlapping a value segment are clamped to it, selection-sorted by start, then walked. A null value clips to

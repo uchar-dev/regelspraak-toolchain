@@ -233,14 +233,29 @@ public final class ExecModelTranspiler {
             });
         } else if (tijdTotaal != null) {
             // §7.1 a TOTAAL over a TEMPORAL attribute is a SCALAR timeline fold (rsTijdTotaal over the subject's own/
-            // navigated List<Segment>, optionally gedurende-clipped) — NOT an instance accumulate, and reads no globals.
+            // navigated List<Segment>, optionally gedurende-clipped) — NOT an instance accumulate. It reads no globals
+            // EXCEPT a §7.1 EUR71 gedurende-comparison vs a Parameter grens ("... groter is dan de grens"), which the
+            // WaardeFn surfaces; bind those like the scalar path so the consequence reads them from the global map.
             BigDecimal vf = valueFactor(r.waarde().type(), doel.type());
             if (vf != null) tijdTotaal = tijdTotaal.scaledBy(vf);
             BiFunction<Object, Map<String, BigDecimal>, Object> fn = tijdTotaal.fn();
-            consequence = DSL.on(sVar).execute((Block2<org.drools.model.Drools, Object>) (drools, s) -> {
-                doelSetter.accept(s, fn.apply(s, Map.of()));
+            List<String> gnames = new ArrayList<>(tijdTotaal.globals());
+            List<Variable> vars = new ArrayList<>();
+            vars.add(sVar);
+            for (String gn : gnames) {
+                Global<BigDecimal> g = globals.get(gn);
+                if (g == null) return skip("regel (totaal-grens refereert niet-geregistreerde global " + gn + "): " + r.naam());
+                vars.add((Variable) g);
+            }
+            final List<String> fgn = gnames;
+            consequence = consequenceOf(vars.toArray(new Variable[0]), (drools, args) -> {
+                Object s = args[0];
+                Map<String, BigDecimal> gm = new LinkedHashMap<>();
+                for (int i = 0; i < fgn.size(); i++) gm.put(fgn.get(i), (BigDecimal) args[1 + i]);
+                doelSetter.accept(s, fn.apply(s, gm));
                 drools.update(s);
             });
+            if (consequence == null) return skip("regel (totaal: te veel gebonden globals): " + r.naam());
         } else if (isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie fx && !isGelisteFold(fx)) {
             // (a ≥2-operand MINIMUM/MAXIMUM is a §5.8.3 LISTED concatenation fold, not an instance accumulate — it
             //  flows to the scalar path / concatenatieFold below.)
@@ -488,6 +503,7 @@ public final class ExecModelTranspiler {
         // §8.4.2 pure-kenmerk compound (ALLE intersect / ten-minste-1 union). A mixed-static compound -> skip (next inc).
         String kenmerk = null; boolean negatie = false; Class<?> segCls = null;
         BiFunction<Object, List<?>, List<?>> compoundClip = null;
+        VergClip vergClip = null;                                  // §7.1 EUR71 a temporal-comparison clip
         java.util.function.Predicate<Object> staticGuard = null;   // §8.4 mixed-static value-side gate
         boolean orWiden = false;                                   // ten-minste-1: a TRUE static member widens to the full span
         if (f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null
@@ -496,6 +512,13 @@ public final class ExecModelTranspiler {
             if (segCls == null) return null;
             kenmerk = k.kenmerk();
             negatie = k.negatie();
+        } else if (f.filter() instanceof Conditie.Vergelijking vc) {
+            // §7.1 EUR71 "gedurende de tijd dat <temporeel attr> <op> <scalar>": clip the value timeline to the
+            // comparison's OWN boolean timeline (rsTijdConditie over the comparison attribute's segments), then total.
+            segCls = segmentClass();
+            if (segCls == null) return null;
+            vergClip = vergelijkingClip(vc, subject);
+            if (vergClip == null) return null;   // non-temporal / cross-unit / datum / navigated comparison -> skip
         } else if (f.filter() instanceof Conditie.Samengesteld sc) {
             segCls = segmentClass();
             if (segCls == null) return null;
@@ -521,7 +544,7 @@ public final class ExecModelTranspiler {
             return null;   // any other restriction -> honest skip
         }
         final String fKenmerk = kenmerk; final boolean fNeg = negatie; final Class<?> fSeg = segCls;
-        final BiFunction<Object, List<?>, List<?>> fClip = compoundClip;
+        final BiFunction<Object, List<?>, List<?>> fClip = compoundClip; final VergClip fVerg = vergClip;
         final java.util.function.Predicate<Object> fGuard = staticGuard; final boolean fOrWiden = orWiden;
         BiFunction<Object, Map<String, BigDecimal>, Object> fn = (s, gm) -> {
             List<?> tl = (List<?>) reader.apply(s);
@@ -529,6 +552,10 @@ public final class ExecModelTranspiler {
             if (fKenmerk != null) {
                 List<?> cond = (List<?>) RegelSpraakRuntime.get(s, fKenmerk);
                 clipped = fNeg ? RegelSpraakRuntime.rsTijdKnipNiet(tl, cond, fSeg) : RegelSpraakRuntime.rsTijdKnip(tl, cond, fSeg);
+            } else if (fVerg != null) {
+                BigDecimal grens = RegelSpraakRuntime.toBd(fVerg.grens().fn().apply(s, gm));
+                List<?> cond = RegelSpraakRuntime.rsTijdConditie((List<?>) fVerg.timeline().apply(s), fVerg.toets(), grens, fSeg);
+                clipped = RegelSpraakRuntime.rsTijdKnip(tl, cond, fSeg);
             } else if (fClip != null) {
                 clipped = fClip.apply(s, tl);
             } else {
@@ -541,8 +568,30 @@ public final class ExecModelTranspiler {
             }
             return RegelSpraakRuntime.rsTijdTotaal(clipped, gran);
         };
-        return new WaardeFn(fn, Set.of());
+        return new WaardeFn(fn, vergClip != null ? vergClip.grens().globals() : Set.of());
     }
+
+    /** §7.1 EUR71 the temporal-attribute comparison's condition reader: the timeline of the comparison attribute, the
+     *  toets code, and the scalar grens (a {@link WaardeFn} carrying its globals). null for a non-temporal /
+     *  cross-unit / datum / navigated comparison (the caller skips). Mirrors DrlTranspiler.vergelijkingTijdreeks /
+     *  geheelPeriode82's comparison branch. */
+    private VergClip vergelijkingClip(Conditie.Vergelijking v, Objecttype subject) {
+        Expr.AttribuutRef tijd; Expr ander; boolean linksTemp;
+        if (v.links() instanceof Expr.AttribuutRef la && isTemporeel82(la))       { tijd = la; ander = v.rechts(); linksTemp = true; }
+        else if (v.rechts() instanceof Expr.AttribuutRef ra && isTemporeel82(ra)) { tijd = ra; ander = v.links();  linksTemp = false; }
+        else return null;
+        if (!(tijd.type().isNumeriek() || tijd.type().isPercentage())) return null;
+        io.github.yhavinga.regelspraak.model.Eenheid el = tijd.type().eenheidOf(), er = ander.type().eenheidOf();
+        if (el != null && er != null && el.vereistOmrekening(er)) return null;   // cross-unit -> skip (raw-magnitude would be wrong)
+        Integer code = toetsCode82(linksTemp ? v.op() : omkeren(v.op()));        // temporal operand on the left (REVERSE)
+        if (code == null) return null;                                           // datum ordering -> skip
+        java.util.function.Function<Object, Object> tl = temporeelTijdlijnReader(tijd, subject);
+        if (tl == null) return null;                                             // navigated/unresolvable -> skip
+        WaardeFn g = scalarWaarde(ander);
+        if (g == null) return null;                                              // unlowerable / navigated grens -> skip
+        return new VergClip(tl, code, g);
+    }
+    private record VergClip(java.util.function.Function<Object, Object> timeline, int toets, WaardeFn grens) {}
 
     /** §5.8.5/§13.4.17.51-.54 a SOM / MINIMUM / MAXIMUM over a gedimensioneerd attribuut, restricted to a
      *  {@link Expr.DimensieSelectie}'s labels — a FIXED fold of the attribute's {@code Map<label,value>} over the

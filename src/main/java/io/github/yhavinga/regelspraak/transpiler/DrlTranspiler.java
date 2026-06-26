@@ -1801,12 +1801,73 @@ public final class DrlTranspiler {
                 guard = statischeGuard(statisch, subject);   // ALLE: AND-gate the clipped totaal
                 if (guard == null) return null;   // a static member we cannot lower -> marker, never an ungated totaal
             }
+        } else if (f.filter() instanceof Conditie.Vergelijking vc && subject != null) {
+            // §7.1 EUR71 "gedurende de tijd dat <temporeel attr> <op> <scalar>": clip the value timeline to the
+            // periods where the comparison holds (its OWN boolean timeline, rsTijdConditie) before totalling. The
+            // comparison's temporal attribute may differ from the totalled one ("totaal van de bonus gedurende de
+            // tijd dat het inkomen > 1000"); rsTijdKnip intersects the two timelines' intervals.
+            String cond = vergelijkingTijdreeks(vc, subject);
+            if (cond == null) return null;   // a non-temporal / cross-unit / datum / navigated comparison -> marker
+            registreerTijdKnipFunctie();
+            waardeTijdreeks = "rsTijdKnip(" + waardeTijdreeks + ", " + cond + ")";
         } else if (f.filter() != null) {
             return null;   // a restriction we cannot lower -> marker, never a silently-unrestricted total
         }
         registreerTijdTotaalFunctie();
         String totaal = "rsTijdTotaal(" + waardeTijdreeks + ", \"" + g.name() + "\")";
         return Frag.ok(guard == null ? totaal : "(" + guard + " ? " + totaal + " : java.math.BigDecimal.ZERO)");
+    }
+
+    /** §7.1 EUR71 the condition boolean timeline for a "gedurende de tijd dat &lt;temporeel attr&gt; &lt;op&gt;
+     *  &lt;scalar&gt;" restriction: {@code rsTijdConditie(timeline, toets, grens)} lists the periods where the
+     *  comparison holds. Mirrors {@link #geheelPeriodeCall}'s operand extraction (temporal side put on the left via
+     *  {@link #omkeren}; a cross-unit / datum / navigated / non-temporal comparison returns null -&gt; the caller
+     *  markers, never a wrong clip). */
+    private String vergelijkingTijdreeks(Conditie.Vergelijking v, Objecttype subject) {
+        Expr.AttribuutRef tijd; Expr ander; boolean linksTemp;
+        if (v.links() instanceof Expr.AttribuutRef la && isTemporeelAttribuut(la))      { tijd = la; ander = v.rechts(); linksTemp = true; }
+        else if (v.rechts() instanceof Expr.AttribuutRef ra && isTemporeelAttribuut(ra)) { tijd = ra; ander = v.links();  linksTemp = false; }
+        else return null;
+        if (!(tijd.type().isNumeriek() || tijd.type().isPercentage())) return null;   // datum/tekst temporal cmp -> marker
+        io.github.yhavinga.regelspraak.model.Eenheid el = tijd.type().eenheidOf(), er = ander.type().eenheidOf();
+        if (el != null && er != null && el.vereistOmrekening(er)) return null;        // cross-unit -> marker (raw-magnitude would be wrong)
+        Integer code = toetsCode(linksTemp ? v.op() : omkeren(v.op()));               // temporal operand on the left (REVERSE, not negate)
+        if (code == null) return null;                                                // a datum ordering op -> marker
+        String getter = temporeelTijdlijnGetter(tijd, subject);
+        if (getter == null) return null;                                              // navigated -> marker
+        Frag g = operand(ander, subject);                                             // the scalar grens (literal / parameter / own attr)
+        if (g.marker()) return null;
+        registreerTijdConditieFunctie();
+        return "rsTijdConditie(" + getter + ", " + code + ", " + g.text() + ")";
+    }
+
+    /** Register the §7.1 EUR71 condition-timeline helper: keep each value Segment whose value satisfies the toets
+     *  (0..5 = KLEINER..ONGELIJK) against the scalar grens — the TRUE periods of a temporal-attribute comparison. A
+     *  leeg (null) segment value or a null grens is onwaar (§5.1 ordering leegwaarde). Byte-identical to
+     *  {@link io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime#rsTijdConditie}. */
+    private void registreerTijdConditieFunctie() {
+        hulpFuncties.putIfAbsent("rsTijdConditie",
+                "function java.util.List rsTijdConditie(java.util.List reeks, int toets, java.math.BigDecimal grens) {\n"
+                + "    java.util.List uit = new java.util.ArrayList();\n"
+                + "    if (reeks == null || grens == null) return uit;\n"
+                + "    for (Object o : reeks) {\n"
+                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
+                + "        if (s.getVan() == null || s.getTot() == null || !s.getVan().isBefore(s.getTot())) continue;\n"
+                + "        Object wo = s.getWaarde();\n"
+                + "        if (wo == null) continue;\n"
+                + "        int c = ((java.math.BigDecimal) wo).compareTo(grens);\n"
+                + "        boolean ok;\n"
+                + "        if (toets == 0) ok = c < 0;\n"
+                + "        else if (toets == 1) ok = c <= 0;\n"
+                + "        else if (toets == 2) ok = c > 0;\n"
+                + "        else if (toets == 3) ok = c >= 0;\n"
+                + "        else if (toets == 4) ok = c == 0;\n"
+                + "        else if (toets == 5) ok = c != 0;\n"
+                + "        else ok = false;\n"
+                + "        if (ok) uit.add(new " + FACT_PACKAGE + ".Segment(s.getVan(), s.getTot(), s.getWaarde()));\n"
+                + "    }\n"
+                + "    return uit;\n"
+                + "}");
     }
 
     /** §8.4 the value-side static guard for a mixed gedurende: the AND ({@code " && "}) of each non-temporal

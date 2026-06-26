@@ -277,6 +277,40 @@ class DroolsExecutionTest {
                 () -> "totaal moet 12x10 + 6x11 = 186 zijn, was " + p.getTotaleBelastingvermindering());
     }
 
+    @Test void totaal_gedurende_een_temporele_vergelijking_klipt_naar_de_ware_periodes_eur71() {
+        // §7.1 EUR71: "het totaal van zijn belastingvermindering per maand GEDURENDE DE TIJD DAT zijn
+        // belastingvermindering per maand groter is dan 1000" — the comparison's OWN boolean timeline (the periods
+        // it exceeds 1000) clips the value timeline before totalling. bv {Jan-Apr 2024: 1200 (3 mnd), Apr-Jun: 800
+        // (2 mnd)}; >1000 keeps only the first segment -> 1200 × 3 = 3600 (NOT 1200×3 + 800×2 = 5200). RED-before-green:
+        // without the comparison-clip the conditie markers and the rule never sets the doel (null).
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat zijn belastingvermindering per maand groter is dan 1000).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsTijdKnip(") && drl.contains("rsTijdConditie("),
+                () -> "een gedurende-vergelijking moet via rsTijdKnip(value, rsTijdConditie(...)) lowereren:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier p = new Passagier();
+        p.setBelastingverminderingPerMaand(List.of(
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 4, 1), new BigDecimal("1200.00")),  // 3 mnd x 1200 (>1000)
+                new Segment(LocalDate.of(2024, 4, 1), LocalDate.of(2024, 6, 1), new BigDecimal("800.00"))));  // 2 mnd x 800  (<=1000)
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("3600.00").compareTo(p.getTotaleBelastingvermindering()),
+                () -> "totaal gedurende >1000 moet 1200x3 = 3600 zijn (niet 5200), was " + p.getTotaleBelastingvermindering());
+    }
+
     @Test void totaal_van_een_temporeel_attribuut_gedurende_een_kenmerk_klipt_naar_de_ware_periodes() {
         // §7.1 the €71 worked example: "het totaal van zijn belastingvermindering per maand GEDURENDE DE TIJD DAT
         // hij rechthebbend is" clips the value timeline (€10/mnd over 2023, €11/mnd over 2024 H1) to the kenmerk's

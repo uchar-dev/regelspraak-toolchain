@@ -493,11 +493,36 @@ final class ExpressieBouwer {
         // §8.4 example never silently drops its non-temporal predicate.
         if (cnd.toplevelElementaireVoorwaarde() != null) {
             ToplevelElementaireVoorwaardeContext c = cnd.toplevelElementaireVoorwaarde();
-            return temporeelKenmerkUitOperator(c.toplevelOperator(), null, src(cnd));  // §8.3.1 toplevel = vragende only
+            Conditie.Kenmerk k = temporeelKenmerkUitOperator(c.toplevelOperator(), null, src(cnd));  // §8.3.1 toplevel = vragende only
+            if (k != null) return k;
+            return gedurendeVergelijking(c, src(cnd));   // §7.1 a temporal-attribute COMPARISON condition (EUR71)
         }
         if (cnd.toplevelSamengesteldeVoorwaarde() != null)
             return gedurendeSamengesteld(cnd.toplevelSamengesteldeVoorwaarde(), src(cnd));
         return null;
+    }
+
+    /** §7.1 structure a "gedurende de tijd dat &lt;temporeel attribuut&gt; &lt;vergelijking&gt; &lt;scalar&gt;"
+     *  enkelvoudige condition (the EUR71 shape, e.g. "gedurende de tijd dat het inkomen groter is dan 1000") into a
+     *  {@link Conditie.Vergelijking} the transpiler clips the value timeline by (its boolean timeline). Built only
+     *  when ONE operand is a single-period temporal attribute of the subject (the condition varies over time) and the
+     *  form is a verb-split comparison; else null (the caller markers). The transpiler validates numeric type / units. */
+    private Conditie gedurendeVergelijking(ToplevelElementaireVoorwaardeContext c, String bron) {
+        if (c.expressie() == null || c.toplevelOperator() == null
+                || c.toplevelOperator().vergelijkingsTekenGesplitst() == null || c.toplevelOperator().expressie() == null)
+            return null;
+        Expr lhs = bouw(c.expressie());
+        Expr rhs = bouw(c.toplevelOperator().expressie());
+        if (!isTemporeelSubjectAttr(lhs) && !isTemporeelSubjectAttr(rhs)) return null;   // a static single condition is no gedurende
+        Conditie.Operator op = RuleChecker.naarOperator(RuleChecker.cmpOf(c.toplevelOperator().vergelijkingsTekenGesplitst()));
+        return new Conditie.Vergelijking(op, lhs, rhs, null, bron);
+    }
+
+    /** A single-period temporal attribute of the rule subject (the operand a §7.1 gedurende comparison varies over). */
+    private boolean isTemporeelSubjectAttr(Expr e) {
+        return huidigSubject != null && e instanceof Expr.AttribuutRef a && a.navigatieRol() == null && !a.set()
+                && a.objecttype() == huidigSubject && huidigSubject.attribuutGranulariteit.containsKey(a.attribuut())
+                && !huidigSubject.attribuutTijdlijnAantal.containsKey(a.attribuut());
     }
 
     /** Resolve an elementaire "is/heeft (geen/niet) (een/het) &lt;kenmerk&gt;" membership operator into a

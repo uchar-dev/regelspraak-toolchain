@@ -1698,6 +1698,38 @@ class ExecModelDifferentialTest {
             },
             Map.of(),
             l -> vals(((Passagier) l.get(0)).getTotaleBelastingvermindering(), ((Passagier) l.get(1)).getTotaleBelastingvermindering())),   // 0, null
+
+        // EUR71 §7.1 "gedurende de tijd dat <temporeel attr> <op> <scalar>": clip the value timeline to the periods
+        // the comparison holds (its OWN boolean timeline). bv {Jan-Apr: 1200 (3 mnd), Apr-Jun: 800 (2 mnd)}; the
+        // comparison ">1000" keeps only the first segment -> rsTijdTotaal(1200×3) = 3600.
+        single("§7.1 EUR71 gedurende (temporal comparison vs literal) klipt (1200×3 = 3600)",
+            TOTAAL_HDR + """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat zijn belastingvermindering per maand groter is dan 1000).
+            """,
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(
+                    seg(2024, 1, 1, 2024, 4, 1, "1200.00"), seg(2024, 4, 1, 2024, 6, 1, "800.00")))),
+            Map.of(),
+            Passagier::getTotaleBelastingvermindering),   // 3600.00
+
+        // EUR71 vs a Parameter-GLOBAL grens (exercises the exec WaardeFn.globals propagation): same 3600.
+        single("§7.1 EUR71 gedurende (temporal comparison vs global) klipt (1200×3 = 3600)",
+            "Parameter de grens : Numeriek (geheel getal)\n" + TOTAAL_HDR + """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat zijn belastingvermindering per maand groter is dan de grens).
+            """,
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(
+                    seg(2024, 1, 1, 2024, 4, 1, "1200.00"), seg(2024, 4, 1, 2024, 6, 1, "800.00")))),
+            Map.of("grens", new BigDecimal(1000)),
+            Passagier::getTotaleBelastingvermindering),   // 3600.00
     };
 
     // ---- Phase F2 fixtures: §13.4.17.57 "het aantal dagen in <maand|jaar> dat <kenmerk>" — a temporal WRITE ----
@@ -2849,7 +2881,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F4_compound_gedurende_matches_drl_back_end()  { runDifferential("Phase F4", PHASE_F4, 6); }
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 4); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
-    @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 6); }
+    @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 8); }
     @Test void phase_82_gehele_periode_matches_drl_back_end()      { runDifferential("Phase 82", PHASE_82, 10); }
     @Test void phase_82_kenmerk_matches_drl_back_end()             { runDifferential("Phase 82 kenmerk", PHASE_82_KENMERK, 2); }
     @Test void phase_82_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase 82 fout", PHASE_82_FOUT, 1); }
