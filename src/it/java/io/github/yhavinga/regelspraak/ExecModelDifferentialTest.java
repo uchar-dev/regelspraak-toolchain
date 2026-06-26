@@ -305,12 +305,25 @@ class ExecModelDifferentialTest {
                 () -> { Vlucht v = new Vlucht(); if (datum != null) v.setVluchtdatum(datum); return List.of(v); },
                 Map.of(), l -> ((Vlucht) l.get(0)).isLaat());
     }
+    // the negated form also reaches a §6 DATE-ARITHMETIC operand ("de vluchtdatum plus 1 dag geen kerstdag is"): there
+    // "geen" stays on the kaleNaam (the operand is a Binair, not an AttribuutRef), recovered by the resolver's case (a).
+    static final String DAGSOORT_NEG_ARITH_SRC = DAGSOORT_SRC.replace(
+            "indien de vluchtdatum van de Vlucht een kerstdag is.",
+            "indien de vluchtdatum van de Vlucht plus 1 dag geen kerstdag is.");
+    static Fixture dagsoortNegArithFix(String naam, java.time.LocalDate datum) {
+        return new Fixture(naam, DAGSOORT_NEG_ARITH_SRC,
+                () -> { Vlucht v = new Vlucht(); if (datum != null) v.setVluchtdatum(datum); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).isLaat());
+    }
     static final Fixture[] PHASE_DAGSOORT_NEG = {
         dagsoortNegFix("§8.1.5 is geen kerstdag: 25-12 IS kerstdag -> onwaar", java.time.LocalDate.of(2024, 12, 25)),
         dagsoortNegFix("§8.1.5 is geen kerstdag: 24-12 geen kerstdag -> waar", java.time.LocalDate.of(2024, 12, 24)),
         dagsoortNegFix("§5.15 is geen kerstdag op een leeg datum -> WAAR (¬'nooit een dagsoort')", null),
+        dagsoortNegArithFix("§6+§8.1.5 (vluchtdatum + 1 dag) geen kerstdag: 24-12+1=25-12 IS -> onwaar", java.time.LocalDate.of(2024, 12, 24)),
+        dagsoortNegArithFix("§6+§8.1.5 (vluchtdatum + 1 dag) geen kerstdag: 23-12+1=24-12 NOT -> waar", java.time.LocalDate.of(2024, 12, 23)),
+        dagsoortNegArithFix("§5.15 date-arith geen kerstdag op een leeg datum -> WAAR", null),
     };
-    static final Boolean[] PHASE_DAGSOORT_NEG_EXPECTED = { Boolean.FALSE, Boolean.TRUE, Boolean.TRUE };
+    static final Boolean[] PHASE_DAGSOORT_NEG_EXPECTED = { Boolean.FALSE, Boolean.TRUE, Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, Boolean.TRUE };
 
     // ---- §6.11 datum ± N <dagsoort> ("plus de uitstelduur" in kerstdagen): step day-by-day counting the §9.8
     //      kerstdag days. Both back-ends share the loop (DRL rsDatumPlus_Kerstdag <-> RegelSpraakRuntime.
@@ -3430,7 +3443,7 @@ class ExecModelDifferentialTest {
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
     @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 16); }
     @Test void phase_dagsoort_controle_matches_drl_back_end()     { runDifferential("Phase DAGSOORT", PHASE_DAGSOORT, 5); }
-    @Test void phase_dagsoort_negatie_matches_drl_back_end()      { runDifferential("Phase DAGSOORT NEG", PHASE_DAGSOORT_NEG, 3); }
+    @Test void phase_dagsoort_negatie_matches_drl_back_end()      { runDifferential("Phase DAGSOORT NEG", PHASE_DAGSOORT_NEG, 6); }
     /** §8.1.5 + Tabel 16 "is geen <dagsoort>" is a closed-form (¬dagsoort); assert the ABSOLUTE spec values (incl. §5.15:
      *  a leeg datum IS "geen <dagsoort>" = WAAR) on the oracle AND back-end parity. */
     @Test void phase_DAGSOORT_NEG_is_spec_correct() {

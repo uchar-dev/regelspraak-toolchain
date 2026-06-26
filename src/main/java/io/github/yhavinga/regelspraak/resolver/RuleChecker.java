@@ -1238,16 +1238,26 @@ final class RuleChecker {
             String dag = dagsoortNaam(stripArtikel(src(naamCtx)));
             if (dag != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.DAGSOORT, lhs, dag, null, bron);
         }
-        // §8.1.5 + Tabel 16 (spec L3224) "<datum> is geen <dagsoort>": the NEGATED dagsoortcontrole. "geen" is lexed as
-        // a LOWER_ID (no GEEN token), so the greedy onderwerp absorbs it as a TRAILING word of the operand — it ends the
-        // lhs bron (exactly as an absorbed "niet" does) and the bare kaleNaam left for the operator is just the dagsoort.
-        // Recover the absorbed "geen" (mirror absorbedNegator) and recognize a NEGATED DAGSOORT predicaat, kept on the
-        // §8.1.5 datum-value path — NEVER mis-folded into the §3.5 kenmerkcheck (a dagsoort is no kenmerk; §5.15-based
-        // leegwaarde: a leeg datum IS "geen <dagsoort>" = waar). Guarded against an attribuut literally named "… geen".
-        if (!heeftWerkwoord && lhs instanceof Expr.AttribuutRef la && la.type().isDatum() && la.bron() != null
-                && la.bron().stripTrailing().toLowerCase().endsWith(" geen") && !la.attribuut().toLowerCase().endsWith("geen")) {
-            String dag = dagsoortNaam(stripArtikel(src(naamCtx)));
-            if (dag != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.DAGSOORT, la, dag, true, 0, null, bron);
+        // §8.1.5 + Tabel 16 (spec L3224) "<datum> is geen <dagsoort>": the NEGATED dagsoortcontrole, kept on the §8.1.5
+        // datum-value path — NEVER mis-folded into the §3.5 kenmerkcheck (a dagsoort is no kenmerk; §5.15-based
+        // leegwaarde: a leeg/non-dagsoort datum IS "geen <dagsoort>" = WAAR). "geen" is a LOWER_ID (no GEEN token), so
+        // where it lands depends on the operand shape: for a §6 date-arithmetic operand ("de vluchtdatum plus 1 dag") it
+        // stays on the operator's kaleNaam ("geen kerstdag"); for a plain AttribuutRef the greedy onderwerp absorbs it
+        // as a TRAILING word of the operand bron (like "niet"), leaving the bare dagsoort as the kaleNaam.
+        if (!heeftWerkwoord && lhs != null && lhs.type().isDatum()) {
+            String naam0 = stripArtikel(src(naamCtx));
+            // (a) "geen <dagsoort>" left on the kaleNaam — a date-arithmetic / non-AttribuutRef datum operand.
+            if (naam0 != null && naam0.regionMatches(true, 0, "geen ", 0, 5)) {
+                String dag = dagsoortNaam(stripArtikel(naam0.substring(5).trim()));
+                if (dag != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.DAGSOORT, lhs, dag, true, 0, null, bron);
+            }
+            // (b) "geen" absorbed as the operand's trailing word — a plain AttribuutRef (mirror absorbedNegator),
+            //     guarded against an attribuut literally named "… geen". The kaleNaam is then the bare dagsoort.
+            if (lhs instanceof Expr.AttribuutRef la && la.bron() != null
+                    && la.bron().stripTrailing().toLowerCase().endsWith(" geen") && !la.attribuut().toLowerCase().endsWith("geen")) {
+                String dag = dagsoortNaam(naam0);
+                if (dag != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.DAGSOORT, la, dag, true, 0, null, bron);
+            }
         }
         Objecttype subject = bouwer.subject();
         if (subject == null) return null;
