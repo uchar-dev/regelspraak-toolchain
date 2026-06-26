@@ -1330,6 +1330,40 @@ class RuleCheckTest {
                 () -> "een temporeel onderwerp mag geen §8.2 fout geven: " + m.errors());
     }
 
+    @Test void gehele_periode_op_rekenkundig_gewikkeld_temporeel_attribuut_geen_fout() {
+        // Review regression: a temporal attribuut WRAPPED in arithmetic ("zijn saldo plus 1") is still tijdsafhankelijk
+        // (§5.1.1/§8.4), so the §8.2 check is VALID — it must NOT be rejected as non-temporal. The transpiler may marker
+        // what it cannot yet lower, but that is an honest skip, not a spec ERROR. (exprTemporeel now recurses through
+        // arithmetic wrappers like ExpressieBouwer.temporeelAttribuutOperand.)
+        String src = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het saldo Numeriek (geheel getal) voor elke maand;
+                is duur kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is duur indien zijn saldo plus 1 gedurende het gehele jaar groter is dan 5.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertFalse(m.errors().stream().anyMatch(d -> d.message().contains("volledige periode")),
+                () -> "een rekenkundig-gewikkeld temporeel attribuut is geldig §8.2, geen fout: " + m.errors());
+    }
+
+    @Test void gehele_periode_op_temporeel_parameter_geen_fout() {
+        // Review regression: a §3.8/§13.3.8 tijdlijn-parameter onderwerp is tijdsafhankelijk, so its §8.2 check is
+        // valid and must NOT be rejected (exprTemporeel now counts a parameter with a granulariteit).
+        String src = """
+            Parameter de grens : Numeriek (geheel getal) voor elk jaar
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                is duur kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is duur indien de grens gedurende het gehele jaar groter is dan 5.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertFalse(m.errors().stream().anyMatch(d -> d.message().contains("volledige periode")),
+                () -> "een tijdlijn-parameter onderwerp is geldig §8.2, geen fout: " + m.errors());
+    }
+
     @Test void correcte_soort_negatie_geen_waarschuwing() {
         // Control: the verb matches the soort (bezittelijk -> heeft, bijvoeglijk -> is) -> no warning.
         String src = """

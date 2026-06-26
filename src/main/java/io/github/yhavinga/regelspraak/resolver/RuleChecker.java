@@ -1016,10 +1016,22 @@ final class RuleChecker {
         if (c instanceof Conditie.Kenmerk k)      return kenmerkTemporeel(k);
         return false;
     }
-    /** Mirror of DrlTranspiler.isTemporeelAttribuut: a read of an attribuut declared with a §13.3.6 tijdlijn. */
+    /** Whether an operand READS a TIJDSAFHANKELIJK value ANYWHERE — a §13.3.6 tijdlijn attribuut (own or navigated),
+     *  a §3.8/§13.3.8 tijdlijn parameter, or such a read nested in arithmetic ("zijn saldo plus 1"), an afronding or a
+     *  begrenzing. Mirrors ExpressieBouwer.temporeelAttribuutOperand (the §7.1/§8.4 temporal-operand gate) so the §8.2
+     *  rejection only fires when the onderwerp is GENUINELY static — a wrapped/parameter temporal onderwerp is a VALID
+     *  §8.2 (the transpiler markers what it cannot yet lower), never a spec error. */
     private static boolean exprTemporeel(Expr e) {
-        return e instanceof Expr.AttribuutRef a && a.objecttype() != null
-                && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut());
+        if (e instanceof Expr.AttribuutRef a)
+            return a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut());
+        if (e instanceof Expr.ParameterRef p)  return p.parameter().granulariteit() != null;
+        if (e instanceof Expr.Binair b)         return exprTemporeel(b.links()) || exprTemporeel(b.rechts());
+        if (e instanceof Expr.Afgerond af)      return exprTemporeel(af.basis());
+        if (e instanceof Expr.Begrensd bg)      return exprTemporeel(bg.basis())
+                || (bg.minimum() != null && exprTemporeel(bg.minimum()))
+                || (bg.maximum() != null && exprTemporeel(bg.maximum()));
+        if (e instanceof Expr.DimensieCel dc)   return exprTemporeel(dc.attribuut());
+        return false;
     }
     private boolean kenmerkTemporeel(Conditie.Kenmerk k) {
         Objecttype subject = bouwer.subject();
@@ -1040,8 +1052,16 @@ final class RuleChecker {
             return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, op.NIET() != null, periode, bron);
         // §8.1.8.3 "is niet een <k>": the explicit NIET EEN form (no AAN_DE_ELFPROEF / NUMERIEK_MET_EXACT keyword
         // follows) is the NEGATED zelfstandig kenmerkcheck — bind the positive EEN-form (is -> ZELFSTANDIG), then flip.
-        if (op.NIET() != null && op.EEN() != null)
-            return negeer(kenmerkPredicaat(lhs, op.kaleNaam(), true, false, periode, bron), bron);
+        if (op.NIET() != null && op.EEN() != null) {
+            Conditie pos = kenmerkPredicaat(lhs, op.kaleNaam(), true, false, periode, bron);
+            // Tabel 16 sanctions "is niet een <k>" only for a KENMERK; a rolcheck negates as "is/heeft geen <rol>"
+            // (§8.1.7). Lower it the same way (inverse rolcheck), but surface the unsanctioned writing as a WARNING.
+            if (pos instanceof Conditie.Rollidmaatschap || pos instanceof Conditie.VerreRollidmaatschap)
+                model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                    "de schrijfwijze 'is niet een <rolnaam>' is voor een rolcheck niet voorzien; Tabel 16 kent alleen "
+                    + "'is/heeft geen <rolnaam>' als ontkenning (§8.1.7): " + bron, 0));
+            return negeer(pos, bron);
+        }
         Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null,
                 op.HEEFT() != null || op.HEBBEN() != null, periode, bron); // (is|heeft) een? kaleNaam: §8.1.8
         return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership

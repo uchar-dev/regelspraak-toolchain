@@ -1578,6 +1578,33 @@ class DrlTest {
         assertTrue(drl.contains("student == true"),  () -> "de positieve EEN-vorm moet '== true' blijven:\n" + drl);
     }
 
+    @Test void is_niet_een_rol_lowert_inverse_rolcheck_met_waarschuwing() {
+        // Review finding: "is niet een <rolnaam>" binds the NEGATED rolcheck (the subject does NOT fill the role) and
+        // lowers to the inverse null-test, the same meaning as "is geen <rol>". But Tabel 16 sanctions only
+        // "is/heeft geen <rolnaam>" for a rolcheck negation (§8.1.7), so the unsanctioned writing raises a WARNING
+        // (a lint, never a wrong gate — the lowering is unchanged).
+        String src = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                is duur kenmerk (bijvoeglijk);
+            Objecttype de Vlucht (mv: Vluchten)
+            Feittype reis van passagier
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            Regel R
+                geldig altijd
+                    Een Passagier is duur indien hij aan alle volgende voorwaarden voldoet:
+                    - hij is niet een passagier
+                    - hij is duur.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("reis == null"), () -> "de negatieve rolcheck moet de inverse null-test zijn:\n" + drl);
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
+                        && d.message().contains("rolnaam")),
+                () -> "de niet-voorziene 'is niet een <rol>' schrijfwijze moet waarschuwen: " + m.diagnostics);
+    }
+
     @Test void is_niet_bijvoeglijk_kenmerk_absorbeert_niet_in_kalenaam() {
         // Guard: the new NIET EEN alt must NOT change the bijvoeglijk "is niet <k>" parse, where the "niet" lexes
         // INTO the kaleNaam (load-bearing for the §8.1.8 verbatim-first de-negation). No "een" -> the NIET-EEN alt
