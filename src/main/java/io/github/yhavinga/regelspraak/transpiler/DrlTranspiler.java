@@ -1936,7 +1936,21 @@ public final class DrlTranspiler {
         String lv = lvF.text(), rv = rvF.text();
         String[] ov = vergelijkingsOperanden(lv, v.links().type(), rv, v.rechts().type());
         String volBeide = "(" + lv + " != null && " + rv + " != null && " + ov[0] + " " + drlOp(v.op()) + " " + ov[1] + ")";
-        if (ordeningOfDatum(v.op())) return volBeide;
+        if (ordeningOfDatum(v.op())) {
+            // §5.7 Tabel 46: a DATUM ordering (eerder/later) with BOTH operands empty-capable (an attr-vs-attr compare,
+            // no datum literal) is "fout" when both are empty — NOT the "onwaar" that volBeide renders. The exec
+            // statischeVergelijking fires a datum ordering static member ONLY as <own-attr> <op> <datum literal> and
+            // SKIPS every other datum form, so DRL markers them too (return null) to stay symmetric — never a
+            // DRL-fires/exec-skips divergence the differential would mask. A numeric ordering both-empty is Tabel 42/33
+            // "onwaar" = the volBeide false (correct), so it keeps firing; a literal-RHS datum ordering (never both-empty)
+            // keeps firing in both back-ends.
+            if (v.links().type().isDatum()) {
+                boolean execFires = v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
+                        && v.rechts() instanceof Expr.Literal dl && dl.type().isDatum();
+                if (!execFires) return null;
+            }
+            return volBeide;
+        }
         if (v.op() == Conditie.Operator.GELIJK)   // Tabel 37 numeriek both-empty -> waar; Tabel 38 non-numeriek -> onwaar
             return nietNumeriekVergelijking(v) ? volBeide
                     : "((" + lv + " == null && " + rv + " == null) || " + volBeide + ")";

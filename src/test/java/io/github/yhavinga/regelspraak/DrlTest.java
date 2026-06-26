@@ -3683,4 +3683,31 @@ class DrlTest {
                 () -> "een naam-botsing moet de NAVIGATIE behouden (bestelling.korting), niet de percentage-functie:\n" + drl);
         assertFalse(drl.contains("/ 100"), () -> "de percentage-functie mag NIET vuren bij een object-V (geen getalachtige V):\n" + drl);
     }
+
+    /** Resolve a §8.4 mixed-compound tijdsevenredig WRITE whose static member is {@code member}, return "MARKER"/"FIRES". */
+    private static String mixedStaticDrl(String member) {
+        String src = "Domein Bedrag is van het type Numeriek (getal met 2 decimalen)\n"
+            + "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de standaardbedrag Bedrag voor elk jaar;\n"
+            + "    de belastingvermindering Bedrag voor elke maand;\n    het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;\n"
+            + "    de datum a Datum in dagen;\n    de datum b Datum in dagen;\n    de leeftijd Numeriek (geheel getal);\n    de grens Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van zijn standaardbedrag gedurende de tijd dat er aan alle volgende voorwaarden wordt voldaan:\n"
+            + "        - hij een recht op belastingvermindering heeft\n        - " + member + ").\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        return DrlTranspiler.transpile(m).contains("/* TODO temporele toekenning") ? "MARKER" : "FIRES";
+    }
+
+    @Test void mixed_compound_datum_attr_vs_attr_static_member_markert_voor_pariteit() {
+        // §5.7 Tabel 46: a §8.4 mixed-compound DATUM ordering static member with BOTH operands empty-capable
+        // (attr-vs-attr — no datum literal) is "fout" when both are empty; the firing form renders it "onwaar" (wrong)
+        // AND the exec statischeVergelijking declines an attr-vs-attr datum ordering (literal-RHS only), so DRL markers
+        // it to stay SYMMETRIC (no masked DRL-fires/exec-skips divergence). A datum-vs-literal member (never both-empty)
+        // and a NUMERIC attr-vs-attr member (Tabel 42 "onwaar" = the firing false, correct) keep firing in both back-ends.
+        assertEquals("MARKER", mixedStaticDrl("zijn datum a is eerder dan zijn datum b"),
+                "een datum attr-vs-attr static member (Tabel 46 both-empty 'fout') moet markeren voor pariteit met de exec");
+        assertEquals("FIRES", mixedStaticDrl("zijn datum a is eerder dan 1-1-2002"),
+                "een datum-vs-literal static member (nooit both-empty) blijft vuren");
+        assertEquals("FIRES", mixedStaticDrl("zijn leeftijd is groter dan zijn grens"),
+                "een numeriek attr-vs-attr static member (Tabel 42 'onwaar') blijft vuren");
+    }
 }
