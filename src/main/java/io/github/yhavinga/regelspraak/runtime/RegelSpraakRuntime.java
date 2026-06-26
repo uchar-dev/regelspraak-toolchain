@@ -211,7 +211,11 @@ public final class RegelSpraakRuntime {
      *  fractional, or non-digit value is not a valid reeks -> false. Byte-identical to the DRL {@code rsElfproef}. */
     public static boolean rsElfproef(Object x) {
         if (x == null) return false;
-        String s = (x instanceof BigDecimal) ? ((BigDecimal) x).toBigInteger().toString() : x.toString();
+        String s;
+        if (x instanceof BigDecimal bd) {
+            if (bd.stripTrailingZeros().scale() > 0) return false;   // §8.1.3 Numeriek (geheel getal) only — never truncate a fractional value
+            s = bd.toBigInteger().toString();
+        } else s = x.toString();
         int n = s.length();
         if (n == 0) return false;
         long som = 0;

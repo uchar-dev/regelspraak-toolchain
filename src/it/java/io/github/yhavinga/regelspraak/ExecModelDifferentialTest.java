@@ -956,10 +956,29 @@ class ExecModelDifferentialTest {
             NP_PRED + "Regel r\n    geldig altijd\n        Een Natuurlijk persoon is geldig indien zijn burgerservicenummer niet aan de elfproef voldoet.\n",
             () -> List.of(npNum("111222333"), npNum("192837465"), npNum("12")),
             Map.of(), ExecModelDifferentialTest::geldig3),   // [false, true, true]
+        // §8.1.3 NAVIGATED negated elfproef "de luchthaven van zijn reis voldoet niet aan de elfproef". A NULL reis
+        // makes the DRL `reis!.luchthaven` short-circuit the whole constraint to non-match (onwaar both polarities);
+        // the exec must mirror that (rel == null -> false), NOT compute rsElfproef(null). geldig iff (reis present AND
+        // invalid). [reis==null -> false, invalid -> true, valid -> false].
+        new Fixture("§8.1.3 navigated negatie elfproef over a null reis (onwaar both polarities)",
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n    is student kenmerk (bijvoeglijk);\n    is kind kenmerk (bijvoeglijk);\n"
+            + "Objecttype de Vlucht (mv: Vluchten)\n    het luchthaven Numeriek (geheel getal);\n"
+            + "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n"
+            + "Regel r\n    geldig altijd\n        Een passagier is student indien hij aan alle volgende voorwaarden voldoet:\n"
+            + "        - de luchthaven van zijn reis voldoet niet aan de elfproef\n        - hij kind is.\n",
+            () -> {
+                Vlucht invalid = new Vlucht(); invalid.setLuchthaven(new BigDecimal("192837465"));
+                Vlucht valid = new Vlucht();   valid.setLuchthaven(new BigDecimal("111222333"));
+                Passagier pNull = passagier(p -> p.setKind(true));                                  // reis==null -> onwaar
+                Passagier pInv  = passagier(p -> { p.setKind(true); p.setReis(invalid); });         // niet voldoet -> student
+                Passagier pVal  = passagier(p -> { p.setKind(true); p.setReis(valid); });           // voldoet -> niet student
+                return List.of(invalid, valid, pNull, pInv, pVal);
+            },
+            Map.of(), l -> vals(((Passagier) l.get(2)).isStudent(), ((Passagier) l.get(3)).isStudent(), ((Passagier) l.get(4)).isStudent())),
     };
     static final Object[] PHASE_ELFPROEF_EXPECTED = {
         vals(true, false, false), vals(true, false, false), vals(true, false, false), vals(true, false, true),
-        vals(false, true, true),
+        vals(false, true, true), vals(false, true, false),
     };
     @Test void phase_ELFPROEF_predicates_are_spec_correct() {
         for (int i = 0; i < PHASE_ELFPROEF.length; i++) {

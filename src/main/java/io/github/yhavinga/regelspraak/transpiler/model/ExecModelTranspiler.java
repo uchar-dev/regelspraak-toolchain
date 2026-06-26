@@ -1410,9 +1410,10 @@ public final class ExecModelTranspiler {
             };
         }
         // §8.1.3 elfproef / §8.1.4 numeriek-met-exact over an OWN or to-one NAVIGATED operand. Read the value (a Tekst
-        // String or a Numeriek BigDecimal) null-safely and apply the runtime predicate XOR the §8.1 Tabel-16 negatie
-        // (a navigated null relation reads as a null value, so the predicate is false -> mirrors mvel `rol!.attr`).
-        // The runtime helpers are byte-identical to the DRL rsElfproef / rsNumeriekMetExact (the differential gate).
+        // String or a Numeriek BigDecimal) and apply the runtime predicate XOR the §8.1 Tabel-16 negatie. A navigated
+        // null relation makes the WHOLE constraint a non-match (onwaar for both polarities), mirroring the mvel
+        // `rol!.attr` short-circuit in the DRL. The runtime helpers are byte-identical to the DRL rsElfproef /
+        // rsNumeriekMetExact (the differential gate).
         if (c instanceof Conditie.Predicaat p
                 && (p.soort() == Conditie.Predicaatsoort.ELFPROEF || p.soort() == Conditie.Predicaatsoort.NUMERIEK_MET_EXACT)
                 && p.operand() instanceof Expr.AttribuutRef pa) {
@@ -1431,8 +1432,10 @@ public final class ExecModelTranspiler {
             if (rol == null) return null;
             return s -> {
                 Object rel = RegelSpraakRuntime.get(s, rol);
-                Object v = rel == null ? null : RegelSpraakRuntime.get(rel, attr);
-                return (elf ? RegelSpraakRuntime.rsElfproef(v) : RegelSpraakRuntime.rsNumeriekMetExact(v, n)) == wanted;
+                if (rel == null) return false;   // mvel `rol!.attr` short-circuits the WHOLE constraint to non-match on a
+                                                 // null reference -> onwaar for BOTH polarities (the navigated null house rule)
+                return (elf ? RegelSpraakRuntime.rsElfproef(RegelSpraakRuntime.get(rel, attr))
+                            : RegelSpraakRuntime.rsNumeriekMetExact(RegelSpraakRuntime.get(rel, attr), n)) == wanted;
             };
         }
         // §8.1.1 an own-attribute scalar comparison vs a numeric literal.

@@ -1278,6 +1278,22 @@ class RuleCheckTest {
                 && d.message().contains("Tabel 16 vereist"));
     }
 
+    @Test void numeriek_met_exact_met_decimaal_aantal_cijfers_wordt_afgewezen() {
+        // §8.1.4/§13.4.15.84: the cijfer count must be a §13.2.3 geheelgetal. The over-broad NUMBER token also matches a
+        // §13.2.4 decimaalgetal ("9,5"); reject it with an ERROR rather than silently coercing to 0 (an inert predicate).
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de bsn Tekst;
+                is geldig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Persoon is geldig indien zijn bsn numeriek is met exact 9,5 cijfers.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("ongeldig aantal cijfers")),
+                () -> "een decimaal aantal cijfers moet afgewezen worden: " + m.errors());
+    }
+
     @Test void cross_soort_negatie_werkwoord_wordt_gewaarschuwd() {
         // §8.1.8 / Tabel 16: the kenmerkcheck negation verb is keyed to the soort — a bezittelijk kenmerk negates
         // with "heeft", not "is". The de-negation is verb-agnostic (lowering stays correct), so "is geen <bezittelijk>"

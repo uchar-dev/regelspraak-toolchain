@@ -1599,6 +1599,33 @@ class DrlTest {
         assertFalse(drl.contains("/* TODO voorwaarde"), () -> "geen van beide mag een marker zijn:\n" + drl);
     }
 
+    @Test void geabsorbeerde_niet_op_niet_elfproef_operator_markeert_niet_inverteert() {
+        // Review regression guard: possessief resolves "zijn <attr> niet" to the bare attribuut (needed for the
+        // elfproef/numeriek vragende negation). For ANY OTHER operator the dangling "niet" cannot be honoured, so it
+        // must MARKER — never silently emit the inverted positive ("zijn leeftijd niet groter is dan 5" must NOT become
+        // leeftijd > 5; "zijn bsn niet leeg is" must NOT become bsn == null).
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de leeftijd Numeriek (geheel getal);
+                de bsn Tekst;
+                is minderjarig kenmerk (bijvoeglijk);
+            Regel A
+                geldig altijd
+                    Een Persoon is minderjarig indien zijn leeftijd niet groter is dan 5.
+            Regel B
+                geldig altijd
+                    Een Persoon is minderjarig indien zijn bsn niet leeg is.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertFalse(drl.contains("leeftijd > new java.math.BigDecimal(\"5\")"),
+                () -> "een geabsorbeerde 'niet' mag de vergelijking NIET als positief lowereren:\n" + drl);
+        assertFalse(drl.contains("bsn == null"),
+                () -> "een geabsorbeerde 'niet' mag leeg NIET inverteren:\n" + drl);
+        assertTrue(drl.contains("/* TODO voorwaarde: zijn leeftijd niet groter is dan 5 */")
+                && drl.contains("/* TODO voorwaarde: zijn bsn niet leeg is */"),
+                () -> "beide moeten een eerlijke marker zijn:\n" + drl);
+    }
+
     @Test void vragende_elfproef_negatie_eerbiedigt_verbatim_attribuut_op_niet() {
         // Verbatim-first guard: an attribuut literally named "... niet" must bind itself (positive), not be de-negated.
         // "zijn saldo niet aan de elfproef voldoet" with an attribuut "saldo niet" -> a bare rsElfproef on saldoNiet.

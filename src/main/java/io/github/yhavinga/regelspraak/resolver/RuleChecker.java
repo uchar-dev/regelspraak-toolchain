@@ -972,10 +972,19 @@ final class RuleChecker {
         return new Conditie.GeheelPeriode(jaar, niet);
     }
 
-    /** §8.1.4/§13.4.15.84 the &lt;geheelgetal&gt; digit-count N of "numeriek met exact N cijfers"; 0 if absent. */
-    private static int aantalCijfers(org.antlr.v4.runtime.tree.TerminalNode num) {
+    /** §8.1.4/§13.4.15.84 the &lt;geheelgetal&gt; digit-count N of "numeriek met exact N cijfers". The NUMBER token is
+     *  over-broad (it also matches a §13.2.4 decimaalgetal "9,5"), but the spec requires a §13.2.3 &lt;geheelgetal&gt;
+     *  (which DOES admit a leading minus); reject a decimal/rational count with an ERROR rather than silently coercing
+     *  it to 0 (an inert always-false predicate). 0 if absent. */
+    private int aantalCijfers(org.antlr.v4.runtime.tree.TerminalNode num) {
         if (num == null) return 0;
-        try { return Integer.parseInt(num.getText()); } catch (NumberFormatException e) { return 0; }
+        String t = num.getText();
+        if (!t.matches("-?\\d+")) {
+            model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                "ongeldig aantal cijfers '" + t + "' bij 'numeriek met exact … cijfers' (verwacht een geheel getal, §8.1.4)", 0));
+            return 0;
+        }
+        return Integer.parseInt(t);
     }
 
     /** The (operand, negatie) of an elfproef / numeriek-met-exact predicate. The §8.1 Tabel-16 vragende negated form
@@ -986,13 +995,20 @@ final class RuleChecker {
     private record ElfOperand(Expr operand, boolean negatie) {}
     private static ElfOperand elfOperand(boolean expliciet, Expr lhs) {
         // The stellende form carries an explicit NIET token; otherwise recover a vragende negator the greedy parse
-        // absorbed into the operand. ExpressieBouwer.possessief resolves "zijn <attr> niet" to the BARE attribuut but
-        // keeps the full bron, so the absorbed "niet" survives as the bron's trailing word. Guard against an attribuut
-        // literally named "… niet" (its attribuut() ends in "niet" too — verbatim-first, so it must NOT be negated).
-        boolean absorbed = lhs instanceof Expr.AttribuutRef a && a.bron() != null
+        // absorbed into the operand (ExpressieBouwer.possessief resolves "zijn <attr> niet" to the BARE attribuut but
+        // keeps the full bron, so the absorbed "niet" survives as the bron's trailing word).
+        return new ElfOperand(lhs, expliciet || absorbedNegator(lhs));
+    }
+
+    /** Whether {@code lhs} is an operand into whose source the greedy parse absorbed a trailing "niet" negator — an
+     *  {@link Expr.AttribuutRef} whose bron ends in " niet" but whose (bare) attribuut does NOT end in "niet"
+     *  (verbatim-first: an attribuut literally named "… niet" carries its own niet and must not be de-negated). The
+     *  elfproef / numeriek-met-exact predicates RECOVER this as their negatie; every OTHER operator cannot honour a
+     *  dangling negator, so it must marker rather than silently emit the inverted positive. */
+    private static boolean absorbedNegator(Expr lhs) {
+        return lhs instanceof Expr.AttribuutRef a && a.bron() != null
                 && a.bron().stripTrailing().toLowerCase().endsWith(" niet")
                 && !a.attribuut().toLowerCase().endsWith("niet");
-        return new ElfOperand(lhs, expliciet || absorbed);
     }
 
     private Conditie uitToplevel(Expr lhs, ToplevelOperatorContext op, String bron) {
@@ -1001,6 +1017,11 @@ final class RuleChecker {
 
     private Conditie uitToplevelKaal(Expr lhs, ToplevelOperatorContext op, String bron) {
         Conditie.GeheelPeriode periode = geheelPeriode(op.gehelePeriodevergelijking());   // §8.2 whole-period check
+        // A dangling absorbed "niet" silently INVERTS a comparison / leeg-gevuld (the bare-attr resolution dropped the
+        // negator) -> marker it. The kenmerkcheck DE-negates it (bindKenmerk) and elfproef/numeriek RECOVER it
+        // (elfOperand), so only the comparison + leeg/gevuld operators are guarded here.
+        if (absorbedNegator(lhs) && (op.vergelijkingsTekenGesplitst() != null || op.LEEG() != null || op.GEVULD() != null))
+            return new Conditie.Onopgelost(bron);
         if (op.vergelijkingsTekenGesplitst() != null && op.expressie() != null)
             return new Conditie.Vergelijking(naarOperator(cmpOf(op.vergelijkingsTekenGesplitst())),
                     lhs, bouwer.bouw(op.expressie()), periode, bron);
@@ -1071,6 +1092,10 @@ final class RuleChecker {
 
     private Conditie uitNonToplevelKaal(Expr lhs, NonToplevelOperatorContext op, String bron) {
         Conditie.GeheelPeriode periode = geheelPeriode(op.gehelePeriodevergelijking());   // §8.2 whole-period check
+        // A dangling absorbed "niet" silently INVERTS a comparison / leeg-gevuld -> marker it. The kenmerkcheck
+        // DE-negates it and elfproef/numeriek RECOVER it (elfOperand), so only those two operators are guarded here.
+        if (absorbedNegator(lhs) && (op.vergelijkingsTeken() != null || op.LEEG() != null || op.GEVULD() != null))
+            return new Conditie.Onopgelost(bron);
         if (op.vergelijkingsTeken() != null && op.expressie() != null)
             return new Conditie.Vergelijking(naarOperator(cmpOf(op.vergelijkingsTeken())),
                     lhs, bouwer.bouw(op.expressie()), periode, bron);

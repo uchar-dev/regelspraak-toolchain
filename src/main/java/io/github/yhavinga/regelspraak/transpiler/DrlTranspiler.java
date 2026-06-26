@@ -1509,7 +1509,12 @@ public final class DrlTranspiler {
         hulpFuncties.putIfAbsent("rsElfproef",
                 "function boolean rsElfproef(Object x) {\n"
                 + "    if (x == null) return false;\n"
-                + "    String s = (x instanceof java.math.BigDecimal) ? ((java.math.BigDecimal) x).toBigInteger().toString() : x.toString();\n"
+                + "    String s;\n"
+                + "    if (x instanceof java.math.BigDecimal) {\n"
+                + "        java.math.BigDecimal bd = (java.math.BigDecimal) x;\n"
+                + "        if (bd.stripTrailingZeros().scale() > 0) return false;\n"   // §8.1.3 Numeriek (geheel getal) only — never truncate a fractional value
+                + "        s = bd.toBigInteger().toString();\n"
+                + "    } else { s = x.toString(); }\n"
                 + "    int n = s.length();\n"
                 + "    if (n == 0) return false;\n"
                 + "    long som = 0;\n"
