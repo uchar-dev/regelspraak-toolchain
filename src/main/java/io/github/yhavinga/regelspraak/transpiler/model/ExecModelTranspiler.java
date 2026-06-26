@@ -496,7 +496,7 @@ public final class ExecModelTranspiler {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private PatternDSL.PatternDef filterSource(PatternDSL.PatternDef src, Conditie filter, Objecttype elem) {
         if (filter instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
-                && la.type().isNumeriek() && isNumeriekOp(v.op()) && v.rechts() instanceof Expr.ParameterRef pr) {
+                && la.type().isGetalachtig() && isNumeriekOp(v.op()) && v.rechts() instanceof Expr.ParameterRef pr) {   // §4.8 numeriek OR percentage
             if (elem == null || !elem.heeftLid(la.attribuut())) return null;
             if (elem.attribuutGranulariteit.containsKey(la.attribuut())) return null;   // temporal element attr -> skip
             if (!elem.dimensiesVan(la.attribuut()).isEmpty()) return null;              // §3.6 gedimensioneerd -> skip
@@ -1345,7 +1345,7 @@ public final class ExecModelTranspiler {
         // zijn reis groter is dan <de bovengrens schijf>" shape. The global is a pattern variable (2-var expr),
         // navReader reads the navigated value null-safely. Mirrors DRL `reis!.x op global`.
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() != null
-                && la.type().isNumeriek() && isNumeriekOp(v.op()) && v.rechts() instanceof Expr.ParameterRef pr) {
+                && la.type().isGetalachtig() && isNumeriekOp(v.op()) && v.rechts() instanceof Expr.ParameterRef pr) {   // §4.8 numeriek OR percentage
             if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 gedimensioneerd -> marker
             String rol = navComparisonRole(la, subject);

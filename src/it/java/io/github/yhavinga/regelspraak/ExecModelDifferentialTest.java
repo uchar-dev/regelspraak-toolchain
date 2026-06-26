@@ -1481,8 +1481,17 @@ class ExecModelDifferentialTest {
             () -> { Vlucht v = new Vlucht(); return List.of(v, pas(v, 30), pas(v, 70), pas(v, 40)); },
             Map.of("grens", new BigDecimal(50)),
             l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // max{30,40} = 40
+        // §4.8 a PERCENTAGE element attr + Percentage Parameter RHS — the filterSource LHS guard must accept percentage
+        // (isGetalachtig), not just numeriek; the runtime stores a Percentage as a BigDecimal so the fold matches. (DRL
+        // fired it while the isNumeriek-only guard made the exec skip — review FSD-1.) SOM of prijs<grens(50) -> 70.
+        new Fixture("SOM with a PERCENTAGE PARAMETER-RHS comparison die-filter (prijs < de grens)",
+            "Parameter de grens : Percentage (geheel getal)\nObjecttype de Vlucht\n    de totaalprijs Percentage (geheel getal);\nObjecttype de Passagier\n    de prijs Percentage (geheel getal);\n" + AGG_FEIT
+            + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die kleiner zijn dan de grens.\n",
+            () -> { Vlucht v = new Vlucht(); return List.of(v, pas(v, 30), pas(v, 70), pas(v, 40)); },
+            Map.of("grens", new BigDecimal(50)),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 30 + 40 = 70
     };
-    static final Object[] PHASE_C_PARAM_RHS_EXPECTED = { new BigDecimal(70), new BigDecimal(40) };
+    static final Object[] PHASE_C_PARAM_RHS_EXPECTED = { new BigDecimal(70), new BigDecimal(40), new BigDecimal(70) };
 
     // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
     //      arithmetic tree whose leaf is an AANTAL/TOTAAL/MIN/MAX). Each embedded aggregation lowers to its own
@@ -3262,7 +3271,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 11); }
-    @Test void phase_C_param_rhs_subselectie_matches_drl_back_end() { runDifferential("Phase C param-RHS", PHASE_C_PARAM_RHS, 2); }
+    @Test void phase_C_param_rhs_subselectie_matches_drl_back_end() { runDifferential("Phase C param-RHS", PHASE_C_PARAM_RHS, 3); }
     /** §5.6 the spec's worked-example RHS "die kleiner zijn dan de volwassenleeftijd" — a comparison subselectie whose RHS
      *  is a Parameter-global, now FIRING in BOTH back-ends (DRL reads the global free name in the accumulate source; the
      *  exec binds it on the source pattern). A closed-form filtered fold -> assert the ABSOLUTE spec value AND parity. */
