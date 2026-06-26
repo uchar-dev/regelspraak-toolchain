@@ -324,8 +324,14 @@ final class RuleChecker {
             if (voorwaarde == null)
                 model.diagnostics.add(new Diagnostic(Severity.WARNING,
                         "dagsoortdefinitie '" + dag + "' mist een voorwaarde (regel '" + naam + "')", rd.getStart().getLine()));
-            else
+            else {
+                // The predicate compilers key on the dagsoort NAME and use the FIRST definitie; a second definitie of
+                // the same dagsoort (e.g. per §13.4.2.5 version window) is not version-dispatched -> warn, don't drop silently.
+                if (model.resolvedDagsoorten.stream().anyMatch(rd2 -> rd2.naam().equalsIgnoreCase(dag)))
+                    model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                            "dagsoort '" + dag + "' heeft meerdere definities; alleen de eerste wordt gebruikt (versievensters worden nog niet toegepast)", rd.getStart().getLine()));
                 model.resolvedDagsoorten.add(new io.github.yhavinga.regelspraak.ir.ResolvedDagsoort(dag, voorwaarde, geldigheid));
+            }
         } else {
             // §13.4.12 — parsed but not yet lifted into the IR. Surface it as
             // a diagnostic rather than letting the rule silently disappear from the model.

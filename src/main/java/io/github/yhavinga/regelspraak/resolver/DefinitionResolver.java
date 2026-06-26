@@ -558,8 +558,26 @@ public final class DefinitionResolver {
     private void dagsoort(DagsoortDefinitionContext d) {
         String enkel = naam(d.lowerNaam());
         model.dagsoorten.add(enkel);
-        model.dagsoortPerEenheid.put(enkel.toLowerCase(), enkel);
-        if (d.meervoudsvorm() != null) model.dagsoortPerEenheid.put(src(d.meervoudsvorm()).trim().toLowerCase(), enkel);
+        registreerDagsoortEenheid(enkel, enkel);
+        // §3.12 a duration unit is naturally the PLURAL ("5 werkdagen"); register the declared meervoud, or — when
+        // none is declared — the derived "-en" plural ("werkdag" -> "werkdagen"), so the unit still resolves.
+        if (d.meervoudsvorm() != null) registreerDagsoortEenheid(src(d.meervoudsvorm()).trim(), enkel);
+        else registreerDagsoortEenheid(enkel + "en", enkel);
+    }
+
+    /** A dagsoort unit spelling that collides with a built-in tijdseenheid (dag/week/maand/…) is NOT registered — it
+     *  must not shadow the calendar arithmetic of {@code datum ± N dagen}; warn instead. */
+    private static final java.util.Set<String> INGEBOUWDE_EENHEDEN = java.util.Set.of(
+            "dag", "dagen", "week", "weken", "maand", "maanden", "kwartaal", "kwartalen", "jaar", "jaren",
+            "uur", "uren", "minuut", "minuten", "seconde", "seconden", "milliseconde", "milliseconden");
+    private void registreerDagsoortEenheid(String spelling, String dagsoort) {
+        String k = spelling.trim().toLowerCase();
+        if (INGEBOUWDE_EENHEDEN.contains(k)) {
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
+                    "dagsoort-eenheid '" + spelling + "' valt samen met een ingebouwde tijdseenheid en wordt niet als dagsoort-eenheid geregistreerd", 0));
+            return;
+        }
+        model.dagsoortPerEenheid.putIfAbsent(k, dagsoort);
     }
 
     private static String naam(LowerNaamContext ctx) { return src(ctx); }

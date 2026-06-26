@@ -211,7 +211,10 @@ final class ExpressieBouwer {
             return new Expr.Constante(jaar ? "Rekenjaar" : "Rekendatum", t, bron);
         }
         if (p.HIJ() != null)            return new Expr.Constante("hij", onbekend(), bron);
-        if (p.DE() != null && p.DAG() != null) return new Expr.Constante("de dag", onbekend(), bron);
+        // §9.8/§13.4.17.43 "de dag" — the dagsoortreferentie, the (arbitrary) day a dagsoortdefinitie is about. It IS
+        // a date (Datum in dagen): typing it so lets the §8.1.5 "<datum> is een <dagsoort>" recognition fire over it,
+        // which is exactly the spec's central cross-dagsoort case (a feestdag definitie tests "de dag is een kerstdag").
+        if (p.DE() != null && p.DAG() != null) return new Expr.Constante("de dag", new Datatype.DatumInDagen(), bron);
         if (p.functieAanroep() != null) return bouwFunctie(p.functieAanroep());
         if (p.datumMet() != null)       return new Expr.Functie(Expr.FunctieKind.DATUM_MET, args(p.datumMet()), null, null, null, new Datatype.DatumInDagen(), bron);
         if (p.datumTijdMet() != null)   return new Expr.Functie(Expr.FunctieKind.DATUMTIJD_MET, args(p.datumTijdMet()), null, null, null, new Datatype.DatumTijd(), bron);

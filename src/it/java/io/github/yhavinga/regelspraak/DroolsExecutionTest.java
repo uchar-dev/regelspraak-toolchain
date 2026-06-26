@@ -6214,4 +6214,63 @@ class DroolsExecutionTest {
         assertNull(run.apply(tds, v -> v.setVluchtdatum(LocalDate.of(2024, 12, 20))),
                 "een leeg operand maakt de tijdsduur leeg");
     }
+
+    @Test void feestdag_is_de_unie_van_kerstdag_en_paasdag_cross_dagsoort(){
+        // §9.8 the spec's CENTRAL example: a feestdag definitie references OTHER dagsoorten (feestdag = kerstdag OF
+        // paasdag). The predicate-calling-predicate composition + EERSTE_PAASDAG in a §9.8 body must fire. ABSOLUTE:
+        // 25-12 (kerstdag) and 31-03-2024 (paasdag) are feestdagen; an ordinary day is not.
+        String drl = DrlTranspiler.transpile(Resolver.resolve("""
+            Dagsoort de kerstdag (mv: kerstdagen)
+            Dagsoort de paasdag (mv: paasdagen)
+            Dagsoort de feestdag (mv: feestdagen)
+            Regel Kerstdag
+                geldig altijd
+                    Een dag is een kerstdag
+                    indien de dag aan alle volgende voorwaarden voldoet:
+                    - de maand uit (de dag) is gelijk aan 12
+                    - de dag voldoet aan ten minste één van de volgende voorwaarden:
+                        .. de dag uit (de dag) is gelijk aan 25
+                        .. de dag uit (de dag) is gelijk aan 26.
+            Regel Paasdag
+                geldig altijd
+                    Een dag is een paasdag
+                    indien de dag gelijk is aan de eerste paasdag van het jaar uit (de dag).
+            Regel Feestdag
+                geldig altijd
+                    Een dag is een feestdag
+                    indien de dag aan ten minste één van de volgende voorwaarden voldoet:
+                    - de dag een kerstdag is
+                    - de dag een paasdag is.
+            Objecttype de Vlucht
+                de vluchtdatum Datum in dagen;
+                is laat kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Vlucht is laat indien de vluchtdatum van de Vlucht een feestdag is.
+            """));
+        assertTrue(drl.contains("function boolean rsDagsoort_Feestdag") && drl.contains("rsDagsoort_Kerstdag") && drl.contains("rsDagsoort_Paasdag"),
+                () -> "feestdag moet kerstdag én paasdag aanroepen:\n" + drl);
+        KieSession s = build(drl).newKieSession();
+        Vlucht kerst = new Vlucht(); kerst.setVluchtdatum(LocalDate.of(2024, 12, 25));
+        Vlucht pasen = new Vlucht(); pasen.setVluchtdatum(LocalDate.of(2024, 3, 31));   // eerste paasdag 2024
+        Vlucht gewoon = new Vlucht(); gewoon.setVluchtdatum(LocalDate.of(2024, 6, 15));
+        for (Vlucht v : new Vlucht[]{kerst, pasen, gewoon}) s.insert(v);
+        s.fireAllRules(); s.dispose();
+        assertTrue(kerst.isLaat(),  "25 december is een feestdag (kerstdag)");
+        assertTrue(pasen.isLaat(),  "31-03-2024 is een feestdag (paasdag)");
+        assertFalse(gewoon.isLaat(), "15 juni is geen feestdag");
+    }
+
+    @Test void dagsoort_duur_over_een_onvervulbare_dagsoort_hangt_niet_maar_faalt(){
+        // §6.11 robustness: a dagsoortdefinitie that matches NO date (an author error) would loop forever; the walk is
+        // capped and throws instead of hanging the engine. Verified directly on the shared runtime helper.
+        java.util.function.Predicate<LocalDate> nooit = d -> false;
+        assertThrows(IllegalStateException.class,
+                () -> io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsDatumPlusDagsoort(LocalDate.of(2024, 1, 1), new BigDecimal(1), nooit, true),
+                "een onvervulbare dagsoort moet falen, niet hangen");
+        // ... but a 0 / leeg count still short-circuits without walking.
+        assertEquals(LocalDate.of(2024, 1, 1),
+                io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsDatumPlusDagsoort(LocalDate.of(2024, 1, 1), BigDecimal.ZERO, nooit, true),
+                "0 telt niet, dus geen walk");
+    }
 }

@@ -348,6 +348,71 @@ class ExecModelDifferentialTest {
         dagsoortTdsFix("§6.10 leeg operand -> leeg", DAGSOORT_TDS_SRC, java.time.LocalDate.of(2024, 12, 20), null),
     };
 
+    // ---- §9.8 CROSS-DAGSOORT (the spec's central feestdag example: feestdag = kerstdag OF paasdag) + a §8.1.5
+    //      control over a non-attribute (date-arithmetic) datum operand. Both exercise paths the review found
+    //      untested: cross-dagsoort predicate-calling-predicate, EERSTE_PAASDAG in a §9.8 body, and the exec-model
+    //      §8.1.5 scalarWaarde fallback. Both back-ends must agree. ----
+    static final String DAGSOORT_FEEST_SRC =
+            """
+            Dagsoort de kerstdag (mv: kerstdagen)
+            Dagsoort de paasdag (mv: paasdagen)
+            Dagsoort de feestdag (mv: feestdagen)
+            Regel Kerstdag
+                geldig altijd
+                    Een dag is een kerstdag
+                    indien de dag aan alle volgende voorwaarden voldoet:
+                    - de maand uit (de dag) is gelijk aan 12
+                    - de dag voldoet aan ten minste één van de volgende voorwaarden:
+                        .. de dag uit (de dag) is gelijk aan 25
+                        .. de dag uit (de dag) is gelijk aan 26.
+            Regel Paasdag
+                geldig altijd
+                    Een dag is een paasdag
+                    indien de dag gelijk is aan de eerste paasdag van het jaar uit (de dag).
+            Regel Feestdag
+                geldig altijd
+                    Een dag is een feestdag
+                    indien de dag aan ten minste één van de volgende voorwaarden voldoet:
+                    - de dag een kerstdag is
+                    - de dag een paasdag is.
+            Objecttype de Vlucht
+                de vluchtdatum Datum in dagen;
+                is laat kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Vlucht is laat indien de vluchtdatum van de Vlucht een feestdag is.
+            """;
+    static final String DAGSOORT_ARITH_SRC =
+            """
+            Dagsoort de kerstdag (mv: kerstdagen)
+            Regel Kerstdag
+                geldig altijd
+                    Een dag is een kerstdag
+                    indien de dag aan alle volgende voorwaarden voldoet:
+                    - de maand uit (de dag) is gelijk aan 12
+                    - de dag voldoet aan ten minste één van de volgende voorwaarden:
+                        .. de dag uit (de dag) is gelijk aan 25
+                        .. de dag uit (de dag) is gelijk aan 26.
+            Objecttype de Vlucht
+                de vluchtdatum Datum in dagen;
+                is laat kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Vlucht is laat indien de vluchtdatum van de Vlucht plus 1 dag een kerstdag is.
+            """;
+    static Fixture laatFix(String naam, String src, java.time.LocalDate vd) {
+        return new Fixture(naam, src,
+                () -> { Vlucht v = new Vlucht(); if (vd != null) v.setVluchtdatum(vd); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).isLaat());
+    }
+    static final Fixture[] PHASE_DAGSOORT_X = {
+        laatFix("§9.8 cross-dagsoort: 25-12 is een feestdag (via kerstdag)", DAGSOORT_FEEST_SRC, java.time.LocalDate.of(2024, 12, 25)),
+        laatFix("§9.8 cross-dagsoort: 31-03-2024 is een feestdag (via paasdag/EERSTE_PAASDAG)", DAGSOORT_FEEST_SRC, java.time.LocalDate.of(2024, 3, 31)),
+        laatFix("§9.8 cross-dagsoort: 15-06-2024 is geen feestdag", DAGSOORT_FEEST_SRC, java.time.LocalDate.of(2024, 6, 15)),
+        laatFix("§8.1.5 over date-arith: (24-12 + 1 dag)=25-12 is een kerstdag", DAGSOORT_ARITH_SRC, java.time.LocalDate.of(2024, 12, 24)),
+        laatFix("§8.1.5 over date-arith: (23-12 + 1 dag)=24-12 is geen kerstdag", DAGSOORT_ARITH_SRC, java.time.LocalDate.of(2024, 12, 23)),
+    };
+
     // ---- §12 BESLISTABEL fixtures: a captured pipe-table desugars (BeslistabelDesugar) to one regel per row, fed
     //      through the SAME resolver -> both back-ends fire the rows. Mutually-exclusive bands keep the result
     //      deterministic regardless of row firing order. Exercises: one-conditie, multi-conditie AND + n.v.t. omission,
@@ -2787,6 +2852,7 @@ class ExecModelDifferentialTest {
     @Test void phase_dagsoort_controle_matches_drl_back_end()     { runDifferential("Phase DAGSOORT", PHASE_DAGSOORT, 5); }
     @Test void phase_dagsoort_duur_matches_drl_back_end()         { runDifferential("Phase DAGSOORT DUUR", PHASE_DAGSOORT_DUUR, 5); }
     @Test void phase_dagsoort_tijdsduur_matches_drl_back_end()    { runDifferential("Phase DAGSOORT TDS", PHASE_DAGSOORT_TDS, 6); }
+    @Test void phase_dagsoort_cross_en_datearith_matches_drl_back_end() { runDifferential("Phase DAGSOORT X", PHASE_DAGSOORT_X, 5); }
     @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
     @Test void phase_E_verdeling_fouten_match_drl_back_end()       { runFoutDifferential("Phase E fout", PHASE_E_FOUT, 2); }
 

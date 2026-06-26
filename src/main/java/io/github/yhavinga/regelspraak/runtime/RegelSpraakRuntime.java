@@ -272,8 +272,15 @@ public final class RegelSpraakRuntime {
         if (n < 0) { op = !op; n = -n; }
         if (n == 0) return datum;              // §6.11: 0 -> X onveranderd (zelfs als X geen dagsoort-dag is)
         java.time.LocalDate d = datum;
-        long geteld = 0;
-        while (geteld < n) { d = op ? d.plusDays(1) : d.minusDays(1); if (isDagsoort.test(d)) geteld++; }
+        long geteld = 0, stappen = 0;
+        // Bound the walk: a dagsoortdefinitie that matches NO calendar date (an author error, e.g. maand==13) would
+        // otherwise loop forever. 4_000_000 days (~10000 years) is far beyond any real dagsoort spacing.
+        while (geteld < n) {
+            d = op ? d.plusDays(1) : d.minusDays(1);
+            if (++stappen > 4_000_000L) throw new IllegalStateException(
+                    "dagsoort-rekenkunde: geen " + n + "-de dagsoort-dag binnen 4000000 dagen (onvervulbare dagsoortdefinitie?)");
+            if (isDagsoort.test(d)) geteld++;
+        }
         return d;
     }
 

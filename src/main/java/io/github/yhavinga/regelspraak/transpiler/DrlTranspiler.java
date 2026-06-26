@@ -2795,8 +2795,12 @@ public final class DrlTranspiler {
           + "    if (n < 0) { op = !op; n = -n; }\n"
           + "    if (n == 0) return datum;\n"
           + "    java.time.LocalDate d = datum;\n"
-          + "    long geteld = 0;\n"
-          + "    while (geteld < n) { d = op ? d.plusDays(1) : d.minusDays(1); if (" + predFn + "(d)) geteld++; }\n"
+          + "    long geteld = 0, stappen = 0;\n"
+          + "    while (geteld < n) {\n"
+          + "        d = op ? d.plusDays(1) : d.minusDays(1);\n"
+          + "        if (++stappen > 4000000L) throw new IllegalStateException(\"dagsoort-rekenkunde: geen \" + n + \"-de dagsoort-dag binnen 4000000 dagen (onvervulbare dagsoortdefinitie?)\");\n"
+          + "        if (" + predFn + "(d)) geteld++;\n"
+          + "    }\n"
           + "    return d;\n"
           + "}\n\n");
         return fn;
@@ -2830,6 +2834,12 @@ public final class DrlTranspiler {
      *  Comparable.compareTo — NOT the mvel operators {@link #conditie} emits for in-pattern constraints. */
     private String dagsoortBool(Conditie c) {
         if (c instanceof Conditie.Vergelijking v) {
+            // Comparable.compareTo requires both operands the SAME comparable type — a type-mismatched comparison
+            // (a datum vs a numeric date-component) would emit LocalDate.compareTo(BigDecimal), which fails the WHOLE
+            // KieBuilder build. The resolver already flags such a mismatch; here marker it so the DRL stays valid.
+            boolean compat = (v.links().type().isNumeriek() && v.rechts().type().isNumeriek())
+                    || (v.links().type().isDatum() && v.rechts().type().isDatum());
+            if (!compat) return null;
             Frag lo = dagOperand(v.links()), ro = dagOperand(v.rechts());
             if (lo.marker() || ro.marker()) return null;
             return "(" + lo.text() + ".compareTo(" + ro.text() + ") " + compareToOp(v.op()) + ")";
@@ -2859,9 +2869,24 @@ public final class DrlTranspiler {
      *  function of it (via {@link #scalarFunctie}, reusing rsDatumDeel), or a fact-free literal — else a marker. */
     private Frag dagOperand(Expr e) {
         if (e instanceof Expr.Constante c && "de dag".equalsIgnoreCase(c.naam())) return Frag.ok("dag");
-        if (e instanceof Expr.Functie f) { Frag r = scalarFunctie(f, this::dagOperand); return r != null ? r : Frag.todo("dagsoort-operand", e.bron()); }
+        // Only the §9.8-realistic date operands, kept in lock-step with ExecModelTranspiler.dagWaarde: a date-component
+        // of the day, or "de eerste paasdag van <year>" (the paasdag/feestdag building block). Anything else (abs,
+        // wortel, datum-met, a fact read) markers in BOTH back-ends, so the per-date predicate never diverges.
+        if (e instanceof Expr.Functie f && dagFunctieToegestaan(f.kind())) {
+            Frag r = scalarFunctie(f, this::dagOperand);
+            return r != null ? r : Frag.todo("dagsoort-operand", e.bron());
+        }
         if (e instanceof Expr.Literal lit) return literal(lit);
         return Frag.todo("dagsoort-operand", e.bron());
+    }
+
+    /** The functie kinds a §9.8 dagsoort predicate may read over "de dag" (kept identical in both back-ends): the
+     *  date-component extractions and "de eerste paasdag van". */
+    private static boolean dagFunctieToegestaan(Expr.FunctieKind k) {
+        return switch (k) {
+            case JAAR_UIT, MAAND_UIT, DAG_UIT, UUR_UIT, MINUUT_UIT, SECONDE_UIT, MILLISECONDE_UIT, EERSTE_PAASDAG -> true;
+            default -> false;
+        };
     }
 
     /** The Java {@code Comparable.compareTo(...)} tail for a §9.8 numeric/date comparison (a function body, not mvel). */

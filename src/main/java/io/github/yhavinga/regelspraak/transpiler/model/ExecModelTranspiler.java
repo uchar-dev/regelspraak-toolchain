@@ -1525,6 +1525,17 @@ public final class ExecModelTranspiler {
                 return rel != null && RegelSpraakRuntime.get(rel, attr) instanceof java.time.LocalDate ld && pred.test(ld);
             };
         }
+        // §8.1.5 dagsoortcontrole over a NON-attribute datum operand (a §6 date-arithmetic expression "de vluchtdatum
+        // plus 1 dag is een kerstdag", a date-valued function) — lower it via scalarWaarde, mirroring DrlTranspiler's
+        // generic operand path so the back-ends stay at parity. Fact-only (no globals); a global-reading operand is not
+        // a fact-only leaf -> skip. §5.15: an absent/non-date value is ONWAAR.
+        if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.DAGSOORT && p.operand().type().isDatum()) {
+            java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(p.dagsoort());
+            WaardeFn wf = scalarWaarde(p.operand());
+            if (pred == null || wf == null || !wf.globals().isEmpty()) return null;
+            BiFunction<Object, Map<String, BigDecimal>, Object> fn = wf.fn();
+            return s -> fn.apply(s, Map.of()) instanceof java.time.LocalDate ld && pred.test(ld);
+        }
         // §8.1.7 near-side rolcheck: the subject fills the role iff its to-ONE forward reference is set. The far-side
         // (the reference lives on the MANY side) is not a fact-only leaf -> null (handled as an exists-join above).
         if (c instanceof Conditie.Rollidmaatschap r) {
@@ -1562,6 +1573,11 @@ public final class ExecModelTranspiler {
      *  predicate. Mirrors DrlTranspiler.dagsoortBool (Vergelijking via Comparable.compareTo, Samengesteld quantifiers). */
     private java.util.function.Predicate<java.time.LocalDate> dagsoortBoolPred(Conditie c) {
         if (c instanceof Conditie.Vergelijking v) {
+            // mirror DrlTranspiler.dagsoortBool: a type-mismatched comparison (datum vs numeric) can never compare via
+            // Comparable.compareTo -> marker, so the two back-ends stay symmetric (DRL would emit invalid Java otherwise).
+            boolean compat = (v.links().type().isNumeriek() && v.rechts().type().isNumeriek())
+                    || (v.links().type().isDatum() && v.rechts().type().isDatum());
+            if (!compat) return null;
             java.util.function.Function<java.time.LocalDate, Object> lo = dagWaarde(v.links()), ro = dagWaarde(v.rechts());
             if (lo == null || ro == null) return null;
             Conditie.Operator op = v.op();
@@ -1604,10 +1620,13 @@ public final class ExecModelTranspiler {
                 case MILLISECONDE_UIT -> java.time.temporal.ChronoField.MILLI_OF_SECOND;
                 default               -> null;
             };
-            if (cf == null) return null;
             java.util.function.Function<java.time.LocalDate, Object> inner = dagWaarde(f.argumenten().get(0));
             if (inner == null) return null;
-            return d -> RegelSpraakRuntime.rsDatumDeel(inner.apply(d), cf);
+            if (cf != null) return d -> RegelSpraakRuntime.rsDatumDeel(inner.apply(d), cf);
+            // §13.4.17.37 "de eerste paasdag van <jaar>" — the paasdag/feestdag building block (mirrors DrlTranspiler's
+            // dagOperand, which lets EERSTE_PAASDAG through scalarFunctie). Other functies stay a symmetric marker.
+            if (f.kind() == Expr.FunctieKind.EERSTE_PAASDAG) return d -> RegelSpraakRuntime.rsEerstePaasdag(inner.apply(d));
+            return null;
         }
         if (e instanceof Expr.Literal lit) {
             if (lit.type().isDatum()) { java.time.LocalDate ld = parseDatum(lit.waarde()); return ld == null ? null : d -> ld; }
