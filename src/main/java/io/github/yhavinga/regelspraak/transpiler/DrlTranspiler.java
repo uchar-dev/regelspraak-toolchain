@@ -2507,7 +2507,7 @@ public final class DrlTranspiler {
                 + "    java.math.BigDecimal som = java.math.BigDecimal.ZERO;\n"
                 + "    for (Object o : segmenten) {\n"
                 + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
-                + "        if (s.getWaarde() == null || s.getVan() == null || s.getTot() == null) continue;\n"
+                + "        if (s.getWaarde() == null || s.getVan() == null || s.getTot() == null || !s.getVan().isBefore(s.getTot())) continue;\n"
                 + "        long n;\n"
                 + "        if (\"DAG\".equals(granulariteit)) n = java.time.temporal.ChronoUnit.DAYS.between(s.getVan(), s.getTot());\n"
                 + "        else if (\"WEEK\".equals(granulariteit)) n = java.time.temporal.ChronoUnit.WEEKS.between(s.getVan(), s.getTot());\n"

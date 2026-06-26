@@ -431,7 +431,7 @@ public final class RegelSpraakRuntime {
         for (Object o : segmenten) {
             BigDecimal w = segWaarde(o);
             LocalDate van = segVan(o), tot = segTot(o);
-            if (w == null || van == null || tot == null) continue;
+            if (w == null || van == null || tot == null || !van.isBefore(tot)) continue;   // §4 a zero/negative-length segment contributes 0, never a negative period count
             long n;
             switch (granulariteit) {
                 case "DAG":      n = ChronoUnit.DAYS.between(van, tot); break;

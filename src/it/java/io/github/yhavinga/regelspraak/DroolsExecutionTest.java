@@ -277,6 +277,36 @@ class DroolsExecutionTest {
                 () -> "totaal moet 12x10 + 6x11 = 186 zijn, was " + p.getTotaleBelastingvermindering());
     }
 
+    @Test void totaal_negeert_een_nul_of_negatieve_lengte_segment() {
+        // §4 robustness: rsTijdTotaal weights each segment by its period count; a zero-length (van==tot) or reversed
+        // (tot<van) segment must contribute 0, never a NEGATIVE period count. bedrag {Jan-Jul 2023: 10 (6 mnd)} + a
+        // zero-length seg (100) + a reversed seg (50) -> 6×10 = 60. RED-before-green: without the van.isBefore(tot)
+        // guard the reversed segment counts -1 month and subtracts 50 (-> 10).
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op het totaal van zijn belastingvermindering per maand.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        KieSession sessie = build(drl).newKieSession();
+        Passagier p = new Passagier();
+        p.setBelastingverminderingPerMaand(List.of(
+                new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2023, 7, 1), new BigDecimal("10.00")),    // 6 mnd x 10 = 60
+                new Segment(LocalDate.of(2023, 8, 1), LocalDate.of(2023, 8, 1), new BigDecimal("100.00")),   // zero-length -> 0
+                new Segment(LocalDate.of(2023, 10, 1), LocalDate.of(2023, 9, 1), new BigDecimal("50.00"))));  // reversed -> 0 (not -50)
+        sessie.insert(p);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal("60.00").compareTo(p.getTotaleBelastingvermindering()),
+                () -> "nul/negatieve-lengte segmenten moeten 0 bijdragen -> 60, was " + p.getTotaleBelastingvermindering());
+    }
+
     @Test void totaal_gedurende_een_temporele_vergelijking_klipt_naar_de_ware_periodes_eur71() {
         // §7.1 EUR71: "het totaal van zijn belastingvermindering per maand GEDURENDE DE TIJD DAT zijn
         // belastingvermindering per maand groter is dan 1000" — the comparison's OWN boolean timeline (the periods

@@ -1758,6 +1758,24 @@ class ExecModelDifferentialTest {
             },
             Map.of(),
             l -> vals(((Persoon) l.get(0)).getTotaalPartnerBedrag(), ((Persoon) l.get(1)).getTotaalPartnerBedrag())),   // 20.00, null
+
+        // §4 robustness: rsTijdTotaal must skip a zero-length (van==tot) or reversed (tot<van) segment — it
+        // contributes 0, never a negative period count. {Jan-Jul: 10 (6 mnd)} + zero-length 100 + reversed 50 -> 60.
+        single("§4 totaal negeert nul/negatieve-lengte segmenten (6×10 = 60)",
+            TOTAAL_HDR + """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel R
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op het totaal van zijn belastingvermindering per maand.
+            """,
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(
+                    seg(2023, 1, 1, 2023, 7, 1, "10.00"),     // 6 mnd x 10 = 60
+                    seg(2023, 8, 1, 2023, 8, 1, "100.00"),    // zero-length -> 0
+                    seg(2023, 10, 1, 2023, 9, 1, "50.00")))), // reversed -> 0 (not -50)
+            Map.of(),
+            Passagier::getTotaleBelastingvermindering),   // 60.00
     };
 
     // ---- Phase F2 fixtures: §13.4.17.57 "het aantal dagen in <maand|jaar> dat <kenmerk>" — a temporal WRITE ----
@@ -2909,7 +2927,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F4_compound_gedurende_matches_drl_back_end()  { runDifferential("Phase F4", PHASE_F4, 6); }
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 4); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
-    @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 9); }
+    @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 10); }
     @Test void phase_82_gehele_periode_matches_drl_back_end()      { runDifferential("Phase 82", PHASE_82, 10); }
     @Test void phase_82_kenmerk_matches_drl_back_end()             { runDifferential("Phase 82 kenmerk", PHASE_82_KENMERK, 2); }
     @Test void phase_82_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase 82 fout", PHASE_82_FOUT, 1); }
