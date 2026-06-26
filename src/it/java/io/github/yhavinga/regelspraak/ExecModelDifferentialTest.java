@@ -1513,8 +1513,16 @@ class ExecModelDifferentialTest {
                         paxLM(v, 25, 12, true)); },// kept
             Map.of(),
             l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 30 + 25 = 55
+        // an ALLE compound with a PARAMETER-global bullet FIRES in both (the ALLE arm recurses through filterSource,
+        // which binds the global on the source pattern) — unlike a COUNTING quantifier + global (a marker in both).
+        new Fixture("SOM with an ALLE compound + a PARAMETER-global bullet (leeftijd<de grens && minderjarig)",
+            "Parameter de grens : Numeriek (geheel getal)\n" + COMPOUND_HDR + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan alle volgende voorwaarden voldoen:\n        - zijn leeftijd is kleiner dan de grens\n        - hij is minderjarig.\n",
+            () -> { Vlucht v = new Vlucht(); return List.of(v,
+                        paxLM(v, 30, 10, true), paxLM(v, 70, 20, true), paxLM(v, 40, 15, false), paxLM(v, 25, 12, true)); },
+            Map.of("grens", new BigDecimal(18)),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // leeftijd < grens(18) AND minderjarig -> 30 + 25 = 55
     };
-    static final Object[] PHASE_C_COMPOUND_EXPECTED = { new BigDecimal(55) };
+    static final Object[] PHASE_C_COMPOUND_EXPECTED = { new BigDecimal(55), new BigDecimal(55) };
 
     // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
     //      arithmetic tree whose leaf is an AANTAL/TOTAAL/MIN/MAX). Each embedded aggregation lowers to its own
@@ -3295,7 +3303,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 11); }
     @Test void phase_C_param_rhs_subselectie_matches_drl_back_end() { runDifferential("Phase C param-RHS", PHASE_C_PARAM_RHS, 3); }
-    @Test void phase_C_compound_subselectie_matches_drl_back_end() { runDifferential("Phase C compound", PHASE_C_COMPOUND, 1); }
+    @Test void phase_C_compound_subselectie_matches_drl_back_end() { runDifferential("Phase C compound", PHASE_C_COMPOUND, 2); }
     /** §13.4.13.4 the COMPOUND subselectie (ALLE of comparison + kenmerk bullets over the element), now FIRING in BOTH
      *  back-ends (DRL `&&` source constraint; exec successive .expr). A closed-form filtered fold -> assert the ABSOLUTE
      *  spec value (a shared "filter never applied -> sums all" bug would pass a pure differential). */

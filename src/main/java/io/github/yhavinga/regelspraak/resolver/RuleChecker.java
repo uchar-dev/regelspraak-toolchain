@@ -896,11 +896,28 @@ final class RuleChecker {
             List<Conditie> onderdelen = new ArrayList<>();
             for (GenesteVoorwaardeContext g : sp.samengesteldeVoorwaardeOnderdeel().genesteVoorwaarde())
                 onderdelen.add(bouwGenest(g));         // the SAME bullet machinery as a voorwaarde compound
-            return new Conditie.Samengesteld(kwantorVanKwantificatie(sp.kwantificatie()),
+            Conditie.Kwantor kw = kwantorVanKwantificatie(sp.kwantificatie());
+            // §13.4.13.4 parity guard: a COUNTING quantifier (geen/ten-minste/ten-hoogste/precies) folds the bullets
+            // PER ELEMENT into a single count; the exec accumulate cannot bind a Parameter-GLOBAL inside that fold
+            // (only an ALLE/DE compound, which ANDs each bullet as its own source .expr, binds a global). So a counting
+            // compound with a global-reading bullet would FIRE in DRL but SKIP in the exec — marker it in BOTH
+            // (Onopgelost) to stay symmetric. The ALLE/DE + global case fires in both (each bullet binds its own global).
+            if (kw != Conditie.Kwantor.ALLE && kw != Conditie.Kwantor.DE && onderdelen.stream().anyMatch(RuleChecker::leestGlobal))
+                return new Conditie.Onopgelost(src(sp));
+            return new Conditie.Samengesteld(kw,
                     sp.kwantificatie() == null ? 0 : telwoordWaarde(sp.kwantificatie().telwoord()), onderdelen, src(sp));
         } finally {
             bouwer.setSubject(vorig);                   // RESTORE
         }
+    }
+
+    /** Whether a subselectie bullet (recursively) compares against a §13.3.8 Parameter-global — used to keep a
+     *  COUNTING-quantifier compound an honest marker in BOTH back-ends (the exec count-fold cannot bind a source-global). */
+    private static boolean leestGlobal(Conditie c) {
+        if (c instanceof Conditie.Vergelijking v)
+            return v.rechts() instanceof Expr.ParameterRef || v.links() instanceof Expr.ParameterRef;
+        if (c instanceof Conditie.Samengesteld s) return s.onderdelen().stream().anyMatch(RuleChecker::leestGlobal);
+        return false;
     }
 
     /** §13.4.14.5 kwantificatie (used by the compound subselectie) -> Kwantor. Distinct from voorwaardeKwantificatie:

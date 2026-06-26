@@ -1480,6 +1480,36 @@ class DrlTest {
                 () -> "de compound filter (leeftijd<18 && minderjarig) moet op de accumulate-bron staan:\n" + drl);
     }
 
+    @Test void compound_subselectie_telling_met_global_blijft_marker() {
+        // §13.4.13.4 PARITY guard: a COUNTING quantifier ("ten minste 1 van de") compound whose bullet reads a
+        // Parameter-global ("kleiner dan de grens") cannot bind the global in the exec count-fold (only an ALLE/DE
+        // compound binds a global, per-bullet) — so it markers in BOTH back-ends to stay symmetric (the ALLE+global
+        // case fires; only counting+global is restricted). DRL would otherwise fire it (a masked DRL-fires/exec-skips).
+        String src = """
+            Parameter de grens : Numeriek (geheel getal)
+            Objecttype de Vlucht
+                het totaal Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal);
+                is minderjarig kenmerk (bijvoeglijk);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Het totaal van een Vlucht moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:
+                    - zijn leeftijd is kleiner dan de grens
+                    - hij is minderjarig.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren+resolven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("/* TODO aggregatie"),
+                () -> "een counting+global compound subselectie moet een eerlijke marker zijn (exec kan de global niet binden in de count-fold):\n" + drl);
+    }
+
     @Test void telling_concatenatie_met_onoplosbare_operand_blijft_marker() {
         // A union with an operand that has NO resolvable kenmerk filter (here a bare set) cannot be
         // lowered faithfully — it stays an honest marker, never a count of only the first operand.
