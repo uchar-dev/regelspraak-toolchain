@@ -1272,4 +1272,46 @@ class RuleCheckTest {
         assertFalse(drl.contains("reis!.vertrektijd >"),
                 () -> "de non-native qualifier mag NIET naar een rauwe reis!.vertrektijd vergelijking lowereren:\n" + drl);
     }
+
+    private static boolean heeftNegatieSoortWaarschuwing(RegelSpraakModel m) {
+        return m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
+                && d.message().contains("Tabel 16 vereist"));
+    }
+
+    @Test void cross_soort_negatie_werkwoord_wordt_gewaarschuwd() {
+        // §8.1.8 / Tabel 16: the kenmerkcheck negation verb is keyed to the soort — a bezittelijk kenmerk negates
+        // with "heeft", not "is". The de-negation is verb-agnostic (lowering stays correct), so "is geen <bezittelijk>"
+        // is over-accepted; surface it as a WARNING (a writing-form lint, not an ERROR — the lowering is unchanged).
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                het recht kenmerk (bezittelijk);
+                is jong kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Persoon is jong indien hij aan alle volgende voorwaarden voldoet:
+                    - hij is geen recht
+                    - hij is niet jong.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "een writing-form lint mag geen ERROR zijn: " + m.errors());
+        assertTrue(heeftNegatieSoortWaarschuwing(m),
+                () -> "verwachtte een Tabel-16 soort-werkwoord waarschuwing voor 'is geen <bezittelijk>': " + m.diagnostics);
+    }
+
+    @Test void correcte_soort_negatie_geen_waarschuwing() {
+        // Control: the verb matches the soort (bezittelijk -> heeft, bijvoeglijk -> is) -> no warning.
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                het recht kenmerk (bezittelijk);
+                is jong kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Persoon is jong indien hij aan alle volgende voorwaarden voldoet:
+                    - hij heeft geen recht
+                    - hij is niet jong.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertFalse(heeftNegatieSoortWaarschuwing(m),
+                () -> "correcte soort-werkwoord-combinaties mogen niet waarschuwen: " + m.diagnostics);
+    }
 }

@@ -1039,6 +1039,25 @@ final class RuleChecker {
         return new Conditie.Onopgelost(bron);
     }
 
+    /** §8.1.8 / Tabel 16: the kenmerkcheck NEGATION verb is keyed to the kenmerk SOORT — a bijvoeglijk and a
+     *  zelfstandig kenmerk negate with "is"/"zijn" ("is niet &lt;k&gt;", "is geen &lt;k&gt;", "is niet een &lt;k&gt;"),
+     *  a bezittelijk one with "heeft"/"hebben" ("heeft (geen) &lt;k&gt;"). The de-negation in {@link #bindKenmerk} is
+     *  verb-AGNOSTIC (the "== false" lowering is identical either way), so a cross-soort writing ("heeft geen
+     *  &lt;bijvoeglijk&gt;", "is geen &lt;bezittelijk&gt;") slips through with the right meaning but the wrong register.
+     *  Surface it as a WARNING — a writing-form lint, never a wrong gate (the lowering is unchanged). Only a de-negated
+     *  kenmerk (negatie=true) is checked; the positive form's verb-keying is the EEN-form split's job. */
+    private void keurNegatieSoort(Objecttype houder, Conditie kc, boolean heeftWerkwoord) {
+        if (houder == null || !(kc instanceof Conditie.Kenmerk k) || !k.negatie()) return;
+        Objecttype.KenmerkSoort soort = houder.kenmerkSoort(k.kenmerk());
+        if (soort == null) return;
+        boolean bezit = soort == Objecttype.KenmerkSoort.BEZITTELIJK;
+        if (bezit != heeftWerkwoord)
+            model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                "het " + soort.name().toLowerCase() + " kenmerk '" + k.kenmerk() + "' wordt ontkend met het werkwoord '"
+                + (heeftWerkwoord ? "heeft" : "is") + "', maar Tabel 16 vereist '" + (bezit ? "heeft" : "is")
+                + "' bij dit soort kenmerk (§8.1.8): " + k.bron(), 0));
+    }
+
     private Conditie kenmerkPredicaatKaal(Expr lhs, KaleNaamContext naamCtx, boolean metEen, boolean heeftWerkwoord, String bron) {
         if (naamCtx == null) return null;
         // §8.1.5 dagsoortcontrole: "<datumexpressie> is een <dagsoort>" (e.g. "de datum van vertrek … is een
@@ -1069,7 +1088,7 @@ final class RuleChecker {
             // optional ("hij is passagier"); "heeft (geen) <rol>" is the §8.1.7 possessive, which rolLidmaatschap
             // resolves to the near-side test or — when the subject owns a to-many filler — the far-side exists-join.
             Conditie kc = kenmerkConditie(subject, naam, null, heeftWerkwoord, bron);
-            if (kc != null) return kc;
+            if (kc != null) { keurNegatieSoort(subject, kc, heeftWerkwoord); return kc; }
             // a leftover "geen <name>" that is a role is the INVERSE rolcheck (the subject does not fill it);
             // otherwise the positive rolcheck.
             if (naam.regionMatches(true, 0, "geen ", 0, 5))
@@ -1228,7 +1247,9 @@ final class RuleChecker {
             return g != null && doel.kenmerkSoort(g) == vereist
                     ? new Conditie.Kenmerk(g, rol, false, bron) : null;
         }
-        return kenmerkConditie(doel, kenmerk, rol, heeftWerkwoord, bron);
+        Conditie kc = kenmerkConditie(doel, kenmerk, rol, heeftWerkwoord, bron);
+        keurNegatieSoort(doel, kc, heeftWerkwoord);
+        return kc;
     }
 
     /** The words the greedy operand parse absorbed AFTER the navigated "de &lt;rol&gt; van &lt;onderwerp&gt;"
