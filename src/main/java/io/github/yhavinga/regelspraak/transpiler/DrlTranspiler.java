@@ -2606,6 +2606,12 @@ public final class DrlTranspiler {
                 case LEEG   -> LoweredConditie.van(o.text() + " == null");
                 case GEVULD -> LoweredConditie.van(o.text() + " != null");
                 case ELFPROEF -> { registreerElfproefFunctie(); yield LoweredConditie.van("rsElfproef(" + o.text() + ")"); }  // §8.1.3
+                case DAGSOORT -> {  // §8.1.5 "<datum> is een <dagsoort>" -> the §9.8 definitie predicate
+                    String fn = dagsoortFunctie(p.dagsoort());
+                    // §5.15: een leegwaarde is nooit een dagsoort -> a null date is ONWAAR (no match), not an NPE.
+                    yield fn == null ? LoweredConditie.marker("dagsoortcontrole '" + p.dagsoort() + "'", p.bron())
+                            : LoweredConditie.van("(" + o.text() + " != null && " + fn + "(" + o.text() + "))");
+                }
                 default     -> LoweredConditie.marker("predicaat " + p.soort(), p.bron());
             };
         }
@@ -2721,6 +2727,75 @@ public final class DrlTranspiler {
     /** A boolean expression true when AT LEAST {@code k} of {@code delen} hold: the OR over
      *  every k-subset, each subset AND-ed. k&lt;=0 is always true; k&gt;size is never. The
      *  bullet lists are small, so the C(size,k) expansion stays modest. */
+    // ---------------- §9.8 dagsoort definitie -> a per-date boolean function ----------------
+
+    /** Register (idempotently) and name a DRL {@code function boolean rsDagsoort_<Naam>(LocalDate dag)} compiled
+     *  from a §9.8 dagsoortdefinitie's condition over "de dag"; null when no such definitie exists or its condition
+     *  is not a pure date predicate (the caller then markers). A dagsoort that references ANOTHER dagsoort
+     *  (a feestdag tests kerstdag/paasdag) registers that one too — its body calls the other function. The name is
+     *  RESERVED before the body is lowered, so a self/cyclic reference resolves to a call rather than recursing. */
+    private String dagsoortFunctie(String dagsoortNaam) {
+        String fn = "rsDagsoort_" + ident(dagsoortNaam, true);
+        if (hulpFuncties.containsKey(fn)) return fn;
+        io.github.yhavinga.regelspraak.ir.ResolvedDagsoort def = null;
+        for (io.github.yhavinga.regelspraak.ir.ResolvedDagsoort d : model.resolvedDagsoorten)
+            if (d.naam().equalsIgnoreCase(dagsoortNaam)) { def = d; break; }
+        if (def == null) return null;
+        hulpFuncties.put(fn, "");                 // reserve the name (cycle / forward-reference guard)
+        String body = dagsoortBool(def.voorwaarde());
+        if (body == null) { hulpFuncties.remove(fn); return null; }
+        hulpFuncties.put(fn, "function boolean " + fn + "(java.time.LocalDate dag) {\n    return " + body + ";\n}\n\n");
+        return fn;
+    }
+
+    /** Lower a §9.8 condition-over-the-day to a Java boolean over the {@code dag} LocalDate parameter; null when any
+     *  leaf is not a pure date predicate. This is a FUNCTION-BODY (Java) lowering, so numeric/date comparisons use
+     *  Comparable.compareTo — NOT the mvel operators {@link #conditie} emits for in-pattern constraints. */
+    private String dagsoortBool(Conditie c) {
+        if (c instanceof Conditie.Vergelijking v) {
+            Frag lo = dagOperand(v.links()), ro = dagOperand(v.rechts());
+            if (lo.marker() || ro.marker()) return null;
+            return "(" + lo.text() + ".compareTo(" + ro.text() + ") " + compareToOp(v.op()) + ")";
+        }
+        if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.DAGSOORT) {
+            Frag o = dagOperand(p.operand());
+            String fn = dagsoortFunctie(p.dagsoort());
+            if (o.marker() || fn == null) return null;
+            return "(" + o.text() + " != null && " + fn + "(" + o.text() + "))";
+        }
+        if (c instanceof Conditie.Samengesteld s) {
+            List<String> delen = new ArrayList<>();
+            for (Conditie deel : s.onderdelen()) { String d = dagsoortBool(deel); if (d == null) return null; delen.add("(" + d + ")"); }
+            if (delen.isEmpty()) return null;
+            return switch (s.kwantor()) {
+                case ALLE, DE    -> "(" + String.join(" && ", delen) + ")";
+                case GEEN        -> "!(" + String.join(" || ", delen) + ")";
+                case TEN_MINSTE  -> minstens(delen, s.drempel());
+                case TEN_HOOGSTE -> "!(" + minstens(delen, s.drempel() + 1) + ")";
+                case PRECIES     -> "(" + minstens(delen, s.drempel()) + " && !(" + minstens(delen, s.drempel() + 1) + "))";
+            };
+        }
+        return null;   // any other condition shape is not a pure date predicate
+    }
+
+    /** A §9.8 operand over "de dag": the day itself ("de dag" -> the {@code dag} LocalDate), a date-component
+     *  function of it (via {@link #scalarFunctie}, reusing rsDatumDeel), or a fact-free literal — else a marker. */
+    private Frag dagOperand(Expr e) {
+        if (e instanceof Expr.Constante c && "de dag".equalsIgnoreCase(c.naam())) return Frag.ok("dag");
+        if (e instanceof Expr.Functie f) { Frag r = scalarFunctie(f, this::dagOperand); return r != null ? r : Frag.todo("dagsoort-operand", e.bron()); }
+        if (e instanceof Expr.Literal lit) return literal(lit);
+        return Frag.todo("dagsoort-operand", e.bron());
+    }
+
+    /** The Java {@code Comparable.compareTo(...)} tail for a §9.8 numeric/date comparison (a function body, not mvel). */
+    private static String compareToOp(Conditie.Operator op) {
+        return switch (op) {
+            case GELIJK -> "== 0";  case ONGELIJK -> "!= 0";
+            case GROTER, LATER -> "> 0";  case KLEINER, EERDER -> "< 0";
+            case GROTER_OF_GELIJK, LATER_OF_GELIJK -> ">= 0";  case KLEINER_OF_GELIJK, EERDER_OF_GELIJK -> "<= 0";
+        };
+    }
+
     private static String minstens(List<String> delen, int k) {
         if (k <= 0) return "true";
         if (k > delen.size()) return "false";

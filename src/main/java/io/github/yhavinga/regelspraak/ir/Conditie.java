@@ -41,10 +41,13 @@ public sealed interface Conditie {
         public Vergelijking(Operator op, Expr links, Expr rechts, String bron) { this(op, links, rechts, null, bron); }
     }
 
-    /** §5.11-5.16 one-sided predicates. */
+    /** §5.11-5.16 one-sided predicates. {@code dagsoort} names the §3.12 dagsoort for a
+     *  {@link Predicaatsoort#DAGSOORT} control ("&lt;datum&gt; is een kerstdag", §8.1.5) — the date is
+     *  tested against that dagsoort's §9.8 definitie predicate; it is null for every other soort. */
     enum Predicaatsoort { LEEG, GEVULD, ELFPROEF, NUMERIEK_MET_EXACT, DAGSOORT }
-    record Predicaat(Predicaatsoort soort, Expr operand, GeheelPeriode periode, String bron) implements Conditie {
-        public Predicaat(Predicaatsoort soort, Expr operand, String bron) { this(soort, operand, null, bron); }
+    record Predicaat(Predicaatsoort soort, Expr operand, String dagsoort, GeheelPeriode periode, String bron) implements Conditie {
+        public Predicaat(Predicaatsoort soort, Expr operand, GeheelPeriode periode, String bron) { this(soort, operand, null, periode, bron); }
+        public Predicaat(Predicaatsoort soort, Expr operand, String bron) { this(soort, operand, null, null, bron); }
     }
 
     /** §8.1.8 kenmerk-membership test ("de Meting is oud" / "hij heeft het recht …"): true when the

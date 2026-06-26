@@ -315,11 +315,21 @@ final class RuleChecker {
             consistentie(versieNaam, rd.consistentieRegel(), geldigheid);
         } else if (rd.feitCreatie() != null) {
             feitCreatie(versieNaam, rd.feitCreatie(), vd, voorwaarde, geldigheid);
+        } else if (rd.dagsoortResultaat() != null) {
+            // §9.8 dagsoortdefinitie ("Een dag is een <dagsoort> indien <voorwaarde over de dag>"): lift the
+            // (dagsoort name, condition-over-the-day) into the IR. The voorwaardendeel was already resolved into
+            // `voorwaarde` — its subject is "de dag" and its leaves are date-component tests, so both transpilers
+            // can compile it to a per-date boolean predicate (§8.1.5 controls + §6 dagsoort durations consume it).
+            String dag = src(rd.dagsoortResultaat().kaleNaam()).trim();
+            if (voorwaarde == null)
+                model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                        "dagsoortdefinitie '" + dag + "' mist een voorwaarde (regel '" + naam + "')", rd.getStart().getLine()));
+            else
+                model.resolvedDagsoorten.add(new io.github.yhavinga.regelspraak.ir.ResolvedDagsoort(dag, voorwaarde, geldigheid));
         } else {
-            // §13.4.11/.12 — parsed but not yet lifted into the IR. Surface it as
+            // §13.4.12 — parsed but not yet lifted into the IR. Surface it as
             // a diagnostic rather than letting the rule silently disappear from the model.
-            String soort = rd.startpuntBepaling() != null ? "startpuntbepaling"
-                    : rd.dagsoortResultaat() != null ? "dagsoortresultaat" : "resultaatdeel";
+            String soort = rd.startpuntBepaling() != null ? "startpuntbepaling" : "resultaatdeel";
             model.diagnostics.add(new Diagnostic(Severity.WARNING,
                     "resultaatdeel '" + soort + "' wordt nog niet naar IR/DRL omgezet (regel '" + naam + "')",
                     rd.getStart().getLine()));
@@ -1007,8 +1017,17 @@ final class RuleChecker {
     }
 
     private Conditie kenmerkPredicaatKaal(Expr lhs, KaleNaamContext naamCtx, boolean metEen, boolean heeftWerkwoord, String bron) {
+        if (naamCtx == null) return null;
+        // §8.1.5 dagsoortcontrole: "<datumexpressie> is een <dagsoort>" (e.g. "de datum van vertrek … is een
+        // kerstdag") tests the date against that dagsoort's §9.8 definitie. A dagsoort is neither a kenmerk nor a
+        // role — it is keyed only by the operand being a datum and the name matching a declared dagsoort, so it is
+        // resolved here BEFORE the kenmerk/rolcheck machinery (the §13.4.15.45 "(een) <dagsoort> is" form).
+        if (metEen && !heeftWerkwoord && lhs != null && lhs.type().isDatum()) {
+            String dag = dagsoortNaam(stripArtikel(src(naamCtx)));
+            if (dag != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.DAGSOORT, lhs, dag, null, bron);
+        }
         Objecttype subject = bouwer.subject();
-        if (naamCtx == null || subject == null) return null;
+        if (subject == null) return null;
         String staart = stripArtikel(src(naamCtx));
         String kop = subjectKop(lhs, subject);
         // not the subject itself -> a navigated kenmerk ("zijn reis is duurzaam", or the EEN-form "zijn reis is
@@ -1044,6 +1063,17 @@ final class RuleChecker {
         Conditie k = heeftWerkwoord ? bezittelijkKenmerk(subject, naam, bron)
                                     : zelfstandigKenmerk(subject, naam, bron);
         return k != null ? k : rolLidmaatschap(subject, naam, bron);
+    }
+
+    /** The declared §3.12 dagsoort whose name matches {@code geschreven} (case-insensitive), or null. The
+     *  written §8.1.5 control names the dagsoort in its singular ("is een kerstdag"), which is the form stored
+     *  in {@code model.dagsoorten}; the §6 duration UNIT (a plural eenheidsafkorting "kerstdagen") is matched
+     *  separately by the transpilers via the declared meervoud. */
+    private String dagsoortNaam(String geschreven) {
+        if (geschreven == null) return null;
+        String g = geschreven.trim();
+        for (String d : model.dagsoorten) if (d.equalsIgnoreCase(g)) return d;
+        return null;
     }
 
     /** §8.1.8.3 "&lt;subject&gt; is een &lt;zelfstandig kenmerk&gt;" -> a {@link Conditie.Kenmerk} ("k == true"),

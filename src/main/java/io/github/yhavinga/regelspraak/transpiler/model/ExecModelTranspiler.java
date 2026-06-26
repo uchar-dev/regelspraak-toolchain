@@ -62,6 +62,12 @@ public final class ExecModelTranspiler {
 
     private final RegelSpraakModel model;
     private final Map<String, Global<BigDecimal>> globals = new LinkedHashMap<>();
+    /** §9.8 dagsoortdefinities compiled to per-date predicates (the executable-model mirror of DrlTranspiler's
+     *  generated {@code function boolean rsDagsoort_<Naam>}). Compiled lazily on first reference (§8.1.5 / §6
+     *  duration); cross-dagsoort references resolve via a deferred map lookup so population order is irrelevant.
+     *  {@link #dagsoortBezig} guards against infinite recursion on a (spec-forbidden, §9.10) cyclic definitie. */
+    private final Map<String, java.util.function.Predicate<java.time.LocalDate>> dagsoortPredikaten = new LinkedHashMap<>();
+    private final java.util.Set<String> dagsoortBezig = new java.util.HashSet<>();
     /** §13.3.6 temporal parameters: a tijdlijn parameter is a {@code List<Segment>} global (only a §7.3.2
      *  tijdsevenredig base reads it), kept apart from the scalar BigDecimal {@link #globals}. */
     private final Map<String, Global<java.util.List>> listGlobals = new LinkedHashMap<>();
@@ -1485,6 +1491,26 @@ public final class ExecModelTranspiler {
                 return rhs.equals(RegelSpraakRuntime.get(rel, attr)) == gelijk;
             };
         }
+        // §8.1.5 dagsoortcontrole "<datum> is een <dagsoort>": test an OWN or to-one NAVIGATED datum attribute
+        // against the dagsoort's §9.8 definitie predicate (the mirror of DrlTranspiler's `attr != null &&
+        // rsDagsoort_<Naam>(attr)`). §5.15: een leegwaarde is nooit een dagsoort -> an absent datum is ONWAAR.
+        if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.DAGSOORT
+                && p.operand() instanceof Expr.AttribuutRef la && la.type().isDatum()) {
+            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> skip
+            java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(p.dagsoort());
+            if (pred == null) return null;
+            String attr = la.attribuut();
+            if (la.navigatieRol() == null) {
+                if (!subject.heeftLid(attr)) return null;
+                return s -> RegelSpraakRuntime.get(s, attr) instanceof java.time.LocalDate ld && pred.test(ld);
+            }
+            String rol = navComparisonRole(la, subject);
+            if (rol == null) return null;
+            return s -> {
+                Object rel = RegelSpraakRuntime.get(s, rol);
+                return rel != null && RegelSpraakRuntime.get(rel, attr) instanceof java.time.LocalDate ld && pred.test(ld);
+            };
+        }
         // §8.1.7 near-side rolcheck: the subject fills the role iff its to-ONE forward reference is set. The far-side
         // (the reference lives on the MANY side) is not a fact-only leaf -> null (handled as an exists-join above).
         if (c instanceof Conditie.Rollidmaatschap r) {
@@ -1494,6 +1520,98 @@ public final class ExecModelTranspiler {
             return s -> (RegelSpraakRuntime.get(s, veld) != null) == gevuldWanted;
         }
         return null;
+    }
+
+    // ---------------- §9.8 dagsoort definitie -> a per-date Predicate<LocalDate> ----------------
+
+    /** Compile (idempotently, cycle-safe) the §9.8 definitie of {@code naam} to a Predicate&lt;LocalDate&gt;; null
+     *  when no such definitie exists or its condition is not a pure date predicate. A nested dagsoort reference
+     *  resolves via a DEFERRED map lookup, so cross-references work regardless of compilation order and a
+     *  (spec-forbidden, §9.10) cyclic definitie cannot infinite-loop. Mirrors DrlTranspiler.dagsoortFunctie. */
+    private java.util.function.Predicate<java.time.LocalDate> dagsoortPredikaat(String naam) {
+        String key = naam.toLowerCase();
+        java.util.function.Predicate<java.time.LocalDate> have = dagsoortPredikaten.get(key);
+        if (have != null) return have;
+        if (dagsoortBezig.contains(key))   // cyclic reference: defer to the eventual map entry
+            return d -> { var p = dagsoortPredikaten.get(key); return p != null && p.test(d); };
+        io.github.yhavinga.regelspraak.ir.ResolvedDagsoort def = null;
+        for (var d : model.resolvedDagsoorten) if (d.naam().equalsIgnoreCase(naam)) { def = d; break; }
+        if (def == null) return null;
+        dagsoortBezig.add(key);
+        java.util.function.Predicate<java.time.LocalDate> body = dagsoortBoolPred(def.voorwaarde());
+        dagsoortBezig.remove(key);
+        if (body != null) dagsoortPredikaten.put(key, body);
+        return body;
+    }
+
+    /** Lower a §9.8 condition-over-the-day to a Predicate&lt;LocalDate&gt;; null when any leaf is not a pure date
+     *  predicate. Mirrors DrlTranspiler.dagsoortBool (Vergelijking via Comparable.compareTo, Samengesteld quantifiers). */
+    private java.util.function.Predicate<java.time.LocalDate> dagsoortBoolPred(Conditie c) {
+        if (c instanceof Conditie.Vergelijking v) {
+            java.util.function.Function<java.time.LocalDate, Object> lo = dagWaarde(v.links()), ro = dagWaarde(v.rechts());
+            if (lo == null || ro == null) return null;
+            Conditie.Operator op = v.op();
+            return d -> vergelijkComparable(lo.apply(d), ro.apply(d), op);
+        }
+        if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.DAGSOORT) {
+            java.util.function.Function<java.time.LocalDate, Object> o = dagWaarde(p.operand());
+            java.util.function.Predicate<java.time.LocalDate> inner = dagsoortPredikaat(p.dagsoort());
+            if (o == null || inner == null) return null;
+            return d -> o.apply(d) instanceof java.time.LocalDate ld && inner.test(ld);
+        }
+        if (c instanceof Conditie.Samengesteld s) {
+            List<java.util.function.Predicate<java.time.LocalDate>> delen = new ArrayList<>();
+            for (Conditie deel : s.onderdelen()) { var d = dagsoortBoolPred(deel); if (d == null) return null; delen.add(d); }
+            if (delen.isEmpty()) return null;
+            int n = s.drempel();
+            return switch (s.kwantor()) {
+                case ALLE, DE    -> d -> delen.stream().allMatch(q -> q.test(d));
+                case GEEN        -> d -> delen.stream().noneMatch(q -> q.test(d));
+                case TEN_MINSTE  -> d -> delen.stream().filter(q -> q.test(d)).count() >= n;
+                case TEN_HOOGSTE -> d -> delen.stream().filter(q -> q.test(d)).count() <= n;
+                case PRECIES     -> d -> delen.stream().filter(q -> q.test(d)).count() == n;
+            };
+        }
+        return null;
+    }
+
+    /** A §9.8 operand over "de dag" as a Function&lt;LocalDate,Object&gt; (the day itself, a date-component of it via
+     *  rsDatumDeel, or a fact-free literal); null when not a pure date operand. Mirrors DrlTranspiler.dagOperand. */
+    private java.util.function.Function<java.time.LocalDate, Object> dagWaarde(Expr e) {
+        if (e instanceof Expr.Constante c && "de dag".equalsIgnoreCase(c.naam())) return d -> d;
+        if (e instanceof Expr.Functie f && f.argumenten().size() == 1) {
+            java.time.temporal.ChronoField cf = switch (f.kind()) {
+                case JAAR_UIT         -> java.time.temporal.ChronoField.YEAR;
+                case MAAND_UIT        -> java.time.temporal.ChronoField.MONTH_OF_YEAR;
+                case DAG_UIT          -> java.time.temporal.ChronoField.DAY_OF_MONTH;
+                case UUR_UIT          -> java.time.temporal.ChronoField.HOUR_OF_DAY;
+                case MINUUT_UIT       -> java.time.temporal.ChronoField.MINUTE_OF_HOUR;
+                case SECONDE_UIT      -> java.time.temporal.ChronoField.SECOND_OF_MINUTE;
+                case MILLISECONDE_UIT -> java.time.temporal.ChronoField.MILLI_OF_SECOND;
+                default               -> null;
+            };
+            if (cf == null) return null;
+            java.util.function.Function<java.time.LocalDate, Object> inner = dagWaarde(f.argumenten().get(0));
+            if (inner == null) return null;
+            return d -> RegelSpraakRuntime.rsDatumDeel(inner.apply(d), cf);
+        }
+        if (e instanceof Expr.Literal lit) {
+            if (lit.type().isDatum()) { java.time.LocalDate ld = parseDatum(lit.waarde()); return ld == null ? null : d -> ld; }
+            BigDecimal n = bd(lit); return n == null ? null : d -> n;
+        }
+        return null;
+    }
+
+    /** Compare two §9.8 operands (BigDecimal date-components or LocalDate values) by Comparable.compareTo. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static boolean vergelijkComparable(Object a, Object b, Conditie.Operator op) {
+        if (!(a instanceof Comparable) || b == null) return false;
+        int c = ((Comparable) a).compareTo(b);
+        return switch (op) {
+            case GELIJK -> c == 0;  case ONGELIJK -> c != 0;
+            case GROTER, LATER -> c > 0;  case KLEINER, EERDER -> c < 0;
+            case GROTER_OF_GELIJK, LATER_OF_GELIJK -> c >= 0;  case KLEINER_OF_GELIJK, EERDER_OF_GELIJK -> c <= 0;
+        };
     }
 
     /** A globally-unique constraint id (see {@link #idSeq}) — unique across the whole model, not just one rule. */

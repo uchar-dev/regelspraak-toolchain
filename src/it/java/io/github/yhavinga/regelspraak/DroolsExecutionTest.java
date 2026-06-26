@@ -6058,4 +6058,44 @@ class DroolsExecutionTest {
         s.insert(p); s.fireAllRules(); s.dispose();
         assertEquals("nr 528 jaar", p.getRoepnaam(), () -> "tekstreeks moet 'nr 528 jaar' opleveren, was " + p.getRoepnaam());
     }
+
+    @Test void dagsoortcontrole_kerstdag_vuurt_alleen_op_25_en_26_december(){
+        // §9.8 dagsoortdefinitie "Een dag is een kerstdag indien maand==12 én dag in {25,26}" compiles to a
+        // function boolean rsDagsoort_Kerstdag(LocalDate); §8.1.5 "<datum> is een kerstdag" calls it. ABSOLUTE spec
+        // semantics (not just DRL/exec parity — a shared bug in the predicate compiler would pass the differential):
+        // only 25 and 26 December are a kerstdag, and §5.15 a leeg datum is NEVER a dagsoort.
+        String drl = DrlTranspiler.transpile(Resolver.resolve("""
+            Dagsoort de kerstdag (mv: kerstdagen)
+            Regel Kerstdag
+                geldig altijd
+                    Een dag is een kerstdag
+                    indien de dag aan alle volgende voorwaarden voldoet:
+                    - de maand uit (de dag) is gelijk aan 12
+                    - de dag voldoet aan ten minste één van de volgende voorwaarden:
+                        .. de dag uit (de dag) is gelijk aan 25
+                        .. de dag uit (de dag) is gelijk aan 26.
+            Objecttype de Vlucht
+                de vluchtdatum Datum in dagen;
+                is laat kenmerk (bijvoeglijk);
+            Regel Kerstvlucht
+                geldig altijd
+                    Een Vlucht is laat
+                    indien de vluchtdatum van de Vlucht een kerstdag is.
+            """));
+        assertTrue(drl.contains("function boolean rsDagsoort_Kerstdag"),
+                () -> "de §9.8 definitie moet een per-datum predicaat-functie worden:\n" + drl);
+        KieSession s = build(drl).newKieSession();
+        Vlucht k25 = new Vlucht(); k25.setVluchtdatum(LocalDate.of(2024, 12, 25));
+        Vlucht k26 = new Vlucht(); k26.setVluchtdatum(LocalDate.of(2024, 12, 26));
+        Vlucht d24 = new Vlucht(); d24.setVluchtdatum(LocalDate.of(2024, 12, 24));
+        Vlucht n25 = new Vlucht(); n25.setVluchtdatum(LocalDate.of(2024, 11, 25));   // juiste dag, foute maand
+        Vlucht leeg = new Vlucht();                                                   // §5.15 geen datum
+        for (Vlucht v : new Vlucht[]{k25, k26, d24, n25, leeg}) s.insert(v);
+        s.fireAllRules(); s.dispose();
+        assertTrue(k25.isLaat(),  "25 december is een kerstdag");
+        assertTrue(k26.isLaat(),  "26 december is een kerstdag");
+        assertFalse(d24.isLaat(), "24 december is geen kerstdag");
+        assertFalse(n25.isLaat(), "25 november is geen kerstdag (foute maand)");
+        assertFalse(leeg.isLaat(), "een leeg datum is nooit een kerstdag (§5.15)");
+    }
 }

@@ -240,6 +240,42 @@ class ExecModelDifferentialTest {
                 Map.of("marge", new BigDecimal(3)), l -> ((Vlucht) l.get(0)).isLaat()),
     };
 
+    // ---- §8.1.5 / §9.8 DAGSOORT: a §9.8 dagsoortdefinitie ("Een dag is een kerstdag indien …") compiles to a
+    //      per-date predicate; §8.1.5 dagsoortcontrole ("<datum> is een kerstdag") calls it. Both back-ends must
+    //      agree (DRL `function boolean rsDagsoort_Kerstdag` <-> exec-model Predicate<LocalDate>). §5.15: a leeg
+    //      datum is NEVER a dagsoort -> onwaar. kerstdag = maand 12 AND dag in {25, 26}. ----
+    static final String DAGSOORT_SRC =
+            """
+            Dagsoort de kerstdag (mv: kerstdagen)
+            Regel Kerstdag
+                geldig altijd
+                    Een dag is een kerstdag
+                    indien de dag aan alle volgende voorwaarden voldoet:
+                    - de maand uit (de dag) is gelijk aan 12
+                    - de dag voldoet aan ten minste één van de volgende voorwaarden:
+                        .. de dag uit (de dag) is gelijk aan 25
+                        .. de dag uit (de dag) is gelijk aan 26.
+            Objecttype de Vlucht
+                de vluchtdatum Datum in dagen;
+                is laat kenmerk (bijvoeglijk);
+            Regel Kerstvlucht
+                geldig altijd
+                    Een Vlucht is laat
+                    indien de vluchtdatum van de Vlucht een kerstdag is.
+            """;
+    static Fixture dagsoortFix(String naam, java.time.LocalDate datum) {
+        return new Fixture(naam, DAGSOORT_SRC,
+                () -> { Vlucht v = new Vlucht(); if (datum != null) v.setVluchtdatum(datum); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).isLaat());
+    }
+    static final Fixture[] PHASE_DAGSOORT = {
+        dagsoortFix("§8.1.5 dagsoortcontrole: 25-12 is een kerstdag -> waar", java.time.LocalDate.of(2024, 12, 25)),
+        dagsoortFix("§8.1.5 dagsoortcontrole: 26-12 is een kerstdag -> waar", java.time.LocalDate.of(2024, 12, 26)),
+        dagsoortFix("§8.1.5 dagsoortcontrole: 24-12 is geen kerstdag -> onwaar", java.time.LocalDate.of(2024, 12, 24)),
+        dagsoortFix("§8.1.5 dagsoortcontrole: 25-11 (juiste dag, foute maand) -> onwaar", java.time.LocalDate.of(2024, 11, 25)),
+        dagsoortFix("§5.15 dagsoortcontrole op een leeg datum -> onwaar", null),
+    };
+
     // ---- §12 BESLISTABEL fixtures: a captured pipe-table desugars (BeslistabelDesugar) to one regel per row, fed
     //      through the SAME resolver -> both back-ends fire the rows. Mutually-exclusive bands keep the result
     //      deterministic regardless of row firing order. Exercises: one-conditie, multi-conditie AND + n.v.t. omission,
@@ -2676,6 +2712,7 @@ class ExecModelDifferentialTest {
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
     @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 15); }
+    @Test void phase_dagsoort_controle_matches_drl_back_end()     { runDifferential("Phase DAGSOORT", PHASE_DAGSOORT, 5); }
     @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
     @Test void phase_E_verdeling_fouten_match_drl_back_end()       { runFoutDifferential("Phase E fout", PHASE_E_FOUT, 2); }
 

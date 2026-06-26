@@ -22,6 +22,9 @@ public final class RegelSpraakModel {
     public final List<Regel> regels = new ArrayList<>();
     /** Resolved rule IR (typed expressions + bound references) — the transpiler's input. */
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedRegel> resolvedRegels = new ArrayList<>();
+    /** Resolved §9.8 dagsoortdefinities (dagsoort name + condition over "de dag") — each becomes a
+     *  per-date boolean predicate the transpilers compile for §8.1.5 controls and the §6 durations. */
+    public final List<io.github.yhavinga.regelspraak.ir.ResolvedDagsoort> resolvedDagsoorten = new ArrayList<>();
     /** Resolved object-creation rules (§13.4.6) — a separate IR shape (new object + attributes). */
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie> objectCreaties = new ArrayList<>();
     /** Resolved distribution rules (§13.4.10) — source amount spread over recipients. */
