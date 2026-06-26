@@ -275,7 +275,7 @@ final class ExpressieBouwer {
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
                     "leegwaarde-alternatief van een sommatie moet numeriek zijn, kreeg "
                             + leegwaarde.type() + " (§5.8.2)", f.getStart().getLine()));
-        Conditie filter = aggregatieFilter(f, elem);
+        Conditie filter = aggregatieFilter(f, elem, argumenten);
         if (filter instanceof Conditie.Onopgelost)   // a resolved kenmerk-filter is lowered; only an
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING, // unresolved one warns
                     "een 'die/dat'-subselectie op een aggregatie-operand wordt nog niet omgezet; de aggregatie "
@@ -682,7 +682,7 @@ final class ExpressieBouwer {
         return -1;
     }
 
-    private Conditie aggregatieFilter(FunctieAanroepContext f, Objecttype elem) {
+    private Conditie aggregatieFilter(FunctieAanroepContext f, Objecttype elem, List<Expr> argumenten) {
         if (elem == null) return null;
         java.util.List<ParseTree> operanden = new ArrayList<>();
         for (int i = 0; i < f.getChildCount(); i++) {
@@ -693,6 +693,9 @@ final class ExpressieBouwer {
             PredicaatContext p = vindDie(operanden.get(0));
             if (p == null) return null;
             Conditie filter = elementKenmerkFilter(p, elem);
+            // §5.6 getalpredicaat "die <op> <expr>" (e.g. "die kleiner zijn dan 18"): a comparison of the AGGREGATED
+            // attribute (the LHS the operator folds) -> a Conditie.Vergelijking the accumulate source pattern constrains.
+            if (filter == null) filter = elementVergelijking(p, elem, argumenten);
             return filter != null ? filter : new Conditie.Onopgelost(src(p));
         }
         // §5.8.1 union telling "het aantal X, Y en Z": the count is the UNION of the per-operand
@@ -765,6 +768,30 @@ final class ExpressieBouwer {
         // ("die een minderjarige zijn" against the declared "minderjarig") — bind it morphologically.
         String kenmerk = KenmerkMatcher.vind(elem, naamBron);
         return kenmerk != null ? new Conditie.Kenmerk(kenmerk, src(p)) : null;
+    }
+
+    /** §5.6/§13.4.13.5-.7 a getal/datum/tekst elementairpredicaat "die &lt;op&gt; &lt;expr&gt;" (the vragende-meervoud
+     *  "die kleiner zijn dan 18", or the permissive verb-leading register) -> a {@link Conditie.Vergelijking} over the
+     *  element's AGGREGATED attribute. The subselectie names no attribute, so the LHS is the very attribute the
+     *  aggregation folds (the single AttribuutRef operand of the element, e.g. "de leeftijd van alle passagiers"); the
+     *  comparison is then constrained on the accumulate's source pattern. A count over the bare element (no folded
+     *  attribute), a navigated/set-of operand, or a non-comparison predicaat returns null -> the caller markers. The
+     *  RHS is resolved in the rule's subject context (a literal or a parameter-global — not an element attribute). */
+    private Conditie elementVergelijking(PredicaatContext p, Objecttype elem, List<Expr> argumenten) {
+        if (argumenten.size() != 1 || !(argumenten.get(0) instanceof Expr.AttribuutRef agg)
+                || agg.objecttype() != elem || agg.navigatieRol() != null) return null;
+        Conditie.Operator op; ExpressieContext rhsCtx;
+        if (p.toplevelOperator() != null && p.toplevelOperator().vergelijkingsTekenGesplitst() != null
+                && p.toplevelOperator().expressie() != null) {
+            op = RuleChecker.naarOperator(RuleChecker.cmpOf(p.toplevelOperator().vergelijkingsTekenGesplitst()));
+            rhsCtx = p.toplevelOperator().expressie();
+        } else if (p.nonToplevelOperator() != null && p.nonToplevelOperator().vergelijkingsTeken() != null
+                && p.nonToplevelOperator().expressie() != null) {
+            op = RuleChecker.naarOperator(RuleChecker.cmpOf(p.nonToplevelOperator().vergelijkingsTeken()));
+            rhsCtx = p.nonToplevelOperator().expressie();
+        } else return null;
+        Expr lhs = new Expr.AttribuutRef(agg.attribuut(), elem, "", null, agg.type(), src(p));
+        return new Conditie.Vergelijking(op, lhs, bouw(rhsCtx), src(p));
     }
 
     /** §4.12-4.15: type-check the operand list of a value/date aggregation. min/max demand all

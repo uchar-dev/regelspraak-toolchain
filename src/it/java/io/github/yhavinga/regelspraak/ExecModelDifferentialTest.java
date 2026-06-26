@@ -1264,6 +1264,23 @@ class ExecModelDifferentialTest {
             Map.of(),
             l -> ((Vlucht) l.get(0)).getTotaalprijs()),
 
+        // §5.6 getalpredicaat subselectie "die kleiner zijn dan 50": the comparison filters the AGGREGATED attribute
+        // (prijs) on the accumulate source pattern. SOM of prijs over {30,70,40} keeping prijs<50 -> 30+40=70.
+        new Fixture("SOM with a comparison die-filter (prijs < 50)",
+            "Objecttype de Vlucht\n    de totaalprijs Numeriek (geheel getal);\nObjecttype de Passagier\n    de prijs Numeriek (geheel getal);\n" + AGG_FEIT
+            + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die kleiner zijn dan 50.\n",
+            () -> { Vlucht v = new Vlucht(); return List.of(v, pas(v, 30), pas(v, 70), pas(v, 40)); },
+            Map.of(),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 70
+
+        // §5.6 the same comparison filter on a MAXIMUM value-fold: max of {30,40} (70 excluded) -> 40.
+        new Fixture("MAXIMUM with a comparison die-filter (prijs < 50)",
+            "Objecttype de Vlucht\n    de totaalprijs Numeriek (geheel getal);\nObjecttype de Passagier\n    de prijs Numeriek (geheel getal);\n" + AGG_FEIT
+            + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de maximale waarde van de prijs van alle passagiers van de reis die kleiner zijn dan 50.\n",
+            () -> { Vlucht v = new Vlucht(); return List.of(v, pas(v, 30), pas(v, 70), pas(v, 40)); },
+            Map.of(),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 40
+
         // (adversary lock) two feittypen join Luchthaven to Reiziger; the count NAMES its element role ("aantal
         // VERTREK"), so verbindendeRolViaElementnaam must pick vertrekkendeReiziger — NOT the by-pair ambiguity.
         new Fixture("AANTAL element-named role disambiguates >1 feittype",
@@ -3098,7 +3115,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B3_relational_match_drl_back_end()        { runDifferential("Phase B3", PHASE_B3, 6); }
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
-    @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 9); }
+    @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 11); }
     @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 11); }
     @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 7); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }

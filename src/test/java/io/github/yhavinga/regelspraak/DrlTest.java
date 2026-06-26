@@ -1373,6 +1373,31 @@ class DrlTest {
         assertFalse(drl.contains("/* TODO aggregatie AANTAL"), () -> "de oplosbare union mag geen marker zijn:\n" + drl);
     }
 
+    @Test void vergelijking_subselectie_wordt_een_accumulate_filter() {
+        // §5.6 getalpredicaat "die kleiner zijn dan X": the subselectie comparison filters the AGGREGATED attribute
+        // (prijs) on the accumulate source pattern — only matching elements are summed. Was an honest marker (no
+        // attribute named); now lowers. RED-before-green: before this it emitted a TODO aggregatie SOM marker.
+        String src = """
+            Objecttype de Vlucht
+                het totaal Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Het totaal van een Vlucht moet berekend worden als de som van de prijs van alle passagiers van de reis die kleiner zijn dan 50.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "de vergelijking-subselectie moet parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("accumulate(") && drl.contains("prijs < new java.math.BigDecimal(\"50\")"),
+                () -> "de comparison-subselectie moet de accumulate-bron filteren op prijs < 50:\n" + drl);
+        assertFalse(drl.contains("/* TODO aggregatie SOM"), () -> "de oplosbare comparison-subselectie mag geen marker zijn:\n" + drl);
+    }
+
     @Test void telling_concatenatie_met_onoplosbare_operand_blijft_marker() {
         // A union with an operand that has NO resolvable kenmerk filter (here a bare set) cannot be
         // lowered faithfully — it stays an honest marker, never a count of only the first operand.

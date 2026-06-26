@@ -578,6 +578,39 @@ class DroolsExecutionTest {
                 () -> "complement-totaal moet 6x10 + 5x11 = 115 zijn, was " + p.getTotaleBelastingvermindering());
     }
 
+    @Test void vergelijking_subselectie_som_vuurt_met_filter() {
+        // §5.6 "die kleiner zijn dan 50" filters the accumulate source by the aggregated attribute (prijs). SOM over
+        // {30, 70, 40} keeping prijs < 50 -> 30 + 40 = 70 (the 70-prijs passagier is excluded). Absolute spec value.
+        String src = """
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel R
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die kleiner zijn dan 50.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("/* TODO aggregatie"), () -> "de subselectie mag geen marker zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht v = new Vlucht();
+        Passagier a = new Passagier(); a.setReis(v); a.setPrijs(new BigDecimal(30));
+        Passagier b = new Passagier(); b.setReis(v); b.setPrijs(new BigDecimal(70));   // excluded (>= 50)
+        Passagier c = new Passagier(); c.setReis(v); c.setPrijs(new BigDecimal(40));
+        sessie.insert(v); sessie.insert(a); sessie.insert(b); sessie.insert(c);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertEquals(0, new BigDecimal(70).compareTo(v.getTotaalprijs()),
+                () -> "som van prijs<50 over {30,70,40} = 70, was " + v.getTotaalprijs());
+    }
+
     @Test void aantal_dagen_in_de_maand_schrijft_een_per_maand_telling_tijdreeks(){
         // §7.2/§13.4.17.57 the FIRST temporal-WRITE: "Het aantal dagen recht op belastingvermindering ... moet
         // gesteld worden op het aantal dagen in de maand dat hij een recht op belastingvermindering heeft" writes a
