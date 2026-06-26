@@ -851,6 +851,20 @@ class ExecModelDifferentialTest {
             () -> List.of(passagier(p -> { p.setMinderjarig(false); p.setStudent(false); }),   // both false -> kind
                           passagier(p -> { p.setMinderjarig(true); p.setStudent(false); })),   // minderjarig -> not kind
             Map.of(), ExecModelDifferentialTest::negKind2),   // [true, false]
+        // §8.1.8.3 Tabel 16 stellende zelfstandig negation "is niet een <k>" (the explicit NIET EEN form, which used
+        // to break the parse — "een" could not follow the "niet" lexed into the kaleNaam). A stellende/bullet form, so
+        // exercised under ALLE; lowers to student == false in BOTH back-ends. kind iff (¬student ∧ ¬minderjarig).
+        new Fixture("§8.1.8.3 stellende bullet negatie (is niet een student)",
+            NEG_OT + """
+            Regel r
+                geldig altijd
+                    Een passagier is kind indien hij aan alle volgende voorwaarden voldoet:
+                    - hij is niet een student
+                    - hij is niet minderjarig.
+            """,
+            () -> List.of(passagier(p -> { p.setStudent(true);  p.setMinderjarig(false); }),   // student -> NOT kind
+                          passagier(p -> { p.setStudent(false); p.setMinderjarig(false); })),  // neither -> kind
+            Map.of(), ExecModelDifferentialTest::negKind2),   // [false, true]
         // §8.1.8 NAVIGATED negation "zijn reis niet internationaal is" -> reis != null && reis.internationaal == false
         // (the greedy possessive onderwerp absorbs the "niet" into the role; the resolver splits it back onto the
         // kenmerk). A NULL reis -> onwaar (the navigated predicate needs the relation, mirroring the affirmative;
@@ -884,6 +898,7 @@ class ExecModelDifferentialTest {
     /** §8.1.8 negation is a closed-form transform (== false); assert the ABSOLUTE firing (a shared ==true-instead-of-
      *  ==false bug would pass a pure differential) AND that both back-ends agree. */
     static final Object[] PHASE_NEG_EXPECTED = { vals(false, true), vals(false, true), vals(false, true), vals(true, false),
+                                                 vals(false, true),          // §8.1.8.3 "is niet een student": ¬student ∧ ¬minderjarig
                                                  vals(false, true, false) };
     @Test void phase_NEG_negation_is_spec_correct() {
         for (int i = 0; i < PHASE_NEG.length; i++) {

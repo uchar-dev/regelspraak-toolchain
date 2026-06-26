@@ -651,6 +651,11 @@ nonToplevelOperator // §13.4.15.71-.100 (verb-leading), unified across types
     | ( VOLDOET | VOLDOEN ) gehelePeriodevergelijking? NIET? AAN_DE_ELFPROEF
     | ( IS | ZIJN ) gehelePeriodevergelijking? NIET? NUMERIEK_MET_EXACT NUMBER CIJFERS
     | ( IS | ZIJN ) gehelePeriodevergelijking? vergelijkingsTeken expressie
+    // §8.1.8.3 Tabel 16 zelfstandig kenmerkcheck NEGATION "is niet een <k>". The "een" (a separate token, not a
+    // kaleNaamWoord) distinguishes it from the bijvoeglijk "is niet <k>" form below, where the NIET lexes INTO the
+    // kaleNaam for the §8.1.8 verbatim-first de-negation; this explicit alt keeps that path untouched. Listed before
+    // the EEN? kaleNaam alt so the NIET EEN sequence is the preferred parse.
+    | ( IS | ZIJN ) gehelePeriodevergelijking? NIET EEN kaleNaam
     | ( IS | HEEFT | ZIJN | HEBBEN ) gehelePeriodevergelijking? EEN? kaleNaam
     | gehelePeriodevergelijking? EEN kaleNaam ( IS | ZIJN )
     ;

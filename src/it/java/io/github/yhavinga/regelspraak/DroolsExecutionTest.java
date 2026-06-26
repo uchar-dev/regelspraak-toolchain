@@ -109,6 +109,37 @@ class DroolsExecutionTest {
         assertNull(p2.getBasistarief(), () -> "vertrektijd 80 > 100 is onwaar -> geen basistarief, was " + p2.getBasistarief());
     }
 
+    @Test void is_niet_een_zelfstandig_kenmerk_negatie_vuurt() {
+        // §8.1.8.3 Tabel 16 stellende zelfstandig negation "is niet een <k>" — fires kind iff (¬student ∧ ¬minderjarig).
+        // RED-before-green: without the NIET EEN grammar alt the bullet parse-errors and the rule never compiles.
+        String src = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de student kenmerk;
+                is minderjarig kenmerk (bijvoeglijk);
+                is kind kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een passagier is kind indien hij aan alle volgende voorwaarden voldoet:
+                    - hij is niet een student
+                    - hij is niet minderjarig.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("student == false"), () -> "negatie moet student == false zijn:\n" + drl);
+        assertFalse(drl.contains("/* TODO voorwaarde"), () -> "de voorwaarde mag geen marker zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Passagier geen = new Passagier(); geen.setStudent(false); geen.setMinderjarig(false);  // -> kind
+        Passagier stud = new Passagier(); stud.setStudent(true);  stud.setMinderjarig(false);  // student -> NOT kind
+        sessie.insert(geen); sessie.insert(stud);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertTrue(geen.isKind(),  () -> "¬student ∧ ¬minderjarig moet kind zetten");
+        assertFalse(stud.isKind(), () -> "een student is geen kind");
+    }
+
     @Test void berekening_met_voorwaarde_vuurt_en_zet_attribuut() {
         String src = """
             Parameter de grens : Numeriek (geheel getal)

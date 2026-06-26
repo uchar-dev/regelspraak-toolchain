@@ -997,6 +997,10 @@ final class RuleChecker {
         if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, op.NIET() != null, periode, bron);
         if (op.NUMERIEK_MET_EXACT() != null)
             return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, op.NIET() != null, periode, bron);
+        // §8.1.8.3 "is niet een <k>": the explicit NIET EEN form (no AAN_DE_ELFPROEF / NUMERIEK_MET_EXACT keyword
+        // follows) is the NEGATED zelfstandig kenmerkcheck — bind the positive EEN-form (is -> ZELFSTANDIG), then flip.
+        if (op.NIET() != null && op.EEN() != null)
+            return negeer(kenmerkPredicaat(lhs, op.kaleNaam(), true, false, periode, bron), bron);
         Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null,
                 op.HEEFT() != null || op.HEBBEN() != null, periode, bron); // (is|heeft) een? kaleNaam: §8.1.8
         return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
@@ -1020,6 +1024,19 @@ final class RuleChecker {
         return c instanceof Conditie.Kenmerk k
                 ? new Conditie.Kenmerk(k.kenmerk(), k.navigatie(), k.negatie(), k.eigenaar(), periode, k.bron())
                 : new Conditie.Onopgelost(bron);
+    }
+
+    /** Flip the negatie of a resolved kenmerk-/rolcheck (the §8.1.8.3 "is niet een &lt;k&gt;" negation). The positive
+     *  binding has negatie=false; flipping it yields the "== false" membership. A form that did not structure into a
+     *  kenmerk/rolcheck (null, or an Onopgelost) becomes an honest marker, never a silently-true gate. */
+    private static Conditie negeer(Conditie c, String bron) {
+        if (c instanceof Conditie.Kenmerk k)
+            return new Conditie.Kenmerk(k.kenmerk(), k.navigatie(), !k.negatie(), k.eigenaar(), k.periode(), k.bron());
+        if (c instanceof Conditie.Rollidmaatschap r)
+            return new Conditie.Rollidmaatschap(r.rol(), r.anderTeFiller(), r.bron(), !r.negatie());
+        if (c instanceof Conditie.VerreRollidmaatschap vr)
+            return new Conditie.VerreRollidmaatschap(vr.filler(), vr.backref(), !vr.negatie(), vr.bron());
+        return new Conditie.Onopgelost(bron);
     }
 
     private Conditie kenmerkPredicaatKaal(Expr lhs, KaleNaamContext naamCtx, boolean metEen, boolean heeftWerkwoord, String bron) {

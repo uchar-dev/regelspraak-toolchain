@@ -1557,6 +1557,45 @@ class DrlTest {
                 () -> "de positieve elfproef moet een kale rsElfproef blijven:\n" + drl);
     }
 
+    @Test void is_niet_een_zelfstandig_kenmerk_lowert_naar_false() {
+        // §8.1.8.3 Tabel 16: the zelfstandig kenmerkcheck NEGATION stellende form "is niet een <k>". The "een"
+        // (a separate token) used to break the parse — "niet" lexed into the kaleNaam but "een" could not follow it.
+        // The explicit nonToplevelOperator alt (IS|ZIJN) NIET EEN kaleNaam now binds the negated zelfstandig kenmerk.
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de student kenmerk;
+                is jong kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Persoon is jong indien hij aan alle volgende voorwaarden voldoet:
+                    - hij is niet een student
+                    - hij is een student.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "is niet een <k> moet parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("student == false"), () -> "de zelfstandig-kenmerk negatie moet '== false' zijn:\n" + drl);
+        assertTrue(drl.contains("student == true"),  () -> "de positieve EEN-vorm moet '== true' blijven:\n" + drl);
+    }
+
+    @Test void is_niet_bijvoeglijk_kenmerk_absorbeert_niet_in_kalenaam() {
+        // Guard: the new NIET EEN alt must NOT change the bijvoeglijk "is niet <k>" parse, where the "niet" lexes
+        // INTO the kaleNaam (load-bearing for the §8.1.8 verbatim-first de-negation). No "een" -> the NIET-EEN alt
+        // does not fire; bindKenmerk de-negates "niet jong" -> jong == false.
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de student kenmerk;
+                is jong kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Persoon is student indien hij aan alle volgende voorwaarden voldoet:
+                    - hij is niet jong
+                    - hij is een student.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("jong == false"), () -> "bijvoeglijk 'is niet jong' moet jong == false blijven:\n" + drl);
+    }
+
     @Test void uniciteit_lowert_naar_een_accumulate_count() {
         // §8.1.6: a uniqueness check becomes a rule that binds the non-null key on the subject and
         // counts the instances whose key equals it; more than one (the subject plus a twin) is the
