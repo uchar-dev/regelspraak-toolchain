@@ -1306,7 +1306,8 @@ final class RuleChecker {
         ToplevelOperatorContext op = c.toplevelOperator();
         int line = c.getStart().getLine();
         if (op.vergelijkingsTekenGesplitst() != null && op.expressie() != null)
-            meldVergelijk(cmpOf(op.vergelijkingsTekenGesplitst()), lhs, infer(op.expressie()), line);
+            meldVergelijk(cmpOf(op.vergelijkingsTekenGesplitst()), lhs, infer(op.expressie()),
+                    bareGetalLiteraal(c.expressie()), bareGetalLiteraal(op.expressie()), line);
         else if (op.AAN_DE_ELFPROEF() != null)
             meldPredicaat(Typering.UnairePred.ELFPROEF, lhs, line);
         else if (op.NUMERIEK_IS_MET_EXACT() != null || op.NUMERIEK_ZIJN_MET_EXACT() != null)
@@ -1321,22 +1322,23 @@ final class RuleChecker {
         if (c.expressie() == null) return;
         Datatype lhs = infer(c.expressie());
         int line = c.getStart().getLine();
-        checkToplevelOp(lhs, c.toplevelOperator(), line);
+        checkToplevelOp(lhs, c.toplevelOperator(), line, bareGetalLiteraal(c.expressie()));
     }
 
     private void checkElemVoorwaarde(ElementaireVoorwaardeContext c) {
         if (c.expressie() == null) return;
         Datatype lhs = infer(c.expressie());
         int line = c.getStart().getLine();
-        checkNonToplevelOp(lhs, c.nonToplevelOperator(), line);
-        checkToplevelOp(lhs, c.toplevelOperator(), line);
+        boolean lhsLit = bareGetalLiteraal(c.expressie());
+        checkNonToplevelOp(lhs, c.nonToplevelOperator(), line, lhsLit);
+        checkToplevelOp(lhs, c.toplevelOperator(), line, lhsLit);
     }
 
     /** Type-check a verb-split / trailing operator (vergelijking, elfproef, numeriek-met-exact). */
-    private void checkToplevelOp(Datatype lhs, ToplevelOperatorContext op, int line) {
+    private void checkToplevelOp(Datatype lhs, ToplevelOperatorContext op, int line, boolean lhsLit) {
         if (op == null) return;
         if (op.vergelijkingsTekenGesplitst() != null && op.expressie() != null)
-            meldVergelijk(cmpOf(op.vergelijkingsTekenGesplitst()), lhs, infer(op.expressie()), line);
+            meldVergelijk(cmpOf(op.vergelijkingsTekenGesplitst()), lhs, infer(op.expressie()), lhsLit, bareGetalLiteraal(op.expressie()), line);
         else if (op.AAN_DE_ELFPROEF() != null)
             meldPredicaat(Typering.UnairePred.ELFPROEF, lhs, line);
         else if (op.NUMERIEK_IS_MET_EXACT() != null || op.NUMERIEK_ZIJN_MET_EXACT() != null)
@@ -1344,20 +1346,39 @@ final class RuleChecker {
     }
 
     /** Type-check a verb-leading operator (vergelijking, elfproef, numeriek-met-exact). */
-    private void checkNonToplevelOp(Datatype lhs, NonToplevelOperatorContext op, int line) {
+    private void checkNonToplevelOp(Datatype lhs, NonToplevelOperatorContext op, int line, boolean lhsLit) {
         if (op == null) return;
         if (op.vergelijkingsTeken() != null && op.expressie() != null)
-            meldVergelijk(cmpOf(op.vergelijkingsTeken()), lhs, infer(op.expressie()), line);
+            meldVergelijk(cmpOf(op.vergelijkingsTeken()), lhs, infer(op.expressie()), lhsLit, bareGetalLiteraal(op.expressie()), line);
         else if (op.AAN_DE_ELFPROEF() != null)
             meldPredicaat(Typering.UnairePred.ELFPROEF, lhs, line);
         else if (op.NUMERIEK_MET_EXACT() != null)
             meldPredicaat(Typering.UnairePred.NUMERIEK_MET_EXACT, lhs, line);
     }
 
-    private void meldVergelijk(Typering.CmpOp op, Datatype l, Datatype r, int line) {
+    private void meldVergelijk(Typering.CmpOp op, Datatype l, Datatype r, boolean lLit, boolean rLit, int line) {
         if (op == null) return;
+        // §13.3.5 / typeringen: a DIMENSIONLESS numeric literal adopts the other operand's unit in a comparison
+        // (the spec's TOKA "de afstand tot bestemming in kilometers van zijn reis is groter dan 0", main-spec
+        // L325 of the concatenated casus). Promote the literal so the unit rule does not reject a legal
+        // literal-vs-unit comparison ("km > 0"); a unitless ATTRIBUTE (not a literal) still triggers the rule.
+        // Restricted to a NUMERIEK sibling: a Percentage operand keeps the §5.5 Tabel 41 Numeriek/Percentage
+        // family separation (a literal would otherwise be mis-tagged Numeriek('%'), a datatype the spec never forms).
+        if (rLit && l.isNumeriek() && l.eenheidOf() != null) r = metEenheid(r, l.eenheidOf());
+        else if (lLit && r.isNumeriek() && r.eenheidOf() != null) l = metEenheid(l, r.eenheidOf());
         var res = Typering.vergelijk(op, l, r);   // Onbekend operands -> ok, so no false positive
         if (!res.ok()) model.diagnostics.add(new Diagnostic(Severity.ERROR, "voorwaarde: " + res.fout(), line));
+    }
+
+    /** A bare numeric literal ("0", "18", "3,5") with NO trailing eenheid — getText collapses whitespace, so a
+     *  unit-qualified literal ("18 jr") becomes "18jr" and is correctly excluded. Side-effect-free (no re-bouw). */
+    private static boolean bareGetalLiteraal(ExpressieContext e) {
+        return e != null && e.getText().matches("-?\\d+([.,]\\d+)?");
+    }
+
+    /** Re-state a numeriek datatype with {@code eenheid} (for promoting a dimensionless literal to a sibling's unit). */
+    private static Datatype metEenheid(Datatype t, io.github.yhavinga.regelspraak.model.Eenheid eenheid) {
+        return t instanceof Datatype.Numeriek n ? new Datatype.Numeriek(n.geheel(), n.decimalen(), n.teken(), eenheid) : t;
     }
     private void meldPredicaat(Typering.UnairePred p, Datatype operand, int line) {
         var res = Typering.predicaat(p, operand);

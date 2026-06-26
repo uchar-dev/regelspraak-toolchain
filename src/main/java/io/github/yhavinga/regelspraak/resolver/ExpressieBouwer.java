@@ -3,6 +3,7 @@ package io.github.yhavinga.regelspraak.resolver;
 import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.model.Datatype;
+import io.github.yhavinga.regelspraak.model.Eenheid;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
@@ -958,7 +959,32 @@ final class ExpressieBouwer {
             Objecttype viaRol = model.rolDoeltypeNaarSubject(huidigSubject, noun);
             if (viaRol != null && viaRol.attribuut(attr) != null) { ot = viaRol; navRol = noun; }
         }
-        Datatype dt = ot != null && ot.attribuut(attr) != null ? ot.attribuut(attr) : onbekend();
+        Datatype dt = ot != null && ot.attribuut(attr) != null ? ot.attribuut(attr) : null;
+        if (dt == null && ot != null) {
+            // §3.7/§5.1 an appositive "in <eenheid>" on an attribuut read — the spec's flagship §12 reisduur
+            // conditie "de reisduur per trein IN MINUTEN van zijn reis" (main-spec L4729-4731). This is not its
+            // own EBNF production (the only grammar "in <eenheid>" is the §13.4.17.32 tijdsduur "in hele
+            // <eenheid>"), so the unit is greedily swallowed into the kaleNaam; but the spec body writes it and
+            // it merely RE-STATES the attribute's own unit (the spec always names the attribute's NATIVE unit:
+            // "in minuten" on a minuut attribute). Strip the suffix and retry on the bare name, keeping the native
+            // type, so BOTH back-ends lower the bare AttribuutRef identically (resolver-only fix).
+            // IDENTITY-only, deliberately: a non-identity but convertible unit ("in jaren" on a mnd attribute)
+            // would need a REAL conversion of the raw read (×1/12), not a name strip — dropping the qualifier and
+            // reading the native magnitude would silently compare 6[mnd] to a 1[jr] literal as "6 > 1" (a
+            // shared-bug both back-ends agree on). No spec example forms a non-native qualifier, so it stays an
+            // honest marker. An attribute name that merely contains " in ", or a non-convertible tail, also markers.
+            int sp = attr.lastIndexOf(" in ");
+            if (sp > 0) {
+                Datatype bareDt = ot.attribuut(attr.substring(0, sp));
+                Eenheid nativeE = bareDt == null ? null : bareDt.eenheidOf();
+                Eenheid named = nativeE == null ? null : model.resolveEenheid(attr.substring(sp + 4).trim());
+                if (nativeE != null && nativeE.convertibleNaar(named) && !nativeE.vereistOmrekening(named)) {
+                    attr = attr.substring(0, sp);
+                    dt = bareDt;
+                }
+            }
+        }
+        if (dt == null) dt = onbekend();
         return new Expr.AttribuutRef(attr, ot, onderwerpBron, navRol, dt, bron, isSetOnderwerp(onderwerp));
     }
 

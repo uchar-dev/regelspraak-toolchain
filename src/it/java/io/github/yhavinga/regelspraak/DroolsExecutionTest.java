@@ -68,6 +68,47 @@ class DroolsExecutionTest {
         return helper.build();
     }
 
+    @Test void appositieve_eenheid_qualifier_in_minuten_op_genavigeerde_read_vuurt() {
+        // §3.7/§5.1 + §12: the appositive "in <eenheid>" on a navigated attribuut read — the spec's §12 reisduur
+        // "de reisduur per trein IN MINUTEN van zijn reis groter is dan ..." (main-spec L4744). The resolver strips
+        // the native-unit suffix, so the bare read lowers to reis!.vertrektijd; a dimensionless literal (100) adopts
+        // the unit (§13.3.5). End-to-end teeth: fires for vertrektijd 150, not for 80. RED-before-green: without the
+        // strip the voorwaarde markers to a `false` constraint and the rule NEVER fires.
+        String src = """
+            Objecttype de Vlucht
+                de vertrektijd Numeriek (geheel getal) met eenheid minuut;
+            Objecttype de Passagier
+                het basistarief Numeriek (geheel getal);
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel R
+                geldig altijd
+                    Het basistarief van een passagier moet gesteld worden op 50 indien de vertrektijd in minuten van zijn reis groter is dan 100.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("reis!.vertrektijd >"),
+                () -> "de 'in minuten' read moet gestript en gelowerd worden tot reis!.vertrektijd:\n" + drl);
+        assertFalse(drl.contains("/* TODO voorwaarde"), () -> "de voorwaarde mag geen marker zijn:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Vlucht hoog = new Vlucht(); hoog.setVertrektijd(new BigDecimal(150));
+        Vlucht laag = new Vlucht(); laag.setVertrektijd(new BigDecimal(80));
+        Passagier p1 = new Passagier(); p1.setReis(hoog);
+        Passagier p2 = new Passagier(); p2.setReis(laag);
+        sessie.insert(hoog); sessie.insert(laag); sessie.insert(p1); sessie.insert(p2);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("50").compareTo(p1.getBasistarief()),
+                () -> "vertrektijd 150 > 100 moet basistarief 50 zetten, was " + p1.getBasistarief());
+        assertNull(p2.getBasistarief(), () -> "vertrektijd 80 > 100 is onwaar -> geen basistarief, was " + p2.getBasistarief());
+    }
+
     @Test void berekening_met_voorwaarde_vuurt_en_zet_attribuut() {
         String src = """
             Parameter de grens : Numeriek (geheel getal)

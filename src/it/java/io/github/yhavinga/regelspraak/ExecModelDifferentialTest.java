@@ -1346,6 +1346,30 @@ class ExecModelDifferentialTest {
             Map.of(),
             l -> vals(((Passagier) l.get(2)).getBasistarief(), ((Passagier) l.get(3)).getBasistarief())),   // 50, null
 
+        // appositive "in <eenheid>" on the NAVIGATED read — the spec's §12 reisduur "de reisduur per trein IN MINUTEN
+        // van zijn reis groter is dan ..." (main-spec L4744). The resolver strips the native-unit suffix, so both
+        // back-ends lower the SAME bare reis!.vertrektijd; the dimensionless literal 10 adopts the unit (§13.3.5).
+        // vertrektijd[mnd] in maanden > 10: 18 fires (basistarief := 50), 6 not.
+        new Fixture("appositive 'in <eenheid>' on a navigated read (in maanden)",
+            """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Objecttype de Vlucht
+                de vertrektijd Numeriek (geheel getal) met eenheid mnd;
+            Objecttype de Passagier
+                het basistarief Numeriek (geheel getal);
+            """ + AGG_FEIT + """
+            Regel R
+                geldig altijd
+                    Het basistarief van een passagier moet gesteld worden op 50 indien de vertrektijd in maanden van zijn reis groter is dan 10.
+            """,
+            () -> { Vlucht hoog = new Vlucht(); hoog.setVertrektijd(new BigDecimal(18));
+                    Vlucht laag = new Vlucht(); laag.setVertrektijd(new BigDecimal(6));
+                    return List.of(hoog, laag, paxReis(hoog), paxReis(laag)); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(2)).getBasistarief(), ((Passagier) l.get(3)).getBasistarief())),   // 50, null
+
         // (adversary) navigated GELIJK vs literal: vertrektijd 100 == 100 fires; a NULL reis -> leeg, mvel `null ==
         // 100` is false (vergelijk GELIJK true only both-leeg), so the partnerless passenger does NOT fire.
         new Fixture("navigated GELIJK vs literal (null reis no match)",
@@ -2831,7 +2855,7 @@ class ExecModelDifferentialTest {
     @Test void phase_82_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase 82 fout", PHASE_82_FOUT, 1); }
     @Test void phase_82_navigated_grens_matches_drl_back_end()     { runDifferential("Phase 82 nav", PHASE_82_NAV, 3); }
     @Test void phase_82_in_counting_quantifier_matches_drl_back_end() { runDifferential("Phase 82 counting", PHASE_82_COUNTING, 3); }
-    @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 16); }
+    @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 17); }
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
     @Test void phase_H_value_ops_matches_drl_back_end()             { runDifferential("Phase H val", PHASE_H_VAL, 8); }
     @Test void phase_H_builtin_functies_match_drl_back_end()        { runDifferential("Phase H func", PHASE_H_FUNC, 4); }

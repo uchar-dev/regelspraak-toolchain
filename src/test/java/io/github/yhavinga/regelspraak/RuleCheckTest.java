@@ -1184,4 +1184,92 @@ class RuleCheckTest {
         assertTrue(m.errors().stream().noneMatch(d -> d.message().contains("6.1.2")),
                 () -> "een dubbelzinnige rol mag geen §6.1.2 verdeling-fout geven (de verdeling lowert niet): " + m.errors());
     }
+
+    // ---- §3.7/§5.1 appositive "in <eenheid>" on an attribuut read (the spec's §12 reisduur conditie, main-spec
+    //      L4744 "de reisduur per trein IN MINUTEN van zijn reis groter is dan ...") + §13.3.5 literal-vs-eenheid ----
+
+    static final String AFSTAND_MODEL = """
+        Eenheidsysteem afstand
+            de kilometer (mv: kilometers)   km   =   1000 m
+            de meter (mv: meters)           m
+        Objecttype de Vlucht (mv: Vluchten)
+            de afstand tot bestemming Numeriek (geheel getal) met eenheid km;
+            de teller Numeriek (geheel getal);
+        Objecttype de Natuurlijk persoon (mv: Natuurlijke personen) (bezield)
+            is ver kenmerk (bijvoeglijk);
+        Feittype Vlucht van natuurlijke personen
+            de reis Vlucht
+            de passagier Natuurlijk persoon
+        Eén reis betreft de verplaatsing van meerdere passagiers
+        """;
+
+    @Test void appositieve_eenheid_qualifier_wordt_gestript_en_literal_vs_eenheid_geeft_geen_fout() {
+        // The resolver strips a native/convertible "in <eenheid>" suffix on a navigated attribuut read, so the bare
+        // "afstand tot bestemming" (eenheid km) resolves and lowers to reis!.afstandTotBestemming — and a dimensionless
+        // numeric literal (0) adopts the operand's unit, so "... in kilometers ... groter is dan 0" type-checks. This
+        // is the exact TOKA-casus shape (concatenated L325). RED-before-green: without the strip the voorwaarde is a
+        // marker; without the literal promotion it raises the §4 "beide er een hebben" unit error.
+        String src = AFSTAND_MODEL + """
+            Regel ver
+                geldig altijd
+                    Een Natuurlijk persoon is ver indien de afstand tot bestemming in kilometers van zijn reis groter is dan 0.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "in <eenheid> + literal-vs-eenheid mag geen fout geven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("reis!.afstandTotBestemming >"),
+                () -> "de 'in kilometers' read moet gestript en gelowerd worden tot reis!.afstandTotBestemming:\n" + drl);
+        assertFalse(drl.contains("/* TODO voorwaarde"), () -> "de voorwaarde mag geen marker zijn:\n" + drl);
+    }
+
+    @Test void onverenigbare_eenheid_suffix_blijft_marker_en_eenheidloos_attribuut_vs_eenheid_blijft_fout() {
+        // Guard rails. (1) The strip fires ONLY for a convertible unit: "in euro" on a km attribute is not in elkaar
+        // om te rekenen, so it stays an honest marker (not silently mis-read). (2) The literal exemption is
+        // LITERAL-specific: a unitless ATTRIBUTE ("de teller") compared to a km attribute still trips the §4 unit rule.
+        String marker = AFSTAND_MODEL + """
+            Regel ver2
+                geldig altijd
+                    Een Natuurlijk persoon is ver indien de afstand tot bestemming in euro van zijn reis groter is dan 0.
+            """;
+        String mdrl = DrlTranspiler.transpile(Resolver.resolve(marker));
+        assertTrue(mdrl.contains("/* TODO voorwaarde"),
+                () -> "een onverenigbare 'in euro' eenheid mag NIET stripen (blijft marker):\n" + mdrl);
+
+        String fout = AFSTAND_MODEL + """
+            Regel ver3
+                geldig altijd
+                    Een Natuurlijk persoon is ver indien de afstand tot bestemming van zijn reis groter is dan de teller van zijn reis.
+            """;
+        RegelSpraakModel mf = Resolver.resolve(fout);
+        assertTrue(mf.errors().stream().anyMatch(d -> d.message().contains("eenheid")),
+                () -> "een eenheid-attribuut vs een eenheidloos ATTRIBUUT (geen literal) moet de §4 unit-fout geven: " + mf.errors());
+    }
+
+    @Test void niet_native_converteerbare_eenheid_suffix_blijft_marker_geen_stille_misrekening() {
+        // The strip is IDENTITY-only: it re-states an attribute's OWN unit ("in maanden" on a mnd attribute). A
+        // non-identity but convertible qualifier ("in jaren" on a mnd attribute) must NOT silently strip — dropping
+        // it and reading the native magnitude would compare 6[mnd] to the literal as "6 > 1" where the author meant
+        // 0,5[jr] > 1 (a shared bug both back-ends would agree on). It stays an honest marker.
+        String src = """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Objecttype de Vlucht (mv: Vluchten)
+                de vertrektijd Numeriek (geheel getal) met eenheid mnd;
+            Objecttype de Persoon (mv: Personen) (bezield)
+                is laat kenmerk (bijvoeglijk);
+            Feittype Vlucht van personen
+                de reis Vlucht
+                de passagier Persoon
+            Eén reis betreft meerdere passagiers
+            Regel laat
+                geldig altijd
+                    Een Persoon is laat indien de vertrektijd in jaren van zijn reis groter is dan 1.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("/* TODO voorwaarde"),
+                () -> "een non-native 'in jaren' op een mnd-attribuut mag NIET stripen (zou 6>1 misrekenen) — blijft marker:\n" + drl);
+        assertFalse(drl.contains("reis!.vertrektijd >"),
+                () -> "de non-native qualifier mag NIET naar een rauwe reis!.vertrektijd vergelijking lowereren:\n" + drl);
+    }
 }
