@@ -1516,11 +1516,10 @@ class DrlTest {
                 () -> "een bezit-subselectie blijft een eerlijke marker:\n" + drl);
     }
 
-    @Test void negatie_elfproef_lowert_naar_niet_rselfproef_numeriek_blijft_marker() {
+    @Test void negatie_elfproef_en_numeriek_met_exact_loweren_naar_niet_helper() {
         // §8.1 Tabel 16 NEGATED elfproef / numeriek-met-exact ("voldoet NIET aan de elfproef", "is NIET numeriek met
-        // exact N cijfers", stellende/bullet register). The elfproef lowers to !rsElfproef (the positive stays a bare
-        // rsElfproef). numeriek-met-exact is not yet lowered (the POSITIVE is also a marker), so its NIET-vorm stays an
-        // honest marker — the negation is captured on the IR Predicaat, ready for when numeriek is lowered.
+        // exact N cijfers", stellende/bullet register). The elfproef lowers to !rsElfproef and the numeriek-met-exact
+        // to !rsNumeriekMetExact(bsn, N) — the §8.1.4 digit-count N is now captured on the IR Predicaat.
         String src = """
             Objecttype de Persoon (mv: Personen) (bezield)
                 de bsn Tekst;
@@ -1530,15 +1529,33 @@ class DrlTest {
                 geldig altijd
                     Een Persoon is verdacht indien hij aan alle volgende voorwaarden voldoet:
                     - zijn bsn voldoet niet aan de elfproef
-                    - zijn leeftijd is groter dan 0.
+                    - zijn bsn is niet numeriek met exact 9 cijfers.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "de NIET-vormen moeten parseren: " + m.errors());
         String drl = DrlTranspiler.transpile(m);
         assertTrue(drl.contains("(!rsElfproef(bsn))"),
                 () -> "de negatie-elfproef moet !rsElfproef zijn:\n" + drl);
-        assertFalse(drl.contains("(rsElfproef(bsn))"),
-                () -> "de NIET-vorm mag geen positieve rsElfproef zijn:\n" + drl);
+        assertTrue(drl.contains("(!rsNumeriekMetExact(bsn, 9))"),
+                () -> "de negatie-numeriek-met-exact moet !rsNumeriekMetExact(bsn, 9) zijn:\n" + drl);
+        assertFalse(drl.contains("/* TODO voorwaarde"),
+                () -> "geen van beide predicaten mag nog een marker zijn:\n" + drl);
+    }
+
+    @Test void positieve_numeriek_met_exact_lowert_met_aantal_cijfers() {
+        // §8.1.4: "numeriek met exact N cijfers" lowers to rsNumeriekMetExact(operand, N) in both registers — the
+        // vragende "numeriek is met exact" (under indien) and the stellende "is numeriek met exact" (in a bullet).
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de bsn Tekst;
+                is geldig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Persoon is geldig indien zijn bsn numeriek is met exact 9 cijfers.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rsNumeriekMetExact(bsn, 9)") && !drl.contains("!rsNumeriekMetExact"),
+                () -> "de positieve numeriek-met-exact moet een kale rsNumeriekMetExact(bsn, 9) zijn:\n" + drl);
     }
 
     @Test void positieve_elfproef_blijft_zonder_uitroepteken() {

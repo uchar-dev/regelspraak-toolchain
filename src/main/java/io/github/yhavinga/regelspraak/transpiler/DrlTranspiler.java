@@ -1522,6 +1522,24 @@ public final class DrlTranspiler {
                 + "}\n\n");
     }
 
+    /** Register the §8.1.4 "numeriek met exact &lt;N&gt; cijfers" predicate (Tabel 16, Tekst-only): true iff the value
+     *  reads as a cijferreeks of EXACTLY N digits — every character a digit (so it can be read as a getal) and the
+     *  length exactly N (voor-/achterloopnullen count, §8.1.4). A null / non-digit / wrong-length value is false.
+     *  Byte-identical to {@code RegelSpraakRuntime.rsNumeriekMetExact}. Idempotent. */
+    private void registreerNumeriekMetExactFunctie() {
+        hulpFuncties.putIfAbsent("rsNumeriekMetExact",
+                "function boolean rsNumeriekMetExact(Object x, int n) {\n"
+                + "    if (x == null) return false;\n"
+                + "    String s = x.toString();\n"
+                + "    if (s.length() != n) return false;\n"
+                + "    for (int i = 0; i < s.length(); i++) {\n"
+                + "        char ch = s.charAt(i);\n"
+                + "        if (ch < '0' || ch > '9') return false;\n"
+                + "    }\n"
+                + "    return true;\n"
+                + "}\n\n");
+    }
+
     /** Wrap a value-side arithmetic operand for the §6.2/§6.4/§6.8 "leeg telt als 0" rekentabel via the rsNul
      *  helper. The caller ({@link #binairTerm}) has already excluded a marker operand (which must propagate
      *  unwrapped), so this only ever wraps a real value term. */
@@ -2720,6 +2738,8 @@ public final class DrlTranspiler {
                 case LEEG   -> LoweredConditie.van(o.text() + " == null");
                 case GEVULD -> LoweredConditie.van(o.text() + " != null");
                 case ELFPROEF -> { registreerElfproefFunctie(); yield LoweredConditie.van((p.negatie() ? "!" : "") + "rsElfproef(" + o.text() + ")"); }  // §8.1.3 (Tabel 16 NIET-vorm)
+                case NUMERIEK_MET_EXACT -> { registreerNumeriekMetExactFunctie();   // §8.1.4 (Tabel 16 NIET-vorm)
+                    yield LoweredConditie.van((p.negatie() ? "!" : "") + "rsNumeriekMetExact(" + o.text() + ", " + p.cijfers() + ")"); }
                 case DAGSOORT -> {  // §8.1.5 "<datum> is een <dagsoort>" -> the §9.8 definitie predicate
                     String fn = dagsoortFunctie(p.dagsoort());
                     // §5.15: een leegwaarde is nooit een dagsoort -> a null date is ONWAAR (no match), not an NPE.

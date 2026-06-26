@@ -205,6 +205,38 @@ public final class RegelSpraakRuntime {
         return BigDecimal.valueOf(Math.pow(((BigDecimal) basis).doubleValue(), ((BigDecimal) exponent).doubleValue()));
     }
 
+    /** §8.1.3 elfproef: weight each digit from the last (the controlecijfer, weight -1), the next 2, 3, … and the
+     *  weighted sum must be a POSITIEF geheel getal divisible by 11 and not all zeros. Admits a Numeriek (geheel
+     *  getal) — leading zeros already gone — or a Tekst of digits (which preserves voor-/achterloopnullen); a null,
+     *  fractional, or non-digit value is not a valid reeks -> false. Byte-identical to the DRL {@code rsElfproef}. */
+    public static boolean rsElfproef(Object x) {
+        if (x == null) return false;
+        String s = (x instanceof BigDecimal) ? ((BigDecimal) x).toBigInteger().toString() : x.toString();
+        int n = s.length();
+        if (n == 0) return false;
+        long som = 0;
+        for (int i = 0; i < n; i++) {
+            char ch = s.charAt(i);
+            if (ch < '0' || ch > '9') return false;
+            som += (long) (ch - '0') * ((i == n - 1) ? -1 : (n - i));
+        }
+        return som > 0 && (som % 11 == 0);
+    }
+
+    /** §8.1.4 "numeriek met exact N cijfers" (Tekst-only): true iff the value reads as a cijferreeks of EXACTLY N
+     *  digits — every character a digit and the length exactly N (voor-/achterloopnullen count). A null / non-digit /
+     *  wrong-length value is false. Byte-identical to the DRL {@code rsNumeriekMetExact}. */
+    public static boolean rsNumeriekMetExact(Object x, int n) {
+        if (x == null) return false;
+        String s = x.toString();
+        if (s.length() != n) return false;
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (ch < '0' || ch > '9') return false;
+        }
+        return true;
+    }
+
     /** §6.1.4 begrenzing (clamp): a leeg value stays leeg, a null bound is no bound; clamps min-then-max (the value
      *  side's order). Mirrors the DRL {@code rsBegrens}. */
     public static BigDecimal rsBegrens(BigDecimal x, BigDecimal min, BigDecimal max) {

@@ -914,6 +914,60 @@ class ExecModelDifferentialTest {
         }
     }
 
+    // ---- Phase ELFPROEF: §8.1.3 elfproef + §8.1.4 numeriek-met-exact predicates. Both lower to a runtime helper
+    //      (rsElfproef / rsNumeriekMetExact) byte-identical to the DRL inline function -> a closed-form transform, so
+    //      assert the ABSOLUTE spec value AND back-end parity (a shared bug would pass a pure differential). ----
+    static final String NP_PRED = "Objecttype de Natuurlijk persoon (mv: Natuurlijke personen) (bezield)\n"
+            + "    het burgerservicenummer Numeriek (geheel getal);\n"
+            + "    de bsn tekst Tekst;\n"
+            + "    is geldig kenmerk (bijvoeglijk);\n";
+    private static NatuurlijkPersoon npNum(String bsn) { NatuurlijkPersoon p = new NatuurlijkPersoon(); p.setBurgerservicenummer(new BigDecimal(bsn)); return p; }
+    private static NatuurlijkPersoon npTekst(String bsn) { NatuurlijkPersoon p = new NatuurlijkPersoon(); p.setBsnTekst(bsn); return p; }
+    private static Object geldig3(List<Object> l) {
+        return vals(((NatuurlijkPersoon) l.get(0)).isGeldig(), ((NatuurlijkPersoon) l.get(1)).isGeldig(), ((NatuurlijkPersoon) l.get(2)).isGeldig());
+    }
+    static final Fixture[] PHASE_ELFPROEF = {
+        // §8.1.3 elfproef over a Numeriek (geheel) bsn: 111222333 valid (weighted sum 66), 192837465 invalid (205,
+        // rest 7), 12 has weighted sum 0 (the quotient must be a POSITIEF geheel getal -> invalid).
+        new Fixture("§8.1.3 elfproef (Numeriek bsn): geldig iff valid",
+            NP_PRED + "Regel r\n    geldig altijd\n        Een Natuurlijk persoon is geldig indien zijn burgerservicenummer aan de elfproef voldoet.\n",
+            () -> List.of(npNum("111222333"), npNum("192837465"), npNum("12")),
+            Map.of(), ExecModelDifferentialTest::geldig3),   // [true, false, false]
+        // §8.1.4 numeriek met exact 9 cijfers (Tekst), vragende form under indien: 9 digits -> true; 8 digits and a
+        // non-digit char -> false (length / digit check).
+        new Fixture("§8.1.4 numeriek-met-exact 9 (Tekst, vragende)",
+            NP_PRED + "Regel r\n    geldig altijd\n        Een Natuurlijk persoon is geldig indien zijn bsn tekst numeriek is met exact 9 cijfers.\n",
+            () -> List.of(npTekst("123456789"), npTekst("12345678"), npTekst("1234x6789")),
+            Map.of(), ExecModelDifferentialTest::geldig3),   // [true, false, false]
+        // §8.1.4 leading zeros count as cijfers (Tekst preserves them): "012345678" is exactly 9 digits -> true.
+        new Fixture("§8.1.4 numeriek-met-exact 9: leading-zero Tekst still 9 cijfers",
+            NP_PRED + "Regel r\n    geldig altijd\n        Een Natuurlijk persoon is geldig indien zijn bsn tekst numeriek is met exact 9 cijfers.\n",
+            () -> List.of(npTekst("012345678"), npTekst("0123456789"), npTekst("01234567")),
+            Map.of(), ExecModelDifferentialTest::geldig3),   // [true, false, false]
+        // §8.1.4 NEGATED (stellende bullet) "is niet numeriek met exact 9 cijfers": fires for the NON-9-digit value.
+        new Fixture("§8.1.4 negatie numeriek-met-exact (is niet ... met exact 9)",
+            NP_PRED + "Regel r\n    geldig altijd\n        Een Natuurlijk persoon is geldig indien hij aan alle volgende voorwaarden voldoet:\n"
+            + "        - zijn bsn tekst is niet numeriek met exact 9 cijfers\n        - zijn bsn tekst is gevuld.\n",
+            () -> List.of(npTekst("12345678"), npTekst("123456789"), npTekst("1234x6789")),
+            Map.of(), ExecModelDifferentialTest::geldig3),   // [true, false, true]
+    };
+    static final Object[] PHASE_ELFPROEF_EXPECTED = {
+        vals(true, false, false), vals(true, false, false), vals(true, false, false), vals(true, false, true),
+    };
+    @Test void phase_ELFPROEF_predicates_are_spec_correct() {
+        for (int i = 0; i < PHASE_ELFPROEF.length; i++) {
+            Fixture f = PHASE_ELFPROEF[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_ELFPROEF_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+
     // ---- Phase B4: comparison correctness — mvel null semantics for != (a leeg operand DIFFERS from a number) and
     //      §5.1 Tabel 32 cross-unit restatement. These are the two divergences the adversarial review caught in the
     //      first Phase B drop; each AGREES with the DRL oracle only after the bothNonNull->vergelijk + restatement fix. ----

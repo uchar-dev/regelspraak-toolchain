@@ -45,13 +45,16 @@ public sealed interface Conditie {
      *  {@link Predicaatsoort#DAGSOORT} control ("&lt;datum&gt; is een kerstdag", §8.1.5) — the date is
      *  tested against that dagsoort's §9.8 definitie predicate; it is null for every other soort.
      *  {@code negatie} marks the §8.1 Tabel 16 NEGATED form of the ELFPROEF / NUMERIEK_MET_EXACT predicates
-     *  ("voldoet NIET aan de elfproef", "is NIET numeriek met exact N cijfers"); false for the others. */
+     *  ("voldoet NIET aan de elfproef", "is NIET numeriek met exact N cijfers"); false for the others.
+     *  {@code cijfers} is the §8.1.4 digit-count N of the NUMERIEK_MET_EXACT predicate ("numeriek met exact N
+     *  cijfers" — the §13.4.15.84 &lt;geheelgetal&gt;); 0 for every other soort. */
     enum Predicaatsoort { LEEG, GEVULD, ELFPROEF, NUMERIEK_MET_EXACT, DAGSOORT }
-    record Predicaat(Predicaatsoort soort, Expr operand, String dagsoort, boolean negatie, GeheelPeriode periode, String bron) implements Conditie {
-        public Predicaat(Predicaatsoort soort, Expr operand, String dagsoort, GeheelPeriode periode, String bron) { this(soort, operand, dagsoort, false, periode, bron); }
-        public Predicaat(Predicaatsoort soort, Expr operand, boolean negatie, GeheelPeriode periode, String bron) { this(soort, operand, null, negatie, periode, bron); }
-        public Predicaat(Predicaatsoort soort, Expr operand, GeheelPeriode periode, String bron) { this(soort, operand, null, false, periode, bron); }
-        public Predicaat(Predicaatsoort soort, Expr operand, String bron) { this(soort, operand, null, false, null, bron); }
+    record Predicaat(Predicaatsoort soort, Expr operand, String dagsoort, boolean negatie, int cijfers, GeheelPeriode periode, String bron) implements Conditie {
+        public Predicaat(Predicaatsoort soort, Expr operand, String dagsoort, GeheelPeriode periode, String bron) { this(soort, operand, dagsoort, false, 0, periode, bron); }
+        public Predicaat(Predicaatsoort soort, Expr operand, boolean negatie, GeheelPeriode periode, String bron) { this(soort, operand, null, negatie, 0, periode, bron); }
+        public Predicaat(Predicaatsoort soort, Expr operand, boolean negatie, int cijfers, GeheelPeriode periode, String bron) { this(soort, operand, null, negatie, cijfers, periode, bron); }
+        public Predicaat(Predicaatsoort soort, Expr operand, GeheelPeriode periode, String bron) { this(soort, operand, null, false, 0, periode, bron); }
+        public Predicaat(Predicaatsoort soort, Expr operand, String bron) { this(soort, operand, null, false, 0, null, bron); }
     }
 
     /** §8.1.8 kenmerk-membership test ("de Meting is oud" / "hij heeft het recht …"): true when the

@@ -972,6 +972,12 @@ final class RuleChecker {
         return new Conditie.GeheelPeriode(jaar, niet);
     }
 
+    /** §8.1.4/§13.4.15.84 the &lt;geheelgetal&gt; digit-count N of "numeriek met exact N cijfers"; 0 if absent. */
+    private static int aantalCijfers(org.antlr.v4.runtime.tree.TerminalNode num) {
+        if (num == null) return 0;
+        try { return Integer.parseInt(num.getText()); } catch (NumberFormatException e) { return 0; }
+    }
+
     private Conditie uitToplevel(Expr lhs, ToplevelOperatorContext op, String bron) {
         return keurGeheelPeriode(uitToplevelKaal(lhs, op, bron), geheelPeriode(op.gehelePeriodevergelijking()), bron);
     }
@@ -985,7 +991,8 @@ final class RuleChecker {
         if (op.GEVULD() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.GEVULD, lhs, periode, bron);
         if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, op.NIET() != null, periode, bron);
         if (op.NUMERIEK_IS_MET_EXACT() != null || op.NUMERIEK_ZIJN_MET_EXACT() != null)
-            return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, op.NIET() != null, periode, bron);
+            return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, op.NIET() != null,
+                    aantalCijfers(op.NUMBER()), periode, bron);
         Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null,
                 op.HEEFT() != null || op.HEBBEN() != null, periode, bron); // EEN? kaleNaam (is|heeft): §8.1.8
         return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
@@ -1049,7 +1056,8 @@ final class RuleChecker {
         if (op.GEVULD() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.GEVULD, lhs, periode, bron);
         if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, op.NIET() != null, periode, bron);
         if (op.NUMERIEK_MET_EXACT() != null)
-            return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, op.NIET() != null, periode, bron);
+            return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, op.NIET() != null,
+                    aantalCijfers(op.NUMBER()), periode, bron);
         // §8.1.8.3 "is niet een <k>": the explicit NIET EEN form (no AAN_DE_ELFPROEF / NUMERIEK_MET_EXACT keyword
         // follows) is the NEGATED zelfstandig kenmerkcheck — bind the positive EEN-form (is -> ZELFSTANDIG), then flip.
         if (op.NIET() != null && op.EEN() != null) {

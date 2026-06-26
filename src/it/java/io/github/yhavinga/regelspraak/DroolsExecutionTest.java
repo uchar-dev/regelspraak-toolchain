@@ -5243,6 +5243,38 @@ class DroolsExecutionTest {
         assertFalse(geldig.isGeldig(), "111222333 voldoet WEL aan de elfproef -> de NIET-vorm is onwaar");
     }
 
+    @Test void numeriek_met_exact_predicaat_vuurt_voor_negen_cijfers() {
+        // §8.1.4: "is numeriek met exact 9 cijfers" (Tekst-only) -> rsNumeriekMetExact(bsn, 9): true iff the text is
+        // exactly 9 digit-characters. The spec's burgerservicenummer example (L3319). Fires for 9 digits (incl. a
+        // leading-zero string, which keeps its cijfers), not for 8/10 digits or a non-digit char.
+        String src = """
+            Objecttype de Natuurlijk persoon (mv: Natuurlijke personen) (bezield)
+                de bsn tekst Tekst;
+                is geldig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Natuurlijk persoon is geldig indien zijn bsn tekst numeriek is met exact 9 cijfers.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsNumeriekMetExact(bsnTekst, 9)"), () -> "numeriek-met-exact niet gelowered:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        NatuurlijkPersoon negen   = new NatuurlijkPersoon(); negen.setBsnTekst("123456789");     // 9 digits -> geldig
+        NatuurlijkPersoon nul9    = new NatuurlijkPersoon(); nul9.setBsnTekst("012345678");      // 9 digits (leading zero) -> geldig
+        NatuurlijkPersoon acht    = new NatuurlijkPersoon(); acht.setBsnTekst("12345678");       // 8 digits -> niet
+        NatuurlijkPersoon nietnum = new NatuurlijkPersoon(); nietnum.setBsnTekst("1234x6789");   // non-digit -> niet
+        sessie.insert(negen); sessie.insert(nul9); sessie.insert(acht); sessie.insert(nietnum);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertTrue(negen.isGeldig(), "123456789 is numeriek met exact 9 cijfers");
+        assertTrue(nul9.isGeldig(), "012345678 telt als 9 cijfers (Tekst behoudt de voorloopnul)");
+        assertFalse(acht.isGeldig(), "12345678 heeft 8 cijfers");
+        assertFalse(nietnum.isGeldig(), "1234x6789 bevat een niet-cijfer");
+    }
+
     @Test void meerwoordig_kenmerk_check_in_definiete_vorm_vuurt() {
         // p24a review: a MULTI-WORD kenmerk in the definite form "de Meting bereikbaar per trein is".
         // The greedy onderwerp parse splits the kenmerk across the operand and the operator, so the

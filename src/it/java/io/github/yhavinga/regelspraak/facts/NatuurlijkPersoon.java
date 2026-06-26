@@ -17,6 +17,10 @@ public class NatuurlijkPersoon {
     public boolean isGeldig() { return geldig; }
     public void setGeldig(boolean v) { this.geldig = v; }
 
+    private String bsnTekst;  // §8.1.4 a Tekst burgerservicenummer, for the "numeriek met exact N cijfers" predicate
+    public String getBsnTekst() { return bsnTekst; }
+    public void setBsnTekst(String v) { this.bsnTekst = v; }
+
     /** §13.3.7 gedimensioneerd met jaardimensie: label ("vier jaar geleden", …) -> value. */
     private Map<String, BigDecimal> betaaldeBelastingInJaar;
     public Map<String, BigDecimal> getBetaaldeBelastingInJaar() { return betaaldeBelastingInJaar; }
