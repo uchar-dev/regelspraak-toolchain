@@ -4975,6 +4975,36 @@ class DroolsExecutionTest {
         assertFalse(somNul.isGeldig(), "12 heeft gewogen som 0; het quotiënt moet een POSITIEF geheel getal zijn (§8.1.3)");
     }
 
+    @Test void negatie_elfproef_voldoet_niet_vuurt_voor_een_ongeldig_nummer() {
+        // §8.1 Tabel 16 the NEGATED elfproef "voldoet NIET aan de elfproef" (stellende/bullet register). It lowers to
+        // !rsElfproef(...), so the kenmerk fires exactly when the number FAILS the elfproef. (Two bullets because a
+        // samengestelde voorwaarde needs >=2 criteria; the second is always true for a positive BSN.)
+        String src = """
+            Objecttype de Natuurlijk persoon (mv: Natuurlijke personen) (bezield)
+                het burgerservicenummer Numeriek (geheel getal);
+                is geldig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Natuurlijk persoon is geldig indien hij aan alle volgende voorwaarden voldoet:
+                    - zijn burgerservicenummer voldoet niet aan de elfproef
+                    - zijn burgerservicenummer is groter dan 0.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("!rsElfproef(burgerservicenummer)"),
+                () -> "de NIET-vorm moet naar !rsElfproef lowering:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        NatuurlijkPersoon ongeldig = new NatuurlijkPersoon(); ongeldig.setBurgerservicenummer(new BigDecimal("192837465")); // faalt de elfproef
+        NatuurlijkPersoon geldig   = new NatuurlijkPersoon(); geldig.setBurgerservicenummer(new BigDecimal("111222333"));   // voldoet
+        sessie.insert(ongeldig); sessie.insert(geldig);
+        sessie.fireAllRules();
+        sessie.dispose();
+        assertTrue(ongeldig.isGeldig(), "192837465 voldoet NIET aan de elfproef -> de NIET-vorm is waar");
+        assertFalse(geldig.isGeldig(), "111222333 voldoet WEL aan de elfproef -> de NIET-vorm is onwaar");
+    }
+
     @Test void meerwoordig_kenmerk_check_in_definiete_vorm_vuurt() {
         // p24a review: a MULTI-WORD kenmerk in the definite form "de Meting bereikbaar per trein is".
         // The greedy onderwerp parse splits the kenmerk across the operand and the operator, so the

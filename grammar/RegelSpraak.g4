@@ -643,18 +643,21 @@ vergelijkingsTekenGesplitst
     | ( GROTER | KLEINER | LATER | EERDER ) OF GELIJK ( IS | ZIJN ) AAN
     ;
 
+// §8.1 Tabel 16: the elfproef and numeriek-met-exact predicates have a NEGATED form — "voldoet NIET aan de
+// elfproef", "is NIET numeriek met exact N cijfers" (stellende) / "NIET aan de elfproef voldoet" (vragende). The
+// NIET sits between the verb and the predicate keyword; the resolver carries it as Predicaat.negatie.
 nonToplevelOperator // §13.4.15.71-.100 (verb-leading), unified across types
     : ( IS | ZIJN ) gehelePeriodevergelijking? ( LEEG | GEVULD )
-    | ( VOLDOET | VOLDOEN ) gehelePeriodevergelijking? AAN_DE_ELFPROEF
-    | ( IS | ZIJN ) gehelePeriodevergelijking? NUMERIEK_MET_EXACT NUMBER CIJFERS
+    | ( VOLDOET | VOLDOEN ) gehelePeriodevergelijking? NIET? AAN_DE_ELFPROEF
+    | ( IS | ZIJN ) gehelePeriodevergelijking? NIET? NUMERIEK_MET_EXACT NUMBER CIJFERS
     | ( IS | ZIJN ) gehelePeriodevergelijking? vergelijkingsTeken expressie
     | ( IS | HEEFT | ZIJN | HEBBEN ) gehelePeriodevergelijking? EEN? kaleNaam
     | gehelePeriodevergelijking? EEN kaleNaam ( IS | ZIJN )
     ;
 toplevelOperator // §13.4.15.19-.48 (verb-split / trailing), unified across types
     : gehelePeriodevergelijking? ( LEEG | GEVULD ) ( IS | ZIJN )
-    | gehelePeriodevergelijking? AAN_DE_ELFPROEF ( VOLDOET | VOLDOEN )
-    | gehelePeriodevergelijking? ( NUMERIEK_IS_MET_EXACT | NUMERIEK_ZIJN_MET_EXACT ) NUMBER CIJFERS
+    | gehelePeriodevergelijking? NIET? AAN_DE_ELFPROEF ( VOLDOET | VOLDOEN )
+    | gehelePeriodevergelijking? NIET? ( NUMERIEK_IS_MET_EXACT | NUMERIEK_ZIJN_MET_EXACT ) NUMBER CIJFERS
     | gehelePeriodevergelijking? vergelijkingsTekenGesplitst expressie
     | gehelePeriodevergelijking? EEN? kaleNaam ( IS | HEEFT | ZIJN | HEBBEN )
     ;

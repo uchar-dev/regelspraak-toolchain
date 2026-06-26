@@ -1460,6 +1460,47 @@ class DrlTest {
                 () -> "een bezit-subselectie blijft een eerlijke marker:\n" + drl);
     }
 
+    @Test void negatie_elfproef_lowert_naar_niet_rselfproef_numeriek_blijft_marker() {
+        // §8.1 Tabel 16 NEGATED elfproef / numeriek-met-exact ("voldoet NIET aan de elfproef", "is NIET numeriek met
+        // exact N cijfers", stellende/bullet register). The elfproef lowers to !rsElfproef (the positive stays a bare
+        // rsElfproef). numeriek-met-exact is not yet lowered (the POSITIVE is also a marker), so its NIET-vorm stays an
+        // honest marker — the negation is captured on the IR Predicaat, ready for when numeriek is lowered.
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de bsn Tekst;
+                de leeftijd Numeriek (geheel getal);
+                is verdacht kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Persoon is verdacht indien hij aan alle volgende voorwaarden voldoet:
+                    - zijn bsn voldoet niet aan de elfproef
+                    - zijn leeftijd is groter dan 0.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "de NIET-vormen moeten parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("(!rsElfproef(bsn))"),
+                () -> "de negatie-elfproef moet !rsElfproef zijn:\n" + drl);
+        assertFalse(drl.contains("(rsElfproef(bsn))"),
+                () -> "de NIET-vorm mag geen positieve rsElfproef zijn:\n" + drl);
+    }
+
+    @Test void positieve_elfproef_blijft_zonder_uitroepteken() {
+        // Guard the negation didn't flip the positive form: "aan de elfproef voldoet" (vragende, under indien) stays a
+        // bare rsElfproef, no leading '!'.
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de bsn Tekst;
+                is verdacht kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Persoon is verdacht indien zijn bsn aan de elfproef voldoet.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rsElfproef(bsn)") && !drl.contains("!rsElfproef(bsn)"),
+                () -> "de positieve elfproef moet een kale rsElfproef blijven:\n" + drl);
+    }
+
     @Test void uniciteit_lowert_naar_een_accumulate_count() {
         // §8.1.6: a uniqueness check becomes a rule that binds the non-null key on the subject and
         // counts the instances whose key equals it; more than one (the subject plus a twin) is the

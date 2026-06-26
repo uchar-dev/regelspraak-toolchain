@@ -2632,7 +2632,7 @@ public final class DrlTranspiler {
             return switch (p.soort()) {
                 case LEEG   -> LoweredConditie.van(o.text() + " == null");
                 case GEVULD -> LoweredConditie.van(o.text() + " != null");
-                case ELFPROEF -> { registreerElfproefFunctie(); yield LoweredConditie.van("rsElfproef(" + o.text() + ")"); }  // §8.1.3
+                case ELFPROEF -> { registreerElfproefFunctie(); yield LoweredConditie.van((p.negatie() ? "!" : "") + "rsElfproef(" + o.text() + ")"); }  // §8.1.3 (Tabel 16 NIET-vorm)
                 case DAGSOORT -> {  // §8.1.5 "<datum> is een <dagsoort>" -> the §9.8 definitie predicate
                     String fn = dagsoortFunctie(p.dagsoort());
                     // §5.15: een leegwaarde is nooit een dagsoort -> a null date is ONWAAR (no match), not an NPE.
