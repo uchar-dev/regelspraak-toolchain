@@ -118,9 +118,18 @@ public final class ExecModelTranspiler {
                 m.addGlobal(g);
                 continue;
             }
-            Global<BigDecimal> g = DSL.globalOf(BigDecimal.class, PKG, ident(p.naam()));
-            globals.put(ident(p.naam()), g);
-            m.addGlobal(g);
+            // §13.3.8 a scalar parameter is a global of its DECLARED Java type (mirrors DrlTranspiler.javaType), so the
+            // session setGlobal supplies a value of the right class. Only a NUMERIC (BigDecimal) parameter is TRACKED in
+            // `globals` — the only type the condition/value binding paths consume (they cast the bound value to
+            // BigDecimal). A date/tekst/booleaan parameter is registered (so setGlobal works) but NOT tracked, so a
+            // construct reading it stays an honest skip rather than a fire-time "Illegal class for global" crash.
+            if (p.datatype().isNumeriek() || p.datatype().isPercentage()) {
+                Global<BigDecimal> g = DSL.globalOf(BigDecimal.class, PKG, ident(p.naam()));
+                globals.put(ident(p.naam()), g);
+                m.addGlobal(g);
+            } else {
+                m.addGlobal(DSL.globalOf(globalKlasse(p.datatype()), PKG, ident(p.naam())));
+            }
         }
         // §4.2 register the Rekendatum global iff any construct of any family is time-bounded (mirrors
         // DrlTranspiler's `tijdgebonden` test); each dated construct then guards its pattern via geldigGuard.
@@ -1033,6 +1042,26 @@ public final class ExecModelTranspiler {
         };
     }
 
+    /** §13.3.8 the Java class a scalar parameter's global is declared with — the {@link org.drools.model.Global} type
+     *  must match the value the session setGlobal supplies, else Drools throws "Illegal class for global" at fire time.
+     *  Mirrors DrlTranspiler.javaType (Datum -> LocalDate, DatumTijd -> LocalDateTime, Tekst -> String, Booleaan -> Boolean). */
+    private static Class<?> globalKlasse(Datatype t) {
+        if (t instanceof Datatype.DatumInDagen) return java.time.LocalDate.class;
+        if (t instanceof Datatype.DatumTijd) return java.time.LocalDateTime.class;
+        if (t.isTekst()) return String.class;
+        if (t instanceof Datatype.Booleaan) return Boolean.class;
+        return Object.class;
+    }
+
+    /** A single-entry global binding map that — unlike {@link Map#of}, which rejects a null value with an NPE — TOLERATES
+     *  a null: an unset / §13.3.8 leeg numeric Parameter binds to a null global value, and the downstream value-fns
+     *  (rsDatumReken treats a leeg duration as 0, rsGeheelPeriode null-guards its grens, ...) already carry the §6/§8
+     *  leegwaarde rules. {@code Map.of(k, null)} would throw a ConstraintEvaluationException out of fireAllRules — the
+     *  DRL constraint passes the null global straight through, so the model must too. */
+    private static Map<String, BigDecimal> bindGlobal(String naam, Object waarde) {
+        return java.util.Collections.singletonMap(naam, (BigDecimal) waarde);
+    }
+
     /** §6/§13.4.16 date arithmetic as a value: a datum/datumtijd ± a numeric-with-time-unit -> a new date(time) via
      *  {@link RegelSpraakRuntime#rsDatumReken} (optellen=PLUS=later; MIN/VERMINDERD_MET=earlier; aantal 0 -> unchanged;
      *  leeg operand -> leeg). Mirrors DrlTranspiler.binairTerm's datum branch and its guards: only +/-, no datum-datum,
@@ -1253,7 +1282,7 @@ public final class ExecModelTranspiler {
                 java.util.function.Function<Object, Object> tl = g.timeline(); WaardeFn gf = g.grens();
                 int toets = g.toets(); String gran = g.gran(); boolean niet = g.niet();
                 return new Gate(pattern.expr(nextId("c"), (Variable) gg, (Predicate2) (s, gv) -> {
-                    BigDecimal grens = RegelSpraakRuntime.toBd(gf.fn().apply(s, java.util.Map.of(gn, (BigDecimal) gv)));
+                    BigDecimal grens = RegelSpraakRuntime.toBd(gf.fn().apply(s, bindGlobal(gn, gv)));
                     boolean b = RegelSpraakRuntime.rsGeheelPeriode((List<?>) tl.apply(s), gran, toets, grens);
                     return niet ? !b : b;
                 }), List.of());
@@ -1327,31 +1356,35 @@ public final class ExecModelTranspiler {
                         BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
                         Conditie.Operator op = v.op();
                         return new Gate(pattern.expr(nextId("c"), (Variable) g, (Predicate2) (s, gv) ->
-                                datumVergelijkTemporal(lfn.apply(s, Map.of(gn, (BigDecimal) gv)), rfn.apply(s, Map.of(gn, (BigDecimal) gv)), op)), List.of());
+                                datumVergelijkTemporal(lfn.apply(s, bindGlobal(gn, gv)), rfn.apply(s, bindGlobal(gn, gv)), op)), List.of());
                     }
                 }
             }
             // 0 globals -> falls through to leafPredicate (covered); >1 / unresolved -> falls through -> skip
         }
-        // §8.1.5 dagsoortcontrole "<datum> is een <dagsoort>" whose datum operand reads EXACTLY ONE Parameter-GLOBAL
-        // (a §6 date-arithmetic expression whose duration is a numeric parameter, "de vluchtdatum plus de MARGE een
-        // werkdag is"): bind that global as a pattern variable (a 2-var expr), mirroring the date-arith-vs-global
+        // §8.1.5 dagsoortcontrole "<datum> is een <dagsoort>" whose datum operand reads EXACTLY ONE NUMERIC Parameter-
+        // GLOBAL (a §6 date-arithmetic expression whose duration is a numeric parameter, "de vluchtdatum plus de MARGE
+        // een werkdag is"): bind that global as a pattern variable (a 2-var expr), mirroring the date-arith-vs-global
         // comparison branch above. DRL reads the global as a free name directly in the rsDagsoort_<N> constraint; the
-        // exec accumulate/pattern needs it as a Variable. A fact-only (0-global) operand falls through to leafPredicate;
-        // >1 global / an unregistered global falls through -> skip. §5.15: an absent/non-date value is ONWAAR.
+        // exec pattern needs it as a Variable. A fact-only (0-global) operand falls through to leafPredicate. The cases
+        // this branch does NOT take — a >1-global operand, a NAVIGATED operand (scalarWaarde's nav read needs the
+        // value-path subject, null on the condition path), or a non-numeric date-typed global (globals.get == null) —
+        // fall through to an HONEST RECORDED skip (overgeslagen). Those are NOT byte-parity with DRL (DRL fires them);
+        // the differential EXCLUDES an overgeslagen fixture, so each is a documented asymmetry, never a SILENT
+        // divergence — close-list follow-ups, not silent wrongs. §5.15: an absent/non-date value is ONWAAR.
         if (c instanceof Conditie.Predicaat dp && dp.soort() == Conditie.Predicaatsoort.DAGSOORT && dp.operand().type().isDatum()) {
             WaardeFn wf = scalarWaarde(dp.operand());
             if (wf != null && wf.globals().size() == 1) {
                 String gn = wf.globals().iterator().next();
-                Global<BigDecimal> g = globals.get(gn);
+                Global<BigDecimal> g = globals.get(gn);   // null for a non-numeric (date/tekst) global -> honest skip below
                 java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(dp.dagsoort());
                 if (g != null && pred != null) {
                     BiFunction<Object, Map<String, BigDecimal>, Object> fn = wf.fn();
                     return new Gate(pattern.expr(nextId("c"), (Variable) g, (Predicate2) (s, gv) ->
-                            fn.apply(s, Map.of(gn, (BigDecimal) gv)) instanceof java.time.LocalDate ld && pred.test(ld)), List.of());
+                            fn.apply(s, bindGlobal(gn, gv)) instanceof java.time.LocalDate ld && pred.test(ld)), List.of());
                 }
             }
-            // 0 globals -> the fact-only leafPredicate below; >1 / unregistered -> fall through -> skip
+            // 0 globals -> the fact-only leafPredicate below; >1 / navigated / date-typed -> fall through -> honest skip
         }
         // every other supported condition is a fact-only leaf.
         Predicate1<Object> lp = leafPredicate(c, subject);
@@ -2563,7 +2596,7 @@ public final class ExecModelTranspiler {
             java.util.function.Function<Object, Object> tl = g.timeline(); WaardeFn gf = g.grens();
             int toets = g.toets(); String gran = g.gran(); boolean niet = g.niet();
             return new SchendingGlobal(gn, (s, gv) -> {
-                BigDecimal grens = RegelSpraakRuntime.toBd(gf.fn().apply(s, java.util.Map.of(gn, gv)));
+                BigDecimal grens = RegelSpraakRuntime.toBd(gf.fn().apply(s, bindGlobal(gn, gv)));
                 boolean b = RegelSpraakRuntime.rsGeheelPeriode((List<?>) tl.apply(s), gran, toets, grens);
                 return !(niet ? !b : b);
             });
@@ -2583,7 +2616,7 @@ public final class ExecModelTranspiler {
                         BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
                         Conditie.Operator op = v.op();
                         return new SchendingGlobal(gn, (s, gv) ->
-                                !datumVergelijkTemporal(lfn.apply(s, Map.of(gn, gv)), rfn.apply(s, Map.of(gn, gv)), op));
+                                !datumVergelijkTemporal(lfn.apply(s, bindGlobal(gn, gv)), rfn.apply(s, bindGlobal(gn, gv)), op));
                     }
                 }
             }

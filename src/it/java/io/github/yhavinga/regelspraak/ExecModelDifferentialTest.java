@@ -239,6 +239,22 @@ class ExecModelDifferentialTest {
                 """,
                 () -> { Vlucht v = new Vlucht(); v.setVluchtdatum(java.time.LocalDate.of(2022, 6, 15)); v.setDaadwerkelijkVertrek(java.time.LocalDate.of(2022, 10, 1)); return List.of(v); },
                 Map.of("marge", new BigDecimal(3)), l -> ((Vlucht) l.get(0)).isLaat()),
+        // the SAME date-arith-vs-global comparison branch with the marge global LEFT UNSET (null): rsDatumReken treats a
+        // null duration as 0 (Tabel 15) -> vluchtdatum unchanged (06-15), daadwerkelijk vertrek 10-01 is later -> laat=true.
+        // The exec must bind the null global without NPE (bindGlobal, not Map.of) — a sibling of the dagsoort-global fix.
+        new Fixture("CONDITION date-arith with UNSET global duration (null -> 0)",
+                """
+                Parameter de marge : Numeriek (geheel getal) met eenheid mnd
+                Objecttype de Vlucht (mv: Vluchten)
+                    de vluchtdatum Datum in dagen;
+                    de daadwerkelijk vertrek Datum in dagen;
+                    is laat kenmerk (bijvoeglijk);
+                Regel R
+                    geldig altijd
+                        Een Vlucht is laat indien de daadwerkelijk vertrek van de Vlucht later is dan de vluchtdatum van de Vlucht plus de marge.
+                """,
+                () -> { Vlucht v = new Vlucht(); v.setVluchtdatum(java.time.LocalDate.of(2022, 6, 15)); v.setDaadwerkelijkVertrek(java.time.LocalDate.of(2022, 10, 1)); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).isLaat()),
     };
 
     // ---- §8.1.5 / §9.8 DAGSOORT: a §9.8 dagsoortdefinitie ("Een dag is een kerstdag indien …") compiles to a
@@ -442,12 +458,21 @@ class ExecModelDifferentialTest {
                 () -> { Vlucht v = new Vlucht(); if (vd != null) v.setVluchtdatum(vd); return List.of(v); },
                 Map.of("marge", new BigDecimal(marge)), l -> ((Vlucht) l.get(0)).isLaat());
     }
+    static Fixture dagsoortGlobalNullFix(String naam, java.time.LocalDate vd) {   // marge LEFT UNSET -> a leeg/null global
+        return new Fixture(naam, DAGSOORT_GLOBAL_SRC,
+                () -> { Vlucht v = new Vlucht(); if (vd != null) v.setVluchtdatum(vd); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).isLaat());
+    }
     static final Fixture[] PHASE_DAGSOORT_GLOBAL = {
         dagsoortGlobalFix("§8.1.5 over global date-arith: (23-12 + 2 dagen)=25-12 is een kerstdag", java.time.LocalDate.of(2024, 12, 23), 2),
         dagsoortGlobalFix("§8.1.5 over global date-arith: (23-12 + 1 dag)=24-12 is geen kerstdag", java.time.LocalDate.of(2024, 12, 23), 1),
         dagsoortGlobalFix("§8.1.5 over global date-arith: (24-12 + 2 dagen)=26-12 is een kerstdag", java.time.LocalDate.of(2024, 12, 24), 2),
+        // §13.3.8 a leeg/UNSET numeric Parameter global: rsDatumReken treats a null duration as 0 (Tabel 15) -> the datum
+        // is UNCHANGED. Both back-ends must AGREE (and the exec must not NPE on Map.of(k,null) — the bindGlobal fix).
+        dagsoortGlobalNullFix("§8.1.5 over UNSET global: 25-12 + leeg marge = 25-12 is een kerstdag", java.time.LocalDate.of(2024, 12, 25)),
+        dagsoortGlobalNullFix("§8.1.5 over UNSET global: 23-12 + leeg marge = 23-12 is geen kerstdag", java.time.LocalDate.of(2024, 12, 23)),
     };
-    static final Boolean[] PHASE_DAGSOORT_GLOBAL_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.TRUE };
+    static final Boolean[] PHASE_DAGSOORT_GLOBAL_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, Boolean.TRUE, Boolean.FALSE };
 
     // ---- §6.10 GENERAL (non-dagsoort) tijdsduur "de [absolute] tijdsduur van A tot B in [hele] <tijdseenheid>" =
     //      the COMPLETE units between two dates (ChronoUnit.<U>.between, signed; absolute when asked; a leeg operand ->
@@ -3220,12 +3245,12 @@ class ExecModelDifferentialTest {
     @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 7); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
-    @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 15); }
+    @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 16); }
     @Test void phase_dagsoort_controle_matches_drl_back_end()     { runDifferential("Phase DAGSOORT", PHASE_DAGSOORT, 5); }
     @Test void phase_dagsoort_duur_matches_drl_back_end()         { runDifferential("Phase DAGSOORT DUUR", PHASE_DAGSOORT_DUUR, 5); }
     @Test void phase_dagsoort_tijdsduur_matches_drl_back_end()    { runDifferential("Phase DAGSOORT TDS", PHASE_DAGSOORT_TDS, 6); }
     @Test void phase_dagsoort_cross_en_datearith_matches_drl_back_end() { runDifferential("Phase DAGSOORT X", PHASE_DAGSOORT_X, 5); }
-    @Test void phase_dagsoort_over_global_matches_drl_back_end()        { runDifferential("Phase DAGSOORT GLOBAL", PHASE_DAGSOORT_GLOBAL, 3); }
+    @Test void phase_dagsoort_over_global_matches_drl_back_end()        { runDifferential("Phase DAGSOORT GLOBAL", PHASE_DAGSOORT_GLOBAL, 5); }
     /** §8.1.5 over a global-reading datum operand is a closed-form transform (rsDatumReken + the §9.8 dagsoort
      *  predicate); assert the ABSOLUTE spec value on the oracle AND that the exec back-end (which binds the global as a
      *  pattern variable) agrees — a shared bug (e.g. the global never wired -> null duration) would pass a pure differential. */
@@ -3241,6 +3266,48 @@ class ExecModelDifferentialTest {
             assertEquals(PHASE_DAGSOORT_GLOBAL_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
+    }
+    /** §8.1.5 over a BARE Datum-PARAMETER operand ("indien de peildatum een kerstdag is", peildatum a Datum parameter):
+     *  DRL declares a LocalDate global and FIRES; the exec model cannot bind a date-typed global through the BigDecimal
+     *  WaardeFn path, so it must HONESTLY SKIP (overgeslagen) — NOT crash with "Illegal class for global" (the review's
+     *  blocker). Locks the global-registration fix (a Datum parameter is now a Global<LocalDate>, so setGlobal accepts a
+     *  date) AND the numeric-only gate (the date global is not in `globals`, so the dagsoort-over-global branch skips it).
+     *  A documented asymmetry (DRL fires, model skips), recorded in overgeslagen so the differential excludes it. */
+    @Test void phase_dagsoort_bare_datum_param_global_is_honest_skip_not_crash() {
+        String src = """
+            Parameter de peildatum : Datum in dagen
+            Dagsoort de kerstdag (mv: kerstdagen)
+            Regel Kerstdag
+                geldig altijd
+                    Een dag is een kerstdag
+                    indien de dag aan alle volgende voorwaarden voldoet:
+                    - de maand uit (de dag) is gelijk aan 12
+                    - de dag voldoet aan ten minste één van de volgende voorwaarden:
+                        .. de dag uit (de dag) is gelijk aan 25
+                        .. de dag uit (de dag) is gelijk aan 26.
+            Objecttype de Vlucht
+                de luchthaven Numeriek (geheel getal);
+                is laat kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Vlucht is laat indien de peildatum een kerstdag is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().stream().anyMatch(s -> s.contains("R")),
+                () -> "expected rule R recorded as an honest skip (a date-typed global is not bound), got overgeslagen=" + em.overgeslagen());
+        // the model KieBase builds and setGlobal of a LocalDate does NOT crash (the global is now declared LocalDate);
+        // the skipped rule leaves laat=false, while the DRL oracle FIRES laat=true (a documented, recorded asymmetry).
+        KieBase mB = KieBaseBuilder.createKieBaseFromModel(em.model());
+        KieSession ms = mB.newKieSession();
+        ms.setGlobal("peildatum", java.time.LocalDate.of(2024, 12, 25));   // must NOT throw "Illegal class for global"
+        Vlucht vm = new Vlucht(); ms.insert(vm); ms.fireAllRules(); ms.dispose();
+        assertFalse(vm.isLaat(), "the model honestly skips the bare-date-param dagsoort rule (laat stays false)");
+        KieSession ds = drlBase(m).newKieSession();
+        ds.setGlobal("peildatum", java.time.LocalDate.of(2024, 12, 25));
+        Vlucht vd = new Vlucht(); ds.insert(vd); ds.fireAllRules(); ds.dispose();
+        assertTrue(vd.isLaat(), "the DRL oracle fires the bare-date-param dagsoort rule (25-12 is a kerstdag)");
     }
     @Test void phase_tds_general_value_matches_drl_back_end()      { runDifferential("Phase TDS", PHASE_TDS, 4); }
     @Test void phase_tds_general_condition_matches_drl_back_end()  { runDifferential("Phase TDS cond", PHASE_TDS_COND, 2); }
