@@ -1463,6 +1463,27 @@ class ExecModelDifferentialTest {
             l -> vals(((Vlucht) l.get(0)).getTotaalprijs(), ((Vlucht) l.get(1)).getTotaalprijs())),   // 100, 42
     };
 
+    // ---- §5.6 the spec's worked-example comparison subselectie RHS "die kleiner zijn dan de volwassenleeftijd" — a
+    //      NUMERIC Parameter-GLOBAL RHS (here "de grens"). DRL reads the global as a free name in the accumulate source
+    //      ("prijs < grens"); the exec binds it on the source pattern (a 2-var expr). Was an honest marker (the literal-
+    //      only restriction); now FIRES in both. SOM/MAX of prijs over {30,70,40} keeping prijs < grens(50). ----
+    static final String SUB_PARAM_HDR =
+            "Parameter de grens : Numeriek (geheel getal)\nObjecttype de Vlucht\n    de totaalprijs Numeriek (geheel getal);\n"
+            + "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n" + AGG_FEIT;
+    static final Fixture[] PHASE_C_PARAM_RHS = {
+        new Fixture("SOM with a PARAMETER-RHS comparison die-filter (prijs < de grens)",
+            SUB_PARAM_HDR + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die kleiner zijn dan de grens.\n",
+            () -> { Vlucht v = new Vlucht(); return List.of(v, pas(v, 30), pas(v, 70), pas(v, 40)); },
+            Map.of("grens", new BigDecimal(50)),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 30 + 40 = 70
+        new Fixture("MAXIMUM with a PARAMETER-RHS comparison die-filter (prijs < de grens)",
+            SUB_PARAM_HDR + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de maximale waarde van de prijs van alle passagiers van de reis die kleiner zijn dan de grens.\n",
+            () -> { Vlucht v = new Vlucht(); return List.of(v, pas(v, 30), pas(v, 70), pas(v, 40)); },
+            Map.of("grens", new BigDecimal(50)),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // max{30,40} = 40
+    };
+    static final Object[] PHASE_C_PARAM_RHS_EXPECTED = { new BigDecimal(70), new BigDecimal(40) };
+
     // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
     //      arithmetic tree whose leaf is an AANTAL/TOTAAL/MIN/MAX). Each embedded aggregation lowers to its own
     //      accumulate CE; the consequence combines the bound results + scalars + a (≤1) global. Facts: [Vlucht, pax...].
@@ -3241,6 +3262,23 @@ class ExecModelDifferentialTest {
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 11); }
+    @Test void phase_C_param_rhs_subselectie_matches_drl_back_end() { runDifferential("Phase C param-RHS", PHASE_C_PARAM_RHS, 2); }
+    /** §5.6 the spec's worked-example RHS "die kleiner zijn dan de volwassenleeftijd" — a comparison subselectie whose RHS
+     *  is a Parameter-global, now FIRING in BOTH back-ends (DRL reads the global free name in the accumulate source; the
+     *  exec binds it on the source pattern). A closed-form filtered fold -> assert the ABSOLUTE spec value AND parity. */
+    @Test void phase_C_param_rhs_subselectie_is_spec_correct() {
+        for (int i = 0; i < PHASE_C_PARAM_RHS.length; i++) {
+            Fixture f = PHASE_C_PARAM_RHS[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_C_PARAM_RHS_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 11); }
     @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 7); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }

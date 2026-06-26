@@ -435,9 +435,8 @@ public final class ExecModelTranspiler {
         PatternDSL.PatternDef src = PatternDSL.pattern(elemVar).expr(nextId("join"), (Variable) subjectVar,
                 (Predicate2) (e, subj) -> RegelSpraakRuntime.get(e, backref) == subj);
         if (f.filter() != null) {                       // §13.4.2 die/dat <predicaat> on the element
-            Predicate1<Object> fp = leafPredicate(f.filter(), elem);
-            if (fp == null) return null;                // unstructured filter -> skip (mirror the DRL marker)
-            src = src.expr(nextId("filter"), (Predicate1) fp);
+            src = filterSource(src, f.filter(), elem);
+            if (src == null) return null;               // unstructured / unbindable filter -> skip (mirror the DRL marker)
         }
 
         Variable resultVar = DSL.declarationOf(Object.class, "$acc_" + (seq++));
@@ -486,6 +485,31 @@ public final class ExecModelTranspiler {
         if (accClass == null) return null;
         PatternDSL.PatternDef src2 = src.bind(amtVar, (Function1) elemWaarde);
         return new Agg(DSL.accumulate(src2, DSL.accFunction(accClass, amtVar).as(resultVar)), resultVar, null, null, false);
+    }
+
+    /** §13.4.2/§5.6 apply a die/dat-subselectie filter to the accumulate SOURCE pattern. A §5.6 comparison whose RHS is
+     *  a NUMERIC Parameter-global binds that global on the source pattern (a 2-var expr over the element + the global) —
+     *  the exec analog of DRL reading the global as a free name in the source constraint ("prijs &lt; grens"); the LHS is
+     *  the element's folded attribute. Every other supported filter is a fact-only leaf via {@link #leafPredicate}.
+     *  null -&gt; the filter is unstructured, or its global is non-numeric / unregistered -&gt; the caller skips
+     *  (symmetric with the DRL marker — DRL also needs the global declared). */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private PatternDSL.PatternDef filterSource(PatternDSL.PatternDef src, Conditie filter, Objecttype elem) {
+        if (filter instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
+                && la.type().isNumeriek() && isNumeriekOp(v.op()) && v.rechts() instanceof Expr.ParameterRef pr) {
+            if (elem == null || !elem.heeftLid(la.attribuut())) return null;
+            if (elem.attribuutGranulariteit.containsKey(la.attribuut())) return null;   // temporal element attr -> skip
+            if (!elem.dimensiesVan(la.attribuut()).isEmpty()) return null;              // §3.6 gedimensioneerd -> skip
+            Global<BigDecimal> g = globals.get(ident(pr.parameter().naam()));
+            if (g == null) return null;   // non-numeric / unregistered global -> skip (DRL needs the global declared too)
+            String attr = la.attribuut();
+            Conditie.Operator op = v.op();
+            BigDecimal[] ff = restatement(la.type(), pr.parameter().datatype());        // §5.1 Tabel 32 unit restatement
+            return src.expr(nextId("filter"), (Variable) g,
+                    (Predicate2) (e, gv) -> vergelijk(scale(num(e, attr), ff[0]), scale((BigDecimal) gv, ff[1]), op));
+        }
+        Predicate1<Object> fp = leafPredicate(filter, elem);
+        return fp == null ? null : src.expr(nextId("filter"), (Predicate1) fp);
     }
 
     // ---------------- §7.1 temporal totaal (Phase F) ----------------

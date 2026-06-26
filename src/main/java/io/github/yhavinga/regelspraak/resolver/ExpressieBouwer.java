@@ -792,12 +792,12 @@ final class ExpressieBouwer {
         } else return null;
         Expr rhs = bouw(rhsCtx);
         // §5.6: the predicate ranges over the SELECTED ELEMENT, but the RHS is bouw()'d in the rule's SUBJECT context.
-        // A subject/element attribute mis-binds ("zijn drempel" -> the subject's drempel, not the element's), and a
-        // parameter-global cannot be bound inside the exec accumulate source (it would FIRE in the DRL but SKIP in the
-        // model -> a silent divergence). Accept only a LITERAL RHS, which both back-ends lower identically as a source
-        // constraint; anything else stays an honest, symmetric marker. (A parameter/element getalexpressie RHS — the
-        // §5.6 worked example's "de volwassenleeftijd" — is carded for the exec accumulate-source global binding.)
-        if (!(rhs instanceof Expr.Literal)) return null;
+        // A subject/element attribute mis-binds ("zijn drempel" -> the subject's drempel, not the element's), so reject
+        // an AttribuutRef. Accept a LITERAL (both back-ends lower it as a fact-only source constraint) OR a §13.3.8
+        // Parameter — the spec's worked-example RHS "die kleiner zijn dan de volwassenleeftijd". DRL reads the global as
+        // a free name in the accumulate source; the exec binds it on the source pattern (a 2-var expr). A Parameter is
+        // context-independent (a global), so it does not mis-bind. Anything else stays an honest, symmetric marker.
+        if (!(rhs instanceof Expr.Literal) && !(rhs instanceof Expr.ParameterRef)) return null;
         Expr lhs = new Expr.AttribuutRef(agg.attribuut(), elem, "", null, agg.type(), src(p));
         // §5.6 getal/datum/tekstpredicaat: enforce the typeringen comparison legality (as the normal voorwaarde path
         // does), so a type-mismatched filter (a Numeriek attribute vs a Tekst literal) is an ERROR, not silent bad DRL.
