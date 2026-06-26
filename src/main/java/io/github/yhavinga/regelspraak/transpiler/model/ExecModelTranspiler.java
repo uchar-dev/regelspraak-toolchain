@@ -2029,22 +2029,37 @@ public final class ExecModelTranspiler {
             case DATUM_MET     -> { return datumConstructor(a, 3); }
             case DATUMTIJD_MET -> { return datumConstructor(a, 7); }
             case TIJDSDUUR, ABSOLUTE_TIJDSDUUR -> {
-                // §6.10 tijdsduur in N <dagsoort> ("in hele werkdagen"): count the §9.8 dagsoort days in (van, tot].
-                // Only the dagsoort eenheid is lowered here — the general tijdsduur path is unwired in the exec model,
-                // so a non-dagsoort unit returns null (skip), unchanged. Mirrors DrlTranspiler.dagsoortTijdsduurFunctie.
+                // §6.10 / §13.4.17.32 "de [absolute] tijdsduur van A tot B in [hele] <tijdseenheid>" — the number of
+                // COMPLETE units between two dates. Mirrors DrlTranspiler.tijdsduur exactly: a DAGSOORT eenheid counts
+                // the §9.8 dagsoort days in the half-open interval (van, tot] (rsTijdsduurDagsoort, day-granular ->
+                // Datum operands); any OTHER unit is ChronoUnit.<U>.between via rsTijdsduur (a kwartaal = 3×MONTHS), with
+                // a TIME unit (uur/.../ms) demanding datum-tijd operands. A kwartaal/unrecognised non-dagsoort unit -> skip.
                 if (a.size() != 2) return null;
+                boolean absoluut = f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR;
                 io.github.yhavinga.regelspraak.model.Eenheid e = f.type().eenheidOf();
                 String dagsoortUnit = e != null ? model.dagsoortVoorEenheid(e.afkorting()) : null;
-                if (dagsoortUnit == null) return null;
-                if (a.get(0).type() instanceof Datatype.DatumTijd || a.get(1).type() instanceof Datatype.DatumTijd) return null;
-                java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(dagsoortUnit);
+                if (dagsoortUnit != null) {
+                    if (a.get(0).type() instanceof Datatype.DatumTijd || a.get(1).type() instanceof Datatype.DatumTijd) return null;
+                    java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(dagsoortUnit);
+                    WaardeFn vanF = scalarWaarde(a.get(0)), totF = scalarWaarde(a.get(1));
+                    if (pred == null || vanF == null || totF == null) return null;
+                    BiFunction<Object, Map<String, BigDecimal>, Object> vfn = vanF.fn(), tfn = totF.fn();
+                    Set<String> g = new LinkedHashSet<>(vanF.globals()); g.addAll(totF.globals());
+                    return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsTijdsduurDagsoort(
+                            (java.time.LocalDate) vfn.apply(s, gm), (java.time.LocalDate) tfn.apply(s, gm), pred, absoluut), g);
+                }
+                // general (non-dagsoort) tijdseenheid: ChronoUnit.<U>.between (kwartaal -> 3×MONTHS) via rsTijdsduur.
+                String unit = chronoUnit(f.type());
+                if (unit == null) return null;   // unrecognised tijdseenheid -> honest skip (symmetric with the DRL marker)
+                boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
+                if (tijdEenheid && (!(a.get(0).type() instanceof Datatype.DatumTijd) || !(a.get(1).type() instanceof Datatype.DatumTijd)))
+                    return null;   // a time-unit tijdsduur needs datum-tijd operands (ChronoUnit.HOURS.between throws on a LocalDate)
                 WaardeFn vanF = scalarWaarde(a.get(0)), totF = scalarWaarde(a.get(1));
-                if (pred == null || vanF == null || totF == null) return null;
-                boolean absoluut = f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR;
+                if (vanF == null || totF == null) return null;
                 BiFunction<Object, Map<String, BigDecimal>, Object> vfn = vanF.fn(), tfn = totF.fn();
                 Set<String> g = new LinkedHashSet<>(vanF.globals()); g.addAll(totF.globals());
-                return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsTijdsduurDagsoort(
-                        (java.time.LocalDate) vfn.apply(s, gm), (java.time.LocalDate) tfn.apply(s, gm), pred, absoluut), g);
+                return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsTijdsduur(
+                        (java.time.temporal.Temporal) vfn.apply(s, gm), (java.time.temporal.Temporal) tfn.apply(s, gm), unit, absoluut), g);
             }
             default            -> { return null; }
         }

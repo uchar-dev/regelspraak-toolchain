@@ -7,6 +7,7 @@ import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
 import io.github.yhavinga.regelspraak.facts.Heffing;
 import io.github.yhavinga.regelspraak.facts.Inconsistentie;
+import io.github.yhavinga.regelspraak.facts.Klok;
 import io.github.yhavinga.regelspraak.facts.Konto;
 import io.github.yhavinga.regelspraak.facts.Pot;
 import io.github.yhavinga.regelspraak.facts.Meting;
@@ -447,6 +448,70 @@ class ExecModelDifferentialTest {
         dagsoortGlobalFix("§8.1.5 over global date-arith: (24-12 + 2 dagen)=26-12 is een kerstdag", java.time.LocalDate.of(2024, 12, 24), 2),
     };
     static final Boolean[] PHASE_DAGSOORT_GLOBAL_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.TRUE };
+
+    // ---- §6.10 GENERAL (non-dagsoort) tijdsduur "de [absolute] tijdsduur van A tot B in [hele] <tijdseenheid>" =
+    //      the COMPLETE units between two dates (ChronoUnit.<U>.between, signed; absolute when asked; a leeg operand ->
+    //      leeg, Tabel 14). DRL lowered it (rsTijdsduur) but the exec model was UNWIRED (only the dagsoort eenheid);
+    //      both now share RegelSpraakRuntime.rsTijdsduur, byte-identical to the DRL function body. Reuses the
+    //      DroolsExecutionTest oracle scenario (23 jr / 281 mnd); closed-form -> assert the ABSOLUTE spec values too. ----
+    static final String GENERAL_TDS_SRC =
+            """
+            Eenheidsysteem Tijd
+                de maand            mnd
+                het jaar            jr       =    12 mnd
+            Objecttype de Klok
+                de reisdatum Datum in dagen;
+                de peildatum Datum in dagen;
+                de jaartal Numeriek (geheel getal) met eenheid jr;
+                de maandnr Numeriek (geheel getal) met eenheid mnd;
+            Regel j
+                geldig altijd
+                    De jaartal van een Klok moet gesteld worden op de tijdsduur van de reisdatum van een Klok tot de peildatum van een Klok in hele jaren.
+            Regel m
+                geldig altijd
+                    De maandnr van een Klok moet gesteld worden op de absolute tijdsduur van de peildatum van een Klok tot de reisdatum van een Klok in hele maanden.
+            """;
+    static Fixture generalTdsFix(String naam, java.time.LocalDate reis, java.time.LocalDate peil) {
+        return new Fixture(naam, GENERAL_TDS_SRC,
+                () -> { Klok k = new Klok(); if (reis != null) k.setReisdatum(reis); if (peil != null) k.setPeildatum(peil); return List.of(k); },
+                Map.of(), l -> vals(((Klok) l.get(0)).getJaartal(), ((Klok) l.get(0)).getMaandnr()));
+    }
+    static final Fixture[] PHASE_TDS = {
+        generalTdsFix("§6.10 2000-01-15 -> 2023-06-20 = 23 hele jaren / 281 mnd (abs)", java.time.LocalDate.of(2000, 1, 15), java.time.LocalDate.of(2023, 6, 20)),
+        generalTdsFix("§6.10 omgekeerd = -23 jaren (signed) / 281 mnd (abs)", java.time.LocalDate.of(2023, 6, 20), java.time.LocalDate.of(2000, 1, 15)),
+        generalTdsFix("§6.10 zelfde datum = 0 jr / 0 mnd", java.time.LocalDate.of(2024, 6, 14), java.time.LocalDate.of(2024, 6, 14)),
+        generalTdsFix("§6.10 lege peildatum -> leeg", java.time.LocalDate.of(2000, 1, 15), null),
+    };
+    static final Object[] PHASE_TDS_EXPECTED = {
+        vals(new BigDecimal(23), new BigDecimal(281)),
+        vals(new BigDecimal(-23), new BigDecimal(281)),   // jaartal signed (negative), maandnr absolute (positive)
+        vals(BigDecimal.ZERO, BigDecimal.ZERO),
+        vals(null, null),
+    };
+
+    // §6.10 general tijdsduur as a CONDITION operand — the shared scalarFunctie lowering reaches the numeric-
+    // expression-LHS comparison context too ("laat iff de tijdsduur ... in maanden groter is dan 3"). DRL lowers the
+    // same expression as the constraint operand; the parity sweep must confirm the condition context agrees.
+    static final String GENERAL_TDS_COND_SRC =
+            """
+            Objecttype de Vlucht (mv: Vluchten)
+                de vluchtdatum Datum in dagen;
+                de daadwerkelijk vertrek Datum in dagen;
+                is laat kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Vlucht is laat indien de tijdsduur van de vluchtdatum van de Vlucht tot de daadwerkelijk vertrek van de Vlucht in hele maanden groter is dan 3.
+            """;
+    static Fixture generalTdsCondFix(String naam, java.time.LocalDate van, java.time.LocalDate tot) {
+        return new Fixture(naam, GENERAL_TDS_COND_SRC,
+                () -> { Vlucht v = new Vlucht(); v.setVluchtdatum(van); v.setDaadwerkelijkVertrek(tot); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).isLaat());
+    }
+    static final Fixture[] PHASE_TDS_COND = {
+        generalTdsCondFix("§6.10 cond: 5 maanden > 3 -> laat", java.time.LocalDate.of(2024, 1, 15), java.time.LocalDate.of(2024, 6, 20)),
+        generalTdsCondFix("§6.10 cond: 2 maanden niet > 3 -> niet laat", java.time.LocalDate.of(2024, 1, 15), java.time.LocalDate.of(2024, 3, 20)),
+    };
+    static final Boolean[] PHASE_TDS_COND_EXPECTED = { Boolean.TRUE, Boolean.FALSE };
 
     // ---- §12 BESLISTABEL fixtures: a captured pipe-table desugars (BeslistabelDesugar) to one regel per row, fed
     //      through the SAME resolver -> both back-ends fire the rows. Mutually-exclusive bands keep the result
@@ -3174,6 +3239,35 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(PHASE_DAGSOORT_GLOBAL_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    @Test void phase_tds_general_value_matches_drl_back_end()      { runDifferential("Phase TDS", PHASE_TDS, 4); }
+    @Test void phase_tds_general_condition_matches_drl_back_end()  { runDifferential("Phase TDS cond", PHASE_TDS_COND, 2); }
+    /** §6.10 general tijdsduur is a closed-form transform (ChronoUnit.between via rsTijdsduur, ported byte-identical to
+     *  the DRL function body); assert the ABSOLUTE spec values (signed / absolute / 0 / leeg) on the oracle AND that the
+     *  exec back-end — newly wired off the dagsoort-only path — agrees. A shared bug passes a pure differential. */
+    @Test void phase_TDS_general_is_spec_correct() {
+        for (int i = 0; i < PHASE_TDS.length; i++) {
+            Fixture f = PHASE_TDS[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_TDS_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+        for (int i = 0; i < PHASE_TDS_COND.length; i++) {
+            Fixture f = PHASE_TDS_COND[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_TDS_COND_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }

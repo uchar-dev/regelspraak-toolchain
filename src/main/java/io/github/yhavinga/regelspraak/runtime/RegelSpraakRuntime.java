@@ -336,6 +336,18 @@ public final class RegelSpraakRuntime {
         return BigDecimal.valueOf(absoluut ? Math.abs(result) : result);
     }
 
+    /** §6.10 / §13.4.17.32 "de (absolute) tijdsduur van A tot B in &lt;tijdseenheid&gt;": the number of COMPLETE
+     *  units between two dates ({@code ChronoUnit.<U>.between}, signed — A later than B gives a negative result, §6.10
+     *  Tabel 14 +52/-52); absolute when asked. A kwartaal (no ChronoUnit.QUARTERS) is 3×MONTHS, §3.7. Any leeg operand
+     *  -> leeg (Tabel 14), not 0. Verbatim mirror of the DRL {@code rsTijdsduur} function body. */
+    public static BigDecimal rsTijdsduur(java.time.temporal.Temporal van, java.time.temporal.Temporal tot, String eenheid, boolean absoluut) {
+        if (van == null || tot == null) return null;
+        long n = "KWARTAAL".equals(eenheid)   // §3.7 kwartaal = 3 maanden (geen ChronoUnit.QUARTERS)
+                ? java.time.temporal.ChronoUnit.MONTHS.between(van, tot) / 3
+                : java.time.temporal.ChronoUnit.valueOf(eenheid).between(van, tot);
+        return BigDecimal.valueOf(absoluut ? Math.abs(n) : n);
+    }
+
     /** §13.4.17.37 "de eerste paasdag van" a year — Gauss/Anonymous Easter algorithm; a leeg year -> leeg.
      *  Mirrors the DRL {@code rsEerstePaasdag}. */
     public static java.time.LocalDate rsEerstePaasdag(Object jaar) {
