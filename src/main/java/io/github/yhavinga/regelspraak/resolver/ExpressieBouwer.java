@@ -780,18 +780,34 @@ final class ExpressieBouwer {
     private Conditie elementVergelijking(PredicaatContext p, Objecttype elem, List<Expr> argumenten) {
         if (argumenten.size() != 1 || !(argumenten.get(0) instanceof Expr.AttribuutRef agg)
                 || agg.objecttype() != elem || agg.navigatieRol() != null) return null;
-        Conditie.Operator op; ExpressieContext rhsCtx;
+        Typering.CmpOp cmp; ExpressieContext rhsCtx;
         if (p.toplevelOperator() != null && p.toplevelOperator().vergelijkingsTekenGesplitst() != null
                 && p.toplevelOperator().expressie() != null) {
-            op = RuleChecker.naarOperator(RuleChecker.cmpOf(p.toplevelOperator().vergelijkingsTekenGesplitst()));
+            cmp = RuleChecker.cmpOf(p.toplevelOperator().vergelijkingsTekenGesplitst());
             rhsCtx = p.toplevelOperator().expressie();
         } else if (p.nonToplevelOperator() != null && p.nonToplevelOperator().vergelijkingsTeken() != null
                 && p.nonToplevelOperator().expressie() != null) {
-            op = RuleChecker.naarOperator(RuleChecker.cmpOf(p.nonToplevelOperator().vergelijkingsTeken()));
+            cmp = RuleChecker.cmpOf(p.nonToplevelOperator().vergelijkingsTeken());
             rhsCtx = p.nonToplevelOperator().expressie();
         } else return null;
+        Expr rhs = bouw(rhsCtx);
+        // §5.6: the predicate ranges over the SELECTED ELEMENT, but the RHS is bouw()'d in the rule's SUBJECT context.
+        // A subject/element attribute mis-binds ("zijn drempel" -> the subject's drempel, not the element's), and a
+        // parameter-global cannot be bound inside the exec accumulate source (it would FIRE in the DRL but SKIP in the
+        // model -> a silent divergence). Accept only a LITERAL RHS, which both back-ends lower identically as a source
+        // constraint; anything else stays an honest, symmetric marker. (A parameter/element getalexpressie RHS — the
+        // §5.6 worked example's "de volwassenleeftijd" — is carded for the exec accumulate-source global binding.)
+        if (!(rhs instanceof Expr.Literal)) return null;
         Expr lhs = new Expr.AttribuutRef(agg.attribuut(), elem, "", null, agg.type(), src(p));
-        return new Conditie.Vergelijking(op, lhs, bouw(rhsCtx), src(p));
+        // §5.6 getal/datum/tekstpredicaat: enforce the typeringen comparison legality (as the normal voorwaarde path
+        // does), so a type-mismatched filter (a Numeriek attribute vs a Tekst literal) is an ERROR, not silent bad DRL.
+        Typering.Resultaat tr = Typering.vergelijk(cmp, lhs.type(), rhs.type());
+        if (!tr.ok()) {
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
+                    "subselectie-predicaat: " + tr.fout(), p.getStart().getLine()));
+            return null;
+        }
+        return new Conditie.Vergelijking(RuleChecker.naarOperator(cmp), lhs, rhs, src(p));
     }
 
     /** §4.12-4.15: type-check the operand list of a value/date aggregation. min/max demand all

@@ -1398,6 +1398,32 @@ class DrlTest {
         assertFalse(drl.contains("/* TODO aggregatie SOM"), () -> "de oplosbare comparison-subselectie mag geen marker zijn:\n" + drl);
     }
 
+    @Test void vergelijking_subselectie_met_niet_literal_rhs_blijft_marker() {
+        // Review guard: the comparison-subselectie RHS is bouw()'d in the rule SUBJECT context, so a parameter-global
+        // ("die kleiner zijn dan de grens") would FIRE in the DRL but the exec accumulate-source cannot bind a global
+        // (a silent divergence), and a same-named subject attribute ("zijn drempel") mis-navigates to the wrong object.
+        // Only a LITERAL RHS lowers; anything else stays an honest, symmetric marker.
+        String src = """
+            Parameter de grens : Numeriek (geheel getal)
+            Objecttype de Vlucht
+                het totaal Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Het totaal van een Vlucht moet berekend worden als de som van de prijs van alle passagiers van de reis die kleiner zijn dan de grens.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertFalse(drl.contains("prijs < grens"),
+                () -> "een parameter-RHS mag NIET in de accumulate-bron belanden (exec kan een global daar niet binden):\n" + drl);
+        assertTrue(drl.contains("/* TODO aggregatie SOM"),
+                () -> "een niet-literal subselectie-RHS moet een eerlijke marker blijven:\n" + drl);
+    }
+
     @Test void telling_concatenatie_met_onoplosbare_operand_blijft_marker() {
         // A union with an operand that has NO resolvable kenmerk filter (here a bare set) cannot be
         // lowered faithfully — it stays an honest marker, never a count of only the first operand.

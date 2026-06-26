@@ -1278,6 +1278,27 @@ class RuleCheckTest {
                 && d.message().contains("Tabel 16 vereist"));
     }
 
+    @Test void vergelijking_subselectie_met_type_mismatch_wordt_gemeld() {
+        // Review guard: the §5.6 getalpredicaat subselectie must enforce the typeringen comparison legality (as the
+        // normal voorwaarde path does) — a Numeriek folded attribute vs a Tekst literal is an ERROR, not silent bad DRL.
+        String src = """
+            Objecttype de Vlucht
+                het totaal Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Het totaal van een Vlucht moet berekend worden als de som van de prijs van alle passagiers van de reis die kleiner zijn dan "tekst".
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("subselectie-predicaat")),
+                () -> "een type-mismatch in de subselectie-vergelijking moet gemeld worden: " + m.errors());
+    }
+
     @Test void numeriek_met_exact_met_decimaal_aantal_cijfers_wordt_afgewezen() {
         // §8.1.4/§13.4.15.84: the cijfer count must be a §13.2.3 geheelgetal. The over-broad NUMBER token also matches a
         // §13.2.4 decimaalgetal ("9,5"); reject it with an ERROR rather than silently coercing to 0 (an inert predicate).
