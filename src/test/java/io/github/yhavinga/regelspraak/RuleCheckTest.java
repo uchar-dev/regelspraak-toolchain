@@ -1298,6 +1298,38 @@ class RuleCheckTest {
                 () -> "verwachtte een Tabel-16 soort-werkwoord waarschuwing voor 'is geen <bezittelijk>': " + m.diagnostics);
     }
 
+    @Test void gehele_periode_op_niet_temporeel_onderwerp_wordt_afgewezen() {
+        // §8.2 line 3437: "Deze check kan alleen worden uitgevoerd als het onderwerp van het predicaat
+        // tijdsafhankelijk is." A "gedurende het gehele jaar" qualifier over a STATIC kenmerk is a spec error -> an
+        // ERROR (rejected), not a silent never-fires marker.
+        String src = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                is jong kenmerk (bijvoeglijk);
+                is duur kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is duur indien hij gedurende het gehele jaar jong is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("volledige periode")),
+                () -> "verwachtte een §8.2 fout: gehele periode op een niet-temporeel onderwerp: " + m.errors());
+    }
+
+    @Test void gehele_periode_op_temporeel_onderwerp_geen_fout() {
+        // Control: the same qualifier over a TEMPORAL kenmerk is valid -> no §8.2 error.
+        String src = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
+                is duur kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is duur indien hij niet gedurende het gehele jaar rechthebbend is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertFalse(m.errors().stream().anyMatch(d -> d.message().contains("volledige periode")),
+                () -> "een temporeel onderwerp mag geen §8.2 fout geven: " + m.errors());
+    }
+
     @Test void correcte_soort_negatie_geen_waarschuwing() {
         // Control: the verb matches the soort (bezittelijk -> heeft, bijvoeglijk -> is) -> no warning.
         String src = """

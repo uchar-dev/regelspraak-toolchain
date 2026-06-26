@@ -973,6 +973,10 @@ final class RuleChecker {
     }
 
     private Conditie uitToplevel(Expr lhs, ToplevelOperatorContext op, String bron) {
+        return keurGeheelPeriode(uitToplevelKaal(lhs, op, bron), geheelPeriode(op.gehelePeriodevergelijking()), bron);
+    }
+
+    private Conditie uitToplevelKaal(Expr lhs, ToplevelOperatorContext op, String bron) {
         Conditie.GeheelPeriode periode = geheelPeriode(op.gehelePeriodevergelijking());   // §8.2 whole-period check
         if (op.vergelijkingsTekenGesplitst() != null && op.expressie() != null)
             return new Conditie.Vergelijking(naarOperator(cmpOf(op.vergelijkingsTekenGesplitst())),
@@ -988,6 +992,43 @@ final class RuleChecker {
     }
 
     private Conditie uitNonToplevel(Expr lhs, NonToplevelOperatorContext op, String bron) {
+        return keurGeheelPeriode(uitNonToplevelKaal(lhs, op, bron), geheelPeriode(op.gehelePeriodevergelijking()), bron);
+    }
+
+    /** §8.2 line 3437: the "gedurende de/het gehele &lt;periode&gt;" check is only defined when the predicate's
+     *  onderwerp is TIJDSAFHANKELIJK. A qualifier over a static onderwerp is a spec error — reject it (an ERROR +
+     *  Onopgelost) rather than silently markering a rule that can never fire. {@code niet} is irrelevant here (a
+     *  whole-period NEGATION of a static check is just as ill-defined). */
+    private Conditie keurGeheelPeriode(Conditie c, Conditie.GeheelPeriode periode, String bron) {
+        if (periode == null || onderwerpIsTemporeel(c)) return c;
+        model.diagnostics.add(new Diagnostic(Severity.ERROR,
+            "de check op volledige periode (gedurende de/het gehele jaar/maand) kan alleen op een tijdsafhankelijk "
+            + "onderwerp worden toegepast (§8.2): " + bron, 0));
+        return new Conditie.Onopgelost(bron);
+    }
+
+    /** Whether the onderwerp of a §8.2-qualified predicate is tijdsafhankelijk — a temporal attribuut on either side
+     *  of a comparison, the operand of a leeg/gevuld/elfproef/numeriek predicate, or a temporal (own or to-one
+     *  navigated) kenmerk. A rolcheck / unstructured form has no tijdsafhankelijk onderwerp. */
+    private boolean onderwerpIsTemporeel(Conditie c) {
+        if (c instanceof Conditie.Vergelijking v) return exprTemporeel(v.links()) || exprTemporeel(v.rechts());
+        if (c instanceof Conditie.Predicaat p)    return exprTemporeel(p.operand());
+        if (c instanceof Conditie.Kenmerk k)      return kenmerkTemporeel(k);
+        return false;
+    }
+    /** Mirror of DrlTranspiler.isTemporeelAttribuut: a read of an attribuut declared with a §13.3.6 tijdlijn. */
+    private static boolean exprTemporeel(Expr e) {
+        return e instanceof Expr.AttribuutRef a && a.objecttype() != null
+                && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut());
+    }
+    private boolean kenmerkTemporeel(Conditie.Kenmerk k) {
+        Objecttype subject = bouwer.subject();
+        Objecttype houder = k.navigatie() == null ? subject
+                : (subject != null ? model.rolDoeltypeNaarSubject(subject, k.navigatie()) : null);
+        return houder != null && houder.kenmerkGranulariteit.containsKey(k.kenmerk());
+    }
+
+    private Conditie uitNonToplevelKaal(Expr lhs, NonToplevelOperatorContext op, String bron) {
         Conditie.GeheelPeriode periode = geheelPeriode(op.gehelePeriodevergelijking());   // §8.2 whole-period check
         if (op.vergelijkingsTeken() != null && op.expressie() != null)
             return new Conditie.Vergelijking(naarOperator(cmpOf(op.vergelijkingsTeken())),

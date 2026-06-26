@@ -3225,6 +3225,58 @@ class DrlTest {
                 () -> "een niet-'alle' set-totaal moet ook markeren:\n" + drl);
     }
 
+    @Test void de_twee_nietsen_van_8_2_vallen_niet_tegen_elkaar_weg() {
+        // §8.2: the two distinct "niet"s must NOT cancel. "niet gedurende het gehele jaar X" is ∃ moment ¬X (the
+        // WHOLE-PERIOD check is negated -> GeheelPeriode.niet) and lowers to `rsGeheelPeriode(...) == false`.
+        // "gedurende het gehele jaar niet X" is ∀ moment ¬X (the PREDICATE is negated -> Kenmerk.negatie); the negated
+        // temporal kenmerk-check is not yet lowered, so it stays an honest §8.2 marker. The two forms produce visibly
+        // DIFFERENT lowerings -> the resolver keeps ¬(∀X) and ∀(¬X) apart.
+        String src = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
+                is duur kenmerk (bijvoeglijk);
+                is jong kenmerk (bijvoeglijk);
+            Regel existsneg
+                geldig altijd
+                    Een Passagier is duur indien hij niet gedurende het gehele jaar rechthebbend is.
+            Regel forallneg
+                geldig altijd
+                    Een Passagier is jong indien hij gedurende het gehele jaar niet rechthebbend is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "temporeel onderwerp: geen §8.2 fout verwacht: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        // ∃¬X: the period-check is negated (== false), NOT the predicate.
+        assertTrue(drl.contains("rsGeheelPeriode($subject.getRechthebbend(), \"JAAR\", 7, null) == false"),
+                () -> "∃¬X (niet gedurende ...) moet de periode-check negeren (== false):\n" + drl);
+        // ∀¬X: the predicate is negated -> a negated temporal kenmerk-check, still an honest marker.
+        assertTrue(drl.contains("TODO §8.2 gehele-periode") && drl.contains("niet rechthebbend"),
+                () -> "∀¬X (gedurende ... niet) is de predicaat-negatie en blijft een marker:\n" + drl);
+    }
+
+    @Test void dubbele_negatie_door_compositie_valt_niet_weg() {
+        // §8.2/§13.4.14: v2.3.0 has no `niet niet`; a double negation only arises by COMPOSITION (a negated bullet
+        // under the GEEN-quantifier). The resolver must NOT algebraically cancel across the construct boundary: it
+        // emits the GEEN compound as `!(...)` over leaves that KEEP their own `== false`, never the simplified
+        // `jong == true`. So `geen van de [¬jong, ¬duur]` -> !((jong == false) || (duur == false)).
+        String src = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                is jong kenmerk (bijvoeglijk);
+                is duur kenmerk (bijvoeglijk);
+                is kind kenmerk (bijvoeglijk);
+            Regel dneg
+                geldig altijd
+                    Een Passagier is kind indien hij aan geen van de volgende voorwaarden voldoet:
+                    - hij is niet jong
+                    - hij is niet duur.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("!((jong == false) || (duur == false))"),
+                () -> "de GEEN-compound moet de binnen-negaties bewaren (geen algebraïsche wegval):\n" + drl);
+        assertFalse(drl.contains("jong == true"),
+                () -> "de dubbele negatie mag NIET tot 'jong == true' versimpeld worden:\n" + drl);
+    }
+
     @Test void tijdsafhankelijk_attribuut_en_kenmerk_in_een_gehele_periode_conditie_lowEren_zonder_lekken() {
         // §8.2/§13.4.15.70: a "gedurende het gehele jaar" whole-period qualifier over a tijdsafhankelijk attribuut/
         // kenmerk LOWERS to a boolean rsGeheelPeriode(...) check — never a `field == scalar` that leaks the
