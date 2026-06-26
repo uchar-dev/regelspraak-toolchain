@@ -1122,9 +1122,15 @@ final class ExpressieBouwer {
         // niet/geen still binds (it resolved there); only an unresolvable role reaches this split.
         for (String neg : new String[]{" niet", " geen"}) {   // SPACE-bounded (mirror bindKenmerk) — never split a glued "<rol>geen"
             if (attr.regionMatches(true, attr.length() - neg.length(), neg, 0, neg.length())) {
-                String rolAlleen = attr.substring(0, attr.length() - neg.length()).trim();
-                if (!rolAlleen.isEmpty() && model.rolDoeltypeNaarSubject(huidigSubject, rolAlleen) != null)
-                    return new Expr.AttribuutRef(rolAlleen, huidigSubject, "zijn", model.navigatieRolNaam(rolAlleen), onbekend(), bron);
+                String kaal = attr.substring(0, attr.length() - neg.length()).trim();
+                if (kaal.isEmpty()) continue;
+                if (model.rolDoeltypeNaarSubject(huidigSubject, kaal) != null)
+                    return new Expr.AttribuutRef(kaal, huidigSubject, "zijn", model.navigatieRolNaam(kaal), onbekend(), bron);
+                // §8.1.3/§8.1.4 a possessive ATTRIBUTE with a greedily-absorbed trailing "niet" (the vragende negated
+                // elfproef / numeriek-met-exact "zijn <attr> niet aan de elfproef voldoet"): resolve the BARE
+                // attribuut so the read lowers, keeping the FULL bron so the predicate builder recovers the negation.
+                Datatype adt = huidigSubject.attribuut(kaal);
+                if (adt != null) return new Expr.AttribuutRef(kaal, huidigSubject, "zijn", null, adt, bron);
             }
         }
         // §3.5 a possessive that names a ROLE followed by an ARTICLE-led kenmerk ("zijn reis HET recht op korting

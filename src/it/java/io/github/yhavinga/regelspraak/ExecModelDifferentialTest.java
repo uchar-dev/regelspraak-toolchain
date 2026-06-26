@@ -950,9 +950,16 @@ class ExecModelDifferentialTest {
             + "        - zijn bsn tekst is niet numeriek met exact 9 cijfers\n        - zijn bsn tekst is gevuld.\n",
             () -> List.of(npTekst("12345678"), npTekst("123456789"), npTekst("1234x6789")),
             Map.of(), ExecModelDifferentialTest::geldig3),   // [true, false, true]
+        // §8.1.3 VRAGENDE negated elfproef "indien X niet aan de elfproef voldoet" — the leading "niet" is absorbed
+        // into the operand and recovered by the resolver. geldig iff INVALID. Fires identically in both back-ends.
+        new Fixture("§8.1.3 vragende negatie elfproef (indien X niet aan de elfproef voldoet)",
+            NP_PRED + "Regel r\n    geldig altijd\n        Een Natuurlijk persoon is geldig indien zijn burgerservicenummer niet aan de elfproef voldoet.\n",
+            () -> List.of(npNum("111222333"), npNum("192837465"), npNum("12")),
+            Map.of(), ExecModelDifferentialTest::geldig3),   // [false, true, true]
     };
     static final Object[] PHASE_ELFPROEF_EXPECTED = {
         vals(true, false, false), vals(true, false, false), vals(true, false, false), vals(true, false, true),
+        vals(false, true, true),
     };
     @Test void phase_ELFPROEF_predicates_are_spec_correct() {
         for (int i = 0; i < PHASE_ELFPROEF.length; i++) {

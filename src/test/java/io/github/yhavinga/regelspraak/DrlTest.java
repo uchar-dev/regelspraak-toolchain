@@ -1574,6 +1574,47 @@ class DrlTest {
                 () -> "de positieve elfproef moet een kale rsElfproef blijven:\n" + drl);
     }
 
+    @Test void vragende_negatie_elfproef_recovert_de_geabsorbeerde_niet() {
+        // §8.1 Tabel 16 vragende negated form "indien X niet aan de elfproef voldoet": the leading "niet" is greedily
+        // absorbed into the operand kaleNaam (NIET is a kaleNaamWoord), so op.NIET() is null. The resolver recovers it
+        // — possessief resolves the bare attribuut but keeps the full bron, and elfOperand re-derives negatie from the
+        // trailing "niet". Lowers to !rsElfproef / !rsNumeriekMetExact, just like the stellende form.
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de bsn Tekst;
+                is verdacht kenmerk (bijvoeglijk);
+                is ongeldig kenmerk (bijvoeglijk);
+            Regel A
+                geldig altijd
+                    Een Persoon is verdacht indien zijn bsn niet aan de elfproef voldoet.
+            Regel B
+                geldig altijd
+                    Een Persoon is ongeldig indien zijn bsn niet numeriek is met exact 9 cijfers.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "de vragende NIET-vormen moeten parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("!rsElfproef(bsn)"), () -> "de vragende elfproef-negatie moet !rsElfproef zijn:\n" + drl);
+        assertTrue(drl.contains("!rsNumeriekMetExact(bsn, 9)"), () -> "de vragende numeriek-negatie moet !rsNumeriekMetExact zijn:\n" + drl);
+        assertFalse(drl.contains("/* TODO voorwaarde"), () -> "geen van beide mag een marker zijn:\n" + drl);
+    }
+
+    @Test void vragende_elfproef_negatie_eerbiedigt_verbatim_attribuut_op_niet() {
+        // Verbatim-first guard: an attribuut literally named "... niet" must bind itself (positive), not be de-negated.
+        // "zijn saldo niet aan de elfproef voldoet" with an attribuut "saldo niet" -> a bare rsElfproef on saldoNiet.
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de saldo niet Tekst;
+                is verdacht kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Persoon is verdacht indien zijn saldo niet aan de elfproef voldoet.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rsElfproef(saldoNiet)") && !drl.contains("!rsElfproef"),
+                () -> "een attribuut 'saldo niet' moet verbatim (positief) binden, niet ge-de-negeerd worden:\n" + drl);
+    }
+
     @Test void is_niet_een_zelfstandig_kenmerk_lowert_naar_false() {
         // §8.1.8.3 Tabel 16: the zelfstandig kenmerkcheck NEGATION stellende form "is niet een <k>". The "een"
         // (a separate token) used to break the parse — "niet" lexed into the kaleNaam but "een" could not follow it.

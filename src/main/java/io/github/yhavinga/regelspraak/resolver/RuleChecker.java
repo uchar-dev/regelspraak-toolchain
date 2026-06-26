@@ -978,6 +978,23 @@ final class RuleChecker {
         try { return Integer.parseInt(num.getText()); } catch (NumberFormatException e) { return 0; }
     }
 
+    /** The (operand, negatie) of an elfproef / numeriek-met-exact predicate. The §8.1 Tabel-16 vragende negated form
+     *  "&lt;X&gt; niet aan de elfproef voldoet" / "&lt;X&gt; niet numeriek is met exact N cijfers" has its leading
+     *  "niet" greedily absorbed into the operand's kaleNaam (NIET is a kaleNaamWoord), so op.NIET() is null; recover
+     *  it by stripping the absorbed " niet" off the operand (verbatim-first via {@link #stripAbsorbedNiet}). The
+     *  stellende form carries an explicit NIET token, so {@code expliciet} short-circuits the strip. */
+    private record ElfOperand(Expr operand, boolean negatie) {}
+    private static ElfOperand elfOperand(boolean expliciet, Expr lhs) {
+        // The stellende form carries an explicit NIET token; otherwise recover a vragende negator the greedy parse
+        // absorbed into the operand. ExpressieBouwer.possessief resolves "zijn <attr> niet" to the BARE attribuut but
+        // keeps the full bron, so the absorbed "niet" survives as the bron's trailing word. Guard against an attribuut
+        // literally named "… niet" (its attribuut() ends in "niet" too — verbatim-first, so it must NOT be negated).
+        boolean absorbed = lhs instanceof Expr.AttribuutRef a && a.bron() != null
+                && a.bron().stripTrailing().toLowerCase().endsWith(" niet")
+                && !a.attribuut().toLowerCase().endsWith("niet");
+        return new ElfOperand(lhs, expliciet || absorbed);
+    }
+
     private Conditie uitToplevel(Expr lhs, ToplevelOperatorContext op, String bron) {
         return keurGeheelPeriode(uitToplevelKaal(lhs, op, bron), geheelPeriode(op.gehelePeriodevergelijking()), bron);
     }
@@ -989,10 +1006,15 @@ final class RuleChecker {
                     lhs, bouwer.bouw(op.expressie()), periode, bron);
         if (op.LEEG() != null)   return new Conditie.Predicaat(Conditie.Predicaatsoort.LEEG, lhs, periode, bron);
         if (op.GEVULD() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.GEVULD, lhs, periode, bron);
-        if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, op.NIET() != null, periode, bron);
-        if (op.NUMERIEK_IS_MET_EXACT() != null || op.NUMERIEK_ZIJN_MET_EXACT() != null)
-            return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, op.NIET() != null,
+        if (op.AAN_DE_ELFPROEF() != null) {
+            ElfOperand e = elfOperand(op.NIET() != null, lhs);   // recover an absorbed vragende "niet"
+            return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, e.operand(), e.negatie(), periode, bron);
+        }
+        if (op.NUMERIEK_IS_MET_EXACT() != null || op.NUMERIEK_ZIJN_MET_EXACT() != null) {
+            ElfOperand e = elfOperand(op.NIET() != null, lhs);
+            return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, e.operand(), e.negatie(),
                     aantalCijfers(op.NUMBER()), periode, bron);
+        }
         Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null,
                 op.HEEFT() != null || op.HEBBEN() != null, periode, bron); // EEN? kaleNaam (is|heeft): §8.1.8
         return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
@@ -1054,10 +1076,15 @@ final class RuleChecker {
                     lhs, bouwer.bouw(op.expressie()), periode, bron);
         if (op.LEEG() != null)   return new Conditie.Predicaat(Conditie.Predicaatsoort.LEEG, lhs, periode, bron);
         if (op.GEVULD() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.GEVULD, lhs, periode, bron);
-        if (op.AAN_DE_ELFPROEF() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, lhs, op.NIET() != null, periode, bron);
-        if (op.NUMERIEK_MET_EXACT() != null)
-            return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, lhs, op.NIET() != null,
+        if (op.AAN_DE_ELFPROEF() != null) {
+            ElfOperand e = elfOperand(op.NIET() != null, lhs);   // recover an absorbed vragende "niet"
+            return new Conditie.Predicaat(Conditie.Predicaatsoort.ELFPROEF, e.operand(), e.negatie(), periode, bron);
+        }
+        if (op.NUMERIEK_MET_EXACT() != null) {
+            ElfOperand e = elfOperand(op.NIET() != null, lhs);
+            return new Conditie.Predicaat(Conditie.Predicaatsoort.NUMERIEK_MET_EXACT, e.operand(), e.negatie(),
                     aantalCijfers(op.NUMBER()), periode, bron);
+        }
         // §8.1.8.3 "is niet een <k>": the explicit NIET EEN form (no AAN_DE_ELFPROEF / NUMERIEK_MET_EXACT keyword
         // follows) is the NEGATED zelfstandig kenmerkcheck — bind the positive EEN-form (is -> ZELFSTANDIG), then flip.
         if (op.NIET() != null && op.EEN() != null) {
