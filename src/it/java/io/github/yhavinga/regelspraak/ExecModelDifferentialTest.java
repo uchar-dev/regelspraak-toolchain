@@ -1493,6 +1493,29 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_C_PARAM_RHS_EXPECTED = { new BigDecimal(70), new BigDecimal(40), new BigDecimal(70) };
 
+    // ---- §13.4.13.4 the COMPOUND subselectie "die aan alle volgende voorwaarden voldoen: - … - …" — subject-FUL
+    //      bullets (the spec EBNF form) resolved against the ELEMENT, an ALLE compound AND-ed on the accumulate
+    //      source. DRL lowers it to `(leeftijd < 18) && (minderjarig == true)` (conditieInline already handles ALLE);
+    //      the exec filterSource ANDs each bullet as a successive .expr. SOM of prijs over passengers matching BOTH. ----
+    static final String COMPOUND_HDR =
+            "Objecttype de Vlucht\n    de totaalprijs Numeriek (geheel getal);\n"
+            + "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    de leeftijd Numeriek (geheel getal);\n    is minderjarig kenmerk (bijvoeglijk);\n" + AGG_FEIT;
+    static Passagier paxLM(Vlucht reis, int prijs, int leeftijd, boolean minderjarig) {
+        Passagier p = pas(reis, prijs); p.setLeeftijd(new BigDecimal(leeftijd)); p.setMinderjarig(minderjarig); return p;
+    }
+    static final Fixture[] PHASE_C_COMPOUND = {
+        new Fixture("SOM with a 2-bullet ALLE compound subselectie (leeftijd<18 && minderjarig)",
+            COMPOUND_HDR + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan alle volgende voorwaarden voldoen:\n        - zijn leeftijd is kleiner dan 18\n        - hij is minderjarig.\n",
+            () -> { Vlucht v = new Vlucht(); return List.of(v,
+                        paxLM(v, 30, 10, true),    // <18 AND minderjarig -> kept
+                        paxLM(v, 70, 20, true),    // leeftijd 20 -> excluded
+                        paxLM(v, 40, 15, false),   // not minderjarig -> excluded
+                        paxLM(v, 25, 12, true)); },// kept
+            Map.of(),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 30 + 25 = 55
+    };
+    static final Object[] PHASE_C_COMPOUND_EXPECTED = { new BigDecimal(55) };
+
     // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
     //      arithmetic tree whose leaf is an AANTAL/TOTAAL/MIN/MAX). Each embedded aggregation lowers to its own
     //      accumulate CE; the consequence combines the bound results + scalars + a (≤1) global. Facts: [Vlucht, pax...].
@@ -3272,6 +3295,23 @@ class ExecModelDifferentialTest {
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 11); }
     @Test void phase_C_param_rhs_subselectie_matches_drl_back_end() { runDifferential("Phase C param-RHS", PHASE_C_PARAM_RHS, 3); }
+    @Test void phase_C_compound_subselectie_matches_drl_back_end() { runDifferential("Phase C compound", PHASE_C_COMPOUND, 1); }
+    /** §13.4.13.4 the COMPOUND subselectie (ALLE of comparison + kenmerk bullets over the element), now FIRING in BOTH
+     *  back-ends (DRL `&&` source constraint; exec successive .expr). A closed-form filtered fold -> assert the ABSOLUTE
+     *  spec value (a shared "filter never applied -> sums all" bug would pass a pure differential). */
+    @Test void phase_C_compound_subselectie_is_spec_correct() {
+        for (int i = 0; i < PHASE_C_COMPOUND.length; i++) {
+            Fixture f = PHASE_C_COMPOUND[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_C_COMPOUND_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     /** §5.6 the spec's worked-example RHS "die kleiner zijn dan de volwassenleeftijd" — a comparison subselectie whose RHS
      *  is a Parameter-global, now FIRING in BOTH back-ends (DRL reads the global free name in the accumulate source; the
      *  exec binds it on the source pattern). A closed-form filtered fold -> assert the ABSOLUTE spec value AND parity. */

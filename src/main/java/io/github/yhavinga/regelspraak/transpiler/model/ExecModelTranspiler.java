@@ -495,6 +495,36 @@ public final class ExecModelTranspiler {
      *  (symmetric with the DRL marker — DRL also needs the global declared). */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private PatternDSL.PatternDef filterSource(PatternDSL.PatternDef src, Conditie filter, Objecttype elem) {
+        // §13.4.13.4 a COMPOUND subselectie on the element ("die aan alle volgende voorwaarden voldoen: …"): ALLE/DE
+        // ANDs each bullet onto the source pattern as a successive .expr (mirroring DRL's `&&`); a counting quantifier
+        // (geen/ten-minste/…) folds the bullets into ONE count-vs-N Predicate1. A bullet that cannot be lowered (null)
+        // skips the WHOLE compound — never a partial filter (symmetric with DRL markering an un-lowerable child).
+        if (filter instanceof Conditie.Samengesteld s) {
+            if (s.kwantor() == Conditie.Kwantor.ALLE || s.kwantor() == Conditie.Kwantor.DE) {
+                for (Conditie deel : s.onderdelen()) {
+                    src = filterSource(src, deel, elem);   // recurse: each bullet is a leaf OR a param-global comparison
+                    if (src == null) return null;
+                }
+                return src;
+            }
+            // §13.4.14.4 counting quantifier: each bullet must be a fact-only Predicate1 (a per-element source-global
+            // binding is impossible inside the count fold) -> a param-global bullet skips the whole compound.
+            List<Predicate1<Object>> kinderen = new ArrayList<>();
+            for (Conditie deel : s.onderdelen()) {
+                Predicate1<Object> lp = leafPredicate(deel, elem);
+                if (lp == null) return null;
+                kinderen.add(lp);
+            }
+            final Conditie.Kwantor kw = s.kwantor(); final int n = s.drempel();
+            Predicate1<Object> combined = e -> {
+                int t = 0; for (Predicate1<Object> p : kinderen) if (p.test(e)) t++;
+                return switch (kw) {
+                    case GEEN -> t == 0; case TEN_MINSTE -> t >= n; case TEN_HOOGSTE -> t <= n; case PRECIES -> t == n;
+                    default -> false;   // ALLE/DE handled above
+                };
+            };
+            return src.expr(nextId("filter"), (Predicate1) combined);
+        }
         if (filter instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
                 && la.type().isGetalachtig() && isNumeriekOp(v.op()) && v.rechts() instanceof Expr.ParameterRef pr) {   // §4.8 numeriek OR percentage
             if (elem == null || !elem.heeftLid(la.attribuut())) return null;

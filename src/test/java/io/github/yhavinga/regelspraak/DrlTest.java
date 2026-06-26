@@ -1451,6 +1451,35 @@ class DrlTest {
                 () -> "een subject-attribuut subselectie-RHS moet een eerlijke marker blijven:\n" + drl);
     }
 
+    @Test void compound_subselectie_lowert_naar_gefilterde_accumulate() {
+        // §13.4.13.4 the COMPOUND subselectie "die aan alle volgende voorwaarden voldoen: - … - …" (subject-FUL bullets,
+        // the spec EBNF form) — each bullet resolves against the ELEMENT (the RuleChecker callback), an ALLE compound
+        // AND-ed on the accumulate source. Was an honest marker; now lowers (DRL conditieInline already handles ALLE).
+        String src = """
+            Objecttype de Vlucht
+                het totaal Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal);
+                is minderjarig kenmerk (bijvoeglijk);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Het totaal van een Vlucht moet berekend worden als de som van de prijs van alle passagiers van de reis die aan alle volgende voorwaarden voldoen:
+                    - zijn leeftijd is kleiner dan 18
+                    - hij is minderjarig.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "de compound subselectie moet parseren+resolven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("/* TODO aggregatie"), () -> "de compound subselectie mag geen marker meer zijn:\n" + drl);
+        assertTrue(drl.contains("leeftijd < new java.math.BigDecimal(\"18\")") && drl.contains("minderjarig == true"),
+                () -> "de compound filter (leeftijd<18 && minderjarig) moet op de accumulate-bron staan:\n" + drl);
+    }
+
     @Test void telling_concatenatie_met_onoplosbare_operand_blijft_marker() {
         // A union with an operand that has NO resolvable kenmerk filter (here a bare set) cannot be
         // lowered faithfully — it stays an honest marker, never a count of only the first operand.

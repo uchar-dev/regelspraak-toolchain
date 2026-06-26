@@ -44,6 +44,15 @@ final class ExpressieBouwer {
     void setSubject(Objecttype subject) { this.huidigSubject = subject; }
     Objecttype subject() { return huidigSubject; }
 
+    /** §13.4.13.4 resolves a COMPOUND subselectie predicaat ("die aan alle volgende voorwaarden voldoen: …")
+     *  against a given AGGREGATED ELEMENT type, producing a {@link Conditie.Samengesteld} whose bullets are bound
+     *  to that element (not the rule subject). Implemented by {@link RuleChecker} (which owns the bullet machinery +
+     *  the bouwer subject); null until set, so the compound stays an honest marker if unwired. */
+    @FunctionalInterface
+    interface SamengesteldeFilterResolver { Conditie resolve(SamengesteldPredicaatContext sp, Objecttype elem); }
+    private SamengesteldeFilterResolver samengesteldeFilter;
+    void setSamengesteldeFilter(SamengesteldeFilterResolver r) { this.samengesteldeFilter = r; }
+
     /** §11 capture the "Daarbij geldt: [lidwoord] X is &lt;expressie&gt;" variabelendeel of the current rule as a
      *  per-rule map of resolved definitions, INLINED at each {@link Expr.VariabeleRef} site by {@link #naamRef}.
      *  CLEARS first (so a previous rule's variables never leak — call it for EVERY rule, even one with no
@@ -692,6 +701,12 @@ final class ExpressieBouwer {
         if (operanden.size() == 1) {
             PredicaatContext p = vindDie(operanden.get(0));
             if (p == null) return null;
+            // §13.4.13.4 the COMPOUND subselectie "die aan alle volgende voorwaarden voldoen: …" — resolve its bullets
+            // against the ELEMENT (via the RuleChecker callback) into a Conditie.Samengesteld on the source pattern.
+            if (p.samengesteldPredicaat() != null) {
+                Conditie c = samengesteldeFilter != null ? samengesteldeFilter.resolve(p.samengesteldPredicaat(), elem) : null;
+                return c != null ? c : new Conditie.Onopgelost(src(p));
+            }
             Conditie filter = elementKenmerkFilter(p, elem);
             // §5.6 getalpredicaat "die <op> <expr>" (e.g. "die kleiner zijn dan 18"): a comparison of the AGGREGATED
             // attribute (the LHS the operator folds) -> a Conditie.Vergelijking the accumulate source pattern constrains.

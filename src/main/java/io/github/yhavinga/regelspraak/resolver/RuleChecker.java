@@ -48,6 +48,7 @@ final class RuleChecker {
     RuleChecker(RegelSpraakModel model) {
         this.model = model;
         this.bouwer = new ExpressieBouwer(model);
+        this.bouwer.setSamengesteldeFilter(this::samengesteldeElementFilter);   // §13.4.13.4 compound subselectie
     }
 
     void check(RegelSpraakDocumentContext doc) {
@@ -880,6 +881,37 @@ final class RuleChecker {
      *  or 0 when the quantifier carries no count (alle / geen / de). */
     private int drempelVan(VoorwaardeKwantificatieContext k) {
         return k == null ? 0 : telwoordWaarde(k.telwoord());
+    }
+
+    /** §5.6/§13.4.13.4 a COMPOUND subselectie ("… die aan alle volgende voorwaarden voldoen: - … - …") resolved
+     *  against the AGGREGATED ELEMENT type: each bullet binds to the element (not the rule subject), so the resulting
+     *  {@link Conditie.Samengesteld} is a filter on the accumulate SOURCE pattern. The bouwer subject is saved and
+     *  restored around the bullet walk — aggregatieFilter runs DURING {@code bouwer.bouw}, nested inside the outer rule
+     *  resolution, so the rule subject must be put back (in a finally, even on a bullet-resolution throw). */
+    private Conditie samengesteldeElementFilter(SamengesteldPredicaatContext sp, Objecttype elem) {
+        if (sp == null || elem == null || sp.samengesteldeVoorwaardeOnderdeel() == null) return null;
+        Objecttype vorig = bouwer.subject();          // SAVE the outer rule subject
+        try {
+            bouwer.setSubject(elem);                   // "zijn X" / "hij" in the bullets resolve against the element
+            List<Conditie> onderdelen = new ArrayList<>();
+            for (GenesteVoorwaardeContext g : sp.samengesteldeVoorwaardeOnderdeel().genesteVoorwaarde())
+                onderdelen.add(bouwGenest(g));         // the SAME bullet machinery as a voorwaarde compound
+            return new Conditie.Samengesteld(kwantorVanKwantificatie(sp.kwantificatie()),
+                    sp.kwantificatie() == null ? 0 : telwoordWaarde(sp.kwantificatie().telwoord()), onderdelen, src(sp));
+        } finally {
+            bouwer.setSubject(vorig);                   // RESTORE
+        }
+    }
+
+    /** §13.4.14.5 kwantificatie (used by the compound subselectie) -> Kwantor. Distinct from voorwaardeKwantificatie:
+     *  it admits 'al' (AL, treated as ALLE) and ALLE has no "( van de )?" tail. A bare DE quantifies the whole set. */
+    private static Conditie.Kwantor kwantorVanKwantificatie(KwantificatieContext k) {
+        if (k == null || k.ALLE() != null || k.AL() != null) return Conditie.Kwantor.ALLE;
+        if (k.GEEN_VAN_DE() != null) return Conditie.Kwantor.GEEN;
+        if (k.TEN_MINSTE() != null)  return Conditie.Kwantor.TEN_MINSTE;
+        if (k.TEN_HOOGSTE() != null) return Conditie.Kwantor.TEN_HOOGSTE;
+        if (k.PRECIES() != null)     return Conditie.Kwantor.PRECIES;
+        return Conditie.Kwantor.DE;
     }
 
     /** A telwoord (§13.4.14.4): a written één/twee/drie/vier or a NUMBER, else 0 (no/unparseable count). */
