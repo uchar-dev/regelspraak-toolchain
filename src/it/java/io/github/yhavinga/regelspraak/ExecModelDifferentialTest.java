@@ -2853,7 +2853,9 @@ class ExecModelDifferentialTest {
     @Test void phase_dagsoort_duur_matches_drl_back_end()         { runDifferential("Phase DAGSOORT DUUR", PHASE_DAGSOORT_DUUR, 5); }
     @Test void phase_dagsoort_tijdsduur_matches_drl_back_end()    { runDifferential("Phase DAGSOORT TDS", PHASE_DAGSOORT_TDS, 6); }
     @Test void phase_dagsoort_cross_en_datearith_matches_drl_back_end() { runDifferential("Phase DAGSOORT X", PHASE_DAGSOORT_X, 5); }
-    @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
+    // Phase E carries ONE principled skip: ">1 verdeling op hetzelfde doel" is agenda-order-dependent, so the model
+    // deliberately does not lower it (a §differential-masked-skip the cap now pins at exactly 1).
+    @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9, 1); }
     @Test void phase_E_verdeling_fouten_match_drl_back_end()       { runFoutDifferential("Phase E fout", PHASE_E_FOUT, 2); }
 
     // ---- Phase D: §9.5/§13.4.8 consistentieregel — the VIOLATION inserts an Inconsistentie. The observable is the
@@ -3917,7 +3919,8 @@ class ExecModelDifferentialTest {
             o -> "totaal=" + ((Pot) o).getTotaal()),
     };
 
-    private void runDifferential(String label, Fixture[] fixtures, int minDiffed) {
+    private void runDifferential(String label, Fixture[] fixtures, int minDiffed) { runDifferential(label, fixtures, minDiffed, 0); }
+    private void runDifferential(String label, Fixture[] fixtures, int minDiffed, int expectedSkipped) {
         int diffed = 0, skipped = 0;
         StringBuilder skips = new StringBuilder();
         for (Fixture f : fixtures) {
@@ -3939,11 +3942,23 @@ class ExecModelDifferentialTest {
         // the phase must actually exercise the model path (not silently skip everything)
         final int agreed = diffed;
         assertTrue(agreed >= minDiffed, () -> "verwacht >=" + minDiffed + " gediffte " + label + " fixtures, kreeg " + agreed + skips);
+        capSkipped(label, expectedSkipped, skipped, skips);
         System.out.println("[differential] " + label + ": " + agreed + " agreed, " + skipped + " skipped" + skips);
     }
 
+    /** The §differential-masks-shared-bugs SKIPPED-CAP: a model-overgeslagen fixture is SKIPPED (not compared), so a
+     *  regression that makes an ALREADY-MIGRATED path start skipping would otherwise be invisible (the count is only
+     *  printed). Pin the EXACT number of intentional skips per phase: any NEW skip (a DRL-fires/model-skips gap on a
+     *  migrated path) trips this, and a skip that newly disappears forces a conscious decrement — like a golden count. */
+    private static void capSkipped(String label, int expected, int actual, StringBuilder skips) {
+        assertEquals(expected, actual, () -> label + ": verwacht PRECIES " + expected + " overgeslagen (model) fixture(s), kreeg "
+                + actual + " — een NIEUW overgeslagen pad (DRL vuurt, model skipt) is een regressie; pas het verwachte aantal "
+                + "bewust aan als de wijziging gewenst is." + skips);
+    }
+
     /** As {@link #runDifferential} but the observable is the SET of inserted Inconsistentie facts (Phase D). */
-    private void runFoutDifferential(String label, FoutFixture[] fixtures, int minDiffed) {
+    private void runFoutDifferential(String label, FoutFixture[] fixtures, int minDiffed) { runFoutDifferential(label, fixtures, minDiffed, 0); }
+    private void runFoutDifferential(String label, FoutFixture[] fixtures, int minDiffed, int expectedSkipped) {
         int diffed = 0, skipped = 0;
         StringBuilder skips = new StringBuilder();
         for (FoutFixture f : fixtures) {
@@ -3962,11 +3977,13 @@ class ExecModelDifferentialTest {
         }
         final int agreed = diffed;
         assertTrue(agreed >= minDiffed, () -> "verwacht >=" + minDiffed + " gediffte " + label + " fixtures, kreeg " + agreed + skips);
+        capSkipped(label, expectedSkipped, skipped, skips);
         System.out.println("[differential] " + label + ": " + agreed + " agreed, " + skipped + " skipped" + skips);
     }
 
     /** As {@link #runDifferential} but the observable is the SET of NEW objects an objectcreatie inserted (Phase G). */
-    private void runObjDifferential(String label, ObjFixture[] fixtures, int minDiffed) {
+    private void runObjDifferential(String label, ObjFixture[] fixtures, int minDiffed) { runObjDifferential(label, fixtures, minDiffed, 0); }
+    private void runObjDifferential(String label, ObjFixture[] fixtures, int minDiffed, int expectedSkipped) {
         int diffed = 0, skipped = 0;
         StringBuilder skips = new StringBuilder();
         for (ObjFixture f : fixtures) {
@@ -3985,6 +4002,7 @@ class ExecModelDifferentialTest {
         }
         final int agreed = diffed;
         assertTrue(agreed >= minDiffed, () -> "verwacht >=" + minDiffed + " gediffte " + label + " fixtures, kreeg " + agreed + skips);
+        capSkipped(label, expectedSkipped, skipped, skips);
         System.out.println("[differential] " + label + ": " + agreed + " agreed, " + skipped + " skipped" + skips);
     }
 
