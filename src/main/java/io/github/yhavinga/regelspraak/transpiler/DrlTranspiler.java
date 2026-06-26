@@ -839,6 +839,15 @@ public final class DrlTranspiler {
             String tl = temporeleWaarde(r.waarde(), subject, a.objecttype().attribuutGranulariteit.get(a.attribuut()), a.type());
             rule.dan("    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( "
                     + (tl != null ? tl : todo("temporele toekenning", r.waarde().bron())) + " )\n    }\n");
+        } else if (r.doel() instanceof Expr.AttribuutRef a && a.navigatieRol() == null && a.objecttype() != null
+                && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())
+                && a.objecttype().attribuutTijdlijnAantal.containsKey(a.attribuut())) {
+            // §13.3.6.7 a MULTI-PERIOD temporal doel ("voor elke N maanden") is a List<Segment> timeline whose WRITE
+            // producer semantics are under-specified. MARKER it honestly — never fall through to a SCALAR setter on a
+            // List<Segment> field (a silent type-mismatched write the bare value branch below would otherwise emit).
+            // Mirrors the exec multi-period doel skip.
+            rule.dan("    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( "
+                    + todo("meer-periodieke temporele toekenning (§13.3.6.7)", r.waarde().bron()) + " )\n    }\n");
         } else if (valueStr != null && r.doel() instanceof Expr.AttribuutRef a) {
             // restate the value in the target's unit (§4); §6.1.2 forbids AUTO-rounding —
             // if the result has too many decimals the author must add an explicit afronding.

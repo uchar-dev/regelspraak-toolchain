@@ -176,6 +176,13 @@ public final class ExecModelTranspiler {
         }
         Class<?> factClass = factClass(doel.objecttype());
         if (factClass == null) return skip("regel (geen fact-class " + doel.objecttype().naam + "): " + r.naam());
+        // §13.3.6.7 a MULTI-PERIOD temporal doel ("voor elke N maanden") is a List<Segment> timeline (gran set AND in
+        // attribuutTijdlijnAantal) whose WRITE producer semantics are under-specified. Skip it honestly BEFORE the
+        // doelSetter — never fall to the scalar value path below, which would silently emit a scalar setter on a
+        // List<Segment> field. Mirrors the DRL multi-period marker.
+        if (doel.objecttype().attribuutGranulariteit.get(doel.attribuut()) != null
+                && doel.objecttype().attribuutTijdlijnAantal.containsKey(doel.attribuut()))
+            return skip("regel (meer-periodieke temporele doel — §13.3.6.7, geen producent): " + r.naam());
 
         String doelProp = doel.attribuut();
         BiConsumer<Object, Object> doelSetter = Accessors.setter(factClass, doelProp);   // typed write (Phase-H codegen)

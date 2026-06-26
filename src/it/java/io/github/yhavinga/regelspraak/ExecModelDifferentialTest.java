@@ -3328,6 +3328,29 @@ class ExecModelDifferentialTest {
     @Test void phase_F4b_mixed_static_guard_matches_drl_back_end() { runDifferential("Phase F4b", PHASE_F4B, 4); }
     @Test void phase_F4_compound_gedurende_matches_drl_back_end()  { runDifferential("Phase F4", PHASE_F4, 6); }
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 5); }
+    /** §13.3.6.7 a WRITE to a MULTI-PERIOD temporal doel ("voor elke N maanden") is under-specified — both back-ends
+     *  must MARKER it, NEVER silently emit a scalar setter on a List<Segment> field (the temporal AUDIT #7 silent-write
+     *  bug: a scalar 5 was being written to a multi-period List timeline in both back-ends with no marker). */
+    @Test void multi_period_doel_write_is_honest_marker_in_both() {
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de bedrag Bedrag voor elke 2 maanden startend op 1-1-2024;
+            Regel R
+                geldig altijd
+                    De bedrag van een Passagier moet gesteld worden op 5.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("/* TODO meer-periodieke"),
+                () -> "DRL moet een meer-periodieke doel-write markeren:\n" + drl);
+        assertFalse(drl.contains("setBedrag( new java.math.BigDecimal"),
+                () -> "DRL mag GEEN scalar setBedrag(5) op een meer-periodiek List<Segment>-veld emitteren:\n" + drl);
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().stream().anyMatch(s -> s.contains("meer-periodieke")),
+                () -> "de exec moet een meer-periodieke doel-write overslaan, kreeg: " + em.overgeslagen());
+    }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 13); }
     @Test void phase_82_gehele_periode_matches_drl_back_end()      { runDifferential("Phase 82", PHASE_82, 10); }
