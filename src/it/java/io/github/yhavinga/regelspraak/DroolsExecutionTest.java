@@ -6098,4 +6098,120 @@ class DroolsExecutionTest {
         assertFalse(n25.isLaat(), "25 november is geen kerstdag (foute maand)");
         assertFalse(leeg.isLaat(), "een leeg datum is nooit een kerstdag (§5.15)");
     }
+
+    @Test void datum_plus_min_dagsoort_loopt_dag_voor_dag_door_de_kerstdagen(){
+        // §6.11 "datum ± N <dagsoort>": ABSOLUTE spec values. "5 werkdagen na X = de 5e werkdag NA X; X telt niet
+        // mee; het resultaat is altijd een dagsoort-dag" (spec L2836), EXCEPT 0/leeg -> X ongewijzigd. Here the
+        // dagsoort is kerstdag (25/26 dec). Both plus (vooruit) and min (achteruit) walk the calendar.
+        String def = """
+            Dagsoort de kerstdag (mv: kerstdagen)
+            Regel Kerstdag
+                geldig altijd
+                    Een dag is een kerstdag
+                    indien de dag aan alle volgende voorwaarden voldoet:
+                    - de maand uit (de dag) is gelijk aan 12
+                    - de dag voldoet aan ten minste één van de volgende voorwaarden:
+                        .. de dag uit (de dag) is gelijk aan 25
+                        .. de dag uit (de dag) is gelijk aan 26.
+            Objecttype de Vlucht
+                de uitstelduur Numeriek (geheel getal) met eenheid kerstdagen;
+                de vluchtdatum Datum in dagen;
+                de vroegsteVertrek Datum in dagen;
+            """;
+        java.util.function.BiFunction<String, java.util.function.Consumer<Vlucht>, LocalDate> run = (regel, init) -> {
+            String drl = DrlTranspiler.transpile(Resolver.resolve(def + regel));
+            KieSession s = build(drl).newKieSession();
+            Vlucht v = new Vlucht(); init.accept(v);
+            s.insert(v); s.fireAllRules(); s.dispose();
+            return v.getVroegsteVertrek();
+        };
+        String plus = """
+            Regel Bereken
+                geldig altijd
+                    De vroegsteVertrek van een Vlucht moet berekend worden als de vluchtdatum van de Vlucht plus de uitstelduur van de Vlucht.
+            """;
+        String min = """
+            Regel Bereken
+                geldig altijd
+                    De vroegsteVertrek van een Vlucht moet berekend worden als de vluchtdatum van de Vlucht min de uitstelduur van de Vlucht.
+            """;
+        // PLUS: 20-12 + 2 kerstdagen -> 25-12 (1e), 26-12 (2e) = 26-12.
+        assertEquals(LocalDate.of(2024, 12, 26),
+                run.apply(plus, v -> { v.setVluchtdatum(LocalDate.of(2024, 12, 20)); v.setUitstelduur(new BigDecimal(2)); }),
+                "20-12 + 2 kerstdagen = 26-12");
+        // X NEVER counts: 25-12 (zelf een kerstdag) + 1 kerstdag -> de volgende kerstdag = 26-12.
+        assertEquals(LocalDate.of(2024, 12, 26),
+                run.apply(plus, v -> { v.setVluchtdatum(LocalDate.of(2024, 12, 25)); v.setUitstelduur(new BigDecimal(1)); }),
+                "25-12 + 1 kerstdag = 26-12 (X telt niet mee)");
+        // Year rollover: 26-12-2024 + 1 kerstdag -> 25-12-2025.
+        assertEquals(LocalDate.of(2025, 12, 25),
+                run.apply(plus, v -> { v.setVluchtdatum(LocalDate.of(2024, 12, 26)); v.setUitstelduur(new BigDecimal(1)); }),
+                "26-12-2024 + 1 kerstdag = 25-12-2025");
+        // 0-case: returns X UNCHANGED even though 20-12 is not a kerstdag (the 0-case wins over "always a werkdag").
+        assertEquals(LocalDate.of(2024, 12, 20),
+                run.apply(plus, v -> { v.setVluchtdatum(LocalDate.of(2024, 12, 20)); v.setUitstelduur(new BigDecimal(0)); }),
+                "20-12 + 0 kerstdagen = 20-12 (ongewijzigd)");
+        // MIN (backward): 27-12-2024 - 1 kerstdag -> 26-12-2024.
+        assertEquals(LocalDate.of(2024, 12, 26),
+                run.apply(min, v -> { v.setVluchtdatum(LocalDate.of(2024, 12, 27)); v.setUitstelduur(new BigDecimal(1)); }),
+                "27-12 - 1 kerstdag = 26-12");
+        // MIN over the year boundary: 25-12-2024 - 1 kerstdag -> 26-12-2023.
+        assertEquals(LocalDate.of(2023, 12, 26),
+                run.apply(min, v -> { v.setVluchtdatum(LocalDate.of(2024, 12, 25)); v.setUitstelduur(new BigDecimal(1)); }),
+                "25-12-2024 - 1 kerstdag = 26-12-2023");
+        // leeg datum -> leeg.
+        assertNull(run.apply(plus, v -> v.setUitstelduur(new BigDecimal(3))),
+                "leeg datum plus N kerstdagen blijft leeg");
+    }
+
+    @Test void tijdsduur_in_dagsoort_telt_de_kerstdagen_in_het_interval(){
+        // §6.10 "de (absolute) tijdsduur van A tot B in <dagsoort>": ABSOLUTE spec values. Count the §9.8 kerstdag
+        // days in the half-open interval (A, B] (the §6.11-consistent "A telt niet mee" reading); signed; absolute
+        // when asked; a leeg operand -> leeg (§6.10 Tabel 14). kerstdag = 25/26 december.
+        String def = """
+            Dagsoort de kerstdag (mv: kerstdagen)
+            Regel Kerstdag
+                geldig altijd
+                    Een dag is een kerstdag
+                    indien de dag aan alle volgende voorwaarden voldoet:
+                    - de maand uit (de dag) is gelijk aan 12
+                    - de dag voldoet aan ten minste één van de volgende voorwaarden:
+                        .. de dag uit (de dag) is gelijk aan 25
+                        .. de dag uit (de dag) is gelijk aan 26.
+            Objecttype de Vlucht
+                de vluchtdatum Datum in dagen;
+                de daadwerkelijk vertrek Datum in dagen;
+                de totaalprijs Numeriek (geheel getal) met eenheid kerstdagen;
+            """;
+        java.util.function.BiFunction<String, java.util.function.Consumer<Vlucht>, BigDecimal> run = (regel, init) -> {
+            KieSession s = build(DrlTranspiler.transpile(Resolver.resolve(def + regel))).newKieSession();
+            Vlucht v = new Vlucht(); init.accept(v);
+            s.insert(v); s.fireAllRules(); s.dispose();
+            return v.getTotaalprijs();
+        };
+        String tds = """
+            Regel Tel
+                geldig altijd
+                    De totaalprijs van een Vlucht moet berekend worden als de tijdsduur van de vluchtdatum van de Vlucht tot de daadwerkelijk vertrek van de Vlucht in hele kerstdagen.
+            """;
+        String absTds = tds.replace("de tijdsduur van", "de absolute tijdsduur van");
+        // 20-12 .. 31-12: kerstdagen 25 en 26 vallen in (20, 31] -> 2.
+        assertEquals(0, new BigDecimal(2).compareTo(run.apply(tds, v -> { v.setVluchtdatum(LocalDate.of(2024, 12, 20)); v.setDaadwerkelijkVertrek(LocalDate.of(2024, 12, 31)); })),
+                "20-12..31-12 telt 2 kerstdagen");
+        // (van, tot]: 25-12 .. 26-12 -> alleen 26 telt (start exclusief) -> 1.
+        assertEquals(0, new BigDecimal(1).compareTo(run.apply(tds, v -> { v.setVluchtdatum(LocalDate.of(2024, 12, 25)); v.setDaadwerkelijkVertrek(LocalDate.of(2024, 12, 26)); })),
+                "25-12..26-12 telt 1 (start telt niet mee)");
+        // Omgekeerd (tot eerder dan van) -> negatief.
+        assertEquals(0, new BigDecimal(-2).compareTo(run.apply(tds, v -> { v.setVluchtdatum(LocalDate.of(2024, 12, 31)); v.setDaadwerkelijkVertrek(LocalDate.of(2024, 12, 20)); })),
+                "omgekeerd interval -> -2");
+        // Absolute variant van hetzelfde omgekeerde interval -> +2.
+        assertEquals(0, new BigDecimal(2).compareTo(run.apply(absTds, v -> { v.setVluchtdatum(LocalDate.of(2024, 12, 31)); v.setDaadwerkelijkVertrek(LocalDate.of(2024, 12, 20)); })),
+                "absolute tijdsduur -> 2");
+        // Leeg interval -> 0.
+        assertEquals(0, BigDecimal.ZERO.compareTo(run.apply(tds, v -> { v.setVluchtdatum(LocalDate.of(2024, 12, 20)); v.setDaadwerkelijkVertrek(LocalDate.of(2024, 12, 20)); })),
+                "leeg interval -> 0");
+        // Leeg operand -> leeg.
+        assertNull(run.apply(tds, v -> v.setVluchtdatum(LocalDate.of(2024, 12, 20))),
+                "een leeg operand maakt de tijdsduur leeg");
+    }
 }

@@ -276,6 +276,78 @@ class ExecModelDifferentialTest {
         dagsoortFix("§5.15 dagsoortcontrole op een leeg datum -> onwaar", null),
     };
 
+    // ---- §6.11 datum ± N <dagsoort> ("plus de uitstelduur" in kerstdagen): step day-by-day counting the §9.8
+    //      kerstdag days. Both back-ends share the loop (DRL rsDatumPlus_Kerstdag <-> RegelSpraakRuntime.
+    //      rsDatumPlusDagsoort). X never counts; 0/leeg -> X unchanged; leeg datum -> leeg. ----
+    static final String DAGSOORT_DUUR_SRC =
+            """
+            Dagsoort de kerstdag (mv: kerstdagen)
+            Regel Kerstdag
+                geldig altijd
+                    Een dag is een kerstdag
+                    indien de dag aan alle volgende voorwaarden voldoet:
+                    - de maand uit (de dag) is gelijk aan 12
+                    - de dag voldoet aan ten minste één van de volgende voorwaarden:
+                        .. de dag uit (de dag) is gelijk aan 25
+                        .. de dag uit (de dag) is gelijk aan 26.
+            Objecttype de Vlucht
+                de uitstelduur Numeriek (geheel getal) met eenheid kerstdagen;
+                de vluchtdatum Datum in dagen;
+                de vroegsteVertrek Datum in dagen;
+            Regel Bereken
+                geldig altijd
+                    De vroegsteVertrek van een Vlucht moet berekend worden als de vluchtdatum van de Vlucht plus de uitstelduur van de Vlucht.
+            """;
+    static Fixture dagsoortDuurFix(String naam, java.time.LocalDate vd, int n) {
+        return new Fixture(naam, DAGSOORT_DUUR_SRC,
+                () -> { Vlucht v = new Vlucht(); if (vd != null) v.setVluchtdatum(vd); v.setUitstelduur(new BigDecimal(n)); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).getVroegsteVertrek());
+    }
+    static final Fixture[] PHASE_DAGSOORT_DUUR = {
+        dagsoortDuurFix("§6.11 +2 kerstdagen (20-12 -> 26-12)", java.time.LocalDate.of(2024, 12, 20), 2),
+        dagsoortDuurFix("§6.11 +1 kerstdag, X telt niet mee (25-12 -> 26-12)", java.time.LocalDate.of(2024, 12, 25), 1),
+        dagsoortDuurFix("§6.11 +1 kerstdag over de jaargrens (26-12 -> volgend jaar)", java.time.LocalDate.of(2024, 12, 26), 1),
+        dagsoortDuurFix("§6.11 +0 kerstdagen -> datum ongewijzigd", java.time.LocalDate.of(2024, 12, 20), 0),
+        dagsoortDuurFix("§6.11 leeg datum -> leeg", null, 2),
+    };
+
+    // ---- §6.10 tijdsduur van A tot B in <dagsoort> ("in hele kerstdagen"): count the §9.8 kerstdag days in the
+    //      half-open interval (van, tot] (the §6.11-consistent reading; signed; absolute when asked). Both back-ends
+    //      share the loop (DRL rsTijdsduur_Kerstdag <-> RegelSpraakRuntime.rsTijdsduurDagsoort). ----
+    static final String DAGSOORT_TDS_SRC =
+            """
+            Dagsoort de kerstdag (mv: kerstdagen)
+            Regel Kerstdag
+                geldig altijd
+                    Een dag is een kerstdag
+                    indien de dag aan alle volgende voorwaarden voldoet:
+                    - de maand uit (de dag) is gelijk aan 12
+                    - de dag voldoet aan ten minste één van de volgende voorwaarden:
+                        .. de dag uit (de dag) is gelijk aan 25
+                        .. de dag uit (de dag) is gelijk aan 26.
+            Objecttype de Vlucht
+                de vluchtdatum Datum in dagen;
+                de daadwerkelijk vertrek Datum in dagen;
+                de totaalprijs Numeriek (geheel getal) met eenheid kerstdagen;
+            Regel Tel
+                geldig altijd
+                    De totaalprijs van een Vlucht moet berekend worden als de tijdsduur van de vluchtdatum van de Vlucht tot de daadwerkelijk vertrek van de Vlucht in hele kerstdagen.
+            """;
+    static final String DAGSOORT_TDS_ABS_SRC = DAGSOORT_TDS_SRC.replace("de tijdsduur van", "de absolute tijdsduur van");
+    static Fixture dagsoortTdsFix(String naam, String src, java.time.LocalDate van, java.time.LocalDate tot) {
+        return new Fixture(naam, src,
+                () -> { Vlucht v = new Vlucht(); if (van != null) v.setVluchtdatum(van); if (tot != null) v.setDaadwerkelijkVertrek(tot); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).getTotaalprijs());
+    }
+    static final Fixture[] PHASE_DAGSOORT_TDS = {
+        dagsoortTdsFix("§6.10 20-12..31-12 = 2 kerstdagen", DAGSOORT_TDS_SRC, java.time.LocalDate.of(2024, 12, 20), java.time.LocalDate.of(2024, 12, 31)),
+        dagsoortTdsFix("§6.10 (van,tot]: 25-12..26-12 = 1 (start exclusief)", DAGSOORT_TDS_SRC, java.time.LocalDate.of(2024, 12, 25), java.time.LocalDate.of(2024, 12, 26)),
+        dagsoortTdsFix("§6.10 omgekeerd 31-12..20-12 = -2 (negatief)", DAGSOORT_TDS_SRC, java.time.LocalDate.of(2024, 12, 31), java.time.LocalDate.of(2024, 12, 20)),
+        dagsoortTdsFix("§6.10 leeg interval 20-12..20-12 = 0", DAGSOORT_TDS_SRC, java.time.LocalDate.of(2024, 12, 20), java.time.LocalDate.of(2024, 12, 20)),
+        dagsoortTdsFix("§6.10 absolute omgekeerd = 2", DAGSOORT_TDS_ABS_SRC, java.time.LocalDate.of(2024, 12, 31), java.time.LocalDate.of(2024, 12, 20)),
+        dagsoortTdsFix("§6.10 leeg operand -> leeg", DAGSOORT_TDS_SRC, java.time.LocalDate.of(2024, 12, 20), null),
+    };
+
     // ---- §12 BESLISTABEL fixtures: a captured pipe-table desugars (BeslistabelDesugar) to one regel per row, fed
     //      through the SAME resolver -> both back-ends fire the rows. Mutually-exclusive bands keep the result
     //      deterministic regardless of row firing order. Exercises: one-conditie, multi-conditie AND + n.v.t. omission,
@@ -2713,6 +2785,8 @@ class ExecModelDifferentialTest {
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
     @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 15); }
     @Test void phase_dagsoort_controle_matches_drl_back_end()     { runDifferential("Phase DAGSOORT", PHASE_DAGSOORT, 5); }
+    @Test void phase_dagsoort_duur_matches_drl_back_end()         { runDifferential("Phase DAGSOORT DUUR", PHASE_DAGSOORT_DUUR, 5); }
+    @Test void phase_dagsoort_tijdsduur_matches_drl_back_end()    { runDifferential("Phase DAGSOORT TDS", PHASE_DAGSOORT_TDS, 6); }
     @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9); }
     @Test void phase_E_verdeling_fouten_match_drl_back_end()       { runFoutDifferential("Phase E fout", PHASE_E_FOUT, 2); }
 

@@ -39,7 +39,7 @@ public final class DefinitionResolver {
             if (d.objectTypeExtensie() != null) extensie(d.objectTypeExtensie());
             if (d.parameterDefinition() != null) parameter(d.parameterDefinition());
             if (d.feitTypeDefinition() != null) feittype(d.feitTypeDefinition());
-            if (d.dagsoortDefinition() != null) model.dagsoorten.add(naam(d.dagsoortDefinition().lowerNaam()));
+            if (d.dagsoortDefinition() != null) dagsoort(d.dagsoortDefinition());
             if (d.dimensieDefinition() != null) dimensie(d.dimensieDefinition());
         }
         for (RegelContext r : doc.regel()) {
@@ -553,6 +553,15 @@ public final class DefinitionResolver {
     }
 
     // ---------------- helpers ----------------
+    /** §3.12/§13.3.10 register a dagsoort: its singular name, and the unit→dagsoort map for BOTH the singular
+     *  and (when declared) the meervoud — a §6 duration unit "5 werkdagen" arrives as the plural eenheidsafkorting. */
+    private void dagsoort(DagsoortDefinitionContext d) {
+        String enkel = naam(d.lowerNaam());
+        model.dagsoorten.add(enkel);
+        model.dagsoortPerEenheid.put(enkel.toLowerCase(), enkel);
+        if (d.meervoudsvorm() != null) model.dagsoortPerEenheid.put(src(d.meervoudsvorm()).trim().toLowerCase(), enkel);
+    }
+
     private static String naam(LowerNaamContext ctx) { return src(ctx); }
 
     /** The original source slice of a context, with internal whitespace collapsed. */

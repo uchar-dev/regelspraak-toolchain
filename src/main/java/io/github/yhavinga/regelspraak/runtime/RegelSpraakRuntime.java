@@ -258,6 +258,41 @@ public final class RegelSpraakRuntime {
         return optellen ? datum.plus(n, u) : datum.minus(n, u);
     }
 
+    /** §6.11 "datum ± N &lt;dagsoort&gt;" ("5 werkdagen"): step one calendar day at a time, counting only days that
+     *  ARE the dagsoort ({@code isDagsoort}), until N have passed — the Nth such day is the result. X itself NEVER
+     *  counts (step before testing) and the result is always a dagsoort day, EXCEPT a 0 / leeg count returns X
+     *  unchanged (the §6.11 0-case wins over "always a werkdag"); a leeg datum stays leeg. Byte-identical mirror of
+     *  the DRL {@code rsDatumPlus_<Naam>} loop (there the dagsoort predicate is a generated function, here a lambda). */
+    public static java.time.LocalDate rsDatumPlusDagsoort(java.time.LocalDate datum, BigDecimal aantal,
+            java.util.function.Predicate<java.time.LocalDate> isDagsoort, boolean optellen) {
+        if (datum == null) return null;        // leeg datum -> leeg
+        if (aantal == null) return datum;      // leeg eenheid -> behandeld als 0 -> datum onveranderd (§6.11 Tabel 15)
+        long n = aantal.longValue();
+        boolean op = optellen;
+        if (n < 0) { op = !op; n = -n; }
+        if (n == 0) return datum;              // §6.11: 0 -> X onveranderd (zelfs als X geen dagsoort-dag is)
+        java.time.LocalDate d = datum;
+        long geteld = 0;
+        while (geteld < n) { d = op ? d.plusDays(1) : d.minusDays(1); if (isDagsoort.test(d)) geteld++; }
+        return d;
+    }
+
+    /** §6.10 "de (absolute) tijdsduur van A tot B in &lt;dagsoort&gt;": COUNT the dagsoort days in the half-open
+     *  interval (van, tot] — consistent with §6.11's "X telt niet mee". Signed (negative when tot is earlier than
+     *  van), absolute when asked; any leeg operand -> leeg (§6.10 Tabel 14). Byte-identical mirror of the DRL
+     *  {@code rsTijdsduur_<Naam>} loop. */
+    public static BigDecimal rsTijdsduurDagsoort(java.time.LocalDate van, java.time.LocalDate tot,
+            java.util.function.Predicate<java.time.LocalDate> isDagsoort, boolean absoluut) {
+        if (van == null || tot == null) return null;
+        boolean negatief = tot.isBefore(van);
+        java.time.LocalDate a = negatief ? tot : van;
+        java.time.LocalDate b = negatief ? van : tot;
+        long count = 0;
+        for (java.time.LocalDate d = a.plusDays(1); !d.isAfter(b); d = d.plusDays(1)) if (isDagsoort.test(d)) count++;
+        long result = negatief ? -count : count;
+        return BigDecimal.valueOf(absoluut ? Math.abs(result) : result);
+    }
+
     /** §13.4.17.37 "de eerste paasdag van" a year — Gauss/Anonymous Easter algorithm; a leeg year -> leeg.
      *  Mirrors the DRL {@code rsEerstePaasdag}. */
     public static java.time.LocalDate rsEerstePaasdag(Object jaar) {

@@ -1137,6 +1137,19 @@ public final class DrlTranspiler {
             // arithmetic (a datum-difference is the §6.10 tijdsduur expression) -> honest marker.
             if (durExpr.type().isDatum() || (!optellen && !datumLinks))
                 return Frag.todo("datum-rekenkunde (datum +/- tijdsduur; geen datum-datum)", b.bron());
+            // §6.11 datum ± N <dagsoort> ("5 werkdagen"): not a fixed ChronoUnit — step day-by-day counting only the
+            // dagsoort days (the §9.8 predicate). X never counts; the result is always a dagsoort day; 0/leeg -> X
+            // unchanged. A dagsoort is day-granular, so the date operand must be a Datum in dagen (a LocalDate).
+            io.github.yhavinga.regelspraak.model.Eenheid durEenheid = durExpr.type().eenheidOf();
+            String dagsoortUnit = durEenheid != null ? model.dagsoortVoorEenheid(durEenheid.afkorting()) : null;
+            if (dagsoortUnit != null) {
+                if (datumExpr.type() instanceof Datatype.DatumTijd)
+                    return Frag.todo("datum-rekenkunde: een dagsoort-eenheid vereist een datum (in dagen) operand (§6.11)", b.bron());
+                String stapFn = dagsoortDuurFunctie(dagsoortUnit);
+                Frag d = arg.apply(datumExpr), n = arg.apply(durExpr);
+                if (stapFn == null || d.marker() || n.marker()) return Frag.todo("datum-rekenkunde (dagsoort)", b.bron());
+                return Frag.from("((java.time.LocalDate) " + stapFn + "(" + d.text() + ", " + n.text() + ", " + optellen + "))", d, n);
+            }
             String unit = chronoUnit(durExpr.type());
             if (unit == null) return Frag.todo("datum-rekenkunde (dagsoort/onbekende tijdseenheid)", b.bron());
             boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
@@ -1384,6 +1397,20 @@ public final class DrlTranspiler {
      */
     private Frag tijdsduur(Expr.Functie f, Function<Expr, Frag> arg) {
         if (f.argumenten().size() != 2) return null;
+        // §6.10 tijdsduur in N <dagsoort> ("in hele werkdagen"): COUNT the §9.8 dagsoort days in the interval
+        // (signed; absolute when asked). The spec leaves the dagsoort boundary undefined; per §6.11's "X telt niet
+        // mee" the interval is half-open (van, tot] (the §6.11-consistent reading). Day-granular -> Datum operands.
+        io.github.yhavinga.regelspraak.model.Eenheid dagE = f.type().eenheidOf();
+        String dagsoortUnit = dagE != null ? model.dagsoortVoorEenheid(dagE.afkorting()) : null;
+        if (dagsoortUnit != null) {
+            Expr a0 = f.argumenten().get(0), a1 = f.argumenten().get(1);
+            if (a0.type() instanceof Datatype.DatumTijd || a1.type() instanceof Datatype.DatumTijd)
+                return Frag.todo("tijdsduur in een dagsoort vereist datum (in dagen) operanden (§6.10)", f.bron());
+            String durFn = dagsoortTijdsduurFunctie(dagsoortUnit);
+            Frag van0 = arg.apply(a0), tot0 = arg.apply(a1);
+            if (durFn == null || van0.marker() || tot0.marker()) return Frag.todo("tijdsduur (dagsoort)", f.bron());
+            return Frag.from(durFn + "(" + van0.text() + ", " + tot0.text() + ", " + (f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR) + ")", van0, tot0);
+        }
         String unit = chronoUnit(f.type());
         if (unit == null) return Frag.todo("tijdsduur-eenheid (dagsoort / onbekende tijdseenheid)", f.bron());
         boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
@@ -2745,6 +2772,56 @@ public final class DrlTranspiler {
         String body = dagsoortBool(def.voorwaarde());
         if (body == null) { hulpFuncties.remove(fn); return null; }
         hulpFuncties.put(fn, "function boolean " + fn + "(java.time.LocalDate dag) {\n    return " + body + ";\n}\n\n");
+        return fn;
+    }
+
+    /** Register (idempotently) and name a DRL {@code function LocalDate rsDatumPlus_<Naam>(datum, aantal, optellen)}
+     *  for §6.11 "datum ± N &lt;dagsoort&gt;": step one calendar day at a time, counting only days that ARE the
+     *  dagsoort (its §9.8 predicate), until N have passed — the Nth such day is the result. §6.11: X itself never
+     *  counts (step BEFORE testing) and the result is always a dagsoort day, EXCEPT a 0 / leeg count returns X
+     *  unchanged (the spec's 0-case wins over "always a werkdag"); a leeg datum stays leeg. null when the dagsoort's
+     *  definitie cannot be compiled. The body calls the per-dagsoort predicate function, so both are registered. */
+    private String dagsoortDuurFunctie(String dagsoortNaam) {
+        String predFn = dagsoortFunctie(dagsoortNaam);
+        if (predFn == null) return null;
+        String fn = "rsDatumPlus_" + ident(dagsoortNaam, true);
+        if (hulpFuncties.containsKey(fn)) return fn;
+        hulpFuncties.put(fn,
+            "function java.time.LocalDate " + fn + "(java.time.LocalDate datum, java.math.BigDecimal aantal, boolean optellen) {\n"
+          + "    if (datum == null) return null;\n"
+          + "    if (aantal == null) return datum;\n"
+          + "    long n = aantal.longValue();\n"
+          + "    boolean op = optellen;\n"
+          + "    if (n < 0) { op = !op; n = -n; }\n"
+          + "    if (n == 0) return datum;\n"
+          + "    java.time.LocalDate d = datum;\n"
+          + "    long geteld = 0;\n"
+          + "    while (geteld < n) { d = op ? d.plusDays(1) : d.minusDays(1); if (" + predFn + "(d)) geteld++; }\n"
+          + "    return d;\n"
+          + "}\n\n");
+        return fn;
+    }
+
+    /** Register (idempotently) and name a DRL {@code function BigDecimal rsTijdsduur_<Naam>(van, tot, absoluut)} for
+     *  §6.10 "tijdsduur van A tot B in &lt;dagsoort&gt;": COUNT the dagsoort days in the half-open interval (van, tot]
+     *  — consistent with §6.11's "X telt niet mee". The result is signed (negative when tot is earlier than van),
+     *  absolute when asked; a leeg operand -> leeg (§6.10 Tabel 14). null when the definitie cannot be compiled. */
+    private String dagsoortTijdsduurFunctie(String dagsoortNaam) {
+        String predFn = dagsoortFunctie(dagsoortNaam);
+        if (predFn == null) return null;
+        String fn = "rsTijdsduur_" + ident(dagsoortNaam, true);
+        if (hulpFuncties.containsKey(fn)) return fn;
+        hulpFuncties.put(fn,
+            "function java.math.BigDecimal " + fn + "(java.time.LocalDate van, java.time.LocalDate tot, boolean absoluut) {\n"
+          + "    if (van == null || tot == null) return null;\n"
+          + "    boolean negatief = tot.isBefore(van);\n"
+          + "    java.time.LocalDate a = negatief ? tot : van;\n"
+          + "    java.time.LocalDate b = negatief ? van : tot;\n"
+          + "    long count = 0;\n"
+          + "    for (java.time.LocalDate d = a.plusDays(1); !d.isAfter(b); d = d.plusDays(1)) if (" + predFn + "(d)) count++;\n"
+          + "    long result = negatief ? -count : count;\n"
+          + "    return java.math.BigDecimal.valueOf(absoluut ? Math.abs(result) : result);\n"
+          + "}\n\n");
         return fn;
     }
 

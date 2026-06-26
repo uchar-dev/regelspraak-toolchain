@@ -17,6 +17,15 @@ public final class RegelSpraakModel {
     public final Map<String, Eenheidstelsel> eenheidstelsels = new LinkedHashMap<>();
     public final Map<String, Feittype> feittypen = new LinkedHashMap<>();
     public final List<String> dagsoorten = new ArrayList<>();
+    /** §3.12 a dagsoort may be the EENHEID of a Numeriek attribute ("5 werkdagen"); maps every unit spelling
+     *  (the singular name AND its declared meervoud, lowercased) to the dagsoort's singular name, so the §6
+     *  duration paths can recognise a dagsoort unit. */
+    public final Map<String, String> dagsoortPerEenheid = new LinkedHashMap<>();
+    /** The §3.12 dagsoort whose unit spelling is {@code afkorting} (singular or meervoud, case-insensitive), or
+     *  null when the unit is not a dagsoort — the §6.10/§6.11 transpilers' dagsoort-unit recognition. */
+    public String dagsoortVoorEenheid(String afkorting) {
+        return afkorting == null ? null : dagsoortPerEenheid.get(afkorting.trim().toLowerCase());
+    }
     public final List<Tijdlijn> tijdlijnen = new ArrayList<>();
     public final Map<String, Dimensie> dimensies = new LinkedHashMap<>();
     public final List<Regel> regels = new ArrayList<>();

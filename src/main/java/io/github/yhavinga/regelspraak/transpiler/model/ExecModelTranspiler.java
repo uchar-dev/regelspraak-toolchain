@@ -974,6 +974,20 @@ public final class ExecModelTranspiler {
         Expr durExpr   = datumLinks ? b.rechts() : b.links();
         boolean optellen = op == Expr.BinOp.PLUS;
         if (durExpr.type().isDatum() || (!optellen && !datumLinks)) return null;   // datum-datum / duur-min-datum
+        // §6.11 datum ± N <dagsoort> ("5 werkdagen"): step day-by-day counting the §9.8 dagsoort days. A dagsoort is
+        // day-granular -> a Datum in dagen (LocalDate) operand only. Mirrors DrlTranspiler's rsDatumPlus_<Naam>.
+        io.github.yhavinga.regelspraak.model.Eenheid durEenheid = durExpr.type().eenheidOf();
+        String dagsoortUnit = durEenheid != null ? model.dagsoortVoorEenheid(durEenheid.afkorting()) : null;
+        if (dagsoortUnit != null) {
+            if (datumExpr.type() instanceof Datatype.DatumTijd) return null;
+            java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(dagsoortUnit);
+            WaardeFn df0 = scalarWaarde(datumExpr), nf0 = scalarWaarde(durExpr);
+            if (pred == null || df0 == null || nf0 == null) return null;
+            BiFunction<Object, Map<String, BigDecimal>, Object> dfn0 = df0.fn(), nfn0 = nf0.fn();
+            Set<String> g0 = new LinkedHashSet<>(df0.globals()); g0.addAll(nf0.globals());
+            return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsDatumPlusDagsoort(
+                    (java.time.LocalDate) dfn0.apply(s, gm), (BigDecimal) nfn0.apply(s, gm), pred, optellen), g0);
+        }
         String unit = chronoUnit(durExpr.type());
         if (unit == null) return null;
         boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
@@ -1874,6 +1888,24 @@ public final class ExecModelTranspiler {
             }
             case DATUM_MET     -> { return datumConstructor(a, 3); }
             case DATUMTIJD_MET -> { return datumConstructor(a, 7); }
+            case TIJDSDUUR, ABSOLUTE_TIJDSDUUR -> {
+                // §6.10 tijdsduur in N <dagsoort> ("in hele werkdagen"): count the §9.8 dagsoort days in (van, tot].
+                // Only the dagsoort eenheid is lowered here — the general tijdsduur path is unwired in the exec model,
+                // so a non-dagsoort unit returns null (skip), unchanged. Mirrors DrlTranspiler.dagsoortTijdsduurFunctie.
+                if (a.size() != 2) return null;
+                io.github.yhavinga.regelspraak.model.Eenheid e = f.type().eenheidOf();
+                String dagsoortUnit = e != null ? model.dagsoortVoorEenheid(e.afkorting()) : null;
+                if (dagsoortUnit == null) return null;
+                if (a.get(0).type() instanceof Datatype.DatumTijd || a.get(1).type() instanceof Datatype.DatumTijd) return null;
+                java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(dagsoortUnit);
+                WaardeFn vanF = scalarWaarde(a.get(0)), totF = scalarWaarde(a.get(1));
+                if (pred == null || vanF == null || totF == null) return null;
+                boolean absoluut = f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR;
+                BiFunction<Object, Map<String, BigDecimal>, Object> vfn = vanF.fn(), tfn = totF.fn();
+                Set<String> g = new LinkedHashSet<>(vanF.globals()); g.addAll(totF.globals());
+                return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsTijdsduurDagsoort(
+                        (java.time.LocalDate) vfn.apply(s, gm), (java.time.LocalDate) tfn.apply(s, gm), pred, absoluut), g);
+            }
             default            -> { return null; }
         }
     }
