@@ -810,6 +810,17 @@ public final class ExecModelTranspiler {
                 baseType = ba.type();
                 String baseAttr = ba.attribuut();
                 baseReader = (s, gv) -> (List<?>) RegelSpraakRuntime.get(s, baseAttr);
+            } else if (base instanceof Expr.AttribuutRef ba && ba.navigatieRol() != null && !ba.set()
+                    && ba.objecttype() != null && ba.objecttype().attribuutGranulariteit.containsKey(ba.attribuut())
+                    && !ba.objecttype().attribuutTijdlijnAantal.containsKey(ba.attribuut())) {
+                // §7.3.2 a TO-ONE NAVIGATED base ("de X van zijn reis"): read the partner's temporal attribute root-guarded
+                // (navReader: null relation -> leeg). The gedurende condition stays over the SUBJECT. Mirrors DRL.
+                java.util.function.Function<Object, Object> nav = navReader(ba, subject);
+                if (nav != null) {
+                    baseGran = ba.objecttype().attribuutGranulariteit.get(ba.attribuut());
+                    baseType = ba.type();
+                    baseReader = (s, gv) -> (List<?>) nav.apply(s);
+                }
             } else if (base instanceof Expr.ParameterRef bp && bp.parameter().granulariteit() != null) {
                 baseGran = bp.parameter().granulariteit();
                 baseType = bp.parameter().datatype();

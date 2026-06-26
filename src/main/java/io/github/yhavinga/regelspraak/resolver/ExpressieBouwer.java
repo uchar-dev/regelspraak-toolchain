@@ -491,6 +491,15 @@ final class ExpressieBouwer {
         if (!okOperand && kind == Expr.FunctieKind.TIJDSEVENREDIG_DEEL
                 && operand instanceof Expr.ParameterRef p && p.parameter().granulariteit() != null)
             okOperand = true;
+        // §7.3.2 a TO-ONE NAVIGATED tijdsevenredig base ("de X van zijn reis") — a single-period temporal attribute of
+        // the RELATED type. Its value-timeline is intrinsic (§5.1.2), read root-guarded by both back-ends (navReader /
+        // the DRL root-guarded getter). The gedurende condition still ranges over the rule SUBJECT, so it resolves
+        // against huidigSubject below; only the base reads through the navigation. (A to-many base markers in lowering.)
+        if (!okOperand && kind == Expr.FunctieKind.TIJDSEVENREDIG_DEEL
+                && operand instanceof Expr.AttribuutRef a && a.navigatieRol() != null && !a.set()
+                && a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())
+                && !a.objecttype().attribuutTijdlijnAantal.containsKey(a.attribuut()))
+            okOperand = true;
         if (!okOperand) return null;
         ConditieBijExpressieContext cnd = f instanceof TotaalFuncContext t ? t.conditieBijExpressie()
                 : f instanceof TijdsevenredigFuncContext tv ? tv.conditieBijExpressie() : null;

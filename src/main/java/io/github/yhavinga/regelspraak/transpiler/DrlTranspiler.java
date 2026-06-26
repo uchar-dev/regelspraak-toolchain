@@ -1982,6 +1982,16 @@ public final class DrlTranspiler {
                 baseGran = subject.attribuutGranulariteit.get(ba.attribuut());
                 baseType = ba.type();
                 baseExpr = SUBJECT + "." + getter(ba.attribuut()) + "()";
+            } else if (base instanceof Expr.AttribuutRef ba && ba.navigatieRol() != null && !ba.set()
+                    && ba.objecttype() != null && ba.objecttype().attribuutGranulariteit.containsKey(ba.attribuut())
+                    && !ba.objecttype().attribuutTijdlijnAantal.containsKey(ba.attribuut())
+                    && naviResolve(ba, subject).soort() == NaviSoort.GENAVIGEERD) {
+                // §7.3.2 a TO-ONE NAVIGATED base ("de X van zijn reis"): read the partner's temporal attribute,
+                // root-guarded (a null reference -> leeg). The gedurende condition stays over the SUBJECT. Mirrors exec navReader.
+                baseGran = ba.objecttype().attribuutGranulariteit.get(ba.attribuut());
+                baseType = ba.type();
+                String root = SUBJECT + "." + getter(naviResolve(ba, subject).rol()) + "()";
+                baseExpr = "(" + root + " == null ? null : " + root + "." + getter(ba.attribuut()) + "())";
             } else if (base instanceof Expr.ParameterRef bp && bp.parameter().granulariteit() != null) {
                 baseGran = bp.parameter().granulariteit();
                 baseType = bp.parameter().datatype();

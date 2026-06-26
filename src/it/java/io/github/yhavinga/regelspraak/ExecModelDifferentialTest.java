@@ -2246,7 +2246,53 @@ class ExecModelDifferentialTest {
             }),
             Map.of(),
             p -> tl(p.getBelastingvermindering())),
+
+        // §7.3.2 a TO-ONE NAVIGATED base ("de bedrag per maand van zijn partner"): the PARTNER's temporal attribute is
+        // prorated over the SUBJECT's gedurende, read root-guarded (a partnerloos persoon -> empty). The subject p1 has
+        // NO own bedragPerMaand, so the 14-segment result (12×12 + 1×18 + 1×4,50) PROVES the navigated read reaches the
+        // partner's value, not the subject's. Was a marker (gedurendeKenmerkFilter rejected a navigated base). p2 (no
+        // partner, no recht) -> empty.
+        new Fixture("§7.3.2 tijdsevenredig over a NAVIGATED base (de X van zijn partner) (14 segm / partnerloos leeg)",
+            """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de bedrag per maand Bedrag voor elke maand;
+                de belastingvermindering Bedrag voor elke maand;
+                het recht op korting kenmerk (bezittelijk) voor elke maand;
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel R
+                geldig altijd
+                    De belastingvermindering van een Persoon moet gesteld worden op (het tijdsevenredig deel per maand van de bedrag per maand van zijn partner gedurende de tijd dat hij een recht op korting heeft).
+            """,
+            () -> {
+                Persoon p1 = new Persoon(), p2 = new Persoon();
+                p1.setPartner(p2);
+                p2.setBedragPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "12.00"), seg(2025, 1, 1, 2026, 1, 1, "18.00")));
+                p1.setRechtOpKorting(List.of(seg(2024, 1, 1, 2025, 2, 8, null)));
+                return List.of(p1, p2);
+            },
+            Map.of(),
+            l -> vals(tl(((Persoon) l.get(0)).getBelastingvermindering()), tl(((Persoon) l.get(1)).getBelastingvermindering()))),
     };
+    /** §7.3.2 navigated base — assert the ABSOLUTE spec value on the oracle (14 segments; the partner's 12/18 prorated,
+     *  NOT the subject's empty own attribute) + back-end parity, so a shared "read the wrong base" bug cannot hide. */
+    @Test void phase_F3_navigated_base_is_spec_correct() {
+        Fixture f = PHASE_F3[PHASE_F3.length - 1];
+        RegelSpraakModel m = Resolver.resolve(f.src());
+        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> "model overgeslagen: " + em.overgeslagen());
+        Object viaDrl = fire(drlBase(m), f);
+        Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+        List<?> p1 = (List<?>) ((List<?>) viaDrl).get(0);   // [tl(p1), tl(p2)] -> p1's 14-segment timeline
+        assertEquals(14, p1.size(), () -> "DRL (oracle) wrong: navigated base must prorate the partner's 12/18 to 14 segments, got " + p1);
+        assertTrue(p1.get(13).toString().contains("2025-02-01|2025-03-01|4.5"),
+                () -> "DRL (oracle) wrong: last (partial) segment must be 4,50, got " + p1.get(13));
+        assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on the navigated base");
+    }
 
     // ---- Phase F4 fixtures: §8.4.2 pure-kenmerk compound gedurende (ALLE intersect / ten-minste-1 union) ----
     private static final String CMP_OT =
@@ -3281,7 +3327,7 @@ class ExecModelDifferentialTest {
     @Test void phase_G_feitcreatie_matches_drl_back_end()          { runDifferential("Phase G feit", PHASE_G_FEIT, 6); }
     @Test void phase_F4b_mixed_static_guard_matches_drl_back_end() { runDifferential("Phase F4b", PHASE_F4B, 4); }
     @Test void phase_F4_compound_gedurende_matches_drl_back_end()  { runDifferential("Phase F4", PHASE_F4, 6); }
-    @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 4); }
+    @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 5); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 13); }
     @Test void phase_82_gehele_periode_matches_drl_back_end()      { runDifferential("Phase 82", PHASE_82, 10); }
