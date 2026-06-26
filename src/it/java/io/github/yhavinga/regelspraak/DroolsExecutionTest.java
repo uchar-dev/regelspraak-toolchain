@@ -311,6 +311,44 @@ class DroolsExecutionTest {
                 () -> "totaal gedurende >1000 moet 1200x3 = 3600 zijn (niet 5200), was " + p.getTotaleBelastingvermindering());
     }
 
+    @Test void totaal_gedurende_een_navigated_temporeel_kenmerk_klipt_via_de_to_one_navigatie() {
+        // §7.1 a NAVIGATED temporal kenmerk inside gedurende ("... gedurende de tijd dat zijn partner een recht op
+        // korting heeft") clips the subject's value timeline to the to-one partner's kenmerk true-periods, read
+        // root-guarded. bedrag {Jan-Jul 2023: 10 (6 mnd)} clipped to partner's rechtOpKorting {Mar-May (2 mnd)} ->
+        // 10×2 = 20. RED-before-green: without the navigated-kenmerk structuring the conditie markers (no fire).
+        String src = """
+            Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de bedrag per maand Bedrag voor elke maand;
+                het recht op korting kenmerk (bezittelijk) voor elke maand;
+                de totaal partner bedrag Bedrag;
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel R
+                geldig altijd
+                    De totaal partner bedrag van een Persoon moet gesteld worden op (het totaal van zijn bedrag per maand gedurende de tijd dat zijn partner een recht op korting heeft).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("getPartner() == null ? null : $subject.getPartner().getRechtOpKorting()"),
+                () -> "een navigated kenmerk gedurende moet root-guarded via de partner lowereren:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Persoon p1 = new Persoon(), p2 = new Persoon();
+        p1.setPartner(p2);
+        p1.setBedragPerMaand(List.of(new Segment(LocalDate.of(2023, 1, 1), LocalDate.of(2023, 7, 1), new BigDecimal("10.00"))));
+        p2.setRechtOpKorting(List.of(new Segment(LocalDate.of(2023, 3, 1), LocalDate.of(2023, 5, 1), null)));
+        sessie.insert(p1); sessie.insert(p2);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("20.00").compareTo(p1.getTotaalPartnerBedrag()),
+                () -> "totaal gedurende de partner-kenmerk-periodes moet 10x2 = 20 zijn, was " + p1.getTotaalPartnerBedrag());
+    }
+
     @Test void totaal_van_een_temporeel_attribuut_gedurende_een_kenmerk_klipt_naar_de_ware_periodes() {
         // §7.1 the €71 worked example: "het totaal van zijn belastingvermindering per maand GEDURENDE DE TIJD DAT
         // hij rechthebbend is" clips the value timeline (€10/mnd over 2023, €11/mnd over 2024 H1) to the kenmerk's

@@ -1766,6 +1766,13 @@ public final class DrlTranspiler {
         if (f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null
                 && subject != null && subject.kenmerkGranulariteit.containsKey(k.kenmerk())) {
             waardeTijdreeks = kenmerkTijdKnip(waardeTijdreeks, k);
+        } else if (f.filter() instanceof Conditie.Kenmerk kn && kn.navigatie() != null && subject != null) {
+            // §7.1 a NAVIGATED temporal kenmerk ("gedurende de tijd dat zijn reis een recht op korting heeft"): clip
+            // the value timeline to the to-one role's kenmerk timeline, read root-guarded (a null reference -> leeg).
+            String cond = navigatieKenmerkTijdreeks(kn, subject);
+            if (cond == null) return null;   // negated / to-many / non-temporal navigated kenmerk -> marker
+            registreerTijdKnipFunctie();
+            waardeTijdreeks = "rsTijdKnip(" + waardeTijdreeks + ", " + cond + ")";
         } else if (f.filter() instanceof Conditie.Samengesteld s && subject != null) {
             // §8.4.2 a COMPOUND "gedurende de tijd dat er aan alle/ten minste 1 van de volgende voorwaarden wordt
             // voldaan": partition the members. TEMPORAL kenmerks clip the timeline (ALLE = intersect, ten minste 1 =
@@ -2083,6 +2090,18 @@ public final class DrlTranspiler {
                 || !subject.kenmerkGranulariteit.containsKey(k.kenmerk())
                 || subject.kenmerkTijdlijnAantal.containsKey(k.kenmerk())) return null;
         return SUBJECT + "." + getter(k.kenmerk()) + "()";
+    }
+
+    /** §7.1 the boolean-timeline getter for a NAVIGATED temporal kenmerk ("zijn reis een recht op korting heeft") —
+     *  the to-ONE role's kenmerk {@code List<Segment>}, root-guarded so a null reference reads as a leeg (null)
+     *  timeline (rsTijdKnip then clips to empty). null for a negated / to-many / non-temporal navigated kenmerk. */
+    private String navigatieKenmerkTijdreeks(Conditie.Kenmerk k, Objecttype subject) {
+        if (k.navigatie() == null || k.negatie() || subject == null) return null;
+        Objecttype doel = model.rolDoeltypeNaarSubject(subject, k.navigatie());
+        if (doel == null || !doel.kenmerkGranulariteit.containsKey(k.kenmerk())
+                || doel.kenmerkTijdlijnAantal.containsKey(k.kenmerk())) return null;
+        String root = SUBJECT + "." + getter(k.navigatie()) + "()";
+        return "(" + root + " == null ? null : " + root + "." + getter(k.kenmerk()) + "())";
     }
 
     /** The §8.2 whole-period qualifier on a predicate, or null when the predicate carries none. */

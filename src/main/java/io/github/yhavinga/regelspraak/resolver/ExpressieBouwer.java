@@ -493,6 +493,11 @@ final class ExpressieBouwer {
         // §8.4 example never silently drops its non-temporal predicate.
         if (cnd.toplevelElementaireVoorwaarde() != null) {
             ToplevelElementaireVoorwaardeContext c = cnd.toplevelElementaireVoorwaarde();
+            // §7.1 a NAVIGATED temporal kenmerk ("zijn reis een recht op X heeft") FIRST — it inspects the onderwerp,
+            // so when the navigated type shares the subject's type (a self-relation) the navigation is not shadowed by
+            // the subject's own same-named kenmerk; temporeelKenmerkUitOperator (own) only sees the operator's kaleNaam.
+            Conditie nav = gedurendeNavigatieKenmerk(c, src(cnd));
+            if (nav != null) return nav;
             Conditie.Kenmerk k = temporeelKenmerkUitOperator(c.toplevelOperator(), null, src(cnd));  // §8.3.1 toplevel = vragende only
             if (k != null) return k;
             return gedurendeVergelijking(c, src(cnd));   // §7.1 a temporal-attribute COMPARISON condition (EUR71)
@@ -523,6 +528,27 @@ final class ExpressieBouwer {
         return huidigSubject != null && e instanceof Expr.AttribuutRef a && a.navigatieRol() == null && !a.set()
                 && a.objecttype() == huidigSubject && huidigSubject.attribuutGranulariteit.containsKey(a.attribuut())
                 && !huidigSubject.attribuutTijdlijnAantal.containsKey(a.attribuut());
+    }
+
+    /** §7.1 structure a "gedurende de tijd dat &lt;zijn rol&gt; (een/het) &lt;temporeel kenmerk&gt; heeft/is"
+     *  NAVIGATED temporal-kenmerk condition (e.g. "gedurende de tijd dat zijn reis een recht op korting heeft") into a
+     *  navigated {@link Conditie.Kenmerk} the transpiler clips by the to-one role's kenmerk timeline. The onderwerp is
+     *  a to-one role navigation; the kenmerk must be a SINGLE-PERIOD temporal kenmerk of the navigated type. A negated
+     *  form, a to-many role, or a non-temporal kenmerk -> null (the caller markers). */
+    private Conditie gedurendeNavigatieKenmerk(ToplevelElementaireVoorwaardeContext c, String bron) {
+        ToplevelOperatorContext top = c.toplevelOperator();
+        if (c.expressie() == null || top == null || top.kaleNaam() == null) return null;
+        boolean membership = top.IS() != null || top.ZIJN() != null || top.HEEFT() != null || top.HEBBEN() != null;
+        if (!membership) return null;                                                   // not an is/heeft kenmerkcheck
+        if (!(bouw(c.expressie()) instanceof Expr.AttribuutRef a) || a.navigatieRol() == null || a.objecttype() == null)
+            return null;                                                                // not a to-one role navigation
+        Objecttype doel = model.rolDoeltypeNaarSubject(a.objecttype(), a.attribuut());
+        if (doel == null || model.naarVeelRol(a.objecttype(), doel, a.navigatieRol())) return null;   // to-many -> marker
+        String kenmerk = KenmerkMatcher.vind(doel, stripArtikel(src(top.kaleNaam())));
+        if (kenmerk == null) return null;                                               // not a kenmerk of the navigated type
+        if (!doel.kenmerkGranulariteit.containsKey(kenmerk) || doel.kenmerkTijdlijnAantal.containsKey(kenmerk))
+            return null;                                                                // must be a single-period temporal kenmerk
+        return new Conditie.Kenmerk(kenmerk, a.navigatieRol(), false, bron);
     }
 
     /** Resolve an elementaire "is/heeft (geen/niet) (een/het) &lt;kenmerk&gt;" membership operator into a
@@ -1094,6 +1120,19 @@ final class ExpressieBouwer {
                 if (!rolAlleen.isEmpty() && model.rolDoeltypeNaarSubject(huidigSubject, rolAlleen) != null)
                     return new Expr.AttribuutRef(rolAlleen, huidigSubject, "zijn", model.navigatieRolNaam(rolAlleen), onbekend(), bron);
             }
+        }
+        // §3.5 a possessive that names a ROLE followed by an ARTICLE-led kenmerk ("zijn reis HET recht op korting
+        // heeft") absorbs "reis het recht op" into the role kaleNaam (an article is a kaleNaamWoord, unlike the EEN
+        // form whose "een" stays a separate operator token). Find the LONGEST word-prefix that resolves as a role and
+        // emit the navigated AttribuutRef for it, keeping the FULL bron — navigatieStaart then recovers the absorbed
+        // tail ("het recht op") and navigatieKenmerk rejoins it with the operator's kaleNaam ("korting") -> the kenmerk
+        // "recht op korting". Longest-first so a multi-word role wins; a non-empty remainder (n < length) means the
+        // exact-role case above already handled n == length.
+        String[] woorden = attr.split("\\s+");
+        for (int n = woorden.length - 1; n >= 1; n--) {
+            String prefix = String.join(" ", java.util.Arrays.copyOfRange(woorden, 0, n));
+            if (model.rolDoeltypeNaarSubject(huidigSubject, prefix) != null)
+                return new Expr.AttribuutRef(prefix, huidigSubject, "zijn", model.navigatieRolNaam(prefix), onbekend(), bron);
         }
         return null;
     }

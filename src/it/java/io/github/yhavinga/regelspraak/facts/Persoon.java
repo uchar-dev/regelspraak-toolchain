@@ -17,8 +17,11 @@ public class Persoon {
     private Persoon partner;           // to-one self-relation the navigated kenmerk reads through
     private List<Segment> bedragPerMaand;       // §7.1 a temporal attribute, read through a to-one navigation
     private BigDecimal totaalPartnerBedrag;     // §7.1 "het totaal van de bedrag per maand van zijn partner"
+    private List<Segment> rechtOpKorting;       // §7.1 a temporal bezittelijk kenmerk, clipped through a to-one navigation
     public List<Segment> getBedragPerMaand() { return bedragPerMaand; }
     public void setBedragPerMaand(List<Segment> v) { this.bedragPerMaand = v; }
+    public List<Segment> getRechtOpKorting() { return rechtOpKorting; }
+    public void setRechtOpKorting(List<Segment> v) { this.rechtOpKorting = v; }
     public BigDecimal getTotaalPartnerBedrag() { return totaalPartnerBedrag; }
     public void setTotaalPartnerBedrag(BigDecimal v) { this.totaalPartnerBedrag = v; }
     private BigDecimal inkomen;        // §6.5 navigated deling-door-leeg companion: dividend van zijn partner

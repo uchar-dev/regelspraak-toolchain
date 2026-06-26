@@ -1730,6 +1730,34 @@ class ExecModelDifferentialTest {
                     seg(2024, 1, 1, 2024, 4, 1, "1200.00"), seg(2024, 4, 1, 2024, 6, 1, "800.00")))),
             Map.of("grens", new BigDecimal(1000)),
             Passagier::getTotaleBelastingvermindering),   // 3600.00
+
+        // §7.1 a NAVIGATED temporal kenmerk inside gedurende ("... gedurende de tijd dat zijn partner een recht op
+        // korting heeft"): clip the subject's value timeline to the to-one partner's kenmerk true-periods, root-guarded.
+        // p1.bedrag {Jan-Jul: 10 (6 mnd)} clipped to partner p2's rechtOpKorting {Mar-May (2 mnd)} -> 10×2 = 20; p2 has
+        // no bedrag (null) -> null.
+        new Fixture("§7.1 navigated kenmerk gedurende (zijn partner recht op korting) klipt (10×2 = 20 / null)",
+            TOTAAL_HDR + """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de bedrag per maand Bedrag voor elke maand;
+                het recht op korting kenmerk (bezittelijk) voor elke maand;
+                de totaal partner bedrag Bedrag;
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel R
+                geldig altijd
+                    De totaal partner bedrag van een Persoon moet gesteld worden op (het totaal van zijn bedrag per maand gedurende de tijd dat zijn partner een recht op korting heeft).
+            """,
+            () -> {
+                Persoon p1 = new Persoon(), p2 = new Persoon();
+                p1.setPartner(p2);
+                p1.setBedragPerMaand(List.of(seg(2023, 1, 1, 2023, 7, 1, "10.00")));   // 6 mnd x 10
+                p2.setRechtOpKorting(List.of(seg(2023, 3, 1, 2023, 5, 1, null)));      // Mar-May true (2 mnd)
+                return List.of(p1, p2);
+            },
+            Map.of(),
+            l -> vals(((Persoon) l.get(0)).getTotaalPartnerBedrag(), ((Persoon) l.get(1)).getTotaalPartnerBedrag())),   // 20.00, null
     };
 
     // ---- Phase F2 fixtures: §13.4.17.57 "het aantal dagen in <maand|jaar> dat <kenmerk>" — a temporal WRITE ----
@@ -2881,7 +2909,7 @@ class ExecModelDifferentialTest {
     @Test void phase_F4_compound_gedurende_matches_drl_back_end()  { runDifferential("Phase F4", PHASE_F4, 6); }
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 4); }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
-    @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 8); }
+    @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 9); }
     @Test void phase_82_gehele_periode_matches_drl_back_end()      { runDifferential("Phase 82", PHASE_82, 10); }
     @Test void phase_82_kenmerk_matches_drl_back_end()             { runDifferential("Phase 82 kenmerk", PHASE_82_KENMERK, 2); }
     @Test void phase_82_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase 82 fout", PHASE_82_FOUT, 1); }

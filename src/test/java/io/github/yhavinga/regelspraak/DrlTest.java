@@ -133,6 +133,36 @@ class DrlTest {
                 () -> "de bijvoeglijke navigated EEN-vorm moet een honest marker blijven:\n" + drl);
     }
 
+    @Test void possessieve_navigated_kenmerkcheck_het_vorm_bindt_via_de_langste_rolprefix() {
+        // §3.5 the possessive HET-form "zijn reis HET recht op korting heeft" absorbs "reis het recht op" into the
+        // role kaleNaam (an article is a kaleNaamWoord, unlike "een" which stays a separate operator token), so the
+        // role never resolved and it markered. possessief now finds the LONGEST role-prefix ("reis"), keeps the full
+        // bron, and navigatieStaart + the operator's kaleNaam rejoin into the kenmerk "recht op korting". The EEN-form
+        // (a contrast) already bound. RED-before-green: without the longest-role-prefix search this stays a marker.
+        String src = """
+            Objecttype de Vlucht
+                het recht op korting kenmerk (bezittelijk);
+            Objecttype de Persoon (bezield)
+                is blij kenmerk (bijvoeglijk);
+                is vrolijk kenmerk (bijvoeglijk);
+            Feittype Vlucht van personen
+                de reis Vlucht
+                de passagier Persoon
+            Eén reis betreft meerdere passagiers
+            Regel het
+                geldig altijd
+                    Een Persoon is blij indien zijn reis het recht op korting heeft.
+            Regel een
+                geldig altijd
+                    Een Persoon is vrolijk indien zijn reis een recht op korting heeft.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("reis != null && reis.rechtOpKorting == true"),
+                () -> "de possessieve HET-vorm moet via de langste rolprefix binden:\n" + drl);
+        assertFalse(drl.contains("/* TODO voorwaarde: zijn reis het recht op korting heeft */"),
+                () -> "de HET-vorm mag geen marker meer zijn:\n" + drl);
+    }
+
     @Test void navigatie_eenvorm_heeft_bindt_een_bezittelijk_kenmerk_van_het_genavigeerde_type() {
         // §8.1.8.2 the navigated EEN-form HEEFT binds a BEZITTELIJK kenmerk of the to-one navigated type ("de reis
         // van een Passagier heeft een recht op vergoeding"), the mirror of the subject's own EEN-form. The verb

@@ -501,7 +501,7 @@ public final class ExecModelTranspiler {
         final String gran = g.name();
         // §7.1/§8.4 optional gedurende clip: a single temporal kenmerk (positive intersect / negated complement), or a
         // §8.4.2 pure-kenmerk compound (ALLE intersect / ten-minste-1 union). A mixed-static compound -> skip (next inc).
-        String kenmerk = null; boolean negatie = false; Class<?> segCls = null;
+        String kenmerk = null; boolean negatie = false; Class<?> segCls = null; String navRol = null;
         BiFunction<Object, List<?>, List<?>> compoundClip = null;
         VergClip vergClip = null;                                  // §7.1 EUR71 a temporal-comparison clip
         java.util.function.Predicate<Object> staticGuard = null;   // §8.4 mixed-static value-side gate
@@ -512,6 +512,16 @@ public final class ExecModelTranspiler {
             if (segCls == null) return null;
             kenmerk = k.kenmerk();
             negatie = k.negatie();
+        } else if (f.filter() instanceof Conditie.Kenmerk kn && kn.navigatie() != null && subject != null) {
+            // §7.1 a NAVIGATED temporal kenmerk ("gedurende de tijd dat zijn reis een recht op korting heeft"): clip
+            // to the to-one role's kenmerk timeline, read root-guarded (a null reference -> leeg). Mirrors DRL.
+            segCls = segmentClass();
+            if (segCls == null) return null;
+            Objecttype doel = model.rolDoeltypeNaarSubject(subject, kn.navigatie());
+            if (doel == null || kn.negatie() || !doel.kenmerkGranulariteit.containsKey(kn.kenmerk())
+                    || doel.kenmerkTijdlijnAantal.containsKey(kn.kenmerk())) return null;   // negated / to-many / non-temporal -> skip
+            navRol = kn.navigatie();
+            kenmerk = kn.kenmerk();
         } else if (f.filter() instanceof Conditie.Vergelijking vc) {
             // §7.1 EUR71 "gedurende de tijd dat <temporeel attr> <op> <scalar>": clip the value timeline to the
             // comparison's OWN boolean timeline (rsTijdConditie over the comparison attribute's segments), then total.
@@ -543,14 +553,20 @@ public final class ExecModelTranspiler {
         } else if (f.filter() != null) {
             return null;   // any other restriction -> honest skip
         }
-        final String fKenmerk = kenmerk; final boolean fNeg = negatie; final Class<?> fSeg = segCls;
+        final String fKenmerk = kenmerk; final boolean fNeg = negatie; final Class<?> fSeg = segCls; final String fNavRol = navRol;
         final BiFunction<Object, List<?>, List<?>> fClip = compoundClip; final VergClip fVerg = vergClip;
         final java.util.function.Predicate<Object> fGuard = staticGuard; final boolean fOrWiden = orWiden;
         BiFunction<Object, Map<String, BigDecimal>, Object> fn = (s, gm) -> {
             List<?> tl = (List<?>) reader.apply(s);
             List<?> clipped;
             if (fKenmerk != null) {
-                List<?> cond = (List<?>) RegelSpraakRuntime.get(s, fKenmerk);
+                List<?> cond;
+                if (fNavRol != null) {   // §7.1 navigated kenmerk: read the to-one role's kenmerk timeline, root-guarded
+                    Object rel = RegelSpraakRuntime.get(s, fNavRol);
+                    cond = rel == null ? null : (List<?>) RegelSpraakRuntime.get(rel, fKenmerk);
+                } else {
+                    cond = (List<?>) RegelSpraakRuntime.get(s, fKenmerk);
+                }
                 clipped = fNeg ? RegelSpraakRuntime.rsTijdKnipNiet(tl, cond, fSeg) : RegelSpraakRuntime.rsTijdKnip(tl, cond, fSeg);
             } else if (fVerg != null) {
                 BigDecimal grens = RegelSpraakRuntime.toBd(fVerg.grens().fn().apply(s, gm));
