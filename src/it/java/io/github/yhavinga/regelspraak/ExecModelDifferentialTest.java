@@ -293,6 +293,25 @@ class ExecModelDifferentialTest {
         dagsoortFix("§5.15 dagsoortcontrole op een leeg datum -> onwaar", null),
     };
 
+    // §8.1.5 + Tabel 16 (spec L3224) the NEGATED dagsoortcontrole "is geen <dagsoort>" = ¬(datum is een <dagsoort>).
+    // "geen" (a LOWER_ID) is greedily absorbed into the operand and recovered by the resolver -> a negated DAGSOORT
+    // predicaat (NOT mis-folded into the §3.5 kenmerkcheck). §5.15-based leegwaarde: a leeg/non-kerstdag datum IS
+    // "geen kerstdag" = WAAR. Lowered to "!( o != null && rsDagsoort(o) )" / a neg-XOR in both back-ends.
+    static final String DAGSOORT_NEG_SRC = DAGSOORT_SRC.replace(
+            "indien de vluchtdatum van de Vlucht een kerstdag is.",
+            "indien de vluchtdatum van de Vlucht geen kerstdag is.");
+    static Fixture dagsoortNegFix(String naam, java.time.LocalDate datum) {
+        return new Fixture(naam, DAGSOORT_NEG_SRC,
+                () -> { Vlucht v = new Vlucht(); if (datum != null) v.setVluchtdatum(datum); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).isLaat());
+    }
+    static final Fixture[] PHASE_DAGSOORT_NEG = {
+        dagsoortNegFix("§8.1.5 is geen kerstdag: 25-12 IS kerstdag -> onwaar", java.time.LocalDate.of(2024, 12, 25)),
+        dagsoortNegFix("§8.1.5 is geen kerstdag: 24-12 geen kerstdag -> waar", java.time.LocalDate.of(2024, 12, 24)),
+        dagsoortNegFix("§5.15 is geen kerstdag op een leeg datum -> WAAR (¬'nooit een dagsoort')", null),
+    };
+    static final Boolean[] PHASE_DAGSOORT_NEG_EXPECTED = { Boolean.FALSE, Boolean.TRUE, Boolean.TRUE };
+
     // ---- §6.11 datum ± N <dagsoort> ("plus de uitstelduur" in kerstdagen): step day-by-day counting the §9.8
     //      kerstdag days. Both back-ends share the loop (DRL rsDatumPlus_Kerstdag <-> RegelSpraakRuntime.
     //      rsDatumPlusDagsoort). X never counts; 0/leeg -> X unchanged; leeg datum -> leeg. ----
@@ -3411,6 +3430,22 @@ class ExecModelDifferentialTest {
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
     @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 16); }
     @Test void phase_dagsoort_controle_matches_drl_back_end()     { runDifferential("Phase DAGSOORT", PHASE_DAGSOORT, 5); }
+    @Test void phase_dagsoort_negatie_matches_drl_back_end()      { runDifferential("Phase DAGSOORT NEG", PHASE_DAGSOORT_NEG, 3); }
+    /** §8.1.5 + Tabel 16 "is geen <dagsoort>" is a closed-form (¬dagsoort); assert the ABSOLUTE spec values (incl. §5.15:
+     *  a leeg datum IS "geen <dagsoort>" = WAAR) on the oracle AND back-end parity. */
+    @Test void phase_DAGSOORT_NEG_is_spec_correct() {
+        for (int i = 0; i < PHASE_DAGSOORT_NEG.length; i++) {
+            Fixture f = PHASE_DAGSOORT_NEG[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_DAGSOORT_NEG_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_dagsoort_duur_matches_drl_back_end()         { runDifferential("Phase DAGSOORT DUUR", PHASE_DAGSOORT_DUUR, 5); }
     @Test void phase_dagsoort_tijdsduur_matches_drl_back_end()    { runDifferential("Phase DAGSOORT TDS", PHASE_DAGSOORT_TDS, 6); }
     @Test void phase_dagsoort_cross_en_datearith_matches_drl_back_end() { runDifferential("Phase DAGSOORT X", PHASE_DAGSOORT_X, 5); }

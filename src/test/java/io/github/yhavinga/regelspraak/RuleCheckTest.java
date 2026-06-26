@@ -1417,4 +1417,37 @@ class RuleCheckTest {
         assertFalse(heeftNegatieSoortWaarschuwing(m),
                 () -> "correcte soort-werkwoord-combinaties mogen niet waarschuwen: " + m.diagnostics);
     }
+
+    @Test void is_geen_dagsoort_blijft_dagsoort_niet_misvouwen_naar_kenmerkcheck() {
+        // Negation card #5: "<datum> is geen <dagsoort>" (§8.1.5, Tabel 16 spec L3224) is a DATUM-value predicate on a
+        // SEPARATE de-negation path from the §3.5 kenmerkcheck. Verify it resolves to a NEGATED DAGSOORT predicaat and
+        // is NOT mis-folded into a Conditie.Kenmerk — EVEN with a same-named kenmerk on the subject (the real mis-fold
+        // risk). The "geen" (a LOWER_ID absorbed into the operand) is recovered; its leegwaarde is §5.15 datum-based.
+        String src = """
+            Dagsoort de kerstdag (mv: kerstdagen)
+            Regel Kerstdag
+                geldig altijd
+                    Een dag is een kerstdag
+                    indien de dag aan alle volgende voorwaarden voldoet:
+                    - de maand uit (de dag) is gelijk aan 12
+                    - de dag uit (de dag) is gelijk aan 25.
+            Objecttype de Vlucht
+                de vluchtdatum Datum in dagen;
+                is kerstdag kenmerk (bijvoeglijk);
+                is laat kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Vlucht is laat indien de vluchtdatum van de Vlucht geen kerstdag is.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        io.github.yhavinga.regelspraak.ir.Conditie[] box = { null };
+        for (var r : m.resolvedRegels) if (r.naam().equals("R")) box[0] = r.voorwaarde();
+        io.github.yhavinga.regelspraak.ir.Conditie c = box[0];
+        assertTrue(c instanceof io.github.yhavinga.regelspraak.ir.Conditie.Predicaat p
+                        && p.soort() == io.github.yhavinga.regelspraak.ir.Conditie.Predicaatsoort.DAGSOORT && p.negatie(),
+                () -> "'is geen <dagsoort>' moet een NEGATED DAGSOORT predicaat zijn (niet mis-folded naar Kenmerk), kreeg: " + c);
+        assertFalse(c instanceof io.github.yhavinga.regelspraak.ir.Conditie.Kenmerk,
+                () -> "'is geen <dagsoort>' mag NIET naar een §3.5 kenmerkcheck mis-folden ondanks een gelijknamig kenmerk: " + c);
+    }
 }

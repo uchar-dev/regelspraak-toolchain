@@ -2778,11 +2778,12 @@ public final class DrlTranspiler {
                 case ELFPROEF -> { registreerElfproefFunctie(); yield LoweredConditie.van((p.negatie() ? "!" : "") + "rsElfproef(" + o.text() + ")"); }  // §8.1.3 (Tabel 16 NIET-vorm)
                 case NUMERIEK_MET_EXACT -> { registreerNumeriekMetExactFunctie();   // §8.1.4 (Tabel 16 NIET-vorm)
                     yield LoweredConditie.van((p.negatie() ? "!" : "") + "rsNumeriekMetExact(" + o.text() + ", " + p.cijfers() + ")"); }
-                case DAGSOORT -> {  // §8.1.5 "<datum> is een <dagsoort>" -> the §9.8 definitie predicate
+                case DAGSOORT -> {  // §8.1.5 "<datum> is (geen) <dagsoort>" -> the §9.8 definitie predicate
                     String fn = dagsoortFunctie(p.dagsoort());
-                    // §5.15: een leegwaarde is nooit een dagsoort -> a null date is ONWAAR (no match), not an NPE.
+                    // §5.15: een leegwaarde is nooit een dagsoort -> a null date is ONWAAR (no match), not an NPE. The
+                    // NEGATED form (Tabel 16 "is geen <dagsoort>") wraps it in "!" -> a leeg/non-dagsoort datum is WAAR.
                     yield fn == null ? LoweredConditie.marker("dagsoortcontrole '" + p.dagsoort() + "'", p.bron())
-                            : LoweredConditie.van("(" + o.text() + " != null && " + fn + "(" + o.text() + "))");
+                            : LoweredConditie.van((p.negatie() ? "!" : "") + "(" + o.text() + " != null && " + fn + "(" + o.text() + "))");
                 }
                 default     -> LoweredConditie.marker("predicaat " + p.soort(), p.bron());
             };
@@ -2993,7 +2994,7 @@ public final class DrlTranspiler {
             Frag o = dagOperand(p.operand());
             String fn = dagsoortFunctie(p.dagsoort());
             if (o.marker() || fn == null) return null;
-            return "(" + o.text() + " != null && " + fn + "(" + o.text() + "))";
+            return (p.negatie() ? "!" : "") + "(" + o.text() + " != null && " + fn + "(" + o.text() + "))";   // Tabel 16 "geen <dagsoort>"
         }
         if (c instanceof Conditie.Samengesteld s) {
             List<String> delen = new ArrayList<>();

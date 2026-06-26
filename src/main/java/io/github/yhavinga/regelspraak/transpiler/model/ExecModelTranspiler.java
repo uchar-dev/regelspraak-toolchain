@@ -1452,8 +1452,9 @@ public final class ExecModelTranspiler {
                 java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(dp.dagsoort());
                 if (g != null && pred != null) {
                     BiFunction<Object, Map<String, BigDecimal>, Object> fn = wf.fn();
+                    boolean neg = dp.negatie();   // §8.1.5 + Tabel 16 "is geen <dagsoort>"
                     return new Gate(pattern.expr(nextId("c"), (Variable) g, (Predicate2) (s, gv) ->
-                            fn.apply(s, bindGlobal(gn, gv)) instanceof java.time.LocalDate ld && pred.test(ld)), List.of());
+                            neg != (fn.apply(s, bindGlobal(gn, gv)) instanceof java.time.LocalDate ld && pred.test(ld))), List.of());
                 }
             }
             // 0 globals -> the fact-only leafPredicate below; >1 / navigated / date-typed -> fall through -> honest skip
@@ -1740,15 +1741,17 @@ public final class ExecModelTranspiler {
             java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(p.dagsoort());
             if (pred == null) return null;
             String attr = la.attribuut();
+            boolean neg = p.negatie();   // §8.1.5 + Tabel 16 "is geen <dagsoort>": a leeg/non-dagsoort datum is WAAR
             if (la.navigatieRol() == null) {
                 if (!subject.heeftLid(attr)) return null;
-                return s -> RegelSpraakRuntime.get(s, attr) instanceof java.time.LocalDate ld && pred.test(ld);
+                return s -> neg != (RegelSpraakRuntime.get(s, attr) instanceof java.time.LocalDate ld && pred.test(ld));
             }
             String rol = navComparisonRole(la, subject);
             if (rol == null) return null;
             return s -> {
                 Object rel = RegelSpraakRuntime.get(s, rol);
-                return rel != null && RegelSpraakRuntime.get(rel, attr) instanceof java.time.LocalDate ld && pred.test(ld);
+                if (rel == null) return false;   // mvel `rol!.attr` short-circuits the whole term to non-match (BOTH polarities)
+                return neg != (RegelSpraakRuntime.get(rel, attr) instanceof java.time.LocalDate ld && pred.test(ld));
             };
         }
         // §8.1.5 dagsoortcontrole over a NON-attribute datum operand (a §6 date-arithmetic expression "de vluchtdatum
@@ -1760,7 +1763,8 @@ public final class ExecModelTranspiler {
             WaardeFn wf = scalarWaarde(p.operand());
             if (pred == null || wf == null || !wf.globals().isEmpty()) return null;
             BiFunction<Object, Map<String, BigDecimal>, Object> fn = wf.fn();
-            return s -> fn.apply(s, Map.of()) instanceof java.time.LocalDate ld && pred.test(ld);
+            boolean neg = p.negatie();   // §8.1.5 + Tabel 16 "is geen <dagsoort>"
+            return s -> neg != (fn.apply(s, Map.of()) instanceof java.time.LocalDate ld && pred.test(ld));
         }
         // §8.1.7 near-side rolcheck: the subject fills the role iff its to-ONE forward reference is set. The far-side
         // (the reference lives on the MANY side) is not a fact-only leaf -> null (handled as an exists-join above).
@@ -1813,7 +1817,8 @@ public final class ExecModelTranspiler {
             java.util.function.Function<java.time.LocalDate, Object> o = dagWaarde(p.operand());
             java.util.function.Predicate<java.time.LocalDate> inner = dagsoortPredikaat(p.dagsoort());
             if (o == null || inner == null) return null;
-            return d -> o.apply(d) instanceof java.time.LocalDate ld && inner.test(ld);
+            boolean neg = p.negatie();   // §8.1.5 + Tabel 16 "(de dag) is geen <dagsoort>" inside a §9.8 definitie
+            return d -> neg != (o.apply(d) instanceof java.time.LocalDate ld && inner.test(ld));
         }
         if (c instanceof Conditie.Samengesteld s) {
             List<java.util.function.Predicate<java.time.LocalDate>> delen = new ArrayList<>();

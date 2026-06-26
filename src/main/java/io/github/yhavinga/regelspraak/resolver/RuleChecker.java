@@ -1238,6 +1238,17 @@ final class RuleChecker {
             String dag = dagsoortNaam(stripArtikel(src(naamCtx)));
             if (dag != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.DAGSOORT, lhs, dag, null, bron);
         }
+        // §8.1.5 + Tabel 16 (spec L3224) "<datum> is geen <dagsoort>": the NEGATED dagsoortcontrole. "geen" is lexed as
+        // a LOWER_ID (no GEEN token), so the greedy onderwerp absorbs it as a TRAILING word of the operand — it ends the
+        // lhs bron (exactly as an absorbed "niet" does) and the bare kaleNaam left for the operator is just the dagsoort.
+        // Recover the absorbed "geen" (mirror absorbedNegator) and recognize a NEGATED DAGSOORT predicaat, kept on the
+        // §8.1.5 datum-value path — NEVER mis-folded into the §3.5 kenmerkcheck (a dagsoort is no kenmerk; §5.15-based
+        // leegwaarde: a leeg datum IS "geen <dagsoort>" = waar). Guarded against an attribuut literally named "… geen".
+        if (!heeftWerkwoord && lhs instanceof Expr.AttribuutRef la && la.type().isDatum() && la.bron() != null
+                && la.bron().stripTrailing().toLowerCase().endsWith(" geen") && !la.attribuut().toLowerCase().endsWith("geen")) {
+            String dag = dagsoortNaam(stripArtikel(src(naamCtx)));
+            if (dag != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.DAGSOORT, la, dag, true, 0, null, bron);
+        }
         Objecttype subject = bouwer.subject();
         if (subject == null) return null;
         String staart = stripArtikel(src(naamCtx));
