@@ -413,6 +413,41 @@ class ExecModelDifferentialTest {
         laatFix("§8.1.5 over date-arith: (23-12 + 1 dag)=24-12 is geen kerstdag", DAGSOORT_ARITH_SRC, java.time.LocalDate.of(2024, 12, 23)),
     };
 
+    // ---- §8.1.5 dagsoortcontrole over a datum operand reading a Parameter-GLOBAL (the duration is a parameter):
+    //      "de vluchtdatum van de Vlucht plus de marge een kerstdag is". DRL reads the global as a free name in the
+    //      rsDagsoort_<N> constraint; the exec model binds it as a pattern variable (voorwaarde's dagsoort-over-global
+    //      branch). Closed-form (rsDatumReken + the §9.8 predicate): assert the ABSOLUTE value too. ----
+    static final String DAGSOORT_GLOBAL_SRC =
+            """
+            Parameter de marge : Numeriek (geheel getal) met eenheid dagen
+            Dagsoort de kerstdag (mv: kerstdagen)
+            Regel Kerstdag
+                geldig altijd
+                    Een dag is een kerstdag
+                    indien de dag aan alle volgende voorwaarden voldoet:
+                    - de maand uit (de dag) is gelijk aan 12
+                    - de dag voldoet aan ten minste één van de volgende voorwaarden:
+                        .. de dag uit (de dag) is gelijk aan 25
+                        .. de dag uit (de dag) is gelijk aan 26.
+            Objecttype de Vlucht
+                de vluchtdatum Datum in dagen;
+                is laat kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Vlucht is laat indien de vluchtdatum van de Vlucht plus de marge een kerstdag is.
+            """;
+    static Fixture dagsoortGlobalFix(String naam, java.time.LocalDate vd, int marge) {
+        return new Fixture(naam, DAGSOORT_GLOBAL_SRC,
+                () -> { Vlucht v = new Vlucht(); if (vd != null) v.setVluchtdatum(vd); return List.of(v); },
+                Map.of("marge", new BigDecimal(marge)), l -> ((Vlucht) l.get(0)).isLaat());
+    }
+    static final Fixture[] PHASE_DAGSOORT_GLOBAL = {
+        dagsoortGlobalFix("§8.1.5 over global date-arith: (23-12 + 2 dagen)=25-12 is een kerstdag", java.time.LocalDate.of(2024, 12, 23), 2),
+        dagsoortGlobalFix("§8.1.5 over global date-arith: (23-12 + 1 dag)=24-12 is geen kerstdag", java.time.LocalDate.of(2024, 12, 23), 1),
+        dagsoortGlobalFix("§8.1.5 over global date-arith: (24-12 + 2 dagen)=26-12 is een kerstdag", java.time.LocalDate.of(2024, 12, 24), 2),
+    };
+    static final Boolean[] PHASE_DAGSOORT_GLOBAL_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.TRUE };
+
     // ---- §12 BESLISTABEL fixtures: a captured pipe-table desugars (BeslistabelDesugar) to one regel per row, fed
     //      through the SAME resolver -> both back-ends fire the rows. Mutually-exclusive bands keep the result
     //      deterministic regardless of row firing order. Exercises: one-conditie, multi-conditie AND + n.v.t. omission,
@@ -3125,6 +3160,23 @@ class ExecModelDifferentialTest {
     @Test void phase_dagsoort_duur_matches_drl_back_end()         { runDifferential("Phase DAGSOORT DUUR", PHASE_DAGSOORT_DUUR, 5); }
     @Test void phase_dagsoort_tijdsduur_matches_drl_back_end()    { runDifferential("Phase DAGSOORT TDS", PHASE_DAGSOORT_TDS, 6); }
     @Test void phase_dagsoort_cross_en_datearith_matches_drl_back_end() { runDifferential("Phase DAGSOORT X", PHASE_DAGSOORT_X, 5); }
+    @Test void phase_dagsoort_over_global_matches_drl_back_end()        { runDifferential("Phase DAGSOORT GLOBAL", PHASE_DAGSOORT_GLOBAL, 3); }
+    /** §8.1.5 over a global-reading datum operand is a closed-form transform (rsDatumReken + the §9.8 dagsoort
+     *  predicate); assert the ABSOLUTE spec value on the oracle AND that the exec back-end (which binds the global as a
+     *  pattern variable) agrees — a shared bug (e.g. the global never wired -> null duration) would pass a pure differential. */
+    @Test void phase_DAGSOORT_GLOBAL_is_spec_correct() {
+        for (int i = 0; i < PHASE_DAGSOORT_GLOBAL.length; i++) {
+            Fixture f = PHASE_DAGSOORT_GLOBAL[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_DAGSOORT_GLOBAL_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     // Phase E carries ONE principled skip: ">1 verdeling op hetzelfde doel" is agenda-order-dependent, so the model
     // deliberately does not lower it (a §differential-masked-skip the cap now pins at exactly 1).
     @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9, 1); }

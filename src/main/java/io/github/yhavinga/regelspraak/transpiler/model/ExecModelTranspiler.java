@@ -1333,6 +1333,26 @@ public final class ExecModelTranspiler {
             }
             // 0 globals -> falls through to leafPredicate (covered); >1 / unresolved -> falls through -> skip
         }
+        // §8.1.5 dagsoortcontrole "<datum> is een <dagsoort>" whose datum operand reads EXACTLY ONE Parameter-GLOBAL
+        // (a §6 date-arithmetic expression whose duration is a numeric parameter, "de vluchtdatum plus de MARGE een
+        // werkdag is"): bind that global as a pattern variable (a 2-var expr), mirroring the date-arith-vs-global
+        // comparison branch above. DRL reads the global as a free name directly in the rsDagsoort_<N> constraint; the
+        // exec accumulate/pattern needs it as a Variable. A fact-only (0-global) operand falls through to leafPredicate;
+        // >1 global / an unregistered global falls through -> skip. §5.15: an absent/non-date value is ONWAAR.
+        if (c instanceof Conditie.Predicaat dp && dp.soort() == Conditie.Predicaatsoort.DAGSOORT && dp.operand().type().isDatum()) {
+            WaardeFn wf = scalarWaarde(dp.operand());
+            if (wf != null && wf.globals().size() == 1) {
+                String gn = wf.globals().iterator().next();
+                Global<BigDecimal> g = globals.get(gn);
+                java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(dp.dagsoort());
+                if (g != null && pred != null) {
+                    BiFunction<Object, Map<String, BigDecimal>, Object> fn = wf.fn();
+                    return new Gate(pattern.expr(nextId("c"), (Variable) g, (Predicate2) (s, gv) ->
+                            fn.apply(s, Map.of(gn, (BigDecimal) gv)) instanceof java.time.LocalDate ld && pred.test(ld)), List.of());
+                }
+            }
+            // 0 globals -> the fact-only leafPredicate below; >1 / unregistered -> fall through -> skip
+        }
         // every other supported condition is a fact-only leaf.
         Predicate1<Object> lp = leafPredicate(c, subject);
         if (lp != null) return new Gate(pattern.expr(nextId("c"), (Predicate1) lp), List.of());
