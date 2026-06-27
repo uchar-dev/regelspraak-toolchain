@@ -1757,6 +1757,43 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_CU_VALUE_EXPECTED = { new BigDecimal("2"), new BigDecimal("0.5"), new BigDecimal("2") };
 
+    // ---- §5.3 an ENUMERATIE attribute compared to an enum-typed Parameter-GLOBAL ("zijn roepnaam gelijk is aan de
+    //      STANDAARDNAAM"). DRL reads the enum global as a free name (String equality); the exec used to SKIP (the
+    //      tekst-vs-global branch gated on isTekst(), which excludes Enumeratie) -> a masked DRL-fires/exec-skips.
+    //      Enum params now register as String globals + the branch accepts Enumeratie, lowering through tekstVergelijk
+    //      (an enumeratiewaarde is its String label). Covers own + to-one NAVIGATED, incl. the ABSENT-relation ONGELIJK
+    //      row (leeg != X = WAAR, Tabel 44 — the coverage a vs-global fixture must always include). ----
+    static String enumGlobalSrc(boolean nav, String op) {
+        String head = "Domein Naam is van het type Enumeratie\n    'Tom'\n    'Maria'\n"
+            + "Parameter de STANDAARDNAAM : Naam\n"
+            + "Objecttype de Persoon (mv: Personen) (bezield)\n    de roepnaam Naam;\n    is gepensioneerd kenmerk (bijvoeglijk);\n";
+        String rel = nav ? "Feittype partnerschap\n    de persoon Persoon\n    de partner Persoon\nEén persoon heeft één partner\n" : "";
+        String onderwerp = nav ? "de roepnaam van zijn partner" : "zijn roepnaam";
+        return head + rel + "Regel R\n    geldig altijd\n        Een Persoon is gepensioneerd indien " + onderwerp + " " + op + " de STANDAARDNAAM.\n";
+    }
+    static Persoon epersoon(String roepnaam) { Persoon p = new Persoon(); p.setRoepnaam(roepnaam); return p; }
+    static final Map<String, Object> STDNAAM = Map.of("sTANDAARDNAAM", "Maria");
+    static final Fixture[] PHASE_ENUM_GLOBAL = {
+        new Fixture("enum-vs-global GELIJK Maria==Maria -> waar", enumGlobalSrc(false, "gelijk is aan"),
+            () -> List.of(epersoon("Maria")), STDNAAM, l -> ((Persoon) l.get(0)).isGepensioneerd()),
+        new Fixture("enum-vs-global GELIJK Tom==Maria -> onwaar", enumGlobalSrc(false, "gelijk is aan"),
+            () -> List.of(epersoon("Tom")), STDNAAM, l -> ((Persoon) l.get(0)).isGepensioneerd()),
+        new Fixture("enum-vs-global GELIJK leeg==Maria -> onwaar (Tabel 38)", enumGlobalSrc(false, "gelijk is aan"),
+            () -> List.of(epersoon(null)), STDNAAM, l -> ((Persoon) l.get(0)).isGepensioneerd()),
+        new Fixture("enum-vs-global ONGELIJK leeg!=Maria -> waar (Tabel 44)", enumGlobalSrc(false, "ongelijk is aan"),
+            () -> List.of(epersoon(null)), STDNAAM, l -> ((Persoon) l.get(0)).isGepensioneerd()),
+        // NAVIGATED: metPartner reads partner.roepnaam=Maria == Maria -> waar (the bare partner reads its own null partner -> leeg, stays onwaar)
+        new Fixture("enum-vs-global NAV partner.roepnaam Maria==Maria -> waar", enumGlobalSrc(true, "gelijk is aan"),
+            () -> { Persoon partner = epersoon("Maria"); Persoon metPartner = epersoon(null); metPartner.setPartner(partner);
+                    return List.of(metPartner, partner); }, STDNAAM, l -> ((Persoon) l.get(0)).isGepensioneerd()),
+        // NAVIGATED ABSENT relation: no partner -> roepnaam van zijn partner = leeg; leeg != Maria = WAAR (Tabel 44)
+        new Fixture("enum-vs-global NAV absent-partner ONGELIJK -> waar (Tabel 44)", enumGlobalSrc(true, "ongelijk is aan"),
+            () -> List.of(epersoon(null)), STDNAAM, l -> ((Persoon) l.get(0)).isGepensioneerd()),
+    };
+    static final Object[] PHASE_ENUM_GLOBAL_EXPECTED = {
+        Boolean.TRUE, Boolean.FALSE, Boolean.FALSE, Boolean.TRUE, Boolean.TRUE, Boolean.TRUE
+    };
+
     // ---- §8.1.1 an EXPRESSION-vs-GLOBAL comparison ("zijn basistarief plus zijn bodem groter is dan de grens",
     //      "zijn basistarief plus de toeslag groter is dan zijn prijs") — the exec voorwaarde binds the SINGLE distinct
     //      numeric/percentage Parameter-global as a pattern variable (a 2-var expr), lowering both sides via scalarWaarde;
@@ -4197,6 +4234,24 @@ class ExecModelDifferentialTest {
     @Test void phase_crossunit_matches_drl_back_end() { runDifferential("Phase cross-unit", PHASE_CROSSUNIT, 2); }
     @Test void phase_cu_arith_matches_drl_back_end() { runDifferential("Phase cross-unit +/-", PHASE_CU_ARITH, 5); }
     @Test void phase_cu_value_matches_drl_back_end() { runDifferential("Phase cross-unit value", PHASE_CU_VALUE, 3); }
+    @Test void phase_enum_global_matches_drl_back_end() { runDifferential("Phase enum-vs-global", PHASE_ENUM_GLOBAL, 6); }
+    /** §5.3 an ENUMERATIE attribute compared to an enum-typed Parameter-global now FIRES in the exec (was a masked
+     *  DRL-fires/exec-skips: the tekst-vs-global branch gated on isTekst(), excluding Enumeratie). Both compare by
+     *  String-label equality (tekstVergelijk) with the §5 leegwaarde tables. Covers own + to-one NAVIGATED, incl. the
+     *  ABSENT-relation ONGELIJK row (leeg != X = WAAR, Tabel 44). */
+    @Test void phase_enum_vs_global_is_spec_correct() {
+        for (int i = 0; i < PHASE_ENUM_GLOBAL.length; i++) {
+            Fixture f = PHASE_ENUM_GLOBAL[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_ENUM_GLOBAL_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     /** §4 the EXACT canonical-unit restatement now also covers the VALUE side beyond +/-: a pure cross-unit ASSIGNMENT
      *  (24 mnd stored into a jr attribute = 2, not 1.99999999999999992) and a value-side BEGRENZING bound (the bound
      *  restated mnd→jr exactly). A SHARED lossy-ratio bug -> assert the ABSOLUTE spec value (differential-masks-shared-bugs). */

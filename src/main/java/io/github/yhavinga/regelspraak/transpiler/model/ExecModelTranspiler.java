@@ -144,8 +144,9 @@ public final class ExecModelTranspiler {
                 Global<java.time.LocalDateTime> g = DSL.globalOf(java.time.LocalDateTime.class, PKG, ident(p.naam()));
                 datumTijdGlobals.put(ident(p.naam()), g);
                 m.addGlobal(g);
-            } else if (p.datatype().isTekst()) {
-                // §13.3.8 a Tekst parameter is a String global — TRACKED so a tekst-equality-vs-global comparison binds it.
+            } else if (p.datatype().isTekst() || p.datatype() instanceof Datatype.Enumeratie) {
+                // §13.3.8 a Tekst OR §13.2.14 Enumeratie parameter is a String global (an enumeratiewaarde is stored as its
+                // String label) — TRACKED so a tekst/enum equality-vs-global comparison binds it.
                 Global<String> g = DSL.globalOf(String.class, PKG, ident(p.naam()));
                 tekstGlobals.put(ident(p.naam()), g);
                 m.addGlobal(g);
@@ -1484,9 +1485,8 @@ public final class ExecModelTranspiler {
         // the exec binds the String global as a pattern variable. §5.5.5 a null relation / leeg attr reads LEEG, then
         // string equality with the §5 leegwaarde tables (GELIJK Tabel 38 one/both-leeg onwaar; ONGELIJK Tabel 44 one-leeg WAAR).
         if (c instanceof Conditie.Vergelijking v && (v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)
-                && v.links() instanceof Expr.AttribuutRef la && la.type() != null && la.type().isTekst()
-                && v.rechts() instanceof Expr.ParameterRef pr && pr.parameter().datatype() != null
-                && pr.parameter().datatype().isTekst()) {
+                && v.links() instanceof Expr.AttribuutRef la && tekstachtig(la.type())
+                && v.rechts() instanceof Expr.ParameterRef pr && tekstachtig(pr.parameter().datatype())) {
             if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 -> marker
             Global<String> g = tekstGlobals.get(ident(pr.parameter().naam()));
@@ -1660,6 +1660,9 @@ public final class ExecModelTranspiler {
         return gelijk ? (java.util.Objects.equals(a, b) && !(a == null && b == null))
                       : !java.util.Objects.equals(a, b);
     }
+    /** §13.3.3.4 Tekst OR §13.2.14 Enumeratie — both compare by String-label equality (an enumeratiewaarde is stored as
+     *  its label), so an enum-vs-global equality lowers through the same tekst-vs-global branch + {@link #tekstVergelijk}. */
+    private static boolean tekstachtig(Datatype t) { return t != null && (t.isTekst() || t instanceof Datatype.Enumeratie); }
 
     private Predicate1<Object> leafPredicate(Conditie c, Objecttype subject) {
         // §8.2 a whole-period-qualified predicate over a tijdsafhankelijk onderwerp, with a literal/own-attr grens
