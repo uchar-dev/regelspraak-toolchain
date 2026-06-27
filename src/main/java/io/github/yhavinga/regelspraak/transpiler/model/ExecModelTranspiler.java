@@ -352,12 +352,13 @@ public final class ExecModelTranspiler {
             if (consequence == null) return skip("regel (aggregatie-waarde: te veel gebonden variabelen): " + r.naam());
             extra.addAll(accItems);
         } else if (isScalarSoort(r.soort()) && r.waarde() instanceof Expr.ParameterRef tpr
-                && tekstachtig(tpr.parameter().datatype()) && tekstGlobals.containsKey(ident(tpr.parameter().naam()))) {
-            // §13.4.6 assign a single TEKST/ENUMERATIE Parameter-GLOBAL (a String, not numeric) to the attribute
-            // ("De roepnaam wordt gesteld op de STANDAARDNAAM"): the numeric value-path below binds globals as BigDecimal,
-            // so a String global would skip there. Bind the String global and set it directly. (DRL declares the global
-            // with its String type so the setter resolves — both back-ends used to decline this: DRL build-error / exec skip.)
-            Global<String> g = tekstGlobals.get(ident(tpr.parameter().naam()));
+                && nietNumeriekeGlobal(ident(tpr.parameter().naam())) != null) {
+            // §13.4.6 assign a single NON-NUMERIC Parameter-GLOBAL verbatim into the attribute — a Tekst/Enumeratie String
+            // ("De roepnaam wordt gesteld op de STANDAARDNAAM"), a Datum LocalDate or a Datum-en-tijd LocalDateTime
+            // ("De gebdatum wordt gesteld op de PEILDATUM"). The numeric value-path below binds globals as BigDecimal, so
+            // a non-numeric global would skip there. Bind the typed global and set it directly. (DRL declares the global
+            // with its concrete type so the setter resolves — both back-ends used to decline this: DRL build-error / exec skip.)
+            Global<?> g = nietNumeriekeGlobal(ident(tpr.parameter().naam()));
             consequence = DSL.on(sVar, (Variable) g).execute((Block3<org.drools.model.Drools, Object, Object>) (drools, s, gv) ->
                     werkBij(drools, s, doelGetter, doelSetter, gv));
         } else {
@@ -1672,6 +1673,15 @@ public final class ExecModelTranspiler {
     /** §13.3.3.4 Tekst OR §13.2.14 Enumeratie — both compare by String-label equality (an enumeratiewaarde is stored as
      *  its label), so an enum-vs-global equality lowers through the same tekst-vs-global branch + {@link #tekstVergelijk}. */
     private static boolean tekstachtig(Datatype t) { return t != null && (t.isTekst() || t instanceof Datatype.Enumeratie); }
+    /** A NON-NUMERIC Parameter-global (Tekst/Enumeratie String, Datum LocalDate, or Datum-en-tijd LocalDateTime) by its
+     *  ident, or null. Used to assign such a global verbatim into an attribute (§13.4.6) — the numeric value-path binds
+     *  globals as BigDecimal, so these need a directly-typed bind. (rekendatum is engine-internal, never a value source.) */
+    private Global<?> nietNumeriekeGlobal(String gn) {
+        if (tekstGlobals.containsKey(gn)) return tekstGlobals.get(gn);
+        if (datumGlobals.containsKey(gn)) return datumGlobals.get(gn);
+        if (datumTijdGlobals.containsKey(gn)) return datumTijdGlobals.get(gn);
+        return null;
+    }
 
     private Predicate1<Object> leafPredicate(Conditie c, Objecttype subject) {
         // §8.2 a whole-period-qualified predicate over a tijdsafhankelijk onderwerp, with a literal/own-attr grens

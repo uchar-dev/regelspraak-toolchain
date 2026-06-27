@@ -1855,13 +1855,27 @@ class ExecModelDifferentialTest {
         "Parameter de STANDAARDNAAM : Tekst\n"
         + "Objecttype de Persoon (mv: Personen) (bezield)\n    de roepnaam Tekst;\n"
         + "Regel R\n    geldig altijd\n        De roepnaam van een Persoon moet gesteld worden op de STANDAARDNAAM.\n";
+    static final String DATUM_ASSIGN_SRC =
+        "Parameter de PEILDATUM : Datum in dagen\n"
+        + "Objecttype de Klok\n    de reisdatum Datum in dagen;\n"
+        + "Regel R\n    geldig altijd\n        De reisdatum van een Klok moet gesteld worden op de PEILDATUM.\n";
+    static final String DATUMTIJD_ASSIGN_SRC =
+        "Parameter de PEILMOMENT : Datum en tijd in millisecondes\n"
+        + "Objecttype de Klok\n    de moment Datum en tijd in millisecondes;\n"
+        + "Regel R\n    geldig altijd\n        De moment van een Klok moet gesteld worden op de PEILMOMENT.\n";
     static final Fixture[] PHASE_ENUM_ASSIGN = {
         new Fixture("enum-global value-assignment roepnaam := STANDAARDNAAM (Maria)", ENUM_ASSIGN_SRC,
             () -> List.of(new Persoon()), Map.of("sTANDAARDNAAM", "Maria"), l -> ((Persoon) l.get(0)).getRoepnaam()),
         new Fixture("tekst-global value-assignment roepnaam := STANDAARDNAAM (Tom)", TEKST_ASSIGN_SRC,
             () -> List.of(new Persoon()), Map.of("sTANDAARDNAAM", "Tom"), l -> ((Persoon) l.get(0)).getRoepnaam()),
+        // §13.4.6 a DATUM Parameter-global assigned into a datum attribute (the wf_12d0005c review's divergence:
+        // DRL fired, exec skipped because a datum global is not in the numeric `globals` map).
+        new Fixture("datum-global value-assignment reisdatum := PEILDATUM (2020-01-15)", DATUM_ASSIGN_SRC,
+            () -> List.of(new Klok()), Map.of("pEILDATUM", LocalDate.of(2020, 1, 15)), l -> ((Klok) l.get(0)).getReisdatum()),
+        new Fixture("datumtijd-global value-assignment moment := PEILMOMENT", DATUMTIJD_ASSIGN_SRC,
+            () -> List.of(new Klok()), Map.of("pEILMOMENT", LocalDateTime.of(2020, 1, 15, 9, 30)), l -> ((Klok) l.get(0)).getMoment()),
     };
-    static final Object[] PHASE_ENUM_ASSIGN_EXPECTED = { "Maria", "Tom" };
+    static final Object[] PHASE_ENUM_ASSIGN_EXPECTED = { "Maria", "Tom", LocalDate.of(2020, 1, 15), LocalDateTime.of(2020, 1, 15, 9, 30) };
 
     // ---- §8.1.1 an EXPRESSION-vs-GLOBAL comparison ("zijn basistarief plus zijn bodem groter is dan de grens",
     //      "zijn basistarief plus de toeslag groter is dan zijn prijs") — the exec voorwaarde binds the SINGLE distinct
@@ -4338,9 +4352,10 @@ class ExecModelDifferentialTest {
         }
     }
     @Test void phase_enum_global_matches_drl_back_end() { runDifferential("Phase enum-vs-global", PHASE_ENUM_GLOBAL, 6); }
-    @Test void phase_enum_assign_matches_drl_back_end() { runDifferential("Phase enum/tekst-global assign", PHASE_ENUM_ASSIGN, 2); }
-    /** §13.4.6 assigning a TEKST/ENUMERATIE Parameter-global INTO an attribute now fires in BOTH back-ends (was a DRL
-     *  build-error vs exec-skip): DRL declares the global with its String type; the exec binds the String global + sets it. */
+    @Test void phase_enum_assign_matches_drl_back_end() { runDifferential("Phase non-numeric-global assign", PHASE_ENUM_ASSIGN, 4); }
+    /** §13.4.6 assigning a NON-NUMERIC Parameter-global INTO an attribute now fires in BOTH back-ends (was a DRL
+     *  build-error / exec-skip): a Tekst/Enumeratie String, a Datum LocalDate, or a Datum-en-tijd LocalDateTime. DRL
+     *  declares the global with its concrete type; the exec binds the typed global + sets it directly. */
     @Test void phase_enum_global_assignment_is_spec_correct() {
         for (int i = 0; i < PHASE_ENUM_ASSIGN.length; i++) {
             Fixture f = PHASE_ENUM_ASSIGN[i];
