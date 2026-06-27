@@ -780,14 +780,22 @@ final class ExpressieBouwer {
         // hebben" / "die heeft een kind" = that HAVE a child), a different predicate class — not the
         // element's boolean kenmerk; its kaleNaam carries no is/zijn here, so it falls through to the marker.
         String naamBron = null;
+        boolean heeftPeriode = false;
         if (p.toplevelOperator() != null) {                  // EEN? kaleNaam (IS | HEEFT | ZIJN | HEBBEN)
             ToplevelOperatorContext op = p.toplevelOperator();
             if (op.kaleNaam() != null && (op.IS() != null || op.ZIJN() != null)) naamBron = src(op.kaleNaam());
+            heeftPeriode = op.gehelePeriodevergelijking() != null;
         } else if (p.nonToplevelOperator() != null) {        // (IS | HEEFT | ZIJN | HEBBEN) EEN? kaleNaam, or EEN kaleNaam (IS | ZIJN)
             NonToplevelOperatorContext op = p.nonToplevelOperator();
             if (op.kaleNaam() != null && (op.IS() != null || op.ZIJN() != null)) naamBron = src(op.kaleNaam());
+            heeftPeriode = op.gehelePeriodevergelijking() != null;
         }
         if (naamBron == null) return null;
+        // §8.2: a "(niet) gedurende de/het gehele <periode>" whole-period qualifier on a subselectie element kenmerk is
+        // NOT yet lowered onto the accumulate source — MARKER it (return null -> the caller markers the whole subselectie)
+        // rather than SILENTLY binding a static kenmerk check that drops the §8.2 semantics. Both back-ends decline
+        // symmetrically (no-silent-drop). The unqualified kenmerk subselectie ("die een minderjarige zijn") fires as before.
+        if (heeftPeriode) return null;
         // §5.6: the written form may be the kenmerk's inflected/nominalized spelling
         // ("die een minderjarige zijn" against the declared "minderjarig") — bind it morphologically.
         String kenmerk = KenmerkMatcher.vind(elem, naamBron);

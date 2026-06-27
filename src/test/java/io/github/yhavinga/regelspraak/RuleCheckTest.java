@@ -1450,4 +1450,36 @@ class RuleCheckTest {
         assertFalse(c instanceof io.github.yhavinga.regelspraak.ir.Conditie.Kenmerk,
                 () -> "'is geen <dagsoort>' mag NIET naar een §3.5 kenmerkcheck mis-folden ondanks een gelijknamig kenmerk: " + c);
     }
+
+    @Test void gehele_periode_gekwalificeerde_kenmerk_subselectie_wordt_gemarkeerd_niet_stil_gedropt() {
+        // §8.2: a "(niet) gedurende de/het gehele <periode>" whole-period qualifier on a kenmerk SUBSELECTIE is not yet
+        // lowered onto the accumulate source. The resolver must MARKER it rather than SILENTLY binding a static kenmerk
+        // check that drops the §8.2 semantics (no-silent-drop) — so the DRL markers the aggregation and never emits the
+        // bare static `minderjarig == true` source constraint. The UNqualified subselectie still fires (control).
+        String basis = """
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                is minderjarig kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel R
+                geldig altijd
+                    De totaalprijs van een Vlucht moet berekend worden als het aantal passagiers van de reis %s.
+            """;
+        RegelSpraakModel qual = Resolver.resolve(basis.formatted("die gedurende het gehele jaar een minderjarige zijn"));
+        assertTrue(qual.errors().isEmpty(), () -> "moet resolven: " + qual.errors());
+        String drlQual = DrlTranspiler.transpile(qual);
+        assertTrue(drlQual.contains("/* TODO"),
+                () -> "een §8.2-gekwalificeerde kenmerk-subselectie moet markeren (nog niet verlaagd):\n" + drlQual);
+        assertFalse(drlQual.contains("minderjarig == true"),
+                () -> "de §8.2-qualifier mag NIET stil vallen naar een statische minderjarig-check:\n" + drlQual);
+        // control: the UNqualified subselectie still binds the kenmerk on the accumulate source (it fires)
+        RegelSpraakModel plain = Resolver.resolve(basis.formatted("die een minderjarige zijn"));
+        assertTrue(plain.errors().isEmpty(), () -> "moet resolven: " + plain.errors());
+        assertTrue(DrlTranspiler.transpile(plain).contains("minderjarig == true"),
+                () -> "de ONgekwalificeerde kenmerk-subselectie moet wel vuren:\n" + DrlTranspiler.transpile(plain));
+    }
 }
