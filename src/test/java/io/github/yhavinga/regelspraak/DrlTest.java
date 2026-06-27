@@ -1604,6 +1604,37 @@ class DrlTest {
                 () -> "geen ongegarde .multiply buiten de rsHerschaal helper:\n" + drl);
     }
 
+    @Test void genavigeerde_operand_in_rekenkundige_voorwaarde_leest_null_veilig_via_rsRelGetal() {
+        // §6.2/§4.1 a navigated NUMERIC leg inside arithmetic in a CONDITION ("de vertrektijd van zijn reis plus zijn
+        // basistarief > zijn prijs"). mvel's `reis!.vertrektijd` short-circuits the WHOLE constraint to a non-match on an
+        // absent reis, dropping the §4.1 Tabel-3 leeg-as-0 (which should compute 0+basistarief). The leg now reads through
+        // the null-safe rsRelGetal helper, so a null relation yields a leeg (null) value rsNul folds to 0 — leeg-as-0, not
+        // a short-circuit. (The STANDALONE navigated comparison keeps mvel's `!.`; only the arithmetic leg changes.)
+        String src = """
+            Objecttype de Vlucht
+                de vertrektijd Numeriek (geheel getal);
+            Objecttype de Passagier
+                het basistarief Numeriek (geheel getal);
+                de prijs Numeriek (geheel getal);
+                is duur kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel R
+                geldig altijd
+                    Een Passagier is duur indien de vertrektijd van zijn reis plus zijn basistarief groter is dan zijn prijs.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren+resolven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("/* TODO"), () -> "een navigated rekenkundige operand moet vuren (geen marker):\n" + drl);
+        assertTrue(drl.contains("function java.math.BigDecimal rsRelGetal"), () -> "de rsRelGetal helper moet geregistreerd zijn:\n" + drl);
+        assertTrue(drl.contains("rsRelGetal(reis, \"vertrektijd\")"), () -> "de navigated arithmetic-leg moet null-veilig via rsRelGetal lezen:\n" + drl);
+        // the navigated leg inside arithmetic must NOT use mvel's `!.` short-circuit (which drops the leeg-as-0)
+        assertFalse(drl.contains("reis!.vertrektijd"), () -> "een navigated arithmetic-leg mag mvel's `!.` short-circuit NIET gebruiken:\n" + drl);
+    }
+
     @Test void compound_subselectie_telling_met_cross_unit_global_lowert_via_rsHerschaal() {
         // §13.4.13.4 a COUNTING quantifier + single global whose comparison needs a §5.1 UNIT RESTATEMENT (leeftijd jr
         // vs grens mnd) now FIRES in both back-ends: DRL restates the operand on the accumulate source via the null-safe

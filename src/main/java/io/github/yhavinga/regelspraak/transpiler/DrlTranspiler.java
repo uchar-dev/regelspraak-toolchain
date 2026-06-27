@@ -1574,6 +1574,20 @@ public final class DrlTranspiler {
                 + "}\n\n");
     }
 
+    /** Register the §6.x null-safe navigated-leg read for a numeric attribute reached through a to-ONE relation
+     *  INSIDE arithmetic. mvel's {@code rol!.attr} short-circuits the WHOLE pattern constraint to a non-match when
+     *  the relation is null — wrong inside a +/- (where §4.1 Tabel 3 reads a leeg operand as 0): "de prijs van zijn
+     *  reis plus 1" with no reis must compute 0+1, not silently fail. This helper reads the attribute reflectively
+     *  (relatie null -> null leegwaarde, NO short-circuit), so the surrounding rsNul/rsVerminderd leegwaarde handling
+     *  applies — the constraint-valid mirror of the exec's null-safe navReader read. Idempotent. */
+    private void registreerRelGetalFunctie() {
+        hulpFuncties.putIfAbsent("rsRelGetal",
+                "function java.math.BigDecimal rsRelGetal(Object relatie, String attribuut) {\n"
+                + "    return relatie == null ? null : io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.toBd(\n"
+                + "        io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.get(relatie, attribuut));\n"
+                + "}\n\n");
+    }
+
     /** Register the §6.1.4 begrenzing helper — clamp a value to an optional minimum then maximum (the value
      *  side's clamp order), null-safe: a leeg value stays leeg, and a null bound is no bound. Used on the
      *  CONDITION side, where the value side's inline clamp ternary cannot live in a pattern constraint. Idempotent. */
@@ -3115,7 +3129,7 @@ public final class DrlTranspiler {
             // setScale is a pure method call (no ternary), valid in a pattern constraint, so descend with the
             // operand-side (bare-property) lowering. A marker basis (e.g. an afronding over a Begrensd clamp,
             // which still uses a ternary and markers here) propagates.
-            Frag b = operand(af.basis(), subject);
+            Frag b = operandReken(af.basis(), subject);
             return b.marker() ? b : afgerondeTerm(b, af);
         }
         if (e instanceof Expr.Binair b)
@@ -3125,7 +3139,7 @@ public final class DrlTranspiler {
             // ternary, and the ternary-free multiply would NPE-abort the session on a null operand, so a
             // convertible-but-different-unit +/- stays an honest no-op). The leegwaarde helpers (rsNul/rsGedeeld/
             // rsVerminderd/rsMacht) are method calls, valid in a constraint.
-            return binairTerm(b, x -> operand(x, subject), DrlTranspiler::omrekenConditie);
+            return binairTerm(b, x -> operandReken(x, subject), DrlTranspiler::omrekenConditie);
         if (e instanceof Expr.Begrensd bg) {
             // §6.1.4 begrenzing in a CONDITION: the value side clamps with an inline ternary "(r < m ? m : r)"
             // that mis-parses in a pattern constraint, so lower through the registered rsBegrens helper (a method
@@ -3134,9 +3148,9 @@ public final class DrlTranspiler {
             // +/- path); a marker basis/bound propagates.
             registreerBegrensFunctie();
             Datatype bt = bg.basis().type();
-            Frag basis = operand(bg.basis(), subject);
-            Frag min = bg.minimum() != null ? omrekenConditie(operand(bg.minimum(), subject), bg.minimum().type(), bt) : Frag.ok("null");
-            Frag max = bg.maximum() != null ? omrekenConditie(operand(bg.maximum(), subject), bg.maximum().type(), bt) : Frag.ok("null");
+            Frag basis = operandReken(bg.basis(), subject);
+            Frag min = bg.minimum() != null ? omrekenConditie(operandReken(bg.minimum(), subject), bg.minimum().type(), bt) : Frag.ok("null");
+            Frag max = bg.maximum() != null ? omrekenConditie(operandReken(bg.maximum(), subject), bg.maximum().type(), bt) : Frag.ok("null");
             if (basis.marker() || min.marker() || max.marker()) return Frag.todo("begrenzing in voorwaarde", bg.bron());
             return Frag.ok("rsBegrens(" + basis.text() + ", " + min.text() + ", " + max.text() + ")");
         }
@@ -3147,7 +3161,7 @@ public final class DrlTranspiler {
             // since $subject is not bound inside its own pattern). The AGGREGATIONS (som/min/max over instances)
             // return null there: they need a `when` accumulate and cannot live inside a single constraint, so
             // they fall through to an honest marker (-> the caller's `false /* TODO */`).
-            Frag scalar = scalarFunctie(f, x -> operand(x, subject));
+            Frag scalar = scalarFunctie(f, x -> operandReken(x, subject));
             if (scalar != null) return scalar;
             return Frag.todo("aggregatie-functie in voorwaarde " + f.kind(), f.bron());
         }
@@ -3167,6 +3181,27 @@ public final class DrlTranspiler {
             case NAAR_VEEL   -> Frag.todo("naar-veel-navigatie", a.bron());
             default          -> Frag.todo("navigatie", a.bron());   // AFWEZIG / ONOPGELOST
         };
+    }
+
+    /** The CONDITION-side lowering of an operand sitting INSIDE arithmetic (a binairTerm / begrenzing / afronding /
+     *  scalar-functie leg): identical to {@link #operand} EXCEPT a to-ONE NAVIGATED NUMERIC attribute reads through the
+     *  null-safe {@link #registreerRelGetalFunctie rsRelGetal} helper instead of mvel's {@code rol!.attr}. Inside a +/-
+     *  the §4.1 Tabel 3 leegwaarde reads an absent operand as 0, but mvel's {@code !.} short-circuits the WHOLE
+     *  constraint to a non-match on a null relation — dropping the leeg-as-0 (a latent bug: "de prijs van zijn reis plus
+     *  1" with no reis must compute 0+1, not silently fail). rsRelGetal yields a leeg (null) value the surrounding
+     *  rsNul/rsVerminderd leegwaarde handling then applies, mirroring the exec's navReader. A non-numeric (datum/tekst)
+     *  navigated leg, a non-navigated leaf, or a nested expression falls through to {@link #operand} unchanged — leeg-as-0
+     *  is a numeric rule, and nested arithmetic re-enters here because operand's arithmetic cases lower through operandReken. */
+    private Frag operandReken(Expr e, Objecttype subject) {
+        if (e instanceof Expr.AttribuutRef a && a.navigatieRol() != null && a.type() != null && a.type().isNumeriek()
+                && !isGedimensioneerd(a) && !isTemporeelAttribuut(a)) {
+            NaviRef n = naviResolve(a, subject);
+            if (n.soort() == NaviSoort.GENAVIGEERD) {
+                registreerRelGetalFunctie();
+                return Frag.ok("rsRelGetal(" + ident(n.rol(), false) + ", \"" + a.attribuut() + "\")");
+            }
+        }
+        return operand(e, subject);
     }
 
     // ---------------- leaves & helpers ----------------

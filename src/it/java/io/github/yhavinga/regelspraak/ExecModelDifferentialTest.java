@@ -1709,6 +1709,51 @@ class ExecModelDifferentialTest {
         "Parameter de toeslag : Numeriek (geheel getal)\nParameter de grens : Numeriek (geheel getal)\n" + EXPR_CMP_HDR
         + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn basistarief plus de toeslag groter is dan de grens.\n";
 
+    // ---- §8.1.1 a NAVIGATED operand INSIDE an arithmetic-expression comparison ("de vertrektijd van zijn reis plus
+    //      zijn basistarief groter is dan zijn prijs"). The exec lowers the navigated leg via scalarWaarde's navReader
+    //      (value-path; valueSubject set in the leaf), and an ABSENT relation reads LEEG -> leeg-as-0 in the +/- (§4.1
+    //      Tabel 3), NOT a short-circuit. DRL used to render the leg as mvel `reis!.vertrektijd`, whose `!.` SHORT-CIRCUITS
+    //      the whole constraint to a non-match on a null relation — DROPPING the leeg-as-0 (a latent bug: it skipped the
+    //      WHOLE comparison instead of computing 0+basistarief). DrlTranspiler now reads a navigated arithmetic leg via the
+    //      null-safe rsRelGetal helper, so BOTH back-ends compute leeg-as-0 and fire identically (was a masked DRL-fires-
+    //      WRONG / exec-skips). Subject Passagier navigates "zijn reis" (a to-ONE role to Vlucht); a null reis -> leeg. ----
+    static final String NAV_EXPR_HDR =
+            "Objecttype de Vlucht\n    de vertrektijd Numeriek (geheel getal);\n"
+            + "Objecttype de Passagier\n    het basistarief Numeriek (geheel getal);\n    de prijs Numeriek (geheel getal);\n    is duur kenmerk (bijvoeglijk);\n" + AGG_FEIT;
+    static Passagier paxNav(Vlucht reis, Integer bt, Integer prijs) {
+        Passagier p = new Passagier();
+        p.setReis(reis);
+        if (bt != null) p.setBasistarief(new BigDecimal(bt));
+        if (prijs != null) p.setPrijs(new BigDecimal(prijs));
+        return p;
+    }
+    static final Fixture[] PHASE_NAV_EXPR = {
+        // GROTER: (vertrektijd van zijn reis) + basistarief > prijs. Rows: present-true (20+100>50), present-false
+        // (5+10>50=onwaar), ABSENT relation (leeg+100 -> 0+100>50=WAAR, the leeg-as-0 row the DRL `!.` bug used to drop),
+        // and PRESENT relation w/ a NULL vertrektijd attribute (also leeg -> 0+100>50=WAAR — distinguishes null attr from
+        // null relation: both read leeg here, both fire). Vluchten at [0..2], passengers at [3..6].
+        new Fixture("navigated leg inside + : (vertrektijd van zijn reis) + basistarief > prijs, incl. absent + null-attr",
+            NAV_EXPR_HDR + "Regel R\n    geldig altijd\n"
+            + "        Een Passagier is duur indien de vertrektijd van zijn reis plus zijn basistarief groter is dan zijn prijs.\n",
+            () -> { Vlucht v20 = new Vlucht(); v20.setVertrektijd(new BigDecimal(20));
+                    Vlucht v5 = new Vlucht(); v5.setVertrektijd(new BigDecimal(5));
+                    Vlucht vNull = new Vlucht();   // vertrektijd null
+                    return List.of(v20, v5, vNull, paxNav(v20, 100, 50), paxNav(v5, 10, 50), paxNav(null, 100, 50), paxNav(vNull, 100, 50)); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(3)).isDuur(), ((Passagier) l.get(4)).isDuur(),
+                      ((Passagier) l.get(5)).isDuur(), ((Passagier) l.get(6)).isDuur())),
+        // ONGELIJK through the same path: (vertrektijd van zijn reis) + basistarief != prijs. Both passengers have an
+        // ABSENT reis (leeg-as-0): (0+10)=10 != 50 -> WAAR; (0+50)=50 != 50 -> ONWAAR. The arithmetic resolves the leeg to
+        // a concrete 0, so the != compares concrete numbers (Tabel 44's one-leeg row is not reached — leeg-as-0 precedes).
+        new Fixture("navigated leg inside + with ONGELIJK, absent relation (leeg-as-0 then concrete !=)",
+            NAV_EXPR_HDR + "Regel R\n    geldig altijd\n"
+            + "        Een Passagier is duur indien de vertrektijd van zijn reis plus zijn basistarief ongelijk is aan zijn prijs.\n",
+            () -> List.of(paxNav(null, 10, 50), paxNav(null, 50, 50)),
+            Map.of(),
+            l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur())),
+    };
+    static final Object[] PHASE_NAV_EXPR_EXPECTED = { vals(true, false, true, true), vals(true, false) };
+
     // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
     //      arithmetic tree whose leaf is an AANTAL/TOTAAL/MIN/MAX). Each embedded aggregation lowers to its own
     //      accumulate CE; the consequence combines the bound results + scalars + a (≤1) global. Facts: [Vlucht, pax...].
@@ -3611,6 +3656,24 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(eq(PHASE_EXPR_CMP_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §8.1.1 a NAVIGATED operand INSIDE an arithmetic comparison now fires at parity: an ABSENT to-one relation reads
+     *  leeg -> leeg-as-0 in the +/- (§4.1 Tabel 3), NOT the mvel `!.` short-circuit-to-false the DRL used to emit (a
+     *  latent bug that dropped the rest of the arithmetic). DrlTranspiler reads the leg via the null-safe rsRelGetal;
+     *  the exec via navReader. Closed-form -> assert the ABSOLUTE spec value + parity (a shared short-circuit would FAIL
+     *  the absent-relation row, which spec-fires). */
+    @Test void phase_nav_expr_is_spec_correct() {
+        for (int i = 0; i < PHASE_NAV_EXPR.length; i++) {
+            Fixture f = PHASE_NAV_EXPR[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_NAV_EXPR_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }

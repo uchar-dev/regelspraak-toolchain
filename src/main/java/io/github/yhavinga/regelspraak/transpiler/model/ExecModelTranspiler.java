@@ -1745,15 +1745,20 @@ public final class ExecModelTranspiler {
         // §8.1.1 a comparison whose LHS is a NUMERIC EXPRESSION — a builtin Functie ("de maand uit (...)", abs), an
         // arithmetic Binair ("de prijs plus 10"), a §6.1.4 begrenzing or a §13.4.17.25 afronding — vs a numeric
         // literal. Lower the LHS via scalarWaarde (which now covers these); a fact-only reader (0 globals) makes it a
-        // Predicate1, then vergelijk + restatement. DRL lowers the same expression as a constraint operand. (A
-        // param-reading LHS would need the global as a pattern var -> not a fact-only leaf; skipped here.)
+        // Predicate1, then vergelijk + restatement. DRL lowers the same expression as a constraint operand. A NAVIGATED
+        // operand inside the LHS ("de vertrektijd van zijn reis plus 1 > 100") lowers via scalarWaarde's navigated read —
+        // valueSubject set around the call (value-path-only); an ABSENT relation reads leeg -> leeg-as-0 in the arithmetic
+        // (see the expr-vs-expr branch below for the rsRelGetal parity). A param-reading LHS keeps globals non-empty ->
+        // skipped (the global path binds it in voorwaarde).
         if (c instanceof Conditie.Vergelijking v && isNumeriekOp(v.op()) && v.links().type().isNumeriek()
                 && (v.links() instanceof Expr.Functie || v.links() instanceof Expr.Binair
                     || v.links() instanceof Expr.Begrensd || v.links() instanceof Expr.Afgerond)
                 && v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
             if (parityOnveilig(v.links())) return null;   // §3.6 dimensiecel / cross-unit +/- -> DRL markers -> skip (symmetric)
+            Objecttype bewaard = valueSubject; valueSubject = subject;   // enable scalarWaarde's navigated (value-path) read
             WaardeFn lw = scalarWaarde(v.links());
-            if (lw == null || !lw.globals().isEmpty()) return null;   // unlowerable / needs a global -> skip
+            valueSubject = bewaard;
+            if (lw == null || !lw.globals().isEmpty()) return null;   // unlowerable / unresolvable navigation / needs a global -> skip
             BigDecimal rhs = bd(lit);
             if (rhs == null) return null;
             BigDecimal[] f = restatement(v.links().type(), lit.type());
@@ -1765,19 +1770,25 @@ public final class ExecModelTranspiler {
         // §8.1.1 a comparison where at least one side is a NUMERIC EXPRESSION (arithmetic Binair / builtin Functie /
         // begrenzing / afronding) and the OTHER side is a numeric attribute OR also an expression — NOT a literal (the
         // branch above). Lower BOTH sides via scalarWaarde (the value-path lowering, at parity with DrlTranspiler.binairTerm
-        // on the value side), then vergelijk + §5.1 restatement. Scoped to FACT-LOCAL operands: parityOnveilig skips a §3.6
-        // dimensiecel and a cross-unit +/- (DRL markers those); scalarWaarde returns null for a NAVIGATED operand on the
-        // condition path (valueSubject is value-path-only) and for any unlowerable read; a global operand makes globals
-        // non-empty -> skip. So a navigated / global expr comparison stays an HONEST exec skip (DRL fires it — a carded,
-        // not-yet-migrated TODO, never a fired wrong value). Closes the masked DRL-fires/exec-skips for the fact-local
-        // same-/exact-unit case: "de a plus de b is gelijk aan de c" / "zijn prijs maal 2 groter is dan de drempel".
+        // on the value side), then vergelijk + §5.1 restatement. parityOnveilig skips a §3.6 dimensiecel and a cross-unit
+        // +/- (DRL markers those). A NAVIGATED operand inside the expr ("de prijs van zijn reis plus 1 groter is dan zijn
+        // drempel") lowers via scalarWaarde's navigated read — set valueSubject around the calls (value-path-only, like the
+        // §8.2 grens path) so navReader resolves. An ABSENT relation reads LEEG, which the arithmetic treats per the §4/§6
+        // leegwaarde tables (leeg-as-0 in +/-/*, §4.1 Tabel 3 etc.) and then vergelijk's leegwaarde semantics — NOT a
+        // short-circuit-to-false (DRL's mvel `rol!.attr` short-circuit was a latent bug; DrlTranspiler now reads a navigated
+        // arithmetic leg null-safely via rsRelGetal, so both back-ends compute leeg-as-0). A GLOBAL operand keeps globals
+        // non-empty -> skip (the expr-vs-global path binds at most one global, in voorwaarde); an unresolvable / to-many
+        // navigation -> scalarWaarde null -> skip. Closes the masked DRL-fires/exec-skips for "de a plus de b is gelijk aan
+        // de c" / "de prijs van zijn reis plus 1 groter is dan zijn drempel".
         if (c instanceof Conditie.Vergelijking v && isNumeriekOp(v.op())
                 && v.links().type() != null && v.links().type().isNumeriek()
                 && v.rechts().type() != null && v.rechts().type().isNumeriek()
                 && (numeriekeExpressie(v.links()) || numeriekeExpressie(v.rechts()))) {
             if (parityOnveilig(v.links()) || parityOnveilig(v.rechts())) return null;   // §3.6 dimensiecel / cross-unit +/- -> DRL markers -> skip (symmetric)
+            Objecttype bewaard = valueSubject; valueSubject = subject;   // enable scalarWaarde's navigated (value-path) read
             WaardeFn lw = scalarWaarde(v.links()), rw = scalarWaarde(v.rechts());
-            if (lw == null || rw == null || !lw.globals().isEmpty() || !rw.globals().isEmpty()) return null;   // unlowerable / navigated (value-path) / needs a global -> skip
+            valueSubject = bewaard;
+            if (lw == null || rw == null || !lw.globals().isEmpty() || !rw.globals().isEmpty()) return null;   // unlowerable / unresolvable navigation / needs a global -> skip
             BigDecimal[] f = restatement(v.links().type(), v.rechts().type());
             BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
             Conditie.Operator op = v.op();
