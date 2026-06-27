@@ -1596,6 +1596,19 @@ class ExecModelDifferentialTest {
     static final String COUNT_TWO_GLOBALS_SRC =
         "Parameter de ondergrens : Numeriek (geheel getal)\nParameter de bovengrens : Numeriek (geheel getal)\n" + COMPOUND_HDR
         + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn leeftijd is kleiner dan de ondergrens\n        - zijn prijs is groter dan de bovengrens.\n";
+    // §13.4.13.4 a NESTED compound bullet under a counting quantifier — leafPredicate has no nested-Samengesteld branch
+    //   (exec skips) but DRL conditie lowers it (fires): a masked divergence -> the resolver markers it (both decline).
+    static final String COUNT_NESTED_BULLET_SRC =
+        "Parameter de grens : Numeriek (geheel getal)\n" + COMPOUND_HDR
+        + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn leeftijd is kleiner dan de grens\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn prijs is groter dan 50.\n";
+    // §13.4.13.4 a CROSS-UNIT global bullet (leeftijd jr vs grens mnd) — DRL emits an unguarded (leeftijd).multiply(12)
+    //   in the accumulate-source constraint that NPE-aborts on a leeg operand; the exec scale() is null-safe -> a masked
+    //   DRL-crashes/exec-fires divergence -> the resolver markers the convertible-but-different-unit global (both decline).
+    static final String COUNT_CROSS_UNIT_SRC =
+        "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\nParameter de grens : Numeriek (geheel getal) met eenheid mnd\n"
+        + "Objecttype de Vlucht\n    de totaalprijs Numeriek (geheel getal);\n"
+        + "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    de leeftijd Numeriek (geheel getal) met eenheid jr;\n    is minderjarig kenmerk (bijvoeglijk);\n" + AGG_FEIT
+        + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn leeftijd is kleiner dan de grens\n        - hij is minderjarig.\n";
 
     // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
     //      arithmetic tree whose leaf is an AANTAL/TOTAAL/MIN/MAX). Each embedded aggregation lowers to its own
@@ -3464,17 +3477,21 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
-    /** §13.4.13.4 parity floor: a COUNTING compound reading TWO DISTINCT globals must stay a SYMMETRIC marker — the
-     *  resolver folds it to Onopgelost, so the exec records overgeslagen AND DRL emits a TODO marker. Pins that the
-     *  relaxation (single-global fires) did NOT open a masked DRL-fires/exec-skips on the multi-global case. */
-    @Test void counting_subselectie_met_twee_globals_is_symmetric_marker_in_both() {
-        RegelSpraakModel m = Resolver.resolve(COUNT_TWO_GLOBALS_SRC);
+    /** §13.4.13.4 parity floor: a COUNTING compound the exec count-fold CANNOT fire (>1 distinct global; a NESTED
+     *  compound bullet leafPredicate can't fold; a CROSS-UNIT global whose DRL .multiply NPEs) must stay a SYMMETRIC
+     *  marker — the resolver folds it to Onopgelost, so the exec records overgeslagen AND DRL emits a TODO marker (never
+     *  a masked DRL-fires/exec-skips). Pins that the single-global relaxation did NOT open a divergence on these shapes. */
+    private void assertSymmetricCountingMarker(String src) {
+        RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
         ExecModelTranspiler em = ExecModelTranspiler.build(m);
-        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet een twee-globals counting compound overslaan, kreeg: " + em.overgeslagen());
+        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet deze counting compound overslaan, kreeg: " + em.overgeslagen());
         assertTrue(DrlTranspiler.transpile(m).contains("/* TODO aggregatie"),
-                () -> "DRL moet een twee-globals counting compound ook markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
+                () -> "DRL moet deze counting compound ook markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
     }
+    @Test void counting_subselectie_met_twee_globals_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_TWO_GLOBALS_SRC); }
+    @Test void counting_subselectie_met_geneste_compound_bullet_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_NESTED_BULLET_SRC); }
+    @Test void counting_subselectie_met_cross_unit_global_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_CROSS_UNIT_SRC); }
     /** §13.4.13.4 the COMPOUND subselectie (ALLE of comparison + kenmerk bullets over the element), now FIRING in BOTH
      *  back-ends (DRL `&&` source constraint; exec successive .expr). A closed-form filtered fold -> assert the ABSOLUTE
      *  spec value (a shared "filter never applied -> sums all" bug would pass a pure differential). */

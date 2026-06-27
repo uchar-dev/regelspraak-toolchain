@@ -1541,6 +1541,75 @@ class DrlTest {
                 () -> "een counting+twee-globals compound subselectie moet een eerlijke marker blijven (exec kan twee globals niet binden in de count-fold):\n" + drl);
     }
 
+    @Test void compound_subselectie_telling_met_geneste_compound_bullet_blijft_marker() {
+        // §13.4.13.4 PARITY guard: a COUNTING quantifier compound with a NESTED compound bullet ("- hij voldoet aan
+        // alle volgende voorwaarden: …") cannot lower in the exec count-fold — ExecModelTranspiler.leafPredicate has no
+        // nested-Samengesteld branch and returns null, skipping the whole compound, while DRL conditie lowers the nested
+        // compound to ||/&& on the accumulate source and FIRES. The differential's overgeslagen-skip would MASK that
+        // DRL-fires/exec-skips, so the resolver markers it (Onopgelost) -> BOTH decline symmetrically.
+        String src = """
+            Parameter de grens : Numeriek (geheel getal)
+            Objecttype de Vlucht
+                het totaal Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal);
+                is minderjarig kenmerk (bijvoeglijk);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Het totaal van een Vlucht moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:
+                    - zijn leeftijd is kleiner dan de grens
+                    - hij voldoet aan alle volgende voorwaarden:
+                        - hij is minderjarig
+                        - zijn prijs is groter dan 50.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren+resolven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("/* TODO aggregatie"),
+                () -> "een counting compound met een geneste-compound bullet moet een eerlijke marker blijven (exec leafPredicate kan een geneste compound niet vouwen):\n" + drl);
+    }
+
+    @Test void compound_subselectie_telling_met_cross_unit_global_blijft_marker() {
+        // §13.4.13.4 PARITY guard: a COUNTING quantifier + single global whose comparison needs a §5.1 UNIT RESTATEMENT
+        // (leeftijd in jr vs grens in mnd) cannot fire safely — DRL emits an UNGUARDED (leeftijd).multiply(12) inside the
+        // accumulate-source constraint, which NPE-aborts the session on a leeg leeftijd (mvel cannot host the null-guard
+        // ternary in a constraint). The exec scale() is null-safe, so both "fire" yet DRL crashes — a masked divergence.
+        // So a convertible-but-different-unit global bullet stays a marker in BOTH (like §13.4.16 cross-unit arithmetic
+        // in a constraint); the SAME-unit case still fires.
+        String src = """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Parameter de grens : Numeriek (geheel getal) met eenheid mnd
+            Objecttype de Vlucht
+                het totaal Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal) met eenheid jr;
+                is minderjarig kenmerk (bijvoeglijk);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Het totaal van een Vlucht moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:
+                    - zijn leeftijd is kleiner dan de grens
+                    - hij is minderjarig.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren+resolven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("/* TODO aggregatie"),
+                () -> "een cross-unit global counting compound moet een marker blijven (ongegarde .multiply NPE-risico):\n" + drl);
+        assertFalse(drl.contains(".multiply"), () -> "geen ongegarde .multiply in een accumulate-bron constraint:\n" + drl);
+    }
+
     @Test void telling_concatenatie_met_onoplosbare_operand_blijft_marker() {
         // A union with an operand that has NO resolvable kenmerk filter (here a bare set) cannot be
         // lowered faithfully — it stays an honest marker, never a count of only the first operand.

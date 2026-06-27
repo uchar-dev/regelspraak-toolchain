@@ -9,6 +9,7 @@ import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
 import io.github.yhavinga.regelspraak.ir.ResolvedVerdeling;
 import io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie.Bron;
 import io.github.yhavinga.regelspraak.model.Datatype;
+import io.github.yhavinga.regelspraak.model.Eenheid;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.*;
 import io.github.yhavinga.regelspraak.parser.RegelSpraak;
@@ -897,16 +898,12 @@ final class RuleChecker {
             for (GenesteVoorwaardeContext g : sp.samengesteldeVoorwaardeOnderdeel().genesteVoorwaarde())
                 onderdelen.add(bouwGenest(g));         // the SAME bullet machinery as a voorwaarde compound
             Conditie.Kwantor kw = kwantorVanKwantificatie(sp.kwantificatie());
-            // §13.4.13.4 parity guard: a COUNTING quantifier (geen/ten-minste/ten-hoogste/precies) folds the bullets
-            // PER ELEMENT into a single count. The exec accumulate-source fold CAN bind a SINGLE distinct
-            // numeric/percentage Parameter-global in that fold (ExecModelTranspiler.globalBullet — a 2-var expr over
-            // the element + the bound global), the only quantifier shape the ALLE/DE arm cannot reach. A >1-global or
-            // non-bindable-shape global bullet it CANNOT bind, so DRL (which reads any global as a free name regardless
-            // of quantifier) would FIRE where the exec SKIPS — marker exactly those in BOTH (Onopgelost) to stay
-            // symmetric. The ALLE/DE + global case fires in both (each bullet binds its own global on its own .expr).
-            if (kw != Conditie.Kwantor.ALLE && kw != Conditie.Kwantor.DE
-                    && onderdelen.stream().anyMatch(RuleChecker::leestGlobal)
-                    && !execBindbareEnkeleGlobal(onderdelen, elem))
+            // §13.4.13.4 parity guard: a COUNTING quantifier (geen/ten-minste/ten-hoogste/precies) folds the bullets PER
+            // ELEMENT via the exec leafPredicate (which has NO nested-compound branch) + at most ONE bound source-global.
+            // Marker (Onopgelost) unless the exec count-fold can fire it EXACTLY as DRL does — else DRL fires/crashes where
+            // the exec skips (a masked DRL-fires/exec-skips that the differential's overgeslagen-skip hides). ALLE/DE binds
+            // each bullet's global on its own source .expr and lowers a nested compound by recursion, so it needs no guard.
+            if (kw != Conditie.Kwantor.ALLE && kw != Conditie.Kwantor.DE && !execKanCountingFold(onderdelen, elem))
                 return new Conditie.Onopgelost(src(sp));
             return new Conditie.Samengesteld(kw,
                     sp.kwantificatie() == null ? 0 : telwoordWaarde(sp.kwantificatie().telwoord()), onderdelen, src(sp));
@@ -924,18 +921,22 @@ final class RuleChecker {
         return false;
     }
 
-    /** §13.4.13.4 parity gate for a COUNTING-quantifier compound subselectie that reads a Parameter-global: true iff
-     *  the exec accumulate-source fold can bind it — EXACTLY ONE distinct numeric/percentage global, every
-     *  global-reading bullet being that single exec-bindable comparison (own non-temporal non-dimensioned getalachtig
-     *  attribute, numeric operator, numeric/percentage Parameter on the RHS). Mirrors {@code ExecModelTranspiler
-     *  .globalBullet} so the back-ends stay symmetric: a >1-global / non-bindable-shape compound stays an Onopgelost
-     *  marker (DRL binds a free name regardless of quantifier, the exec cannot, so BOTH must decline). A fact-only
-     *  bullet imposes no global to bind; with no global-reading bullet at all this returns false (no firing claim). */
-    private static boolean execBindbareEnkeleGlobal(List<Conditie> onderdelen, Objecttype elem) {
+    /** §13.4.13.4 parity gate for a COUNTING-quantifier compound subselectie: true iff the exec accumulate-source
+     *  count-fold fires it EXACTLY as DRL does. The exec folds each bullet via {@code ExecModelTranspiler.leafPredicate}
+     *  (which has NO nested-compound branch) + at most ONE bound source-global; DRL lowers a nested compound (||/&amp;&amp;)
+     *  and reads any global as a free name regardless of quantifier — so a bullet the exec cannot fold while DRL can is a
+     *  masked DRL-fires/exec-skips (the differential's overgeslagen-skip hides it). Returns false (-&gt; Onopgelost marker
+     *  in BOTH) when: a bullet is a NESTED compound; OR a global-reading bullet is not a SINGLE distinct exec-bindable
+     *  comparison (own non-temporal non-dimensioned getalachtig attr, numeric op, numeric/percentage Parameter RHS) in
+     *  the SAME unit (a convertible-but-different unit makes DRL emit an unguarded {@code (operand).multiply(factor)} that
+     *  NPE-aborts on a leeg operand — markered, like §13.4.16 cross-unit arithmetic in a constraint). A 0-global
+     *  all-simple-leaf compound fires (true). Mirrors {@code ExecModelTranspiler.globalBullet} + {@code leafPredicate}. */
+    private static boolean execKanCountingFold(List<Conditie> onderdelen, Objecttype elem) {
         String global = null;
         for (Conditie c : onderdelen) {
-            if (!leestGlobal(c)) continue;                                  // a fact-only bullet: no global to bind
-            if (!(c instanceof Conditie.Vergelijking v)) return false;     // a nested compound / non-comparison global read -> not bindable
+            if (c instanceof Conditie.Samengesteld) return false;          // nested compound: exec leafPredicate cannot fold it (DRL can) -> marker
+            if (!leestGlobal(c)) continue;                                 // a fact-only simple leaf the exec lowers at parity
+            if (!(c instanceof Conditie.Vergelijking v)) return false;     // a non-comparison global read -> not bindable
             if (!(v.rechts() instanceof Expr.ParameterRef pr)) return false;          // the global must be the RHS
             if (!(v.links() instanceof Expr.AttribuutRef la) || la.navigatieRol() != null) return false;
             if (la.type() == null || !la.type().isGetalachtig()) return false;
@@ -945,11 +946,22 @@ final class RuleChecker {
             if (elem == null || !elem.heeftLid(la.attribuut())) return false;
             if (elem.attribuutGranulariteit.containsKey(la.attribuut())) return false;   // temporal element attr -> exec skips
             if (!elem.dimensiesVan(la.attribuut()).isEmpty()) return false;              // §3.6 gedimensioneerd -> exec skips
+            if (vereistOmrekening(la.type(), pr.parameter().datatype())) return false;   // cross-unit -> DRL's unguarded .multiply NPEs on a leeg operand -> marker
             String naam = pr.parameter().naam();
             if (global != null && !global.equals(naam)) return false;       // >1 distinct global -> not bindable
             global = naam;
         }
-        return global != null;   // at least one bindable global, all the same one
+        return true;   // 0 globals (all simple leaves) OR a single bindable same-unit global, no nested compound
+    }
+
+    /** Whether comparing {@code lt} vs {@code rt} requires a §5.1 unit restatement (convertible BUT different units) —
+     *  the exec count-fold restates null-safely, but DRL's accumulate-source constraint emits an unguarded
+     *  {@code (operand).multiply(factor)} that NPE-aborts on a leeg operand, so a cross-unit global bullet stays an honest
+     *  marker in BOTH back-ends (matching §13.4.16 cross-unit arithmetic in a constraint). Mirrors {@code ExecModelTranspiler
+     *  .restatement}'s identity test: no eenheid / not convertible / already same unit -&gt; identity -&gt; no restatement. */
+    private static boolean vereistOmrekening(Datatype lt, Datatype rt) {
+        Eenheid el = lt.eenheidOf(), er = rt.eenheidOf();
+        return el != null && er != null && el.convertibleNaar(er) && el.vereistOmrekening(er);
     }
 
     /** The six §13.4.17 numeric comparison operators the exec source-fold binds (datum EERDER/LATER are a later phase),
