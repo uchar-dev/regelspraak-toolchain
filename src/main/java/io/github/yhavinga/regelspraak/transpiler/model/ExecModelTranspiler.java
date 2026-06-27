@@ -2071,6 +2071,12 @@ public final class ExecModelTranspiler {
             }, g);
         }
         if (e instanceof Expr.AttribuutRef a && a.navigatieRol() == null) {
+            // §5.8 a SET operand ("de prijs van ALLE passagiers", set()==true) is an instance-AGGREGATION SOURCE, not the
+            // subject's own scalar attribute — reading it as RegelSpraakRuntime.get(subject, attr) would look the
+            // attribute up on the WRONG fact (the subject, which need not declare it) and THROW at fire time, aborting the
+            // WHOLE session (an asymmetric, masked crash: DRL honestly markers a bare SET-in-scalar read). Skip it here so
+            // the expr-comparison branches stay symmetric with the DRL marker. Mirrors tijdreeksTotaal's a.set() guard.
+            if (a.set()) return null;
             // §8.2 a tijdsafhankelijk (List<Segment>) attribute read in a SCALAR slot is NOT a scalar — only the §7.1
             // "het totaal van" collapses a timeline to a scalar (handled in regel() before this path). Splicing the
             // List into a scalar setter would throw at fire time (setX(List) on a BigDecimal field); skip it instead

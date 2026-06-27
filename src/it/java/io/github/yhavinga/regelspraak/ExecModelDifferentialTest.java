@@ -1774,6 +1774,17 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_NAV_GLOBAL_EXPECTED = { vals(true, false, false, true) };
 
+    // §5.8 a bare SET operand ("de prijs van ALLE passagiers") used as a SCALAR inside arithmetic in a CONDITION is an
+    //   instance-AGGREGATION source the exec does not lower to a scalar — it must SKIP (symmetric with DRL's marker), NOT
+    //   read `prijs` off the subject Vlucht (which has no such getter) and CRASH the whole session. Rule S is a co-resident
+    //   valid rule whose firing proves the SET rule's skip does not take the session down. ----
+    static final String SET_IN_ARITH_SRC =
+        "Objecttype de Vlucht\n    de vertrektijd Numeriek (geheel getal);\n    is laat kenmerk (bijvoeglijk);\n    is vol kenmerk (bijvoeglijk);\n"
+        + "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n"
+        + "Feittype Vlucht van passagiers\n    de reis Vlucht\n    de passagier Passagier\nEén reis betreft meerdere passagiers\n"
+        + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien de prijs van alle passagiers plus zijn vertrektijd groter is dan 100.\n"
+        + "Regel S\n    geldig altijd\n        Een Vlucht is vol indien zijn vertrektijd groter is dan 0.\n";
+
     // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
     //      arithmetic tree whose leaf is an AANTAL/TOTAAL/MIN/MAX). Each embedded aggregation lowers to its own
     //      accumulate CE; the consequence combines the bound results + scalars + a (≤1) global. Facts: [Vlucht, pax...].
@@ -3662,6 +3673,25 @@ class ExecModelDifferentialTest {
         assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet een cross-unit +/- voorwaarde overslaan, kreeg: " + em.overgeslagen());
         assertTrue(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
                 () -> "DRL moet een cross-unit +/- voorwaarde ook markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
+    }
+    /** §5.8 a bare SET operand ("de prijs van alle passagiers") inside arithmetic in a CONDITION must SKIP symmetrically
+     *  with DRL's marker, NOT lower to a scalar read that reads `prijs` off the subject Vlucht (no such getter) and CRASH
+     *  the whole session at fire time. The co-resident valid rule S MUST still fire in BOTH back-ends (no blast radius).
+     *  Regression lock for the scalarWaarde a.set() guard (review wf_0acdef2b high-sev asymmetric-crash finding). */
+    @Test void bare_set_operand_in_arithmetic_is_symmetric_marker_no_session_crash() {
+        RegelSpraakModel m = Resolver.resolve(SET_IN_ARITH_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet de SET-in-rekenkunde voorwaarde overslaan, kreeg: " + em.overgeslagen());
+        assertTrue(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
+                () -> "DRL moet de SET-in-rekenkunde voorwaarde ook markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
+        // firing must NOT crash, and the co-resident valid rule S must fire in BOTH back-ends (vertrektijd 50 > 0 -> vol).
+        for (KieBase kb : List.of(drlBase(m), KieBaseBuilder.createKieBaseFromModel(em.model()))) {
+            Vlucht v = new Vlucht(); v.setVertrektijd(new BigDecimal(50));
+            KieSession s = kb.newKieSession(); s.insert(v); s.fireAllRules(); s.dispose();
+            assertEquals(Boolean.TRUE, v.isVol(), () -> "de co-residente geldige regel S moet vuren (geen sessie-crash door de SET-regel)");
+            assertFalse(Boolean.TRUE.equals(v.isLaat()), () -> "de SET-regel R mag NIET vuren (symmetrische marker)");
+        }
     }
     /** §8.1.1 a comparison whose operand is an arithmetic/builtin EXPRESSION vs an attribute (not a literal) now fires in
      *  the exec (was a masked DRL-fires/exec-skips). Closed-form -> assert the ABSOLUTE spec value + parity, incl. a
