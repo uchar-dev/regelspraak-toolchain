@@ -2680,9 +2680,7 @@ public final class ExecModelTranspiler {
      *  symmetrically with the DRL marker (see {@link #parityOnveilig}). Order-independent (convertibility is symmetric). */
     private static boolean eenheidExactHerschaalbaar(Datatype a, Datatype b) {
         Eenheid ea = a == null ? null : a.eenheidOf(), eb = b == null ? null : b.eenheidOf();
-        return ea != null && eb != null && ea.convertibleNaar(eb)
-                && ea.noemer() == null && eb.noemer() == null
-                && ea.factorNaarCanoniek() != null && eb.factorNaarCanoniek() != null;
+        return ea != null && eb != null && ea.convertibleNaar(eb) && ea.exacteHerschaalFactoren(eb) != null;
     }
 
     /** The EXACT canonical-unit restatement factors {fv, fn} to restate a value in {@code van} into {@code naar}
@@ -2691,8 +2689,7 @@ public final class ExecModelTranspiler {
     private static BigDecimal[] exactHerschaalFactoren(Datatype van, Datatype naar) {
         Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();
         if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return null;
-        if (!eenheidExactHerschaalbaar(van, naar)) return null;
-        return new BigDecimal[]{ev.factorNaarCanoniek(), en.factorNaarCanoniek()};
+        return ev.exacteHerschaalFactoren(en);   // {num, den}: simple OR rate (the inverted denominator) — exact ×÷
     }
 
     /** §4 restate a scalar value from {@code van} into {@code naar}: EXACT ×fv ÷fn (DECIMAL64) for simple convertible

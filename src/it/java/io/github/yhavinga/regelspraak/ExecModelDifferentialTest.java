@@ -17,6 +17,7 @@ import io.github.yhavinga.regelspraak.facts.Passagier;
 import io.github.yhavinga.regelspraak.facts.Persoon;
 import io.github.yhavinga.regelspraak.facts.Rekensom;
 import io.github.yhavinga.regelspraak.facts.Segment;
+import io.github.yhavinga.regelspraak.facts.Tarief;
 import io.github.yhavinga.regelspraak.facts.Tijdmeter;
 import io.github.yhavinga.regelspraak.facts.Vlucht;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
@@ -1780,6 +1781,29 @@ class ExecModelDifferentialTest {
             cuAggFacts(), Map.of(), l -> ((Vlucht) l.get(0)).getReisduur()),
     };
     static final Object[] PHASE_CU_AGG_EXPECTED = { new BigDecimal("2"), new BigDecimal("0.5") };
+
+    // ---- §4 a COMPOSITE (rate) cross-unit restatement is now EXACT too (numerator × inverted-denominator integer
+    //      factors via Eenheid.exacteHerschaalFactoren, not the pre-rounded single ratio): "120 EUR/jr" assigned to a
+    //      EUR/mnd attribute = 10, not 9.99999999999999960 (a SHARED lossy value on BOTH back-ends). The rate +/-
+    //      CONSTRAINT now FIRES at parity too (was a symmetric marker/skip). ----
+    static final String CU_RATE_HEAD = "Eenheidsysteem Geld\n    de euro EUR\nEenheidsysteem Tijd\n    de maand mnd\n    het jaar jr = 12 mnd\n";
+    static final String CU_RATE_ASSIGN_SRC = CU_RATE_HEAD
+        + "Objecttype de Tarief\n    de jaartarief Numeriek (getal met 5 decimalen) met eenheid EUR/jr;\n    de maandtarief Numeriek (getal met 5 decimalen) met eenheid EUR/mnd;\n"
+        + "Regel R\n    geldig altijd\n        De maandtarief van een Tarief moet gesteld worden op de jaartarief van een Tarief.\n";
+    static final String CU_RATE_COND_SRC = CU_RATE_HEAD
+        + "Objecttype de Tarief\n    de jaartarief Numeriek (getal met 5 decimalen) met eenheid EUR/jr;\n    de maandtarief Numeriek (getal met 5 decimalen) met eenheid EUR/mnd;\n    de grens Numeriek (getal met 5 decimalen) met eenheid EUR/jr;\n    is hoog kenmerk (bijvoeglijk);\n"
+        + "Regel R\n    geldig altijd\n        Een Tarief is hoog indien de jaartarief van een Tarief plus de maandtarief van een Tarief gelijk is aan de grens van een Tarief.\n";
+    static Tarief tarief(Consumer<Tarief> c) { Tarief t = new Tarief(); c.accept(t); return t; }
+    static final Fixture[] PHASE_CU_RATE = {
+        // ASSIGNMENT: 120 EUR/jr -> EUR/mnd = 10 EXACTLY (was 9.99999999999999960 in BOTH back-ends)
+        new Fixture("rate assignment 120 EUR/jr -> 10 EUR/mnd (exact)", CU_RATE_ASSIGN_SRC,
+            () -> List.of(tarief(t -> t.setJaartarief(new BigDecimal(120)))), Map.of(), l -> ((Tarief) l.get(0)).getMaandtarief()),
+        // +/- CONSTRAINT: 120 EUR/jr + 10 EUR/mnd (=120 EUR/jr) = 240 EUR/jr == grens 240 EUR/jr -> WAAR (now fires, was a marker)
+        new Fixture("rate +/- constraint 120/jr + 10/mnd == 240/jr -> waar", CU_RATE_COND_SRC,
+            () -> List.of(tarief(t -> { t.setJaartarief(new BigDecimal(120)); t.setMaandtarief(new BigDecimal(10)); t.setGrens(new BigDecimal(240)); })),
+            Map.of(), l -> ((Tarief) l.get(0)).isHoog()),
+    };
+    static final Object[] PHASE_CU_RATE_EXPECTED = { new BigDecimal("10"), Boolean.TRUE };
 
     // ---- §5.3 an ENUMERATIE attribute compared to an enum-typed Parameter-GLOBAL ("zijn roepnaam gelijk is aan de
     //      STANDAARDNAAM"). DRL reads the enum global as a free name (String equality); the exec used to SKIP (the
@@ -4259,6 +4283,23 @@ class ExecModelDifferentialTest {
     @Test void phase_cu_arith_matches_drl_back_end() { runDifferential("Phase cross-unit +/-", PHASE_CU_ARITH, 5); }
     @Test void phase_cu_value_matches_drl_back_end() { runDifferential("Phase cross-unit value", PHASE_CU_VALUE, 3); }
     @Test void phase_cu_agg_matches_drl_back_end() { runDifferential("Phase cross-unit min/max agg", PHASE_CU_AGG, 2); }
+    @Test void phase_cu_rate_matches_drl_back_end() { runDifferential("Phase cross-unit rate", PHASE_CU_RATE, 2); }
+    /** §4 a COMPOSITE (rate) cross-unit restatement is now EXACT (numerator × inverted-denominator integer factors):
+     *  120 EUR/jr assigned to a EUR/mnd attribute = 10, not 9.99999999999999960 (a SHARED lossy value — assert ABSOLUTE).
+     *  The rate +/- CONSTRAINT now FIRES at parity too (was a symmetric marker/skip). */
+    @Test void phase_cross_unit_rate_restatement_is_spec_correct() {
+        for (int i = 0; i < PHASE_CU_RATE.length; i++) {
+            Fixture f = PHASE_CU_RATE[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_CU_RATE_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     /** §5.8.3 a MIN/MAX instance-aggregation into a different-unit doel: the DRL must COERCE the min/max binding (a
      *  java.lang.Number) to BigDecimal (rsGetal) before the cross-unit restate, else its build fails (Number.multiply)
      *  while the exec fires — a divergence the wf_7e1d0ff9 review caught. ABSOLUTE: max(24,12,6) mnd = 2 jr, min = 0.5 jr. */
@@ -4353,17 +4394,18 @@ class ExecModelDifferentialTest {
         ExecModelTranspiler em = ExecModelTranspiler.build(m);
         assertFalse(em.overgeslagen().isEmpty(), () -> "een twee-globals expr-vergelijking moet een eerlijke exec-skip zijn, kreeg: " + em.overgeslagen());
     }
-    /** §5.1/§4 a COMPOSITE (rate) cross-unit +/- in an arithmetic comparison stays a SYMMETRIC marker — the EUR/jr→EUR/mnd
-     *  restatement keeps the single (lossy) ratio, so the exec parityOnveilig skips it and DRL herschaalConditiePlus markers
-     *  it. Both decline (exec overgeslagen + DRL TODO), never a fired wrong value. (A SIMPLE jr/mnd cross-unit +/- now fires
-     *  exactly — phase_cross_unit_arithmetic_is_spec_correct; this pins the rate edge stays symmetric-declined.) */
-    @Test void cross_unit_RATE_arithmetic_comparison_is_symmetric_marker_in_both() {
+    /** §5.1/§4 a COMPOSITE (rate) cross-unit +/- in an arithmetic comparison now FIRES exactly (was a symmetric marker):
+     *  the EUR/jr→EUR/mnd restatement uses the exact numerator/inverted-denominator integer factors (Eenheid.exacte-
+     *  HerschaalFactoren) instead of the pre-rounded single ratio, so DRL herschaalConditiePlus emits rsHerschaalExact and
+     *  the exec parityOnveilig no longer skips. (An OPAQUE product unit — €·m, no canonical — would still marker, but two
+     *  such are never inter-convertible so a cross-unit +/- never reaches that branch.) */
+    @Test void cross_unit_RATE_arithmetic_comparison_fires_exactly_in_both() {
         RegelSpraakModel m = Resolver.resolve(CROSS_UNIT_ARITH_CMP_SRC);
         assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
         ExecModelTranspiler em = ExecModelTranspiler.build(m);
-        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet een rate cross-unit +/- voorwaarde overslaan, kreeg: " + em.overgeslagen());
-        assertTrue(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
-                () -> "DRL moet een rate cross-unit +/- voorwaarde ook markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
+        assertTrue(em.overgeslagen().isEmpty(), () -> "de exec moet een rate cross-unit +/- voorwaarde nu vuren, kreeg overgeslagen: " + em.overgeslagen());
+        assertFalse(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
+                () -> "DRL moet een rate cross-unit +/- voorwaarde nu vuren (geen marker):\n" + DrlTranspiler.transpile(m));
     }
     /** §6.1.4/§4 a CROSS-UNIT begrenzing BOUND inside a CONSTRAINT stays a SYMMETRIC marker: DRL's omrekenConditie markers
      *  the bound restatement (the begrenzing bound is NOT on the exact rsHerschaalExact path — separately carded), and the

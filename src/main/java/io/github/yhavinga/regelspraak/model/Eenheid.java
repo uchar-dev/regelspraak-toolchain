@@ -90,6 +90,25 @@ public record Eenheid(String afkorting, String stelsel, String canoniek, BigDeci
         return f;
     }
 
+    /** The EXACT restatement factors {num, den} to restate a quantity in THIS unit as one in {@code target} —
+     *  multiply by num then DIVIDE by den (one rounding, at the end), the lossless alternative to
+     *  {@link #omrekenfactorNaar}'s pre-rounded single ratio (which truncates a non-terminating quotient like mnd→jr
+     *  = 1/12 = 0.0833…). For a simple unit num/den are the two declared factorNaarCanoniek; for a RATE the inverted
+     *  denominator contributes its factor too (€/jr→€/mnd: num=€·mnd factors, den=€·jr factors -> ÷12 exactly). Returns
+     *  {@code null} when not exactly restatable here: not convertible, an unknown factor, or an opaque product unit
+     *  (no canonical) — the caller then keeps the single-ratio fallback. */
+    public BigDecimal[] exacteHerschaalFactoren(Eenheid target) {
+        if (target == null || !convertibleNaar(target)
+                || factorNaarCanoniek == null || target.factorNaarCanoniek == null) return null;
+        BigDecimal num = factorNaarCanoniek, den = target.factorNaarCanoniek;
+        if (noemer != null && target.noemer != null) {   // a rate: per-this.noemer -> per-target.noemer inverts
+            if (noemer.factorNaarCanoniek == null || target.noemer.factorNaarCanoniek == null) return null;
+            num = num.multiply(target.noemer.factorNaarCanoniek);
+            den = den.multiply(noemer.factorNaarCanoniek);
+        }
+        return new BigDecimal[]{num, den};
+    }
+
     /** Numerator-only conversion factor (the simple-unit rule). */
     private BigDecimal tellerFactorNaar(Eenheid target) {
         if (afkorting.equals(target.afkorting)) return BigDecimal.ONE;

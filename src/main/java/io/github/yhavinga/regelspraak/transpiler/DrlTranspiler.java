@@ -3405,10 +3405,11 @@ public final class DrlTranspiler {
     private String herschaalExact(String expr, Datatype van, Datatype naar, boolean nullVeilig) {
         io.github.yhavinga.regelspraak.model.Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();
         if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return expr;
-        if (ev.noemer() != null || en.noemer() != null || ev.factorNaarCanoniek() == null || en.factorNaarCanoniek() == null)
-            return vermenigvuldigMetFactor(expr, ev.omrekenfactorNaar(en), nullVeilig);   // rate/unknown: keep the single ratio
-        String fv = "new java.math.BigDecimal(\"" + ev.factorNaarCanoniek().toPlainString() + "\")";
-        String fn = "new java.math.BigDecimal(\"" + en.factorNaarCanoniek().toPlainString() + "\")";
+        java.math.BigDecimal[] f = ev.exacteHerschaalFactoren(en);
+        if (f == null)   // an opaque product unit (no canonical) / unknown factor: keep the single (lossy) ratio
+            return vermenigvuldigMetFactor(expr, ev.omrekenfactorNaar(en), nullVeilig);
+        String fv = "new java.math.BigDecimal(\"" + f[0].toPlainString() + "\")";
+        String fn = "new java.math.BigDecimal(\"" + f[1].toPlainString() + "\")";
         if (nullVeilig)   // VALUE side: an inline null-guarded ×fv ÷fn (DECIMAL64), valid in a consequence / value expression
             return "(" + expr + " == null ? null : (" + expr + ").multiply(" + fv + ").divide(" + fn + ", java.math.MathContext.DECIMAL64))";
         return registreerHerschaalExactFunctie() + "(" + expr + ", " + fv + ", " + fn + ")";   // CONSTRAINT side: null-safe helper
@@ -3461,8 +3462,8 @@ public final class DrlTranspiler {
         if (expr.marker()) return expr;
         io.github.yhavinga.regelspraak.model.Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();
         if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return expr;   // no conversion -> identity
-        if (ev.noemer() != null || en.noemer() != null || ev.factorNaarCanoniek() == null || en.factorNaarCanoniek() == null)
-            return Frag.todo("eenheidconversie in een rekenkundige voorwaarde (samengestelde eenheid)", expr.text());   // rate edge -> marker
+        if (ev.exacteHerschaalFactoren(en) == null)   // an opaque product unit (no exact factors) -> honest marker
+            return Frag.todo("eenheidconversie in een rekenkundige voorwaarde (niet-herschaalbare samengestelde eenheid)", expr.text());
         return Frag.ok(herschaalExact(expr.text(), van, naar, false));
     }
 
