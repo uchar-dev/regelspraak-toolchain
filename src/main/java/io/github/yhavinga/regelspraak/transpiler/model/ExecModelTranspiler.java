@@ -1578,6 +1578,16 @@ public final class ExecModelTranspiler {
         // (handled with a bound global in voorwaarde); inside a counting quantifier that null skips the whole compound.
         Conditie.GeheelPeriode gp82 = geheelPeriodeVan(c);
         if (gp82 != null) return geheelPeriodeLeaf(geheelPeriode82(c, gp82, subject));
+        // §8.1.1 a comparison written with the CONSTANT on the LEFT ("100 groter is dan zijn vertrektijd", "1-1-2020
+        // eerder is dan zijn vluchtdatum", "1-1-2021 gelijk is aan zijn vluchtdatum") — DRL fires `100 > attr` /
+        // `literal < attr` directly, but every exec leaf branch keys on an AttribuutRef/expressie LHS, so a literal-LHS
+        // comparison SKIPPED. Normalise it: swap the operands and REVERSE the operator (omkeren), then the existing
+        // attr-on-LHS branches lower it. Safe by construction — only a literal-LHS comparison (which otherwise skips) is
+        // rewritten, so no firing path can regress; after the swap the literal sits on the RIGHT (no re-trigger).
+        if (c instanceof Conditie.Vergelijking vlit && vlit.links() instanceof Expr.Literal
+                && !(vlit.rechts() instanceof Expr.Literal))
+            return leafPredicate(new Conditie.Vergelijking(omkeren(vlit.op()), vlit.rechts(), vlit.links(),
+                    vlit.periode(), vlit.bron()), subject);
         // §8.1.8 kenmerkcheck — an own kenmerk (boolean property == !negatie) or a to-one navigated one
         // ("zijn partner heeft een <k>"), read null-safely through the reference (a null relation never matches).
         if (c instanceof Conditie.Kenmerk k) {

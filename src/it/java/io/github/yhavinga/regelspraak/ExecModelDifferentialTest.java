@@ -2005,6 +2005,59 @@ class ExecModelDifferentialTest {
         vals(true, false, false),                 // Datum-en-tijd
     };
 
+    // §8.1.1 a comparison with the CONSTANT on the LEFT ("100 groter is dan zijn vertrektijd", "1-1-2020 eerder is dan
+    //   zijn vluchtdatum") now fires in the exec — was a DRL-fires/exec-skips (every leaf branch keyed on an attr/expr
+    //   LHS). leafPredicate normalises a literal-LHS comparison by swapping operands + reversing the operator (omkeren),
+    //   then the existing attr-LHS branches lower it. Numeric + datum, ordering + equality, incl. a leeg operand.
+    static final Fixture[] PHASE_LIT_LEFT = {
+        // numeric literal-LHS ordering: 100 groter dan vertrektijd -> [50 WAAR, 150 onwaar, leeg onwaar].
+        new Fixture("numeric literal-LHS ordering (100 groter dan vertrektijd)",
+            "Objecttype de Vlucht\n    de vertrektijd Numeriek (geheel getal);\n    is laat kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien 100 groter is dan zijn vertrektijd.\n",
+            () -> { Vlucht a = new Vlucht(); a.setVertrektijd(new BigDecimal(50));
+                    Vlucht b = new Vlucht(); b.setVertrektijd(new BigDecimal(150));
+                    Vlucht c = new Vlucht();
+                    return List.of(a, b, c); },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).isLaat(), ((Vlucht) l.get(1)).isLaat(), ((Vlucht) l.get(2)).isLaat())),
+        // datum literal-LHS ordering: 1-1-2020 eerder dan vluchtdatum -> [2021 WAAR, 2019 onwaar, leeg onwaar].
+        new Fixture("datum literal-LHS ordering (1-1-2020 eerder dan vluchtdatum)",
+            "Objecttype de Vlucht\n    de vluchtdatum Datum in dagen;\n    is laat kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien 1-1-2020 eerder is dan zijn vluchtdatum.\n",
+            () -> { Vlucht a = new Vlucht(); a.setVluchtdatum(dat(2021, 1, 1));
+                    Vlucht b = new Vlucht(); b.setVluchtdatum(dat(2019, 1, 1));
+                    Vlucht c = new Vlucht();
+                    return List.of(a, b, c); },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).isLaat(), ((Vlucht) l.get(1)).isLaat(), ((Vlucht) l.get(2)).isLaat())),
+        // datum literal-LHS GELIJK: 1-1-2021 gelijk aan vluchtdatum -> [2021 WAAR, 2020 onwaar, leeg onwaar (Tabel 38)].
+        new Fixture("datum literal-LHS GELIJK (1-1-2021 gelijk aan vluchtdatum)",
+            "Objecttype de Vlucht\n    de vluchtdatum Datum in dagen;\n    is laat kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien 1-1-2021 gelijk is aan zijn vluchtdatum.\n",
+            () -> { Vlucht a = new Vlucht(); a.setVluchtdatum(dat(2021, 1, 1));
+                    Vlucht b = new Vlucht(); b.setVluchtdatum(dat(2020, 1, 1));
+                    Vlucht c = new Vlucht();
+                    return List.of(a, b, c); },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).isLaat(), ((Vlucht) l.get(1)).isLaat(), ((Vlucht) l.get(2)).isLaat())),
+        // datum literal-LHS ONGELIJK: 1-1-2021 ongelijk aan vluchtdatum -> [2020 WAAR, 2021 onwaar, leeg WAAR (Tabel 44 one-leeg)].
+        new Fixture("datum literal-LHS ONGELIJK (1-1-2021 ongelijk aan vluchtdatum)",
+            "Objecttype de Vlucht\n    de vluchtdatum Datum in dagen;\n    is laat kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien 1-1-2021 ongelijk is aan zijn vluchtdatum.\n",
+            () -> { Vlucht a = new Vlucht(); a.setVluchtdatum(dat(2020, 1, 1));
+                    Vlucht b = new Vlucht(); b.setVluchtdatum(dat(2021, 1, 1));
+                    Vlucht c = new Vlucht();
+                    return List.of(a, b, c); },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).isLaat(), ((Vlucht) l.get(1)).isLaat(), ((Vlucht) l.get(2)).isLaat())),
+    };
+    static final Object[] PHASE_LIT_LEFT_EXPECTED = {
+        vals(true, false, false),   // numeric ordering (100>50 T; 100>150 F; 100>leeg F)
+        vals(true, false, false),   // datum ordering (2020<2021 T; 2020<2019 F; leeg F)
+        vals(true, false, false),   // datum GELIJK (match T; mismatch F; leeg F)
+        vals(true, false, true),    // datum ONGELIJK (mismatch T; match F; leeg WAAR)
+    };
+
     // regression: the exec model INFINITE-LOOPED when a NAVIGATED-comparison rule (A) was co-resident with a second rule
     //   (B) over the same subject — drools.update(s) re-evaluated A's black-box navigated lambda on every modify by B, and
     //   NO_LOOP blocks only the rule's OWN re-trigger. The idempotent werkBij (update only on an ACTUAL value change)
@@ -4098,6 +4151,22 @@ class ExecModelDifferentialTest {
         }
     }
     @Test void phase_datumtijd_consistentie_matches_drl_back_end() { runFoutDifferential("datum-tijd consistentie", PHASE_DATUMTIJD_CONS, 1); }
+    /** §8.1.1 a comparison with the CONSTANT on the LEFT now fires in the exec (numeric + datum, ordering + equality) —
+     *  was a DRL-fires/exec-skips (every leaf branch keyed on an attr/expr LHS). leafPredicate swaps operands + reverses
+     *  the operator (omkeren). Absolute spec values + parity, incl. a leeg operand (Tabel 44 ONGELIJK one-leeg WAAR). */
+    @Test void phase_literal_on_left_comparison_is_spec_correct() {
+        for (int i = 0; i < PHASE_LIT_LEFT.length; i++) {
+            Fixture f = PHASE_LIT_LEFT[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_LIT_LEFT_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     /** §8.1.1/§5.1 attr-vs-attr DATUM ORDERING (both Datum-in-dagen and Datum-en-tijd) now fires in the exec — was a
      *  DRL-fires/exec-skips (the ordering branch matched only a literal RHS). Absolute spec values + parity; a leeg
      *  operand is the ordering no-match in both. */
