@@ -1480,11 +1480,11 @@ class DrlTest {
                 () -> "de compound filter (leeftijd<18 && minderjarig) moet op de accumulate-bron staan:\n" + drl);
     }
 
-    @Test void compound_subselectie_telling_met_global_blijft_marker() {
-        // §13.4.13.4 PARITY guard: a COUNTING quantifier ("ten minste 1 van de") compound whose bullet reads a
-        // Parameter-global ("kleiner dan de grens") cannot bind the global in the exec count-fold (only an ALLE/DE
-        // compound binds a global, per-bullet) — so it markers in BOTH back-ends to stay symmetric (the ALLE+global
-        // case fires; only counting+global is restricted). DRL would otherwise fire it (a masked DRL-fires/exec-skips).
+    @Test void compound_subselectie_telling_met_enkele_global_lowert_naar_gefilterde_accumulate() {
+        // §13.4.13.4 a COUNTING quantifier ("ten minste 1 van de") compound whose bullet reads a SINGLE
+        // Parameter-global ("kleiner dan de grens"): DRL reads the global as a free name in the OR-of-bullets on the
+        // accumulate source; the exec binds that one global on the source pattern (a 2-var count-fold). Was an honest
+        // marker in both; now FIRES in both (only a >1-global / non-bindable counting compound stays a marker).
         String src = """
             Parameter de grens : Numeriek (geheel getal)
             Objecttype de Vlucht
@@ -1506,8 +1506,39 @@ class DrlTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "moet parseren+resolven: " + m.errors());
         String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("/* TODO aggregatie"), () -> "een counting+enkele-global compound subselectie mag geen marker meer zijn:\n" + drl);
+        assertTrue(drl.contains("leeftijd < grens") && drl.contains("minderjarig == true") && drl.contains("||"),
+                () -> "de ten-minste-1 fold moet de global vrij lezen in een OR op de accumulate-bron:\n" + drl);
+    }
+
+    @Test void compound_subselectie_telling_met_twee_globals_blijft_marker() {
+        // §13.4.13.4 PARITY guard: a COUNTING quantifier compound reading TWO DISTINCT Parameter-globals cannot be
+        // bound in the exec count-fold (one accumulate-source expr binds at most one global) — so it stays an honest
+        // marker in BOTH back-ends to stay symmetric (DRL would otherwise read both free names and fire: a masked
+        // DRL-fires/exec-skips). The SINGLE-global case fires (test above); only >1-distinct-global is restricted.
+        String src = """
+            Parameter de ondergrens : Numeriek (geheel getal)
+            Parameter de bovengrens : Numeriek (geheel getal)
+            Objecttype de Vlucht
+                het totaal Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel r
+                geldig altijd
+                    Het totaal van een Vlucht moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:
+                    - zijn leeftijd is kleiner dan de ondergrens
+                    - zijn prijs is groter dan de bovengrens.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren+resolven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
         assertTrue(drl.contains("/* TODO aggregatie"),
-                () -> "een counting+global compound subselectie moet een eerlijke marker zijn (exec kan de global niet binden in de count-fold):\n" + drl);
+                () -> "een counting+twee-globals compound subselectie moet een eerlijke marker blijven (exec kan twee globals niet binden in de count-fold):\n" + drl);
     }
 
     @Test void telling_concatenatie_met_onoplosbare_operand_blijft_marker() {

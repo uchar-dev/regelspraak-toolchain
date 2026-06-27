@@ -1556,6 +1556,47 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_C_COMPOUND_EXPECTED = { new BigDecimal(55), new BigDecimal(55) };
 
+    // ---- §13.4.13.4 a COUNTING-quantifier compound subselectie ("die aan ten minste 1 / geen / precies 1 / ten
+    //      hoogste 1 van de volgende voorwaarden voldoen: …") whose bullet reads a SINGLE Parameter-global ("zijn
+    //      leeftijd is kleiner dan de grens"). The exec binds that one global on the accumulate source (a 2-var
+    //      count-fold over element + global); DRL reads it as a free name in the bullet OR/count. Now FIRES in both
+    //      (only a >1-distinct-global counting compound stays a symmetric marker, asserted below). The four fixtures
+    //      sweep the whole §13.4.14.4 quantifier family. SOM of prijs over passengers whose bullet-count meets it. ----
+    static Supplier<List<Object>> countFacts() {
+        return () -> { Vlucht v = new Vlucht(); return List.of(v,
+            paxLM(v, 30, 10, true),     // leeftijd<grens(18)=T, minderjarig=T -> count 2
+            paxLM(v, 70, 20, true),     // F, T -> count 1
+            paxLM(v, 40, 15, false),    // T, F -> count 1
+            paxLM(v, 25, 30, false)); };// F, F -> count 0
+    }
+    static String countSrc(String quantor) {
+        return "Parameter de grens : Numeriek (geheel getal)\n" + COMPOUND_HDR
+            + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan "
+            + quantor + " van de volgende voorwaarden voldoen:\n        - zijn leeftijd is kleiner dan de grens\n        - hij is minderjarig.\n";
+    }
+    static final Fixture[] PHASE_C_COUNT_GLOBAL = {
+        new Fixture("SOM, ten-minste-1 compound + single global (count>=1)",
+            countSrc("ten minste 1"), countFacts(), Map.of("grens", new BigDecimal(18)),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // count>=1 -> 30+70+40 = 140
+        new Fixture("SOM, geen-van-de compound + single global (count==0)",
+            countSrc("geen"), countFacts(), Map.of("grens", new BigDecimal(18)),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // count==0 -> 25
+        new Fixture("SOM, precies-1 compound + single global (count==1)",
+            countSrc("precies 1"), countFacts(), Map.of("grens", new BigDecimal(18)),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // count==1 -> 70+40 = 110
+        new Fixture("SOM, ten-hoogste-1 compound + single global (count<=1)",
+            countSrc("ten hoogste 1"), countFacts(), Map.of("grens", new BigDecimal(18)),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // count<=1 -> 70+40+25 = 135
+    };
+    static final Object[] PHASE_C_COUNT_GLOBAL_EXPECTED = {
+        new BigDecimal(140), new BigDecimal(25), new BigDecimal(110), new BigDecimal(135) };
+
+    // §13.4.13.4 a COUNTING compound reading TWO DISTINCT globals — the exec count-fold binds AT MOST one source-global,
+    //   so this stays an honest marker in BOTH back-ends (symmetric; never a masked DRL-fires/exec-skips).
+    static final String COUNT_TWO_GLOBALS_SRC =
+        "Parameter de ondergrens : Numeriek (geheel getal)\nParameter de bovengrens : Numeriek (geheel getal)\n" + COMPOUND_HDR
+        + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn leeftijd is kleiner dan de ondergrens\n        - zijn prijs is groter dan de bovengrens.\n";
+
     // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
     //      arithmetic tree whose leaf is an AANTAL/TOTAAL/MIN/MAX). Each embedded aggregation lowers to its own
     //      accumulate CE; the consequence combines the bound results + scalars + a (≤1) global. Facts: [Vlucht, pax...].
@@ -3405,6 +3446,35 @@ class ExecModelDifferentialTest {
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 11); }
     @Test void phase_C_param_rhs_subselectie_matches_drl_back_end() { runDifferential("Phase C param-RHS", PHASE_C_PARAM_RHS, 3); }
     @Test void phase_C_compound_subselectie_matches_drl_back_end() { runDifferential("Phase C compound", PHASE_C_COMPOUND, 2); }
+    @Test void phase_C_count_global_subselectie_matches_drl_back_end() { runDifferential("Phase C count+global", PHASE_C_COUNT_GLOBAL, 4); }
+    /** §13.4.13.4 a COUNTING-quantifier compound subselectie with a SINGLE Parameter-global bullet, now FIRING in BOTH
+     *  back-ends (DRL free-name in the bullet OR/count; exec a 2-var count-fold binding the one source-global). A
+     *  closed-form filtered fold -> assert the ABSOLUTE spec value (a shared "global never bound / filter never applied"
+     *  bug would pass a pure differential), the exec NOT skipping, and parity. Sweeps ten-minste-1/geen/precies/ten-hoogste. */
+    @Test void phase_C_count_global_subselectie_is_spec_correct() {
+        for (int i = 0; i < PHASE_C_COUNT_GLOBAL.length; i++) {
+            Fixture f = PHASE_C_COUNT_GLOBAL[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_C_COUNT_GLOBAL_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §13.4.13.4 parity floor: a COUNTING compound reading TWO DISTINCT globals must stay a SYMMETRIC marker — the
+     *  resolver folds it to Onopgelost, so the exec records overgeslagen AND DRL emits a TODO marker. Pins that the
+     *  relaxation (single-global fires) did NOT open a masked DRL-fires/exec-skips on the multi-global case. */
+    @Test void counting_subselectie_met_twee_globals_is_symmetric_marker_in_both() {
+        RegelSpraakModel m = Resolver.resolve(COUNT_TWO_GLOBALS_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet een twee-globals counting compound overslaan, kreeg: " + em.overgeslagen());
+        assertTrue(DrlTranspiler.transpile(m).contains("/* TODO aggregatie"),
+                () -> "DRL moet een twee-globals counting compound ook markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
+    }
     /** §13.4.13.4 the COMPOUND subselectie (ALLE of comparison + kenmerk bullets over the element), now FIRING in BOTH
      *  back-ends (DRL `&&` source constraint; exec successive .expr). A closed-form filtered fold -> assert the ABSOLUTE
      *  spec value (a shared "filter never applied -> sums all" bug would pass a pure differential). */

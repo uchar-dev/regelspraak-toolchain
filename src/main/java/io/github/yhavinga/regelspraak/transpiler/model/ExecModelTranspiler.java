@@ -514,39 +514,72 @@ public final class ExecModelTranspiler {
                 }
                 return src;
             }
-            // §13.4.14.4 counting quantifier: each bullet must be a fact-only Predicate1 (a per-element source-global
-            // binding is impossible inside the count fold) -> a param-global bullet skips the whole compound.
-            List<Predicate1<Object>> kinderen = new ArrayList<>();
-            for (Conditie deel : s.onderdelen()) {
-                Predicate1<Object> lp = leafPredicate(deel, elem);
-                if (lp == null) return null;
-                kinderen.add(lp);
-            }
+            // §13.4.14.4 counting quantifier. Each bullet is either a fact-only Predicate1 ({@link #leafPredicate})
+            // or a §5.6 numeric/percentage Parameter-GLOBAL comparison ("zijn leeftijd is kleiner dan de grens"). A
+            // SINGLE distinct source-global across the bullets binds as a 2-var expr (element + the global), folding the
+            // count INSIDE a Predicate2 — the exec analog of DRL reading the global as a free name regardless of
+            // quantifier. 0 globals -> a plain Predicate1 fold. An un-lowerable leaf OR a SECOND distinct global skips
+            // the whole compound (symmetric with RuleChecker's parity guard, so DRL also declines exactly those).
             final Conditie.Kwantor kw = s.kwantor(); final int n = s.drempel();
-            Predicate1<Object> combined = e -> {
-                int t = 0; for (Predicate1<Object> p : kinderen) if (p.test(e)) t++;
+            Global<BigDecimal> bound = null;
+            List<Predicate2<Object, BigDecimal>> tellers = new ArrayList<>();
+            for (Conditie deel : s.onderdelen()) {
+                GlobalVergelijking gb = globalBullet(deel, elem);   // a single numeric-vs-global comparison, or null
+                if (gb != null) {
+                    if (bound != null && bound != gb.global()) return null;   // >1 distinct global -> skip
+                    bound = gb.global();
+                    tellers.add(gb.test());
+                } else {
+                    Predicate1<Object> lp = leafPredicate(deel, elem);
+                    if (lp == null) return null;
+                    tellers.add((e, gv) -> lp.test(e));   // a fact-only leaf ignores the global
+                }
+            }
+            final List<Predicate2<Object, BigDecimal>> fTellers = tellers;
+            Predicate2<Object, BigDecimal> fold = (e, gv) -> {
+                int t = 0; for (Predicate2<Object, BigDecimal> p : fTellers) if (p.test(e, gv)) t++;
                 return switch (kw) {
                     case GEEN -> t == 0; case TEN_MINSTE -> t >= n; case TEN_HOOGSTE -> t <= n; case PRECIES -> t == n;
                     default -> false;   // ALLE/DE handled above
                 };
             };
-            return src.expr(nextId("filter"), (Predicate1) combined);
+            if (bound == null) {
+                Predicate1<Object> p1 = e -> fold.test(e, null);   // no global -> a plain fact-only count fold
+                return src.expr(nextId("filter"), (Predicate1) p1);
+            }
+            Predicate2<Object, Object> p2 = (e, gv) -> fold.test(e, (BigDecimal) gv);
+            return src.expr(nextId("filter"), (Variable) bound, (Predicate2) p2);
         }
-        if (filter instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
-                && la.type().isGetalachtig() && isNumeriekOp(v.op()) && v.rechts() instanceof Expr.ParameterRef pr) {   // §4.8 numeriek OR percentage
-            if (elem == null || !elem.heeftLid(la.attribuut())) return null;
-            if (elem.attribuutGranulariteit.containsKey(la.attribuut())) return null;   // temporal element attr -> skip
-            if (!elem.dimensiesVan(la.attribuut()).isEmpty()) return null;              // §3.6 gedimensioneerd -> skip
-            Global<BigDecimal> g = globals.get(ident(pr.parameter().naam()));
-            if (g == null) return null;   // non-numeric / unregistered global -> skip (DRL needs the global declared too)
-            String attr = la.attribuut();
-            Conditie.Operator op = v.op();
-            BigDecimal[] ff = restatement(la.type(), pr.parameter().datatype());        // §5.1 Tabel 32 unit restatement
-            return src.expr(nextId("filter"), (Variable) g,
-                    (Predicate2) (e, gv) -> vergelijk(scale(num(e, attr), ff[0]), scale((BigDecimal) gv, ff[1]), op));
+        GlobalVergelijking gb = globalBullet(filter, elem);   // §5.6 a getalachtig Parameter-global comparison source filter
+        if (gb != null) {
+            Predicate2<Object, Object> p2 = (e, gv) -> gb.test().test(e, (BigDecimal) gv);
+            return src.expr(nextId("filter"), (Variable) gb.global(), (Predicate2) p2);
         }
         Predicate1<Object> fp = leafPredicate(filter, elem);
         return fp == null ? null : src.expr(nextId("filter"), (Predicate1) fp);
+    }
+
+    /** A §5.6/§13.4.13.4 numeric/percentage Parameter-GLOBAL comparison bullet ("zijn leeftijd is kleiner dan de
+     *  grens"): the bound global {@link Variable} + a (element, globalValue) -&gt; boolean test, unit-restated like the
+     *  §8.1.1 numeric-vs-global path. null when the bullet is not such a comparison, or its global is non-numeric /
+     *  unregistered, or the element attribute is navigated / temporal / dimensioned (the caller then treats it as a
+     *  fact-only leaf, or skips). Shared by {@link #filterSource}'s standalone branch and its counting-quantifier fold,
+     *  so a single source-global binds identically in both — the only quantifier shape the ALLE/DE arm cannot reach
+     *  (it recurses, binding each bullet's global on its own {@code .expr}). */
+    private record GlobalVergelijking(Global<BigDecimal> global, Predicate2<Object, BigDecimal> test) {}
+    private GlobalVergelijking globalBullet(Conditie deel, Objecttype elem) {
+        if (!(deel instanceof Conditie.Vergelijking v) || !(v.links() instanceof Expr.AttribuutRef la)
+                || la.navigatieRol() != null || !la.type().isGetalachtig() || !isNumeriekOp(v.op())   // §4.8 numeriek OR percentage
+                || !(v.rechts() instanceof Expr.ParameterRef pr)) return null;
+        if (elem == null || !elem.heeftLid(la.attribuut())) return null;
+        if (elem.attribuutGranulariteit.containsKey(la.attribuut())) return null;   // temporal element attr -> skip
+        if (!elem.dimensiesVan(la.attribuut()).isEmpty()) return null;              // §3.6 gedimensioneerd -> skip
+        Global<BigDecimal> g = globals.get(ident(pr.parameter().naam()));
+        if (g == null) return null;   // non-numeric / unregistered global -> skip (DRL needs the global declared too)
+        String attr = la.attribuut();
+        Conditie.Operator op = v.op();
+        BigDecimal[] ff = restatement(la.type(), pr.parameter().datatype());        // §5.1 Tabel 32 unit restatement
+        return new GlobalVergelijking(g, (e, gv) -> vergelijk(scale(num(e, attr), ff[0]), scale(gv, ff[1]), op));
     }
 
     // ---------------- §7.1 temporal totaal (Phase F) ----------------

@@ -898,11 +898,15 @@ final class RuleChecker {
                 onderdelen.add(bouwGenest(g));         // the SAME bullet machinery as a voorwaarde compound
             Conditie.Kwantor kw = kwantorVanKwantificatie(sp.kwantificatie());
             // §13.4.13.4 parity guard: a COUNTING quantifier (geen/ten-minste/ten-hoogste/precies) folds the bullets
-            // PER ELEMENT into a single count; the exec accumulate cannot bind a Parameter-GLOBAL inside that fold
-            // (only an ALLE/DE compound, which ANDs each bullet as its own source .expr, binds a global). So a counting
-            // compound with a global-reading bullet would FIRE in DRL but SKIP in the exec — marker it in BOTH
-            // (Onopgelost) to stay symmetric. The ALLE/DE + global case fires in both (each bullet binds its own global).
-            if (kw != Conditie.Kwantor.ALLE && kw != Conditie.Kwantor.DE && onderdelen.stream().anyMatch(RuleChecker::leestGlobal))
+            // PER ELEMENT into a single count. The exec accumulate-source fold CAN bind a SINGLE distinct
+            // numeric/percentage Parameter-global in that fold (ExecModelTranspiler.globalBullet — a 2-var expr over
+            // the element + the bound global), the only quantifier shape the ALLE/DE arm cannot reach. A >1-global or
+            // non-bindable-shape global bullet it CANNOT bind, so DRL (which reads any global as a free name regardless
+            // of quantifier) would FIRE where the exec SKIPS — marker exactly those in BOTH (Onopgelost) to stay
+            // symmetric. The ALLE/DE + global case fires in both (each bullet binds its own global on its own .expr).
+            if (kw != Conditie.Kwantor.ALLE && kw != Conditie.Kwantor.DE
+                    && onderdelen.stream().anyMatch(RuleChecker::leestGlobal)
+                    && !execBindbareEnkeleGlobal(onderdelen, elem))
                 return new Conditie.Onopgelost(src(sp));
             return new Conditie.Samengesteld(kw,
                     sp.kwantificatie() == null ? 0 : telwoordWaarde(sp.kwantificatie().telwoord()), onderdelen, src(sp));
@@ -918,6 +922,43 @@ final class RuleChecker {
             return v.rechts() instanceof Expr.ParameterRef || v.links() instanceof Expr.ParameterRef;
         if (c instanceof Conditie.Samengesteld s) return s.onderdelen().stream().anyMatch(RuleChecker::leestGlobal);
         return false;
+    }
+
+    /** §13.4.13.4 parity gate for a COUNTING-quantifier compound subselectie that reads a Parameter-global: true iff
+     *  the exec accumulate-source fold can bind it — EXACTLY ONE distinct numeric/percentage global, every
+     *  global-reading bullet being that single exec-bindable comparison (own non-temporal non-dimensioned getalachtig
+     *  attribute, numeric operator, numeric/percentage Parameter on the RHS). Mirrors {@code ExecModelTranspiler
+     *  .globalBullet} so the back-ends stay symmetric: a >1-global / non-bindable-shape compound stays an Onopgelost
+     *  marker (DRL binds a free name regardless of quantifier, the exec cannot, so BOTH must decline). A fact-only
+     *  bullet imposes no global to bind; with no global-reading bullet at all this returns false (no firing claim). */
+    private static boolean execBindbareEnkeleGlobal(List<Conditie> onderdelen, Objecttype elem) {
+        String global = null;
+        for (Conditie c : onderdelen) {
+            if (!leestGlobal(c)) continue;                                  // a fact-only bullet: no global to bind
+            if (!(c instanceof Conditie.Vergelijking v)) return false;     // a nested compound / non-comparison global read -> not bindable
+            if (!(v.rechts() instanceof Expr.ParameterRef pr)) return false;          // the global must be the RHS
+            if (!(v.links() instanceof Expr.AttribuutRef la) || la.navigatieRol() != null) return false;
+            if (la.type() == null || !la.type().isGetalachtig()) return false;
+            if (!isNumeriekOp(v.op())) return false;
+            if (pr.parameter() == null || pr.parameter().datatype() == null
+                    || !pr.parameter().datatype().isGetalachtig()) return false;      // numeric/percentage global only
+            if (elem == null || !elem.heeftLid(la.attribuut())) return false;
+            if (elem.attribuutGranulariteit.containsKey(la.attribuut())) return false;   // temporal element attr -> exec skips
+            if (!elem.dimensiesVan(la.attribuut()).isEmpty()) return false;              // §3.6 gedimensioneerd -> exec skips
+            String naam = pr.parameter().naam();
+            if (global != null && !global.equals(naam)) return false;       // >1 distinct global -> not bindable
+            global = naam;
+        }
+        return global != null;   // at least one bindable global, all the same one
+    }
+
+    /** The six §13.4.17 numeric comparison operators the exec source-fold binds (datum EERDER/LATER are a later phase),
+     *  mirroring {@code ExecModelTranspiler.isNumeriekOp} for the {@link #execBindbareEnkeleGlobal} parity gate. */
+    private static boolean isNumeriekOp(Conditie.Operator op) {
+        return switch (op) {
+            case KLEINER, KLEINER_OF_GELIJK, GROTER, GROTER_OF_GELIJK, GELIJK, ONGELIJK -> true;
+            default -> false;
+        };
     }
 
     /** §13.4.14.5 kwantificatie (used by the compound subselectie) -> Kwantor. Distinct from voorwaardeKwantificatie:
