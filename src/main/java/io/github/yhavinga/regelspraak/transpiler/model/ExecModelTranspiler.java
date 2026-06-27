@@ -351,6 +351,15 @@ public final class ExecModelTranspiler {
             });
             if (consequence == null) return skip("regel (aggregatie-waarde: te veel gebonden variabelen): " + r.naam());
             extra.addAll(accItems);
+        } else if (isScalarSoort(r.soort()) && r.waarde() instanceof Expr.ParameterRef tpr
+                && tekstachtig(tpr.parameter().datatype()) && tekstGlobals.containsKey(ident(tpr.parameter().naam()))) {
+            // §13.4.6 assign a single TEKST/ENUMERATIE Parameter-GLOBAL (a String, not numeric) to the attribute
+            // ("De roepnaam wordt gesteld op de STANDAARDNAAM"): the numeric value-path below binds globals as BigDecimal,
+            // so a String global would skip there. Bind the String global and set it directly. (DRL declares the global
+            // with its String type so the setter resolves — both back-ends used to decline this: DRL build-error / exec skip.)
+            Global<String> g = tekstGlobals.get(ident(tpr.parameter().naam()));
+            consequence = DSL.on(sVar, (Variable) g).execute((Block3<org.drools.model.Drools, Object, Object>) (drools, s, gv) ->
+                    werkBij(drools, s, doelGetter, doelSetter, gv));
         } else {
             // scalar value path: a WaardeFn(subject, global-values -> value) plus the Parameter-globals it reads.
             // valueSubject is set tightly around the lowering so a to-one navigated value read can resolve its role.

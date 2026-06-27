@@ -1842,6 +1842,27 @@ class ExecModelDifferentialTest {
         Boolean.TRUE, Boolean.FALSE, Boolean.FALSE, Boolean.TRUE, Boolean.TRUE, Boolean.TRUE
     };
 
+    // ---- §13.4.6 assign a TEKST/ENUMERATIE Parameter-GLOBAL INTO an attribute ("De roepnaam wordt gesteld op de
+    //      STANDAARDNAAM"): DRL build-errored (the global was declared `Object`, so its String setter did not resolve)
+    //      and the exec SKIPPED (the numeric value-path binds globals as BigDecimal). The DRL now declares an enum/tekst
+    //      global with its String type, and the exec binds the String global + sets it directly. ----
+    static final String ENUM_ASSIGN_SRC =
+        "Domein Naam is van het type Enumeratie\n    'Tom'\n    'Maria'\n"
+        + "Parameter de STANDAARDNAAM : Naam\n"
+        + "Objecttype de Persoon (mv: Personen) (bezield)\n    de roepnaam Naam;\n"
+        + "Regel R\n    geldig altijd\n        De roepnaam van een Persoon moet gesteld worden op de STANDAARDNAAM.\n";
+    static final String TEKST_ASSIGN_SRC =
+        "Parameter de STANDAARDNAAM : Tekst\n"
+        + "Objecttype de Persoon (mv: Personen) (bezield)\n    de roepnaam Tekst;\n"
+        + "Regel R\n    geldig altijd\n        De roepnaam van een Persoon moet gesteld worden op de STANDAARDNAAM.\n";
+    static final Fixture[] PHASE_ENUM_ASSIGN = {
+        new Fixture("enum-global value-assignment roepnaam := STANDAARDNAAM (Maria)", ENUM_ASSIGN_SRC,
+            () -> List.of(new Persoon()), Map.of("sTANDAARDNAAM", "Maria"), l -> ((Persoon) l.get(0)).getRoepnaam()),
+        new Fixture("tekst-global value-assignment roepnaam := STANDAARDNAAM (Tom)", TEKST_ASSIGN_SRC,
+            () -> List.of(new Persoon()), Map.of("sTANDAARDNAAM", "Tom"), l -> ((Persoon) l.get(0)).getRoepnaam()),
+    };
+    static final Object[] PHASE_ENUM_ASSIGN_EXPECTED = { "Maria", "Tom" };
+
     // ---- §8.1.1 an EXPRESSION-vs-GLOBAL comparison ("zijn basistarief plus zijn bodem groter is dan de grens",
     //      "zijn basistarief plus de toeslag groter is dan zijn prijs") — the exec voorwaarde binds the SINGLE distinct
     //      numeric/percentage Parameter-global as a pattern variable (a 2-var expr), lowering both sides via scalarWaarde;
@@ -4317,6 +4338,22 @@ class ExecModelDifferentialTest {
         }
     }
     @Test void phase_enum_global_matches_drl_back_end() { runDifferential("Phase enum-vs-global", PHASE_ENUM_GLOBAL, 6); }
+    @Test void phase_enum_assign_matches_drl_back_end() { runDifferential("Phase enum/tekst-global assign", PHASE_ENUM_ASSIGN, 2); }
+    /** §13.4.6 assigning a TEKST/ENUMERATIE Parameter-global INTO an attribute now fires in BOTH back-ends (was a DRL
+     *  build-error vs exec-skip): DRL declares the global with its String type; the exec binds the String global + sets it. */
+    @Test void phase_enum_global_assignment_is_spec_correct() {
+        for (int i = 0; i < PHASE_ENUM_ASSIGN.length; i++) {
+            Fixture f = PHASE_ENUM_ASSIGN[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_ENUM_ASSIGN_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     /** §5.3 an ENUMERATIE attribute compared to an enum-typed Parameter-global now FIRES in the exec (was a masked
      *  DRL-fires/exec-skips: the tekst-vs-global branch gated on isTekst(), excluding Enumeratie). Both compare by
      *  String-label equality (tekstVergelijk) with the §5 leegwaarde tables. Covers own + to-one NAVIGATED, incl. the

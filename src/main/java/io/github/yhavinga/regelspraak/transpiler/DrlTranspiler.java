@@ -3640,7 +3640,7 @@ public final class DrlTranspiler {
 
     private static String javaType(Datatype t) {
         if (t.isPercentage() || t.isNumeriek()) return "java.math.BigDecimal";
-        if (t.isTekst()) return "String";
+        if (t.isTekst() || t instanceof Datatype.Enumeratie) return "String";   // an enumeratiewaarde is stored as its String label
         if (t instanceof Datatype.Booleaan) return "Boolean";
         if (t instanceof Datatype.DatumInDagen) return "java.time.LocalDate";
         if (t instanceof Datatype.DatumTijd) return "java.time.LocalDateTime";
