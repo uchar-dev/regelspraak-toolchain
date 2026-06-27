@@ -1442,6 +1442,17 @@ public final class ExecModelTranspiler {
             RuleItemBuilder<?> item = vr.negatie() ? DSL.not(fp) : DSL.exists(fp);
             return new Gate(pattern, List.of(item));
         }
+        // §8.1.1 a comparison written with the Parameter-GLOBAL on the LEFT ("de DREMPEL groter is dan zijn prijs", "de
+        // PEILDATUM later is dan zijn geboortedatum", "de STANDAARDVERTREK gelijk is aan zijn vertrek") — DRL reads the
+        // global as a free name and fires, but every exec vs-global branch keys on an AttribuutRef/expressie LHS + a
+        // ParameterRef RHS, so a global-LHS skipped. Normalise: swap the operands and REVERSE the operator (omkeren),
+        // then the existing vs-global branches lower it (numeric / datum / tekst, own + navigated + expr). Safe by
+        // construction — the rewrite triggers ONLY when the LHS is a ParameterRef and the RHS is not (after the swap the
+        // ParameterRef sits on the RIGHT, so it cannot re-trigger). A global-vs-literal (rare) stays a skip either way.
+        if (c instanceof Conditie.Vergelijking gv && gv.links() instanceof Expr.ParameterRef
+                && !(gv.rechts() instanceof Expr.ParameterRef))
+            return voorwaarde(new Conditie.Vergelijking(omkeren(gv.op()), gv.rechts(), gv.links(), gv.periode(), gv.bron()),
+                    pattern, subject, subjectVar);
         // §8.1.1 a DATUM comparison of an OWN or to-one NAVIGATED datum attribute vs a Datum-in-dagen Parameter-GLOBAL
         // ("zijn geboortedatum eerder is dan de PEILDATUM", "de vluchtdatum van zijn reis gelijk is aan de PEILDATUM").
         // BEFORE the numeric vs-global branch (whose `!isNumeriekOp -> return null` would otherwise swallow a datum op).

@@ -2125,6 +2125,36 @@ class ExecModelDifferentialTest {
         vals(true, false, true),    // ONGELIJK (mismatch T; match F; leeg WAAR)
     };
 
+    // §8.1.1 a comparison with the Parameter-GLOBAL on the LEFT ("de DREMPEL groter is dan zijn prijs", "de PEILDATUM
+    //   later is dan zijn geboortedatum", "de STANDAARDVERTREK ongelijk is aan zijn vertrek") now fires in the exec — was
+    //   a DRL-fires/exec-skips (the vs-global branches keyed on an attr LHS). voorwaarde() normalises a ParameterRef-LHS
+    //   comparison by swapping operands + reversing the operator (omkeren). Numeric + datum + tekst, all leegwaarde corners.
+    static Passagier passPrijs(String p) { Passagier x = new Passagier(); if (p != null) x.setPrijs(new BigDecimal(p)); return x; }
+    static final Fixture[] PHASE_GLOBAL_LEFT = {
+        // numeric global-LHS ordering: DREMPEL(100) groter dan prijs -> [50 WAAR, 150 onwaar, leeg onwaar].
+        new Fixture("numeric global-LHS ordering (DREMPEL groter dan prijs)",
+            "Parameter de DREMPEL : Numeriek (geheel getal)\nObjecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    is duur kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien de DREMPEL groter is dan zijn prijs.\n",
+            () -> List.of(passPrijs("50"), passPrijs("150"), passPrijs(null)), Map.of("dREMPEL", new BigDecimal(100)),
+            l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur(), ((Passagier) l.get(2)).isDuur())),
+        // datum global-LHS ordering: PEILDATUM(2000) later dan geboortedatum -> [1999 WAAR, 2001 onwaar, leeg onwaar].
+        new Fixture("datum global-LHS ordering (PEILDATUM later dan geboortedatum)",
+            "Parameter de PEILDATUM : Datum in dagen\nObjecttype de Passagier\n    de geboortedatum Datum in dagen;\n    is duur kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien de PEILDATUM later is dan zijn geboortedatum.\n",
+            () -> List.of(passGeb(dat(1999, 1, 1)), passGeb(dat(2001, 1, 1)), passGeb(null)), PEIL,
+            l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur(), ((Passagier) l.get(2)).isDuur())),
+        // tekst global-LHS ONGELIJK: STANDAARDVERTREK("A") ongelijk aan vertrek -> ["B" WAAR, "A" onwaar, leeg WAAR (Tabel 44)].
+        new Fixture("tekst global-LHS ONGELIJK (STANDAARDVERTREK ongelijk aan vertrek)",
+            TG_HDR + "Regel R\n    geldig altijd\n        Een Route is gemarkeerd indien de STANDAARDVERTREK ongelijk is aan zijn vertrek.\n",
+            () -> List.of(routeVertrek("B"), routeVertrek("A"), routeVertrek(null)), STDV,
+            l -> vals(((Route) l.get(0)).isGemarkeerd(), ((Route) l.get(1)).isGemarkeerd(), ((Route) l.get(2)).isGemarkeerd())),
+    };
+    static final Object[] PHASE_GLOBAL_LEFT_EXPECTED = {
+        vals(true, false, false),   // numeric (100>50 T; 100>150 F; 100>leeg F)
+        vals(true, false, false),   // datum (2000>1999 T; 2000>2001 F; leeg F)
+        vals(true, false, true),    // tekst ONGELIJK (A!=B T; A!=A F; A!=leeg WAAR)
+    };
+
     // regression: the exec model INFINITE-LOOPED when a NAVIGATED-comparison rule (A) was co-resident with a second rule
     //   (B) over the same subject — drools.update(s) re-evaluated A's black-box navigated lambda on every modify by B, and
     //   NO_LOOP blocks only the rule's OWN re-trigger. The idempotent werkBij (update only on an ACTUAL value change)
@@ -4225,6 +4255,21 @@ class ExecModelDifferentialTest {
      *  fires in the exec — was a DRL-fires/exec-skips. Absolute spec values + parity, incl. leegwaarde (Tabel 44). */
     /** §5.3/§13.3.8 a tekst equality (GELIJK/ONGELIJK) vs a Tekst Parameter-GLOBAL now fires in the exec — was a
      *  DRL-fires/exec-skips. Absolute spec values + parity, incl. a leeg operand (Tabel 38 / Tabel 44). */
+    /** §8.1.1 a comparison with the Parameter-GLOBAL on the LEFT (numeric + datum + tekst) now fires in the exec — was a
+     *  DRL-fires/exec-skips. voorwaarde() swaps operands + reverses the operator (omkeren). Absolute spec values + parity. */
+    @Test void phase_global_on_left_is_spec_correct() {
+        for (int i = 0; i < PHASE_GLOBAL_LEFT.length; i++) {
+            Fixture f = PHASE_GLOBAL_LEFT[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_GLOBAL_LEFT_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_tekst_vs_global_is_spec_correct() {
         for (int i = 0; i < PHASE_TEKST_GLOBAL.length; i++) {
             Fixture f = PHASE_TEKST_GLOBAL[i];
