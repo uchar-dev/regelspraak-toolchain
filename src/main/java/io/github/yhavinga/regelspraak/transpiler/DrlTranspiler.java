@@ -1249,7 +1249,11 @@ public final class DrlTranspiler {
             // key is deferred to a marker. An unresolvable underlying read (e.g. a navigation) markers too.
             Frag map = attribuutGetter(c.attribuut(), subject);
             if (map.marker() || c.labels().size() != 1) return Frag.todo("dimensiecel", c.bron());
-            return Frag.ok("(" + map.text() + ").get(\"" + c.labels().get(0).replace("\"", "") + "\")");
+            // §6.9/§13.3.9: a null gedimensioneerd Map (a default-constructed fact) reads as LEEG, not a crash — guard
+            // the .get so it does not NPE-abort the consequence (the exec-model's scalarWaarde DimensieCel is already
+            // null-safe; this mirrors the value-side GENAVIGEERD root-guard so both back-ends read a null Map as leeg).
+            String cel = map.text(), label = c.labels().get(0).replace("\"", "");
+            return Frag.ok("(" + cel + " == null ? null : (" + cel + ").get(\"" + label + "\"))");
         }
         if (e instanceof Expr.Binair b)
             // §6.2-6.8 arithmetic, shared with the condition side: value getters for the sub-operands, and a

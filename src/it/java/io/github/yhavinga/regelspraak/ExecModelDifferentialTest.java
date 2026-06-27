@@ -4234,11 +4234,11 @@ class ExecModelDifferentialTest {
             l -> ((NatuurlijkPersoon) l.get(0)).getBetaaldeBelastingOverDeAfgelopenVierJaar()),   // 222
     };
 
-    /** §3.6/§6.9 regression (Phase G adversarial review): a DimensieCel read over a NULL gedimensioneerd Map must
-     *  yield leeg (null), not crash. The model is null-guarded (spec-correct); the DRL oracle is NOT (a latent
-     *  ConsequenceException on a null Map — carded in backlog), so this is a MODEL-only robustness guard, not a
-     *  differential (the back-ends cannot be compared where the oracle crashes). */
-    @Test void phase_G_dimensiecel_over_null_map_is_null_safe_in_model() {
+    /** §3.6/§6.9 (Phase G adversarial review): a DimensieCel read over a NULL gedimensioneerd Map must yield leeg
+     *  (null), not crash. Both back-ends are now null-guarded — the model always was (spec-correct), and the DRL oracle's
+     *  cell read is now guarded too (was a latent ConsequenceException on a null Map). So this is now a FIRE-BOTH
+     *  differential: both fire over a null-Map fact and leave the doel leeg, neither throws. */
+    @Test void phase_G_dimensiecel_over_null_map_is_leeg_in_both() {
         String src = """
             Objecttype de Natuurlijk persoon (mv: Natuurlijke personen)
                 de betaalde belasting over de afgelopen vier jaar Numeriek (geheel getal);
@@ -4254,12 +4254,14 @@ class ExecModelDifferentialTest {
         assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
         ExecModelTranspiler em = ExecModelTranspiler.build(m);
         assertTrue(em.overgeslagen().isEmpty(), () -> "model moet de cel-lezing loweren: " + em.overgeslagen());
-        KieSession s = KieBaseBuilder.createKieBaseFromModel(em.model()).newKieSession();
-        NatuurlijkPersoon np = new NatuurlijkPersoon();   // betaaldeBelastingInJaar == null
-        s.insert(np);
-        s.fireAllRules();   // must NOT throw on the null Map
-        s.dispose();
-        assertNull(np.getBetaaldeBelastingOverDeAfgelopenVierJaar(), "null-Map DimensieCel -> leeg, niet crash");
+        for (KieBase kb : List.of(drlBase(m), KieBaseBuilder.createKieBaseFromModel(em.model()))) {
+            NatuurlijkPersoon np = new NatuurlijkPersoon();   // betaaldeBelastingInJaar == null
+            KieSession s = kb.newKieSession();
+            s.insert(np);
+            s.fireAllRules();   // must NOT throw on the null Map in EITHER back-end (was a DRL ConsequenceException)
+            s.dispose();
+            assertNull(np.getBetaaldeBelastingOverDeAfgelopenVierJaar(), "null-Map DimensieCel -> leeg, niet crash");
+        }
     }
 
     @Test void phase_G_dimensie_matches_drl_back_end()             { runDifferential("Phase G dim", PHASE_G_DIM, 3); }
