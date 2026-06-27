@@ -32,6 +32,7 @@ import org.kie.internal.utils.KieHelper;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -1884,18 +1885,92 @@ class ExecModelDifferentialTest {
         vals(true, false, false, false, false),  // NAV vs OWN GELIJK
         vals(false, true, true),                 // OWN ONGELIJK vs lit
     };
-    // §13.2.20 a Datum-en-tijd (LocalDateTime) GELIJK/ONGELIJK is NOT lowered by the exec datum-equality branch (datumLezer
-    //   is DatumInDagen-only — a LocalDateTime read via `instanceof LocalDate` would become leeg -> a WRONG fire). It stays
-    //   an HONEST exec skip (DRL fires it). Locks the DatumInDagen guard against a regression to the wrong-fire.
-    static final String DATUMTIJD_EQ_SRC =
-        "Objecttype de Vlucht\n    de vertrekmoment Datum en tijd in millisecondes;\n    de aankomstmoment Datum en tijd in millisecondes;\n    is laat kenmerk (bijvoeglijk);\n"
-        + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn vertrekmoment gelijk is aan zijn aankomstmoment.\n";
     // §5.3 Tabel 36 a Datum-in-dagen attribute vs a DATUM-EN-TIJD literal is a TYPE MISMATCH; parseDatum would lossily
     //   extract just the date part and fire. The exec datum-equality branch requires a DatumInDagen literal RHS, so this
     //   skips (honest) instead of mis-firing. (DRL fires it — a pre-existing resolver type-check gap, now masked.)
     static final String MIXED_DATUMLIT_SRC =
         "Objecttype de Vlucht\n    de vluchtdatum Datum in dagen;\n    is laat kenmerk (bijvoeglijk);\n"
         + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn vluchtdatum gelijk is aan 15-6-2022 09:30:00.000.\n";
+
+    // ---- §5.3/§5.6/§8.1.1 Datum-en-tijd (LocalDateTime) comparisons now FIRE in the exec (ordering EERDER/LATER +
+    //      equality GELIJK/ONGELIJK, own + navigated, vs a datum-tijd literal + a same-kind attr). Previously a present
+    //      Datum-en-tijd was read via `instanceof LocalDate` -> leeg: equality was a LocalDate-only honest SKIP, while
+    //      ordering & consistentie MISFIRED (read present as leeg -> a wrong no-fire / a wrong consistentie over-flag).
+    //      The exec now reads the raw Temporal and compares via datumVergelijkTemporal; DRL fires all these. A mixed
+    //      Datum-in-dagen/Datum-en-tijd pair stays an honest skip (§5.3 Tabel 36 type mismatch). Absolute spec values. ----
+    static LocalDateTime dtt(int h, int mi) { return LocalDateTime.of(2022, 6, 15, h, mi, 0); }
+    static final String DT_HDR =
+        "Objecttype de Vlucht\n    de vertrekmoment Datum en tijd in millisecondes;\n    de aankomstmoment Datum en tijd in millisecondes;\n    is laat kenmerk (bijvoeglijk);\n";
+    static final Fixture[] PHASE_DATUMTIJD = {
+        // own-attr ORDERING vs a datum-tijd literal: vertrekmoment eerder dan 12:00 -> [09:30 WAAR, 13:00 onwaar, leeg onwaar].
+        new Fixture("datum-tijd own ordering vs literal (eerder dan 12:00)",
+            DT_HDR + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn vertrekmoment eerder is dan 15-6-2022 12:00:00.000.\n",
+            () -> { Vlucht a = new Vlucht(); a.setVertrekmoment(dtt(9, 30));
+                    Vlucht b = new Vlucht(); b.setVertrekmoment(dtt(13, 0));
+                    Vlucht c = new Vlucht();   // leeg -> ordering no-match
+                    return List.of(a, b, c); },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).isLaat(), ((Vlucht) l.get(1)).isLaat(), ((Vlucht) l.get(2)).isLaat())),
+        // own-attr GELIJK vs literal: vertrekmoment == 09:30 -> [09:30 WAAR, 10:00 onwaar, leeg onwaar (Tabel 38)].
+        new Fixture("datum-tijd own GELIJK vs literal (== 09:30)",
+            DT_HDR + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn vertrekmoment gelijk is aan 15-6-2022 09:30:00.000.\n",
+            () -> { Vlucht a = new Vlucht(); a.setVertrekmoment(dtt(9, 30));
+                    Vlucht b = new Vlucht(); b.setVertrekmoment(dtt(10, 0));
+                    Vlucht c = new Vlucht();
+                    return List.of(a, b, c); },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).isLaat(), ((Vlucht) l.get(1)).isLaat(), ((Vlucht) l.get(2)).isLaat())),
+        // own-attr ONGELIJK vs literal: vertrekmoment != 09:30 -> [10:00 WAAR, 09:30 onwaar, leeg WAAR (Tabel 44 one-leeg)].
+        new Fixture("datum-tijd own ONGELIJK vs literal (!= 09:30)",
+            DT_HDR + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn vertrekmoment ongelijk is aan 15-6-2022 09:30:00.000.\n",
+            () -> { Vlucht a = new Vlucht(); a.setVertrekmoment(dtt(10, 0));
+                    Vlucht b = new Vlucht(); b.setVertrekmoment(dtt(9, 30));
+                    Vlucht c = new Vlucht();
+                    return List.of(a, b, c); },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).isLaat(), ((Vlucht) l.get(1)).isLaat(), ((Vlucht) l.get(2)).isLaat())),
+        // attr-vs-attr GELIJK: vertrekmoment == aankomstmoment -> [equal WAAR, unequal onwaar, one-leeg onwaar, both-leeg onwaar].
+        new Fixture("datum-tijd attr-vs-attr GELIJK (vertrek == aankomst)",
+            DT_HDR + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn vertrekmoment gelijk is aan zijn aankomstmoment.\n",
+            () -> { Vlucht eq = new Vlucht(); eq.setVertrekmoment(dtt(9, 30)); eq.setAankomstmoment(dtt(9, 30));
+                    Vlucht ne = new Vlucht(); ne.setVertrekmoment(dtt(9, 30)); ne.setAankomstmoment(dtt(10, 0));
+                    Vlucht one = new Vlucht(); one.setVertrekmoment(dtt(9, 30));
+                    Vlucht both = new Vlucht();
+                    return List.of(eq, ne, one, both); },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).isLaat(), ((Vlucht) l.get(1)).isLaat(), ((Vlucht) l.get(2)).isLaat(), ((Vlucht) l.get(3)).isLaat())),
+        // NAVIGATED ordering vs literal: de vertrekmoment van zijn reis eerder dan 12:00 -> [reis 09:30 WAAR, absent-reis onwaar (leeg)].
+        new Fixture("datum-tijd navigated ordering vs literal (reis vertrekmoment eerder dan 12:00)",
+            "Objecttype de Vlucht\n    de vertrekmoment Datum en tijd in millisecondes;\n"
+            + "Objecttype de Passagier\n    is duur kenmerk (bijvoeglijk);\n" + AGG_FEIT
+            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien de vertrekmoment van zijn reis eerder is dan 15-6-2022 12:00:00.000.\n",
+            () -> { Vlucht v = new Vlucht(); v.setVertrekmoment(dtt(9, 30));
+                    Passagier p1 = new Passagier(); p1.setReis(v);
+                    Passagier p2 = new Passagier();   // absent reis -> leegwaarde -> ordering no-match
+                    return List.of(v, p1, p2); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(1)).isDuur(), ((Passagier) l.get(2)).isDuur())),
+    };
+    static final Object[] PHASE_DATUMTIJD_EXPECTED = {
+        vals(true, false, false),         // own ordering (09:30<12:00 WAAR; 13:00 onwaar; leeg onwaar)
+        vals(true, false, false),         // own GELIJK
+        vals(true, false, true),          // own ONGELIJK (leeg -> WAAR, Tabel 44)
+        vals(true, false, false, false),  // attr-vs-attr GELIJK
+        vals(true, false),                // navigated ordering (present WAAR, absent-reis onwaar)
+    };
+    // §13.4.8 a CONSISTENTIE ordering assertie over Datum-en-tijd ("De vertrekmoment moet eerder zijn dan de aankomstmoment"):
+    //   the exec used to over-flag a SATISFIED ordering (a present LocalDateTime read as leeg -> "operand empty -> violation").
+    //   Now flags exactly the genuine violation, matching DRL. (satisfied -> no fout; reversed -> fout; one-leeg -> fout.)
+    static final FoutFixture[] PHASE_DATUMTIJD_CONS = {
+        new FoutFixture("datum-tijd consistentie ordering (vertrek eerder dan aankomst)",
+            "Objecttype de Vlucht\n    de vertrekmoment Datum en tijd in millisecondes;\n    de aankomstmoment Datum en tijd in millisecondes;\n"
+            + "Regel R\n    geldig altijd\n        De vertrekmoment van een Vlucht moet eerder zijn dan zijn aankomstmoment.\n",
+            () -> { Vlucht ok = new Vlucht(); ok.setVertrekmoment(dtt(9, 30)); ok.setAankomstmoment(dtt(10, 0));   // satisfied -> NOT flagged
+                    Vlucht bad = new Vlucht(); bad.setVertrekmoment(dtt(11, 0)); bad.setAankomstmoment(dtt(9, 30));  // reversed -> flagged
+                    Vlucht leeg = new Vlucht(); leeg.setVertrekmoment(dtt(9, 30));                                   // aankomst leeg -> flagged
+                    return List.of(ok, bad, leeg); },
+            o -> "vertrek=" + ((Vlucht) o).getVertrekmoment()),
+    };
 
     // regression: the exec model INFINITE-LOOPED when a NAVIGATED-comparison rule (A) was co-resident with a second rule
     //   (B) over the same subject — drools.update(s) re-evaluated A's black-box navigated lambda on every modify by B, and
@@ -3971,18 +4046,25 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
-    /** §13.2.20 a DATUM-EN-TIJD (LocalDateTime) GELIJK/ONGELIJK must NOT be lowered by the exec datum-equality branch — a
-     *  LocalDateTime read via the branch's `instanceof LocalDate` would become leeg and WRONGLY fire (datumGelijk(null,...)).
-     *  The branch is gated DatumInDagen-only, so a datum-tijd equality stays an HONEST skip (overgeslagen); DRL fires it.
-     *  Regression lock for the DatumInDagen guard (a present datum-tijd must never be read as leeg). */
-    @Test void datumtijd_equality_is_honest_exec_skip_not_misfire() {
-        RegelSpraakModel m = Resolver.resolve(DATUMTIJD_EQ_SRC);
-        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
-        ExecModelTranspiler em = ExecModelTranspiler.build(m);
-        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet een datum-tijd gelijkheid OVERSLAAN (niet als leeg mis-vuren), kreeg: " + em.overgeslagen());
-        assertFalse(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
-                () -> "DRL vuurt de datum-tijd gelijkheid wel (asymmetrische skip, geen marker):\n" + DrlTranspiler.transpile(m));
+    /** §5.3/§5.6/§8.1.1/§13.2.20 Datum-en-tijd (LocalDateTime) comparisons now FIRE in the exec at parity with DRL —
+     *  ordering EERDER/LATER + equality GELIJK/ONGELIJK, own + navigated, vs a datum-tijd literal and a same-kind attr.
+     *  The exec reads the raw Temporal (not `instanceof LocalDate`, which read a present datum-tijd as leeg -> equality
+     *  was a honest skip, ordering MISFIRED to a wrong no-fire) and compares via datumVergelijkTemporal. A mixed
+     *  Datum-in-dagen/Datum-en-tijd pair stays an honest skip (Tabel 36). Absolute spec values + parity. */
+    @Test void phase_datumtijd_comparisons_are_spec_correct() {
+        for (int i = 0; i < PHASE_DATUMTIJD.length; i++) {
+            Fixture f = PHASE_DATUMTIJD[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_DATUMTIJD_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
     }
+    @Test void phase_datumtijd_consistentie_matches_drl_back_end() { runFoutDifferential("datum-tijd consistentie", PHASE_DATUMTIJD_CONS, 1); }
     /** §5.3 Tabel 36 a Datum-in-dagen attribute GELIJK a DATUM-EN-TIJD literal is a type mismatch — the exec datum-equality
      *  branch requires a DatumInDagen literal RHS, so it SKIPS (honest) rather than lossily extracting the date part and
      *  mis-firing. Regression lock for the RHS-literal DatumInDagen gate (the model must not fire a mixed-type comparison). */

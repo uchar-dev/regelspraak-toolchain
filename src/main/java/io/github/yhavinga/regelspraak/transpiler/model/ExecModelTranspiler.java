@@ -1109,13 +1109,13 @@ public final class ExecModelTranspiler {
             return null;
         }
         if (isDatumOp(v.op()) && la.type().isDatum() && v.rechts() instanceof Expr.Literal lit && lit.type().isDatum()) {
-            java.time.LocalDate rhs = parseDatum(lit.waarde());
+            if (!sameDatumKind(la.type(), lit.type())) return null;   // mixed datum/datum-tijd -> §5.3 Tabel 36 mismatch, skip
+            Object rhs = datumLiteraal(lit);
             if (rhs == null) return null;
             Conditie.Operator op = v.op();
-            return s -> {
-                Object a = RegelSpraakRuntime.get(s, lattr);
-                return a instanceof java.time.LocalDate ld && datumVergelijk(ld, rhs, op);   // empty datum operand -> onwaar (ordening)
-            };
+            // read the raw Temporal (LocalDate OR LocalDateTime); a present Datum-en-tijd now compares via compareTo (was
+            // `instanceof LocalDate` -> read as leeg -> wrong no-fire). An empty datum operand -> ordering no-match.
+            return s -> datumVergelijkTemporal(datumWaarde(RegelSpraakRuntime.get(s, lattr)), rhs, op);
         }
         return null;
     }
@@ -1739,23 +1739,17 @@ public final class ExecModelTranspiler {
         // short-circuits the whole term (mvel `rol!.attr`), like the navigated numeric comparison.
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.type().isDatum()
                 && isDatumOp(v.op()) && v.rechts() instanceof Expr.Literal lit && lit.type().isDatum()) {
-            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
-            java.time.LocalDate rhs = parseDatum(lit.waarde());
+            if (!sameDatumKind(la.type(), lit.type())) return null;   // mixed datum/datum-tijd -> §5.3 Tabel 36 mismatch, skip
+            java.util.function.Function<Object, Object> lf = datumTemporeelLezer(la, subject);
+            if (lf == null) return null;
+            Object rhs = datumLiteraal(lit);
             if (rhs == null) return null;
             Conditie.Operator op = v.op();
-            String attr = la.attribuut();
-            if (la.navigatieRol() == null) {
-                if (!subject.heeftLid(la.attribuut())) return null;   // not the subject's own member
-                return s -> { Object a = RegelSpraakRuntime.get(s, attr); return a instanceof java.time.LocalDate ld && datumVergelijk(ld, rhs, op); };
-            }
-            String rol = navComparisonRole(la, subject);
-            if (rol == null) return null;
-            return s -> {
-                Object rel = RegelSpraakRuntime.get(s, rol);
-                if (rel == null) return false;   // mvel `rol!.attr` short-circuits the whole term on a null reference
-                Object a = RegelSpraakRuntime.get(rel, attr);
-                return a instanceof java.time.LocalDate ld && datumVergelijk(ld, rhs, op);
-            };
+            // own OR to-one navigated; a present Datum-en-tijd (LocalDateTime) now compares via compareTo, not the old
+            // `instanceof LocalDate` (which read it as leeg -> a wrong no-fire). A leeg / absent-navigation operand is the
+            // ordering no-match (datumVergelijkTemporal: a null operand is false) — the same value mvel `rol!.attr < lit`
+            // short-circuits to. DRL lowers the same `attr < <literal>`.
+            return s -> datumVergelijkTemporal(lf.apply(s), rhs, op);
         }
         // §8.1.1 a DATUM ordering comparison where an operand is a §6/§13.4.16 date-arithmetic EXPRESSION ("de
         // daadwerkelijke vertrek later is dan de vluchtdatum plus de uitstelduur"). The simple attr-vs-literal form
@@ -1773,28 +1767,30 @@ public final class ExecModelTranspiler {
         }
         // §5.3/§5.6 a DATUM EQUALITY (gelijk/ongelijk) of an OWN or to-one NAVIGATED datum attribute vs a §13.2.19 datum
         // LITERAL or another own/navigated datum attribute. An absent navigation / leeg datum reads LEEGWAARDE (§5.5.5),
-        // then the §5 leegwaarde tables decide (datumGelijk): GELIJK both-leeg -> fout/onwaar (Tabel 38, NON-numeric — NOT
+        // then the §5 leegwaarde tables decide (datumVergelijkTemporal): GELIJK both-leeg -> fout/onwaar (Tabel 38, NON-numeric — NOT
         // Tabel 37's WAAR) and one-leeg -> onwaar; ONGELIJK one-leeg -> WAAR (Tabel 44) and both-leeg -> onwaar. Mirrors
         // DrlTranspiler's genavigeerdeVergelijkingVoorwaarde (navigated) / non-numeriek schending complement (own). The
         // date-ARITHMETIC equality (an operand is a §6 Binair) is handled by the branch above (isDatumRekenExpr).
         if (c instanceof Conditie.Vergelijking v && (v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)
                 && v.links() instanceof Expr.AttribuutRef la && la.type() != null && la.type().isDatum()) {
-            java.util.function.Function<Object, java.time.LocalDate> lf = datumLezer(la, subject);
+            java.util.function.Function<Object, Object> lf = datumTemporeelLezer(la, subject);
             if (lf == null) return null;
             Conditie.Operator op = v.op();
-            // a DATUM-EN-TIJD literal RHS against a Datum-in-dagen attribute is a §5.3 Tabel 36 TYPE MISMATCH (left/right must
-            // be the same datatype); parseDatum would lossily extract just the date part and fire a wrong comparison. Require
-            // a DatumInDagen literal (the datumLezer LHS is already DatumInDagen-only), else skip (a mixed-type comparison the
-            // resolver should reject; honest exec skip rather than a lossy fire).
-            if (v.rechts() instanceof Expr.Literal lit && lit.type() instanceof Datatype.DatumInDagen) {
-                java.time.LocalDate rhs = parseDatum(lit.waarde());
+            // a mixed Datum-in-dagen / Datum-en-tijd pair is a §5.3 Tabel 36 TYPE MISMATCH (left/right must be the SAME
+            // datatype) -> skip (no lossy date-part coercion). Same-kind: read each as its Temporal and apply the leegwaarde
+            // tables (datumVergelijkTemporal: GELIJK Tabel 38 one/both-leeg onwaar, ONGELIJK Tabel 44 one-leeg WAAR / both
+            // onwaar). Now FIRES Datum-en-tijd equality too (was a LocalDate-only honest skip). DRL fires the same shapes.
+            if (v.rechts() instanceof Expr.Literal lit && lit.type().isDatum()) {
+                if (!sameDatumKind(la.type(), lit.type())) return null;
+                Object rhs = datumLiteraal(lit);
                 if (rhs == null) return null;
-                return s -> datumGelijk(lf.apply(s), rhs, op);
+                return s -> datumVergelijkTemporal(lf.apply(s), rhs, op);
             }
             if (v.rechts() instanceof Expr.AttribuutRef ra && ra.type() != null && ra.type().isDatum()) {
-                java.util.function.Function<Object, java.time.LocalDate> rf = datumLezer(ra, subject);
+                if (!sameDatumKind(la.type(), ra.type())) return null;
+                java.util.function.Function<Object, Object> rf = datumTemporeelLezer(ra, subject);
                 if (rf == null) return null;
-                return s -> datumGelijk(lf.apply(s), rf.apply(s), op);
+                return s -> datumVergelijkTemporal(lf.apply(s), rf.apply(s), op);
             }
             return null;   // datum-vs-(global/expr/other) -> not a fact-only datum-equality leaf
         }
@@ -2625,39 +2621,40 @@ public final class ExecModelTranspiler {
             default                -> false;  // EERDER/LATER — never reached (isNumeriekOp gates the caller)
         };
     }
-    /** §5.3/§5.6 DATUM equality with the leegwaarde tables — GELIJK is §5.3 Tabel 38 (Anders): a leeg operand makes it
-     *  onwaar (both-leeg is "fout", which as a rule GUARD is not-satisfied -> onwaar; NOT Tabel 37's numeric both-leeg=WAAR);
-     *  ONGELIJK is §5.6 Tabel 44: exactly-one-leeg -> WAAR, both-leeg -> onwaar. Mirrors the DRL's non-numeriek schending
-     *  complement. (LocalDate equality is .equals; a leeg date is null.) */
-    private static boolean datumGelijk(java.time.LocalDate a, java.time.LocalDate b, Conditie.Operator op) {
-        boolean aNull = a == null, bNull = b == null;
-        return switch (op) {
-            case GELIJK   -> !aNull && !bNull && a.equals(b);                       // one/both-leeg -> onwaar (Tabel 38)
-            case ONGELIJK -> aNull || bNull ? !(aNull && bNull) : !a.equals(b);     // one-leeg -> WAAR, both-leeg -> onwaar (Tabel 44)
-            default       -> false;
-        };
+    /** True iff both datatypes are the SAME datum subtype (both §13.2.19 Datum-in-dagen, or both §13.2.21 Datum-en-tijd).
+     *  A mixed pair is a §5.3 Tabel 36 type mismatch — the comparison must SKIP, never lossily coerce one to the other. */
+    private static boolean sameDatumKind(Datatype a, Datatype b) {
+        if (a instanceof Datatype.DatumTijd) return b instanceof Datatype.DatumTijd;
+        return a instanceof Datatype.DatumInDagen && b instanceof Datatype.DatumInDagen;
     }
-    /** A reader for an OWN or to-ONE NAVIGATED datum attribute as a {@link java.time.LocalDate} (null = leegwaarde): an
-     *  absent navigation reads leeg (§5.5.5), a present relation reads the attribute (which may itself be leeg). null when
-     *  the attribute is temporal (Phase F), §3.6 gedimensioneerd, not the subject's own member, or an unresolvable /
-     *  to-many navigation. Mirrors {@link #navReader}'s null-safety for the datum-equality leaf. */
-    private java.util.function.Function<Object, java.time.LocalDate> datumLezer(Expr.AttribuutRef a, Objecttype subject) {
-        // DATUM-IN-DAGEN only: a §13.2.20 Datum-en-tijd attribute is a LocalDateTime, which `instanceof LocalDate` below
-        // reads as leeg (a present value would wrongly become a leegwaarde -> a wrong fire). DatumTijd equality stays an
-        // honest exec skip (DRL fires it; carded) until the exec lowers a datum-tijd read + literal. Mirrors the datum
-        // ORDERING branch's LocalDate-only scope.
-        if (!(a.type() instanceof Datatype.DatumInDagen)) return null;
+    /** Parse a datum/datum-tijd literal to its Temporal: a §13.2.21 Datum-en-tijd literal -> LocalDateTime, else a
+     *  §13.2.19 Datum-in-dagen literal -> LocalDate. null when the literal lacks the parts the parser requires. */
+    private static Object datumLiteraal(Expr.Literal lit) {
+        return lit.type() instanceof Datatype.DatumTijd ? parseDatumTijd(lit.waarde()) : parseDatum(lit.waarde());
+    }
+    /** Narrow a reflectively-read value to a date/datetime Temporal (LocalDate or LocalDateTime), else null (leegwaarde). */
+    private static Object datumWaarde(Object v) {
+        return (v instanceof java.time.LocalDate || v instanceof java.time.LocalDateTime) ? v : null;
+    }
+    /** A reader for an OWN or to-ONE NAVIGATED datum/datum-tijd attribute as its raw {@link java.time.temporal.Temporal}
+     *  (LocalDate for §13.2.19 Datum-in-dagen, LocalDateTime for §13.2.21 Datum-en-tijd; null = leegwaarde): an absent
+     *  navigation reads leeg (§5.5.5), a present relation reads the attribute (which may itself be leeg). null when the
+     *  attribute is temporal (Phase F), §3.6 gedimensioneerd, not the subject's own member, or an unresolvable / to-many
+     *  navigation. The Temporal generalisation of the old LocalDate-only reader (which read a present Datum-en-tijd as
+     *  leeg -> a wrong/no fire). Feeds {@link #datumVergelijkTemporal}, which encodes the §5 leegwaarde tables for any
+     *  Temporal (ordering EERDER/LATER, equality GELIJK Tabel 38 / ONGELIJK Tabel 44). */
+    private java.util.function.Function<Object, Object> datumTemporeelLezer(Expr.AttribuutRef a, Objecttype subject) {
+        if (a.type() == null || !a.type().isDatum()) return null;
         if (a.objecttype() == null || a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;   // temporal -> Phase F
         if (!a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;                                        // §3.6 -> marker
         String attr = a.attribuut();
         if (a.navigatieRol() == null) {
             if (subject == null || !subject.heeftLid(attr)) return null;
-            return s -> RegelSpraakRuntime.get(s, attr) instanceof java.time.LocalDate ld ? ld : null;
+            return s -> datumWaarde(RegelSpraakRuntime.get(s, attr));
         }
         String rol = navComparisonRole(a, subject);
         if (rol == null) return null;
-        return s -> { Object rel = RegelSpraakRuntime.get(s, rol);
-            return rel != null && RegelSpraakRuntime.get(rel, attr) instanceof java.time.LocalDate ld ? ld : null; };
+        return s -> { Object rel = RegelSpraakRuntime.get(s, rol); return rel == null ? null : datumWaarde(RegelSpraakRuntime.get(rel, attr)); };
     }
     /** §5.1 Tabel 32: the multipliers that restate the left/right comparison operands into a common unit before
      *  comparing (so "24 mnd > 2 jr" compares 24 vs 24, not 24 vs 2) — the BigDecimal mirror of the DRL oracle's
@@ -2675,18 +2672,6 @@ public final class ExecModelTranspiler {
     private static BigDecimal nz(BigDecimal f) { return f == null ? BigDecimal.ONE : f; }
     /** Restate one operand by its unit factor; a leeg (null) operand stays leeg (no NPE on .multiply). */
     private static BigDecimal scale(BigDecimal x, BigDecimal f) { return x == null ? null : x.multiply(f); }
-    /** §5.1 datum-ordening: compare two present dates with the EERDER/LATER operator (LocalDate is Comparable, so DRL
-     *  mvel {@code <}/{@code <=}/{@code >}/{@code >=} use compareTo). The caller guards both operands present — an
-     *  empty datum operand is the ordering's no-match (false), handled at the call site. */
-    private static boolean datumVergelijk(java.time.LocalDate a, java.time.LocalDate b, Conditie.Operator op) {
-        return switch (op) {
-            case EERDER           -> a.isBefore(b);
-            case EERDER_OF_GELIJK -> !a.isAfter(b);
-            case LATER            -> a.isAfter(b);
-            case LATER_OF_GELIJK  -> !a.isBefore(b);
-            default               -> false;   // never reached (isDatumOp gates the caller)
-        };
-    }
     /** §8.1.1 datum comparison over ANY Temporal (LocalDate or LocalDateTime), for a date-arithmetic EXPRESSION
      *  operand whose runtime type the caller does not pin. Mirrors DRL's mvel rendering exactly: ORDERING
      *  (EERDER/LATER) compares two present operands via {@link Comparable#compareTo}, a leeg operand is the no-match
@@ -2826,18 +2811,23 @@ public final class ExecModelTranspiler {
         // OR the flipped (negated) ordering holds (own or navigated operands).
         if (la.type().isDatum() && isDatumOp(v.op())) {
             Conditie.Operator flipOp = flip(v.op());
+            // violated when EITHER operand is empty OR the flipped (negated) ordering holds. Read each as its raw Temporal
+            // (LocalDate OR LocalDateTime) — the old `instanceof LocalDate` read a present Datum-en-tijd as empty, wrongly
+            // flagging a satisfied datum-tijd ordering as a violation (a masked exec over-flag). datumVergelijkTemporal
+            // compares any Temporal. A mixed datum/datum-tijd pair is a §5.3 Tabel 36 mismatch -> skip.
             if (v.rechts() instanceof Expr.Literal dl && dl.type().isDatum()) {
-                java.time.LocalDate rhs = parseDatum(dl.waarde());
+                if (!sameDatumKind(la.type(), dl.type())) return null;
+                Object rhs = datumLiteraal(dl);
                 if (rhs == null) return null;
-                return s -> { Object a = lRead.apply(s);
-                    return !(a instanceof java.time.LocalDate ld) || datumVergelijk(ld, rhs, flipOp); };
+                return s -> { Object a = datumWaarde(lRead.apply(s));
+                    return a == null || datumVergelijkTemporal(a, rhs, flipOp); };
             }
             if (v.rechts() instanceof Expr.AttribuutRef ra && ra.type().isDatum()) {
+                if (!sameDatumKind(la.type(), ra.type())) return null;
                 java.util.function.Function<Object, Object> rRead = consistentieReader(ra, subject);
                 if (rRead == null) return null;
-                return s -> { Object a = lRead.apply(s), b = rRead.apply(s);
-                    return !(a instanceof java.time.LocalDate la2) || !(b instanceof java.time.LocalDate lb2)
-                            || datumVergelijk(la2, lb2, flipOp); };
+                return s -> { Object a = datumWaarde(lRead.apply(s)), b = datumWaarde(rRead.apply(s));
+                    return a == null || b == null || datumVergelijkTemporal(a, b, flipOp); };
             }
             return null;
         }
