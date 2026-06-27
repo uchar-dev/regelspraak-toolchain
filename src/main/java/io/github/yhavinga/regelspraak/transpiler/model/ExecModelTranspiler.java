@@ -1749,6 +1749,29 @@ public final class ExecModelTranspiler {
             Conditie.Operator op = v.op();
             return s -> datumVergelijkTemporal(lfn.apply(s, Map.of()), rfn.apply(s, Map.of()), op);
         }
+        // §5.3/§5.6 a DATUM EQUALITY (gelijk/ongelijk) of an OWN or to-one NAVIGATED datum attribute vs a §13.2.19 datum
+        // LITERAL or another own/navigated datum attribute. An absent navigation / leeg datum reads LEEGWAARDE (§5.5.5),
+        // then the §5 leegwaarde tables decide (datumGelijk): GELIJK both-leeg -> fout/onwaar (Tabel 38, NON-numeric — NOT
+        // Tabel 37's WAAR) and one-leeg -> onwaar; ONGELIJK one-leeg -> WAAR (Tabel 44) and both-leeg -> onwaar. Mirrors
+        // DrlTranspiler's genavigeerdeVergelijkingVoorwaarde (navigated) / non-numeriek schending complement (own). The
+        // date-ARITHMETIC equality (an operand is a §6 Binair) is handled by the branch above (isDatumRekenExpr).
+        if (c instanceof Conditie.Vergelijking v && (v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)
+                && v.links() instanceof Expr.AttribuutRef la && la.type() != null && la.type().isDatum()) {
+            java.util.function.Function<Object, java.time.LocalDate> lf = datumLezer(la, subject);
+            if (lf == null) return null;
+            Conditie.Operator op = v.op();
+            if (v.rechts() instanceof Expr.Literal lit && lit.type().isDatum()) {
+                java.time.LocalDate rhs = parseDatum(lit.waarde());
+                if (rhs == null) return null;
+                return s -> datumGelijk(lf.apply(s), rhs, op);
+            }
+            if (v.rechts() instanceof Expr.AttribuutRef ra && ra.type() != null && ra.type().isDatum()) {
+                java.util.function.Function<Object, java.time.LocalDate> rf = datumLezer(ra, subject);
+                if (rf == null) return null;
+                return s -> datumGelijk(lf.apply(s), rf.apply(s), op);
+            }
+            return null;   // datum-vs-(global/expr/other) -> not a fact-only datum-equality leaf
+        }
         // §8.1.1 a comparison whose LHS is a NUMERIC EXPRESSION — a builtin Functie ("de maand uit (...)", abs), an
         // arithmetic Binair ("de prijs plus 10"), a §6.1.4 begrenzing or a §13.4.17.25 afronding — vs a numeric
         // literal. Lower the LHS via scalarWaarde (which now covers these); a fact-only reader (0 globals) makes it a
@@ -2575,6 +2598,35 @@ public final class ExecModelTranspiler {
             case GROTER_OF_GELIJK  -> !aNull && !bNull && a.compareTo(b) >= 0;
             default                -> false;  // EERDER/LATER — never reached (isNumeriekOp gates the caller)
         };
+    }
+    /** §5.3/§5.6 DATUM equality with the leegwaarde tables — GELIJK is §5.3 Tabel 38 (Anders): a leeg operand makes it
+     *  onwaar (both-leeg is "fout", which as a rule GUARD is not-satisfied -> onwaar; NOT Tabel 37's numeric both-leeg=WAAR);
+     *  ONGELIJK is §5.6 Tabel 44: exactly-one-leeg -> WAAR, both-leeg -> onwaar. Mirrors the DRL's non-numeriek schending
+     *  complement. (LocalDate equality is .equals; a leeg date is null.) */
+    private static boolean datumGelijk(java.time.LocalDate a, java.time.LocalDate b, Conditie.Operator op) {
+        boolean aNull = a == null, bNull = b == null;
+        return switch (op) {
+            case GELIJK   -> !aNull && !bNull && a.equals(b);                       // one/both-leeg -> onwaar (Tabel 38)
+            case ONGELIJK -> aNull || bNull ? !(aNull && bNull) : !a.equals(b);     // one-leeg -> WAAR, both-leeg -> onwaar (Tabel 44)
+            default       -> false;
+        };
+    }
+    /** A reader for an OWN or to-ONE NAVIGATED datum attribute as a {@link java.time.LocalDate} (null = leegwaarde): an
+     *  absent navigation reads leeg (§5.5.5), a present relation reads the attribute (which may itself be leeg). null when
+     *  the attribute is temporal (Phase F), §3.6 gedimensioneerd, not the subject's own member, or an unresolvable /
+     *  to-many navigation. Mirrors {@link #navReader}'s null-safety for the datum-equality leaf. */
+    private java.util.function.Function<Object, java.time.LocalDate> datumLezer(Expr.AttribuutRef a, Objecttype subject) {
+        if (a.objecttype() == null || a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;   // temporal -> Phase F
+        if (!a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;                                        // §3.6 -> marker
+        String attr = a.attribuut();
+        if (a.navigatieRol() == null) {
+            if (subject == null || !subject.heeftLid(attr)) return null;
+            return s -> RegelSpraakRuntime.get(s, attr) instanceof java.time.LocalDate ld ? ld : null;
+        }
+        String rol = navComparisonRole(a, subject);
+        if (rol == null) return null;
+        return s -> { Object rel = RegelSpraakRuntime.get(s, rol);
+            return rel != null && RegelSpraakRuntime.get(rel, attr) instanceof java.time.LocalDate ld ? ld : null; };
     }
     /** §5.1 Tabel 32: the multipliers that restate the left/right comparison operands into a common unit before
      *  comparing (so "24 mnd > 2 jr" compares 24 vs 24, not 24 vs 2) — the BigDecimal mirror of the DRL oracle's

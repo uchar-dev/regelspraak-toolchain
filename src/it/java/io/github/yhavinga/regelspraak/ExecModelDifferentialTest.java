@@ -1828,6 +1828,63 @@ class ExecModelDifferentialTest {
         vals(true, false, false, false, false),  // GROTER
     };
 
+    // ---- §5.3/§5.6 DATUM EQUALITY (gelijk/ongelijk) of an OWN or to-one NAVIGATED datum attribute vs a datum literal OR
+    //      another datum attribute. The exec had a datum ORDERING branch but no datum EQUALITY branch -> it SKIPPED these
+    //      (DRL fired them correctly). Now both fire: an absent navigation / leeg datum reads LEEGWAARDE, then GELIJK uses
+    //      §5.3 Tabel 38 (Anders: one/both-leeg -> onwaar — NOT Tabel 37's numeric both-leeg=WAAR) and ONGELIJK uses §5.6
+    //      Tabel 44 (one-leeg -> WAAR, both-leeg -> onwaar). Vluchten + passengers; reis=null = absent; null attr = leeg. ----
+    static final String DATUM_EQ_HDR =
+            "Objecttype de Vlucht\n    de vluchtdatum Datum in dagen;\n"
+            + "Objecttype de Passagier\n    de geboortedatum Datum in dagen;\n    is duur kenmerk (bijvoeglijk);\n" + AGG_FEIT;
+    static Passagier paxGeb(Vlucht reis, LocalDate geb) { Passagier p = new Passagier(); p.setReis(reis); if (geb != null) p.setGeboortedatum(geb); return p; }
+    static final Fixture[] PHASE_DATUM_EQ = {
+        // NAVIGATED datum GELIJK vs literal 1-1-2020: [match, other(1999), ABSENT relation, present-null-attr] -> [T,F,F,F].
+        new Fixture("navigated datum GELIJK vs literal (Tabel 38: only the present match fires)",
+            DATUM_EQ_HDR + "Regel R\n    geldig altijd\n        Een Passagier is duur indien de vluchtdatum van zijn reis gelijk is aan 1-1-2020.\n",
+            () -> { Vlucht vm = new Vlucht(); vm.setVluchtdatum(dat(2020, 1, 1));
+                    Vlucht vo = new Vlucht(); vo.setVluchtdatum(dat(1999, 1, 1));
+                    Vlucht vn = new Vlucht();   // vluchtdatum null
+                    return List.of(vm, vo, vn, paxGeb(vm, null), paxGeb(vo, null), paxGeb(null, null), paxGeb(vn, null)); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(3)).isDuur(), ((Passagier) l.get(4)).isDuur(),
+                      ((Passagier) l.get(5)).isDuur(), ((Passagier) l.get(6)).isDuur())),
+        // NAVIGATED datum ONGELIJK vs literal: [match, other, ABSENT, present-null-attr] -> [F,T,T,T] (Tabel 44 one-leeg WAAR).
+        new Fixture("navigated datum ONGELIJK vs literal (Tabel 44: absent + present-null-attr fire)",
+            DATUM_EQ_HDR + "Regel R\n    geldig altijd\n        Een Passagier is duur indien de vluchtdatum van zijn reis ongelijk is aan 1-1-2020.\n",
+            () -> { Vlucht vm = new Vlucht(); vm.setVluchtdatum(dat(2020, 1, 1));
+                    Vlucht vo = new Vlucht(); vo.setVluchtdatum(dat(1999, 1, 1));
+                    Vlucht vn = new Vlucht();
+                    return List.of(vm, vo, vn, paxGeb(vm, null), paxGeb(vo, null), paxGeb(null, null), paxGeb(vn, null)); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(3)).isDuur(), ((Passagier) l.get(4)).isDuur(),
+                      ((Passagier) l.get(5)).isDuur(), ((Passagier) l.get(6)).isDuur())),
+        // NAVIGATED datum vs OWN datum, GELIJK ("de vluchtdatum van zijn reis gelijk is aan zijn geboortedatum"):
+        // [both-equal, both-diff, absent-reis(lhs leeg), own-null(rhs leeg), both-leeg] -> [T,F,F,F,F] (Tabel 38).
+        new Fixture("navigated datum vs own datum GELIJK (Tabel 38: only both-present-equal fires, both-leeg onwaar)",
+            DATUM_EQ_HDR + "Regel R\n    geldig altijd\n        Een Passagier is duur indien de vluchtdatum van zijn reis gelijk is aan zijn geboortedatum.\n",
+            () -> { Vlucht va = new Vlucht(); va.setVluchtdatum(dat(2020, 1, 1));
+                    Vlucht vb = new Vlucht(); vb.setVluchtdatum(dat(2020, 1, 1));
+                    return List.of(va, vb, paxGeb(va, dat(2020, 1, 1)), paxGeb(vb, dat(1999, 1, 1)),
+                                   paxGeb(null, dat(2020, 1, 1)), paxGeb(va, null), paxGeb(null, null)); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(2)).isDuur(), ((Passagier) l.get(3)).isDuur(), ((Passagier) l.get(4)).isDuur(),
+                      ((Passagier) l.get(5)).isDuur(), ((Passagier) l.get(6)).isDuur())),
+        // OWN datum ONGELIJK vs literal: [match, other, null] -> [F,T,T] (mvel null != lit is WAAR; Tabel 44 one-leeg).
+        new Fixture("own datum ONGELIJK vs literal (null geboortedatum fires, Tabel 44)",
+            "Objecttype de Passagier\n    de geboortedatum Datum in dagen;\n    is duur kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn geboortedatum ongelijk is aan 1-1-2020.\n",
+            () -> List.of(passagier(p -> p.setGeboortedatum(dat(2020, 1, 1))),
+                          passagier(p -> p.setGeboortedatum(dat(1999, 1, 1))), new Passagier()),
+            Map.of(),
+            l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur(), ((Passagier) l.get(2)).isDuur())),
+    };
+    static final Object[] PHASE_DATUM_EQ_EXPECTED = {
+        vals(true, false, false, false),         // NAV GELIJK vs lit
+        vals(false, true, true, true),           // NAV ONGELIJK vs lit
+        vals(true, false, false, false, false),  // NAV vs OWN GELIJK
+        vals(false, true, true),                 // OWN ONGELIJK vs lit
+    };
+
     // §5.8 a bare SET operand ("de prijs van ALLE passagiers") used as a SCALAR inside arithmetic in a CONDITION is an
     //   instance-AGGREGATION source the exec does not lower to a scalar — it must SKIP (symmetric with DRL's marker), NOT
     //   read `prijs` off the subject Vlucht (which has no such getter) and CRASH the whole session. Rule S is a co-resident
@@ -3850,6 +3907,23 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(eq(PHASE_NAV_LEEG_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §5.3/§5.6 a DATUM EQUALITY (gelijk/ongelijk) of an own/navigated datum attribute vs a literal/datum-attr now fires
+     *  in the exec (was an honest skip; DRL already fired it). An absent navigation / leeg datum reads leegwaarde, then
+     *  GELIJK uses Tabel 38 (one/both-leeg -> onwaar — NOT Tabel 37's numeric WAAR) and ONGELIJK uses Tabel 44 (one-leeg ->
+     *  WAAR). Assert the ABSOLUTE spec values + parity across the null-state matrix. */
+    @Test void phase_datum_eq_is_spec_correct() {
+        for (int i = 0; i < PHASE_DATUM_EQ.length; i++) {
+            Fixture f = PHASE_DATUM_EQ[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_DATUM_EQ_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
