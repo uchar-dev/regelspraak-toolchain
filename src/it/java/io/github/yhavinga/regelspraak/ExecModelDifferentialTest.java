@@ -1682,6 +1682,33 @@ class ExecModelDifferentialTest {
         + "Objecttype de Passagier\n    het basistarief Numeriek (geheel getal) met eenheid jr;\n    de bodem Numeriek (geheel getal) met eenheid mnd;\n    de prijs Numeriek (geheel getal) met eenheid jr;\n    is duur kenmerk (bijvoeglijk);\n"
         + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn basistarief plus zijn bodem gelijk is aan zijn prijs.\n";
 
+    // ---- §8.1.1 an EXPRESSION-vs-GLOBAL comparison ("zijn basistarief plus zijn bodem groter is dan de grens",
+    //      "zijn basistarief plus de toeslag groter is dan zijn prijs") — the exec voorwaarde binds the SINGLE distinct
+    //      numeric/percentage Parameter-global as a pattern variable (a 2-var expr), lowering both sides via scalarWaarde;
+    //      DRL reads it as a free name. Now FIRES in both (was an honest exec skip). >1 distinct globals stays a skip. ----
+    static final Fixture[] PHASE_EXPR_GLOBAL = {
+        // expr vs GLOBAL: basistarief + bodem > grens(50). 30+30=60>50 -> WAAR; 10+10=20 -> ONWAAR; leeg+30=30 -> ONWAAR (leeg=0).
+        new Fixture("expr vs global (basistarief + bodem > de grens), incl. leeg",
+            "Parameter de grens : Numeriek (geheel getal)\n" + EXPR_CMP_HDR
+            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn basistarief plus zijn bodem groter is dan de grens.\n",
+            () -> List.of(paxBBP(30, 30, 0), paxBBP(10, 10, 0), paxBBP(null, 30, 0)),
+            Map.of("grens", new BigDecimal(50)),
+            l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur(), ((Passagier) l.get(2)).isDuur())),
+        // GLOBAL inside the expr: basistarief + toeslag(20) > prijs. 40+20=60>50 -> WAAR; 20+20=40>50 -> ONWAAR.
+        new Fixture("global inside expr (basistarief + de toeslag > prijs)",
+            "Parameter de toeslag : Numeriek (geheel getal)\n" + EXPR_CMP_HDR
+            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn basistarief plus de toeslag groter is dan zijn prijs.\n",
+            () -> List.of(paxBBP(40, 0, 50), paxBBP(20, 0, 50)),
+            Map.of("toeslag", new BigDecimal(20)),
+            l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur())),
+    };
+    static final Object[] PHASE_EXPR_GLOBAL_EXPECTED = { vals(true, false, false), vals(true, false) };
+    // §8.1.1 a comparison reading TWO distinct globals ("basistarief + de toeslag > de grens") — the exec binds at most
+    //   ONE global (an N-var expr is out of scope), so it stays an honest exec SKIP (DRL fires it; carded N-var follow-up).
+    static final String EXPR_TWO_GLOBALS_SRC =
+        "Parameter de toeslag : Numeriek (geheel getal)\nParameter de grens : Numeriek (geheel getal)\n" + EXPR_CMP_HDR
+        + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn basistarief plus de toeslag groter is dan de grens.\n";
+
     // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
     //      arithmetic tree whose leaf is an AANTAL/TOTAAL/MIN/MAX). Each embedded aggregation lowers to its own
     //      accumulate CE; the consequence combines the bound results + scalars + a (≤1) global. Facts: [Vlucht, pax...].
@@ -3534,6 +3561,32 @@ class ExecModelDifferentialTest {
     @Test void phase_C_count_global_subselectie_matches_drl_back_end() { runDifferential("Phase C count+global", PHASE_C_COUNT_GLOBAL, 4); }
     @Test void phase_crossunit_matches_drl_back_end() { runDifferential("Phase cross-unit", PHASE_CROSSUNIT, 2); }
     @Test void phase_expr_cmp_matches_drl_back_end() { runDifferential("Phase expr-cmp", PHASE_EXPR_CMP, 2); }
+    @Test void phase_expr_global_matches_drl_back_end() { runDifferential("Phase expr-global", PHASE_EXPR_GLOBAL, 2); }
+    /** §8.1.1 an EXPRESSION-vs-GLOBAL comparison now fires in the exec (binds the single distinct global as a pattern
+     *  variable), at parity with DRL's free-name global. Closed-form -> assert the ABSOLUTE spec value + parity, incl. a
+     *  leeg operand (leeg -> 0) and a global nested INSIDE the expression. */
+    @Test void phase_expr_global_is_spec_correct() {
+        for (int i = 0; i < PHASE_EXPR_GLOBAL.length; i++) {
+            Fixture f = PHASE_EXPR_GLOBAL[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_EXPR_GLOBAL_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §8.1.1 a comparison reading TWO distinct globals stays an honest exec SKIP (the exec binds at most one global; an
+     *  N-var expr is a carded follow-up). DRL fires it — recorded overgeslagen so the differential excludes it (never a
+     *  silent divergence). Pins the single-global firing did NOT over-reach to multi-global. */
+    @Test void expr_with_two_globals_is_honest_exec_skip() {
+        RegelSpraakModel m = Resolver.resolve(EXPR_TWO_GLOBALS_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertFalse(em.overgeslagen().isEmpty(), () -> "een twee-globals expr-vergelijking moet een eerlijke exec-skip zijn, kreeg: " + em.overgeslagen());
+    }
     /** §5.1 a CROSS-UNIT +/- in an arithmetic comparison stays a SYMMETRIC marker — the exec parityOnveilig skips a
      *  cross-unit +/- (the §4 ratio truncates 1/12 -> a wrong firing, review F2) and DRL omrekenConditie markers it.
      *  Both decline (exec overgeslagen + DRL TODO), never a fired wrong value. */

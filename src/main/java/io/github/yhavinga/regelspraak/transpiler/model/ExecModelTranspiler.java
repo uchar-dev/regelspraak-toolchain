@@ -1442,6 +1442,37 @@ public final class ExecModelTranspiler {
                 return vergelijk(scale(RegelSpraakRuntime.toBd(RegelSpraakRuntime.get(rel, attr)), f[0]), scale((BigDecimal) gv, f[1]), op);
             }), List.of());
         }
+        // §8.1.1 a NUMERIC comparison where an operand is an EXPRESSION (arithmetic Binair / Functie / begrenzing /
+        // afronding) and the comparison reads EXACTLY ONE numeric/percentage Parameter-GLOBAL — "zijn prijs plus de
+        // toeslag groter is dan de drempel", "zijn prijs maal 2 groter is dan de grens". Bind that one global as a
+        // pattern variable (a 2-var expr), lowering BOTH sides via scalarWaarde. DRL reads the global as a free name in
+        // the constraint operand. 0 globals -> falls through to leafPredicate's fact-only expr-comparison branch; >1
+        // distinct globals -> falls through -> skip (a condition expr binds at most one global). parityOnveilig (a §3.6
+        // dimensiecel / cross-unit +/-) and a NAVIGATED operand (scalarWaarde value-path-only -> null) -> skip (DRL marker
+        // / honest not-yet-migrated TODO). Mirrors the date-arith-vs-global branch below.
+        if (c instanceof Conditie.Vergelijking v && isNumeriekOp(v.op())
+                && v.links().type() != null && v.links().type().isNumeriek()
+                && v.rechts().type() != null && v.rechts().type().isNumeriek()
+                && (numeriekeExpressie(v.links()) || numeriekeExpressie(v.rechts()))
+                && !(parityOnveilig(v.links()) || parityOnveilig(v.rechts()))) {
+            WaardeFn lw = scalarWaarde(v.links()), rw = scalarWaarde(v.rechts());
+            if (lw != null && rw != null) {
+                Set<String> gset = new LinkedHashSet<>(lw.globals()); gset.addAll(rw.globals());
+                if (gset.size() == 1) {
+                    String gn = gset.iterator().next();
+                    Global<BigDecimal> g = globals.get(gn);
+                    if (g != null) {   // numeric/percentage global (a date/tekst global -> globals.get == null -> fall through -> skip)
+                        BigDecimal[] f = restatement(v.links().type(), v.rechts().type());   // §5.1 Tabel 32 unit restatement
+                        BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
+                        Conditie.Operator op = v.op();
+                        return new Gate(pattern.expr(nextId("c"), (Variable) g, (Predicate2) (s, gv) ->
+                                vergelijk(scale((BigDecimal) lfn.apply(s, bindGlobal(gn, gv)), f[0]),
+                                          scale((BigDecimal) rfn.apply(s, bindGlobal(gn, gv)), f[1]), op)), List.of());
+                    }
+                }
+            }
+            // 0 globals -> leafPredicate's expr-comparison branch; >1 / unresolved / non-numeric global -> falls through -> skip
+        }
         // §8.1.1 a DATUM comparison where an operand is a §6/§13.4.16 date-arithmetic expression that reads EXACTLY
         // ONE Parameter-GLOBAL (the duration is a parameter, e.g. "de geboortedatum plus de MEERDERJARIGHEIDSLEEFTIJD
         // eerder is dan de peildatum"): bind that global as a pattern variable (a 2-var expr) and evaluate
