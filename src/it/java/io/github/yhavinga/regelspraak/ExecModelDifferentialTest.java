@@ -1972,6 +1972,39 @@ class ExecModelDifferentialTest {
             o -> "vertrek=" + ((Vlucht) o).getVertrekmoment()),
     };
 
+    // §8.1.1/§5.1 attr-vs-attr DATUM ORDERING (eerder/later, own attr-vs-attr, both Datum-in-dagen + Datum-en-tijd) now
+    //   fires in the exec — was a DRL-fires/exec-skips (the exec ordering branch matched only a LITERAL RHS). DRL lowers
+    //   `a < b`; the exec reads both via datumTemporeelLezer + datumVergelijkTemporal. A leeg operand -> ordering no-match.
+    static final String DID_ORDER_HDR =
+        "Objecttype de Vlucht\n    de vluchtdatum Datum in dagen;\n    de daadwerkelijk vertrek Datum in dagen;\n    is laat kenmerk (bijvoeglijk);\n";
+    static final Fixture[] PHASE_DATUM_ORDER = {
+        // Datum-in-dagen: vluchtdatum eerder dan daadwerkelijk vertrek -> [before WAAR, after onwaar, equal onwaar, left-leeg onwaar, right-leeg onwaar].
+        new Fixture("datum-in-dagen attr-vs-attr ordering (vluchtdatum eerder dan daadwerkelijk vertrek)",
+            DID_ORDER_HDR + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn vluchtdatum eerder is dan zijn daadwerkelijk vertrek.\n",
+            () -> { Vlucht bf = new Vlucht(); bf.setVluchtdatum(dat(2024, 1, 1)); bf.setDaadwerkelijkVertrek(dat(2024, 1, 2));
+                    Vlucht af = new Vlucht(); af.setVluchtdatum(dat(2024, 1, 2)); af.setDaadwerkelijkVertrek(dat(2024, 1, 1));
+                    Vlucht eqv = new Vlucht(); eqv.setVluchtdatum(dat(2024, 1, 1)); eqv.setDaadwerkelijkVertrek(dat(2024, 1, 1));
+                    Vlucht ll = new Vlucht(); ll.setDaadwerkelijkVertrek(dat(2024, 1, 2));   // left leeg -> no-match
+                    Vlucht rl = new Vlucht(); rl.setVluchtdatum(dat(2024, 1, 1));            // right leeg -> no-match
+                    return List.of(bf, af, eqv, ll, rl); },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).isLaat(), ((Vlucht) l.get(1)).isLaat(), ((Vlucht) l.get(2)).isLaat(),
+                      ((Vlucht) l.get(3)).isLaat(), ((Vlucht) l.get(4)).isLaat())),
+        // Datum-en-tijd: vertrekmoment eerder dan aankomstmoment -> [before WAAR, equal onwaar, right-leeg onwaar].
+        new Fixture("datum-en-tijd attr-vs-attr ordering (vertrekmoment eerder dan aankomstmoment)",
+            DT_HDR + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn vertrekmoment eerder is dan zijn aankomstmoment.\n",
+            () -> { Vlucht bf = new Vlucht(); bf.setVertrekmoment(dtt(9, 30)); bf.setAankomstmoment(dtt(10, 0));
+                    Vlucht eqv = new Vlucht(); eqv.setVertrekmoment(dtt(9, 30)); eqv.setAankomstmoment(dtt(9, 30));
+                    Vlucht rl = new Vlucht(); rl.setVertrekmoment(dtt(9, 30));   // aankomst leeg -> no-match
+                    return List.of(bf, eqv, rl); },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).isLaat(), ((Vlucht) l.get(1)).isLaat(), ((Vlucht) l.get(2)).isLaat())),
+    };
+    static final Object[] PHASE_DATUM_ORDER_EXPECTED = {
+        vals(true, false, false, false, false),   // Datum-in-dagen
+        vals(true, false, false),                 // Datum-en-tijd
+    };
+
     // regression: the exec model INFINITE-LOOPED when a NAVIGATED-comparison rule (A) was co-resident with a second rule
     //   (B) over the same subject — drools.update(s) re-evaluated A's black-box navigated lambda on every modify by B, and
     //   NO_LOOP blocks only the rule's OWN re-trigger. The idempotent werkBij (update only on an ACTUAL value change)
@@ -4065,6 +4098,22 @@ class ExecModelDifferentialTest {
         }
     }
     @Test void phase_datumtijd_consistentie_matches_drl_back_end() { runFoutDifferential("datum-tijd consistentie", PHASE_DATUMTIJD_CONS, 1); }
+    /** §8.1.1/§5.1 attr-vs-attr DATUM ORDERING (both Datum-in-dagen and Datum-en-tijd) now fires in the exec — was a
+     *  DRL-fires/exec-skips (the ordering branch matched only a literal RHS). Absolute spec values + parity; a leeg
+     *  operand is the ordering no-match in both. */
+    @Test void phase_datum_ordering_attr_vs_attr_is_spec_correct() {
+        for (int i = 0; i < PHASE_DATUM_ORDER.length; i++) {
+            Fixture f = PHASE_DATUM_ORDER[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_DATUM_ORDER_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     /** §5.3 Tabel 36 a Datum-in-dagen attribute GELIJK a DATUM-EN-TIJD literal is a type mismatch — the exec datum-equality
      *  branch requires a DatumInDagen literal RHS, so it SKIPS (honest) rather than lossily extracting the date part and
      *  mis-firing. Regression lock for the RHS-literal DatumInDagen gate (the model must not fire a mixed-type comparison). */

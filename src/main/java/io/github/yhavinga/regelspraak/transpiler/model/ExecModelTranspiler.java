@@ -1734,22 +1734,29 @@ public final class ExecModelTranspiler {
             return s -> vergelijk(scale(num(s, lattr), f[0]), scale(num(s, rattr), f[1]), op);
         }
         // §8.1.1 a DATUM ordering comparison (eerder/later/eerder-of-gelijk/later-of-gelijk) of an OWN or to-one
-        // NAVIGATED datum attribute vs a §13.2.19 datum literal. DRL lowers `attr < LocalDate.of(...)` (LocalDate is
-        // Comparable); an absent datum -> onwaar (ordering no-match), matching mvel. A navigated null relation
-        // short-circuits the whole term (mvel `rol!.attr`), like the navigated numeric comparison.
+        // NAVIGATED datum attribute vs a §13.2.19/.21 datum literal OR another same-kind own/navigated datum attribute.
+        // DRL lowers `attr < LocalDate.of(...)` / `attr < otherAttr` (Comparable); an absent datum / absent navigation
+        // reads leegwaarde -> ordering no-match (datumVergelijkTemporal: a null operand is false), matching mvel. The
+        // RHS must be a Literal or AttribuutRef (a §6/§13.4.16 date-ARITHMETIC Binair operand is the branch below).
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.type().isDatum()
-                && isDatumOp(v.op()) && v.rechts() instanceof Expr.Literal lit && lit.type().isDatum()) {
-            if (!sameDatumKind(la.type(), lit.type())) return null;   // mixed datum/datum-tijd -> §5.3 Tabel 36 mismatch, skip
+                && isDatumOp(v.op()) && (v.rechts() instanceof Expr.Literal || v.rechts() instanceof Expr.AttribuutRef)
+                && v.rechts().type() != null && v.rechts().type().isDatum()) {
             java.util.function.Function<Object, Object> lf = datumTemporeelLezer(la, subject);
             if (lf == null) return null;
-            Object rhs = datumLiteraal(lit);
-            if (rhs == null) return null;
             Conditie.Operator op = v.op();
-            // own OR to-one navigated; a present Datum-en-tijd (LocalDateTime) now compares via compareTo, not the old
-            // `instanceof LocalDate` (which read it as leeg -> a wrong no-fire). A leeg / absent-navigation operand is the
-            // ordering no-match (datumVergelijkTemporal: a null operand is false) — the same value mvel `rol!.attr < lit`
-            // short-circuits to. DRL lowers the same `attr < <literal>`.
-            return s -> datumVergelijkTemporal(lf.apply(s), rhs, op);
+            // a present Datum-en-tijd (LocalDateTime) compares via compareTo, not `instanceof LocalDate` (which read it as
+            // leeg -> a wrong no-fire). A mixed Datum-in-dagen/Datum-en-tijd pair is a §5.3 Tabel 36 mismatch -> skip.
+            if (v.rechts() instanceof Expr.Literal lit) {
+                if (!sameDatumKind(la.type(), lit.type())) return null;
+                Object rhs = datumLiteraal(lit);
+                if (rhs == null) return null;
+                return s -> datumVergelijkTemporal(lf.apply(s), rhs, op);
+            }
+            Expr.AttribuutRef ra = (Expr.AttribuutRef) v.rechts();
+            if (!sameDatumKind(la.type(), ra.type())) return null;
+            java.util.function.Function<Object, Object> rf = datumTemporeelLezer(ra, subject);
+            if (rf == null) return null;
+            return s -> datumVergelijkTemporal(lf.apply(s), rf.apply(s), op);
         }
         // §8.1.1 a DATUM ordering comparison where an operand is a §6/§13.4.16 date-arithmetic EXPRESSION ("de
         // daadwerkelijke vertrek later is dan de vluchtdatum plus de uitstelduur"). The simple attr-vs-literal form
