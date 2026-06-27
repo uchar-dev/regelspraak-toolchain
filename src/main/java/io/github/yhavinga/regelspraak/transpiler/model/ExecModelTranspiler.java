@@ -1760,7 +1760,11 @@ public final class ExecModelTranspiler {
             java.util.function.Function<Object, java.time.LocalDate> lf = datumLezer(la, subject);
             if (lf == null) return null;
             Conditie.Operator op = v.op();
-            if (v.rechts() instanceof Expr.Literal lit && lit.type().isDatum()) {
+            // a DATUM-EN-TIJD literal RHS against a Datum-in-dagen attribute is a §5.3 Tabel 36 TYPE MISMATCH (left/right must
+            // be the same datatype); parseDatum would lossily extract just the date part and fire a wrong comparison. Require
+            // a DatumInDagen literal (the datumLezer LHS is already DatumInDagen-only), else skip (a mixed-type comparison the
+            // resolver should reject; honest exec skip rather than a lossy fire).
+            if (v.rechts() instanceof Expr.Literal lit && lit.type() instanceof Datatype.DatumInDagen) {
                 java.time.LocalDate rhs = parseDatum(lit.waarde());
                 if (rhs == null) return null;
                 return s -> datumGelijk(lf.apply(s), rhs, op);
@@ -2669,8 +2673,12 @@ public final class ExecModelTranspiler {
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static boolean datumVergelijkTemporal(Object a, Object b, Conditie.Operator op) {
         switch (op) {
+            // §5.3 Tabel 38 (datum gelijk): both-leeg is "fout" -> onwaar as a guard; one-leeg -> onwaar; else .equals.
             case GELIJK:   return java.util.Objects.equals(a, b) && !(a == null && b == null);
-            case ONGELIJK: return !java.util.Objects.equals(a, b) || (a == null && b == null);
+            // §5.6 Tabel 44 (ongelijk): exactly-one-leeg -> WAAR, BOTH-leeg -> onwaar (NOT waar — mvel `null != null` is
+            // false too). !Objects.equals gives exactly that: equals(null,null)=true -> !true=false; equals(null,x)=false
+            // -> !false=true. (An earlier `|| (a==null && b==null)` wrongly fired both-leeg ONGELIJK -> diverged from DRL.)
+            case ONGELIJK: return !java.util.Objects.equals(a, b);
             default: break;
         }
         if (!(a instanceof Comparable) || b == null) return false;   // ordering: a leeg operand -> no-match (mvel)

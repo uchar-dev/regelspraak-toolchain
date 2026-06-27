@@ -1890,6 +1890,33 @@ class ExecModelDifferentialTest {
     static final String DATUMTIJD_EQ_SRC =
         "Objecttype de Vlucht\n    de vertrekmoment Datum en tijd in millisecondes;\n    de aankomstmoment Datum en tijd in millisecondes;\n    is laat kenmerk (bijvoeglijk);\n"
         + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn vertrekmoment gelijk is aan zijn aankomstmoment.\n";
+    // §5.3 Tabel 36 a Datum-in-dagen attribute vs a DATUM-EN-TIJD literal is a TYPE MISMATCH; parseDatum would lossily
+    //   extract just the date part and fire. The exec datum-equality branch requires a DatumInDagen literal RHS, so this
+    //   skips (honest) instead of mis-firing. (DRL fires it — a pre-existing resolver type-check gap, now masked.)
+    static final String MIXED_DATUMLIT_SRC =
+        "Objecttype de Vlucht\n    de vluchtdatum Datum in dagen;\n    is laat kenmerk (bijvoeglijk);\n"
+        + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn vluchtdatum gelijk is aan 15-6-2022 09:30:00.000.\n";
+
+    // ---- §5.6 a DATE-ARITHMETIC datum ONGELIJK ("zijn daadwerkelijk vertrek ongelijk is aan zijn vluchtdatum min 1 dag")
+    //      routes through datumVergelijkTemporal. Its BOTH-leeg case wrongly fired model=true (an old `|| (a==null &&
+    //      b==null)` clause) where DRL (mvel `null != null`) and Tabel 44 give onwaar -> a live divergence. Now both onwaar. ----
+    static final String DATEARITH_EQ_SRC =
+        "Objecttype de Vlucht\n    de vluchtdatum Datum in dagen;\n    de daadwerkelijk vertrek Datum in dagen;\n    is laat kenmerk (bijvoeglijk);\n";
+    static final Fixture[] PHASE_DATEARITH_EQ = {
+        // date-arith ONGELIJK: dv != (vluchtdatum - 1 dag). [both-leeg, present-equal(dv==vd-1), present-mismatch, one-leeg]
+        // -> [F (Tabel 44 both-leeg onwaar), F (equal), T (mismatch), T (one-leeg WAAR)].
+        new Fixture("date-arith datum ONGELIJK leegwaarde (Tabel 44: both-leeg onwaar, one-leeg WAAR)",
+            DATEARITH_EQ_SRC + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn daadwerkelijk vertrek ongelijk is aan zijn vluchtdatum min 1 dag.\n",
+            () -> { Vlucht both = new Vlucht();   // both leeg
+                    Vlucht eq = new Vlucht(); eq.setVluchtdatum(dat(2020, 1, 2)); eq.setDaadwerkelijkVertrek(dat(2020, 1, 1));   // dv == vd-1
+                    Vlucht ne = new Vlucht(); ne.setVluchtdatum(dat(2020, 1, 2)); ne.setDaadwerkelijkVertrek(dat(2020, 1, 5));   // mismatch
+                    Vlucht one = new Vlucht(); one.setDaadwerkelijkVertrek(dat(2020, 1, 1));   // vluchtdatum leeg
+                    return List.of(both, eq, ne, one); },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(0)).isLaat(), ((Vlucht) l.get(1)).isLaat(),
+                      ((Vlucht) l.get(2)).isLaat(), ((Vlucht) l.get(3)).isLaat())),
+    };
+    static final Object[] PHASE_DATEARITH_EQ_EXPECTED = { vals(false, false, true, true) };
 
     // §5.8 a bare SET operand ("de prijs van ALLE passagiers") used as a SCALAR inside arithmetic in a CONDITION is an
     //   instance-AGGREGATION source the exec does not lower to a scalar — it must SKIP (symmetric with DRL's marker), NOT
@@ -3944,6 +3971,31 @@ class ExecModelDifferentialTest {
         assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet een datum-tijd gelijkheid OVERSLAAN (niet als leeg mis-vuren), kreeg: " + em.overgeslagen());
         assertFalse(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
                 () -> "DRL vuurt de datum-tijd gelijkheid wel (asymmetrische skip, geen marker):\n" + DrlTranspiler.transpile(m));
+    }
+    /** §5.3 Tabel 36 a Datum-in-dagen attribute GELIJK a DATUM-EN-TIJD literal is a type mismatch — the exec datum-equality
+     *  branch requires a DatumInDagen literal RHS, so it SKIPS (honest) rather than lossily extracting the date part and
+     *  mis-firing. Regression lock for the RHS-literal DatumInDagen gate (the model must not fire a mixed-type comparison). */
+    @Test void mixed_datumindagen_vs_datumtijd_literal_skips_no_lossy_fire() {
+        RegelSpraakModel m = Resolver.resolve(MIXED_DATUMLIT_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet de gemengde datum/datum-tijd vergelijking OVERSLAAN (niet lossy mis-vuren), kreeg: " + em.overgeslagen());
+    }
+    /** §5.6 a DATE-ARITHMETIC datum ONGELIJK (datumVergelijkTemporal) with BOTH operands leeg must be onwaar (Tabel 44),
+     *  matching DRL's mvel `null != null` -> false. An old `|| (a==null && b==null)` clause wrongly fired the model true
+     *  (a live divergence). Assert the ABSOLUTE spec values + parity. */
+    @Test void phase_datearith_eq_is_spec_correct() {
+        for (int i = 0; i < PHASE_DATEARITH_EQ.length; i++) {
+            Fixture f = PHASE_DATEARITH_EQ[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_DATEARITH_EQ_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
     }
     /** §5.1 a cross-unit comparison in a CONSTRAINT now fires null-safely (rsHerschaal, the mirror of the exec scale) —
      *  standalone AND in a counting subselectie. A LEEG operand restates to leeg -> no-match (no NPE) in both. A closed-
