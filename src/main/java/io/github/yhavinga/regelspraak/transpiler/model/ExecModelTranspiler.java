@@ -1730,6 +1730,25 @@ public final class ExecModelTranspiler {
             Conditie.Operator op = v.op();
             return s -> vergelijk(scale((BigDecimal) lfn.apply(s, Map.of()), f[0]), rhsScaled, op);
         }
+        // §8.1.1 a comparison where at least one side is a NUMERIC EXPRESSION (arithmetic Binair / builtin Functie /
+        // begrenzing / afronding) and the OTHER side is a numeric attribute OR also an expression — NOT a literal (the
+        // branch above). Lower BOTH sides via scalarWaarde (the value-path lowering, already at parity with
+        // DrlTranspiler.binairTerm/operand — the value differential covers it), then vergelijk + §5.1 restatement. A
+        // fact-only reader (0 globals) on both sides; a global / unlowerable / navigated-unresolvable operand makes
+        // scalarWaarde null or non-empty-globals -> skip (an expr-vs-global is handled in voorwaarde when supported,
+        // else a carded marker). DRL lowers the same expression on BOTH constraint operands. This closes the masked
+        // DRL-fires/exec-skips for "de a plus de b is gelijk aan de c" / "zijn prijs maal 2 groter is dan de drempel".
+        if (c instanceof Conditie.Vergelijking v && isNumeriekOp(v.op())
+                && v.links().type() != null && v.links().type().isNumeriek()
+                && v.rechts().type() != null && v.rechts().type().isNumeriek()
+                && (numeriekeExpressie(v.links()) || numeriekeExpressie(v.rechts()))) {
+            WaardeFn lw = scalarWaarde(v.links()), rw = scalarWaarde(v.rechts());
+            if (lw == null || rw == null || !lw.globals().isEmpty() || !rw.globals().isEmpty()) return null;   // unlowerable / needs a global -> skip
+            BigDecimal[] f = restatement(v.links().type(), v.rechts().type());
+            BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
+            Conditie.Operator op = v.op();
+            return s -> vergelijk(scale((BigDecimal) lfn.apply(s, Map.of()), f[0]), scale((BigDecimal) rfn.apply(s, Map.of()), f[1]), op);
+        }
         // §5.3 an own-attribute equality vs a §13.3.3.4 Tekst literal OR a §13.2.14 enumeratiewaarde 'X' (the §12
         // beslistabel "is gelijk aan X" cell, and the §12 OR-list of them). An enumeratie compares by VALUE equality
         // on its label, so it lowers exactly like a Tekst. mvel string '==' is VALUE equality (.equals); ONGELIJK is
@@ -2447,6 +2466,12 @@ public final class ExecModelTranspiler {
         java.util.regex.Matcher mm = java.util.regex.Pattern.compile("^\\s*([-+]?\\d[\\d.]*)").matcher(lit.waarde().replace(",", "."));
         if (!mm.find()) return null;
         try { return new BigDecimal(mm.group(1)); } catch (NumberFormatException e) { return null; }
+    }
+    /** A numeric EXPRESSION operand (an arithmetic {@link Expr.Binair}, a builtin {@link Expr.Functie}, a §6.1.4
+     *  begrenzing or a §13.4.17.25 afronding) — i.e. NOT a plain attribute/literal/parameter leaf. Used to route an
+     *  expr-vs-attr / expr-vs-expr comparison through the {@link #scalarWaarde} value-path lowering on both sides. */
+    private static boolean numeriekeExpressie(Expr e) {
+        return e instanceof Expr.Binair || e instanceof Expr.Functie || e instanceof Expr.Begrensd || e instanceof Expr.Afgerond;
     }
     /** The six numeric comparison operators the model lowers; EERDER/LATER (datum) are a later phase (caller skips). */
     private static boolean isNumeriekOp(Conditie.Operator op) {

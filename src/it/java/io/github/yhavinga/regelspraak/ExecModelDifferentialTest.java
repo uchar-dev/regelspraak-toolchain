@@ -1643,6 +1643,47 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_CROSSUNIT_EXPECTED = { vals(true, false, false), new BigDecimal(150) };
 
+    // ---- §8.1.1 a comparison whose operand is a NUMERIC EXPRESSION (arithmetic Binair / Functie / begrenzing /
+    //      afronding) vs an ATTRIBUTE (or another expression) — NOT a literal. DRL lowered both constraint operands via
+    //      binairTerm; the exec only handled expr-vs-LITERAL, so "de a plus de b gelijk is aan de c" FIRED in DRL but the
+    //      exec SKIPPED it (a masked DRL-fires/exec-skips, hidden by overgeslagen). The exec now lowers BOTH sides via
+    //      scalarWaarde (already at parity with binairTerm on the value side). A cross-unit arithmetic comparison fires
+    //      too (DRL omrekenConditie restates via the null-safe rsHerschaal; the exec scalarWaarde restates internally). ----
+    static final String EXPR_CMP_HDR =
+            "Objecttype de Passagier\n    het basistarief Numeriek (geheel getal);\n    de bodem Numeriek (geheel getal);\n    de prijs Numeriek (geheel getal);\n    is duur kenmerk (bijvoeglijk);\n";
+    static Passagier paxBBP(Integer bt, Integer bo, Integer pr) {
+        Passagier p = new Passagier();
+        if (bt != null) p.setBasistarief(new BigDecimal(bt));
+        if (bo != null) p.setBodem(new BigDecimal(bo));
+        if (pr != null) p.setPrijs(new BigDecimal(pr));
+        return p;
+    }
+    static final Fixture[] PHASE_EXPR_CMP = {
+        // arithmetic expr == attr, incl. a LEEG operand (leeg -> 0 per §6.2): 10+14==24 -> WAAR; 10+10==24 -> ONWAAR;
+        // leeg+14==14 -> WAAR. The whole class FIRED in DRL but the exec USED to skip.
+        new Fixture("arith expr == attr (basistarief + bodem == prijs), incl. leeg",
+            EXPR_CMP_HDR + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn basistarief plus zijn bodem gelijk is aan zijn prijs.\n",
+            () -> List.of(paxBBP(10, 14, 24), paxBBP(10, 10, 24), paxBBP(null, 14, 14)),
+            Map.of(),
+            l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur(), ((Passagier) l.get(2)).isDuur())),
+        // expr (MAAL) op attr: basistarief maal 2 > prijs. 30*2=60>50 -> WAAR; 20*2=40>50 -> ONWAAR.
+        new Fixture("arith expr (maal) > attr (basistarief maal 2 > prijs)",
+            EXPR_CMP_HDR + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn basistarief maal 2 groter is dan zijn prijs.\n",
+            () -> List.of(paxBBP(30, 0, 50), paxBBP(20, 0, 50)),
+            Map.of(),
+            l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur())),
+        // CROSS-UNIT arith expr == attr: basistarief(mnd) + bodem(jr) == prijs(mnd). 12 + 1jr(=12) == 24 -> WAAR;
+        // == 20 -> ONWAAR; leeg + 1jr(=12) == 12 -> WAAR. DRL was a marker here (omrekenConditie); now fires at parity.
+        new Fixture("CROSS-UNIT arith expr == attr (basistarief mnd + bodem jr == prijs mnd), incl. leeg",
+            "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\n"
+            + "Objecttype de Passagier\n    het basistarief Numeriek (geheel getal) met eenheid mnd;\n    de bodem Numeriek (geheel getal) met eenheid jr;\n    de prijs Numeriek (geheel getal) met eenheid mnd;\n    is duur kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn basistarief plus zijn bodem gelijk is aan zijn prijs.\n",
+            () -> List.of(paxBBP(12, 1, 24), paxBBP(12, 1, 20), paxBBP(null, 1, 12)),
+            Map.of(),
+            l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur(), ((Passagier) l.get(2)).isDuur())),
+    };
+    static final Object[] PHASE_EXPR_CMP_EXPECTED = { vals(true, false, true), vals(true, false), vals(true, false, true) };
+
     // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
     //      arithmetic tree whose leaf is an AANTAL/TOTAAL/MIN/MAX). Each embedded aggregation lowers to its own
     //      accumulate CE; the consequence combines the bound results + scalars + a (≤1) global. Facts: [Vlucht, pax...].
@@ -3494,6 +3535,23 @@ class ExecModelDifferentialTest {
     @Test void phase_C_compound_subselectie_matches_drl_back_end() { runDifferential("Phase C compound", PHASE_C_COMPOUND, 2); }
     @Test void phase_C_count_global_subselectie_matches_drl_back_end() { runDifferential("Phase C count+global", PHASE_C_COUNT_GLOBAL, 4); }
     @Test void phase_crossunit_matches_drl_back_end() { runDifferential("Phase cross-unit", PHASE_CROSSUNIT, 2); }
+    @Test void phase_expr_cmp_matches_drl_back_end() { runDifferential("Phase expr-cmp", PHASE_EXPR_CMP, 3); }
+    /** §8.1.1 a comparison whose operand is an arithmetic/builtin EXPRESSION vs an attribute (not a literal) now fires in
+     *  the exec (was a masked DRL-fires/exec-skips). Closed-form -> assert the ABSOLUTE spec value + parity, incl. a
+     *  leeg operand (leeg -> 0) and a cross-unit expr (restated null-safely on both back-ends). */
+    @Test void phase_expr_cmp_is_spec_correct() {
+        for (int i = 0; i < PHASE_EXPR_CMP.length; i++) {
+            Fixture f = PHASE_EXPR_CMP[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_EXPR_CMP_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     /** §5.1 a cross-unit comparison in a CONSTRAINT now fires null-safely (rsHerschaal, the mirror of the exec scale) —
      *  standalone AND in a counting subselectie. A LEEG operand restates to leeg -> no-match (no NPE) in both. A closed-
      *  form filtered fold -> assert the ABSOLUTE spec value (a shared crash/wrong-restatement would not pass this). */

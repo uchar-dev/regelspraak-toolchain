@@ -1187,11 +1187,14 @@ public final class DrlTranspiler {
     }
 
     /** Unit restatement for a CONDITION-side +/- operand: identity when no conversion is due (the common case —
-     *  matching or absent units), else a marker. A pattern constraint cannot host the value-side null-guard
-     *  ternary, and the ternary-free multiply would NPE-abort the session on a null operand, so a
-     *  convertible-but-different-unit +/- in a condition stays an honest no-op rather than a crash. */
-    private static Frag omrekenConditie(Frag expr, Datatype van, Datatype naar) {
-        return omrekenFactor(van, naar) == null ? expr : Frag.todo("eenheidconversie in een rekenkundige voorwaarde", expr.text());
+     *  matching or absent units), else the null-safe rsHerschaal restatement (the DRL mirror of the exec scale).
+     *  A pattern constraint cannot host the value-side null-guard ternary, and a bare multiply NPE-aborts the session
+     *  on a leeg operand — rsHerschaal restates a leeg operand to leeg (then nulVeilig/rsNul makes it 0 per §6.2), so a
+     *  convertible-but-different-unit +/- in a condition FIRES at parity instead of markering / crashing. */
+    private Frag omrekenConditie(Frag expr, Datatype van, Datatype naar) {
+        if (expr.marker()) return expr;
+        java.math.BigDecimal f = omrekenFactor(van, naar);
+        return f == null ? expr : Frag.ok(vermenigvuldigMetFactor(expr.text(), f, false));
     }
 
     // ---------------- value expression ("then" side: getters) ----------------
@@ -3122,7 +3125,7 @@ public final class DrlTranspiler {
             // ternary, and the ternary-free multiply would NPE-abort the session on a null operand, so a
             // convertible-but-different-unit +/- stays an honest no-op). The leegwaarde helpers (rsNul/rsGedeeld/
             // rsVerminderd/rsMacht) are method calls, valid in a constraint.
-            return binairTerm(b, x -> operand(x, subject), DrlTranspiler::omrekenConditie);
+            return binairTerm(b, x -> operand(x, subject), this::omrekenConditie);
         if (e instanceof Expr.Begrensd bg) {
             // §6.1.4 begrenzing in a CONDITION: the value side clamps with an inline ternary "(r < m ? m : r)"
             // that mis-parses in a pattern constraint, so lower through the registered rsBegrens helper (a method
