@@ -29,8 +29,11 @@ import org.drools.model.functions.Block8;
 import org.drools.model.functions.Block9;
 import org.drools.model.functions.Block10;
 import org.drools.model.functions.Function1;
+import org.drools.model.functions.Function2;
 import org.drools.model.functions.Predicate1;
 import org.drools.model.functions.Predicate2;
+import org.drools.model.functions.Predicate3;
+import org.drools.model.functions.Predicate4;
 import org.drools.model.impl.ModelImpl;
 
 import java.math.BigDecimal;
@@ -1243,6 +1246,59 @@ public final class ExecModelTranspiler {
         return java.util.Collections.singletonMap(naam, (BigDecimal) waarde);
     }
 
+    /** §8.1.1 a constraint reading 2..3 DISTINCT numeric Parameter-globals — the case the single-global pattern.expr
+     *  cannot host: two global {@link Variable}s bound in ONE exec-model expr collapse to the LAST global's value (a
+     *  Drools exec-model quirk). Work around it by binding EACH distinct global into its OWN declaration, sourced via
+     *  {@link DSL#from} from the (always-present) SUBJECT crossed with the global, mapping the value to an
+     *  {@link Optional}. Distinct declarations do NOT collapse, and the subject anchor keeps the source NON-EMPTY even
+     *  when the global is LEEG (unset/null) — a bare {@code from(global)} yields nothing for a null global, which would
+     *  wrongly drop the rule (the single-global path is null-tolerant, so this must be too). The comparison rides the
+     *  LAST from-declaration's pattern, referencing the already-bound subject + the earlier globals; every item goes in
+     *  {@code extra} (after the subject pattern), so no pre-ordering is needed. Returns null for &lt;2 / &gt;3 distinct
+     *  globals (the single-global path / an honest skip) or any non-numeric global. {@code eval} takes (subject,
+     *  globalName-&gt;value map, null for a leeg global) and decides the comparison via the same scalarWaarde fns as the
+     *  single-global path (which carry the §6/§5 leegwaarde rules). DRL reads each global as a free mvel name. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Gate nGlobalGate(List<String> gns, PatternDSL.PatternDef subjectPattern, Variable subjectVar,
+                             java.util.function.BiFunction<Object, Map<String, BigDecimal>, Boolean> eval) {
+        int n = gns.size();
+        if (n < 2 || n > 3) return null;   // 1 -> single-global path; >3 -> honest skip (rare)
+        List<Variable> dvs = new ArrayList<>();
+        List<RuleItemBuilder<?>> extra = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            Global<BigDecimal> g = globals.get(gns.get(i));
+            if (g == null) return null;   // a non-numeric (date/tekst) global -> not bindable here -> skip
+            Variable<java.util.Optional> dv = DSL.declarationOf(java.util.Optional.class, "$gg_" + (seq++),
+                    DSL.from((Variable) subjectVar, (Variable) g,
+                            (Function2) (subj, gv) -> java.util.Optional.ofNullable(gv)));
+            dvs.add(dv);
+            if (i < n - 1) extra.add(PatternDSL.pattern(dv));   // bare binders for all but the last
+        }
+        Variable last = dvs.get(n - 1);
+        if (n == 2) {
+            Variable d0 = dvs.get(0);
+            extra.add(PatternDSL.pattern(last).expr(nextId("c"), (Variable) subjectVar, (Variable) d0,
+                (Predicate3) (lo, subj, o0) -> eval.apply(subj, gmap(gns, unwrapGlobal(o0), unwrapGlobal(lo)))));
+        } else {   // n == 3
+            Variable d0 = dvs.get(0), d1 = dvs.get(1);
+            extra.add(PatternDSL.pattern(last).expr(nextId("c"), (Variable) subjectVar, (Variable) d0, (Variable) d1,
+                (Predicate4) (lo, subj, o0, o1) -> eval.apply(subj, gmap(gns, unwrapGlobal(o0), unwrapGlobal(o1), unwrapGlobal(lo)))));
+        }
+        return new Gate(subjectPattern, extra);
+    }
+    /** Unwrap an {@link Optional} bound global value to its BigDecimal, or null for a LEEG (empty) global. */
+    private static BigDecimal unwrapGlobal(Object opt) {
+        return opt == null ? null : (BigDecimal) ((java.util.Optional<?>) opt).orElse(null);
+    }
+    /** Build the globalName-&gt;value map for {@link #nGlobalGate}: {@code gns} are the global names in declaration
+     *  order, {@code vals} the matching (possibly-null/leeg) values — the LAST value is the comparison-pattern's own
+     *  variable. A null value is a §13.3.8 leeg global, which the scalarWaarde fns then handle per §6/§5. */
+    private static Map<String, BigDecimal> gmap(List<String> gns, BigDecimal... vals) {
+        Map<String, BigDecimal> m = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < gns.size(); i++) m.put(gns.get(i), vals[i]);
+        return m;
+    }
+
     /** §6/§13.4.16 date arithmetic as a value: a datum/datumtijd ± a numeric-with-time-unit -> a new date(time) via
      *  {@link RegelSpraakRuntime#rsDatumReken} (optellen=PLUS=later; MIN/VERMINDERD_MET=earlier; aantal 0 -> unchanged;
      *  leeg operand -> leeg). Mirrors DrlTranspiler.binairTerm's datum branch and its guards: only +/-, no datum-datum,
@@ -1615,9 +1671,19 @@ public final class ExecModelTranspiler {
                                 vergelijk(scale((BigDecimal) lfn.apply(s, bindGlobal(gn, gv)), f[0]),
                                           scale((BigDecimal) rfn.apply(s, bindGlobal(gn, gv)), f[1]), op)), List.of());
                     }
+                } else if (gset.size() >= 2) {
+                    // §8.1.1 a comparison reading 2..3 DISTINCT numeric globals ("zijn basistarief plus de toeslag groter
+                    // is dan de grens") — bind each via DSL.from into its own declaration (no exec-model collapse), the
+                    // comparison rides the last from-declaration's pattern. DRL reads each global as a free name.
+                    BigDecimal[] f = restatement(v.links().type(), v.rechts().type());
+                    BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
+                    Conditie.Operator op = v.op();
+                    Gate g = nGlobalGate(new ArrayList<>(gset), pattern, subjectVar, (s, gm) ->
+                            vergelijk(scale((BigDecimal) lfn.apply(s, gm), f[0]), scale((BigDecimal) rfn.apply(s, gm), f[1]), op));
+                    if (g != null) return g;   // >3 globals / a non-numeric global -> fall through -> skip
                 }
             }
-            // 0 globals -> leafPredicate's expr-comparison branch; >1 / unresolved / non-numeric global -> falls through -> skip
+            // 0 globals -> leafPredicate's expr-comparison branch; unresolved / non-numeric global -> falls through -> skip
         }
         // §8.1.1 a DATUM comparison where an operand is a §6/§13.4.16 date-arithmetic expression that reads EXACTLY
         // ONE Parameter-GLOBAL (the duration is a parameter, e.g. "de geboortedatum plus de MEERDERJARIGHEIDSLEEFTIJD

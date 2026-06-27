@@ -1959,11 +1959,44 @@ class ExecModelDifferentialTest {
             l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur())),
     };
     static final Object[] PHASE_EXPR_GLOBAL_EXPECTED = { vals(true, false, false), vals(true, false) };
-    // §8.1.1 a comparison reading TWO distinct globals ("basistarief + de toeslag > de grens") — the exec binds at most
-    //   ONE global (an N-var expr is out of scope), so it stays an honest exec SKIP (DRL fires it; carded N-var follow-up).
+    // §8.1.1 a comparison reading 2..3 DISTINCT globals ("basistarief + de toeslag > de grens") now FIRES in BOTH
+    //   back-ends: the exec binds EACH distinct global into its OWN Optional declaration sourced from the (always-present)
+    //   subject × the global (distinct decls don't collapse; the subject anchor keeps a LEEG global's source non-empty),
+    //   matching DRL's free-name globals incl. the §6/§5 leegwaarde corners. Locked by PHASE_EXPR_MULTI_GLOBAL.
     static final String EXPR_TWO_GLOBALS_SRC =
         "Parameter de toeslag : Numeriek (geheel getal)\nParameter de grens : Numeriek (geheel getal)\n" + EXPR_CMP_HDR
         + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn basistarief plus de toeslag groter is dan de grens.\n";
+    static final String EXPR_THREE_GLOBALS_SRC =
+        "Parameter de a : Numeriek (geheel getal)\nParameter de b : Numeriek (geheel getal)\nParameter de c : Numeriek (geheel getal)\n" + EXPR_CMP_HDR
+        + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn basistarief plus de a plus de b groter is dan de c.\n";
+    static final Fixture[] PHASE_EXPR_MULTI_GLOBAL = {
+        // 2 globals both set: basistarief 30 + toeslag 20 = 50 > grens 40 -> WAAR
+        new Fixture("2 globals waar (30 + 20 > 40)", EXPR_TWO_GLOBALS_SRC,
+            () -> List.of(paxBBP(30, 0, 0)), Map.of("toeslag", new BigDecimal(20), "grens", new BigDecimal(40)),
+            l -> ((Passagier) l.get(0)).isDuur()),
+        // 2 globals onwaar: 50 > 60 -> ONWAAR
+        new Fixture("2 globals onwaar (30 + 20 > 60)", EXPR_TWO_GLOBALS_SRC,
+            () -> List.of(paxBBP(30, 0, 0)), Map.of("toeslag", new BigDecimal(20), "grens", new BigDecimal(60)),
+            l -> ((Passagier) l.get(0)).isDuur()),
+        // toeslag LEEG INSIDE the arithmetic (unset global): 30 + 0 > 25 -> WAAR (§6.2 leeg-as-0, like the single-global path)
+        new Fixture("2 globals, toeslag LEEG inside arith (30 + leeg > 25 -> waar)", EXPR_TWO_GLOBALS_SRC,
+            () -> List.of(paxBBP(30, 0, 0)), Map.of("grens", new BigDecimal(25)),
+            l -> ((Passagier) l.get(0)).isDuur()),
+        // grens LEEG as a BARE comparison operand (unset global): 50 > leeg -> ONWAAR (§5 leeg-comparison)
+        new Fixture("2 globals, grens LEEG bare operand (50 > leeg -> onwaar)", EXPR_TWO_GLOBALS_SRC,
+            () -> List.of(paxBBP(30, 0, 0)), Map.of("toeslag", new BigDecimal(20)),
+            l -> ((Passagier) l.get(0)).isDuur()),
+        // 3 globals: basistarief 10 + a 5 + b 7 = 22 > c 20 -> WAAR
+        new Fixture("3 globals waar (10 + 5 + 7 > 20)", EXPR_THREE_GLOBALS_SRC,
+            () -> List.of(paxBBP(10, 0, 0)), Map.of("a", new BigDecimal(5), "b", new BigDecimal(7), "c", new BigDecimal(20)),
+            l -> ((Passagier) l.get(0)).isDuur()),
+        // 3 globals onwaar: 22 > 30 -> ONWAAR
+        new Fixture("3 globals onwaar (10 + 5 + 7 > 30)", EXPR_THREE_GLOBALS_SRC,
+            () -> List.of(paxBBP(10, 0, 0)), Map.of("a", new BigDecimal(5), "b", new BigDecimal(7), "c", new BigDecimal(30)),
+            l -> ((Passagier) l.get(0)).isDuur()),
+    };
+    static final Object[] PHASE_EXPR_MULTI_GLOBAL_EXPECTED = {
+        Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, Boolean.FALSE };
 
     // ---- §8.1.1 a NAVIGATED operand INSIDE an arithmetic-expression comparison ("de vertrektijd van zijn reis plus
     //      zijn basistarief groter is dan zijn prijs"). The exec lowers the navigated leg via scalarWaarde's navReader
@@ -4530,14 +4563,34 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
-    /** §8.1.1 a comparison reading TWO distinct globals stays an honest exec SKIP (the exec binds at most one global; an
-     *  N-var expr is a carded follow-up). DRL fires it — recorded overgeslagen so the differential excludes it (never a
-     *  silent divergence). Pins the single-global firing did NOT over-reach to multi-global. */
-    @Test void expr_with_two_globals_is_honest_exec_skip() {
-        RegelSpraakModel m = Resolver.resolve(EXPR_TWO_GLOBALS_SRC);
+    /** §8.1.1 a comparison reading 2..3 DISTINCT numeric globals now FIRES at parity (each global bound into its own
+     *  Optional declaration sourced from subject × global — distinct decls don't collapse, the subject anchor keeps a
+     *  LEEG global's source non-empty). Closed-form -> ABSOLUTE spec value + parity + the exec NOT skipping. Covers 2 and
+     *  3 globals, a leeg global INSIDE arithmetic (leeg-as-0), and a leeg BARE comparison operand (onwaar). */
+    @Test void phase_expr_multi_global_is_spec_correct() {
+        for (int i = 0; i < PHASE_EXPR_MULTI_GLOBAL.length; i++) {
+            Fixture f = PHASE_EXPR_MULTI_GLOBAL[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_EXPR_MULTI_GLOBAL_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §8.1.1 a comparison reading FOUR distinct globals stays an honest exec skip (the from-decl fold supports 2..3; a
+     *  4th is rare and out of scope). DRL fires it — recorded overgeslagen so the differential excludes it (never a silent
+     *  divergence). Pins the >3 boundary of the multi-global fire. */
+    @Test void expr_with_four_globals_is_honest_exec_skip() {
+        String src = "Parameter de a : Numeriek (geheel getal)\nParameter de b : Numeriek (geheel getal)\n"
+            + "Parameter de c : Numeriek (geheel getal)\nParameter de d : Numeriek (geheel getal)\n" + EXPR_CMP_HDR
+            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn basistarief plus de a plus de b plus de c groter is dan de d.\n";
+        RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
         ExecModelTranspiler em = ExecModelTranspiler.build(m);
-        assertFalse(em.overgeslagen().isEmpty(), () -> "een twee-globals expr-vergelijking moet een eerlijke exec-skip zijn, kreeg: " + em.overgeslagen());
+        assertFalse(em.overgeslagen().isEmpty(), () -> "een vier-globals expr-vergelijking moet een eerlijke exec-skip zijn, kreeg: " + em.overgeslagen());
     }
     /** §5.1/§4 a COMPOSITE (rate) cross-unit +/- in an arithmetic comparison now FIRES exactly (was a symmetric marker):
      *  the EUR/jr→EUR/mnd restatement uses the exact numerator/inverted-denominator integer factors (Eenheid.exacte-
