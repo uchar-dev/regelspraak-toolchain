@@ -1255,7 +1255,7 @@ public final class DrlTranspiler {
             // §6.2-6.8 arithmetic, shared with the condition side: value getters for the sub-operands, and a
             // +/- right operand restated in the left's unit by the NULL-GUARDED omrekenWaarde (a "then"-side
             // ternary is fine here).
-            return binairTerm(b, x -> waarde(x, subject), this::herschaalWaardePlus);
+            return binairTerm(b, x -> waarde(x, subject), this::omrekenWaarde);
         if (e instanceof Expr.Afgerond af) {
             return afgerondeTerm(waarde(af.basis(), subject), af);
         }
@@ -3428,16 +3428,13 @@ public final class DrlTranspiler {
         return vermenigvuldigMetFactor(expr, omrekenFactor(van, naar), false);
     }
 
-    /** Unit conversion on the VALUE side, null-safe: a leegwaarde (an empty sommatie has no fallback) converts
-     *  to a leegwaarde rather than an NPE on .multiply. Only for the "then"/value side — see
-     *  {@link #vermenigvuldigMetFactor}; the constraint form is {@link #omreken}. */
+    /** Unit conversion on the VALUE side, null-safe: a leegwaarde (an empty sommatie has no fallback) converts to a
+     *  leegwaarde rather than an NPE on .multiply. EXACT for SIMPLE convertible units (×source.factorNaarCanoniek
+     *  ÷target.factorNaarCanoniek, one DECIMAL64 rounding — {@link #herschaalExact}), so an assignment / begrenzing-bound /
+     *  functie-arg / +/- restatement no longer truncates the non-terminating ratio mnd→jr = 1/12 (24 mnd stored in a jr
+     *  attribute = 2, not 1.9999…). A COMPOSITE (rate) keeps the single ratio (carded). Only the "then"/value side — the
+     *  constraint form is {@link #omreken} (lossy) / {@link #herschaalConditiePlus} (exact, +/-). */
     private Frag omrekenWaarde(Frag expr, Datatype van, Datatype naar) {
-        return expr.marker() ? expr : Frag.ok(vermenigvuldigMetFactor(expr.text(), omrekenFactor(van, naar), true));
-    }
-
-    /** §4 restatement of a +/- RIGHT operand on the VALUE side: EXACT canonical-unit ×÷ for simple convertible units
-     *  ({@link #herschaalExact}), the lossy single-ratio fallback for a rate, identity otherwise. A marker propagates. */
-    private Frag herschaalWaardePlus(Frag expr, Datatype van, Datatype naar) {
         return expr.marker() ? expr : Frag.ok(herschaalExact(expr.text(), van, naar, true));
     }
 

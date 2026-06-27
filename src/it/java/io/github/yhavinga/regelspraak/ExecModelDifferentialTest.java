@@ -1730,6 +1730,33 @@ class ExecModelDifferentialTest {
         new BigDecimal("4"), new BigDecimal("1.5"), Boolean.TRUE, Boolean.FALSE, Boolean.TRUE
     };
 
+    // ---- §4 EXACT cross-unit restatement on the VALUE side beyond +/-: a pure ASSIGNMENT (gelijkstelling) and a
+    //      value-side BEGRENZING bound. Both restated lossily before (×1/12 = 0.0833…) on BOTH back-ends; "24 mnd"
+    //      stored into a jr attribute = 1.99999999999999992 instead of 2. Now ×source.factorNaarCanoniek
+    //      ÷target.factorNaarCanoniek (rsHerschaalExact / herschaalWaarde). The begrenzing CONSTRAINT side stays a
+    //      symmetric skip (parityOnveilig), unchanged. ----
+    static final String CU_ASSIGN_SRC =
+        "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\n"
+        + "Objecttype de Tijdmeter\n    de looptijd Numeriek (getal met 5 decimalen) met eenheid mnd;\n    de totaal Numeriek (getal met 5 decimalen) met eenheid jr;\n"
+        + "Regel R\n    geldig altijd\n        De totaal van een Tijdmeter moet gesteld worden op de looptijd van een Tijdmeter.\n";
+    static final String CU_BEGR_VAL_SRC =
+        "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\n"
+        + "Objecttype de Tijdmeter\n    de extra Numeriek (getal met 5 decimalen) met eenheid jr;\n    de looptijd Numeriek (getal met 5 decimalen) met eenheid mnd;\n    de totaal Numeriek (getal met 5 decimalen) met eenheid jr;\n"
+        + "Regel R\n    geldig altijd\n        De totaal van een Tijdmeter moet gesteld worden op de extra van een Tijdmeter, met een minimum van de looptijd van een Tijdmeter.\n";
+    static final Fixture[] PHASE_CU_VALUE = {
+        // ASSIGNMENT 24 mnd -> jr = 2 EXACTLY (was 1.99999999999999992 in BOTH back-ends)
+        new Fixture("cross-unit assignment 24 mnd -> 2 jr (exact)", CU_ASSIGN_SRC,
+            () -> List.of(tm(t -> t.setLooptijd(new BigDecimal(24)))), Map.of(), l -> ((Tijdmeter) l.get(0)).getTotaal()),
+        // ASSIGNMENT 6 mnd -> jr = 0.5 EXACTLY (was 0.49999999999999998)
+        new Fixture("cross-unit assignment 6 mnd -> 0.5 jr (exact)", CU_ASSIGN_SRC,
+            () -> List.of(tm(t -> t.setLooptijd(new BigDecimal(6)))), Map.of(), l -> ((Tijdmeter) l.get(0)).getTotaal()),
+        // VALUE BEGRENZING: max(extra 1 jr, looptijd 24 mnd -> 2 jr) = 2 jr (the bound restate mnd->jr is the lossy direction)
+        new Fixture("cross-unit value begrenzing max(1 jr, 24 mnd=2 jr) = 2 jr", CU_BEGR_VAL_SRC,
+            () -> List.of(tm(t -> { t.setExtra(new BigDecimal(1)); t.setLooptijd(new BigDecimal(24)); })),
+            Map.of(), l -> ((Tijdmeter) l.get(0)).getTotaal()),
+    };
+    static final Object[] PHASE_CU_VALUE_EXPECTED = { new BigDecimal("2"), new BigDecimal("0.5"), new BigDecimal("2") };
+
     // ---- §8.1.1 an EXPRESSION-vs-GLOBAL comparison ("zijn basistarief plus zijn bodem groter is dan de grens",
     //      "zijn basistarief plus de toeslag groter is dan zijn prijs") — the exec voorwaarde binds the SINGLE distinct
     //      numeric/percentage Parameter-global as a pattern variable (a 2-var expr), lowering both sides via scalarWaarde;
@@ -4169,6 +4196,23 @@ class ExecModelDifferentialTest {
     @Test void phase_C_count_global_subselectie_matches_drl_back_end() { runDifferential("Phase C count+global", PHASE_C_COUNT_GLOBAL, 4); }
     @Test void phase_crossunit_matches_drl_back_end() { runDifferential("Phase cross-unit", PHASE_CROSSUNIT, 2); }
     @Test void phase_cu_arith_matches_drl_back_end() { runDifferential("Phase cross-unit +/-", PHASE_CU_ARITH, 5); }
+    @Test void phase_cu_value_matches_drl_back_end() { runDifferential("Phase cross-unit value", PHASE_CU_VALUE, 3); }
+    /** §4 the EXACT canonical-unit restatement now also covers the VALUE side beyond +/-: a pure cross-unit ASSIGNMENT
+     *  (24 mnd stored into a jr attribute = 2, not 1.99999999999999992) and a value-side BEGRENZING bound (the bound
+     *  restated mnd→jr exactly). A SHARED lossy-ratio bug -> assert the ABSOLUTE spec value (differential-masks-shared-bugs). */
+    @Test void phase_cross_unit_value_restatement_is_spec_correct() {
+        for (int i = 0; i < PHASE_CU_VALUE.length; i++) {
+            Fixture f = PHASE_CU_VALUE[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_CU_VALUE_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     /** §4 a SIMPLE convertible cross-unit +/- restates EXACTLY (×÷ the declared integer factorNaarCanoniek, NOT the
      *  pre-rounded 1/12 ratio): "2 jr + 24 mnd" = 4 jr, "1 jr + 6 mnd" = 1.5 jr — both EXACT where the old lossy ratio
      *  gave 3.99999999999999992 / 1.49999999999999998 in BOTH back-ends (a SHARED bug, hence the ABSOLUTE assertion).

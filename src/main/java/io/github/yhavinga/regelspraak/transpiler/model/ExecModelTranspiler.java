@@ -263,8 +263,7 @@ public final class ExecModelTranspiler {
         } else if (dimAgg != null) {
             // §5.8.5 a dimensie-fold (SOM/MIN/MAX over a gedimensioneerd attribuut's selected labels) collapses a
             // Map<label,value> to a SCALAR — a fixed fold, NOT an instance accumulate, reading no globals.
-            BigDecimal vf = valueFactor(r.waarde().type(), doel.type());
-            if (vf != null) dimAgg = dimAgg.scaledBy(vf);
+            dimAgg = dimAgg.herschaald(r.waarde().type(), doel.type());   // §4 EXACT restate the fold into the doel unit
             BiFunction<Object, Map<String, BigDecimal>, Object> fn = dimAgg.fn();
             consequence = DSL.on(sVar).execute((Block2<org.drools.model.Drools, Object>) (drools, s) ->
                     werkBij(drools, s, doelGetter, doelSetter, fn.apply(s, Map.of())));
@@ -273,8 +272,7 @@ public final class ExecModelTranspiler {
             // navigated List<Segment>, optionally gedurende-clipped) — NOT an instance accumulate. It reads no globals
             // EXCEPT a §7.1 EUR71 gedurende-comparison vs a Parameter grens ("... groter is dan de grens"), which the
             // WaardeFn surfaces; bind those like the scalar path so the consequence reads them from the global map.
-            BigDecimal vf = valueFactor(r.waarde().type(), doel.type());
-            if (vf != null) tijdTotaal = tijdTotaal.scaledBy(vf);
+            tijdTotaal = tijdTotaal.herschaald(r.waarde().type(), doel.type());   // §4 EXACT restate the totaal into the doel unit
             BiFunction<Object, Map<String, BigDecimal>, Object> fn = tijdTotaal.fn();
             List<String> gnames = new ArrayList<>(tijdTotaal.globals());
             List<Variable> vars = new ArrayList<>();
@@ -298,7 +296,6 @@ public final class ExecModelTranspiler {
             Agg agg = aggregatie(fx, doel.objecttype(), sVar);
             if (agg == null) return skip("regel (aggregatie buiten Phase-C scope): " + r.naam());
             extra.add(agg.accItem());
-            BigDecimal vf = valueFactor(fx.type(), doel.type());   // §4 restate the aggregate into the doel unit
             if (agg.isSom()) {
                 // §5.8.2 sommatie: an empty sum (0 non-empty contributors) is the leegwaarde fallback, not 0.
                 Variable cntVar = agg.countVar(), sumVar = agg.resultVar();
@@ -307,7 +304,7 @@ public final class ExecModelTranspiler {
                     BigDecimal v = ((Number) cnt).longValue() == 0L
                             ? (fallback == null ? null : (BigDecimal) fallback.fn().apply(s, Map.of()))
                             : RegelSpraakRuntime.toBd(sum);
-                    if (vf != null && v != null) v = v.multiply(vf);
+                    v = herschaalWaarde(v, fx.type(), doel.type());   // §4 EXACT restate the aggregate into the doel unit
                     werkBij(drools, s, doelGetter, doelSetter, v);
                 };
                 consequence = DSL.on(sVar, (Variable) cntVar, (Variable) sumVar).execute(body);
@@ -315,7 +312,7 @@ public final class ExecModelTranspiler {
                 Variable resVar = agg.resultVar();
                 Block3<org.drools.model.Drools, Object, Object> body = (drools, s, res) -> {
                     BigDecimal v = RegelSpraakRuntime.toBd(res);
-                    if (vf != null && v != null) v = v.multiply(vf);
+                    v = herschaalWaarde(v, fx.type(), doel.type());   // §4 EXACT restate the aggregate into the doel unit
                     werkBij(drools, s, doelGetter, doelSetter, v);
                 };
                 consequence = DSL.on(sVar, (Variable) resVar).execute(body);
@@ -331,7 +328,6 @@ public final class ExecModelTranspiler {
             Eval eval = lowerVal(r.waarde(), doel.objecttype(), sVar, aggGlobals, accItems, accVars);
             if (eval == null) return skip("regel (aggregatie-in-arithmetiek buiten scope): " + r.naam());
             List<String> gnames = new ArrayList<>(aggGlobals);
-            BigDecimal vf = valueFactor(r.waarde().type(), doel.type());   // §4 restate the whole value into the doel unit
             // consequence vars: [subject, g0, g1, ..., acc0, acc1, ...]; the body rebuilds the global map + agg array.
             List<Variable> vars = new ArrayList<>();
             vars.add(sVar);
@@ -349,7 +345,7 @@ public final class ExecModelTranspiler {
                 Object[] aggs = new Object[nAgg];
                 for (int i = 0; i < nAgg; i++) aggs[i] = args[1 + nG + i];
                 Object v = eval.apply(s, gm, aggs);
-                if (vf != null && v != null) v = ((BigDecimal) v).multiply(vf);
+                v = herschaalWaarde((BigDecimal) v, r.waarde().type(), doel.type());   // §4 EXACT restate the whole value into the doel unit
                 werkBij(drools, s, doelGetter, doelSetter, v);
             });
             if (consequence == null) return skip("regel (aggregatie-waarde: te veel gebonden variabelen): " + r.naam());
@@ -365,11 +361,9 @@ public final class ExecModelTranspiler {
             };
             valueSubject = null;
             if (wf == null) return skip("regel (waarde buiten scope): " + r.naam());
-            // §4 value-side unit restatement (a kenmerk value is Boolean, no unit). Mirrors DrlTranspiler.omrekenWaarde.
-            if (r.soort() != ResolvedRegel.Soort.KENMERKTOEKENNING) {
-                BigDecimal vf = valueFactor(r.waarde().type(), doel.type());
-                if (vf != null) wf = wf.scaledBy(vf);
-            }
+            // §4 value-side unit restatement, EXACT (a kenmerk value is Boolean, no unit). Mirrors DrlTranspiler.omrekenWaarde.
+            if (r.soort() != ResolvedRegel.Soort.KENMERKTOEKENNING)
+                wf = wf.herschaald(r.waarde().type(), doel.type());
             // resolve the referenced globals; an unregistered one (e.g. a temporal parameter) -> honest skip. The
             // consequence binds [subject, g0, g1, ...] via consequenceOf (up to Block10 = 9 vars); the body rebuilds
             // the name->value map. >1 distinct global is now supported (e.g. a value of two parameters).
@@ -2305,14 +2299,12 @@ public final class ExecModelTranspiler {
             if (bg.minimum() != null) {
                 minF = scalarWaarde(bg.minimum());
                 if (minF == null) return null;
-                BigDecimal vf = valueFactor(bg.minimum().type(), bt);
-                if (vf != null) minF = minF.scaledBy(vf);
+                minF = minF.herschaald(bg.minimum().type(), bt);   // §4 EXACT restate the bound into the basis unit
             }
             if (bg.maximum() != null) {
                 maxF = scalarWaarde(bg.maximum());
                 if (maxF == null) return null;
-                BigDecimal vf = valueFactor(bg.maximum().type(), bt);
-                if (vf != null) maxF = maxF.scaledBy(vf);
+                maxF = maxF.herschaald(bg.maximum().type(), bt);   // §4 EXACT restate the bound into the basis unit
             }
             BiFunction<Object, Map<String, BigDecimal>, Object> bfn = baseF.fn();
             BiFunction<Object, Map<String, BigDecimal>, Object> mnfn = minF == null ? null : minF.fn();
@@ -2483,7 +2475,7 @@ public final class ExecModelTranspiler {
             Expr arg = f.argumenten().get(i);
             WaardeFn wf = scalarWaarde(arg);
             if (wf == null) return null;   // a set/instance-aggregation or unlowerable operand -> skip (DRL markers too)
-            if (i > 0) { BigDecimal vf = valueFactor(arg.type(), doel); if (vf != null) wf = wf.scaledBy(vf); }
+            if (i > 0) wf = wf.herschaald(arg.type(), doel);   // §4 EXACT restate operand i into the result unit (Eenheid1)
             fns.add(wf.fn());
             g.addAll(wf.globals());
         }
