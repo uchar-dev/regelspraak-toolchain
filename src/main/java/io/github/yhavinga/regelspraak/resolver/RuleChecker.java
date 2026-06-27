@@ -932,7 +932,13 @@ final class RuleChecker {
     private static boolean execKanCountingFold(List<Conditie> onderdelen, Objecttype elem) {
         String global = null;
         for (Conditie c : onderdelen) {
-            if (c instanceof Conditie.Samengesteld) return false;          // nested compound: exec leafPredicate cannot fold it (DRL can) -> marker
+            if (c instanceof Conditie.Samengesteld nested) {              // §13.4.13.4 a NESTED compound bullet
+                // the exec folds a GLOBAL-FREE nested compound into ONE fact-only Predicate1 (leafCompound) at parity
+                // with DRL's nested &&/||; a nested compound reading a Parameter-global cannot fold (the exec binds at
+                // most one source-global, already at the top-level fold) -> marker (both back-ends decline).
+                if (leestGlobal(nested)) return false;
+                continue;
+            }
             if (!leestGlobal(c)) continue;                                 // a fact-only simple leaf the exec lowers at parity
             if (!(c instanceof Conditie.Vergelijking v)) return false;     // a non-comparison global read -> not bindable
             if (!(v.rechts() instanceof Expr.ParameterRef pr)) return false;          // the global must be the RHS

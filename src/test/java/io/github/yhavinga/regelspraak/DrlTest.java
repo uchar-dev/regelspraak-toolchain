@@ -1544,12 +1544,12 @@ class DrlTest {
                 () -> "een counting+twee-globals compound subselectie moet een eerlijke marker blijven (exec kan twee globals niet binden in de count-fold):\n" + drl);
     }
 
-    @Test void compound_subselectie_telling_met_geneste_compound_bullet_blijft_marker() {
-        // §13.4.13.4 PARITY guard: a COUNTING quantifier compound with a NESTED compound bullet ("- hij voldoet aan
-        // alle volgende voorwaarden: …") cannot lower in the exec count-fold — ExecModelTranspiler.leafPredicate has no
-        // nested-Samengesteld branch and returns null, skipping the whole compound, while DRL conditie lowers the nested
-        // compound to ||/&& on the accumulate source and FIRES. The differential's overgeslagen-skip would MASK that
-        // DRL-fires/exec-skips, so the resolver markers it (Onopgelost) -> BOTH decline symmetrically.
+    @Test void compound_subselectie_telling_met_geneste_pure_leaf_compound_bullet_vuurt() {
+        // §13.4.13.4: a COUNTING quantifier compound with a NESTED PURE-LEAF compound bullet ("- hij voldoet aan alle
+        // volgende voorwaarden: …", no Parameter-global inside) now FIRES in BOTH back-ends — DRL conditieInline lowers
+        // the nested compound to &&/|| on the accumulate source and the exec count-fold folds it via leafCompound into
+        // ONE Predicate1 (the top-level fold still binds the single source-global grens). No marker (the resolver gate
+        // execKanCountingFold admits a global-free nested compound). See ExecModelDifferentialTest.PHASE_C_COUNT_NESTED.
         String src = """
             Parameter de grens : Numeriek (geheel getal)
             Objecttype de Vlucht
@@ -1573,8 +1573,11 @@ class DrlTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "moet parseren+resolven: " + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("/* TODO aggregatie"),
-                () -> "een counting compound met een geneste-compound bullet moet een eerlijke marker blijven (exec leafPredicate kan een geneste compound niet vouwen):\n" + drl);
+        assertFalse(drl.contains("/* TODO aggregatie"),
+                () -> "een counting compound met een geneste PURE-LEAF compound bullet moet nu vuren (geen marker):\n" + drl);
+        // the nested compound's leaves lower onto the accumulate source as a nested && (minderjarig membership + prijs > 50)
+        assertTrue(drl.contains("minderjarig == true") && drl.contains("\"50\""),
+                () -> "de geneste compound moet als &&-conditie op de accumulate-bron verschijnen:\n" + drl);
     }
 
     @Test void cross_unit_vergelijking_in_voorwaarde_is_null_veilig_via_rsHerschaal() {

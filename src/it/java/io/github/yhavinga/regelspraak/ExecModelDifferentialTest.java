@@ -1600,11 +1600,41 @@ class ExecModelDifferentialTest {
     static final String COUNT_TWO_GLOBALS_SRC =
         "Parameter de ondergrens : Numeriek (geheel getal)\nParameter de bovengrens : Numeriek (geheel getal)\n" + COMPOUND_HDR
         + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn leeftijd is kleiner dan de ondergrens\n        - zijn prijs is groter dan de bovengrens.\n";
-    // §13.4.13.4 a NESTED compound bullet under a counting quantifier — leafPredicate has no nested-Samengesteld branch
-    //   (exec skips) but DRL conditie lowers it (fires): a masked divergence -> the resolver markers it (both decline).
+    // §13.4.13.4 a NESTED PURE-LEAF compound bullet under a counting quantifier — now FIRES in BOTH back-ends (DRL
+    //   conditieInline's nested &&; exec leafCompound folds it into ONE Predicate1). Locked by PHASE_C_COUNT_NESTED.
     static final String COUNT_NESTED_BULLET_SRC =
         "Parameter de grens : Numeriek (geheel getal)\n" + COMPOUND_HDR
         + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn leeftijd is kleiner dan de grens\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn prijs is groter dan 50.\n";
+    // §13.4.13.4 a NESTED compound bullet that itself READS A GLOBAL ("zijn leeftijd is kleiner dan de grens" inside the
+    //   nested ALLE) — the exec leafCompound folds into ONE Predicate1 and cannot bind a second source-global, so it stays
+    //   a SYMMETRIC marker (the resolver gate declines a global-reading nested compound). Pins the global-free boundary.
+    static final String COUNT_NESTED_GLOBAL_SRC =
+        "Parameter de grens : Numeriek (geheel getal)\n" + COMPOUND_HDR
+        + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn prijs is groter dan 50\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn leeftijd is kleiner dan de grens.\n";
+    // §13.4.13.4 a COUNTING-quantifier compound subselectie with a NESTED PURE-LEAF compound bullet, now FIRING in BOTH
+    //   back-ends (DRL conditieInline's nested &&; exec leafCompound folds it into ONE Predicate1) at parity. The
+    //   top-level fold binds the SINGLE source-global (grens); the nested compound is global-free. Closed-form SOM ->
+    //   ABSOLUTE spec value. "ten minste 1 van {leeftijd<grens, (minderjarig && prijs>50)}".
+    static final Fixture[] PHASE_C_COUNT_NESTED = {
+        new Fixture("SOM, ten-minste-1 with a nested ALLE compound bullet, grens=18",
+            COUNT_NESTED_BULLET_SRC,
+            () -> { Vlucht v = new Vlucht(); return List.of(v,
+                paxLM(v, 30, 10, false),   // leeftijd 10 < grens 18 -> match -> +30
+                paxLM(v, 60, 40, true),    // nested: minderjarig && 60>50 -> match -> +60
+                paxLM(v, 40, 40, true),    // nested: minderjarig but 40<=50, and 40>=18 -> no match
+                paxLM(v, 60, 40, false)); }, // nested: not minderjarig, and 40>=18 -> no match
+            Map.of("grens", new BigDecimal(18)),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 30 + 60 = 90
+        new Fixture("SOM, ten-minste-1 nested compound, grens=5 (only the nested-compound match)",
+            COUNT_NESTED_BULLET_SRC,
+            () -> { Vlucht v = new Vlucht(); return List.of(v,
+                paxLM(v, 30, 10, false),   // 10<5 false, not minderjarig -> no match
+                paxLM(v, 60, 40, true),    // nested: minderjarig && 60>50 -> match -> +60
+                paxLM(v, 40, 40, true), paxLM(v, 60, 40, false)); },
+            Map.of("grens", new BigDecimal(5)),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 60
+    };
+    static final Object[] PHASE_C_COUNT_NESTED_EXPECTED = { new BigDecimal(90), new BigDecimal(60) };
     // §13.4.13.4 a CROSS-UNIT global bullet (leeftijd jr vs grens mnd) — DRL emits an unguarded (leeftijd).multiply(12)
     //   in the accumulate-source constraint that NPE-aborts on a leeg operand; the exec scale() is null-safe -> a masked
     //   DRL-crashes/exec-fires divergence -> the resolver markers the convertible-but-different-unit global (both decline).
@@ -4921,7 +4951,27 @@ class ExecModelDifferentialTest {
                 () -> "DRL moet deze counting compound ook markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
     }
     @Test void counting_subselectie_met_twee_globals_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_TWO_GLOBALS_SRC); }
-    @Test void counting_subselectie_met_geneste_compound_bullet_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_NESTED_BULLET_SRC); }
+    /** §13.4.13.4 a nested compound bullet that READS A GLOBAL stays a symmetric marker — the exec count-fold binds at
+     *  most one source-global (at the top level), so a global inside the nested fold (a Predicate1) cannot bind. Pins the
+     *  global-free boundary of the nested-compound fire. */
+    @Test void counting_subselectie_nested_met_global_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_NESTED_GLOBAL_SRC); }
+    /** §13.4.13.4 a COUNTING-quantifier compound subselectie with a NESTED PURE-LEAF compound bullet now FIRES at parity
+     *  (DRL conditieInline's nested &&; exec leafCompound folds the nested compound into ONE Predicate1). Closed-form SOM
+     *  -> assert the ABSOLUTE spec value, the exec NOT skipping, and parity. A nested compound reading a global stays a
+     *  marker (counting_subselectie_nested_met_global_is_symmetric_marker_in_both). */
+    @Test void phase_C_count_nested_compound_is_spec_correct() {
+        for (int i = 0; i < PHASE_C_COUNT_NESTED.length; i++) {
+            Fixture f = PHASE_C_COUNT_NESTED[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_C_COUNT_NESTED_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     /** §13.4.13.4 the COMPOUND subselectie (ALLE of comparison + kenmerk bullets over the element), now FIRING in BOTH
      *  back-ends (DRL `&&` source constraint; exec successive .expr). A closed-form filtered fold -> assert the ABSOLUTE
      *  spec value (a shared "filter never applied -> sums all" bug would pass a pure differential). */

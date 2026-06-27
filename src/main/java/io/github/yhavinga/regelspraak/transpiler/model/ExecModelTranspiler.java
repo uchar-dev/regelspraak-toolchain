@@ -579,9 +579,12 @@ public final class ExecModelTranspiler {
                     bound = gb.global();
                     tellers.add(gb.test());
                 } else {
-                    Predicate1<Object> lp = leafPredicate(deel, elem);
+                    // a fact-only leaf, OR a NESTED PURE-LEAF compound bullet ("hij voldoet aan alle volgende
+                    // voorwaarden: …") folded into ONE Predicate1 (leafCompound). Either ignores the source-global.
+                    Predicate1<Object> lp = deel instanceof Conditie.Samengesteld sub
+                            ? leafCompound(sub, elem) : leafPredicate(deel, elem);
                     if (lp == null) return null;
-                    tellers.add((e, gv) -> lp.test(e));   // a fact-only leaf ignores the global
+                    tellers.add((e, gv) -> lp.test(e));
                 }
             }
             final List<Predicate2<Object, BigDecimal>> fTellers = tellers;
@@ -615,6 +618,31 @@ public final class ExecModelTranspiler {
      *  fact-only leaf, or skips). Shared by {@link #filterSource}'s standalone branch and its counting-quantifier fold,
      *  so a single source-global binds identically in both — the only quantifier shape the ALLE/DE arm cannot reach
      *  (it recurses, binding each bullet's global on its own {@code .expr}). */
+    /** §13.4.13.4 fold a nested PURE-LEAF compound bullet (a Samengesteld whose children are all fact-only leafPredicates
+     *  — no Parameter-global reads) into ONE Predicate1 over the element: ALLE/DE -&gt; every child true, a counting
+     *  quantifier -&gt; the count switch (geen/ten-minste/ten-hoogste/precies). Returns null when ANY child is a global
+     *  comparison (the exec binds at most one source-global, already at the top-level fold) or is otherwise un-lowerable,
+     *  so the caller skips the WHOLE compound (symmetric with DRL, gated by RuleChecker.execKanCountingFold). Mirrors
+     *  DRL conditieInline's nested &amp;&amp;/|| on the accumulate source. Recurses for a doubly-nested compound. */
+    private Predicate1<Object> leafCompound(Conditie.Samengesteld s, Objecttype elem) {
+        final Conditie.Kwantor kw = s.kwantor(); final int n = s.drempel();
+        List<Predicate1<Object>> kids = new ArrayList<>();
+        for (Conditie deel : s.onderdelen()) {
+            if (globalBullet(deel, elem) != null) return null;   // a global bullet inside a nested compound -> can't fold
+            Predicate1<Object> lp = deel instanceof Conditie.Samengesteld sub ? leafCompound(sub, elem) : leafPredicate(deel, elem);
+            if (lp == null) return null;
+            kids.add(lp);
+        }
+        final List<Predicate1<Object>> fk = kids;
+        return e -> {
+            int t = 0; for (Predicate1<Object> p : fk) if (p.test(e)) t++;
+            return switch (kw) {
+                case ALLE, DE -> t == fk.size();
+                case GEEN -> t == 0; case TEN_MINSTE -> t >= n; case TEN_HOOGSTE -> t <= n; case PRECIES -> t == n;
+            };
+        };
+    }
+
     private record GlobalVergelijking(Global<BigDecimal> global, Predicate2<Object, BigDecimal> test) {}
     private GlobalVergelijking globalBullet(Conditie deel, Objecttype elem) {
         if (!(deel instanceof Conditie.Vergelijking v) || !(v.links() instanceof Expr.AttribuutRef la)
