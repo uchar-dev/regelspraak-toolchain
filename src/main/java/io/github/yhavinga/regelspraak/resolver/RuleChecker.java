@@ -9,7 +9,6 @@ import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
 import io.github.yhavinga.regelspraak.ir.ResolvedVerdeling;
 import io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie.Bron;
 import io.github.yhavinga.regelspraak.model.Datatype;
-import io.github.yhavinga.regelspraak.model.Eenheid;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.*;
 import io.github.yhavinga.regelspraak.parser.RegelSpraak;
@@ -927,9 +926,8 @@ final class RuleChecker {
      *  and reads any global as a free name regardless of quantifier — so a bullet the exec cannot fold while DRL can is a
      *  masked DRL-fires/exec-skips (the differential's overgeslagen-skip hides it). Returns false (-&gt; Onopgelost marker
      *  in BOTH) when: a bullet is a NESTED compound; OR a global-reading bullet is not a SINGLE distinct exec-bindable
-     *  comparison (own non-temporal non-dimensioned getalachtig attr, numeric op, numeric/percentage Parameter RHS) in
-     *  the SAME unit (a convertible-but-different unit makes DRL emit an unguarded {@code (operand).multiply(factor)} that
-     *  NPE-aborts on a leeg operand — markered, like §13.4.16 cross-unit arithmetic in a constraint). A 0-global
+     *  comparison (own non-temporal non-dimensioned getalachtig attr, numeric op, numeric/percentage Parameter RHS). A
+     *  cross-unit global now fires (DRL restates null-safely via rsHerschaal, mirroring the exec scale). A 0-global
      *  all-simple-leaf compound fires (true). Mirrors {@code ExecModelTranspiler.globalBullet} + {@code leafPredicate}. */
     private static boolean execKanCountingFold(List<Conditie> onderdelen, Objecttype elem) {
         String global = null;
@@ -946,22 +944,11 @@ final class RuleChecker {
             if (elem == null || !elem.heeftLid(la.attribuut())) return false;
             if (elem.attribuutGranulariteit.containsKey(la.attribuut())) return false;   // temporal element attr -> exec skips
             if (!elem.dimensiesVan(la.attribuut()).isEmpty()) return false;              // §3.6 gedimensioneerd -> exec skips
-            if (vereistOmrekening(la.type(), pr.parameter().datatype())) return false;   // cross-unit -> DRL's unguarded .multiply NPEs on a leeg operand -> marker
             String naam = pr.parameter().naam();
             if (global != null && !global.equals(naam)) return false;       // >1 distinct global -> not bindable
             global = naam;
         }
-        return true;   // 0 globals (all simple leaves) OR a single bindable same-unit global, no nested compound
-    }
-
-    /** Whether comparing {@code lt} vs {@code rt} requires a §5.1 unit restatement (convertible BUT different units) —
-     *  the exec count-fold restates null-safely, but DRL's accumulate-source constraint emits an unguarded
-     *  {@code (operand).multiply(factor)} that NPE-aborts on a leeg operand, so a cross-unit global bullet stays an honest
-     *  marker in BOTH back-ends (matching §13.4.16 cross-unit arithmetic in a constraint). Mirrors {@code ExecModelTranspiler
-     *  .restatement}'s identity test: no eenheid / not convertible / already same unit -&gt; identity -&gt; no restatement. */
-    private static boolean vereistOmrekening(Datatype lt, Datatype rt) {
-        Eenheid el = lt.eenheidOf(), er = rt.eenheidOf();
-        return el != null && er != null && el.convertibleNaar(er) && el.vereistOmrekening(er);
+        return true;   // 0 globals (all simple leaves) OR a single bindable global, no nested compound
     }
 
     /** The six §13.4.17 numeric comparison operators the exec source-fold binds (datum EERDER/LATER are a later phase),

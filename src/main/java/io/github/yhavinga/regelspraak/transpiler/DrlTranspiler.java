@@ -1235,7 +1235,7 @@ public final class DrlTranspiler {
             // §6.2-6.8 arithmetic, shared with the condition side: value getters for the sub-operands, and a
             // +/- right operand restated in the left's unit by the NULL-GUARDED omrekenWaarde (a "then"-side
             // ternary is fine here).
-            return binairTerm(b, x -> waarde(x, subject), DrlTranspiler::omrekenWaarde);
+            return binairTerm(b, x -> waarde(x, subject), this::omrekenWaarde);
         if (e instanceof Expr.Afgerond af) {
             return afgerondeTerm(waarde(af.basis(), subject), af);
         }
@@ -3282,7 +3282,7 @@ public final class DrlTranspiler {
      *  so the comparison scales exactly (24 == 24). No conversion when units match or are absent; a
      *  composite (rate) unit keeps the single-operand ratio (its precision edge is carded). Returns
      *  {leftOut, rightOut}. */
-    private static String[] vergelijkingsOperanden(String l, Datatype lt, String r, Datatype rt) {
+    private String[] vergelijkingsOperanden(String l, Datatype lt, String r, Datatype rt) {
         io.github.yhavinga.regelspraak.model.Eenheid el = lt.eenheidOf(), er = rt.eenheidOf();
         if (el == null || er == null || !el.convertibleNaar(er) || !el.vereistOmrekening(er))
             return new String[]{l, r};
@@ -3297,10 +3297,26 @@ public final class DrlTranspiler {
      *  {@link Frag} BEFORE calling, so {@code expr} here is always real text. When {@code nullVeilig}, the
      *  multiply is guarded so an empty value converts to empty rather than NPE-ing — the VALUE side only, since
      *  a Drools pattern constraint cannot host the {@code == null} ternary (it reads as a nested constraint). */
-    private static String vermenigvuldigMetFactor(String expr, java.math.BigDecimal factor, boolean nullVeilig) {
+    private String vermenigvuldigMetFactor(String expr, java.math.BigDecimal factor, boolean nullVeilig) {
         if (factor == null || factor.compareTo(java.math.BigDecimal.ONE) == 0) return expr;
-        String mul = "(" + expr + ").multiply(new java.math.BigDecimal(\"" + factor.toPlainString() + "\"))";
-        return nullVeilig ? "(" + expr + " == null ? null : " + mul + ")" : mul;
+        String f = "new java.math.BigDecimal(\"" + factor.toPlainString() + "\")";
+        // VALUE side: an inline null-guarded ternary (works in a consequence / value expression).
+        if (nullVeilig) return "(" + expr + " == null ? null : (" + expr + ").multiply(" + f + "))";
+        // CONSTRAINT side: a null-safe helper FUNCTION. A Drools pattern constraint cannot host the == null ternary
+        // (it reads as a nested constraint), and a bare (expr).multiply NPE-ABORTS the session on a leeg operand —
+        // rsHerschaal mirrors ExecModelTranspiler.scale (null -> null), so a cross-unit comparison with a leeg operand
+        // reads as no-match (mvel `null op x`) in BOTH back-ends rather than crashing.
+        return registreerHerschaalFunctie() + "(" + expr + ", " + f + ")";
+    }
+
+    /** Register (idempotently) the null-safe unit-restatement helper {@code rsHerschaal} used in CONSTRAINT contexts —
+     *  the DRL mirror of {@link io.github.yhavinga.regelspraak.transpiler.model.ExecModelTranspiler}'s {@code scale} (a leeg
+     *  operand restates to leeg, never an NPE on {@code .multiply}). See {@link #vermenigvuldigMetFactor}. */
+    private String registreerHerschaalFunctie() {
+        String fn = "rsHerschaal";
+        hulpFuncties.putIfAbsent(fn, "function java.math.BigDecimal " + fn
+                + "(java.math.BigDecimal x, java.math.BigDecimal f) {\n    return x == null ? null : x.multiply(f);\n}\n\n");
+        return fn;
     }
 
     /** The §4 conversion factor to restate a {@code van}-typed quantity in the {@code naar} unit, or {@code
@@ -3314,19 +3330,19 @@ public final class DrlTranspiler {
     /** Restate a comparison operand in its system's canonical unit by the DECLARED (exact) factor —
      *  a multiplication, never the lossy division omreken uses. Identity for a canonical/unitless
      *  operand or a placeholder marker. */
-    private static String naarCanoniek(String expr, io.github.yhavinga.regelspraak.model.Eenheid e) {
+    private String naarCanoniek(String expr, io.github.yhavinga.regelspraak.model.Eenheid e) {
         return vermenigvuldigMetFactor(expr, e.factorNaarCanoniek(), false);
     }
 
-    /** Unit conversion for a CONSTRAINT operand (no null-guard — a pattern constraint cannot host the ternary). */
-    private static String omreken(String expr, Datatype van, Datatype naar) {
+    /** Unit conversion for a CONSTRAINT operand — null-safe via the rsHerschaal helper ({@link #vermenigvuldigMetFactor}). */
+    private String omreken(String expr, Datatype van, Datatype naar) {
         return vermenigvuldigMetFactor(expr, omrekenFactor(van, naar), false);
     }
 
     /** Unit conversion on the VALUE side, null-safe: a leegwaarde (an empty sommatie has no fallback) converts
      *  to a leegwaarde rather than an NPE on .multiply. Only for the "then"/value side — see
      *  {@link #vermenigvuldigMetFactor}; the constraint form is {@link #omreken}. */
-    private static Frag omrekenWaarde(Frag expr, Datatype van, Datatype naar) {
+    private Frag omrekenWaarde(Frag expr, Datatype van, Datatype naar) {
         return expr.marker() ? expr : Frag.ok(vermenigvuldigMetFactor(expr.text(), omrekenFactor(van, naar), true));
     }
 

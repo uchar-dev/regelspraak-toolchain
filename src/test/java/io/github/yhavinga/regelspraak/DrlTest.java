@@ -1574,13 +1574,39 @@ class DrlTest {
                 () -> "een counting compound met een geneste-compound bullet moet een eerlijke marker blijven (exec leafPredicate kan een geneste compound niet vouwen):\n" + drl);
     }
 
-    @Test void compound_subselectie_telling_met_cross_unit_global_blijft_marker() {
-        // §13.4.13.4 PARITY guard: a COUNTING quantifier + single global whose comparison needs a §5.1 UNIT RESTATEMENT
-        // (leeftijd in jr vs grens in mnd) cannot fire safely — DRL emits an UNGUARDED (leeftijd).multiply(12) inside the
-        // accumulate-source constraint, which NPE-aborts the session on a leeg leeftijd (mvel cannot host the null-guard
-        // ternary in a constraint). The exec scale() is null-safe, so both "fire" yet DRL crashes — a masked divergence.
-        // So a convertible-but-different-unit global bullet stays a marker in BOTH (like §13.4.16 cross-unit arithmetic
-        // in a constraint); the SAME-unit case still fires.
+    @Test void cross_unit_vergelijking_in_voorwaarde_is_null_veilig_via_rsHerschaal() {
+        // §5.1 a cross-unit COMPARISON in a constraint (leeftijd jr vs grens mnd) restates an operand by its factor.
+        // A bare (leeftijd).multiply(12) NPE-aborts the Drools session on a leeg leeftijd (and the value-side null-guard
+        // ternary mis-parses in a pattern constraint), so the restatement goes through the null-safe rsHerschaal helper
+        // (the DRL mirror of the exec scale): a leeg operand restates to leeg -> mvel `null > grens` no-match, no crash.
+        String src = """
+            Eenheidsysteem Tijd
+                de maand    mnd
+                het jaar    jr    =    12 mnd
+            Parameter de grens : Numeriek (geheel getal) met eenheid mnd
+            Objecttype de Passagier
+                de leeftijd Numeriek (geheel getal) met eenheid jr;
+                is duur kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Passagier is duur indien zijn leeftijd groter is dan de grens.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren+resolven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("/* TODO"), () -> "een cross-unit vergelijking moet vuren (geen marker):\n" + drl);
+        assertTrue(drl.contains("function java.math.BigDecimal rsHerschaal"), () -> "de rsHerschaal helper moet geregistreerd zijn:\n" + drl);
+        assertTrue(drl.contains("rsHerschaal(leeftijd,"), () -> "de constraint moet de operand null-veilig herschalen:\n" + drl);
+        // the ONLY .multiply is inside the rsHerschaal function body — never a bare (operand).multiply in the constraint
+        assertTrue(drl.lines().filter(l -> l.contains(".multiply")).allMatch(l -> l.contains("x.multiply(f)")),
+                () -> "geen ongegarde .multiply buiten de rsHerschaal helper:\n" + drl);
+    }
+
+    @Test void compound_subselectie_telling_met_cross_unit_global_lowert_via_rsHerschaal() {
+        // §13.4.13.4 a COUNTING quantifier + single global whose comparison needs a §5.1 UNIT RESTATEMENT (leeftijd jr
+        // vs grens mnd) now FIRES in both back-ends: DRL restates the operand on the accumulate source via the null-safe
+        // rsHerschaal helper (was an unguarded .multiply that NPE-aborted on a leeg operand -> a marker); the exec scale
+        // is null-safe. So a convertible-but-different-unit global bullet under a counting quantifier no longer markers.
         String src = """
             Eenheidsysteem Tijd
                 de maand    mnd
@@ -1605,9 +1631,9 @@ class DrlTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "moet parseren+resolven: " + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("/* TODO aggregatie"),
-                () -> "een cross-unit global counting compound moet een marker blijven (ongegarde .multiply NPE-risico):\n" + drl);
-        assertFalse(drl.contains(".multiply"), () -> "geen ongegarde .multiply in een accumulate-bron constraint:\n" + drl);
+        assertFalse(drl.contains("/* TODO aggregatie"), () -> "een cross-unit global counting compound mag geen marker meer zijn:\n" + drl);
+        assertTrue(drl.contains("rsHerschaal(leeftijd,") && drl.contains("accumulate("),
+                () -> "de cross-unit global moet null-veilig op de accumulate-bron herschaald worden:\n" + drl);
     }
 
     @Test void telling_concatenatie_met_onoplosbare_operand_blijft_marker() {

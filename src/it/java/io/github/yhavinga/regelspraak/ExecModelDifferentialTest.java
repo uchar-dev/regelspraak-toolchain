@@ -1610,6 +1610,39 @@ class ExecModelDifferentialTest {
         + "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    de leeftijd Numeriek (geheel getal) met eenheid jr;\n    is minderjarig kenmerk (bijvoeglijk);\n" + AGG_FEIT
         + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn leeftijd is kleiner dan de grens\n        - hij is minderjarig.\n";
 
+    // ---- §5.1 CROSS-UNIT comparison restatement in a CONSTRAINT — now null-safe (was an unguarded (operand).multiply
+    //      that NPE-aborted the session on a leeg operand; the value-side null-guard ternary mis-parses in a pattern
+    //      constraint). DRL restates via the rsHerschaal helper (the mirror of the exec scale: null -> null), so a
+    //      cross-unit comparison with a leeg operand reads as no-match in BOTH back-ends. Covers the standalone
+    //      comparison AND the cross-unit global counting subselectie (which therefore no longer markers). ----
+    static final String CROSSUNIT_VERG_SRC =
+        "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\nParameter de grens : Numeriek (geheel getal) met eenheid mnd\n"
+        + "Objecttype de Passagier\n    de leeftijd Numeriek (geheel getal) met eenheid jr;\n    is duur kenmerk (bijvoeglijk);\n"
+        + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn leeftijd groter is dan de grens.\n";
+    static final Fixture[] PHASE_CROSSUNIT = {
+        // standalone cross-unit comparison incl. a LEEG leeftijd (the former NPE): 2jr=24mnd>18 -> duur; 1jr=12<18 -> not;
+        // leeg -> not (no crash). Both back-ends restate null-safely and agree.
+        new Fixture("cross-unit comparison in voorwaarde, incl. leeg operand (no NPE)",
+            CROSSUNIT_VERG_SRC,
+            () -> { Passagier p1 = new Passagier(); p1.setLeeftijd(new BigDecimal(2));
+                    Passagier p2 = new Passagier(); p2.setLeeftijd(new BigDecimal(1));
+                    Passagier p3 = new Passagier();   // leeg leeftijd
+                    return List.of(p1, p2, p3); },
+            Map.of("grens", new BigDecimal(18)),
+            l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur(), ((Passagier) l.get(2)).isDuur())),
+        // the cross-unit global ten-minste-1 subselectie now FIRES (was a marker): SOM over passengers whose leeftijd
+        // (jr) < grens (18 mnd, i.e. < 1.5 jr) OR minderjarig. A leeg-leeftijd minderjarig pax is kept via the second
+        // bullet (the leeftijd bullet restates to leeg -> no-match, no crash). 30 + 70 + 40 + 10 = 150.
+        new Fixture("cross-unit global ten-minste-1 subselectie (SOM, incl. leeg leeftijd)",
+            COUNT_CROSS_UNIT_SRC,
+            () -> { Vlucht v = new Vlucht();
+                    Passagier leeg = new Passagier(); leeg.setReis(v); leeg.setPrijs(new BigDecimal(10)); leeg.setMinderjarig(true);
+                    return List.of(v, paxLM(v, 30, 1, true), paxLM(v, 70, 2, true), paxLM(v, 40, 1, false), paxLM(v, 25, 5, false), leeg); },
+            Map.of("grens", new BigDecimal(18)),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),
+    };
+    static final Object[] PHASE_CROSSUNIT_EXPECTED = { vals(true, false, false), new BigDecimal(150) };
+
     // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
     //      arithmetic tree whose leaf is an AANTAL/TOTAAL/MIN/MAX). Each embedded aggregation lowers to its own
     //      accumulate CE; the consequence combines the bound results + scalars + a (≤1) global. Facts: [Vlucht, pax...].
@@ -3460,6 +3493,23 @@ class ExecModelDifferentialTest {
     @Test void phase_C_param_rhs_subselectie_matches_drl_back_end() { runDifferential("Phase C param-RHS", PHASE_C_PARAM_RHS, 3); }
     @Test void phase_C_compound_subselectie_matches_drl_back_end() { runDifferential("Phase C compound", PHASE_C_COMPOUND, 2); }
     @Test void phase_C_count_global_subselectie_matches_drl_back_end() { runDifferential("Phase C count+global", PHASE_C_COUNT_GLOBAL, 4); }
+    @Test void phase_crossunit_matches_drl_back_end() { runDifferential("Phase cross-unit", PHASE_CROSSUNIT, 2); }
+    /** §5.1 a cross-unit comparison in a CONSTRAINT now fires null-safely (rsHerschaal, the mirror of the exec scale) —
+     *  standalone AND in a counting subselectie. A LEEG operand restates to leeg -> no-match (no NPE) in both. A closed-
+     *  form filtered fold -> assert the ABSOLUTE spec value (a shared crash/wrong-restatement would not pass this). */
+    @Test void phase_crossunit_is_spec_correct() {
+        for (int i = 0; i < PHASE_CROSSUNIT.length; i++) {
+            Fixture f = PHASE_CROSSUNIT[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_CROSSUNIT_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     /** §13.4.13.4 a COUNTING-quantifier compound subselectie with a SINGLE Parameter-global bullet, now FIRING in BOTH
      *  back-ends (DRL free-name in the bullet OR/count; exec a 2-var count-fold binding the one source-global). A
      *  closed-form filtered fold -> assert the ABSOLUTE spec value (a shared "global never bound / filter never applied"
@@ -3478,9 +3528,9 @@ class ExecModelDifferentialTest {
         }
     }
     /** §13.4.13.4 parity floor: a COUNTING compound the exec count-fold CANNOT fire (>1 distinct global; a NESTED
-     *  compound bullet leafPredicate can't fold; a CROSS-UNIT global whose DRL .multiply NPEs) must stay a SYMMETRIC
-     *  marker — the resolver folds it to Onopgelost, so the exec records overgeslagen AND DRL emits a TODO marker (never
-     *  a masked DRL-fires/exec-skips). Pins that the single-global relaxation did NOT open a divergence on these shapes. */
+     *  compound bullet leafPredicate can't fold) must stay a SYMMETRIC marker — the resolver folds it to Onopgelost,
+     *  so the exec records overgeslagen AND DRL emits a TODO marker (never a masked DRL-fires/exec-skips). Pins that the
+     *  single-global relaxation did NOT open a divergence. (A cross-unit global now FIRES — see PHASE_CROSSUNIT.) */
     private void assertSymmetricCountingMarker(String src) {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
@@ -3491,7 +3541,6 @@ class ExecModelDifferentialTest {
     }
     @Test void counting_subselectie_met_twee_globals_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_TWO_GLOBALS_SRC); }
     @Test void counting_subselectie_met_geneste_compound_bullet_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_NESTED_BULLET_SRC); }
-    @Test void counting_subselectie_met_cross_unit_global_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_CROSS_UNIT_SRC); }
     /** §13.4.13.4 the COMPOUND subselectie (ALLE of comparison + kenmerk bullets over the element), now FIRING in BOTH
      *  back-ends (DRL `&&` source constraint; exec successive .expr). A closed-form filtered fold -> assert the ABSOLUTE
      *  spec value (a shared "filter never applied -> sums all" bug would pass a pure differential). */
