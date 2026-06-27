@@ -2015,11 +2015,41 @@ class ExecModelDifferentialTest {
             Map.of(),
             l -> vals(((Passagier) l.get(3)).isDuur(), ((Passagier) l.get(4)).isDuur(), ((Passagier) l.get(5)).isDuur(),
                       ((Passagier) l.get(6)).isDuur(), ((Passagier) l.get(7)).isDuur())),
+        // §5.6 Tabel 44 over a navigated TEKST ONGELIJK (the SAME leegwaarde flip as numeric, on the String path): "de
+        // roepnaam van zijn partner ongelijk is aan 'Maria'". Anna!=Maria WAAR; Maria!=Maria ONWAAR; ABSENT partner
+        // (leeg)!=Maria -> WAAR (the fix — was a no-fire short-circuit); present partner with null roepnaam (leeg) ->
+        // WAAR. Locks the Tekst surface with ABSOLUTE values too (was fixed by 3eb94d0 but only the numeric path had a
+        // leegwaarde-matrix fixture — the Tekst flip could silently re-mask, differential-masks-shared-bugs).
+        new Fixture("navigated TEKST ONGELIJK leegwaarde (Tabel 44: absent + present-null-attr fire WAAR)",
+            """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de roepnaam Tekst;
+                is gepensioneerd kenmerk (bijvoeglijk);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel R
+                geldig altijd
+                    Een Persoon is gepensioneerd indien de roepnaam van zijn partner ongelijk is aan "Maria".
+            """,
+            () -> { Persoon anna = new Persoon(); anna.setRoepnaam("Anna");
+                    Persoon maria = new Persoon(); maria.setRoepnaam("Maria");
+                    Persoon nullNaam = new Persoon();                              // partner present, roepnaam null
+                    Persoon pAnna = new Persoon(); pAnna.setPartner(anna);
+                    Persoon pMaria = new Persoon(); pMaria.setPartner(maria);
+                    Persoon pGeen = new Persoon();                                 // no partner -> absent relation
+                    Persoon pNull = new Persoon(); pNull.setPartner(nullNaam);
+                    return List.of(pAnna, pMaria, pGeen, pNull, anna, maria, nullNaam); },
+            Map.of(),
+            l -> vals(((Persoon) l.get(0)).isGepensioneerd(), ((Persoon) l.get(1)).isGepensioneerd(),
+                      ((Persoon) l.get(2)).isGepensioneerd(), ((Persoon) l.get(3)).isGepensioneerd())),
     };
     static final Object[] PHASE_NAV_LEEG_EXPECTED = {
-        vals(true, false, true, false, true),    // ONGELIJK
-        vals(true, false, false, true, false),   // GELIJK
-        vals(true, false, false, false, false),  // GROTER
+        vals(true, false, true, false, true),    // ONGELIJK (numeric)
+        vals(true, false, false, true, false),   // GELIJK (numeric)
+        vals(true, false, false, false, false),  // GROTER (numeric, ordering control)
+        vals(true, false, true, true),           // ONGELIJK (TEKST): Anna!=Maria, Maria!=Maria, absent!=Maria, null-attr!=Maria
     };
 
     // ---- §5.3/§5.6 DATUM EQUALITY (gelijk/ongelijk) of an OWN or to-one NAVIGATED datum attribute vs a datum literal OR
