@@ -1938,10 +1938,14 @@ class ExecModelDifferentialTest {
             Map.of(),
             l -> vals(((Passagier) l.get(1)).getBasistarief(), ((Passagier) l.get(2)).getBasistarief())),   // 50, null
 
-        // (adversary, the null-asymmetry flagship) navigated ONGELIJK vs literal: mvel reads `reis!.x != 100` as TRUE
-        // for a NULL reis (null != 100), so the partnerless passenger DOES fire — vergelijk's ONGELIJK matches
-        // (aNull -> !(both-leeg)). Equal (100) -> no fire; different (80) and null -> fire. Both back-ends agree.
-        new Fixture("navigated ONGELIJK vs literal (null reis still fires, mvel null != x)",
+        // (adversary) navigated ONGELIJK vs literal, null RELATION: DRL renders `reis!.vertrektijd != 100`; mvel's `!.`
+        // SHORT-CIRCUITS the whole constraint to a non-match when reis is null, so the partnerless passenger does NOT fire
+        // (both back-ends agree — navComparisonRole returns false on a null relation). Equal (100) -> no fire; different
+        // (80) -> fire. NOTE the null-reis no-fire is a SHARED SPEC-WRONG value: §5.6 Tabel 44 (one-leeg "ongelijk aan")
+        // wants WAAR for it (an absent navigation reads leeg, §5.5.5). This phase asserts PARITY only, so it stays green;
+        // the absolute values are [null, 50, null] where the third SHOULD be 50. Carded:
+        // 20260627-navigated-ongelijk-leegwaarde-Tabel44.md (the fix reads a null relation as leeg then applies vergelijk).
+        new Fixture("navigated ONGELIJK vs literal (null relation: shared no-fire; Tabel-44 gap carded)",
             NAV_HDR + "Regel R\n    geldig altijd\n"
             + "        Het basistarief van een passagier moet gesteld worden op 50 indien de vertrektijd van zijn reis ongelijk is aan 100.\n",
             () -> { Vlucht gelijk = new Vlucht(); gelijk.setVertrektijd(new BigDecimal(100));
@@ -1949,7 +1953,7 @@ class ExecModelDifferentialTest {
                     return List.of(gelijk, anders, paxReis(gelijk), paxReis(anders), paxReis(null)); },
             Map.of(),
             l -> vals(((Passagier) l.get(2)).getBasistarief(), ((Passagier) l.get(3)).getBasistarief(),
-                      ((Passagier) l.get(4)).getBasistarief())),   // null, 50, 50
+                      ((Passagier) l.get(4)).getBasistarief())),   // null, 50, null  (third SHOULD be 50 per Tabel 44 — carded)
 
         // (adversary) the SUB-case that proves the relation-null short-circuit does not over-apply: a PRESENT reis
         // whose vertrektijd is itself null. mvel only null-guards the `reis` deref — `reis.vertrektijd` then yields
