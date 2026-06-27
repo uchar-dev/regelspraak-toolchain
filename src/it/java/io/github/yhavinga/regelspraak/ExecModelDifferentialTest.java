@@ -2155,6 +2155,36 @@ class ExecModelDifferentialTest {
         vals(true, false, true),    // tekst ONGELIJK (A!=B T; A!=A F; A!=leeg WAAR)
     };
 
+    // §8.1.1/§13.3.8 a DATUM-EN-TIJD comparison vs a Datum-en-tijd Parameter-GLOBAL ("zijn vertrekmoment eerder is dan
+    //   de PEILMOMENT") now fires in the exec — was a DRL-fires/exec-skips (a Datum-en-tijd parameter was registered
+    //   untracked). The exec tracks it as a LocalDateTime global (datumTijdGlobals) and binds it (datumVergelijkTemporal).
+    static final Map<String, Object> PEILM = Map.of("pEILMOMENT", LocalDateTime.of(2022, 6, 15, 12, 0, 0));
+    static final String DTG_HDR =
+        "Parameter de PEILMOMENT : Datum en tijd in millisecondes\nObjecttype de Vlucht\n    de vertrekmoment Datum en tijd in millisecondes;\n    is laat kenmerk (bijvoeglijk);\n";
+    static Vlucht vluchtMoment(LocalDateTime vm) { Vlucht v = new Vlucht(); if (vm != null) v.setVertrekmoment(vm); return v; }
+    static final Fixture[] PHASE_DATUMTIJD_GLOBAL = {
+        // ordering vs PEILMOMENT=12:00: vertrekmoment eerder dan PEILMOMENT -> [09:30 WAAR, 13:00 onwaar, leeg onwaar].
+        new Fixture("datum-tijd ordering vs Parameter global (vertrekmoment eerder dan PEILMOMENT)",
+            DTG_HDR + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn vertrekmoment eerder is dan de PEILMOMENT.\n",
+            () -> List.of(vluchtMoment(dtt(9, 30)), vluchtMoment(dtt(13, 0)), vluchtMoment(null)), PEILM,
+            l -> vals(((Vlucht) l.get(0)).isLaat(), ((Vlucht) l.get(1)).isLaat(), ((Vlucht) l.get(2)).isLaat())),
+        // GELIJK vs PEILMOMENT=12:00 -> [12:00 WAAR, 13:00 onwaar, leeg onwaar (Tabel 38)].
+        new Fixture("datum-tijd GELIJK vs Parameter global (vertrekmoment gelijk PEILMOMENT)",
+            DTG_HDR + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn vertrekmoment gelijk is aan de PEILMOMENT.\n",
+            () -> List.of(vluchtMoment(dtt(12, 0)), vluchtMoment(dtt(13, 0)), vluchtMoment(null)), PEILM,
+            l -> vals(((Vlucht) l.get(0)).isLaat(), ((Vlucht) l.get(1)).isLaat(), ((Vlucht) l.get(2)).isLaat())),
+        // ONGELIJK vs PEILMOMENT=12:00 -> [13:00 WAAR, 12:00 onwaar, leeg WAAR (Tabel 44 one-leeg)].
+        new Fixture("datum-tijd ONGELIJK vs Parameter global (vertrekmoment ongelijk PEILMOMENT)",
+            DTG_HDR + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn vertrekmoment ongelijk is aan de PEILMOMENT.\n",
+            () -> List.of(vluchtMoment(dtt(13, 0)), vluchtMoment(dtt(12, 0)), vluchtMoment(null)), PEILM,
+            l -> vals(((Vlucht) l.get(0)).isLaat(), ((Vlucht) l.get(1)).isLaat(), ((Vlucht) l.get(2)).isLaat())),
+    };
+    static final Object[] PHASE_DATUMTIJD_GLOBAL_EXPECTED = {
+        vals(true, false, false),   // ordering
+        vals(true, false, false),   // GELIJK
+        vals(true, false, true),    // ONGELIJK (leeg -> WAAR, Tabel 44)
+    };
+
     // regression: the exec model INFINITE-LOOPED when a NAVIGATED-comparison rule (A) was co-resident with a second rule
     //   (B) over the same subject — drools.update(s) re-evaluated A's black-box navigated lambda on every modify by B, and
     //   NO_LOOP blocks only the rule's OWN re-trigger. The idempotent werkBij (update only on an ACTUAL value change)
@@ -4257,6 +4287,21 @@ class ExecModelDifferentialTest {
      *  DRL-fires/exec-skips. Absolute spec values + parity, incl. a leeg operand (Tabel 38 / Tabel 44). */
     /** §8.1.1 a comparison with the Parameter-GLOBAL on the LEFT (numeric + datum + tekst) now fires in the exec — was a
      *  DRL-fires/exec-skips. voorwaarde() swaps operands + reverses the operator (omkeren). Absolute spec values + parity. */
+    /** §8.1.1/§13.3.8 a Datum-en-tijd comparison vs a Datum-en-tijd Parameter-GLOBAL (ordering + equality) now fires in
+     *  the exec — was a DRL-fires/exec-skips (the Datum-en-tijd parameter was registered untracked). Absolute + parity. */
+    @Test void phase_datumtijd_vs_global_is_spec_correct() {
+        for (int i = 0; i < PHASE_DATUMTIJD_GLOBAL.length; i++) {
+            Fixture f = PHASE_DATUMTIJD_GLOBAL[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_DATUMTIJD_GLOBAL_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_global_on_left_is_spec_correct() {
         for (int i = 0; i < PHASE_GLOBAL_LEFT.length; i++) {
             Fixture f = PHASE_GLOBAL_LEFT[i];

@@ -74,6 +74,8 @@ public final class ExecModelTranspiler {
     /** §13.3.8 DATUM (Datum-in-dagen) parameters: a {@code LocalDate} global, kept apart from the scalar BigDecimal
      *  {@link #globals} (the date-comparison-vs-global path binds it as a pattern variable). */
     private final Map<String, Global<java.time.LocalDate>> datumGlobals = new LinkedHashMap<>();
+    /** §13.3.8 DATUM-EN-TIJD parameters: a {@code LocalDateTime} global (the datum-tijd-comparison-vs-global path binds it). */
+    private final Map<String, Global<java.time.LocalDateTime>> datumTijdGlobals = new LinkedHashMap<>();
     /** §13.3.8 TEKST parameters: a {@code String} global (the tekst-equality-vs-global path binds it as a pattern var). */
     private final Map<String, Global<String>> tekstGlobals = new LinkedHashMap<>();
     /** §4.2 the Rekendatum global (a {@code LocalDate}) — registered iff ANY construct is time-bounded (a dated
@@ -136,6 +138,11 @@ public final class ExecModelTranspiler {
                 // §13.3.8 a Datum-in-dagen parameter is a LocalDate global — TRACKED so a datum-vs-global comparison binds it.
                 Global<java.time.LocalDate> g = DSL.globalOf(java.time.LocalDate.class, PKG, ident(p.naam()));
                 datumGlobals.put(ident(p.naam()), g);
+                m.addGlobal(g);
+            } else if (p.datatype() instanceof Datatype.DatumTijd) {
+                // §13.3.8 a Datum-en-tijd parameter is a LocalDateTime global — TRACKED for a datum-tijd-vs-global comparison.
+                Global<java.time.LocalDateTime> g = DSL.globalOf(java.time.LocalDateTime.class, PKG, ident(p.naam()));
+                datumTijdGlobals.put(ident(p.naam()), g);
                 m.addGlobal(g);
             } else if (p.datatype().isTekst()) {
                 // §13.3.8 a Tekst parameter is a String global — TRACKED so a tekst-equality-vs-global comparison binds it.
@@ -1465,13 +1472,17 @@ public final class ExecModelTranspiler {
                 && pr.parameter().datatype().isDatum()) {
             if (!sameDatumKind(la.type(), pr.parameter().datatype())) return null;
             java.util.function.Function<Object, Object> lf = datumTemporeelLezer(la, subject);
-            Global<java.time.LocalDate> g = datumGlobals.get(ident(pr.parameter().naam()));
+            // Datum-in-dagen -> the LocalDate global; Datum-en-tijd -> the LocalDateTime global. datumVergelijkTemporal
+            // compares any Temporal, so the bound value's runtime type is irrelevant to the comparison.
+            Variable g = pr.parameter().datatype() instanceof Datatype.DatumTijd
+                    ? (Variable) datumTijdGlobals.get(ident(pr.parameter().naam()))
+                    : (Variable) datumGlobals.get(ident(pr.parameter().naam()));
             if (lf != null && g != null) {
                 Conditie.Operator op = v.op();
-                return new Gate(pattern.expr(nextId("c"), (Variable) g, (Predicate2) (s, gv) ->
+                return new Gate(pattern.expr(nextId("c"), g, (Predicate2) (s, gv) ->
                         datumVergelijkTemporal(lf.apply(s), gv, op)), List.of());
             }
-            return null;   // unresolvable nav / untracked datum-tijd global -> honest skip (symmetric with DRL marker)
+            return null;   // unresolvable nav -> honest skip (symmetric with DRL marker)
         }
         // §5.3 a TEKST/enumeratiewaarde equality (GELIJK/ONGELIJK) of an OWN or to-one NAVIGATED attribute vs a Tekst
         // Parameter-GLOBAL ("zijn vertrek gelijk is aan de STANDAARDVERTREK"). BEFORE the numeric vs-global branch (whose
