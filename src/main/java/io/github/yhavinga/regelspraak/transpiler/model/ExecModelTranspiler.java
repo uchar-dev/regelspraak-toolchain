@@ -1720,6 +1720,7 @@ public final class ExecModelTranspiler {
                 && (v.links() instanceof Expr.Functie || v.links() instanceof Expr.Binair
                     || v.links() instanceof Expr.Begrensd || v.links() instanceof Expr.Afgerond)
                 && v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
+            if (parityOnveilig(v.links())) return null;   // §3.6 dimensiecel / cross-unit +/- -> DRL markers -> skip (symmetric)
             WaardeFn lw = scalarWaarde(v.links());
             if (lw == null || !lw.globals().isEmpty()) return null;   // unlowerable / needs a global -> skip
             BigDecimal rhs = bd(lit);
@@ -1732,18 +1733,20 @@ public final class ExecModelTranspiler {
         }
         // §8.1.1 a comparison where at least one side is a NUMERIC EXPRESSION (arithmetic Binair / builtin Functie /
         // begrenzing / afronding) and the OTHER side is a numeric attribute OR also an expression — NOT a literal (the
-        // branch above). Lower BOTH sides via scalarWaarde (the value-path lowering, already at parity with
-        // DrlTranspiler.binairTerm/operand — the value differential covers it), then vergelijk + §5.1 restatement. A
-        // fact-only reader (0 globals) on both sides; a global / unlowerable / navigated-unresolvable operand makes
-        // scalarWaarde null or non-empty-globals -> skip (an expr-vs-global is handled in voorwaarde when supported,
-        // else a carded marker). DRL lowers the same expression on BOTH constraint operands. This closes the masked
-        // DRL-fires/exec-skips for "de a plus de b is gelijk aan de c" / "zijn prijs maal 2 groter is dan de drempel".
+        // branch above). Lower BOTH sides via scalarWaarde (the value-path lowering, at parity with DrlTranspiler.binairTerm
+        // on the value side), then vergelijk + §5.1 restatement. Scoped to FACT-LOCAL operands: parityOnveilig skips a §3.6
+        // dimensiecel and a cross-unit +/- (DRL markers those); scalarWaarde returns null for a NAVIGATED operand on the
+        // condition path (valueSubject is value-path-only) and for any unlowerable read; a global operand makes globals
+        // non-empty -> skip. So a navigated / global expr comparison stays an HONEST exec skip (DRL fires it — a carded,
+        // not-yet-migrated TODO, never a fired wrong value). Closes the masked DRL-fires/exec-skips for the fact-local
+        // same-/exact-unit case: "de a plus de b is gelijk aan de c" / "zijn prijs maal 2 groter is dan de drempel".
         if (c instanceof Conditie.Vergelijking v && isNumeriekOp(v.op())
                 && v.links().type() != null && v.links().type().isNumeriek()
                 && v.rechts().type() != null && v.rechts().type().isNumeriek()
                 && (numeriekeExpressie(v.links()) || numeriekeExpressie(v.rechts()))) {
+            if (parityOnveilig(v.links()) || parityOnveilig(v.rechts())) return null;   // §3.6 dimensiecel / cross-unit +/- -> DRL markers -> skip (symmetric)
             WaardeFn lw = scalarWaarde(v.links()), rw = scalarWaarde(v.rechts());
-            if (lw == null || rw == null || !lw.globals().isEmpty() || !rw.globals().isEmpty()) return null;   // unlowerable / needs a global -> skip
+            if (lw == null || rw == null || !lw.globals().isEmpty() || !rw.globals().isEmpty()) return null;   // unlowerable / navigated (value-path) / needs a global -> skip
             BigDecimal[] f = restatement(v.links().type(), v.rechts().type());
             BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
             Conditie.Operator op = v.op();
@@ -2472,6 +2475,27 @@ public final class ExecModelTranspiler {
      *  expr-vs-attr / expr-vs-expr comparison through the {@link #scalarWaarde} value-path lowering on both sides. */
     private static boolean numeriekeExpressie(Expr e) {
         return e instanceof Expr.Binair || e instanceof Expr.Functie || e instanceof Expr.Begrensd || e instanceof Expr.Afgerond;
+    }
+    /** Whether an expression operand contains a construct the DRL CONDITION path MARKERS (so the exec must also skip, to
+     *  stay symmetric) or that restates LOSSILY: a §3.6 DimensieCel (DrlTranspiler.operand markers a dimensioned read in a
+     *  constraint — review F1), or a CROSS-UNIT +/- (DrlTranspiler.omrekenConditie markers it; the right operand restated
+     *  into the left's unit truncates a non-terminating ratio mnd→jr = 1/12, a wrong firing — review F2). MAAL/GEDEELD do
+     *  NOT restate units (§6.4), so they are unit-safe. Recurses through arithmetic / begrenzing / afronding / functie args. */
+    private static boolean parityOnveilig(Expr e) {
+        if (e instanceof Expr.DimensieCel) return true;
+        if (e instanceof Expr.Binair b) {
+            if (b.op() == Expr.BinOp.PLUS || b.op() == Expr.BinOp.MIN || b.op() == Expr.BinOp.VERMINDERD_MET) {
+                Eenheid el = b.links().type() == null ? null : b.links().type().eenheidOf();
+                Eenheid er = b.rechts().type() == null ? null : b.rechts().type().eenheidOf();
+                if (el != null && er != null && el.vereistOmrekening(er)) return true;   // cross-unit +/- -> lossy / DRL markers
+            }
+            return parityOnveilig(b.links()) || parityOnveilig(b.rechts());
+        }
+        if (e instanceof Expr.Begrensd bg) return parityOnveilig(bg.basis())
+                || (bg.minimum() != null && parityOnveilig(bg.minimum())) || (bg.maximum() != null && parityOnveilig(bg.maximum()));
+        if (e instanceof Expr.Afgerond af) return parityOnveilig(af.basis());
+        if (e instanceof Expr.Functie f) return f.argumenten().stream().anyMatch(ExecModelTranspiler::parityOnveilig);
+        return false;
     }
     /** The six numeric comparison operators the model lowers; EERDER/LATER (datum) are a later phase (caller skips). */
     private static boolean isNumeriekOp(Conditie.Operator op) {

@@ -1672,17 +1672,15 @@ class ExecModelDifferentialTest {
             () -> List.of(paxBBP(30, 0, 50), paxBBP(20, 0, 50)),
             Map.of(),
             l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur())),
-        // CROSS-UNIT arith expr == attr: basistarief(mnd) + bodem(jr) == prijs(mnd). 12 + 1jr(=12) == 24 -> WAAR;
-        // == 20 -> ONWAAR; leeg + 1jr(=12) == 12 -> WAAR. DRL was a marker here (omrekenConditie); now fires at parity.
-        new Fixture("CROSS-UNIT arith expr == attr (basistarief mnd + bodem jr == prijs mnd), incl. leeg",
-            "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\n"
-            + "Objecttype de Passagier\n    het basistarief Numeriek (geheel getal) met eenheid mnd;\n    de bodem Numeriek (geheel getal) met eenheid jr;\n    de prijs Numeriek (geheel getal) met eenheid mnd;\n    is duur kenmerk (bijvoeglijk);\n"
-            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn basistarief plus zijn bodem gelijk is aan zijn prijs.\n",
-            () -> List.of(paxBBP(12, 1, 24), paxBBP(12, 1, 20), paxBBP(null, 1, 12)),
-            Map.of(),
-            l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur(), ((Passagier) l.get(2)).isDuur())),
     };
-    static final Object[] PHASE_EXPR_CMP_EXPECTED = { vals(true, false, true), vals(true, false), vals(true, false, true) };
+    static final Object[] PHASE_EXPR_CMP_EXPECTED = { vals(true, false, true), vals(true, false) };
+    // §5.1 a CROSS-UNIT +/- in an arithmetic comparison stays a SYMMETRIC marker — DRL omrekenConditie markers (the
+    //   right-operand restatement into the left's unit truncates the 1/12 ratio, review F2) and the exec parityOnveilig
+    //   skips a cross-unit +/-. Both decline; never a fired wrong value. (Carded: exact canonical-unit arithmetic.)
+    static final String CROSS_UNIT_ARITH_CMP_SRC =
+        "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\n"
+        + "Objecttype de Passagier\n    het basistarief Numeriek (geheel getal) met eenheid jr;\n    de bodem Numeriek (geheel getal) met eenheid mnd;\n    de prijs Numeriek (geheel getal) met eenheid jr;\n    is duur kenmerk (bijvoeglijk);\n"
+        + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn basistarief plus zijn bodem gelijk is aan zijn prijs.\n";
 
     // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
     //      arithmetic tree whose leaf is an AANTAL/TOTAAL/MIN/MAX). Each embedded aggregation lowers to its own
@@ -3535,7 +3533,18 @@ class ExecModelDifferentialTest {
     @Test void phase_C_compound_subselectie_matches_drl_back_end() { runDifferential("Phase C compound", PHASE_C_COMPOUND, 2); }
     @Test void phase_C_count_global_subselectie_matches_drl_back_end() { runDifferential("Phase C count+global", PHASE_C_COUNT_GLOBAL, 4); }
     @Test void phase_crossunit_matches_drl_back_end() { runDifferential("Phase cross-unit", PHASE_CROSSUNIT, 2); }
-    @Test void phase_expr_cmp_matches_drl_back_end() { runDifferential("Phase expr-cmp", PHASE_EXPR_CMP, 3); }
+    @Test void phase_expr_cmp_matches_drl_back_end() { runDifferential("Phase expr-cmp", PHASE_EXPR_CMP, 2); }
+    /** §5.1 a CROSS-UNIT +/- in an arithmetic comparison stays a SYMMETRIC marker — the exec parityOnveilig skips a
+     *  cross-unit +/- (the §4 ratio truncates 1/12 -> a wrong firing, review F2) and DRL omrekenConditie markers it.
+     *  Both decline (exec overgeslagen + DRL TODO), never a fired wrong value. */
+    @Test void cross_unit_arithmetic_comparison_is_symmetric_marker_in_both() {
+        RegelSpraakModel m = Resolver.resolve(CROSS_UNIT_ARITH_CMP_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet een cross-unit +/- voorwaarde overslaan, kreeg: " + em.overgeslagen());
+        assertTrue(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
+                () -> "DRL moet een cross-unit +/- voorwaarde ook markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
+    }
     /** §8.1.1 a comparison whose operand is an arithmetic/builtin EXPRESSION vs an attribute (not a literal) now fires in
      *  the exec (was a masked DRL-fires/exec-skips). Closed-form -> assert the ABSOLUTE spec value + parity, incl. a
      *  leeg operand (leeg -> 0) and a cross-unit expr (restated null-safely on both back-ends). */

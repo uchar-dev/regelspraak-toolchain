@@ -659,11 +659,13 @@ class DrlTest {
         assertFalse(constraintRegel.contains(" ? "), () -> "de voorwaarde-constraint mag geen ternary bevatten:\n" + constraintRegel);
     }
 
-    @Test void convertibele_eenheid_in_een_rekenkundige_voorwaarde_lowert_via_rsHerschaal() {
-        // §5.1 a +/- whose operands need a UNIT CONVERSION in a constraint now FIRES: the value-side null-guard ternary
-        // mis-parses in a pattern constraint and a bare multiply NPE-aborts on a leeg operand, so the restatement goes
-        // through the null-safe rsHerschaal helper (the mirror of the exec scale); nulVeilig/rsNul then makes a leeg
-        // operand 0 (§6.2). Was an honest marker; now a firing cross-unit arithmetic voorwaarde at parity.
+    @Test void convertibele_eenheid_in_een_rekenkundige_voorwaarde_blijft_marker() {
+        // §5.1 a +/- whose operands need a UNIT CONVERSION in a constraint stays an honest MARKER: the restatement
+        // would restate the right operand into the LEFT's unit by the §4 ratio (omrekenfactorNaar), which TRUNCATES a
+        // non-terminating quotient (mnd→jr = 1/12 = 0.0833…) — "1 jr + 12 mnd == 2 jr" would compute 1.9999… ≠ 2, a
+        // WRONG firing (review F2). The comparison restatement uses the exact factorNaarCanoniek, but a +/- result must
+        // stay in the left's unit (lossy for the smaller→larger direction). So both back-ends decline it symmetrically
+        // (the exec parityOnveilig skips a cross-unit +/-). Carded: exact canonical-unit arithmetic would fire both.
         String src = """
             Eenheidsysteem Tijd
                 de maand    mnd
@@ -678,11 +680,8 @@ class DrlTest {
                     Een Klok is oud indien de looptijd van een Klok plus de extra van een Klok gelijk is aan de totaal van een Klok.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        assertFalse(drl.contains("/* TODO voorwaarde"), () -> "een eenheidconversie in een rekenkundige voorwaarde mag geen marker meer zijn:\n" + drl);
-        assertTrue(drl.contains("rsHerschaal(extra"), () -> "de cross-unit +/- operand moet null-veilig herschaald worden:\n" + drl);
-        // the only .multiply is inside the rsHerschaal function body — never a bare (operand).multiply in the constraint
-        assertTrue(drl.lines().filter(l -> l.contains(".multiply")).allMatch(l -> l.contains("x.multiply(f)")),
-                () -> "geen ongegarde .multiply buiten de rsHerschaal helper:\n" + drl);
+        assertTrue(drl.contains("/* TODO voorwaarde"), () -> "een cross-unit +/- in een rekenkundige voorwaarde moet markeren (lossy ratio, review F2):\n" + drl);
+        assertFalse(drl.contains(".multiply"), () -> "geen ongegarde multiply in een constraint:\n" + drl);
     }
 
     @Test void macht_afronding_rondt_de_macht_af_en_een_trailing_operator_bindt_buiten() {
