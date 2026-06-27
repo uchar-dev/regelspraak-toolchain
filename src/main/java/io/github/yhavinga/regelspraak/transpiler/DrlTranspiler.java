@@ -1089,7 +1089,7 @@ public final class DrlTranspiler {
     }
 
     /** How a +/- right operand is restated in the left's unit — the null-guarded ternary form on the value side
-     *  ({@link #omrekenWaarde}), the ternary-free / marker form in a constraint ({@link #omrekenConditie}). */
+     *  ({@link #omrekenWaarde}), the null-safe rsHerschaalExact helper form in a constraint ({@link #herschaalConditie}). */
     @FunctionalInterface private interface Omrekenen { Frag apply(Frag expr, Datatype van, Datatype naar); }
 
     /** §6.2-6.8 binary arithmetic, shared by the value side ({@link #waarde}) and the condition side
@@ -1201,17 +1201,6 @@ public final class DrlTranspiler {
             return Frag.from("rsVerminderd(" + links.text() + ", " + rechts.text() + ")", links, rechts);
         }
         return Frag.from("(" + nulVeilig(links.text()) + " " + infix(b.op()) + " " + nulVeilig(rechts.text()) + ")", links, rechts); // §6.2/§6.3 leeg=0
-    }
-
-    /** Unit restatement for a CONDITION-side +/- operand: identity when no conversion is due (the common case —
-     *  matching or absent units), else a MARKER. A convertible-but-different-unit +/- restates the right operand into
-     *  the LEFT operand's unit by the §4 ratio (omrekenfactorNaar), which TRUNCATES a non-terminating quotient (mnd→jr =
-     *  1/12 = 0.0833…), so "1 jr + 12 mnd == 2 jr" would compute 1.9999… ≠ 2 — a WRONG firing decision (review F2). The
-     *  comparison restatement (vergelijkingsOperanden) avoids this with the exact factorNaarCanoniek, but a +/- operand
-     *  result must stay in the left's unit, which is lossy for the smaller→larger direction. So a cross-unit +/- in a
-     *  condition stays an honest no-op marker (carded: exact canonical-unit arithmetic would fire both at parity). */
-    private static Frag omrekenConditie(Frag expr, Datatype van, Datatype naar) {
-        return omrekenFactor(van, naar) == null ? expr : Frag.todo("eenheidconversie in een rekenkundige voorwaarde", expr.text());
     }
 
     // ---------------- value expression ("then" side: getters) ----------------
@@ -3177,23 +3166,23 @@ public final class DrlTranspiler {
         }
         if (e instanceof Expr.Binair b)
             // §6.2-6.8 arithmetic in a CONDITION: the SAME lowering as the value side (binairTerm), with the
-            // sub-operands as bare properties and the +/- unit restatement via omrekenConditie — identity unless
-            // a conversion is due, else a marker (a pattern constraint cannot host the value-side null-guard
-            // ternary, and the ternary-free multiply would NPE-abort the session on a null operand, so a
-            // convertible-but-different-unit +/- stays an honest no-op). The leegwaarde helpers (rsNul/rsGedeeld/
-            // rsVerminderd/rsMacht) are method calls, valid in a constraint.
-            return binairTerm(b, x -> operandReken(x, subject), this::herschaalConditiePlus);
+            // sub-operands as bare properties and the +/- unit restatement via herschaalConditie — the EXACT null-safe
+            // rsHerschaalExact (×÷ the integer factorNaarCanoniek), so a convertible cross-unit +/- FIRES (only an opaque
+            // composite stays a marker). The leegwaarde helpers (rsNul/rsGedeeld/rsVerminderd/rsMacht) are method
+            // calls, valid in a constraint.
+            return binairTerm(b, x -> operandReken(x, subject), this::herschaalConditie);
         if (e instanceof Expr.Begrensd bg) {
             // §6.1.4 begrenzing in a CONDITION: the value side clamps with an inline ternary "(r < m ? m : r)"
             // that mis-parses in a pattern constraint, so lower through the registered rsBegrens helper (a method
             // call, null-safe, clamping min-then-max sequentially to match the value side's order). The bounds are
-            // restated via omrekenConditie (identity, or a marker on a convertible-but-different unit, like the
-            // +/- path); a marker basis/bound propagates.
+            // restated EXACTLY into the basis unit via herschaalConditie (×÷ the integer factorNaarCanoniek, like the
+            // +/- and value-side begrenzing paths), so a "min van 24 mnd" clamp on a jr basis compares against an
+            // exact 2 jr — it FIRES, not markers (only an OPAQUE composite bound, or a marker basis/bound, propagates).
             registreerBegrensFunctie();
             Datatype bt = bg.basis().type();
             Frag basis = operandReken(bg.basis(), subject);
-            Frag min = bg.minimum() != null ? omrekenConditie(operandReken(bg.minimum(), subject), bg.minimum().type(), bt) : Frag.ok("null");
-            Frag max = bg.maximum() != null ? omrekenConditie(operandReken(bg.maximum(), subject), bg.maximum().type(), bt) : Frag.ok("null");
+            Frag min = bg.minimum() != null ? herschaalConditie(operandReken(bg.minimum(), subject), bg.minimum().type(), bt) : Frag.ok("null");
+            Frag max = bg.maximum() != null ? herschaalConditie(operandReken(bg.maximum(), subject), bg.maximum().type(), bt) : Frag.ok("null");
             if (basis.marker() || min.marker() || max.marker()) return Frag.todo("begrenzing in voorwaarde", bg.bron());
             return Frag.ok("rsBegrens(" + basis.text() + ", " + min.text() + ", " + max.text() + ")");
         }
@@ -3374,7 +3363,7 @@ public final class DrlTranspiler {
 
     /** Multiply {@code expr} by a unit-conversion {@code factor} — the one place the {@code .multiply(new
      *  BigDecimal("…"))} restatement is emitted. Identity when there is no real conversion (a {@code null} or
-     *  unit (1) factor). The callers (omrekenWaarde / omrekenConditie / naarCanoniek) guard a placeholder
+     *  unit (1) factor). The callers (omrekenWaarde / herschaalConditie / naarCanoniek) guard a placeholder
      *  {@link Frag} BEFORE calling, so {@code expr} here is always real text. When {@code nullVeilig}, the
      *  multiply is guarded so an empty value converts to empty rather than NPE-ing — the VALUE side only, since
      *  a Drools pattern constraint cannot host the {@code == null} ternary (it reads as a nested constraint). */
@@ -3459,10 +3448,13 @@ public final class DrlTranspiler {
         return expr.marker() ? expr : Frag.ok(herschaalExact(expr.text(), van, naar, true));
     }
 
-    /** §4 restatement of a +/- RIGHT operand on the CONSTRAINT side: a SIMPLE convertible cross-unit +/- now FIRES via
-     *  the EXACT rsHerschaalExact (no more lossy-ratio truncation), so "0 jr + 24 mnd == 2 jr" decides 24 == 24. A
-     *  COMPOSITE (rate) cross-unit stays an honest marker (its precision edge is carded); no conversion is the identity. */
-    private Frag herschaalConditiePlus(Frag expr, Datatype van, Datatype naar) {
+    /** §4 EXACT restatement of a value in {@code van} into {@code naar} on the CONSTRAINT side, shared by a +/- RIGHT
+     *  operand AND a begrenzing min/max bound: a SIMPLE convertible cross-unit restate now FIRES via the EXACT
+     *  rsHerschaalExact (no more lossy-ratio truncation), so "0 jr + 24 mnd == 2 jr" decides 24 == 24 and a "min van 24
+     *  mnd" clamp compares against an exact 2 jr. A COMPOSITE (rate) cross-unit is exact too (exacteHerschaalFactoren
+     *  folds the inverted denominator); only an OPAQUE product unit (no canonical factors) stays an honest marker; no
+     *  conversion is the identity. The null-safe mirror of {@link #omrekenWaarde} (value side). */
+    private Frag herschaalConditie(Frag expr, Datatype van, Datatype naar) {
         if (expr.marker()) return expr;
         io.github.yhavinga.regelspraak.model.Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();
         if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return expr;   // no conversion -> identity

@@ -2702,6 +2702,15 @@ public final class ExecModelTranspiler {
         return ea != null && eb != null && ea.convertibleNaar(eb) && ea.exacteHerschaalFactoren(eb) != null;
     }
 
+    /** Whether a begrenzing {@code grens} (min/max) is parity-UNSAFE to restate into {@code basisType}'s unit inside a
+     *  CONSTRAINT: it needs a unit restatement (a different convertible unit) that is NOT exact (an opaque composite —
+     *  DRL markers it, the exec must skip symmetrically). A null/same-unit/exactly-restatable bound is safe (FIRES). */
+    private static boolean grensOnveilig(Expr grens, Datatype basisType) {
+        if (grens == null || grens.type() == null || basisType == null) return false;
+        Eenheid eb = basisType.eenheidOf(), eg = grens.type().eenheidOf();
+        return eb != null && eg != null && eb.vereistOmrekening(eg) && !eenheidExactHerschaalbaar(grens.type(), basisType);
+    }
+
     /** The EXACT canonical-unit restatement factors {fv, fn} to restate a value in {@code van} into {@code naar}
      *  (×fv ÷fn at DECIMAL64), or null when no exact restatement applies (no conversion due, or a rate/unknown-factor
      *  unit — the caller then falls back to the lossy {@link #valueFactor}). Mirrors DRL herschaalExact. */
@@ -2757,19 +2766,16 @@ public final class ExecModelTranspiler {
             return parityOnveilig(b.links()) || parityOnveilig(b.rechts());
         }
         if (e instanceof Expr.Begrensd bg) {
-            // A CROSS-UNIT begrenzing BOUND (a min/max unit ≠ the basis unit) is restated in a CONSTRAINT by DRL's
-            // omrekenConditie, which MARKERS it — the begrenzing bound stays on the lossy single ratio (the +/- exact
-            // rsHerschaalExact path was NOT extended to begrenzing; separately carded). The exec must SKIP it
-            // symmetrically (it lowers the bound via the lossy valueFactor and would otherwise FIRE a constraint DRL
-            // declines — a confirmed exec-fires/DRL-markers divergence). The VALUE-side begrenzing is unaffected (it
-            // never reaches parityOnveilig; both back-ends restate it lossily there, symmetric).
-            Eenheid eb = bg.basis().type() == null ? null : bg.basis().type().eenheidOf();
-            boolean crossBound = eb != null
-                    && ((bg.minimum() != null && bg.minimum().type() != null && bg.minimum().type().eenheidOf() != null
-                            && eb.vereistOmrekening(bg.minimum().type().eenheidOf()))
-                     || (bg.maximum() != null && bg.maximum().type() != null && bg.maximum().type().eenheidOf() != null
-                            && eb.vereistOmrekening(bg.maximum().type().eenheidOf())));
-            return crossBound || parityOnveilig(bg.basis())
+            // A CROSS-UNIT begrenzing BOUND (a min/max unit ≠ the basis unit) is now restated EXACTLY into the basis
+            // unit by BOTH back-ends — DRL herschaalConditie -> rsHerschaalExact, exec scalarWaarde's .herschaald —
+            // (×÷ the integer factorNaarCanoniek, one DECIMAL64 rounding, like the +/- path), so the begrenzing
+            // CONSTRAINT FIRES at parity. Only an OPAQUE composite bound (no exact factors) would restate lossily and
+            // must SKIP symmetrically with DRL's marker — but two such units are never inter-convertible, so a
+            // convertible cross-unit bound never hits that branch (grensOnveilig). The VALUE-side begrenzing is
+            // unaffected (it never reaches parityOnveilig).
+            Datatype bt = bg.basis().type();
+            return grensOnveilig(bg.minimum(), bt) || grensOnveilig(bg.maximum(), bt)
+                    || parityOnveilig(bg.basis())
                     || (bg.minimum() != null && parityOnveilig(bg.minimum())) || (bg.maximum() != null && parityOnveilig(bg.maximum()));
         }
         if (e instanceof Expr.Afgerond af) return parityOnveilig(af.basis());

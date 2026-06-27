@@ -1758,6 +1758,37 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_CU_VALUE_EXPECTED = { new BigDecimal("2"), new BigDecimal("0.5"), new BigDecimal("2") };
 
+    // ---- §6.1.4/§4 EXACT cross-unit begrenzing BOUND inside a CONSTRAINT now FIRES at parity (was a symmetric
+    //      marker/skip): the min/max bound (mnd) is restated EXACTLY into the basis unit (jr) — DRL herschaalConditie
+    //      -> rsHerschaalExact, exec scalarWaarde's .herschaald — so a "min van 24 mnd" clamp compares against an exact
+    //      2 jr. The lossy single ratio gave 1.99999999999999992, so the EQUALITY "== 2 jr" flipped to ONWAAR — a
+    //      SHARED wrong decision a pure parity check would miss; assert the ABSOLUTE spec value (differential-masks-
+    //      shared-bugs). Covers a minimum bound, a maximum bound, a negative control, and a leeg bound (no NPE). ----
+    static final String CU_BEGR_MIN_COND_SRC =
+        "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\n"
+        + "Objecttype de Tijdmeter\n    de extra Numeriek (getal met 5 decimalen) met eenheid jr;\n    de looptijd Numeriek (getal met 5 decimalen) met eenheid mnd;\n    de totaal Numeriek (getal met 5 decimalen) met eenheid jr;\n    is oud kenmerk (bijvoeglijk);\n"
+        + "Regel R\n    geldig altijd\n        Een Tijdmeter is oud indien de extra van een Tijdmeter, met een minimum van de looptijd van een Tijdmeter gelijk is aan de totaal van een Tijdmeter.\n";
+    static final String CU_BEGR_MAX_COND_SRC = CU_BEGR_MIN_COND_SRC.replace("met een minimum van", "met een maximum van");
+    static final Fixture[] PHASE_CU_BEGR_COND = {
+        // MIN bound, 24 mnd boundary: clamp max(0 jr, 24 mnd=2 jr) = 2 jr; 2 == 2 -> WAAR (lossy gave 1.9999…992 != 2 -> ONWAAR)
+        new Fixture("cross-unit begrenzing-constraint min(24 mnd=2 jr) == 2 jr -> waar", CU_BEGR_MIN_COND_SRC,
+            () -> List.of(tm(t -> { t.setExtra(new BigDecimal(0)); t.setLooptijd(new BigDecimal(24)); t.setTotaal(new BigDecimal(2)); })),
+            Map.of(), l -> ((Tijdmeter) l.get(0)).isOud()),
+        // MIN bound negative control: clamp = 2 jr; 2 == 3 -> ONWAAR (the exact restatement must not spuriously fire)
+        new Fixture("cross-unit begrenzing-constraint min(24 mnd=2 jr) == 3 jr -> onwaar", CU_BEGR_MIN_COND_SRC,
+            () -> List.of(tm(t -> { t.setExtra(new BigDecimal(0)); t.setLooptijd(new BigDecimal(24)); t.setTotaal(new BigDecimal(3)); })),
+            Map.of(), l -> ((Tijdmeter) l.get(0)).isOud()),
+        // MAX bound, 24 mnd boundary: clamp min(5 jr, 24 mnd=2 jr) = 2 jr; 2 == 2 -> WAAR
+        new Fixture("cross-unit begrenzing-constraint max(24 mnd=2 jr) == 2 jr -> waar", CU_BEGR_MAX_COND_SRC,
+            () -> List.of(tm(t -> { t.setExtra(new BigDecimal(5)); t.setLooptijd(new BigDecimal(24)); t.setTotaal(new BigDecimal(2)); })),
+            Map.of(), l -> ((Tijdmeter) l.get(0)).isOud()),
+        // LEEG bound: looptijd leeg -> no min clamp (rsBegrens(0, null, null) = 0); 0 == 0 -> WAAR, no NPE on the null bound
+        new Fixture("cross-unit begrenzing-constraint min(leeg) == 0 jr -> waar (no NPE)", CU_BEGR_MIN_COND_SRC,
+            () -> List.of(tm(t -> { t.setExtra(new BigDecimal(0)); t.setTotaal(new BigDecimal(0)); })),
+            Map.of(), l -> ((Tijdmeter) l.get(0)).isOud()),
+    };
+    static final Object[] PHASE_CU_BEGR_COND_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, Boolean.TRUE };
+
     // ---- §5.8.3 a MIN/MAX instance-aggregation written into a DIFFERENT-unit doel. The min/max accumulate binds as a
     //      java.lang.Number, so the cross-unit restate's .multiply USED TO FAIL the DRL build (java.lang.Number.multiply)
     //      while the exec fired correctly -> a DRL-build-error-vs-exec-fires DIVERGENCE (wf_7e1d0ff9 review, medium).
@@ -4491,20 +4522,26 @@ class ExecModelDifferentialTest {
         assertFalse(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
                 () -> "DRL moet een rate cross-unit +/- voorwaarde nu vuren (geen marker):\n" + DrlTranspiler.transpile(m));
     }
-    /** §6.1.4/§4 a CROSS-UNIT begrenzing BOUND inside a CONSTRAINT stays a SYMMETRIC marker: DRL's omrekenConditie markers
-     *  the bound restatement (the begrenzing bound is NOT on the exact rsHerschaalExact path — separately carded), and the
-     *  exec parityOnveilig now detects the basis(jr)-vs-bound(mnd) span and SKIPS it. Pins the wf_5355bc06 review's confirmed
-     *  exec-fires/DRL-markers divergence (the exec used to FIRE this constraint while DRL declined it) stays closed. */
-    @Test void begrenzing_cross_unit_constraint_is_symmetric_marker_in_both() {
-        String src = "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\n"
-            + "Objecttype de Tijdmeter\n    de extra Numeriek (geheel getal) met eenheid jr;\n    de looptijd Numeriek (geheel getal) met eenheid mnd;\n    de totaal Numeriek (geheel getal) met eenheid jr;\n    is oud kenmerk (bijvoeglijk);\n"
-            + "Regel R\n    geldig altijd\n        Een Tijdmeter is oud indien de extra van een Tijdmeter, met een minimum van de looptijd van een Tijdmeter groter is dan de totaal van een Tijdmeter.\n";
-        RegelSpraakModel m = Resolver.resolve(src);
-        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
-        ExecModelTranspiler em = ExecModelTranspiler.build(m);
-        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet een cross-unit begrenzing voorwaarde overslaan, kreeg: " + em.overgeslagen());
-        assertTrue(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
-                () -> "DRL moet een cross-unit begrenzing voorwaarde ook markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
+    /** §6.1.4/§4 a CROSS-UNIT begrenzing BOUND inside a CONSTRAINT now FIRES at parity (was a symmetric marker/skip): the
+     *  min/max bound (mnd) restates EXACTLY into the basis unit (jr) — DRL herschaalConditie -> rsHerschaalExact, exec
+     *  scalarWaarde's .herschaald — so a "min van 24 mnd" clamp compares against an exact 2 jr. The lossy single ratio gave
+     *  1.99999999999999992, so the equality "== 2 jr" flipped to ONWAAR — a SHARED wrong decision, hence the ABSOLUTE
+     *  assertion (differential-masks-shared-bugs). Closes the last cross-unit capability gap; the wf_5355bc06 review's
+     *  exec-fires/DRL-markers divergence is now fire-vs-fire at parity. */
+    @Test void phase_cross_unit_begrenzing_constraint_is_spec_correct() {
+        for (int i = 0; i < PHASE_CU_BEGR_COND.length; i++) {
+            Fixture f = PHASE_CU_BEGR_COND[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            assertFalse(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
+                    () -> f.naam() + " DRL moet vuren (geen marker):\n" + DrlTranspiler.transpile(m));
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_CU_BEGR_COND_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
     }
     /** §5.8 a bare SET operand ("de prijs van alle passagiers") inside arithmetic in a CONDITION must SKIP symmetrically
      *  with DRL's marker, NOT lower to a scalar read that reads `prijs` off the subject Vlucht (no such getter) and CRASH
