@@ -71,6 +71,9 @@ public final class ExecModelTranspiler {
     /** §13.3.6 temporal parameters: a tijdlijn parameter is a {@code List<Segment>} global (only a §7.3.2
      *  tijdsevenredig base reads it), kept apart from the scalar BigDecimal {@link #globals}. */
     private final Map<String, Global<java.util.List>> listGlobals = new LinkedHashMap<>();
+    /** §13.3.8 DATUM (Datum-in-dagen) parameters: a {@code LocalDate} global, kept apart from the scalar BigDecimal
+     *  {@link #globals} (the date-comparison-vs-global path binds it as a pattern variable). */
+    private final Map<String, Global<java.time.LocalDate>> datumGlobals = new LinkedHashMap<>();
     /** §4.2 the Rekendatum global (a {@code LocalDate}) — registered iff ANY construct is time-bounded (a dated
      *  {@code geldig vanaf/tot} version), read by the per-construct {@link #geldigGuard} window guard. null when
      *  every construct is {@code geldig altijd} (no guard needed). Mirrors DrlTranspiler's {@code rekendatum} global. */
@@ -126,6 +129,11 @@ public final class ExecModelTranspiler {
             if (p.datatype().isNumeriek() || p.datatype().isPercentage()) {
                 Global<BigDecimal> g = DSL.globalOf(BigDecimal.class, PKG, ident(p.naam()));
                 globals.put(ident(p.naam()), g);
+                m.addGlobal(g);
+            } else if (p.datatype() instanceof Datatype.DatumInDagen) {
+                // §13.3.8 a Datum-in-dagen parameter is a LocalDate global — TRACKED so a datum-vs-global comparison binds it.
+                Global<java.time.LocalDate> g = DSL.globalOf(java.time.LocalDate.class, PKG, ident(p.naam()));
+                datumGlobals.put(ident(p.naam()), g);
                 m.addGlobal(g);
             } else {
                 m.addGlobal(DSL.globalOf(globalKlasse(p.datatype()), PKG, ident(p.naam())));
@@ -1426,6 +1434,26 @@ public final class ExecModelTranspiler {
                     (Predicate2) (f, subj) -> RegelSpraakRuntime.get(f, backref) == subj);
             RuleItemBuilder<?> item = vr.negatie() ? DSL.not(fp) : DSL.exists(fp);
             return new Gate(pattern, List.of(item));
+        }
+        // §8.1.1 a DATUM comparison of an OWN or to-one NAVIGATED datum attribute vs a Datum-in-dagen Parameter-GLOBAL
+        // ("zijn geboortedatum eerder is dan de PEILDATUM", "de vluchtdatum van zijn reis gelijk is aan de PEILDATUM").
+        // BEFORE the numeric vs-global branch (whose `!isNumeriekOp -> return null` would otherwise swallow a datum op).
+        // DRL reads the date global as a free name; the exec binds the LocalDate global as a pattern variable and
+        // compares via datumVergelijkTemporal (§5 leegwaarde tables). A mixed Datum-in-dagen/Datum-en-tijd pair is a
+        // §5.3 Tabel 36 mismatch -> skip; a Datum-en-tijd global (untracked, datumGlobals.get == null) -> honest skip.
+        if (c instanceof Conditie.Vergelijking v && isDatumVergelijkOp(v.op())
+                && v.links() instanceof Expr.AttribuutRef la && la.type() != null && la.type().isDatum()
+                && v.rechts() instanceof Expr.ParameterRef pr && pr.parameter().datatype() != null
+                && pr.parameter().datatype().isDatum()) {
+            if (!sameDatumKind(la.type(), pr.parameter().datatype())) return null;
+            java.util.function.Function<Object, Object> lf = datumTemporeelLezer(la, subject);
+            Global<java.time.LocalDate> g = datumGlobals.get(ident(pr.parameter().naam()));
+            if (lf != null && g != null) {
+                Conditie.Operator op = v.op();
+                return new Gate(pattern.expr(nextId("c"), (Variable) g, (Predicate2) (s, gv) ->
+                        datumVergelijkTemporal(lf.apply(s), gv, op)), List.of());
+            }
+            return null;   // unresolvable nav / untracked datum-tijd global -> honest skip (symmetric with DRL marker)
         }
         // §8.1.1 a comparison vs a numeric Parameter-GLOBAL needs a 2-var expr (the global as a pattern variable),
         // so it stays here rather than in leafPredicate (a vs-literal comparison IS a fact-only leaf).

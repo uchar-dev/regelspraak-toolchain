@@ -2058,6 +2058,48 @@ class ExecModelDifferentialTest {
         vals(true, false, true),    // datum ONGELIJK (mismatch T; match F; leeg WAAR)
     };
 
+    // §8.1.1/§13.3.8 a DATUM comparison vs a Datum-in-dagen Parameter-GLOBAL ("zijn geboortedatum eerder is dan de
+    //   PEILDATUM", own + navigated, ordering + equality) now fires in the exec — was a DRL-fires/exec-skips (the
+    //   numeric vs-global branch swallowed the datum op with `!isNumeriekOp -> return null`; no datum vs-global branch).
+    //   The exec tracks the Datum-in-dagen parameter as a LocalDate global and binds it (datumVergelijkTemporal).
+    static final Map<String, Object> PEIL = Map.of("pEILDATUM", LocalDate.of(2000, 1, 1));
+    static final String DG_OWN_HDR =
+        "Parameter de PEILDATUM : Datum in dagen\nObjecttype de Passagier\n    de geboortedatum Datum in dagen;\n    is duur kenmerk (bijvoeglijk);\n";
+    static Passagier passGeb(LocalDate d) { Passagier p = new Passagier(); if (d != null) p.setGeboortedatum(d); return p; }
+    static final Fixture[] PHASE_DATUM_GLOBAL = {
+        // own-attr ordering vs global PEILDATUM=2000: geboortedatum eerder dan PEILDATUM -> [1999 WAAR, 2001 onwaar, leeg onwaar].
+        new Fixture("datum own ordering vs Parameter global (geboortedatum eerder dan PEILDATUM)",
+            DG_OWN_HDR + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn geboortedatum eerder is dan de PEILDATUM.\n",
+            () -> List.of(passGeb(dat(1999, 1, 1)), passGeb(dat(2001, 1, 1)), passGeb(null)), PEIL,
+            l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur(), ((Passagier) l.get(2)).isDuur())),
+        // own-attr GELIJK vs global: geboortedatum gelijk PEILDATUM -> [2000 WAAR, 2001 onwaar, leeg onwaar (Tabel 38)].
+        new Fixture("datum own GELIJK vs Parameter global (geboortedatum gelijk PEILDATUM)",
+            DG_OWN_HDR + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn geboortedatum gelijk is aan de PEILDATUM.\n",
+            () -> List.of(passGeb(dat(2000, 1, 1)), passGeb(dat(2001, 1, 1)), passGeb(null)), PEIL,
+            l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur(), ((Passagier) l.get(2)).isDuur())),
+        // own-attr ONGELIJK vs global: geboortedatum ongelijk PEILDATUM -> [1999 WAAR, 2000 onwaar, leeg WAAR (Tabel 44)].
+        new Fixture("datum own ONGELIJK vs Parameter global (geboortedatum ongelijk PEILDATUM)",
+            DG_OWN_HDR + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn geboortedatum ongelijk is aan de PEILDATUM.\n",
+            () -> List.of(passGeb(dat(1999, 1, 1)), passGeb(dat(2000, 1, 1)), passGeb(null)), PEIL,
+            l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur(), ((Passagier) l.get(2)).isDuur())),
+        // NAVIGATED ordering vs global: de vluchtdatum van zijn reis eerder dan PEILDATUM -> [reis 1999 WAAR, absent-reis onwaar].
+        new Fixture("datum navigated ordering vs Parameter global (vluchtdatum van zijn reis eerder dan PEILDATUM)",
+            "Parameter de PEILDATUM : Datum in dagen\nObjecttype de Vlucht\n    de vluchtdatum Datum in dagen;\n"
+            + "Objecttype de Passagier\n    is duur kenmerk (bijvoeglijk);\n" + AGG_FEIT
+            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien de vluchtdatum van zijn reis eerder is dan de PEILDATUM.\n",
+            () -> { Vlucht v = new Vlucht(); v.setVluchtdatum(dat(1999, 1, 1));
+                    Passagier p1 = new Passagier(); p1.setReis(v);
+                    Passagier p2 = new Passagier();   // absent reis -> leeg -> ordering no-match
+                    return List.of(v, p1, p2); }, PEIL,
+            l -> vals(((Passagier) l.get(1)).isDuur(), ((Passagier) l.get(2)).isDuur())),
+    };
+    static final Object[] PHASE_DATUM_GLOBAL_EXPECTED = {
+        vals(true, false, false),   // own ordering
+        vals(true, false, false),   // own GELIJK
+        vals(true, false, true),    // own ONGELIJK (leeg -> WAAR, Tabel 44)
+        vals(true, false),          // navigated ordering
+    };
+
     // regression: the exec model INFINITE-LOOPED when a NAVIGATED-comparison rule (A) was co-resident with a second rule
     //   (B) over the same subject — drools.update(s) re-evaluated A's black-box navigated lambda on every modify by B, and
     //   NO_LOOP blocks only the rule's OWN re-trigger. The idempotent werkBij (update only on an ACTUAL value change)
@@ -4154,6 +4196,21 @@ class ExecModelDifferentialTest {
     /** §8.1.1 a comparison with the CONSTANT on the LEFT now fires in the exec (numeric + datum, ordering + equality) —
      *  was a DRL-fires/exec-skips (every leaf branch keyed on an attr/expr LHS). leafPredicate swaps operands + reverses
      *  the operator (omkeren). Absolute spec values + parity, incl. a leeg operand (Tabel 44 ONGELIJK one-leeg WAAR). */
+    /** §8.1.1/§13.3.8 a datum comparison vs a Datum-in-dagen Parameter-GLOBAL (own + navigated, ordering + equality) now
+     *  fires in the exec — was a DRL-fires/exec-skips. Absolute spec values + parity, incl. leegwaarde (Tabel 44). */
+    @Test void phase_datum_vs_global_is_spec_correct() {
+        for (int i = 0; i < PHASE_DATUM_GLOBAL.length; i++) {
+            Fixture f = PHASE_DATUM_GLOBAL[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_DATUM_GLOBAL_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_literal_on_left_comparison_is_spec_correct() {
         for (int i = 0; i < PHASE_LIT_LEFT.length; i++) {
             Fixture f = PHASE_LIT_LEFT[i];
