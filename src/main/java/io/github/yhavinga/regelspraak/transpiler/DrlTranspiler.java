@@ -2706,7 +2706,23 @@ public final class DrlTranspiler {
             elementExpr = elemWaarde.apply(a);
         accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true)
                 + "( " + filterScope + " ) ; " + var + " : " + fn + "( " + elementExpr + " ) )");
+        // §5.8.3 a min/max reduction binds $accN as a java.lang.Number (the element's static type in the accumulate),
+        // so a downstream cross-unit restate (.multiply/.divide) or arithmetic on it fails Drools' strict-mode method
+        // resolution (Number has no .multiply). Coerce to BigDecimal, null-safe (an empty min/max stays leeg), mirroring
+        // the exec's RegelSpraakRuntime.toBd. SUM already yields a BigDecimal accumulate; COUNT stays an integer count.
+        if (f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM)
+            return Frag.ok(registreerGetalFunctie() + "(" + var + ")");
         return Frag.ok(var);
+    }
+
+    /** Register (idempotently) the null-safe Object→BigDecimal coercion {@code rsGetal} — the DRL mirror of
+     *  {@link io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime#toBd}, used to retype a min/max accumulate binding (a
+     *  java.lang.Number) to BigDecimal so a cross-unit restate / arithmetic on it resolves under Drools strict-mode. */
+    private String registreerGetalFunctie() {
+        String fn = "rsGetal";
+        hulpFuncties.putIfAbsent(fn, "function java.math.BigDecimal " + fn
+                + "(Object x) {\n    return x == null ? null : new java.math.BigDecimal(x.toString());\n}\n\n");
+        return fn;
     }
 
     /** The element scope: the join binding the element to the subject ("the passagiers

@@ -1757,6 +1757,30 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_CU_VALUE_EXPECTED = { new BigDecimal("2"), new BigDecimal("0.5"), new BigDecimal("2") };
 
+    // ---- §5.8.3 a MIN/MAX instance-aggregation written into a DIFFERENT-unit doel. The min/max accumulate binds as a
+    //      java.lang.Number, so the cross-unit restate's .multiply USED TO FAIL the DRL build (java.lang.Number.multiply)
+    //      while the exec fired correctly -> a DRL-build-error-vs-exec-fires DIVERGENCE (wf_7e1d0ff9 review, medium).
+    //      The DRL now coerces the min/max binding to BigDecimal (rsGetal), mirroring the exec's toBd. SOM already
+    //      yields a BigDecimal accumulate. (Pre-existing; the cross-unit restate on $accN predates the value-side work.) ----
+    static final String CU_AGG_SRC =
+        "Eenheidsysteem Tijd\n    de maand mnd\n    het jaar jr = 12 mnd\n"
+        + "Objecttype de Vlucht\n    de reisduur Numeriek (getal met 5 decimalen) met eenheid jr;\n"
+        + "Objecttype de Passagier (mv: passagiers)\n    de leeftijd Numeriek (getal met 5 decimalen) met eenheid mnd;\n"
+        + "Feittype Vlucht van passagiers\n    de reis Vlucht\n    de passagier Passagier\nEén reis betreft meerdere passagiers\n"
+        + "Regel m\n    geldig altijd\n        De reisduur van een Vlucht moet berekend worden als de %s van de leeftijd van alle passagiers van de reis.\n";
+    static Supplier<List<Object>> cuAggFacts() {
+        return () -> { List<Object> fs = new ArrayList<>(); Vlucht v = new Vlucht(); fs.add(v);
+            for (int d : new int[]{24, 12, 6}) { Passagier p = new Passagier(); p.setLeeftijd(new BigDecimal(d)); p.setReis(v); fs.add(p); }
+            return fs; };
+    }
+    static final Fixture[] PHASE_CU_AGG = {
+        new Fixture("cross-unit MAX aggregation max(24,12,6) mnd = 24 mnd = 2 jr", String.format(CU_AGG_SRC, "maximale waarde"),
+            cuAggFacts(), Map.of(), l -> ((Vlucht) l.get(0)).getReisduur()),
+        new Fixture("cross-unit MIN aggregation min(24,12,6) mnd = 6 mnd = 0.5 jr", String.format(CU_AGG_SRC, "minimale waarde"),
+            cuAggFacts(), Map.of(), l -> ((Vlucht) l.get(0)).getReisduur()),
+    };
+    static final Object[] PHASE_CU_AGG_EXPECTED = { new BigDecimal("2"), new BigDecimal("0.5") };
+
     // ---- §5.3 an ENUMERATIE attribute compared to an enum-typed Parameter-GLOBAL ("zijn roepnaam gelijk is aan de
     //      STANDAARDNAAM"). DRL reads the enum global as a free name (String equality); the exec used to SKIP (the
     //      tekst-vs-global branch gated on isTekst(), which excludes Enumeratie) -> a masked DRL-fires/exec-skips.
@@ -4234,6 +4258,23 @@ class ExecModelDifferentialTest {
     @Test void phase_crossunit_matches_drl_back_end() { runDifferential("Phase cross-unit", PHASE_CROSSUNIT, 2); }
     @Test void phase_cu_arith_matches_drl_back_end() { runDifferential("Phase cross-unit +/-", PHASE_CU_ARITH, 5); }
     @Test void phase_cu_value_matches_drl_back_end() { runDifferential("Phase cross-unit value", PHASE_CU_VALUE, 3); }
+    @Test void phase_cu_agg_matches_drl_back_end() { runDifferential("Phase cross-unit min/max agg", PHASE_CU_AGG, 2); }
+    /** §5.8.3 a MIN/MAX instance-aggregation into a different-unit doel: the DRL must COERCE the min/max binding (a
+     *  java.lang.Number) to BigDecimal (rsGetal) before the cross-unit restate, else its build fails (Number.multiply)
+     *  while the exec fires — a divergence the wf_7e1d0ff9 review caught. ABSOLUTE: max(24,12,6) mnd = 2 jr, min = 0.5 jr. */
+    @Test void phase_cross_unit_minmax_aggregation_is_spec_correct() {
+        for (int i = 0; i < PHASE_CU_AGG.length; i++) {
+            Fixture f = PHASE_CU_AGG[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_CU_AGG_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_enum_global_matches_drl_back_end() { runDifferential("Phase enum-vs-global", PHASE_ENUM_GLOBAL, 6); }
     /** §5.3 an ENUMERATIE attribute compared to an enum-typed Parameter-global now FIRES in the exec (was a masked
      *  DRL-fires/exec-skips: the tekst-vs-global branch gated on isTekst(), excluding Enumeratie). Both compare by
