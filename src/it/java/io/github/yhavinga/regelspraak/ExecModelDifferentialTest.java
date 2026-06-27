@@ -2185,6 +2185,37 @@ class ExecModelDifferentialTest {
         vals(true, false, true),    // ONGELIJK (leeg -> WAAR, Tabel 44)
     };
 
+    // §5.6 Tabel 44 a numeric to-ONE NAVIGATED ONGELIJK vs a Parameter-GLOBAL with an ABSENT relation must be WAAR (the
+    //   navigated attr reads leeg, §5.5.5; leeg != 50 = WAAR). The exec nav-vs-global branch used to short-circuit
+    //   rel==null -> false for ALL operators (wrong for ONGELIJK) — a DRL-fires/exec-WRONG that the global-on-LEFT
+    //   normalisation widened. Now reads the leg leeg -> vergelijk (leegwaarde tables). Both spellings, present + absent.
+    static final String NAVG_HDR =
+        "Parameter de DREMPEL : Numeriek (geheel getal)\nObjecttype de Vlucht\n    de vertrektijd Numeriek (geheel getal);\n"
+        + "Objecttype de Passagier\n    is duur kenmerk (bijvoeglijk);\n" + AGG_FEIT;
+    static java.util.function.Supplier<List<Object>> navOngFacts() {
+        return () -> { Vlucht v99 = new Vlucht(); v99.setVertrektijd(new BigDecimal(99));
+                       Vlucht v50 = new Vlucht(); v50.setVertrektijd(new BigDecimal(50));
+                       Passagier pNo = new Passagier();                                   // absent reis -> leeg != 50 -> WAAR
+                       Passagier p99 = new Passagier(); p99.setReis(v99);                 // 99 != 50 -> WAAR
+                       Passagier p50 = new Passagier(); p50.setReis(v50);                 // 50 != 50 -> onwaar
+                       return List.of(v99, v50, pNo, p99, p50); };
+    }
+    static final Map<String, Object> DREMP50 = Map.of("dREMPEL", new BigDecimal(50));
+    static final Fixture[] PHASE_NAV_GLOBAL_ONGELIJK = {
+        new Fixture("navigated ONGELIJK vs global, RIGHT spelling (vertrektijd van zijn reis ongelijk aan DREMPEL)",
+            NAVG_HDR + "Regel R\n    geldig altijd\n        Een Passagier is duur indien de vertrektijd van zijn reis ongelijk is aan de DREMPEL.\n",
+            navOngFacts(), DREMP50,
+            l -> vals(((Passagier) l.get(2)).isDuur(), ((Passagier) l.get(3)).isDuur(), ((Passagier) l.get(4)).isDuur())),
+        new Fixture("navigated ONGELIJK vs global, LEFT spelling (DREMPEL ongelijk aan vertrektijd van zijn reis)",
+            NAVG_HDR + "Regel R\n    geldig altijd\n        Een Passagier is duur indien de DREMPEL ongelijk is aan de vertrektijd van zijn reis.\n",
+            navOngFacts(), DREMP50,
+            l -> vals(((Passagier) l.get(2)).isDuur(), ((Passagier) l.get(3)).isDuur(), ((Passagier) l.get(4)).isDuur())),
+    };
+    static final Object[] PHASE_NAV_GLOBAL_ONGELIJK_EXPECTED = {
+        vals(true, true, false),    // [absent-reis WAAR (Tabel 44 one-leeg), 99!=50 WAAR, 50!=50 onwaar]
+        vals(true, true, false),    // global-on-LEFT — same spec values via omkeren(ONGELIJK)=ONGELIJK
+    };
+
     // regression: the exec model INFINITE-LOOPED when a NAVIGATED-comparison rule (A) was co-resident with a second rule
     //   (B) over the same subject — drools.update(s) re-evaluated A's black-box navigated lambda on every modify by B, and
     //   NO_LOOP blocks only the rule's OWN re-trigger. The idempotent werkBij (update only on an ACTUAL value change)
@@ -4289,6 +4320,22 @@ class ExecModelDifferentialTest {
      *  DRL-fires/exec-skips. voorwaarde() swaps operands + reverses the operator (omkeren). Absolute spec values + parity. */
     /** §8.1.1/§13.3.8 a Datum-en-tijd comparison vs a Datum-en-tijd Parameter-GLOBAL (ordering + equality) now fires in
      *  the exec — was a DRL-fires/exec-skips (the Datum-en-tijd parameter was registered untracked). Absolute + parity. */
+    /** §5.6 Tabel 44 a numeric NAVIGATED ONGELIJK vs a Parameter-GLOBAL with an absent relation is WAAR (leeg != global).
+     *  Regression lock for the nav-vs-global short-circuit fix (was rel==null -> false for ALL ops; widened by the
+     *  global-on-LEFT normalisation). Both spellings; absolute spec values + parity. */
+    @Test void phase_nav_global_ongelijk_is_spec_correct() {
+        for (int i = 0; i < PHASE_NAV_GLOBAL_ONGELIJK.length; i++) {
+            Fixture f = PHASE_NAV_GLOBAL_ONGELIJK[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_NAV_GLOBAL_ONGELIJK_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_datumtijd_vs_global_is_spec_correct() {
         for (int i = 0; i < PHASE_DATUMTIJD_GLOBAL.length; i++) {
             Fixture f = PHASE_DATUMTIJD_GLOBAL[i];

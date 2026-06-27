@@ -1542,9 +1542,13 @@ public final class ExecModelTranspiler {
             Conditie.Operator op = v.op();
             BigDecimal[] f = restatement(la.type(), pr.parameter().datatype());  // §5.1 Tabel 32 unit restatement
             return new Gate(pattern.expr(nextId("c"), (Variable) g, (Predicate2) (s, gv) -> {
+                // §5.5.5 an ABSENT relation reads the navigated attribute as LEEG (null), then vergelijk's §5 leegwaarde
+                // tables decide — NOT a blanket short-circuit-to-false (which was WRONG for ONGELIJK: leeg != global is
+                // WAAR, §5.6 Tabel 44). Ordering / GELIJK of a leeg operand stay onwaar (Tabel 33-42); only ONGELIJK
+                // flips to WAAR. Mirrors the standalone navigated comparison (3eb94d0) and DRL's leegwaarde-faithful form.
                 Object rel = RegelSpraakRuntime.get(s, rol);
-                if (rel == null) return false;   // mvel `rol!.attr` short-circuits the whole term on a null reference
-                return vergelijk(scale(RegelSpraakRuntime.toBd(RegelSpraakRuntime.get(rel, attr)), f[0]), scale((BigDecimal) gv, f[1]), op);
+                BigDecimal lv = rel == null ? null : RegelSpraakRuntime.toBd(RegelSpraakRuntime.get(rel, attr));
+                return vergelijk(scale(lv, f[0]), scale((BigDecimal) gv, f[1]), op);
             }), List.of());
         }
         // §8.1.1 a NUMERIC comparison where an operand is an EXPRESSION (arithmetic Binair / Functie / begrenzing /
