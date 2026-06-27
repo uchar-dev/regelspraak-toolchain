@@ -2100,6 +2100,31 @@ class ExecModelDifferentialTest {
         vals(true, false),          // navigated ordering
     };
 
+    // §5.3/§13.3.8 a TEKST equality vs a Tekst Parameter-GLOBAL ("zijn vertrek gelijk is aan de STANDAARDVERTREK") now
+    //   fires in the exec — was a DRL-fires/exec-skips (a Tekst parameter was registered untracked; the numeric vs-global
+    //   branch swallowed the op via `globals.get == null -> return null`). The exec tracks the Tekst parameter as a String
+    //   global and binds it (tekstVergelijk: GELIJK Tabel 38, ONGELIJK Tabel 44 — null-asymmetric like DRL mvel).
+    static final Map<String, Object> STDV = Map.of("sTANDAARDVERTREK", "A");
+    static final String TG_HDR =
+        "Parameter de STANDAARDVERTREK : Tekst\nObjecttype de Route\n    de vertrek Tekst;\n    is gemarkeerd kenmerk (bijvoeglijk);\n";
+    static Route routeVertrek(String v) { Route r = new Route(); if (v != null) r.setVertrek(v); return r; }
+    static final Fixture[] PHASE_TEKST_GLOBAL = {
+        // GELIJK vs global "A": vertrek == "A" -> ["A" WAAR, "B" onwaar, leeg onwaar (Tabel 38)].
+        new Fixture("tekst own GELIJK vs Parameter global (vertrek gelijk STANDAARDVERTREK)",
+            TG_HDR + "Regel R\n    geldig altijd\n        Een Route is gemarkeerd indien zijn vertrek gelijk is aan de STANDAARDVERTREK.\n",
+            () -> List.of(routeVertrek("A"), routeVertrek("B"), routeVertrek(null)), STDV,
+            l -> vals(((Route) l.get(0)).isGemarkeerd(), ((Route) l.get(1)).isGemarkeerd(), ((Route) l.get(2)).isGemarkeerd())),
+        // ONGELIJK vs global "A": vertrek != "A" -> ["B" WAAR, "A" onwaar, leeg WAAR (Tabel 44 one-leeg)].
+        new Fixture("tekst own ONGELIJK vs Parameter global (vertrek ongelijk STANDAARDVERTREK)",
+            TG_HDR + "Regel R\n    geldig altijd\n        Een Route is gemarkeerd indien zijn vertrek ongelijk is aan de STANDAARDVERTREK.\n",
+            () -> List.of(routeVertrek("B"), routeVertrek("A"), routeVertrek(null)), STDV,
+            l -> vals(((Route) l.get(0)).isGemarkeerd(), ((Route) l.get(1)).isGemarkeerd(), ((Route) l.get(2)).isGemarkeerd())),
+    };
+    static final Object[] PHASE_TEKST_GLOBAL_EXPECTED = {
+        vals(true, false, false),   // GELIJK (match T; mismatch F; leeg F)
+        vals(true, false, true),    // ONGELIJK (mismatch T; match F; leeg WAAR)
+    };
+
     // regression: the exec model INFINITE-LOOPED when a NAVIGATED-comparison rule (A) was co-resident with a second rule
     //   (B) over the same subject — drools.update(s) re-evaluated A's black-box navigated lambda on every modify by B, and
     //   NO_LOOP blocks only the rule's OWN re-trigger. The idempotent werkBij (update only on an ACTUAL value change)
@@ -4198,6 +4223,21 @@ class ExecModelDifferentialTest {
      *  the operator (omkeren). Absolute spec values + parity, incl. a leeg operand (Tabel 44 ONGELIJK one-leeg WAAR). */
     /** §8.1.1/§13.3.8 a datum comparison vs a Datum-in-dagen Parameter-GLOBAL (own + navigated, ordering + equality) now
      *  fires in the exec — was a DRL-fires/exec-skips. Absolute spec values + parity, incl. leegwaarde (Tabel 44). */
+    /** §5.3/§13.3.8 a tekst equality (GELIJK/ONGELIJK) vs a Tekst Parameter-GLOBAL now fires in the exec — was a
+     *  DRL-fires/exec-skips. Absolute spec values + parity, incl. a leeg operand (Tabel 38 / Tabel 44). */
+    @Test void phase_tekst_vs_global_is_spec_correct() {
+        for (int i = 0; i < PHASE_TEKST_GLOBAL.length; i++) {
+            Fixture f = PHASE_TEKST_GLOBAL[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_TEKST_GLOBAL_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_datum_vs_global_is_spec_correct() {
         for (int i = 0; i < PHASE_DATUM_GLOBAL.length; i++) {
             Fixture f = PHASE_DATUM_GLOBAL[i];

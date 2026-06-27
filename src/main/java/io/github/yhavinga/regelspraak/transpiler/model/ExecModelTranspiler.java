@@ -74,6 +74,8 @@ public final class ExecModelTranspiler {
     /** §13.3.8 DATUM (Datum-in-dagen) parameters: a {@code LocalDate} global, kept apart from the scalar BigDecimal
      *  {@link #globals} (the date-comparison-vs-global path binds it as a pattern variable). */
     private final Map<String, Global<java.time.LocalDate>> datumGlobals = new LinkedHashMap<>();
+    /** §13.3.8 TEKST parameters: a {@code String} global (the tekst-equality-vs-global path binds it as a pattern var). */
+    private final Map<String, Global<String>> tekstGlobals = new LinkedHashMap<>();
     /** §4.2 the Rekendatum global (a {@code LocalDate}) — registered iff ANY construct is time-bounded (a dated
      *  {@code geldig vanaf/tot} version), read by the per-construct {@link #geldigGuard} window guard. null when
      *  every construct is {@code geldig altijd} (no guard needed). Mirrors DrlTranspiler's {@code rekendatum} global. */
@@ -134,6 +136,11 @@ public final class ExecModelTranspiler {
                 // §13.3.8 a Datum-in-dagen parameter is a LocalDate global — TRACKED so a datum-vs-global comparison binds it.
                 Global<java.time.LocalDate> g = DSL.globalOf(java.time.LocalDate.class, PKG, ident(p.naam()));
                 datumGlobals.put(ident(p.naam()), g);
+                m.addGlobal(g);
+            } else if (p.datatype().isTekst()) {
+                // §13.3.8 a Tekst parameter is a String global — TRACKED so a tekst-equality-vs-global comparison binds it.
+                Global<String> g = DSL.globalOf(String.class, PKG, ident(p.naam()));
+                tekstGlobals.put(ident(p.naam()), g);
                 m.addGlobal(g);
             } else {
                 m.addGlobal(DSL.globalOf(globalKlasse(p.datatype()), PKG, ident(p.naam())));
@@ -1455,6 +1462,33 @@ public final class ExecModelTranspiler {
             }
             return null;   // unresolvable nav / untracked datum-tijd global -> honest skip (symmetric with DRL marker)
         }
+        // §5.3 a TEKST/enumeratiewaarde equality (GELIJK/ONGELIJK) of an OWN or to-one NAVIGATED attribute vs a Tekst
+        // Parameter-GLOBAL ("zijn vertrek gelijk is aan de STANDAARDVERTREK"). BEFORE the numeric vs-global branch (whose
+        // globals.get == null for a tekst global would `return null` -> skip). DRL reads the tekst global as a free name;
+        // the exec binds the String global as a pattern variable. §5.5.5 a null relation / leeg attr reads LEEG, then
+        // string equality with the §5 leegwaarde tables (GELIJK Tabel 38 one/both-leeg onwaar; ONGELIJK Tabel 44 one-leeg WAAR).
+        if (c instanceof Conditie.Vergelijking v && (v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)
+                && v.links() instanceof Expr.AttribuutRef la && la.type() != null && la.type().isTekst()
+                && v.rechts() instanceof Expr.ParameterRef pr && pr.parameter().datatype() != null
+                && pr.parameter().datatype().isTekst()) {
+            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 -> marker
+            Global<String> g = tekstGlobals.get(ident(pr.parameter().naam()));
+            if (g == null) return null;
+            String attr = la.attribuut();
+            boolean gelijk = v.op() == Conditie.Operator.GELIJK;
+            if (la.navigatieRol() == null) {
+                if (subject == null || !subject.heeftLid(attr)) return null;
+                return new Gate(pattern.expr(nextId("c"), (Variable) g, (Predicate2) (s, gv) ->
+                        tekstVergelijk(RegelSpraakRuntime.get(s, attr), gv, gelijk)), List.of());
+            }
+            String rol = navComparisonRole(la, subject);
+            if (rol == null) return null;
+            return new Gate(pattern.expr(nextId("c"), (Variable) g, (Predicate2) (s, gv) -> {
+                Object rel = RegelSpraakRuntime.get(s, rol);
+                return tekstVergelijk(rel == null ? null : RegelSpraakRuntime.get(rel, attr), gv, gelijk);   // §5.5.5 null relation -> leeg
+            }), List.of());
+        }
         // §8.1.1 a comparison vs a numeric Parameter-GLOBAL needs a 2-var expr (the global as a pattern variable),
         // so it stays here rather than in leafPredicate (a vs-literal comparison IS a fact-only leaf).
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
@@ -1598,6 +1632,13 @@ public final class ExecModelTranspiler {
         if (n >= 2 && w.charAt(0) == '\'' && w.charAt(n - 1) == '\'') return w.substring(1, n - 1);
         if (n >= 2 && w.charAt(0) == '’' && w.charAt(n - 1) == '‘') return w.substring(1, n - 1);
         return null;
+    }
+    /** §5.3/§5.6 TEKST equality with the leegwaarde tables (the String analogue of the datum equality): GELIJK is Tabel 38
+     *  (both present and equal; one/both-leeg -> onwaar); ONGELIJK is Tabel 44 (exactly-one-leeg -> WAAR, both-leeg ->
+     *  onwaar). Matches DRL mvel's null-asymmetric string {@code ==}/{@code !=}. */
+    private static boolean tekstVergelijk(Object a, Object b, boolean gelijk) {
+        return gelijk ? (java.util.Objects.equals(a, b) && !(a == null && b == null))
+                      : !java.util.Objects.equals(a, b);
     }
 
     private Predicate1<Object> leafPredicate(Conditie c, Objecttype subject) {
