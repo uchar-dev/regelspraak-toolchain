@@ -2745,8 +2745,22 @@ public final class ExecModelTranspiler {
             }
             return parityOnveilig(b.links()) || parityOnveilig(b.rechts());
         }
-        if (e instanceof Expr.Begrensd bg) return parityOnveilig(bg.basis())
-                || (bg.minimum() != null && parityOnveilig(bg.minimum())) || (bg.maximum() != null && parityOnveilig(bg.maximum()));
+        if (e instanceof Expr.Begrensd bg) {
+            // A CROSS-UNIT begrenzing BOUND (a min/max unit ≠ the basis unit) is restated in a CONSTRAINT by DRL's
+            // omrekenConditie, which MARKERS it — the begrenzing bound stays on the lossy single ratio (the +/- exact
+            // rsHerschaalExact path was NOT extended to begrenzing; separately carded). The exec must SKIP it
+            // symmetrically (it lowers the bound via the lossy valueFactor and would otherwise FIRE a constraint DRL
+            // declines — a confirmed exec-fires/DRL-markers divergence). The VALUE-side begrenzing is unaffected (it
+            // never reaches parityOnveilig; both back-ends restate it lossily there, symmetric).
+            Eenheid eb = bg.basis().type() == null ? null : bg.basis().type().eenheidOf();
+            boolean crossBound = eb != null
+                    && ((bg.minimum() != null && bg.minimum().type() != null && bg.minimum().type().eenheidOf() != null
+                            && eb.vereistOmrekening(bg.minimum().type().eenheidOf()))
+                     || (bg.maximum() != null && bg.maximum().type() != null && bg.maximum().type().eenheidOf() != null
+                            && eb.vereistOmrekening(bg.maximum().type().eenheidOf())));
+            return crossBound || parityOnveilig(bg.basis())
+                    || (bg.minimum() != null && parityOnveilig(bg.minimum())) || (bg.maximum() != null && parityOnveilig(bg.maximum()));
+        }
         if (e instanceof Expr.Afgerond af) return parityOnveilig(af.basis());
         if (e instanceof Expr.Functie f) return f.argumenten().stream().anyMatch(ExecModelTranspiler::parityOnveilig);
         return false;

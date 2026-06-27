@@ -4225,6 +4225,21 @@ class ExecModelDifferentialTest {
         assertTrue(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
                 () -> "DRL moet een rate cross-unit +/- voorwaarde ook markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
     }
+    /** §6.1.4/§4 a CROSS-UNIT begrenzing BOUND inside a CONSTRAINT stays a SYMMETRIC marker: DRL's omrekenConditie markers
+     *  the bound restatement (the begrenzing bound is NOT on the exact rsHerschaalExact path — separately carded), and the
+     *  exec parityOnveilig now detects the basis(jr)-vs-bound(mnd) span and SKIPS it. Pins the wf_5355bc06 review's confirmed
+     *  exec-fires/DRL-markers divergence (the exec used to FIRE this constraint while DRL declined it) stays closed. */
+    @Test void begrenzing_cross_unit_constraint_is_symmetric_marker_in_both() {
+        String src = "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\n"
+            + "Objecttype de Tijdmeter\n    de extra Numeriek (geheel getal) met eenheid jr;\n    de looptijd Numeriek (geheel getal) met eenheid mnd;\n    de totaal Numeriek (geheel getal) met eenheid jr;\n    is oud kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        Een Tijdmeter is oud indien de extra van een Tijdmeter, met een minimum van de looptijd van een Tijdmeter groter is dan de totaal van een Tijdmeter.\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet een cross-unit begrenzing voorwaarde overslaan, kreeg: " + em.overgeslagen());
+        assertTrue(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
+                () -> "DRL moet een cross-unit begrenzing voorwaarde ook markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
+    }
     /** §5.8 a bare SET operand ("de prijs van alle passagiers") inside arithmetic in a CONDITION must SKIP symmetrically
      *  with DRL's marker, NOT lower to a scalar read that reads `prijs` off the subject Vlucht (no such getter) and CRASH
      *  the whole session at fire time. The co-resident valid rule S MUST still fire in BOTH back-ends (no blast radius).
