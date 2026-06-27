@@ -395,6 +395,20 @@ public final class ExecModelTranspiler {
         if (!java.util.Objects.equals(oud, v)) drools.update(s);
     }
 
+    /** Reflective analogue of {@link #werkBij} for the verdeling / feitcreatie consequences, which read+write a
+     *  recipient/relation attribute by NAME via the runtime's property resolver (a multi-word property the typed
+     *  Accessors path does not pre-build): set {@code attr} on {@code fact}, then {@code drools.update} ONLY when the
+     *  value actually CHANGED. These consequences join through a BLACK-BOX (reflective) lambda that Drools cannot
+     *  property-analyse, so the pattern is CLASS-reactive — it re-fires on EVERY update of the fact. With an
+     *  unconditional {@code update}, two such rules over the same fact type (e.g. two verdelingen writing different
+     *  recipient attributes, empirically a 1e6-fire run-away) ping-pong forever (NO_LOOP blocks only self-retrigger).
+     *  Updating only on a real change reaches the same fixpoint the DRL back-end reaches via mvel property reactivity. */
+    private static void werkBijReflectief(org.drools.model.Drools drools, Object fact, String attr, Object v) {
+        Object oud = RegelSpraakRuntime.get(fact, attr);
+        RegelSpraakRuntime.set(fact, attr, v);
+        if (!java.util.Objects.equals(oud, v)) drools.update(fact);
+    }
+
     private static boolean isAggregatieWaarde(ResolvedRegel r) {
         return (r.soort() == ResolvedRegel.Soort.GELIJKSTELLING || r.soort() == ResolvedRegel.Soort.BEREKENING
                 || r.soort() == ResolvedRegel.Soort.INITIALISATIE)
@@ -3211,8 +3225,7 @@ public final class ExecModelTranspiler {
             }
             if (maxAttr != null) aandeel = RegelSpraakRuntime.rsPlafond(aandeel, (BigDecimal) RegelSpraakRuntime.get(r, maxAttr));
             if (dec != null) aandeel = RegelSpraakRuntime.rsAfronding(aandeel, dec, java.math.RoundingMode.FLOOR);
-            RegelSpraakRuntime.set(r, doelAttr, aandeel);
-            drools.update(r);
+            werkBijReflectief(drools, r, doelAttr, aandeel);   // idempotent: no re-propagate on a no-op re-write (anti-loop)
         };
         items.add(DSL.on(srcVar, (Variable) rVar, (Variable) foldVar).execute(body));
         return PatternDSL.rule(v.naam()).attribute(Rule.Attribute.NO_LOOP, true).build(items.toArray(new RuleItemBuilder[0]));
@@ -3257,8 +3270,7 @@ public final class ExecModelTranspiler {
             if (gewAttr != null) { gewL = new ArrayList<>(); for (Object f : fl) gewL.add(RegelSpraakRuntime.get(f, gewAttr)); }
             if (maxAttr != null) { maxL = new ArrayList<>(); for (Object f : fl) maxL.add(RegelSpraakRuntime.get(f, maxAttr)); }
             Map<Object, BigDecimal> shares = RegelSpraakRuntime.rsVerdeelOpVolgorde(totaal, fl, groepL, toenemend, gewL, maxL, dec);
-            RegelSpraakRuntime.set(r, doelAttr, shares.get(r));
-            drools.update(r);
+            werkBijReflectief(drools, r, doelAttr, shares.get(r));   // idempotent: no re-propagate on a no-op re-write (anti-loop)
         };
         return PatternDSL.rule(v.naam()).attribute(Rule.Attribute.NO_LOOP, true)
                 .build(srcPat, acc, rPat, DSL.on(srcVar, (Variable) rVar, (Variable) factsVar).execute(body));
@@ -3333,8 +3345,9 @@ public final class ExecModelTranspiler {
         Block3<org.drools.model.Drools, Object, Object> body = (drools, s, uit) -> {
             BigDecimal totaal = (BigDecimal) RegelSpraakRuntime.get(s, bronAttr);
             BigDecimal sum = RegelSpraakRuntime.toBd(uit);
-            RegelSpraakRuntime.set(s, restAttr, totaal.subtract(sum == null ? BigDecimal.ZERO : sum));
-            drools.update(s);
+            // idempotent (anti-loop): the body still RECOMPUTES the rest every fire (so a late share recomputes it),
+            // only the no-op re-propagation is suppressed — the source pattern already watches bronAttr (not restAttr).
+            werkBijReflectief(drools, s, restAttr, totaal.subtract(sum == null ? BigDecimal.ZERO : sum));
         };
         return PatternDSL.rule(v.naam() + " (onverdeelde rest)").attribute(Rule.Attribute.NO_LOOP, true)
                 .build(srcPat, DSL.not(notPat), acc, DSL.on(srcVar, (Variable) sumVar).execute(body));
@@ -3472,11 +3485,11 @@ public final class ExecModelTranspiler {
         if (doelGuard != null) doelPat = doelPat.expr(nextId("dg"), (Predicate1) doelGuard);
         items.add(doelPat);
 
-        // create the relation: set the anker-role reference on $doel; NO_LOOP (the modify must not re-fire the rule).
-        Block3<org.drools.model.Drools, Object, Object> body = (drools, subj, d) -> {
-            RegelSpraakRuntime.set(d, zetVeld, subj);
-            drools.update(d);
-        };
+        // create the relation: set the anker-role reference on $doel; NO_LOOP (the modify must not re-fire the rule),
+        // and idempotent (anti-loop): re-setting an already-established ref must not re-propagate $doel through a
+        // co-resident black-box rule over the same type.
+        Block3<org.drools.model.Drools, Object, Object> body = (drools, subj, d) ->
+            werkBijReflectief(drools, d, zetVeld, subj);
         items.add(DSL.on(sVar, (Variable) doelVar).execute(body));
         return PatternDSL.rule(fc.naam()).attribute(Rule.Attribute.NO_LOOP, true).build(items.toArray(new RuleItemBuilder[0]));
     }

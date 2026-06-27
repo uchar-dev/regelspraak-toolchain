@@ -4010,6 +4010,38 @@ class ExecModelDifferentialTest {
             assertEquals(Boolean.TRUE, p.isKind(), () -> "regel B (leeftijd 10 < 18) moet vuren");      // own comparison
         }
     }
+    /** Regression (the §9.7 verdeling tail of the cd19b87 navigated-loop family): TWO verdelingen writing DIFFERENT
+     *  recipient attributes of the SAME objecttype (here aandeel + leeftijd of de Deelnemer) used to INFINITE-LOOP the
+     *  exec model. Each share consequence joins via a BLACK-BOX reflective lambda (class-reactive → re-fires on every
+     *  update of the recipient) and used to {@code drools.update} UNCONDITIONALLY, so the two rules ping-ponged forever
+     *  (NO_LOOP blocks only self). Measured 1e6+ fires before the idempotent {@code werkBijReflectief} (update only on a
+     *  real change). DRL escapes via mvel property reactivity (fires 6 = 3 recipients × 2 rules). @Timeout turns the
+     *  hang into a FAILURE; asserts BOTH back-ends TERMINATE and converge to the SAME spec value (90 ÷ 3 = 30 each). */
+    @org.junit.jupiter.api.Timeout(30)
+    @Test void two_verdelingen_same_recipient_terminate_no_hang() {
+        String src =
+            "Objecttype de Pot\n    de totaal Numeriek (geheel getal);\n"
+            + "Objecttype de Deelnemer\n    de aandeel Numeriek (geheel getal);\n    de leeftijd Numeriek (geheel getal);\n"
+            + "Feittype Pot over deelnemers\n    de pot Pot\n    de deelnemer Deelnemer\nEén pot wordt verdeeld over meerdere deelnemers\n"
+            + "Regel verdeel a\n    geldig altijd\n        De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld in gelijke delen.\n"
+            + "Regel verdeel b\n    geldig altijd\n        De totaal van een pot wordt verdeeld over de leeftijd van alle deelnemers van een pot, waarbij wordt verdeeld in gelijke delen.\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> "beide verdelingen moeten loweren: " + em.overgeslagen());
+        for (KieBase kb : List.of(drlBase(m), KieBaseBuilder.createKieBaseFromModel(em.model()))) {
+            Pot p = new Pot(); p.setTotaal(new BigDecimal(90));
+            Deelnemer d1 = deeln(p, null, null, null), d2 = deeln(p, null, null, null), d3 = deeln(p, null, null, null);
+            KieSession s = kb.newKieSession();
+            s.insert(p); s.insert(d1); s.insert(d2); s.insert(d3);
+            s.fireAllRules(2_000_000);   // bounded: a regressed loop would hit the cap, then @Timeout fails the test
+            s.dispose();
+            for (Deelnemer d : List.of(d1, d2, d3)) {
+                assertEquals(0, new BigDecimal(30).compareTo(d.getAandeel()), () -> "aandeel = 90/3 = 30");
+                assertEquals(0, new BigDecimal(30).compareTo(d.getLeeftijd()), () -> "leeftijd = 90/3 = 30");
+            }
+        }
+    }
     /** §5.6 a DATE-ARITHMETIC datum ONGELIJK (datumVergelijkTemporal) with BOTH operands leeg must be onwaar (Tabel 44),
      *  matching DRL's mvel `null != null` -> false. An old `|| (a==null && b==null)` clause wrongly fired the model true
      *  (a live divergence). Assert the ABSOLUTE spec values + parity. */
