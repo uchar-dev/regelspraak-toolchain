@@ -626,13 +626,16 @@ public final class ExecModelTranspiler {
      *  quantifier -&gt; the count switch (geen/ten-minste/ten-hoogste/precies). Returns null when ANY child is a global
      *  comparison (the exec binds at most one source-global, already at the top-level fold) or is otherwise un-lowerable,
      *  so the caller skips the WHOLE compound (symmetric with DRL, gated by RuleChecker.execKanCountingFold). Mirrors
-     *  DRL conditieInline's nested &amp;&amp;/|| on the accumulate source. Recurses for a doubly-nested compound. */
+     *  DRL conditieInline's nested &amp;&amp;/|| on the accumulate source. Folds a SINGLE LEVEL of nesting only — a DEEPER
+     *  compound child is declined (a parser bullet-merge can flatten 2+ sibling nested bullets into a depth-2 compound;
+     *  declining keeps it a symmetric marker, never a fired-wrong fold). */
     private Predicate1<Object> leafCompound(Conditie.Samengesteld s, Objecttype elem) {
         final Conditie.Kwantor kw = s.kwantor(); final int n = s.drempel();
         List<Predicate1<Object>> kids = new ArrayList<>();
         for (Conditie deel : s.onderdelen()) {
             if (globalBullet(deel, elem) != null) return null;   // a global bullet inside a nested compound -> can't fold
-            Predicate1<Object> lp = deel instanceof Conditie.Samengesteld sub ? leafCompound(sub, elem) : leafPredicate(deel, elem);
+            if (deel instanceof Conditie.Samengesteld) return null;   // a DEEPER nested compound -> decline (keep a marker)
+            Predicate1<Object> lp = leafPredicate(deel, elem);
             if (lp == null) return null;
             kids.add(lp);
         }

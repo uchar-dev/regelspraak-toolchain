@@ -933,10 +933,14 @@ final class RuleChecker {
         String global = null;
         for (Conditie c : onderdelen) {
             if (c instanceof Conditie.Samengesteld nested) {              // §13.4.13.4 a NESTED compound bullet
-                // the exec folds a GLOBAL-FREE nested compound into ONE fact-only Predicate1 (leafCompound) at parity
-                // with DRL's nested &&/||; a nested compound reading a Parameter-global cannot fold (the exec binds at
-                // most one source-global, already at the top-level fold) -> marker (both back-ends decline).
-                if (leestGlobal(nested)) return false;
+                // the exec folds a GLOBAL-FREE, SINGLE-LEVEL nested compound into ONE fact-only Predicate1 (leafCompound)
+                // at parity with DRL's nested &&/||; a nested compound reading a Parameter-global cannot fold (the exec
+                // binds at most one source-global, already at the top-level fold). A DEEPER compound child is declined
+                // too: a parser bullet-merge can flatten 2+ sibling nested bullets into a depth-2 compound (the bullet
+                // rule is indentation-blind), which would AND-merge what the spec OR-s — markering keeps BOTH back-ends
+                // from firing the mis-folded compound (a fired-wrong shared value). All these -> marker (both decline).
+                if (leestGlobal(nested) || nested.onderdelen().stream().anyMatch(x -> x instanceof Conditie.Samengesteld))
+                    return false;
                 continue;
             }
             if (!leestGlobal(c)) continue;                                 // a fact-only simple leaf the exec lowers at parity

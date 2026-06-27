@@ -1611,6 +1611,13 @@ class ExecModelDifferentialTest {
     static final String COUNT_NESTED_GLOBAL_SRC =
         "Parameter de grens : Numeriek (geheel getal)\n" + COMPOUND_HDR
         + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn prijs is groter dan 50\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn leeftijd is kleiner dan de grens.\n";
+    // §13.4.13.4 TWO consecutive NESTED-compound bullets under a counting quantifier — the indentation-blind grammar
+    //   bullet rule flattens them into ONE depth-2 ALLE (a parser bullet-merge, carded), which would AND-merge what the
+    //   spec OR-s -> a fired-WRONG SOM in BOTH back-ends. leafCompound / execKanCountingFold decline a DEEPER nested
+    //   compound, so this stays a SYMMETRIC marker (both decline) instead of firing a shared wrong value.
+    static final String COUNT_NESTED_TWICE_SRC =
+        COMPOUND_HDR
+        + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn prijs is groter dan 50\n        - hij voldoet aan alle volgende voorwaarden:\n            - zijn prijs is kleiner dan 45.\n";
     // §13.4.13.4 a COUNTING-quantifier compound subselectie with a NESTED PURE-LEAF compound bullet, now FIRING in BOTH
     //   back-ends (DRL conditieInline's nested &&; exec leafCompound folds it into ONE Predicate1) at parity. The
     //   top-level fold binds the SINGLE source-global (grens); the nested compound is global-free. Closed-form SOM ->
@@ -5008,6 +5015,11 @@ class ExecModelDifferentialTest {
      *  most one source-global (at the top level), so a global inside the nested fold (a Predicate1) cannot bind. Pins the
      *  global-free boundary of the nested-compound fire. */
     @Test void counting_subselectie_nested_met_global_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_NESTED_GLOBAL_SRC); }
+    /** §13.4.13.4 TWO consecutive nested-compound bullets under a counting quantifier mis-parse (the indentation-blind
+     *  grammar flattens them into one depth-2 ALLE) — declining a DEEPER nested compound keeps it a SYMMETRIC marker
+     *  instead of firing the AND-merged (spec-OR) compound as a shared WRONG SOM. Guards the nested-compound fire from
+     *  promoting the upstream parser bullet-merge into a fired-wrong value (review wf_34885edc-6e2 high finding). */
+    @Test void counting_subselectie_met_twee_geneste_compound_bullets_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_NESTED_TWICE_SRC); }
     /** §13.4.13.4 a COUNTING-quantifier compound subselectie with a NESTED PURE-LEAF compound bullet now FIRES at parity
      *  (DRL conditieInline's nested &&; exec leafCompound folds the nested compound into ONE Predicate1). Closed-form SOM
      *  -> assert the ABSOLUTE spec value, the exec NOT skipping, and parity. A nested compound reading a global stays a
