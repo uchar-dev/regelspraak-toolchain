@@ -7,6 +7,7 @@ import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
 import io.github.yhavinga.regelspraak.facts.Heffing;
 import io.github.yhavinga.regelspraak.facts.Inconsistentie;
+import io.github.yhavinga.regelspraak.facts.Route;
 import io.github.yhavinga.regelspraak.facts.Klok;
 import io.github.yhavinga.regelspraak.facts.Konto;
 import io.github.yhavinga.regelspraak.facts.Pot;
@@ -1837,6 +1838,16 @@ class ExecModelDifferentialTest {
         + "Feittype Vlucht van passagiers\n    de reis Vlucht\n    de passagier Passagier\nEén reis betreft meerdere passagiers\n"
         + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien de prijs van alle passagiers plus zijn vertrektijd groter is dan 100.\n"
         + "Regel S\n    geldig altijd\n        Een Vlucht is vol indien zijn vertrektijd groter is dan 0.\n";
+
+    // §5.3 a NON-numeriek (Tekst/datum) GELIJK/ONGELIJK CONSISTENTIE over an attr-vs-attr operand ("De vertrek moet gelijk
+    //   zijn aan de bestemming") would coerce a String via toBd and CRASH the exec session at fire time (the schending
+    //   path's isNumeriekOp gate lets GELIJK/ONGELIJK through to the numeric toBd coercion). The exec must SKIP it (honest
+    //   overgeslagen, symmetric-safe with DRL flagging it), not crash. Co-resident rule S (a Tekst vs-LITERAL voorwaarde the
+    //   exec DOES lower) fires -> proves the skip does not take the session down.
+    static final String TEKST_CONSISTENTIE_SRC =
+        "Objecttype de Route\n    de vertrek Tekst;\n    de bestemming Tekst;\n    is gemarkeerd kenmerk (bijvoeglijk);\n"
+        + "Regel R\n    geldig altijd\n        De vertrek van een Route moet gelijk zijn aan de bestemming van een Route.\n"
+        + "Regel S\n    geldig altijd\n        Een Route is gemarkeerd indien zijn vertrek gelijk is aan \"A\".\n";
 
     // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
     //      arithmetic tree whose leaf is an AANTAL/TOTAAL/MIN/MAX). Each embedded aggregation lowers to its own
@@ -3747,6 +3758,32 @@ class ExecModelDifferentialTest {
             assertEquals(Boolean.TRUE, v.isVol(), () -> "de co-residente geldige regel S moet vuren (geen sessie-crash door de SET-regel)");
             assertFalse(Boolean.TRUE.equals(v.isLaat()), () -> "de SET-regel R mag NIET vuren (symmetrische marker)");
         }
+    }
+    /** §5.3 a NON-numeriek (Tekst) GELIJK/ONGELIJK attr-vs-attr CONSISTENTIE must SKIP in the exec (the schending path's
+     *  toBd coercion would crash the session on a String), NOT abort fireAllRules. DRL flags it correctly. The co-resident
+     *  Tekst vs-LITERAL voorwaarde rule S (which the exec DOES lower) must still fire in BOTH back-ends -> no blast radius.
+     *  Regression lock for the schending non-numeric guard (review wf_d51218ac crash finding). */
+    @Test void tekst_attr_vs_attr_consistentie_skips_no_session_crash() {
+        RegelSpraakModel m = Resolver.resolve(TEKST_CONSISTENTIE_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet de Tekst attr-vs-attr consistentie overslaan, kreeg: " + em.overgeslagen());
+        assertTrue(DrlTranspiler.transpile(m).contains("Inconsistentie"),
+                () -> "DRL moet de consistentie wel flaggen:\n" + DrlTranspiler.transpile(m));
+        // firing the MODEL must NOT crash (was a ConstraintEvaluationException via toBd(String)); the co-resident kenmerk
+        // rule S (vertrek == "A") must still fire -> gemarkeerd. A vertrek != bestemming would be a violation IF the exec
+        // lowered the consistentie (it skips), so the model inserts 0 Inconsistentie; DRL inserts 1.
+        Route rDrl = new Route(); rDrl.setVertrek("A"); rDrl.setBestemming("B");
+        Route rModel = new Route(); rModel.setVertrek("A"); rModel.setBestemming("B");
+        KieSession sDrl = drlBase(m).newKieSession(); sDrl.insert(rDrl); sDrl.fireAllRules();
+        long incDrl = sDrl.getObjects().stream().filter(o -> o instanceof Inconsistentie).count(); sDrl.dispose();
+        KieSession sModel = KieBaseBuilder.createKieBaseFromModel(em.model()).newKieSession();
+        sModel.insert(rModel); sModel.fireAllRules();   // must not throw
+        long incModel = sModel.getObjects().stream().filter(o -> o instanceof Inconsistentie).count(); sModel.dispose();
+        assertEquals(Boolean.TRUE, rModel.isGemarkeerd(), () -> "de co-residente regel S moet vuren (geen sessie-crash door de Tekst-consistentie)");
+        assertEquals(Boolean.TRUE, rDrl.isGemarkeerd(), () -> "regel S vuurt ook in DRL");
+        assertEquals(1L, incDrl, () -> "DRL flagt de A!=B consistentie");
+        assertEquals(0L, incModel, () -> "de exec SLAAT de Tekst-consistentie OVER (honest skip, geen crash, geen flag)");
     }
     /** §8.1.1 a comparison whose operand is an arithmetic/builtin EXPRESSION vs an attribute (not a literal) now fires in
      *  the exec (was a masked DRL-fires/exec-skips). Closed-form -> assert the ABSOLUTE spec value + parity, incl. a

@@ -2765,7 +2765,14 @@ public final class ExecModelTranspiler {
             return s -> rhs.equals(lRead.apply(s)) != assertGelijk;   // violation = criterion not satisfied
         }
 
-        if (!isNumeriekOp(v.op())) return null;                              // remaining non-numeric (own/nav-vs-own equality): later
+        if (!isNumeriekOp(v.op())) return null;                              // remaining non-numeric op (EERDER/LATER datum): later
+        // §5.3 a GELIJK/ONGELIJK assertie over NON-numeric operands (Tekst/datum/enum/boolean — attr-vs-attr or navigated-
+        // vs-attr) reaching the toBd() coercion below would call RegelSpraakRuntime.toBd on a non-number and CRASH the whole
+        // session at fire time (a leeg/String value -> IllegalStateException -> ConstraintEvaluationException). Skip it ->
+        // an HONEST exec TODO (overgeslagen), never a crash (DRL flags it via the non-numeric schending form, so it is a
+        // masked DRL-flags/exec-skips, not a silent divergence). The Tekst/enum vs-LITERAL consistentie is handled above;
+        // this catches the attr-vs-attr / navigated-vs-attr Tekst/datum-equality form.
+        if (la.type() != null && !la.type().isNumeriek() && !la.type().isPercentage()) return null;
         Conditie.Operator flip = flip(v.op());
         boolean gelijkheid = v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK;
         if (v.rechts() instanceof Expr.AttribuutRef ra) {
