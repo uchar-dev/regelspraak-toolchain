@@ -186,6 +186,7 @@ public final class ExecModelTranspiler {
 
         String doelProp = doel.attribuut();
         BiConsumer<Object, Object> doelSetter = Accessors.setter(factClass, doelProp);   // typed write (Phase-H codegen)
+        java.util.function.Function<Object, Object> doelGetter = Accessors.getter(factClass, doelProp);   // read-back for the idempotent update
         seq = 0;
         Variable sVar = DSL.declarationOf(factClass, "$subject");
         PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
@@ -243,10 +244,8 @@ public final class ExecModelTranspiler {
             BigDecimal vf = valueFactor(r.waarde().type(), doel.type());
             if (vf != null) dimAgg = dimAgg.scaledBy(vf);
             BiFunction<Object, Map<String, BigDecimal>, Object> fn = dimAgg.fn();
-            consequence = DSL.on(sVar).execute((Block2<org.drools.model.Drools, Object>) (drools, s) -> {
-                doelSetter.accept(s, fn.apply(s, Map.of()));
-                drools.update(s);
-            });
+            consequence = DSL.on(sVar).execute((Block2<org.drools.model.Drools, Object>) (drools, s) ->
+                    werkBij(drools, s, doelGetter, doelSetter, fn.apply(s, Map.of())));
         } else if (tijdTotaal != null) {
             // §7.1 a TOTAAL over a TEMPORAL attribute is a SCALAR timeline fold (rsTijdTotaal over the subject's own/
             // navigated List<Segment>, optionally gedurende-clipped) — NOT an instance accumulate. It reads no globals
@@ -268,8 +267,7 @@ public final class ExecModelTranspiler {
                 Object s = args[0];
                 Map<String, BigDecimal> gm = new LinkedHashMap<>();
                 for (int i = 0; i < fgn.size(); i++) gm.put(fgn.get(i), (BigDecimal) args[1 + i]);
-                doelSetter.accept(s, fn.apply(s, gm));
-                drools.update(s);
+                werkBij(drools, s, doelGetter, doelSetter, fn.apply(s, gm));
             });
             if (consequence == null) return skip("regel (totaal: te veel gebonden globals): " + r.naam());
         } else if (isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie fx && !isGelisteFold(fx)) {
@@ -288,8 +286,7 @@ public final class ExecModelTranspiler {
                             ? (fallback == null ? null : (BigDecimal) fallback.fn().apply(s, Map.of()))
                             : RegelSpraakRuntime.toBd(sum);
                     if (vf != null && v != null) v = v.multiply(vf);
-                    doelSetter.accept(s, v);
-                    drools.update(s);
+                    werkBij(drools, s, doelGetter, doelSetter, v);
                 };
                 consequence = DSL.on(sVar, (Variable) cntVar, (Variable) sumVar).execute(body);
             } else {
@@ -297,8 +294,7 @@ public final class ExecModelTranspiler {
                 Block3<org.drools.model.Drools, Object, Object> body = (drools, s, res) -> {
                     BigDecimal v = RegelSpraakRuntime.toBd(res);
                     if (vf != null && v != null) v = v.multiply(vf);
-                    doelSetter.accept(s, v);
-                    drools.update(s);
+                    werkBij(drools, s, doelGetter, doelSetter, v);
                 };
                 consequence = DSL.on(sVar, (Variable) resVar).execute(body);
             }
@@ -332,8 +328,7 @@ public final class ExecModelTranspiler {
                 for (int i = 0; i < nAgg; i++) aggs[i] = args[1 + nG + i];
                 Object v = eval.apply(s, gm, aggs);
                 if (vf != null && v != null) v = ((BigDecimal) v).multiply(vf);
-                doelSetter.accept(s, v);
-                drools.update(s);
+                werkBij(drools, s, doelGetter, doelSetter, v);
             });
             if (consequence == null) return skip("regel (aggregatie-waarde: te veel gebonden variabelen): " + r.naam());
             extra.addAll(accItems);
@@ -370,8 +365,7 @@ public final class ExecModelTranspiler {
                 Object s = args[0];
                 Map<String, BigDecimal> gm = new LinkedHashMap<>();
                 for (int i = 0; i < fgn.size(); i++) gm.put(fgn.get(i), (BigDecimal) args[1 + i]);
-                doelSetter.accept(s, fn.apply(s, gm));
-                drools.update(s);
+                werkBij(drools, s, doelGetter, doelSetter, fn.apply(s, gm));
             });
             if (consequence == null) return skip("regel (THEN-waarde: te veel gebonden globals): " + r.naam());
         }
@@ -385,6 +379,20 @@ public final class ExecModelTranspiler {
         return PatternDSL.rule(r.naam())
                 .attribute(Rule.Attribute.NO_LOOP, true)
                 .build(items.toArray(new RuleItemBuilder[0]));
+    }
+
+    /** Write {@code v} to the doel via {@code setter}, then {@code drools.update} ONLY when the value actually CHANGED
+     *  (read-back via {@code getter}). The conditional update is the model-side analogue of DRL's property reactivity:
+     *  a rule whose write does not change the doel must NOT re-propagate the subject, else two modify-rules over the
+     *  same subject ping-pong forever — a navigated-comparison constraint is a black-box lambda Drools re-evaluates on
+     *  EVERY update of the subject, so NO_LOOP (which blocks only the rule's OWN re-trigger) + class reactivity is not
+     *  enough to reach a fixpoint. {@link java.util.Objects#equals} only ever OVER-updates (a same-valued but different-
+     *  scale BigDecimal re-propagates harmlessly); it never UNDER-updates, so the fixpoint outcome still matches DRL. */
+    private static void werkBij(org.drools.model.Drools drools, Object s,
+            java.util.function.Function<Object, Object> getter, BiConsumer<Object, Object> setter, Object v) {
+        Object oud = getter.apply(s);
+        setter.accept(s, v);
+        if (!java.util.Objects.equals(oud, v)) drools.update(s);
     }
 
     private static boolean isAggregatieWaarde(ResolvedRegel r) {

@@ -1897,6 +1897,17 @@ class ExecModelDifferentialTest {
         "Objecttype de Vlucht\n    de vluchtdatum Datum in dagen;\n    is laat kenmerk (bijvoeglijk);\n"
         + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn vluchtdatum gelijk is aan 15-6-2022 09:30:00.000.\n";
 
+    // regression: the exec model INFINITE-LOOPED when a NAVIGATED-comparison rule (A) was co-resident with a second rule
+    //   (B) over the same subject — drools.update(s) re-evaluated A's black-box navigated lambda on every modify by B, and
+    //   NO_LOOP blocks only the rule's OWN re-trigger. The idempotent werkBij (update only on an ACTUAL value change)
+    //   reaches the fixpoint. A purely numeric navigated comparison triggers it too (not datum-specific).
+    static final String HANG_SRC =
+        "Objecttype de Vlucht\n    de vertrektijd Numeriek (geheel getal);\n"
+        + "Objecttype de Passagier\n    de leeftijd Numeriek (geheel getal);\n    is duur kenmerk (bijvoeglijk);\n    is kind kenmerk (bijvoeglijk);\n"
+        + AGG_FEIT
+        + "Regel A\n    geldig altijd\n        Een Passagier is duur indien de vertrektijd van zijn reis groter is dan 5.\n"
+        + "Regel B\n    geldig altijd\n        Een Passagier is kind indien zijn leeftijd kleiner is dan 18.\n";
+
     // ---- §5.6 a DATE-ARITHMETIC datum ONGELIJK ("zijn daadwerkelijk vertrek ongelijk is aan zijn vluchtdatum min 1 dag")
     //      routes through datumVergelijkTemporal. Its BOTH-leeg case wrongly fired model=true (an old `|| (a==null &&
     //      b==null)` clause) where DRL (mvel `null != null`) and Tabel 44 give onwaar -> a live divergence. Now both onwaar. ----
@@ -3980,6 +3991,24 @@ class ExecModelDifferentialTest {
         assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
         ExecModelTranspiler em = ExecModelTranspiler.build(m);
         assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet de gemengde datum/datum-tijd vergelijking OVERSLAAN (niet lossy mis-vuren), kreeg: " + em.overgeslagen());
+    }
+    /** Regression: the exec model used to INFINITE-LOOP (hang) when a NAVIGATED-comparison rule was co-resident with a
+     *  second modify-rule over the same subject (drools.update ping-pong; NO_LOOP blocks only self). The idempotent
+     *  werkBij (update only on an actual value change) reaches a fixpoint. @Timeout turns a regression (hang) into a test
+     *  FAILURE instead of a hung suite. Asserts BOTH back-ends terminate and fire the spec-correct kenmerken. */
+    @org.junit.jupiter.api.Timeout(30)
+    @Test void navigated_comparison_with_sibling_rule_terminates_no_hang() {
+        RegelSpraakModel m = Resolver.resolve(HANG_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> "beide regels moeten loweren: " + em.overgeslagen());
+        for (KieBase kb : List.of(drlBase(m), KieBaseBuilder.createKieBaseFromModel(em.model()))) {
+            Vlucht v = new Vlucht(); v.setVertrektijd(new BigDecimal(10));
+            Passagier p = new Passagier(); p.setReis(v); p.setLeeftijd(new BigDecimal(10));
+            KieSession s = kb.newKieSession(); s.insert(v); s.insert(p); s.fireAllRules(); s.dispose();   // must TERMINATE
+            assertEquals(Boolean.TRUE, p.isDuur(), () -> "regel A (vertrektijd 10 > 5) moet vuren");   // navigated comparison
+            assertEquals(Boolean.TRUE, p.isKind(), () -> "regel B (leeftijd 10 < 18) moet vuren");      // own comparison
+        }
     }
     /** §5.6 a DATE-ARITHMETIC datum ONGELIJK (datumVergelijkTemporal) with BOTH operands leeg must be onwaar (Tabel 44),
      *  matching DRL's mvel `null != null` -> false. An old `|| (a==null && b==null)` clause wrongly fired the model true
