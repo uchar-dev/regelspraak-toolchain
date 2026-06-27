@@ -1754,6 +1754,26 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_NAV_EXPR_EXPECTED = { vals(true, false, true, true), vals(true, false) };
 
+    // ---- §8.1.1 a NAVIGATED operand AND a Parameter-GLOBAL in ONE arithmetic comparison ("de vertrektijd van zijn reis
+    //      plus de toeslag groter is dan zijn prijs"). The exec voorwaarde global-binding branch binds the single global
+    //      as a pattern var AND (now) sets valueSubject so scalarWaarde's navigated read resolves — was a masked DRL-fires/
+    //      exec-skips (the branch skipped a navigated operand). DRL renders rsRelGetal(reis,"vertrektijd") + the free-name
+    //      global; an absent relation reads leeg -> leeg-as-0. Both fire identically now. ----
+    static final Fixture[] PHASE_NAV_GLOBAL = {
+        // (vertrektijd van zijn reis) + toeslag(30) > prijs. present-true (20+30=50>40), present-false (5+30=35>40=onwaar),
+        // ABSENT onwaar (0+30=30>40=onwaar), ABSENT waar (0+30=30>25=WAAR -> leeg-as-0 still lets the global+rest fire).
+        new Fixture("navigated leg + global in one comparison: (vertrektijd van zijn reis) + toeslag > prijs",
+            "Parameter de toeslag : Numeriek (geheel getal)\n" + NAV_EXPR_HDR + "Regel R\n    geldig altijd\n"
+            + "        Een Passagier is duur indien de vertrektijd van zijn reis plus de toeslag groter is dan zijn prijs.\n",
+            () -> { Vlucht v20 = new Vlucht(); v20.setVertrektijd(new BigDecimal(20));
+                    Vlucht v5 = new Vlucht(); v5.setVertrektijd(new BigDecimal(5));
+                    return List.of(v20, v5, paxNav(v20, null, 40), paxNav(v5, null, 40), paxNav(null, null, 40), paxNav(null, null, 25)); },
+            Map.of("toeslag", new BigDecimal(30)),
+            l -> vals(((Passagier) l.get(2)).isDuur(), ((Passagier) l.get(3)).isDuur(),
+                      ((Passagier) l.get(4)).isDuur(), ((Passagier) l.get(5)).isDuur())),
+    };
+    static final Object[] PHASE_NAV_GLOBAL_EXPECTED = { vals(true, false, false, true) };
+
     // ---- Phase C2: §5.8 AGGREGATION INSIDE ARITHMETIC — an aggregation operand inside a Binair (the value is an
     //      arithmetic tree whose leaf is an AANTAL/TOTAAL/MIN/MAX). Each embedded aggregation lowers to its own
     //      accumulate CE; the consequence combines the bound results + scalars + a (≤1) global. Facts: [Vlucht, pax...].
@@ -3674,6 +3694,23 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(eq(PHASE_NAV_EXPR_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §8.1.1 a NAVIGATED operand AND a single Parameter-GLOBAL in one arithmetic comparison now fires at parity: the
+     *  exec voorwaarde global-binding branch binds the global as a pattern var AND sets valueSubject so the navigated read
+     *  resolves (was a masked DRL-fires/exec-skips). Absent relation -> leeg-as-0, the global+rest still fire. Closed-form
+     *  -> assert the ABSOLUTE spec value + parity. */
+    @Test void phase_nav_global_is_spec_correct() {
+        for (int i = 0; i < PHASE_NAV_GLOBAL.length; i++) {
+            Fixture f = PHASE_NAV_GLOBAL[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_NAV_GLOBAL_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
