@@ -17,6 +17,7 @@ import io.github.yhavinga.regelspraak.facts.Passagier;
 import io.github.yhavinga.regelspraak.facts.Persoon;
 import io.github.yhavinga.regelspraak.facts.Rekensom;
 import io.github.yhavinga.regelspraak.facts.Segment;
+import io.github.yhavinga.regelspraak.facts.Tijdmeter;
 import io.github.yhavinga.regelspraak.facts.Vlucht;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
@@ -1676,13 +1677,58 @@ class ExecModelDifferentialTest {
             l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur())),
     };
     static final Object[] PHASE_EXPR_CMP_EXPECTED = { vals(true, false, true), vals(true, false) };
-    // §5.1 a CROSS-UNIT +/- in an arithmetic comparison stays a SYMMETRIC marker — DRL omrekenConditie markers (the
-    //   right-operand restatement into the left's unit truncates the 1/12 ratio, review F2) and the exec parityOnveilig
-    //   skips a cross-unit +/-. Both decline; never a fired wrong value. (Carded: exact canonical-unit arithmetic.)
+    // §5.1/§4 a COMPOSITE (rate) cross-unit +/- in an arithmetic comparison stays a SYMMETRIC marker: the EUR/jr→EUR/mnd
+    //   restatement keeps the single (lossy) ratio (its numerator/denominator precision edge is separately carded), so
+    //   DRL herschaalConditiePlus markers it and the exec parityOnveilig skips it. (A SIMPLE jr/mnd cross-unit +/- now
+    //   FIRES exactly — see phase_cross_unit_arithmetic_is_spec_correct; only the rate edge remains symmetric-declined.)
     static final String CROSS_UNIT_ARITH_CMP_SRC =
-        "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\n"
-        + "Objecttype de Passagier\n    het basistarief Numeriek (geheel getal) met eenheid jr;\n    de bodem Numeriek (geheel getal) met eenheid mnd;\n    de prijs Numeriek (geheel getal) met eenheid jr;\n    is duur kenmerk (bijvoeglijk);\n"
+        "Eenheidsysteem Geld\n    de euro EUR\nEenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\n"
+        + "Objecttype de Passagier\n    het basistarief Numeriek (geheel getal) met eenheid EUR/jr;\n    de bodem Numeriek (geheel getal) met eenheid EUR/mnd;\n    de prijs Numeriek (geheel getal) met eenheid EUR/jr;\n    is duur kenmerk (bijvoeglijk);\n"
         + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn basistarief plus zijn bodem gelijk is aan zijn prijs.\n";
+
+    // ---- §4 EXACT cross-unit +/- ARITHMETIC: a SIMPLE convertible cross-unit +/- (jr vs mnd) restates the operand
+    //      by the DECLARED integer factorNaarCanoniek (×÷, one DECIMAL64 rounding) instead of the pre-rounded ratio
+    //      mnd→jr = 1/12 = 0.0833…. The lossy ratio gave 3.99999999999999992 for "2 jr + 24 mnd" on BOTH back-ends —
+    //      a SHARED wrong value a pure parity check cannot catch, so assert the EXACT BigDecimal (differential-masks-
+    //      shared-bugs). The constraint side now FIRES exactly too (was a symmetric marker/skip). ----
+    static final String CU_VALUE_SRC =
+        "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\n"
+        + "Objecttype de Tijdmeter\n    de extra Numeriek (getal met 5 decimalen) met eenheid jr;\n"
+        + "    de looptijd Numeriek (getal met 5 decimalen) met eenheid mnd;\n    de totaal Numeriek (getal met 5 decimalen) met eenheid jr;\n"
+        + "Regel R\n    geldig altijd\n        De totaal van een Tijdmeter moet gesteld worden op de extra van een Tijdmeter plus de looptijd van een Tijdmeter.\n";
+    static final String CU_COND_SRC =
+        "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\n"
+        + "Objecttype de Tijdmeter\n    de extra Numeriek (getal met 5 decimalen) met eenheid jr;\n"
+        + "    de looptijd Numeriek (getal met 5 decimalen) met eenheid mnd;\n    de totaal Numeriek (getal met 5 decimalen) met eenheid jr;\n    is oud kenmerk (bijvoeglijk);\n"
+        + "Regel R\n    geldig altijd\n        Een Tijdmeter is oud indien de extra van een Tijdmeter plus de looptijd van een Tijdmeter gelijk is aan de totaal van een Tijdmeter.\n";
+    static Tijdmeter tm(Consumer<Tijdmeter> c) { Tijdmeter t = new Tijdmeter(); c.accept(t); return t; }
+    static final Fixture[] PHASE_CU_ARITH = {
+        // VALUE: 2 jr + 24 mnd = 4 jr EXACTLY (24 mnd → jr = ×1 ÷12 = 2; lossy ratio gave 3.99999999999999992)
+        new Fixture("cross-unit value 2 jr + 24 mnd = 4 jr (exact)", CU_VALUE_SRC,
+            () -> List.of(tm(t -> { t.setExtra(new BigDecimal(2)); t.setLooptijd(new BigDecimal(24)); })),
+            Map.of(), l -> ((Tijdmeter) l.get(0)).getTotaal()),
+        // VALUE: 1 jr + 6 mnd = 1.5 jr EXACTLY (6 mnd → jr = 0.5; lossy gave 1.49999999999999998)
+        new Fixture("cross-unit value 1 jr + 6 mnd = 1.5 jr (exact)", CU_VALUE_SRC,
+            () -> List.of(tm(t -> { t.setExtra(new BigDecimal(1)); t.setLooptijd(new BigDecimal(6)); })),
+            Map.of(), l -> ((Tijdmeter) l.get(0)).getTotaal()),
+        // CONSTRAINT: 2 jr + 24 mnd == 4 jr → WAAR (was a symmetric marker; now fires, 4 == 4 in jr / 48 == 48 canonical)
+        new Fixture("cross-unit constraint 2 jr + 24 mnd == 4 jr -> waar", CU_COND_SRC,
+            () -> List.of(tm(t -> { t.setExtra(new BigDecimal(2)); t.setLooptijd(new BigDecimal(24)); t.setTotaal(new BigDecimal(4)); })),
+            Map.of(), l -> ((Tijdmeter) l.get(0)).isOud()),
+        // CONSTRAINT: 2 jr + 24 mnd == 5 jr → ONWAAR (the exact restatement must NOT spuriously fire either)
+        new Fixture("cross-unit constraint 2 jr + 24 mnd == 5 jr -> onwaar", CU_COND_SRC,
+            () -> List.of(tm(t -> { t.setExtra(new BigDecimal(2)); t.setLooptijd(new BigDecimal(24)); t.setTotaal(new BigDecimal(5)); })),
+            Map.of(), l -> ((Tijdmeter) l.get(0)).isOud()),
+        // CONSTRAINT: a leeg looptijd counts as 0 (§6.2 Tabel 3): 2 jr + leeg == 2 jr → WAAR (no NPE on the null restatement)
+        new Fixture("cross-unit constraint 2 jr + leeg == 2 jr -> waar (leeg=0)", CU_COND_SRC,
+            () -> List.of(tm(t -> { t.setExtra(new BigDecimal(2)); t.setTotaal(new BigDecimal(2)); })),
+            Map.of(), l -> ((Tijdmeter) l.get(0)).isOud()),
+    };
+    /** ABSOLUTE spec values: 4 jr, 1.5 jr, waar, onwaar, waar. The first two are the SHARED lossy-ratio bug a pure
+     *  parity check would have missed (both back-ends produced 3.9999… / 1.4999…). */
+    static final Object[] PHASE_CU_ARITH_EXPECTED = {
+        new BigDecimal("4"), new BigDecimal("1.5"), Boolean.TRUE, Boolean.FALSE, Boolean.TRUE
+    };
 
     // ---- §8.1.1 an EXPRESSION-vs-GLOBAL comparison ("zijn basistarief plus zijn bodem groter is dan de grens",
     //      "zijn basistarief plus de toeslag groter is dan zijn prijs") — the exec voorwaarde binds the SINGLE distinct
@@ -4122,6 +4168,24 @@ class ExecModelDifferentialTest {
     @Test void phase_C_compound_subselectie_matches_drl_back_end() { runDifferential("Phase C compound", PHASE_C_COMPOUND, 2); }
     @Test void phase_C_count_global_subselectie_matches_drl_back_end() { runDifferential("Phase C count+global", PHASE_C_COUNT_GLOBAL, 4); }
     @Test void phase_crossunit_matches_drl_back_end() { runDifferential("Phase cross-unit", PHASE_CROSSUNIT, 2); }
+    @Test void phase_cu_arith_matches_drl_back_end() { runDifferential("Phase cross-unit +/-", PHASE_CU_ARITH, 5); }
+    /** §4 a SIMPLE convertible cross-unit +/- restates EXACTLY (×÷ the declared integer factorNaarCanoniek, NOT the
+     *  pre-rounded 1/12 ratio): "2 jr + 24 mnd" = 4 jr, "1 jr + 6 mnd" = 1.5 jr — both EXACT where the old lossy ratio
+     *  gave 3.99999999999999992 / 1.49999999999999998 in BOTH back-ends (a SHARED bug, hence the ABSOLUTE assertion).
+     *  The constraint side now FIRES at parity (was a symmetric marker), incl. a leeg operand (leeg=0, §6.2 Tabel 3). */
+    @Test void phase_cross_unit_arithmetic_is_spec_correct() {
+        for (int i = 0; i < PHASE_CU_ARITH.length; i++) {
+            Fixture f = PHASE_CU_ARITH[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_CU_ARITH_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_expr_cmp_matches_drl_back_end() { runDifferential("Phase expr-cmp", PHASE_EXPR_CMP, 2); }
     @Test void phase_expr_global_matches_drl_back_end() { runDifferential("Phase expr-global", PHASE_EXPR_GLOBAL, 2); }
     /** §8.1.1 an EXPRESSION-vs-GLOBAL comparison now fires in the exec (binds the single distinct global as a pattern
@@ -4149,16 +4213,17 @@ class ExecModelDifferentialTest {
         ExecModelTranspiler em = ExecModelTranspiler.build(m);
         assertFalse(em.overgeslagen().isEmpty(), () -> "een twee-globals expr-vergelijking moet een eerlijke exec-skip zijn, kreeg: " + em.overgeslagen());
     }
-    /** §5.1 a CROSS-UNIT +/- in an arithmetic comparison stays a SYMMETRIC marker — the exec parityOnveilig skips a
-     *  cross-unit +/- (the §4 ratio truncates 1/12 -> a wrong firing, review F2) and DRL omrekenConditie markers it.
-     *  Both decline (exec overgeslagen + DRL TODO), never a fired wrong value. */
-    @Test void cross_unit_arithmetic_comparison_is_symmetric_marker_in_both() {
+    /** §5.1/§4 a COMPOSITE (rate) cross-unit +/- in an arithmetic comparison stays a SYMMETRIC marker — the EUR/jr→EUR/mnd
+     *  restatement keeps the single (lossy) ratio, so the exec parityOnveilig skips it and DRL herschaalConditiePlus markers
+     *  it. Both decline (exec overgeslagen + DRL TODO), never a fired wrong value. (A SIMPLE jr/mnd cross-unit +/- now fires
+     *  exactly — phase_cross_unit_arithmetic_is_spec_correct; this pins the rate edge stays symmetric-declined.) */
+    @Test void cross_unit_RATE_arithmetic_comparison_is_symmetric_marker_in_both() {
         RegelSpraakModel m = Resolver.resolve(CROSS_UNIT_ARITH_CMP_SRC);
         assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
         ExecModelTranspiler em = ExecModelTranspiler.build(m);
-        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet een cross-unit +/- voorwaarde overslaan, kreeg: " + em.overgeslagen());
+        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet een rate cross-unit +/- voorwaarde overslaan, kreeg: " + em.overgeslagen());
         assertTrue(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
-                () -> "DRL moet een cross-unit +/- voorwaarde ook markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
+                () -> "DRL moet een rate cross-unit +/- voorwaarde ook markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
     }
     /** §5.8 a bare SET operand ("de prijs van alle passagiers") inside arithmetic in a CONDITION must SKIP symmetrically
      *  with DRL's marker, NOT lower to a scalar read that reads `prijs` off the subject Vlucht (no such getter) and CRASH

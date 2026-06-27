@@ -1255,7 +1255,7 @@ public final class DrlTranspiler {
             // §6.2-6.8 arithmetic, shared with the condition side: value getters for the sub-operands, and a
             // +/- right operand restated in the left's unit by the NULL-GUARDED omrekenWaarde (a "then"-side
             // ternary is fine here).
-            return binairTerm(b, x -> waarde(x, subject), this::omrekenWaarde);
+            return binairTerm(b, x -> waarde(x, subject), this::herschaalWaardePlus);
         if (e instanceof Expr.Afgerond af) {
             return afgerondeTerm(waarde(af.basis(), subject), af);
         }
@@ -3162,7 +3162,7 @@ public final class DrlTranspiler {
             // ternary, and the ternary-free multiply would NPE-abort the session on a null operand, so a
             // convertible-but-different-unit +/- stays an honest no-op). The leegwaarde helpers (rsNul/rsGedeeld/
             // rsVerminderd/rsMacht) are method calls, valid in a constraint.
-            return binairTerm(b, x -> operandReken(x, subject), DrlTranspiler::omrekenConditie);
+            return binairTerm(b, x -> operandReken(x, subject), this::herschaalConditiePlus);
         if (e instanceof Expr.Begrensd bg) {
             // §6.1.4 begrenzing in a CONDITION: the value side clamps with an inline ternary "(r < m ? m : r)"
             // that mis-parses in a pattern constraint, so lower through the registered rsBegrens helper (a method
@@ -3380,6 +3380,34 @@ public final class DrlTranspiler {
         return fn;
     }
 
+    /** EXACT §4 restatement of a value in {@code van} into {@code naar} for a +/- operand whose units are SIMPLE and
+     *  convertible — multiply by the source unit's integer factorNaarCanoniek and DIVIDE by the target's (one DECIMAL64
+     *  rounding, AT THE END), NOT a multiply by the pre-rounded ratio (which truncates mnd→jr = 1/12 = 0.0833…, so
+     *  "0 jr + 24 mnd" read 1.9999… ≠ 2). Mirrors the §7.3.1 rsTijdSchaal exact-÷ and the comparison path's naarCanoniek.
+     *  A COMPOSITE (rate) unit keeps the single-ratio path (its precision edge is separately carded); no conversion is
+     *  the identity. {@code nullVeilig} picks the VALUE-side inline ternary vs the CONSTRAINT-side rsHerschaalExact helper. */
+    private String herschaalExact(String expr, Datatype van, Datatype naar, boolean nullVeilig) {
+        io.github.yhavinga.regelspraak.model.Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();
+        if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return expr;
+        if (ev.noemer() != null || en.noemer() != null || ev.factorNaarCanoniek() == null || en.factorNaarCanoniek() == null)
+            return vermenigvuldigMetFactor(expr, ev.omrekenfactorNaar(en), nullVeilig);   // rate/unknown: keep the single ratio
+        String fv = "new java.math.BigDecimal(\"" + ev.factorNaarCanoniek().toPlainString() + "\")";
+        String fn = "new java.math.BigDecimal(\"" + en.factorNaarCanoniek().toPlainString() + "\")";
+        if (nullVeilig)   // VALUE side: an inline null-guarded ×fv ÷fn (DECIMAL64), valid in a consequence / value expression
+            return "(" + expr + " == null ? null : (" + expr + ").multiply(" + fv + ").divide(" + fn + ", java.math.MathContext.DECIMAL64))";
+        return registreerHerschaalExactFunctie() + "(" + expr + ", " + fv + ", " + fn + ")";   // CONSTRAINT side: null-safe helper
+    }
+
+    /** Register (idempotently) the null-safe EXACT unit-restatement helper {@code rsHerschaalExact} used in CONSTRAINT
+     *  contexts — ×fv ÷fn at DECIMAL64 (a leeg operand restates to leeg). The exact mirror of {@link #registreerHerschaalFunctie}. */
+    private String registreerHerschaalExactFunctie() {
+        String fn = "rsHerschaalExact";
+        hulpFuncties.putIfAbsent(fn, "function java.math.BigDecimal " + fn
+                + "(java.math.BigDecimal x, java.math.BigDecimal fv, java.math.BigDecimal fn) {\n"
+                + "    return x == null ? null : x.multiply(fv).divide(fn, java.math.MathContext.DECIMAL64);\n}\n\n");
+        return fn;
+    }
+
     /** The §4 conversion factor to restate a {@code van}-typed quantity in the {@code naar} unit, or {@code
      *  null} when no conversion applies (either side unitless, not convertible, or already the same unit). */
     private static java.math.BigDecimal omrekenFactor(Datatype van, Datatype naar) {
@@ -3405,6 +3433,24 @@ public final class DrlTranspiler {
      *  {@link #vermenigvuldigMetFactor}; the constraint form is {@link #omreken}. */
     private Frag omrekenWaarde(Frag expr, Datatype van, Datatype naar) {
         return expr.marker() ? expr : Frag.ok(vermenigvuldigMetFactor(expr.text(), omrekenFactor(van, naar), true));
+    }
+
+    /** §4 restatement of a +/- RIGHT operand on the VALUE side: EXACT canonical-unit ×÷ for simple convertible units
+     *  ({@link #herschaalExact}), the lossy single-ratio fallback for a rate, identity otherwise. A marker propagates. */
+    private Frag herschaalWaardePlus(Frag expr, Datatype van, Datatype naar) {
+        return expr.marker() ? expr : Frag.ok(herschaalExact(expr.text(), van, naar, true));
+    }
+
+    /** §4 restatement of a +/- RIGHT operand on the CONSTRAINT side: a SIMPLE convertible cross-unit +/- now FIRES via
+     *  the EXACT rsHerschaalExact (no more lossy-ratio truncation), so "0 jr + 24 mnd == 2 jr" decides 24 == 24. A
+     *  COMPOSITE (rate) cross-unit stays an honest marker (its precision edge is carded); no conversion is the identity. */
+    private Frag herschaalConditiePlus(Frag expr, Datatype van, Datatype naar) {
+        if (expr.marker()) return expr;
+        io.github.yhavinga.regelspraak.model.Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();
+        if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return expr;   // no conversion -> identity
+        if (ev.noemer() != null || en.noemer() != null || ev.factorNaarCanoniek() == null || en.factorNaarCanoniek() == null)
+            return Frag.todo("eenheidconversie in een rekenkundige voorwaarde (samengestelde eenheid)", expr.text());   // rate edge -> marker
+        return Frag.ok(herschaalExact(expr.text(), van, naar, false));
     }
 
     /** §13.4.17.25 afronding: round a basis term to {@code af.decimalen()} via the matching

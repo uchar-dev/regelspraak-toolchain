@@ -2183,6 +2183,12 @@ public final class ExecModelTranspiler {
             BiFunction<Object, Map<String, BigDecimal>, Object> inner = fn;
             return new WaardeFn((s, gm) -> { Object v = inner.apply(s, gm); return v instanceof BigDecimal bd ? bd.multiply(f) : v; }, globals);
         }
+        /** A copy whose NUMERIC result is restated from unit {@code van} into {@code naar} via the §4 EXACT-or-lossy
+         *  {@link #herschaalWaarde} (a non-number passes through; a leeg stays leeg). Self-noops when no conversion is due. */
+        WaardeFn herschaald(Datatype van, Datatype naar) {
+            BiFunction<Object, Map<String, BigDecimal>, Object> inner = fn;
+            return new WaardeFn((s, gm) -> { Object v = inner.apply(s, gm); return v instanceof BigDecimal bd ? herschaalWaarde(bd, van, naar) : v; }, globals);
+        }
     }
 
     /** Scalar value: Literal | own-attr read | Parameter-global read | a {@code +} of those (rsNul leegwaarde).
@@ -2328,10 +2334,8 @@ public final class ExecModelTranspiler {
             WaardeFn lf = scalarWaarde(b.links()), rf = scalarWaarde(b.rechts());
             if (lf == null || rf == null) return null;
             Expr.BinOp op = b.op();
-            if (op == Expr.BinOp.PLUS || op == Expr.BinOp.MIN || op == Expr.BinOp.VERMINDERD_MET) {
-                BigDecimal vf = valueFactor(b.rechts().type(), b.links().type());   // restate rhs into lhs unit
-                if (vf != null) rf = rf.scaledBy(vf);
-            }
+            if (op == Expr.BinOp.PLUS || op == Expr.BinOp.MIN || op == Expr.BinOp.VERMINDERD_MET)
+                rf = rf.herschaald(b.rechts().type(), b.links().type());   // §4 EXACT restate rhs into lhs unit (self-noops if same)
             BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lf.fn(), rfn = rf.fn();
             Set<String> g = new LinkedHashSet<>(lf.globals()); g.addAll(rf.globals());
             return new WaardeFn((s, gm) -> {
@@ -2586,8 +2590,10 @@ public final class ExecModelTranspiler {
             if (l == null || r == null) return null;
             Expr.BinOp op = b.op();
             if (op == Expr.BinOp.PLUS || op == Expr.BinOp.MIN || op == Expr.BinOp.VERMINDERD_MET) {
-                BigDecimal vf = valueFactor(b.rechts().type(), b.links().type());   // restate rhs into lhs unit
-                if (vf != null) { Eval inner = r; r = (s, g, a) -> { Object x = inner.apply(s, g, a); return x == null ? null : ((BigDecimal) x).multiply(vf); }; }
+                Datatype rt = b.rechts().type(), lt = b.links().type();
+                if (valueFactor(rt, lt) != null || exactHerschaalFactoren(rt, lt) != null) {   // a real conversion is due
+                    Eval inner = r; r = (s, g, a) -> { Object x = inner.apply(s, g, a); return x == null ? null : herschaalWaarde((BigDecimal) x, rt, lt); };
+                }
             }
             Eval lf = l, rf = r;
             return (s, g, a) -> {
@@ -2673,6 +2679,38 @@ public final class ExecModelTranspiler {
         return ev.omrekenfactorNaar(en);
     }
 
+    /** Whether a cross-unit +/- between {@code a} and {@code b} can be restated EXACTLY (both SIMPLE convertible units
+     *  with known integer factorNaarCanoniek) — the §4 multiply/divide canonical path (mirrors DRL herschaalConditiePlus).
+     *  A COMPOSITE (rate) unit or an unknown factor is NOT exactly restatable here: the constraint side then SKIPS
+     *  symmetrically with the DRL marker (see {@link #parityOnveilig}). Order-independent (convertibility is symmetric). */
+    private static boolean eenheidExactHerschaalbaar(Datatype a, Datatype b) {
+        Eenheid ea = a == null ? null : a.eenheidOf(), eb = b == null ? null : b.eenheidOf();
+        return ea != null && eb != null && ea.convertibleNaar(eb)
+                && ea.noemer() == null && eb.noemer() == null
+                && ea.factorNaarCanoniek() != null && eb.factorNaarCanoniek() != null;
+    }
+
+    /** The EXACT canonical-unit restatement factors {fv, fn} to restate a value in {@code van} into {@code naar}
+     *  (×fv ÷fn at DECIMAL64), or null when no exact restatement applies (no conversion due, or a rate/unknown-factor
+     *  unit — the caller then falls back to the lossy {@link #valueFactor}). Mirrors DRL herschaalExact. */
+    private static BigDecimal[] exactHerschaalFactoren(Datatype van, Datatype naar) {
+        Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();
+        if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return null;
+        if (!eenheidExactHerschaalbaar(van, naar)) return null;
+        return new BigDecimal[]{ev.factorNaarCanoniek(), en.factorNaarCanoniek()};
+    }
+
+    /** §4 restate a scalar value from {@code van} into {@code naar}: EXACT ×fv ÷fn (DECIMAL64) for simple convertible
+     *  units (mirrors DRL herschaalExact / §7.3.1 rsTijdSchaal), the lossy single ratio for a rate, identity otherwise.
+     *  A leeg (null) value stays leeg. */
+    private static BigDecimal herschaalWaarde(BigDecimal v, Datatype van, Datatype naar) {
+        if (v == null) return null;
+        BigDecimal[] ex = exactHerschaalFactoren(van, naar);
+        if (ex != null) return v.multiply(ex[0]).divide(ex[1], java.math.MathContext.DECIMAL64);
+        BigDecimal vf = valueFactor(van, naar);
+        return vf == null ? v : v.multiply(vf);
+    }
+
     // ---- small helpers ----
     private static BigDecimal num(Object bean, String attr) { return (BigDecimal) RegelSpraakRuntime.get(bean, attr); }
     /** Parse a numeric literal's value, ignoring any trailing unit ("18 jr" -> 18, "3,5 EUR" -> 3.5; comma is the
@@ -2699,7 +2737,11 @@ public final class ExecModelTranspiler {
             if (b.op() == Expr.BinOp.PLUS || b.op() == Expr.BinOp.MIN || b.op() == Expr.BinOp.VERMINDERD_MET) {
                 Eenheid el = b.links().type() == null ? null : b.links().type().eenheidOf();
                 Eenheid er = b.rechts().type() == null ? null : b.rechts().type().eenheidOf();
-                if (el != null && er != null && el.vereistOmrekening(er)) return true;   // cross-unit +/- -> lossy / DRL markers
+                // A SIMPLE convertible cross-unit +/- now restates EXACTLY (×÷ canonical) and FIRES at parity with DRL's
+                // rsHerschaalExact; only a COMPOSITE (rate) / unknown-factor cross-unit +/- still restates lossily -> the
+                // exec keeps the symmetric skip (DRL herschaalConditiePlus markers it).
+                if (el != null && er != null && el.vereistOmrekening(er)
+                        && !eenheidExactHerschaalbaar(b.links().type(), b.rechts().type())) return true;
             }
             return parityOnveilig(b.links()) || parityOnveilig(b.rechts());
         }

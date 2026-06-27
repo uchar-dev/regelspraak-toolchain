@@ -659,13 +659,13 @@ class DrlTest {
         assertFalse(constraintRegel.contains(" ? "), () -> "de voorwaarde-constraint mag geen ternary bevatten:\n" + constraintRegel);
     }
 
-    @Test void convertibele_eenheid_in_een_rekenkundige_voorwaarde_blijft_marker() {
-        // §5.1 a +/- whose operands need a UNIT CONVERSION in a constraint stays an honest MARKER: the restatement
-        // would restate the right operand into the LEFT's unit by the §4 ratio (omrekenfactorNaar), which TRUNCATES a
-        // non-terminating quotient (mnd→jr = 1/12 = 0.0833…) — "1 jr + 12 mnd == 2 jr" would compute 1.9999… ≠ 2, a
-        // WRONG firing (review F2). The comparison restatement uses the exact factorNaarCanoniek, but a +/- result must
-        // stay in the left's unit (lossy for the smaller→larger direction). So both back-ends decline it symmetrically
-        // (the exec parityOnveilig skips a cross-unit +/-). Carded: exact canonical-unit arithmetic would fire both.
+    @Test void convertibele_eenheid_in_een_rekenkundige_voorwaarde_vuurt_via_exacte_canonieke_herschaling() {
+        // §5.1/§4 a +/- whose operands need a SIMPLE unit conversion in a constraint now FIRES exactly: the right
+        // operand is restated by multiplying with the source unit's integer factorNaarCanoniek and DIVIDING by the
+        // target's (rsHerschaalExact, one DECIMAL64 rounding), NOT the old multiply by the pre-rounded ratio
+        // (omrekenfactorNaar) that truncated the non-terminating quotient mnd→jr = 1/12 = 0.0833… (so "0 jr + 24 mnd
+        // == 2 jr" used to read 1.9999… ≠ 2 — review F2). The exec mirrors this (parityOnveilig no longer skips a
+        // simple-unit cross-unit +/-), so both back-ends fire at parity. extra is jr (factor 12), so it restates ×12 ÷1.
         String src = """
             Eenheidsysteem Tijd
                 de maand    mnd
@@ -680,8 +680,9 @@ class DrlTest {
                     Een Klok is oud indien de looptijd van een Klok plus de extra van een Klok gelijk is aan de totaal van een Klok.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        assertTrue(drl.contains("/* TODO voorwaarde"), () -> "een cross-unit +/- in een rekenkundige voorwaarde moet markeren (lossy ratio, review F2):\n" + drl);
-        assertFalse(drl.contains(".multiply"), () -> "geen ongegarde multiply in een constraint:\n" + drl);
+        assertFalse(drl.contains("/* TODO voorwaarde"), () -> "een SIMPELE cross-unit +/- in een voorwaarde moet nu vuren (geen marker):\n" + drl);
+        assertTrue(drl.contains("rsHerschaalExact(") && drl.contains("new java.math.BigDecimal(\"12\"), new java.math.BigDecimal(\"1\"))"),
+                () -> "het rechter +/- operand moet via de EXACTE rsHerschaalExact (×12 ÷1) herschaald worden:\n" + drl);
     }
 
     @Test void macht_afronding_rondt_de_macht_af_en_een_trailing_operator_bindt_buiten() {
