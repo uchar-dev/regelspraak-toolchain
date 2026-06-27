@@ -1884,6 +1884,12 @@ class ExecModelDifferentialTest {
         vals(true, false, false, false, false),  // NAV vs OWN GELIJK
         vals(false, true, true),                 // OWN ONGELIJK vs lit
     };
+    // §13.2.20 a Datum-en-tijd (LocalDateTime) GELIJK/ONGELIJK is NOT lowered by the exec datum-equality branch (datumLezer
+    //   is DatumInDagen-only — a LocalDateTime read via `instanceof LocalDate` would become leeg -> a WRONG fire). It stays
+    //   an HONEST exec skip (DRL fires it). Locks the DatumInDagen guard against a regression to the wrong-fire.
+    static final String DATUMTIJD_EQ_SRC =
+        "Objecttype de Vlucht\n    de vertrekmoment Datum en tijd in millisecondes;\n    de aankomstmoment Datum en tijd in millisecondes;\n    is laat kenmerk (bijvoeglijk);\n"
+        + "Regel R\n    geldig altijd\n        Een Vlucht is laat indien zijn vertrekmoment gelijk is aan zijn aankomstmoment.\n";
 
     // §5.8 a bare SET operand ("de prijs van ALLE passagiers") used as a SCALAR inside arithmetic in a CONDITION is an
     //   instance-AGGREGATION source the exec does not lower to a scalar — it must SKIP (symmetric with DRL's marker), NOT
@@ -3926,6 +3932,18 @@ class ExecModelDifferentialTest {
             assertEquals(eq(PHASE_DATUM_EQ_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
+    }
+    /** §13.2.20 a DATUM-EN-TIJD (LocalDateTime) GELIJK/ONGELIJK must NOT be lowered by the exec datum-equality branch — a
+     *  LocalDateTime read via the branch's `instanceof LocalDate` would become leeg and WRONGLY fire (datumGelijk(null,...)).
+     *  The branch is gated DatumInDagen-only, so a datum-tijd equality stays an HONEST skip (overgeslagen); DRL fires it.
+     *  Regression lock for the DatumInDagen guard (a present datum-tijd must never be read as leeg). */
+    @Test void datumtijd_equality_is_honest_exec_skip_not_misfire() {
+        RegelSpraakModel m = Resolver.resolve(DATUMTIJD_EQ_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet een datum-tijd gelijkheid OVERSLAAN (niet als leeg mis-vuren), kreeg: " + em.overgeslagen());
+        assertFalse(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
+                () -> "DRL vuurt de datum-tijd gelijkheid wel (asymmetrische skip, geen marker):\n" + DrlTranspiler.transpile(m));
     }
     /** §5.1 a cross-unit comparison in a CONSTRAINT now fires null-safely (rsHerschaal, the mirror of the exec scale) —
      *  standalone AND in a counting subselectie. A LEEG operand restates to leeg -> no-match (no NPE) in both. A closed-

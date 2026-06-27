@@ -2616,6 +2616,11 @@ public final class ExecModelTranspiler {
      *  the attribute is temporal (Phase F), §3.6 gedimensioneerd, not the subject's own member, or an unresolvable /
      *  to-many navigation. Mirrors {@link #navReader}'s null-safety for the datum-equality leaf. */
     private java.util.function.Function<Object, java.time.LocalDate> datumLezer(Expr.AttribuutRef a, Objecttype subject) {
+        // DATUM-IN-DAGEN only: a §13.2.20 Datum-en-tijd attribute is a LocalDateTime, which `instanceof LocalDate` below
+        // reads as leeg (a present value would wrongly become a leegwaarde -> a wrong fire). DatumTijd equality stays an
+        // honest exec skip (DRL fires it; carded) until the exec lowers a datum-tijd read + literal. Mirrors the datum
+        // ORDERING branch's LocalDate-only scope.
+        if (!(a.type() instanceof Datatype.DatumInDagen)) return null;
         if (a.objecttype() == null || a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;   // temporal -> Phase F
         if (!a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;                                        // §3.6 -> marker
         String attr = a.attribuut();
