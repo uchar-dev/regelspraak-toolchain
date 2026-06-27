@@ -416,6 +416,23 @@ public final class DrlTranspiler {
         return null;
     }
 
+    /** The leegwaarde-faithful POSITIVE (voorwaarde) truth value of a comparison with a TO-ONE navigated operand —
+     *  exactly the complement of {@link #genavigeerdeVergelijkingSchending} (the rule fires when the comparison is WAAR;
+     *  the consistentie rule fires when it is VIOLATED, i.e. onwaar/fout). A navigated operand otherwise renders via
+     *  operand()'s mvel {@code !.}, which short-circuits the whole constraint to a non-match on a null relation —
+     *  spec-correct for ordering/GELIJK (a leeg operand is onwaar) but WRONG for ONGELIJK (§5.6 Tabel 44: a leeg-vs-gevuld
+     *  "ongelijk aan" is WAAR). Reuses the schending form's explicit leeg/vol/waarde guards (operandDeel) + unit
+     *  restatement, so the two stay in lock-step. null when neither operand is navigated (the plain mvel form applies) or
+     *  an operand markers. Mirrors the exec navigated-comparison branches (a null relation -> leeg -> vergelijk). */
+    private String genavigeerdeVergelijkingVoorwaarde(Conditie.Vergelijking v, Objecttype subject) {
+        // Only GELIJK and ONGELIJK need the explicit form: ordering (<,>,<=,>=) of a leeg operand is onwaar (Tabel 33-42),
+        // which mvel's `!.` short-circuit ALREADY gives correctly — keep its compact `reis!.x op y` rendering. GELIJK
+        // both-leeg -> WAAR (Tabel 37) and ONGELIJK one-leeg -> WAAR (Tabel 44) are the cells `!.` gets wrong.
+        if (v.op() != Conditie.Operator.GELIJK && v.op() != Conditie.Operator.ONGELIJK) return null;
+        String schending = genavigeerdeVergelijkingSchending(v, subject);
+        return schending == null ? null : "!" + schending;
+    }
+
     private static boolean ordeningOfDatum(Conditie.Operator op) {
         return switch (op) {
             case KLEINER, KLEINER_OF_GELIJK, GROTER, GROTER_OF_GELIJK,
@@ -2765,6 +2782,12 @@ public final class DrlTranspiler {
             // never reach — its .multiply would wrap the placeholder.)
             Frag lo = operand(v.links(), subject), ro = operand(v.rechts(), subject);
             if (lo.marker() || ro.marker()) return LoweredConditie.marker("voorwaarde", v.bron());
+            // §5.5.5 a comparison with a TO-ONE navigated operand: mvel's `!.` (from operand()) short-circuits the whole
+            // constraint to a non-match on a null relation — spec-correct for ordering/GELIJK (a leeg operand is onwaar)
+            // but WRONG for ONGELIJK (Tabel 44: a leeg-vs-gevuld "ongelijk aan" is WAAR). Read the comparison leegwaarde-
+            // faithfully via explicit leeg/vol/waarde guards (the complement of the consistentie schending form) instead.
+            String navVw = genavigeerdeVergelijkingVoorwaarde(v, subject);
+            if (navVw != null) return LoweredConditie.van(navVw);
             // §5.1 Tabel 32: a comparison across convertible-but-different units restates
             // the right operand in the left's unit first ("24 mnd > 2 jr", not "24 > 2").
             String[] o = vergelijkingsOperanden(lo.text(), v.links().type(), ro.text(), v.rechts().type());

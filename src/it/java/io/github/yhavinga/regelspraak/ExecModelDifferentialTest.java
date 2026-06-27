@@ -1774,6 +1774,59 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_NAV_GLOBAL_EXPECTED = { vals(true, false, false, true) };
 
+    // ---- §5.5.5 / §5.6 a STANDALONE navigated comparison whose to-one relation is ABSENT reads the operand as LEEGWAARDE,
+    //      then applies the typeringen leegwaarde tables (Tabel 33-44) — NOT mvel's `!.` blanket short-circuit-to-false.
+    //      ONGELIJK of a leeg-vs-gevuld operand is WAAR (Tabel 44); GELIJK of both-leeg is WAAR (Tabel 37); ordering and
+    //      one-sided GELIJK are onwaar. Both back-ends now agree AND match spec (was a masked SHARED bug: parity-only PHASE_H
+    //      hid it). Fixtures assert ABSOLUTE spec values across {present-true, present-false, ABSENT relation, both-leeg,
+    //      present-null-attribute}. Vluchten + passengers; reis=null = absent relation; vertrektijd null = present-null-attr. ----
+    static final Fixture[] PHASE_NAV_LEEG = {
+        // ONGELIJK: (vertrektijd van zijn reis) != zijn prijs. 80!=50 WAAR; 50!=50 ONWAAR; ABSENT(leeg)!=50 -> WAAR (Tabel
+        // 44, THE fix — was false); ABSENT + prijs null (both-leeg) -> ONWAAR; present vertrektijd null (leeg)!=50 -> WAAR.
+        new Fixture("navigated ONGELIJK leegwaarde matrix (Tabel 44: absent + present-null-attr fire, both-leeg not)",
+            NAV_EXPR_HDR + "Regel R\n    geldig altijd\n"
+            + "        Een Passagier is duur indien de vertrektijd van zijn reis ongelijk is aan zijn prijs.\n",
+            () -> { Vlucht v80 = new Vlucht(); v80.setVertrektijd(new BigDecimal(80));
+                    Vlucht v50 = new Vlucht(); v50.setVertrektijd(new BigDecimal(50));
+                    Vlucht vNull = new Vlucht();   // vertrektijd null
+                    return List.of(v80, v50, vNull, paxNav(v80, null, 50), paxNav(v50, null, 50),
+                                   paxNav(null, null, 50), paxNav(null, null, null), paxNav(vNull, null, 50)); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(3)).isDuur(), ((Passagier) l.get(4)).isDuur(), ((Passagier) l.get(5)).isDuur(),
+                      ((Passagier) l.get(6)).isDuur(), ((Passagier) l.get(7)).isDuur())),
+        // GELIJK: (vertrektijd van zijn reis) == zijn prijs. 50==50 WAAR; 80==50 ONWAAR; ABSENT(leeg)==50 -> ONWAAR;
+        // ABSENT + prijs null (both-leeg) -> WAAR (Tabel 37); present vertrektijd null (leeg)==50 -> ONWAAR.
+        new Fixture("navigated GELIJK leegwaarde matrix (Tabel 37: both-leeg fires, one-leeg not)",
+            NAV_EXPR_HDR + "Regel R\n    geldig altijd\n"
+            + "        Een Passagier is duur indien de vertrektijd van zijn reis gelijk is aan zijn prijs.\n",
+            () -> { Vlucht v50 = new Vlucht(); v50.setVertrektijd(new BigDecimal(50));
+                    Vlucht v80 = new Vlucht(); v80.setVertrektijd(new BigDecimal(80));
+                    Vlucht vNull = new Vlucht();
+                    return List.of(v50, v80, vNull, paxNav(v50, null, 50), paxNav(v80, null, 50),
+                                   paxNav(null, null, 50), paxNav(null, null, null), paxNav(vNull, null, 50)); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(3)).isDuur(), ((Passagier) l.get(4)).isDuur(), ((Passagier) l.get(5)).isDuur(),
+                      ((Passagier) l.get(6)).isDuur(), ((Passagier) l.get(7)).isDuur())),
+        // GROTER (control: ordering stays onwaar on any leeg). 80>50 WAAR; 30>50 ONWAAR; ABSENT -> ONWAAR; both-leeg ->
+        // ONWAAR; present-null-attr -> ONWAAR. Proves the fix did NOT flip ordering operators.
+        new Fixture("navigated GROTER leegwaarde matrix (ordering: every leeg -> onwaar, unchanged)",
+            NAV_EXPR_HDR + "Regel R\n    geldig altijd\n"
+            + "        Een Passagier is duur indien de vertrektijd van zijn reis groter is dan zijn prijs.\n",
+            () -> { Vlucht v80 = new Vlucht(); v80.setVertrektijd(new BigDecimal(80));
+                    Vlucht v30 = new Vlucht(); v30.setVertrektijd(new BigDecimal(30));
+                    Vlucht vNull = new Vlucht();
+                    return List.of(v80, v30, vNull, paxNav(v80, null, 50), paxNav(v30, null, 50),
+                                   paxNav(null, null, 50), paxNav(null, null, null), paxNav(vNull, null, 50)); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(3)).isDuur(), ((Passagier) l.get(4)).isDuur(), ((Passagier) l.get(5)).isDuur(),
+                      ((Passagier) l.get(6)).isDuur(), ((Passagier) l.get(7)).isDuur())),
+    };
+    static final Object[] PHASE_NAV_LEEG_EXPECTED = {
+        vals(true, false, true, false, true),    // ONGELIJK
+        vals(true, false, false, true, false),   // GELIJK
+        vals(true, false, false, false, false),  // GROTER
+    };
+
     // §5.8 a bare SET operand ("de prijs van ALLE passagiers") used as a SCALAR inside arithmetic in a CONDITION is an
     //   instance-AGGREGATION source the exec does not lower to a scalar — it must SKIP (symmetric with DRL's marker), NOT
     //   read `prijs` off the subject Vlucht (which has no such getter) and CRASH the whole session. Rule S is a co-resident
@@ -1938,14 +1991,12 @@ class ExecModelDifferentialTest {
             Map.of(),
             l -> vals(((Passagier) l.get(1)).getBasistarief(), ((Passagier) l.get(2)).getBasistarief())),   // 50, null
 
-        // (adversary) navigated ONGELIJK vs literal, null RELATION: DRL renders `reis!.vertrektijd != 100`; mvel's `!.`
-        // SHORT-CIRCUITS the whole constraint to a non-match when reis is null, so the partnerless passenger does NOT fire
-        // (both back-ends agree — navComparisonRole returns false on a null relation). Equal (100) -> no fire; different
-        // (80) -> fire. NOTE the null-reis no-fire is a SHARED SPEC-WRONG value: §5.6 Tabel 44 (one-leeg "ongelijk aan")
-        // wants WAAR for it (an absent navigation reads leeg, §5.5.5). This phase asserts PARITY only, so it stays green;
-        // the absolute values are [null, 50, null] where the third SHOULD be 50. Carded:
-        // 20260627-navigated-ongelijk-leegwaarde-Tabel44.md (the fix reads a null relation as leeg then applies vergelijk).
-        new Fixture("navigated ONGELIJK vs literal (null relation: shared no-fire; Tabel-44 gap carded)",
+        // (adversary) navigated ONGELIJK vs literal, null RELATION: §5.5.5 an absent navigation reads LEEG, then §5.6
+        // Tabel 44 (one-leeg "ongelijk aan") = WAAR — so the partnerless passenger FIRES. Both back-ends now read the
+        // navigated comparison leegwaarde-faithfully (no mvel `!.` short-circuit): equal (100) -> no fire; different (80)
+        // -> fire; null reis (leeg != 100) -> FIRE. Absolute values [null, 50, 50]. (This was the carded Tabel-44 gap,
+        // since fixed; the file's PHASE_NAV_LEEG asserts the full leegwaarde matrix with absolute spec values.)
+        new Fixture("navigated ONGELIJK vs literal (null relation reads leeg -> WAAR, Tabel 44)",
             NAV_HDR + "Regel R\n    geldig altijd\n"
             + "        Het basistarief van een passagier moet gesteld worden op 50 indien de vertrektijd van zijn reis ongelijk is aan 100.\n",
             () -> { Vlucht gelijk = new Vlucht(); gelijk.setVertrektijd(new BigDecimal(100));
@@ -3745,6 +3796,23 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(eq(PHASE_NAV_GLOBAL_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §5.5.5/§5.6 a STANDALONE navigated comparison with an ABSENT relation reads the operand as leegwaarde then applies
+     *  Tabel 33-44 — ONGELIJK one-leeg -> WAAR (Tabel 44), GELIJK both-leeg -> WAAR (Tabel 37), ordering/one-sided GELIJK
+     *  -> onwaar. Closes a masked SHARED bug (mvel `!.` short-circuited to false for every operator; only ONGELIJK + GELIJK
+     *  both-leeg were wrong). Assert the ABSOLUTE spec values + parity across the null-state matrix. */
+    @Test void phase_nav_leeg_is_spec_correct() {
+        for (int i = 0; i < PHASE_NAV_LEEG.length; i++) {
+            Fixture f = PHASE_NAV_LEEG[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_NAV_LEEG_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }

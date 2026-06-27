@@ -785,13 +785,12 @@ public final class ExecModelTranspiler {
 
     /** Resolve the to-ONE navigation role of a navigated AttribuutRef (navigatieRol != null), mirroring
      *  {@link #navReader}'s GENAVIGEERD case — or null when absent / unresolvable / to-many. The navigated
-     *  COMPARISON branches use this (rather than {@link #navReader}) because they must null-check the RELATION
-     *  EXPLICITLY: DRL renders a navigated comparison operand as mvel's null-safe {@code rol!.attr}, which
-     *  short-circuits the WHOLE pattern constraint to a NON-match when the reference is null — i.e. a null
-     *  relation is {@code false} for EVERY operator (incl. ONGELIJK), NOT "read leeg then apply vergelijk's
-     *  null semantics". (A present relation with a null ATTRIBUTE value IS read, and then gets vergelijk's
-     *  null semantics — only the reference deref is null-safe.) navReader collapses both nulls, so it cannot
-     *  distinguish them; the comparison must. */
+     *  COMPARISON branches use this (rather than {@link #navReader}) so they can read the RELATION field and,
+     *  per §5.5.5, treat a NULL relation as a LEEGWAARDE — the SAME as a present relation with a null ATTRIBUTE
+     *  value — and then let {@link #vergelijk}'s leegwaarde semantics decide (Tabel 33-44: a leeg operand makes
+     *  ordering/GELIJK onwaar but ONGELIJK WAAR, Tabel 44). The earlier "a null relation is false for EVERY
+     *  operator" reading mirrored mvel's {@code rol!.attr} short-circuit but was spec-WRONG for ONGELIJK; the DRL
+     *  voorwaarde now also reads a navigated comparison leegwaarde-faithfully (genavigeerdeVergelijkingVoorwaarde). */
     private String navComparisonRole(Expr.AttribuutRef a, Objecttype subject) {
         if (a.objecttype() == null || a.navigatieRol() == null || !a.objecttype().heeftLid(a.attribuut())) return null;
         String rol = model.verbindendeRolViaNaam(subject, a.objecttype(), a.navigatieRol());
@@ -1667,8 +1666,11 @@ public final class ExecModelTranspiler {
             BigDecimal rhsScaled = scale(rhs, f[1]);
             return s -> {
                 Object rel = RegelSpraakRuntime.get(s, rol);
-                if (rel == null) return false;   // mvel `rol!.attr` short-circuits the whole term on a null reference
-                return vergelijk(scale(RegelSpraakRuntime.toBd(RegelSpraakRuntime.get(rel, attr)), f[0]), rhsScaled, op);
+                // §5.5.5 a null to-one relation reads LEEG (like a present relation with a null attribute), then vergelijk's
+                // leegwaarde semantics decide (Tabel 33-44): ordering/GELIJK of a leeg operand -> onwaar, but ONGELIJK ->
+                // WAAR (Tabel 44, one-leeg). NOT a blanket short-circuit (which would make a leeg-vs-X ONGELIJK wrongly false).
+                Object attrVal = rel == null ? null : RegelSpraakRuntime.get(rel, attr);
+                return vergelijk(scale(RegelSpraakRuntime.toBd(attrVal), f[0]), rhsScaled, op);
             };
         }
         // §8.1.1 a to-ONE NAVIGATED numeric comparison vs an OWN attribute ("de reisduur van zijn reis groter is dan
@@ -1689,8 +1691,8 @@ public final class ExecModelTranspiler {
             BigDecimal[] f = restatement(la.type(), ra.type());
             return s -> {
                 Object rel = RegelSpraakRuntime.get(s, rol);
-                if (rel == null) return false;   // mvel `rol!.attr` short-circuits the whole term on a null reference
-                return vergelijk(scale(RegelSpraakRuntime.toBd(RegelSpraakRuntime.get(rel, lattr)), f[0]), scale(num(s, rattr), f[1]), op);
+                Object lval = rel == null ? null : RegelSpraakRuntime.get(rel, lattr);   // §5.5.5 null relation -> leeg -> vergelijk (Tabel 44)
+                return vergelijk(scale(RegelSpraakRuntime.toBd(lval), f[0]), scale(num(s, rattr), f[1]), op);
             };
         }
         // §8.1.1 an OWN-attribute numeric comparison vs ANOTHER own attribute ("de prijs groter is dan de drempel"):
@@ -1815,9 +1817,9 @@ public final class ExecModelTranspiler {
             return s -> rhs.equals(RegelSpraakRuntime.get(s, attr)) == gelijk;   // attr may be null; rhs non-null
         }
         // §5.3 the to-ONE NAVIGATED Tekst/enumeratiewaarde equality ("de woonplaats van zijn partner is gelijk aan
-        // 'X'"): DRL renders `rol!.attr == "lit"`, so a null relation short-circuits the WHOLE term to a non-match
-        // (false) for BOTH operators; a present relation with a null attr gets mvel string equality (null == "x" ->
-        // false, null != "x" -> true). Mirrors the navigated numeric comparison's null-relation handling.
+        // 'X'"): §5.5.5 a null relation reads LEEG (the SAME as a present relation with a null attribute), then string
+        // equality decides — GELIJK of leeg vs the literal -> onwaar, ONGELIJK of leeg vs the literal -> WAAR (Tabel 44).
+        // NOT a blanket short-circuit. Mirrors the navigated numeric comparison's null-relation handling.
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() != null
                 && v.rechts() instanceof Expr.Literal lit && tekstOfEnumLabel(lit) != null
                 && (v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)) {
@@ -1830,8 +1832,8 @@ public final class ExecModelTranspiler {
             boolean gelijk = v.op() == Conditie.Operator.GELIJK;
             return s -> {
                 Object rel = RegelSpraakRuntime.get(s, rol);
-                if (rel == null) return false;   // mvel `rol!.attr` short-circuits the whole term on a null reference
-                return rhs.equals(RegelSpraakRuntime.get(rel, attr)) == gelijk;
+                Object val = rel == null ? null : RegelSpraakRuntime.get(rel, attr);   // §5.5.5 null relation -> leeg
+                return rhs.equals(val) == gelijk;   // leeg != literal -> ONGELIJK WAAR (Tabel 44); leeg == literal -> GELIJK onwaar
             };
         }
         // §8.1.5 dagsoortcontrole "<datum> is een <dagsoort>": test an OWN or to-one NAVIGATED datum attribute
