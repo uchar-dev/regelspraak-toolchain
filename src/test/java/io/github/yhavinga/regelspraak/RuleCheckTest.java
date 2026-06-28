@@ -1483,38 +1483,32 @@ class RuleCheckTest {
                 () -> "de ONgekwalificeerde kenmerk-subselectie moet wel vuren:\n" + DrlTranspiler.transpile(plain));
     }
 
-    @Test void standalone_counting_voorwaarde_met_twee_geneste_bullets_wordt_gemarkeerd_niet_fout_gevuurd() {
-        // §13.4.14.6: the indentation-blind bullet grammar FLATTENS 2+ sibling nested-compound bullets under a COUNTING
-        // quantifier into ONE depth-2 compound, AND-merging what the spec OR-s/counts -> the DRL oracle would fire a WRONG
-        // kenmerk. The resolver markers the ambiguous nesting (Onopgelost) so BOTH back-ends decline. ALLE/DE
-        // (AND-idempotent: AND of merged == AND of separate) are UNaffected and still fire.
-        String tmpl = """
-            Objecttype de Passagier
-                de prijs Numeriek (geheel getal);
-                is minderjarig kenmerk (bijvoeglijk);
-                is duur kenmerk (bijvoeglijk);
-            Regel R
-                geldig altijd
-                    Een Passagier is duur indien hij aan %s van de volgende voorwaarden voldoet:
-                    - hij voldoet aan alle volgende voorwaarden:
-                        - hij is minderjarig
-                        - zijn prijs is groter dan 50
-                    - hij voldoet aan alle volgende voorwaarden:
-                        - zijn prijs is kleiner dan 45.
-            """;
-        RegelSpraakModel cnt = Resolver.resolve(tmpl.formatted("ten minste 1"));
-        assertTrue(cnt.errors().isEmpty(), () -> "moet resolven: " + cnt.errors());
-        io.github.yhavinga.regelspraak.ir.Conditie c = null;
-        for (var r : cnt.resolvedRegels) if (r.naam().equals("R")) c = r.voorwaarde();
-        final io.github.yhavinga.regelspraak.ir.Conditie cc = c;
-        assertTrue(cc instanceof io.github.yhavinga.regelspraak.ir.Conditie.Onopgelost,
-                () -> "een mis-parste 2+-geneste COUNTING voorwaarde moet Onopgelost zijn (geen gevuurde AND-merge), kreeg: " + cc);
-        assertTrue(DrlTranspiler.transpile(cnt).contains("/* TODO voorwaarde"),
-                () -> "DRL moet de mis-parste counting compound markeren (niet fout vuren):\n" + DrlTranspiler.transpile(cnt));
-        // control: ALLE is AND-idempotent under the merge, so it MUST still fire (no over-marker / regression).
-        RegelSpraakModel alle = Resolver.resolve(tmpl.formatted("alle"));
-        assertTrue(alle.errors().isEmpty(), () -> "moet resolven: " + alle.errors());
-        assertFalse(DrlTranspiler.transpile(alle).contains("/* TODO voorwaarde"),
-                () -> "een ALLE compound is AND-idempotent en moet blijven vuren (geen over-marker):\n" + DrlTranspiler.transpile(alle));
+    @Test void bullet_merge_column_inconsistente_compound_wordt_gemarkeerd_niet_fout_gevuurd() {
+        // §13.4.14.6: the indentation-blind bullet grammar (bullet : (DASH|DOTDOT|BULLET)+, WS skipped) ABSORBS a
+        // dedented sibling bullet (a leaf OR a nested compound) into a preceding nested compound's list. Under a COUNTING
+        // quantifier that AND-merges what the spec OR-s/counts -> the DRL oracle would fire a WRONG kenmerk. The discarded
+        // indentation is RETAINED on the bullet tokens; the resolver markers any list whose direct bullets sit at
+        // different columns (Onopgelost) so BOTH back-ends decline. A WELL-FORMATTED compound (consistent columns) fires.
+        String hdr = "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    is minderjarig kenmerk (bijvoeglijk);\n    is kind kenmerk (bijvoeglijk);\n    is duur kenmerk (bijvoeglijk);\n";
+        // MIS-PARSE: a nested compound FOLLOWED BY a dedented sibling leaf 'hij is kind' (absorbed into the nested ALLE)
+        String misparse = hdr + "Regel R\n    geldig altijd\n        Een Passagier is duur indien hij aan ten minste 1 van de volgende voorwaarden voldoet:\n"
+            + "        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn prijs is groter dan 50\n"
+            + "        - hij is kind.\n";
+        RegelSpraakModel mp = Resolver.resolve(misparse);
+        assertTrue(mp.errors().isEmpty(), () -> "moet resolven: " + mp.errors());
+        String drlMp = DrlTranspiler.transpile(mp);
+        // the mis-parsed (column-inconsistent) nested compound resolves to Onopgelost, so the DRL oracle DECLINES the whole
+        // counting voorwaarde (a marker), never firing the AND-merged `minderjarig == true && prijs > 50 && kind == true`.
+        assertTrue(drlMp.contains("/* TODO voorwaarde"),
+                () -> "DRL moet de mis-parste compound markeren (niet fout vuren):\n" + drlMp);
+        assertFalse(drlMp.contains("minderjarig == true"),
+                () -> "DRL mag de AND-merge van de mis-parste compound NIET vuren:\n" + drlMp);
+        // CONTROL: the nested compound LAST (consistent columns, no absorption) -> the DRL FIRES the correct OR
+        String wellformed = hdr + "Regel R\n    geldig altijd\n        Een Passagier is duur indien hij aan ten minste 1 van de volgende voorwaarden voldoet:\n"
+            + "        - hij is kind\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn prijs is groter dan 50.\n";
+        RegelSpraakModel wf = Resolver.resolve(wellformed);
+        assertTrue(wf.errors().isEmpty(), () -> "moet resolven: " + wf.errors());
+        assertFalse(DrlTranspiler.transpile(wf).contains("/* TODO voorwaarde"),
+                () -> "een goed-geindenteerde compound (geneste compound als laatste) moet blijven vuren:\n" + DrlTranspiler.transpile(wf));
     }
 }

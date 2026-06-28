@@ -1618,6 +1618,13 @@ class ExecModelDifferentialTest {
     static final String COUNT_NESTED_TWICE_SRC =
         COMPOUND_HDR
         + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn prijs is groter dan 50\n        - hij voldoet aan alle volgende voorwaarden:\n            - zijn prijs is kleiner dan 45.\n";
+    // §13.4.13.4 a NESTED compound bullet FOLLOWED BY a dedented sibling LEAF ('zijn leeftijd is kleiner dan 30') — the
+    //   indentation-blind grammar absorbs the leaf into the nested ALLE, AND-merging what 'ten minste 1' should OR -> a
+    //   shared-WRONG SOM in BOTH back-ends (the absorbed leaf has all-leaf siblings, so the depth-2 structural guard
+    //   missed it; review wf_5235420c-fa7). The COLUMN-inconsistency guard markers it -> a SYMMETRIC marker (both decline).
+    static final String COUNT_NESTED_THEN_LEAF_SRC =
+        COMPOUND_HDR
+        + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn prijs is groter dan 50\n        - zijn leeftijd is kleiner dan 30.\n";
     // §13.4.13.4 a COUNTING-quantifier compound subselectie with a NESTED PURE-LEAF compound bullet, now FIRING in BOTH
     //   back-ends (DRL conditieInline's nested &&; exec leafCompound folds it into ONE Predicate1) at parity. The
     //   top-level fold binds the SINGLE source-global (grens); the nested compound is global-free. Closed-form SOM ->
@@ -5020,6 +5027,10 @@ class ExecModelDifferentialTest {
      *  instead of firing the AND-merged (spec-OR) compound as a shared WRONG SOM. Guards the nested-compound fire from
      *  promoting the upstream parser bullet-merge into a fired-wrong value (review wf_34885edc-6e2 high finding). */
     @Test void counting_subselectie_met_twee_geneste_compound_bullets_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_NESTED_TWICE_SRC); }
+    /** §13.4.13.4 a nested compound bullet FOLLOWED BY a dedented sibling LEAF mis-parses (the leaf absorbed into the
+     *  nested ALLE, AND-merging a spec-OR) — the all-leaf nested compound escaped the depth-2 structural guard but the
+     *  COLUMN-inconsistency guard catches it -> a symmetric marker, not a shared-wrong SOM (review wf_5235420c-fa7). */
+    @Test void counting_subselectie_geneste_compound_dan_leaf_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_NESTED_THEN_LEAF_SRC); }
     /** §13.4.13.4 a COUNTING-quantifier compound subselectie with a NESTED PURE-LEAF compound bullet now FIRES at parity
      *  (DRL conditieInline's nested &&; exec leafCompound folds the nested compound into ONE Predicate1). Closed-form SOM
      *  -> assert the ABSOLUTE spec value, the exec NOT skipping, and parity. A nested compound reading a global stays a
