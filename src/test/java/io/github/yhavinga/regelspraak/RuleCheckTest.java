@@ -1511,4 +1511,21 @@ class RuleCheckTest {
         assertFalse(DrlTranspiler.transpile(wf).contains("/* TODO voorwaarde"),
                 () -> "een goed-geindenteerde compound (geneste compound als laatste) moet blijven vuren:\n" + DrlTranspiler.transpile(wf));
     }
+
+    @Test void bullet_merge_un_ingesprongen_gemengd_glyph_wordt_gemarkeerd_niet_fout_gevuurd() {
+        // §13.4.14.6: an UN-INDENTED bullet list (all bullets at column 0) escapes the column check, but the TOKA glyph
+        // convention ('-' top level, '..' nested) makes the absorbed sibling's glyph DIFFER from the nested list's: a
+        // top-level '- hij is kind' folded into a nested '..' ALLE yields a list of bullets '..','..','-'. The
+        // glyph-consistency guard markers it (Onopgelost) so the DRL oracle does NOT fire the AND-merge. (review wf_6899eac3-a1a)
+        String src = "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    is minderjarig kenmerk (bijvoeglijk);\n    is kind kenmerk (bijvoeglijk);\n    is duur kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien hij aan ten minste 1 van de volgende voorwaarden voldoet:\n"
+            + "- hij voldoet aan alle volgende voorwaarden:\n.. hij is minderjarig\n.. zijn prijs is groter dan 50\n- hij is kind.\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("/* TODO voorwaarde"),
+                () -> "DRL moet de un-ingesprongen gemengd-glyph mis-parse markeren:\n" + drl);
+        assertFalse(drl.contains("minderjarig == true"),
+                () -> "DRL mag de AND-merge van de mis-parste compound NIET vuren:\n" + drl);
+    }
 }

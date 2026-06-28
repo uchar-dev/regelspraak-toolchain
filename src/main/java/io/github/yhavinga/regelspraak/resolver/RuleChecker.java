@@ -877,35 +877,42 @@ final class RuleChecker {
         // §13.4.14.6 the indentation-blind bullet grammar (bullet : (DASH|DOTDOT|BULLET)+, WS skipped) can ABSORB a
         // dedented sibling bullet (a leaf OR another nested compound) into a preceding nested compound's list, so a
         // COUNTING quantifier AND-merges what the spec OR-s/counts -> a fired-WRONG result (the DRL oracle computed a
-        // wrong kenmerk/SOM). The discarded indentation is RETAINED on the bullet tokens: a list whose direct bullets sit
-        // at DIFFERENT columns absorbed an outer-level sibling. Marker such a list (Onopgelost) so BOTH back-ends decline
-        // rather than fire a mis-parsed compound — for ANY quantifier (a well-formatted compound has consistent columns,
-        // so only a genuinely-ambiguous input trips; the ALLE/DE merge is AND-idempotent but markering it is still safe).
-        // A structural depth-2 fallback covers UN-indented input the column check cannot see, scoped to COUNTING (where a
-        // legitimately deep ALLE/DE nesting would otherwise be over-markered). A faithful depth-aware re-nesting is carded.
-        if (bulletsInconsistentGeindenteerd(onderdeel)
+        // wrong kenmerk/SOM). The grammar discards depth, but ANTLR retains each bullet token's COLUMN and GLYPH: a list
+        // whose direct bullets sit at different columns OR carry different glyphs (e.g. a top-level '-' absorbed into a
+        // nested '..' list) absorbed an outer-level sibling. Marker such a list (Onopgelost) so BOTH back-ends decline
+        // rather than fire a mis-parsed compound — for ANY quantifier (a well-formatted compound is column- AND
+        // glyph-consistent, so only a genuinely-ambiguous input trips; the ALLE/DE merge is AND-idempotent but markering
+        // it is still safe). A structural depth-2 fallback covers the residual fully-ambiguous case (same glyph AND same
+        // column), scoped to COUNTING (a legitimately deep ALLE/DE nesting would otherwise be over-markered). A faithful
+        // depth-aware re-nesting (fire correctly) is carded.
+        if (bulletsInconsistent(onderdeel)
                 || (kwantor != Conditie.Kwantor.ALLE && kwantor != Conditie.Kwantor.DE && ambiguusGenesteBullets(onderdelen)))
             return new Conditie.Onopgelost(src(heel));
         return new Conditie.Samengesteld(kwantor, drempel, onderdelen, src(heel));
     }
 
-    /** §13.4.14.6 whether a bullet list's direct bullets are at DIFFERENT indentation columns — the reliable signature of
-     *  the indentation-blind grammar absorbing a dedented sibling bullet from an outer level into this list (a leaf OR a
-     *  nested compound). The lexer skips WS but ANTLR retains each bullet token's column, so a well-formatted compound
-     *  (siblings consistently indented) reads false; only a genuinely-ambiguous / mis-nested input reads true. */
-    private static boolean bulletsInconsistentGeindenteerd(SamengesteldeVoorwaardeOnderdeelContext onderdeel) {
+    /** §13.4.14.6 whether a bullet list's direct bullets are inconsistent — different indentation COLUMNS or different
+     *  bullet GLYPHS — the reliable signature of the indentation-blind grammar absorbing a sibling bullet from an outer
+     *  level into this list. The lexer skips WS but ANTLR retains each bullet token's column and text, so a well-formatted
+     *  compound (siblings at one column with one glyph, e.g. the TOKA '-' top / '..' nested convention) reads false; only
+     *  a genuinely-ambiguous / mis-nested input reads true. The glyph check catches the un-indented mixed-glyph absorption
+     *  the column check cannot (a '-' leaf folded into a '..' list); the residual same-glyph-same-column case is the
+     *  ambiguusGenesteBullets fallback's job. */
+    private static boolean bulletsInconsistent(SamengesteldeVoorwaardeOnderdeelContext onderdeel) {
         if (onderdeel == null) return false;
         List<GenesteVoorwaardeContext> gs = onderdeel.genesteVoorwaarde();
         if (gs == null || gs.size() < 2) return false;
         int col0 = gs.get(0).bullet().getStart().getCharPositionInLine();
+        String glyph0 = gs.get(0).bullet().getText();
         for (GenesteVoorwaardeContext g : gs)
-            if (g.bullet().getStart().getCharPositionInLine() != col0) return true;
+            if (g.bullet().getStart().getCharPositionInLine() != col0 || !g.bullet().getText().equals(glyph0)) return true;
         return false;
     }
 
-    /** §13.4.14.6 structural fallback for UN-indented input the column check cannot see: a bullet list carrying the
-     *  flatten signature of 2+ sibling NESTED compounds — a nested compound bullet that itself contains a DEEPER compound.
-     *  A single level of nesting (a nested compound of leaves) is fine. Scoped to COUNTING by the caller. */
+    /** §13.4.14.6 structural fallback for the residual fully-ambiguous input the column+glyph check cannot see (same
+     *  glyph AND same column): a bullet list carrying the flatten signature of 2+ sibling NESTED compounds — a nested
+     *  compound bullet that itself contains a DEEPER compound. A single level of nesting (a nested compound of leaves) is
+     *  fine. Scoped to COUNTING by the caller (a deep ALLE/DE merge is AND-idempotent). */
     private static boolean ambiguusGenesteBullets(List<Conditie> onderdelen) {
         return onderdelen.stream().anyMatch(o -> o instanceof Conditie.Samengesteld inner
                 && inner.onderdelen().stream().anyMatch(x -> x instanceof Conditie.Samengesteld));
