@@ -874,7 +874,24 @@ final class RuleChecker {
             model.diagnostics.add(new Diagnostic(Severity.ERROR,
                     "telwoord van een kwantificatie moet een positief geheel getal (>= 1) zijn",
                     (k != null ? k : heel).getStart().getLine()));
+        // §13.4.14.6 the indentation-blind bullet grammar can FLATTEN 2+ sibling nested-compound bullets into ONE
+        // depth-2 compound (a child compound that itself contains a deeper compound). Under a COUNTING quantifier that
+        // AND-merges what the spec OR-s/counts — a fired-WRONG result (the DRL oracle computed a wrong kenmerk/SOM). Mark
+        // the ambiguous nesting so BOTH back-ends decline (Onopgelost) rather than fire a mis-parsed compound; a faithful
+        // depth-aware re-nesting is carded. ALLE/DE are AND-idempotent under the merge (AND of merged == AND of separate)
+        // -> unaffected, never markered. Mirrors execKanCountingFold (the subselectie path's guard).
+        if (kwantor != Conditie.Kwantor.ALLE && kwantor != Conditie.Kwantor.DE && ambiguusGenesteBullets(onderdelen))
+            return new Conditie.Onopgelost(src(heel));
         return new Conditie.Samengesteld(kwantor, drempel, onderdelen, src(heel));
+    }
+
+    /** Whether a built bullet list carries the §13.4.14.6 mis-parse signature: a nested compound bullet that itself
+     *  contains a DEEPER compound — i.e. an indentation-blind flatten of 2+ sibling nested-compound bullets (or a
+     *  legitimately depth-3 nesting the grammar cannot reliably parse). A single level of nesting (a nested compound of
+     *  leaves) is fine. Shared by the standalone {@link #bouwSamengesteld} and mirrored in {@link #execKanCountingFold}. */
+    private static boolean ambiguusGenesteBullets(List<Conditie> onderdelen) {
+        return onderdelen.stream().anyMatch(o -> o instanceof Conditie.Samengesteld inner
+                && inner.onderdelen().stream().anyMatch(x -> x instanceof Conditie.Samengesteld));
     }
 
     /** The threshold count N of a ten-minste/ten-hoogste/precies quantifier (§13.4.14.4),
