@@ -135,7 +135,11 @@ final class ExpressieBouwer {
      *  already do; the arithmetic path used to swallow it (p45). An Onbekend operand makes
      *  reken return ok (no claim), so no false positive on an unresolved sub-expression. */
     private Expr binairExpr(Expr.BinOp op, Expr links, Expr rechts, String bron, int line) {
-        Typering.Resultaat res = Typering.reken(naarTyperingOp(op), links.type(), rechts.type());
+        // §4.4 Tabel 11: a unitless LITERAL/constant left times a unit-bearing right ("2 maal de looptijd(mnd)") carries
+        // the right's unit; an ATTRIBUTE left stays Onbekend (the TOKA unitless-Bedrag × km under-model tolerance, carded).
+        boolean unitlessLinksLiteraal = op == Expr.BinOp.MAAL && links instanceof Expr.Literal
+                && links.type() != null && links.type().isNumeriek() && links.type().eenheidOf() == null;
+        Typering.Resultaat res = Typering.reken(naarTyperingOp(op), links.type(), rechts.type(), unitlessLinksLiteraal);
         if (!res.ok())
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(
                     RegelSpraakModel.Severity.ERROR, res.fout(), line));

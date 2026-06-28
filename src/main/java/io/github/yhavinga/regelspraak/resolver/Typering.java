@@ -33,6 +33,16 @@ public final class Typering {
 
     // -------- §4 arithmetic --------
     public static Resultaat reken(BinOp op, Datatype l, Datatype r) {
+        return reken(op, l, r, false);
+    }
+
+    /** {@code unitlessLinksLiteraal}: the LEFT operand is a unitless LITERAL/constant. Then §4.4 Tabel 11 ((none) ×
+     *  Eenheid1 -> Eenheid1) propagates the RIGHT operand's unit for MAAL ("2 maal de looptijd(mnd)" = a mnd value),
+     *  instead of the deliberate Onbekend degradation that tolerates an attribute × attribute unit under-model (the TOKA
+     *  casus's unitless Bedrag × km). Narrowing to a LITERAL avoids surfacing that casus inconsistency: TOKA's unitless
+     *  operand is an ATTRIBUTE, never a literal. Only MAAL — a unitless / unit GEDEELD is a 1/unit rate the Eenheid
+     *  model cannot represent (stays Onbekend). */
+    public static Resultaat reken(BinOp op, Datatype l, Datatype r, boolean unitlessLinksLiteraal) {
         if (l.isOnbekend() || r.isOnbekend()) return Resultaat.ok(new Datatype.Onbekend("operand"));
         return switch (op) {
             // §4.1 / §4.2: numeriek±numeriek (units convertible), OR datum ± a numerieke
@@ -64,7 +74,12 @@ public final class Typering {
                     yield Resultaat.ok(new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, el));
                 if (el != null)   // both operands carry a unit -> synthesize the representable composite
                     yield Resultaat.ok(samengesteldeEenheid(op, dec, el, er));
-                // el == null, er != null: a unitless × unit (the gedeeld 1/unit too) — pre-existing gap, Onbekend.
+                // el == null, er != null: a unitless × unit. §4.4 Tabel 11 says (none) × Eenheid1 -> Eenheid1, but
+                // propagating er for an ATTRIBUTE operand surfaces the TOKA casus's unit under-model (carded), so it is
+                // done ONLY for a unitless LITERAL left ("2 maal de looptijd(mnd)" = mnd). MAAL only — a unitless / unit
+                // GEDEELD is a 1/unit rate the Eenheid model cannot represent (Onbekend). Otherwise Onbekend ("no claim").
+                if (op == BinOp.MAAL && unitlessLinksLiteraal)
+                    yield Resultaat.ok(new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, er));
                 yield Resultaat.ok(new Datatype.Onbekend("samengestelde eenheid"));
             }
             // §4.7 tot de macht: Numeriek without a unit on either side; result without a unit.

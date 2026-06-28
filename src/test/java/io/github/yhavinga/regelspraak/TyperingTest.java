@@ -175,4 +175,20 @@ class TyperingTest {
         assertNotNull(Typering.toekenning(numEenh(EUR), productEm), "€·m toegekend aan € moet een eenheidfout zijn");
         assertNull(Typering.toekenning(productEm, productEm), "€·m toegekend aan €·m is correct");
     }
+
+    @Test void maal_unitloze_literal_neemt_de_rechter_eenheid_over() {   // §4.4 Tabel 11: (none) × Eenheid1 -> Eenheid1
+        // DEFAULT (an attribute/parameter left): a unitless × unit-on-the-right stays Onbekend — the deliberate TOKA
+        // unit-under-model tolerance (a unitless Bedrag attribute × km must not propagate km).
+        var attr = Typering.reken(BinOp.MAAL, num(), num("mnd", "Tijd"));
+        assertTrue(attr.ok() && attr.type().isOnbekend(),
+                () -> "een unitloze ATTRIBUUT × eenheid blijft Onbekend (TOKA-tolerantie), kreeg: " + attr.type());
+        // a unitless LITERAL left ("2 maal de looptijd(mnd)") DOES propagate the right operand's unit.
+        var lit = Typering.reken(BinOp.MAAL, num(), num("mnd", "Tijd"), true);
+        assertTrue(lit.ok() && lit.type().eenheidOf() != null && lit.type().eenheidOf().afkorting().equals("mnd"),
+                () -> "een unitloze LITERAL × eenheid neemt de rechter-eenheid (mnd) over, kreeg: " + lit.type());
+        // GEDEELD with a unitless literal left is a 1/unit rate the Eenheid model cannot represent -> stays Onbekend.
+        var deel = Typering.reken(BinOp.GEDEELD_DOOR, num(), num("mnd", "Tijd"), true);
+        assertTrue(deel.ok() && deel.type().isOnbekend(),
+                () -> "een unitloze literal / eenheid (1/unit) blijft Onbekend, kreeg: " + deel.type());
+    }
 }

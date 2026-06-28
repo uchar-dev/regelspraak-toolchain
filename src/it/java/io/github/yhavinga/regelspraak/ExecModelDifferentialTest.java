@@ -1833,6 +1833,25 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_CU_BEGR_COND_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, Boolean.TRUE };
 
+    // ---- §4.4 Tabel 11: a unitless LITERAL times a unit-bearing operand ("2 maal de looptijd(mnd)") carries the right
+    //      operand's unit (mnd), so the assignment into a jr doel restates it: 2 × 24 mnd = 48 mnd -> 4 jr. Before, the
+    //      unitless×unit-on-the-RIGHT degraded to Onbekend on BOTH back-ends (eenheidOf()==null -> no restate), storing
+    //      48 verbatim — a SHARED wrong value, so assert the ABSOLUTE spec value. An ATTRIBUTE-left stays Onbekend (the
+    //      TOKA unit-under-model tolerance) — covered by CasusTest; only a LITERAL left triggers the unit propagation. ----
+    static final String CU_MAAL_SRC =
+        "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\n"
+        + "Objecttype de Tijdmeter\n    de looptijd Numeriek (getal met 5 decimalen) met eenheid mnd;\n    de totaal Numeriek (getal met 5 decimalen) met eenheid jr;\n"
+        + "Regel R\n    geldig altijd\n        De totaal van een Tijdmeter moet gesteld worden op 2 maal de looptijd van een Tijdmeter.\n";
+    static final Fixture[] PHASE_CU_MAAL = {
+        // 2 maal 24 mnd = 48 mnd -> 4 jr (was 48 on both back-ends — unitless×unit-on-right Onbekend, no restate)
+        new Fixture("unitless-literal 2 maal looptijd 24 mnd -> 4 jr", CU_MAAL_SRC,
+            () -> List.of(tm(t -> t.setLooptijd(new BigDecimal(24)))), Map.of(), l -> ((Tijdmeter) l.get(0)).getTotaal()),
+        // 2 maal 9 mnd = 18 mnd -> 1.5 jr (the source is "2 maal …"; a fractional jr result exercises the restatement)
+        new Fixture("unitless-literal 2 maal looptijd 9 mnd -> 1.5 jr", CU_MAAL_SRC,
+            () -> List.of(tm(t -> t.setLooptijd(new BigDecimal(9)))), Map.of(), l -> ((Tijdmeter) l.get(0)).getTotaal()),
+    };
+    static final Object[] PHASE_CU_MAAL_EXPECTED = { new BigDecimal("4"), new BigDecimal("1.5") };
+
     // ---- §5.8.3 a MIN/MAX instance-aggregation written into a DIFFERENT-unit doel. The min/max accumulate binds as a
     //      java.lang.Number, so the cross-unit restate's .multiply USED TO FAIL the DRL build (java.lang.Number.multiply)
     //      while the exec fired correctly -> a DRL-build-error-vs-exec-fires DIVERGENCE (wf_7e1d0ff9 review, medium).
@@ -4618,6 +4637,23 @@ class ExecModelDifferentialTest {
         assertTrue(em.overgeslagen().isEmpty(), () -> "de exec moet een rate cross-unit +/- voorwaarde nu vuren, kreeg overgeslagen: " + em.overgeslagen());
         assertFalse(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
                 () -> "DRL moet een rate cross-unit +/- voorwaarde nu vuren (geen marker):\n" + DrlTranspiler.transpile(m));
+    }
+    /** §4.4 Tabel 11 a unitless LITERAL × a unit-bearing operand carries the right operand's unit, so "2 maal de
+     *  looptijd(mnd)" assigned into a jr doel restates 2×24 mnd = 48 mnd -> 4 jr. Before, the unitless×unit-on-the-RIGHT
+     *  degraded to Onbekend on BOTH back-ends (no restate, 48 stored) — a SHARED wrong value, so assert the ABSOLUTE
+     *  spec value. An ATTRIBUTE left stays Onbekend (the TOKA tolerance, CasusTest). */
+    @Test void phase_cu_maal_unitless_literal_is_spec_correct() {
+        for (int i = 0; i < PHASE_CU_MAAL.length; i++) {
+            Fixture f = PHASE_CU_MAAL[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_CU_MAAL_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
     }
     /** §6.1.4/§4 a CROSS-UNIT begrenzing BOUND inside a CONSTRAINT now FIRES at parity (was a symmetric marker/skip): the
      *  min/max bound (mnd) restates EXACTLY into the basis unit (jr) — DRL herschaalConditie -> rsHerschaalExact, exec
