@@ -3807,6 +3807,35 @@ class ExecModelDifferentialTest {
             Map.of(), Passagier::isGemarkeerd),   // false
     };
 
+    // ---- Phase 82 NAVIGATED KENMERK: "zijn reis gedurende het gehele jaar actief is" — a §8.2 whole-period check over a
+    //      to-one role's temporal kenmerk timeline, read root-guarded (an absent relation -> leeg timeline -> vacuously
+    //      TRUE, matching the own-kenmerk null-timeline convention). Both back-ends: DRL navigatieKenmerkTijdreeks
+    //      ((reis==null?null:reis.getActief())), exec navigatieKenmerkTijdreeks. Was a symmetric marker. ----
+    private static final String G82_NAVKENMERK_SRC = TOTAAL_HDR +
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n    is gemarkeerd kenmerk (bijvoeglijk);\n" +
+        "Objecttype de Vlucht (mv: Vluchten)\n    is actief kenmerk (bijvoeglijk) voor elke maand;\n" +
+        "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+        "Regel R\n    geldig altijd\n        Een Passagier is gemarkeerd indien zijn reis gedurende het gehele jaar actief is.\n";
+    static Fixture navKenmerkFix(String naam, java.time.LocalDate van, java.time.LocalDate tot) {
+        return new Fixture(naam, G82_NAVKENMERK_SRC,
+                () -> { Passagier p = new Passagier();
+                        if (van != null) { Vlucht v = new Vlucht();
+                            v.setActief(List.of(seg(van.getYear(), van.getMonthValue(), van.getDayOfMonth(),
+                                    tot.getYear(), tot.getMonthValue(), tot.getDayOfMonth(), null)));
+                            p.setReis(v); }   // van==null -> NO reis (absent relation)
+                        return List.of(p); },
+                Map.of(), l -> ((Passagier) l.get(0)).isGemarkeerd());
+    }
+    static final Fixture[] PHASE_82_NAVKENMERK = {
+        navKenmerkFix("§8.2 nav-kenmerk TRUE: reis actief heel 2024 -> gemarkeerd",
+                java.time.LocalDate.of(2024, 1, 1), java.time.LocalDate.of(2025, 1, 1)),
+        navKenmerkFix("§8.2 nav-kenmerk FALSE: reis actief alleen Mar-Sep 2024 -> niet gemarkeerd",
+                java.time.LocalDate.of(2024, 3, 1), java.time.LocalDate.of(2024, 9, 1)),
+        navKenmerkFix("§8.2 nav-kenmerk ABSENT reis -> leeg timeline -> vacuously TRUE -> gemarkeerd",
+                null, null),
+    };
+    static final Boolean[] PHASE_82_NAVKENMERK_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.TRUE };
+
     // ---- Phase 82 FOUT fixtures: a §8.2-qualified consistentie criterium — the VIOLATION inserts an Inconsistentie ----
     static final FoutFixture[] PHASE_82_FOUT = {
         new FoutFixture("§8.2 consistentie criterium (whole-year == 10)",
@@ -4576,6 +4605,23 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(PHASE_82_CU_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §8.2 + §7.1 a whole-period check over a to-one NAVIGATED temporal kenmerk ("zijn reis gedurende het gehele jaar
+     *  actief is") now FIRES in both back-ends (DRL navigatieKenmerkTijdreeks, exec navigatieKenmerkTijdreeks), was a
+     *  symmetric marker. The ABSENT-relation row (leeg timeline -> vacuously TRUE) is the load-bearing parity check.
+     *  Absolute + DRL==exec + exec NOT skipping. */
+    @Test void phase_82_navigated_kenmerk_is_spec_correct() {
+        for (int i = 0; i < PHASE_82_NAVKENMERK.length; i++) {
+            Fixture f = PHASE_82_NAVKENMERK[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_82_NAVKENMERK_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }

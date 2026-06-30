@@ -3,6 +3,7 @@ package io.github.yhavinga.regelspraak.facts;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /** A fact POJO matching the transpiler's naming convention (Pascal-case class,
  *  getX/setX per attribute). Hand-written here to give the generated DRL a runtime
@@ -62,4 +63,7 @@ public class Vlucht {
     public void setDaadwerkelijkVertrek(LocalDate v) { this.daadwerkelijkVertrek = v; }
     public LocalDate getVroegsteVertrek() { return vroegsteVertrek; }
     public void setVroegsteVertrek(LocalDate v) { this.vroegsteVertrek = v; }
+    private List<Segment> actief;            // §8.2 a NAVIGATED temporal kenmerk: the to-one role's timeline a §8.2 whole-period check reads
+    public List<Segment> getActief() { return actief; }
+    public void setActief(List<Segment> v) { this.actief = v; }
 }

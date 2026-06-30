@@ -1353,6 +1353,19 @@ public final class ExecModelTranspiler {
         return s -> (List<?>) RegelSpraakRuntime.get(s, kenmerk);
     }
 
+    /** §8.2/§7.1 the boolean-timeline reader for a to-ONE NAVIGATED temporal kenmerk ("zijn reis gedurende het gehele
+     *  jaar actief is"): the role's kenmerk {@code List<Segment>}, read ROOT-GUARDED (a null relation -&gt; leeg timeline
+     *  -&gt; rsGeheelPeriode vacuously true, matching the DRL `root == null ? null : root.getKenmerk()`). null for a
+     *  negated / to-many / non-temporal navigated kenmerk. Mirrors DrlTranspiler.navigatieKenmerkTijdreeks. */
+    private java.util.function.Function<Object, List<?>> navigatieKenmerkTijdreeks(Conditie.Kenmerk k, Objecttype subject) {
+        if (k.navigatie() == null || k.negatie() || subject == null) return null;
+        Objecttype doel = model.rolDoeltypeNaarSubject(subject, k.navigatie());
+        if (doel == null || !doel.kenmerkGranulariteit.containsKey(k.kenmerk())
+                || doel.kenmerkTijdlijnAantal.containsKey(k.kenmerk())) return null;
+        String rol = k.navigatie(), kenmerk = k.kenmerk();
+        return s -> { Object rel = RegelSpraakRuntime.get(s, rol); return rel == null ? null : (List<?>) RegelSpraakRuntime.get(rel, kenmerk); };
+    }
+
     // ---------------- §8.2 / §13.4.15.70 gehele-periodevergelijking (mirrors DrlTranspiler.geheelPeriodeCall) ------
     /** The §8.2 whole-period qualifier on a predicate, or null when it carries none. */
     private static Conditie.GeheelPeriode geheelPeriodeVan(Conditie c) {
@@ -1444,8 +1457,10 @@ public final class ExecModelTranspiler {
         }
         if (c instanceof Conditie.Kenmerk k) {
             java.util.function.Function<Object, List<?>> tl = temporeelKenmerkTijdreeks(k, subject);
+            if (tl == null) tl = navigatieKenmerkTijdreeks(k, subject);   // §8.2 over a to-one NAVIGATED temporal kenmerk
             if (tl == null) return null;
-            return new Gp82(s -> tl.apply(s), 7, null, gran, gp.niet());
+            final java.util.function.Function<Object, List<?>> ftl = tl;
+            return new Gp82(s -> ftl.apply(s), 7, null, gran, gp.niet());
         }
         return null;
     }

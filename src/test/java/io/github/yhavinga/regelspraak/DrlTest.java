@@ -3729,11 +3729,11 @@ class DrlTest {
                 () -> "scalaire waarde-lezing niet gemarkeerd:\n" + drl);
     }
 
-    @Test void navigeerd_tijdsafhankelijk_kenmerk_in_een_conditie_markeert_niet_lekt() {
+    @Test void navigeerd_tijdsafhankelijk_kenmerk_in_een_conditie_vuurt_root_guarded() {
         // §13.3.6/§8.2 the navigated edge: "zijn reis gedurende het gehele jaar actief is" reads a temporal kenmerk
-        // (a List<Segment> timeline) THROUGH a to-one reference. The owner is resolved from the reference role, so it
-        // markers rather than leaking "reis.actief == true" (List vs boolean). A NON-temporal navigated kenmerk
-        // ("zijn reis internationaal is") still lowers normally — the guard fires only on a temporal one.
+        // (a List<Segment> timeline) THROUGH a to-one reference. It now FIRES via navigatieKenmerkTijdreeks (the to-one
+        // role's timeline, root-guarded so a null reference reads leeg), never leaking "reis.actief == true" (List vs
+        // boolean). A NON-temporal navigated kenmerk ("zijn reis internationaal is") still lowers normally.
         String src = """
             Objecttype de Vlucht (bezield)
                 actief kenmerk (bijvoeglijk) voor elk jaar;
@@ -3763,10 +3763,12 @@ class DrlTest {
         assertTrue(m.errors().isEmpty(), () -> "geaccepteerde invoer (geen resolver-fout): " + m.errors());
         String drl = DrlTranspiler.transpile(m);
         assertFalse(drl.contains("reis.actief == true"), () -> "navigeerd temporeel kenmerk lekt een List:\n" + drl);
-        // §8.2 over a NAVIGATED temporal kenmerk is not lowerable as a standalone timeline (temporeelKenmerkTijdreeks
-        // returns null for a navigated kenmerk) -> an honest §8.2 marker, never a "reis.actief == true" List leak.
-        assertTrue(drl.contains("TODO §8.2 gehele-periode"),
-                () -> "navigeerd temporeel §8.2 kenmerk niet gemarkeerd:\n" + drl);
+        // §8.2 over a NAVIGATED temporal kenmerk now FIRES via navigatieKenmerkTijdreeks (the to-one role's timeline,
+        // root-guarded) — no longer a marker, and still never a "reis.actief == true" List leak.
+        assertFalse(drl.contains("TODO §8.2 gehele-periode"),
+                () -> "navigeerd temporeel §8.2 kenmerk moet nu vuren (niet markeren):\n" + drl);
+        assertTrue(drl.contains("rsGeheelPeriode("),
+                () -> "navigeerd §8.2 kenmerk moet via rsGeheelPeriode vuren:\n" + drl);
         assertTrue(drl.contains("reis != null && reis.internationaal == true"),
                 () -> "een NIET-temporeel navigeerd kenmerk moet gewoon lowEren:\n" + drl);
         // §8.2 navigated LEEG: a temporal navigated attr markers (no "reis.loon == null" list-nullness test); a

@@ -2263,6 +2263,7 @@ public final class DrlTranspiler {
             toets = 6;
         } else if (c instanceof Conditie.Kenmerk k) {
             getter = temporeelKenmerkTijdreeks(k, subject);   // null for a navigated/negated/non-temporal kenmerk
+            if (getter == null) getter = navigatieKenmerkTijdreeks(k, subject);   // §8.2 over a to-one NAVIGATED temporal kenmerk (root-guarded)
             if (getter == null) return Frag.todo("§8.2 kenmerk", c.bron());
             toets = 7;
         } else {
