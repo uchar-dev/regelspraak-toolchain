@@ -1530,4 +1530,29 @@ class RuleCheckTest {
         assertFalse(drl.contains("minderjarig == true"),
                 () -> "DRL mag de AND-merge van de mis-parste compound NIET vuren:\n" + drl);
     }
+
+    @Test void bullet_merge_kinderloze_geneste_header_geeft_diagnostic_geen_crash() {
+        // §13.4.14.6: a malformed nested-compound header with NO children (ANTLR error-recovery leaves an empty
+        // genesteVoorwaarde list) must NOT crash the depth-aware re-nesting walk (kolommenInconsistentDiep) — the
+        // resolver returns a model with a syntax diagnostic, never an uncaught IndexOutOfBoundsException.
+        String src = "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    is duur kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien hij aan ten minste 1 van de volgende voorwaarden voldoet:\n"
+            + "        - hij voldoet aan alle volgende voorwaarden:\n";
+        RegelSpraakModel m = assertDoesNotThrow(() -> Resolver.resolve(src),
+                "een kinderloze geneste header mag de resolver niet laten crashen");
+        assertFalse(m.errors().isEmpty(), () -> "de malformede invoer moet een diagnostic geven: " + m.errors());
+    }
+
+    @Test void bullet_merge_hergenest_inner_telwoord_0_wordt_gevlagd() {
+        // §13.4.14.4: a column-absorbed INNER compound with a degenerate telwoord (ten minste 0) must still raise the
+        // drempel-below-1 ERROR through the re-nesting path (bouwUitKnopen builds inner compounds directly), not be
+        // silently accepted as vacuously-true and fired in both back-ends.
+        String src = "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    is minderjarig kenmerk (bijvoeglijk);\n    is duur kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien hij aan ten minste 1 van de volgende voorwaarden voldoet:\n"
+            + "        - hij voldoet aan ten minste 0 van de volgende voorwaarden:\n            - hij is minderjarig\n            - zijn prijs is groter dan 50\n"
+            + "        - zijn prijs is kleiner dan 45.\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("telwoord van een kwantificatie")),
+                () -> "het gededenteerde inner ten-minste-0 moet gevlagd worden, niet stil vuren: " + m.errors());
+    }
 }

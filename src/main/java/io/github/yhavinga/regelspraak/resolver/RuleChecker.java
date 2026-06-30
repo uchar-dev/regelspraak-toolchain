@@ -879,11 +879,7 @@ final class RuleChecker {
         // unparseable value all reach drempelVan as < 1; flag it rather than let it collapse
         // the rule to always-true (minstens(0) is vacuously true). An over-size N is fine —
         // it is a faithfully unsatisfiable "false", so it is not an error.
-        if ((kwantor == Conditie.Kwantor.TEN_MINSTE || kwantor == Conditie.Kwantor.TEN_HOOGSTE
-                || kwantor == Conditie.Kwantor.PRECIES) && drempel < 1)
-            model.diagnostics.add(new Diagnostic(Severity.ERROR,
-                    "telwoord van een kwantificatie moet een positief geheel getal (>= 1) zijn",
-                    (k != null ? k : heel).getStart().getLine()));
+        keurDrempel(kwantor, drempel, (k != null ? k : heel).getStart().getLine());
         // §13.4.14.6 the indentation-blind bullet grammar (bullet : (DASH|DOTDOT|BULLET)+, WS skipped) can ABSORB a
         // dedented sibling bullet (a leaf OR another nested compound) into a preceding nested compound's list, so a
         // COUNTING quantifier AND-merges what the spec OR-s/counts -> a fired-WRONG result (the DRL oracle computed a
@@ -902,6 +898,17 @@ final class RuleChecker {
                 || (kwantor != Conditie.Kwantor.ALLE && kwantor != Conditie.Kwantor.DE && ambiguusGenesteBullets(onderdelen))))
             return new Conditie.Onopgelost(src(heel));
         return new Conditie.Samengesteld(kwantor, drempel, onderdelen, src(heel));
+    }
+
+    /** §13.4.14.4/.5 a counting quantifier's telwoord must be a positive whole number (>= 1): a 0 / negative / decimal /
+     *  unparseable value reaches {@link #drempelVan} as &lt; 1 and would collapse a ten-minste/ten-hoogste/precies to
+     *  vacuously-true (minstens(0) always holds), so flag it. Shared by {@link #bouwSamengesteld} and the depth-aware
+     *  re-nesting {@link #bouwUitKnopen} (which builds inner compounds directly, bypassing bouwSamengesteld). */
+    private void keurDrempel(Conditie.Kwantor kwantor, int drempel, int regel) {
+        if ((kwantor == Conditie.Kwantor.TEN_MINSTE || kwantor == Conditie.Kwantor.TEN_HOOGSTE
+                || kwantor == Conditie.Kwantor.PRECIES) && drempel < 1)
+            model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                    "telwoord van een kwantificatie moet een positief geheel getal (>= 1) zijn", regel));
     }
 
     // ---- §13.4.14.6 depth-aware bullet re-nesting (column-driven) ----------------------------------------------
@@ -928,6 +935,7 @@ final class RuleChecker {
      *  indentation-blind grammar absorbing a dedented sibling from an outer level into a deeper list. */
     private static boolean kolommenInconsistentDiep(SamengesteldeVoorwaardeOnderdeelContext onderdeel) {
         List<GenesteVoorwaardeContext> gs = onderdeel.genesteVoorwaarde();
+        if (gs == null || gs.isEmpty()) return false;   // a childless nested header (malformed parse, ANTLR error-recovery) -> no absorption
         int kol0 = gs.get(0).bullet().getStart().getCharPositionInLine();
         for (GenesteVoorwaardeContext g : gs) {
             if (g.bullet().getStart().getCharPositionInLine() != kol0) return true;
@@ -972,9 +980,12 @@ final class RuleChecker {
         List<Conditie> uit = new ArrayList<>();
         for (LogischeKnoop k : knopen) {
             GenesteSamengesteldeVoorwaardeContext c = k.ctx().genesteSamengesteldeVoorwaarde();
-            if (c != null)
-                uit.add(new Conditie.Samengesteld(kwantorVan(c.voorwaardeKwantificatie()),
-                        drempelVan(c.voorwaardeKwantificatie()), bouwUitKnopen(k.kinderen()), src(c)));
+            if (c != null) {
+                Conditie.Kwantor kw = kwantorVan(c.voorwaardeKwantificatie());
+                int drempel = drempelVan(c.voorwaardeKwantificatie());
+                keurDrempel(kw, drempel, c.getStart().getLine());   // a degenerate inner telwoord must still be flagged
+                uit.add(new Conditie.Samengesteld(kw, drempel, bouwUitKnopen(k.kinderen()), src(c)));
+            }
             else if (k.ctx().elementaireVoorwaarde() != null)
                 uit.add(bouwElementair(k.ctx().elementaireVoorwaarde()));
             else
