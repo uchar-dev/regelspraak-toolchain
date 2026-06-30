@@ -774,6 +774,7 @@ public final class RegelSpraakRuntime {
      *  comparison treats leeg as not-holding. */
     private static boolean segmentVoldoet(int toets, BigDecimal w, BigDecimal grens) {
         if (toets == 7) return true;       // §8.2 kenmerk: a covering segment = the kenmerk holds here
+        if (toets == 8) return w == null;  // §8.2 leeg: this moment carries NO value (the inverse of gevuld)
         if (w == null) return false;       // leeg: no value at this moment -> the check does not hold
         if (toets == 6) return true;       // §8.2 gevuld: a non-leeg value
         if (grens == null) return false;   // §5.1 a comparison with a leeg grens is onwaar (never crash on compareTo(null))

@@ -1488,6 +1488,13 @@ public final class ExecModelTranspiler {
             if (tl == null) return null;
             return new Gp82(tl, 6, null, gran, gp.niet());
         }
+        if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.LEEG
+                && p.operand() instanceof Expr.AttribuutRef pa && isTemporeel82(pa)) {
+            // §8.2 line 3468 "... gedurende de gehele maand leeg is": the inverse of GEVULD (toets 8 in rsGeheelPeriode).
+            java.util.function.Function<Object, Object> tl = temporeelTijdlijnReader(pa, subject);
+            if (tl == null) return null;
+            return new Gp82(tl, 8, null, gran, gp.niet());
+        }
         if (c instanceof Conditie.Kenmerk k) {
             java.util.function.Function<Object, List<?>> tl = temporeelKenmerkTijdreeks(k, subject);
             if (tl == null) tl = navigatieKenmerkTijdreeks(k, subject);   // §8.2 over a to-one NAVIGATED temporal kenmerk

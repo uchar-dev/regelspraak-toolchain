@@ -3880,6 +3880,27 @@ class ExecModelDifferentialTest {
     };
     static final Boolean[] PHASE_82_NAVKENMERK_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.TRUE };
 
+    // ---- §8.2 line 3468 whole-period LEEG: "zijn belastingvermindering per maand gedurende de gehele maand leeg is" —
+    //      the inverse of GEVULD (toets 8: every moment of a touched bucket carries NO value). Was a symmetric marker. ----
+    static final Fixture[] PHASE_82_LEEG = {
+        // a leeg-segment covering the whole month -> every moment is leeg -> gemarkeerd.
+        single("§8.2 LEEG TRUE (heel jan een leeg-segment)",
+            g82attr("zijn belastingvermindering per maand gedurende de gehele maand leeg is"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, null)))),
+            Map.of(), Passagier::isGemarkeerd),   // true
+        // a value in January -> the month is not wholly leeg -> not gemarkeerd.
+        single("§8.2 LEEG FALSE (jan heeft een waarde)",
+            g82attr("zijn belastingvermindering per maand gedurende de gehele maand leeg is"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "10.00")))),
+            Map.of(), Passagier::isGemarkeerd),   // false
+        // a null timeline (no data) -> no period to violate -> vacuously leeg (matches the §8.2 empty-timeline convention).
+        single("§8.2 LEEG TRUE (null tijdlijn -> vacuously)",
+            g82attr("zijn belastingvermindering per maand gedurende de gehele maand leeg is"),
+            () -> passagier(p -> {}),
+            Map.of(), Passagier::isGemarkeerd),   // true
+    };
+    static final Boolean[] PHASE_82_LEEG_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.TRUE };
+
     // ---- Phase 82 FOUT fixtures: a §8.2-qualified consistentie criterium — the VIOLATION inserts an Inconsistentie ----
     static final FoutFixture[] PHASE_82_FOUT = {
         new FoutFixture("§8.2 consistentie criterium (whole-year == 10)",
@@ -4649,6 +4670,21 @@ class ExecModelDifferentialTest {
     }
     @Test void phase_82_gehele_periode_matches_drl_back_end()      { runDifferential("Phase 82", PHASE_82, 10); }
     @Test void phase_82_kenmerk_matches_drl_back_end()             { runDifferential("Phase 82 kenmerk", PHASE_82_KENMERK, 2); }
+    /** §8.2 line 3468 whole-period LEEG ("... gedurende de gehele maand leeg is") now FIRES in both back-ends (toets 8,
+     *  the inverse of GEVULD), was a symmetric marker. Absolute (leeg-segment -> WAAR, value -> ONWAAR, null -> vacuous WAAR) + parity. */
+    @Test void phase_82_leeg_is_spec_correct() {
+        for (int i = 0; i < PHASE_82_LEEG.length; i++) {
+            Fixture f = PHASE_82_LEEG[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_82_LEEG_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_82_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase 82 fout", PHASE_82_FOUT, 1); }
     @Test void phase_82_navigated_grens_matches_drl_back_end()     { runDifferential("Phase 82 nav", PHASE_82_NAV, 3); }
     @Test void phase_82_in_counting_quantifier_matches_drl_back_end() { runDifferential("Phase 82 counting", PHASE_82_COUNTING, 3); }

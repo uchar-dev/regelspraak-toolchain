@@ -2288,6 +2288,13 @@ public final class DrlTranspiler {
             getter = temporeelTijdlijnGetter(pa, subject);
             if (getter == null) return Frag.todo("§8.2 navigatie", c.bron());
             toets = 6;
+        } else if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.LEEG
+                && p.operand() instanceof Expr.AttribuutRef pa && isTemporeelAttribuut(pa)) {
+            // §8.2 line 3468 "... gedurende de gehele maand leeg is": the inverse of GEVULD (toets 6) — every moment
+            // of each touched bucket carries NO value (toets 8 in rsGeheelPeriode).
+            getter = temporeelTijdlijnGetter(pa, subject);
+            if (getter == null) return Frag.todo("§8.2 navigatie", c.bron());
+            toets = 8;
         } else if (c instanceof Conditie.Kenmerk k) {
             getter = temporeelKenmerkTijdreeks(k, subject);   // null for a navigated/negated/non-temporal kenmerk
             if (getter == null) getter = navigatieKenmerkTijdreeks(k, subject);   // §8.2 over a to-one NAVIGATED temporal kenmerk (root-guarded)
@@ -2467,6 +2474,7 @@ public final class DrlTranspiler {
                 + "        if (s.getVan() == null || s.getTot() == null || !s.getVan().isBefore(s.getTot())) continue;\n"
                 + "        boolean ok;\n"
                 + "        if (toets == 7) ok = true;\n"
+                + "        else if (toets == 8) ok = (s.getWaarde() == null);\n"   // §8.2 leeg (inverse of gevuld)
                 + "        else if (s.getWaarde() == null) ok = false;\n"
                 + "        else if (toets == 6) ok = true;\n"
                 + "        else if (grens == null) ok = false;\n"   // §5.1 leeg grens -> onwaar (never compareTo(null))
