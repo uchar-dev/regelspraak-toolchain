@@ -2513,7 +2513,8 @@ public final class DrlTranspiler {
                 + "        long totaal = java.time.temporal.ChronoUnit.DAYS.between(bucket, eind);\n"
                 + "        Object g = goedDagen.get(bucket);\n"
                 + "        long goed = g == null ? 0L : ((Long) g).longValue();\n"
-                + "        if (goed < totaal) return false;\n"
+                + "        long drempel = toets == 8 ? ((Long) en.getValue()).longValue() : totaal;\n"   // §8.2 LEEG: gaps are leeg -> only touched days must be leeg
+                + "        if (goed < drempel) return false;\n"
                 + "    }\n"
                 + "    return true;\n"
                 + "}");

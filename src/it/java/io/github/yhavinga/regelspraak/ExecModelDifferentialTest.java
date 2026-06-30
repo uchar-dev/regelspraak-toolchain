@@ -3898,8 +3898,19 @@ class ExecModelDifferentialTest {
             g82attr("zijn belastingvermindering per maand gedurende de gehele maand leeg is"),
             () -> passagier(p -> {}),
             Map.of(), Passagier::isGemarkeerd),   // true
+        // a leeg-segment covering only PART of the month + a GAP for the rest -> all of Jan is leeg (a gap day is leeg
+        // too) -> gemarkeerd. (review wf_52c820ef: the gap days must count as leeg, not as a violation.)
+        single("§8.2 LEEG TRUE (leeg-segment jan 1-15 + gap -> heel jan leeg)",
+            g82attr("zijn belastingvermindering per maand gedurende de gehele maand leeg is"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 1, 16, null)))),
+            Map.of(), Passagier::isGemarkeerd),   // true
+        // a VALUE-segment covering only PART of the month + a gap -> Jan has a value -> NOT wholly leeg -> niet gemarkeerd.
+        single("§8.2 LEEG FALSE (waarde jan 1-15 + gap -> jan niet leeg)",
+            g82attr("zijn belastingvermindering per maand gedurende de gehele maand leeg is"),
+            () -> passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 1, 16, "10.00")))),
+            Map.of(), Passagier::isGemarkeerd),   // false
     };
-    static final Boolean[] PHASE_82_LEEG_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.TRUE };
+    static final Boolean[] PHASE_82_LEEG_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, Boolean.TRUE, Boolean.FALSE };
 
     // ---- Phase 82 FOUT fixtures: a §8.2-qualified consistentie criterium — the VIOLATION inserts an Inconsistentie ----
     static final FoutFixture[] PHASE_82_FOUT = {

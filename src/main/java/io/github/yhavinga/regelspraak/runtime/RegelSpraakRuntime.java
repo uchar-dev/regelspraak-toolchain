@@ -764,7 +764,11 @@ public final class RegelSpraakRuntime {
             LocalDate eind = jaar ? bucket.plusYears(1) : bucket.plusMonths(1);
             long totaal = ChronoUnit.DAYS.between(bucket, eind);
             long goed = goedDagen.getOrDefault(bucket, 0L);
-            if (goed < totaal) return false;   // a moment in this calendar period fails the check
+            // §8.2 LEEG (toets 8): a GAP day carries no value, so it is ALSO leeg — only the TOUCHED days must be
+            // leeg-satisfying (compare against the bucket's touched days). Every other check requires the WHOLE calendar
+            // period to satisfy (a gap leaves fewer satisfying days than the period has -> fail).
+            long drempel = toets == 8 ? en.getValue() : totaal;
+            if (goed < drempel) return false;   // a moment in this calendar period fails the check
         }
         return true;
     }
