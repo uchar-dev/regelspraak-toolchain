@@ -3757,6 +3757,34 @@ class ExecModelDifferentialTest {
             l -> ((Passagier) l.get(0)).isGemarkeerd()),   // true
     };
 
+    // ---- Phase 82 CROSS-UNIT grens (§8.2 + §5.1): the temporal attribute is in mnd, the grens "1 jr" is in jr; both
+    //      back-ends restate the grens into the timeline's unit (mnd) by the EXACT factor (1 jr = 12 mnd) before the
+    //      per-bucket compare (DRL rsHerschaalExact, exec WaardeFn.herschaald). 12-mnd whole year == 1 jr -> WAAR;
+    //      11-mnd whole year != 1 jr -> ONWAAR. Closed-form -> assert the ABSOLUTE Tabel-32 value (differential-masks). ----
+    private static final String G82_CU_SRC =
+        "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\n" +
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+        "    de belastingvermindering per maand Numeriek (geheel getal) met eenheid mnd voor elke maand;\n" +
+        "    is gemarkeerd kenmerk (bijvoeglijk);\n" +
+        "Regel R\n    geldig altijd\n        Een Passagier is gemarkeerd\n" +
+        "        indien zijn belastingvermindering per maand gedurende het gehele jaar gelijk is aan 1 jr.\n";
+    static final Fixture[] PHASE_82_CU = {
+        new Fixture("§8.2 cross-unit: heel 2024 == 12 mnd == 1 jr -> gemarkeerd",
+            G82_CU_SRC,
+            () -> List.of(passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "12"))))),
+            Map.of(), l -> ((Passagier) l.get(0)).isGemarkeerd()),   // 12 mnd == 1 jr -> true
+        new Fixture("§8.2 cross-unit: heel 2024 == 11 mnd != 1 jr -> niet gemarkeerd",
+            G82_CU_SRC,
+            () -> List.of(passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, "11"))))),
+            Map.of(), l -> ((Passagier) l.get(0)).isGemarkeerd()),   // 11 mnd != 12 mnd -> false
+        new Fixture("§8.2 cross-unit: half 12 half 11 -> niet heel jaar 1 jr -> niet gemarkeerd",
+            G82_CU_SRC,
+            () -> List.of(passagier(p -> p.setBelastingverminderingPerMaand(List.of(
+                    seg(2024, 1, 1, 2024, 7, 1, "12"), seg(2024, 7, 1, 2025, 1, 1, "11"))))),
+            Map.of(), l -> ((Passagier) l.get(0)).isGemarkeerd()),   // not the WHOLE year == 12 -> false
+    };
+    static final Boolean[] PHASE_82_CU_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.FALSE };
+
     // ---- Phase 82 KENMERK fixtures: "is gedurende het gehele jaar een <kenmerk>" over a temporal kenmerk timeline ----
     private static final String G82_KENMERK_HDR = TOTAAL_HDR + """
             Objecttype de Passagier (mv: Passagiers) (bezield)
@@ -4535,6 +4563,22 @@ class ExecModelDifferentialTest {
     @Test void phase_82_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase 82 fout", PHASE_82_FOUT, 1); }
     @Test void phase_82_navigated_grens_matches_drl_back_end()     { runDifferential("Phase 82 nav", PHASE_82_NAV, 3); }
     @Test void phase_82_in_counting_quantifier_matches_drl_back_end() { runDifferential("Phase 82 counting", PHASE_82_COUNTING, 3); }
+    /** §8.2 + §5.1 cross-unit grens: a temporal attribute in mnd compared "gedurende het gehele jaar gelijk is aan 1 jr"
+     *  -> both back-ends restate the grens 1 jr = 12 mnd by the EXACT factor before the per-bucket compare (was a
+     *  symmetric marker). Closed-form -> assert the ABSOLUTE value (12==1jr TRUE, 11!=1jr FALSE) + parity + no exec skip. */
+    @Test void phase_82_cross_unit_grens_is_spec_correct() {
+        for (int i = 0; i < PHASE_82_CU.length; i++) {
+            Fixture f = PHASE_82_CU[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_82_CU_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 17); }
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
     @Test void phase_H_value_ops_matches_drl_back_end()             { runDifferential("Phase H val", PHASE_H_VAL, 8); }

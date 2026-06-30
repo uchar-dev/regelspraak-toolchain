@@ -2241,11 +2241,13 @@ public final class DrlTranspiler {
             else return Frag.todo("§8.2 zonder tijdsafhankelijk attribuut", c.bron());
             if (!(tijd.type().isNumeriek() || tijd.type().isPercentage()))
                 return Frag.todo("§8.2 niet-numerieke gehele-periodevergelijking", c.bron());
-            // The grenswaarde is compared raw against the Segment's value, so a convertible-but-DIFFERENT unit would
-            // compare unscaled magnitudes (silently wrong). The common §8.2 case is same-unit; a unit mismatch is an
-            // honest marker (carded), never a mis-scaled comparison — kept symmetric in both back-ends.
+            // §8.2 cross-unit grens: the grenswaarde is compared against each Segment's value (in the temporal
+            // attribute's unit el), so restate it from its own unit er into el via the EXACT factor (the same
+            // restatement the scalar comparison path uses — exacteHerschaalFactoren ×÷, one DECIMAL64 rounding). An
+            // OPAQUE product unit (no exact factors) stays an honest marker, kept symmetric in both back-ends.
             io.github.yhavinga.regelspraak.model.Eenheid el = tijd.type().eenheidOf(), er = ander.type().eenheidOf();
-            if (el != null && er != null && el.vereistOmrekening(er))
+            boolean crossUnit = el != null && er != null && el.vereistOmrekening(er);
+            if (crossUnit && er.exacteHerschaalFactoren(el) == null)
                 return Frag.todo("§8.2 gehele-periodevergelijking met eenheidsomrekening", c.bron());
             Integer code = toetsCode(linksTemp ? v.op() : omkeren(v.op()));   // put the temporal operand on the left (REVERSE, not negate)
             if (code == null) return Frag.todo("§8.2 datum-gehele-periodevergelijking", c.bron());
@@ -2253,7 +2255,7 @@ public final class DrlTranspiler {
             if (getter == null) return Frag.todo("§8.2 navigatie", c.bron());
             Frag g = operand(ander, subject);    // the scalar grenswaarde (literal / parameter-global / own attribute)
             if (g.marker()) return Frag.todo("§8.2 grenswaarde", c.bron());
-            toets = code; grens = g.text();
+            toets = code; grens = crossUnit ? herschaalExact(g.text(), ander.type(), tijd.type(), false) : g.text();
         } else if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.GEVULD
                 && p.operand() instanceof Expr.AttribuutRef pa && isTemporeelAttribuut(pa)) {
             getter = temporeelTijdlijnGetter(pa, subject);

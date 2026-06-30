@@ -1410,7 +1410,10 @@ public final class ExecModelTranspiler {
             else return null;
             if (!(tijd.type().isNumeriek() || tijd.type().isPercentage())) return null;
             io.github.yhavinga.regelspraak.model.Eenheid el = tijd.type().eenheidOf(), er = ander.type().eenheidOf();
-            if (el != null && er != null && el.vereistOmrekening(er)) return null;   // mixed unit -> marker (DRL too)
+            // §8.2 cross-unit grens: restate it from er into the timeline's unit el via the EXACT factor (mirrors DRL
+            // herschaalExact); an OPAQUE product unit (no exact factors) stays a marker (symmetric with DRL).
+            boolean crossUnit = el != null && er != null && el.vereistOmrekening(er);
+            if (crossUnit && er.exacteHerschaalFactoren(el) == null) return null;
             Integer code = toetsCode82(linksTemp ? v.op() : omkeren(v.op()));   // REVERSE (operand swap), not negate
             if (code == null) return null;
             java.util.function.Function<Object, Object> tl = temporeelTijdlijnReader(tijd, subject);
@@ -1430,6 +1433,7 @@ public final class ExecModelTranspiler {
                 }
                 if (g == null) return null;
             }
+            if (crossUnit) g = g.herschaald(ander.type(), tijd.type());   // §4 EXACT restate the grens into the timeline's unit
             return new Gp82(tl, code, g, gran, gp.niet());
         }
         if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.GEVULD
