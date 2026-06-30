@@ -5277,29 +5277,59 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
-    /** §6.11 a dagsoort is DAY-granular: a navigated Datum-EN-TIJD dagsoortcontrole ("het vertrekmoment van zijn reis
-     *  geen kerstdag is") is NOT a valid dagsoort operand, so it stays a SYMMETRIC marker (DRL false TODO that COMPILES,
-     *  exec skip) — never a DRL rsDagsoort_<N>(LocalDateTime) whole-program compile failure vs an exec silent fire
-     *  (review wf_e65cc80b). The NDS-1 geen-recovery is scoped to Datum-in-dagen so it does not un-marker this. */
-    @Test void navigated_datum_en_tijd_dagsoort_is_symmetric_marker_in_both() {
-        String src =
-            "Dagsoort de kerstdag (mv: kerstdagen)\n" +
-            "Regel Kerstdag\n    geldig altijd\n        Een dag is een kerstdag\n" +
-            "        indien de dag aan alle volgende voorwaarden voldoet:\n" +
-            "        - de maand uit (de dag) is gelijk aan 12\n" +
-            "        - de dag voldoet aan ten minste één van de volgende voorwaarden:\n" +
-            "            .. de dag uit (de dag) is gelijk aan 25\n            .. de dag uit (de dag) is gelijk aan 26.\n" +
-            "Objecttype de Passagier (mv: Passagiers) (bezield)\n    is duur kenmerk (bijvoeglijk);\n" +
-            "Objecttype de Vlucht (mv: Vluchten)\n    het vertrekmoment Datum en tijd in millisecondes;\n" +
-            "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
-            "Regel Duur\n    geldig altijd\n        Een Passagier is duur indien het vertrekmoment van zijn reis geen kerstdag is.\n";
-        RegelSpraakModel m = Resolver.resolve(src);
-        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
-        String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("/* TODO"), () -> "een navigated Datum-en-tijd dagsoort moet markeren:\n" + drl);
-        assertFalse(drl.contains("rsDagsoort"), () -> "geen rsDagsoort(LocalDateTime) call (zou de hele DRL breken):\n" + drl);
-        assertDoesNotThrow(() -> drlBase(m), "de DRL moet compileren (geen whole-program rejectie)");
-        assertFalse(ExecModelTranspiler.build(m).overgeslagen().isEmpty(), "de exec moet de Datum-en-tijd dagsoort overslaan (symmetrie)");
+    // ---- §8.1.5/§5.15/Tabel 57 a DATUM-EN-TIJD dagsoortcontrole IS spec-legal: the operand is day-granular, so both
+    //      back-ends take its DATE PART (.toLocalDate()) for the §9.8 LocalDate predicate. OWN + NAVIGATED(negated) +
+    //      present-kerstday / present-non-kerstday / ABSENT-relation. Was a symmetric marker (the LocalDateTime operand
+    //      crashed the DRL rsDagsoort_<N>(LocalDate)); now FIRES at parity. Absolute Tabel-58 value + no exec skip. ----
+    private static final String DTD_KERST =
+        "Dagsoort de kerstdag (mv: kerstdagen)\n" +
+        "Regel Kerstdag\n    geldig altijd\n        Een dag is een kerstdag\n" +
+        "        indien de dag aan alle volgende voorwaarden voldoet:\n" +
+        "        - de maand uit (de dag) is gelijk aan 12\n" +
+        "        - de dag voldoet aan ten minste één van de volgende voorwaarden:\n" +
+        "            .. de dag uit (de dag) is gelijk aan 25\n            .. de dag uit (de dag) is gelijk aan 26.\n";
+    static final String DTD_NAV_NEG_SRC = DTD_KERST +
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n    is duur kenmerk (bijvoeglijk);\n" +
+        "Objecttype de Vlucht (mv: Vluchten)\n    het vertrekmoment Datum en tijd in millisecondes;\n" +
+        "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+        "Regel Duur\n    geldig altijd\n        Een Passagier is duur indien het vertrekmoment van zijn reis geen kerstdag is.\n";
+    static final String DTD_OWN_POS_SRC = DTD_KERST +
+        "Objecttype de Vlucht (mv: Vluchten)\n    het vertrekmoment Datum en tijd in millisecondes;\n    is laat kenmerk (bijvoeglijk);\n" +
+        "Regel Laat\n    geldig altijd\n        Een Vlucht is laat indien het vertrekmoment van de Vlucht een kerstdag is.\n";
+    static Fixture dtdNavNeg(String naam, java.time.LocalDateTime vdt) {
+        return new Fixture(naam, DTD_NAV_NEG_SRC,
+                () -> { Passagier p = new Passagier();
+                        if (vdt != null) { Vlucht v = new Vlucht(); v.setVertrekmoment(vdt); p.setReis(v); }
+                        return List.of(p); },
+                Map.of(), l -> ((Passagier) l.get(0)).isDuur());
+    }
+    static Fixture dtdOwnPos(String naam, java.time.LocalDateTime vdt) {
+        return new Fixture(naam, DTD_OWN_POS_SRC,
+                () -> { Vlucht v = new Vlucht(); v.setVertrekmoment(vdt); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).isLaat());
+    }
+    static final Fixture[] PHASE_DTD = {
+        dtdNavNeg("DTD nav-neg: reis.vertrekmoment 25-12 10:30 IS kerstdag -> geen -> onwaar", java.time.LocalDateTime.of(2024, 12, 25, 10, 30, 0)),
+        dtdNavNeg("DTD nav-neg: reis.vertrekmoment 24-12 geen kerstdag -> waar",                java.time.LocalDateTime.of(2024, 12, 24, 10, 30, 0)),
+        dtdNavNeg("DTD nav-neg: ABSENT reis -> §5.15+Tabel16 geen kerstdag -> WAAR",            null),
+        dtdOwnPos("DTD own-pos: vertrekmoment 26-12 23:59 IS kerstdag -> waar",                 java.time.LocalDateTime.of(2024, 12, 26, 23, 59, 0)),
+        dtdOwnPos("DTD own-pos: vertrekmoment 24-12 00:00 geen kerstdag -> onwaar",             java.time.LocalDateTime.of(2024, 12, 24, 0, 0, 0)),
+    };
+    static final Boolean[] PHASE_DTD_EXPECTED = { Boolean.FALSE, Boolean.TRUE, Boolean.TRUE, Boolean.TRUE, Boolean.FALSE };
+    /** §8.1.5/§5.15/Tabel 57: a Datum-en-tijd dagsoortcontrole fires (date part taken) in both back-ends; the DRL
+     *  rsDagsoort_<N>(...toLocalDate()) COMPILES (was a whole-program rejection) and the exec asDag() mirrors it. */
+    @Test void phase_datum_en_tijd_dagsoort_is_spec_correct() {
+        for (int i = 0; i < PHASE_DTD.length; i++) {
+            Fixture f = PHASE_DTD[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_DTD_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
     }
     /** §13.4.13.4 a COUNTING-quantifier compound subselectie with a NESTED PURE-LEAF compound bullet now FIRES at parity
      *  (DRL conditieInline's nested &&; exec leafCompound folds the nested compound into ONE Predicate1). Closed-form SOM

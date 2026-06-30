@@ -1751,8 +1751,8 @@ public final class ExecModelTranspiler {
                 if (g != null && pred != null) {
                     BiFunction<Object, Map<String, BigDecimal>, Object> fn = wf.fn();
                     boolean neg = dp.negatie();   // §8.1.5 + Tabel 16 "is geen <dagsoort>"
-                    return new Gate(pattern.expr(nextId("c"), (Variable) g, (Predicate2) (s, gv) ->
-                            neg != (fn.apply(s, bindGlobal(gn, gv)) instanceof java.time.LocalDate ld && pred.test(ld))), List.of());
+                    return new Gate(pattern.expr(nextId("c"), (Variable) g, (Predicate2) (s, gv) -> {
+                            java.time.LocalDate ld = asDag(fn.apply(s, bindGlobal(gn, gv))); return neg != (ld != null && pred.test(ld)); }), List.of());
                 }
             }
             // 0 globals -> the fact-only leafPredicate below; >1 / navigated / date-typed -> fall through -> honest skip
@@ -2137,7 +2137,7 @@ public final class ExecModelTranspiler {
             boolean neg = p.negatie();   // §8.1.5 + Tabel 16 "is geen <dagsoort>": a leeg/non-dagsoort datum is WAAR
             if (la.navigatieRol() == null) {
                 if (!subject.heeftLid(attr)) return null;
-                return s -> neg != (RegelSpraakRuntime.get(s, attr) instanceof java.time.LocalDate ld && pred.test(ld));
+                return s -> { java.time.LocalDate ld = asDag(RegelSpraakRuntime.get(s, attr)); return neg != (ld != null && pred.test(ld)); };
             }
             String rol = navComparisonRole(la, subject);
             if (rol == null) return null;
@@ -2146,7 +2146,7 @@ public final class ExecModelTranspiler {
                 // Under two-valued negation "is een <dagsoort>" -> ONWAAR (neg=false), "is geen <dagsoort>" -> WAAR
                 // (neg=true). Mirrors DRL `(neg?"!":"") (reis!.x != null && rsDagsoort(reis!.x))` (the `!.` short-circuit).
                 Object rel = RegelSpraakRuntime.get(s, rol);
-                java.time.LocalDate ld = rel != null && RegelSpraakRuntime.get(rel, attr) instanceof java.time.LocalDate d ? d : null;
+                java.time.LocalDate ld = rel != null ? asDag(RegelSpraakRuntime.get(rel, attr)) : null;
                 return neg != (ld != null && pred.test(ld));
             };
         }
@@ -2160,7 +2160,7 @@ public final class ExecModelTranspiler {
             if (pred == null || wf == null || !wf.globals().isEmpty()) return null;
             BiFunction<Object, Map<String, BigDecimal>, Object> fn = wf.fn();
             boolean neg = p.negatie();   // §8.1.5 + Tabel 16 "is geen <dagsoort>"
-            return s -> neg != (fn.apply(s, Map.of()) instanceof java.time.LocalDate ld && pred.test(ld));
+            return s -> { java.time.LocalDate ld = asDag(fn.apply(s, Map.of())); return neg != (ld != null && pred.test(ld)); };
         }
         // §8.1.7 near-side rolcheck: the subject fills the role iff its to-ONE forward reference is set. The far-side
         // (the reference lives on the MANY side) is not a fact-only leaf -> null (handled as an exists-join above).
@@ -2179,6 +2179,14 @@ public final class ExecModelTranspiler {
      *  when no such definitie exists or its condition is not a pure date predicate. A nested dagsoort reference
      *  resolves via a DEFERRED map lookup, so cross-references work regardless of compilation order and a
      *  (spec-forbidden, §9.10) cyclic definitie cannot infinite-loop. Mirrors DrlTranspiler.dagsoortFunctie. */
+    /** §8.1.5/§5.15/Tabel 57: the day-granular date of a dagsoort operand — a Datum-in-dagen (LocalDate) directly, a
+     *  Datum-en-tijd (LocalDateTime) via its date part (a dagsoort is day-granular, so the time portion is irrelevant).
+     *  null for a leeg / non-date value (a leegwaarde is nooit een dagsoort). Mirrors the DRL `.toLocalDate()` wrap. */
+    private static java.time.LocalDate asDag(Object o) {
+        return o instanceof java.time.LocalDate d ? d
+                : o instanceof java.time.LocalDateTime ldt ? ldt.toLocalDate() : null;
+    }
+
     private java.util.function.Predicate<java.time.LocalDate> dagsoortPredikaat(String naam) {
         String key = naam.toLowerCase();
         java.util.function.Predicate<java.time.LocalDate> have = dagsoortPredikaten.get(key);

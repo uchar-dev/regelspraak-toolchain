@@ -2834,8 +2834,11 @@ public final class DrlTranspiler {
                     String fn = dagsoortFunctie(p.dagsoort());
                     // §5.15: een leegwaarde is nooit een dagsoort -> a null date is ONWAAR (no match), not an NPE. The
                     // NEGATED form (Tabel 16 "is geen <dagsoort>") wraps it in "!" -> a leeg/non-dagsoort datum is WAAR.
+                    // §8.1.5/§5.15/Tabel 57: a Datum-en-tijd (LocalDateTime) operand is day-granular here — take its
+                    // .toLocalDate() for the §9.8 LocalDate predicate (after the != null guard, so no NPE; the && short-circuits).
+                    String dag = p.operand().type() instanceof Datatype.DatumTijd ? o.text() + ".toLocalDate()" : o.text();
                     yield fn == null ? LoweredConditie.marker("dagsoortcontrole '" + p.dagsoort() + "'", p.bron())
-                            : LoweredConditie.van((p.negatie() ? "!" : "") + "(" + o.text() + " != null && " + fn + "(" + o.text() + "))");
+                            : LoweredConditie.van((p.negatie() ? "!" : "") + "(" + o.text() + " != null && " + fn + "(" + dag + "))");
                 }
                 default     -> LoweredConditie.marker("predicaat " + p.soort(), p.bron());
             };
