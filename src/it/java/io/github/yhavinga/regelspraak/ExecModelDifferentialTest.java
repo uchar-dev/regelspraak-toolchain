@@ -5231,6 +5231,30 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
+    /** §6.11 a dagsoort is DAY-granular: a navigated Datum-EN-TIJD dagsoortcontrole ("het vertrekmoment van zijn reis
+     *  geen kerstdag is") is NOT a valid dagsoort operand, so it stays a SYMMETRIC marker (DRL false TODO that COMPILES,
+     *  exec skip) — never a DRL rsDagsoort_<N>(LocalDateTime) whole-program compile failure vs an exec silent fire
+     *  (review wf_e65cc80b). The NDS-1 geen-recovery is scoped to Datum-in-dagen so it does not un-marker this. */
+    @Test void navigated_datum_en_tijd_dagsoort_is_symmetric_marker_in_both() {
+        String src =
+            "Dagsoort de kerstdag (mv: kerstdagen)\n" +
+            "Regel Kerstdag\n    geldig altijd\n        Een dag is een kerstdag\n" +
+            "        indien de dag aan alle volgende voorwaarden voldoet:\n" +
+            "        - de maand uit (de dag) is gelijk aan 12\n" +
+            "        - de dag voldoet aan ten minste één van de volgende voorwaarden:\n" +
+            "            .. de dag uit (de dag) is gelijk aan 25\n            .. de dag uit (de dag) is gelijk aan 26.\n" +
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n    is duur kenmerk (bijvoeglijk);\n" +
+            "Objecttype de Vlucht (mv: Vluchten)\n    het vertrekmoment Datum en tijd in millisecondes;\n" +
+            "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+            "Regel Duur\n    geldig altijd\n        Een Passagier is duur indien het vertrekmoment van zijn reis geen kerstdag is.\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("/* TODO"), () -> "een navigated Datum-en-tijd dagsoort moet markeren:\n" + drl);
+        assertFalse(drl.contains("rsDagsoort"), () -> "geen rsDagsoort(LocalDateTime) call (zou de hele DRL breken):\n" + drl);
+        assertDoesNotThrow(() -> drlBase(m), "de DRL moet compileren (geen whole-program rejectie)");
+        assertFalse(ExecModelTranspiler.build(m).overgeslagen().isEmpty(), "de exec moet de Datum-en-tijd dagsoort overslaan (symmetrie)");
+    }
     /** §13.4.13.4 a COUNTING-quantifier compound subselectie with a NESTED PURE-LEAF compound bullet now FIRES at parity
      *  (DRL conditieInline's nested &&; exec leafCompound folds the nested compound into ONE Predicate1). Closed-form SOM
      *  -> assert the ABSOLUTE spec value, the exec NOT skipping, and parity. A nested compound reading a global stays a

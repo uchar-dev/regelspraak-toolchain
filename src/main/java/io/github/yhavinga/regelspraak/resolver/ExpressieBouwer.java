@@ -1106,7 +1106,10 @@ final class ExpressieBouwer {
             String echteRol = noun.substring(0, noun.length() - 5).stripTrailing();
             Objecttype viaRol = model.rolDoeltypeNaarSubject(huidigSubject, echteRol);
             Datatype rdt = viaRol != null ? viaRol.attribuut(attr) : null;
-            if (rdt != null && rdt.isDatum()) { ot = viaRol; navRol = echteRol; }
+            // §6.11 a dagsoort is DAY-granular — only a Datum-in-dagen is a valid dagsoort operand. A Datum-en-tijd
+            // (LocalDateTime) is not; recovering it would un-marker into a DRL rsDagsoort_<N>(LocalDate) compile failure
+            // vs an exec silent result. Stay a marker for a non-day-granular datum (and any non-datum, out of scope).
+            if (rdt instanceof Datatype.DatumInDagen) { ot = viaRol; navRol = echteRol; }
         }
         Datatype dt = ot != null && ot.attribuut(attr) != null ? ot.attribuut(attr) : null;
         if (dt == null && ot != null) {

@@ -1448,8 +1448,10 @@ final class RuleChecker {
         // §8.1.5 dagsoortcontrole: "<datumexpressie> is een <dagsoort>" (e.g. "de datum van vertrek … is een
         // kerstdag") tests the date against that dagsoort's §9.8 definitie. A dagsoort is neither a kenmerk nor a
         // role — it is keyed only by the operand being a datum and the name matching a declared dagsoort, so it is
-        // resolved here BEFORE the kenmerk/rolcheck machinery (the §13.4.15.45 "(een) <dagsoort> is" form).
-        if (metEen && !heeftWerkwoord && lhs != null && lhs.type().isDatum()) {
+        // resolved here BEFORE the kenmerk/rolcheck machinery (the §13.4.15.45 "(een) <dagsoort> is" form). §6.11 a
+        // dagsoort is DAY-granular, so the operand must be a Datum-in-dagen — a Datum-en-tijd (LocalDateTime) is NOT a
+        // valid dagsoort operand (the §9.8 rsDagsoort_<N> predicate is typed on LocalDate), so it stays a marker.
+        if (metEen && !heeftWerkwoord && lhs != null && lhs.type() instanceof Datatype.DatumInDagen) {
             String dag = dagsoortNaam(stripArtikel(src(naamCtx)));
             if (dag != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.DAGSOORT, lhs, dag, null, bron);
         }
@@ -1459,7 +1461,7 @@ final class RuleChecker {
         // where it lands depends on the operand shape: for a §6 date-arithmetic operand ("de vluchtdatum plus 1 dag") it
         // stays on the operator's kaleNaam ("geen kerstdag"); for a plain AttribuutRef the greedy onderwerp absorbs it
         // as a TRAILING word of the operand bron (like "niet"), leaving the bare dagsoort as the kaleNaam.
-        if (!heeftWerkwoord && lhs != null && lhs.type().isDatum()) {
+        if (!heeftWerkwoord && lhs != null && lhs.type() instanceof Datatype.DatumInDagen) {   // §6.11 day-granular: Datum-in-dagen only
             String naam0 = stripArtikel(src(naamCtx));
             // (a) "geen <dagsoort>" left on the kaleNaam — a date-arithmetic / non-AttribuutRef datum operand.
             if (naam0 != null && naam0.regionMatches(true, 0, "geen ", 0, 5)) {
