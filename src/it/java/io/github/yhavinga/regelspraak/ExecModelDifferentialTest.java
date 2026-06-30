@@ -3061,6 +3061,50 @@ class ExecModelDifferentialTest {
     private static final String TOTAAL_HDR =
             "Domein Bedrag is van het type Numeriek (getal met 2 decimalen)\n";
 
+    // ---- §5.1.4 general temporal-arithmetic WRITE: a temporal doel = <temporal> plus/min <temporal>, evaluated per
+    //      period on the MERGED knip timeline of the two operands (leeg -> 0, §5.1.4 note), coalescing equal-adjacent
+    //      segments. Was a symmetric marker. Both back-ends call the byte-identical rsTijdReken. ----
+    static String trSrc(String op) {
+        return "Domein Bedrag is van het type Numeriek (geheel getal)\n" +
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+            "    de belastingvermindering per maand Bedrag voor elke maand;\n" +
+            "    de inkomen per maand Bedrag voor elke maand;\n" +
+            "    de standaardbedrag Bedrag voor elke maand;\n" +
+            "Regel R\n    geldig altijd\n        De standaardbedrag van een Passagier moet berekend worden als zijn belastingvermindering per maand " + op + " zijn inkomen per maand.\n";
+    }
+    static final Fixture[] PHASE_TR = {
+        // §5.1.4.1 the spec's own worked example: afstand + reisduur -> the merged-knip timeline with the 1-5/1-6 coalesce.
+        new Fixture("§5.1.4.1 PLUS worked example (60/65/0/100/75, 1-6 coalesced)",
+            trSrc("plus"),
+            () -> List.of(passagier(p -> {
+                p.setBelastingverminderingPerMaand(List.of(   // afstand: €50, €65, (gap), €75, €10
+                    seg(2024, 1, 1, 2024, 2, 1, "50"), seg(2024, 2, 1, 2024, 3, 1, "65"),
+                    seg(2024, 4, 1, 2024, 6, 1, "75"), seg(2024, 6, 1, 2024, 7, 1, "10")));
+                p.setInkomenPerMaand(List.of(                 // reisduur: €10, €25, €65
+                    seg(2024, 1, 1, 2024, 2, 1, "10"), seg(2024, 4, 1, 2024, 5, 1, "25"), seg(2024, 6, 1, 2024, 7, 1, "65")));
+            })),
+            Map.of(), l -> tl(((Passagier) l.get(0)).getStandaardbedrag())),
+        // MIN: per-period subtraction, leeg -> 0. afstand 50,40 ; reisduur 20 (Jan only) -> 30, 40.
+        new Fixture("§5.1.4 MIN per period (leeg -> 0): 50-20=30, 40-0=40",
+            trSrc("min"),
+            () -> List.of(passagier(p -> {
+                p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "50"), seg(2024, 2, 1, 2024, 3, 1, "40")));
+                p.setInkomenPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "20")));
+            })),
+            Map.of(), l -> tl(((Passagier) l.get(0)).getStandaardbedrag())),
+        // one operand entirely leeg (null timeline): PLUS treats leeg as 0 -> the result equals the non-leeg operand.
+        new Fixture("§5.1.4 PLUS with one leeg operand -> the other operand verbatim",
+            trSrc("plus"),
+            () -> List.of(passagier(p -> p.setBelastingverminderingPerMaand(List.of(seg(2024, 3, 1, 2024, 5, 1, "33"))))),
+            Map.of(), l -> tl(((Passagier) l.get(0)).getStandaardbedrag())),
+    };
+    static final Object[] PHASE_TR_EXPECTED = {
+        java.util.List.of("2024-01-01|2024-02-01|60", "2024-02-01|2024-03-01|65", "2024-03-01|2024-04-01|0",
+                "2024-04-01|2024-05-01|100", "2024-05-01|2024-07-01|75"),
+        java.util.List.of("2024-01-01|2024-02-01|30", "2024-02-01|2024-03-01|40"),
+        java.util.List.of("2024-03-01|2024-05-01|33"),
+    };
+
     static final Fixture[] PHASE_F = {
         // A1 §7.1: the total weights each tijdvak by its month span — 12×10 + 6×11 = 186.
         single("§7.1 totaal van temporeel attribuut (12×10 + 6×11 = 186)",
@@ -4587,6 +4631,22 @@ class ExecModelDifferentialTest {
     }
     @Test void phase_F2_aantal_dagen_in_matches_drl_back_end()     { runDifferential("Phase F2", PHASE_F2, 2); }
     @Test void phase_F_temporal_totaal_matches_drl_back_end()      { runDifferential("Phase F", PHASE_F, 13); }
+    /** §5.1.4 general temporal-arithmetic WRITE: a temporal doel = <temporal> plus/min <temporal> evaluated per merged-knip
+     *  period (leeg -> 0) now FIRES in both back-ends via rsTijdReken (was a symmetric marker). The result timeline is
+     *  read back canonicalised (tl) and asserted against the spec's §5.1.4.1 worked-example table + parity. */
+    @Test void phase_TR_temporal_arithmetic_is_spec_correct() {
+        for (int i = 0; i < PHASE_TR.length; i++) {
+            Fixture f = PHASE_TR[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_TR_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_82_gehele_periode_matches_drl_back_end()      { runDifferential("Phase 82", PHASE_82, 10); }
     @Test void phase_82_kenmerk_matches_drl_back_end()             { runDifferential("Phase 82 kenmerk", PHASE_82_KENMERK, 2); }
     @Test void phase_82_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase 82 fout", PHASE_82_FOUT, 1); }

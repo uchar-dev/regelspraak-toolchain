@@ -1001,7 +1001,40 @@ public final class ExecModelTranspiler {
                 }
             }
         }
+        // §5.1.4 PLUS/MIN over two temporal operands -> rsTijdReken per merged-knip period (equal-gran, equal-unit only;
+        // mirrors DrlTranspiler.temporeleWaarde's Binair branch). leeg -> 0; the result coalesces equal-adjacent segments.
+        if (w instanceof Expr.Binair bin && (bin.op() == Expr.BinOp.PLUS || bin.op() == Expr.BinOp.MIN) && subject != null) {
+            java.util.function.Function<Object, List<?>> l = temporeelRekenOperand(bin.links(), subject, gran, doelType);
+            java.util.function.Function<Object, List<?>> rr = temporeelRekenOperand(bin.rechts(), subject, gran, doelType);
+            Class<?> segCls = segmentClass();
+            if (l != null && rr != null && segCls != null) {
+                final java.util.function.Function<Object, List<?>> fl = l, fr = rr;
+                final String opName = bin.op().name();
+                return new TemporeleWaarde((s, gv) -> RegelSpraakRuntime.rsTijdReken(fl.apply(s), fr.apply(s), opName, segCls), null);
+            }
+        }
         return null;
+    }
+
+    /** §5.1.4 a temporal operand reader for a tijdsafhankelijke arithmetic expression — an own or to-one navigated
+     *  SINGLE-period numeric temporal attribute whose granularity matches gran and unit equals the doel's. Returns a
+     *  (subject -&gt; List&lt;Segment&gt;) reader (navigated = root-guarded via navReader), or null. Mirrors DRL temporeelRekenOperand. */
+    private java.util.function.Function<Object, List<?>> temporeelRekenOperand(Expr e, Objecttype subject,
+            RegelSpraakModel.Granulariteit gran, Datatype doelType) {
+        if (!(e instanceof Expr.AttribuutRef a) || a.set() || a.type() == null || !a.type().isNumeriek()) return null;
+        if (!java.util.Objects.equals(a.type().eenheidOf(), doelType == null ? null : doelType.eenheidOf())) return null;   // equal-unit only
+        Objecttype ot; java.util.function.Function<Object, Object> reader;
+        if (a.navigatieRol() == null && a.objecttype() == subject) {
+            ot = subject; String attr = a.attribuut(); reader = s -> RegelSpraakRuntime.get(s, attr);
+        } else if (a.navigatieRol() != null && a.objecttype() != null) {
+            java.util.function.Function<Object, Object> nav = navReader(a, subject);
+            if (nav == null) return null;
+            ot = a.objecttype(); reader = nav;
+        } else return null;
+        if (!ot.attribuutGranulariteit.containsKey(a.attribuut()) || ot.attribuutGranulariteit.get(a.attribuut()) != gran) return null;
+        if (ot.attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;   // multi-period -> out of scope
+        final java.util.function.Function<Object, Object> fr = reader;
+        return s -> (List<?>) fr.apply(s);
     }
 
     /** The TRUE-period {@code (subject -> List<Segment>)} timeline of a temporal WRITE-producer's condition. A single

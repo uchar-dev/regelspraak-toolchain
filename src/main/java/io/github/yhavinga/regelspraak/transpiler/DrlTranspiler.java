@@ -2083,7 +2083,34 @@ public final class DrlTranspiler {
                 if (call != null) { registreerTijdsevenredigFunctie(); if (factor != null) registreerTijdSchaalFunctie(); return call; }
             }
         }
+        // §5.1.4 a tijdsafhankelijke arithmetic expression PLUS/MIN over two temporal operands: apply the operator per
+        // period on the merged-knip timeline (rsTijdReken; leeg -> 0). EQUAL granularity + EQUAL unit only — a mixed
+        // granularity (§5.1.4.2 knip-promotion) or cross-unit rate restatement stays a marker (a documented follow-up).
+        if (w instanceof Expr.Binair bin && (bin.op() == Expr.BinOp.PLUS || bin.op() == Expr.BinOp.MIN) && subject != null) {
+            String l = temporeelRekenOperand(bin.links(), subject, gran, doelType);
+            String rr = temporeelRekenOperand(bin.rechts(), subject, gran, doelType);
+            if (l != null && rr != null) { registreerTijdRekenFunctie(); return "rsTijdReken(" + l + ", " + rr + ", \"" + bin.op().name() + "\")"; }
+        }
         return null;
+    }
+
+    /** §5.1.4 a temporal operand of a tijdsafhankelijke arithmetic expression — an own or to-one navigated SINGLE-period
+     *  numeric temporal attribute whose granularity matches the doel's (gran) and whose unit equals the doel's. Returns
+     *  the {@code List<Segment>} getter (own-attr or root-guarded navigated), or null (not such an operand -> marker). */
+    private String temporeelRekenOperand(Expr e, Objecttype subject, RegelSpraakModel.Granulariteit gran, Datatype doelType) {
+        if (!(e instanceof Expr.AttribuutRef a) || a.set() || a.type() == null || !a.type().isNumeriek()) return null;
+        if (!java.util.Objects.equals(a.type().eenheidOf(), doelType == null ? null : doelType.eenheidOf())) return null;   // equal-unit only
+        Objecttype ot; String getter;
+        if (a.navigatieRol() == null && a.objecttype() == subject) {
+            ot = subject; getter = SUBJECT + "." + getter(a.attribuut()) + "()";
+        } else if (a.navigatieRol() != null && a.objecttype() != null && naviResolve(a, subject).soort() == NaviSoort.GENAVIGEERD) {
+            ot = a.objecttype();
+            String root = SUBJECT + "." + getter(naviResolve(a, subject).rol()) + "()";
+            getter = "(" + root + " == null ? null : " + root + "." + getter(a.attribuut()) + "())";
+        } else return null;
+        if (!ot.attribuutGranulariteit.containsKey(a.attribuut()) || ot.attribuutGranulariteit.get(a.attribuut()) != gran) return null;
+        if (ot.attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;   // multi-period -> out of scope
+        return getter;
     }
 
     /** The TRUE-period {@code List<Segment>} timeline of a temporal WRITE-producer's condition — the periods whose
@@ -2327,6 +2354,46 @@ public final class DrlTranspiler {
 
     /** §7.3.1: scale every segment value of a rate timeline by a unit factor (€/jr -&gt; €/mnd) at DECIMAL64 — the
      *  byte-identical DRL mirror of {@link RegelSpraakRuntime#rsTijdSchaal}. */
+    /** Register the §5.1.4 temporal-arithmetic helper: apply PLUS/MIN per period on the merged-knip timeline of two
+     *  operands (leeg -> 0), coalescing adjacent equal segments. Byte-identical to {@link RegelSpraakRuntime#rsTijdReken}. */
+    private void registreerTijdRekenFunctie() {
+        hulpFuncties.putIfAbsent("rsTijdRekenWaarde",
+                "function java.math.BigDecimal rsTijdRekenWaarde(java.util.List lijst, java.time.LocalDate dag) {\n"
+                + "    if (lijst != null) for (Object o : lijst) {\n"
+                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
+                + "        if (s.getVan() != null && s.getTot() != null && !s.getVan().isAfter(dag) && dag.isBefore(s.getTot()))\n"
+                + "            return s.getWaarde() == null ? java.math.BigDecimal.ZERO : s.getWaarde();\n"
+                + "    }\n"
+                + "    return java.math.BigDecimal.ZERO;\n"
+                + "}");
+        hulpFuncties.putIfAbsent("rsTijdReken",
+                "function java.util.List rsTijdReken(java.util.List a, java.util.List b, String op) {\n"
+                + "    java.util.TreeMap knipSet = new java.util.TreeMap();\n"
+                + "    java.util.List bronnen = new java.util.ArrayList(); bronnen.add(a); bronnen.add(b);\n"
+                + "    for (Object lo : bronnen) {\n"
+                + "        java.util.List lst = (java.util.List) lo;\n"
+                + "        if (lst != null) for (Object o : lst) {\n"
+                + "            " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
+                + "            if (s.getVan() != null && s.getTot() != null && s.getVan().isBefore(s.getTot())) { knipSet.put(s.getVan(), Boolean.TRUE); knipSet.put(s.getTot(), Boolean.TRUE); }\n"
+                + "        }\n"
+                + "    }\n"
+                + "    java.util.List uit = new java.util.ArrayList();\n"
+                + "    java.time.LocalDate prev = null; java.time.LocalDate lopendeVan = null; java.math.BigDecimal lopendeWaarde = null;\n"
+                + "    for (Object ko : knipSet.keySet()) {\n"
+                + "        java.time.LocalDate t = (java.time.LocalDate) ko;\n"
+                + "        if (prev != null) {\n"
+                + "            java.math.BigDecimal x = rsTijdRekenWaarde(a, prev); java.math.BigDecimal y = rsTijdRekenWaarde(b, prev);\n"
+                + "            java.math.BigDecimal r = \"MIN\".equals(op) ? x.subtract(y) : x.add(y);\n"
+                + "            if (lopendeVan == null) { lopendeVan = prev; lopendeWaarde = r; }\n"
+                + "            else if (lopendeWaarde.compareTo(r) != 0) { uit.add(new " + FACT_PACKAGE + ".Segment(lopendeVan, prev, lopendeWaarde)); lopendeVan = prev; lopendeWaarde = r; }\n"
+                + "        }\n"
+                + "        prev = t;\n"
+                + "    }\n"
+                + "    if (lopendeVan != null) uit.add(new " + FACT_PACKAGE + ".Segment(lopendeVan, prev, lopendeWaarde));\n"
+                + "    return uit;\n"
+                + "}");
+    }
+
     private void registreerTijdSchaalFunctie() {
         hulpFuncties.putIfAbsent("rsTijdSchaal",
                 "function java.util.List rsTijdSchaal(java.util.List tijdlijn, java.math.BigDecimal factor, boolean deel) {\n"

@@ -695,6 +695,39 @@ public final class RegelSpraakRuntime {
         return uit;
     }
 
+    /** §5.1.4 the result of a tijdsafhankelijke arithmetic expression: apply {@code op} (PLUS/MIN) per period on the
+     *  MERGED knip timeline of the two operands. The result's cut-points are the UNION of both operands' van/tot; in a
+     *  period where an operand has no value it is leeg, treated as 0 (§5.1.4 note: "een lege waarde als een 0-waarde").
+     *  Adjacent equal-value segments are coalesced (so an unchanged value carries no knip). Mirrors the DRL rsTijdReken. */
+    public static List<Object> rsTijdReken(List<?> a, List<?> b, String op, Class<?> segCls) {
+        TreeMap<LocalDate, Boolean> knipSet = new TreeMap<>();
+        for (Object o : leeg(a)) { LocalDate v = segVan(o), t = segTot(o); if (v != null && t != null && v.isBefore(t)) { knipSet.put(v, true); knipSet.put(t, true); } }
+        for (Object o : leeg(b)) { LocalDate v = segVan(o), t = segTot(o); if (v != null && t != null && v.isBefore(t)) { knipSet.put(v, true); knipSet.put(t, true); } }
+        List<Object> uit = new ArrayList<>();
+        LocalDate prev = null, lopendeVan = null; BigDecimal lopendeWaarde = null;
+        for (LocalDate t : knipSet.keySet()) {
+            if (prev != null) {
+                BigDecimal x = nul(waardeOpDag(a, prev)), y = nul(waardeOpDag(b, prev));
+                BigDecimal r = "MIN".equals(op) ? x.subtract(y) : x.add(y);   // PLUS default (§6.2)
+                if (lopendeVan == null) { lopendeVan = prev; lopendeWaarde = r; }
+                else if (lopendeWaarde.compareTo(r) != 0) { uit.add(newSegment(segCls, lopendeVan, prev, lopendeWaarde)); lopendeVan = prev; lopendeWaarde = r; }
+            }
+            prev = t;
+        }
+        if (lopendeVan != null) uit.add(newSegment(segCls, lopendeVan, prev, lopendeWaarde));
+        return uit;
+    }
+    private static List<?> leeg(List<?> l) { return l == null ? java.util.Collections.emptyList() : l; }
+    private static BigDecimal nul(BigDecimal w) { return w == null ? BigDecimal.ZERO : w; }
+    /** The value of the segment covering {@code dag} (van &le; dag &lt; tot), or null (leeg) when no segment covers it. */
+    private static BigDecimal waardeOpDag(List<?> lijst, LocalDate dag) {
+        for (Object o : leeg(lijst)) {
+            LocalDate v = segVan(o), t = segTot(o);
+            if (v != null && t != null && !v.isAfter(dag) && dag.isBefore(t)) return segWaarde(o);
+        }
+        return null;
+    }
+
     /** §8.2/§13.4.15.70 "gedurende de/het gehele &lt;periode&gt;": is the predicate {@code true at EVERY moment} of
      *  each calendar bucket (MAAND|JAAR) the timeline touches? Bucket the {@code List<Segment>} timeline by calendar
      *  period (like {@link #rsAantalDagenIn}); a bucket is "touched" if any segment overlaps it, and PASSES only when
