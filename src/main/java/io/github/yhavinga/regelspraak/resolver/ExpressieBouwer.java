@@ -1095,6 +1095,19 @@ final class ExpressieBouwer {
             Objecttype viaRol = model.rolDoeltypeNaarSubject(huidigSubject, noun);
             if (viaRol != null && viaRol.attribuut(attr) != null) { ot = viaRol; navRol = noun; }
         }
+        // §8.1.5 + Tabel 16 NEGATED navigated dagsoortcontrole ("de <datum> van zijn <rol> GEEN <dagsoort> is"): the
+        // greedy onderwerp absorbs the trailing "geen" into the navigation role's kaleNaam ("reis geen"), so the real
+        // role fails to resolve. Recover the real role (mirror absorbedNegator) when the stripped role uniquely reaches
+        // a DATUM attribute, keeping the bron's trailing " geen" so RuleChecker.kenmerkPredicaatKaal case (b) builds the
+        // NEGATED dagsoort predicaat. Scoped to a datum attr (the dagsoort operand), so a navigated kenmerk negation
+        // (still out of scope) stays a marker.
+        if ((ot == null || ot.attribuut(attr) == null) && noun != null && huidigSubject != null
+                && noun.length() > 5 && noun.regionMatches(true, noun.length() - 5, " geen", 0, 5)) {
+            String echteRol = noun.substring(0, noun.length() - 5).stripTrailing();
+            Objecttype viaRol = model.rolDoeltypeNaarSubject(huidigSubject, echteRol);
+            Datatype rdt = viaRol != null ? viaRol.attribuut(attr) : null;
+            if (rdt != null && rdt.isDatum()) { ot = viaRol; navRol = echteRol; }
+        }
         Datatype dt = ot != null && ot.attribuut(attr) != null ? ot.attribuut(attr) : null;
         if (dt == null && ot != null) {
             // §3.7/§5.1 an appositive "in <eenheid>" on an attribuut read — the spec's flagship §12 reisduur

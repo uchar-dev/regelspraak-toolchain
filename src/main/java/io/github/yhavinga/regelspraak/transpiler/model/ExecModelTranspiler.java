@@ -2123,9 +2123,12 @@ public final class ExecModelTranspiler {
             String rol = navComparisonRole(la, subject);
             if (rol == null) return null;
             return s -> {
+                // §5.15 + Tabel 16: an absent relation (or a leeg datum) reads a leegwaarde, which is NEVER a dagsoort.
+                // Under two-valued negation "is een <dagsoort>" -> ONWAAR (neg=false), "is geen <dagsoort>" -> WAAR
+                // (neg=true). Mirrors DRL `(neg?"!":"") (reis!.x != null && rsDagsoort(reis!.x))` (the `!.` short-circuit).
                 Object rel = RegelSpraakRuntime.get(s, rol);
-                if (rel == null) return false;   // mvel `rol!.attr` short-circuits the whole term to non-match (BOTH polarities)
-                return neg != (RegelSpraakRuntime.get(rel, attr) instanceof java.time.LocalDate ld && pred.test(ld));
+                java.time.LocalDate ld = rel != null && RegelSpraakRuntime.get(rel, attr) instanceof java.time.LocalDate d ? d : null;
+                return neg != (ld != null && pred.test(ld));
             };
         }
         // §8.1.5 dagsoortcontrole over a NON-attribute datum operand (a §6 date-arithmetic expression "de vluchtdatum

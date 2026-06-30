@@ -329,6 +329,42 @@ class ExecModelDifferentialTest {
     };
     static final Boolean[] PHASE_DAGSOORT_NEG_EXPECTED = { Boolean.FALSE, Boolean.TRUE, Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, Boolean.TRUE };
 
+    // ---- §8.1.5 + §5.15 + Tabel 16 NAVIGATED dagsoortcontrole "de vluchtdatum van zijn reis (geen) kerstdag is" (NDS-1):
+    //      a Passagier navigates the to-one role "reis" (a Vlucht). POSITIVE: present kerstday -> WAAR, present
+    //      non-kerstday -> ONWAAR, ABSENT relation -> ONWAAR (een leegwaarde is nooit een dagsoort, §5.15). NEGATED
+    //      (Tabel 16, two-valued = niet(is een)): present kerstday -> ONWAAR, present non-kerstday -> WAAR, ABSENT
+    //      relation -> WAAR. Both back-ends FIRE: DRL `(neg?!:)(reis!.vluchtdatum != null && rsDagsoort(reis!.vluchtdatum))`
+    //      (the `!.` short-circuits an absent relation to non-match -> negated WAAR); exec navComparisonRole leaf. ----
+    static final String NDS_BASE =
+        "Dagsoort de kerstdag (mv: kerstdagen)\n" +
+        "Regel Kerstdag\n    geldig altijd\n        Een dag is een kerstdag\n" +
+        "        indien de dag aan alle volgende voorwaarden voldoet:\n" +
+        "        - de maand uit (de dag) is gelijk aan 12\n" +
+        "        - de dag voldoet aan ten minste één van de volgende voorwaarden:\n" +
+        "            .. de dag uit (de dag) is gelijk aan 25\n            .. de dag uit (de dag) is gelijk aan 26.\n" +
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n    is duur kenmerk (bijvoeglijk);\n" +
+        "Objecttype de Vlucht (mv: Vluchten)\n    de vluchtdatum Datum in dagen;\n" +
+        "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+        "Regel Duur\n    geldig altijd\n        Een Passagier is duur indien de vluchtdatum van zijn reis %s.\n";
+    static final String NDS_POS_SRC = String.format(NDS_BASE, "een kerstdag is");
+    static final String NDS_NEG_SRC = String.format(NDS_BASE, "geen kerstdag is");
+    static Fixture ndsFix(String naam, String src, java.time.LocalDate vd) {
+        return new Fixture(naam, src,
+                () -> { Passagier p = new Passagier();
+                        if (vd != null) { Vlucht v = new Vlucht(); v.setVluchtdatum(vd); p.setReis(v); }
+                        return List.of(p); },
+                Map.of(), l -> ((Passagier) l.get(0)).isDuur());
+    }
+    static final Fixture[] PHASE_NDS = {
+        ndsFix("NDS pos: reis.vluchtdatum 25-12 IS kerstdag -> waar",         NDS_POS_SRC, java.time.LocalDate.of(2024, 12, 25)),
+        ndsFix("NDS pos: reis.vluchtdatum 24-12 geen kerstdag -> onwaar",     NDS_POS_SRC, java.time.LocalDate.of(2024, 12, 24)),
+        ndsFix("NDS pos: ABSENT reis -> §5.15 leegwaarde nooit dagsoort -> onwaar", NDS_POS_SRC, null),
+        ndsFix("NDS neg: reis.vluchtdatum 25-12 IS kerstdag -> geen -> onwaar",  NDS_NEG_SRC, java.time.LocalDate.of(2024, 12, 25)),
+        ndsFix("NDS neg: reis.vluchtdatum 24-12 geen kerstdag -> waar",         NDS_NEG_SRC, java.time.LocalDate.of(2024, 12, 24)),
+        ndsFix("NDS neg: ABSENT reis -> §5.15+Tabel16 geen kerstdag -> WAAR",    NDS_NEG_SRC, null),
+    };
+    static final Boolean[] PHASE_NDS_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.FALSE, Boolean.FALSE, Boolean.TRUE, Boolean.TRUE };
+
     // ---- §6.11 datum ± N <dagsoort> ("plus de uitstelduur" in kerstdagen): step day-by-day counting the §9.8
     //      kerstdag days. Both back-ends share the loop (DRL rsDatumPlus_Kerstdag <-> RegelSpraakRuntime.
     //      rsDatumPlusDagsoort). X never counts; 0/leeg -> X unchanged; leeg datum -> leeg. ----
@@ -5130,6 +5166,24 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(eq(PHASE_C_COUNT_NESTED_THEN_LEAF_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §8.1.5 + §5.15 + Tabel 16 NAVIGATED dagsoortcontrole "de vluchtdatum van zijn reis (geen) kerstdag is" (NDS-1):
+     *  the resolver recovers the trailing "geen" absorbed into the navigation role and builds a NEGATED DAGSOORT
+     *  predicaat; both back-ends FIRE. The ABSENT-relation row is the load-bearing assertion (a leegwaarde is nooit een
+     *  dagsoort -> positive ONWAAR, negated WAAR); the differential masks it under parity, so assert the ABSOLUTE
+     *  Tabel-16 value AND that the exec does NOT skip (the negated nav was previously a symmetric marker). */
+    @Test void phase_NDS_navigated_dagsoort_is_spec_correct() {
+        for (int i = 0; i < PHASE_NDS.length; i++) {
+            Fixture f = PHASE_NDS[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_NDS_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
