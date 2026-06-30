@@ -1611,17 +1611,17 @@ class ExecModelDifferentialTest {
     static final String COUNT_NESTED_GLOBAL_SRC =
         "Parameter de grens : Numeriek (geheel getal)\n" + COMPOUND_HDR
         + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn prijs is groter dan 50\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn leeftijd is kleiner dan de grens.\n";
-    // §13.4.13.4 TWO consecutive NESTED-compound bullets under a counting quantifier — the indentation-blind grammar
-    //   bullet rule flattens them into ONE depth-2 ALLE (a parser bullet-merge, carded), which would AND-merge what the
-    //   spec OR-s -> a fired-WRONG SOM in BOTH back-ends. leafCompound / execKanCountingFold decline a DEEPER nested
-    //   compound, so this stays a SYMMETRIC marker (both decline) instead of firing a shared wrong value.
+    // §13.4.14.6 TWO consecutive NESTED-compound bullets (col 8) under a counting quantifier — the indentation-blind
+    //   grammar absorbs the second into the first's ALLE (col 12), but the COLUMNS re-nest cleanly, so the resolver
+    //   rebuilds the intended SIBLINGS (depth-aware re-nesting) and BOTH back-ends FIRE the spec-correct OR/count:
+    //   "ten minste 1 van {(minderjarig && prijs>50), (prijs<45)}". Closed-form SOM -> ABSOLUTE spec value.
     static final String COUNT_NESTED_TWICE_SRC =
         COMPOUND_HDR
         + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn prijs is groter dan 50\n        - hij voldoet aan alle volgende voorwaarden:\n            - zijn prijs is kleiner dan 45.\n";
-    // §13.4.13.4 a NESTED compound bullet FOLLOWED BY a dedented sibling LEAF ('zijn leeftijd is kleiner dan 30') — the
-    //   indentation-blind grammar absorbs the leaf into the nested ALLE, AND-merging what 'ten minste 1' should OR -> a
-    //   shared-WRONG SOM in BOTH back-ends (the absorbed leaf has all-leaf siblings, so the depth-2 structural guard
-    //   missed it; review wf_5235420c-fa7). The COLUMN-inconsistency guard markers it -> a SYMMETRIC marker (both decline).
+    // §13.4.14.6 a NESTED compound bullet (col 8) FOLLOWED BY a dedented sibling LEAF ('zijn leeftijd is kleiner dan 30',
+    //   col 8) — the grammar absorbs the leaf into the nested ALLE (col 12), but the columns disambiguate, so re-nesting
+    //   lifts the leaf back to a SIBLING and BOTH back-ends FIRE the spec OR: "ten minste 1 van {(minderjarig &&
+    //   prijs>50), leeftijd<30}". Closed-form SOM -> ABSOLUTE spec value.
     static final String COUNT_NESTED_THEN_LEAF_SRC =
         COMPOUND_HDR
         + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn prijs is groter dan 50\n        - zijn leeftijd is kleiner dan 30.\n";
@@ -1649,6 +1649,48 @@ class ExecModelDifferentialTest {
             l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 60
     };
     static final Object[] PHASE_C_COUNT_NESTED_EXPECTED = { new BigDecimal(90), new BigDecimal(60) };
+    // §13.4.14.6 TWO sibling nested-compound bullets re-nested by column -> "ten minste 1 van {(minderjarig && prijs>50),
+    //   (prijs<45)}". paxLM(v, prijs, leeftijd, minderjarig). Fires the spec-correct OR (was a symmetric marker).
+    static final Fixture[] PHASE_C_COUNT_NESTED_TWICE = {
+        new Fixture("SOM, ten-minste-1 of two sibling nested compounds (both members contribute)",
+            COUNT_NESTED_TWICE_SRC,
+            () -> { Vlucht v = new Vlucht(); return List.of(v,
+                paxLM(v, 60, 30, true),    // (minderjarig && 60>50) -> match -> +60
+                paxLM(v, 40, 30, false),   // (prijs 40 < 45)        -> match -> +40
+                paxLM(v, 70, 30, false),   // 70>=45, not minderjarig -> no match
+                paxLM(v, 45, 30, true)); }, // (minderjarig but 45<=50) & 45>=45 -> no match
+            Map.of(),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 60 + 40 = 100
+        new Fixture("SOM, ten-minste-1 of two sibling nested compounds (only the first member)",
+            COUNT_NESTED_TWICE_SRC,
+            () -> { Vlucht v = new Vlucht(); return List.of(v,
+                paxLM(v, 60, 30, true),    // (minderjarig && 60>50) -> match -> +60
+                paxLM(v, 50, 30, false),   // 50>=45, not minderjarig -> no match
+                paxLM(v, 100, 30, false)); }, // 100>=45, not minderjarig -> no match
+            Map.of(),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 60
+    };
+    static final Object[] PHASE_C_COUNT_NESTED_TWICE_EXPECTED = { new BigDecimal(100), new BigDecimal(60) };
+    // §13.4.14.6 a nested compound bullet + a dedented sibling LEAF re-nested by column -> "ten minste 1 van
+    //   {(minderjarig && prijs>50), leeftijd<30}". Fires the spec-correct OR (was a symmetric marker).
+    static final Fixture[] PHASE_C_COUNT_NESTED_THEN_LEAF = {
+        new Fixture("SOM, ten-minste-1 of {nested compound, leaf leeftijd<30} (both contribute)",
+            COUNT_NESTED_THEN_LEAF_SRC,
+            () -> { Vlucht v = new Vlucht(); return List.of(v,
+                paxLM(v, 60, 40, true),    // (minderjarig && 60>50) -> match -> +60
+                paxLM(v, 20, 25, false),   // (leeftijd 25 < 30)     -> match -> +20
+                paxLM(v, 80, 50, false)); }, // 80>=.., 50>=30, not minderjarig -> no match
+            Map.of(),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 60 + 20 = 80
+        new Fixture("SOM, ten-minste-1 of {nested compound, leaf leeftijd<30} (only the leaf)",
+            COUNT_NESTED_THEN_LEAF_SRC,
+            () -> { Vlucht v = new Vlucht(); return List.of(v,
+                paxLM(v, 30, 20, false),   // (leeftijd 20 < 30) -> match -> +30
+                paxLM(v, 70, 40, false)); }, // 40>=30, not minderjarig -> no match
+            Map.of(),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 30
+    };
+    static final Object[] PHASE_C_COUNT_NESTED_THEN_LEAF_EXPECTED = { new BigDecimal(80), new BigDecimal(30) };
     // §13.4.13.4 a CROSS-UNIT global bullet (leeftijd jr vs grens mnd) — DRL emits an unguarded (leeftijd).multiply(12)
     //   in the accumulate-source constraint that NPE-aborts on a leeg operand; the exec scale() is null-safe -> a masked
     //   DRL-crashes/exec-fires divergence -> the resolver markers the convertible-but-different-unit global (both decline).
@@ -5058,15 +5100,39 @@ class ExecModelDifferentialTest {
      *  most one source-global (at the top level), so a global inside the nested fold (a Predicate1) cannot bind. Pins the
      *  global-free boundary of the nested-compound fire. */
     @Test void counting_subselectie_nested_met_global_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_NESTED_GLOBAL_SRC); }
-    /** §13.4.13.4 TWO consecutive nested-compound bullets under a counting quantifier mis-parse (the indentation-blind
-     *  grammar flattens them into one depth-2 ALLE) — declining a DEEPER nested compound keeps it a SYMMETRIC marker
-     *  instead of firing the AND-merged (spec-OR) compound as a shared WRONG SOM. Guards the nested-compound fire from
-     *  promoting the upstream parser bullet-merge into a fired-wrong value (review wf_34885edc-6e2 high finding). */
-    @Test void counting_subselectie_met_twee_geneste_compound_bullets_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_NESTED_TWICE_SRC); }
-    /** §13.4.13.4 a nested compound bullet FOLLOWED BY a dedented sibling LEAF mis-parses (the leaf absorbed into the
-     *  nested ALLE, AND-merging a spec-OR) — the all-leaf nested compound escaped the depth-2 structural guard but the
-     *  COLUMN-inconsistency guard catches it -> a symmetric marker, not a shared-wrong SOM (review wf_5235420c-fa7). */
-    @Test void counting_subselectie_geneste_compound_dan_leaf_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_NESTED_THEN_LEAF_SRC); }
+    /** §13.4.14.6 TWO consecutive nested-compound bullets under a counting quantifier — the indentation-blind grammar
+     *  absorbs the second into the first's ALLE, but the bullet COLUMNS re-nest cleanly, so the resolver rebuilds the
+     *  intended SIBLINGS (depth-aware re-nesting) and BOTH back-ends FIRE the spec-correct OR/count (was a symmetric
+     *  marker). Closed-form SOM -> ABSOLUTE spec value + parity (a symmetric mis-fold would pass a parity-only check). */
+    @Test void phase_C_count_nested_twice_is_spec_correct() {
+        for (int i = 0; i < PHASE_C_COUNT_NESTED_TWICE.length; i++) {
+            Fixture f = PHASE_C_COUNT_NESTED_TWICE[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_C_COUNT_NESTED_TWICE_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §13.4.14.6 a nested compound bullet FOLLOWED BY a dedented sibling LEAF — the grammar absorbs the leaf into the
+     *  nested ALLE, but the columns disambiguate, so re-nesting lifts it back to a SIBLING and BOTH back-ends FIRE the
+     *  spec OR (was a symmetric marker; review wf_5235420c-fa7 had locked the old marker). ABSOLUTE SOM + parity. */
+    @Test void phase_C_count_nested_then_leaf_is_spec_correct() {
+        for (int i = 0; i < PHASE_C_COUNT_NESTED_THEN_LEAF.length; i++) {
+            Fixture f = PHASE_C_COUNT_NESTED_THEN_LEAF[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_C_COUNT_NESTED_THEN_LEAF_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     /** §13.4.13.4 a COUNTING-quantifier compound subselectie with a NESTED PURE-LEAF compound bullet now FIRES at parity
      *  (DRL conditieInline's nested &&; exec leafCompound folds the nested compound into ONE Predicate1). Closed-form SOM
      *  -> assert the ABSOLUTE spec value, the exec NOT skipping, and parity. A nested compound reading a global stays a

@@ -1483,27 +1483,29 @@ class RuleCheckTest {
                 () -> "de ONgekwalificeerde kenmerk-subselectie moet wel vuren:\n" + DrlTranspiler.transpile(plain));
     }
 
-    @Test void bullet_merge_column_inconsistente_compound_wordt_gemarkeerd_niet_fout_gevuurd() {
+    @Test void bullet_merge_kolom_geindenteerd_wordt_correct_hergenest_en_vuurt() {
         // §13.4.14.6: the indentation-blind bullet grammar (bullet : (DASH|DOTDOT|BULLET)+, WS skipped) ABSORBS a
-        // dedented sibling bullet (a leaf OR a nested compound) into a preceding nested compound's list. Under a COUNTING
-        // quantifier that AND-merges what the spec OR-s/counts -> the DRL oracle would fire a WRONG kenmerk. The discarded
-        // indentation is RETAINED on the bullet tokens; the resolver markers any list whose direct bullets sit at
-        // different columns (Onopgelost) so BOTH back-ends decline. A WELL-FORMATTED compound (consistent columns) fires.
+        // dedented sibling bullet (a leaf OR a nested compound) into a preceding nested compound's list — under a COUNTING
+        // quantifier that would AND-merge what the spec OR-s. The discarded indentation is RETAINED on the bullet tokens;
+        // when the COLUMNS re-nest cleanly the resolver rebuilds the intended sibling tree (depth-aware re-nesting), so
+        // the DRL FIRES the spec-correct OR — `(minderjarig && prijs>50) || kind` — never the AND-merged mis-parse.
         String hdr = "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    is minderjarig kenmerk (bijvoeglijk);\n    is kind kenmerk (bijvoeglijk);\n    is duur kenmerk (bijvoeglijk);\n";
-        // MIS-PARSE: a nested compound FOLLOWED BY a dedented sibling leaf 'hij is kind' (absorbed into the nested ALLE)
+        // a nested compound (col 8) FOLLOWED BY a dedented sibling leaf 'hij is kind' (col 8) — the grammar absorbed the
+        // leaf into the nested ALLE (col 12), but the columns disambiguate, so re-nesting lifts it back to a SIBLING.
         String misparse = hdr + "Regel R\n    geldig altijd\n        Een Passagier is duur indien hij aan ten minste 1 van de volgende voorwaarden voldoet:\n"
             + "        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn prijs is groter dan 50\n"
             + "        - hij is kind.\n";
         RegelSpraakModel mp = Resolver.resolve(misparse);
         assertTrue(mp.errors().isEmpty(), () -> "moet resolven: " + mp.errors());
         String drlMp = DrlTranspiler.transpile(mp);
-        // the mis-parsed (column-inconsistent) nested compound resolves to Onopgelost, so the DRL oracle DECLINES the whole
-        // counting voorwaarde (a marker), never firing the AND-merged `minderjarig == true && prijs > 50 && kind == true`.
-        assertTrue(drlMp.contains("/* TODO voorwaarde"),
-                () -> "DRL moet de mis-parste compound markeren (niet fout vuren):\n" + drlMp);
-        assertFalse(drlMp.contains("minderjarig == true"),
-                () -> "DRL mag de AND-merge van de mis-parste compound NIET vuren:\n" + drlMp);
-        // CONTROL: the nested compound LAST (consistent columns, no absorption) -> the DRL FIRES the correct OR
+        // FIRES (no marker) with the leaf 'kind' as a SIBLING of the nested compound — an OR (ten minste 1), not an AND-merge.
+        assertFalse(drlMp.contains("/* TODO voorwaarde"),
+                () -> "de kolom-geindenteerde compound moet correct hergenest worden en vuren:\n" + drlMp);
+        assertTrue(drlMp.contains("(minderjarig == true) && (prijs >"),
+                () -> "het geneste ALLE moet als één lid blijven (minderjarig && prijs>50):\n" + drlMp);
+        assertTrue(drlMp.contains("|| ((kind == true))"),
+                () -> "de gededenteerde leaf 'kind' moet een SIBLING (OR-lid) zijn, geen AND-merge:\n" + drlMp);
+        // CONTROL: the nested compound LAST (consistent columns, no absorption) -> the DRL FIRES the same correct OR
         String wellformed = hdr + "Regel R\n    geldig altijd\n        Een Passagier is duur indien hij aan ten minste 1 van de volgende voorwaarden voldoet:\n"
             + "        - hij is kind\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn prijs is groter dan 50.\n";
         RegelSpraakModel wf = Resolver.resolve(wellformed);

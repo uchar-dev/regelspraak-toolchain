@@ -859,9 +859,19 @@ final class RuleChecker {
 
     private Conditie bouwSamengesteld(VoorwaardeKwantificatieContext k,
                                       SamengesteldeVoorwaardeOnderdeelContext onderdeel, ParserRuleContext heel) {
-        List<Conditie> onderdelen = new ArrayList<>();
-        if (onderdeel != null)
-            for (GenesteVoorwaardeContext g : onderdeel.genesteVoorwaarde()) onderdelen.add(bouwGenest(g));
+        // §13.4.14.6: when the indentation-blind grammar ABSORBED a dedented sibling bullet into a deeper compound but
+        // the bullet COLUMNS re-nest cleanly, rebuild the correct sibling tree so the compound FIRES (depth-aware
+        // re-nesting). herNestOnderdelen returns null when there is no column-absorption (the common case — a
+        // byte-identical no-op) OR the columns do not disambiguate (the existing inconsistency-marker path then applies).
+        List<Conditie> herNest = herNestOnderdelen(onderdeel);
+        List<Conditie> onderdelen;
+        if (herNest != null) {
+            onderdelen = herNest;
+        } else {
+            onderdelen = new ArrayList<>();
+            if (onderdeel != null)
+                for (GenesteVoorwaardeContext g : onderdeel.genesteVoorwaarde()) onderdelen.add(bouwGenest(g));
+        }
         Conditie.Kwantor kwantor = kwantorVan(k);
         int drempel = drempelVan(k);
         // A counting quantifier's telwoord is a positive whole number (§13.4.14.4 /
@@ -885,10 +895,106 @@ final class RuleChecker {
         // it is still safe). A structural depth-2 fallback covers the residual fully-ambiguous case (same glyph AND same
         // column), scoped to COUNTING (a legitimately deep ALLE/DE nesting would otherwise be over-markered). A faithful
         // depth-aware re-nesting (fire correctly) is carded.
-        if (bulletsInconsistent(onderdeel)
-                || (kwantor != Conditie.Kwantor.ALLE && kwantor != Conditie.Kwantor.DE && ambiguusGenesteBullets(onderdelen)))
+        // A re-nested list (herNest != null) has its absorption RESOLVED, so the inconsistency markers below no
+        // longer apply; they guard only the un-disambiguatable residual (glyph-only / same-column-same-glyph) that
+        // herNestOnderdelen declined.
+        if (herNest == null && (bulletsInconsistent(onderdeel)
+                || (kwantor != Conditie.Kwantor.ALLE && kwantor != Conditie.Kwantor.DE && ambiguusGenesteBullets(onderdelen))))
             return new Conditie.Onopgelost(src(heel));
         return new Conditie.Samengesteld(kwantor, drempel, onderdelen, src(heel));
+    }
+
+    // ---- §13.4.14.6 depth-aware bullet re-nesting (column-driven) ----------------------------------------------
+    // The bullet grammar is indentation-blind (`bullet : (DASH|DOTDOT|BULLET)+`, WS skipped), so a dedented sibling
+    // bullet is ABSORBED as a child of the preceding nested compound. ANTLR retains the discarded indentation on each
+    // bullet token (getCharPositionInLine()); when that absorption re-nests cleanly by column, rebuild the intended
+    // sibling tree so BOTH back-ends fire the spec-correct OR/count instead of markering an AND-merged mis-parse.
+
+    /** A flattened bullet: its indentation column and the parse node, captured in source order. */
+    private record RauweBullet(int kolom, GenesteVoorwaardeContext ctx) {}
+    /** A re-nested logical node: a leaf or a compound (its {@code genesteVoorwaarde} ctx) with rebuilt children. */
+    private record LogischeKnoop(GenesteVoorwaardeContext ctx, List<LogischeKnoop> kinderen) {}
+
+    /** Depth-first (= source-order) flatten of every {@code genesteVoorwaarde} in the subtree, with its bullet column. */
+    private static void platBullets(SamengesteldeVoorwaardeOnderdeelContext onderdeel, List<RauweBullet> uit) {
+        for (GenesteVoorwaardeContext g : onderdeel.genesteVoorwaarde()) {
+            uit.add(new RauweBullet(g.bullet().getStart().getCharPositionInLine(), g));
+            if (g.genesteSamengesteldeVoorwaarde() != null)
+                platBullets(g.genesteSamengesteldeVoorwaarde().samengesteldeVoorwaardeOnderdeel(), uit);
+        }
+    }
+
+    /** True iff some onderdeel in the subtree has direct bullets at non-uniform COLUMNS — the reliable signature of the
+     *  indentation-blind grammar absorbing a dedented sibling from an outer level into a deeper list. */
+    private static boolean kolommenInconsistentDiep(SamengesteldeVoorwaardeOnderdeelContext onderdeel) {
+        List<GenesteVoorwaardeContext> gs = onderdeel.genesteVoorwaarde();
+        int kol0 = gs.get(0).bullet().getStart().getCharPositionInLine();
+        for (GenesteVoorwaardeContext g : gs) {
+            if (g.bullet().getStart().getCharPositionInLine() != kol0) return true;
+            if (g.genesteSamengesteldeVoorwaarde() != null
+                    && kolommenInconsistentDiep(g.genesteSamengesteldeVoorwaarde().samengesteldeVoorwaardeOnderdeel()))
+                return true;
+        }
+        return false;
+    }
+
+    /** Re-nest a flat bullet list by indentation column into a logical sibling tree: a bullet at a deeper column is a
+     *  child of the most recent compound header, a dedent returns to the matching ancestor level. Returns null when the
+     *  columns do NOT form a clean indentation tree (a column that lines up with no open level, or a compound header
+     *  whose next bullet is not deeper) — i.e. genuinely un-disambiguatable, so the caller keeps the marker path. */
+    private static List<LogischeKnoop> herNestKolommen(List<RauweBullet> plat) {
+        List<LogischeKnoop> wortel = new ArrayList<>();
+        List<Integer> kindKolom = new ArrayList<>();                 // the child-column of each open frame
+        List<List<LogischeKnoop>> kindLijst = new ArrayList<>();     // the children list of each open frame
+        kindKolom.add(plat.get(0).kolom());
+        kindLijst.add(wortel);
+        for (int i = 0; i < plat.size(); i++) {
+            RauweBullet r = plat.get(i);
+            while (kindKolom.size() > 1 && r.kolom() < kindKolom.get(kindKolom.size() - 1)) {
+                kindKolom.remove(kindKolom.size() - 1);
+                kindLijst.remove(kindLijst.size() - 1);
+            }
+            if (r.kolom() != kindKolom.get(kindKolom.size() - 1)) return null;   // column lines up with no open level
+            LogischeKnoop knoop = new LogischeKnoop(r.ctx(), new ArrayList<>());
+            kindLijst.get(kindLijst.size() - 1).add(knoop);
+            if (r.ctx().genesteSamengesteldeVoorwaarde() != null) {              // a compound header: open a child frame
+                if (i + 1 >= plat.size() || plat.get(i + 1).kolom() <= r.kolom()) return null;   // no deeper children
+                kindKolom.add(plat.get(i + 1).kolom());
+                kindLijst.add(knoop.kinderen());
+            }
+        }
+        return wortel;
+    }
+
+    /** Build the onderdelen list from a re-nested logical tree, within the current {@code bouwer} subject (the leaves'
+     *  expressies resolve against whichever subject the caller set). A compound knoop reads its own quantifier. */
+    private List<Conditie> bouwUitKnopen(List<LogischeKnoop> knopen) {
+        List<Conditie> uit = new ArrayList<>();
+        for (LogischeKnoop k : knopen) {
+            GenesteSamengesteldeVoorwaardeContext c = k.ctx().genesteSamengesteldeVoorwaarde();
+            if (c != null)
+                uit.add(new Conditie.Samengesteld(kwantorVan(c.voorwaardeKwantificatie()),
+                        drempelVan(c.voorwaardeKwantificatie()), bouwUitKnopen(k.kinderen()), src(c)));
+            else if (k.ctx().elementaireVoorwaarde() != null)
+                uit.add(bouwElementair(k.ctx().elementaireVoorwaarde()));
+            else
+                uit.add(new Conditie.Onopgelost(src(k.ctx())));
+        }
+        return uit;
+    }
+
+    /** §13.4.14.6: if a bullet list carries a column-disambiguatable absorption, return the correctly re-nested
+     *  onderdelen; else null (the caller keeps its existing per-bullet build + inconsistency-marker path). Returns null
+     *  for the common no-absorption case (a structural no-op, so well-formatted lists are byte-identical) and for the
+     *  un-disambiguatable residual (glyph-only or same-column-same-glyph, which the marker path then declines). */
+    private List<Conditie> herNestOnderdelen(SamengesteldeVoorwaardeOnderdeelContext onderdeel) {
+        if (onderdeel == null || onderdeel.genesteVoorwaarde().isEmpty()) return null;
+        if (!kolommenInconsistentDiep(onderdeel)) return null;       // no absorption -> existing path (no-op)
+        List<RauweBullet> plat = new ArrayList<>();
+        platBullets(onderdeel, plat);
+        List<LogischeKnoop> wortel = herNestKolommen(plat);
+        if (wortel == null) return null;                             // columns don't disambiguate -> marker path
+        return bouwUitKnopen(wortel);
     }
 
     /** §13.4.14.6 whether a bullet list's direct bullets are inconsistent — different indentation COLUMNS or different
@@ -934,9 +1040,16 @@ final class RuleChecker {
         Objecttype vorig = bouwer.subject();          // SAVE the outer rule subject
         try {
             bouwer.setSubject(elem);                   // "zijn X" / "hij" in the bullets resolve against the element
-            List<Conditie> onderdelen = new ArrayList<>();
-            for (GenesteVoorwaardeContext g : sp.samengesteldeVoorwaardeOnderdeel().genesteVoorwaarde())
-                onderdelen.add(bouwGenest(g));         // the SAME bullet machinery as a voorwaarde compound
+            // §13.4.14.6 re-nest a column-absorbed bullet list (the SAME depth-aware machinery as a voorwaarde compound)
+            List<Conditie> herNest = herNestOnderdelen(sp.samengesteldeVoorwaardeOnderdeel());
+            List<Conditie> onderdelen;
+            if (herNest != null) {
+                onderdelen = herNest;
+            } else {
+                onderdelen = new ArrayList<>();
+                for (GenesteVoorwaardeContext g : sp.samengesteldeVoorwaardeOnderdeel().genesteVoorwaarde())
+                    onderdelen.add(bouwGenest(g));     // the SAME bullet machinery as a voorwaarde compound
+            }
             Conditie.Kwantor kw = kwantorVanKwantificatie(sp.kwantificatie());
             // §13.4.13.4 parity guard: a COUNTING quantifier (geen/ten-minste/ten-hoogste/precies) folds the bullets PER
             // ELEMENT via the exec leafPredicate (which has NO nested-compound branch) + at most ONE bound source-global.
