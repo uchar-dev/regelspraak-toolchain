@@ -1022,7 +1022,18 @@ public final class ExecModelTranspiler {
     private java.util.function.Function<Object, List<?>> temporeelRekenOperand(Expr e, Objecttype subject,
             RegelSpraakModel.Granulariteit gran, Datatype doelType) {
         if (!(e instanceof Expr.AttribuutRef a) || a.set() || a.type() == null || !a.type().isNumeriek()) return null;
-        if (!java.util.Objects.equals(a.type().eenheidOf(), doelType == null ? null : doelType.eenheidOf())) return null;   // equal-unit only
+        // §4.1/§5.1.4.2 unit restatement: a convertible-different operand unit is scaled per segment (rsTijdSchaal);
+        // incompatible / unitless-vs-unit -> null. Exact-integer direction (÷ when the inverse is smaller). Mirrors DRL.
+        Eenheid eu = a.type().eenheidOf(), du = doelType == null ? null : doelType.eenheidOf();
+        BigDecimal factor = null; boolean deel = false;
+        if (!java.util.Objects.equals(eu, du)) {
+            if (eu == null || du == null || !eu.convertibleNaar(du)) return null;
+            if (eu.vereistOmrekening(du)) {
+                BigDecimal fwd = valueFactor(a.type(), doelType), inv = valueFactor(doelType, a.type());
+                deel = inv != null && inv.precision() < fwd.precision();
+                factor = deel ? inv : fwd;
+            }
+        }
         Objecttype ot; java.util.function.Function<Object, Object> reader;
         if (a.navigatieRol() == null && a.objecttype() == subject) {
             ot = subject; String attr = a.attribuut(); reader = s -> RegelSpraakRuntime.get(s, attr);
@@ -1031,10 +1042,14 @@ public final class ExecModelTranspiler {
             if (nav == null) return null;
             ot = a.objecttype(); reader = nav;
         } else return null;
-        if (!ot.attribuutGranulariteit.containsKey(a.attribuut()) || ot.attribuutGranulariteit.get(a.attribuut()) != gran) return null;
+        // §5.1.4.2 mixed granularity: the operand must be COARSER-OR-EQUAL to the doel (DAG<...<JAAR ordinal). Mirrors DRL.
+        RegelSpraakModel.Granulariteit og = ot.attribuutGranulariteit.get(a.attribuut());
+        if (og == null || og.ordinal() < gran.ordinal()) return null;
         if (ot.attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;   // multi-period -> out of scope
         final java.util.function.Function<Object, Object> fr = reader;
-        return s -> (List<?>) fr.apply(s);
+        if (factor == null) return s -> (List<?>) fr.apply(s);
+        final BigDecimal ff = factor; final boolean fd = deel;
+        return s -> RegelSpraakRuntime.rsTijdSchaal((List<?>) fr.apply(s), ff, fd);
     }
 
     /** The TRUE-period {@code (subject -> List<Segment>)} timeline of a temporal WRITE-producer's condition. A single

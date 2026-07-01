@@ -2104,7 +2104,19 @@ public final class DrlTranspiler {
      *  the {@code List<Segment>} getter (own-attr or root-guarded navigated), or null (not such an operand -> marker). */
     private String temporeelRekenOperand(Expr e, Objecttype subject, RegelSpraakModel.Granulariteit gran, Datatype doelType) {
         if (!(e instanceof Expr.AttribuutRef a) || a.set() || a.type() == null || !a.type().isNumeriek()) return null;
-        if (!java.util.Objects.equals(a.type().eenheidOf(), doelType == null ? null : doelType.eenheidOf())) return null;   // equal-unit only
+        // §4.1/§5.1.4.2 unit restatement: the operand unit may DIFFER from the doel's when CONVERTIBLE (the
+        // eenheidsysteem factor, e.g. €/mnd -> €/jr) — scale each segment value (rsTijdSchaal); an incompatible /
+        // unitless-vs-unit mismatch markers. Pick the EXACT-integer direction (÷ when the inverse is smaller), like §7.3.1.
+        io.github.yhavinga.regelspraak.model.Eenheid eu = a.type().eenheidOf(), du = doelType == null ? null : doelType.eenheidOf();
+        java.math.BigDecimal factor = null; boolean deel = false;
+        if (!java.util.Objects.equals(eu, du)) {
+            if (eu == null || du == null || !eu.convertibleNaar(du)) return null;   // incompatible unit -> marker
+            if (eu.vereistOmrekening(du)) {
+                java.math.BigDecimal fwd = omrekenFactor(a.type(), doelType), inv = omrekenFactor(doelType, a.type());
+                deel = inv != null && inv.precision() < fwd.precision();
+                factor = deel ? inv : fwd;
+            }   // else convertible with factor 1 (same canonical) -> no scale
+        }
         Objecttype ot; String getter;
         if (a.navigatieRol() == null && a.objecttype() == subject) {
             ot = subject; getter = SUBJECT + "." + getter(a.attribuut()) + "()";
@@ -2113,9 +2125,15 @@ public final class DrlTranspiler {
             String root = SUBJECT + "." + getter(naviResolve(a, subject).rol()) + "()";
             getter = "(" + root + " == null ? null : " + root + "." + getter(a.attribuut()) + "())";
         } else return null;
-        if (!ot.attribuutGranulariteit.containsKey(a.attribuut()) || ot.attribuutGranulariteit.get(a.attribuut()) != gran) return null;
+        // §5.1.4.2 mixed granularity: the operand timeline must be COARSER-OR-EQUAL to the doel's (DAG<WEEK<MAAND<
+        // KWARTAAL<JAAR via ordinal), so ALL its knips fit the (finer-or-equal) doel timeline; the merged-knip union
+        // then evaluates per actual period. An operand FINER than the doel cannot be represented -> marker.
+        RegelSpraakModel.Granulariteit og = ot.attribuutGranulariteit.get(a.attribuut());
+        if (og == null || og.ordinal() < gran.ordinal()) return null;
         if (ot.attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;   // multi-period -> out of scope
-        return getter;
+        if (factor == null) return getter;
+        registreerTijdSchaalFunctie();
+        return "rsTijdSchaal(" + getter + ", new java.math.BigDecimal(\"" + factor.toPlainString() + "\"), " + deel + ")";
     }
 
     /** The TRUE-period {@code List<Segment>} timeline of a temporal WRITE-producer's condition — the periods whose

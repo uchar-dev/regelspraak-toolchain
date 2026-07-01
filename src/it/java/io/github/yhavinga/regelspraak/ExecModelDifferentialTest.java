@@ -3204,6 +3204,57 @@ class ExecModelDifferentialTest {
         java.util.List.of("2024-03-01|2024-05-01|33"),
     };
 
+    // ---- §5.1.4.2 the spec's COMPLEX worked example: MIXED granularity (afstand "voor elke dag" + reisduur "voor elke
+    //      maand" -> te betalen "voor elke dag") AND CROSS-UNIT (€/mnd operands summed, then restated ×12 to the €/jr
+    //      result via the eenheidsysteem Tijd factor). Was a symmetric marker (temporeelRekenOperand gated equal-unit +
+    //      equal-gran). Now the merged-knip rsTijdReken handles the boundaries; a per-operand rsTijdSchaal(×12) restates
+    //      the units. The final table (spec L1729-1738) has the 1-5/1-6 coalesce (900/jr spans 1-5..22-6). ----
+    static final String TR2_SRC =
+        "Eenheidsysteem Valuta\n    de euro (mv: euros) EUR €\n" +
+        "Eenheidsysteem Tijd\n    de maand mnd\n    het jaar jr = 12 mnd\n" +
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+        "    de belastingvermindering per maand Numeriek (geheel getal) met eenheid €/mnd voor elke dag;\n" +
+        "    de inkomen per maand Numeriek (geheel getal) met eenheid €/mnd voor elke maand;\n" +
+        "    de standaardbedrag Numeriek (geheel getal) met eenheid €/jr voor elke dag;\n" +
+        "Regel R\n    geldig altijd\n        De standaardbedrag van een Passagier moet berekend worden als zijn belastingvermindering per maand plus zijn inkomen per maand.\n";
+    // cross-unit ONLY (equal gran "voor elke maand", €/mnd -> €/jr): isolates the ×12 restatement.
+    static final String TR2_CU_SRC = TR2_SRC.replace("€/mnd voor elke dag", "€/mnd voor elke maand");
+    // mixed-gran ONLY (equal unit, no rate; per-dag + per-maand -> per-dag): isolates the knip-promotion.
+    static final String TR2_MG_SRC =
+        "Domein Bedrag is van het type Numeriek (geheel getal)\n" +
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+        "    de belastingvermindering per maand Bedrag voor elke dag;\n" +
+        "    de inkomen per maand Bedrag voor elke maand;\n" +
+        "    de standaardbedrag Bedrag voor elke dag;\n" +
+        "Regel R\n    geldig altijd\n        De standaardbedrag van een Passagier moet berekend worden als zijn belastingvermindering per maand plus zijn inkomen per maand.\n";
+    static Fixture tr2Fix(String naam, String src, java.util.function.Consumer<Passagier> setup) {
+        return new Fixture(naam, src, () -> List.of(passagier(setup)), Map.of(), l -> tl(((Passagier) l.get(0)).getStandaardbedrag()));
+    }
+    static final Fixture[] PHASE_TR2 = {
+        tr2Fix("§5.1.4.2 full worked example (mixed-gran dag+maand, €/mnd->€/jr ×12, 1-6 coalesced)", TR2_SRC, p -> {
+            p.setBelastingverminderingPerMaand(List.of(   // afstand €/mnd voor elke dag
+                seg(2024, 1, 1, 2024, 1, 15, "50"), seg(2024, 2, 1, 2024, 3, 12, "65"),
+                seg(2024, 4, 8, 2024, 6, 1, "75"), seg(2024, 6, 1, 2024, 6, 22, "10")));
+            p.setInkomenPerMaand(List.of(                 // reisduur €/mnd voor elke maand
+                seg(2024, 1, 1, 2024, 2, 1, "10"), seg(2024, 4, 1, 2024, 5, 1, "25"), seg(2024, 6, 1, 2024, 7, 1, "65")));
+        }),
+        tr2Fix("§5.1.4.2 cross-unit only (€/mnd->€/jr ×12): 60->720, 65->780", TR2_CU_SRC, p -> {
+            p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "50"), seg(2024, 2, 1, 2024, 3, 1, "65")));
+            p.setInkomenPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "10")));
+        }),
+        tr2Fix("§5.1.4.2 mixed-gran only (dag+maand -> dag knip-promotion): 60, then 10", TR2_MG_SRC, p -> {
+            p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 1, 15, "50")));  // per dag
+            p.setInkomenPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "10")));                 // per maand
+        }),
+    };
+    static final Object[] PHASE_TR2_EXPECTED = {
+        java.util.List.of("2024-01-01|2024-01-15|720", "2024-01-15|2024-02-01|120", "2024-02-01|2024-03-12|780",
+                "2024-03-12|2024-04-01|0", "2024-04-01|2024-04-08|300", "2024-04-08|2024-05-01|1200",
+                "2024-05-01|2024-06-22|900", "2024-06-22|2024-07-01|780"),
+        java.util.List.of("2024-01-01|2024-02-01|720", "2024-02-01|2024-03-01|780"),
+        java.util.List.of("2024-01-01|2024-01-15|60", "2024-01-15|2024-02-01|10"),
+    };
+
     static final Fixture[] PHASE_F = {
         // A1 §7.1: the total weights each tijdvak by its month span — 12×10 + 6×11 = 186.
         single("§7.1 totaal van temporeel attribuut (12×10 + 6×11 = 186)",
@@ -4775,6 +4826,23 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(PHASE_TR_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §5.1.4.2 the spec's COMPLEX worked example: MIXED granularity (dag+maand -> dag) AND CROSS-UNIT (€/mnd operands
+     *  restated ×12 to a €/jr result) now FIRE in both back-ends — the merged-knip rsTijdReken over per-operand
+     *  rsTijdSchaal restatements (was a symmetric marker). The full worked-example table (spec L1729-1738, with the
+     *  1-6 coalesce) is asserted ABSOLUTELY, plus a cross-unit-only and a mixed-gran-only isolation, + DRL==exec parity. */
+    @Test void phase_TR2_mixed_gran_cross_unit_is_spec_correct() {
+        for (int i = 0; i < PHASE_TR2.length; i++) {
+            Fixture f = PHASE_TR2[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_TR2_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
