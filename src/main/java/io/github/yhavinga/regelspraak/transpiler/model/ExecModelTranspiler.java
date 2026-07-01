@@ -546,42 +546,55 @@ public final class ExecModelTranspiler {
         return new Agg(DSL.accumulate(src2, DSL.accFunction(accClass, amtVar).as(resultVar)), resultVar, null, null, false);
     }
 
-    /** §5.8/§13.4.14 a COUNT aggregation as one side of a condition comparison ("het aantal &lt;elem&gt; van
-     *  &lt;subject&gt; &lt;op&gt; N") -> a {@link Gate} whose {@code extra} is the accumulate CE (from {@link #aggregatie})
-     *  PLUS a constraint pattern on its result var (the count compared to the literal N). The exec mirror of the DRL
-     *  {@code Number( intValue <op> N ) from accumulate(...)}. Scoped to AANTAL + a literal threshold; null otherwise
-     *  (caller falls through). SUM/MIN/MAX-in-condition and a non-literal RHS stay a marker (a follow-up). */
+    /** §5.8/§13.4.14 an AGGREGATION (count / sum / totaal / min / max) as one side of a condition comparison ("het aantal
+     *  / de som van / de hoogste ... van alle &lt;elem&gt; van &lt;subject&gt; &lt;op&gt; N") -> a {@link Gate} whose
+     *  {@code extra} is the accumulate CE (from {@link #aggregatie}) PLUS a constraint pattern on its result var (the
+     *  agg value compared to the literal N via {@link RegelSpraakRuntime#rsAggVergelijk}, a leeg fold reading onwaar).
+     *  A SOM binds the count var too for the §5.8.2 empty-sum leegwaarde. The exec mirror of the DRL accumulate + eval.
+     *  Scoped to a literal threshold and ordering/GELIJK (ONGELIJK -> follow-up); null otherwise (caller falls through). */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private Gate aggregatieVoorwaarde(Conditie.Vergelijking v, PatternDSL.PatternDef pattern, Objecttype subject, Variable subjectVar) {
         if (subject == null || subjectVar == null) return null;
-        boolean linksAgg = v.links() instanceof Expr.Functie fl && fl.kind() == Expr.FunctieKind.AANTAL;
-        boolean rechtsAgg = v.rechts() instanceof Expr.Functie fr && fr.kind() == Expr.FunctieKind.AANTAL;
-        if (linksAgg == rechtsAgg) return null;                 // exactly ONE side is a count
+        boolean linksAgg = v.links() instanceof Expr.Functie fl && isAggregatieKind(fl.kind());
+        boolean rechtsAgg = v.rechts() instanceof Expr.Functie fr && isAggregatieKind(fr.kind());
+        if (linksAgg == rechtsAgg) return null;                 // exactly ONE side is an aggregation
         Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
         Expr ander = linksAgg ? v.rechts() : v.links();
-        if (!(ander instanceof Expr.Literal)) return null;      // scope: a LITERAL threshold (keeps DRL/exec at parity)
-        final Conditie.Operator op = linksAgg ? v.op() : mirrorOp(v.op());   // orient the count on the LEFT
+        if (!(ander instanceof Expr.Literal)) return null;      // scope: a LITERAL threshold (own-attr/global RHS is a follow-up)
+        Conditie.Operator op = linksAgg ? v.op() : mirrorOp(v.op());   // orient the aggregation on the LEFT
+        if (op == Conditie.Operator.ONGELIJK) return null;      // §5.6 Tabel 44 leeg-vs-gevuld ONGELIJK -> follow-up
+        final String opStr = opString(op);
         Agg agg = aggregatie(f, subject, subjectVar);
         if (agg == null) return null;
         WaardeFn rhs = scalarWaarde(ander);
         if (rhs == null || !rhs.globals().isEmpty()) return null;
-        final BiFunction<Object, Map<String, BigDecimal>, Object> rfn = rhs.fn();
-        Predicate1<Object> cmp = cnt -> {                       // the accumulate result (a count) vs the literal N
-            BigDecimal c = RegelSpraakRuntime.toBd(cnt), n = RegelSpraakRuntime.toBd(rfn.apply(null, Map.of()));
-            if (c == null || n == null) return false;
-            int r = c.compareTo(n);
-            return switch (op) {
-                case GROTER -> r > 0;  case GROTER_OF_GELIJK -> r >= 0;
-                case KLEINER -> r < 0; case KLEINER_OF_GELIJK -> r <= 0;
-                case GELIJK -> r == 0; case ONGELIJK -> r != 0;
-                default -> false;
-            };
-        };
-        PatternDSL.PatternDef resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Predicate1) cmp);
+        final BigDecimal n = RegelSpraakRuntime.toBd(rhs.fn().apply(null, Map.of()));   // the literal threshold
         List<RuleItemBuilder<?>> extra = new ArrayList<>();
         extra.add(agg.accItem());
+        PatternDSL.PatternDef resultPat;
+        if (agg.isSom()) {
+            // §5.8.2 empty SOM (0 contributors) is the leegwaarde/fallback, not 0 — bind both the sum and the count var.
+            final WaardeFn fb = agg.somFallback();
+            Predicate2<Object, Object> pred = (sum, cnt) -> {   // (resultVar=sum, countVar=count)
+                Object aggVal = ((Number) cnt).longValue() == 0L ? (fb == null ? null : fb.fn().apply(null, Map.of())) : sum;
+                return RegelSpraakRuntime.rsAggVergelijk(aggVal, n, opStr);
+            };
+            resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) agg.countVar(), (Predicate2) pred);
+        } else {                                                // count / totaal / min / max: the result var IS the agg value
+            Predicate1<Object> pred = res -> RegelSpraakRuntime.rsAggVergelijk(res, n, opStr);
+            resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Predicate1) pred);
+        }
         extra.add(resultPat);
         return new Gate(pattern, extra);
+    }
+
+    /** The rsAggVergelijk op-string for a comparison operator (mirrors DrlTranspiler.drlOp; ONGELIJK is gated out upstream). */
+    private static String opString(Conditie.Operator op) {
+        return switch (op) {
+            case GROTER, LATER -> ">";    case GROTER_OF_GELIJK, LATER_OF_GELIJK -> ">=";
+            case KLEINER, EERDER -> "<";  case KLEINER_OF_GELIJK, EERDER_OF_GELIJK -> "<=";
+            default -> "==";
+        };
     }
 
     /** Mirror a comparison operator for operand-swap (count on the right -> orient it on the left). Mirrors DrlTranspiler.omkeren. */

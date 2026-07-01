@@ -3306,6 +3306,46 @@ class ExecModelDifferentialTest {
         Boolean.TRUE, Boolean.FALSE,
     };
 
+    // ---- §5.8 VALUE-FOLD aggregations (SUM / TOTAAL / MIN / MAX) as one side of a CONDITION comparison — the sibling of
+    //      the count case: reuses the value-side accumulate lowering + an rsAggVergelijk eval / result-var constraint. The
+    //      KEY absolute check (differential-masks-shared-bugs) is the empty-set leegwaarde: an empty SOM is LEEG (§5.8.2,
+    //      "SUM < 100" over 0 elements -> onwaar), an empty TOTAAL is 0 (§4.20, "TOTAAL < 100" over 0 elements -> waar),
+    //      an empty MIN/MAX is leeg. ----
+    static final String AGG_FOLD_SRC =
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de leeftijd Numeriek (geheel getal);\n" +
+        "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n" +
+        "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+        "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien %s.\n";
+    static Fixture aggFoldFix(String naam, String cond, int[] leeftijds) {
+        String src = String.format(AGG_FOLD_SRC, cond);
+        return new Fixture(naam, src,
+                () -> { List<Object> fs = new ArrayList<>(); Vlucht v = new Vlucht(); fs.add(v);
+                        for (int lt : leeftijds) { Passagier p = new Passagier(); p.setLeeftijd(new BigDecimal(lt)); p.setReis(v); fs.add(p); } return fs; },
+                Map.of(), l -> ((Vlucht) l.get(0)).isVol());
+    }
+    static final String SOM_GT = "de som van de leeftijd van alle passagiers van de Vlucht groter is dan 100";
+    static final String MAX_GT = "de maximale waarde van de leeftijd van alle passagiers van de Vlucht groter is dan 65";
+    static final String MIN_LT = "de minimale waarde van de leeftijd van alle passagiers van de Vlucht kleiner is dan 12";
+    static final Fixture[] PHASE_AGG_FOLD = {
+        aggFoldFix("§5.8.2 SUM > 100: 50+60=110 -> vol", SOM_GT, new int[]{50, 60}),
+        aggFoldFix("§5.8.2 SUM > 100: 50+40=90 -> niet", SOM_GT, new int[]{50, 40}),
+        aggFoldFix("§5.8.2 SUM < 100 over EMPTY -> niet (empty SOM is LEEG, not 0)",
+                "de som van de leeftijd van alle passagiers van de Vlucht kleiner is dan 100", new int[]{}),
+        aggFoldFix("§5.8.3 MAX > 65: max(30,70)=70 -> vol", MAX_GT, new int[]{30, 70}),
+        aggFoldFix("§5.8.3 MAX > 65: max(30,60)=60 -> niet", MAX_GT, new int[]{30, 60}),
+        aggFoldFix("§5.8.3 MIN < 12: min(30,8)=8 -> vol", MIN_LT, new int[]{30, 8}),
+        aggFoldFix("§5.8.3 MIN < 12 over EMPTY -> niet (empty MIN is LEEG)", MIN_LT, new int[]{}),
+        aggFoldFix("§4.20 TOTAAL > 100: 60+60=120 -> vol", "het totaal van de leeftijd van alle passagiers van de Vlucht groter is dan 100", new int[]{60, 60}),
+        aggFoldFix("§4.20 TOTAAL < 100 over EMPTY -> VOL (empty TOTAAL is 0, NOT leeg — the SOM/TOTAAL split)",
+                "het totaal van de leeftijd van alle passagiers van de Vlucht kleiner is dan 100", new int[]{}),
+    };
+    static final Object[] PHASE_AGG_FOLD_EXPECTED = {
+        Boolean.TRUE, Boolean.FALSE, Boolean.FALSE,
+        Boolean.TRUE, Boolean.FALSE,
+        Boolean.TRUE, Boolean.FALSE,
+        Boolean.TRUE, Boolean.TRUE,
+    };
+
     static final Fixture[] PHASE_F = {
         // A1 §7.1: the total weights each tijdvak by its month span — 12×10 + 6×11 = 186.
         single("§7.1 totaal van temporeel attribuut (12×10 + 6×11 = 186)",
@@ -4910,6 +4950,22 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(PHASE_AGG_COND_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §5.8 VALUE-FOLD aggregations (SUM/TOTAAL/MIN/MAX) in a CONDITION now FIRE in both back-ends via the value-side
+     *  accumulate + rsAggVergelijk (was a symmetric marker). Absolute over each fold + the empty-set leegwaarde split
+     *  (empty SOM/MIN leeg -> onwaar; empty TOTAAL 0 -> the "< 100" case is waar) + DRL==exec parity + no exec skip. */
+    @Test void phase_AGG_FOLD_value_fold_in_condition_is_spec_correct() {
+        for (int i = 0; i < PHASE_AGG_FOLD.length; i++) {
+            Fixture f = PHASE_AGG_FOLD[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_AGG_FOLD_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }

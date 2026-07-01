@@ -152,6 +152,20 @@ public final class RegelSpraakRuntime {
         throw new IllegalStateException("kan accumulate-resultaat niet naar BigDecimal omzetten: " + o.getClass());
     }
 
+    /** §5.8/§5.6 the leegwaarde-faithful numeric comparison of an aggregation result to a threshold in a CONDITION: a leeg
+     *  aggregate (empty SOM/MIN/MAX -> null) or a leeg threshold reads ONWAAR for the ordering / GELIJK operators (§5,
+     *  a leeg operand). Coerces the agg (a Long count or a BigDecimal fold) to BigDecimal by value. Byte-identical mirror
+     *  of the DRL {@code rsAggVergelijk} function. */
+    public static boolean rsAggVergelijk(Object agg, BigDecimal n, String op) {
+        if (agg == null || n == null) return false;
+        int c = new BigDecimal(agg.toString()).compareTo(n);
+        return switch (op) {
+            case ">" -> c > 0;   case ">=" -> c >= 0;
+            case "<" -> c < 0;   case "<=" -> c <= 0;
+            default  -> c == 0;
+        };
+    }
+
     // ---- §6.x leegwaarde / arithmetic (ported from the DRL helper bodies as phases land) ----
     /** §6.2-6.4 Tabel: an empty (null) numeric operand counts as 0 in +/-. Mirrors the DRL {@code rsNul}. */
     public static BigDecimal rsNul(Object o) { return o == null ? BigDecimal.ZERO : (BigDecimal) o; }

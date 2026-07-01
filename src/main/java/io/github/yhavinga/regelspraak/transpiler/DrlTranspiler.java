@@ -2856,29 +2856,48 @@ public final class DrlTranspiler {
      *  MIN/MAX-in-condition and an aggregation NESTED in a larger boolean stay a marker (a follow-up). Mirrors the exec Gate. */
     private LoweredConditie aggregatieVoorwaarde(Conditie.Vergelijking v, Objecttype subject) {
         if (subject == null) return null;
-        boolean linksAgg = v.links() instanceof Expr.Functie fl && fl.kind() == Expr.FunctieKind.AANTAL;
-        boolean rechtsAgg = v.rechts() instanceof Expr.Functie fr && fr.kind() == Expr.FunctieKind.AANTAL;
-        if (linksAgg == rechtsAgg) return null;                 // exactly ONE side is a count aggregation
+        boolean linksAgg = v.links() instanceof Expr.Functie fl && isAggregatieFunctie(fl.kind());
+        boolean rechtsAgg = v.rechts() instanceof Expr.Functie fr && isAggregatieFunctie(fr.kind());
+        if (linksAgg == rechtsAgg) return null;                 // exactly ONE side is an aggregation
         Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
         Expr ander = linksAgg ? v.rechts() : v.links();
         if (!(ander instanceof Expr.Literal)) return null;      // scope: a LITERAL threshold (own-attr/global RHS is a follow-up; keeps the exec at parity)
-        Conditie.Operator op = linksAgg ? v.op() : omkeren(v.op());   // orient the count on the LEFT
-        Objecttype elem = f.elementObjecttype();
-        if (elem == null) return null;
-        Frag scope = scope(elem, subject, f);                  // the §9.4 join (rol == $subject); marker if unresolvable
-        if (scope.marker()) return null;
-        String filterScope = scope.text();
-        if (f.filter() != null) {                              // §13.4.2 die/dat <predicaat> on the counted element
-            Frag fc = conditie(f.filter(), elem);
-            if (fc.marker()) return null;
-            filterScope = scope.text() + ", " + fc.text();
-        }
-        Frag n = operand(ander, subject);                      // the RHS threshold (a scalar)
+        Conditie.Operator op = linksAgg ? v.op() : omkeren(v.op());   // orient the aggregation on the LEFT
+        if (op == Conditie.Operator.ONGELIJK) return null;      // §5.6 Tabel 44 leeg-vs-gevuld ONGELIJK -> follow-up
+        // Reuse the VALUE-side accumulate lowering: it registers the accumulate CE (count / BigDecimal sum with the §5.8.2
+        // empty-sum leegwaarde branch / min·max coerced to BigDecimal) in `accumulates` and returns the RESULT value expr
+        // ($accN, or the SOM count-branch ternary). The comparison then rides an eval AFTER the accumulate (both flushed
+        // after the subject pattern) via rsAggVergelijk — a leeg aggregate (empty SOM/MIN/MAX) reads onwaar (§5 ordering).
+        Frag agg = accumulate(f, subject);
+        if (agg.marker()) return null;
+        Frag n = operand(ander, subject);
         if (n.marker()) return null;
-        String ev = "$e" + (++accCount);
-        String acc = "Number( intValue " + drlOp(op) + " " + n.text() + " ) from accumulate( " + ev + " : "
-                + ident(elem.naam, true) + "( " + filterScope + " ), count(" + ev + ") )";
-        return new LoweredConditie("", java.util.List.of(acc), false);
+        accumulates.add("eval( " + registreerAggVergelijkFunctie() + "(" + agg.text() + ", " + n.text() + ", \"" + drlOp(op) + "\") )");
+        return new LoweredConditie("", java.util.List.of(), false);
+    }
+
+    private static boolean isAggregatieFunctie(Expr.FunctieKind k) {
+        return k == Expr.FunctieKind.AANTAL || k == Expr.FunctieKind.SOM || k == Expr.FunctieKind.TOTAAL
+                || k == Expr.FunctieKind.MINIMUM || k == Expr.FunctieKind.MAXIMUM;
+    }
+
+    /** Register (idempotently) {@code boolean rsAggVergelijk(Object agg, BigDecimal n, String op)} — the leegwaarde-faithful
+     *  numeric comparison of an aggregation result to a threshold in a condition. A leeg aggregate (empty SOM/MIN/MAX -> null)
+     *  or a leeg threshold reads ONWAAR for the ordering / GELIJK operators (§5 comparison, leeg operand). Coerces the agg
+     *  (a Long count or a BigDecimal fold) to BigDecimal by value. Mirrors {@link RegelSpraakRuntime#rsAggVergelijk}. */
+    private String registreerAggVergelijkFunctie() {
+        String fn = "rsAggVergelijk";
+        hulpFuncties.putIfAbsent(fn,
+            "function boolean " + fn + "(Object agg, java.math.BigDecimal n, String op) {\n"
+          + "    if (agg == null || n == null) return false;\n"
+          + "    int c = new java.math.BigDecimal(agg.toString()).compareTo(n);\n"
+          + "    if (op.equals(\">\")) return c > 0;\n"
+          + "    if (op.equals(\">=\")) return c >= 0;\n"
+          + "    if (op.equals(\"<\")) return c < 0;\n"
+          + "    if (op.equals(\"<=\")) return c <= 0;\n"
+          + "    return c == 0;\n"
+          + "}\n\n");
+        return fn;
     }
 
     // ---------------- condition ("when" side: bare field constraints) ----------------
