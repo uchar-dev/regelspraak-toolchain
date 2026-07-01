@@ -899,6 +899,23 @@ class RuleCheckTest {
         assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten op de paaskorting-vorm: " + m.errors());
     }
 
+    @Test void eerste_paasdag_van_geheel_jaar_arithmetiek_geen_fout() {
+        // §6.13 "Het jaartal wordt gespecificeerd door een geheel getal": a whole-year computed by arithmetic
+        // ("het jaar uit (X) plus 1" = Easter of the following year) is legal. Typering.numeriekBinair types every
+        // plus/min as geheel=false, so the paasdag gate must NOT reject on geheel-ness — only on a DECLARED decimal
+        // precision or a unit (review a29b3e97 false-positive fix).
+        String src = """
+            Objecttype de Ding
+                de jaartal Numeriek (geheel getal);
+                de paasdatum Datum in dagen;
+            Regel r
+                geldig altijd
+                    De paasdatum van een Ding moet berekend worden als de eerste paasdag van (de jaartal van een Ding plus 1).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "een whole-year arithmetic operand had niet gemeld mogen worden: " + m.errors());
+    }
+
     @Test void schone_wortel_en_abs_geen_fout() {
         // controls: a numeric radicand/operand -> no false positive on either new gate.
         String wortel = MODEL + """

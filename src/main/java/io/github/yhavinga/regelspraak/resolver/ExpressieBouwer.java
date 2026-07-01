@@ -896,7 +896,14 @@ final class ExpressieBouwer {
         Datatype d = typen.get(0);
         if (!(d instanceof Datatype.Numeriek n))
             return "eerste paasdag van vereist een numerieke expressie (een geheel jaartal), kreeg " + d.naam() + " (§4.19 Tabel 29)";
-        if (!n.geheel() || n.heeftEenheid())
+        // Reject only a DECLARED decimal precision (getal met N decimalen) or a unit — NOT a !geheel() flag. A whole-year
+        // ARITHMETIC operand ("het jaar uit X plus 1" = Easter of the next year, or "2024 plus 1") is spec-legal (§6.13:
+        // "Het jaartal wordt gespecificeerd door een geheel getal"), but Typering.numeriekBinair types every plus/min as
+        // geheel=false (it erases geheel-ness of integer arithmetic), so a !geheel() gate would FALSELY reject it (review
+        // a29b3e97). decimalen()>0 keeps rejecting the concrete "getal met 2 decimalen" case while admitting a dec=0
+        // arithmetic year (an unbounded "getal" — statically indistinguishable from arithmetic — is likewise admitted; the
+        // 4-cijfer value range stays a runtime concern).
+        if (n.decimalen() > 0 || n.heeftEenheid())
             return "eerste paasdag van vereist een geheel getal zonder eenheid (een 4-cijferig jaartal), kreeg " + d.naam() + " (§4.19 Tabel 29)";
         return null;
     }
