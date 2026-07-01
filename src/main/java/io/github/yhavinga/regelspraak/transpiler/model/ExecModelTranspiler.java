@@ -573,41 +573,50 @@ public final class ExecModelTranspiler {
         if (linksAgg == rechtsAgg) return null;                 // exactly ONE side is an aggregation
         Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
         Expr ander = linksAgg ? v.rechts() : v.links();
-        // scope: a LITERAL or an OWN (non-navigated) attribute threshold (the constraint binds the subject var, so the RHS
-        // reads it). A NAVIGATED RHS must be EXCLUDED (navigatieRol==null): with valueSubject set, scalarWaarde would build
-        // a working navReader here and a LIVE rule that THROWS at fireAllRules while the DRL only markers (review
-        // wf_900d3055-a62 F2 — asymmetric marker + exec crash). A global / other RHS also stays a symmetric marker.
-        // A genuine OWN scalar attribute of the subject: navigatieRol==null AND objecttype==subject AND the name is a REAL
-        // attribute of the subject (subject.attributen). The last clause is load-bearing: a navigation the resolver could
-        // not encode ("de afstand van de luchthaven van de Vlucht") can surface as an AttribuutRef with navRol==null and
-        // objecttype==subject yet a name that is NOT the subject's own — scalarWaarde would then build a reader for a
-        // non-existent getter that THROWS at fireAllRules (review wf_900d3055-a62 F2). The containsKey guard rejects it.
+        // scope: a LITERAL, an OWN (non-navigated) attribute, a numeric scalar Parameter-GLOBAL, or a numeric to-ONE
+        // NAVIGATED attribute threshold. The own-attr containsKey clause is load-bearing: a navigation the resolver could
+        // NOT encode ("de afstand van de luchthaven van de Vlucht") can surface as an AttribuutRef with navRol==null and
+        // objecttype==subject yet a name NOT on the subject — scalarWaarde would build a reader for a non-existent getter
+        // that THROWS at fireAllRules (review wf_900d3055-a62 F2). Only a PROPER navigation (navRol != null) is admitted,
+        // read null-safely via navReader (absent relation -> null; to-many/unresolvable -> navReader null -> marker). The
+        // global/navigated attr must be numeric (isNumeriek/isPercentage) and non-temporal; a global is scalar.
         if (!(ander instanceof Expr.Literal)
                 && !(ander instanceof Expr.AttribuutRef ar && ar.navigatieRol() == null && ar.objecttype() == subject
                      && subject.attributen.containsKey(ar.attribuut()))
                 && !(ander instanceof Expr.ParameterRef pr && pr.parameter().granulariteit() == null
-                     && (pr.parameter().datatype().isNumeriek() || pr.parameter().datatype().isPercentage()))) return null;
+                     && (pr.parameter().datatype().isNumeriek() || pr.parameter().datatype().isPercentage()))
+                && !(ander instanceof Expr.AttribuutRef nav && nav.objecttype() != null
+                     && (nav.navigatieRol() != null || nav.objecttype() != subject) && nav.objecttype().heeftLid(nav.attribuut())
+                     && nav.type() != null && (nav.type().isNumeriek() || nav.type().isPercentage())
+                     && !nav.objecttype().attribuutGranulariteit.containsKey(nav.attribuut()))) return null;
         Conditie.Operator op = linksAgg ? v.op() : mirrorOp(v.op());   // orient the aggregation on the LEFT (mirrorOp(ONGELIJK)=ONGELIJK, != symmetric)
         final String opStr = opString(op);
         Agg agg = aggregatie(f, subject, subjectVar, true);   // condition side: bind count for MIN/MAX so an empty set fires the leeg compare
         if (agg == null) return null;
-        Objecttype bewaard = valueSubject; valueSubject = subject;   // enable scalarWaarde's own-attr (value-path) read of the RHS
-        WaardeFn rhs = scalarWaarde(ander);
-        valueSubject = bewaard;
-        if (rhs == null) return null;
-        // A single numeric Parameter-GLOBAL threshold binds the Global directly into the result constraint (the null-tolerant
-        // single-global idiom, like §8.2's whole-period grens at ~L1692): the predicate reads the global's value per fire and
-        // hands it to rhs.fn() via bindGlobal. A LEEG global arrives as null (rsAggVergelijk applies the leegwaarde rules).
-        // >1 global / a non-numeric global stays a symmetric marker (the DRL gate excludes them identically).
+        // The threshold reader rfn(subj, globalsMap) + at most one bound Global. A to-ONE navigated RHS reads null-safely via
+        // navReader (absent relation -> null leeg; to-many/unresolvable -> null -> marker). A single numeric Parameter-GLOBAL
+        // binds the Global directly into the result constraint (the null-tolerant single-global idiom, like §8.2's whole-period
+        // grens at ~L1692); a LEEG global arrives as null. >1 global / a non-numeric global stays a symmetric marker.
+        final BiFunction<Object, Map<String, BigDecimal>, Object> rfn;
         Global<BigDecimal> gVar = null; String gNaam = null;
-        if (!rhs.globals().isEmpty()) {
-            if (rhs.globals().size() != 1) return null;
-            gNaam = rhs.globals().iterator().next();
-            gVar = globals.get(gNaam);
-            if (gVar == null) return null;   // non-numeric global -> not bindable here -> skip
+        if (ander instanceof Expr.AttribuutRef nar && (nar.navigatieRol() != null || nar.objecttype() != subject)) {
+            java.util.function.Function<Object, Object> reader = navReader(nar, subject);
+            if (reader == null) return null;   // AFWEZIG / ONOPGELOST / NAAR_VEEL -> marker (symmetric with the DRL)
+            rfn = (subj, gm) -> reader.apply(subj);
+        } else {
+            Objecttype bewaard = valueSubject; valueSubject = subject;   // enable scalarWaarde's own-attr (value-path) read of the RHS
+            WaardeFn rhs = scalarWaarde(ander);
+            valueSubject = bewaard;
+            if (rhs == null) return null;
+            if (!rhs.globals().isEmpty()) {
+                if (rhs.globals().size() != 1) return null;
+                gNaam = rhs.globals().iterator().next();
+                gVar = globals.get(gNaam);
+                if (gVar == null) return null;   // non-numeric global -> not bindable here -> skip
+            }
+            rfn = rhs.fn();   // the threshold, read per subject (+ bound global)
         }
         final Global<BigDecimal> global = gVar; final String globalNaam = gNaam;
-        final BiFunction<Object, Map<String, BigDecimal>, Object> rfn = rhs.fn();   // the threshold, read per subject (+ bound global)
         List<RuleItemBuilder<?>> extra = new ArrayList<>();
         extra.add(agg.accItem());
         PatternDSL.PatternDef resultPat;

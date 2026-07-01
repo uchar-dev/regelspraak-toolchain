@@ -37,6 +37,9 @@ public class Vlucht {
     private boolean laat;                    // §6/§13.4.16 condition-side date arithmetic (kenmerk doel)
     public boolean isLaat() { return laat; }
     public void setLaat(boolean v) { this.laat = v; }
+    private Vliegtuig vliegtuig;             // §5.8 to-ONE navigated threshold ("de capaciteit van zijn vliegtuig")
+    public Vliegtuig getVliegtuig() { return vliegtuig; }
+    public void setVliegtuig(Vliegtuig v) { this.vliegtuig = v; }
     public boolean isInternationaal() { return internationaal; }
     public void setInternationaal(boolean v) { this.internationaal = v; }
     public boolean isVol() { return vol; }

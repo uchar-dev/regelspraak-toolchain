@@ -2873,18 +2873,23 @@ public final class DrlTranspiler {
         if (linksAgg == rechtsAgg) return null;                 // exactly ONE side is an aggregation
         Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
         Expr ander = linksAgg ? v.rechts() : v.links();
-        // scope: a LITERAL, an OWN (non-navigated) attribute, or a numeric scalar Parameter-GLOBAL threshold (the eval has
-        // $subject and the header-declared globals in scope). A NAVIGATED / other RHS stays a marker in BOTH back-ends — the
-        // navigatieRol==null + containsKey guards are load-bearing: a navigated RHS markers here (waarde() below) but the
-        // exec's scalarWaarde would build a LIVE crashing rule (review wf_900d3055-a62 F2), so it must be excluded
-        // symmetrically, not left to the marker fall-through. The global must be numeric (isNumeriek/isPercentage — the DRL
-        // declares it a BigDecimal, matching rsAggVergelijk's `n`) and scalar (granulariteit==null): EXACTLY the set the exec
-        // tracks as a BigDecimal `globals` entry, so a tekst/datum/temporal global stays a symmetric marker.
+        // scope: a LITERAL, an OWN (non-navigated) attribute, a numeric scalar Parameter-GLOBAL, or a numeric to-ONE
+        // NAVIGATED attribute threshold (the eval has $subject and the header-declared globals in scope). The own-attr
+        // containsKey guard is load-bearing: a navigation the resolver could NOT encode surfaces as navRol==null with a
+        // name NOT on the subject — the exec's scalarWaarde would build a LIVE crashing rule for it (review wf_900d3055-a62
+        // F2), so ONLY a PROPER navigation (navRol != null, resolved to a to-one below via naviResolve / navReader) is
+        // admitted, read null-safely (rsRelGetal / navReader). The global/navigated attr must be numeric (isNumeriek/
+        // isPercentage -> a BigDecimal, matching rsAggVergelijk's `n`) and non-temporal; a global is also scalar
+        // (granulariteit==null) — EXACTLY the set the exec tracks/reads. A tekst/datum/temporal/to-many RHS stays a marker.
         if (!(ander instanceof Expr.Literal)
                 && !(ander instanceof Expr.AttribuutRef ar && ar.navigatieRol() == null && ar.objecttype() == subject
                      && subject.attributen.containsKey(ar.attribuut()))
                 && !(ander instanceof Expr.ParameterRef pr && pr.parameter().granulariteit() == null
-                     && (pr.parameter().datatype().isNumeriek() || pr.parameter().datatype().isPercentage()))) return null;
+                     && (pr.parameter().datatype().isNumeriek() || pr.parameter().datatype().isPercentage()))
+                && !(ander instanceof Expr.AttribuutRef nav && nav.objecttype() != null
+                     && (nav.navigatieRol() != null || nav.objecttype() != subject) && nav.objecttype().heeftLid(nav.attribuut())
+                     && nav.type() != null && (nav.type().isNumeriek() || nav.type().isPercentage())
+                     && !isTemporeelAttribuut(nav))) return null;
         Conditie.Operator op = linksAgg ? v.op() : omkeren(v.op());   // orient the aggregation on the LEFT (omkeren(ONGELIJK)=ONGELIJK, != symmetric)
         // Reuse the VALUE-side accumulate lowering: it registers the accumulate CE (count / BigDecimal sum with the §5.8.2
         // empty-sum leegwaarde branch / min·max coerced to BigDecimal) in `accumulates` and returns the RESULT value expr
@@ -2894,10 +2899,20 @@ public final class DrlTranspiler {
         Frag agg = accumulate(f, subject, true);
         if (agg == null || agg.marker()) return null;   // accumulate() returns NULL (not a marker Frag) for an unresolvable
                                                         // join / unstructured die-filter / multi-operand fold -> skip, not NPE
-        // the RHS rides the EVAL (a standalone when-clause), so it needs a $subject-qualified value ($subject.getX()),
-        // NOT operand()'s pattern-relative field name — the then-side waarde() produces exactly that (literal or own-attr).
-        Frag n = waarde(ander, subject);
-        if (n.marker()) return null;
+        // the RHS rides the EVAL (a standalone when-clause), so it needs a $subject-qualified value ($subject.getX()), NOT
+        // operand()'s pattern-relative field name. A literal/own-attr/global goes through waarde() ($subject-qualified). A
+        // to-ONE navigated numeric read goes through the null-safe rsRelGetal($subject.get<Rol>(), "attr") — an absent
+        // relation reads leeg, NOT a short-circuit or an NPE (waarde() would emit the un-guarded $subject.getRol().getAttr()).
+        Frag n;
+        if (ander instanceof Expr.AttribuutRef nar && (nar.navigatieRol() != null || nar.objecttype() != subject)) {
+            NaviRef nr = naviResolve(nar, subject);
+            if (nr.soort() != NaviSoort.GENAVIGEERD) return null;   // AFWEZIG / NAAR_VEEL / ONOPGELOST -> marker (symmetric)
+            registreerRelGetalFunctie();
+            n = Frag.ok("rsRelGetal(" + SUBJECT + "." + getter(nr.rol()) + "(), \"" + nar.attribuut() + "\")");
+        } else {
+            n = waarde(ander, subject);
+            if (n.marker()) return null;
+        }
         accumulates.add("eval( " + registreerAggVergelijkFunctie() + "(" + agg.text() + ", " + n.text() + ", \"" + drlOp(op) + "\") )");
         return new LoweredConditie("", java.util.List.of(), false);
     }

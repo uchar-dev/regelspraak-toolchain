@@ -19,6 +19,7 @@ import io.github.yhavinga.regelspraak.facts.Rekensom;
 import io.github.yhavinga.regelspraak.facts.Segment;
 import io.github.yhavinga.regelspraak.facts.Tarief;
 import io.github.yhavinga.regelspraak.facts.Tijdmeter;
+import io.github.yhavinga.regelspraak.facts.Vliegtuig;
 import io.github.yhavinga.regelspraak.facts.Vlucht;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
@@ -3492,6 +3493,46 @@ class ExecModelDifferentialTest {
         Boolean.TRUE, Boolean.FALSE, Boolean.TRUE,
     };
 
+    // ---- §5.8 an aggregation-in-condition vs a to-ONE NAVIGATED numeric threshold ("... groter is dan de capaciteit van
+    //      zijn vliegtuig"): was a symmetric marker. The resolver encodes the POSSESSIVE form (navRol==null, objecttype=the
+    //      TARGET type != subject, a real numeric attr); the DRL reads it null-safely via rsRelGetal($subject.get<Rol>(),
+    //      "attr"), the exec via navReader (both: absent relation -> leeg). The explicit-double-"van" form
+    //      ("...van het vliegtuig van de Vlucht") stays an Onbekend/objecttype==subject marker (a resolver limit) — that is
+    //      the F2 case in phase_AGG_navigated_rhs_is_symmetric_marker. The CRITICAL corner: an ABSENT relation reads leeg. ----
+    static final String AGG_NAV_SRC =
+        "Objecttype het Vliegtuig (mv: Vliegtuigen)\n    de capaciteit Numeriek (geheel getal);\n" +
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de leeftijd Numeriek (geheel getal);\n" +
+        "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n" +
+        "Feittype toewijzing van vliegtuig\n    de vlucht Vlucht\n    het vliegtuig Vliegtuig\nÉén vlucht heeft één vliegtuig\n" +
+        "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nÉén reis heeft meerdere passagiers\n" +
+        "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien %s.\n";
+    static Fixture aggNavFix(String naam, String cond, Integer cap, int[] leeftijds) {
+        String src = String.format(AGG_NAV_SRC, cond);
+        return new Fixture(naam, src,
+                () -> { List<Object> fs = new ArrayList<>(); Vlucht v = new Vlucht(); fs.add(v);
+                        if (cap != null) { Vliegtuig vt = new Vliegtuig(); vt.setCapaciteit(new BigDecimal(cap)); v.setVliegtuig(vt); fs.add(vt); }
+                        for (int lt : leeftijds) { Passagier p = new Passagier(); p.setLeeftijd(new BigDecimal(lt)); p.setReis(v); fs.add(p); } return fs; },
+                Map.of(), l -> ((Vlucht) l.get(0)).isVol());
+    }
+    static final String CNT_GT_NAV = "het aantal passagiers van de Vlucht groter is dan de capaciteit van zijn vliegtuig";
+    static final String CNT_NE_NAV = "het aantal passagiers van de Vlucht ongelijk is aan de capaciteit van zijn vliegtuig";
+    static final String SOM_GT_NAV = "de som van de leeftijd van alle passagiers van de Vlucht groter is dan de capaciteit van zijn vliegtuig";
+    static final Fixture[] PHASE_AGG_NAV = {
+        aggNavFix("§5.8 count 4 > cap 3 -> WAAR", CNT_GT_NAV, 3, new int[]{1, 1, 1, 1}),
+        aggNavFix("§5.8 count 3 > cap 3 -> onwaar", CNT_GT_NAV, 3, new int[]{1, 1, 1}),
+        aggNavFix("§5.8 count 2 > cap(ABSENT) -> onwaar (navigated leeg, ordering)", CNT_GT_NAV, null, new int[]{1, 1}),
+        aggNavFix("§5.6 count 2 != cap(ABSENT) -> WAAR (gevuld != leeg, Tabel44)", CNT_NE_NAV, null, new int[]{1, 1}),
+        aggNavFix("§5.6 count 3 != cap 3 -> onwaar", CNT_NE_NAV, 3, new int[]{1, 1, 1}),
+        aggNavFix("§5.6 count 4 != cap 3 -> WAAR", CNT_NE_NAV, 3, new int[]{1, 1, 1, 1}),
+        aggNavFix("§5.8 SOM 110 > cap 100 -> WAAR", SOM_GT_NAV, 100, new int[]{50, 60}),
+        aggNavFix("§5.8 SOM(empty) > cap 100 -> onwaar (empty SOM leeg)", SOM_GT_NAV, 100, new int[]{}),
+    };
+    static final Object[] PHASE_AGG_NAV_EXPECTED = {
+        Boolean.TRUE, Boolean.FALSE, Boolean.FALSE,
+        Boolean.TRUE, Boolean.FALSE, Boolean.TRUE,
+        Boolean.TRUE, Boolean.FALSE,
+    };
+
     // ---- review wf_900d3055-a62 F2: an aggregation-in-condition vs a NAVIGATED RHS ("het aantal passagiers van de Vlucht
     //      groter is dan de afstand van de luchthaven van de Vlucht") must stay a SYMMETRIC marker — DRL markers, exec SKIPS
     //      (was: DRL markers but exec built a LIVE rule that THREW at fireAllRules). ----
@@ -5202,6 +5243,22 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(PHASE_AGG_MINMAX_LEEG_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §5.8 an aggregation-in-condition vs a to-ONE NAVIGATED numeric threshold (possessive "de capaciteit van zijn
+     *  vliegtuig") now FIRES in both back-ends — DRL rsRelGetal / exec navReader, both null-safe for an ABSENT relation
+     *  (-> leeg). Absolute + DRL==exec parity + no skip, incl. the absent-relation corner (count>leeg onwaar, count!=leeg WAAR). */
+    @Test void phase_AGG_NAV_navigated_threshold_is_spec_correct() {
+        for (int i = 0; i < PHASE_AGG_NAV.length; i++) {
+            Fixture f = PHASE_AGG_NAV[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_AGG_NAV_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
