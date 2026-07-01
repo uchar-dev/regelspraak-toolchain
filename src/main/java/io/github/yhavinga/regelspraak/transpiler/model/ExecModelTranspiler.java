@@ -9,6 +9,7 @@ import io.github.yhavinga.regelspraak.model.Eenheid;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
+import io.github.yhavinga.regelspraak.model.Rationaal;
 import io.github.yhavinga.regelspraak.runtime.Accessors;
 import io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime;
 
@@ -3141,11 +3142,16 @@ public final class ExecModelTranspiler {
     // ---- small helpers ----
     private static BigDecimal num(Object bean, String attr) { return (BigDecimal) RegelSpraakRuntime.get(bean, attr); }
     /** Parse a numeric literal's value, ignoring any trailing unit ("18 jr" -> 18, "3,5 EUR" -> 3.5; comma is the
-     *  RegelSpraak decimal mark). Returns null for a non-decimal (e.g. a fraction) so the caller skips it (Phase A). */
+     *  RegelSpraak decimal mark), or null for a non-numeric literal. Reads the §13.2.5 number via the SHARED
+     *  {@link Rationaal#van} parser — the same one {@link io.github.yhavinga.regelspraak.transpiler.DrlTranspiler} uses — so a
+     *  rational form ("4/2" -> 2, "3/2" -> 1.5, "1_1/2" -> 1.5) lowers to its EXACT value when the quotient
+     *  terminates, else to a DECIMAL64 division (e.g. 1/3). A leading-integer regex would drop the denominator
+     *  ("4/2" -> 4) and DIVERGE from the DRL oracle (grondslag maal 4/2 = 40 in exec vs 20 in DRL). */
     private static BigDecimal bd(Expr.Literal lit) {
-        java.util.regex.Matcher mm = java.util.regex.Pattern.compile("^\\s*([-+]?\\d[\\d.]*)").matcher(lit.waarde().replace(",", "."));
-        if (!mm.find()) return null;
-        try { return new BigDecimal(mm.group(1)); } catch (NumberFormatException e) { return null; }
+        BigDecimal[] r = Rationaal.van(lit.waarde());
+        if (r == null) return null;
+        try { return r[0].divide(r[1]); }                                   // exact (terminating quotient)
+        catch (ArithmeticException nietEindig) { return r[0].divide(r[1], java.math.MathContext.DECIMAL64); }
     }
     /** A numeric EXPRESSION operand (an arithmetic {@link Expr.Binair}, a builtin {@link Expr.Functie}, a §6.1.4
      *  begrenzing or a §13.4.17.25 afronding) — i.e. NOT a plain attribute/literal/parameter leaf. Used to route an

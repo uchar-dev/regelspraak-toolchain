@@ -129,6 +129,47 @@ class ExecModelDifferentialTest {
             Passagier::getPrijs),
     };
 
+    // ---- §13.2.5 RATIONAL NUMBER LITERAL in a VALUE (maal) position. The exec bd() used to read only the leading
+    //      integer of a §13.2.5 rationeelgetal, dropping the denominator ("4/2" -> 4), so "grondslag maal 4/2" fired
+    //      40 in the exec but 20 in DRL (which lowers via the shared Rationaal.van). A SILENT DRL-vs-exec divergence
+    //      no fixture exercised. bd() now shares Rationaal.van (exact when the quotient terminates). Each fixture
+    //      asserts the ABSOLUTE spec value (grondslag 10 maal the fraction), not just parity. ----
+    static Fixture ratMaal(String naam, String frac) {
+        String src =
+            "Objecttype de Rekensom (mv: Rekensommen)\n" +
+            "    de grondslag Numeriek (geheel getal);\n" +
+            "    de maalResultaat Numeriek (getal met 4 decimalen);\n" +
+            "Regel R\n" +
+            "    geldig altijd\n" +
+            "        De maalResultaat van een Rekensom moet berekend worden als de grondslag van een Rekensom maal " + frac + ".\n";
+        return new Fixture(naam, src,
+            () -> { Rekensom r = new Rekensom(); r.setGrondslag(new BigDecimal(10)); return List.<Object>of(r); },
+            Map.of(),
+            l -> ((Rekensom) l.get(0)).getMaalResultaat());
+    }
+    static final Fixture[] PHASE_RAT = {
+        ratMaal("grondslag 10 maal 4/2 = 20", "4/2"),          // terminating exact -> 20 (was exec 40)
+        ratMaal("grondslag 10 maal 3/2 = 15", "3/2"),          // terminating exact -> 15 (was exec 30)
+        ratMaal("grondslag 10 maal 1_1/2 = 15", "1_1/2"),      // mixed a_b/c = 1.5 -> 15 (was exec 10)
+        ratMaal("grondslag 10 maal 5 = 50 (control)", "5"),    // plain integer -> 50 (already parity)
+    };
+    static final BigDecimal[] PHASE_RAT_EXPECTED = {
+        new BigDecimal(20), new BigDecimal(15), new BigDecimal(15), new BigDecimal(50),
+    };
+    @Test void phase_RAT_rational_literal_value_is_spec_correct() {
+        for (int i = 0; i < PHASE_RAT.length; i++) {
+            Fixture f = PHASE_RAT[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_RAT_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+
     // ---- §6/§13.4.16 DATE ARITHMETIC: a datum/datumtijd +/- a numeric-with-time-unit -> a new date(time) via
     //      rsDatumReken (.plus/.minus keyed on the ChronoUnit). Both back-ends call the byte-identical helper.
     //      Covers: LocalDate + MONTHS (later), - MONTHS (earlier); the DatumTijd + MINUTES spec example (the
