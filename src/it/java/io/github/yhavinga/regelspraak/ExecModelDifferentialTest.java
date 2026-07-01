@@ -5064,6 +5064,21 @@ class ExecModelDifferentialTest {
         ExecModelTranspiler em = ExecModelTranspiler.build(m);
         assertFalse(em.overgeslagen().isEmpty(), () -> "exec must SKIP the navigated-RHS aggregation condition (not build a live crashing rule)");
     }
+    /** review verification (agent af7975835bd6dbf65): a COUNT-with-a-comparison-die-filter in a condition (accumulate()
+     *  returns NULL, not a marker Frag) must NOT NPE in DrlTranspiler.transpile() (which sank the whole DRL package); it
+     *  markers symmetrically. */
+    @Test void phase_AGG_count_die_filter_no_npe() {
+        String src =
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de leeftijd Numeriek (geheel getal);\n" +
+            "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n" +
+            "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+            "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien het aantal passagiers van de Vlucht die groter zijn dan 18 groter is dan 1.\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+        assertTrue(DrlTranspiler.transpile(m).contains("/* TODO"), () -> "DRL must MARKER (not NPE) the count-with-die-filter condition");
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertFalse(em.overgeslagen().isEmpty(), () -> "exec must SKIP the count-with-die-filter condition");
+    }
     @Test void phase_82_gehele_periode_matches_drl_back_end()      { runDifferential("Phase 82", PHASE_82, 10); }
     @Test void phase_82_kenmerk_matches_drl_back_end()             { runDifferential("Phase 82 kenmerk", PHASE_82_KENMERK, 2); }
     /** §8.2 line 3468 whole-period LEEG ("... gedurende de gehele maand leeg is") now FIRES in both back-ends (toets 8,

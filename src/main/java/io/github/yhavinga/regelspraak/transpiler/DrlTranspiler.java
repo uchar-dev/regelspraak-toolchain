@@ -2875,7 +2875,8 @@ public final class DrlTranspiler {
         // ($accN, or the SOM count-branch ternary). The comparison then rides an eval AFTER the accumulate (both flushed
         // after the subject pattern) via rsAggVergelijk — a leeg aggregate (empty SOM/MIN/MAX) reads onwaar (§5 ordering).
         Frag agg = accumulate(f, subject);
-        if (agg.marker()) return null;
+        if (agg == null || agg.marker()) return null;   // accumulate() returns NULL (not a marker Frag) for an unresolvable
+                                                        // join / unstructured die-filter / multi-operand fold -> skip, not NPE
         // the RHS rides the EVAL (a standalone when-clause), so it needs a $subject-qualified value ($subject.getX()),
         // NOT operand()'s pattern-relative field name — the then-side waarde() produces exactly that (literal or own-attr).
         Frag n = waarde(ander, subject);
