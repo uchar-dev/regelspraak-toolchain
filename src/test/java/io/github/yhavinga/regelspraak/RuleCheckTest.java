@@ -52,10 +52,20 @@ class RuleCheckTest {
         RegelSpraakModel mm = Resolver.resolve(mixed);
         assertTrue(mm.errors().stream().anyMatch(d -> d.message().contains("tijd-precisie") && d.message().contains("4.16")),
                 () -> "verwachtte een §4.16 tijdsduur-precisie-fout, kreeg: " + mm.errors());
-        // the ABSOLUTE tijdsduur carries the same §4.17 rule
+        // the ABSOLUTE tijdsduur carries the same rule but cites §4.17
         RegelSpraakModel ma = Resolver.resolve(mixed.replace("de tijdsduur van", "de absolute tijdsduur van"));
-        assertTrue(ma.errors().stream().anyMatch(d -> d.message().contains("tijd-precisie")),
-                () -> "absolute tijdsduur met gemengde precisie had gemeld moeten worden, kreeg: " + ma.errors());
+        assertTrue(ma.errors().stream().anyMatch(d -> d.message().contains("tijd-precisie") && d.message().contains("4.17")),
+                () -> "absolute tijdsduur met gemengde precisie had §4.17 moeten melden, kreeg: " + ma.errors());
+        // §4.16 L676: both operands must BE datum — a Numeriek operand is rejected (else it silently emits code neither
+        // back-end can execute — rsTijdsduur wants a Temporal).
+        String nietDatum = hdr.replace("de reismoment Datum en tijd in millisecondes;", "de saldo Numeriek (geheel getal);") + """
+            Regel j
+                geldig altijd
+                    De jaartal van een Klok moet gesteld worden op de tijdsduur van de saldo van een Klok tot de peildatum van een Klok in hele jaren.
+            """;
+        RegelSpraakModel mn = Resolver.resolve(nietDatum);
+        assertTrue(mn.errors().stream().anyMatch(d -> d.message().contains("twee datumexpressies")),
+                () -> "een tijdsduur met een niet-datum operand had gemeld moeten worden, kreeg: " + mn.errors());
         // SAME precision (both Datum in dagen) -> NO such fout (control; still resolves + fires)
         String same = hdr + """
             Regel j
@@ -63,7 +73,7 @@ class RuleCheckTest {
                     De jaartal van een Klok moet gesteld worden op de tijdsduur van de reisdatum van een Klok tot de peildatum van een Klok in hele jaren.
             """;
         RegelSpraakModel ms = Resolver.resolve(same);
-        assertTrue(ms.errors().stream().noneMatch(d -> d.message().contains("tijd-precisie")),
+        assertTrue(ms.errors().stream().noneMatch(d -> d.message().contains("tijd-precisie") || d.message().contains("twee datumexpressies")),
                 () -> "een gelijk-precisie tijdsduur mag geen §4.16-fout geven: " + ms.errors());
     }
 

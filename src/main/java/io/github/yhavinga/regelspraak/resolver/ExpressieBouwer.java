@@ -861,8 +861,9 @@ final class ExpressieBouwer {
             // "Datum in dagen" has no hour/minute/second. The DATE parts (jaar/maand/dag) accept any date, so
             // they are NOT checked. Onbekend is skipped (no claim); only a concrete DatumInDagen is a violation.
             case UUR_UIT, MINUUT_UIT, SECONDE_UIT, MILLISECONDE_UIT -> tijdComponentFout(typen);
-            // §4.16/§4.17 typeringen L676/L703: the two operands of a (absolute) tijdsduur must have the SAME tijd-precisie.
-            case TIJDSDUUR, ABSOLUTE_TIJDSDUUR -> tijdsduurPrecisieFout(typen);
+            // §4.16/§4.17 typeringen L676/L703: the two operands of a (absolute) tijdsduur must BOTH be datum AND have the
+            // SAME tijd-precisie.
+            case TIJDSDUUR, ABSOLUTE_TIJDSDUUR -> tijdsduurPrecisieFout(kind, typen);
             default -> null;
         };
         if (fout != null)
@@ -879,18 +880,23 @@ final class ExpressieBouwer {
                 + typen.get(0).naam() + " (§13.4.17.21-.24)";
     }
 
-    /** §4.16/§4.17 (typeringen L676/L703, normative): the two operands (van, tot) of a (absolute) tijdsduur must have the
-     *  SAME tijd-precisie — both {@link Datatype.DatumInDagen} or both {@link Datatype.DatumTijd}. A concrete mixed pair
-     *  (Datum-in-dagen tot Datum-en-tijd) is spec-illegal but otherwise silently computes a meaningless duration. Onbekend /
-     *  a non-datum operand is skipped (no claim / a separate operand-type contract). Returns the diagnostic, or null. */
-    private static String tijdsduurPrecisieFout(List<Datatype> typen) {
+    /** §4.16/§4.17 (typeringen L676/L703, normative): the two operands (van, tot) of a (absolute) tijdsduur must BOTH be a
+     *  datumexpressie AND have the SAME tijd-precisie — both {@link Datatype.DatumInDagen} or both {@link Datatype.DatumTijd}.
+     *  A non-datum operand (a Numeriek passed where a datum belongs) or a concrete mixed pair (Datum-in-dagen tot
+     *  Datum-en-tijd) is spec-illegal but otherwise silently emits code neither back-end can execute (rsTijdsduur wants a
+     *  Temporal). Onbekend is skipped (no claim). Returns the diagnostic (citing §4.16 for tijdsduur, §4.17 for absolute), or
+     *  null. */
+    private static String tijdsduurPrecisieFout(Expr.FunctieKind kind, List<Datatype> typen) {
+        String sectie = kind == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR ? "§4.17" : "§4.16";
         Datatype ref = null;
         for (Datatype d : typen) {
-            if (d.isOnbekend() || !d.isDatum()) continue;
+            if (d.isOnbekend()) continue;                       // no claim
+            if (!d.isDatum())                                   // L676/L703: "twee expressies, beide van het datatype datum"
+                return "de (absolute) tijdsduur van … tot … vereist twee datumexpressies, kreeg " + d.naam() + " (" + sectie + ")";
             if (ref == null) ref = d;
-            else if (!ref.getClass().equals(d.getClass()))
+            else if (!ref.getClass().equals(d.getClass()))      // both datum but a different tijd-precisie
                 return "de (absolute) tijdsduur van … tot … vereist dat beide expressies dezelfde tijd-precisie hebben, kreeg "
-                        + ref.naam() + " en " + d.naam() + " (§4.16)";
+                        + ref.naam() + " en " + d.naam() + " (" + sectie + ")";
         }
         return null;
     }
