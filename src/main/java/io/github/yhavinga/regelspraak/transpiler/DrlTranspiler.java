@@ -2860,17 +2860,30 @@ public final class DrlTranspiler {
         return Frag.todo("aggregatie-bereik", arg != null ? arg.onderwerpBron() : f.bron());
     }
 
-    /** §5.8/§13.4.14 a COUNT aggregation as one side of a condition comparison ("het aantal &lt;elem&gt; van
-     *  &lt;subject&gt; &lt;op&gt; N") — lower it to a result-constrained accumulate CE hoisted after the subject pattern
-     *  (a {@link LoweredConditie} with an EMPTY inline constraint and the accumulate as its sole extra clause):
-     *  {@code Number( intValue <op> N ) from accumulate( $e : Elem( join[, die-filter] ), count($e) )}. Scoped to AANTAL
-     *  with a resolvable join and a scalar RHS; null otherwise (caller falls through to the scalar / marker paths). SUM/
-     *  MIN/MAX-in-condition and an aggregation NESTED in a larger boolean stay a marker (a follow-up). Mirrors the exec Gate. */
+    /** §5.8/§13.4.14 an AGGREGATION (count / SUM / TOTAAL / MIN / MAX) as one side of a condition comparison ("het aantal /
+     *  de som van / de maximale waarde van &lt;elem&gt; van &lt;subject&gt; &lt;op&gt; RHS") — lowered to a result-constrained
+     *  accumulate CE hoisted after the subject pattern (an EMPTY-inline {@link LoweredConditie} whose extra is the accumulate
+     *  + an rsAggVergelijk eval). The RHS may be a literal, an own attribute, a numeric scalar Parameter-global, or a to-ONE
+     *  navigated numeric attribute (null-safe via rsRelGetal); any comparison operator (ordering / GELIJK / ONGELIJK, the
+     *  §5.3/§5.6 leegwaarde cells). An empty SOM/MIN/MAX reads leeg (leegCount). BOTH sides aggregations = agg-vs-agg (two
+     *  accumulates). null when unlowerable (an unresolved join / a navigated-or-multi-global RHS / a to-many RHS) -> the
+     *  caller falls through to the marker path. Mirrors the exec Gate. */
     private LoweredConditie aggregatieVoorwaarde(Conditie.Vergelijking v, Objecttype subject) {
         if (subject == null) return null;
         boolean linksAgg = v.links() instanceof Expr.Functie fl && isAggregatieFunctie(fl.kind());
         boolean rechtsAgg = v.rechts() instanceof Expr.Functie fr && isAggregatieFunctie(fr.kind());
-        if (linksAgg == rechtsAgg) return null;                 // exactly ONE side is an aggregation
+        if (!linksAgg && !rechtsAgg) return null;               // no aggregation operand
+        if (linksAgg && rechtsAgg) {                            // §5.8 agg-vs-agg ("het aantal X <op> het aantal Y")
+            // Two accumulate CEs over the same subject; the eval compares both results via rsAggVergelijk (the right agg
+            // coerced to BigDecimal via rsGetal). leegCount=true so an empty SOM/MIN/MAX on either side reads leeg.
+            Frag a1 = accumulate((Expr.Functie) v.links(), subject, true);
+            if (a1 == null || a1.marker()) return null;
+            Frag a2 = accumulate((Expr.Functie) v.rechts(), subject, true);
+            if (a2 == null || a2.marker()) return null;
+            accumulates.add("eval( " + registreerAggVergelijkFunctie() + "(" + a1.text() + ", "
+                    + registreerGetalFunctie() + "(" + a2.text() + "), \"" + drlOp(v.op()) + "\") )");
+            return new LoweredConditie("", java.util.List.of(), false);
+        }
         Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
         Expr ander = linksAgg ? v.rechts() : v.links();
         // scope: a LITERAL, an OWN (non-navigated) attribute, a numeric scalar Parameter-GLOBAL, or a numeric to-ONE

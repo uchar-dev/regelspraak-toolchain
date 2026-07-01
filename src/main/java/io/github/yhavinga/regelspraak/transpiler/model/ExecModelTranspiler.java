@@ -34,6 +34,7 @@ import org.drools.model.functions.Predicate1;
 import org.drools.model.functions.Predicate2;
 import org.drools.model.functions.Predicate3;
 import org.drools.model.functions.Predicate4;
+import org.drools.model.functions.Predicate5;
 import org.drools.model.impl.ModelImpl;
 
 import java.math.BigDecimal;
@@ -570,7 +571,8 @@ public final class ExecModelTranspiler {
         if (subject == null || subjectVar == null) return null;
         boolean linksAgg = v.links() instanceof Expr.Functie fl && isAggregatieKind(fl.kind());
         boolean rechtsAgg = v.rechts() instanceof Expr.Functie fr && isAggregatieKind(fr.kind());
-        if (linksAgg == rechtsAgg) return null;                 // exactly ONE side is an aggregation
+        if (!linksAgg && !rechtsAgg) return null;               // no aggregation operand
+        if (linksAgg && rechtsAgg) return aggVsAgg(v, pattern, subject, subjectVar);   // §5.8 agg-vs-agg
         Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
         Expr ander = linksAgg ? v.rechts() : v.links();
         // scope: a LITERAL, an OWN (non-navigated) attribute, a numeric scalar Parameter-GLOBAL, or a numeric to-ONE
@@ -651,6 +653,56 @@ public final class ExecModelTranspiler {
         }
         extra.add(resultPat);
         return new Gate(pattern, extra);
+    }
+
+    /** §5.8 agg-vs-agg ("het aantal X &lt;op&gt; het aantal Y"): both operands are aggregations over the subject. Two
+     *  accumulate CEs, then a result-var constraint comparing both folds via rsAggVergelijk (the right coerced to
+     *  BigDecimal). A count-bound side (SOM / empty MIN·MAX) resolves count==0 -&gt; its leegwaarde (fallback or null); the
+     *  predicate arity flexes with how many sides carry a count var. The DRL mirror rides one eval over two accumulates. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Gate aggVsAgg(Conditie.Vergelijking v, PatternDSL.PatternDef pattern, Objecttype subject, Variable subjectVar) {
+        Agg a1 = aggregatie((Expr.Functie) v.links(), subject, subjectVar, true);
+        if (a1 == null) return null;
+        Agg a2 = aggregatie((Expr.Functie) v.rechts(), subject, subjectVar, true);
+        if (a2 == null) return null;
+        final String opStr = opString(v.op());
+        final boolean c1 = a1.countVar() != null, c2 = a2.countVar() != null;
+        final WaardeFn fb1 = a1.somFallback(), fb2 = a2.somFallback();
+        List<RuleItemBuilder<?>> extra = new ArrayList<>();
+        extra.add(a1.accItem());
+        extra.add(a2.accItem());
+        // The compare rides the SECOND accumulate's result (r2) as the pattern self and references the FIRST (r1) + the
+        // count vars + subject as bound Variables — r1 is UPSTREAM of r2's accumulate node, so it is available as
+        // cached-left. (Riding r1 and referencing the downstream r2 instead crashes PhreakAccumulateNode.) res1/res2 are
+        // the LEFT/RIGHT fold values; a count-bound side resolves count==0 -> its leegwaarde via foldLeeg.
+        Variable r1 = a1.resultVar(), r2 = a2.resultVar();
+        PatternDSL.PatternDef rp;
+        if (!c1 && !c2) {                                       // count / totaal both sides: the result var IS each value
+            Predicate3<Object, Object, Object> p = (res2, res1, subj) ->
+                    RegelSpraakRuntime.rsAggVergelijk(res1, RegelSpraakRuntime.toBd(res2), opStr);
+            rp = PatternDSL.pattern(r2).expr(nextId("aggcmp"), (Variable) r1, (Variable) subjectVar, (Predicate3) p);
+        } else if (c1 && !c2) {
+            Predicate4<Object, Object, Object, Object> p = (res2, res1, cnt1, subj) ->
+                    RegelSpraakRuntime.rsAggVergelijk(foldLeeg(res1, cnt1, fb1, subj), RegelSpraakRuntime.toBd(res2), opStr);
+            rp = PatternDSL.pattern(r2).expr(nextId("aggcmp"), (Variable) r1, (Variable) a1.countVar(), (Variable) subjectVar, (Predicate4) p);
+        } else if (!c1 && c2) {
+            Predicate4<Object, Object, Object, Object> p = (res2, res1, cnt2, subj) ->
+                    RegelSpraakRuntime.rsAggVergelijk(res1, RegelSpraakRuntime.toBd(foldLeeg(res2, cnt2, fb2, subj)), opStr);
+            rp = PatternDSL.pattern(r2).expr(nextId("aggcmp"), (Variable) r1, (Variable) a2.countVar(), (Variable) subjectVar, (Predicate4) p);
+        } else {                                                // both count-bound (SOM / empty MIN·MAX): resolve each leeg
+            Predicate5<Object, Object, Object, Object, Object> p = (res2, res1, cnt1, cnt2, subj) ->
+                    RegelSpraakRuntime.rsAggVergelijk(foldLeeg(res1, cnt1, fb1, subj), RegelSpraakRuntime.toBd(foldLeeg(res2, cnt2, fb2, subj)), opStr);
+            rp = PatternDSL.pattern(r2).expr(nextId("aggcmp"), (Variable) r1, (Variable) a1.countVar(), (Variable) a2.countVar(), (Variable) subjectVar, (Predicate5) p);
+        }
+        extra.add(rp);
+        return new Gate(pattern, extra);
+    }
+
+    /** A count-bound aggregate's leeg-resolved value: count==0 -&gt; the leegwaarde (the SOM fallback, or null for MIN/MAX),
+     *  else the fold value. Mirrors the single-agg count-branch predicate. */
+    private static Object foldLeeg(Object res, Object cnt, WaardeFn fb, Object subj) {
+        if (((Number) cnt).longValue() == 0L) return fb == null ? null : fb.fn().apply(subj, Map.of());
+        return res;
     }
 
     /** Does the comparison have an aggregation (count/sum/totaal/min/max) as either operand? Such a comparison is routed

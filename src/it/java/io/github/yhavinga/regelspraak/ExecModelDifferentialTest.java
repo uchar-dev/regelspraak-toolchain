@@ -3533,6 +3533,32 @@ class ExecModelDifferentialTest {
         Boolean.TRUE, Boolean.FALSE,
     };
 
+    // ---- §5.8 agg-vs-agg: BOTH operands are aggregations over the subject's relation ("het aantal X <op> de som van ...").
+    //      Two accumulate CEs + a two-result compare via rsAggVergelijk. The exec rides the 2nd accumulate result and
+    //      references the 1st (upstream, valid cached-left; riding the 1st and referencing the downstream 2nd crashes
+    //      PhreakAccumulateNode). Exercises Predicate3 (count/totaal both) / 4 (one count-bound: SOM or empty MIN·MAX) /
+    //      5 (both count-bound), incl. the empty-set leeg corners (empty SOM/MIN·MAX leeg, empty TOTAAL/count 0). ----
+    static final String AGG_CNT = "het aantal passagiers van de Vlucht";
+    static final String AGG_SOM = "de som van de leeftijd van alle passagiers van de Vlucht";
+    static final String AGG_TOT = "het totaal van de leeftijd van alle passagiers van de Vlucht";
+    static final String AGG_MAXV = "de maximale waarde van de leeftijd van alle passagiers van de Vlucht";
+    static final Fixture[] PHASE_AGG_VS_AGG = {
+        aggFoldFix("§5.8 TOTAAL 30 > count 2 -> WAAR (Pred3)", AGG_TOT + " groter is dan " + AGG_CNT, new int[]{10, 20}),
+        aggFoldFix("§5.8 count 2 > TOTAAL 30 -> onwaar", AGG_CNT + " groter is dan " + AGG_TOT, new int[]{10, 20}),
+        aggFoldFix("§5.8 TOTAAL(0) == count(0) empty -> WAAR (both 0)", AGG_TOT + " gelijk is aan " + AGG_CNT, new int[]{}),
+        aggFoldFix("§5.8 SOM 30 > count 2 -> WAAR (Pred4 c1)", AGG_SOM + " groter is dan " + AGG_CNT, new int[]{10, 20}),
+        aggFoldFix("§5.8 count 2 > SOM 30 -> onwaar (Pred4 c2)", AGG_CNT + " groter is dan " + AGG_SOM, new int[]{10, 20}),
+        aggFoldFix("§5.8 SOM(leeg) == count(0) empty -> onwaar (leeg vs 0)", AGG_SOM + " gelijk is aan " + AGG_CNT, new int[]{}),
+        aggFoldFix("§5.8 SOM 30 > MAX 20 -> WAAR (Pred5)", AGG_SOM + " groter is dan " + AGG_MAXV, new int[]{10, 20}),
+        aggFoldFix("§5.8 SOM 20 > MAX 20 -> onwaar (=)", AGG_SOM + " groter is dan " + AGG_MAXV, new int[]{20}),
+        aggFoldFix("§5.3 SOM(leeg) == MAX(leeg) empty -> WAAR (both-leeg Tabel37)", AGG_SOM + " gelijk is aan " + AGG_MAXV, new int[]{}),
+    };
+    static final Object[] PHASE_AGG_VS_AGG_EXPECTED = {
+        Boolean.TRUE, Boolean.FALSE, Boolean.TRUE,
+        Boolean.TRUE, Boolean.FALSE, Boolean.FALSE,
+        Boolean.TRUE, Boolean.FALSE, Boolean.TRUE,
+    };
+
     // ---- review wf_900d3055-a62 F2: an aggregation-in-condition vs a NAVIGATED RHS ("het aantal passagiers van de Vlucht
     //      groter is dan de afstand van de luchthaven van de Vlucht") must stay a SYMMETRIC marker — DRL markers, exec SKIPS
     //      (was: DRL markers but exec built a LIVE rule that THREW at fireAllRules). ----
@@ -5259,6 +5285,22 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(PHASE_AGG_NAV_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §5.8 agg-vs-agg (both operands aggregations, "het aantal X <op> de som van ...") now FIRES in both back-ends: two
+     *  accumulate CEs + a two-result rsAggVergelijk compare. Absolute + DRL==exec parity + no skip, over Predicate3/4/5
+     *  (count/totaal, one count-bound, both count-bound) incl. the empty-set leeg corners. */
+    @Test void phase_AGG_VS_AGG_two_aggregations_is_spec_correct() {
+        for (int i = 0; i < PHASE_AGG_VS_AGG.length; i++) {
+            Fixture f = PHASE_AGG_VS_AGG[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_AGG_VS_AGG_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
