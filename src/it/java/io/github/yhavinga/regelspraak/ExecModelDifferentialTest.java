@@ -3346,6 +3346,31 @@ class ExecModelDifferentialTest {
         Boolean.TRUE, Boolean.TRUE,
     };
 
+    // ---- §5.8 an aggregation in a condition compared to a NON-LITERAL threshold (an OWN attribute of the subject:
+    //      "het aantal passagiers van de Vlucht groter is dan de vertrektijd van de Vlucht"). The DRL eval reads the
+    //      $subject-qualified getter; the exec binds the subject var in the result-var constraint and reads it. ----
+    static final String AGG_RHS_SRC =
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de leeftijd Numeriek (geheel getal);\n" +
+        "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n    de vertrektijd Numeriek (geheel getal);\n" +
+        "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+        "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien %s.\n";
+    static Fixture aggRhsFix(String naam, String cond, int drempel, int[] leeftijds) {
+        String src = String.format(AGG_RHS_SRC, cond);
+        return new Fixture(naam, src,
+                () -> { List<Object> fs = new ArrayList<>(); Vlucht v = new Vlucht(); v.setVertrektijd(new BigDecimal(drempel)); fs.add(v);
+                        for (int lt : leeftijds) { Passagier p = new Passagier(); p.setLeeftijd(new BigDecimal(lt)); p.setReis(v); fs.add(p); } return fs; },
+                Map.of(), l -> ((Vlucht) l.get(0)).isVol());
+    }
+    static final String CNT_GT_ATTR = "het aantal passagiers van de Vlucht groter is dan de vertrektijd van de Vlucht";
+    static final String SOM_GT_ATTR = "de som van de leeftijd van alle passagiers van de Vlucht groter is dan de vertrektijd van de Vlucht";
+    static final Fixture[] PHASE_AGG_RHS = {
+        aggRhsFix("§5.8 count > own-attr: 4 > 3 -> vol", CNT_GT_ATTR, 3, new int[]{1, 1, 1, 1}),
+        aggRhsFix("§5.8 count > own-attr: 3 > 3 -> niet (strikt)", CNT_GT_ATTR, 3, new int[]{1, 1, 1}),
+        aggRhsFix("§5.8 SUM > own-attr: 110 > 100 -> vol", SOM_GT_ATTR, 100, new int[]{50, 60}),
+        aggRhsFix("§5.8 SUM > own-attr: 90 > 100 -> niet", SOM_GT_ATTR, 100, new int[]{50, 40}),
+    };
+    static final Object[] PHASE_AGG_RHS_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, Boolean.FALSE };
+
     static final Fixture[] PHASE_F = {
         // A1 §7.1: the total weights each tijdvak by its month span — 12×10 + 6×11 = 186.
         single("§7.1 totaal van temporeel attribuut (12×10 + 6×11 = 186)",
@@ -4966,6 +4991,22 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(PHASE_AGG_FOLD_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §5.8 an aggregation in a condition vs a NON-LITERAL (own-attribute) threshold now FIRES in both back-ends — the
+     *  DRL eval reads the $subject-qualified getter, the exec binds the subject var in the result-var constraint. Absolute
+     *  (count/SUM vs the subject's own attribute) + DRL==exec parity + no exec skip. */
+    @Test void phase_AGG_RHS_own_attribute_threshold_is_spec_correct() {
+        for (int i = 0; i < PHASE_AGG_RHS.length; i++) {
+            Fixture f = PHASE_AGG_RHS[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_AGG_RHS_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }

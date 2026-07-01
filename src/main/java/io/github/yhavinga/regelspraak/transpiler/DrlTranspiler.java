@@ -2861,7 +2861,9 @@ public final class DrlTranspiler {
         if (linksAgg == rechtsAgg) return null;                 // exactly ONE side is an aggregation
         Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
         Expr ander = linksAgg ? v.rechts() : v.links();
-        if (!(ander instanceof Expr.Literal)) return null;      // scope: a LITERAL threshold (own-attr/global RHS is a follow-up; keeps the exec at parity)
+        // scope: a LITERAL or an OWN-attribute threshold (the eval has $subject in scope). A global / navigated / other
+        // RHS stays a marker (operand() below markers it, or it is not an AttribuutRef) — a follow-up, kept at exec parity.
+        if (!(ander instanceof Expr.Literal) && !(ander instanceof Expr.AttribuutRef)) return null;
         Conditie.Operator op = linksAgg ? v.op() : omkeren(v.op());   // orient the aggregation on the LEFT
         if (op == Conditie.Operator.ONGELIJK) return null;      // §5.6 Tabel 44 leeg-vs-gevuld ONGELIJK -> follow-up
         // Reuse the VALUE-side accumulate lowering: it registers the accumulate CE (count / BigDecimal sum with the §5.8.2
@@ -2870,7 +2872,9 @@ public final class DrlTranspiler {
         // after the subject pattern) via rsAggVergelijk — a leeg aggregate (empty SOM/MIN/MAX) reads onwaar (§5 ordering).
         Frag agg = accumulate(f, subject);
         if (agg.marker()) return null;
-        Frag n = operand(ander, subject);
+        // the RHS rides the EVAL (a standalone when-clause), so it needs a $subject-qualified value ($subject.getX()),
+        // NOT operand()'s pattern-relative field name — the then-side waarde() produces exactly that (literal or own-attr).
+        Frag n = waarde(ander, subject);
         if (n.marker()) return null;
         accumulates.add("eval( " + registreerAggVergelijkFunctie() + "(" + agg.text() + ", " + n.text() + ", \"" + drlOp(op) + "\") )");
         return new LoweredConditie("", java.util.List.of(), false);

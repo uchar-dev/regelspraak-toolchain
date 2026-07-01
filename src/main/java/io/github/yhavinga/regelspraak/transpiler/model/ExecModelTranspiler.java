@@ -560,29 +560,34 @@ public final class ExecModelTranspiler {
         if (linksAgg == rechtsAgg) return null;                 // exactly ONE side is an aggregation
         Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
         Expr ander = linksAgg ? v.rechts() : v.links();
-        if (!(ander instanceof Expr.Literal)) return null;      // scope: a LITERAL threshold (own-attr/global RHS is a follow-up)
+        // scope: a LITERAL or an OWN-attribute threshold (the constraint binds the subject var, so the RHS reads it). A
+        // global / navigated / other RHS stays a marker (scalarWaarde markers it, or !AttribuutRef) — kept at DRL parity.
+        if (!(ander instanceof Expr.Literal) && !(ander instanceof Expr.AttribuutRef)) return null;
         Conditie.Operator op = linksAgg ? v.op() : mirrorOp(v.op());   // orient the aggregation on the LEFT
         if (op == Conditie.Operator.ONGELIJK) return null;      // §5.6 Tabel 44 leeg-vs-gevuld ONGELIJK -> follow-up
         final String opStr = opString(op);
         Agg agg = aggregatie(f, subject, subjectVar);
         if (agg == null) return null;
+        Objecttype bewaard = valueSubject; valueSubject = subject;   // enable scalarWaarde's own-attr (value-path) read of the RHS
         WaardeFn rhs = scalarWaarde(ander);
-        if (rhs == null || !rhs.globals().isEmpty()) return null;
-        final BigDecimal n = RegelSpraakRuntime.toBd(rhs.fn().apply(null, Map.of()));   // the literal threshold
+        valueSubject = bewaard;
+        if (rhs == null || !rhs.globals().isEmpty()) return null;    // unlowerable / global RHS -> marker (follow-up)
+        final BiFunction<Object, Map<String, BigDecimal>, Object> rfn = rhs.fn();   // the threshold, read per subject
         List<RuleItemBuilder<?>> extra = new ArrayList<>();
         extra.add(agg.accItem());
         PatternDSL.PatternDef resultPat;
         if (agg.isSom()) {
-            // §5.8.2 empty SOM (0 contributors) is the leegwaarde/fallback, not 0 — bind both the sum and the count var.
+            // §5.8.2 empty SOM (0 contributors) is the leegwaarde/fallback, not 0 — bind the sum, the count, and the subject.
             final WaardeFn fb = agg.somFallback();
-            Predicate2<Object, Object> pred = (sum, cnt) -> {   // (resultVar=sum, countVar=count)
-                Object aggVal = ((Number) cnt).longValue() == 0L ? (fb == null ? null : fb.fn().apply(null, Map.of())) : sum;
-                return RegelSpraakRuntime.rsAggVergelijk(aggVal, n, opStr);
+            Predicate3<Object, Object, Object> pred = (sum, cnt, subj) -> {   // (resultVar=sum, countVar=count, subjectVar)
+                Object aggVal = ((Number) cnt).longValue() == 0L ? (fb == null ? null : fb.fn().apply(subj, Map.of())) : sum;
+                return RegelSpraakRuntime.rsAggVergelijk(aggVal, RegelSpraakRuntime.toBd(rfn.apply(subj, Map.of())), opStr);
             };
-            resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) agg.countVar(), (Predicate2) pred);
+            resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) agg.countVar(), (Variable) subjectVar, (Predicate3) pred);
         } else {                                                // count / totaal / min / max: the result var IS the agg value
-            Predicate1<Object> pred = res -> RegelSpraakRuntime.rsAggVergelijk(res, n, opStr);
-            resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Predicate1) pred);
+            Predicate2<Object, Object> pred = (res, subj) ->
+                    RegelSpraakRuntime.rsAggVergelijk(res, RegelSpraakRuntime.toBd(rfn.apply(subj, Map.of())), opStr);
+            resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) subjectVar, (Predicate2) pred);
         }
         extra.add(resultPat);
         return new Gate(pattern, extra);
