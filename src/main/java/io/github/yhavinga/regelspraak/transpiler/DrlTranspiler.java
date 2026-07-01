@@ -1280,7 +1280,7 @@ public final class DrlTranspiler {
             if (concat != null) return concat;
             Frag tijd = tijdreeksAggregatie(f, subject);    // §7.1 "het totaal van" a temporal attribute's timeline
             if (tijd != null) return tijd;
-            Frag var = accumulate(f, subject);              // hoists an accumulate into the "when"
+            Frag var = accumulate(f, subject, false);       // hoists an accumulate into the "when" (value side: bare fold)
             return var != null ? var : Frag.todo("aggregatie " + f.kind(), f.bron());
         }
         return Frag.todo("expressie", e.bron());
@@ -2728,7 +2728,7 @@ public final class DrlTranspiler {
      * element scope — which instances relate to the subject — is left as a marker
      * here; navigation joins fill it. Returns null for aggregations not yet mappable.
      */
-    private Frag accumulate(Expr.Functie f, Objecttype subject) {
+    private Frag accumulate(Expr.Functie f, Objecttype subject, boolean leegCount) {
         // §4.11/§5.8.1 telling over a concatenation of expressies ("het aantal X, Y en Z"): the
         // count is the UNION of the per-operand sets. When the resolver could OR the per-operand
         // kenmerk filters (f.filter() is the disjunction), this lowers to ONE accumulate whose
@@ -2807,6 +2807,18 @@ public final class DrlTranspiler {
         String elementExpr = ev;
         if (!fn.equals("count") && arg instanceof Expr.AttribuutRef a)
             elementExpr = elemWaarde.apply(a);
+        // §5.8.3 an empty MIN/MAX is LEEG (§5.3 Tabel 37 / §5.6 Tabel 44), but a bare min()/max() accumulate binds NO
+        // result row over an EMPTY source — so a downstream CONDITION compare would never run (the rule silently reads
+        // onwaar, wrong for leeg==leeg / leeg!=gevuld). In a condition context (leegCount) bind count() alongside the
+        // min/max so the accumulate ALWAYS produces a row; the result is null for an empty set (count==0) and the min/max
+        // value otherwise — letting rsAggVergelijk apply the leegwaarde semantics. The VALUE side (leegCount=false) keeps
+        // the bare fold: an empty value-aggregation simply does not fire (unchanged).
+        if (leegCount && (f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM)) {
+            String cnt = "$n" + n;
+            accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true) + "( " + filterScope + " ) ; "
+                    + cnt + " : count(" + ev + "), " + var + " : " + fn + "( " + elementExpr + " ) )");
+            return Frag.ok("(" + cnt + " == 0 ? null : " + registreerGetalFunctie() + "(" + var + "))");
+        }
         accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true)
                 + "( " + filterScope + " ) ; " + var + " : " + fn + "( " + elementExpr + " ) )");
         // §5.8.3 a min/max reduction binds $accN as a java.lang.Number (the element's static type in the accumulate),
@@ -2876,9 +2888,10 @@ public final class DrlTranspiler {
         Conditie.Operator op = linksAgg ? v.op() : omkeren(v.op());   // orient the aggregation on the LEFT (omkeren(ONGELIJK)=ONGELIJK, != symmetric)
         // Reuse the VALUE-side accumulate lowering: it registers the accumulate CE (count / BigDecimal sum with the §5.8.2
         // empty-sum leegwaarde branch / min·max coerced to BigDecimal) in `accumulates` and returns the RESULT value expr
-        // ($accN, or the SOM count-branch ternary). The comparison then rides an eval AFTER the accumulate (both flushed
-        // after the subject pattern) via rsAggVergelijk — a leeg aggregate (empty SOM/MIN/MAX) reads onwaar (§5 ordering).
-        Frag agg = accumulate(f, subject);
+        // ($accN, or the SOM/min·max count-branch ternary). The comparison then rides an eval AFTER the accumulate (both
+        // flushed after the subject pattern) via rsAggVergelijk. leegCount=true so an empty SOM/MIN/MAX binds a count row
+        // -> the compare runs with a null aggregate and applies the §5.3/§5.6 leegwaarde cells (leeg==leeg / leeg!=gevuld).
+        Frag agg = accumulate(f, subject, true);
         if (agg == null || agg.marker()) return null;   // accumulate() returns NULL (not a marker Frag) for an unresolvable
                                                         // join / unstructured die-filter / multi-operand fold -> skip, not NPE
         // the RHS rides the EVAL (a standalone when-clause), so it needs a $subject-qualified value ($subject.getX()),

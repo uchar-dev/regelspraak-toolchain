@@ -3460,6 +3460,38 @@ class ExecModelDifferentialTest {
         Boolean.FALSE,
     };
 
+    // ---- §5.8.3 an empty MIN/MAX in a CONDITION is LEEG (§5.3 Tabel 37 / §5.6 Tabel 44). A bare min()/max() accumulate
+    //      binds NO result row over an empty source, so the compare silently read onwaar (review wf_5c07914a-647 CONFIRMED,
+    //      closing 20260701-min-max-empty-set-gelijk-leeg). The condition-path accumulate now also binds count() (leegCount),
+    //      so a row exists for the empty set with a null aggregate -> GELIJK leeg==leeg WAAR, ONGELIJK leeg!=gevuld WAAR,
+    //      ordering stays onwaar. SOM already fired this (it bound count); TOTAAL empty is 0. VALUE-side MIN/MAX unchanged. ----
+    static Fixture aggMinMaxFix(String naam, String cond, Integer vt, int[] leeftijds) {
+        String src = String.format(AGG_RHS_SRC, cond);
+        return new Fixture(naam, src,
+                () -> { List<Object> fs = new ArrayList<>(); Vlucht v = new Vlucht(); if (vt != null) v.setVertrektijd(new BigDecimal(vt)); fs.add(v);
+                        for (int lt : leeftijds) { Passagier p = new Passagier(); p.setLeeftijd(new BigDecimal(lt)); p.setReis(v); fs.add(p); } return fs; },
+                Map.of(), l -> ((Vlucht) l.get(0)).isVol());
+    }
+    static final String MAX_NE_ATTR = "de maximale waarde van de leeftijd van alle passagiers van de Vlucht ongelijk is aan de vertrektijd van de Vlucht";
+    static final String MAX_EQ_ATTR = "de maximale waarde van de leeftijd van alle passagiers van de Vlucht gelijk is aan de vertrektijd van de Vlucht";
+    static final String MIN_NE_ATTR = "de minimale waarde van de leeftijd van alle passagiers van de Vlucht ongelijk is aan de vertrektijd van de Vlucht";
+    static final Fixture[] PHASE_AGG_MINMAX_LEEG = {
+        aggMinMaxFix("§5.6 Tabel44 MAX(leeg) != vt(5) -> WAAR (leeg!=gevuld)", MAX_NE_ATTR, 5, new int[]{}),
+        aggMinMaxFix("§5.6 Tabel44 MAX(leeg) != vt(leeg) -> onwaar (leeg!=leeg)", MAX_NE_ATTR, null, new int[]{}),
+        aggMinMaxFix("§5.3 Tabel37 MAX(leeg) == vt(leeg) -> WAAR (leeg==leeg)", MAX_EQ_ATTR, null, new int[]{}),
+        aggMinMaxFix("§5.6 Tabel44 MIN(leeg) != vt(5) -> WAAR", MIN_NE_ATTR, 5, new int[]{}),
+        aggMinMaxFix("§5 MIN(leeg) < 12 -> onwaar (ordering over an empty MIN stays leeg)",
+                "de minimale waarde van de leeftijd van alle passagiers van de Vlucht kleiner is dan 12", null, new int[]{}),
+        aggMinMaxFix("§5.6 MAX(8) != vt(5) -> WAAR (non-empty control)", MAX_NE_ATTR, 5, new int[]{3, 8}),
+        aggMinMaxFix("§5.6 MAX(5) != vt(5) -> onwaar (non-empty control)", MAX_NE_ATTR, 5, new int[]{3, 5}),
+        aggMinMaxFix("§5.3 MAX(5) == vt(5) -> WAAR (non-empty control)", MAX_EQ_ATTR, 5, new int[]{3, 5}),
+    };
+    static final Object[] PHASE_AGG_MINMAX_LEEG_EXPECTED = {
+        Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, Boolean.TRUE,
+        Boolean.FALSE,
+        Boolean.TRUE, Boolean.FALSE, Boolean.TRUE,
+    };
+
     // ---- review wf_900d3055-a62 F2: an aggregation-in-condition vs a NAVIGATED RHS ("het aantal passagiers van de Vlucht
     //      groter is dan de afstand van de luchthaven van de Vlucht") must stay a SYMMETRIC marker — DRL markers, exec SKIPS
     //      (was: DRL markers but exec built a LIVE rule that THREW at fireAllRules). ----
@@ -5154,6 +5186,22 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(PHASE_AGG_GLOBAL_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §5.8.3 an empty MIN/MAX in a condition is LEEG — the condition-path accumulate binds count() so the empty-set
+     *  aggregate still fires (was silently onwaar): GELIJK leeg==leeg -> WAAR, ONGELIJK leeg!=gevuld -> WAAR / leeg!=leeg ->
+     *  onwaar, ordering -> onwaar. Absolute + DRL==exec parity + no skip. Closes 20260701-min-max-empty-set-gelijk-leeg. */
+    @Test void phase_AGG_MINMAX_LEEG_empty_set_is_spec_correct() {
+        for (int i = 0; i < PHASE_AGG_MINMAX_LEEG.length; i++) {
+            Fixture f = PHASE_AGG_MINMAX_LEEG[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_AGG_MINMAX_LEEG_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }

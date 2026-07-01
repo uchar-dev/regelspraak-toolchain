@@ -297,7 +297,7 @@ public final class ExecModelTranspiler {
         } else if (isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie fx && !isGelisteFold(fx)) {
             // (a ≥2-operand MINIMUM/MAXIMUM is a §5.8.3 LISTED concatenation fold, not an instance accumulate — it
             //  flows to the scalar path / concatenatieFold below.)
-            Agg agg = aggregatie(fx, doel.objecttype(), sVar);
+            Agg agg = aggregatie(fx, doel.objecttype(), sVar, false);   // value side: bare fold (empty -> no-op)
             if (agg == null) return skip("regel (aggregatie buiten Phase-C scope): " + r.naam());
             extra.add(agg.accItem());
             if (agg.isSom()) {
@@ -466,7 +466,7 @@ public final class ExecModelTranspiler {
      *  result. Mirrors DrlTranspiler.accumulate. null -> skip (unresolvable join, unstructured filter, a temporal /
      *  multi-operand fold, or a non-literal SOM fallback) — never a silently-wrong aggregate over EVERY instance. */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private Agg aggregatie(Expr.Functie f, Objecttype subject, Variable subjectVar) {
+    private Agg aggregatie(Expr.Functie f, Objecttype subject, Variable subjectVar, boolean leegCount) {
         Objecttype elem = f.elementObjecttype();
         if (elem == null) return null;
         Class<?> elemClass = factClass(elem);
@@ -543,6 +543,18 @@ public final class ExecModelTranspiler {
         };
         if (accClass == null) return null;
         PatternDSL.PatternDef src2 = src.bind(amtVar, (Function1) elemWaarde);
+        if (leegCount && (f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM)) {
+            // §5.8.3 an empty MIN/MAX is LEEG (§5.3 Tabel 37 / §5.6 Tabel 44), but MinAccumulateFunction/MaxAccumulateFunction
+            // bind NO result row over an EMPTY source, so a condition compare would never run (the rule silently reads onwaar).
+            // In a condition context bind count too (a row always exists); aggregatieVoorwaarde then treats it like a SOM
+            // (count==0 -> a null aggregate, no fallback) and rsAggVergelijk applies the leegwaarde cells. The VALUE side
+            // (leegCount=false) keeps the bare fold -> an empty value-aggregation simply does not fire (unchanged).
+            Variable cntVar = DSL.declarationOf(Object.class, "$cnt_" + (seq++));
+            RuleItemBuilder acc = DSL.accumulate(src2,
+                    DSL.accFunction(accFn("CountAccumulateFunction")).as(cntVar),
+                    DSL.accFunction(accClass, amtVar).as(resultVar));
+            return new Agg(acc, resultVar, cntVar, null, false);   // countVar set, no fallback, not SOM
+        }
         return new Agg(DSL.accumulate(src2, DSL.accFunction(accClass, amtVar).as(resultVar)), resultVar, null, null, false);
     }
 
@@ -551,7 +563,8 @@ public final class ExecModelTranspiler {
      *  {@code extra} is the accumulate CE (from {@link #aggregatie}) PLUS a constraint pattern on its result var (the
      *  agg value compared to the literal N via {@link RegelSpraakRuntime#rsAggVergelijk}, a leeg fold reading onwaar).
      *  A SOM binds the count var too for the §5.8.2 empty-sum leegwaarde. The exec mirror of the DRL accumulate + eval.
-     *  Scoped to a literal threshold and ordering/GELIJK (ONGELIJK -> follow-up); null otherwise (caller falls through). */
+     *  Scoped to a literal / own-attribute / numeric-scalar-global threshold and any comparison operator (ordering, GELIJK,
+     *  ONGELIJK); null otherwise (a navigated / multi- or non-numeric-global RHS, agg-vs-agg -> caller falls through). */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private Gate aggregatieVoorwaarde(Conditie.Vergelijking v, PatternDSL.PatternDef pattern, Objecttype subject, Variable subjectVar) {
         if (subject == null || subjectVar == null) return null;
@@ -576,7 +589,7 @@ public final class ExecModelTranspiler {
                      && (pr.parameter().datatype().isNumeriek() || pr.parameter().datatype().isPercentage()))) return null;
         Conditie.Operator op = linksAgg ? v.op() : mirrorOp(v.op());   // orient the aggregation on the LEFT (mirrorOp(ONGELIJK)=ONGELIJK, != symmetric)
         final String opStr = opString(op);
-        Agg agg = aggregatie(f, subject, subjectVar);
+        Agg agg = aggregatie(f, subject, subjectVar, true);   // condition side: bind count for MIN/MAX so an empty set fires the leeg compare
         if (agg == null) return null;
         Objecttype bewaard = valueSubject; valueSubject = subject;   // enable scalarWaarde's own-attr (value-path) read of the RHS
         WaardeFn rhs = scalarWaarde(ander);
@@ -598,8 +611,10 @@ public final class ExecModelTranspiler {
         List<RuleItemBuilder<?>> extra = new ArrayList<>();
         extra.add(agg.accItem());
         PatternDSL.PatternDef resultPat;
-        if (agg.isSom()) {
-            // §5.8.2 empty SOM (0 contributors) is the leegwaarde/fallback, not 0 — bind the sum, the count, and the subject.
+        if (agg.countVar() != null) {
+            // A count-bound aggregate: a SOM (empty -> the leegwaarde/fallback, not 0) OR a MIN/MAX (empty -> leeg, no
+            // fallback — the count forces a row for the empty set). Bind the result, the count, and the subject; the
+            // predicate reads count==0 -> the fallback (null for MIN/MAX) else the fold value.
             final WaardeFn fb = agg.somFallback();
             if (global == null) {
                 Predicate3<Object, Object, Object> pred = (sum, cnt, subj) -> {   // (resultVar=sum, countVar=count, subjectVar)
@@ -1728,7 +1743,7 @@ public final class ExecModelTranspiler {
         // §5.8/§13.4.14 an AGGREGATION (count / sum / totaal / min / max) as one side of a condition comparison -> a
         // result-constrained accumulate CE hoisted after the subject pattern (Gate.extra), the exec mirror of the DRL
         // accumulate + eval. A comparison that HAS an aggregation operand is routed EXCLUSIVELY here: aggregatieVoorwaarde
-        // returns the Gate, or null when it cannot lower it (a navigated / global RHS, ONGELIJK, agg-vs-agg) -> the whole
+        // returns the Gate, or null when it cannot lower it (a navigated / multi- or non-numeric-global RHS, agg-vs-agg) -> the whole
         // rule SKIPS. It must NOT fall through to the scalar / §5.5.5 navigated-comparison handlers below, which would
         // mis-build the aggregation LEFT into a LIVE crashing rule (review wf_900d3055-a62 F2). The DRL fall-through
         // markers safely, so only the exec needs this guard.
@@ -2898,7 +2913,7 @@ public final class ExecModelTranspiler {
             return (s, g, a) -> g.get(gn);
         }
         if (e instanceof Expr.Functie f && isAggregatieKind(f.kind())) {
-            Agg agg = aggregatie(f, subject, sVar);
+            Agg agg = aggregatie(f, subject, sVar, false);   // value/arith side: bare fold
             if (agg == null) return null;
             if (agg.isSom()) {
                 // §5.8.2 SOM inside arithmetic: ONE accumulate CE binds BOTH the contributor count and the sum;
