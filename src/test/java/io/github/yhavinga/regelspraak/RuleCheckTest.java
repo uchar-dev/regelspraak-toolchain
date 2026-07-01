@@ -916,6 +916,43 @@ class RuleCheckTest {
         assertTrue(m.errors().isEmpty(), () -> "een whole-year arithmetic operand had niet gemeld mogen worden: " + m.errors());
     }
 
+    @Test void totaal_van_niet_numerieke_operand_wordt_gemeld() {
+        // §4.20 Tabel 30 (totaal van / aggregeren in de tijd): the operand must be numeriek (met een eenheid per
+        // tijdseenheid). TOTAAL types its operand type, so "het totaal van <tekst>" was silently accepted. The
+        // NUMERIEK part is now enforced (the rate-unit part is carded).
+        String src = """
+            Objecttype de Ding
+                de naam Tekst;
+                de resultaatwaarde Numeriek (geheel getal);
+            Regel r
+                geldig altijd
+                    De resultaatwaarde van een Ding moet berekend worden als het totaal van de naam van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("totaal van vereist numerieke")),
+                () -> "verwachtte een operand-typefout voor totaal van, kreeg: " + m.errors());
+    }
+
+    @Test void schone_totaal_van_rate_operand_geen_valse_fout() {
+        // a numeric rate operand (EUR/mnd) must NOT trigger the numeric-operand check (the §7.1 temporal-aggregation
+        // path). Result carries the operand unit (functieType = eerste), so assign to a matching EUR/mnd target.
+        String src = """
+            Eenheidsysteem Geld
+                de euro EUR
+            Eenheidsysteem Tijd
+                de maand mnd
+            Objecttype de Ding
+                de tarief Numeriek (geheel getal) met eenheid EUR/mnd;
+                de maandtotaal Numeriek (geheel getal) met eenheid EUR/mnd;
+            Regel r
+                geldig altijd
+                    De maandtotaal van een Ding moet berekend worden als het totaal van de tarief van een Ding.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertFalse(m.errors().stream().anyMatch(d -> d.message().contains("totaal van vereist numerieke")),
+                () -> "een numeriek rate-operand had niet als niet-numeriek gemeld mogen worden: " + m.errors());
+    }
+
     @Test void schone_wortel_en_abs_geen_fout() {
         // controls: a numeric radicand/operand -> no false positive on either new gate.
         String wortel = MODEL + """

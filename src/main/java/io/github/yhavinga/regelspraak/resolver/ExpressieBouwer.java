@@ -869,6 +869,15 @@ final class ExpressieBouwer {
             // met 4 cijfers". EERSTE_PAASDAG always types Datum, so an illegal operand produced a Datum result with no
             // diagnostic.
             case EERSTE_PAASDAG -> paasdagOperandFout(typen);
+            // §4.20 Tabel 30 (totaal van / aggregeren in de tijd): the operand "moet numeriek zijn met een eenheid per
+            // tijdseenheid". Enforce the NUMERIEK part here (getalAggregatie, like MIN/MAX) — a non-numeriek totaal operand
+            // ("het totaal van <tekst>") was silently accepted (TOTAAL types its operand type). The stronger "eenheid PER
+            // TIJDSEENHEID" (rate) requirement is NOT enforced: a temporal attribute's declared type does not always carry a
+            // rate eenheid (the temporality lives in the timeline), so a rate-unit gate risks a false positive on the well-
+            // tested §7.1 temporal-aggregation path — carded (20260701-totaal-van-rate-unit-and-result-unit-tabel30). Unlike
+            // SOM (Tabel 21, carded), TOTAAL has no Percentage-operand fixture and Tabel 30 says "numeriek", so getalAggregatie
+            // (which excludes Percentage) is regression-free here (full gate green).
+            case TOTAAL -> Typering.getalAggregatie("totaal van", typen);
             case EERSTE  -> Typering.datumAggregatie("eerste van", typen);
             case LAATSTE -> Typering.datumAggregatie("laatste van", typen);
             // §6.12 / §13.4.17.21-.24: a time-of-day component is defined only on a datum-TIJD — a plain
