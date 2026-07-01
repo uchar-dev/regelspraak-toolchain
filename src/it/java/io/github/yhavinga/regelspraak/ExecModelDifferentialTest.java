@@ -3419,6 +3419,47 @@ class ExecModelDifferentialTest {
         Boolean.FALSE, Boolean.TRUE, Boolean.TRUE,
     };
 
+    // ---- §5.8 an aggregation-in-condition vs a numeric scalar Parameter-GLOBAL threshold ("... groter is dan de grens"):
+    //      was a symmetric marker (the exec rejected a non-empty rhs.globals(); the DRL gate rejected a ParameterRef). Now
+    //      the DRL reads the header-declared global by name, and the exec binds the Global directly into the result
+    //      constraint (the null-tolerant single-global idiom). The CRITICAL corner: an UNSET (leeg) global must still fire
+    //      the rule (bind null, not drop) — count>leeg -> onwaar (ordering), count!=leeg -> WAAR (Tabel 44 one-leeg). ----
+    static final String AGG_GLOBAL_SRC =
+        "Parameter de grens : Numeriek (geheel getal);\n" +
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de leeftijd Numeriek (geheel getal);\n" +
+        "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n" +
+        "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+        "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien %s.\n";
+    static Fixture aggGlobalFix(String naam, String cond, Integer grens, int[] leeftijds) {
+        String src = String.format(AGG_GLOBAL_SRC, cond);
+        Map<String, Object> g = grens == null ? Map.of() : Map.of("grens", new BigDecimal(grens));   // absent key -> UNSET (leeg) global
+        return new Fixture(naam, src,
+                () -> { List<Object> fs = new ArrayList<>(); Vlucht v = new Vlucht(); fs.add(v);
+                        for (int lt : leeftijds) { Passagier p = new Passagier(); p.setLeeftijd(new BigDecimal(lt)); p.setReis(v); fs.add(p); } return fs; },
+                g, l -> ((Vlucht) l.get(0)).isVol());
+    }
+    static final String CNT_GT_G = "het aantal passagiers van de Vlucht groter is dan de grens";
+    static final String CNT_NE_G = "het aantal passagiers van de Vlucht ongelijk is aan de grens";
+    static final String SOM_GT_G = "de som van de leeftijd van alle passagiers van de Vlucht groter is dan de grens";
+    static final Fixture[] PHASE_AGG_GLOBAL = {
+        aggGlobalFix("§5.8 count > grens(3): 4 -> WAAR", CNT_GT_G, 3, new int[]{1, 1, 1, 1}),
+        aggGlobalFix("§5.8 count > grens(3): 3 -> onwaar", CNT_GT_G, 3, new int[]{1, 1, 1}),
+        aggGlobalFix("§5.8 SOM > grens(100): 110 -> WAAR", SOM_GT_G, 100, new int[]{50, 60}),
+        aggGlobalFix("§5.8 SOM > grens(100): 90 -> onwaar", SOM_GT_G, 100, new int[]{50, 40}),
+        aggGlobalFix("§5.6 count != grens(3): 4 -> WAAR", CNT_NE_G, 3, new int[]{1, 1, 1, 1}),
+        aggGlobalFix("§5.6 count != grens(3): 3 -> onwaar", CNT_NE_G, 3, new int[]{1, 1, 1}),
+        aggGlobalFix("§5 count > grens(LEEG): threshold leeg -> onwaar (ordering)", CNT_GT_G, null, new int[]{1, 1, 1, 1}),
+        aggGlobalFix("§5.6 count != grens(LEEG): count gevuld != leeg -> WAAR (Tabel 44)", CNT_NE_G, null, new int[]{1, 1, 1, 1}),
+        aggGlobalFix("§5.8.2 SOM(leeg) > grens(100): empty-set aggregate leeg -> onwaar", SOM_GT_G, 100, new int[]{}),
+    };
+    static final Object[] PHASE_AGG_GLOBAL_EXPECTED = {
+        Boolean.TRUE, Boolean.FALSE,
+        Boolean.TRUE, Boolean.FALSE,
+        Boolean.TRUE, Boolean.FALSE,
+        Boolean.FALSE, Boolean.TRUE,
+        Boolean.FALSE,
+    };
+
     // ---- review wf_900d3055-a62 F2: an aggregation-in-condition vs a NAVIGATED RHS ("het aantal passagiers van de Vlucht
     //      groter is dan de afstand van de luchthaven van de Vlucht") must stay a SYMMETRIC marker — DRL markers, exec SKIPS
     //      (was: DRL markers but exec built a LIVE rule that THREW at fireAllRules). ----
@@ -5097,6 +5138,22 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(PHASE_AGG_ONGELIJK_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §5.8 an aggregation-in-condition vs a numeric scalar Parameter-GLOBAL threshold now FIRES in both back-ends (was a
+     *  symmetric marker): the DRL reads the header-declared global, the exec binds the Global into the result constraint.
+     *  Absolute + DRL==exec parity + no skip, incl. the UNSET (leeg) global corner (count>leeg onwaar, count!=leeg WAAR). */
+    @Test void phase_AGG_GLOBAL_threshold_is_spec_correct() {
+        for (int i = 0; i < PHASE_AGG_GLOBAL.length; i++) {
+            Fixture f = PHASE_AGG_GLOBAL[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_AGG_GLOBAL_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }

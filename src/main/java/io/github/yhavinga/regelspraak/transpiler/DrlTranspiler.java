@@ -2861,13 +2861,18 @@ public final class DrlTranspiler {
         if (linksAgg == rechtsAgg) return null;                 // exactly ONE side is an aggregation
         Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
         Expr ander = linksAgg ? v.rechts() : v.links();
-        // scope: a LITERAL or an OWN (non-navigated) attribute threshold (the eval has $subject in scope). A global /
-        // NAVIGATED / other RHS stays a marker in BOTH back-ends — the navigatieRol==null guard is load-bearing: a
-        // navigated RHS markers here (waarde() below) but the exec's scalarWaarde would build a LIVE crashing rule
-        // (review wf_900d3055-a62 F2), so it must be excluded symmetrically, not left to the marker fall-through.
+        // scope: a LITERAL, an OWN (non-navigated) attribute, or a numeric scalar Parameter-GLOBAL threshold (the eval has
+        // $subject and the header-declared globals in scope). A NAVIGATED / other RHS stays a marker in BOTH back-ends — the
+        // navigatieRol==null + containsKey guards are load-bearing: a navigated RHS markers here (waarde() below) but the
+        // exec's scalarWaarde would build a LIVE crashing rule (review wf_900d3055-a62 F2), so it must be excluded
+        // symmetrically, not left to the marker fall-through. The global must be numeric (isNumeriek/isPercentage — the DRL
+        // declares it a BigDecimal, matching rsAggVergelijk's `n`) and scalar (granulariteit==null): EXACTLY the set the exec
+        // tracks as a BigDecimal `globals` entry, so a tekst/datum/temporal global stays a symmetric marker.
         if (!(ander instanceof Expr.Literal)
                 && !(ander instanceof Expr.AttribuutRef ar && ar.navigatieRol() == null && ar.objecttype() == subject
-                     && subject.attributen.containsKey(ar.attribuut()))) return null;
+                     && subject.attributen.containsKey(ar.attribuut()))
+                && !(ander instanceof Expr.ParameterRef pr && pr.parameter().granulariteit() == null
+                     && (pr.parameter().datatype().isNumeriek() || pr.parameter().datatype().isPercentage()))) return null;
         Conditie.Operator op = linksAgg ? v.op() : omkeren(v.op());   // orient the aggregation on the LEFT (omkeren(ONGELIJK)=ONGELIJK, != symmetric)
         // Reuse the VALUE-side accumulate lowering: it registers the accumulate CE (count / BigDecimal sum with the §5.8.2
         // empty-sum leegwaarde branch / min·max coerced to BigDecimal) in `accumulates` and returns the RESULT value expr

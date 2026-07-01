@@ -571,7 +571,9 @@ public final class ExecModelTranspiler {
         // non-existent getter that THROWS at fireAllRules (review wf_900d3055-a62 F2). The containsKey guard rejects it.
         if (!(ander instanceof Expr.Literal)
                 && !(ander instanceof Expr.AttribuutRef ar && ar.navigatieRol() == null && ar.objecttype() == subject
-                     && subject.attributen.containsKey(ar.attribuut()))) return null;
+                     && subject.attributen.containsKey(ar.attribuut()))
+                && !(ander instanceof Expr.ParameterRef pr && pr.parameter().granulariteit() == null
+                     && (pr.parameter().datatype().isNumeriek() || pr.parameter().datatype().isPercentage()))) return null;
         Conditie.Operator op = linksAgg ? v.op() : mirrorOp(v.op());   // orient the aggregation on the LEFT (mirrorOp(ONGELIJK)=ONGELIJK, != symmetric)
         final String opStr = opString(op);
         Agg agg = aggregatie(f, subject, subjectVar);
@@ -579,23 +581,49 @@ public final class ExecModelTranspiler {
         Objecttype bewaard = valueSubject; valueSubject = subject;   // enable scalarWaarde's own-attr (value-path) read of the RHS
         WaardeFn rhs = scalarWaarde(ander);
         valueSubject = bewaard;
-        if (rhs == null || !rhs.globals().isEmpty()) return null;    // unlowerable / global RHS -> marker (follow-up)
-        final BiFunction<Object, Map<String, BigDecimal>, Object> rfn = rhs.fn();   // the threshold, read per subject
+        if (rhs == null) return null;
+        // A single numeric Parameter-GLOBAL threshold binds the Global directly into the result constraint (the null-tolerant
+        // single-global idiom, like §8.2's whole-period grens at ~L1692): the predicate reads the global's value per fire and
+        // hands it to rhs.fn() via bindGlobal. A LEEG global arrives as null (rsAggVergelijk applies the leegwaarde rules).
+        // >1 global / a non-numeric global stays a symmetric marker (the DRL gate excludes them identically).
+        Global<BigDecimal> gVar = null; String gNaam = null;
+        if (!rhs.globals().isEmpty()) {
+            if (rhs.globals().size() != 1) return null;
+            gNaam = rhs.globals().iterator().next();
+            gVar = globals.get(gNaam);
+            if (gVar == null) return null;   // non-numeric global -> not bindable here -> skip
+        }
+        final Global<BigDecimal> global = gVar; final String globalNaam = gNaam;
+        final BiFunction<Object, Map<String, BigDecimal>, Object> rfn = rhs.fn();   // the threshold, read per subject (+ bound global)
         List<RuleItemBuilder<?>> extra = new ArrayList<>();
         extra.add(agg.accItem());
         PatternDSL.PatternDef resultPat;
         if (agg.isSom()) {
             // §5.8.2 empty SOM (0 contributors) is the leegwaarde/fallback, not 0 — bind the sum, the count, and the subject.
             final WaardeFn fb = agg.somFallback();
-            Predicate3<Object, Object, Object> pred = (sum, cnt, subj) -> {   // (resultVar=sum, countVar=count, subjectVar)
-                Object aggVal = ((Number) cnt).longValue() == 0L ? (fb == null ? null : fb.fn().apply(subj, Map.of())) : sum;
-                return RegelSpraakRuntime.rsAggVergelijk(aggVal, RegelSpraakRuntime.toBd(rfn.apply(subj, Map.of())), opStr);
-            };
-            resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) agg.countVar(), (Variable) subjectVar, (Predicate3) pred);
+            if (global == null) {
+                Predicate3<Object, Object, Object> pred = (sum, cnt, subj) -> {   // (resultVar=sum, countVar=count, subjectVar)
+                    Object aggVal = ((Number) cnt).longValue() == 0L ? (fb == null ? null : fb.fn().apply(subj, Map.of())) : sum;
+                    return RegelSpraakRuntime.rsAggVergelijk(aggVal, RegelSpraakRuntime.toBd(rfn.apply(subj, Map.of())), opStr);
+                };
+                resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) agg.countVar(), (Variable) subjectVar, (Predicate3) pred);
+            } else {
+                Predicate4<Object, Object, Object, Object> pred = (sum, cnt, subj, gv) -> {   // + the bound global
+                    Object aggVal = ((Number) cnt).longValue() == 0L ? (fb == null ? null : fb.fn().apply(subj, Map.of())) : sum;
+                    return RegelSpraakRuntime.rsAggVergelijk(aggVal, RegelSpraakRuntime.toBd(rfn.apply(subj, bindGlobal(globalNaam, gv))), opStr);
+                };
+                resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) agg.countVar(), (Variable) subjectVar, (Variable) global, (Predicate4) pred);
+            }
         } else {                                                // count / totaal / min / max: the result var IS the agg value
-            Predicate2<Object, Object> pred = (res, subj) ->
-                    RegelSpraakRuntime.rsAggVergelijk(res, RegelSpraakRuntime.toBd(rfn.apply(subj, Map.of())), opStr);
-            resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) subjectVar, (Predicate2) pred);
+            if (global == null) {
+                Predicate2<Object, Object> pred = (res, subj) ->
+                        RegelSpraakRuntime.rsAggVergelijk(res, RegelSpraakRuntime.toBd(rfn.apply(subj, Map.of())), opStr);
+                resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) subjectVar, (Predicate2) pred);
+            } else {
+                Predicate3<Object, Object, Object> pred = (res, subj, gv) ->
+                        RegelSpraakRuntime.rsAggVergelijk(res, RegelSpraakRuntime.toBd(rfn.apply(subj, bindGlobal(globalNaam, gv))), opStr);
+                resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) subjectVar, (Variable) global, (Predicate3) pred);
+            }
         }
         extra.add(resultPat);
         return new Gate(pattern, extra);
