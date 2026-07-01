@@ -560,9 +560,18 @@ public final class ExecModelTranspiler {
         if (linksAgg == rechtsAgg) return null;                 // exactly ONE side is an aggregation
         Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
         Expr ander = linksAgg ? v.rechts() : v.links();
-        // scope: a LITERAL or an OWN-attribute threshold (the constraint binds the subject var, so the RHS reads it). A
-        // global / navigated / other RHS stays a marker (scalarWaarde markers it, or !AttribuutRef) — kept at DRL parity.
-        if (!(ander instanceof Expr.Literal) && !(ander instanceof Expr.AttribuutRef)) return null;
+        // scope: a LITERAL or an OWN (non-navigated) attribute threshold (the constraint binds the subject var, so the RHS
+        // reads it). A NAVIGATED RHS must be EXCLUDED (navigatieRol==null): with valueSubject set, scalarWaarde would build
+        // a working navReader here and a LIVE rule that THROWS at fireAllRules while the DRL only markers (review
+        // wf_900d3055-a62 F2 — asymmetric marker + exec crash). A global / other RHS also stays a symmetric marker.
+        // A genuine OWN scalar attribute of the subject: navigatieRol==null AND objecttype==subject AND the name is a REAL
+        // attribute of the subject (subject.attributen). The last clause is load-bearing: a navigation the resolver could
+        // not encode ("de afstand van de luchthaven van de Vlucht") can surface as an AttribuutRef with navRol==null and
+        // objecttype==subject yet a name that is NOT the subject's own — scalarWaarde would then build a reader for a
+        // non-existent getter that THROWS at fireAllRules (review wf_900d3055-a62 F2). The containsKey guard rejects it.
+        if (!(ander instanceof Expr.Literal)
+                && !(ander instanceof Expr.AttribuutRef ar && ar.navigatieRol() == null && ar.objecttype() == subject
+                     && subject.attributen.containsKey(ar.attribuut()))) return null;
         Conditie.Operator op = linksAgg ? v.op() : mirrorOp(v.op());   // orient the aggregation on the LEFT
         if (op == Conditie.Operator.ONGELIJK) return null;      // §5.6 Tabel 44 leeg-vs-gevuld ONGELIJK -> follow-up
         final String opStr = opString(op);
@@ -591,6 +600,13 @@ public final class ExecModelTranspiler {
         }
         extra.add(resultPat);
         return new Gate(pattern, extra);
+    }
+
+    /** Does the comparison have an aggregation (count/sum/totaal/min/max) as either operand? Such a comparison is routed
+     *  EXCLUSIVELY through {@link #aggregatieVoorwaarde} (skip if unlowerable) — never the scalar/navigated handlers. */
+    private static boolean heeftAggregatieOperand(Conditie.Vergelijking v) {
+        return (v.links() instanceof Expr.Functie fl && isAggregatieKind(fl.kind()))
+                || (v.rechts() instanceof Expr.Functie fr && isAggregatieKind(fr.kind()));
     }
 
     /** The rsAggVergelijk op-string for a comparison operator (mirrors DrlTranspiler.drlOp; ONGELIJK is gated out upstream). */
@@ -1681,13 +1697,15 @@ public final class ExecModelTranspiler {
             }
             return null;   // >1 global / unresolved -> skip
         }
-        // §5.8/§13.4.14 a COUNT aggregation as one side of a condition comparison ("het aantal X van Y <op> N") -> a
-        // result-constrained accumulate CE hoisted after the subject pattern (Gate.extra) — the exec mirror of the DRL
-        // `Number(intValue <op> N) from accumulate(...)`. Scoped to AANTAL + a literal threshold. Before the leaf fallthrough.
-        if (c instanceof Conditie.Vergelijking cv) {
-            Gate agg = aggregatieVoorwaarde(cv, pattern, subject, subjectVar);
-            if (agg != null) return agg;
-        }
+        // §5.8/§13.4.14 an AGGREGATION (count / sum / totaal / min / max) as one side of a condition comparison -> a
+        // result-constrained accumulate CE hoisted after the subject pattern (Gate.extra), the exec mirror of the DRL
+        // accumulate + eval. A comparison that HAS an aggregation operand is routed EXCLUSIVELY here: aggregatieVoorwaarde
+        // returns the Gate, or null when it cannot lower it (a navigated / global RHS, ONGELIJK, agg-vs-agg) -> the whole
+        // rule SKIPS. It must NOT fall through to the scalar / §5.5.5 navigated-comparison handlers below, which would
+        // mis-build the aggregation LEFT into a LIVE crashing rule (review wf_900d3055-a62 F2). The DRL fall-through
+        // markers safely, so only the exec needs this guard.
+        if (c instanceof Conditie.Vergelijking cv && heeftAggregatieOperand(cv))
+            return aggregatieVoorwaarde(cv, pattern, subject, subjectVar);
         // §8.1.7 far-side "heeft een <rol>": the reference lives on the to-many filler, so this is an exists-join —
         // a SEPARATE rule item that cannot live inside the subject pattern. It binds the filler against $subject.
         if (c instanceof Conditie.VerreRollidmaatschap vr) {

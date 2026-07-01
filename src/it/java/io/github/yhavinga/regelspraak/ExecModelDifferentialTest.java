@@ -3371,6 +3371,36 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_AGG_RHS_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, Boolean.FALSE };
 
+    // ---- §5 Tabel 37 GELIJK leegwaarde for an aggregation-in-condition (review wf_900d3055-a62 F1): an aggregation
+    //      GELIJK a threshold where BOTH are leeg -> WAAR (Numeriek gelijk aan); one leeg -> onwaar. An empty SOM is leeg,
+    //      a null own-attr threshold is leeg. rsAggVergelijk must return WAAR for op="==" both-null. ----
+    static Fixture aggGelijkFix(String naam, Integer vt, int[] leeftijds) {
+        String src = String.format(AGG_RHS_SRC, "de som van de leeftijd van alle passagiers van de Vlucht gelijk is aan de vertrektijd van de Vlucht");
+        return new Fixture(naam, src,
+                () -> { List<Object> fs = new ArrayList<>(); Vlucht v = new Vlucht(); if (vt != null) v.setVertrektijd(new BigDecimal(vt)); fs.add(v);
+                        for (int lt : leeftijds) { Passagier p = new Passagier(); p.setLeeftijd(new BigDecimal(lt)); p.setReis(v); fs.add(p); } return fs; },
+                Map.of(), l -> ((Vlucht) l.get(0)).isVol());
+    }
+    static final Fixture[] PHASE_AGG_GELIJK = {
+        aggGelijkFix("§5 Tabel37 SOM(leeg) == vt(leeg) -> WAAR (both-leeg)", null, new int[]{}),
+        aggGelijkFix("§5 SOM(5) == vt(leeg) -> onwaar (X==leeg)", null, new int[]{5}),
+        aggGelijkFix("§5 SOM(leeg) == vt(0) -> onwaar (leeg==Y)", 0, new int[]{}),
+        aggGelijkFix("§5 SOM(5) == vt(5) -> WAAR", 5, new int[]{5}),
+        aggGelijkFix("§5 SOM(5) == vt(6) -> onwaar", 6, new int[]{5}),
+    };
+    static final Object[] PHASE_AGG_GELIJK_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.FALSE, Boolean.TRUE, Boolean.FALSE };
+
+    // ---- review wf_900d3055-a62 F2: an aggregation-in-condition vs a NAVIGATED RHS ("het aantal passagiers van de Vlucht
+    //      groter is dan de afstand van de luchthaven van de Vlucht") must stay a SYMMETRIC marker — DRL markers, exec SKIPS
+    //      (was: DRL markers but exec built a LIVE rule that THREW at fireAllRules). ----
+    static final String AGG_NAV_RHS_SRC =
+        "Objecttype de Luchthaven (mv: Luchthavens)\n    de afstand Numeriek (geheel getal);\n" +
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+        "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n" +
+        "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+        "Feittype vertrek van vlucht\n    de vlucht Vlucht\n    de luchthaven Luchthaven\nEén vlucht heeft één luchthaven\n" +
+        "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien het aantal passagiers van de Vlucht groter is dan de afstand van de luchthaven van de Vlucht.\n";
+
     static final Fixture[] PHASE_F = {
         // A1 §7.1: the total weights each tijdvak by its month span — 12×10 + 6×11 = 186.
         single("§7.1 totaal van temporeel attribuut (12×10 + 6×11 = 186)",
@@ -5009,6 +5039,30 @@ class ExecModelDifferentialTest {
             assertEquals(PHASE_AGG_RHS_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
+    }
+    /** §5 Tabel 37 GELIJK leegwaarde for an aggregation-in-condition (review wf_900d3055-a62 F1): both-leeg -> WAAR,
+     *  one-leeg -> onwaar, in BOTH back-ends (rsAggVergelijk). */
+    @Test void phase_AGG_GELIJK_leegwaarde_is_spec_correct() {
+        for (int i = 0; i < PHASE_AGG_GELIJK.length; i++) {
+            Fixture f = PHASE_AGG_GELIJK[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_AGG_GELIJK_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** review wf_900d3055-a62 F2: an aggregation-in-condition vs a NAVIGATED RHS must be a SYMMETRIC marker — DRL markers
+     *  AND exec SKIPS (no live rule, no ConstraintEvaluationException at fireAllRules). */
+    @Test void phase_AGG_navigated_rhs_is_symmetric_marker() {
+        RegelSpraakModel m = Resolver.resolve(AGG_NAV_RHS_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+        assertTrue(DrlTranspiler.transpile(m).contains("/* TODO"), () -> "DRL must MARKER the navigated-RHS aggregation condition");
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertFalse(em.overgeslagen().isEmpty(), () -> "exec must SKIP the navigated-RHS aggregation condition (not build a live crashing rule)");
     }
     @Test void phase_82_gehele_periode_matches_drl_back_end()      { runDifferential("Phase 82", PHASE_82, 10); }
     @Test void phase_82_kenmerk_matches_drl_back_end()             { runDifferential("Phase 82 kenmerk", PHASE_82_KENMERK, 2); }

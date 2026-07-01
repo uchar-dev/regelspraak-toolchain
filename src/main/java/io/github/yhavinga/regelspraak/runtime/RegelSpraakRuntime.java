@@ -157,8 +157,10 @@ public final class RegelSpraakRuntime {
      *  a leeg operand). Coerces the agg (a Long count or a BigDecimal fold) to BigDecimal by value. Byte-identical mirror
      *  of the DRL {@code rsAggVergelijk} function. */
     public static boolean rsAggVergelijk(Object agg, BigDecimal n, String op) {
-        if (agg == null || n == null) return false;
-        int c = new BigDecimal(agg.toString()).compareTo(n);
+        BigDecimal a = agg == null ? null : new BigDecimal(agg.toString());
+        if (a == null || n == null)
+            return op.equals("==") && a == null && n == null;   // §5 Tabel 37: GELIJK both-leeg -> WAAR; any other leeg -> onwaar (ordering Tabel 33 / one-leeg GELIJK)
+        int c = a.compareTo(n);
         return switch (op) {
             case ">" -> c > 0;   case ">=" -> c >= 0;
             case "<" -> c < 0;   case "<=" -> c <= 0;

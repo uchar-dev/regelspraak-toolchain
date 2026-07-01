@@ -2861,9 +2861,13 @@ public final class DrlTranspiler {
         if (linksAgg == rechtsAgg) return null;                 // exactly ONE side is an aggregation
         Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
         Expr ander = linksAgg ? v.rechts() : v.links();
-        // scope: a LITERAL or an OWN-attribute threshold (the eval has $subject in scope). A global / navigated / other
-        // RHS stays a marker (operand() below markers it, or it is not an AttribuutRef) — a follow-up, kept at exec parity.
-        if (!(ander instanceof Expr.Literal) && !(ander instanceof Expr.AttribuutRef)) return null;
+        // scope: a LITERAL or an OWN (non-navigated) attribute threshold (the eval has $subject in scope). A global /
+        // NAVIGATED / other RHS stays a marker in BOTH back-ends — the navigatieRol==null guard is load-bearing: a
+        // navigated RHS markers here (waarde() below) but the exec's scalarWaarde would build a LIVE crashing rule
+        // (review wf_900d3055-a62 F2), so it must be excluded symmetrically, not left to the marker fall-through.
+        if (!(ander instanceof Expr.Literal)
+                && !(ander instanceof Expr.AttribuutRef ar && ar.navigatieRol() == null && ar.objecttype() == subject
+                     && subject.attributen.containsKey(ar.attribuut()))) return null;
         Conditie.Operator op = linksAgg ? v.op() : omkeren(v.op());   // orient the aggregation on the LEFT
         if (op == Conditie.Operator.ONGELIJK) return null;      // §5.6 Tabel 44 leeg-vs-gevuld ONGELIJK -> follow-up
         // Reuse the VALUE-side accumulate lowering: it registers the accumulate CE (count / BigDecimal sum with the §5.8.2
@@ -2893,8 +2897,9 @@ public final class DrlTranspiler {
         String fn = "rsAggVergelijk";
         hulpFuncties.putIfAbsent(fn,
             "function boolean " + fn + "(Object agg, java.math.BigDecimal n, String op) {\n"
-          + "    if (agg == null || n == null) return false;\n"
-          + "    int c = new java.math.BigDecimal(agg.toString()).compareTo(n);\n"
+          + "    java.math.BigDecimal a = agg == null ? null : new java.math.BigDecimal(agg.toString());\n"
+          + "    if (a == null || n == null) return op.equals(\"==\") && a == null && n == null;\n"   // §5 Tabel 37: GELIJK both-leeg -> WAAR
+          + "    int c = a.compareTo(n);\n"
           + "    if (op.equals(\">\")) return c > 0;\n"
           + "    if (op.equals(\">=\")) return c >= 0;\n"
           + "    if (op.equals(\"<\")) return c < 0;\n"
