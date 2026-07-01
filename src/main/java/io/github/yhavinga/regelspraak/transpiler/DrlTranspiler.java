@@ -1169,12 +1169,14 @@ public final class DrlTranspiler {
             io.github.yhavinga.regelspraak.model.Eenheid durEenheid = durExpr.type().eenheidOf();
             String dagsoortUnit = durEenheid != null ? model.dagsoortVoorEenheid(durEenheid.afkorting()) : null;
             if (dagsoortUnit != null) {
-                if (datumExpr.type() instanceof Datatype.DatumTijd)
-                    return Frag.todo("datum-rekenkunde: een dagsoort-eenheid vereist een datum (in dagen) operand (§6.11)", b.bron());
-                String stapFn = dagsoortDuurFunctie(dagsoortUnit);
+                // §4.1/§4.2 Tabel 2/5 rule 2: a datum-EN-tijd left operand yields a datum-en-tijd result — step over the
+                // date part and re-attach the time-of-day (rsDatumTijdPlus_<Naam>). A Datum-in-dagen keeps the LocalDate path.
+                boolean datumTijd = datumExpr.type() instanceof Datatype.DatumTijd;
+                String stapFn = datumTijd ? dagsoortDuurTijdFunctie(dagsoortUnit) : dagsoortDuurFunctie(dagsoortUnit);
                 Frag d = arg.apply(datumExpr), n = arg.apply(durExpr);
                 if (stapFn == null || d.marker() || n.marker()) return Frag.todo("datum-rekenkunde (dagsoort)", b.bron());
-                return Frag.from("((java.time.LocalDate) " + stapFn + "(" + d.text() + ", " + n.text() + ", " + optellen + "))", d, n);
+                String cast = datumTijd ? "java.time.LocalDateTime" : "java.time.LocalDate";
+                return Frag.from("((" + cast + ") " + stapFn + "(" + d.text() + ", " + n.text() + ", " + optellen + "))", d, n);
             }
             String unit = chronoUnit(durExpr.type());
             if (unit == null) return Frag.todo("datum-rekenkunde (dagsoort/onbekende tijdseenheid)", b.bron());
@@ -3079,6 +3081,24 @@ public final class DrlTranspiler {
           + "        if (" + predFn + "(d)) geteld++;\n"
           + "    }\n"
           + "    return d;\n"
+          + "}\n\n");
+        return fn;
+    }
+
+    /** Register (idempotently) and name a DRL {@code function LocalDateTime rsDatumTijdPlus_<Naam>(datum, aantal, optellen)}
+     *  for §6.11 "datum-EN-tijd ± N &lt;dagsoort&gt;": §4.1/§4.2 Tabel 2/5 rule 2 — the result is a datum-en-tijd, so step
+     *  over the DATE part via rsDatumPlus_<Naam> and re-attach the original time-of-day. A leeg datum stays leeg. null when
+     *  the dagsoort's definitie cannot be compiled. Registers rsDatumPlus_<Naam> (which it delegates to) as a side effect. */
+    private String dagsoortDuurTijdFunctie(String dagsoortNaam) {
+        String stapFn = dagsoortDuurFunctie(dagsoortNaam);   // registers rsDatumPlus_<Naam> + its predicate
+        if (stapFn == null) return null;
+        String fn = "rsDatumTijdPlus_" + ident(dagsoortNaam, true);
+        if (hulpFuncties.containsKey(fn)) return fn;
+        hulpFuncties.put(fn,
+            "function java.time.LocalDateTime " + fn + "(java.time.LocalDateTime datum, java.math.BigDecimal aantal, boolean optellen) {\n"
+          + "    if (datum == null) return null;\n"
+          + "    java.time.LocalDate d = " + stapFn + "(datum.toLocalDate(), aantal, optellen);\n"
+          + "    return d == null ? null : d.atTime(datum.toLocalTime());\n"
           + "}\n\n");
         return fn;
     }

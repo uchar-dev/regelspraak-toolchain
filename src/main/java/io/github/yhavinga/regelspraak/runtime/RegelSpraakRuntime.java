@@ -320,6 +320,17 @@ public final class RegelSpraakRuntime {
         return d;
     }
 
+    /** §6.11 "datum-en-tijd ± N &lt;dagsoort&gt;": §4.1/§4.2 Tabel 2/5 rule 2 — adding a time value to a datum-EN-tijd
+     *  operand yields a datum-en-tijd result (the time-of-day is preserved). A dagsoort is day-granular, so step over
+     *  the DATE part via {@link #rsDatumPlusDagsoort} and re-attach the original time-of-day. A leeg datum stays leeg.
+     *  Byte-identical mirror of the DRL {@code rsDatumTijdPlus_<Naam>} wrapper. */
+    public static java.time.LocalDateTime rsDatumTijdPlusDagsoort(java.time.LocalDateTime datum, BigDecimal aantal,
+            java.util.function.Predicate<java.time.LocalDate> isDagsoort, boolean optellen) {
+        if (datum == null) return null;        // leeg datum -> leeg
+        java.time.LocalDate d = rsDatumPlusDagsoort(datum.toLocalDate(), aantal, isDagsoort, optellen);
+        return d == null ? null : d.atTime(datum.toLocalTime());   // re-attach the time-of-day (§4 rule 2)
+    }
+
     /** §6.10 "de (absolute) tijdsduur van A tot B in &lt;dagsoort&gt;": COUNT the dagsoort days in the half-open
      *  interval (van, tot] — consistent with §6.11's "X telt niet mee". Signed (negative when tot is earlier than
      *  van), absolute when asked; any leeg operand -> leeg (§6.10 Tabel 14). Byte-identical mirror of the DRL

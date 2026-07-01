@@ -1353,12 +1353,17 @@ public final class ExecModelTranspiler {
         io.github.yhavinga.regelspraak.model.Eenheid durEenheid = durExpr.type().eenheidOf();
         String dagsoortUnit = durEenheid != null ? model.dagsoortVoorEenheid(durEenheid.afkorting()) : null;
         if (dagsoortUnit != null) {
-            if (datumExpr.type() instanceof Datatype.DatumTijd) return null;
+            // §4.1/§4.2 Tabel 2/5 rule 2: a datum-EN-tijd left operand yields a datum-en-tijd result — step over the date
+            // part and re-attach the time-of-day (rsDatumTijdPlusDagsoort). A Datum-in-dagen keeps the LocalDate path.
+            boolean datumTijd = datumExpr.type() instanceof Datatype.DatumTijd;
             java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(dagsoortUnit);
             WaardeFn df0 = scalarWaarde(datumExpr), nf0 = scalarWaarde(durExpr);
             if (pred == null || df0 == null || nf0 == null) return null;
             BiFunction<Object, Map<String, BigDecimal>, Object> dfn0 = df0.fn(), nfn0 = nf0.fn();
             Set<String> g0 = new LinkedHashSet<>(df0.globals()); g0.addAll(nf0.globals());
+            if (datumTijd)
+                return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsDatumTijdPlusDagsoort(
+                        (java.time.LocalDateTime) dfn0.apply(s, gm), (BigDecimal) nfn0.apply(s, gm), pred, optellen), g0);
             return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsDatumPlusDagsoort(
                     (java.time.LocalDate) dfn0.apply(s, gm), (BigDecimal) nfn0.apply(s, gm), pred, optellen), g0);
         }

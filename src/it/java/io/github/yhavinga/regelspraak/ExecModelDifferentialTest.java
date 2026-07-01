@@ -400,6 +400,59 @@ class ExecModelDifferentialTest {
         dagsoortDuurFix("§6.11 leeg datum -> leeg", null, 2),
     };
 
+    // ---- §6.11 datum-EN-TIJD ± N <dagsoort>: §4.1/§4.2 Tabel 2/5 rule 2 — adding/subtracting a time value to a
+    //      datum-EN-tijd left operand ALWAYS yields a datum-en-tijd result, so step over the DATE part (counting the
+    //      §9.8 kerstdag days) and RE-ATTACH the original time-of-day. Was a symmetric marker (DrlTranspiler §6.11
+    //      "vereist een datum in dagen", ExecModel returned null); now DRL rsDatumTijdPlus_Kerstdag (wraps
+    //      rsDatumPlus_Kerstdag) <-> RegelSpraakRuntime.rsDatumTijdPlusDagsoort. Time-of-day preservation is the new
+    //      behavior; the +0 / X-never-counts / leeg / MIN / year-boundary corners ride the shared date loop. ----
+    static final String DAGSOORT_DUUR_DTD_SRC =
+            """
+            Dagsoort de kerstdag (mv: kerstdagen)
+            Regel Kerstdag
+                geldig altijd
+                    Een dag is een kerstdag
+                    indien de dag aan alle volgende voorwaarden voldoet:
+                    - de maand uit (de dag) is gelijk aan 12
+                    - de dag voldoet aan ten minste één van de volgende voorwaarden:
+                        .. de dag uit (de dag) is gelijk aan 25
+                        .. de dag uit (de dag) is gelijk aan 26.
+            Objecttype de Vlucht
+                de uitstelduur Numeriek (geheel getal) met eenheid kerstdagen;
+                de vertrekmoment Datum en tijd in millisecondes;
+                de aankomstmoment Datum en tijd in millisecondes;
+            Regel Bereken
+                geldig altijd
+                    De aankomstmoment van een Vlucht moet berekend worden als de vertrekmoment van de Vlucht plus de uitstelduur van de Vlucht.
+            """;
+    static final String DAGSOORT_DUUR_DTD_MIN_SRC = DAGSOORT_DUUR_DTD_SRC.replace("plus de uitstelduur", "min de uitstelduur");
+    static Fixture dagsoortDuurDtdFix(String naam, String src, java.time.LocalDateTime vm, int n) {
+        return new Fixture(naam, src,
+                () -> { Vlucht v = new Vlucht(); if (vm != null) v.setVertrekmoment(vm); v.setUitstelduur(new BigDecimal(n)); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).getAankomstmoment());
+    }
+    static final Fixture[] PHASE_DAGSOORT_DUUR_DTD = {
+        dagsoortDuurDtdFix("§6.11/§4 rule2: +2 kerstdagen, tijd behouden (20-12 14:30:15 -> 26-12 14:30:15)",
+                DAGSOORT_DUUR_DTD_SRC, java.time.LocalDateTime.of(2024, 12, 20, 14, 30, 15), 2),
+        dagsoortDuurDtdFix("§6.11/§4 rule2: X (25-12) telt niet mee, tijd behouden (25-12 23:59:59 -> 26-12 23:59:59)",
+                DAGSOORT_DUUR_DTD_SRC, java.time.LocalDateTime.of(2024, 12, 25, 23, 59, 59), 1),
+        dagsoortDuurDtdFix("§6.11/§4 rule2: +1 kerstdag over de jaargrens, tijd behouden (26-12-2024 12:00 -> 25-12-2025 12:00)",
+                DAGSOORT_DUUR_DTD_SRC, java.time.LocalDateTime.of(2024, 12, 26, 12, 0), 1),
+        dagsoortDuurDtdFix("§6.11/§4 rule2: +0 kerstdagen -> datum-tijd ongewijzigd (tijd behouden)",
+                DAGSOORT_DUUR_DTD_SRC, java.time.LocalDateTime.of(2024, 12, 20, 8, 0), 0),
+        dagsoortDuurDtdFix("§6.11/§4 rule2: leeg datum-tijd -> leeg", DAGSOORT_DUUR_DTD_SRC, null, 2),
+        dagsoortDuurDtdFix("§6.11/§4 rule2: MIN 1 kerstdag (stap terug), tijd behouden (27-12 10:15 -> 26-12 10:15)",
+                DAGSOORT_DUUR_DTD_MIN_SRC, java.time.LocalDateTime.of(2024, 12, 27, 10, 15), 1),
+    };
+    static final Object[] PHASE_DAGSOORT_DUUR_DTD_EXPECTED = {
+        java.time.LocalDateTime.of(2024, 12, 26, 14, 30, 15),
+        java.time.LocalDateTime.of(2024, 12, 26, 23, 59, 59),
+        java.time.LocalDateTime.of(2025, 12, 25, 12, 0),
+        java.time.LocalDateTime.of(2024, 12, 20, 8, 0),
+        null,
+        java.time.LocalDateTime.of(2024, 12, 26, 10, 15),
+    };
+
     // ---- §6.10 tijdsduur van A tot B in <dagsoort> ("in hele kerstdagen"): count the §9.8 kerstdag days in the
     //      half-open interval (van, tot] (the §6.11-consistent reading; signed; absolute when asked). Both back-ends
     //      share the loop (DRL rsTijdsduur_Kerstdag <-> RegelSpraakRuntime.rsTijdsduurDagsoort). ----
@@ -5510,6 +5563,22 @@ class ExecModelDifferentialTest {
         }
     }
     @Test void phase_dagsoort_duur_matches_drl_back_end()         { runDifferential("Phase DAGSOORT DUUR", PHASE_DAGSOORT_DUUR, 5); }
+    /** §6.11 + §4.1/§4.2 Tabel 2/5 rule 2: "datum-EN-tijd ± N <dagsoort>" now FIRES in both back-ends — step over the
+     *  DATE part and re-attach the time-of-day (was a symmetric marker). Closed-form -> assert the ABSOLUTE datum-tijd
+     *  (time-of-day preserved, X-never-counts, +0, leeg, MIN, year-boundary) + DRL==exec parity + no exec skip. */
+    @Test void phase_dagsoort_duur_datum_en_tijd_is_spec_correct() {
+        for (int i = 0; i < PHASE_DAGSOORT_DUUR_DTD.length; i++) {
+            Fixture f = PHASE_DAGSOORT_DUUR_DTD[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_DAGSOORT_DUUR_DTD_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_dagsoort_tijdsduur_matches_drl_back_end()    { runDifferential("Phase DAGSOORT TDS", PHASE_DAGSOORT_TDS, 6); }
     @Test void phase_dagsoort_cross_en_datearith_matches_drl_back_end() { runDifferential("Phase DAGSOORT X", PHASE_DAGSOORT_X, 5); }
     @Test void phase_dagsoort_over_global_matches_drl_back_end()        { runDifferential("Phase DAGSOORT GLOBAL", PHASE_DAGSOORT_GLOBAL, 5); }
