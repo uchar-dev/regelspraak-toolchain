@@ -30,6 +30,43 @@ class RuleCheckTest {
                 () -> "verwachtte een begrenzing-fout, kreeg: " + m.errors());
     }
 
+    @Test void tijdsduur_met_gemengde_tijd_precisie_wordt_gemeld() {
+        // §4.16/§4.17 (typeringen L676/L703, normative): the two operands (van, tot) of a (absolute) tijdsduur must have
+        // the SAME tijd-precisie. A Datum-in-dagen tot a Datum-en-tijd is spec-illegal — before this check it silently
+        // computed a meaningless duration in BOTH back-ends.
+        String hdr = """
+            Eenheidsysteem Tijd
+                de maand mnd
+                het jaar jr = 12 mnd
+            Objecttype de Klok
+                de reismoment Datum en tijd in millisecondes;
+                de peildatum Datum in dagen;
+                de reisdatum Datum in dagen;
+                de jaartal Numeriek (niet-negatief geheel getal) met eenheid jr;
+            """;
+        String mixed = hdr + """
+            Regel j
+                geldig altijd
+                    De jaartal van een Klok moet gesteld worden op de tijdsduur van de reismoment van een Klok tot de peildatum van een Klok in hele jaren.
+            """;
+        RegelSpraakModel mm = Resolver.resolve(mixed);
+        assertTrue(mm.errors().stream().anyMatch(d -> d.message().contains("tijd-precisie") && d.message().contains("4.16")),
+                () -> "verwachtte een §4.16 tijdsduur-precisie-fout, kreeg: " + mm.errors());
+        // the ABSOLUTE tijdsduur carries the same §4.17 rule
+        RegelSpraakModel ma = Resolver.resolve(mixed.replace("de tijdsduur van", "de absolute tijdsduur van"));
+        assertTrue(ma.errors().stream().anyMatch(d -> d.message().contains("tijd-precisie")),
+                () -> "absolute tijdsduur met gemengde precisie had gemeld moeten worden, kreeg: " + ma.errors());
+        // SAME precision (both Datum in dagen) -> NO such fout (control; still resolves + fires)
+        String same = hdr + """
+            Regel j
+                geldig altijd
+                    De jaartal van een Klok moet gesteld worden op de tijdsduur van de reisdatum van een Klok tot de peildatum van een Klok in hele jaren.
+            """;
+        RegelSpraakModel ms = Resolver.resolve(same);
+        assertTrue(ms.errors().stream().noneMatch(d -> d.message().contains("tijd-precisie")),
+                () -> "een gelijk-precisie tijdsduur mag geen §4.16-fout geven: " + ms.errors());
+    }
+
     @Test void tekstreeks_met_guillemets_lowert_naar_een_concat_niet_een_fout() {
         // §5.4/§13.4.17.9: a "…«expressie»…" tekstreeks now SUBSTITUTES its «…» parts — the lexer splits the quoted
         // span (TEKST_MODE) into literal chunks and «expressie» escapes, so it resolves without error and lowers to an

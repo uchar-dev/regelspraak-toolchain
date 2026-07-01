@@ -861,6 +861,8 @@ final class ExpressieBouwer {
             // "Datum in dagen" has no hour/minute/second. The DATE parts (jaar/maand/dag) accept any date, so
             // they are NOT checked. Onbekend is skipped (no claim); only a concrete DatumInDagen is a violation.
             case UUR_UIT, MINUUT_UIT, SECONDE_UIT, MILLISECONDE_UIT -> tijdComponentFout(typen);
+            // §4.16/§4.17 typeringen L676/L703: the two operands of a (absolute) tijdsduur must have the SAME tijd-precisie.
+            case TIJDSDUUR, ABSOLUTE_TIJDSDUUR -> tijdsduurPrecisieFout(typen);
             default -> null;
         };
         if (fout != null)
@@ -875,6 +877,22 @@ final class ExpressieBouwer {
         if (typen.size() != 1 || !(typen.get(0) instanceof Datatype.DatumInDagen)) return null;
         return "een tijd-component (uur/minuut/seconde/milliseconde uit) vereist een datum-tijd, kreeg "
                 + typen.get(0).naam() + " (§13.4.17.21-.24)";
+    }
+
+    /** §4.16/§4.17 (typeringen L676/L703, normative): the two operands (van, tot) of a (absolute) tijdsduur must have the
+     *  SAME tijd-precisie — both {@link Datatype.DatumInDagen} or both {@link Datatype.DatumTijd}. A concrete mixed pair
+     *  (Datum-in-dagen tot Datum-en-tijd) is spec-illegal but otherwise silently computes a meaningless duration. Onbekend /
+     *  a non-datum operand is skipped (no claim / a separate operand-type contract). Returns the diagnostic, or null. */
+    private static String tijdsduurPrecisieFout(List<Datatype> typen) {
+        Datatype ref = null;
+        for (Datatype d : typen) {
+            if (d.isOnbekend() || !d.isDatum()) continue;
+            if (ref == null) ref = d;
+            else if (!ref.getClass().equals(d.getClass()))
+                return "de (absolute) tijdsduur van … tot … vereist dat beide expressies dezelfde tijd-precisie hebben, kreeg "
+                        + ref.naam() + " en " + d.naam() + " (§4.16)";
+        }
+        return null;
     }
 
     /** The §5.8.2 "of … als die er niet zijn" fallback expression of a sommatie, or null.
