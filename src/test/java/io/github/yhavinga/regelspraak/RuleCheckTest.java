@@ -835,6 +835,55 @@ class RuleCheckTest {
         assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
     }
 
+    @Test void wortel_van_niet_numerieke_operand_wordt_gemeld() {
+        // §4.6 Tabel 16: the "wortel van"-radicand must be Numeriek. A Tekst radicand ("de naam") was
+        // silently accepted — WORTEL always types Numeriek, so no downstream assignment error caught it.
+        String src = MODEL + """
+            Regel wortelfout
+                geldig altijd
+                    De teller van een Ding moet berekend worden als de wortel van de naam van een Ding naar beneden afgerond op 0 decimalen.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("de wortel van vereist numerieke")),
+                () -> "verwachtte een operand-typefout voor de wortel van, kreeg: " + m.errors());
+    }
+
+    @Test void absolute_waarde_van_niet_numerieke_operand_wordt_gemeld() {
+        // §4.9 Tabel 20: the "absolute waarde van"-operand must be Numeriek. A Datum operand propagates
+        // the datum type (ABS returns the operand type), so it only leaked out where the result was misused.
+        String src = """
+            Objecttype de Ding
+                de teller Numeriek (geheel getal);
+                de dag Datum in dagen;
+            Regel absfout
+                geldig altijd
+                    De teller van een Ding moet berekend worden als de absolute waarde van (de dag van een Ding).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("de absolute waarde van vereist numerieke")),
+                () -> "verwachtte een operand-typefout voor de absolute waarde van, kreeg: " + m.errors());
+    }
+
+    @Test void schone_wortel_en_abs_geen_fout() {
+        // controls: a numeric radicand/operand -> no false positive on either new gate.
+        String wortel = MODEL + """
+            Regel wortelok
+                geldig altijd
+                    De teller van een Ding moet berekend worden als de wortel van de teller van een Ding naar beneden afgerond op 0 decimalen.
+            """;
+        String abs = """
+            Objecttype de Ding
+                de teller Numeriek (geheel getal);
+            Regel absok
+                geldig altijd
+                    De teller van een Ding moet berekend worden als de absolute waarde van (de teller van een Ding).
+            """;
+        for (String src : new String[]{ wortel, abs }) {
+            RegelSpraakModel m = Resolver.resolve(src);
+            assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+        }
+    }
+
     static final String RATE_SYS = """
         Eenheidsysteem Geld
             de euro €

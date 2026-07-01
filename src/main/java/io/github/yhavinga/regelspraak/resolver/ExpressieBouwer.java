@@ -855,6 +855,16 @@ final class ExpressieBouwer {
         String fout = switch (kind) {
             case MINIMUM -> Typering.getalAggregatie("minimale waarde van", typen);
             case MAXIMUM -> Typering.getalAggregatie("maximale waarde van", typen);
+            // §4.6 Tabel 16 (wortel van) / §4.9 Tabel 20 (absolute waarde van): the single operand must be Numeriek.
+            // WORTEL always types Numeriek regardless of its radicand, so "de wortel van <tekst>" produced a Numeriek
+            // result with NO diagnostic; ABSOLUTE_WAARDE propagates the operand type, so "absolute waarde van (<datum>)"
+            // leaked a datum unless a downstream assignment happened to reject it. Both now reject a concrete
+            // non-numeriek operand at the operator (Onbekend skipped, no claim). NOTE: SOM (§4.10 Tabel 21) is NOT gated
+            // here — the spec says "numeriek" but the engine intentionally sums Percentage (reviewed FSD-1, isGetalachtig);
+            // whether Tabel 21 admits Percentage (like the §5.1 comparison rows) or excludes it (like the MIN/MAX
+            // Tabel 22/23) is a separate spec-interpretation question — carded, not decided as a WORTEL/ABS side-effect.
+            case WORTEL -> Typering.getalAggregatie("de wortel van", typen);
+            case ABSOLUTE_WAARDE -> Typering.getalAggregatie("de absolute waarde van", typen);
             case EERSTE  -> Typering.datumAggregatie("eerste van", typen);
             case LAATSTE -> Typering.datumAggregatie("laatste van", typen);
             // §6.12 / §13.4.17.21-.24: a time-of-day component is defined only on a datum-TIJD — a plain
