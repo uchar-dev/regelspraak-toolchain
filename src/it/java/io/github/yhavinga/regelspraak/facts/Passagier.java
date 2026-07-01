@@ -25,6 +25,9 @@ public class Passagier {
     private List<Segment> rechtOpBelastingvermindering;  // §7.1 the BEZITTELIJK temporal kenmerk of the verbatim "heeft" form
     public List<Segment> getBelastingverminderingPerMaand() { return belastingverminderingPerMaand; }
     public void setBelastingverminderingPerMaand(List<Segment> v) { this.belastingverminderingPerMaand = v; }
+    private List<Segment> aftrekPerMaand;                // §5.1.4 a 3rd temporal operand for an N-operand chain (a+b+c)
+    public List<Segment> getAftrekPerMaand() { return aftrekPerMaand; }
+    public void setAftrekPerMaand(List<Segment> v) { this.aftrekPerMaand = v; }
     public BigDecimal getTotaleBelastingvermindering() { return totaleBelastingvermindering; }
     public void setTotaleBelastingvermindering(BigDecimal v) { this.totaleBelastingvermindering = v; }
     public List<Segment> getRechthebbend() { return rechthebbend; }

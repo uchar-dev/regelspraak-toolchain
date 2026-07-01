@@ -2111,6 +2111,17 @@ public final class DrlTranspiler {
      *  to {@code unitTarget} (the sum unit). Returns the {@code List<Segment>} getter (restated to unitTarget when the
      *  unit differs), or null (not such an operand / incompatible unit / finer granularity -> marker). */
     private String temporeelRekenOperand(Expr e, Objecttype subject, RegelSpraakModel.Granulariteit gran, Datatype unitTarget) {
+        // §5.1.4 an N-operand chain ("a plus b plus c" = Binair(Binair(a,b), c)): the operand is itself a temporal sub-sum.
+        // Recurse — sum in the LEFT sub-operand's unit (restate the right into it), then restate the sub-sum ONCE to
+        // unitTarget (the enclosing sum unit). Arbitrary depth + mixed +/- fall out of the recursion, each Binair its own op.
+        if (e instanceof Expr.Binair bin && (bin.op() == Expr.BinOp.PLUS || bin.op() == Expr.BinOp.MIN)) {
+            Datatype subSum = bin.links().type();
+            String l = temporeelRekenOperand(bin.links(), subject, gran, subSum);
+            String r = temporeelRekenOperand(bin.rechts(), subject, gran, subSum);
+            if (l == null || r == null) return null;
+            registreerTijdRekenFunctie();
+            return schaalTijd("rsTijdReken(" + l + ", " + r + ", \"" + bin.op().name() + "\")", subSum, unitTarget);
+        }
         if (!(e instanceof Expr.AttribuutRef a) || a.set() || a.type() == null || !a.type().isNumeriek()) return null;
         Objecttype ot; String getter;
         if (a.navigatieRol() == null && a.objecttype() == subject) {

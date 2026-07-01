@@ -3272,6 +3272,44 @@ class ExecModelDifferentialTest {
         java.util.List.of("2024-01-01|2024-02-01|0.1666666666666667"),   // sum-first (2/12 DEC64), NOT scale-each 0.16666666666666666
     };
 
+    // ---- §5.1.4 an N-operand temporal arithmetic CHAIN ("a plus b plus c" = Binair(Binair(a,b), c)): was a symmetric marker
+    //      (temporeelRekenOperand only accepted an AttribuutRef leaf, so the nested Binair left operand returned null). Now it
+    //      recurses over a nested Binair — sum in the LEFT sub-operand's unit, restate the sub-sum once — summing per merged-
+    //      knip period (rsTijdReken, leeg -> 0). Mixed granularity (per-dag + per-maand + per-dag -> per-dag) rides the union. ----
+    static final String TR3_SRC =
+        "Domein Bedrag is van het type Numeriek (geheel getal)\n" +
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+        "    de belastingvermindering per maand Bedrag voor elke dag;\n" +
+        "    de inkomen per maand Bedrag voor elke maand;\n" +
+        "    de aftrek per maand Bedrag voor elke dag;\n" +
+        "    de standaardbedrag Bedrag voor elke dag;\n" +
+        "Regel R\n    geldig altijd\n        De standaardbedrag van een Passagier moet berekend worden als zijn belastingvermindering per maand plus zijn inkomen per maand plus zijn aftrek per maand.\n";
+    static Fixture tr3Fix(String naam, java.util.function.Consumer<Passagier> setup) {
+        return new Fixture(naam, TR3_SRC, () -> List.of(passagier(setup)), Map.of(), l -> tl(((Passagier) l.get(0)).getStandaardbedrag()));
+    }
+    static final Fixture[] PHASE_TR3 = {
+        tr3Fix("§5.1.4 3-operand chain, aligned (50+10+5=65)", p -> {
+            p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "50")));
+            p.setInkomenPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "10")));
+            p.setAftrekPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "5")));
+        }),
+        tr3Fix("§5.1.4 3-operand chain, knip on the 1st operand (65 | 75)", p -> {
+            p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 1, 15, "50"), seg(2024, 1, 15, 2024, 2, 1, "60")));
+            p.setInkomenPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "10")));
+            p.setAftrekPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "5")));
+        }),
+        tr3Fix("§5.1.4 3-operand chain, aftrek covers only 2nd half (leeg -> 0: 60 | 65)", p -> {
+            p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "50")));
+            p.setInkomenPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "10")));
+            p.setAftrekPerMaand(List.of(seg(2024, 1, 15, 2024, 2, 1, "5")));
+        }),
+    };
+    static final Object[] PHASE_TR3_EXPECTED = {
+        java.util.List.of("2024-01-01|2024-02-01|65"),
+        java.util.List.of("2024-01-01|2024-01-15|65", "2024-01-15|2024-02-01|75"),
+        java.util.List.of("2024-01-01|2024-01-15|60", "2024-01-15|2024-02-01|65"),
+    };
+
     // ---- §5.8/§13.4.14 a COUNT aggregation as one side of a CONDITION comparison ("Een Vlucht is vol indien het aantal
     //      passagiers van de Vlucht <op> N"): was a symmetric marker ("voorwaarde buiten Phase-B scope"). Now a result-
     //      constrained accumulate CE hoisted after the subject pattern — DRL `Number(intValue <op> N) from accumulate(
@@ -5158,6 +5196,21 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(PHASE_TR2_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §5.1.4 an N-operand temporal arithmetic chain ("a plus b plus c") now FIRES in both back-ends — temporeelRekenOperand
+     *  recurses over a nested Binair, summing per merged-knip period (leeg -> 0). Absolute + DRL==exec parity + no skip. */
+    @Test void phase_TR3_temporal_chain_is_spec_correct() {
+        for (int i = 0; i < PHASE_TR3.length; i++) {
+            Fixture f = PHASE_TR3[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_TR3_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }

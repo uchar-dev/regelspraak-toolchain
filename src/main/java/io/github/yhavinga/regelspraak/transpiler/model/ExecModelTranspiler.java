@@ -1213,6 +1213,18 @@ public final class ExecModelTranspiler {
      *  or null (incompatible unit / finer granularity / not such an operand -> marker). Mirrors DRL temporeelRekenOperand. */
     private java.util.function.Function<Object, List<?>> temporeelRekenOperand(Expr e, Objecttype subject,
             RegelSpraakModel.Granulariteit gran, Datatype unitTarget) {
+        // §5.1.4 an N-operand chain ("a plus b plus c" = Binair(Binair(a,b), c)): the operand is itself a temporal sub-sum.
+        // Recurse — sum in the LEFT sub-operand's unit, then restate the sub-sum ONCE to unitTarget. Mirrors DRL.
+        if (e instanceof Expr.Binair bin && (bin.op() == Expr.BinOp.PLUS || bin.op() == Expr.BinOp.MIN)) {
+            Datatype subSum = bin.links().type();
+            java.util.function.Function<Object, List<?>> l = temporeelRekenOperand(bin.links(), subject, gran, subSum);
+            java.util.function.Function<Object, List<?>> r = temporeelRekenOperand(bin.rechts(), subject, gran, subSum);
+            Class<?> segCls = segmentClass();
+            if (l == null || r == null || segCls == null) return null;
+            final java.util.function.Function<Object, List<?>> fl = l, fr = r; final String opName = bin.op().name();
+            java.util.function.Function<Object, List<?>> sum = s -> RegelSpraakRuntime.rsTijdReken(fl.apply(s), fr.apply(s), opName, segCls);
+            return schaalTijd(sum, subSum, unitTarget);
+        }
         if (!(e instanceof Expr.AttribuutRef a) || a.set() || a.type() == null || !a.type().isNumeriek()) return null;
         Objecttype ot; java.util.function.Function<Object, Object> reader;
         if (a.navigatieRol() == null && a.objecttype() == subject) {
