@@ -139,6 +139,19 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
+        <configuration>
+          <!-- Drools' in-JVM DRL (KieHelper) build accumulates classloader/knowledge state across the many DRL
+               builds a full run makes (ExecModelDifferentialTest ~135 drlBase() + DroolsExecutionTest ~190 +
+               DrlTest KieHelper builds). Under one shared forked JVM that accumulation occasionally mis-resolves a
+               VALID generated DRL — "Only a type can be imported. …facts.Passagier resolves to a package", a mangled
+               duplicated helper name, or a NoClassDefFound — turning a gate red on a correct build (every implicated
+               test passes IN ISOLATION). Run each test CLASS in a FRESH JVM so one class's builds cannot poison
+               another's, and give the forked JVM a generous heap (the outer MAVEN_OPTS -Xmx does NOT reach the fork)
+               to remove the memory-pressure trigger. See backlog/new/20260627-drools-kiebuilder-suite-flakiness.md. -->
+          <forkCount>1</forkCount>
+          <reuseForks>false</reuseForks>
+          <argLine>-Xmx1536m</argLine>
+        </configuration>
       </plugin>
     </plugins>
   </build>
