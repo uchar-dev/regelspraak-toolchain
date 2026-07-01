@@ -490,6 +490,52 @@ class ExecModelDifferentialTest {
         dagsoortTdsFix("§6.10 leeg operand -> leeg", DAGSOORT_TDS_SRC, java.time.LocalDate.of(2024, 12, 20), null),
     };
 
+    // ---- §6.10 tijdsduur in <dagsoort> over datum-EN-TIJD operands: typeringen §4.16 L676 admits datum-en-tijd
+    //      operands (both the SAME precision) and the result is a COUNT (no time carried), so both back-ends count over
+    //      the DATE parts (DRL rsTijdsduurTijd_Kerstdag wraps rsTijdsduur_Kerstdag <-> RegelSpraakRuntime.
+    //      rsTijdsduurTijdDagsoort). Was a symmetric marker ("vereist datum in dagen"); the day-granular count makes the
+    //      time-of-day irrelevant. MIXED precision (a datum-in-dagen with a datum-en-tijd) stays a symmetric marker. ----
+    static final String DAGSOORT_TDS_DTD_SRC =
+            """
+            Dagsoort de kerstdag (mv: kerstdagen)
+            Regel Kerstdag
+                geldig altijd
+                    Een dag is een kerstdag
+                    indien de dag aan alle volgende voorwaarden voldoet:
+                    - de maand uit (de dag) is gelijk aan 12
+                    - de dag voldoet aan ten minste één van de volgende voorwaarden:
+                        .. de dag uit (de dag) is gelijk aan 25
+                        .. de dag uit (de dag) is gelijk aan 26.
+            Objecttype de Vlucht
+                de vertrekmoment Datum en tijd in millisecondes;
+                de aankomstmoment Datum en tijd in millisecondes;
+                de totaalprijs Numeriek (geheel getal) met eenheid kerstdagen;
+            Regel Tel
+                geldig altijd
+                    De totaalprijs van een Vlucht moet berekend worden als de tijdsduur van de vertrekmoment van de Vlucht tot de aankomstmoment van de Vlucht in hele kerstdagen.
+            """;
+    static final String DAGSOORT_TDS_DTD_ABS_SRC = DAGSOORT_TDS_DTD_SRC.replace("de tijdsduur van", "de absolute tijdsduur van");
+    static Fixture dagsoortTdsDtdFix(String naam, String src, java.time.LocalDateTime van, java.time.LocalDateTime tot) {
+        return new Fixture(naam, src,
+                () -> { Vlucht v = new Vlucht(); if (van != null) v.setVertrekmoment(van); if (tot != null) v.setAankomstmoment(tot); return List.of(v); },
+                Map.of(), l -> ((Vlucht) l.get(0)).getTotaalprijs());
+    }
+    static final Fixture[] PHASE_DAGSOORT_TDS_DTD = {
+        dagsoortTdsDtdFix("§6.10/§4.16: datum-en-tijd 20-12..27-12 = 2 kerstdagen (25,26)",
+                DAGSOORT_TDS_DTD_SRC, java.time.LocalDateTime.of(2024,12,20,9,0), java.time.LocalDateTime.of(2024,12,27,23,0)),
+        dagsoortTdsDtdFix("§6.10/§4.16: time-of-day irrelevant (day-granular) = 2",
+                DAGSOORT_TDS_DTD_SRC, java.time.LocalDateTime.of(2024,12,20,23,59,59), java.time.LocalDateTime.of(2024,12,27,0,0,1)),
+        dagsoortTdsDtdFix("§6.10/§4.16: signed reversed 27-12..20-12 = -2",
+                DAGSOORT_TDS_DTD_SRC, java.time.LocalDateTime.of(2024,12,27,9,0), java.time.LocalDateTime.of(2024,12,20,23,0)),
+        dagsoortTdsDtdFix("§6.10/§4.16: absolute reversed = 2",
+                DAGSOORT_TDS_DTD_ABS_SRC, java.time.LocalDateTime.of(2024,12,27,9,0), java.time.LocalDateTime.of(2024,12,20,23,0)),
+        dagsoortTdsDtdFix("§6.10/§4.16: leeg operand -> leeg",
+                DAGSOORT_TDS_DTD_SRC, null, java.time.LocalDateTime.of(2024,12,27,23,0)),
+    };
+    static final Object[] PHASE_DAGSOORT_TDS_DTD_EXPECTED = {
+        new BigDecimal(2), new BigDecimal(2), new BigDecimal(-2), new BigDecimal(2), null,
+    };
+
     // ---- §9.8 CROSS-DAGSOORT (the spec's central feestdag example: feestdag = kerstdag OF paasdag) + a §8.1.5
     //      control over a non-attribute (date-arithmetic) datum operand. Both exercise paths the review found
     //      untested: cross-dagsoort predicate-calling-predicate, EERSTE_PAASDAG in a §9.8 body, and the exec-model
@@ -5580,6 +5626,22 @@ class ExecModelDifferentialTest {
         }
     }
     @Test void phase_dagsoort_tijdsduur_matches_drl_back_end()    { runDifferential("Phase DAGSOORT TDS", PHASE_DAGSOORT_TDS, 6); }
+    /** §6.10 + typeringen §4.16 L676: "de [absolute] tijdsduur van A tot B in hele <dagsoort>" over datum-EN-tijd operands
+     *  now FIRES in both back-ends — count over the DATE parts (was a symmetric marker). Closed-form -> assert the
+     *  ABSOLUTE count (time-of-day irrelevant, signed, absolute, leeg) + DRL==exec parity + no exec skip. */
+    @Test void phase_dagsoort_tijdsduur_datum_en_tijd_is_spec_correct() {
+        for (int i = 0; i < PHASE_DAGSOORT_TDS_DTD.length; i++) {
+            Fixture f = PHASE_DAGSOORT_TDS_DTD[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_DAGSOORT_TDS_DTD_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_dagsoort_cross_en_datearith_matches_drl_back_end() { runDifferential("Phase DAGSOORT X", PHASE_DAGSOORT_X, 5); }
     @Test void phase_dagsoort_over_global_matches_drl_back_end()        { runDifferential("Phase DAGSOORT GLOBAL", PHASE_DAGSOORT_GLOBAL, 5); }
     /** §8.1.5 over a global-reading datum operand is a closed-form transform (rsDatumReken + the §9.8 dagsoort

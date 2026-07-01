@@ -1428,9 +1428,12 @@ public final class DrlTranspiler {
         String dagsoortUnit = dagE != null ? model.dagsoortVoorEenheid(dagE.afkorting()) : null;
         if (dagsoortUnit != null) {
             Expr a0 = f.argumenten().get(0), a1 = f.argumenten().get(1);
-            if (a0.type() instanceof Datatype.DatumTijd || a1.type() instanceof Datatype.DatumTijd)
-                return Frag.todo("tijdsduur in een dagsoort vereist datum (in dagen) operanden (§6.10)", f.bron());
-            String durFn = dagsoortTijdsduurFunctie(dagsoortUnit);
+            // §4.16 (L676): both operands must be the SAME tijd-precisie. Both datum-EN-tijd is legal — the count is over
+            // the DATE parts (rsTijdsduurTijd_<Naam>, no time carried). Mixed precision is spec-illegal -> honest marker.
+            boolean dt0 = a0.type() instanceof Datatype.DatumTijd, dt1 = a1.type() instanceof Datatype.DatumTijd;
+            if (dt0 != dt1)
+                return Frag.todo("tijdsduur in een dagsoort vereist datum-operanden van gelijke tijd-precisie (§6.10)", f.bron());
+            String durFn = dt0 ? dagsoortTijdsduurTijdFunctie(dagsoortUnit) : dagsoortTijdsduurFunctie(dagsoortUnit);
             Frag van0 = arg.apply(a0), tot0 = arg.apply(a1);
             if (durFn == null || van0.marker() || tot0.marker()) return Frag.todo("tijdsduur (dagsoort)", f.bron());
             return Frag.from(durFn + "(" + van0.text() + ", " + tot0.text() + ", " + (f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR) + ")", van0, tot0);
@@ -3122,6 +3125,22 @@ public final class DrlTranspiler {
           + "    for (java.time.LocalDate d = a.plusDays(1); !d.isAfter(b); d = d.plusDays(1)) if (" + predFn + "(d)) count++;\n"
           + "    long result = negatief ? -count : count;\n"
           + "    return java.math.BigDecimal.valueOf(absoluut ? Math.abs(result) : result);\n"
+          + "}\n\n");
+        return fn;
+    }
+
+    /** Register (idempotently) and name a DRL {@code function BigDecimal rsTijdsduurTijd_<Naam>(van, tot, absoluut)} for
+     *  §6.10 "datum-EN-tijd tijdsduur in &lt;dagsoort&gt;": §4.16 L676 admits datum-en-tijd operands and the count carries
+     *  no time, so null-guard + toLocalDate both operands and delegate to rsTijdsduur_<Naam>. null when the dagsoort's
+     *  definitie cannot be compiled. Registers rsTijdsduur_<Naam> (which it delegates to) as a side effect. */
+    private String dagsoortTijdsduurTijdFunctie(String dagsoortNaam) {
+        String durFn = dagsoortTijdsduurFunctie(dagsoortNaam);   // registers rsTijdsduur_<Naam> + its predicate
+        if (durFn == null) return null;
+        String fn = "rsTijdsduurTijd_" + ident(dagsoortNaam, true);
+        if (hulpFuncties.containsKey(fn)) return fn;
+        hulpFuncties.put(fn,
+            "function java.math.BigDecimal " + fn + "(java.time.LocalDateTime van, java.time.LocalDateTime tot, boolean absoluut) {\n"
+          + "    return " + durFn + "(van == null ? null : van.toLocalDate(), tot == null ? null : tot.toLocalDate(), absoluut);\n"
           + "}\n\n");
         return fn;
     }

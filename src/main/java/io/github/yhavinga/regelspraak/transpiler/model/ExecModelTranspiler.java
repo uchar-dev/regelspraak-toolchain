@@ -2606,12 +2606,18 @@ public final class ExecModelTranspiler {
                 io.github.yhavinga.regelspraak.model.Eenheid e = f.type().eenheidOf();
                 String dagsoortUnit = e != null ? model.dagsoortVoorEenheid(e.afkorting()) : null;
                 if (dagsoortUnit != null) {
-                    if (a.get(0).type() instanceof Datatype.DatumTijd || a.get(1).type() instanceof Datatype.DatumTijd) return null;
+                    // §4.16 L676: both operands must be the SAME tijd-precisie. Both datum-EN-tijd is legal — count over the
+                    // DATE parts (rsTijdsduurTijdDagsoort, no time carried). Mixed precision is spec-illegal -> honest skip.
+                    boolean dt0 = a.get(0).type() instanceof Datatype.DatumTijd, dt1 = a.get(1).type() instanceof Datatype.DatumTijd;
+                    if (dt0 != dt1) return null;
                     java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(dagsoortUnit);
                     WaardeFn vanF = scalarWaarde(a.get(0)), totF = scalarWaarde(a.get(1));
                     if (pred == null || vanF == null || totF == null) return null;
                     BiFunction<Object, Map<String, BigDecimal>, Object> vfn = vanF.fn(), tfn = totF.fn();
                     Set<String> g = new LinkedHashSet<>(vanF.globals()); g.addAll(totF.globals());
+                    if (dt0)
+                        return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsTijdsduurTijdDagsoort(
+                                (java.time.LocalDateTime) vfn.apply(s, gm), (java.time.LocalDateTime) tfn.apply(s, gm), pred, absoluut), g);
                     return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsTijdsduurDagsoort(
                             (java.time.LocalDate) vfn.apply(s, gm), (java.time.LocalDate) tfn.apply(s, gm), pred, absoluut), g);
                 }

@@ -347,6 +347,15 @@ public final class RegelSpraakRuntime {
         return BigDecimal.valueOf(absoluut ? Math.abs(result) : result);
     }
 
+    /** §6.10 "de (absolute) tijdsduur van A tot B in &lt;dagsoort&gt;" over datum-EN-tijd operands: typeringen §4.16 (L676)
+     *  admits datum-en-tijd operands (both the SAME precision) and the result is a COUNT (no time is carried). A dagsoort
+     *  is day-granular, so count over the DATE parts via {@link #rsTijdsduurDagsoort}. Any leeg operand -> leeg.
+     *  Byte-identical mirror of the DRL {@code rsTijdsduurTijd_<Naam>} wrapper. */
+    public static BigDecimal rsTijdsduurTijdDagsoort(java.time.LocalDateTime van, java.time.LocalDateTime tot,
+            java.util.function.Predicate<java.time.LocalDate> isDagsoort, boolean absoluut) {
+        return rsTijdsduurDagsoort(van == null ? null : van.toLocalDate(), tot == null ? null : tot.toLocalDate(), isDagsoort, absoluut);
+    }
+
     /** §6.10 / §13.4.17.32 "de (absolute) tijdsduur van A tot B in &lt;tijdseenheid&gt;": the number of COMPLETE
      *  units between two dates ({@code ChronoUnit.<U>.between}, signed — A later than B gives a negative result, §6.10
      *  Tabel 14 +52/-52); absolute when asked. A kwartaal (no ChronoUnit.QUARTERS) is 3×MONTHS, §3.7. Any leeg operand
