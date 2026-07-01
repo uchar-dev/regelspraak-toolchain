@@ -3227,6 +3227,17 @@ class ExecModelDifferentialTest {
         "    de inkomen per maand Bedrag voor elke maand;\n" +
         "    de standaardbedrag Bedrag voor elke dag;\n" +
         "Regel R\n    geldig altijd\n        De standaardbedrag van een Passagier moet berekend worden als zijn belastingvermindering per maand plus zijn inkomen per maand.\n";
+    // DIVIDE direction, NON-TERMINATING (€/jr operands -> €/mnd doel, ÷12). Guards review wf_115473d5-eee F1: the sum
+    // MUST be computed FIRST (in the operand unit) then converted ONCE — scale-each-then-sum double-rounds. 1+1 €/jr ->
+    // (2/12) €/mnd = 0.1666666666666667 (DEC64, single round), NOT 1/12+1/12 = 0.16666666666666666 (double round).
+    static final String TR2_DIV_SRC =
+        "Eenheidsysteem Valuta\n    de euro (mv: euros) EUR €\n" +
+        "Eenheidsysteem Tijd\n    de maand mnd\n    het jaar jr = 12 mnd\n" +
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+        "    de belastingvermindering per maand Numeriek (getal met 4 decimalen) met eenheid €/jr voor elke maand;\n" +
+        "    de inkomen per maand Numeriek (getal met 4 decimalen) met eenheid €/jr voor elke maand;\n" +
+        "    de standaardbedrag Numeriek (getal met 4 decimalen) met eenheid €/mnd voor elke maand;\n" +
+        "Regel R\n    geldig altijd\n        De standaardbedrag van een Passagier moet berekend worden als zijn belastingvermindering per maand plus zijn inkomen per maand.\n";
     static Fixture tr2Fix(String naam, String src, java.util.function.Consumer<Passagier> setup) {
         return new Fixture(naam, src, () -> List.of(passagier(setup)), Map.of(), l -> tl(((Passagier) l.get(0)).getStandaardbedrag()));
     }
@@ -3246,6 +3257,10 @@ class ExecModelDifferentialTest {
             p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 1, 15, "50")));  // per dag
             p.setInkomenPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "10")));                 // per maand
         }),
+        tr2Fix("§5.1.4.2/§4.1 sum-first-then-convert (÷12 non-terminating): 1+1 €/jr -> 2/12 €/mnd = 0.1666666666666667", TR2_DIV_SRC, p -> {
+            p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "1")));
+            p.setInkomenPerMaand(List.of(seg(2024, 1, 1, 2024, 2, 1, "1")));
+        }),
     };
     static final Object[] PHASE_TR2_EXPECTED = {
         java.util.List.of("2024-01-01|2024-01-15|720", "2024-01-15|2024-02-01|120", "2024-02-01|2024-03-12|780",
@@ -3253,6 +3268,7 @@ class ExecModelDifferentialTest {
                 "2024-05-01|2024-06-22|900", "2024-06-22|2024-07-01|780"),
         java.util.List.of("2024-01-01|2024-02-01|720", "2024-02-01|2024-03-01|780"),
         java.util.List.of("2024-01-01|2024-01-15|60", "2024-01-15|2024-02-01|10"),
+        java.util.List.of("2024-01-01|2024-02-01|0.1666666666666667"),   // sum-first (2/12 DEC64), NOT scale-each 0.16666666666666666
     };
 
     static final Fixture[] PHASE_F = {

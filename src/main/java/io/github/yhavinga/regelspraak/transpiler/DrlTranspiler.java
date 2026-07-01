@@ -2089,34 +2089,29 @@ public final class DrlTranspiler {
             }
         }
         // §5.1.4 a tijdsafhankelijke arithmetic expression PLUS/MIN over two temporal operands: apply the operator per
-        // period on the merged-knip timeline (rsTijdReken; leeg -> 0). EQUAL granularity + EQUAL unit only — a mixed
-        // granularity (§5.1.4.2 knip-promotion) or cross-unit rate restatement stays a marker (a documented follow-up).
+        // period on the merged-knip timeline (rsTijdReken; leeg -> 0). §5.1.4.2/§4.1: SUM in the LEFT operand's unit
+        // (restate the right operand into it), THEN restate the SUM ONCE to the doel unit ("daarna wordt dit omgerekend
+        // naar €/jr"). Scaling each operand to the doel FIRST would DOUBLE-ROUND a non-terminating factor (÷12) — the
+        // spec sums first, converts once (review wf_115473d5-eee F1). Mixed granularity rides the merged-knip union.
         if (w instanceof Expr.Binair bin && (bin.op() == Expr.BinOp.PLUS || bin.op() == Expr.BinOp.MIN) && subject != null) {
-            String l = temporeelRekenOperand(bin.links(), subject, gran, doelType);
-            String rr = temporeelRekenOperand(bin.rechts(), subject, gran, doelType);
-            if (l != null && rr != null) { registreerTijdRekenFunctie(); return "rsTijdReken(" + l + ", " + rr + ", \"" + bin.op().name() + "\")"; }
+            Datatype sumType = bin.links().type();
+            String l = temporeelRekenOperand(bin.links(), subject, gran, sumType);
+            String rr = temporeelRekenOperand(bin.rechts(), subject, gran, sumType);
+            if (l != null && rr != null) {
+                registreerTijdRekenFunctie();
+                String schaal = schaalTijd("rsTijdReken(" + l + ", " + rr + ", \"" + bin.op().name() + "\")", sumType, doelType);
+                if (schaal != null) return schaal;   // the sum unit is convertible to the doel (§4.1) -> restate once
+            }
         }
         return null;
     }
 
     /** §5.1.4 a temporal operand of a tijdsafhankelijke arithmetic expression — an own or to-one navigated SINGLE-period
-     *  numeric temporal attribute whose granularity matches the doel's (gran) and whose unit equals the doel's. Returns
-     *  the {@code List<Segment>} getter (own-attr or root-guarded navigated), or null (not such an operand -> marker). */
-    private String temporeelRekenOperand(Expr e, Objecttype subject, RegelSpraakModel.Granulariteit gran, Datatype doelType) {
+     *  numeric temporal attribute whose granularity is COARSER-OR-EQUAL to the doel's (gran) and whose unit is CONVERTIBLE
+     *  to {@code unitTarget} (the sum unit). Returns the {@code List<Segment>} getter (restated to unitTarget when the
+     *  unit differs), or null (not such an operand / incompatible unit / finer granularity -> marker). */
+    private String temporeelRekenOperand(Expr e, Objecttype subject, RegelSpraakModel.Granulariteit gran, Datatype unitTarget) {
         if (!(e instanceof Expr.AttribuutRef a) || a.set() || a.type() == null || !a.type().isNumeriek()) return null;
-        // §4.1/§5.1.4.2 unit restatement: the operand unit may DIFFER from the doel's when CONVERTIBLE (the
-        // eenheidsysteem factor, e.g. €/mnd -> €/jr) — scale each segment value (rsTijdSchaal); an incompatible /
-        // unitless-vs-unit mismatch markers. Pick the EXACT-integer direction (÷ when the inverse is smaller), like §7.3.1.
-        io.github.yhavinga.regelspraak.model.Eenheid eu = a.type().eenheidOf(), du = doelType == null ? null : doelType.eenheidOf();
-        java.math.BigDecimal factor = null; boolean deel = false;
-        if (!java.util.Objects.equals(eu, du)) {
-            if (eu == null || du == null || !eu.convertibleNaar(du)) return null;   // incompatible unit -> marker
-            if (eu.vereistOmrekening(du)) {
-                java.math.BigDecimal fwd = omrekenFactor(a.type(), doelType), inv = omrekenFactor(doelType, a.type());
-                deel = inv != null && inv.precision() < fwd.precision();
-                factor = deel ? inv : fwd;
-            }   // else convertible with factor 1 (same canonical) -> no scale
-        }
         Objecttype ot; String getter;
         if (a.navigatieRol() == null && a.objecttype() == subject) {
             ot = subject; getter = SUBJECT + "." + getter(a.attribuut()) + "()";
@@ -2131,9 +2126,22 @@ public final class DrlTranspiler {
         RegelSpraakModel.Granulariteit og = ot.attribuutGranulariteit.get(a.attribuut());
         if (og == null || og.ordinal() < gran.ordinal()) return null;
         if (ot.attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;   // multi-period -> out of scope
-        if (factor == null) return getter;
+        return schaalTijd(getter, a.type(), unitTarget);   // §4.1 restate into the sum unit (null -> incompatible -> marker)
+    }
+
+    /** §4.1/§5.1.4.2 restate a temporal timeline expr from {@code van}'s unit into {@code naar}'s (rsTijdSchaal by the
+     *  EXACT-integer direction, ÷ when the inverse has fewer sig digits — like §7.3.1). Returns the expr UNCHANGED when
+     *  the units are equal or no conversion is required; null when the units are INCOMPATIBLE (caller markers). */
+    private String schaalTijd(String expr, Datatype van, Datatype naar) {
+        io.github.yhavinga.regelspraak.model.Eenheid eu = van == null ? null : van.eenheidOf(), du = naar == null ? null : naar.eenheidOf();
+        if (java.util.Objects.equals(eu, du)) return expr;                       // equal (incl. both null) -> no scale
+        if (eu == null || du == null || !eu.convertibleNaar(du)) return null;    // incompatible unit -> marker
+        if (!eu.vereistOmrekening(du)) return expr;                              // convertible with factor 1 -> no scale
+        java.math.BigDecimal fwd = omrekenFactor(van, naar), inv = omrekenFactor(naar, van);
+        boolean deel = inv != null && inv.precision() < fwd.precision();
+        java.math.BigDecimal factor = deel ? inv : fwd;
         registreerTijdSchaalFunctie();
-        return "rsTijdSchaal(" + getter + ", new java.math.BigDecimal(\"" + factor.toPlainString() + "\"), " + deel + ")";
+        return "rsTijdSchaal(" + expr + ", new java.math.BigDecimal(\"" + factor.toPlainString() + "\"), " + deel + ")";
     }
 
     /** The TRUE-period {@code List<Segment>} timeline of a temporal WRITE-producer's condition — the periods whose

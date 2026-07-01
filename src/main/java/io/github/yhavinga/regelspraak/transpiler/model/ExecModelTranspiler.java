@@ -1001,39 +1001,32 @@ public final class ExecModelTranspiler {
                 }
             }
         }
-        // §5.1.4 PLUS/MIN over two temporal operands -> rsTijdReken per merged-knip period (equal-gran, equal-unit only;
-        // mirrors DrlTranspiler.temporeleWaarde's Binair branch). leeg -> 0; the result coalesces equal-adjacent segments.
+        // §5.1.4 PLUS/MIN over two temporal operands -> rsTijdReken per merged-knip period. §5.1.4.2/§4.1: SUM in the
+        // LEFT operand's unit (restate the right into it), THEN restate the SUM ONCE to the doel unit — scaling each
+        // operand to the doel FIRST double-rounds a non-terminating factor (review wf_115473d5-eee F1). Mirrors DRL.
         if (w instanceof Expr.Binair bin && (bin.op() == Expr.BinOp.PLUS || bin.op() == Expr.BinOp.MIN) && subject != null) {
-            java.util.function.Function<Object, List<?>> l = temporeelRekenOperand(bin.links(), subject, gran, doelType);
-            java.util.function.Function<Object, List<?>> rr = temporeelRekenOperand(bin.rechts(), subject, gran, doelType);
+            Datatype sumType = bin.links().type();
+            java.util.function.Function<Object, List<?>> l = temporeelRekenOperand(bin.links(), subject, gran, sumType);
+            java.util.function.Function<Object, List<?>> rr = temporeelRekenOperand(bin.rechts(), subject, gran, sumType);
             Class<?> segCls = segmentClass();
             if (l != null && rr != null && segCls != null) {
                 final java.util.function.Function<Object, List<?>> fl = l, fr = rr;
                 final String opName = bin.op().name();
-                return new TemporeleWaarde((s, gv) -> RegelSpraakRuntime.rsTijdReken(fl.apply(s), fr.apply(s), opName, segCls), null);
+                java.util.function.Function<Object, List<?>> sum = s -> RegelSpraakRuntime.rsTijdReken(fl.apply(s), fr.apply(s), opName, segCls);
+                java.util.function.Function<Object, List<?>> scaled = schaalTijd(sum, sumType, doelType);   // §4.1 restate the sum once
+                if (scaled != null) return new TemporeleWaarde((s, gv) -> scaled.apply(s), null);
             }
         }
         return null;
     }
 
     /** §5.1.4 a temporal operand reader for a tijdsafhankelijke arithmetic expression — an own or to-one navigated
-     *  SINGLE-period numeric temporal attribute whose granularity matches gran and unit equals the doel's. Returns a
-     *  (subject -&gt; List&lt;Segment&gt;) reader (navigated = root-guarded via navReader), or null. Mirrors DRL temporeelRekenOperand. */
+     *  SINGLE-period numeric temporal attribute COARSER-OR-EQUAL to the doel granularity, CONVERTIBLE to {@code unitTarget}
+     *  (the sum unit). Returns a (subject -&gt; List&lt;Segment&gt;) reader (restated to unitTarget when the unit differs),
+     *  or null (incompatible unit / finer granularity / not such an operand -> marker). Mirrors DRL temporeelRekenOperand. */
     private java.util.function.Function<Object, List<?>> temporeelRekenOperand(Expr e, Objecttype subject,
-            RegelSpraakModel.Granulariteit gran, Datatype doelType) {
+            RegelSpraakModel.Granulariteit gran, Datatype unitTarget) {
         if (!(e instanceof Expr.AttribuutRef a) || a.set() || a.type() == null || !a.type().isNumeriek()) return null;
-        // §4.1/§5.1.4.2 unit restatement: a convertible-different operand unit is scaled per segment (rsTijdSchaal);
-        // incompatible / unitless-vs-unit -> null. Exact-integer direction (÷ when the inverse is smaller). Mirrors DRL.
-        Eenheid eu = a.type().eenheidOf(), du = doelType == null ? null : doelType.eenheidOf();
-        BigDecimal factor = null; boolean deel = false;
-        if (!java.util.Objects.equals(eu, du)) {
-            if (eu == null || du == null || !eu.convertibleNaar(du)) return null;
-            if (eu.vereistOmrekening(du)) {
-                BigDecimal fwd = valueFactor(a.type(), doelType), inv = valueFactor(doelType, a.type());
-                deel = inv != null && inv.precision() < fwd.precision();
-                factor = deel ? inv : fwd;
-            }
-        }
         Objecttype ot; java.util.function.Function<Object, Object> reader;
         if (a.navigatieRol() == null && a.objecttype() == subject) {
             ot = subject; String attr = a.attribuut(); reader = s -> RegelSpraakRuntime.get(s, attr);
@@ -1047,9 +1040,22 @@ public final class ExecModelTranspiler {
         if (og == null || og.ordinal() < gran.ordinal()) return null;
         if (ot.attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;   // multi-period -> out of scope
         final java.util.function.Function<Object, Object> fr = reader;
-        if (factor == null) return s -> (List<?>) fr.apply(s);
-        final BigDecimal ff = factor; final boolean fd = deel;
-        return s -> RegelSpraakRuntime.rsTijdSchaal((List<?>) fr.apply(s), ff, fd);
+        return schaalTijd(s -> (List<?>) fr.apply(s), a.type(), unitTarget);   // §4.1 restate into the sum unit (null -> marker)
+    }
+
+    /** §4.1/§5.1.4.2 wrap a (subject -&gt; List&lt;Segment&gt;) timeline producer to restate it from {@code van}'s unit into
+     *  {@code naar}'s (rsTijdSchaal by the EXACT-integer direction, ÷ when the inverse has fewer sig digits — like §7.3.1).
+     *  Returns the producer UNCHANGED when the units are equal / no conversion is required; null when INCOMPATIBLE (caller
+     *  markers). Mirrors DrlTranspiler.schaalTijd. */
+    private java.util.function.Function<Object, List<?>> schaalTijd(java.util.function.Function<Object, List<?>> prod, Datatype van, Datatype naar) {
+        Eenheid eu = van == null ? null : van.eenheidOf(), du = naar == null ? null : naar.eenheidOf();
+        if (java.util.Objects.equals(eu, du)) return prod;
+        if (eu == null || du == null || !eu.convertibleNaar(du)) return null;
+        if (!eu.vereistOmrekening(du)) return prod;
+        BigDecimal fwd = valueFactor(van, naar), inv = valueFactor(naar, van);
+        boolean deel = inv != null && inv.precision() < fwd.precision();
+        final BigDecimal factor = deel ? inv : fwd; final boolean fd = deel;
+        return s -> RegelSpraakRuntime.rsTijdSchaal(prod.apply(s), factor, fd);
     }
 
     /** The TRUE-period {@code (subject -> List<Segment>)} timeline of a temporal WRITE-producer's condition. A single
