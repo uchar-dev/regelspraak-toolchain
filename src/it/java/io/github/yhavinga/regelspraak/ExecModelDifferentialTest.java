@@ -3271,6 +3271,41 @@ class ExecModelDifferentialTest {
         java.util.List.of("2024-01-01|2024-02-01|0.1666666666666667"),   // sum-first (2/12 DEC64), NOT scale-each 0.16666666666666666
     };
 
+    // ---- §5.8/§13.4.14 a COUNT aggregation as one side of a CONDITION comparison ("Een Vlucht is vol indien het aantal
+    //      passagiers van de Vlucht <op> N"): was a symmetric marker ("voorwaarde buiten Phase-B scope"). Now a result-
+    //      constrained accumulate CE hoisted after the subject pattern — DRL `Number(intValue <op> N) from accumulate(
+    //      $e : Passagier(reis == $subject), count($e))` <-> the exec Gate.extra [accumulate CE + result-var constraint].
+    //      Scoped to AANTAL + a literal threshold. ----
+    static final String AGG_COND_SRC =
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+        "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n" +
+        "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+        "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien het aantal passagiers van de Vlucht %s.\n";
+    static Fixture aggCondFix(String naam, String opFrase, int nPass) {
+        String src = String.format(AGG_COND_SRC, opFrase);
+        return new Fixture(naam, src,
+                () -> { List<Object> fs = new ArrayList<>(); Vlucht v = new Vlucht(); fs.add(v);
+                        for (int i = 0; i < nPass; i++) { Passagier p = new Passagier(); p.setReis(v); fs.add(p); } return fs; },
+                Map.of(), l -> ((Vlucht) l.get(0)).isVol());
+    }
+    static final Fixture[] PHASE_AGG_COND = {
+        aggCondFix("§5.8 count > 3: 4 passagiers -> vol", "groter is dan 3", 4),
+        aggCondFix("§5.8 count > 3: 3 passagiers -> NIET vol (strikt)", "groter is dan 3", 3),
+        aggCondFix("§5.8 count > 3: 0 passagiers -> NIET vol", "groter is dan 3", 0),
+        aggCondFix("§5.8 count >= 4: 4 passagiers -> vol (grens)", "groter of gelijk is aan 4", 4),
+        aggCondFix("§5.8 count >= 4: 3 passagiers -> NIET vol", "groter of gelijk is aan 4", 3),
+        aggCondFix("§5.8 count == 2: 2 passagiers -> vol", "gelijk is aan 2", 2),
+        aggCondFix("§5.8 count == 2: 3 passagiers -> NIET vol", "gelijk is aan 2", 3),
+        aggCondFix("§5.8 count < 1: 0 passagiers -> vol", "kleiner is dan 1", 0),
+        aggCondFix("§5.8 count < 1: 1 passagier -> NIET vol", "kleiner is dan 1", 1),
+    };
+    static final Object[] PHASE_AGG_COND_EXPECTED = {
+        Boolean.TRUE, Boolean.FALSE, Boolean.FALSE,
+        Boolean.TRUE, Boolean.FALSE,
+        Boolean.TRUE, Boolean.FALSE,
+        Boolean.TRUE, Boolean.FALSE,
+    };
+
     static final Fixture[] PHASE_F = {
         // A1 §7.1: the total weights each tijdvak by its month span — 12×10 + 6×11 = 186.
         single("§7.1 totaal van temporeel attribuut (12×10 + 6×11 = 186)",
@@ -4859,6 +4894,22 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(PHASE_TR2_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §5.8/§13.4.14 a COUNT aggregation as one side of a CONDITION comparison now FIRES in both back-ends — a result-
+     *  constrained accumulate CE (was a symmetric marker). Absolute (count vs the literal N over the subject's related
+     *  count) across >, >=, ==, < and their boundaries + DRL==exec parity + no exec skip. */
+    @Test void phase_AGG_COND_aggregation_in_condition_is_spec_correct() {
+        for (int i = 0; i < PHASE_AGG_COND.length; i++) {
+            Fixture f = PHASE_AGG_COND[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_AGG_COND_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }

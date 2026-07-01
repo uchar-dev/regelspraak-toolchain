@@ -2848,6 +2848,39 @@ public final class DrlTranspiler {
         return Frag.todo("aggregatie-bereik", arg != null ? arg.onderwerpBron() : f.bron());
     }
 
+    /** §5.8/§13.4.14 a COUNT aggregation as one side of a condition comparison ("het aantal &lt;elem&gt; van
+     *  &lt;subject&gt; &lt;op&gt; N") — lower it to a result-constrained accumulate CE hoisted after the subject pattern
+     *  (a {@link LoweredConditie} with an EMPTY inline constraint and the accumulate as its sole extra clause):
+     *  {@code Number( intValue <op> N ) from accumulate( $e : Elem( join[, die-filter] ), count($e) )}. Scoped to AANTAL
+     *  with a resolvable join and a scalar RHS; null otherwise (caller falls through to the scalar / marker paths). SUM/
+     *  MIN/MAX-in-condition and an aggregation NESTED in a larger boolean stay a marker (a follow-up). Mirrors the exec Gate. */
+    private LoweredConditie aggregatieVoorwaarde(Conditie.Vergelijking v, Objecttype subject) {
+        if (subject == null) return null;
+        boolean linksAgg = v.links() instanceof Expr.Functie fl && fl.kind() == Expr.FunctieKind.AANTAL;
+        boolean rechtsAgg = v.rechts() instanceof Expr.Functie fr && fr.kind() == Expr.FunctieKind.AANTAL;
+        if (linksAgg == rechtsAgg) return null;                 // exactly ONE side is a count aggregation
+        Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
+        Expr ander = linksAgg ? v.rechts() : v.links();
+        if (!(ander instanceof Expr.Literal)) return null;      // scope: a LITERAL threshold (own-attr/global RHS is a follow-up; keeps the exec at parity)
+        Conditie.Operator op = linksAgg ? v.op() : omkeren(v.op());   // orient the count on the LEFT
+        Objecttype elem = f.elementObjecttype();
+        if (elem == null) return null;
+        Frag scope = scope(elem, subject, f);                  // the §9.4 join (rol == $subject); marker if unresolvable
+        if (scope.marker()) return null;
+        String filterScope = scope.text();
+        if (f.filter() != null) {                              // §13.4.2 die/dat <predicaat> on the counted element
+            Frag fc = conditie(f.filter(), elem);
+            if (fc.marker()) return null;
+            filterScope = scope.text() + ", " + fc.text();
+        }
+        Frag n = operand(ander, subject);                      // the RHS threshold (a scalar)
+        if (n.marker()) return null;
+        String ev = "$e" + (++accCount);
+        String acc = "Number( intValue " + drlOp(op) + " " + n.text() + " ) from accumulate( " + ev + " : "
+                + ident(elem.naam, true) + "( " + filterScope + " ), count(" + ev + ") )";
+        return new LoweredConditie("", java.util.List.of(acc), false);
+    }
+
     // ---------------- condition ("when" side: bare field constraints) ----------------
     /** A lowered condition: the inline mvel constraint spliced into the subject pattern, plus zero or
      *  more SEPARATE when-clauses (exists/not joins) appended AFTER it. {@code extra} is non-empty only
@@ -2892,6 +2925,13 @@ public final class DrlTranspiler {
             Frag f = geheelPeriodeCall(c, gp, subject);
             if (f.marker()) return LoweredConditie.marker("§8.2 gehele-periode", c.bron());
             return LoweredConditie.van(f.text() + " == " + (gp.niet() ? "false" : "true"));
+        }
+        if (c instanceof Conditie.Vergelijking va) {
+            // §5.8/§13.4.14 a COUNT aggregation as one side of the comparison ("het aantal X van Y <op> N") — lower it to
+            // a result-constrained accumulate CE hoisted after the subject pattern, not an inline scalar constraint (which
+            // markers, since a count is not one getter). Checked BEFORE the scalar operand paths below.
+            LoweredConditie agg = aggregatieVoorwaarde(va, subject);
+            if (agg != null) return agg;
         }
         if (c instanceof Conditie.Vergelijking v) {
             // An operand the resolver/transpiler could not lower (an unresolvable navigation, an

@@ -546,6 +546,55 @@ public final class ExecModelTranspiler {
         return new Agg(DSL.accumulate(src2, DSL.accFunction(accClass, amtVar).as(resultVar)), resultVar, null, null, false);
     }
 
+    /** §5.8/§13.4.14 a COUNT aggregation as one side of a condition comparison ("het aantal &lt;elem&gt; van
+     *  &lt;subject&gt; &lt;op&gt; N") -> a {@link Gate} whose {@code extra} is the accumulate CE (from {@link #aggregatie})
+     *  PLUS a constraint pattern on its result var (the count compared to the literal N). The exec mirror of the DRL
+     *  {@code Number( intValue <op> N ) from accumulate(...)}. Scoped to AANTAL + a literal threshold; null otherwise
+     *  (caller falls through). SUM/MIN/MAX-in-condition and a non-literal RHS stay a marker (a follow-up). */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Gate aggregatieVoorwaarde(Conditie.Vergelijking v, PatternDSL.PatternDef pattern, Objecttype subject, Variable subjectVar) {
+        if (subject == null || subjectVar == null) return null;
+        boolean linksAgg = v.links() instanceof Expr.Functie fl && fl.kind() == Expr.FunctieKind.AANTAL;
+        boolean rechtsAgg = v.rechts() instanceof Expr.Functie fr && fr.kind() == Expr.FunctieKind.AANTAL;
+        if (linksAgg == rechtsAgg) return null;                 // exactly ONE side is a count
+        Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
+        Expr ander = linksAgg ? v.rechts() : v.links();
+        if (!(ander instanceof Expr.Literal)) return null;      // scope: a LITERAL threshold (keeps DRL/exec at parity)
+        final Conditie.Operator op = linksAgg ? v.op() : mirrorOp(v.op());   // orient the count on the LEFT
+        Agg agg = aggregatie(f, subject, subjectVar);
+        if (agg == null) return null;
+        WaardeFn rhs = scalarWaarde(ander);
+        if (rhs == null || !rhs.globals().isEmpty()) return null;
+        final BiFunction<Object, Map<String, BigDecimal>, Object> rfn = rhs.fn();
+        Predicate1<Object> cmp = cnt -> {                       // the accumulate result (a count) vs the literal N
+            BigDecimal c = RegelSpraakRuntime.toBd(cnt), n = RegelSpraakRuntime.toBd(rfn.apply(null, Map.of()));
+            if (c == null || n == null) return false;
+            int r = c.compareTo(n);
+            return switch (op) {
+                case GROTER -> r > 0;  case GROTER_OF_GELIJK -> r >= 0;
+                case KLEINER -> r < 0; case KLEINER_OF_GELIJK -> r <= 0;
+                case GELIJK -> r == 0; case ONGELIJK -> r != 0;
+                default -> false;
+            };
+        };
+        PatternDSL.PatternDef resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Predicate1) cmp);
+        List<RuleItemBuilder<?>> extra = new ArrayList<>();
+        extra.add(agg.accItem());
+        extra.add(resultPat);
+        return new Gate(pattern, extra);
+    }
+
+    /** Mirror a comparison operator for operand-swap (count on the right -> orient it on the left). Mirrors DrlTranspiler.omkeren. */
+    private static Conditie.Operator mirrorOp(Conditie.Operator op) {
+        return switch (op) {
+            case KLEINER -> Conditie.Operator.GROTER;   case KLEINER_OF_GELIJK -> Conditie.Operator.GROTER_OF_GELIJK;
+            case GROTER  -> Conditie.Operator.KLEINER;  case GROTER_OF_GELIJK  -> Conditie.Operator.KLEINER_OF_GELIJK;
+            case EERDER  -> Conditie.Operator.LATER;    case EERDER_OF_GELIJK  -> Conditie.Operator.LATER_OF_GELIJK;
+            case LATER   -> Conditie.Operator.EERDER;   case LATER_OF_GELIJK   -> Conditie.Operator.EERDER_OF_GELIJK;
+            case GELIJK  -> Conditie.Operator.GELIJK;   case ONGELIJK          -> Conditie.Operator.ONGELIJK;
+        };
+    }
+
     /** §13.4.2/§5.6 apply a die/dat-subselectie filter to the accumulate SOURCE pattern. A §5.6 comparison whose RHS is
      *  a NUMERIC Parameter-global binds that global on the source pattern (a 2-var expr over the element + the global) —
      *  the exec analog of DRL reading the global as a free name in the source constraint ("prijs &lt; grens"); the LHS is
@@ -1613,6 +1662,13 @@ public final class ExecModelTranspiler {
                 }), List.of());
             }
             return null;   // >1 global / unresolved -> skip
+        }
+        // §5.8/§13.4.14 a COUNT aggregation as one side of a condition comparison ("het aantal X van Y <op> N") -> a
+        // result-constrained accumulate CE hoisted after the subject pattern (Gate.extra) — the exec mirror of the DRL
+        // `Number(intValue <op> N) from accumulate(...)`. Scoped to AANTAL + a literal threshold. Before the leaf fallthrough.
+        if (c instanceof Conditie.Vergelijking cv) {
+            Gate agg = aggregatieVoorwaarde(cv, pattern, subject, subjectVar);
+            if (agg != null) return agg;
         }
         // §8.1.7 far-side "heeft een <rol>": the reference lives on the to-many filler, so this is an exists-join —
         // a SEPARATE rule item that cannot live inside the subject pattern. It binds the filler against $subject.
