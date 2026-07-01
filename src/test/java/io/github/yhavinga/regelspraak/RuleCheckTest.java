@@ -864,6 +864,41 @@ class RuleCheckTest {
                 () -> "verwachtte een operand-typefout voor de absolute waarde van, kreeg: " + m.errors());
     }
 
+    @Test void eerste_paasdag_van_ongeldige_operand_wordt_gemeld() {
+        // §4.19 Tabel 29: the "eerste paasdag van"-operand is a numerieke expressie ZONDER eenheid, altijd een
+        // geheel getal (4 cijfers). EERSTE_PAASDAG always types Datum, so an illegal operand was silently accepted.
+        String obj = """
+            Objecttype de Ding
+                de naam Tekst;
+                de bedragjaar Numeriek (geheel getal) met eenheid EUR;
+                de kommajaar Numeriek (getal met 2 decimalen);
+                de paasdatum Datum in dagen;
+            """;
+        String tekst = obj + "Regel r1\n    geldig altijd\n        De paasdatum van een Ding moet berekend worden als de eerste paasdag van de naam van een Ding.\n";
+        String eenheid = obj + "Regel r2\n    geldig altijd\n        De paasdatum van een Ding moet berekend worden als de eerste paasdag van de bedragjaar van een Ding.\n";
+        String decimaal = obj + "Regel r3\n    geldig altijd\n        De paasdatum van een Ding moet berekend worden als de eerste paasdag van de kommajaar van een Ding.\n";
+        for (String src : new String[]{ tekst, eenheid, decimaal }) {
+            RegelSpraakModel m = Resolver.resolve(src);
+            assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("eerste paasdag van vereist")),
+                    () -> "verwachtte een operand-typefout voor eerste paasdag van, kreeg: " + m.errors());
+        }
+    }
+
+    @Test void schone_eerste_paasdag_van_jaar_uit_geen_fout() {
+        // the spec's canonical operand — "het jaar uit (<datum>)" types Numeriek geheel zonder eenheid (Tabel 28),
+        // so it must NOT be flagged (the TOKA/spec paaskorting shape).
+        String src = """
+            Objecttype de Vlucht
+                de vluchtdatum Datum in dagen;
+                is met paaskorting kenmerk (bijvoeglijk);
+            Regel paaskorting
+                geldig altijd
+                    Een Vlucht is met paaskorting indien de vluchtdatum van de Vlucht gelijk is aan de eerste paasdag van (het jaar uit (de vluchtdatum van de Vlucht)).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten op de paaskorting-vorm: " + m.errors());
+    }
+
     @Test void schone_wortel_en_abs_geen_fout() {
         // controls: a numeric radicand/operand -> no false positive on either new gate.
         String wortel = MODEL + """

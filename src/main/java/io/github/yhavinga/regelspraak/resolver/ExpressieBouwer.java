@@ -865,6 +865,10 @@ final class ExpressieBouwer {
             // Tabel 22/23) is a separate spec-interpretation question — carded, not decided as a WORTEL/ABS side-effect.
             case WORTEL -> Typering.getalAggregatie("de wortel van", typen);
             case ABSOLUTE_WAARDE -> Typering.getalAggregatie("de absolute waarde van", typen);
+            // §4.19 Tabel 29 (eerste paasdag van): "één numerieke expressie zonder eenheid ... altijd een geheel getal
+            // met 4 cijfers". EERSTE_PAASDAG always types Datum, so an illegal operand produced a Datum result with no
+            // diagnostic.
+            case EERSTE_PAASDAG -> paasdagOperandFout(typen);
             case EERSTE  -> Typering.datumAggregatie("eerste van", typen);
             case LAATSTE -> Typering.datumAggregatie("laatste van", typen);
             // §6.12 / §13.4.17.21-.24: a time-of-day component is defined only on a datum-TIJD — a plain
@@ -879,6 +883,22 @@ final class ExpressieBouwer {
         if (fout != null)
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(
                     RegelSpraakModel.Severity.ERROR, fout, f.getStart().getLine()));
+    }
+
+    /** §4.19 Tabel 29 (eerste paasdag van): the single operand is "een numerieke expressie zonder eenheid ... altijd een
+     *  geheel getal met 4 cijfers". Enforce the STATIC part — Numeriek, geheel, geen eenheid (the 4-cijfer VALUE range is
+     *  a runtime concern, unknowable for a variable). EERSTE_PAASDAG always types Datum, so an illegal operand ("eerste
+     *  paasdag van <tekst>", "… van <EUR getal>", "… van <decimaal>") produced a Datum result with NO diagnostic.
+     *  Onbekend is skipped (no claim). "het jaar uit (…)" — the spec's canonical operand — types Numeriek geheel zonder
+     *  eenheid, so it passes. */
+    private static String paasdagOperandFout(List<Datatype> typen) {
+        if (typen.size() != 1 || typen.get(0).isOnbekend()) return null;
+        Datatype d = typen.get(0);
+        if (!(d instanceof Datatype.Numeriek n))
+            return "eerste paasdag van vereist een numerieke expressie (een geheel jaartal), kreeg " + d.naam() + " (§4.19 Tabel 29)";
+        if (!n.geheel() || n.heeftEenheid())
+            return "eerste paasdag van vereist een geheel getal zonder eenheid (een 4-cijferig jaartal), kreeg " + d.naam() + " (§4.19 Tabel 29)";
+        return null;
     }
 
     /** §6.12 / §13.4.17.21-.24: the operand of a time-of-day component (uur/minuut/seconde/milliseconde uit)
