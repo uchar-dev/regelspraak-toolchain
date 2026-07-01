@@ -5304,6 +5304,33 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
+    /** review wf_ee9d1919-c3c: a post-accumulate bail in aggregatieVoorwaarde (an unresolvable 2nd aggregation in
+     *  agg-vs-agg, or a to-many navigated RHS in a single-agg) must NOT leave an ORPHAN accumulate in the marker rule —
+     *  aggTerug rolls back the shared `accumulates` list. Both sources resolve cleanly, then MARKER with no dangling
+     *  accumulate (DRL) and SKIP (exec). */
+    @Test void phase_AGG_no_orphan_accumulate_on_marker() {
+        String aggVsAgg =
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+            "Objecttype het Bemanningslid (mv: Bemanningsleden) (bezield)\n" +
+            "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n" +
+            "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nÉén reis heeft meerdere passagiers\n" +
+            "Feittype bemanning\n    de bemande vlucht Vlucht\n    het bemanningslid Bemanningslid\nÉén bemande vlucht heeft meerdere bemanningsleden\n" +
+            "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien het aantal passagiers van de Vlucht gelijk is aan het aantal bemanningsleden van de Vlucht.\n";
+        String toManyNav =
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de leeftijd Numeriek (geheel getal);\n" +
+            "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n" +
+            "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nÉén reis heeft meerdere passagiers\n" +
+            "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien het aantal passagiers van de Vlucht groter is dan de leeftijd van zijn passagiers.\n";
+        for (String src : new String[]{aggVsAgg, toManyNav}) {
+            RegelSpraakModel m = Resolver.resolve(src);
+            assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+            String drl = DrlTranspiler.transpile(m);
+            assertTrue(drl.contains("/* TODO"), "must MARKER the unlowerable aggregation comparison");
+            assertFalse(drl.contains("accumulate("), "must NOT leak an orphan accumulate into the marker rule");
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertFalse(em.overgeslagen().isEmpty(), "exec must SKIP the unlowerable aggregation comparison");
+        }
+    }
     /** review wf_900d3055-a62 F2: an aggregation-in-condition vs a NAVIGATED RHS must be a SYMMETRIC marker — DRL markers
      *  AND exec SKIPS (no live rule, no ConstraintEvaluationException at fireAllRules). */
     @Test void phase_AGG_navigated_rhs_is_symmetric_marker() {

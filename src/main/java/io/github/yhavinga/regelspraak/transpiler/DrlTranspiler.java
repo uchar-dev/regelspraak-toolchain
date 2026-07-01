@@ -2870,6 +2870,10 @@ public final class DrlTranspiler {
      *  caller falls through to the marker path. Mirrors the exec Gate. */
     private LoweredConditie aggregatieVoorwaarde(Conditie.Vergelijking v, Objecttype subject) {
         if (subject == null) return null;
+        // accumulate() appends its CE to the shared `accumulates` list as a SIDE EFFECT (before returning the result Frag).
+        // A post-accumulate bail (an unresolvable 2nd aggregation in agg-vs-agg, a to-many/unresolvable navigated RHS) must
+        // roll that back via aggTerug(mark) — else the marker rule keeps a dangling ORPHAN accumulate (inert but malformed).
+        final int mark = accumulates.size();
         boolean linksAgg = v.links() instanceof Expr.Functie fl && isAggregatieFunctie(fl.kind());
         boolean rechtsAgg = v.rechts() instanceof Expr.Functie fr && isAggregatieFunctie(fr.kind());
         if (!linksAgg && !rechtsAgg) return null;               // no aggregation operand
@@ -2877,9 +2881,9 @@ public final class DrlTranspiler {
             // Two accumulate CEs over the same subject; the eval compares both results via rsAggVergelijk (the right agg
             // coerced to BigDecimal via rsGetal). leegCount=true so an empty SOM/MIN/MAX on either side reads leeg.
             Frag a1 = accumulate((Expr.Functie) v.links(), subject, true);
-            if (a1 == null || a1.marker()) return null;
+            if (a1 == null || a1.marker()) return aggTerug(mark);
             Frag a2 = accumulate((Expr.Functie) v.rechts(), subject, true);
-            if (a2 == null || a2.marker()) return null;
+            if (a2 == null || a2.marker()) return aggTerug(mark);
             accumulates.add("eval( " + registreerAggVergelijkFunctie() + "(" + a1.text() + ", "
                     + registreerGetalFunctie() + "(" + a2.text() + "), \"" + drlOp(v.op()) + "\") )");
             return new LoweredConditie("", java.util.List.of(), false);
@@ -2910,8 +2914,8 @@ public final class DrlTranspiler {
         // flushed after the subject pattern) via rsAggVergelijk. leegCount=true so an empty SOM/MIN/MAX binds a count row
         // -> the compare runs with a null aggregate and applies the §5.3/§5.6 leegwaarde cells (leeg==leeg / leeg!=gevuld).
         Frag agg = accumulate(f, subject, true);
-        if (agg == null || agg.marker()) return null;   // accumulate() returns NULL (not a marker Frag) for an unresolvable
-                                                        // join / unstructured die-filter / multi-operand fold -> skip, not NPE
+        if (agg == null || agg.marker()) return aggTerug(mark);   // accumulate() returns NULL (not a marker Frag) for an
+                                                        // unresolvable join / unstructured die-filter / multi-operand fold
         // the RHS rides the EVAL (a standalone when-clause), so it needs a $subject-qualified value ($subject.getX()), NOT
         // operand()'s pattern-relative field name. A literal/own-attr/global goes through waarde() ($subject-qualified). A
         // to-ONE navigated numeric read goes through the null-safe rsRelGetal($subject.get<Rol>(), "attr") — an absent
@@ -2919,15 +2923,23 @@ public final class DrlTranspiler {
         Frag n;
         if (ander instanceof Expr.AttribuutRef nar && (nar.navigatieRol() != null || nar.objecttype() != subject)) {
             NaviRef nr = naviResolve(nar, subject);
-            if (nr.soort() != NaviSoort.GENAVIGEERD) return null;   // AFWEZIG / NAAR_VEEL / ONOPGELOST -> marker (symmetric)
+            if (nr.soort() != NaviSoort.GENAVIGEERD) return aggTerug(mark);   // AFWEZIG / NAAR_VEEL / ONOPGELOST -> marker
             registreerRelGetalFunctie();
             n = Frag.ok("rsRelGetal(" + SUBJECT + "." + getter(nr.rol()) + "(), \"" + nar.attribuut() + "\")");
         } else {
             n = waarde(ander, subject);
-            if (n.marker()) return null;
+            if (n.marker()) return aggTerug(mark);
         }
         accumulates.add("eval( " + registreerAggVergelijkFunctie() + "(" + agg.text() + ", " + n.text() + ", \"" + drlOp(op) + "\") )");
         return new LoweredConditie("", java.util.List.of(), false);
+    }
+
+    /** Roll back any accumulate CEs {@link #accumulate} appended into {@code accumulates} since {@code mark}, then signal
+     *  "not lowered" (null) — so a post-accumulate bail (unresolvable 2nd agg / to-many navigated RHS) leaves NO orphan
+     *  accumulate in the marker rule (review wf_ee9d1919-c3c). */
+    private LoweredConditie aggTerug(int mark) {
+        if (accumulates.size() > mark) accumulates.subList(mark, accumulates.size()).clear();
+        return null;
     }
 
     private static boolean isAggregatieFunctie(Expr.FunctieKind k) {
