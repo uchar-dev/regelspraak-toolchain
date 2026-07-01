@@ -572,8 +572,7 @@ public final class ExecModelTranspiler {
         if (!(ander instanceof Expr.Literal)
                 && !(ander instanceof Expr.AttribuutRef ar && ar.navigatieRol() == null && ar.objecttype() == subject
                      && subject.attributen.containsKey(ar.attribuut()))) return null;
-        Conditie.Operator op = linksAgg ? v.op() : mirrorOp(v.op());   // orient the aggregation on the LEFT
-        if (op == Conditie.Operator.ONGELIJK) return null;      // §5.6 Tabel 44 leeg-vs-gevuld ONGELIJK -> follow-up
+        Conditie.Operator op = linksAgg ? v.op() : mirrorOp(v.op());   // orient the aggregation on the LEFT (mirrorOp(ONGELIJK)=ONGELIJK, != symmetric)
         final String opStr = opString(op);
         Agg agg = aggregatie(f, subject, subjectVar);
         if (agg == null) return null;
@@ -609,11 +608,12 @@ public final class ExecModelTranspiler {
                 || (v.rechts() instanceof Expr.Functie fr && isAggregatieKind(fr.kind()));
     }
 
-    /** The rsAggVergelijk op-string for a comparison operator (mirrors DrlTranspiler.drlOp; ONGELIJK is gated out upstream). */
+    /** The rsAggVergelijk op-string for a comparison operator (mirrors DrlTranspiler.drlOp). */
     private static String opString(Conditie.Operator op) {
         return switch (op) {
             case GROTER, LATER -> ">";    case GROTER_OF_GELIJK, LATER_OF_GELIJK -> ">=";
             case KLEINER, EERDER -> "<";  case KLEINER_OF_GELIJK, EERDER_OF_GELIJK -> "<=";
+            case ONGELIJK -> "!=";
             default -> "==";
         };
     }

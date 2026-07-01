@@ -153,17 +153,23 @@ public final class RegelSpraakRuntime {
     }
 
     /** §5.8/§5.6 the leegwaarde-faithful numeric comparison of an aggregation result to a threshold in a CONDITION: a leeg
-     *  aggregate (empty SOM/MIN/MAX -> null) or a leeg threshold reads ONWAAR for the ordering / GELIJK operators (§5,
-     *  a leeg operand). Coerces the agg (a Long count or a BigDecimal fold) to BigDecimal by value. Byte-identical mirror
-     *  of the DRL {@code rsAggVergelijk} function. */
+     *  aggregate (empty SOM/MIN/MAX -> null) or a leeg threshold reads ONWAAR for the ordering operators (§5, a leeg
+     *  operand); GELIJK is WAAR only when BOTH are leeg (§5.3 Tabel 37); ONGELIJK is WAAR for exactly-one-leeg and onwaar
+     *  for both-leeg (§5.6 Tabel 44). Coerces the agg (a Long count or a BigDecimal fold) to BigDecimal by value.
+     *  Byte-identical mirror of the DRL {@code rsAggVergelijk} function. */
     public static boolean rsAggVergelijk(Object agg, BigDecimal n, String op) {
         BigDecimal a = agg == null ? null : new BigDecimal(agg.toString());
-        if (a == null || n == null)
-            return op.equals("==") && a == null && n == null;   // §5 Tabel 37: GELIJK both-leeg -> WAAR; any other leeg -> onwaar (ordering Tabel 33 / one-leeg GELIJK)
+        if (a == null || n == null) {
+            boolean beideLeeg = a == null && n == null;
+            if (op.equals("==")) return beideLeeg;     // §5.3 Tabel 37: leeg==leeg WAAR, exactly-one-leeg onwaar
+            if (op.equals("!=")) return !beideLeeg;    // §5.6 Tabel 44: leeg!=gevuld WAAR, leeg!=leeg onwaar
+            return false;                              // ordering with a leeg operand -> onwaar (Tabel 33)
+        }
         int c = a.compareTo(n);
         return switch (op) {
             case ">" -> c > 0;   case ">=" -> c >= 0;
             case "<" -> c < 0;   case "<=" -> c <= 0;
+            case "!=" -> c != 0;
             default  -> c == 0;
         };
     }

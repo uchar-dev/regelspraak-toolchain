@@ -3390,6 +3390,35 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_AGG_GELIJK_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.FALSE, Boolean.TRUE, Boolean.FALSE };
 
+    // ---- §5.6 Tabel 44 ONGELIJK ("ongelijk is aan") for an aggregation-in-condition: was a symmetric marker (the ONGELIJK
+    //      gate in both aggregatieVoorwaarde), now FIRES. Both-gevuld a!=b, and the leeg semantics: leeg!=gevuld -> WAAR,
+    //      leeg!=leeg -> onwaar (Tabel 44, the inverse of the GELIJK Tabel 37 above). rsAggVergelijk now handles op "!=". ----
+    static Fixture aggOngelijkFix(String naam, Integer vt, int[] leeftijds) {
+        String src = String.format(AGG_RHS_SRC, "de som van de leeftijd van alle passagiers van de Vlucht ongelijk is aan de vertrektijd van de Vlucht");
+        return new Fixture(naam, src,
+                () -> { List<Object> fs = new ArrayList<>(); Vlucht v = new Vlucht(); if (vt != null) v.setVertrektijd(new BigDecimal(vt)); fs.add(v);
+                        for (int lt : leeftijds) { Passagier p = new Passagier(); p.setLeeftijd(new BigDecimal(lt)); p.setReis(v); fs.add(p); } return fs; },
+                Map.of(), l -> ((Vlucht) l.get(0)).isVol());
+    }
+    static final Fixture[] PHASE_AGG_ONGELIJK = {
+        // count != literal (both-gevuld; an empty count is 0, still gevuld — never a leeg operand)
+        aggCondFix("§5.6 count != 3: 4 passagiers -> WAAR (4!=3)", "ongelijk is aan 3", 4),
+        aggCondFix("§5.6 count != 3: 3 passagiers -> onwaar (3!=3)", "ongelijk is aan 3", 3),
+        aggCondFix("§5.6 count != 3: 0 passagiers -> WAAR (0!=3)", "ongelijk is aan 3", 0),
+        // SOM != own-attr, both gevuld
+        aggOngelijkFix("§5.6 SOM(5) != vt(6) -> WAAR", 6, new int[]{5}),
+        aggOngelijkFix("§5.6 SOM(5) != vt(5) -> onwaar", 5, new int[]{5}),
+        // §5.6 Tabel 44 leeg corners (a SOM binds count -> the empty-set aggregate fires with a null value)
+        aggOngelijkFix("§5.6 Tabel44 SOM(leeg) != vt(leeg) -> onwaar (both-leeg)", null, new int[]{}),
+        aggOngelijkFix("§5.6 Tabel44 SOM(5) != vt(leeg) -> WAAR (X!=leeg)", null, new int[]{5}),
+        aggOngelijkFix("§5.6 Tabel44 SOM(leeg) != vt(0) -> WAAR (leeg!=Y)", 0, new int[]{}),
+    };
+    static final Object[] PHASE_AGG_ONGELIJK_EXPECTED = {
+        Boolean.TRUE, Boolean.FALSE, Boolean.TRUE,
+        Boolean.TRUE, Boolean.FALSE,
+        Boolean.FALSE, Boolean.TRUE, Boolean.TRUE,
+    };
+
     // ---- review wf_900d3055-a62 F2: an aggregation-in-condition vs a NAVIGATED RHS ("het aantal passagiers van de Vlucht
     //      groter is dan de afstand van de luchthaven van de Vlucht") must stay a SYMMETRIC marker — DRL markers, exec SKIPS
     //      (was: DRL markers but exec built a LIVE rule that THREW at fireAllRules). ----
@@ -5052,6 +5081,22 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(PHASE_AGG_GELIJK_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §5.6 Tabel 44 ONGELIJK ("ongelijk is aan") for an aggregation-in-condition now FIRES in both back-ends (was a
+     *  symmetric marker): both-gevuld a!=b, and the leeg semantics leeg!=gevuld -> WAAR / leeg!=leeg -> onwaar (the inverse
+     *  of the GELIJK Tabel 37). Absolute + DRL==exec parity + no exec skip. */
+    @Test void phase_AGG_ONGELIJK_leegwaarde_is_spec_correct() {
+        for (int i = 0; i < PHASE_AGG_ONGELIJK.length; i++) {
+            Fixture f = PHASE_AGG_ONGELIJK[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_AGG_ONGELIJK_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }

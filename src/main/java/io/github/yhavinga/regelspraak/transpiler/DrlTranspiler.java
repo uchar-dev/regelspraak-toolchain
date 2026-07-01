@@ -2868,8 +2868,7 @@ public final class DrlTranspiler {
         if (!(ander instanceof Expr.Literal)
                 && !(ander instanceof Expr.AttribuutRef ar && ar.navigatieRol() == null && ar.objecttype() == subject
                      && subject.attributen.containsKey(ar.attribuut()))) return null;
-        Conditie.Operator op = linksAgg ? v.op() : omkeren(v.op());   // orient the aggregation on the LEFT
-        if (op == Conditie.Operator.ONGELIJK) return null;      // §5.6 Tabel 44 leeg-vs-gevuld ONGELIJK -> follow-up
+        Conditie.Operator op = linksAgg ? v.op() : omkeren(v.op());   // orient the aggregation on the LEFT (omkeren(ONGELIJK)=ONGELIJK, != symmetric)
         // Reuse the VALUE-side accumulate lowering: it registers the accumulate CE (count / BigDecimal sum with the §5.8.2
         // empty-sum leegwaarde branch / min·max coerced to BigDecimal) in `accumulates` and returns the RESULT value expr
         // ($accN, or the SOM count-branch ternary). The comparison then rides an eval AFTER the accumulate (both flushed
@@ -2892,19 +2891,26 @@ public final class DrlTranspiler {
 
     /** Register (idempotently) {@code boolean rsAggVergelijk(Object agg, BigDecimal n, String op)} — the leegwaarde-faithful
      *  numeric comparison of an aggregation result to a threshold in a condition. A leeg aggregate (empty SOM/MIN/MAX -> null)
-     *  or a leeg threshold reads ONWAAR for the ordering / GELIJK operators (§5 comparison, leeg operand). Coerces the agg
-     *  (a Long count or a BigDecimal fold) to BigDecimal by value. Mirrors {@link RegelSpraakRuntime#rsAggVergelijk}. */
+     *  or a leeg threshold reads ONWAAR for the ordering operators (§5, leeg operand); GELIJK is WAAR only both-leeg (§5.3
+     *  Tabel 37); ONGELIJK is WAAR for exactly-one-leeg, onwaar both-leeg (§5.6 Tabel 44). Coerces the agg (a Long count or a
+     *  BigDecimal fold) to BigDecimal by value. Mirrors {@link RegelSpraakRuntime#rsAggVergelijk}. */
     private String registreerAggVergelijkFunctie() {
         String fn = "rsAggVergelijk";
         hulpFuncties.putIfAbsent(fn,
             "function boolean " + fn + "(Object agg, java.math.BigDecimal n, String op) {\n"
           + "    java.math.BigDecimal a = agg == null ? null : new java.math.BigDecimal(agg.toString());\n"
-          + "    if (a == null || n == null) return op.equals(\"==\") && a == null && n == null;\n"   // §5 Tabel 37: GELIJK both-leeg -> WAAR
+          + "    if (a == null || n == null) {\n"
+          + "        boolean beideLeeg = a == null && n == null;\n"
+          + "        if (op.equals(\"==\")) return beideLeeg;\n"    // §5.3 Tabel 37: leeg==leeg WAAR
+          + "        if (op.equals(\"!=\")) return !beideLeeg;\n"   // §5.6 Tabel 44: leeg!=gevuld WAAR, leeg!=leeg onwaar
+          + "        return false;\n"                               // ordering leeg operand -> onwaar (Tabel 33)
+          + "    }\n"
           + "    int c = a.compareTo(n);\n"
           + "    if (op.equals(\">\")) return c > 0;\n"
           + "    if (op.equals(\">=\")) return c >= 0;\n"
           + "    if (op.equals(\"<\")) return c < 0;\n"
           + "    if (op.equals(\"<=\")) return c <= 0;\n"
+          + "    if (op.equals(\"!=\")) return c != 0;\n"
           + "    return c == 0;\n"
           + "}\n\n");
         return fn;
