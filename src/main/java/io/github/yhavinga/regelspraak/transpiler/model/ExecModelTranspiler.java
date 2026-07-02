@@ -12,6 +12,7 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
 import io.github.yhavinga.regelspraak.model.Rationaal;
 import io.github.yhavinga.regelspraak.runtime.Accessors;
 import io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime;
+import io.github.yhavinga.regelspraak.transpiler.kern.Dekking;
 
 import org.drools.model.DSL;
 import org.drools.model.Global;
@@ -118,6 +119,26 @@ public final class ExecModelTranspiler {
     private Model model0;
     public Model model() { return model0; }
     public List<String> overgeslagen() { return overgeslagen; }
+    /** The coverage manifest — one {@link Dekking} verdict per construct, per soort in model-list
+     *  order (comparable per soort with the DRL back-end's manifest). */
+    public List<Dekking> dekking() { return dekking; }
+    private final List<Dekking> dekking = new ArrayList<>();
+
+    /** Run one construct's emitter and record its manifest verdict. This back-end's non-lowered
+     *  discipline is the recorded skip ({@link #skip}/{@link #skipList} append to
+     *  {@link #overgeslagen}), so "the emitter grew the skip list" IS the SKIP verdict — the wrapper
+     *  measures that growth instead of re-deriving scope decisions. A construct that emits no rule
+     *  WITHOUT recording (the feitcreatie inert-voorwaarde case) is a correct never-fire lowering,
+     *  so it stays LOWERED. A SKIP also raises a deduplicated WARNING (never silent). */
+    private <T> T meet(String soort, String naam, java.util.function.Supplier<T> emitter) {
+        int voor = overgeslagen.size();
+        T res = emitter.get();
+        Dekking d = overgeslagen.size() == voor ? Dekking.lowered(soort, naam)
+                : Dekking.skip(soort, naam, String.join("; ", overgeslagen.subList(voor, overgeslagen.size())));
+        dekking.add(d);
+        d.meld(model);
+        return res;
+    }
 
     @SuppressWarnings("rawtypes")
     private Model run() {
@@ -165,35 +186,43 @@ public final class ExecModelTranspiler {
             rekendatumGlobal = DSL.globalOf(java.time.LocalDate.class, PKG, "rekendatum");
             m.addGlobal(rekendatumGlobal);
         }
+        // Every construct family runs through meet(), which records the Dekking verdict around the
+        // UNCHANGED emitter call — the emit order, rule-add order and all lowering behavior are as
+        // before; only the measurement is new. (The manifest's inter-family order differs from the
+        // DRL back-end's; consumers compare per soort, where both follow the same model lists.)
         for (ResolvedRegel r : model.resolvedRegels) {
-            Rule rule = regel(r);
-            if (rule != null) {
-                m.addRule(rule);
-                for (Rule comp : delingCompanions(r)) m.addRule(comp);   // §6.5 deling-door-leeg fout (Phase D)
-                for (Rule comp : wortelCompanions(r)) m.addRule(comp);   // §6.6 wortel-van-negatief fout (Phase D)
-            }
+            List<Rule> rules = meet("regel", r.naam(), () -> {
+                Rule rule = regel(r);
+                if (rule == null) return List.<Rule>of();
+                List<Rule> alle = new ArrayList<>();
+                alle.add(rule);
+                alle.addAll(delingCompanions(r));   // §6.5 deling-door-leeg fout (Phase D)
+                alle.addAll(wortelCompanions(r));   // §6.6 wortel-van-negatief fout (Phase D)
+                return alle;
+            });
+            for (Rule rule : rules) m.addRule(rule);
         }
         for (io.github.yhavinga.regelspraak.ir.ResolvedConsistentie c : model.consistenties) {   // §9.5 / §13.4.8 (Phase D)
-            Rule rule = consistentie(c);
+            Rule rule = meet("consistentie", c.naam(), () -> consistentie(c));
             if (rule != null) m.addRule(rule);
         }
         for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteit u : model.uniciteiten) {        // §8.1.6 (Phase D)
-            Rule rule = uniciteit(u);
+            Rule rule = meet("uniciteit", u.naam(), () -> uniciteit(u));
             if (rule != null) m.addRule(rule);
         }
         for (io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v : model.verdelingen) {        // §9.7 / §13.4.10 (Phase E)
-            for (Rule rule : verdeling(v)) m.addRule(rule);
+            for (Rule rule : meet("verdeling", v.naam(), () -> verdeling(v))) m.addRule(rule);
         }
         for (io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc : model.objectCreaties) {  // §13.4.6 (Phase G)
-            Rule rule = objectCreatie(oc);
+            Rule rule = meet("objectcreatie", oc.naam(), () -> objectCreatie(oc));
             if (rule != null) m.addRule(rule);
         }
         for (io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie fc : model.feitCreaties) {       // §13.4.7 (Phase G)
-            Rule rule = feitCreatie(fc);
+            Rule rule = meet("feitcreatie", fc.naam(), () -> feitCreatie(fc));
             if (rule != null) m.addRule(rule);
         }
         for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie u : model.uniciteitUnies)  // §8.1.6 "verenigd met" (Phase H)
-            for (Rule rule : uniciteitUnie(u)) m.addRule(rule);
+            for (Rule rule : meet("uniciteit-unie", u.naam(), () -> uniciteitUnie(u))) m.addRule(rule);
         return m;
     }
 

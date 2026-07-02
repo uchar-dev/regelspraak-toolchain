@@ -40,19 +40,30 @@ public final class Resolver {
     }
 
     /** CLI: resolve a .rs file, print a model summary and any diagnostics; exit 1 if any error.
-     *  With --drl, print the transpiled Drools (DRL) instead of the summary. */
+     *  With --drl, print the transpiled Drools (DRL) instead of the summary; a DRL whose coverage
+     *  manifest is not fully LOWERED (semantically inert marker rules) exits 3 unless
+     *  --allow-markers is given — accepted input with inert output must never look like success. */
     public static void main(String[] args) throws java.io.IOException {
-        boolean drl = args.length > 0 && args[0].equals("--drl");
-        String[] rest = drl ? java.util.Arrays.copyOfRange(args, 1, args.length) : args;
-        if (rest.length < 1) { System.err.println("usage: Resolver [--drl] <file.rs>"); System.exit(2); }
-        RegelSpraakModel m = resolve(java.nio.file.Files.readString(java.nio.file.Path.of(rest[0])));
+        var rest = new java.util.ArrayList<>(java.util.List.of(args));
+        boolean drl = rest.remove("--drl");
+        boolean allowMarkers = rest.remove("--allow-markers");
+        if (rest.isEmpty()) { System.err.println("usage: Resolver [--drl] [--allow-markers] <file.rs>"); System.exit(2); }
+        RegelSpraakModel m = resolve(java.nio.file.Files.readString(java.nio.file.Path.of(rest.get(0))));
         if (drl) {
-            // Transpiling also surfaces lowering-phase diagnostics (e.g. a consistentieregel whose
-            // violation is not expressible); print them to stderr so they are visible without polluting
-            // the DRL on stdout.
-            System.out.print(io.github.yhavinga.regelspraak.transpiler.DrlTranspiler.transpile(m));
+            // Transpiling also surfaces lowering-phase diagnostics (the dekking-WARNINGs per marker,
+            // plus e.g. a consistentieregel whose violation is not expressible); print them to stderr
+            // so they are visible without polluting the DRL on stdout.
+            var t = io.github.yhavinga.regelspraak.transpiler.DrlTranspiler.build(m);
+            System.out.print(t.drl());
             m.diagnostics.forEach(d -> System.err.println("  " + d));
-            System.exit(m.isOk() ? 0 : 1);
+            if (!m.isOk()) System.exit(1);
+            var nietLowered = t.dekking().stream().filter(d -> !d.lowered()).toList();
+            if (!nietLowered.isEmpty() && !allowMarkers) {
+                System.err.println("  " + nietLowered.size() + " constructie(s) niet gelowered (marker/no-op in de DRL)"
+                        + " — exit 3; geef --allow-markers om de DRL toch te accepteren");
+                System.exit(3);
+            }
+            System.exit(0);
         }
         // Run the transpiler (discarding the DRL) so the summary's diagnostics include the lowering-phase
         // ones — a "does my model resolve AND lower cleanly?" check, not resolve-only.

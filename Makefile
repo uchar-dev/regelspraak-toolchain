@@ -129,8 +129,11 @@ verify-corpus: compile
 	@bash tools/verify_corpus.sh
 
 # Transpile a .rs file to Drools (DRL): parse -> resolve -> emit DRL on stdout.
+# --allow-markers: this is an inspection tool, so show the DRL even when a construct
+# stays an honest marker (the dekking-WARNINGs still land on stderr). A bare
+# `Resolver --drl` without the flag exits 3 on any marker — the CI-facing contract.
 drl: resolver
-	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver --drl $(FILE)
+	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver --drl --allow-markers $(FILE)
 
 # Compile AND FIRE the generated DRL in a real Drools engine — the executable
 # proof that transpilation is correct, not merely well-shaped. Unlike the jar-only

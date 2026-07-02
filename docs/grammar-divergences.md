@@ -1043,6 +1043,18 @@ operands, which the resolver then type-checks (§4.12-4.15: min/max operands all
 inter-convertible units; eerste/laatste all datum of one tijd-precisie) and the transpiler
 lowers as a pairwise fold of `<`/`>` ternaries rather than a collection accumulate.
 
+**Same name-boundary family — lowercase `geldig` inside a regelnaam.** The version header
+(§13.4.2 `geldig <versiegeldigheid>`) is recognised by the lowercase keyword `geldig`, so a
+regelnaam CONTAINING a lowercase `geldig` (e.g. "Regel bepaal geldig verblijf") cannot be
+written: the name is cut at the keyword and the parse fails. The failure is a proper syntax
+error (never a silent mis-parse) but with confusing FOLLOW-UP diagnostics — the truncated
+header can double-register the rule name, yielding a phantom "geldigheidsperioden overlappen"
+on a rule "#2" that does not exist in the source (probe P1 of the 20260701 review). A
+capitalised `Geldig` at the START of a name is fine (distinct token, see the tolerance list
+above); an interior capital `Geldig` also parses since only lowercase `geldig` is the keyword.
+Workaround: rephrase the name ("bepaal geldigheid van verblijf" also works — the keyword is
+the exact word `geldig`, not its derivations).
+
 
 ### Forms still modelled at main-clause word order (resolver-side concern)
 
@@ -1348,11 +1360,16 @@ floor):
   `restant`, so its modify does not re-trigger the share rule (property reactivity) and the recomputation is a
   fixpoint. Caught by an adversarial review (the freeze-guard premature-partial bug) + regression-pinned.
 
-`op volgorde van` (group ordering, §9.7.2) now lowers as well — see the next section. toka-36 (afronding) and
-toka-34 (op volgorde, no maximum) lower on the corpus; toka-35 (maximum) and toka-37 (op volgorde + maximum)
-lower *structurally* but marker on the TOKA corpus because their cap attribute "maximaal aantal te ontvangen
-treinmiles" is referenced yet never declared (a spec omission, like the undeclared "passagier jonger dan 18 jaar"
-kenmerk) — proven instead on synthetic fixtures firing the §9.7.3 and §9.7.5 worked examples.
+`op volgorde van` (group ordering, §9.7.2) now lowers as well — see the next section. **On the TOKA corpus
+itself, however, ALL SIX verdelingen (toka-32…37) marker** — measured and pinned by `TokaDekkingTest`
+(an earlier revision of this paragraph claimed toka-34/36 lower on the corpus; that was never corpus-true).
+The cause is a casus spec omission, the same family as the undeclared "passagier jonger dan 18 jaar" kenmerk:
+every verdeling distributes over "de **treinmiles** van alle passagiers…", but `Natuurlijk persoon` declares
+only the longer "treinmiles op basis van evenredige verdeling" / "…volgens rangorde" attributes, so the bare
+recipient attribute `treinmiles` does not exist and the getalachtig-doel guard honestly markers. Declaring
+`de treinmiles Numeriek (geheel getal);` makes toka-32/33/34/36 lower (verified probe); toka-35/37 then still
+marker on their *also*-undeclared cap attribute "maximaal aantal te ontvangen treinmiles". The §9.7.2–§9.7.5
+machinery is therefore proven on the synthetic fixtures firing the worked examples, not on the TOKA corpus.
 
 **Warning:** §9.7.3/§9.7.4 — "Als een maximale aanspraak / afronding wordt gespecificeerd, dan moet ook altijd
 een onverdeelde rest worden gespecificeerd." A verdeling that caps or floors with no (recognisable) bron-side

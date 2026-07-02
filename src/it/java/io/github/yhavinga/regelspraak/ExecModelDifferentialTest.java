@@ -24,6 +24,7 @@ import io.github.yhavinga.regelspraak.facts.Vlucht;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
 import io.github.yhavinga.regelspraak.transpiler.DrlTranspiler;
+import io.github.yhavinga.regelspraak.transpiler.kern.Dekking;
 import io.github.yhavinga.regelspraak.transpiler.model.ExecModelTranspiler;
 
 import org.drools.modelcompiler.KieBaseBuilder;
@@ -5178,7 +5179,13 @@ class ExecModelDifferentialTest {
 
     @Test void phase_G_dimensie_matches_drl_back_end()             { runDifferential("Phase G dim", PHASE_G_DIM, 3); }
     @Test void phase_G_objectcreatie_matches_drl_back_end()        { runObjDifferential("Phase G obj", PHASE_G_OBJ, 2); }
-    @Test void phase_G_feitcreatie_matches_drl_back_end()          { runDifferential("Phase G feit", PHASE_G_FEIT, 6); }
+    // The inert-voorwaarde fixture is a VERDICT divergence but a behavioral AGREEMENT: the DRL back-end
+    // surfaces "create nothing" as an eval(false) marker rule (verdict MARKER), the exec back-end as no
+    // rule at all — a deliberate correct lowering, not a skip (verdict LOWERED). The fixture FIRES in the
+    // differential and both back-ends create nothing, so the divergence is in the label, not the behavior.
+    @Test void phase_G_feitcreatie_matches_drl_back_end()          { runDifferential("Phase G feit", PHASE_G_FEIT, 6, Map.of(
+        "§13.4.7 feitcreatie met onlowerbare voorwaarde creeert niets (geen over-creatie) :: feitcreatie: ken bonus toe",
+            "beide back-ends creëren niets; DRL markert dat als eval(false)-no-op-regel, exec lowert het als geen-regel — gedragsgelijk, alleen het verdict-label verschilt")); }
     @Test void phase_F4b_mixed_static_guard_matches_drl_back_end() { runDifferential("Phase F4b", PHASE_F4B, 4); }
     @Test void phase_F4_compound_gedurende_matches_drl_back_end()  { runDifferential("Phase F4", PHASE_F4, 6); }
     @Test void phase_F3_tijdsevenredig_matches_drl_back_end()      { runDifferential("Phase F3", PHASE_F3, 5); }
@@ -6402,10 +6409,19 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
-    // Phase E carries ONE principled skip: ">1 verdeling op hetzelfde doel" is agenda-order-dependent, so the model
-    // deliberately does not lower it (a §differential-masked-skip the cap now pins at exactly 1).
-    @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9, 1); }
+    // Phase E carries the ONE principled non-LOWERED pair: ">1 verdeling op hetzelfde doel" is agenda-order-
+    // dependent (RegelSpraak defines no value for two conflicting distributions), so the exec back-end
+    // deliberately SKIPs both writers while the DRL back-end lowers them — allowlisted per construct, with reason.
+    @Test void phase_E_verdeling_shares_match_drl_back_end()       { runDifferential("Phase E", PHASE_E, 9, Map.of(
+        "verdeling: twee verdelingen op hetzelfde doel -> honest skip (geen hang) :: verdeling: verdeel een",
+            "multi-writer doel-attribuut: DRL lowert beide verdelingen (agenda-order-afhankelijke uitkomst), exec skipt principieel",
+        "verdeling: twee verdelingen op hetzelfde doel -> honest skip (geen hang) :: verdeling: verdeel twee",
+            "idem — de tweede schrijver van hetzelfde doel-attribuut")); }
     @Test void phase_E_verdeling_fouten_match_drl_back_end()       { runFoutDifferential("Phase E fout", PHASE_E_FOUT, 2); }
+    // NB: a corpus-level (whole-TOKA) manifest diff is not possible yet — ExecModelTranspiler.build
+    // resolves fact-bean getters EAGERLY and fail-fasts on the missing TOKA beans (IllegalState "geen
+    // getter voor 'leeftijd'"). The DRL-side TOKA scoreboard lives in TokaDekkingTest; the two-back-end
+    // corpus diff becomes possible once goal-M4's FactModelGenerator can supply generated beans.
 
     // ---- Phase D: §9.5/§13.4.8 consistentieregel — the VIOLATION inserts an Inconsistentie. The observable is the
     //      SET of flagged subjects (not a subject field), so a FoutFixture maps each inserted Inconsistentie to a
@@ -7468,15 +7484,17 @@ class ExecModelDifferentialTest {
             o -> "totaal=" + ((Pot) o).getTotaal()),
     };
 
-    private void runDifferential(String label, Fixture[] fixtures, int minDiffed) { runDifferential(label, fixtures, minDiffed, 0); }
-    private void runDifferential(String label, Fixture[] fixtures, int minDiffed, int expectedSkipped) {
+    private void runDifferential(String label, Fixture[] fixtures, int minDiffed) { runDifferential(label, fixtures, minDiffed, Map.of()); }
+    private void runDifferential(String label, Fixture[] fixtures, int minDiffed, Map<String, String> toegestaneDivergenties) {
         int diffed = 0, skipped = 0;
         StringBuilder skips = new StringBuilder();
+        var gebruikt = new java.util.HashSet<String>();
         for (Fixture f : fixtures) {
             RegelSpraakModel m = Resolver.resolve(f.src());
             assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
 
             ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            manifestDiff(label, f.naam(), m, em, toegestaneDivergenties, gebruikt);
             if (!em.overgeslagen().isEmpty()) {     // not yet migrated -> explicit skip, not a divergence
                 skipped++; skips.append("\n  SKIP ").append(f.naam()).append(": ").append(em.overgeslagen());
                 continue;
@@ -7491,29 +7509,64 @@ class ExecModelDifferentialTest {
         // the phase must actually exercise the model path (not silently skip everything)
         final int agreed = diffed;
         assertTrue(agreed >= minDiffed, () -> "verwacht >=" + minDiffed + " gediffte " + label + " fixtures, kreeg " + agreed + skips);
-        capSkipped(label, expectedSkipped, skipped, skips);
+        eisAllowlistGebruikt(label, toegestaneDivergenties, gebruikt);
         System.out.println("[differential] " + label + ": " + agreed + " agreed, " + skipped + " skipped" + skips);
     }
 
-    /** The §differential-masks-shared-bugs SKIPPED-CAP: a model-overgeslagen fixture is SKIPPED (not compared), so a
-     *  regression that makes an ALREADY-MIGRATED path start skipping would otherwise be invisible (the count is only
-     *  printed). Pin the EXACT number of intentional skips per phase: any NEW skip (a DRL-fires/model-skips gap on a
-     *  migrated path) trips this, and a skip that newly disappears forces a conscious decrement — like a golden count. */
-    private static void capSkipped(String label, int expected, int actual, StringBuilder skips) {
-        assertEquals(expected, actual, () -> label + ": verwacht PRECIES " + expected + " overgeslagen (model) fixture(s), kreeg "
-                + actual + " — een NIEUW overgeslagen pad (DRL vuurt, model skipt) is een regressie; pas het verwachte aantal "
-                + "bewust aan als de wijziging gewenst is." + skips);
+    /** goal-M0 D5: the two back-ends' {@link Dekking} manifests must agree that every construct is
+     *  LOWERED on both sides; ANY non-LOWERED verdict — a one-sided capability divergence, but also a
+     *  both-sides MARKER/SKIP (which the retired skip-count cap could mask as "agreement": the
+     *  §differential-masks-shared-bugs lesson, a shared upstream regression skips both back-ends at
+     *  once) — is legal only with an entry in the allowlist, keyed {@code "<fixture> :: <soort>: <naam>"}
+     *  and valued with the REASON. This names the construct a regression touches, where the old bare
+     *  skip-count cap could only say "one more". */
+    private static void manifestDiff(String label, String fixtureNaam, RegelSpraakModel m, ExecModelTranspiler em,
+                                     Map<String, String> toegestaan, java.util.Set<String> gebruikt) {
+        var drlPerSoort  = perSoort(DrlTranspiler.build(m).dekking());
+        var execPerSoort = perSoort(em.dekking());
+        assertEquals(drlPerSoort.keySet(), execPerSoort.keySet(),
+                () -> label + " '" + fixtureNaam + "': manifest-soorten verschillen tussen de back-ends");
+        for (String soort : drlPerSoort.keySet()) {
+            List<Dekking> dl = drlPerSoort.get(soort), el = execPerSoort.get(soort);
+            assertEquals(dl.size(), el.size(), () -> label + " '" + fixtureNaam + "': manifest-lengte (" + soort + ") verschilt");
+            for (int i = 0; i < dl.size(); i++) {
+                Dekking d = dl.get(i), e = el.get(i);
+                assertEquals(d.sleutel(), e.sleutel(), () -> label + " '" + fixtureNaam + "': manifest-sleutels verschillen");
+                if (d.lowered() && e.lowered()) continue;
+                String key = fixtureNaam + " :: " + d.sleutel();
+                if (toegestaan.containsKey(key)) { gebruikt.add(key); continue; }
+                fail(label + " niet-gelowerde constructie zonder allowlist-reden: " + key
+                        + " — DRL=" + d.verdict() + " exec=" + e.verdict()
+                        + " (" + (d.lowered() ? e.reden() : d.reden()) + ")");
+            }
+        }
+    }
+
+    /** Group a manifest by soort (order preserved): both back-ends walk the same model lists per soort, so the
+     *  per-soort sequences align positionally even when construct names repeat (e.g. §4.2 rule versions). */
+    private static Map<String, List<Dekking>> perSoort(List<Dekking> manifest) {
+        return manifest.stream().collect(java.util.stream.Collectors.groupingBy(
+                Dekking::soort, java.util.LinkedHashMap::new, java.util.stream.Collectors.toList()));
+    }
+
+    /** A divergence that disappears (the exec back-end learned the construct) must be REMOVED from the
+     *  allowlist consciously — a stale entry would silently re-admit the divergence later. */
+    private static void eisAllowlistGebruikt(String label, Map<String, String> toegestaan, java.util.Set<String> gebruikt) {
+        assertEquals(toegestaan.keySet(), gebruikt, () -> label + ": allowlist-entries zonder waargenomen divergentie — "
+                + "de divergentie is verdwenen (mooi!): verwijder de entry zodat ze niet stil kan terugkeren");
     }
 
     /** As {@link #runDifferential} but the observable is the SET of inserted Inconsistentie facts (Phase D). */
-    private void runFoutDifferential(String label, FoutFixture[] fixtures, int minDiffed) { runFoutDifferential(label, fixtures, minDiffed, 0); }
-    private void runFoutDifferential(String label, FoutFixture[] fixtures, int minDiffed, int expectedSkipped) {
+    private void runFoutDifferential(String label, FoutFixture[] fixtures, int minDiffed) { runFoutDifferential(label, fixtures, minDiffed, Map.of()); }
+    private void runFoutDifferential(String label, FoutFixture[] fixtures, int minDiffed, Map<String, String> toegestaneDivergenties) {
         int diffed = 0, skipped = 0;
         StringBuilder skips = new StringBuilder();
+        var gebruikt = new java.util.HashSet<String>();
         for (FoutFixture f : fixtures) {
             RegelSpraakModel m = Resolver.resolve(f.src());
             assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
             ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            manifestDiff(label, f.naam(), m, em, toegestaneDivergenties, gebruikt);
             if (!em.overgeslagen().isEmpty()) {
                 skipped++; skips.append("\n  SKIP ").append(f.naam()).append(": ").append(em.overgeslagen());
                 continue;
@@ -7526,19 +7579,21 @@ class ExecModelDifferentialTest {
         }
         final int agreed = diffed;
         assertTrue(agreed >= minDiffed, () -> "verwacht >=" + minDiffed + " gediffte " + label + " fixtures, kreeg " + agreed + skips);
-        capSkipped(label, expectedSkipped, skipped, skips);
+        eisAllowlistGebruikt(label, toegestaneDivergenties, gebruikt);
         System.out.println("[differential] " + label + ": " + agreed + " agreed, " + skipped + " skipped" + skips);
     }
 
     /** As {@link #runDifferential} but the observable is the SET of NEW objects an objectcreatie inserted (Phase G). */
-    private void runObjDifferential(String label, ObjFixture[] fixtures, int minDiffed) { runObjDifferential(label, fixtures, minDiffed, 0); }
-    private void runObjDifferential(String label, ObjFixture[] fixtures, int minDiffed, int expectedSkipped) {
+    private void runObjDifferential(String label, ObjFixture[] fixtures, int minDiffed) { runObjDifferential(label, fixtures, minDiffed, Map.of()); }
+    private void runObjDifferential(String label, ObjFixture[] fixtures, int minDiffed, Map<String, String> toegestaneDivergenties) {
         int diffed = 0, skipped = 0;
         StringBuilder skips = new StringBuilder();
+        var gebruikt = new java.util.HashSet<String>();
         for (ObjFixture f : fixtures) {
             RegelSpraakModel m = Resolver.resolve(f.src());
             assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
             ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            manifestDiff(label, f.naam(), m, em, toegestaneDivergenties, gebruikt);
             if (!em.overgeslagen().isEmpty()) {
                 skipped++; skips.append("\n  SKIP ").append(f.naam()).append(": ").append(em.overgeslagen());
                 continue;
@@ -7551,7 +7606,7 @@ class ExecModelDifferentialTest {
         }
         final int agreed = diffed;
         assertTrue(agreed >= minDiffed, () -> "verwacht >=" + minDiffed + " gediffte " + label + " fixtures, kreeg " + agreed + skips);
-        capSkipped(label, expectedSkipped, skipped, skips);
+        eisAllowlistGebruikt(label, toegestaneDivergenties, gebruikt);
         System.out.println("[differential] " + label + ": " + agreed + " agreed, " + skipped + " skipped" + skips);
     }
 

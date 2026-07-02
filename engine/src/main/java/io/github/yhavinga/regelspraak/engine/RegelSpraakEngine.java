@@ -2,6 +2,7 @@ package io.github.yhavinga.regelspraak.engine;
 
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
+import io.github.yhavinga.regelspraak.transpiler.kern.Dekking;
 import io.github.yhavinga.regelspraak.transpiler.model.ExecModelTranspiler;
 
 import org.drools.modelcompiler.KieBaseBuilder;
@@ -32,10 +33,12 @@ import java.util.List;
 public final class RegelSpraakEngine {
     private final KieBase kieBase;
     private final List<String> overgeslagen;
+    private final List<Dekking> dekking;
 
-    private RegelSpraakEngine(KieBase kieBase, List<String> overgeslagen) {
+    private RegelSpraakEngine(KieBase kieBase, List<String> overgeslagen, List<Dekking> dekking) {
         this.kieBase = kieBase;
         this.overgeslagen = overgeslagen;
+        this.dekking = dekking;
     }
 
     /** Resolve + transpile a RegelSpraak source to an executable {@link org.drools.model.Model} and build its
@@ -45,7 +48,7 @@ public final class RegelSpraakEngine {
         if (!model.errors().isEmpty()) throw new RegelSpraakCompileException(model.errors());
         ExecModelTranspiler transpiler = ExecModelTranspiler.build(model);
         KieBase kieBase = KieBaseBuilder.createKieBaseFromModel(transpiler.model());
-        return new RegelSpraakEngine(kieBase, transpiler.overgeslagen());
+        return new RegelSpraakEngine(kieBase, transpiler.overgeslagen(), transpiler.dekking());
     }
 
     /** Open a fresh fact session against the compiled rule base. */
@@ -53,6 +56,10 @@ public final class RegelSpraakEngine {
 
     /** Rules the transpiler could not lower (honest markers); empty for a fully-supported source. */
     public List<String> overgeslagen() { return overgeslagen; }
+
+    /** The coverage manifest: one verdict per construct (LOWERED or SKIP with a reason), so a
+     *  consumer can see exactly WHICH rules the compiled engine carries — not just a skip count. */
+    public List<Dekking> dekking() { return dekking; }
 
     /** A unit of work: insert facts (+ globals), fire, read results. {@link AutoCloseable} disposes the session. */
     public static final class Session implements AutoCloseable {

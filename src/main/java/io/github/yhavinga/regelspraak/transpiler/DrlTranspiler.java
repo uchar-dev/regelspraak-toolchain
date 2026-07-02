@@ -8,6 +8,7 @@ import io.github.yhavinga.regelspraak.model.Rationaal;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
+import io.github.yhavinga.regelspraak.transpiler.kern.Dekking;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,6 +50,18 @@ public final class DrlTranspiler {
 
     public static String transpile(RegelSpraakModel model) { return new DrlTranspiler(model).run(); }
 
+    /** As {@link #transpile} but also exposes the coverage manifest — one {@link Dekking} verdict per
+     *  construct, per soort in model-list order (comparable per soort with the exec back-end's). */
+    public static DrlTranspiler build(RegelSpraakModel model) {
+        DrlTranspiler t = new DrlTranspiler(model);
+        t.drl0 = t.run();
+        return t;
+    }
+    private String drl0;
+    private final List<Dekking> dekking = new ArrayList<>();
+    public String drl() { return drl0; }
+    public List<Dekking> dekking() { return dekking; }
+
     private String run() {
         out.append("package io.github.yhavinga.regelspraak.generated;\n\n");
         // Import the fact class for each object type so Drools resolves the patterns.
@@ -75,16 +88,56 @@ public final class DrlTranspiler {
         if (tijdgebonden) out.append("global java.time.LocalDate rekendatum;\n\n");
         int naHeader = out.length();   // helper functions (if any) are spliced in here, after the header
 
-        for (ResolvedRegel r : model.resolvedRegels) regel(r);
-        for (io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc : model.objectCreaties) objectCreatie(oc);
-        for (io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v : model.verdelingen) verdeling(v);
-        for (io.github.yhavinga.regelspraak.ir.ResolvedConsistentie c : model.consistenties) consistentie(c);
-        for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteit u : model.uniciteiten) uniciteit(u);
-        for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie u : model.uniciteitUnies) uniciteitUnie(u);
-        for (io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie f : model.feitCreaties) feitCreatie(f);
+        for (ResolvedRegel r : model.resolvedRegels) meet("regel", r.naam(), () -> regel(r));
+        for (io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc : model.objectCreaties) meet("objectcreatie", oc.naam(), () -> objectCreatie(oc));
+        for (io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v : model.verdelingen) meet("verdeling", v.naam(), () -> verdeling(v));
+        for (io.github.yhavinga.regelspraak.ir.ResolvedConsistentie c : model.consistenties) meet("consistentie", c.naam(), () -> consistentie(c));
+        for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteit u : model.uniciteiten) meet("uniciteit", u.naam(), () -> uniciteit(u));
+        for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie u : model.uniciteitUnies) meet("uniciteit-unie", u.naam(), () -> uniciteitUnie(u));
+        for (io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie f : model.feitCreaties) meet("feitcreatie", f.naam(), () -> feitCreatie(f));
         if (!hulpFuncties.isEmpty())
             out.insert(naHeader, String.join("", hulpFuncties.values()));
         return out.toString();
+    }
+
+    /** Emit one construct and record its manifest verdict. Classification wraps the documented marker
+     *  invariant rather than re-deriving it: every non-lowered path in this back-end leaves a
+     *  {@code /* TODO *&#47;} placeholder ({@link Frag#todo} / {@link #onopgelosteConstraint} /
+     *  {@link #todo}) or an {@code // onopgelost} comment clause in the emitted text, and a clean
+     *  rule contains neither, so the construct's own DRL slice decides LOWERED vs MARKER. The scan
+     *  runs over the slice with its STRING LITERALS blanked ({@link #zonderStrings}): user text (a
+     *  Tekst/enum literal, an escaped rule name) is the one channel that could counterfeit the
+     *  sentinel on a lowered rule — a {@code STRING_TEXT} cannot span lines or contain a quote, so
+     *  outside quotes only the marker emitters can produce it. A MARKER also raises a deduplicated
+     *  WARNING (a semantically inert rule must never be silent). */
+    private void meet(String soort, String naam, Runnable emitter) {
+        int start = out.length();
+        emitter.run();
+        String tekst = zonderStrings(out.substring(start));
+        boolean marker = tekst.contains("/* TODO") || tekst.contains("// onopgelost");
+        Dekking d = marker ? Dekking.marker(soort, naam, markerReden(tekst)) : Dekking.lowered(soort, naam);
+        dekking.add(d);
+        d.meld(model);
+    }
+
+    /** Blank the contents of double-quoted segments (emitted string literals and quoted rule names).
+     *  A raw {@code "} or newline cannot occur inside either (STRING_TEXT excludes both; escapeRegelNaam
+     *  escapes them), but an ESCAPED quote {@code \"} can — the scan honours backslash escapes so a
+     *  quoted-name boundary is never mispaired. */
+    private static String zonderStrings(String tekst) {
+        return tekst.replaceAll("\"(?:\\\\.|[^\"\\\\\n])*\"", "\"\"");
+    }
+
+    /** The first placeholder's own text as the manifest reason: the body of the first
+     *  {@code /* TODO … *&#47;} or the remainder of the first {@code // onopgelost …} line. */
+    private static String markerReden(String tekst) {
+        int todo = tekst.indexOf("/* TODO"), onop = tekst.indexOf("// onopgelost");
+        if (todo >= 0 && (onop < 0 || todo < onop)) {
+            int einde = tekst.indexOf("*/", todo);
+            return tekst.substring(todo + 3, einde < 0 ? tekst.length() : einde).trim();
+        }
+        int einde = tekst.indexOf('\n', onop);
+        return tekst.substring(onop + 3, einde < 0 ? tekst.length() : einde).trim();
     }
 
     /**
