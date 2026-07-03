@@ -147,6 +147,23 @@ class StartpuntTest {
         assertTrue(drl.contains("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsAantalDagenInVanaf;"), drl);
     }
 
+    @Test void gereserveerde_ankernaam_botst_met_eigen_declaratie() {
+        // the synthetic anchor name is reserved: an author-declared NON-datum attribute under that exact
+        // name is an ERROR, never a silent merge with the anchor.
+        String src = """
+            Tijdlijn de contractperiode heeft tijdvakken van een maand met variabel startpunt;
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de geboortedatum Datum in dagen;
+                de startpunt contractperiode Tekst;
+            Regel Startpunt contractperiode
+                geldig altijd
+                    Het startpunt van de contractperiode voor een Passagier wordt bepaald door zijn geboortedatum.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("gereserveerd")),
+                () -> "verwachtte de gereserveerde-naam-fout, kreeg: " + m.diagnostics);
+    }
+
     @Test void variabel_startpunt_zonder_startpuntbepaling_markert() {
         String drl = DrlTranspiler.transpile(Resolver.resolve(MODEL + """
             Regel Aantal dagen recht op belastingvermindering

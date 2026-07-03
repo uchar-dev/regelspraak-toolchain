@@ -931,6 +931,15 @@ final class RuleChecker {
                     "startpuntbepaling: de expressie moet datum in dagen zijn, niet "
                     + anker.type().naam() + " (§6.8) (regel '" + naam + "')", line));
         String lid = "startpunt " + tijdlijnNaam;
+        // the synthetic anchor name is reserved: an author-declared attribute of another type under this
+        // exact name would otherwise silently merge with the anchor (a latent type-mismatched write).
+        Datatype bestaand = subject.attributen.get(lid);
+        if (bestaand != null && !(bestaand instanceof Datatype.DatumInDagen)) {
+            model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                    "startpuntbepaling: attribuutnaam '" + lid + "' is gereserveerd voor het startpunt-anker "
+                    + "maar al gedeclareerd als " + bestaand.naam() + " (regel '" + naam + "')", line));
+            return;
+        }
         subject.attributen.putIfAbsent(lid, new Datatype.DatumInDagen());
         if (model.startpuntLid(subject, tijdlijnNaam) == null)
             model.resolvedStartpunten.add(new io.github.yhavinga.regelspraak.ir.ResolvedStartpunt(tijdlijnNaam, subject.naam, lid));
