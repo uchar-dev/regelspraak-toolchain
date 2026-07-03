@@ -115,8 +115,9 @@ class FactModelGeneratorTest {
                 () -> "het mis-getypeerde lid moet OOK gemeld worden (alle schendingen in een keer): " + schendingen);
     }
 
-    /** Compile the generated sources in memory; the returned loader serves them and delegates the rest. */
-    private static ClassLoader compileer(Map<String, String> bronnen) {
+    /** Compile the generated sources in memory; the returned loader serves them and delegates the rest.
+     *  Package-visible: the TOKA end-to-end firing test ({@link TokaVuurTest}) rides the same harness. */
+    static ClassLoader compileer(Map<String, String> bronnen) {
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         Map<String, ByteArrayOutputStream> klassen = new HashMap<>();
         List<JavaFileObject> eenheden = new ArrayList<>();
@@ -137,7 +138,20 @@ class FactModelGeneratorTest {
             }
         };
         assertTrue(javac.getTask(null, fm, null, null, null, eenheden).call(), "gegenereerde bronnen moeten compileren");
+        // CHILD-FIRST for the classes this compile produced: the generated beans share the hand-written
+        // facts PAKKET, so a parent-first loader would let a same-named static test bean (Vlucht,
+        // NatuurlijkPersoon, …) shadow the generated one — the TOKA end-to-end test must run against
+        // the GENERATED model, reconciled members included.
         return new ClassLoader(FactModelGeneratorTest.class.getClassLoader()) {
+            @Override protected Class<?> loadClass(String naam, boolean resolve) throws ClassNotFoundException {
+                synchronized (getClassLoadingLock(naam)) {
+                    Class<?> c = findLoadedClass(naam);
+                    if (c == null && klassen.containsKey(naam)) c = findClass(naam);
+                    if (c == null) return super.loadClass(naam, resolve);
+                    if (resolve) resolveClass(c);
+                    return c;
+                }
+            }
             @Override protected Class<?> findClass(String naam) throws ClassNotFoundException {
                 ByteArrayOutputStream b = klassen.get(naam);
                 if (b == null) throw new ClassNotFoundException(naam);

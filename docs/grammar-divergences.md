@@ -1723,3 +1723,21 @@ that `make verify-corpus` parses); the TOKA tests load it additionally. Scoreboa
 lowered. The honest residual is toka-23, whose operands are §11 "Daarbij geldt" local variables (a real
 frontier feature) and whose A-variable carries the casus's own `datum-tijd plus datum-tijd` type quirk — the
 single expected CasusTest error, unchanged.
+
+## Execution semantics — a berekening is an equation: @watch freshness + idempotent (fixpoint) writes
+
+The TOKA end-to-end firing test exposed a staleness the differential harness could never see (both back-ends
+would have to disagree): a DRL assignment whose pattern constrains nothing has an EMPTY property-reactivity
+mask, so an unconditioned chained berekening computed ONCE — possibly against leeg — and never recomputed when
+a sibling rule wrote its input (toka-45 → toka-24: te betalen belasting stayed 0 after the belasting op basis
+van afstand arrived). RegelSpraak's berekening is a declarative equation, not a one-shot event, so the DRL now
+(1) `@watch`-es the subject's OWN attributes the value expression reads (freshness: a real input change
+re-fires the reader), and (2) writes IDEMPOTENTLY — `modify` only when the value actually changes (the exec
+back-end's `werkBij`, mirrored). The second half is what makes the first safe: complex mvel constraints
+(function calls, navigated reads) leave a pattern CLASS-reactive, so an always-modifying pair of rules over one
+subject ping-pongs forever (NO_LOOP blocks only the self-retrigger); a same-valued rebuild now skips the modify
+and the recompute chain reaches a fixpoint (RegelSpraak's one-writer-per-attribute discipline keeps it
+acyclic). The exec back-end needs no change: its opaque lambda constraints were already class-reactive and its
+werkBij already idempotent — the DRL (oracle) hereby adopts its twin's proven semantics. Pinned by a DRL-text
+test (@watch + guard), an absolute-value differential chain fixture (both back-ends 47, not merely equal), and
+the TOKA end-to-end belastingketen (60.00 → 50.00 at fixpoint, loop-capped).

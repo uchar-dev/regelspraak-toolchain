@@ -3985,4 +3985,24 @@ class DrlTest {
         assertTrue(drl2.contains("$subject : Reis( prijs == null, toeslag >"),
                 () -> "de leeg-guard moet naast de voorwaarde-constraint staan:\n" + drl2);
     }
+
+    @Test void berekening_watcht_zijn_gelezen_attributen_en_schrijft_idempotent() {
+        // Freshness + fixpoint: the pattern @watch-es the OWN attributes the value READS (property
+        // reactivity only listens to constrained properties, so an unconditioned chained berekening went
+        // stale — the TOKA toka-45 -> toka-24 chain), and the consequence modifies ONLY when the value
+        // actually changes (the exec werkBij mirrored; without it a class-reactive sibling re-fires forever).
+        String drl = DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Reis
+                de prijs Numeriek (geheel getal);
+                de toeslag Numeriek (geheel getal);
+                de korting Numeriek (geheel getal);
+            Regel bereken prijs
+                geldig altijd
+                    De prijs van een Reis moet berekend worden als de toeslag van de Reis min de korting van de Reis.
+            """));
+        assertTrue(drl.contains("$subject : Reis(  ) @watch( toeslag, korting )"),
+                () -> "de berekening moet de gelezen eigen attributen @watch-en:\n" + drl);
+        assertTrue(drl.contains("if (!java.util.Objects.equals($subject.prijs, "),
+                () -> "de consequence moet idempotent schrijven (alleen modify bij een echte wijziging):\n" + drl);
+    }
 }

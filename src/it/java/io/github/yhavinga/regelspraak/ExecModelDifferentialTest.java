@@ -7761,6 +7761,37 @@ class ExecModelDifferentialTest {
         }
     }
 
+    // ---- FRESHNESS: an UNCONDITIONED chained berekening must recompute when its input arrives. The DRL
+    //      pattern used to listen to nothing (empty property-reactivity mask), so "prijs = basistarief + 5"
+    //      computed once against leeg and kept rsNul(leeg)+5 = 5 after a sibling rule wrote basistarief —
+    //      the TOKA toka-45 -> toka-24 staleness the end-to-end test caught. Now the DRL @watch-es the read
+    //      attributes and writes idempotently (fixpoint); the exec was already class-reactive + idempotent.
+    //      Absolute value asserted (42 + 5 = 47), not just parity — both stale would otherwise mask it. ----
+    @Test void unconditioned_chain_recomputes_when_input_arrives() {
+        String src = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal);
+                het basistarief Numeriek (geheel getal);
+                de prijs Numeriek (geheel getal);
+            Regel stel basistarief
+                geldig altijd
+                    Het basistarief van een Passagier moet gesteld worden op zijn leeftijd.
+            Regel bereken prijs
+                geldig altijd
+                    De prijs van een Passagier moet berekend worden als zijn basistarief plus 5.
+            """;
+        Fixture f = single("unconditioned chain (basistarief -> prijs)", src,
+                () -> passagier(p -> p.setLeeftijd(new BigDecimal(42))), Map.of(), Passagier::getPrijs);
+        RegelSpraakModel m = Resolver.resolve(f.src());
+        assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+        Object viaDrl = fire(drlBase(m), f);
+        Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+        assertEquals(eq(new BigDecimal(47)), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+        assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+    }
+
     /** Compare BigDecimals by value (scale-insensitive), everything else by equals — recursing into a {@link #vals}
      *  list so a multi-bean read compares element-wise (42 == 42.00, null stays null). */
     private static Object eq(Object o) {

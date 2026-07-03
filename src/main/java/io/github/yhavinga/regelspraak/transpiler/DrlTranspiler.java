@@ -908,7 +908,17 @@ public final class DrlTranspiler {
         if (subject == null) {
             rule.clausule("// onopgelost doel-objecttype: " + commentVeilig(r.doel().bron())).clausule("eval(true)");
         } else {
-            rule.clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + constraint + " )");
+            // Freshness: property reactivity listens only to CONSTRAINED properties, so an assignment whose
+            // pattern does not constrain what its VALUE reads goes stale — it computes once (possibly against
+            // leeg) and never recomputes when another rule writes an input (the TOKA toka-45 -> toka-24 chain:
+            // an unconditioned berekening kept 0 after its operand arrived). @watch the subject's OWN
+            // attributes the value expression reads; no-loop still blocks the self-retrigger, and
+            // RegelSpraak's one-writer-per-attribute discipline keeps the recompute chain acyclic. The exec
+            // back-end needs no analog: its opaque lambda constraints leave the pattern class-reactive.
+            java.util.LinkedHashSet<String> watch = new java.util.LinkedHashSet<>();
+            verzamelEigenReads(r.waarde(), subject, watch);
+            rule.clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + constraint + " )"
+                    + (watch.isEmpty() ? "" : " @watch( " + String.join(", ", watch) + " )"));
             for (String e : lc.extra()) rule.clausule(e);   // the exists-join(s), after $subject is bound
             rule.clausules(acc.clausules)
                 .geldigheid(r.geldigheid());   // §4.2: a time-bounded version fires only inside its window
@@ -936,7 +946,18 @@ public final class DrlTranspiler {
             // if the result has too many decimals the author must add an explicit afronding.
             if (r.waarde().type().isNumeriek())
                 valueStr = omrekenWaarde(valueStr, r.waarde().type(), a.type());
-            rule.dan("    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( " + valueStr.text() + " )\n    }\n");
+            // IDEMPOTENT write (the exec back-end's werkBij, mirrored): modify only when the value actually
+            // CHANGES, so recomputation reaches a FIXPOINT. Complex mvel constraints (function calls,
+            // navigated reads) make a pattern CLASS-reactive — it re-fires on EVERY subject update — and the
+            // @watch freshness above makes readers re-fire on real input changes; without this guard two such
+            // rules over one subject ping-pong forever (NO_LOOP blocks only the self-retrigger). A same-valued
+            // rebuild skips the modify, so nothing re-propagates and the chain terminates. The value
+            // expression is pure (rs* helpers are side-effect-free), so evaluating it twice is safe.
+            // mvel PROPERTY access in the guard (not an explicit getter call): a boolean kenmerk exposes
+            // is<X>(), and mvel's property navigation resolves either accessor form.
+            rule.dan("    if (!java.util.Objects.equals(" + SUBJECT + "." + ident(a.attribuut(), false) + ", " + valueStr.text() + ")) {\n"
+                    + "    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( " + valueStr.text() + " )\n    }\n"
+                    + "    }\n");
         } else {
             rule.dan("    // onopgelost doel: " + commentVeilig(r.doel().bron()) + "\n");
         }
@@ -992,6 +1013,31 @@ public final class DrlTranspiler {
 
     /** Collect every "de wortel van" function node reachable through the wrapper layers (Functie args / Binair /
      *  Afgerond / Begrensd) of a value expression — for the §6.6 negative-radicand fout surfacing. */
+    /** The subject's OWN attribute properties a value expression READS (the @watch set): every EIGEN
+     *  AttribuutRef in the tree, as bean property names. Navigated/aggregation reads live in their own
+     *  patterns (with their own reactivity) and are not the subject pattern's to watch. */
+    private void verzamelEigenReads(Expr e, Objecttype subject, java.util.Set<String> uit) {
+        if (e instanceof Expr.AttribuutRef a) {
+            if (naviResolve(a, subject).soort() == NaviSoort.EIGEN) uit.add(ident(a.attribuut(), false));
+        } else if (e instanceof Expr.Binair b) {
+            verzamelEigenReads(b.links(), subject, uit);
+            verzamelEigenReads(b.rechts(), subject, uit);
+        } else if (e instanceof Expr.Functie f) {
+            for (Expr a : f.argumenten()) verzamelEigenReads(a, subject, uit);
+        } else if (e instanceof Expr.Afgerond af) {
+            verzamelEigenReads(af.basis(), subject, uit);
+        } else if (e instanceof Expr.Begrensd bg) {
+            verzamelEigenReads(bg.basis(), subject, uit);
+            verzamelEigenReads(bg.minimum(), subject, uit);
+            verzamelEigenReads(bg.maximum(), subject, uit);
+        } else if (e instanceof Expr.TekstReeks tr) {
+            for (Expr.TekstReeks.Deel d : tr.delen())
+                if (d instanceof Expr.TekstReeks.Ingevoegd i) verzamelEigenReads(i.expr(), subject, uit);
+        } else if (e instanceof Expr.DimensieCel dc) {
+            verzamelEigenReads(dc.attribuut(), subject, uit);
+        }
+    }
+
     private static void verzamelWortels(Expr e, List<Expr.Functie> uit) {
         if (e instanceof Expr.Functie f) {
             if (f.kind() == Expr.FunctieKind.WORTEL) uit.add(f);
