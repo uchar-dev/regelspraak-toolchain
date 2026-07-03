@@ -412,6 +412,12 @@ public final class RegelSpraakRuntime {
         return BigDecimal.valueOf(absoluut ? Math.abs(n) : n);
     }
 
+    /** §5.3 Rekenjaar: the year of the supplied Rekendatum as a §13.2.3 geheel getal; an unset (null)
+     *  rekendatum -> leeg. The single implementation; the DRL imports it (single-runtime principle). */
+    public static BigDecimal rsRekenjaar(java.time.LocalDate rekendatum) {
+        return rekendatum == null ? null : BigDecimal.valueOf(rekendatum.getYear());
+    }
+
     /** §13.4.17.37 "de eerste paasdag van" a year — Gauss/Anonymous Easter algorithm; a leeg year -> leeg.
      *  The single implementation; the DRL imports it (single-runtime principle). */
     public static java.time.LocalDate rsEerstePaasdag(Object jaar) {

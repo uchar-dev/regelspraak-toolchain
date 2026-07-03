@@ -110,6 +110,17 @@ public sealed interface Conditie {
         return false;
     }
 
+    /** Whether any operand {@link Expr} inside {@code c} matches {@code toets} — comparison sides, the
+     *  one-sided predicate operand, periode bounds, recursing through compound children. Null-safe. */
+    static boolean bevatExpr(Conditie c, java.util.function.Predicate<Expr> toets) {
+        if (c == null) return false;
+        if (c instanceof Vergelijking v)  return Expr.bevat(v.links(), toets) || Expr.bevat(v.rechts(), toets);
+        if (c instanceof Predicaat p)     return Expr.bevat(p.operand(), toets);
+        if (c instanceof Periode p)       return Expr.bevat(p.vanaf(), toets) || Expr.bevat(p.tot(), toets);
+        if (c instanceof Samengesteld s)  return s.onderdelen().stream().anyMatch(d -> bevatExpr(d, toets));
+        return false;
+    }
+
     /** §13.4.14 compound condition: a quantifier over a bullet list of sub-conditions.
      *  `drempel` is the threshold count N for the counting quantifiers (ten minste / ten
      *  hoogste / precies N, §13.4.14.4); 0 and unused for alle / geen / de. */

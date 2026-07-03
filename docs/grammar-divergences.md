@@ -1901,3 +1901,31 @@ phase_PERIODE_*_declines_symmetrically):
   specifications, but §13.4.15.68 requires a `<datumexpressie>` here — a bare `2020` is a getal literal, so
   it raises the honest non-datum-bound ERROR rather than being promoted to 1-1-2020. Candidate widening if a
   real model needs it.
+
+## §5.3 / §13.4.17.34 Rekendatum en Rekenjaar als waarde-operand — de §4.2 rekendatum-global
+
+§5.3 makes Rekendatum/Rekenjaar plain expressions ("de rekendatum kan daarnaast ook als expressie in de
+regels gebruikt worden") whose value is supplied at execution time. Both back-ends already carried that
+supplied date as the §4.2 `rekendatum` global for versie-geldigheid; the value operand now lowers to the
+same single source: **Rekendatum = the global read; Rekenjaar = its year via the null-guarded
+`rsRekenjaar`** (an unset rekendatum reads leeg, the §6/§5 leegwaarde rules then apply — a tijdsduur over
+it is leeg, a comparison over it does not fire). Rekenjaar is DERIVED from the one supplied date rather
+than separately supplied — §5.3 names both as "opgegeven", but one date is the single coherent source and
+versie-selection already keys on it.
+
+Mechanics: the DRL declares the global lazily — a flag set exactly where emitted text references
+`rekendatum` (a §8.4.3 periode-window, a §5.3 value read) splices the declaration into the header, so any
+family (regel, objectcreatie, consistentie, …) that lowers the constant can never hit an undeclared-global
+build error. The exec model registers the global eagerly via an IR scan (over-inclusive: an eventually-
+skipped shape merely declares an unused global). In the exec value/condition paths the LocalDate rides the
+(erased) globals-map under the "rekendatum" pseudo-name; readers instanceof-guard it.
+
+Covered symmetrically (PHASE_REKENDATUM pins the absolute values): the scalar VALUE path (the
+spec-antlr-02/spec-main-51 "tijdsduur van zijn geboortedatum tot Rekendatum" leeftijd shape, a direct
+datum-assign, Rekenjaar bare/in-arithmetic), and the CONDITION comparisons (expr-vs-parameter via the
+n-global gate — the spec-antlr-03 shape —, expr-vs-literal, datum-attribuut-vs-Rekendatum ordering and
+gelijk/ongelijk, Rekenjaar-vs-literal). One-sided residual (DRL fires, exec skips HONESTLY — the
+established dagsoort-global posture): Rekendatum inside a consistentieregel-vergelijking, inside a §8.2
+gehele-periode grens, inside an aggregation-condition RHS, or a datum-arith-with-global expression
+compared to Rekendatum — the exec's specialised lowerings there bind
+only Parameter-globals. Each is an overgeslagen-recorded skip, never a silent divergence.

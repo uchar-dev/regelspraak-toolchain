@@ -5120,6 +5120,101 @@ class ExecModelDifferentialTest {
         V50, null, null,                                               // own-attr bound
     };
 
+    // ---- §5.3 / §13.4.17.34 REKENDATUM/REKENJAAR as a VALUE operand: the §4.2 rekendatum global read as an
+    //      expression — the spec-antlr-02 / spec-main-51 leeftijd shape ("de tijdsduur van zijn geboortedatum tot
+    //      Rekendatum in hele jaren"), the spec-antlr-03 condition shape (vs the volwassenleeftijd parameter), a
+    //      direct datum-assign, and Rekenjaar (the rekendatum's year, §5.3). An UNSET rekendatum reads leeg and
+    //      the §6/§5 leegwaarde rules apply. Absolute values pinned per fixture. ----
+    static final String REKENDATUM_LEEFTIJD_REGEL = """
+            Eenheidsysteem Tijd
+                de maand            mnd
+                het jaar            jr       =    12 mnd
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal) met eenheid jr;
+                de geboortedatum Datum in dagen;
+            Regel bepaal leeftijd op rekendatum
+                geldig altijd
+                    De leeftijd van een Passagier moet berekend worden als de tijdsduur van zijn geboortedatum tot Rekendatum in hele jaren.
+            """;
+    static final String REKENDATUM_CONDITIE_REGEL = """
+            Eenheidsysteem Tijd
+                de maand            mnd
+                het jaar            jr       =    12 mnd
+            Parameter de volwassenleeftijd : Numeriek (geheel getal) met eenheid jr
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de geboortedatum Datum in dagen;
+                is minderjarig kenmerk (bijvoeglijk);
+            Regel Kenmerktoekenning persoon minderjarig
+                geldig altijd
+                    Een Passagier is minderjarig
+                    indien de tijdsduur van zijn geboortedatum tot Rekendatum in hele jaren kleiner is dan de volwassenleeftijd.
+            """;
+    static final String REKENJAAR_REGEL = "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De prijs van een passagier moet gesteld worden op Rekenjaar.\n";
+    static final String REKENDATUM_ORDERING_REGEL =
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de geboortedatum Datum in dagen;\n    is minderjarig kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        Een Passagier is minderjarig indien zijn geboortedatum eerder is dan Rekendatum.\n";
+    static final String REKENJAAR_CONDITIE_REGEL =
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n    is minderjarig kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        Een Passagier is minderjarig indien Rekenjaar groter is dan 2020.\n";
+    static final Fixture[] PHASE_REKENDATUM = {
+        // the spec-antlr-02 / spec-main-51 leeftijd shape: born 2000-03-15, rekendatum 2024-06-01 -> 24 whole years.
+        single("tijdsduur tot Rekendatum (leeftijd 24)",
+            REKENDATUM_LEEFTIJD_REGEL, () -> passagier(p -> p.setGeboortedatum(LocalDate.of(2000, 3, 15))),
+            Map.of("rekendatum", LocalDate.of(2024, 6, 1)), Passagier::getLeeftijd),                              // 24
+        // a day before the birthday: 23 complete years (ChronoUnit.YEARS.between).
+        single("tijdsduur tot Rekendatum, dag voor verjaardag (23)",
+            REKENDATUM_LEEFTIJD_REGEL, () -> passagier(p -> p.setGeboortedatum(LocalDate.of(2000, 3, 15))),
+            Map.of("rekendatum", LocalDate.of(2024, 3, 14)), Passagier::getLeeftijd),                             // 23
+        // an UNSET rekendatum: the tijdsduur operand reads leeg -> leeg result -> no assignment.
+        single("tijdsduur tot ONGEZETTE Rekendatum -> leeg",
+            REKENDATUM_LEEFTIJD_REGEL, () -> passagier(p -> p.setGeboortedatum(LocalDate.of(2000, 3, 15))),
+            Map.of(), Passagier::getLeeftijd),                                                                    // null
+        // the spec-antlr-03 condition shape (Daarbij-geldt X inlined): age 14 < 18 -> minderjarig.
+        single("conditie: tijdsduur tot Rekendatum kleiner dan volwassenleeftijd -> vuurt",
+            REKENDATUM_CONDITIE_REGEL, () -> passagier(p -> p.setGeboortedatum(LocalDate.of(2010, 6, 1))),
+            Map.of("volwassenleeftijd", new BigDecimal(18), "rekendatum", LocalDate.of(2024, 6, 2)),
+            Passagier::isMinderjarig),                                                                            // true
+        single("conditie: leeftijd 30 niet kleiner dan 18 -> vuurt niet",
+            REKENDATUM_CONDITIE_REGEL, () -> passagier(p -> p.setGeboortedatum(LocalDate.of(1994, 6, 1))),
+            Map.of("volwassenleeftijd", new BigDecimal(18), "rekendatum", LocalDate.of(2024, 6, 2)),
+            Passagier::isMinderjarig),                                                                            // false
+        // a bare datum-attribute ordering vs Rekendatum ("eerder is dan Rekendatum").
+        single("conditie: geboortedatum eerder dan Rekendatum -> vuurt",
+            REKENDATUM_ORDERING_REGEL, () -> passagier(p -> p.setGeboortedatum(LocalDate.of(2010, 1, 1))),
+            Map.of("rekendatum", LocalDate.of(2024, 6, 1)), Passagier::isMinderjarig),                            // true
+        single("conditie: geboortedatum NA Rekendatum -> vuurt niet",
+            REKENDATUM_ORDERING_REGEL, () -> passagier(p -> p.setGeboortedatum(LocalDate.of(2030, 1, 1))),
+            Map.of("rekendatum", LocalDate.of(2024, 6, 1)), Passagier::isMinderjarig),                            // false
+        // Rekendatum assigned VERBATIM into a datum attribute.
+        single("Rekendatum als directe datum-toekenning",
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de geboortedatum Datum in dagen;\n"
+            + "Regel R\n    geldig altijd\n        De geboortedatum van een passagier moet gesteld worden op Rekendatum.\n",
+            Passagier::new, Map.of("rekendatum", LocalDate.of(2024, 6, 1)), Passagier::getGeboortedatum),         // 2024-06-01
+        // §5.3 Rekenjaar: the rekendatum's year as a geheel getal; unset -> leeg.
+        single("Rekenjaar als waarde (2024)",
+            REKENJAAR_REGEL, Passagier::new, Map.of("rekendatum", LocalDate.of(2024, 6, 1)), Passagier::getPrijs), // 2024
+        single("Rekenjaar met ongezette rekendatum -> leeg",
+            REKENJAAR_REGEL, Passagier::new, Map.of(), Passagier::getPrijs),                                       // null
+        // Rekenjaar inside arithmetic and as a comparison operand.
+        single("Rekenjaar in arithmetiek (Rekenjaar min 2000 = 24)",
+            "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De prijs van een passagier moet gesteld worden op Rekenjaar min 2000.\n",
+            Passagier::new, Map.of("rekendatum", LocalDate.of(2024, 6, 1)), Passagier::getPrijs),                  // 24
+        single("conditie: Rekenjaar groter dan 2020 -> vuurt",
+            REKENJAAR_CONDITIE_REGEL, Passagier::new,
+            Map.of("rekendatum", LocalDate.of(2024, 6, 1)), Passagier::isMinderjarig),                             // true
+        single("conditie: Rekenjaar groter dan 2020 in 2019 -> vuurt niet",
+            REKENJAAR_CONDITIE_REGEL, Passagier::new,
+            Map.of("rekendatum", LocalDate.of(2019, 6, 1)), Passagier::isMinderjarig),                             // false
+    };
+    static final Object[] PHASE_REKENDATUM_EXPECTED = {
+        new BigDecimal(24), new BigDecimal(23), null,
+        Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, Boolean.FALSE,
+        LocalDate.of(2024, 6, 1),
+        new BigDecimal(2024), null, new BigDecimal(24), Boolean.TRUE, Boolean.FALSE,
+    };
+
     // ---- Phase H value-path ops: §13.4.17.14 tot de macht, §6.8 percentage (% van), §6.5 gedeeld door (ABS),
     //      §6.1.4 begrenzing — ported runtime helpers rsMacht/rsMachtReeel/rsGedeeldAbs/rsBegrens. ----
     static final Fixture[] PHASE_H_VAL = {
@@ -5691,6 +5786,21 @@ class ExecModelDifferentialTest {
     @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 17); }
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
     @Test void phase_PERIODE_matches_drl_back_end()                 { runDifferential("Phase PERIODE", PHASE_PERIODE, 17); }
+    @Test void phase_REKENDATUM_matches_drl_back_end()              { runDifferential("Phase REKENDATUM", PHASE_REKENDATUM, 13); }
+    // §5.3: every fixture pinned to its ABSOLUTE value (DRL as oracle first, then parity).
+    @Test void phase_REKENDATUM_is_spec_correct() {
+        for (int i = 0; i < PHASE_REKENDATUM.length; i++) {
+            Fixture f = PHASE_REKENDATUM[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_REKENDATUM_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     // §8.4.3: every fixture pinned to its ABSOLUTE §5.1.3 window value (DRL as oracle first, then parity) —
     // never differential-only, so a shared both-back-ends bug cannot hide behind agreement.
     @Test void phase_PERIODE_is_spec_correct() {
@@ -5722,8 +5832,9 @@ class ExecModelDifferentialTest {
         assertTrue(drl.contains("tellende kwantor"), () -> "verwacht DRL-marker voor de tellende kwantor:\n" + drl);
         ExecModelTranspiler em = ExecModelTranspiler.build(m);
         assertFalse(em.overgeslagen().isEmpty(), "verwacht een exec-skip voor de tellende kwantor");
+        // the fully-markered rule references no global, so (lazy splice) the DRL declares none — fire bare.
         Fixture f = single("counting+periode declines", src, () -> passagier(p -> p.setStudent(true)),
-                Map.of("rekendatum", LocalDate.of(2024, 6, 1)), Passagier::getPrijs);
+                Map.of(), Passagier::getPrijs);
         assertEquals(eq(null), eq(fire(drlBase(m), f)), "de DRL-marker mag nooit vuren");
     }
     @Test void phase_PERIODE_temporal_doel_declines_symmetrically() {

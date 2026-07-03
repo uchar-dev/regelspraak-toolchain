@@ -2176,6 +2176,45 @@ class RuleCheckTest {
                 () -> "een parameter-grens moet een eerlijke marker blijven:\n" + drl);
     }
 
+    @Test void rekendatum_als_waarde_lowert_naar_de_global_en_spliced_de_declaratie() {
+        // §5.3 / §13.4.17.34: Rekendatum/Rekenjaar as a VALUE operand lower to the §4.2 rekendatum global —
+        // no marker — and the global declaration is spliced in EXACTLY when rule text references it, also
+        // when NO construct carries a dated geldigheid (the old trigger).
+        String src = "Eenheidsysteem Tijd\n    de maand mnd\n    het jaar jr = 12 mnd\n"
+            + "Objecttype de Passagier\n    de leeftijd Numeriek (geheel getal) met eenheid jr;\n    de geboortedatum Datum in dagen;\n"
+            + "Regel bepaal leeftijd\n    geldig altijd\n"
+            + "        De leeftijd van een Passagier moet berekend worden als de tijdsduur van zijn geboortedatum tot Rekendatum in hele jaren.\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("/* TODO"), () -> "Rekendatum-als-waarde mag geen marker zijn:\n" + drl);
+        assertTrue(drl.contains("global java.time.LocalDate rekendatum;"), () -> "rekendatum-global ontbreekt:\n" + drl);
+        assertTrue(drl.contains("rsTijdsduur(") && drl.contains("rekendatum"),
+                () -> "verwacht de tijdsduur over de rekendatum-global:\n" + drl);
+
+        // §5.3 Rekenjaar: the rekendatum's year via the null-guarded runtime helper.
+        String jaar = "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De prijs van een Passagier moet gesteld worden op Rekenjaar.\n";
+        RegelSpraakModel mj = Resolver.resolve(jaar);
+        assertTrue(mj.errors().isEmpty(), () -> "moet resolven: " + mj.errors());
+        String drlJ = DrlTranspiler.transpile(mj);
+        assertTrue(drlJ.contains("rsRekenjaar(rekendatum)") && drlJ.contains("global java.time.LocalDate rekendatum;")
+                && drlJ.contains("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsRekenjaar;"),
+                () -> "verwacht rsRekenjaar over de rekendatum-global + import:\n" + drlJ);
+
+        // a consistentieregel comparing against Rekendatum: the lazy flag must also splice the global there
+        // (no undeclared-global build break) — the exec back-end skips this shape honestly (documented asymmetry).
+        String cons = "Objecttype de Passagier\n    de geboortedatum Datum in dagen;\n"
+            + "Regel controleer geboorte\n    geldig altijd\n"
+            + "        De geboortedatum van een Passagier moet eerder zijn dan Rekendatum.\n";
+        RegelSpraakModel mc = Resolver.resolve(cons);
+        assertTrue(mc.errors().isEmpty(), () -> "moet resolven: " + mc.errors());
+        String drlC = DrlTranspiler.transpile(mc);
+        assertTrue(drlC.contains("global java.time.LocalDate rekendatum;"),
+                () -> "de consistentie-vorm moet de global ook spliced krijgen:\n" + drlC);
+        assertFalse(drlC.contains("/* TODO"), () -> "de consistentie-vergelijking mag geen marker zijn:\n" + drlC);
+    }
+
     @Test void bullet_merge_hergenest_inner_telwoord_0_wordt_gevlagd() {
         // §13.4.14.4: a column-absorbed INNER compound with a degenerate telwoord (ten minste 0) must still raise the
         // drempel-below-1 ERROR through the re-nesting path (bouwUitKnopen builds inner compounds directly), not be

@@ -55,6 +55,9 @@ public final class DrlTranspiler {
      *  is the runtime (which must therefore be on the DRL-compiling classpath, see docs/ENGINE.md). Only the
      *  helpers actually used are imported, sorted for stable output. */
     private final java.util.TreeSet<String> runtimeImports = new java.util.TreeSet<>();
+    /** Set exactly where emitted rule text references the §4.2 rekendatum global (a §8.4.3 periode-window, a
+     *  §5.3 Rekendatum/Rekenjaar value read), so the global is spliced into the header iff actually used. */
+    private boolean rekendatumNodig;
     /** §9.8 dagsoort predicates the rules referenced: DRL global name ({@code rsDagsoort_<Naam>}) -> the
      *  predicate compiled by the SHARED {@link Dagsoorten} compiler. Declared as
      *  {@code global java.util.function.Predicate rsDagsoort_<Naam>;} after the parameter globals; a session
@@ -111,12 +114,7 @@ public final class DrlTranspiler {
                 || model.consistenties.stream().anyMatch(c -> tijdgebondenGeldigheid(c.geldigheid()))
                 || model.uniciteiten.stream().anyMatch(u -> tijdgebondenGeldigheid(u.geldigheid()))
                 || model.uniciteitUnies.stream().anyMatch(u -> tijdgebondenGeldigheid(u.geldigheid()))
-                || model.feitCreaties.stream().anyMatch(f -> tijdgebondenGeldigheid(f.geldigheid()))
-                // §8.4.3: a periodevergelijking-voorwaarde compares the Rekendatum against the period bounds.
-                || model.resolvedRegels.stream().anyMatch(r -> r.voorwaarde() != null && Conditie.bevatPeriode(r.voorwaarde()))
-                || model.objectCreaties.stream().anyMatch(o -> o.voorwaarde() != null && Conditie.bevatPeriode(o.voorwaarde()))
-                || model.feitCreaties.stream().anyMatch(f -> f.voorwaarde() != null && Conditie.bevatPeriode(f.voorwaarde()))
-                || model.verdelingen.stream().anyMatch(v -> v.voorwaarde() != null && Conditie.bevatPeriode(v.voorwaarde()));
+                || model.feitCreaties.stream().anyMatch(f -> tijdgebondenGeldigheid(f.geldigheid()));
         if (tijdgebonden) out.append("global java.time.LocalDate rekendatum;\n\n");
         int naHeader = out.length();   // dagsoort-predicate globals (if any) are spliced in here, after the header
 
@@ -128,6 +126,10 @@ public final class DrlTranspiler {
         for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie u : model.uniciteitUnies) meet("uniciteit-unie", u.naam(), () -> uniciteitUnie(u));
         for (io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie f : model.feitCreaties) meet("feitcreatie", f.naam(), () -> feitCreatie(f));
         // Splice the deferred header blocks BACK TO FRONT so the earlier offset stays valid.
+        // §8.4.3 periodevergelijking / §5.3 Rekendatum-als-waarde reference the rekendatum global from a rule
+        // body; the flag is set EXACTLY where that text is emitted (never an undeclared-global build error, never
+        // an over-eager scan) — declare it here iff the §4.2 geldigheid trigger did not already.
+        if (rekendatumNodig && !tijdgebonden) out.insert(naHeader, "global java.time.LocalDate rekendatum;\n\n");
         if (!dagsoortGlobalen.isEmpty()) {
             StringBuilder g = new StringBuilder();
             for (String naam : dagsoortGlobalen.keySet())
@@ -1452,7 +1454,10 @@ public final class DrlTranspiler {
             }
             return r;
         }
-        if (e instanceof Expr.Constante c)      return Frag.todo("constante", c.naam());
+        if (e instanceof Expr.Constante c) {
+            Frag rk = rekenConstante(c);   // §5.3 Rekendatum/Rekenjaar as a VALUE operand (§13.4.17.34)
+            return rk != null ? rk : Frag.todo("constante", c.naam());
+        }
         if (e instanceof Expr.Functie f) {
             Frag scalar = scalarFunctie(acc, f, x -> waarde(acc, x, subject)); // §13.4.17 single-value builtins (abs, datum-delen, datum-met)
             if (scalar != null) return scalar;
@@ -2566,6 +2571,7 @@ public final class DrlTranspiler {
                 sj.add(isVan ? "!rekendatum.isBefore(" + g.text() + ")"
                              : (per.totInclusief() ? "!rekendatum.isAfter(" : "rekendatum.isBefore(") + g.text() + ")");
             }
+            rekendatumNodig = true;
             return LoweredConditie.van(sj.toString());
         }
         if (c instanceof Conditie.Vergelijking va) {
@@ -2872,7 +2878,21 @@ public final class DrlTranspiler {
             if (scalar != null) return scalar;
             return Frag.todo("aggregatie-functie in voorwaarde " + f.kind(), f.bron());
         }
+        if (e instanceof Expr.Constante c) {
+            Frag rk = rekenConstante(c);   // §5.3 Rekendatum/Rekenjaar as a condition operand
+            if (rk != null) return rk;
+        }
         return Frag.todo("operand", e.bron());
+    }
+
+    /** §5.3 Rekendatum / Rekenjaar as an expression: the §4.2 rekendatum global (a LocalDate the runtime
+     *  supplies), respectively its year via the null-guarded rsRekenjaar (an unset rekendatum reads leeg,
+     *  the leegwaarde rules then apply). Valid in both a pattern constraint and a consequence — a global is
+     *  a free name in either. null for any other constant ("hij", "de dag": handled by their own paths). */
+    private Frag rekenConstante(Expr.Constante c) {
+        if ("Rekendatum".equals(c.naam())) { rekendatumNodig = true; return Frag.ok("rekendatum"); }
+        if ("Rekenjaar".equals(c.naam()))  { rekendatumNodig = true; fnImport("rsRekenjaar"); return Frag.ok("rsRekenjaar(rekendatum)"); }
+        return null;
     }
 
     /** The condition-side property access for an attribute — the bare own-property, a null-safe "!." to-one

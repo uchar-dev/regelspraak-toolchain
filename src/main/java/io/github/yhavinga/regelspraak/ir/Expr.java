@@ -28,6 +28,30 @@ public sealed interface Expr {
     /** The original source slice this node was built from (whitespace-normalised). */
     String bron();
 
+    /** Whether {@code e} is or contains a sub-expression matching {@code toets} — a generic IR-tree scan over
+     *  every Expr-carrying component (arithmetic operands, functie argumenten + leegwaarde-fallback + its
+     *  filter-conditie's operands, rounding/clamp bases, tekst-interpolaties, the dimensiecel base). Null-safe. */
+    static boolean bevat(Expr e, java.util.function.Predicate<Expr> toets) {
+        if (e == null) return false;
+        if (toets.test(e)) return true;
+        return switch (e) {
+            case Binair b      -> bevat(b.links(), toets) || bevat(b.rechts(), toets);
+            case Functie f     -> f.argumenten().stream().anyMatch(x -> bevat(x, toets))
+                                  || bevat(f.leegwaarde(), toets) || Conditie.bevatExpr(f.filter(), toets);
+            case Afgerond a    -> bevat(a.basis(), toets);
+            case Begrensd b    -> bevat(b.basis(), toets) || bevat(b.minimum(), toets) || bevat(b.maximum(), toets);
+            case TekstReeks t  -> t.delen().stream().anyMatch(d -> d instanceof TekstReeks.Ingevoegd i && bevat(i.expr(), toets));
+            case DimensieCel c -> bevat(c.attribuut(), toets);
+            default            -> false;   // Literal / refs / Constante / Onopgelost: leaves
+        };
+    }
+
+    /** §5.3: whether {@code e} is the Rekendatum or Rekenjaar execution-date constant — the trigger for the
+     *  §4.2 rekendatum global when used as a VALUE operand (§13.4.17.34). */
+    static boolean isRekenConstante(Expr e) {
+        return e instanceof Constante c && ("Rekendatum".equals(c.naam()) || "Rekenjaar".equals(c.naam()));
+    }
+
     /** §13.2 literal: a number, text, boolean, date, or enumeration value. */
     record Literal(String waarde, Datatype type, String bron) implements Expr {}
 

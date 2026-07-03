@@ -358,7 +358,7 @@ public final class ExecModelTranspiler {
             List<Variable> vars = new ArrayList<>();
             vars.add(sVar);
             for (String gn : gnames) {
-                Global<BigDecimal> g = globals.get(gn);
+                Global<?> g = waardeGlobal(gn);   // numeric Parameter or the §5.3 rekendatum pseudo-slot
                 if (g == null) return skip("regel (totaal-grens refereert niet-geregistreerde global " + gn + "): " + r.naam());
                 vars.add((Variable) g);
             }
@@ -366,7 +366,7 @@ public final class ExecModelTranspiler {
             consequence = consequenceOf(vars.toArray(new Variable[0]), (drools, args) -> {
                 Object s = args[0];
                 Map<String, BigDecimal> gm = new LinkedHashMap<>();
-                for (int i = 0; i < fgn.size(); i++) gm.put(fgn.get(i), (BigDecimal) args[1 + i]);
+                vulGlobalMap(gm, fgn, args, 1);
                 werkBij(drools, s, doelGetter, doelSetter, fn.apply(s, gm));
             });
             if (consequence == null) return skip("regel (totaal: te veel gebonden globals): " + r.naam());
@@ -412,7 +412,7 @@ public final class ExecModelTranspiler {
             List<Variable> vars = new ArrayList<>();
             vars.add(sVar);
             for (String gn : gnames) {
-                Global<BigDecimal> g = globals.get(gn);
+                Global<?> g = waardeGlobal(gn);   // numeric Parameter or the §5.3 rekendatum pseudo-slot
                 if (g == null) return skip("regel (aggregatie-waarde refereert niet-geregistreerde global " + gn + "): " + r.naam());
                 vars.add((Variable) g);
             }
@@ -421,7 +421,7 @@ public final class ExecModelTranspiler {
             consequence = consequenceOf(vars.toArray(new Variable[0]), (drools, args) -> {
                 Object s = args[0];
                 Map<String, BigDecimal> gm = new LinkedHashMap<>();
-                for (int i = 0; i < nG; i++) gm.put(fgn.get(i), (BigDecimal) args[1 + i]);
+                vulGlobalMap(gm, fgn, args, 1);
                 Object[] aggs = new Object[nAgg];
                 for (int i = 0; i < nAgg; i++) aggs[i] = args[1 + nG + i];
                 Object v = eval.apply(s, gm, aggs);
@@ -460,7 +460,7 @@ public final class ExecModelTranspiler {
             List<Variable> vars = new ArrayList<>();
             vars.add(sVar);
             for (String gn : gnames) {
-                Global<BigDecimal> g = globals.get(gn);
+                Global<?> g = waardeGlobal(gn);   // numeric Parameter or the §5.3 rekendatum pseudo-slot
                 if (g == null) return skip("regel (THEN-waarde refereert niet-geregistreerde global " + gn + "): " + r.naam());
                 vars.add((Variable) g);
             }
@@ -469,7 +469,7 @@ public final class ExecModelTranspiler {
             consequence = consequenceOf(vars.toArray(new Variable[0]), (drools, args) -> {
                 Object s = args[0];
                 Map<String, BigDecimal> gm = new LinkedHashMap<>();
-                for (int i = 0; i < fgn.size(); i++) gm.put(fgn.get(i), (BigDecimal) args[1 + i]);
+                vulGlobalMap(gm, fgn, args, 1);
                 werkBij(drools, s, doelGetter, doelSetter, fn.apply(s, gm));
             });
             if (consequence == null) return skip("regel (THEN-waarde: te veel gebonden globals): " + r.naam());
@@ -1523,8 +1523,23 @@ public final class ExecModelTranspiler {
      *  (rsDatumReken treats a leeg duration as 0, rsGeheelPeriode null-guards its grens, ...) already carry the §6/§8
      *  leegwaarde rules. {@code Map.of(k, null)} would throw a ConstraintEvaluationException out of fireAllRules — the
      *  DRL constraint passes the null global straight through, so the model must too. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
     private static Map<String, BigDecimal> bindGlobal(String naam, Object waarde) {
-        return java.util.Collections.singletonMap(naam, (BigDecimal) waarde);
+        // no BigDecimal cast: the §5.3 "rekendatum" pseudo-slot carries a LocalDate through the (erased)
+        // map; every numeric reader casts per name, so the loose value type is safe.
+        return (Map) java.util.Collections.singletonMap(naam, waarde);
+    }
+
+    /** The Global a value/condition fn's named slot binds to: the §4.2 rekendatum LocalDate global for the
+     *  §5.3 "rekendatum" pseudo-name, else the numeric Parameter global. null -> honest skip. */
+    private Global<?> waardeGlobal(String gn) {
+        return "rekendatum".equals(gn) ? rekendatumGlobal : globals.get(gn);
+    }
+
+    /** Fill a consequence/eval body's name->value map WITHOUT the BigDecimal cast (see {@link #bindGlobal}). */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void vulGlobalMap(Map<String, BigDecimal> gm, List<String> namen, Object[] args, int offset) {
+        for (int i = 0; i < namen.size(); i++) ((Map) gm).put(namen.get(i), args[offset + i]);
     }
 
     /** §8.1.1 a constraint reading 2..3 DISTINCT numeric Parameter-globals — the case the single-global pattern.expr
@@ -1547,7 +1562,7 @@ public final class ExecModelTranspiler {
         List<Variable> dvs = new ArrayList<>();
         List<RuleItemBuilder<?>> extra = new ArrayList<>();
         for (int i = 0; i < n; i++) {
-            Global<BigDecimal> g = globals.get(gns.get(i));
+            Global<?> g = waardeGlobal(gns.get(i));   // numeric Parameter or the §5.3 rekendatum pseudo-slot
             if (g == null) return null;   // a non-numeric (date/tekst) global -> not bindable here -> skip
             Variable<java.util.Optional> dv = DSL.declarationOf(java.util.Optional.class, "$gg_" + (seq++),
                     DSL.from((Variable) subjectVar, (Variable) g,
@@ -1567,15 +1582,17 @@ public final class ExecModelTranspiler {
         }
         return new Gate(subjectPattern, extra);
     }
-    /** Unwrap an {@link Optional} bound global value to its BigDecimal, or null for a LEEG (empty) global. */
-    private static BigDecimal unwrapGlobal(Object opt) {
-        return opt == null ? null : (BigDecimal) ((java.util.Optional<?>) opt).orElse(null);
+    /** Unwrap an {@link Optional} bound global value, or null for a LEEG (empty) global. Loosely typed (Object):
+     *  the numeric readers cast per name, and the §5.3 "rekendatum" pseudo-slot carries a LocalDate. */
+    private static Object unwrapGlobal(Object opt) {
+        return opt == null ? null : ((java.util.Optional<?>) opt).orElse(null);
     }
     /** Build the globalName-&gt;value map for {@link #nGlobalGate}: {@code gns} are the global names in declaration
      *  order, {@code vals} the matching (possibly-null/leeg) values — the LAST value is the comparison-pattern's own
      *  variable. A null value is a §13.3.8 leeg global, which the scalarWaarde fns then handle per §6/§5. */
-    private static Map<String, BigDecimal> gmap(List<String> gns, BigDecimal... vals) {
-        Map<String, BigDecimal> m = new java.util.LinkedHashMap<>();
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static Map<String, BigDecimal> gmap(List<String> gns, Object... vals) {
+        Map m = new java.util.LinkedHashMap<>();
         for (int i = 0; i < gns.size(); i++) m.put(gns.get(i), vals[i]);
         return m;
     }
@@ -1895,6 +1912,12 @@ public final class ExecModelTranspiler {
                 && !(gv.rechts() instanceof Expr.ParameterRef))
             return voorwaarde(new Conditie.Vergelijking(Operatoren.omkeren(gv.op()), gv.rechts(), gv.links(), gv.periode(), gv.bron()),
                     pattern, subject, subjectVar);
+        // §5.3 the same normalisation for a Rekendatum/Rekenjaar CONSTANT on the LEFT ("Rekendatum eerder is dan
+        // zijn einddatum") — swap+reverse so the vs-Rekendatum / expression branches below see it on the RIGHT.
+        if (c instanceof Conditie.Vergelijking gv && gv.links() instanceof Expr.Constante lrc && Expr.isRekenConstante(lrc)
+                && !(gv.rechts() instanceof Expr.Constante))
+            return voorwaarde(new Conditie.Vergelijking(Operatoren.omkeren(gv.op()), gv.rechts(), gv.links(), gv.periode(), gv.bron()),
+                    pattern, subject, subjectVar);
         // §8.1.1 a DATUM comparison of an OWN or to-one NAVIGATED datum attribute vs a Datum-in-dagen Parameter-GLOBAL
         // ("zijn geboortedatum eerder is dan de PEILDATUM", "de vluchtdatum van zijn reis gelijk is aan de PEILDATUM").
         // BEFORE the numeric vs-global branch (whose `!isNumeriekOp -> return null` would otherwise swallow a datum op).
@@ -1918,6 +1941,20 @@ public final class ExecModelTranspiler {
                         datumVergelijkTemporal(lf.apply(s), gv, op)), List.of());
             }
             return null;   // unresolvable nav -> honest skip (symmetric with DRL marker)
+        }
+        // §5.3 a DATUM comparison of an OWN or to-one NAVIGATED Datum-in-dagen attribute vs REKENDATUM ("zijn
+        // geboortedatum eerder is dan Rekendatum"): bind the §4.2 rekendatum global as the pattern variable and
+        // compare via datumVergelijkTemporal (ordering AND gelijk/ongelijk — the §5 leegwaarde tables; an unset
+        // rekendatum reads leeg). DRL reads the global as a free name in the same constraint.
+        if (c instanceof Conditie.Vergelijking v
+                && (isDatumVergelijkOp(v.op()) || v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)
+                && v.links() instanceof Expr.AttribuutRef la && la.type() instanceof Datatype.DatumInDagen
+                && v.rechts() instanceof Expr.Constante rc && "Rekendatum".equals(rc.naam())) {
+            java.util.function.Function<Object, Object> lf = datumTemporeelLezer(la, subject);
+            if (lf == null || rekendatumGlobal == null) return null;   // unresolvable nav -> honest skip
+            Conditie.Operator op = v.op();
+            return new Gate(pattern.expr(nextId("c"), (Variable) rekendatumGlobal, (Predicate2) (s, rd) ->
+                    datumVergelijkTemporal(lf.apply(s), rd instanceof java.time.LocalDate d ? d : null, op)), List.of());
         }
         // §5.3 a TEKST/enumeratiewaarde equality (GELIJK/ONGELIJK) of an OWN or to-one NAVIGATED attribute vs a Tekst
         // Parameter-GLOBAL ("zijn vertrek gelijk is aan de STANDAARDVERTREK"). BEFORE the numeric vs-global branch (whose
@@ -2006,8 +2043,8 @@ public final class ExecModelTranspiler {
                 Set<String> gset = new LinkedHashSet<>(lw.globals()); gset.addAll(rw.globals());
                 if (gset.size() == 1) {
                     String gn = gset.iterator().next();
-                    Global<BigDecimal> g = globals.get(gn);
-                    if (g != null) {   // numeric/percentage global (a date/tekst global -> globals.get == null -> fall through -> skip)
+                    Global<?> g = waardeGlobal(gn);   // numeric Parameter or the §5.3 rekendatum pseudo-slot
+                    if (g != null) {   // (a date/tekst Parameter-global -> null -> fall through -> skip)
                         BigDecimal[] f = restatement(v.links().type(), v.rechts().type());   // §5.1 Tabel 32 unit restatement
                         BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
                         Conditie.Operator op = v.op();
@@ -2043,7 +2080,7 @@ public final class ExecModelTranspiler {
                 Set<String> gset = new LinkedHashSet<>(lw.globals()); gset.addAll(rw.globals());
                 if (gset.size() == 1) {
                     String gn = gset.iterator().next();
-                    Global<BigDecimal> g = globals.get(gn);
+                    Global<?> g = waardeGlobal(gn);   // numeric Parameter or the §5.3 rekendatum pseudo-slot
                     if (g != null) {
                         BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
                         Conditie.Operator op = v.op();
@@ -2518,12 +2555,21 @@ public final class ExecModelTranspiler {
                 || model.uniciteiten.stream().anyMatch(u -> dated.test(u.geldigheid()))
                 || model.uniciteitUnies.stream().anyMatch(u -> dated.test(u.geldigheid()))
                 || model.feitCreaties.stream().anyMatch(f -> dated.test(f.geldigheid()))
-                // §8.4.3: a periodevergelijking-voorwaarde compares the Rekendatum against the period bounds
-                // (mirrors DrlTranspiler's tijdgebonden disjunction).
-                || model.resolvedRegels.stream().anyMatch(r -> r.voorwaarde() != null && Conditie.bevatPeriode(r.voorwaarde()))
-                || model.objectCreaties.stream().anyMatch(o -> o.voorwaarde() != null && Conditie.bevatPeriode(o.voorwaarde()))
-                || model.feitCreaties.stream().anyMatch(f -> f.voorwaarde() != null && Conditie.bevatPeriode(f.voorwaarde()))
-                || model.verdelingen.stream().anyMatch(v -> v.voorwaarde() != null && Conditie.bevatPeriode(v.voorwaarde()));
+                // §8.4.3 a periodevergelijking-voorwaarde and §5.3 a Rekendatum/Rekenjaar value operand both
+                // read the Rekendatum global. DRL sets a flag exactly where it emits the text; the exec model
+                // must register the Global BEFORE rules build, so scan the IR surfaces (over-inclusion — a
+                // shape that ends up skipped — merely declares an unused global, which is harmless).
+                || model.resolvedRegels.stream().anyMatch(r -> leestRekendatum(r.voorwaarde()) || Expr.bevat(r.waarde(), Expr::isRekenConstante))
+                || model.objectCreaties.stream().anyMatch(o -> leestRekendatum(o.voorwaarde())
+                        || o.toekenningen().stream().anyMatch(t -> Expr.bevat(t.waarde(), Expr::isRekenConstante)))
+                || model.feitCreaties.stream().anyMatch(f -> leestRekendatum(f.voorwaarde()))
+                || model.verdelingen.stream().anyMatch(v -> leestRekendatum(v.voorwaarde()))
+                || model.consistenties.stream().anyMatch(cs -> leestRekendatum(cs.assertie()));
+    }
+
+    /** Whether a condition contains a §8.4.3 periode-window or a §5.3 Rekendatum/Rekenjaar operand. */
+    private static boolean leestRekendatum(Conditie c) {
+        return c != null && (Conditie.bevatPeriode(c) || Conditie.bevatExpr(c, Expr::isRekenConstante));
     }
 
     /** §4.2 add the validity-window guard to a construct's pattern: an {@code .expr} over the Rekendatum global
@@ -2568,6 +2614,19 @@ public final class ExecModelTranspiler {
         if (e instanceof Expr.Literal lit && lit.type().isNumeriek()) {
             BigDecimal val = bd(lit);
             return val == null ? null : WaardeFn.constant(val);
+        }
+        // §5.3 Rekendatum/Rekenjaar as a VALUE operand (§13.4.17.34): the §4.2 rekendatum global, bound into the
+        // globals map under its own name (the map's values are BigDecimal-typed but ERASED; only this reader
+        // touches the "rekendatum" slot and it instanceof-guards, so the LocalDate rides through safely — the
+        // binder side uses the raw-put vulGlobalMap / cast-free bindGlobal). An unset rekendatum reads leeg.
+        // DRL lowers the same shapes as the free global name / rsRekenjaar(rekendatum).
+        if (e instanceof Expr.Constante rc && Expr.isRekenConstante(rc)) {
+            boolean jaar = "Rekenjaar".equals(rc.naam());
+            return new WaardeFn((s, gm) -> {
+                Object rd = ((Map<?, ?>) gm).get("rekendatum");
+                if (!(rd instanceof java.time.LocalDate d)) return null;
+                return jaar ? RegelSpraakRuntime.rsRekenjaar(d) : d;
+            }, java.util.Set.of("rekendatum"));
         }
         if (e instanceof Expr.Literal dl && dl.type() instanceof Datatype.DatumInDagen) {
             // §13.2.19 a date literal as a VALUE (e.g. a datum-arithmetic operand) -> its LocalDate constant; DRL
@@ -3107,7 +3166,10 @@ public final class ExecModelTranspiler {
      *  begrenzing or a §13.4.17.25 afronding) — i.e. NOT a plain attribute/literal/parameter leaf. Used to route an
      *  expr-vs-attr / expr-vs-expr comparison through the {@link #scalarWaarde} value-path lowering on both sides. */
     private static boolean numeriekeExpressie(Expr e) {
-        return e instanceof Expr.Binair || e instanceof Expr.Functie || e instanceof Expr.Begrensd || e instanceof Expr.Afgerond;
+        // a §5.3 Rekenjaar constant counts as a numeric expression so a bare "Rekenjaar groter is dan 2020"
+        // routes to the vs-global branch (it binds the rekendatum pseudo-global; the fact-only leaf skips it).
+        return e instanceof Expr.Binair || e instanceof Expr.Functie || e instanceof Expr.Begrensd
+                || e instanceof Expr.Afgerond || Expr.isRekenConstante(e);
     }
     /** Whether an expression operand contains a construct the DRL CONDITION path MARKERS (so the exec must also skip, to
      *  stay symmetric) or that restates LOSSILY: a §3.6 DimensieCel (DrlTranspiler.operand markers a dimensioned read in a
