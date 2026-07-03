@@ -24,7 +24,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * goal-M4 D7, the full loop: {@link FactModelGenerator} emits the bean sources a resolved model implies;
+ * the fact-model contract, the full loop: {@link FactModelGenerator} emits the bean sources a resolved model implies;
  * they compile in-memory (javax.tools), pass the {@link ContractValidator} (generator ⊨ validator by
  * construction — the shared {@code leden} derivation), and a generated rule FIRES against instances of the
  * generated beans. The objecttype names are deliberately absent from the hand-written facts pool, so the
@@ -100,7 +100,7 @@ class FactModelGeneratorTest {
     }
 
     @Test void validator_meldt_alle_schendingen_in_een_keer() {
-        // D7: fail FAST but COMPLETE — a bean pool that lacks a class AND mistypes a member lists them all.
+        // fail FAST but COMPLETE — a bean pool that lacks a class AND mistypes a member lists them all.
         RegelSpraakModel m = Resolver.resolve("""
             Objecttype het Spookding
                 de waarde Numeriek (geheel getal);

@@ -1068,7 +1068,7 @@ final class RuleChecker {
             // mis-merged bullet under a COUNT changes what is counted (AND-merging what the spec OR-s): a
             // fired-wrong shared value. Under ALLE/DE the merge is semantics-preserving (every bullet must
             // hold anyway), so no guard applies. This is a statement about the PARSE, not about what a
-            // back-end can lower (goal-M3 D3): capability verdicts live in the back-ends and are reconciled
+            // back-end can lower (back-end-agnostic resolver): capability verdicts live in the back-ends and are reconciled
             // by the manifest-parity test.
             if (kw != Conditie.Kwantor.ALLE && kw != Conditie.Kwantor.DE
                     && onderdelen.stream().anyMatch(c -> c instanceof Conditie.Samengesteld s

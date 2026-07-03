@@ -7,7 +7,7 @@ package io.github.yhavinga.regelspraak.facts;
  *  doel join (the passengers), so the membership genuinely filters which vluchten get the relation. */
 public class Bemanningslid {
     private Vlucht bemandeVlucht;
-    private String naam;                     // goal-M4 drift test: the fixture models declare it
+    private String naam;                     // contract drift test: the fixture models declare it
     public String getNaam() { return naam; }
     public void setNaam(String v) { this.naam = v; }
     public Vlucht getBemandeVlucht() { return bemandeVlucht; }

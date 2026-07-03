@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** The shared tijdseenheid → ChronoUnit mapping and §8.2 toets codes (goal-M2 P2). */
+/** The shared tijdseenheid → ChronoUnit mapping and §8.2 toets codes (single shared implementation). */
 class TijdrekeningTest {
 
     private static Datatype met(String afkorting) {

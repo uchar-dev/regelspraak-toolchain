@@ -16,7 +16,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
- * THE §9.8 dagsoortdefinitie compiler — the one implementation both back-ends share (goal-M1/P2).
+ * THE §9.8 dagsoortdefinitie compiler — the one implementation both back-ends share (single shared implementation).
  * A definitie's condition over "de dag" compiles to a {@code Predicate<LocalDate>}: the exec model
  * captures it directly in its lambdas, and the DRL back-end declares it as a session {@code global}
  * ({@code rsDagsoort_<Naam>}) that the session builder supplies from {@link #globalen()} — so the

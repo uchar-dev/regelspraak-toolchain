@@ -74,7 +74,7 @@ public final class ExecModelTranspiler {
     private final RegelSpraakModel model;
     private final Map<String, Global<BigDecimal>> globals = new LinkedHashMap<>();
     /** §9.8 dagsoortdefinities compiled to per-date predicates by the SHARED {@link Dagsoorten} compiler
-     *  (goal-M1: one implementation for both back-ends). Compiled lazily on first reference (§8.1.5 / §6
+     *  (single-runtime principle: one implementation for both back-ends). Compiled lazily on first reference (§8.1.5 / §6
      *  duration); cross-dagsoort references and (spec-forbidden, §9.10) cycles are handled inside the compiler. */
     private final Dagsoorten dagsoorten;
     /** §13.3.6 temporal parameters: a tijdlijn parameter is a {@code List<Segment>} global (only a §7.3.2
@@ -394,7 +394,7 @@ public final class ExecModelTranspiler {
                     werkBij(drools, s, doelGetter, doelSetter, gv));
         } else {
             // scalar value path: a WaardeFn(subject, global-values -> value) plus the Parameter-globals it reads.
-            // the doel's objecttype rides along as the VALUE-path subject (goal-M4 D8: a parameter, no field),
+            // the doel's objecttype rides along as the VALUE-path subject (no-mutable-build-state: a parameter, no field),
             // so a to-one navigated value read can resolve its role.
             WaardeFn wf = switch (r.soort()) {
                 case KENMERKTOEKENNING -> WaardeFn.constant(Boolean.TRUE);      // "is <kenmerk>" -> kenmerk == true
@@ -632,7 +632,7 @@ public final class ExecModelTranspiler {
             if (reader == null) return null;   // AFWEZIG / ONOPGELOST / NAAR_VEEL -> marker (symmetric with the DRL)
             rfn = (subj, gm) -> reader.apply(subj);
         } else {
-            WaardeFn rhs = scalarWaarde(subject, ander);   // the value-path subject rides as a parameter (goal-M4 D8)
+            WaardeFn rhs = scalarWaarde(subject, ander);   // the value-path subject rides as a parameter (no-mutable-build-state)
             if (rhs == null) return null;
             if (!rhs.globals().isEmpty()) {
                 if (rhs.globals().size() != 1) return null;
@@ -983,7 +983,7 @@ public final class ExecModelTranspiler {
         if (tl == null) return null;                                             // navigated/unresolvable -> skip
         // the grens is read value-side (own attr / to-one navigated / literal / global): the subject rides as
         // the VALUE-path parameter so a navigated grens ("... groter is dan de inkomen van zijn partner")
-        // lowers — symmetric with DRL's waarde() (goal-M4 D8).
+        // lowers — symmetric with DRL's waarde() (no-mutable-build-state).
         WaardeFn g = scalarWaarde(subject, ander);
         if (g == null) return null;                                              // unlowerable grens -> skip
         return new VergClip(tl, code, g);
@@ -1440,9 +1440,9 @@ public final class ExecModelTranspiler {
             default -> false;
         };
     }
-    /** Parse a §13.2.19 date literal to a LocalDate — the shared {@link Literalen} reader (goal-M1/P2). */
+    /** Parse a §13.2.19 date literal to a LocalDate — the shared {@link Literalen} reader (single shared implementation). */
     private static java.time.LocalDate parseDatum(String waarde) { return Literalen.parseDatum(waarde); }
-    /** Parse a §13.2.21 datum-tijd literal to a LocalDateTime — the shared {@link Literalen} reader (goal-M1/P2). */
+    /** Parse a §13.2.21 datum-tijd literal to a LocalDateTime — the shared {@link Literalen} reader (single shared implementation). */
     private static java.time.LocalDateTime parseDatumTijd(String waarde) { return Literalen.parseDatumTijd(waarde); }
 
     /** §13.3.8 the Java class a scalar parameter's global is declared with — the {@link org.drools.model.Global} type
@@ -1532,7 +1532,7 @@ public final class ExecModelTranspiler {
         boolean optellen = op == Expr.BinOp.PLUS;
         if (durExpr.type().isDatum() || (!optellen && !datumLinks)) return null;   // datum-datum / duur-min-datum
         // §6.11 datum ± N <dagsoort> ("5 werkdagen"): step day-by-day counting the §9.8 dagsoort days. A dagsoort is
-        // day-granular -> a Datum in dagen (LocalDate) operand only. Both back-ends call rsDatumPlusDagsoort (goal-M1).
+        // day-granular -> a Datum in dagen (LocalDate) operand only. Both back-ends call rsDatumPlusDagsoort (single-runtime principle).
         io.github.yhavinga.regelspraak.model.Eenheid durEenheid = durExpr.type().eenheidOf();
         String dagsoortUnit = durEenheid != null ? model.dagsoortVoorEenheid(durEenheid.afkorting()) : null;
         if (dagsoortUnit != null) {
@@ -1892,7 +1892,7 @@ public final class ExecModelTranspiler {
         // toeslag groter is dan de drempel", "zijn prijs maal 2 groter is dan de grens", "de vertrektijd van zijn reis
         // plus de toeslag groter is dan zijn prijs". Bind that one global as a pattern variable (a 2-var expr), lowering
         // BOTH sides via scalarWaarde. DRL reads the global as a free name in the constraint operand. A NAVIGATED operand
-        // inside the expr lowers via scalarWaarde's navigated read — the subject rides as the value-path parameter (goal-M4 D8,
+        // inside the expr lowers via scalarWaarde's navigated read — the subject rides as the value-path parameter (no-mutable-build-state,
         // like the leaf expr-comparison branch) so navReader resolves; an absent relation reads leeg -> leeg-as-0 in the
         // arithmetic (DRL's rsRelGetal mirror). 0 globals -> falls through to leafPredicate's fact-only expr-comparison
         // branch; >1 distinct globals -> falls through -> skip (a condition expr binds at most one global -> the N-var
@@ -1994,9 +1994,9 @@ public final class ExecModelTranspiler {
      *  §8.1.7 near-side rolcheck. A temporal (List<Segment>) operand returns null (Phase F). */
     /** The string label of a comparison RHS that is a §13.3.3.4 Tekst literal (double quotes stripped) or a §13.2.14
      *  enumeratiewaarde 'X' (single quotes stripped, straight or typographic). null otherwise — both compare by
-     *  VALUE equality — the shared {@link Literalen#tekstOfEnumLabel} reader (goal-M2). */
+     *  VALUE equality — the shared {@link Literalen#tekstOfEnumLabel} reader (the shared kern). */
     private static String tekstOfEnumLabel(Expr e) {
-        return e instanceof Expr.Literal lit ? Literalen.tekstOfEnumLabel(lit) : null;   // the shared reader (goal-M2)
+        return e instanceof Expr.Literal lit ? Literalen.tekstOfEnumLabel(lit) : null;   // the shared reader (the shared kern)
     }
     /** §5.3/§5.6 TEKST equality with the leegwaarde tables (the String analogue of the datum equality): GELIJK is Tabel 38
      *  (both present and equal; one/both-leeg -> onwaar); ONGELIJK is Tabel 44 (exactly-one-leeg -> WAAR, both-leeg ->
@@ -2270,7 +2270,7 @@ public final class ExecModelTranspiler {
                     || v.links() instanceof Expr.Begrensd || v.links() instanceof Expr.Afgerond)
                 && v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
             if (parityOnveilig(v.links())) return null;   // §3.6 dimensiecel / cross-unit +/- -> DRL markers -> skip (symmetric)
-            WaardeFn lw = scalarWaarde(subject, v.links());   // the value-path subject rides as a parameter (goal-M4 D8)
+            WaardeFn lw = scalarWaarde(subject, v.links());   // the value-path subject rides as a parameter (no-mutable-build-state)
             if (lw == null || !lw.globals().isEmpty()) return null;   // unlowerable / unresolvable navigation / needs a global -> skip
             BigDecimal rhs = bd(lit);
             if (rhs == null) return null;
@@ -2393,7 +2393,7 @@ public final class ExecModelTranspiler {
     /** Compile (idempotently, cycle-safe) the §9.8 definitie of {@code naam} to a Predicate&lt;LocalDate&gt;; null
      *  when no such definitie exists or its condition is not a pure date predicate. A nested dagsoort reference
      *  resolves via a DEFERRED map lookup, so cross-references work regardless of compilation order and a
-     *  (spec-forbidden, §9.10) cyclic definitie cannot infinite-loop — inside the shared kern.Dagsoorten (goal-M1). */
+     *  (spec-forbidden, §9.10) cyclic definitie cannot infinite-loop — inside the shared kern.Dagsoorten (single-runtime principle). */
     /** §8.1.5/§5.15/Tabel 57: the day-granular date of a dagsoort operand — a Datum-in-dagen (LocalDate) directly, a
      *  Datum-en-tijd (LocalDateTime) via its date part (a dagsoort is day-granular, so the time portion is irrelevant).
      *  null for a leeg / non-date value (a leegwaarde is nooit een dagsoort). Mirrors the DRL `.toLocalDate()` wrap. */
@@ -2997,7 +2997,7 @@ public final class ExecModelTranspiler {
      *  terminates, else to a DECIMAL64 division (e.g. 1/3). A leading-integer regex would drop the denominator
      *  ("4/2" -> 4) and DIVERGE from the DRL oracle (grondslag maal 4/2 = 40 in exec vs 20 in DRL). */
     private static BigDecimal bd(Expr.Literal lit) {
-        return Literalen.getal(lit);   // the shared literal reader (goal-M1/P2)
+        return Literalen.getal(lit);   // the shared literal reader (single shared implementation)
     }
     /** A numeric EXPRESSION operand (an arithmetic {@link Expr.Binair}, a builtin {@link Expr.Functie}, a §6.1.4
      *  begrenzing or a §13.4.17.25 afronding) — i.e. NOT a plain attribute/literal/parameter leaf. Used to route an
@@ -4121,7 +4121,7 @@ public final class ExecModelTranspiler {
         try { return Class.forName(FACTS + "." + RegelSpraakRuntime.pascal(ot.naam)); }
         catch (ClassNotFoundException e) { return null; }
     }
-    /** The parameter-GLOBAL name — kern.Namen.ident(.., false) (goal-M2 P3), so the model's global name
+    /** The parameter-GLOBAL name — kern.Namen.ident(.., false) (the shared naming contract), so the model's global name
      *  equals the DRL's and the differential session sets ONE global by that single shared name. */
     static String globalNaam(String naam) { return Namen.ident(naam, false); }
     /** The JAVABEAN property name Drools watches for property reactivity (the lowercase-first form of {@link #ident}):

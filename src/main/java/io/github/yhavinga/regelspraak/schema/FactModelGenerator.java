@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Generates the fact-bean sources a resolved RegelSpraak model implies (goal-M4 P4) — the EXPLICIT form
+ * Generates the fact-bean sources a resolved RegelSpraak model implies (the explicit fact-model contract) — the EXPLICIT form
  * of the contract the generated rules assume: one JavaBean per objecttype in {@code io.github.yhavinga.regelspraak.facts}
  * with a getter/setter per attribute ({@code BigDecimal}/{@code String}/{@code Boolean}/{@code LocalDate}/
  * {@code LocalDateTime}; a {@code Map<String,BigDecimal>} for a §3.6 gedimensioneerd attribute; a
@@ -91,7 +91,7 @@ public final class FactModelGenerator {
             String klasse = Namen.ident(ot.naam, true);
             StringBuilder b = new StringBuilder();
             b.append("package ").append(PAKKET).append(";\n\n")
-             .append("/** Generated fact bean for objecttype '").append(ot.naam).append("' (goal-M4 P4). */\n")
+             .append("/** Generated fact bean for objecttype '").append(ot.naam).append("' (the explicit fact-model contract). */\n")
              .append("public class ").append(klasse).append(" {\n");
             List<Lid> leden = leden(model, ot);
             for (Lid l : leden)
@@ -118,7 +118,7 @@ public final class FactModelGenerator {
             import java.math.BigDecimal;
             import java.time.LocalDate;
 
-            /** One tijdvak [van, tot) of a §13.3.6 temporal attribute's Tijdreeks (generated, goal-M4 P4). */
+            /** One tijdvak [van, tot) of a §13.3.6 temporal attribute's Tijdreeks (generated, the explicit fact-model contract). */
             public class Segment {
                 private LocalDate van;
                 private LocalDate tot;
@@ -141,7 +141,7 @@ public final class FactModelGenerator {
     private static final String INCONSISTENTIE_BRON = """
             package io.github.yhavinga.regelspraak.facts;
 
-            /** The observable §13.4.8/§9.5 "inconsistent" result: the violated rule + subject (generated, goal-M4 P4). */
+            /** The observable §13.4.8/§9.5 "inconsistent" result: the violated rule + subject (generated, the explicit fact-model contract). */
             public class Inconsistentie {
                 private final String regel;
                 private final Object subject;

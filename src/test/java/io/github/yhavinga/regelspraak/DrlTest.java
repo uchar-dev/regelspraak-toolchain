@@ -965,7 +965,7 @@ class DrlTest {
         // §6.10 Tabel 14: an empty operand makes the result empty (the guard lives in the helper), and the
         // helper is injected exactly once
         assertTrue(drl.contains("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsTijdsduur;"), () -> "helper niet geïnjecteerd:\n" + drl);
-        // the leeg-guard lives in the runtime body (goal-M1); the import-line pin above covers the wiring
+        // the leeg-guard lives in the runtime body (single-runtime principle); the import-line pin above covers the wiring
     }
 
     @Test void tijdsduur_in_millisecondes_de_s_meervoudsvorm_uit_de_spec_lowert() {
@@ -1515,7 +1515,7 @@ class DrlTest {
     }
 
     @Test void compound_subselectie_telling_met_twee_globals_vuurt_in_drl() {
-        // goal-M3 D3: the resolver no longer pre-cripples the IR to the exec back-end's count-fold capability.
+        // back-end-agnostic resolver: the resolver no longer pre-cripples the IR to the exec back-end's count-fold capability.
         // A COUNTING quantifier compound reading TWO DISTINCT Parameter-globals now LOWERS in DRL (globals read
         // as free names in the bullet OR); the exec back-end skips what it cannot bind, and that divergence is
         // explicit in the manifests (see ExecModelDifferentialTest.counting_subselectie_met_twee_globals_*).
@@ -1541,7 +1541,7 @@ class DrlTest {
         assertTrue(m.errors().isEmpty(), () -> "moet parseren+resolven: " + m.errors());
         String drl = DrlTranspiler.transpile(m);
         assertFalse(drl.contains("/* TODO aggregatie"),
-                () -> "een counting+twee-globals compound subselectie moet in DRL vuren (goal-M3, geen IR-pre-crippling):\n" + drl);
+                () -> "een counting+twee-globals compound subselectie moet in DRL vuren (the resolver is the naming authority, geen IR-pre-crippling):\n" + drl);
         assertTrue(drl.contains("leeftijd < ondergrens") && drl.contains("prijs > bovengrens"),
                 () -> "beide global-bullets moeten als vrije namen in de accumulate-source staan:\n" + drl);
     }
@@ -1605,7 +1605,7 @@ class DrlTest {
         assertFalse(drl.contains("/* TODO"), () -> "een cross-unit vergelijking moet vuren (geen marker):\n" + drl);
         assertTrue(drl.contains("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsHerschaal;"), () -> "de rsHerschaal helper moet geregistreerd zijn:\n" + drl);
         assertTrue(drl.contains("rsHerschaal(leeftijd,"), () -> "de constraint moet de operand null-veilig herschalen:\n" + drl);
-        // the helper BODY lives in the runtime now (goal-M1 D1): no .multiply may appear in the DRL text at all
+        // the helper BODY lives in the runtime now (single-runtime principle): no .multiply may appear in the DRL text at all
         assertTrue(drl.lines().noneMatch(l -> l.contains(".multiply")),
                 () -> "geen ongegarde .multiply in de DRL-tekst (het herschalen leeft in de runtime):\n" + drl);
     }
@@ -3878,12 +3878,12 @@ class DrlTest {
                 "een numeriek attr-vs-attr static member (Tabel 42 'onwaar') blijft vuren");
     }
 
-    /** goal-M1 D1: the generated DRL carries NO {@code function} definitions anywhere in the corpus —
+    /** single-runtime principle: the generated DRL carries NO {@code function} definitions anywhere in the corpus —
      *  every helper arrives as an {@code import function} on {@link io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime}
      *  (the ONE rs* implementation), and the §9.8 dagsoort predicates as session globals. Sweeps every corpus
      *  snippet AND the full TOKA casus as one model; the exercised-count floor keeps a silent skip from
      *  hollowing the sweep out. */
-    @Test void d1_corpus_drl_bevat_geen_enkele_function_definitie() throws java.io.IOException {
+    @Test void corpus_drl_bevat_geen_enkele_function_definitie() throws java.io.IOException {
         java.nio.file.Path root = java.nio.file.Path.of("examples");
         org.junit.jupiter.api.Assumptions.assumeTrue(java.nio.file.Files.isDirectory(root),
                 "corpus absent (run tools/extract_corpus.py)");
@@ -3895,7 +3895,7 @@ class DrlTest {
                     drl = DrlTranspiler.transpile(Resolver.resolve(java.nio.file.Files.readString(f)));
                 } catch (RuntimeException fragment) { continue; }   // a non-parsing fragment proves nothing here
                 assertTrue(drl.lines().noneMatch(l -> l.startsWith("function ")),
-                        () -> "D1: gegenereerde DRL bevat een function-definitie voor " + f + ":\n" + drl);
+                        () -> "gegenereerde DRL bevat een function-definitie voor " + f + ":\n" + drl);
                 getranspileerd++;
             }
         }
@@ -3909,18 +3909,18 @@ class DrlTest {
             }
             String drl = DrlTranspiler.transpile(Resolver.resolve(sb.toString()));
             assertTrue(drl.lines().noneMatch(l -> l.startsWith("function ")),
-                    () -> "D1: de volledige TOKA-casus emitteert een function-definitie:\n" + drl);
+                    () -> "de volledige TOKA-casus emitteert een function-definitie:\n" + drl);
             getranspileerd++;
         }
         final int n = getranspileerd;
-        assertTrue(n >= 150, () -> "D1-sweep te smal: slechts " + n + " corpusmodellen getranspileerd");
+        assertTrue(n >= 150, () -> "corpus-sweep te smal: slechts " + n + " corpusmodellen getranspileerd");
     }
 
-    /** goal-M3 D4: the IR carries only DECLARED names — a WRITTEN PLURAL binds its declared singular at
+    /** declared-names-only IR: the IR carries only DECLARED names — a WRITTEN PLURAL binds its declared singular at
      *  resolve time (the toka-21 shape: "de leeftijden van alle passagiers" with the attribute declared
      *  'leeftijd'), and an unbindable written form markers the aggregation instead of accumulating over a
      *  synthesized getter that no fact bean has. */
-    @Test void d4_geschreven_meervoud_bindt_het_gedeclareerde_attribuut_in_de_accumulate() {
+    @Test void geschreven_meervoud_bindt_het_gedeclareerde_attribuut_in_de_accumulate() {
         String hdr = """
             Objecttype de Vlucht
                 de leeftijdssom Numeriek (geheel getal);

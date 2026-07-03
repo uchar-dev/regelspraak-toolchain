@@ -1774,7 +1774,7 @@ class ExecModelDifferentialTest {
         new BigDecimal(140), new BigDecimal(25), new BigDecimal(110), new BigDecimal(135) };
 
     // §13.4.13.4 a COUNTING compound reading TWO DISTINCT globals — DRL lowers it (free-name globals in the bullet
-    //   OR); the exec count-fold binds at most one source-global and SKIPS honestly (goal-M3: an explicit divergence).
+    //   OR); the exec count-fold binds at most one source-global and SKIPS honestly (the resolver is the naming authority: an explicit divergence).
     static final String COUNT_TWO_GLOBALS_SRC =
         "Parameter de ondergrens : Numeriek (geheel getal)\nParameter de bovengrens : Numeriek (geheel getal)\n" + COMPOUND_HDR
         + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn leeftijd is kleiner dan de ondergrens\n        - zijn prijs is groter dan de bovengrens.\n";
@@ -1785,7 +1785,7 @@ class ExecModelDifferentialTest {
         + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn leeftijd is kleiner dan de grens\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn prijs is groter dan 50.\n";
     // §13.4.13.4 a NESTED compound bullet that itself READS A GLOBAL ("zijn leeftijd is kleiner dan de grens" inside the
     //   nested ALLE) — DRL lowers the nested &&/|| with the global as a free name; the exec leafCompound folds into ONE
-    //   Predicate1, cannot bind the global, and SKIPS honestly (goal-M3: an explicit divergence).
+    //   Predicate1, cannot bind the global, and SKIPS honestly (the resolver is the naming authority: an explicit divergence).
     static final String COUNT_NESTED_GLOBAL_SRC =
         "Parameter de grens : Numeriek (geheel getal)\n" + COMPOUND_HDR
         + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn prijs is groter dan 50\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn leeftijd is kleiner dan de grens.\n";
@@ -6093,12 +6093,12 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
-    /** goal-M3 D3: the resolver no longer pre-cripples the IR to the exec count-fold's capability. A COUNTING
+    /** back-end-agnostic resolver: the resolver no longer pre-cripples the IR to the exec count-fold's capability. A COUNTING
      *  compound the exec cannot bind (>1 distinct global; a global-reading NESTED bullet) now FIRES in DRL —
      *  the ABSOLUTE spec value asserted here — while the exec back-end records an honest skip. The divergence
      *  is EXPLICIT and enumerated: DRL manifest LOWERED, exec manifest SKIP; a runDifferential sweep hitting
      *  this shape needs a per-fixture allowlist entry. (Replaces the old symmetric-marker pin, which encoded
-     *  back-end capability INSIDE the resolver — the IR-pre-crippling goal-M3 removes.) */
+     *  back-end capability INSIDE the resolver — the IR-pre-crippling resolver-as-naming-authority removes.) */
     private void assertDrlVuurtExecSlaatOver(String src, Map<String, Object> globals, BigDecimal verwacht) {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
@@ -6107,7 +6107,7 @@ class ExecModelDifferentialTest {
                 () -> "de exec moet deze counting compound (nog) eerlijk overslaan, kreeg: " + em.overgeslagen());
         DrlTranspiler dt = DrlTranspiler.build(m);
         assertTrue(dt.dekking().stream().allMatch(Dekking::lowered),
-                () -> "DRL moet deze counting compound loweren (goal-M3):\n" + dt.drl());
+                () -> "DRL moet deze counting compound loweren (resolver-as-naming-authority):\n" + dt.drl());
         KieSession s = sessie(drlBase(m));
         globals.forEach(s::setGlobal);
         List<Object> facts = countFacts().get();
@@ -6438,7 +6438,7 @@ class ExecModelDifferentialTest {
     // NB: a corpus-level (whole-TOKA) manifest diff is not possible yet — ExecModelTranspiler.build
     // resolves fact-bean getters EAGERLY and fail-fasts on the missing TOKA beans (IllegalState "geen
     // getter voor 'leeftijd'"). The DRL-side TOKA scoreboard lives in TokaDekkingTest; the two-back-end
-    // corpus diff becomes possible once goal-M4's FactModelGenerator can supply generated beans.
+    // corpus diff becomes possible once the fact-model contract's FactModelGenerator can supply generated beans.
 
     // ---- Phase D: §9.5/§13.4.8 consistentieregel — the VIOLATION inserts an Inconsistentie. The observable is the
     //      SET of flagged subjects (not a subject field), so a FoutFixture maps each inserted Inconsistentie to a
@@ -7530,7 +7530,7 @@ class ExecModelDifferentialTest {
         System.out.println("[differential] " + label + ": " + agreed + " agreed, " + skipped + " skipped" + skips);
     }
 
-    /** goal-M0 D5: the two back-ends' {@link Dekking} manifests must agree that every construct is
+    /** manifest parity: the two back-ends' {@link Dekking} manifests must agree that every construct is
      *  LOWERED on both sides; ANY non-LOWERED verdict — a one-sided capability divergence, but also a
      *  both-sides MARKER/SKIP (which the retired skip-count cap could mask as "agreement": the
      *  §differential-masks-shared-bugs lesson, a shared upstream regression skips both back-ends at
@@ -7662,14 +7662,14 @@ class ExecModelDifferentialTest {
     }
 
     // ---- harness plumbing ----
-    /** The §9.8 dagsoort-predicate globals each DRL KieBase declares (goal-M1: the predicates are compiled once
+    /** The §9.8 dagsoort-predicate globals each DRL KieBase declares (single-runtime principle: the predicates are compiled once
      *  by kern.Dagsoorten and supplied as session globals, like the parameter globals) — {@link #sessie} sets
      *  them on every session over that base. Exec-model bases are absent (their predicates are baked in). */
     private final java.util.IdentityHashMap<KieBase, Map<String, java.util.function.Predicate<java.time.LocalDate>>>
             dagsoortenPerBase = new java.util.IdentityHashMap<>();
 
     private KieBase drlBase(RegelSpraakModel m) {
-        // goal-M4 D7 (drift test): every model this harness FIRES must honour the bean contract the
+        // the fact-model contract (drift test): every model this harness FIRES must honour the bean contract the
         // hand-written facts implement — the same derivation FactModelGenerator renders. A fixture whose
         // model implies a member the bean pool lacks fails here with the full list, not with one
         // reflective fire-time abort.

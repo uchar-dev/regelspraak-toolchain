@@ -22,13 +22,13 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * per-construct {@link Dekking} verdict asserted EXACTLY. This is the net under every later
  * refactor milestone — a construct that silently regresses from LOWERED to MARKER (or silently
  * starts lowering, invalidating documented divergences) trips this test by name, not by count.
- * It also pins the D6 discipline on the casus: every non-LOWERED verdict has a WARNING, so
+ * It also pins the no-silent-inertness discipline on the casus: every non-LOWERED verdict has a WARNING, so
  * accepted-input-with-inert-output is never diagnostics-silent.
  */
 class TokaDekkingTest {
 
     /** The constructs the back-end honestly does NOT lower today, keyed by manifest sleutel.
-     *  Measured at the M0 baseline (post-f5cdde7): 19 of 29 constructs functional; markered are
+     *  Measured at the coverage-manifest baseline (post-f5cdde7): 19 of 29 constructs functional; markered are
      *  toka-22/23 (eerste/laatste over genavigeerde datum-tijd-operanden), toka-41/45 (the two
      *  double-nested compound voorwaarden) and ALL SIX verdelingen toka-32…37 — including
      *  toka-34 (op volgorde) and toka-36 (naar rato met afronding), which corrects the former
@@ -68,7 +68,7 @@ class TokaDekkingTest {
         long lowered = t.dekking().stream().filter(Dekking::lowered).count();
         assertEquals(19, lowered, () -> "TOKA-scorebord verschoven: " + lowered + "/29 functioneel");
 
-        // D6: geen stille inertie — elke MARKER heeft een dekking-WARNING op het model
+        // geen stille inertie — elke MARKER heeft een dekking-WARNING op het model
         for (Dekking d : t.dekking()) {
             if (d.lowered()) continue;
             assertTrue(m.diagnostics.stream().anyMatch(w ->
@@ -84,7 +84,7 @@ class TokaDekkingTest {
                 "de twee startpuntbepalingen (toka-43/44) moeten als WARNING zichtbaar blijven");
     }
 
-    /** The BEVINDINGEN §3.4 T4 probe: an accepted `datum plus <afstand in km>` lowers to an honest
+    /** The datum-plus-afstand probe: an accepted `datum plus <afstand in km>` lowers to an honest
      *  marker, but used to do so with ZERO diagnostics and exit 0. Now: MARKER verdict + WARNING
      *  (the CLI turns this into exit 3 without --allow-markers). */
     @Test void datum_plus_afstand_markert_niet_stil() {

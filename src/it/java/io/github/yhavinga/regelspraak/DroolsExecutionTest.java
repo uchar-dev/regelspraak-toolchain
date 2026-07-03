@@ -69,7 +69,7 @@ class DroolsExecutionTest {
     }
 
     /** Resolve + transpile + compile and open a session with the DRL's §9.8 dagsoort-predicate globals set
-     *  (goal-M1: the predicates are compiled once by kern.Dagsoorten and supplied as globals, like parameters). */
+     *  (single-runtime principle: the predicates are compiled once by kern.Dagsoorten and supplied as globals, like parameters). */
     private KieSession dagsoortSessie(String src) {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
@@ -6626,8 +6626,8 @@ class DroolsExecutionTest {
                 "0 telt niet, dus geen walk");
     }
 
-    @Test void d4_geschreven_meervoud_vuurt_de_som_over_het_gedeclareerde_attribuut() {
-        // goal-M3 D4 end-to-end: "de som van de leeftijden van alle passagiers" (attribute declared
+    @Test void geschreven_meervoud_vuurt_de_som_over_het_gedeclareerde_attribuut() {
+        // declared-names-only IR end-to-end: "de som van de leeftijden van alle passagiers" (attribute declared
         // 'leeftijd') fires against the REAL bean getter getLeeftijd() — before the resolve-time plural
         // binding this accumulated over a synthesized getLeeftijden() no fact bean has.
         String drl = DrlTranspiler.transpile(Resolver.resolve("""

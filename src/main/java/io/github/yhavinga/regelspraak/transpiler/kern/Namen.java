@@ -1,7 +1,7 @@
 package io.github.yhavinga.regelspraak.transpiler.kern;
 
 /**
- * THE Dutch-phrase → Java/DRL identifier contract (goal-M2 P3) — the one place a RegelSpraak name
+ * THE Dutch-phrase → Java/DRL identifier contract (the shared naming contract) — the one place a RegelSpraak name
  * becomes a bean property, getter/setter, fact class, parameter global, rule-name string, or
  * comment splice. Both back-ends import these; neither derives a name locally, so the DRL text and
  * the executable model can never disagree on what a written name maps to.
@@ -14,8 +14,8 @@ public final class Namen {
      *  delivers declared names bare, and a kenmerk whose name deliberately CARRIES an article ("de duurste
      *  reis") must bind its full name, not collide with a shorter sibling. A word written ALL-CAPS (a
      *  shouted parameter, "STANDAARD TERMIJN") is title-cased FIRST — without that the camel form of the
-     *  first word reads "sTANDAARD…" (the P3 wart). An empty result is "x". A camel result CAN equal a Java
-     *  keyword ("final") — reconciling that is the fact-model generator's contract (goal-M4), which must move
+     *  first word reads "sTANDAARD…". An empty result is "x". A camel result CAN equal a Java
+     *  keyword ("final") — reconciling that is the fact-model generator's contract (the explicit fact-model contract), which must move
      *  BOTH back-ends at once; a one-sided suffix here would diverge from the runtime's pascal-based reads. */
     public static String ident(String naam, boolean upperFirst) {
         StringBuilder b = new StringBuilder();
@@ -57,14 +57,14 @@ public final class Namen {
 
     /** User text (a {@code bron()} phrase) spliced into a {@code /* TODO … *&#47;} block comment or an
      *  end-of-line {@code // onopgelost …} comment: a {@code *&#47;} would END the block comment mid-splice
-     *  (goal-M2 D9 — the rest of the phrase then parses as DRL and sinks the package) and a newline would
+     *  (escaping by construction — the rest of the phrase then parses as DRL and sinks the package) and a newline would
      *  terminate a line comment, so both are defused. */
     public static String commentVeilig(String tekst) {
         return tekst.replace("*/", "* /").replace("\r", " ").replace("\n", " ");
     }
 
     /** A value spliced as a DRL/mvel STRING literal: backslashes and embedded double quotes are ESCAPED —
-     *  never stripped (goal-M2 D9: an enum label with an embedded quote must compare against the real label,
+     *  never stripped (escaping by construction: an enum label with an embedded quote must compare against the real label,
      *  not a silently altered one). Returns the quoted literal including its delimiters. */
     public static String drlString(String s) {
         return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";

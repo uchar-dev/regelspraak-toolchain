@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** The single literal reader both back-ends share (goal-M2 P2) — what a literal MEANS lives here once. */
+/** The single literal reader both back-ends share (single shared implementation) — what a literal MEANS lives here once. */
 class LiteralenTest {
 
     private static Expr.Literal num(String w) { return new Expr.Literal(w, new Datatype.Numeriek(false, 0, null, null), w); }
@@ -35,7 +35,7 @@ class LiteralenTest {
     @Test void enumLabel_stript_alleen_de_delimiters_en_houdt_ingebedde_tekens() {
         assertEquals("eerste klas", Literalen.enumLabel("'eerste klas'"));
         assertEquals("typografisch", Literalen.enumLabel("’typografisch‘"));
-        // goal-M2 D9: an embedded double quote is PART of the label — kept, never stripped
+        // escaping by construction: an embedded double quote is PART of the label — kept, never stripped
         assertEquals("zg. \"digitale\" kaart", Literalen.enumLabel("'zg. \"digitale\" kaart'"));
         assertNull(Literalen.enumLabel("geen enum"));
     }

@@ -6,8 +6,8 @@ import io.github.yhavinga.regelspraak.model.Rationaal;
 import java.math.BigDecimal;
 
 /**
- * The single literal-to-typed-value reader both back-ends share (goal-M2 P2; started in M1 for the
- * §9.8 dagsoort compiler). A RegelSpraak literal reaches the transpilers as its source text plus a
+ * The single literal-to-typed-value reader both back-ends share (grown from the §9.8 dagsoort
+ * compiler outward). A RegelSpraak literal reaches the transpilers as its source text plus a
  * resolved {@link io.github.yhavinga.regelspraak.model.Datatype}; the conversions here are the one place that
  * text is interpreted, so the two back-ends can never drift on what a literal MEANS.
  */
@@ -49,7 +49,7 @@ public final class Literalen {
     }
 
     /** The §13.2.14 enumeratiewaarde label of {@code 'X'} — its single-quote delimiters (straight or the
-     *  typographic ’X‘ pair) stripped, EMBEDDED characters (incl. double quotes) kept verbatim (goal-M2 D9).
+     *  typographic ’X‘ pair) stripped, EMBEDDED characters (incl. double quotes) kept verbatim (escaping by construction).
      *  null when the text is not a single-quoted enumeratiewaarde. */
     public static String enumLabel(String waarde) {
         int n = waarde.length();

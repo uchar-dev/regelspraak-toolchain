@@ -10,7 +10,7 @@ import java.util.function.Predicate;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * The SHARED §9.8 dagsoortdefinitie compiler (goal-M1): both back-ends get their per-date predicate from
+ * The SHARED §9.8 dagsoortdefinitie compiler (single-runtime principle): both back-ends get their per-date predicate from
  * here — the exec model captures it in lambdas, the DRL back-end supplies it as a {@code rsDagsoort_<Naam>}
  * session global. These pins are the compiler's own unit contract (ABSOLUTE values, not back-end parity).
  */

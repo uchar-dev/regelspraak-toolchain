@@ -288,7 +288,7 @@ final class ExpressieBouwer {
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
                     "leegwaarde-alternatief van een sommatie moet numeriek zijn, kreeg "
                             + leegwaarde.type() + " (§5.8.2)", f.getStart().getLine()));
-        // goal-M3 D4: an aggregation over a SET read ("de <x> van alle <elem>") whose written form binds NO
+        // declared-names-only IR: an aggregation over a SET read ("de <x> van alle <elem>") whose written form binds NO
         // declared member of the (known) element type is Onopgelost — with a WARNING — so both back-ends
         // marker it instead of accumulating over a getter that does not exist (an uncompilable DRL package /
         // a fire-time reflection abort). The plural-binding in attribuutRef already mapped a written plural
@@ -1224,7 +1224,7 @@ final class ExpressieBouwer {
                 }
             }
         }
-        // goal-M3 D4: a WRITTEN PLURAL of a declared attribute binds the DECLARED name at resolve time
+        // declared-names-only IR: a WRITTEN PLURAL of a declared attribute binds the DECLARED name at resolve time
         // ("de leeftijden van alle passagiers" reads the attribute declared 'leeftijd'), so the IR only ever
         // carries declared members and no back-end synthesizes a getter from surface morphology. The matcher
         // is ambiguity-safe (declared "(mv: …)" or the conservative regular plural of exactly ONE attribute);

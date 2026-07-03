@@ -308,7 +308,7 @@ van` and `tot de macht` LOWER AND FIRE: the runtime's `rsWortel` computes the ra
 `BigDecimal.sqrt` inside the mandatory afronding (a leeg or negative radicand yields leeg, the §6.6
 fout surfaced by the separate `(wortel van negatief)` Inconsistentie-companion rule — pinned in
 `DrlTest`/`DroolsExecutionTest`). An earlier revision of this parenthetical still called the wortel
-a `/* TODO */` marker; that claim predated the rsWortel lowering (goal-M4 D10).
+a `/* TODO */` marker; that claim predated the rsWortel lowering (docs-match-reality).
 
 `tot de macht` with an integer **decimal** literal exponent — the common case — lowers exactly
 through `BigDecimal.pow(int)`, so e.g. 7¹⁹ = 11398895185373143, not the …144 that an IEEE-754
@@ -1637,7 +1637,7 @@ per-file DRL are byte-identical. The product unit is opaque — the model does n
 factor (`€·m gedeeld door m`) is not recognised; the rate-product forms (`€·m/jr`, `1/jr`) stay `Onbekend` (they
 need a multi-factor `Eenheid` with exponents, the §13.3.7 model the roadmap defers).
 
-## §3.3 / §13.4.17 — a written plural binds its declared singular (goal-M3 D4)
+## §3.3 / §13.4.17 — a written plural binds its declared singular (declared-names-only IR)
 
 An attribute reference written in the PLURAL ("de som van **de leeftijden** van alle passagiers" with the
 attribute declared `leeftijd`; the TOKA-21 shape "de te betalen belastingen") now binds the DECLARED singular

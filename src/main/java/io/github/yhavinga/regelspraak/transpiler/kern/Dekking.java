@@ -35,7 +35,7 @@ public record Dekking(String soort, String naam, Verdict verdict, String reden, 
 
     public boolean lowered() { return verdict == Verdict.LOWERED; }
 
-    /** A non-LOWERED verdict is never silent (D6): raise a WARNING on the model, deduplicated so a
+    /** A non-LOWERED verdict is never silent: raise a WARNING on the model, deduplicated so a
      *  re-transpile of the same model (or both back-ends reaching the same verdict) does not pile up. */
     public void meld(RegelSpraakModel model) {
         if (lowered()) return;

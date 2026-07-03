@@ -43,9 +43,9 @@ Collection<Inconsistentie> fouten = /* a fresh session */ s.facts(Inconsistentie
 The fact classes the Model references must be on the classpath in package `io.github.yhavinga.regelspraak.facts`
 (the consumer's domain beans: Pascal-case class, `getX`/`setX` per attribute, `isX`/`setX` per kenmerk).
 
-## The DRL oracle's classpath contract (goal-M1)
+## The DRL oracle's classpath contract
 
-Since goal-M1 the generated DRL text contains **no `function` bodies**: every helper arrives as
+Since the single-runtime refactor the generated DRL text contains **no `function` bodies**: every helper arrives as
 `import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.<naam>;`, so **the `regelspraak-parser`
 artifact must be on the classpath that compiles the DRL** (the test suites already satisfy this — the
 runtime lives in the same artifact as the transpiler). The one rs* implementation is

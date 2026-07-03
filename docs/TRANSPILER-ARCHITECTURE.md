@@ -1,7 +1,6 @@
 # Transpiler architecture — one semantic core, two thin back-ends, one runtime
 
-*(goal-M4 D10 — the layering ELEGANT_JAVA_TRANSPILER_FABLE_20260702.md § 3 targets; kept short on purpose.
-Correctness authority: the RegelSpraak v2.3.0 spec, always.)*
+*(Kept short on purpose. Correctness authority: the RegelSpraak v2.3.0 spec, always.)*
 
 ```
 resolver/            names & navigation authority: the IR carries ONLY declared, model-bound names

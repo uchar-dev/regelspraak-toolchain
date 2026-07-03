@@ -6,7 +6,7 @@ import io.github.yhavinga.regelspraak.model.Eenheid;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 
 /**
- * THE time-unit mapping both back-ends share (goal-M2 P2): a declared tijdseenheid → the
+ * THE time-unit mapping both back-ends share (single shared implementation): a declared tijdseenheid → the
  * {@link java.time.temporal.ChronoUnit} name date arithmetic keys on, and the §8.2 toets-codes
  * {@code rsGeheelPeriode} evaluates.
  */

@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Checks that the fact beans on a classpath honour the contract a resolved model implies (goal-M4 P4/D7):
+ * Checks that the fact beans on a classpath honour the contract a resolved model implies:
  * per objecttype a class in {@code io.github.yhavinga.regelspraak.facts}, per implied member (the SAME derivation
  * {@link FactModelGenerator#leden} the generator renders) a getter and setter of the right shape, plus the
  * {@code Segment}/{@code Inconsistentie} carriers when the model needs them. Returns ALL violations — the

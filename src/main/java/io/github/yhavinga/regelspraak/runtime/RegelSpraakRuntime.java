@@ -25,7 +25,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *       uses {@link Accessors} — TYPED LambdaMetafactory accessors that inline to a direct call (the Phase-H
  *       codegen path). This bridge serves the genuinely dynamic sites (navigation targets, Segment/Inconsistentie
  *       fields, multi-hop joins).</li>
- *   <li><b>The leegwaarde + arithmetic helpers</b> — since goal-M1 the ONE rs* implementation: the exec model's
+ *   <li><b>The leegwaarde + arithmetic helpers</b> — since single-runtime principle the ONE rs* implementation: the exec model's
  *       lambdas call these directly, and the generated DRL imports the same methods via
  *       {@code import function}, so the two back-ends compute the SAME value by construction (the
  *       differential gate now compares wiring, not re-implementations).</li>
@@ -175,11 +175,11 @@ public final class RegelSpraakRuntime {
     }
 
     // ---- §6.x leegwaarde / arithmetic (ported from the DRL helper bodies as phases land) ----
-    /** §6.2-6.4 Tabel: an empty (null) numeric operand counts as 0 in +/-. The single implementation; the DRL imports it (goal-M1). */
+    /** §6.2-6.4 Tabel: an empty (null) numeric operand counts as 0 in +/-. The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsNul(Object o) { return o == null ? BigDecimal.ZERO : toBd(o); }
 
     /** §6.3 Tabel 7/8 "verminderd met": the ONE subtraction whose empty LEFT yields empty (an empty RIGHT counts as
-     *  0); plain "min" treats both empties as 0 (rsNul). The single implementation; the DRL imports it (goal-M1). */
+     *  0); plain "min" treats both empties as 0 (rsNul). The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsVerminderd(Object links, Object rechts) {
         if (links == null) return null;
         return toBd(links).subtract(rsNul(rechts));
@@ -187,7 +187,7 @@ public final class RegelSpraakRuntime {
 
     /** §6.5 Tabel 12 division: an empty LEFT short-circuits to 0; an empty RIGHT (deling door leeg) is a Fout that
      *  degrades to leeg (null) on the value side — the §9.5 Inconsistentie is raised separately by the companion
-     *  rule. The single implementation; the DRL imports it (goal-M1). */
+     *  rule. The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsGedeeld(Object links, Object rechts) {
         if (links == null) return BigDecimal.ZERO;
         return rechts == null ? null : toBd(links).divide(toBd(rechts), java.math.MathContext.DECIMAL64);
@@ -195,33 +195,33 @@ public final class RegelSpraakRuntime {
 
     /** §13.4.17.13/§6.6 square root: a leeg OR negative radicand -> leeg (the negative is a Fout surfaced by the
      *  companion rule, never a session-aborting sqrt throw); else the 34-digit sqrt (NOT Math.sqrt double-noise,
-     *  which can flip a directional afronding). The single implementation; the DRL imports it (goal-M1). */
+     *  which can flip a directional afronding). The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsWortel(Object x) {
         BigDecimal b = toBd(x);
         return (b == null || b.signum() < 0) ? null : b.sqrt(java.math.MathContext.DECIMAL128);
     }
 
     /** §13.4.17.25 afronding: round to {@code scale} decimals; a leeg (null) value rounds to leeg (so a wortel/
-     *  macht/division leeg result propagates instead of NPE-ing .setScale). The single implementation; the DRL imports it (goal-M1). */
+     *  macht/division leeg result propagates instead of NPE-ing .setScale). The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsAfronding(Object x, int scale, java.math.RoundingMode mode) {
         return x == null ? null : toBd(x).setScale(scale, mode);
     }
 
     /** §6.5 "gedeeld door (ABS)": the same Tabel 12 leegwaarde as {@link #rsGedeeld} (empty LEFT -> 0, value/empty
-     *  -> leeg), but the divide truncates TOWARD ZERO at 5 decimals. The single implementation; the DRL imports it (goal-M1). */
+     *  -> leeg), but the divide truncates TOWARD ZERO at 5 decimals. The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsGedeeldAbs(Object links, Object rechts) {
         if (links == null) return BigDecimal.ZERO;
         return rechts == null ? null : toBd(links).divide(toBd(rechts), 5, java.math.RoundingMode.DOWN);
     }
 
     /** §13.4.17.14 "tot de macht" with an INTEGER exponent: BigDecimal.pow(int) (exact, unlike Math.pow's double
-     *  noise above 2^53); §6.7 a leeg base -> leeg. The single implementation; the DRL imports it (goal-M1). */
+     *  noise above 2^53); §6.7 a leeg base -> leeg. The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsMacht(Object basis, int exponent) {
         return basis == null ? null : toBd(basis).pow(exponent);
     }
 
     /** §13.4.17.14 "tot de macht" with a FRACTIONAL/runtime exponent: Math.pow at double precision; any leeg
-     *  operand -> leeg. The single implementation; the DRL imports it (goal-M1). */
+     *  operand -> leeg. The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsMachtReeel(Object basis, Object exponent) {
         if (basis == null || exponent == null) return null;
         return BigDecimal.valueOf(Math.pow(toBd(basis).doubleValue(), toBd(exponent).doubleValue()));
@@ -230,7 +230,7 @@ public final class RegelSpraakRuntime {
     /** §8.1.3 elfproef: weight each digit from the last (the controlecijfer, weight -1), the next 2, 3, … and the
      *  weighted sum must be a POSITIEF geheel getal divisible by 11 and not all zeros. Admits a Numeriek (geheel
      *  getal) — leading zeros already gone — or a Tekst of digits (which preserves voor-/achterloopnullen); a null,
-     *  fractional, or non-digit value is not a valid reeks -> false. The single implementation; the DRL imports it (goal-M1). */
+     *  fractional, or non-digit value is not a valid reeks -> false. The single implementation; the DRL imports it (single-runtime principle). */
     public static boolean rsElfproef(Object x) {
         if (x == null) return false;
         String s;
@@ -251,7 +251,7 @@ public final class RegelSpraakRuntime {
 
     /** §8.1.4 "numeriek met exact N cijfers" (Tekst-only): true iff the value reads as a cijferreeks of EXACTLY N
      *  digits — every character a digit and the length exactly N (voor-/achterloopnullen count). A null / non-digit /
-     *  wrong-length value is false. The single implementation; the DRL imports it (goal-M1). */
+     *  wrong-length value is false. The single implementation; the DRL imports it (single-runtime principle). */
     public static boolean rsNumeriekMetExact(Object x, int n) {
         if (x == null) return false;
         String s = x.toString();
@@ -264,7 +264,7 @@ public final class RegelSpraakRuntime {
     }
 
     /** §6.1.4 begrenzing (clamp): a leeg value stays leeg, a null bound is no bound; clamps min-then-max (the value
-     *  side's order). The single implementation; the DRL imports it (goal-M1). */
+     *  side's order). The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsBegrens(BigDecimal x, BigDecimal min, BigDecimal max) {
         if (x == null) return null;
         if (min != null && x.compareTo(min) < 0) x = min;
@@ -272,7 +272,7 @@ public final class RegelSpraakRuntime {
         return x;
     }
 
-    /** §13.4.17.17/§6.9 Tabel 20 "de absolute waarde van": |leeg| = leeg. The single implementation; the DRL imports it (goal-M1). */
+    /** §13.4.17.17/§6.9 Tabel 20 "de absolute waarde van": |leeg| = leeg. The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsAbs(Object x) { return x == null ? null : toBd(x).abs(); }
 
     /** §6.x the null-safe navigated-leg read of a numeric attribute reached through a to-ONE relation INSIDE
@@ -297,24 +297,24 @@ public final class RegelSpraakRuntime {
     }
 
     /** §5.4 text coercion for a §13.4.17.9 tekstreeks: a value's text form, null-safe (leeg -> "", not "null"); a
-     *  BigDecimal via toString (528 -> "528"), a date/boolean via its toString. The single implementation; the DRL imports it (goal-M1). */
+     *  BigDecimal via toString (528 -> "528"), a date/boolean via its toString. The single implementation; the DRL imports it (single-runtime principle). */
     public static String rsTekst(Object o) { return o == null ? "" : o.toString(); }
 
     /** §13.4.17.18-.24/§6.12 a DATE/TIME component (jaar/maand/dag/uur/… uit) read via one ChronoField; a leeg
-     *  date -> leeg. The single implementation; the DRL imports it (goal-M1). */
+     *  date -> leeg. The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsDatumDeel(Object d, java.time.temporal.TemporalField f) {
         return d == null ? null : BigDecimal.valueOf(((java.time.temporal.TemporalAccessor) d).getLong(f));
     }
 
     /** §13.4.17.35 "de datum met jaar/maand/dag": a LocalDate from three numeric parts; any empty part -> leeg.
-     *  The single implementation; the DRL imports it (goal-M1). */
+     *  The single implementation; the DRL imports it (single-runtime principle). */
     public static java.time.LocalDate rsDatumMet(Object jaar, Object maand, Object dag) {
         if (jaar == null || maand == null || dag == null) return null;
         return java.time.LocalDate.of(toBd(jaar).intValue(), toBd(maand).intValue(), toBd(dag).intValue());
     }
 
     /** §13.4.17.36 "de datumtijd met jaar/…/milliseconde": a LocalDateTime from seven parts (the 7th, a
-     *  millisecond, scaled to nanoOfSecond); any empty part -> leeg. The single implementation; the DRL imports it (goal-M1). */
+     *  millisecond, scaled to nanoOfSecond); any empty part -> leeg. The single implementation; the DRL imports it (single-runtime principle). */
     public static java.time.LocalDateTime rsDatumtijdMet(Object jaar, Object maand, Object dag, Object uur,
             Object minuut, Object seconde, Object milli) {
         if (jaar == null || maand == null || dag == null || uur == null || minuut == null || seconde == null || milli == null) return null;
@@ -326,7 +326,7 @@ public final class RegelSpraakRuntime {
      *  unit (dag/week/maand/jaar; uur/… only on a datumtijd) -> a new date(time). Leegwaarde per Tabel 15: an empty
      *  DATUM -> empty ("niet te gebruiken"), but an empty DURATION is treated as the number 0 -> the date unchanged
      *  (as is a 0 duration, §6). The aantal is taken as whole units (date arithmetic operates on integer time
-     *  units; a fractional value truncates toward zero). The single implementation; the DRL imports it (goal-M1). */
+     *  units; a fractional value truncates toward zero). The single implementation; the DRL imports it (single-runtime principle). */
     public static java.time.temporal.Temporal rsDatumReken(java.time.temporal.Temporal datum, BigDecimal aantal, String eenheid, boolean optellen) {
         if (datum == null) return null;        // leeg datum -> leeg
         if (aantal == null) return datum;      // leeg tijdseenheid -> behandeld als 0 -> datum onveranderd (Tabel 15)
@@ -341,7 +341,7 @@ public final class RegelSpraakRuntime {
      *  ARE the dagsoort ({@code isDagsoort}), until N have passed — the Nth such day is the result. X itself NEVER
      *  counts (step before testing) and the result is always a dagsoort day, EXCEPT a 0 / leeg count returns X
      *  unchanged (the §6.11 0-case wins over "always a werkdag"); a leeg datum stays leeg. Byte-identical mirror of
-     *  the single implementation for both back-ends (goal-M1) — the dagsoort predicate arrives as a Predicate<LocalDate>
+     *  the single implementation for both back-ends (single-runtime principle) — the dagsoort predicate arrives as a Predicate<LocalDate>
      *  compiled once by kern.Dagsoorten (the DRL passes it as a session global). */
     public static java.time.LocalDate rsDatumPlusDagsoort(java.time.LocalDate datum, BigDecimal aantal,
             java.util.function.Predicate<java.time.LocalDate> isDagsoort, boolean optellen) {
@@ -367,7 +367,7 @@ public final class RegelSpraakRuntime {
     /** §6.11 "datum-en-tijd ± N &lt;dagsoort&gt;": §4.1/§4.2 Tabel 2/5 rule 2 — adding a time value to a datum-EN-tijd
      *  operand yields a datum-en-tijd result (the time-of-day is preserved). A dagsoort is day-granular, so step over
      *  the DATE part via {@link #rsDatumPlusDagsoort} and re-attach the original time-of-day. A leeg datum stays leeg.
-     *  The single implementation; the DRL imports it (goal-M1). */
+     *  The single implementation; the DRL imports it (single-runtime principle). */
     public static java.time.LocalDateTime rsDatumTijdPlusDagsoort(java.time.LocalDateTime datum, BigDecimal aantal,
             java.util.function.Predicate<java.time.LocalDate> isDagsoort, boolean optellen) {
         if (datum == null) return null;        // leeg datum -> leeg
@@ -378,7 +378,7 @@ public final class RegelSpraakRuntime {
     /** §6.10 "de (absolute) tijdsduur van A tot B in &lt;dagsoort&gt;": COUNT the dagsoort days in the half-open
      *  interval (van, tot] — consistent with §6.11's "X telt niet mee". Signed (negative when tot is earlier than
      *  van), absolute when asked; any leeg operand -> leeg (§6.10 Tabel 14). The single implementation; the DRL
-     *  imports it (goal-M1). */
+     *  imports it (single-runtime principle). */
     public static BigDecimal rsTijdsduurDagsoort(java.time.LocalDate van, java.time.LocalDate tot,
             java.util.function.Predicate<java.time.LocalDate> isDagsoort, boolean absoluut) {
         if (van == null || tot == null) return null;
@@ -394,7 +394,7 @@ public final class RegelSpraakRuntime {
     /** §6.10 "de (absolute) tijdsduur van A tot B in &lt;dagsoort&gt;" over datum-EN-tijd operands: typeringen §4.16 (L676)
      *  admits datum-en-tijd operands (both the SAME precision) and the result is a COUNT (no time is carried). A dagsoort
      *  is day-granular, so count over the DATE parts via {@link #rsTijdsduurDagsoort}. Any leeg operand -> leeg.
-     *  The single implementation; the DRL imports it (goal-M1). */
+     *  The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsTijdsduurTijdDagsoort(java.time.LocalDateTime van, java.time.LocalDateTime tot,
             java.util.function.Predicate<java.time.LocalDate> isDagsoort, boolean absoluut) {
         return rsTijdsduurDagsoort(van == null ? null : van.toLocalDate(), tot == null ? null : tot.toLocalDate(), isDagsoort, absoluut);
@@ -403,7 +403,7 @@ public final class RegelSpraakRuntime {
     /** §6.10 / §13.4.17.32 "de (absolute) tijdsduur van A tot B in &lt;tijdseenheid&gt;": the number of COMPLETE
      *  units between two dates ({@code ChronoUnit.<U>.between}, signed — A later than B gives a negative result, §6.10
      *  Tabel 14 +52/-52); absolute when asked. A kwartaal (no ChronoUnit.QUARTERS) is 3×MONTHS, §3.7. Any leeg operand
-     *  -> leeg (Tabel 14), not 0. The single implementation; the DRL imports it (goal-M1). */
+     *  -> leeg (Tabel 14), not 0. The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsTijdsduur(java.time.temporal.Temporal van, java.time.temporal.Temporal tot, String eenheid, boolean absoluut) {
         if (van == null || tot == null) return null;
         long n = "KWARTAAL".equals(eenheid)   // §3.7 kwartaal = 3 maanden (geen ChronoUnit.QUARTERS)
@@ -413,7 +413,7 @@ public final class RegelSpraakRuntime {
     }
 
     /** §13.4.17.37 "de eerste paasdag van" a year — Gauss/Anonymous Easter algorithm; a leeg year -> leeg.
-     *  The single implementation; the DRL imports it (goal-M1). */
+     *  The single implementation; the DRL imports it (single-runtime principle). */
     public static java.time.LocalDate rsEerstePaasdag(Object jaar) {
         if (jaar == null) return null;
         int y = toBd(jaar).intValue();
@@ -432,7 +432,7 @@ public final class RegelSpraakRuntime {
     /** §9.7.3 cap a naar-rato share at the recipient's maximum (the surplus is NOT redistributed). A null share
      *  stays leeg; a leeg or NEGATIVE maximum degrades to UNCAPPED — never a negative share — with the §9.7.6
      *  Tabel 19 Fout surfaced by the separate companion rule. A zero maximum is valid (the recipient gets nothing).
-     *  The single implementation; the DRL imports it (goal-M1). */
+     *  The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsPlafond(BigDecimal waarde, BigDecimal max) {
         return (waarde == null || max == null || max.signum() < 0) ? waarde : waarde.min(max);
     }
@@ -447,7 +447,7 @@ public final class RegelSpraakRuntime {
      *  total, so the undistributed remainder carries to the next group (§9.7.5 Tabel 18: 1800 → 500/500/433/250/91,
      *  rest 26). A leeg/negative cap degrades to uncapped; a null ordering criterium sorts last; a leeg plafond yields
      *  an empty map (§9.7.6 row 1); a zero weight-sum gives that group ZERO; recipients past an empty pot get an
-     *  assigned ZERO (never null). The single implementation; the DRL imports it (goal-M1). */
+     *  assigned ZERO (never null). The single implementation; the DRL imports it (single-runtime principle). */
     public static java.util.Map<Object, BigDecimal> rsVerdeelOpVolgorde(BigDecimal totaal, java.util.List<Object> facts,
             java.util.List<Object> groep, boolean toenemend, java.util.List<Object> gewicht, java.util.List<Object> max, Integer decimals) {
         java.util.IdentityHashMap<Object, BigDecimal> result = new java.util.IdentityHashMap<>();
@@ -536,7 +536,7 @@ public final class RegelSpraakRuntime {
     /** §7.1 "het totaal van" a temporal attribute: fold a {@code List<Segment>} by weighting each segment's value
      *  by the count of whole granularity periods (DAG/WEEK/MAAND/KWARTAAL/JAAR) between its van and tot. A null
      *  list -> null (leeg); a segment with a null bound/value contributes nothing (§4.20 leeg telt als 0); an empty
-     *  timeline totals 0. Kwartaal = three maanden (ChronoUnit has no quarter). The single implementation; the DRL imports it (goal-M1). */
+     *  timeline totals 0. Kwartaal = three maanden (ChronoUnit has no quarter). The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsTijdTotaal(List<?> segmenten, String granulariteit) {
         if (segmenten == null) return null;
         BigDecimal som = BigDecimal.ZERO;
@@ -552,7 +552,7 @@ public final class RegelSpraakRuntime {
                 case "KWARTAAL": n = ChronoUnit.MONTHS.between(van, tot) / 3; break;
                 case "JAAR":     n = ChronoUnit.YEARS.between(van, tot); break;
                 // fail FAST on an unknown granularity: a silent 0-weight would total 0 without a trace
-                // (BEVINDINGEN fase 1). The transpilers only ever emit the five names above.
+                // The transpilers only ever emit the five names above.
                 default: throw new IllegalArgumentException("onbekende granulariteit voor rsTijdTotaal: " + granulariteit);
             }
             som = som.add(w.multiply(BigDecimal.valueOf(n)));
@@ -562,7 +562,7 @@ public final class RegelSpraakRuntime {
 
     /** §7.1 clip a value timeline by a condition's TRUE-period timeline: intersect each value Segment with each
      *  condition interval, emitting the overlap [max(van), min(tot)) carrying the value's waarde. A null value or
-     *  condition clips to empty. The single implementation; the DRL imports it (goal-M1). */
+     *  condition clips to empty. The single implementation; the DRL imports it (single-runtime principle). */
     public static List<Object> rsTijdKnip(List<?> waarde, List<?> conditie, Class<?> segCls) {
         List<Object> uit = new ArrayList<>();
         if (waarde == null || conditie == null) return uit;
@@ -583,7 +583,7 @@ public final class RegelSpraakRuntime {
     /** §7.1 EUR71 the TRUE-period timeline of a temporal-attribute comparison: keep each value Segment whose value
      *  satisfies the toets (0..5 = KLEINER..ONGELIJK) against the scalar grens — the periods where the comparison
      *  holds. A leeg (null) value or a null grens is onwaar (§5.1 ordering leegwaarde). The single implementation
-     *  (goal-M1); the caller then rsTijdKnips the value timeline by this result. */
+     *  (single-runtime principle); the caller then rsTijdKnips the value timeline by this result. */
     public static List<Object> rsTijdConditie(List<?> reeks, int toets, BigDecimal grens, Class<?> segCls) {
         List<Object> uit = new ArrayList<>();
         if (reeks == null || grens == null) return uit;
@@ -612,7 +612,7 @@ public final class RegelSpraakRuntime {
     /** §8.1.8.1/.2 negated-gedurende complement-clip: keep each value Segment's parts where the condition is FALSE
      *  (subtract the condition TRUE-intervals from each value segment, emitting the gaps). The condition intervals
      *  overlapping a value segment are clamped to it, selection-sorted by start, then walked. A null value clips to
-     *  empty; a null/empty condition leaves the whole value. The single implementation; the DRL imports it (goal-M1). */
+     *  empty; a null/empty condition leaves the whole value. The single implementation; the DRL imports it (single-runtime principle). */
     public static List<Object> rsTijdKnipNiet(List<?> waarde, List<?> conditie, Class<?> segCls) {
         List<Object> uit = new ArrayList<>();
         if (waarde == null) return uit;
@@ -646,7 +646,7 @@ public final class RegelSpraakRuntime {
     /** §8.4.2 OR-compound union: merge two TRUE-period timelines into their union — drop empty/null-bounded
      *  segments, selection-sort by start, then sweep coalescing overlapping OR ADJACENT intervals ([a,b) ∪ [b,c)
      *  = [a,c)). The result carries a null waarde (boolean true-periods, re-stamped by a later rsTijdKnip). A null
-     *  input contributes nothing. The single implementation; the DRL imports it (goal-M1). */
+     *  input contributes nothing. The single implementation; the DRL imports it (single-runtime principle). */
     public static List<Object> rsTijdUnie(List<?> a, List<?> b, Class<?> segCls) {
         List<LocalDate[]> segs = new ArrayList<>();
         if (a != null) for (Object o : a) {
@@ -677,7 +677,7 @@ public final class RegelSpraakRuntime {
     /** §7.2/§13.4.17.57 "het aantal dagen in <de maand|het jaar> dat <conditie>": bucket a condition's TRUE
      *  timeline into calendar months (or years) and count, per bucket, the days the condition holds — one output
      *  Segment per non-empty bucket [start, eind) whose waarde is that day-count. A null condition -> empty.
-     *  The single implementation; the DRL imports it (goal-M1). */
+     *  The single implementation; the DRL imports it (single-runtime principle). */
     public static List<Object> rsAantalDagenIn(List<?> conditie, String granulariteit, Class<?> segCls) {
         if (conditie == null) return new ArrayList<>();
         boolean jaar = "JAAR".equals(granulariteit);
@@ -708,7 +708,7 @@ public final class RegelSpraakRuntime {
      *  per calendar bucket, value = baseValueInBucket × (true-days / total-days) at DECIMAL64 — §4.22 keeps the
      *  exact fraction, NEVER auto-rounding to the doel's decimals (§6.1.2). The base value for a bucket is the basis
      *  segment covering the bucket start; a leeg base there yields no segment. A null conditie/basis -> empty.
-     *  The single implementation; the DRL imports it (goal-M1). */
+     *  The single implementation; the DRL imports it (single-runtime principle). */
     public static List<Object> rsTijdsevenredig(List<?> conditie, List<?> basis, String granulariteit, Class<?> segCls) {
         List<Object> uit = new ArrayList<>();
         if (conditie == null || basis == null) return uit;
@@ -749,7 +749,7 @@ public final class RegelSpraakRuntime {
      *  stays leeg. §7.3.1 specifies a DIVISION ("120 gedeeld door de omrekenfactor 12"), so when the restatement is
      *  ÷N the caller passes {@code deel=true} (divide by the exact 12), and ×N passes {@code deel=false} — never a
      *  pre-rounded reciprocal (1/12), which would lose precision for non-clean bases. Applied to the §7.3.2
-     *  tijdsevenredig BASE BEFORE proration. The single implementation; the DRL imports it (goal-M1). */
+     *  tijdsevenredig BASE BEFORE proration. The single implementation; the DRL imports it (single-runtime principle). */
     public static List<Object> rsTijdSchaal(List<?> tijdlijn, BigDecimal factor, boolean deel) {
         List<Object> uit = new ArrayList<>();
         if (tijdlijn == null) return uit;
@@ -764,7 +764,7 @@ public final class RegelSpraakRuntime {
     /** §5.1.4 the result of a tijdsafhankelijke arithmetic expression: apply {@code op} (PLUS/MIN) per period on the
      *  MERGED knip timeline of the two operands. The result's cut-points are the UNION of both operands' van/tot; in a
      *  period where an operand has no value it is leeg, treated as 0 (§5.1.4 note: "een lege waarde als een 0-waarde").
-     *  Adjacent equal-value segments are coalesced (so an unchanged value carries no knip). The single implementation; the DRL imports it (goal-M1). */
+     *  Adjacent equal-value segments are coalesced (so an unchanged value carries no knip). The single implementation; the DRL imports it (single-runtime principle). */
     public static List<Object> rsTijdReken(List<?> a, List<?> b, String op, Class<?> segCls) {
         TreeMap<LocalDate, Boolean> knipSet = new TreeMap<>();
         for (Object o : leeg(a)) { LocalDate v = segVan(o), t = segTot(o); if (v != null && t != null && v.isBefore(t)) { knipSet.put(v, true); knipSet.put(t, true); } }
@@ -802,7 +802,7 @@ public final class RegelSpraakRuntime {
      *  for an empty/leeg timeline (no period to violate; the caller's NIET-prefix complements). {@code toets}: 0..5 =
      *  KLEINER/KLEINER_OF_GELIJK/GROTER/GROTER_OF_GELIJK/GELIJK/ONGELIJK of {@code waarde} vs {@code grens} (a leeg
      *  waarde never satisfies), 6 = GEVULD (any non-leeg waarde), 7 = covered (a §8.2 kenmerk true-period — any
-     *  covering segment). The single implementation; the DRL imports it (goal-M1). */
+     *  covering segment). The single implementation; the DRL imports it (single-runtime principle). */
     public static boolean rsGeheelPeriode(List<?> tijdlijn, String granulariteit, int toets, BigDecimal grens) {
         if (tijdlijn == null) return true;
         boolean jaar = "JAAR".equals(granulariteit);
@@ -863,7 +863,7 @@ public final class RegelSpraakRuntime {
     // ---- §13.4.17.51-.54 dimensie folds (a gedimensioneerd attribuut is a Map<label,value>) ----
     /** §5.8.5 fold a dimensioned attribute's per-label values over the SELECTED label keys, null-skipping empties
      *  (an absent label / null value is skipped, NOT 0) and returning null for an all-empty selection (§5.8.2 an
-     *  empty sum is a leegwaarde). Exact add (no MathContext); the single implementation, imported by the DRL (goal-M1). */
+     *  empty sum is a leegwaarde). Exact add (no MathContext); the single implementation, imported by the DRL (single-runtime principle). */
     public static BigDecimal rsDimSom(Map<?, ?> m, List<?> keys) {
         BigDecimal acc = null;
         for (Object k : keys) {
@@ -873,7 +873,7 @@ public final class RegelSpraakRuntime {
         return acc;
     }
     /** §5.8.5 minimum of a dimensioned attribute's per-label values over the selected keys (null-skipping; null when
-     *  all-empty). The single implementation; the DRL imports it (goal-M1). */
+     *  all-empty). The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsDimMin(Map<?, ?> m, List<?> keys) {
         BigDecimal acc = null;
         for (Object k : keys) {
@@ -882,7 +882,7 @@ public final class RegelSpraakRuntime {
         }
         return acc;
     }
-    /** §5.8.5 maximum of a dimensioned attribute's per-label values over the selected keys. The single implementation; the DRL imports it (goal-M1). */
+    /** §5.8.5 maximum of a dimensioned attribute's per-label values over the selected keys. The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsDimMax(Map<?, ?> m, List<?> keys) {
         BigDecimal acc = null;
         for (Object k : keys) {
@@ -895,7 +895,7 @@ public final class RegelSpraakRuntime {
     // ---- identifier convention (matches the transpiler's kern.Namen ident()/getter() Pascal-casing) ----
     /** Strip a leading lidwoord, PascalCase the whitespace-separated words (so a getter/setter name matches the
      *  hand-written fact bean: "leeftijd" -> "Leeftijd", "recht op korting" -> "RechtOpKorting"). An ALL-CAPS
-     *  word title-cases first ("BTW tarief" -> "BtwTarief"), matching kern.Namen.ident (goal-M2 P3) — without
+     *  word title-cases first ("BTW tarief" -> "BtwTarief"), matching kern.Namen.ident (the shared naming contract) — without
      *  this the two back-ends would target DIFFERENT getters for an acronym-carrying name. */
     public static String pascal(String naam) {
         String s = naam.replaceFirst("^(?i)(de|het|een)\\s+", "").trim();

@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** The shared operator table (goal-M2 P2): symbol, §13.4.8 negation, operand-swap reversal. */
+/** The shared operator table (single shared implementation): symbol, §13.4.8 negation, operand-swap reversal. */
 class OperatorenTest {
 
     @Test void symbool_dekt_alle_operatoren() {

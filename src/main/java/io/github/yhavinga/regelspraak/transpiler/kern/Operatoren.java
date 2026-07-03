@@ -3,7 +3,7 @@ package io.github.yhavinga.regelspraak.transpiler.kern;
 import io.github.yhavinga.regelspraak.ir.Conditie;
 
 /**
- * THE comparison-operator table both back-ends share (goal-M2 P2): the mvel/rsAggVergelijk symbol,
+ * THE comparison-operator table both back-ends share (single shared implementation): the mvel/rsAggVergelijk symbol,
  * the §13.4.8 logical negation ({@link #flip}) and the operand-swap reversal ({@link #omkeren}).
  * The two transformations are deliberately side by side because confusing them is THE classic bug:
  * negation complements the boundary (GROTER → KLEINER_OF_GELIJK), reversal mirrors it (GROTER →

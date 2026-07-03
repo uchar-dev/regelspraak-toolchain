@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * The naming contract (goal-M2 P3): one place turns a Dutch phrase into a Java/DRL identifier, a
+ * THE shared naming contract: one place turns a Dutch phrase into a Java/DRL identifier, a
  * getter/setter, a rule-name splice, or a comment splice — exhaustively pinned here so neither
  * back-end can drift on what a written name maps to.
  */
@@ -31,7 +31,7 @@ class NamenTest {
     }
 
     @Test void ident_normaliseert_een_ALL_CAPS_woord() {
-        // P3's pinned wart: the camel form of a shouted parameter must NOT read "sTANDAARD…"
+        // the pinned wart: the camel form of a shouted parameter must NOT read "sTANDAARD…"
         assertEquals("standaard", Namen.ident("STANDAARD", false));
         assertEquals("standaardBelastingvermindering", Namen.ident("STANDAARD BELASTINGVERMINDERING", false));
         assertEquals("StandaardTermijn", Namen.ident("STANDAARD TERMIJN", true));
@@ -53,7 +53,7 @@ class NamenTest {
     }
 
     @Test void commentVeilig_kan_niet_uit_een_blokcommentaar_breken() {
-        // goal-M2 D9: a bron phrase containing */ must not END the /* TODO … */ splice —
+        // escaping by construction: a bron phrase containing */ must not END the /* TODO … */ splice —
         // the remainder would parse as DRL and sink the whole package.
         assertFalse(Namen.commentVeilig("evil */ rule \"x\"").contains("*/"));
         assertFalse(Namen.commentVeilig("regel\nmet\nregels").contains("\n"),
@@ -61,7 +61,7 @@ class NamenTest {
     }
 
     @Test void drlString_escapet_ingebedde_quotes_in_plaats_van_strippen() {
-        // goal-M2 D9: an enum label with embedded quotes compares against the REAL label.
+        // escaping by construction: an enum label with embedded quotes compares against the REAL label.
         assertEquals("\"zg. \\\"digitale\\\" kaart\"", Namen.drlString("zg. \"digitale\" kaart"));
         assertEquals("\"pad\\\\naar\"", Namen.drlString("pad\\naar"));
         assertEquals("\"gewoon\"", Namen.drlString("gewoon"));

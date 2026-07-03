@@ -9,7 +9,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit pins on the runtime — since goal-M1 the ONE implementation of every rs* helper (the DRL back-end
+ * Unit pins on the runtime — since single-runtime principle the ONE implementation of every rs* helper (the DRL back-end
  * imports these via {@code import function}; the exec back-end calls them directly). These pins cover the
  * fail-fast contracts that no firing test reaches (the transpilers only ever emit known units).
  */
@@ -25,7 +25,7 @@ class RegelSpraakRuntimeTest {
     }
 
     @Test void rsTijdTotaal_faalt_hard_op_een_onbekende_granulariteit() {
-        // BEVINDINGEN fase 1 / goal-M1: an unknown granularity used to weight the segment by a silent 0 —
+        // an unknown granularity used to weight the segment by a silent 0 —
         // a wrong total with no trace. Now it fails fast, in the single shared implementation.
         Object seg = RegelSpraakRuntime.newSegment(Seg.class,
                 LocalDate.of(2024, 1, 1), LocalDate.of(2024, 3, 1), new BigDecimal("10"));

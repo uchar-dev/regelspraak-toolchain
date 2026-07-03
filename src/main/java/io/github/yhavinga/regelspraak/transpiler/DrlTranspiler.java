@@ -51,7 +51,7 @@ public final class DrlTranspiler {
     private final StringBuilder out = new StringBuilder();
     /** The {@link io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime} static helpers the rules called (method
      *  names), emitted once after the fact imports as {@code import function …RegelSpraakRuntime.<naam>;}
-     *  lines — goal-M1 D1: the generated DRL carries NO {@code function} bodies; the ONE rs* implementation
+     *  lines — single-runtime principle: the generated DRL carries NO {@code function} bodies; the ONE rs* implementation
      *  is the runtime (which must therefore be on the DRL-compiling classpath, see docs/ENGINE.md). Only the
      *  helpers actually used are imported, sorted for stable output. */
     private final java.util.TreeSet<String> runtimeImports = new java.util.TreeSet<>();
@@ -222,7 +222,7 @@ public final class DrlTranspiler {
         }
     }
 
-    /** The per-rule accumulate collector (goal-M4 D8): value/condition lowering RETURNS its hoisted
+    /** The per-rule accumulate collector (no-mutable-build-state): value/condition lowering RETURNS its hoisted
      *  accumulate/eval clauses by appending to this explicitly-threaded context — a local of each rule
      *  emitter, passed as a parameter, never a field — so clauses from one rule can structurally never
      *  leak into the next, and a bailing lowering path simply abandons its context slice ({@link #aggTerug})
@@ -1543,7 +1543,7 @@ public final class DrlTranspiler {
         if (map.marker()) return null;
         fnImport(fn);
         StringJoiner keys = new StringJoiner(", ");
-        for (String label : sel.labels()) keys.add(drlString(label));   // embedded quotes ESCAPED (goal-M2 D9)
+        for (String label : sel.labels()) keys.add(drlString(label));   // embedded quotes ESCAPED (escaping by construction)
         String call = fn + "(" + map.text() + ", java.util.Arrays.asList(" + keys + "))";
         // §5.8.2: an all-empty SOM is a leegwaarde — substitute the declared "of … als die er niet zijn"
         // fallback when present, else leave the helper's null (an empty sum, never a silent 0). MIN/MAX of
@@ -2293,7 +2293,7 @@ public final class DrlTranspiler {
      *  caller falls through to the marker path. Mirrors the exec Gate. */
     private LoweredConditie aggregatieVoorwaarde(Acc acc, Conditie.Vergelijking v, Objecttype subject) {
         if (subject == null) return null;
-        // accumulate() appends its CE to the THREADED Acc context (goal-M4 D8) before returning the result Frag.
+        // accumulate() appends its CE to the THREADED Acc context (no-mutable-build-state) before returning the result Frag.
         // A post-accumulate bail (an unresolvable 2nd aggregation in agg-vs-agg, a to-many/unresolvable navigated RHS) must
         // roll that back via aggTerug(acc, mark) — else the marker rule keeps a dangling ORPHAN accumulate (inert but malformed).
         final int mark = acc.clausules.size();
@@ -2594,7 +2594,7 @@ public final class DrlTranspiler {
     // ---------------- §9.8 dagsoort definitie -> a shared Predicate global ----------------
 
     /** Resolve (idempotently) the §9.8 definitie of {@code dagsoortNaam} via the SHARED {@link Dagsoorten}
-     *  compiler (goal-M1: ONE predicate implementation for both back-ends) and declare it as a
+     *  compiler (single-runtime principle: ONE predicate implementation for both back-ends) and declare it as a
      *  {@code global java.util.function.Predicate rsDagsoort_<Naam>;} that a session builder supplies from
      *  {@link #dagsoortGlobalen()}. Returns the global name, or null when no such definitie exists or its
      *  condition is not a pure date predicate (the caller then markers) — the same verdict the exec back-end
@@ -2773,13 +2773,13 @@ public final class DrlTranspiler {
         return null;
     }
 
-    /** Render a literal as DRL text — the VALUE comes from the shared {@link Literalen} reader (goal-M2 P2:
+    /** Render a literal as DRL text — the VALUE comes from the shared {@link Literalen} reader (single shared implementation:
      *  one interpretation for both back-ends), this method only formats it for mvel. */
     private static Frag literal(Expr.Literal lit) {
         Datatype t = lit.type();
         // §13.3.3.4 Tekst / §13.2.14 enumeratiewaarde 'X' (typed Onbekend at parse): both compare by VALUE
         // equality on the label (§8.1.1), so render the label as a double-quoted string — embedded quotes
-        // ESCAPED, never stripped (goal-M2 D9), so the constraint compares against the REAL label.
+        // ESCAPED, never stripped (escaping by construction), so the constraint compares against the REAL label.
         String label = Literalen.tekstOfEnumLabel(lit);
         if (label != null) return Frag.ok(drlString(label));
         if (t instanceof Datatype.Booleaan) return Frag.ok(Literalen.waar(lit.waarde()) ? "true" : "false");

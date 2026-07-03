@@ -58,7 +58,7 @@ class RegelSpraakEngineTest {
     }
 
     @Test void ontbrekende_feitklasse_faalt_snel_met_alle_contract_schendingen() {
-        // goal-M4 D7: compile() validates the bean contract FIRST and reports EVERY violation at once.
+        // the fact-model contract: compile() validates the bean contract FIRST and reports EVERY violation at once.
         String src = """
             Objecttype het Spookding
                 de waarde Numeriek (geheel getal);
