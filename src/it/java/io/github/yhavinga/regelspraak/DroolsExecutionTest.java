@@ -6625,4 +6625,31 @@ class DroolsExecutionTest {
                 io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsDatumPlusDagsoort(LocalDate.of(2024, 1, 1), BigDecimal.ZERO, nooit, true),
                 "0 telt niet, dus geen walk");
     }
+
+    @Test void d4_geschreven_meervoud_vuurt_de_som_over_het_gedeclareerde_attribuut() {
+        // goal-M3 D4 end-to-end: "de som van de leeftijden van alle passagiers" (attribute declared
+        // 'leeftijd') fires against the REAL bean getter getLeeftijd() — before the resolve-time plural
+        // binding this accumulated over a synthesized getLeeftijden() no fact bean has.
+        String drl = DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier (mv: passagiers)
+                de leeftijd Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel R
+                geldig altijd
+                    De totaalprijs van een reis moet berekend worden als de som van de leeftijden van alle passagiers van de reis.
+            """));
+        KieSession s = build(drl).newKieSession();
+        Vlucht v = new Vlucht();
+        Passagier p1 = new Passagier(); p1.setReis(v); p1.setLeeftijd(new BigDecimal(30));
+        Passagier p2 = new Passagier(); p2.setReis(v); p2.setLeeftijd(new BigDecimal(12));
+        s.insert(v); s.insert(p1); s.insert(p2);
+        s.fireAllRules(); s.dispose();
+        assertEquals(0, new BigDecimal(42).compareTo(v.getTotaalprijs()),
+                () -> "som van de leeftijden (30+12) moet 42 zijn, was " + v.getTotaalprijs());
+    }
 }

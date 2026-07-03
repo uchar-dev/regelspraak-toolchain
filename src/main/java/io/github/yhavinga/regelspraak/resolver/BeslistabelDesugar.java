@@ -7,8 +7,8 @@ import java.util.List;
  * §12 BESLISTABEL desugar (the table-body gap, card 20260624-beslistabel-tabelbody-desugar): turn a captured §12
  * decision-table into ONE ordinary RegelSpraak {@code Regel} source string per (data-row × conclusie-column). Each
  * produced string is fed BACK through the existing {@link Resolver} — so a beslistabel reuses the WHOLE rule pipeline
- * (§9.1 gelijkstelling / §9.2 kenmerktoekenning / §5.7 concatenatie / §8 voorwaarden) and BOTH back-ends (DRL +
- * exec-model) get its rows for free, with zero new IR.
+ * (§9.1 gelijkstelling / §9.2 kenmerktoekenning / §5.7 concatenatie / §8 voorwaarden) and both back-ends get its
+ * rows for free, with zero new IR.
  *
  * <p>It takes the table ALREADY split into header cells + data rows (the ANTLR lexer captures each inline markdown
  * pipe line as a {@code TABEL_RIJ} token; {@link RuleChecker} splits it on '|'). A row's cell[0] is the §12 row

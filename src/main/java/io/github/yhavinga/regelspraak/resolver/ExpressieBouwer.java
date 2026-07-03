@@ -288,6 +288,24 @@ final class ExpressieBouwer {
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
                     "leegwaarde-alternatief van een sommatie moet numeriek zijn, kreeg "
                             + leegwaarde.type() + " (§5.8.2)", f.getStart().getLine()));
+        // goal-M3 D4: an aggregation over a SET read ("de <x> van alle <elem>") whose written form binds NO
+        // declared member of the (known) element type is Onopgelost — with a WARNING — so both back-ends
+        // marker it instead of accumulating over a getter that does not exist (an uncompilable DRL package /
+        // a fire-time reflection abort). The plural-binding in attribuutRef already mapped a written plural
+        // onto its declared singular, so only a genuinely unknown member reaches this.
+        boolean aggregatieKind = switch (kind) {
+            case AANTAL, SOM, TOTAAL, MINIMUM, MAXIMUM, EERSTE, LAATSTE -> true;
+            default -> false;
+        };
+        if (aggregatieKind && argumenten.size() == 1
+                && argumenten.get(0) instanceof Expr.AttribuutRef sa && sa.set()
+                && sa.objecttype() != null && !sa.objecttype().heeftLid(sa.attribuut())) {
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
+                    "'" + sa.attribuut() + "' is geen (meervoud van een) gedeclareerd attribuut van "
+                            + sa.objecttype().naam + " — de aggregatie blijft onopgelost (§13.4.17)",
+                    f.getStart().getLine()));
+            return onopgelost(f);
+        }
         Conditie filter = aggregatieFilter(f, elem, argumenten);
         if (filter instanceof Conditie.Onopgelost)   // a resolved kenmerk-filter is lowered; only an
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING, // unresolved one warns
@@ -830,9 +848,9 @@ final class ExpressieBouwer {
         // §5.6: the predicate ranges over the SELECTED ELEMENT, but the RHS is bouw()'d in the rule's SUBJECT context.
         // A subject/element attribute mis-binds ("zijn drempel" -> the subject's drempel, not the element's), so reject
         // an AttribuutRef. Accept a LITERAL (both back-ends lower it as a fact-only source constraint) OR a §13.3.8
-        // Parameter — the spec's worked-example RHS "die kleiner zijn dan de volwassenleeftijd". DRL reads the global as
-        // a free name in the accumulate source; the exec binds it on the source pattern (a 2-var expr). A Parameter is
-        // context-independent (a global), so it does not mis-bind. Anything else stays an honest, symmetric marker.
+        // Parameter — the spec's worked-example RHS "die kleiner zijn dan de volwassenleeftijd". A Parameter is
+        // context-independent (a session global in both back-ends), so it does not mis-bind. Anything else stays an
+        // honest, symmetric marker.
         if (!(rhs instanceof Expr.Literal) && !(rhs instanceof Expr.ParameterRef)) return null;
         Expr lhs = new Expr.AttribuutRef(agg.attribuut(), elem, "", null, agg.type(), src(p));
         // §5.6 getal/datum/tekstpredicaat: enforce the typeringen comparison legality (as the normal voorwaarde path
@@ -929,7 +947,7 @@ final class ExpressieBouwer {
     /** §4.16/§4.17 (typeringen L676/L703, normative): the two operands (van, tot) of a (absolute) tijdsduur must BOTH be a
      *  datumexpressie AND have the SAME tijd-precisie — both {@link Datatype.DatumInDagen} or both {@link Datatype.DatumTijd}.
      *  A non-datum operand (a Numeriek passed where a datum belongs) or a concrete mixed pair (Datum-in-dagen tot
-     *  Datum-en-tijd) is spec-illegal but otherwise silently emits code neither back-end can execute (rsTijdsduur wants a
+     *  Datum-en-tijd) is spec-illegal but otherwise silently emits code neither back-end can run (rsTijdsduur wants a
      *  Temporal). Onbekend is skipped (no claim). Returns the diagnostic (citing §4.16 for tijdsduur, §4.17 for absolute), or
      *  null. */
     private static String tijdsduurPrecisieFout(Expr.FunctieKind kind, List<Datatype> typen) {
@@ -1204,6 +1222,18 @@ final class ExpressieBouwer {
                     attr = attr.substring(0, sp);
                     dt = bareDt;
                 }
+            }
+        }
+        // goal-M3 D4: a WRITTEN PLURAL of a declared attribute binds the DECLARED name at resolve time
+        // ("de leeftijden van alle passagiers" reads the attribute declared 'leeftijd'), so the IR only ever
+        // carries declared members and no back-end synthesizes a getter from surface morphology. The matcher
+        // is ambiguity-safe (declared "(mv: …)" or the conservative regular plural of exactly ONE attribute);
+        // an unbindable written form keeps its Onbekend type and stays a downstream marker.
+        if (dt == null && ot != null) {
+            String enkelvoud = MeervoudMatcher.vindAttribuut(ot, attr);
+            if (enkelvoud != null) {
+                attr = enkelvoud;
+                dt = ot.attribuut(enkelvoud);
             }
         }
         if (dt == null) dt = onbekend();

@@ -1773,8 +1773,8 @@ class ExecModelDifferentialTest {
     static final Object[] PHASE_C_COUNT_GLOBAL_EXPECTED = {
         new BigDecimal(140), new BigDecimal(25), new BigDecimal(110), new BigDecimal(135) };
 
-    // §13.4.13.4 a COUNTING compound reading TWO DISTINCT globals — the exec count-fold binds AT MOST one source-global,
-    //   so this stays an honest marker in BOTH back-ends (symmetric; never a masked DRL-fires/exec-skips).
+    // §13.4.13.4 a COUNTING compound reading TWO DISTINCT globals — DRL lowers it (free-name globals in the bullet
+    //   OR); the exec count-fold binds at most one source-global and SKIPS honestly (goal-M3: an explicit divergence).
     static final String COUNT_TWO_GLOBALS_SRC =
         "Parameter de ondergrens : Numeriek (geheel getal)\nParameter de bovengrens : Numeriek (geheel getal)\n" + COMPOUND_HDR
         + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn leeftijd is kleiner dan de ondergrens\n        - zijn prijs is groter dan de bovengrens.\n";
@@ -1784,8 +1784,8 @@ class ExecModelDifferentialTest {
         "Parameter de grens : Numeriek (geheel getal)\n" + COMPOUND_HDR
         + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn leeftijd is kleiner dan de grens\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn prijs is groter dan 50.\n";
     // §13.4.13.4 a NESTED compound bullet that itself READS A GLOBAL ("zijn leeftijd is kleiner dan de grens" inside the
-    //   nested ALLE) — the exec leafCompound folds into ONE Predicate1 and cannot bind a second source-global, so it stays
-    //   a SYMMETRIC marker (the resolver gate declines a global-reading nested compound). Pins the global-free boundary.
+    //   nested ALLE) — DRL lowers the nested &&/|| with the global as a free name; the exec leafCompound folds into ONE
+    //   Predicate1, cannot bind the global, and SKIPS honestly (goal-M3: an explicit divergence).
     static final String COUNT_NESTED_GLOBAL_SRC =
         "Parameter de grens : Numeriek (geheel getal)\n" + COMPOUND_HDR
         + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan ten minste 1 van de volgende voorwaarden voldoen:\n        - zijn prijs is groter dan 50\n        - hij voldoet aan alle volgende voorwaarden:\n            - hij is minderjarig\n            - zijn leeftijd is kleiner dan de grens.\n";
@@ -6093,23 +6093,40 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
-    /** §13.4.13.4 parity floor: a COUNTING compound the exec count-fold CANNOT fire (>1 distinct global; a NESTED
-     *  compound bullet leafPredicate can't fold) must stay a SYMMETRIC marker — the resolver folds it to Onopgelost,
-     *  so the exec records overgeslagen AND DRL emits a TODO marker (never a masked DRL-fires/exec-skips). Pins that the
-     *  single-global relaxation did NOT open a divergence. (A cross-unit global now FIRES — see PHASE_CROSSUNIT.) */
-    private void assertSymmetricCountingMarker(String src) {
+    /** goal-M3 D3: the resolver no longer pre-cripples the IR to the exec count-fold's capability. A COUNTING
+     *  compound the exec cannot bind (>1 distinct global; a global-reading NESTED bullet) now FIRES in DRL —
+     *  the ABSOLUTE spec value asserted here — while the exec back-end records an honest skip. The divergence
+     *  is EXPLICIT and enumerated: DRL manifest LOWERED, exec manifest SKIP; a runDifferential sweep hitting
+     *  this shape needs a per-fixture allowlist entry. (Replaces the old symmetric-marker pin, which encoded
+     *  back-end capability INSIDE the resolver — the IR-pre-crippling goal-M3 removes.) */
+    private void assertDrlVuurtExecSlaatOver(String src, Map<String, Object> globals, BigDecimal verwacht) {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
         ExecModelTranspiler em = ExecModelTranspiler.build(m);
-        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet deze counting compound overslaan, kreeg: " + em.overgeslagen());
-        assertTrue(DrlTranspiler.transpile(m).contains("/* TODO aggregatie"),
-                () -> "DRL moet deze counting compound ook markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
+        assertFalse(em.overgeslagen().isEmpty(),
+                () -> "de exec moet deze counting compound (nog) eerlijk overslaan, kreeg: " + em.overgeslagen());
+        DrlTranspiler dt = DrlTranspiler.build(m);
+        assertTrue(dt.dekking().stream().allMatch(Dekking::lowered),
+                () -> "DRL moet deze counting compound loweren (goal-M3):\n" + dt.drl());
+        KieSession s = sessie(drlBase(m));
+        globals.forEach(s::setGlobal);
+        List<Object> facts = countFacts().get();
+        for (Object o : facts) s.insert(o);
+        s.fireAllRules(); s.dispose();
+        assertEquals(0, verwacht.compareTo(((Vlucht) facts.get(0)).getTotaalprijs()),
+                () -> "DRL moet de absolute spec-waarde vuren, kreeg " + ((Vlucht) facts.get(0)).getTotaalprijs());
     }
-    @Test void counting_subselectie_met_twee_globals_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_TWO_GLOBALS_SRC); }
-    /** §13.4.13.4 a nested compound bullet that READS A GLOBAL stays a symmetric marker — the exec count-fold binds at
-     *  most one source-global (at the top level), so a global inside the nested fold (a Predicate1) cannot bind. Pins the
-     *  global-free boundary of the nested-compound fire. */
-    @Test void counting_subselectie_nested_met_global_is_symmetric_marker_in_both() { assertSymmetricCountingMarker(COUNT_NESTED_GLOBAL_SRC); }
+    // ondergrens 18, bovengrens 50 over countFacts (prijs,leeftijd): (30,10) (70,20) (40,15) (25,30) —
+    // leeftijd<18: pax1+pax3; prijs>50: pax2 -> som prijs = 30+70+40 = 140.
+    @Test void counting_subselectie_met_twee_globals_vuurt_in_drl_exec_slaat_over() {
+        assertDrlVuurtExecSlaatOver(COUNT_TWO_GLOBALS_SRC,
+                Map.of("ondergrens", new BigDecimal(18), "bovengrens", new BigDecimal(50)), new BigDecimal(140));
+    }
+    /** A nested compound bullet that READS A GLOBAL: (minderjarig && leeftijd<18) -> pax1; prijs>50 -> pax2;
+     *  union som = 30+70 = 100. */
+    @Test void counting_subselectie_nested_met_global_vuurt_in_drl_exec_slaat_over() {
+        assertDrlVuurtExecSlaatOver(COUNT_NESTED_GLOBAL_SRC, Map.of("grens", new BigDecimal(18)), new BigDecimal(100));
+    }
     /** §13.4.14.6 TWO consecutive nested-compound bullets under a counting quantifier — the indentation-blind grammar
      *  absorbs the second into the first's ALLE, but the bullet COLUMNS re-nest cleanly, so the resolver rebuilds the
      *  intended SIBLINGS (depth-aware re-nesting) and BOTH back-ends FIRE the spec-correct OR/count (was a symmetric

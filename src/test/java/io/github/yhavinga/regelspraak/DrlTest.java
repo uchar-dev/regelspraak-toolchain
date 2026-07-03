@@ -1514,11 +1514,11 @@ class DrlTest {
                 () -> "de ten-minste-1 fold moet de global vrij lezen in een OR op de accumulate-bron:\n" + drl);
     }
 
-    @Test void compound_subselectie_telling_met_twee_globals_blijft_marker() {
-        // §13.4.13.4 PARITY guard: a COUNTING quantifier compound reading TWO DISTINCT Parameter-globals cannot be
-        // bound in the exec count-fold (one accumulate-source expr binds at most one global) — so it stays an honest
-        // marker in BOTH back-ends to stay symmetric (DRL would otherwise read both free names and fire: a masked
-        // DRL-fires/exec-skips). The SINGLE-global case fires (test above); only >1-distinct-global is restricted.
+    @Test void compound_subselectie_telling_met_twee_globals_vuurt_in_drl() {
+        // goal-M3 D3: the resolver no longer pre-cripples the IR to the exec back-end's count-fold capability.
+        // A COUNTING quantifier compound reading TWO DISTINCT Parameter-globals now LOWERS in DRL (globals read
+        // as free names in the bullet OR); the exec back-end skips what it cannot bind, and that divergence is
+        // explicit in the manifests (see ExecModelDifferentialTest.counting_subselectie_met_twee_globals_*).
         String src = """
             Parameter de ondergrens : Numeriek (geheel getal)
             Parameter de bovengrens : Numeriek (geheel getal)
@@ -1540,8 +1540,10 @@ class DrlTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "moet parseren+resolven: " + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("/* TODO aggregatie"),
-                () -> "een counting+twee-globals compound subselectie moet een eerlijke marker blijven (exec kan twee globals niet binden in de count-fold):\n" + drl);
+        assertFalse(drl.contains("/* TODO aggregatie"),
+                () -> "een counting+twee-globals compound subselectie moet in DRL vuren (goal-M3, geen IR-pre-crippling):\n" + drl);
+        assertTrue(drl.contains("leeftijd < ondergrens") && drl.contains("prijs > bovengrens"),
+                () -> "beide global-bullets moeten als vrije namen in de accumulate-source staan:\n" + drl);
     }
 
     @Test void compound_subselectie_telling_met_geneste_pure_leaf_compound_bullet_vuurt() {
@@ -3912,5 +3914,42 @@ class DrlTest {
         }
         final int n = getranspileerd;
         assertTrue(n >= 150, () -> "D1-sweep te smal: slechts " + n + " corpusmodellen getranspileerd");
+    }
+
+    /** goal-M3 D4: the IR carries only DECLARED names — a WRITTEN PLURAL binds its declared singular at
+     *  resolve time (the toka-21 shape: "de leeftijden van alle passagiers" with the attribute declared
+     *  'leeftijd'), and an unbindable written form markers the aggregation instead of accumulating over a
+     *  synthesized getter that no fact bean has. */
+    @Test void d4_geschreven_meervoud_bindt_het_gedeclareerde_attribuut_in_de_accumulate() {
+        String hdr = """
+            Objecttype de Vlucht
+                de leeftijdssom Numeriek (geheel getal);
+            Objecttype de Passagier (mv: passagiers)
+                de leeftijd Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(hdr + """
+            Regel R
+                geldig altijd
+                    De leeftijdssom van een reis moet berekend worden als de som van de leeftijden van alle passagiers van de reis.
+            """));
+        assertTrue(drl.contains("sum( $e1.getLeeftijd() )"),
+                () -> "het geschreven meervoud 'leeftijden' moet het gedeclareerde 'leeftijd' binden:\n" + drl);
+        assertFalse(drl.contains("getLeeftijden"), () -> "nooit een getter uit oppervlaktemorfologie:\n" + drl);
+        // the unbindable written form is an honest marker, never a synthesized getter
+        RegelSpraakModel m2 = Resolver.resolve(hdr + """
+            Regel R
+                geldig altijd
+                    De leeftijdssom van een reis moet berekend worden als de som van de onbekende dingen van alle passagiers van de reis.
+            """);
+        String drl2 = DrlTranspiler.transpile(m2);
+        assertTrue(drl2.contains("/* TODO"), () -> "een onbindbaar meervoud moet markeren:\n" + drl2);
+        assertFalse(drl2.contains("getOnbekendeDingen"), () -> "nooit een gefantaseerde getter:\n" + drl2);
+        assertTrue(m2.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
+                        && d.message().contains("onbekende dingen")),
+                () -> "de onbindbare verzamel-lezing moet een WARNING dragen: " + m2.diagnostics);
     }
 }

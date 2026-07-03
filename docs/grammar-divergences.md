@@ -1633,3 +1633,15 @@ unit×unitless branches, which the corpus does exercise, are untouched), so the 
 per-file DRL are byte-identical. The product unit is opaque — the model does not re-decompose it, so cancelling a
 factor (`€·m gedeeld door m`) is not recognised; the rate-product forms (`€·m/jr`, `1/jr`) stay `Onbekend` (they
 need a multi-factor `Eenheid` with exponents, the §13.3.7 model the roadmap defers).
+
+## §3.3 / §13.4.17 — a written plural binds its declared singular (goal-M3 D4)
+
+An attribute reference written in the PLURAL ("de som van **de leeftijden** van alle passagiers" with the
+attribute declared `leeftijd`; the TOKA-21 shape "de te betalen belastingen") now binds the DECLARED singular
+at resolve time, via the ambiguity-safe `MeervoudMatcher` (declared `(mv: …)` form or the conservative regular
+plural of exactly ONE attribute). The IR therefore only ever carries declared member names and the back-ends
+never synthesize a getter from surface morphology (`getLeeftijden()` — a member no fact bean has — used to
+reach the DRL accumulate and sink the package at build time). A written form that binds nothing leaves the
+aggregation `Onopgelost` with a WARNING (an honest marker in both back-ends). This also admits a bindable
+plural in a SCALAR read ("de leeftijden van de passagier" now reads `leeftijd` instead of markering) — the §3.3
+meervoud is declared precisely so the running text can use it; requiring the singular there was the divergence.

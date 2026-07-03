@@ -1062,77 +1062,23 @@ final class RuleChecker {
                     onderdelen.add(bouwGenest(g));     // the SAME bullet machinery as a voorwaarde compound
             }
             Conditie.Kwantor kw = kwantorVanKwantificatie(sp.kwantificatie());
-            // §13.4.13.4 parity guard: a COUNTING quantifier (geen/ten-minste/ten-hoogste/precies) folds the bullets PER
-            // ELEMENT via the exec leafPredicate (which has NO nested-compound branch) + at most ONE bound source-global.
-            // Marker (Onopgelost) unless the exec count-fold can fire it EXACTLY as DRL does — else DRL fires/crashes where
-            // the exec skips (a masked DRL-fires/exec-skips that the differential's overgeslagen-skip hides). ALLE/DE binds
-            // each bullet's global on its own source .expr and lowers a nested compound by recursion, so it needs no guard.
-            if (kw != Conditie.Kwantor.ALLE && kw != Conditie.Kwantor.DE && !execKanCountingFold(onderdelen, elem))
+            // §13.4.14.6 IR-integrity guard: a nested-compound bullet with a DEEPER compound child under a
+            // COUNTING quantifier stays Onopgelost — the indentation-blind bullet grammar can flatten sibling
+            // bullets into a depth-2 child in ways the column re-nesting cannot always rebuild, and a
+            // mis-merged bullet under a COUNT changes what is counted (AND-merging what the spec OR-s): a
+            // fired-wrong shared value. Under ALLE/DE the merge is semantics-preserving (every bullet must
+            // hold anyway), so no guard applies. This is a statement about the PARSE, not about what a
+            // back-end can lower (goal-M3 D3): capability verdicts live in the back-ends and are reconciled
+            // by the manifest-parity test.
+            if (kw != Conditie.Kwantor.ALLE && kw != Conditie.Kwantor.DE
+                    && onderdelen.stream().anyMatch(c -> c instanceof Conditie.Samengesteld s
+                            && s.onderdelen().stream().anyMatch(x -> x instanceof Conditie.Samengesteld)))
                 return new Conditie.Onopgelost(src(sp));
             return new Conditie.Samengesteld(kw,
                     sp.kwantificatie() == null ? 0 : telwoordWaarde(sp.kwantificatie().telwoord()), onderdelen, src(sp));
         } finally {
             bouwer.setSubject(vorig);                   // RESTORE
         }
-    }
-
-    /** Whether a subselectie bullet (recursively) compares against a §13.3.8 Parameter-global — used to keep a
-     *  COUNTING-quantifier compound an honest marker in BOTH back-ends (the exec count-fold cannot bind a source-global). */
-    private static boolean leestGlobal(Conditie c) {
-        if (c instanceof Conditie.Vergelijking v)
-            return v.rechts() instanceof Expr.ParameterRef || v.links() instanceof Expr.ParameterRef;
-        if (c instanceof Conditie.Samengesteld s) return s.onderdelen().stream().anyMatch(RuleChecker::leestGlobal);
-        return false;
-    }
-
-    /** §13.4.13.4 parity gate for a COUNTING-quantifier compound subselectie: true iff the exec accumulate-source
-     *  count-fold fires it EXACTLY as DRL does. The exec folds each bullet via {@code ExecModelTranspiler.leafPredicate}
-     *  (which has NO nested-compound branch) + at most ONE bound source-global; DRL lowers a nested compound (||/&amp;&amp;)
-     *  and reads any global as a free name regardless of quantifier — so a bullet the exec cannot fold while DRL can is a
-     *  masked DRL-fires/exec-skips (the differential's overgeslagen-skip hides it). Returns false (-&gt; Onopgelost marker
-     *  in BOTH) when: a bullet is a NESTED compound; OR a global-reading bullet is not a SINGLE distinct exec-bindable
-     *  comparison (own non-temporal non-dimensioned getalachtig attr, numeric op, numeric/percentage Parameter RHS). A
-     *  cross-unit global now fires (DRL restates null-safely via rsHerschaal, mirroring the exec scale). A 0-global
-     *  all-simple-leaf compound fires (true). Mirrors {@code ExecModelTranspiler.globalBullet} + {@code leafPredicate}. */
-    private static boolean execKanCountingFold(List<Conditie> onderdelen, Objecttype elem) {
-        String global = null;
-        for (Conditie c : onderdelen) {
-            if (c instanceof Conditie.Samengesteld nested) {              // §13.4.13.4 a NESTED compound bullet
-                // the exec folds a GLOBAL-FREE, SINGLE-LEVEL nested compound into ONE fact-only Predicate1 (leafCompound)
-                // at parity with DRL's nested &&/||; a nested compound reading a Parameter-global cannot fold (the exec
-                // binds at most one source-global, already at the top-level fold). A DEEPER compound child is declined
-                // too: a parser bullet-merge can flatten 2+ sibling nested bullets into a depth-2 compound (the bullet
-                // rule is indentation-blind), which would AND-merge what the spec OR-s — markering keeps BOTH back-ends
-                // from firing the mis-folded compound (a fired-wrong shared value). All these -> marker (both decline).
-                if (leestGlobal(nested) || nested.onderdelen().stream().anyMatch(x -> x instanceof Conditie.Samengesteld))
-                    return false;
-                continue;
-            }
-            if (!leestGlobal(c)) continue;                                 // a fact-only simple leaf the exec lowers at parity
-            if (!(c instanceof Conditie.Vergelijking v)) return false;     // a non-comparison global read -> not bindable
-            if (!(v.rechts() instanceof Expr.ParameterRef pr)) return false;          // the global must be the RHS
-            if (!(v.links() instanceof Expr.AttribuutRef la) || la.navigatieRol() != null) return false;
-            if (la.type() == null || !la.type().isGetalachtig()) return false;
-            if (!isNumeriekOp(v.op())) return false;
-            if (pr.parameter() == null || pr.parameter().datatype() == null
-                    || !pr.parameter().datatype().isGetalachtig()) return false;      // numeric/percentage global only
-            if (elem == null || !elem.heeftLid(la.attribuut())) return false;
-            if (elem.attribuutGranulariteit.containsKey(la.attribuut())) return false;   // temporal element attr -> exec skips
-            if (!elem.dimensiesVan(la.attribuut()).isEmpty()) return false;              // §3.6 gedimensioneerd -> exec skips
-            String naam = pr.parameter().naam();
-            if (global != null && !global.equals(naam)) return false;       // >1 distinct global -> not bindable
-            global = naam;
-        }
-        return true;   // 0 globals (all simple leaves) OR a single bindable global, no nested compound
-    }
-
-    /** The six §13.4.17 numeric comparison operators the exec source-fold binds (datum EERDER/LATER are a later phase),
-     *  mirroring {@code ExecModelTranspiler.isNumeriekOp} for the {@link #execBindbareEnkeleGlobal} parity gate. */
-    private static boolean isNumeriekOp(Conditie.Operator op) {
-        return switch (op) {
-            case KLEINER, KLEINER_OF_GELIJK, GROTER, GROTER_OF_GELIJK, GELIJK, ONGELIJK -> true;
-            default -> false;
-        };
     }
 
     /** §13.4.14.5 kwantificatie (used by the compound subselectie) -> Kwantor. Distinct from voorwaardeKwantificatie:
