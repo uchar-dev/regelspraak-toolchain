@@ -679,15 +679,30 @@ public final class RegelSpraakRuntime {
      *  Segment per non-empty bucket [start, eind) whose waarde is that day-count. A null condition -> empty.
      *  The single implementation; the DRL imports it (single-runtime principle). */
     public static List<Object> rsAantalDagenIn(List<?> conditie, String granulariteit, Class<?> segCls) {
+        return rsAantalDagenIn(conditie, granulariteit, null, segCls);
+    }
+
+    /** The §3.8 anchored form: when the doel rides a tijdlijn met variabel startpunt, the buckets are
+     *  [anker+k·eenheid, anker+(k+1)·eenheid) for all integer k (§3.8: the startpunt is the alignment point
+     *  of the whole timeline — periods exist before and after it) instead of calendar-aligned. Every bucket
+     *  bound derives directly from the anker (never cursor+1, so a clamped month-end anchor — the 31st —
+     *  stays consistent). A null anker (the §9.9 startpunt rule wrote leeg, or has not fired) -> empty:
+     *  no anchor, no periodization; the §6.8 fout for the leeg anchor is raised by the startpunt rule's
+     *  own companion. The single implementation; the DRL imports it (single-runtime principle). */
+    public static List<Object> rsAantalDagenInVanaf(List<?> conditie, String granulariteit, LocalDate anker, Class<?> segCls) {
+        return anker == null ? new ArrayList<>() : rsAantalDagenIn(conditie, granulariteit, anker, segCls);
+    }
+
+    private static List<Object> rsAantalDagenIn(List<?> conditie, String granulariteit, LocalDate anker, Class<?> segCls) {
         if (conditie == null) return new ArrayList<>();
         boolean jaar = "JAAR".equals(granulariteit);
         TreeMap<LocalDate, Long> tellingen = new TreeMap<>();
         for (Object o : conditie) {
             LocalDate sv = segVan(o), st = segTot(o);
             if (sv == null || st == null || !sv.isBefore(st)) continue;
-            LocalDate cursor = jaar ? sv.withDayOfYear(1) : sv.withDayOfMonth(1);
+            LocalDate cursor = bucketStart(anker, sv, jaar);
             while (cursor.isBefore(st)) {
-                LocalDate next = jaar ? cursor.plusYears(1) : cursor.plusMonths(1);
+                LocalDate next = bucketNext(anker, cursor, jaar);
                 LocalDate van = sv.isAfter(cursor) ? sv : cursor;
                 LocalDate tot = st.isBefore(next) ? st : next;
                 long dagen = ChronoUnit.DAYS.between(van, tot);
@@ -698,10 +713,55 @@ public final class RegelSpraakRuntime {
         List<Object> uit = new ArrayList<>();
         for (Map.Entry<LocalDate, Long> en : tellingen.entrySet()) {
             LocalDate start = en.getKey();
-            LocalDate eind = jaar ? start.plusYears(1) : start.plusMonths(1);
+            LocalDate eind = bucketNext(anker, start, jaar);
             uit.add(newSegment(segCls, start, eind, new BigDecimal(en.getValue().longValue())));
         }
         return uit;
+    }
+
+    /** Whether two timelines are segment-for-segment equal (van, tot, waarde) — the temporal analogue of the
+     *  scalar idempotent-write guard (Objects.equals): Segment declares no equals, so List.equals degenerates
+     *  to reference identity and every rebuild would look "changed". An anchored temporal write (whose exec
+     *  pattern is class-reactive for §9.9 freshness) uses this to reach a fixpoint instead of ping-ponging
+     *  with a sibling writer. The single implementation; the DRL imports it (single-runtime principle). */
+    public static boolean rsTijdreeksGelijk(List<?> a, List<?> b) {
+        int na = a == null ? 0 : a.size(), nb = b == null ? 0 : b.size();
+        if (na != nb) return false;
+        for (int i = 0; i < na; i++) {
+            Object x = a.get(i), y = b.get(i);
+            if (!java.util.Objects.equals(segVan(x), segVan(y)) || !java.util.Objects.equals(segTot(x), segTot(y)))
+                return false;
+            BigDecimal wx = segWaarde(x), wy = segWaarde(y);
+            if (wx == null ? wy != null : wy == null || wx.compareTo(wy) != 0) return false;
+        }
+        return true;
+    }
+
+    /** The start of the bucket containing {@code d}: calendar-aligned for a null {@code anker}, else the
+     *  greatest anker+k·eenheid ≤ d (k may be negative — §3.8 allows periods before the startpunt). All
+     *  bounds are computed as anker.plusMonths/Years(k), so a clamped month-end anchor yields the same
+     *  bucket walls for every segment. */
+    private static LocalDate bucketStart(LocalDate anker, LocalDate d, boolean jaar) {
+        if (anker == null) return jaar ? d.withDayOfYear(1) : d.withDayOfMonth(1);
+        long k = jaar ? ChronoUnit.YEARS.between(anker, d) : ChronoUnit.MONTHS.between(anker, d);
+        LocalDate c = jaar ? anker.plusYears(k) : anker.plusMonths(k);
+        while (c.isAfter(d)) { k--; c = jaar ? anker.plusYears(k) : anker.plusMonths(k); }
+        while (true) {
+            LocalDate n = jaar ? anker.plusYears(k + 1) : anker.plusMonths(k + 1);
+            if (n.isAfter(d)) break;
+            k++; c = n;
+        }
+        return c;
+    }
+
+    /** The exclusive end of the bucket starting at {@code cursor} — calendar +1 for a null anker, else the
+     *  next anker-derived wall strictly after the cursor. */
+    private static LocalDate bucketNext(LocalDate anker, LocalDate cursor, boolean jaar) {
+        if (anker == null) return jaar ? cursor.plusYears(1) : cursor.plusMonths(1);
+        long k = jaar ? ChronoUnit.YEARS.between(anker, cursor) : ChronoUnit.MONTHS.between(anker, cursor);
+        LocalDate n = jaar ? anker.plusYears(k + 1) : anker.plusMonths(k + 1);
+        while (!n.isAfter(cursor)) { k++; n = jaar ? anker.plusYears(k + 1) : anker.plusMonths(k + 1); }
+        return n;
     }
 
     /** §7.3.2/§13.4.17.58 "het tijdsevenredig deel per <maand|jaar> van <basis> gedurende de tijd dat <conditie>":
@@ -710,6 +770,16 @@ public final class RegelSpraakRuntime {
      *  segment covering the bucket start; a leeg base there yields no segment. A null conditie/basis -> empty.
      *  The single implementation; the DRL imports it (single-runtime principle). */
     public static List<Object> rsTijdsevenredig(List<?> conditie, List<?> basis, String granulariteit, Class<?> segCls) {
+        return rsTijdsevenredig(conditie, basis, granulariteit, null, segCls);
+    }
+
+    /** The §3.8 anchored form of {@link #rsTijdsevenredig} — variable-startpunt buckets, see
+     *  {@link #rsAantalDagenInVanaf}. A null anker -> empty. */
+    public static List<Object> rsTijdsevenredigVanaf(List<?> conditie, List<?> basis, String granulariteit, LocalDate anker, Class<?> segCls) {
+        return anker == null ? new ArrayList<>() : rsTijdsevenredig(conditie, basis, granulariteit, anker, segCls);
+    }
+
+    private static List<Object> rsTijdsevenredig(List<?> conditie, List<?> basis, String granulariteit, LocalDate anker, Class<?> segCls) {
         List<Object> uit = new ArrayList<>();
         if (conditie == null || basis == null) return uit;
         boolean jaar = "JAAR".equals(granulariteit);
@@ -717,9 +787,9 @@ public final class RegelSpraakRuntime {
         for (Object o : conditie) {
             LocalDate sv = segVan(o), st = segTot(o);
             if (sv == null || st == null || !sv.isBefore(st)) continue;
-            LocalDate cursor = jaar ? sv.withDayOfYear(1) : sv.withDayOfMonth(1);
+            LocalDate cursor = bucketStart(anker, sv, jaar);
             while (cursor.isBefore(st)) {
-                LocalDate next = jaar ? cursor.plusYears(1) : cursor.plusMonths(1);
+                LocalDate next = bucketNext(anker, cursor, jaar);
                 LocalDate van = sv.isAfter(cursor) ? sv : cursor;
                 LocalDate tot = st.isBefore(next) ? st : next;
                 long dagen = ChronoUnit.DAYS.between(van, tot);
@@ -729,7 +799,7 @@ public final class RegelSpraakRuntime {
         }
         for (Map.Entry<LocalDate, Long> en : trueDagen.entrySet()) {
             LocalDate start = en.getKey();
-            LocalDate eind = jaar ? start.plusYears(1) : start.plusMonths(1);
+            LocalDate eind = bucketNext(anker, start, jaar);
             long totaal = ChronoUnit.DAYS.between(start, eind);
             long dagen = en.getValue().longValue();
             BigDecimal w = null;

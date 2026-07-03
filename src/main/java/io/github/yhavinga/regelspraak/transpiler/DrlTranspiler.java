@@ -919,6 +919,12 @@ public final class DrlTranspiler {
             // its opaque lambda constraints leave the pattern class-reactive.
             java.util.LinkedHashSet<String> watch = new java.util.LinkedHashSet<>();
             verzamelEigenReads(r.waarde(), subject, watch);
+            // §9.9: an anchored temporal write ALSO reads the startpunt attribute (injected at lowering,
+            // invisible to the IR walk) — watch it, so the write re-fires when the startpunt rule lands.
+            if (r.doel() instanceof Expr.AttribuutRef da && da.navigatieRol() == null && da.objecttype() == subject) {
+                String ankerLid = model.startpuntAnkerLid(subject, da.attribuut());
+                if (ankerLid != null) watch.add(ident(ankerLid, false));
+            }
             rule.clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + constraint + " )"
                     + (watch.isEmpty() ? "" : " @watch( " + String.join(", ", watch) + " )"));
             for (String e : lc.extra()) rule.clausule(e);   // the exists-join(s), after $subject is bound
@@ -931,9 +937,28 @@ public final class DrlTranspiler {
             // §5.1.4 the doel is a SINGLE-period TEMPORAL attribute -> write a List<Segment> timeline, not a scalar.
             // A timeline-producing RHS we cannot lower stays an honest /* TODO */ marker (never a scalar setter on a
             // List<Segment> field, which would not compile).
-            String tl = temporeleWaarde(acc, r.waarde(), subject, a.objecttype().attribuutGranulariteit.get(a.attribuut()), a.type());
-            rule.dan("    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( "
-                    + (tl != null ? tl : todo("temporele toekenning", r.waarde().bron())) + " )\n    }\n");
+            // §3.8/§9.9: a doel riding a tijdlijn met VARIABEL startpunt buckets at the per-object anchor
+            // (the §9.9 synthetic attribute) instead of the calendar; with NO startpuntbepaling resolved the
+            // timeline has no periodization at all -> honest marker, never silently calendar-bucketed.
+            String ankerLid = model.startpuntAnkerLid(a.objecttype(), a.attribuut());
+            boolean ongeankerd = ankerLid == null && model.heeftVariabelStartpunt(a.objecttype(), a.attribuut());
+            String anker = ankerLid == null ? null : SUBJECT + "." + getter(ankerLid) + "()";
+            String tl = ongeankerd ? null : temporeleWaarde(acc, r.waarde(), subject, a.objecttype().attribuutGranulariteit.get(a.attribuut()), a.type(), anker);
+            if (tl != null && anker != null) {
+                // IDEMPOTENT anchored write (the temporal analogue of the scalar Objects.equals guard): the
+                // @watch on the startpunt attribute re-fires this rule when the anchor lands, and a sibling
+                // anchored writer's modify would otherwise ping-pong with it forever. rsTijdreeksGelijk
+                // compares per-segment (Segment has no equals); the producer is pure, so evaluating twice is
+                // safe. Scoped to ANCHORED writes only — the calendar emission (and its byte-pins) unchanged.
+                fnImport("rsTijdreeksGelijk");
+                rule.dan("    if (!rsTijdreeksGelijk(" + SUBJECT + "." + getter(a.attribuut()) + "(), " + tl + ")) {\n"
+                        + "    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( " + tl + " )\n    }\n"
+                        + "    }\n");
+            } else {
+                rule.dan("    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( "
+                        + (tl != null ? tl : todo(ongeankerd ? "tijdlijn met variabel startpunt zonder startpuntbepaling (§9.9)"
+                                                             : "temporele toekenning", r.waarde().bron())) + " )\n    }\n");
+            }
         } else if (r.doel() instanceof Expr.AttribuutRef a && a.navigatieRol() == null && a.objecttype() != null
                 && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())
                 && a.objecttype().attribuutTijdlijnAantal.containsKey(a.attribuut())) {
@@ -974,7 +999,33 @@ public final class DrlTranspiler {
         if (subject != null) {
             deelDoorLeegFout(acc, r, subject, constraint, lc.marker(), lc.extra());
             wortelNegatiefFout(acc, r, subject, constraint, lc.marker(), lc.extra());
+            startpuntLeegFout(acc, r, subject, constraint, lc.marker(), lc.extra());
         }
+    }
+
+    /** §6.8: a leeg startpunt-anker is een Fout — surfaced through the §9.5 Inconsistentie channel by a
+     *  separate insert-only companion on every §9.9 startpunt write whose anchor decomposes to a
+     *  re-readable leeg guard (the subject's OWN attribute or a to-ONE navigation). A datum-arithmetic
+     *  anchor ("datum van vertrek min DE TERMIJN") is leeg exactly when its leftmost datum operand is —
+     *  Tabel 15: a leeg duration counts as 0/unchanged, only a leeg datum propagates. A parameter or
+     *  function anchor still degrades to a leeg write but raises no Inconsistentie (the same scope limit
+     *  as the §6.5/§6.6 companions). The write itself needs no change: a leeg anchor writes leeg. */
+    private void startpuntLeegFout(Acc acc, ResolvedRegel r, Objecttype subject, String voorwaarde, boolean voorwaardeMarker, List<String> extraClausules) {
+        if (voorwaardeMarker) return;
+        if (!(r.doel() instanceof Expr.AttribuutRef d) || !model.isStartpuntLid(subject, d.attribuut())) return;
+        Expr wortel = r.waarde();
+        while (wortel instanceof Expr.Binair b) wortel = b.links();
+        OperandDeel anker = companionDeel(acc, wortel, subject);
+        if (anker == null) return;
+        String pattern = (voorwaarde.isEmpty() ? "" : voorwaarde + ", ") + anker.leeg();
+        Regel rule = new Regel(r.naam() + " (leeg startpunt)")
+            .clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + pattern + " )");
+        for (String e : extraClausules) rule.clausule(e);   // the host rule's far-side membership gate, if any
+        out.append(rule
+            .geldigheid(r.geldigheid())
+            .clausule(inconsistentieGuard(r.naam()))
+            .dan(inconsistentieDan(r.naam()))
+            .render());
     }
 
     /** §6.6: "de wortel van" a NEGATIVE radicand is a Fout (RegelSpraak has no complex numbers). The value side
@@ -1834,15 +1885,19 @@ public final class DrlTranspiler {
      *  requires the expression's "in <maand|jaar>" to match the doel's tijdlijn, §7.2). Only a positive
      *  single-period subject temporal-kenmerk condition lowers; a negated/comparison/compound/navigated condition
      *  left the filter unset in the resolver -> null here. */
-    private String temporeleWaarde(Acc acc, Expr w, Objecttype subject, RegelSpraakModel.Granulariteit gran, Datatype doelType) {
+    private String temporeleWaarde(Acc acc, Expr w, Objecttype subject, RegelSpraakModel.Granulariteit gran, Datatype doelType, String anker) {
         if (w instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.AANTAL_DAGEN_IN
                 // §4.21/§7.2 the operator's "in <maand|jaar>" bucket unit MUST match the doel's tijdlijn — a
                 // mismatch ("in het jaar" into a per-maand doel) markers rather than silently bucketing by the doel.
                 && f.granulariteit() == gran && subject != null) {
             String cond = conditieTijdreeks(f.filter(), subject);   // single kenmerk OR a §8.4.2 (mixed) compound; null -> marker
             if (cond != null) {
-                String call = mixedGuardWrap(acc, "rsAantalDagenIn(" + cond + ", \"" + gran.name() + "\", Segment.class)", f.filter(), subject);
-                if (call != null) { fnImport("rsAantalDagenIn"); return call; }
+                // §3.8: an anchored doel buckets at the per-object startpunt (rsAantalDagenInVanaf); a leeg
+                // anchor yields no periods (the §6.8 fout rides the startpunt rule's own companion).
+                String fn = anker == null ? "rsAantalDagenIn" : "rsAantalDagenInVanaf";
+                String args = anker == null ? "" : ", " + anker;
+                String call = mixedGuardWrap(acc, fn + "(" + cond + ", \"" + gran.name() + "\"" + args + ", Segment.class)", f.filter(), subject);
+                if (call != null) { fnImport(fn); return call; }
             }
         }
         // §13.4.17.58/§7.3.2 "het tijdsevenredig deel per <maand|jaar> van <basis> gedurende de tijd dat <conditie>":
@@ -1902,8 +1957,12 @@ public final class DrlTranspiler {
                 String cond = (zelfdeEenheid || factor != null) ? conditieTijdreeks(f.filter(), subject) : null;
                 String call = null;
                 if (cond != null) {
-                    call = mixedGuardWrap(acc, "rsTijdsevenredig(" + cond + ", " + basis + ", \"" + gran.name() + "\", Segment.class)", f.filter(), subject);
-                } else if (zelfdeEenheid || factor != null) {
+                    // §3.8 anchored buckets for a variable-startpunt doel (see the aantal-dagen-in branch).
+                    String fn = anker == null ? "rsTijdsevenredig" : "rsTijdsevenredigVanaf";
+                    String extra = anker == null ? "" : ", " + anker;
+                    call = mixedGuardWrap(acc, fn + "(" + cond + ", " + basis + ", \"" + gran.name() + "\"" + extra + ", Segment.class)", f.filter(), subject);
+                    if (call != null && anker != null) { fnImport(fn); if (factor != null) fnImport("rsTijdSchaal"); return call; }
+                } else if (anker == null && (zelfdeEenheid || factor != null)) {
                     // §8.4.2 OR-mixed (ten minste 1: a temporal kenmerk OR a static comparison): conditieTijdreeks
                     // markers a mixed OR, but a tijdsevenredig HAS a base whose value-timeline bounds the static-true
                     // span (unlike aantal-dagen-in, which has no base/extent), so it lowers like the totaal-READ

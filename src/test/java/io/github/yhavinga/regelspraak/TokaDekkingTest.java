@@ -40,13 +40,13 @@ class TokaDekkingTest {
     private static final Map<String, String> VERWACHT_MARKER = Map.of(
         "regel: Bevestigingstijdstip vlucht", "TODO aggregatie LAATSTE");
 
-    @Test void toka_scorebord_28_van_29_lowered_en_geen_stille_markers() throws IOException {
+    @Test void toka_scorebord_30_van_31_lowered_en_geen_stille_markers() throws IOException {
         Path dir = Path.of("examples/toka");
         assumeTrue(Files.isDirectory(dir), "TOKA fixtures absent (run tools/extract_corpus.py)");
         RegelSpraakModel m = Resolver.resolve(RECONCILIATIE + lees(dir));
         DrlTranspiler t = DrlTranspiler.build(m);
 
-        assertEquals(29, t.dekking().size(), () -> "TOKA-constructaantal verschoven: " + t.dekking());
+        assertEquals(31, t.dekking().size(), () -> "TOKA-constructaantal verschoven: " + t.dekking());
         for (Dekking d : t.dekking()) {
             String verwachtePrefix = VERWACHT_MARKER.get(d.sleutel());
             if (verwachtePrefix == null) {
@@ -61,7 +61,7 @@ class TokaDekkingTest {
             }
         }
         long lowered = t.dekking().stream().filter(Dekking::lowered).count();
-        assertEquals(28, lowered, () -> "TOKA-scorebord verschoven: " + lowered + "/29 functioneel");
+        assertEquals(30, lowered, () -> "TOKA-scorebord verschoven: " + lowered + "/31 functioneel");
 
         // geen stille inertie — elke MARKER heeft een dekking-WARNING op het model
         for (Dekking d : t.dekking()) {
@@ -72,11 +72,12 @@ class TokaDekkingTest {
                     () -> "MARKER zonder WARNING (stille inertie): " + d.sleutel());
         }
 
-        // toka-43/44 (startpuntbepaling) halen de IR niet en staan dus buiten het manifest;
-        // hun zichtbaarheid is de bestaande resolver-WARNING — pin die hier mee.
-        assertEquals(2, m.diagnostics.stream().filter(d ->
+        // toka-43/44 (§9.9 startpuntbepaling) staan sinds de §13.4.12 lift IN het manifest (LOWERED,
+        // hierboven al exact geasserteerd) — de oude "wordt nog niet omgezet"-WARNING mag niet terugkeren.
+        assertEquals(0, m.diagnostics.stream().filter(d ->
                         d.message().contains("'startpuntbepaling' wordt nog niet")).count(),
-                "de twee startpuntbepalingen (toka-43/44) moeten als WARNING zichtbaar blijven");
+                "de startpuntbepalingen (toka-43/44) horen gelift te zijn, niet ge-WARNING'd");
+        assertEquals(1, m.resolvedStartpunten.size(), "één (Vlucht × variabele periode)-anker verwacht");
     }
 
     /** The datum-plus-afstand probe (T4). Formerly: resolved clean, honest MARKER + dekking-WARNING was

@@ -195,6 +195,7 @@ public final class ExecModelTranspiler {
                 alle.add(rule);
                 alle.addAll(delingCompanions(r));   // §6.5 deling-door-leeg fout (Phase D)
                 alle.addAll(wortelCompanions(r));   // §6.6 wortel-van-negatief fout (Phase D)
+                alle.addAll(startpuntCompanions(r)); // §6.8 leeg startpunt-anker fout
                 return alle;
             });
             for (Rule rule : rules) m.addRule(rule);
@@ -265,12 +266,16 @@ public final class ExecModelTranspiler {
         // recompute chain at a fixpoint; a read-write CYCLE (resolver-WARNed) hits the engine's fire cap.
         boolean klasseReactief = r.voorwaarde() != null || r.soort() == ResolvedRegel.Soort.INITIALISATIE
                 || (r.geldigheid() != null && !r.geldigheid().altijd() && rekendatumGlobal != null);
+        // §9.9: an anchored temporal write reads the startpunt attribute (injected at lowering, invisible to
+        // eigenReads) — count it as an own read, so the write re-fires when the startpunt rule lands.
+        String startpuntAnker = doel.navigatieRol() == null
+                ? model.startpuntAnkerLid(doel.objecttype(), doel.attribuut()) : null;
         if (!klasseReactief) {
             java.util.Set<String> reads = eigenReads(r.waarde(), doel.objecttype());
             // a watch on an EXPR-LESS pattern is inert (empirically: no reactivity registers), so anchor
             // freshness with an opaque always-true constraint — the black-box lambda leaves the pattern
             // CLASS-reactive (any subject update re-evaluates it), the exec's established idiom.
-            if (!reads.isEmpty())
+            if (!reads.isEmpty() || startpuntAnker != null)
                 pattern = pattern.expr(nextId("fresh"), (Predicate1) (s -> true));
         }
 
@@ -295,12 +300,26 @@ public final class ExecModelTranspiler {
             // A producer we cannot lower is an honest skip (never a scalar setter on a List field, which would not
             // even reflect cleanly). NO_LOOP guards the modify; the List property is read by no pattern, so nothing
             // reacts to the write (Oracle-confirmed).
-            TemporeleWaarde tw = temporeleWaarde(r.waarde(), doel.objecttype(), doelGran, doel.type());
+            // §3.8/§9.9: a doel riding a tijdlijn met VARIABEL startpunt buckets at the per-object anchor;
+            // with NO startpuntbepaling resolved the timeline has no periodization -> honest skip (mirror DRL).
+            if (startpuntAnker == null && model.heeftVariabelStartpunt(doel.objecttype(), doel.attribuut()))
+                return skip("regel (tijdlijn met variabel startpunt zonder startpuntbepaling §9.9): " + r.naam());
+            final String ankerLid = startpuntAnker;
+            java.util.function.Function<Object, Object> ankerReader =
+                    ankerLid == null ? null : s -> RegelSpraakRuntime.get(s, ankerLid);
+            TemporeleWaarde tw = temporeleWaarde(r.waarde(), doel.objecttype(), doelGran, doel.type(), ankerReader);
             if (tw == null) return skip("regel (temporele toekenning buiten Phase-F scope): " + r.naam());
             BiFunction<Object, Object, Object> twf = tw.fn();
+            // IDEMPOTENT anchored write (mirror DRL): the §9.9 freshness expr above makes this pattern
+            // class-reactive, and an unconditional update would ping-pong with a sibling anchored writer.
+            // rsTijdreeksGelijk compares per-segment (Segment has no equals); scoped to ANCHORED writes only —
+            // an unanchored temporal write keeps its bare (non-reactive) pattern and write-once update.
+            final boolean geankerd = ankerLid != null;
             if (tw.global() == null) {
                 consequence = DSL.on(sVar).execute((Block2<org.drools.model.Drools, Object>) (drools, s) -> {
-                    doelSetter.accept(s, twf.apply(s, null));
+                    Object nieuw = twf.apply(s, null);
+                    if (geankerd && RegelSpraakRuntime.rsTijdreeksGelijk((List<?>) doelGetter.apply(s), (List<?>) nieuw)) return;
+                    doelSetter.accept(s, nieuw);
                     drools.update(s);
                 });
             } else {
@@ -308,7 +327,9 @@ public final class ExecModelTranspiler {
                 Global<java.util.List> g = listGlobals.get(tw.global());
                 if (g == null) return skip("regel (temporele basis-parameter niet geregistreerd " + tw.global() + "): " + r.naam());
                 consequence = DSL.on(sVar, (Variable) g).execute((Block3<org.drools.model.Drools, Object, Object>) (drools, s, gv) -> {
-                    doelSetter.accept(s, twf.apply(s, gv));
+                    Object nieuw = twf.apply(s, gv);
+                    if (geankerd && RegelSpraakRuntime.rsTijdreeksGelijk((List<?>) doelGetter.apply(s), (List<?>) nieuw)) return;
+                    doelSetter.accept(s, nieuw);
                     drools.update(s);
                 });
             }
@@ -1113,7 +1134,8 @@ public final class ExecModelTranspiler {
      *  numeriek, COARSER-OR-EQUAL to the bucket (§7.3.2 reads it "voor de hele maand/jaar"), and in the SAME unit as
      *  the doel (no rate conversion — §7.3.2 ex.3 markers). Mirrors DrlTranspiler.temporeleWaarde. */
     private TemporeleWaarde temporeleWaarde(Expr w, Objecttype subject,
-            RegelSpraakModel.Granulariteit gran, Datatype doelType) {
+            RegelSpraakModel.Granulariteit gran, Datatype doelType,
+            java.util.function.Function<Object, Object> anker) {
         if (w instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.AANTAL_DAGEN_IN
                 && f.granulariteit() == gran && subject != null) {
             java.util.function.Function<Object, List<?>> cond = conditieTijdreeks(f.filter(), subject);   // single kenmerk / §8.4 compound
@@ -1123,6 +1145,12 @@ public final class ExecModelTranspiler {
                 if (segCls != null) {
                     final String granName = gran.name();
                     final java.util.function.Predicate<Object> fGuard = guard;
+                    // §3.8 anchored buckets for a variable-startpunt doel (rsAantalDagenInVanaf; a leeg
+                    // anchor yields no periods — the §6.8 fout rides the startpunt rule's companion). Mirrors DRL.
+                    if (anker != null)
+                        return new TemporeleWaarde((s, gv) -> fGuard.test(s)
+                                ? RegelSpraakRuntime.rsAantalDagenInVanaf(cond.apply(s), granName,
+                                        (java.time.LocalDate) anker.apply(s), segCls) : new ArrayList<>(), null);
                     return new TemporeleWaarde((s, gv) -> fGuard.test(s)
                             ? RegelSpraakRuntime.rsAantalDagenIn(cond.apply(s), granName, segCls) : new ArrayList<>(), null);
                 }
@@ -1176,7 +1204,7 @@ public final class ExecModelTranspiler {
                 java.util.function.Predicate<Object> guard = cond == null ? null : mixedGuardWrite(f.filter(), subject);   // §8.4 static gate
                 // §8.4.2 OR-mixed (ten minste 1: a temporal kenmerk OR a static comparison): conditieTijdreeks markers
                 // the mixed OR, but tijdsevenredig's base bounds the static-true span. Mirrors DrlTranspiler.orMixedTijdsevenredig.
-                OrMixed orMixed = (cond == null && (zelfdeEenheid || factor != null)) ? orMixedTijdsevenredig(f.filter(), subject) : null;
+                OrMixed orMixed = (anker == null && cond == null && (zelfdeEenheid || factor != null)) ? orMixedTijdsevenredig(f.filter(), subject) : null;   // §3.8: OR-mixed stays a marker on an anchored doel (mirror DRL)
                 if ((cond != null && guard != null) || orMixed != null) {
                     Class<?> segCls = segmentClass();
                     if (segCls != null) {
@@ -1200,6 +1228,13 @@ public final class ExecModelTranspiler {
                             }, baseGlobal);
                         }
                         final java.util.function.Predicate<Object> fGuard = guard;
+                        if (anker != null)   // §3.8 anchored buckets (rsTijdsevenredigVanaf) — mirror DRL
+                            return new TemporeleWaarde(
+                                    (s, gv) -> fGuard.test(s)
+                                            ? RegelSpraakRuntime.rsTijdsevenredigVanaf(cond.apply(s), br.apply(s, gv), granName,
+                                                    (java.time.LocalDate) anker.apply(s), segCls)
+                                            : new ArrayList<>(),
+                                    baseGlobal);
                         return new TemporeleWaarde(
                                 (s, gv) -> fGuard.test(s)
                                         ? RegelSpraakRuntime.rsTijdsevenredig(cond.apply(s), br.apply(s, gv), granName, segCls)
@@ -4057,6 +4092,40 @@ public final class ExecModelTranspiler {
         }
         return companions;
     }
+    /** §6.8: a leeg §9.9 startpunt-anker is een Fout — surfaced via the §9.5 Inconsistentie channel by a
+     *  separate insert-only companion on every startpunt write whose anchor decomposes to a re-readable
+     *  leeg guard (companionOperand: own attribute or a to-ONE navigation). A datum-arithmetic anchor is
+     *  leeg exactly when its leftmost datum operand is (Tabel 15: a leeg duration is 0/unchanged); a
+     *  parameter or function anchor still degrades to a leeg write but raises no Inconsistentie (the same
+     *  scope limit as the §6.5/§6.6 companions). Mirrors DrlTranspiler.startpuntLeegFout. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private List<Rule> startpuntCompanions(ResolvedRegel r) {
+        if (!(r.doel() instanceof Expr.AttribuutRef doel) || doel.objecttype() == null
+                || !model.isStartpuntLid(doel.objecttype(), doel.attribuut())) return List.of();
+        Objecttype subject = doel.objecttype();
+        Class<?> factClass = factClass(subject);
+        Class<?> incClass = inconsistentieClass();
+        if (factClass == null || incClass == null) return List.of();
+        Expr wortel = r.waarde();
+        while (wortel instanceof Expr.Binair b) wortel = b.links();
+        java.util.function.Function<Object, Object> anker = companionOperand(wortel, subject);
+        if (anker == null) return List.of();
+        String naam = r.naam();
+        seq = 0;
+        Variable sVar = DSL.declarationOf(factClass, "$subject");
+        PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
+        List<RuleItemBuilder<?>> gateExtra = List.of();
+        if (r.voorwaarde() != null) {                       // §9.9: the fout only applies under the write's voorwaarde
+            Gate gate = voorwaarde(r.voorwaarde(), pattern, subject, sVar);
+            if (gate == null) return List.of();             // unlowerable host voorwaarde -> no companion (DRL: voorwaardeMarker -> return)
+            pattern = gate.pattern();
+            gateExtra = gate.extra();
+        }
+        pattern = geldigGuard(pattern, r.geldigheid());     // §4.2 the companion only flags inside the host's window
+        pattern = pattern.expr(nextId("anker"), (Predicate1) s -> anker.apply(s) == null);
+        return List.of(companionRule(naam + " (leeg startpunt)", naam, incClass, sVar, pattern, gateExtra));
+    }
+
     private static void verzamelWortels(Expr e, List<Expr.Functie> uit) {
         if (e instanceof Expr.Functie f) {
             if (f.kind() == Expr.FunctieKind.WORTEL) uit.add(f);

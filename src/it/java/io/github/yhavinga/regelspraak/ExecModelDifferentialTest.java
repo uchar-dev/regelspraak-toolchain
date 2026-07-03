@@ -3934,6 +3934,99 @@ class ExecModelDifferentialTest {
             p -> tl(p.getAantalDagenRechtOpBelastingvermindering())),   // []
     };
 
+    // ---- PHASE_STARTPUNT: §9.9/§13.4.12 startpuntbepaling + §3.8 tijdlijn met variabel startpunt — the doel's
+    //      buckets align to the per-object anchor (the derived "startpunt <tijdlijn>" attribute the startpunt
+    //      rule writes), not the calendar. Absolute values pinned by phase_STARTPUNT_..._spec_correct. ----
+    private static final String STARTPUNT_HDR = """
+            Tijdlijn de contractperiode heeft tijdvakken van een maand met variabel startpunt;
+
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de geboortedatum Datum in dagen;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                het aantal dagen recht op belastingvermindering Numeriek (geheel getal) met eenheid dg voor elke contractperiode;
+
+            Regel Aantal dagen recht op belastingvermindering
+                geldig altijd
+                    Het aantal dagen recht op belastingvermindering van een passagier moet gesteld worden op het aantal dagen in de maand dat hij een recht op belastingvermindering heeft.
+            """;
+    static final Fixture[] PHASE_STARTPUNT = {
+        // §3.8: anchor 15-1 -> walls on the 15th. True [20-1, 5-3): [15-1,15-2)=26 dg, [15-2,15-3)=19 dg (leap Feb).
+        single("§9.9 aantal dagen in een variabel-startpunt maandperiode (ankers op de 15e)",
+            STARTPUNT_HDR + """
+            Regel Startpunt contractperiode
+                geldig altijd
+                    Het startpunt van de contractperiode voor een Passagier wordt bepaald door zijn geboortedatum.
+            """,
+            () -> passagier(p -> { p.setGeboortedatum(LocalDate.of(2024, 1, 15));
+                                   p.setRechtOpBelastingvermindering(List.of(seg(2024, 1, 20, 2024, 3, 5, null))); }),
+            Map.of(),
+            p -> tl(p.getAantalDagenRechtOpBelastingvermindering())),
+
+        // toka-44 shape: the anchor is datum-arithmetic over a Parameter-global — 15-1 min 45 dg = 1-12-2023,
+        // walls on the 1st: Jan 12 dg, Feb 29 dg (leap), Mar 4 dg.
+        single("§9.9 anker = datum min Parameter-global (walls op de 1e)",
+            "Parameter de wachttijd : Numeriek (geheel getal) met eenheid dg\n" + STARTPUNT_HDR + """
+            Regel Startpunt contractperiode
+                geldig altijd
+                    Het startpunt van de contractperiode voor een Passagier wordt bepaald door zijn geboortedatum min de wachttijd.
+            """,
+            () -> passagier(p -> { p.setGeboortedatum(LocalDate.of(2024, 1, 15));
+                                   p.setRechtOpBelastingvermindering(List.of(seg(2024, 1, 20, 2024, 3, 5, null))); }),
+            Map.of("wachttijd", new BigDecimal(45)),
+            p -> tl(p.getAantalDagenRechtOpBelastingvermindering())),
+
+        // §6.8 a leeg anchor -> NO periodization (empty timeline, never silently calendar); the fout itself is
+        // the companion's Inconsistentie (PHASE_STARTPUNT_FOUT).
+        single("§6.8 leeg anker -> lege tijdreeks",
+            STARTPUNT_HDR + """
+            Regel Startpunt contractperiode
+                geldig altijd
+                    Het startpunt van de contractperiode voor een Passagier wordt bepaald door zijn geboortedatum.
+            """,
+            () -> passagier(p -> p.setRechtOpBelastingvermindering(List.of(seg(2024, 1, 20, 2024, 3, 5, null)))),
+            Map.of(),
+            p -> tl(p.getAantalDagenRechtOpBelastingvermindering())),
+    };
+    static final List<?>[] PHASE_STARTPUNT_EXPECTED = {
+        List.of("2024-01-15|2024-02-15|26", "2024-02-15|2024-03-15|19"),
+        List.of("2024-01-01|2024-02-01|12", "2024-02-01|2024-03-01|29", "2024-03-01|2024-04-01|4"),
+        List.of(),
+    };
+
+    @Test void phase_STARTPUNT_anchored_buckets_are_spec_correct() {
+        for (int i = 0; i < PHASE_STARTPUNT.length; i++) {
+            Fixture f = PHASE_STARTPUNT[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_STARTPUNT_EXPECTED[i], viaDrl, () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+
+    // §6.8 rekentabel: a leeg anchor is a FOUT — the startpunt rule's companion inserts the Inconsistentie
+    // (for exactly the leeg-anchored subject; an anchored subject is not flagged).
+    static final FoutFixture[] PHASE_STARTPUNT_FOUT = {
+        new FoutFixture("§6.8 leeg startpunt-anker -> Inconsistentie",
+            STARTPUNT_HDR + """
+            Regel Startpunt contractperiode
+                geldig altijd
+                    Het startpunt van de contractperiode voor een Passagier wordt bepaald door zijn geboortedatum.
+            """,
+            () -> {
+                Passagier ok = passagier(p -> { p.setLeeftijd(new BigDecimal(1)); p.setGeboortedatum(LocalDate.of(2024, 1, 15)); });
+                Passagier leeg = passagier(p -> p.setLeeftijd(new BigDecimal(2)));   // leeg anker -> flagged
+                return List.of(ok, leeg);
+            },
+            o -> "leeftijd=" + ((Passagier) o).getLeeftijd()),
+    };
+
+    @Test void phase_STARTPUNT_matches_drl_back_end()       { runDifferential("Phase STARTPUNT", PHASE_STARTPUNT, 3); }
+    @Test void phase_STARTPUNT_leeg_anker_fout_matches()    { runFoutDifferential("Phase STARTPUNT fout", PHASE_STARTPUNT_FOUT, 1); }
+
     // ---- Phase F3 fixtures: §13.4.17.58 "het tijdsevenredig deel per <maand|jaar> van <basis> gedurende ..." ----
     static final Fixture[] PHASE_F3 = {
         // A6 §7.3.2: per maand, OWN-attribute base — 12 full months ×12, 1 full ×18, 1 partial (7/28×18 = 4,50).

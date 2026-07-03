@@ -402,12 +402,13 @@ final class RuleChecker {
                             "dagsoort '" + dag + "' heeft meerdere definities; alleen de eerste wordt gebruikt (versievensters worden nog niet toegepast)", rd.getStart().getLine()));
                 model.resolvedDagsoorten.add(new io.github.yhavinga.regelspraak.ir.ResolvedDagsoort(dag, voorwaarde, geldigheid));
             }
+        } else if (rd.startpuntBepaling() != null) {
+            startpunt(versieNaam, rd.startpuntBepaling(), voorwaarde, geldigheid);
         } else {
-            // §13.4.12 — parsed but not yet lifted into the IR. Surface it as
-            // a diagnostic rather than letting the rule silently disappear from the model.
-            String soort = rd.startpuntBepaling() != null ? "startpuntbepaling" : "resultaatdeel";
+            // parsed but not yet lifted into the IR. Surface it as a diagnostic
+            // rather than letting the rule silently disappear from the model.
             model.diagnostics.add(new Diagnostic(Severity.WARNING,
-                    "resultaatdeel '" + soort + "' wordt nog niet naar IR/DRL omgezet (regel '" + naam + "')",
+                    "resultaatdeel 'resultaatdeel' wordt nog niet naar IR/DRL omgezet (regel '" + naam + "')",
                     rd.getStart().getLine()));
         }
     }
@@ -895,6 +896,49 @@ final class RuleChecker {
         model.resolvedRegels.add(new ResolvedRegel(naam, ResolvedRegel.Soort.KENMERKTOEKENNING, doel, waarde, voorwaarde, geldigheid));
     }
 
+    /** §9.9/§13.4.12 startpuntbepaling: "Het startpunt van <tijdlijn> voor <onderwerp> wordt bepaald
+     *  door <expressie>". The anchor materialises as a synthetic derived attribute
+     *  "startpunt <tijdlijn>" (Datum in dagen) on the subject, written by an ordinary
+     *  {@link ResolvedRegel} — so voorwaarde, geldigheid, freshness and idempotence ride the standard
+     *  machinery in both back-ends; §9.9's "verschillende startpunten onder verschillende voorwaarden"
+     *  are simply several writers of that one attribute. §6.8: the deriving expression must be
+     *  Datum in dagen (ERROR otherwise; Onbekend makes no claim), and a leeg value is a fout — the
+     *  back-ends raise the §9.5 Inconsistentie for it (the write itself degrades to leeg). */
+    private void startpunt(String naam, StartpuntBepalingContext sb, Conditie voorwaarde, Geldigheid geldigheid) {
+        int line = sb.getStart().getLine();
+        String tijdlijnNaam = RegelSpraakModel.normaliseerTijdlijnNaam(src(sb.tijdlijnNaam()));
+        RegelSpraakModel.Tijdlijn tijdlijn = model.tijdlijnOpNaam(tijdlijnNaam);
+        if (tijdlijn == null) {
+            model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                    "startpuntbepaling: tijdlijn '" + tijdlijnNaam + "' is niet gedeclareerd (regel '" + naam + "')", line));
+            return;
+        }
+        if (!tijdlijn.variabelStartpunt())
+            // §9.9 defines the startpuntbepaling for a tijdlijn MET variabel startpunt; a fixed-startpunt
+            // tijdlijn getting one is a model inconsistency — warn, but lower it (the anchor is inert there).
+            model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                    "startpuntbepaling: tijdlijn '" + tijdlijnNaam + "' heeft geen variabel startpunt (§3.8) (regel '" + naam + "')", line));
+        Objecttype subject = model.resolveObjecttype(src(sb.universeelOnderwerp().kaleNaam()));
+        if (subject == null) {
+            model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                    "startpuntbepaling: onderwerp '" + src(sb.universeelOnderwerp().kaleNaam())
+                    + "' is geen objecttype of rol (regel '" + naam + "')", line));
+            return;
+        }
+        Expr anker = bouwer.bouw(sb.expressie());
+        if (!anker.type().isOnbekend() && !(anker.type() instanceof Datatype.DatumInDagen))
+            model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                    "startpuntbepaling: de expressie moet datum in dagen zijn, niet "
+                    + anker.type().naam() + " (§6.8) (regel '" + naam + "')", line));
+        String lid = "startpunt " + tijdlijnNaam;
+        subject.attributen.putIfAbsent(lid, new Datatype.DatumInDagen());
+        if (model.startpuntLid(subject, tijdlijnNaam) == null)
+            model.resolvedStartpunten.add(new io.github.yhavinga.regelspraak.ir.ResolvedStartpunt(tijdlijnNaam, subject.naam, lid));
+        Expr doel = new Expr.AttribuutRef(lid, subject, src(sb.universeelOnderwerp()),
+                null, new Datatype.DatumInDagen(), src(sb));
+        model.resolvedRegels.add(new ResolvedRegel(naam, ResolvedRegel.Soort.GELIJKSTELLING, doel, anker, voorwaarde, geldigheid));
+    }
+
     /** The object type a rule is about — the object type of its assignment target. */
     private Objecttype subjectVan(ResultaatDeelContext rd) {
         AttribuutVanOnderwerpContext doel = null;
@@ -904,6 +948,8 @@ final class RuleChecker {
         else if (rd.kenmerkToekenning() != null) return bouwer.objecttypeVanKeten(rd.kenmerkToekenning().onderwerpKeten());
         else if (rd.objectCreatie() != null) return bouwer.objecttypeVanKeten(rd.objectCreatie().onderwerpKeten());
         else if (rd.feitCreatie() != null) return bouwer.resolveOnderwerp(rd.feitCreatie().onderwerp(0)); // the anker — so its voorwaarde (incl. a kenmerk) resolves
+        else if (rd.startpuntBepaling() != null) // §13.4.12 — so "zijn <attribuut>" in the anchor + voorwaarde resolves
+            return model.resolveObjecttype(src(rd.startpuntBepaling().universeelOnderwerp().kaleNaam()));
         else if (rd.consistentieRegel() != null) {
             EnkelvoudigeConsistentieRegelContext e = rd.consistentieRegel().enkelvoudigeConsistentieRegel();
             return e != null && e.expressie() != null

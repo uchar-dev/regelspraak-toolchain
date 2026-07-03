@@ -1706,7 +1706,7 @@ literal table reading: a UNITLESS operand, and a §5.1.4 TEMPORAL attribute with
 per-tijdseenheid dimension lives in the timeline declaration ("voor elke maand"), not in a rate unit; rejecting
 that shape would reject the spec's own canonical example (with or without a currency unit on the Bedrag).
 
-## TOKA casus omissions — the rules reference four members the object model never declares (reconciled)
+## TOKA casus omissions — the rules reference five members the object model never declares (reconciled)
 
 The TOKA casus's own rules reference members its object model omits, and the omissions are the casus DOCUMENT's
 (the v2.3.0 specificatie is leading; the §9.7 verdeling examples that use these references are normative spec
@@ -1714,7 +1714,11 @@ text): the six verdelingen distribute into `de treinmiles` of the passagiers (de
 basis van evenredige verdeling`); the toka-35/37 maximum-bullet reads `maximaal aantal te ontvangen treinmiles`
 (declared is `de maximaal te ontvangen treinmiles bij evenredige verdeling volgens rangorde`); toka-41/45 test
 the kenmerk `passagier jonger dan 18 jaar` (only the 18-24 / 25-64 / 65+ brackets exist); toka-22 reads
-`de daadwerkelijke datum-tijd van vertrek` (only the `verwachte` twin exists). Every one of the former ten
+`de daadwerkelijke datum-tijd van vertrek` (only the `verwachte` twin exists); and the toka-43/44
+startpuntbepalingen — the same sentences are normative §9.9 main-spec text — anchor on `de datum van vertrek
+van de reis`, i.e. attribute `datum van vertrek` + a subject back-reference, which cannot bind the declared
+`de datum van vertrek van de vlucht` (the declared name embeds an extra `van de vlucht` tail that the written
+reference form cannot reach). Every one of the former ten
 scoreboard markers reduced to exactly these unresolved references — the distribution/aggregation/compound
 machinery lowers and fires as soon as they bind (empirically isolated per rule). Reconciliation:
 `examples/toka-reconciliatie/casus-omissies.rs` supplements precisely these members via the casus's own
@@ -1769,3 +1773,45 @@ it (a recompute of the same expression over the same facts is bit-identical). Su
 unit would be order-independent but threads a coarsest-unit choice through the well-tested shared temporal
 recursion for a sub-decimals artefact — deferred. The DECIMAL64 contract stands: no implicit rounding; where
 sub-16-digit precision matters, the author writes an explicit afronding.
+
+## §9.9/§13.4.12 startpuntbepaling — the anchor is a derived attribute; variable-startpunt buckets anchor per object
+
+`Het startpunt van <tijdlijn> voor <onderwerp> wordt bepaald door <expressie>` lifts into the IR as a synthetic
+derived attribute `startpunt <tijdlijn>` (Datum in dagen) on the subject's objecttype, written by an ORDINARY
+ResolvedRegel — so voorwaarde, geldigheid, §4.2 versions, @watch freshness and the idempotent write all ride the
+standard machinery in both back-ends, and §9.9's "verschillende startpunten onder verschillende voorwaarden" are
+simply several writers of that one attribute (one anchor member per (objecttype × tijdlijn), pinned). The
+FactModelGenerator derives the bean member from the registered attribute like any other. Readings taken:
+
+- **§6.8 typering enforced at resolve time**: the deriving expression must be Datum in dagen — a numeric, Tekst
+  or Datum-en-tijd anchor is an ERROR (Onbekend makes no claim, the V2a convention). An unknown tijdlijn is an
+  ERROR; a startpuntbepaling on a FIXED-startpunt tijdlijn is a WARNING + lift (§9.9 defines the construct for
+  variable timelines, but the spec's own ANTLR-doc example pairs one with a fixed timeline).
+- **§6.8 rekentabel — a leeg anchor is a Fout**: each startpunt write gets an insert-only §9.5 Inconsistentie
+  companion (`<regel> (leeg startpunt)`) that fires when the anchor operand is leeg, mirroring the §6.5/§6.6
+  companion scope (own attribute or to-one navigated operand; a datum-arithmetic anchor is leeg exactly when its
+  LEFTMOST datum operand is — Tabel 15 treats a leeg duration as 0/unchanged; a parameter/function anchor
+  degrades to a leeg write without an Inconsistentie, the standing companion scope limit). The write itself
+  stays a plain leeg write.
+- **§3.8 anchored periodization**: a temporal doel riding a NAMED `met variabel startpunt` tijdlijn buckets its
+  §13.4.17.57/.58 writers (aantal-dagen-in / tijdsevenredig deel) at the per-object anchor —
+  `rsAantalDagenInVanaf`/`rsTijdsevenredigVanaf` walls at `anker + k·eenheid` for ALL integer k (§3.8: periods
+  exist before and after the startpunt; every wall derives from the anker itself, so a clamped month-end anchor
+  stays consistent). A LEEG anchor yields an EMPTY timeline (no anchor, no periodization — the fout is the
+  companion's). A variable-startpunt doel with NO resolved startpuntbepaling is an honest marker/skip in both
+  back-ends, never silently calendar-bucketed; the §8.4.2 OR-mixed tijdsevenredig lowering likewise stays a
+  marker on an anchored doel. The §5.1.4 rsTijdReken writer is unchanged (knip-union semantics carry the
+  operands' own boundaries — as for calendar timelines). An anchored temporal write is IDEMPOTENT via
+  per-segment equality (`rsTijdreeksGelijk`; Segment has no equals), because its exec pattern is class-reactive
+  for §9.9 freshness — the calendar temporal-write emission (and its DRL byte-pins) is untouched.
+- **Fixed startpunts remain unconsumed**: the `startend op ...` anchors of FIXED timelines were consumed nowhere
+  before this change and still are not — calendar-aligned bucketing stands for them (a documented pre-existing
+  limitation, unrelated to §9.9).
+- **Scoreboard effect**: toka-43/44 lift and lower — the TOKA manifest grows 29 → 31 with 30 LOWERED; toka-23
+  stays the single honest marker (the casus-data ceiling is unchanged). Their anchor `de datum van vertrek` is
+  the FIFTH reconciled casus omission (see the TOKA casus omissions entry above).
+
+Absolute pins: PHASE_STARTPUNT (anchored walls on the 15th → 26/19 dg across a leap February; a
+global-shifted datum-arithmetic anchor → walls on the 1st → 12/29/4 dg; leeg anchor → empty), PHASE_STARTPUNT_FOUT
+(leeg anchor flags exactly the unanchored subject in both back-ends), StartpuntTest (resolver diagnostics + DRL
+text: @watch on the anchor, rsAantalDagenInVanaf, the companion, the no-silent-calendar marker).

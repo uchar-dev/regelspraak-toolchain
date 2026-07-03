@@ -46,7 +46,60 @@ public final class RegelSpraakModel {
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie> uniciteitUnies = new ArrayList<>();
     /** Resolved §13.4.7 feitcreatie rules — a new feittype instance (a reference field) linking two existing objects. */
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie> feitCreaties = new ArrayList<>();
+    /** Resolved §9.9/§13.4.12 startpuntbepalingen — the anchor member per (objecttype, variable tijdlijn);
+     *  the anchor WRITE itself is an ordinary entry in {@link #resolvedRegels}. */
+    public final List<io.github.yhavinga.regelspraak.ir.ResolvedStartpunt> resolvedStartpunten = new ArrayList<>();
     public final List<Diagnostic> diagnostics = new ArrayList<>();
+
+    /** Normalise a tijdlijn name for cross-reference matching: collapse internal whitespace (names may wrap
+     *  across source lines), lowercase, and strip a single leading lidwoord (the definition writes "de
+     *  periode …", a reference "elke periode …" / "een periode …"). */
+    public static String normaliseerTijdlijnNaam(String s) {
+        String n = s.trim().replaceAll("\\s+", " ").toLowerCase();
+        for (String lw : new String[]{"de ", "het ", "een "})
+            if (n.startsWith(lw)) return n.substring(lw.length());
+        return n;
+    }
+
+    /** The FIRST declared tijdlijn whose normalised name matches {@code naam} (the same first-match rule
+     *  the §13.3.6.10 attribute adoption uses), or null. */
+    public Tijdlijn tijdlijnOpNaam(String naam) {
+        if (naam == null) return null;
+        String ref = normaliseerTijdlijnNaam(naam);
+        return tijdlijnen.stream().filter(tl -> normaliseerTijdlijnNaam(tl.naam()).equals(ref))
+                .findFirst().orElse(null);
+    }
+
+    /** §3.8 whether a temporal attribute rides a NAMED tijdlijn declared "met variabel startpunt". */
+    public boolean heeftVariabelStartpunt(Objecttype ot, String attribuut) {
+        String tlNaam = ot.attribuutTijdlijnNaam.get(attribuut);
+        Tijdlijn tl = tlNaam == null ? null : tijdlijnOpNaam(tlNaam);
+        return tl != null && tl.variabelStartpunt();
+    }
+
+    /** §9.9 the startpunt-anchor attribute a variable-startpunt temporal doel buckets at, or null (a
+     *  fixed/inline tijdlijn, or no startpuntbepaling resolved for the pair — the back-ends then marker). */
+    public String startpuntAnkerLid(Objecttype ot, String attribuut) {
+        if (!heeftVariabelStartpunt(ot, attribuut)) return null;
+        return startpuntLid(ot, ot.attribuutTijdlijnNaam.get(attribuut));
+    }
+
+    /** §9.9 whether {@code lid} is the synthetic startpunt-anchor attribute of {@code objecttype} — the
+     *  back-ends key the §6.8 leeg-fout companion on it. */
+    public boolean isStartpuntLid(Objecttype objecttype, String lid) {
+        return objecttype != null && resolvedStartpunten.stream()
+                .anyMatch(sp -> sp.objecttype().equals(objecttype.naam) && sp.lid().equals(lid));
+    }
+
+    /** §9.9 the synthetic anchor-attribute name for {@code objecttype} × variable tijdlijn {@code tijdlijnNaam},
+     *  or null when no startpuntbepaling was resolved for that pair. */
+    public String startpuntLid(Objecttype objecttype, String tijdlijnNaam) {
+        if (objecttype == null || tijdlijnNaam == null) return null;
+        String ref = normaliseerTijdlijnNaam(tijdlijnNaam);
+        return resolvedStartpunten.stream()
+                .filter(sp -> sp.objecttype().equals(objecttype.naam) && normaliseerTijdlijnNaam(sp.tijdlijn()).equals(ref))
+                .map(io.github.yhavinga.regelspraak.ir.ResolvedStartpunt::lid).findFirst().orElse(null);
+    }
 
     public boolean isOk() { return diagnostics.stream().noneMatch(Diagnostic::isError); }
     public List<Diagnostic> errors() { return diagnostics.stream().filter(Diagnostic::isError).toList(); }
@@ -336,6 +389,10 @@ public final class RegelSpraakModel {
          *  attribute naam — absent (count 1) for a single-period "voor elke maand". Each tijdvak then spans
          *  {@code aantal} units of {@link #attribuutGranulariteit}, so a temporal fold must divide by it. */
         public final Map<String, Integer> attribuutTijdlijnAantal = new LinkedHashMap<>();
+        /** §13.3.6.9 the NAMED tijdlijn an attribute rides ("voor elke &lt;tijdlijnnaam&gt;"), keyed by the
+         *  attribute naam — absent for the inline forms ("voor elke maand"). Recorded so the §9.9 machinery
+         *  can see whether that tijdlijn has a variabel startpunt and find its anchor. */
+        public final Map<String, String> attribuutTijdlijnNaam = new LinkedHashMap<>();
         public final List<String> kenmerken = new ArrayList<>();
         /** §13.3.6 the granularity of a temporal kenmerk's tijdlijn ("is duurzaam kenmerk voor elke dag"),
          *  keyed by its naam — the kenmerk analogue of {@link #attribuutGranulariteit}. */

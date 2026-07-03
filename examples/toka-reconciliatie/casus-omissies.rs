@@ -5,3 +5,4 @@ Extensie van objecttype de Natuurlijk persoon
 
 Extensie van objecttype de Vlucht
     de daadwerkelijke datum-tijd van vertrek Datum en tijd in millisecondes;
+    de datum van vertrek Datum in dagen;

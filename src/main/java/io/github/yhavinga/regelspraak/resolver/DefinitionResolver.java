@@ -84,6 +84,10 @@ public final class DefinitionResolver {
                 ot.attribuutGranulariteit.put(naam, g);
                 int aantal = aantalVan(a.tijdlijn());   // §13.3.6.7 the "5" in "voor elke 5 maanden"; 1 otherwise
                 if (aantal != 1) ot.attribuutTijdlijnAantal.put(naam, aantal);
+                // §13.3.6.9 the NAMED form: keep the tijdlijn name so §9.9 can route a variable
+                // startpunt to its anchor (the inline "voor elke maand" forms record none).
+                if (a.tijdlijn().ELKE() != null && a.tijdlijn().tijdlijnNaam() != null)
+                    ot.attribuutTijdlijnNaam.put(naam, normaliseerTijdlijnNaam(src(a.tijdlijn().tijdlijnNaam())));
             }
         } else if (m.kenmerkSpecificatie() != null) {
             String naam = kenmerkNaam(m.kenmerkSpecificatie());
@@ -358,14 +362,10 @@ public final class DefinitionResolver {
         return null;
     }
 
-    /** Normalise a tijdlijn name for cross-reference matching: collapse internal whitespace (names may wrap
-     *  across source lines), lowercase, and strip a single leading lidwoord (the definition writes "de
-     *  periode …", the reference "elke periode …"). */
+    /** Normalise a tijdlijn name for cross-reference matching — the shared model implementation
+     *  (§9.9 startpuntbepaling resolution matches by the same rule). */
     private static String normaliseerTijdlijnNaam(String s) {
-        String n = s.trim().replaceAll("\\s+", " ").toLowerCase();
-        for (String lw : new String[]{"de ", "het ", "een "})
-            if (n.startsWith(lw)) return n.substring(lw.length());
-        return n;
+        return RegelSpraakModel.normaliseerTijdlijnNaam(s);
     }
 
     /** §13.3.6.10 the {@link Granulariteit} a standalone tijdlijn DEFINITION declares ("heeft tijdvakken van
