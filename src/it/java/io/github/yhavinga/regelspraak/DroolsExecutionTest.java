@@ -711,7 +711,7 @@ class DroolsExecutionTest {
     @Test void temporele_parameter_in_een_conditie_bouwt_schoon_als_marker(){
         // §13.3.6 a temporal parameter used as a CONDITION operand must MARKER (not leak the List<Segment> global into
         // a scalar constraint), so the generated DRL still BUILDS in real Drools. (Adversarial review HIGH: the
-        // when-side operand() leaked `prijs > sTANDAARD` -> KieBuilder "BigDecimal vs java.util.List" error.)
+        // when-side operand() leaked `prijs > standaard` -> KieBuilder "BigDecimal vs java.util.List" error.)
         String src = """
             Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
             Parameter de STANDAARD : Bedrag voor elk jaar
@@ -727,7 +727,7 @@ class DroolsExecutionTest {
         String drl = DrlTranspiler.transpile(m);
         // build() asserts the KieBuilder has no ERROR -> this throws if the List<Segment> global leaks into the constraint.
         build(drl);
-        assertFalse(drl.contains("> sTANDAARD"), () -> "geen kale List in een scalaire constraint:\n" + drl);
+        assertFalse(drl.contains("> standaard"), () -> "geen kale List in een scalaire constraint:\n" + drl);
     }
 
     @Test void gehele_periode_attribuut_vergelijking_lowEred_en_bouwt_schoon(){
@@ -821,13 +821,13 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("global java.util.List sTANDAARDBELASTINGVERMINDERING;"),
+        assertTrue(drl.contains("global java.util.List standaardBelastingvermindering;"),
                 () -> "een temporele parameter moet een List<Segment> global worden:\n" + drl);
-        assertTrue(drl.contains("rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), sTANDAARDBELASTINGVERMINDERING, \"MAAND\", Segment.class)"),
+        assertTrue(drl.contains("rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), standaardBelastingvermindering, \"MAAND\", Segment.class)"),
                 () -> "de tijdsevenredig basis moet de parameter-tijdreeks global lezen:\n" + drl);
 
         KieSession sessie = build(drl).newKieSession();
-        sessie.setGlobal("sTANDAARDBELASTINGVERMINDERING", List.of(
+        sessie.setGlobal("standaardBelastingvermindering", List.of(
                 new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("12.00")),
                 new Segment(LocalDate.of(2025, 1, 1), LocalDate.of(2026, 1, 1), new BigDecimal("18.00"))));
         Passagier p = new Passagier();

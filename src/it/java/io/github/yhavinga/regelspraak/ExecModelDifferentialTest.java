@@ -2134,7 +2134,7 @@ class ExecModelDifferentialTest {
         return head + rel + "Regel R\n    geldig altijd\n        Een Persoon is gepensioneerd indien " + onderwerp + " " + op + " de STANDAARDNAAM.\n";
     }
     static Persoon epersoon(String roepnaam) { Persoon p = new Persoon(); p.setRoepnaam(roepnaam); return p; }
-    static final Map<String, Object> STDNAAM = Map.of("sTANDAARDNAAM", "Maria");
+    static final Map<String, Object> STDNAAM = Map.of("standaardnaam", "Maria");
     static final Fixture[] PHASE_ENUM_GLOBAL = {
         new Fixture("enum-vs-global GELIJK Maria==Maria -> waar", enumGlobalSrc(false, "gelijk is aan"),
             () -> List.of(epersoon("Maria")), STDNAAM, l -> ((Persoon) l.get(0)).isGepensioneerd()),
@@ -2179,15 +2179,15 @@ class ExecModelDifferentialTest {
         + "Regel R\n    geldig altijd\n        De moment van een Klok moet gesteld worden op de PEILMOMENT.\n";
     static final Fixture[] PHASE_ENUM_ASSIGN = {
         new Fixture("enum-global value-assignment roepnaam := STANDAARDNAAM (Maria)", ENUM_ASSIGN_SRC,
-            () -> List.of(new Persoon()), Map.of("sTANDAARDNAAM", "Maria"), l -> ((Persoon) l.get(0)).getRoepnaam()),
+            () -> List.of(new Persoon()), Map.of("standaardnaam", "Maria"), l -> ((Persoon) l.get(0)).getRoepnaam()),
         new Fixture("tekst-global value-assignment roepnaam := STANDAARDNAAM (Tom)", TEKST_ASSIGN_SRC,
-            () -> List.of(new Persoon()), Map.of("sTANDAARDNAAM", "Tom"), l -> ((Persoon) l.get(0)).getRoepnaam()),
+            () -> List.of(new Persoon()), Map.of("standaardnaam", "Tom"), l -> ((Persoon) l.get(0)).getRoepnaam()),
         // §13.4.6 a DATUM Parameter-global assigned into a datum attribute (the wf_12d0005c review's divergence:
         // DRL fired, exec skipped because a datum global is not in the numeric `globals` map).
         new Fixture("datum-global value-assignment reisdatum := PEILDATUM (2020-01-15)", DATUM_ASSIGN_SRC,
-            () -> List.of(new Klok()), Map.of("pEILDATUM", LocalDate.of(2020, 1, 15)), l -> ((Klok) l.get(0)).getReisdatum()),
+            () -> List.of(new Klok()), Map.of("peildatum", LocalDate.of(2020, 1, 15)), l -> ((Klok) l.get(0)).getReisdatum()),
         new Fixture("datumtijd-global value-assignment moment := PEILMOMENT", DATUMTIJD_ASSIGN_SRC,
-            () -> List.of(new Klok()), Map.of("pEILMOMENT", LocalDateTime.of(2020, 1, 15, 9, 30)), l -> ((Klok) l.get(0)).getMoment()),
+            () -> List.of(new Klok()), Map.of("peilmoment", LocalDateTime.of(2020, 1, 15, 9, 30)), l -> ((Klok) l.get(0)).getMoment()),
     };
     static final Object[] PHASE_ENUM_ASSIGN_EXPECTED = { "Maria", "Tom", LocalDate.of(2020, 1, 15), LocalDateTime.of(2020, 1, 15, 9, 30) };
 
@@ -2632,7 +2632,7 @@ class ExecModelDifferentialTest {
     //   PEILDATUM", own + navigated, ordering + equality) now fires in the exec — was a DRL-fires/exec-skips (the
     //   numeric vs-global branch swallowed the datum op with `!isNumeriekOp -> return null`; no datum vs-global branch).
     //   The exec tracks the Datum-in-dagen parameter as a LocalDate global and binds it (datumVergelijkTemporal).
-    static final Map<String, Object> PEIL = Map.of("pEILDATUM", LocalDate.of(2000, 1, 1));
+    static final Map<String, Object> PEIL = Map.of("peildatum", LocalDate.of(2000, 1, 1));
     static final String DG_OWN_HDR =
         "Parameter de PEILDATUM : Datum in dagen\nObjecttype de Passagier\n    de geboortedatum Datum in dagen;\n    is duur kenmerk (bijvoeglijk);\n";
     static Passagier passGeb(LocalDate d) { Passagier p = new Passagier(); if (d != null) p.setGeboortedatum(d); return p; }
@@ -2674,7 +2674,7 @@ class ExecModelDifferentialTest {
     //   fires in the exec — was a DRL-fires/exec-skips (a Tekst parameter was registered untracked; the numeric vs-global
     //   branch swallowed the op via `globals.get == null -> return null`). The exec tracks the Tekst parameter as a String
     //   global and binds it (tekstVergelijk: GELIJK Tabel 38, ONGELIJK Tabel 44 — null-asymmetric like DRL mvel).
-    static final Map<String, Object> STDV = Map.of("sTANDAARDVERTREK", "A");
+    static final Map<String, Object> STDV = Map.of("standaardvertrek", "A");
     static final String TG_HDR =
         "Parameter de STANDAARDVERTREK : Tekst\nObjecttype de Route\n    de vertrek Tekst;\n    is gemarkeerd kenmerk (bijvoeglijk);\n";
     static Route routeVertrek(String v) { Route r = new Route(); if (v != null) r.setVertrek(v); return r; }
@@ -2705,7 +2705,7 @@ class ExecModelDifferentialTest {
         new Fixture("numeric global-LHS ordering (DREMPEL groter dan prijs)",
             "Parameter de DREMPEL : Numeriek (geheel getal)\nObjecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    is duur kenmerk (bijvoeglijk);\n"
             + "Regel R\n    geldig altijd\n        Een Passagier is duur indien de DREMPEL groter is dan zijn prijs.\n",
-            () -> List.of(passPrijs("50"), passPrijs("150"), passPrijs(null)), Map.of("dREMPEL", new BigDecimal(100)),
+            () -> List.of(passPrijs("50"), passPrijs("150"), passPrijs(null)), Map.of("drempel", new BigDecimal(100)),
             l -> vals(((Passagier) l.get(0)).isDuur(), ((Passagier) l.get(1)).isDuur(), ((Passagier) l.get(2)).isDuur())),
         // datum global-LHS ordering: PEILDATUM(2000) later dan geboortedatum -> [1999 WAAR, 2001 onwaar, leeg onwaar].
         new Fixture("datum global-LHS ordering (PEILDATUM later dan geboortedatum)",
@@ -2728,7 +2728,7 @@ class ExecModelDifferentialTest {
     // §8.1.1/§13.3.8 a DATUM-EN-TIJD comparison vs a Datum-en-tijd Parameter-GLOBAL ("zijn vertrekmoment eerder is dan
     //   de PEILMOMENT") now fires in the exec — was a DRL-fires/exec-skips (a Datum-en-tijd parameter was registered
     //   untracked). The exec tracks it as a LocalDateTime global (datumTijdGlobals) and binds it (datumVergelijkTemporal).
-    static final Map<String, Object> PEILM = Map.of("pEILMOMENT", LocalDateTime.of(2022, 6, 15, 12, 0, 0));
+    static final Map<String, Object> PEILM = Map.of("peilmoment", LocalDateTime.of(2022, 6, 15, 12, 0, 0));
     static final String DTG_HDR =
         "Parameter de PEILMOMENT : Datum en tijd in millisecondes\nObjecttype de Vlucht\n    de vertrekmoment Datum en tijd in millisecondes;\n    is laat kenmerk (bijvoeglijk);\n";
     static Vlucht vluchtMoment(LocalDateTime vm) { Vlucht v = new Vlucht(); if (vm != null) v.setVertrekmoment(vm); return v; }
@@ -2770,7 +2770,7 @@ class ExecModelDifferentialTest {
                        Passagier p50 = new Passagier(); p50.setReis(v50);                 // 50 != 50 -> onwaar
                        return List.of(v99, v50, pNo, p99, p50); };
     }
-    static final Map<String, Object> DREMP50 = Map.of("dREMPEL", new BigDecimal(50));
+    static final Map<String, Object> DREMP50 = Map.of("drempel", new BigDecimal(50));
     static final Fixture[] PHASE_NAV_GLOBAL_ONGELIJK = {
         new Fixture("navigated ONGELIJK vs global, RIGHT spelling (vertrektijd van zijn reis ongelijk aan DREMPEL)",
             NAVG_HDR + "Regel R\n    geldig altijd\n        Een Passagier is duur indien de vertrektijd van zijn reis ongelijk is aan de DREMPEL.\n",
@@ -3964,7 +3964,7 @@ class ExecModelDifferentialTest {
                     De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van de STANDAARD BELASTINGVERMINDERING gedurende de tijd dat hij een recht op belastingvermindering heeft).
             """,
             () -> passagier(p -> p.setRechtOpBelastingvermindering(List.of(seg(2024, 1, 1, 2025, 2, 8, null)))),
-            Map.of("sTANDAARDBELASTINGVERMINDERING", List.of(seg(2024, 1, 1, 2025, 1, 1, "12.00"), seg(2025, 1, 1, 2026, 1, 1, "18.00"))),
+            Map.of("standaardBelastingvermindering", List.of(seg(2024, 1, 1, 2025, 1, 1, "12.00"), seg(2025, 1, 1, 2026, 1, 1, "18.00"))),
             p -> tl(p.getBelastingvermindering())),
 
         // A12 §7.3.2 ex.2: per jaar, a non-terminating fraction kept EXACT (DECIMAL64), NOT rounded to doel decimals (18×38/365).

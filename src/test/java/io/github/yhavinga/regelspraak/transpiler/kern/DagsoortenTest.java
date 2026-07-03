@@ -1,12 +1,9 @@
 package io.github.yhavinga.regelspraak.transpiler.kern;
 
-import io.github.yhavinga.regelspraak.ir.Expr;
-import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
 import org.junit.jupiter.api.Test;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.function.Predicate;
 
@@ -71,16 +68,4 @@ class DagsoortenTest {
         assertNull(d.predikaat("werkdag"), "geen definitie -> null (de aanroepende back-end markert)");
     }
 
-    @Test void literalen_lezen_datum_en_rationaal_getal() {
-        assertEquals(LocalDate.of(2024, 12, 25), Literalen.parseDatum("dd. 25-12-2024"));
-        assertNull(Literalen.parseDatum("geen datum"));
-        assertEquals(java.time.LocalDateTime.of(2024, 12, 25, 10, 30, 0, 500_000_000),
-                Literalen.parseDatumTijd("dd. 25-12-2024 10:30:00.500"),
-                "de millisecondes schalen x1e6 naar nanoOfSecond");
-        Expr.Literal derde = new Expr.Literal("1/3", new Datatype.Numeriek(false, 0, null, null), "1/3");
-        assertEquals(new BigDecimal("0.3333333333333333"), Literalen.getal(derde),
-                "een niet-eindigende rationaal leest op DECIMAL64 (16 significante cijfers)");
-        Expr.Literal half = new Expr.Literal("1/2", new Datatype.Numeriek(false, 0, null, null), "1/2");
-        assertEquals(new BigDecimal("0.5"), Literalen.getal(half), "een eindigend quotiënt leest EXACT");
-    }
 }

@@ -892,13 +892,30 @@ public final class RegelSpraakRuntime {
         return acc;
     }
 
-    // ---- identifier convention (matches the transpiler's ident()/getter() Pascal-casing) ----
+    // ---- identifier convention (matches the transpiler's kern.Namen ident()/getter() Pascal-casing) ----
     /** Strip a leading lidwoord, PascalCase the whitespace-separated words (so a getter/setter name matches the
-     *  hand-written fact bean: "leeftijd" -> "Leeftijd", "recht op korting" -> "RechtOpKorting"). */
+     *  hand-written fact bean: "leeftijd" -> "Leeftijd", "recht op korting" -> "RechtOpKorting"). An ALL-CAPS
+     *  word title-cases first ("BTW tarief" -> "BtwTarief"), matching kern.Namen.ident (goal-M2 P3) — without
+     *  this the two back-ends would target DIFFERENT getters for an acronym-carrying name. */
     public static String pascal(String naam) {
         String s = naam.replaceFirst("^(?i)(de|het|een)\\s+", "").trim();
         StringBuilder b = new StringBuilder();
-        for (String w : s.split("\\s+")) if (!w.isEmpty()) b.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1));
+        for (String w : s.split("\\s+")) {
+            if (w.isEmpty()) continue;
+            if (isSchreeuw(w)) w = w.charAt(0) + w.substring(1).toLowerCase();
+            b.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1));
+        }
         return b.toString();
+    }
+    /** An ALL-CAPS word of length > 1 (at least one letter, no lowercase) — kern.Namen's twin. */
+    private static boolean isSchreeuw(String w) {
+        if (w.length() < 2) return false;
+        boolean letter = false;
+        for (int i = 0; i < w.length(); i++) {
+            char c = w.charAt(i);
+            if (Character.isLowerCase(c)) return false;
+            letter |= Character.isLetter(c);
+        }
+        return letter;
     }
 }

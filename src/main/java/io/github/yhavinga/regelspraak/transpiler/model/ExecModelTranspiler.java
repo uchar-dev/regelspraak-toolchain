@@ -15,6 +15,9 @@ import io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dagsoorten;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dekking;
 import io.github.yhavinga.regelspraak.transpiler.kern.Literalen;
+import io.github.yhavinga.regelspraak.transpiler.kern.Namen;
+import io.github.yhavinga.regelspraak.transpiler.kern.Operatoren;
+import io.github.yhavinga.regelspraak.transpiler.kern.Tijdrekening;
 
 import org.drools.model.DSL;
 import org.drools.model.Global;
@@ -146,8 +149,8 @@ public final class ExecModelTranspiler {
         for (Parameter p : model.parameters.values()) {
             if (p.granulariteit() != null) {
                 // §13.3.6 a TEMPORAL parameter is a List<Segment> global — only a §7.3.2 tijdsevenredig base reads it.
-                Global<java.util.List> g = DSL.globalOf(java.util.List.class, PKG, ident(p.naam()));
-                listGlobals.put(ident(p.naam()), g);
+                Global<java.util.List> g = DSL.globalOf(java.util.List.class, PKG, globalNaam(p.naam()));
+                listGlobals.put(globalNaam(p.naam()), g);
                 m.addGlobal(g);
                 continue;
             }
@@ -157,27 +160,27 @@ public final class ExecModelTranspiler {
             // BigDecimal). A date/tekst/booleaan parameter is registered (so setGlobal works) but NOT tracked, so a
             // construct reading it stays an honest skip rather than a fire-time "Illegal class for global" crash.
             if (p.datatype().isNumeriek() || p.datatype().isPercentage()) {
-                Global<BigDecimal> g = DSL.globalOf(BigDecimal.class, PKG, ident(p.naam()));
-                globals.put(ident(p.naam()), g);
+                Global<BigDecimal> g = DSL.globalOf(BigDecimal.class, PKG, globalNaam(p.naam()));
+                globals.put(globalNaam(p.naam()), g);
                 m.addGlobal(g);
             } else if (p.datatype() instanceof Datatype.DatumInDagen) {
                 // §13.3.8 a Datum-in-dagen parameter is a LocalDate global — TRACKED so a datum-vs-global comparison binds it.
-                Global<java.time.LocalDate> g = DSL.globalOf(java.time.LocalDate.class, PKG, ident(p.naam()));
-                datumGlobals.put(ident(p.naam()), g);
+                Global<java.time.LocalDate> g = DSL.globalOf(java.time.LocalDate.class, PKG, globalNaam(p.naam()));
+                datumGlobals.put(globalNaam(p.naam()), g);
                 m.addGlobal(g);
             } else if (p.datatype() instanceof Datatype.DatumTijd) {
                 // §13.3.8 a Datum-en-tijd parameter is a LocalDateTime global — TRACKED for a datum-tijd-vs-global comparison.
-                Global<java.time.LocalDateTime> g = DSL.globalOf(java.time.LocalDateTime.class, PKG, ident(p.naam()));
-                datumTijdGlobals.put(ident(p.naam()), g);
+                Global<java.time.LocalDateTime> g = DSL.globalOf(java.time.LocalDateTime.class, PKG, globalNaam(p.naam()));
+                datumTijdGlobals.put(globalNaam(p.naam()), g);
                 m.addGlobal(g);
             } else if (p.datatype().isTekst() || p.datatype() instanceof Datatype.Enumeratie) {
                 // §13.3.8 a Tekst OR §13.2.14 Enumeratie parameter is a String global (an enumeratiewaarde is stored as its
                 // String label) — TRACKED so a tekst/enum equality-vs-global comparison binds it.
-                Global<String> g = DSL.globalOf(String.class, PKG, ident(p.naam()));
-                tekstGlobals.put(ident(p.naam()), g);
+                Global<String> g = DSL.globalOf(String.class, PKG, globalNaam(p.naam()));
+                tekstGlobals.put(globalNaam(p.naam()), g);
                 m.addGlobal(g);
             } else {
-                m.addGlobal(DSL.globalOf(globalKlasse(p.datatype()), PKG, ident(p.naam())));
+                m.addGlobal(DSL.globalOf(globalKlasse(p.datatype()), PKG, globalNaam(p.naam())));
             }
         }
         // §4.2 register the Rekendatum global iff any construct of any family is time-bounded (mirrors
@@ -386,13 +389,13 @@ public final class ExecModelTranspiler {
             if (consequence == null) return skip("regel (aggregatie-waarde: te veel gebonden variabelen): " + r.naam());
             extra.addAll(accItems);
         } else if (isScalarSoort(r.soort()) && r.waarde() instanceof Expr.ParameterRef tpr
-                && nietNumeriekeGlobal(ident(tpr.parameter().naam())) != null) {
+                && nietNumeriekeGlobal(globalNaam(tpr.parameter().naam())) != null) {
             // §13.4.6 assign a single NON-NUMERIC Parameter-GLOBAL verbatim into the attribute — a Tekst/Enumeratie String
             // ("De roepnaam wordt gesteld op de STANDAARDNAAM"), a Datum LocalDate or a Datum-en-tijd LocalDateTime
             // ("De gebdatum wordt gesteld op de PEILDATUM"). The numeric value-path below binds globals as BigDecimal, so
             // a non-numeric global would skip there. Bind the typed global and set it directly. (DRL declares the global
             // with its concrete type so the setter resolves — both back-ends used to decline this: DRL build-error / exec skip.)
-            Global<?> g = nietNumeriekeGlobal(ident(tpr.parameter().naam()));
+            Global<?> g = nietNumeriekeGlobal(globalNaam(tpr.parameter().naam()));
             consequence = DSL.on(sVar, (Variable) g).execute((Block3<org.drools.model.Drools, Object, Object>) (drools, s, gv) ->
                     werkBij(drools, s, doelGetter, doelSetter, gv));
         } else {
@@ -621,8 +624,8 @@ public final class ExecModelTranspiler {
                      && (nav.navigatieRol() != null || nav.objecttype() != subject) && nav.objecttype().heeftLid(nav.attribuut())
                      && nav.type() != null && (nav.type().isNumeriek() || nav.type().isPercentage())
                      && !nav.objecttype().attribuutGranulariteit.containsKey(nav.attribuut()))) return null;
-        Conditie.Operator op = linksAgg ? v.op() : mirrorOp(v.op());   // orient the aggregation on the LEFT (mirrorOp(ONGELIJK)=ONGELIJK, != symmetric)
-        final String opStr = opString(op);
+        Conditie.Operator op = linksAgg ? v.op() : Operatoren.omkeren(v.op());   // orient the aggregation on the LEFT (Operatoren.omkeren(ONGELIJK)=ONGELIJK, != symmetric)
+        final String opStr = Operatoren.symbool(op);
         Agg agg = aggregatie(f, subject, subjectVar, true);   // condition side: bind count for MIN/MAX so an empty set fires the leeg compare
         if (agg == null) return null;
         // The threshold reader rfn(subj, globalsMap) + at most one bound Global. A to-ONE navigated RHS reads null-safely via
@@ -695,7 +698,7 @@ public final class ExecModelTranspiler {
         if (a1 == null) return null;
         Agg a2 = aggregatie((Expr.Functie) v.rechts(), subject, subjectVar, true);
         if (a2 == null) return null;
-        final String opStr = opString(v.op());
+        final String opStr = Operatoren.symbool(v.op());
         final boolean c1 = a1.countVar() != null, c2 = a2.countVar() != null;
         final WaardeFn fb1 = a1.somFallback(), fb2 = a2.somFallback();
         List<RuleItemBuilder<?>> extra = new ArrayList<>();
@@ -742,26 +745,6 @@ public final class ExecModelTranspiler {
                 || (v.rechts() instanceof Expr.Functie fr && isAggregatieKind(fr.kind()));
     }
 
-    /** The rsAggVergelijk op-string for a comparison operator (mirrors DrlTranspiler.drlOp). */
-    private static String opString(Conditie.Operator op) {
-        return switch (op) {
-            case GROTER, LATER -> ">";    case GROTER_OF_GELIJK, LATER_OF_GELIJK -> ">=";
-            case KLEINER, EERDER -> "<";  case KLEINER_OF_GELIJK, EERDER_OF_GELIJK -> "<=";
-            case ONGELIJK -> "!=";
-            default -> "==";
-        };
-    }
-
-    /** Mirror a comparison operator for operand-swap (count on the right -> orient it on the left). Mirrors DrlTranspiler.omkeren. */
-    private static Conditie.Operator mirrorOp(Conditie.Operator op) {
-        return switch (op) {
-            case KLEINER -> Conditie.Operator.GROTER;   case KLEINER_OF_GELIJK -> Conditie.Operator.GROTER_OF_GELIJK;
-            case GROTER  -> Conditie.Operator.KLEINER;  case GROTER_OF_GELIJK  -> Conditie.Operator.KLEINER_OF_GELIJK;
-            case EERDER  -> Conditie.Operator.LATER;    case EERDER_OF_GELIJK  -> Conditie.Operator.LATER_OF_GELIJK;
-            case LATER   -> Conditie.Operator.EERDER;   case LATER_OF_GELIJK   -> Conditie.Operator.EERDER_OF_GELIJK;
-            case GELIJK  -> Conditie.Operator.GELIJK;   case ONGELIJK          -> Conditie.Operator.ONGELIJK;
-        };
-    }
 
     /** §13.4.2/§5.6 apply a die/dat-subselectie filter to the accumulate SOURCE pattern. A §5.6 comparison whose RHS is
      *  a NUMERIC Parameter-global binds that global on the source pattern (a 2-var expr over the element + the global) —
@@ -874,7 +857,7 @@ public final class ExecModelTranspiler {
         if (elem == null || !elem.heeftLid(la.attribuut())) return null;
         if (elem.attribuutGranulariteit.containsKey(la.attribuut())) return null;   // temporal element attr -> skip
         if (!elem.dimensiesVan(la.attribuut()).isEmpty()) return null;              // §3.6 gedimensioneerd -> skip
-        Global<BigDecimal> g = globals.get(ident(pr.parameter().naam()));
+        Global<BigDecimal> g = globals.get(globalNaam(pr.parameter().naam()));
         if (g == null) return null;   // non-numeric / unregistered global -> skip (DRL needs the global declared too)
         String attr = la.attribuut();
         Conditie.Operator op = v.op();
@@ -1003,7 +986,7 @@ public final class ExecModelTranspiler {
         if (ander instanceof Expr.AttribuutRef ar && isTemporeel82(ar)) return null;   // both-temporal (timeline vs timeline) -> skip
         io.github.yhavinga.regelspraak.model.Eenheid el = tijd.type().eenheidOf(), er = ander.type().eenheidOf();
         if (el != null && er != null && el.vereistOmrekening(er)) return null;   // cross-unit -> skip (raw-magnitude would be wrong)
-        Integer code = toetsCode82(linksTemp ? v.op() : omkeren(v.op()));        // temporal operand on the left (REVERSE)
+        Integer code = Tijdrekening.toets(linksTemp ? v.op() : Operatoren.omkeren(v.op()));        // temporal operand on the left (REVERSE)
         if (code == null) return null;                                           // datum ordering -> skip
         java.util.function.Function<Object, Object> tl = temporeelTijdlijnReader(tijd, subject);
         if (tl == null) return null;                                             // navigated/unresolvable -> skip
@@ -1163,7 +1146,7 @@ public final class ExecModelTranspiler {
             } else if (base instanceof Expr.ParameterRef bp && bp.parameter().granulariteit() != null) {
                 baseGran = bp.parameter().granulariteit();
                 baseType = bp.parameter().datatype();
-                baseGlobal = ident(bp.parameter().naam());
+                baseGlobal = globalNaam(bp.parameter().naam());
                 baseReader = (s, gv) -> (List<?>) gv;   // the List<Segment> global the runtime supplies
             }
             if (baseReader != null && baseGran.ordinal() >= gran.ordinal() && baseType.isNumeriek()) {
@@ -1474,27 +1457,6 @@ public final class ExecModelTranspiler {
     /** Parse a §13.2.21 datum-tijd literal to a LocalDateTime — the shared {@link Literalen} reader (goal-M1/P2). */
     private static java.time.LocalDateTime parseDatumTijd(String waarde) { return Literalen.parseDatumTijd(waarde); }
 
-    /** Map a duration unit (its Datatype's eenheid) to a {@link java.time.temporal.ChronoUnit} name — byte-identical
-     *  to DrlTranspiler.chronoUnit, so both back-ends key date arithmetic on the SAME unit. A kwartaal maps to the
-     *  pseudo-unit "KWARTAAL" (rsDatumReken special-cases it as 3×MONTHS); null only for a dagsoort / an unrecognised
-     *  unit (the caller then skips). */
-    private static String chronoUnit(Datatype t) {
-        Eenheid e = t.eenheidOf();
-        if (e == null) return null;
-        return switch (RegelSpraakModel.normaliseerTijdseenheid(e.afkorting())) {
-            case "jaar", "jr"             -> "YEARS";
-            case "maand", "mnd"           -> "MONTHS";
-            case "week", "wk"             -> "WEEKS";
-            case "dag"                    -> "DAYS";
-            case "uur", "u"               -> "HOURS";
-            case "minuut", "min"          -> "MINUTES";
-            case "seconde", "secondes", "sec", "s"     -> "SECONDS";
-            case "milliseconde", "millisecondes", "ms" -> "MILLIS";
-            case "kwartaal", "kwartalen" -> "KWARTAAL";   // §3.7 3×MONTHS — rsDatumReken special-cases it (no ChronoUnit.QUARTERS)
-            default -> null;
-        };
-    }
-
     /** §13.3.8 the Java class a scalar parameter's global is declared with — the {@link org.drools.model.Global} type
      *  must match the value the session setGlobal supplies, else Drools throws "Illegal class for global" at fire time.
      *  Mirrors DrlTranspiler.javaType (Datum -> LocalDate, DatumTijd -> LocalDateTime, Tekst -> String, Booleaan -> Boolean). */
@@ -1600,7 +1562,7 @@ public final class ExecModelTranspiler {
             return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsDatumPlusDagsoort(
                     (java.time.LocalDate) dfn0.apply(s, gm), (BigDecimal) nfn0.apply(s, gm), pred, optellen), g0);
         }
-        String unit = chronoUnit(durExpr.type());
+        String unit = Tijdrekening.chronoUnit(durExpr.type());
         if (unit == null) return null;
         boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
         if (tijdEenheid && !(datumExpr.type() instanceof Datatype.DatumTijd)) return null;
@@ -1651,17 +1613,6 @@ public final class ExecModelTranspiler {
         return a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut());
     }
 
-    /** §8.2 rsGeheelPeriode toets code for a comparison operator, or null for a DATUM ordering (out of scope — the
-     *  Segment carries a BigDecimal). Mirrors DrlTranspiler.toetsCode. */
-    private static Integer toetsCode82(Conditie.Operator op) {
-        return switch (op) {
-            case KLEINER -> 0; case KLEINER_OF_GELIJK -> 1;
-            case GROTER  -> 2; case GROTER_OF_GELIJK  -> 3;
-            case GELIJK  -> 4; case ONGELIJK          -> 5;
-            default -> null;
-        };
-    }
-
     /** The §8.2 timeline reader for a temporal attribute — the subject's own List&lt;Segment&gt;, or a to-ONE
      *  navigated partner's (null reference -> null timeline -> rsGeheelPeriode returns true). null for a to-many /
      *  unresolvable navigation. Mirrors DrlTranspiler.temporeelTijdlijnGetter. */
@@ -1698,7 +1649,7 @@ public final class ExecModelTranspiler {
             // herschaalExact); an OPAQUE product unit (no exact factors) stays a marker (symmetric with DRL).
             boolean crossUnit = el != null && er != null && el.vereistOmrekening(er);
             if (crossUnit && er.exacteHerschaalFactoren(el) == null) return null;
-            Integer code = toetsCode82(linksTemp ? v.op() : omkeren(v.op()));   // REVERSE (operand swap), not negate
+            Integer code = Tijdrekening.toets(linksTemp ? v.op() : Operatoren.omkeren(v.op()));   // REVERSE (operand swap), not negate
             if (code == null) return null;
             java.util.function.Function<Object, Object> tl = temporeelTijdlijnReader(tijd, subject);
             if (tl == null) return null;
@@ -1856,7 +1807,7 @@ public final class ExecModelTranspiler {
         // ParameterRef sits on the RIGHT, so it cannot re-trigger). A global-vs-literal (rare) stays a skip either way.
         if (c instanceof Conditie.Vergelijking gv && gv.links() instanceof Expr.ParameterRef
                 && !(gv.rechts() instanceof Expr.ParameterRef))
-            return voorwaarde(new Conditie.Vergelijking(omkeren(gv.op()), gv.rechts(), gv.links(), gv.periode(), gv.bron()),
+            return voorwaarde(new Conditie.Vergelijking(Operatoren.omkeren(gv.op()), gv.rechts(), gv.links(), gv.periode(), gv.bron()),
                     pattern, subject, subjectVar);
         // §8.1.1 a DATUM comparison of an OWN or to-one NAVIGATED datum attribute vs a Datum-in-dagen Parameter-GLOBAL
         // ("zijn geboortedatum eerder is dan de PEILDATUM", "de vluchtdatum van zijn reis gelijk is aan de PEILDATUM").
@@ -1873,8 +1824,8 @@ public final class ExecModelTranspiler {
             // Datum-in-dagen -> the LocalDate global; Datum-en-tijd -> the LocalDateTime global. datumVergelijkTemporal
             // compares any Temporal, so the bound value's runtime type is irrelevant to the comparison.
             Variable g = pr.parameter().datatype() instanceof Datatype.DatumTijd
-                    ? (Variable) datumTijdGlobals.get(ident(pr.parameter().naam()))
-                    : (Variable) datumGlobals.get(ident(pr.parameter().naam()));
+                    ? (Variable) datumTijdGlobals.get(globalNaam(pr.parameter().naam()))
+                    : (Variable) datumGlobals.get(globalNaam(pr.parameter().naam()));
             if (lf != null && g != null) {
                 Conditie.Operator op = v.op();
                 return new Gate(pattern.expr(nextId("c"), g, (Predicate2) (s, gv) ->
@@ -1892,7 +1843,7 @@ public final class ExecModelTranspiler {
                 && v.rechts() instanceof Expr.ParameterRef pr && tekstachtig(pr.parameter().datatype())) {
             if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 -> marker
-            Global<String> g = tekstGlobals.get(ident(pr.parameter().naam()));
+            Global<String> g = tekstGlobals.get(globalNaam(pr.parameter().naam()));
             if (g == null) return null;
             String attr = la.attribuut();
             boolean gelijk = v.op() == Conditie.Operator.GELIJK;
@@ -1916,7 +1867,7 @@ public final class ExecModelTranspiler {
             if (subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!subject.dimensiesVan(la.attribuut()).isEmpty()) return null;   // §3.6 gedimensioneerd (a Map) -> marker
             if (!isNumeriekOp(v.op())) return null;   // EERDER/LATER (datum) -> Phase later
-            Global<BigDecimal> g = globals.get(ident(pr.parameter().naam()));
+            Global<BigDecimal> g = globals.get(globalNaam(pr.parameter().naam()));
             if (g == null) return null;
             String attr = la.attribuut();
             Conditie.Operator op = v.op();
@@ -1933,7 +1884,7 @@ public final class ExecModelTranspiler {
             if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 gedimensioneerd -> marker
             String rol = navComparisonRole(la, subject);
             if (rol == null) return null;
-            Global<BigDecimal> g = globals.get(ident(pr.parameter().naam()));
+            Global<BigDecimal> g = globals.get(globalNaam(pr.parameter().naam()));
             if (g == null) return null;
             String attr = la.attribuut();
             Conditie.Operator op = v.op();
@@ -2059,12 +2010,7 @@ public final class ExecModelTranspiler {
      *  enumeratiewaarde 'X' (single quotes stripped, straight or typographic). null otherwise — both compare by
      *  VALUE equality, mirroring {@link io.github.yhavinga.regelspraak.transpiler.DrlTranspiler#enumLiteralLabel}. */
     private static String tekstOfEnumLabel(Expr e) {
-        if (!(e instanceof Expr.Literal lit)) return null;
-        if (lit.type().isTekst()) return lit.waarde().replace("\"", "");
-        String w = lit.waarde(); int n = w.length();
-        if (n >= 2 && w.charAt(0) == '\'' && w.charAt(n - 1) == '\'') return w.substring(1, n - 1);
-        if (n >= 2 && w.charAt(0) == '’' && w.charAt(n - 1) == '‘') return w.substring(1, n - 1);
-        return null;
+        return e instanceof Expr.Literal lit ? Literalen.tekstOfEnumLabel(lit) : null;   // the shared reader (goal-M2)
     }
     /** §5.3/§5.6 TEKST equality with the leegwaarde tables (the String analogue of the datum equality): GELIJK is Tabel 38
      *  (both present and equal; one/both-leeg -> onwaar); ONGELIJK is Tabel 44 (exactly-one-leeg -> WAAR, both-leeg ->
@@ -2100,7 +2046,7 @@ public final class ExecModelTranspiler {
         // rewritten, so no firing path can regress; after the swap the literal sits on the RIGHT (no re-trigger).
         if (c instanceof Conditie.Vergelijking vlit && vlit.links() instanceof Expr.Literal
                 && !(vlit.rechts() instanceof Expr.Literal))
-            return leafPredicate(new Conditie.Vergelijking(omkeren(vlit.op()), vlit.rechts(), vlit.links(),
+            return leafPredicate(new Conditie.Vergelijking(Operatoren.omkeren(vlit.op()), vlit.rechts(), vlit.links(),
                     vlit.periode(), vlit.bron()), subject);
         // §8.1.8 kenmerkcheck — an own kenmerk (boolean property == !negatie) or a to-one navigated one
         // ("zijn partner heeft een <k>"), read null-safely through the reference (a null relation never matches).
@@ -2613,7 +2559,7 @@ public final class ExecModelTranspiler {
             return new WaardeFn((s, gm) -> { Object m = RegelSpraakRuntime.get(s, attr); return m == null ? null : ((Map<?, ?>) m).get(label); }, Set.of());
         }
         if (e instanceof Expr.ParameterRef pr) {
-            String gn = ident(pr.parameter().naam());
+            String gn = globalNaam(pr.parameter().naam());
             return new WaardeFn((s, gm) -> gm.get(gn), Set.of(gn));
         }
         if (e instanceof Expr.Binair b && b.op() == Expr.BinOp.TOT_DE_MACHT) {
@@ -2773,7 +2719,7 @@ public final class ExecModelTranspiler {
                             (java.time.LocalDate) vfn.apply(s, gm), (java.time.LocalDate) tfn.apply(s, gm), pred, absoluut), g);
                 }
                 // general (non-dagsoort) tijdseenheid: ChronoUnit.<U>.between (kwartaal -> 3×MONTHS) via rsTijdsduur.
-                String unit = chronoUnit(f.type());
+                String unit = Tijdrekening.chronoUnit(f.type());
                 if (unit == null) return null;   // unrecognised tijdseenheid -> honest skip (symmetric with the DRL marker)
                 boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
                 if (tijdEenheid && (!(a.get(0).type() instanceof Datatype.DatumTijd) || !(a.get(1).type() instanceof Datatype.DatumTijd)))
@@ -2903,7 +2849,7 @@ public final class ExecModelTranspiler {
             return (s, g, a) -> RegelSpraakRuntime.get(s, attr);
         }
         if (e instanceof Expr.ParameterRef pr) {
-            String gn = ident(pr.parameter().naam());
+            String gn = globalNaam(pr.parameter().naam());
             globalsOut.add(gn);
             return (s, g, a) -> g.get(gn);
         }
@@ -3326,7 +3272,7 @@ public final class ExecModelTranspiler {
         // §13.4.8 DATUM ordering assertie ("X moet eerder/later zijn dan Y"): violated when either operand is empty
         // OR the flipped (negated) ordering holds (own or navigated operands).
         if (la.type().isDatum() && isDatumOp(v.op())) {
-            Conditie.Operator flipOp = flip(v.op());
+            Conditie.Operator flipOp = Operatoren.flip(v.op());
             // violated when EITHER operand is empty OR the flipped (negated) ordering holds. Read each as its raw Temporal
             // (LocalDate OR LocalDateTime) — the old `instanceof LocalDate` read a present Datum-en-tijd as empty, wrongly
             // flagging a satisfied datum-tijd ordering as a violation (a masked exec over-flag). datumVergelijkTemporal
@@ -3366,7 +3312,7 @@ public final class ExecModelTranspiler {
         // masked DRL-flags/exec-skips, not a silent divergence). The Tekst/enum vs-LITERAL consistentie is handled above;
         // this catches the attr-vs-attr / navigated-vs-attr Tekst/datum-equality form.
         if (la.type() != null && !la.type().isNumeriek() && !la.type().isPercentage()) return null;
-        Conditie.Operator flip = flip(v.op());
+        Conditie.Operator flip = Operatoren.flip(v.op());
         boolean gelijkheid = v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK;
         if (v.rechts() instanceof Expr.AttribuutRef ra) {
             java.util.function.Function<Object, Object> rRead = consistentieReader(ra, subject);
@@ -3440,9 +3386,9 @@ public final class ExecModelTranspiler {
         if (!(v.rechts() instanceof Expr.ParameterRef pr) || pr.parameter().granulariteit() != null) return null;
         java.util.function.Function<Object, Object> lRead = consistentieReader(la, subject);
         if (lRead == null) return null;
-        String gn = ident(pr.parameter().naam());
+        String gn = globalNaam(pr.parameter().naam());
         if (!globals.containsKey(gn)) return null;
-        Conditie.Operator flip = flip(v.op());
+        Conditie.Operator flip = Operatoren.flip(v.op());
         boolean gelijkheid = v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK;
         BigDecimal[] f = restatement(la.type(), pr.parameter().datatype());
         return new SchendingGlobal(gn, (s, gv) -> {
@@ -4163,41 +4109,6 @@ public final class ExecModelTranspiler {
         }
     }
 
-    /** §13.4.8 operator negation (the complement that detects a violation). Mirrors DrlTranspiler.flip. */
-    private static Conditie.Operator flip(Conditie.Operator op) {
-        return switch (op) {
-            case GELIJK            -> Conditie.Operator.ONGELIJK;
-            case ONGELIJK          -> Conditie.Operator.GELIJK;
-            case KLEINER           -> Conditie.Operator.GROTER_OF_GELIJK;
-            case KLEINER_OF_GELIJK -> Conditie.Operator.GROTER;
-            case GROTER            -> Conditie.Operator.KLEINER_OF_GELIJK;
-            case GROTER_OF_GELIJK  -> Conditie.Operator.KLEINER;
-            case EERDER            -> Conditie.Operator.LATER_OF_GELIJK;   // §13.4.8 datum ordering negation
-            case EERDER_OF_GELIJK  -> Conditie.Operator.LATER;
-            case LATER             -> Conditie.Operator.EERDER_OF_GELIJK;
-            case LATER_OF_GELIJK   -> Conditie.Operator.EERDER;
-            default                -> op;
-        };
-    }
-
-    /** Operand REVERSAL (swap LHS/RHS) of a comparison operator — distinct from {@link #flip} (logical negation):
-     *  "a = b" reverses to "b = a" (GELIJK stays GELIJK), "a &gt; b" to "b &lt; a" (GROTER -&gt; KLEINER). Mirrors
-     *  DrlTranspiler.omkeren; used by §8.2 to put the temporal operand on the left when it was written on the right. */
-    private static Conditie.Operator omkeren(Conditie.Operator op) {
-        return switch (op) {
-            case GELIJK            -> Conditie.Operator.GELIJK;
-            case ONGELIJK          -> Conditie.Operator.ONGELIJK;
-            case KLEINER           -> Conditie.Operator.GROTER;
-            case KLEINER_OF_GELIJK -> Conditie.Operator.GROTER_OF_GELIJK;
-            case GROTER            -> Conditie.Operator.KLEINER;
-            case GROTER_OF_GELIJK  -> Conditie.Operator.KLEINER_OF_GELIJK;
-            case EERDER            -> Conditie.Operator.LATER;
-            case EERDER_OF_GELIJK  -> Conditie.Operator.LATER_OF_GELIJK;
-            case LATER             -> Conditie.Operator.EERDER;
-            case LATER_OF_GELIJK   -> Conditie.Operator.EERDER_OF_GELIJK;
-            default                -> op;
-        };
-    }
     private static Class<?> inconsistentieClass() {
         try { return Class.forName(FACTS + ".Inconsistentie"); }
         catch (ClassNotFoundException e) { return null; }
@@ -4228,19 +4139,9 @@ public final class ExecModelTranspiler {
         try { return Class.forName(FACTS + "." + RegelSpraakRuntime.pascal(ot.naam)); }
         catch (ClassNotFoundException e) { return null; }
     }
-    static String ident(String naam) {
-        String s = naam.replaceFirst("^(?i)(de|het|een)\\s+", "").trim();
-        StringBuilder b = new StringBuilder();
-        for (String w : s.split("\\s+")) {
-            if (w.isEmpty()) continue;
-            // lowercase the VERY first character, PascalCase the rest — matching DrlTranspiler.ident(.., false), so the
-            // model's parameter-GLOBAL name equals the DRL's (e.g. "STANDAARD BELASTINGVERMINDERING" -> the shared
-            // "sTANDAARDBELASTINGVERMINDERING"); the differential session sets one global by that single name.
-            boolean hoofd = b.length() > 0;
-            b.append(hoofd ? Character.toUpperCase(w.charAt(0)) : Character.toLowerCase(w.charAt(0))).append(w.substring(1));
-        }
-        return b.isEmpty() ? "x" : b.toString();
-    }
+    /** The parameter-GLOBAL name — kern.Namen.ident(.., false) (goal-M2 P3), so the model's global name
+     *  equals the DRL's and the differential session sets ONE global by that single shared name. */
+    static String globalNaam(String naam) { return Namen.ident(naam, false); }
     /** The JAVABEAN property name Drools watches for property reactivity (the lowercase-first form of {@link #ident}):
      *  "de aandeel" -> "aandeel", "het saldo" -> "saldo". Matches the get/set the reflective bridge uses. */
     static String prop(String naam) {

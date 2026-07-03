@@ -3298,8 +3298,8 @@ class DrlTest {
                 geldig altijd
                     De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van de STANDAARD gedurende de tijd dat hij een recht op belastingvermindering heeft).
             """));
-        assertTrue(tev.contains("global java.util.List sTANDAARD;"), () -> "een temporele parameter moet een List<Segment> global zijn:\n" + tev);
-        assertTrue(tev.contains("rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), sTANDAARD, \"MAAND\", Segment.class)"),
+        assertTrue(tev.contains("global java.util.List standaard;"), () -> "een temporele parameter moet een List<Segment> global zijn:\n" + tev);
+        assertTrue(tev.contains("rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), standaard, \"MAAND\", Segment.class)"),
                 () -> "een temporele-parameter basis moet de List global lezen:\n" + tev);
         assertFalse(tev.contains("/* TODO"), () -> "de temporele-parameter tijdsevenredig mag geen marker zijn:\n" + tev);
 
@@ -3328,7 +3328,7 @@ class DrlTest {
                 geldig altijd
                     Een Passagier is duur indien de prijs van de Passagier groter is dan de STANDAARD.
             """));
-        assertFalse(conditie.contains("> sTANDAARD") || conditie.contains("sTANDAARD >"),
+        assertFalse(conditie.contains("> standaard") || conditie.contains("standaard >"),
                 () -> "een temporele parameter mag niet als List in een scalaire constraint lekken:\n" + conditie);
         assertTrue(conditie.contains("/* TODO"), () -> "een conditie-zijde temporele parameter moet markeren:\n" + conditie);
 

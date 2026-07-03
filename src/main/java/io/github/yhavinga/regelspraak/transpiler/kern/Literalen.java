@@ -47,4 +47,29 @@ public final class Literalen {
         try { return r[0].divide(r[1]); }                                   // exact (terminating quotient)
         catch (ArithmeticException nietEindig) { return r[0].divide(r[1], java.math.MathContext.DECIMAL64); }
     }
+
+    /** The §13.2.14 enumeratiewaarde label of {@code 'X'} — its single-quote delimiters (straight or the
+     *  typographic ’X‘ pair) stripped, EMBEDDED characters (incl. double quotes) kept verbatim (goal-M2 D9).
+     *  null when the text is not a single-quoted enumeratiewaarde. */
+    public static String enumLabel(String waarde) {
+        int n = waarde.length();
+        if (n >= 2 && waarde.charAt(0) == '\'' && waarde.charAt(n - 1) == '\'') return waarde.substring(1, n - 1);
+        if (n >= 2 && waarde.charAt(0) == '’' && waarde.charAt(n - 1) == '‘') return waarde.substring(1, n - 1);
+        return null;
+    }
+
+    /** The string label a Tekst literal or an enumeratiewaarde compares by (§13.3.3.4 / §13.2.14 — both are
+     *  VALUE equality on the label): a Tekst's double-quote DELIMITERS are stripped (the grammar's STRING_TEXT
+     *  cannot contain a quote, so only the delimiters can occur); an enumeratiewaarde via {@link #enumLabel}.
+     *  null for any other literal. */
+    public static String tekstOfEnumLabel(Expr.Literal lit) {
+        if (lit.type().isTekst()) return lit.waarde().replace("\"", "");
+        return enumLabel(lit.waarde());
+    }
+
+    /** A §13.2.x boolean literal: "waar" is true, "onwaar" false. */
+    public static boolean waar(String waarde) {
+        String l = waarde.toLowerCase();
+        return l.contains("waar") && !l.contains("onwaar");
+    }
 }

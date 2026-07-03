@@ -10,6 +10,16 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dagsoorten;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dekking;
+import io.github.yhavinga.regelspraak.transpiler.kern.Literalen;
+import io.github.yhavinga.regelspraak.transpiler.kern.Operatoren;
+import io.github.yhavinga.regelspraak.transpiler.kern.Tijdrekening;
+
+import static io.github.yhavinga.regelspraak.transpiler.kern.Namen.commentVeilig;
+import static io.github.yhavinga.regelspraak.transpiler.kern.Namen.drlString;
+import static io.github.yhavinga.regelspraak.transpiler.kern.Namen.escapeRegelNaam;
+import static io.github.yhavinga.regelspraak.transpiler.kern.Namen.getter;
+import static io.github.yhavinga.regelspraak.transpiler.kern.Namen.ident;
+import static io.github.yhavinga.regelspraak.transpiler.kern.Namen.setter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -250,7 +260,7 @@ public final class DrlTranspiler {
                     + " (operand onresolveerbaar of geen getrouwe negatie); de regel controleert niets",
                     c.line());
             if (!model.diagnostics.contains(w)) model.diagnostics.add(w);
-            rule.clausule("// onopgelost consistentieregel: " + c.bron()).clausule("eval(true)");
+            rule.clausule("// onopgelost consistentieregel: " + commentVeilig(c.bron())).clausule("eval(true)");
             out.append(rule.render());
             return;
         }
@@ -386,7 +396,7 @@ public final class DrlTranspiler {
             // was never evaluated (§9.5: inconsistent only on a real violation). Drop to the
             // no-op path instead, like an assertion with no faithful negation.
             if (l.marker() || r.marker()) return null;
-            Frag complement = conditie(new Conditie.Vergelijking(flip(v.op()), v.links(), v.rechts(), v.bron()), subject);
+            Frag complement = conditie(new Conditie.Vergelijking(Operatoren.flip(v.op()), v.links(), v.rechts(), v.bron()), subject);
             return "(" + l.text() + " == null || " + r.text() + " == null || " + complement.text() + ")";
         }
         if (assertie instanceof Conditie.Vergelijking v && v.op() == Conditie.Operator.GELIJK
@@ -490,7 +500,7 @@ public final class DrlTranspiler {
         String[] ov = vergelijkingsOperanden(l.waarde(), v.links().type(), r.waarde(), v.rechts().type());
         String lv = ov[0], rv = ov[1];
         if (ordeningOfDatum(v.op()))   // Tabel 40-43: any empty operand -> onwaar -> violation
-            return "(" + l.leeg() + " || " + r.leeg() + " || " + lv + " " + drlOp(flip(v.op())) + " " + rv + ")";
+            return "(" + l.leeg() + " || " + r.leeg() + " || " + lv + " " + Operatoren.symbool(Operatoren.flip(v.op())) + " " + rv + ")";
         if (v.op() == Conditie.Operator.GELIJK) {
             if (nietNumeriekVergelijking(v))   // Tabel 38: empty -> onwaar/fout -> always a violation
                 return "(" + l.leeg() + " || " + r.leeg() + " || " + lv + " != " + rv + ")";
@@ -530,17 +540,6 @@ public final class DrlTranspiler {
         };
     }
 
-    /** A rule name is free text (§13.2.8) and may contain characters that break a DRL string literal — a
-     *  double quote (closes the literal early), a backslash (escapes the next character, so a trailing one
-     *  would escape the closing quote), or a newline / carriage return (splits the {@code rule "…"} header
-     *  across lines). Neutralise all four to a harmless visible substitute rather than backslash-escaping,
-     *  so the SAME form is well-formed in the {@code rule} header, the Inconsistentie literal, and the
-     *  idempotency guard's {@code regel == "…"} — keeping the whole Drools package well-formed. The four
-     *  substitutions are over disjoint characters and none introduces another, so their order is immaterial. */
-    static String escapeRegelNaam(String naam) {
-        return naam.replace("\\", "/").replace("\"", "'").replace("\r", " ").replace("\n", " ");
-    }
-
     /** The §4.2 validity guard: an eval over the Rekendatum global that fires only inside the
      *  version's window. Null-guarded so an unset Rekendatum simply doesn't match (no NPE), and
      *  the inclusive bounds use isBefore/isAfter negations (LocalDate has no &lt;= operator). */
@@ -564,7 +563,7 @@ public final class DrlTranspiler {
      *  null so the caller marks the rule rather than emit a wrong trigger. */
     private static Conditie negeer(Conditie c) {
         if (c instanceof Conditie.Vergelijking v)
-            return new Conditie.Vergelijking(flip(v.op()), v.links(), v.rechts(), v.bron());
+            return new Conditie.Vergelijking(Operatoren.flip(v.op()), v.links(), v.rechts(), v.bron());
         if (c instanceof Conditie.Predicaat p) {
             Conditie.Predicaatsoort neg = switch (p.soort()) {
                 case LEEG -> Conditie.Predicaatsoort.GEVULD;
@@ -574,40 +573,6 @@ public final class DrlTranspiler {
             return neg != null ? new Conditie.Predicaat(neg, p.operand(), p.bron()) : null;
         }
         return null;
-    }
-
-    private static Conditie.Operator flip(Conditie.Operator op) {
-        return switch (op) {
-            case GELIJK -> Conditie.Operator.ONGELIJK;
-            case ONGELIJK -> Conditie.Operator.GELIJK;
-            case KLEINER -> Conditie.Operator.GROTER_OF_GELIJK;
-            case KLEINER_OF_GELIJK -> Conditie.Operator.GROTER;
-            case GROTER -> Conditie.Operator.KLEINER_OF_GELIJK;
-            case GROTER_OF_GELIJK -> Conditie.Operator.KLEINER;
-            case EERDER -> Conditie.Operator.LATER_OF_GELIJK;
-            case EERDER_OF_GELIJK -> Conditie.Operator.LATER;
-            case LATER -> Conditie.Operator.EERDER_OF_GELIJK;
-            case LATER_OF_GELIJK -> Conditie.Operator.EERDER;
-        };
-    }
-
-    /** Operand REVERSAL (swap LHS/RHS) of a comparison operator — distinct from {@link #flip} (the logical negation):
-     *  "a = b" reverses to "b = a" (GELIJK stays GELIJK), "a &gt; b" to "b &lt; a" (GROTER -&gt; KLEINER). Used by §8.2 to
-     *  put the temporal operand on the LEFT (rsGeheelPeriode compares segWaarde OP grens) when it was written on the
-     *  RIGHT — flip() there would WRONGLY negate (GELIJK -&gt; ONGELIJK, the &gt;-boundary off by the OF_GELIJK). */
-    private static Conditie.Operator omkeren(Conditie.Operator op) {
-        return switch (op) {
-            case GELIJK -> Conditie.Operator.GELIJK;
-            case ONGELIJK -> Conditie.Operator.ONGELIJK;
-            case KLEINER -> Conditie.Operator.GROTER;
-            case KLEINER_OF_GELIJK -> Conditie.Operator.GROTER_OF_GELIJK;
-            case GROTER -> Conditie.Operator.KLEINER;
-            case GROTER_OF_GELIJK -> Conditie.Operator.KLEINER_OF_GELIJK;
-            case EERDER -> Conditie.Operator.LATER;
-            case EERDER_OF_GELIJK -> Conditie.Operator.LATER_OF_GELIJK;
-            case LATER -> Conditie.Operator.EERDER;
-            case LATER_OF_GELIJK -> Conditie.Operator.EERDER_OF_GELIJK;
-        };
     }
 
     /** §13.4.10 verdeling. Two methods have a single forward-rule form: EQUAL SHARES binds the source,
@@ -646,7 +611,7 @@ public final class DrlTranspiler {
             out.append(new Regel(v.naam())
                 .clausule("// onopgelost verdeling ("
                         + (bron == null || doel == null ? "referentie" : methode.name().toLowerCase())
-                        + "): " + v.bronAttribuut() + " over " + v.doelAttribuut())
+                        + "): " + commentVeilig(v.bronAttribuut() + " over " + v.doelAttribuut()))
                 .clausule("eval(true)")
                 .render());
             return;
@@ -818,7 +783,7 @@ public final class DrlTranspiler {
 
         if (subject == null || nieuw == null) {
             out.append(new Regel(oc.naam())
-                .clausule("// onopgelost objectcreatie: " + oc.naam())
+                .clausule("// onopgelost objectcreatie: " + commentVeilig(oc.naam()))
                 .clausule("eval(true)")
                 .render());
             return;
@@ -831,7 +796,7 @@ public final class DrlTranspiler {
         if (rolNaarSubject != null)
             dan.append("    $new.").append(setter(rolNaarSubject)).append("( ").append(SUBJECT).append(" );\n");
         else
-            dan.append("    // onopgelost terugkoppeling naar ").append(subject.naam).append('\n');
+            dan.append("    // onopgelost terugkoppeling naar ").append(commentVeilig(subject.naam)).append('\n');
         dan.append("    insert($new);\n");
 
         // Like the feitcreatie anker, a §8.1.7 far-side guard on the objectcreatie subject hosts its exists/not
@@ -929,7 +894,7 @@ public final class DrlTranspiler {
                 ? conditie(r.voorwaarde(), subject, true) : LoweredConditie.van("");
         String constraint = lc.inline();
         if (subject == null) {
-            rule.clausule("// onopgelost doel-objecttype: " + r.doel().bron()).clausule("eval(true)");
+            rule.clausule("// onopgelost doel-objecttype: " + commentVeilig(r.doel().bron())).clausule("eval(true)");
         } else {
             rule.clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + constraint + " )");
             for (String e : lc.extra()) rule.clausule(e);   // the exists-join(s), after $subject is bound
@@ -961,7 +926,7 @@ public final class DrlTranspiler {
                 valueStr = omrekenWaarde(valueStr, r.waarde().type(), a.type());
             rule.dan("    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( " + valueStr.text() + " )\n    }\n");
         } else {
-            rule.dan("    // onopgelost doel: " + r.doel().bron() + "\n");
+            rule.dan("    // onopgelost doel: " + commentVeilig(r.doel().bron()) + "\n");
         }
         out.append(rule.render());
         // §6.5/§6.6 fout companions are gated by the rule's INLINE constraint PLUS its hoisted join clauses. A
@@ -1269,7 +1234,7 @@ public final class DrlTranspiler {
                 String cast = datumTijd ? "java.time.LocalDateTime" : "java.time.LocalDate";
                 return Frag.from("((" + cast + ") " + stapFn + "(" + d.text() + ", " + n.text() + ", " + glob + ", " + optellen + "))", d, n);
             }
-            String unit = chronoUnit(durExpr.type());
+            String unit = Tijdrekening.chronoUnit(durExpr.type());
             if (unit == null) return Frag.todo("datum-rekenkunde (dagsoort/onbekende tijdseenheid)", b.bron());
             boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
             if (tijdEenheid && !(datumExpr.type() instanceof Datatype.DatumTijd))
@@ -1334,8 +1299,8 @@ public final class DrlTranspiler {
             // §6.9/§13.3.9: a null gedimensioneerd Map (a default-constructed fact) reads as LEEG, not a crash — guard
             // the .get so it does not NPE-abort the consequence (the exec-model's scalarWaarde DimensieCel is already
             // null-safe; this mirrors the value-side GENAVIGEERD root-guard so both back-ends read a null Map as leeg).
-            String cel = map.text(), label = c.labels().get(0).replace("\"", "");
-            return Frag.ok("(" + cel + " == null ? null : (" + cel + ").get(\"" + label + "\"))");
+            String cel = map.text(), label = c.labels().get(0);
+            return Frag.ok("(" + cel + " == null ? null : (" + cel + ").get(" + drlString(label) + "))");
         }
         if (e instanceof Expr.Binair b)
             // §6.2-6.8 arithmetic, shared with the condition side: value getters for the sub-operands, and a
@@ -1504,7 +1469,7 @@ public final class DrlTranspiler {
             return Frag.from(durFn + "(" + van0.text() + ", " + tot0.text() + ", " + glob + ", "
                     + (f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR) + ")", van0, tot0);
         }
-        String unit = chronoUnit(f.type());
+        String unit = Tijdrekening.chronoUnit(f.type());
         if (unit == null) return Frag.todo("tijdsduur-eenheid (dagsoort / onbekende tijdseenheid)", f.bron());
         boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
         Expr eVan = f.argumenten().get(0), eTot = f.argumenten().get(1);
@@ -1526,30 +1491,6 @@ public final class DrlTranspiler {
     private String nulVeilig(String operand) {
         fnImport("rsNul");
         return "rsNul(" + operand + ")";
-    }
-
-    /** Map a tijdsduur's declared unit (its result {@link Datatype}'s eenheid, e.g. TOKA's "jr" or a bare
-     *  "jaar") to a {@link java.time.temporal.ChronoUnit} name. Normalised through the shared plural->singular
-     *  reducer so "jaren"/"jaar"/"jr" all land on YEARS; a kwartaal maps to the pseudo-unit "KWARTAAL"
-     *  (rsDatumReken/rsTijdsduur special-case it as 3×MONTHS — no ChronoUnit.QUARTERS); returns null only for a
-     *  dagsoort or an unrecognised unit, so the caller markers. */
-    private static String chronoUnit(Datatype t) {
-        io.github.yhavinga.regelspraak.model.Eenheid e = t.eenheidOf();
-        if (e == null) return null;
-        return switch (RegelSpraakModel.normaliseerTijdseenheid(e.afkorting())) {
-            case "jaar", "jr"             -> "YEARS";
-            case "maand", "mnd"           -> "MONTHS";
-            case "week", "wk"             -> "WEEKS";
-            case "dag"                    -> "DAYS";
-            case "uur", "u"               -> "HOURS";
-            case "minuut", "min"          -> "MINUTES";
-            case "seconde", "secondes", "sec", "s"     -> "SECONDS";
-            case "milliseconde", "millisecondes", "ms" -> "MILLIS"; // §6.10 spells the plural with -s, which
-            // §3.7 a kwartaal is 3 maanden; java.time has no ChronoUnit.QUARTERS, so it carries a pseudo-unit
-            // "KWARTAAL" that rsDatumReken / rsTijdsduur special-case as 3×MONTHS (a date unit, not a time unit).
-            case "kwartaal", "kwartalen" -> "KWARTAAL";
-            default -> null;   // the -en reducer leaves unchanged; dagsoort / custom -> marker
-        };
     }
 
     /**
@@ -1599,7 +1540,7 @@ public final class DrlTranspiler {
         if (map.marker()) return null;
         fnImport(fn);
         StringJoiner keys = new StringJoiner(", ");
-        for (String label : sel.labels()) keys.add("\"" + label.replace("\"", "") + "\"");
+        for (String label : sel.labels()) keys.add(drlString(label));   // embedded quotes ESCAPED (goal-M2 D9)
         String call = fn + "(" + map.text() + ", java.util.Arrays.asList(" + keys + "))";
         // §5.8.2: an all-empty SOM is a leegwaarde — substitute the declared "of … als die er niet zijn"
         // fallback when present, else leave the helper's null (an empty sum, never a silent 0). MIN/MAX of
@@ -1761,7 +1702,7 @@ public final class DrlTranspiler {
         io.github.yhavinga.regelspraak.model.Eenheid el = tijd.type().eenheidOf(), er = ander.type().eenheidOf();
         if (ander instanceof Expr.AttribuutRef ar && isTemporeelAttribuut(ar)) return null;   // both-temporal (timeline vs timeline) -> marker
         if (el != null && er != null && el.vereistOmrekening(er)) return null;        // cross-unit -> marker (raw-magnitude would be wrong)
-        Integer code = toetsCode(linksTemp ? v.op() : omkeren(v.op()));               // temporal operand on the left (REVERSE, not negate)
+        Integer code = Tijdrekening.toets(linksTemp ? v.op() : Operatoren.omkeren(v.op()));               // temporal operand on the left (REVERSE, not negate)
         if (code == null) return null;                                                // a datum ordering op -> marker
         String getter = temporeelTijdlijnGetter(tijd, subject);
         if (getter == null) return null;                                              // navigated -> marker
@@ -1802,7 +1743,7 @@ public final class DrlTranspiler {
         if (lvF.marker() || rvF.marker()) return null;
         String lv = lvF.text(), rv = rvF.text();
         String[] ov = vergelijkingsOperanden(lv, v.links().type(), rv, v.rechts().type());
-        String volBeide = "(" + lv + " != null && " + rv + " != null && " + ov[0] + " " + drlOp(v.op()) + " " + ov[1] + ")";
+        String volBeide = "(" + lv + " != null && " + rv + " != null && " + ov[0] + " " + Operatoren.symbool(v.op()) + " " + ov[1] + ")";
         if (ordeningOfDatum(v.op())) {
             // §5.7 Tabel 46: a DATUM ordering (eerder/later) with BOTH operands empty-capable (an attr-vs-attr compare,
             // no datum literal) is "fout" when both are empty — NOT the "onwaar" that volBeide renders. The exec
@@ -2110,17 +2051,6 @@ public final class DrlTranspiler {
         return null;
     }
 
-    /** §8.2 {@code rsGeheelPeriode} toets code for a comparison operator, or null for a DATUM ordering (EERDER/LATER)
-     *  — the runtime Segment carries a BigDecimal waarde, so a date-valued whole-period comparison is out of scope. */
-    private static Integer toetsCode(Conditie.Operator op) {
-        return switch (op) {
-            case KLEINER -> 0; case KLEINER_OF_GELIJK -> 1;
-            case GROTER  -> 2; case GROTER_OF_GELIJK  -> 3;
-            case GELIJK  -> 4; case ONGELIJK          -> 5;
-            default -> null;
-        };
-    }
-
     /** §8.2 / §13.4.15.70: the RAW boolean {@code rsGeheelPeriode(timeline, "JAAR"|"MAAND", toets, grens)} call for a
      *  whole-period-qualified predicate (the caller appends {@code == true|false}, NIET flips which), or a marker Frag
      *  when the form is outside the supported set. Supported: a numeric comparison of a temporal attribute vs a scalar
@@ -2144,7 +2074,7 @@ public final class DrlTranspiler {
             boolean crossUnit = el != null && er != null && el.vereistOmrekening(er);
             if (crossUnit && er.exacteHerschaalFactoren(el) == null)
                 return Frag.todo("§8.2 gehele-periodevergelijking met eenheidsomrekening", c.bron());
-            Integer code = toetsCode(linksTemp ? v.op() : omkeren(v.op()));   // put the temporal operand on the left (REVERSE, not negate)
+            Integer code = Tijdrekening.toets(linksTemp ? v.op() : Operatoren.omkeren(v.op()));   // put the temporal operand on the left (REVERSE, not negate)
             if (code == null) return Frag.todo("§8.2 datum-gehele-periodevergelijking", c.bron());
             getter = temporeelTijdlijnGetter(tijd, subject);
             if (getter == null) return Frag.todo("§8.2 navigatie", c.bron());
@@ -2375,7 +2305,7 @@ public final class DrlTranspiler {
             Frag a2 = accumulate((Expr.Functie) v.rechts(), subject, true);
             if (a2 == null || a2.marker()) return aggTerug(mark);
             accumulates.add("eval( " + fnImport("rsAggVergelijk") + "(" + a1.text() + ", "
-                    + fnImport("toBd") + "(" + a2.text() + "), \"" + drlOp(v.op()) + "\") )");
+                    + fnImport("toBd") + "(" + a2.text() + "), \"" + Operatoren.symbool(v.op()) + "\") )");
             return new LoweredConditie("", java.util.List.of(), false);
         }
         Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
@@ -2397,7 +2327,7 @@ public final class DrlTranspiler {
                      && (nav.navigatieRol() != null || nav.objecttype() != subject) && nav.objecttype().heeftLid(nav.attribuut())
                      && nav.type() != null && (nav.type().isNumeriek() || nav.type().isPercentage())
                      && !isTemporeelAttribuut(nav))) return null;
-        Conditie.Operator op = linksAgg ? v.op() : omkeren(v.op());   // orient the aggregation on the LEFT (omkeren(ONGELIJK)=ONGELIJK, != symmetric)
+        Conditie.Operator op = linksAgg ? v.op() : Operatoren.omkeren(v.op());   // orient the aggregation on the LEFT (Operatoren.omkeren(ONGELIJK)=ONGELIJK, != symmetric)
         // Reuse the VALUE-side accumulate lowering: it registers the accumulate CE (count / BigDecimal sum with the §5.8.2
         // empty-sum leegwaarde branch / min·max coerced to BigDecimal) in `accumulates` and returns the RESULT value expr
         // ($accN, or the SOM/min·max count-branch ternary). The comparison then rides an eval AFTER the accumulate (both
@@ -2420,7 +2350,7 @@ public final class DrlTranspiler {
             n = waarde(ander, subject);
             if (n.marker()) return aggTerug(mark);
         }
-        accumulates.add("eval( " + fnImport("rsAggVergelijk") + "(" + agg.text() + ", " + n.text() + ", \"" + drlOp(op) + "\") )");
+        accumulates.add("eval( " + fnImport("rsAggVergelijk") + "(" + agg.text() + ", " + n.text() + ", \"" + Operatoren.symbool(op) + "\") )");
         return new LoweredConditie("", java.util.List.of(), false);
     }
 
@@ -2506,7 +2436,7 @@ public final class DrlTranspiler {
             // §5.1 Tabel 32: a comparison across convertible-but-different units restates
             // the right operand in the left's unit first ("24 mnd > 2 jr", not "24 > 2").
             String[] o = vergelijkingsOperanden(lo.text(), v.links().type(), ro.text(), v.rechts().type());
-            String cmp = o[0] + " " + drlOp(v.op()) + " " + o[1];
+            String cmp = o[0] + " " + Operatoren.symbool(v.op()) + " " + o[1];
             // §5.3 / typeringen Tabel 38: a NON-numeriek "gelijk aan" with BOTH operands empty is "fout"
             // (a foutmelding), NOT "waar" — so as a rule GUARD the condition is not satisfied and the rule
             // must NOT fire. Plain mvel reads "null == null" as true (it would fire), so exclude the
@@ -2644,7 +2574,7 @@ public final class DrlTranspiler {
      *  boolean pattern constraint ({@code Subject( null )} fails to compile, which would sink the
      *  whole DRL). Wrapped in a flagged {@link LoweredConditie#marker} so callers branch on the type. */
     private static String onopgelosteConstraint(String wat, String bron) {
-        return "false /* TODO " + wat + ": " + bron + " */";
+        return "false /* TODO " + commentVeilig(wat + ": " + bron) + " */";
     }
 
     /** §8.1.7 far-side "heeft een &lt;rol&gt;" as a separate when-clause: the subject is satisfied when at least
@@ -2840,59 +2770,35 @@ public final class DrlTranspiler {
         return null;
     }
 
-
-    /** The label of a §13.2.14 enumeratiewaarde literal — its inner text with the delimiting quotes removed —
-     *  or null when {@code waarde} is not a single-quoted enum literal (straight {@code '…'} or typographic
-     *  {@code ’…‘}, matching the ENUM_LITERAL lexer rule). */
-    static String enumLiteralLabel(String waarde) {
-        int n = waarde.length();
-        if (n >= 2 && waarde.charAt(0) == '\'' && waarde.charAt(n - 1) == '\'') return waarde.substring(1, n - 1);
-        if (n >= 2 && waarde.charAt(0) == '’' && waarde.charAt(n - 1) == '‘') return waarde.substring(1, n - 1);
-        return null;
-    }
-
+    /** Render a literal as DRL text — the VALUE comes from the shared {@link Literalen} reader (goal-M2 P2:
+     *  one interpretation for both back-ends), this method only formats it for mvel. */
     private static Frag literal(Expr.Literal lit) {
         Datatype t = lit.type();
-        if (t.isTekst()) return Frag.ok("\"" + lit.waarde().replace("\"", "") + "\"");
-        // §13.2.14 enumeratiewaarde 'X' (typed Onbekend at parse — "which Enumeratie is context-dependent"): an
-        // enumeratie compares by VALUE equality on its label (§8.1.1, only gelijk/ongelijk), so render the label as
-        // a double-quoted string, exactly like a Tekst (the fact field of an enumeratie attribuut is a String).
-        String enumLabel = enumLiteralLabel(lit.waarde());
-        if (enumLabel != null) return Frag.ok("\"" + enumLabel.replace("\"", "") + "\"");
-        if (t instanceof Datatype.Booleaan) return Frag.ok(lit.waarde().toLowerCase().contains("waar")
-                && !lit.waarde().toLowerCase().contains("onwaar") ? "true" : "false");
-        if (t.isDatum()) { // "dd. d-m-yyyy [hh:mm:ss.mmm]"
-            java.util.regex.Matcher d = java.util.regex.Pattern.compile("(\\d{1,2})-(\\d{1,2})-(\\d{4})").matcher(lit.waarde());
-            if (!d.find()) return Frag.todo("datumliteral", lit.waarde());
-            // §13.2.19: emit each component as a DECIMAL int — a raw "08"/"09" splice is an INVALID OCTAL literal
-            // in mvel/Java (LocalDate.of(2024, 09, 08) fails the whole build), where only 01-07 happen to equal
-            // their decimal value. The time components below already go through Integer.parseInt; the date ones did not.
-            String datum = Integer.parseInt(d.group(3)) + ", " + Integer.parseInt(d.group(2)) + ", " + Integer.parseInt(d.group(1));
+        // §13.3.3.4 Tekst / §13.2.14 enumeratiewaarde 'X' (typed Onbekend at parse): both compare by VALUE
+        // equality on the label (§8.1.1), so render the label as a double-quoted string — embedded quotes
+        // ESCAPED, never stripped (goal-M2 D9), so the constraint compares against the REAL label.
+        String label = Literalen.tekstOfEnumLabel(lit);
+        if (label != null) return Frag.ok(drlString(label));
+        if (t instanceof Datatype.Booleaan) return Frag.ok(Literalen.waar(lit.waarde()) ? "true" : "false");
+        if (t.isDatum()) { // "dd. d-m-yyyy [hh:mm:ss.mmm]" — the shared readers parse; the components splice as
+            // DECIMAL ints (a raw "08"/"09" would be an invalid octal literal in mvel/Java, §13.2.19).
             if (t instanceof Datatype.DatumTijd) {
-                // §13.2.21 a timed dedato -> LocalDateTime; the captured millisecondes scale to nanoOfSecond
-                // (x1_000_000), reusing the rsDatumtijdMet convention, so the time-of-day is not dropped.
-                java.util.regex.Matcher tm = java.util.regex.Pattern
-                        .compile("(\\d{1,2}):(\\d{2}):(\\d{2})(?:\\.(\\d{1,3}))?").matcher(lit.waarde());
-                if (tm.find()) {
-                    int nanos = (tm.group(4) == null ? 0 : Integer.parseInt(tm.group(4))) * 1_000_000;
-                    return Frag.ok("java.time.LocalDateTime.of(" + datum + ", " + Integer.parseInt(tm.group(1)) + ", "
-                            + Integer.parseInt(tm.group(2)) + ", " + Integer.parseInt(tm.group(3)) + ", " + nanos + ")");
-                }
+                java.time.LocalDateTime dt = Literalen.parseDatumTijd(lit.waarde());
+                if (dt != null)
+                    return Frag.ok("java.time.LocalDateTime.of(" + dt.getYear() + ", " + dt.getMonthValue() + ", "
+                            + dt.getDayOfMonth() + ", " + dt.getHour() + ", " + dt.getMinute() + ", "
+                            + dt.getSecond() + ", " + dt.getNano() + ")");
             }
-            return Frag.ok("java.time.LocalDate.of(" + datum + ")");
+            java.time.LocalDate d = Literalen.parseDatum(lit.waarde());
+            if (d == null) return Frag.todo("datumliteral", lit.waarde());
+            return Frag.ok("java.time.LocalDate.of(" + d.getYear() + ", " + d.getMonthValue() + ", " + d.getDayOfMonth() + ")");
         }
-        // numeric (possibly "0 €"): the leading number AS A BigDecimal, so arithmetic,
-        // unit scaling (.multiply) and rounding (.setScale) compile in mvel. A §13.2.5 rational
-        // ("4/2", "3/2", "1_1/2") is lowered to its exact value when the quotient terminates, else
-        // to a DECIMAL64 division so it still computes (e.g. 1/3).
-        java.math.BigDecimal[] r = Rationaal.van(lit.waarde());
-        if (r == null) return Frag.todo("literal", lit.waarde());
-        try {
-            return Frag.ok("new java.math.BigDecimal(\"" + r[0].divide(r[1]).toPlainString() + "\")"); // exact
-        } catch (ArithmeticException nietEindig) {
-            return Frag.ok("new java.math.BigDecimal(\"" + r[0].toPlainString() + "\").divide(new java.math.BigDecimal(\""
-                    + r[1].toPlainString() + "\"), java.math.MathContext.DECIMAL64)");
-        }
+        // numeric (possibly "0 €"), incl. a §13.2.5 rational ("4/2", "1_1/2", "1/3"): the shared reader yields
+        // the exact value for a terminating quotient and the DECIMAL64 quotient otherwise — spliced as ONE
+        // BigDecimal constant (the same value mvel's division at DECIMAL64 used to compute).
+        java.math.BigDecimal n = Literalen.getal(lit);
+        if (n == null) return Frag.todo("literal", lit.waarde());
+        return Frag.ok("new java.math.BigDecimal(\"" + n.toPlainString() + "\")");
     }
 
     /** §5.4/§13.4.17.9 reeks van teksten en waarden: an mvel concatenation of the literal chunks (quoted) and the
@@ -3036,17 +2942,6 @@ public final class DrlTranspiler {
         };
     }
 
-    private static String drlOp(Conditie.Operator op) {
-        return switch (op) {
-            case KLEINER, EERDER -> "<";
-            case KLEINER_OF_GELIJK, EERDER_OF_GELIJK -> "<=";
-            case GROTER, LATER -> ">";
-            case GROTER_OF_GELIJK, LATER_OF_GELIJK -> ">=";
-            case GELIJK -> "==";
-            case ONGELIJK -> "!=";
-        };
-    }
-
     private static String javaType(Datatype t) {
         if (t.isPercentage() || t.isNumeriek()) return "java.math.BigDecimal";
         if (t.isTekst() || t instanceof Datatype.Enumeratie) return "String";   // an enumeratiewaarde is stored as its String label
@@ -3056,20 +2951,6 @@ public final class DrlTranspiler {
         return "Object";
     }
 
-    private static String getter(String attribuut) { return "get" + ident(attribuut, true); }
-    private static String setter(String attribuut) { return "set" + ident(attribuut, true); }
-    private static String todo(String wat, String bron) { return "/* TODO " + wat + ": " + bron + " */ null"; }
+    private static String todo(String wat, String bron) { return "/* TODO " + commentVeilig(wat + ": " + bron) + " */ null"; }
 
-    /** A RegelSpraak name → a Java identifier (camel- or Pascal-case over its words). */
-    static String ident(String s, boolean upperFirst) {
-        String[] delen = s.trim().split("[^\\p{L}\\p{N}]+");
-        StringBuilder b = new StringBuilder();
-        for (String d : delen) {
-            if (d.isEmpty()) continue;
-            boolean hoofd = upperFirst || b.length() > 0;
-            b.append(hoofd ? Character.toUpperCase(d.charAt(0)) : Character.toLowerCase(d.charAt(0)));
-            b.append(d.substring(1));
-        }
-        return b.isEmpty() ? "x" : b.toString();
-    }
 }
