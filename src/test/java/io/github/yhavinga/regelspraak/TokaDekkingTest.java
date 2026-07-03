@@ -27,28 +27,21 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 class TokaDekkingTest {
 
-    /** The constructs the back-end honestly does NOT lower today, keyed by manifest sleutel.
-     *  Measured at the coverage-manifest baseline (post-f5cdde7): 19 of 29 constructs functional; markered are
-     *  toka-22/23 (eerste/laatste over genavigeerde datum-tijd-operanden), toka-41/45 (the two
-     *  double-nested compound voorwaarden) and ALL SIX verdelingen toka-32…37 — including
-     *  toka-34 (op volgorde) and toka-36 (naar rato met afronding), which corrects the former
-     *  docs/grammar-divergences.md claim that those two lower on the corpus. */
+    /** The constructs the back-end honestly does NOT lower today, keyed by manifest sleutel. The former
+     *  ten-marker tail (toka-22, toka-41/45, all six verdelingen) was traced to CASUS OMISSIONS — the
+     *  rules reference members the object model never declares ('de treinmiles', the toka-35/37 cap,
+     *  kenmerk 'passagier jonger dan 18 jaar', 'daadwerkelijke datum-tijd van vertrek'); with the
+     *  examples/toka-reconciliatie extensie supplying exactly those members (see grammar-divergences),
+     *  all nine lower and fire. The one honest residual is toka-23: its operands are §11 "Daarbij geldt"
+     *  local variables (a real feature, carded on the frontier) and its A-variable carries the casus's
+     *  own datum-tijd-plus-datum-tijd type quirk (the single expected CasusTest error). */
     private static final Map<String, String> VERWACHT_MARKER = Map.of(
-        "regel: Datum-tijd voor het berekenen van de belasting op basis van afstand", "TODO aggregatie EERSTE",
-        "regel: Bevestigingstijdstip vlucht", "TODO aggregatie LAATSTE",
-        "regel: Recht op Duurzaamheidskorting alternatief", "TODO voorwaarde",
-        "regel: belasting op basis van afstand", "TODO voorwaarde",
-        "verdeling: verdeling treinmiles in gelijke delen", "onopgelost verdeling (gelijke_delen)",
-        "verdeling: verdeling treinmiles op basis van woonregio factor", "onopgelost verdeling (naar_rato)",
-        "verdeling: Verdeling treinmiles op basis van leeftijd en woonregio factor", "onopgelost verdeling (op_volgorde)",
-        "verdeling: verdeling treinmiles op basis van woonregio factor en met maximum waarde", "onopgelost verdeling (complex)",
-        "verdeling: verdeling treinmiles op basis van woonregio factor met afronding", "onopgelost verdeling (naar_rato)",
-        "verdeling: Verdeling treinmiles op basis van leeftijd, woonregio factor, met maximum waarde en afronding", "onopgelost verdeling (complex)");
+        "regel: Bevestigingstijdstip vlucht", "TODO aggregatie LAATSTE");
 
-    @Test void toka_scorebord_19_van_29_lowered_en_geen_stille_markers() throws IOException {
+    @Test void toka_scorebord_28_van_29_lowered_en_geen_stille_markers() throws IOException {
         Path dir = Path.of("examples/toka");
         assumeTrue(Files.isDirectory(dir), "TOKA fixtures absent (run tools/extract_corpus.py)");
-        RegelSpraakModel m = Resolver.resolve(lees(dir));
+        RegelSpraakModel m = Resolver.resolve(RECONCILIATIE + lees(dir));
         DrlTranspiler t = DrlTranspiler.build(m);
 
         assertEquals(29, t.dekking().size(), () -> "TOKA-constructaantal verschoven: " + t.dekking());
@@ -66,7 +59,7 @@ class TokaDekkingTest {
             }
         }
         long lowered = t.dekking().stream().filter(Dekking::lowered).count();
-        assertEquals(19, lowered, () -> "TOKA-scorebord verschoven: " + lowered + "/29 functioneel");
+        assertEquals(28, lowered, () -> "TOKA-scorebord verschoven: " + lowered + "/29 functioneel");
 
         // geen stille inertie — elke MARKER heeft een dekking-WARNING op het model
         for (Dekking d : t.dekking()) {
@@ -100,6 +93,14 @@ class TokaDekkingTest {
                 """);
         assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("tijdseenheid")),
                 () -> "datum plus km moet een tijdseenheid-ERROR geven (Tabel 2/5 scenario 2), kreeg: " + m.errors());
+    }
+
+    /** The examples/toka-reconciliatie supplement: the four members the casus's own rules reference but
+     *  its object model never declares (see that directory's README + grammar-divergences). */
+    static final String RECONCILIATIE;
+    static {
+        try { RECONCILIATIE = Files.readString(Path.of("examples/toka-reconciliatie/casus-omissies.rs")) + "\n"; }
+        catch (IOException e) { throw new UncheckedIOException(e); }
     }
 
     private static String lees(Path dir) throws IOException {

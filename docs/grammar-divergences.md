@@ -1705,3 +1705,21 @@ literal table reading: a UNITLESS operand, and a §5.1.4 TEMPORAL attribute with
 §7.1 worked example ("de belastingvermindering per maand" of Domein Bedrag) totals an attribute whose
 per-tijdseenheid dimension lives in the timeline declaration ("voor elke maand"), not in a rate unit; rejecting
 that shape would reject the spec's own canonical example (with or without a currency unit on the Bedrag).
+
+## TOKA casus omissions — the rules reference four members the object model never declares (reconciled)
+
+The TOKA casus's own rules reference members its object model omits, and the omissions are the casus DOCUMENT's
+(the v2.3.0 specificatie is leading; the §9.7 verdeling examples that use these references are normative spec
+text): the six verdelingen distribute into `de treinmiles` of the passagiers (declared is only `de treinmiles op
+basis van evenredige verdeling`); the toka-35/37 maximum-bullet reads `maximaal aantal te ontvangen treinmiles`
+(declared is `de maximaal te ontvangen treinmiles bij evenredige verdeling volgens rangorde`); toka-41/45 test
+the kenmerk `passagier jonger dan 18 jaar` (only the 18-24 / 25-64 / 65+ brackets exist); toka-22 reads
+`de daadwerkelijke datum-tijd van vertrek` (only the `verwachte` twin exists). Every one of the former ten
+scoreboard markers reduced to exactly these unresolved references — the distribution/aggregation/compound
+machinery lowers and fires as soon as they bind (empirically isolated per rule). Reconciliation:
+`examples/toka-reconciliatie/casus-omissies.rs` supplements precisely these members via the casus's own
+Extensie construct. It deliberately lives OUTSIDE `examples/toka/` (which stays the faithful spec extraction
+that `make verify-corpus` parses); the TOKA tests load it additionally. Scoreboard effect: 19/29 → 28/29
+lowered. The honest residual is toka-23, whose operands are §11 "Daarbij geldt" local variables (a real
+frontier feature) and whose A-variable carries the casus's own `datum-tijd plus datum-tijd` type quirk — the
+single expected CasusTest error, unchanged.
