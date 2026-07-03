@@ -1153,10 +1153,82 @@ final class ExpressieBouwer {
         return out;
     }
 
+    // ---------------- §13.2.12 rangtelwoord (§5.5.3) ----------------
+    /** The 1-based mention position a §13.2.12 rangtelwoord denotes, or -1 for "laatstgenoemde". */
+    private static int rangtelwoordPositie(RangtelwoordContext r) {
+        if (r.EERSTGENOEMDE() != null) return 1;
+        if (r.ALS_TWEEDE_GENOEMDE() != null) return 2;
+        if (r.ALS_DERDE_GENOEMDE() != null) return 3;
+        if (r.ALS_VIERDE_GENOEMDE() != null) return 4;
+        if (r.LAATSTGENOEMDE() != null) return -1;
+        return r.NUMBER() != null ? Integer.parseInt(r.NUMBER().getText()) : 1;   // "als <N>e genoemde"
+    }
+
+    /** The subject reference (onderwerpVerwijzing) of a reference's keten that carries a rangtelwoord, or null. */
+    private OnderwerpVerwijzingContext verwijzingMetRangtelwoord(OnderwerpContext o) {
+        return o == null ? null : verwijzingMetRangtelwoord(o.onderwerpKeten());
+    }
+    private OnderwerpVerwijzingContext verwijzingMetRangtelwoord(OnderwerpKetenContext k) {
+        if (k == null) return null;
+        if (k.onderwerpVerwijzing() != null)
+            return k.onderwerpVerwijzing().rangtelwoord() != null ? k.onderwerpVerwijzing() : null;
+        return verwijzingMetRangtelwoord(k.onderwerpKeten());
+    }
+
+    /** §5.5.3: how many universele onderwerpen ("een &lt;naam&gt;") the enclosing rule binds under {@code naam} —
+     *  the mentions a rangtelwoord indexes ("de plaats van het bedoelde onderwerp in de regel"). A definite
+     *  back-reference is a REFERENCE to a binding, not a new one, so only the indefinite form counts. */
+    private int telBindingen(ParserRuleContext ref, String naam) {
+        ParserRuleContext p = ref;
+        while (p != null && !(p instanceof RegelSpraakRegelContext)) p = p.getParent();
+        return p == null ? 0 : telUniverseel(p, naam.trim().replaceAll("\\s+", " "));
+    }
+    private int telUniverseel(org.antlr.v4.runtime.tree.ParseTree t, String naam) {
+        int n = t instanceof UniverseelOnderwerpContext u && u.kaleNaam() != null
+                && src(u.kaleNaam()).trim().replaceAll("\\s+", " ").equalsIgnoreCase(naam) ? 1 : 0;
+        for (int i = 0; i < t.getChildCount(); i++) n += telUniverseel(t.getChild(i), naam);
+        return n;
+    }
+
+    /** §5.5.3/§13.2.12 consume a rangtelwoord on a reference to the onderwerp {@code naam}. Returns null when
+     *  the reference may resolve as the BARE form — the ordinal trivially selects the rule's single (or sole
+     *  implied) binding — or the Expr that replaces it:
+     *  - positie beyond the rule's same-named bindings: ERROR (the rule does not name that many onderwerpen);
+     *  - two or more same-named bindings: the genuinely multi-bound case needs one pattern variable PER
+     *    mention, which the single-subject rule IR does not carry — WARNING + honest marker, never a silent
+     *    alias of one binding (which is what dropping the ordinal used to mean);
+     *  - eerstgenoemde/laatstgenoemde/positie-1 over at most one binding: the bare resolution IS the answer. */
+    private Expr keurRangtelwoord(RangtelwoordContext r, String naam, ParserRuleContext ref, String bron) {
+        if (r == null) return null;
+        int positie = rangtelwoordPositie(r);
+        int bindingen = telBindingen(ref, naam);
+        if (positie > Math.max(bindingen, 1)) {
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
+                    "rangtelwoord: de regel noemt geen " + positie + " onderwerpen '" + naam + "' (§5.5.3)",
+                    r.getStart().getLine()));
+            return onopgelost(bron);
+        }
+        if (bindingen >= 2) {
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
+                    "rangtelwoord: de regel bindt " + bindingen + " onderwerpen '" + naam
+                    + "'; een verwijzing per vermelding (§5.5.3) wordt nog niet ondersteund — de verwijzing blijft een marker",
+                    r.getStart().getLine()));
+            return onopgelost(bron);
+        }
+        return null;
+    }
+
     // ---------------- references ----------------
     /** `<attribuut> van <onderwerp>`: bind the attribute's datatype via the subject's object type. */
     Expr bouwAttribuut(AttribuutVanOnderwerpContext a) {
         String bron = src(a);
+        if (a != null && a.attribuutMetLidwoord() == null && a.rangtelwoord() != null && a.kaleNaam() != null) {
+            // §13.4.2.9 the ordinal-ATTRIBUTE form "de <rangtelwoord> <attribuutnaam> van <onderwerp>". The
+            // eerstgenoemde/laatstgenoemde/1st reading over a single mention is the bare attribute read; a
+            // deeper position needs per-mention binding (§5.5.3) and stays an honest marker like the subject form.
+            Expr geblokkeerd = keurRangtelwoord(a.rangtelwoord(), src(a.kaleNaam()), a, bron);
+            return geblokkeerd != null ? geblokkeerd : attribuutRef(src(a.kaleNaam()), a.onderwerp(), bron);
+        }
         if (a == null || a.attribuutMetLidwoord() == null || a.attribuutMetLidwoord().kaleNaam() == null)
             return onopgelost(a);
         String attr = src(a.attribuutMetLidwoord().kaleNaam());
@@ -1195,6 +1267,15 @@ final class ExpressieBouwer {
      *  {@link #bouwAttribuut} and {@link #onderwerpAlsWaarde}. */
     private Expr attribuutRef(String attr, OnderwerpContext onderwerp, String bron) {
         String onderwerpBron = onderwerp != null ? src(onderwerp) : "";
+        // §13.4.1.3/§5.5.3 a rangtelwoord on the SUBJECT reference ("de bijdrage van de als tweede genoemde
+        // passagier"): consume the ordinal — the bare resolution when it selects the rule's single binding,
+        // an ERROR/marker otherwise (keurRangtelwoord). Never silently dropped (the pre-consumption behavior
+        // aliased every mention to one binding).
+        OnderwerpVerwijzingContext ov = verwijzingMetRangtelwoord(onderwerp);
+        if (ov != null) {
+            Expr geblokkeerd = keurRangtelwoord(ov.rangtelwoord(), src(ov.kaleNaam()), ov, bron);
+            if (geblokkeerd != null) return geblokkeerd;
+        }
         Objecttype ot = resolveOnderwerp(onderwerp);
         // The role the author wrote to reach `ot` (the noun of a DEFINITE reference or a
         // possessive, when it names a feittype role) — threaded so the transpiler

@@ -1815,3 +1815,28 @@ Absolute pins: PHASE_STARTPUNT (anchored walls on the 15th → 26/19 dg across a
 global-shifted datum-arithmetic anchor → walls on the 1st → 12/29/4 dg; leeg anchor → empty), PHASE_STARTPUNT_FOUT
 (leeg anchor flags exactly the unanchored subject in both back-ends), StartpuntTest (resolver diagnostics + DRL
 text: @watch on the anchor, rsAantalDagenInVanaf, the companion, the no-silent-calendar marker).
+
+## §13.2.12 rangtelwoord — consumed as mention-position selection; multi-binding stays an honest marker
+
+§5.5.3 defines the ordinal ("de eerstgenoemde / als tweede genoemde / als <N>e genoemde / laatstgenoemde <X>")
+as selecting an onderwerp by "de plaats van het bedoelde onderwerp in de regel" — a MENTION position within one
+rule, not a runtime index into a to-many relation. The resolver now CONSUMES it at both grammar sites (the
+§13.4.1.3 subject reference and the §13.4.2.9 ordinal-attribute branch of attribuutVanOnderwerp, which
+previously fell through to a silent onopgelost):
+
+- **Mention counting**: the bindings an ordinal indexes are the rule's INDEFINITE mentions ("een <X>" —
+  universeelOnderwerp) of that name; a definite back-reference is a reference to a binding, not a new one.
+- **Single (or sole implied) binding**: eerstgenoemde / laatstgenoemde / positie 1 resolve to the BARE
+  reference — the ordinal trivially selects the one binding, and the reference FIRES (pinned: the eigen-read
+  DRL is marker-free, both the subject form and the ordinal-attribute form).
+- **Position beyond the rule's mentions**: ERROR (`rangtelwoord: de regel noemt geen N onderwerpen 'X'`) — the
+  reference is not resolvable in any reading.
+- **Two or more same-named bindings**: the genuinely multi-bound rule (e.g. a feitcreatie between two
+  passagiers) needs one pattern variable PER mention, which the single-subject rule IR does not carry —
+  WARNING + honest marker in BOTH back-ends. Before this change the ordinal was silently DROPPED, so every
+  same-named mention aliased to the one resolved binding: a latent silent-wrong that is now visible.
+  Per-mention binding is the documented residual (no corpus program and only one truncated spec fragment,
+  spec-antlr-06, use the construct at all).
+
+Pinned by RangtelwoordTest (bare resolution fires; positie-beyond ERROR incl. the numeric "als 6e genoemde"
+form; multi-binding WARNING + marker; the ordinal-attribute form resolves).
