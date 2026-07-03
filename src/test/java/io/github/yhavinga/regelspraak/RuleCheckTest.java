@@ -1762,6 +1762,66 @@ class RuleCheckTest {
                 () -> "een expliciet afgeronde init hoort te resolven (§6.1.3): " + md.errors());
     }
 
+    @Test void gemengde_datum_precisie_in_gelijk_en_toekenning_wordt_gemeld() {
+        // A Datum-in-dagen vs Datum-en-tijd mix in gelijk/ongelijk or toekenning used to pass the family
+        // check silently: the assignment lowered to a type-broken setter (a LocalDateTime into a LocalDate
+        // property) and the comparison could never be true. Both now ERROR (chosen strictness — the spec's
+        // Tabel 36/61 model one Datum-tijd datatype; see grammar-divergences). Same precision stays clean;
+        // eerder/later stays precision-free per Tabellen 45-52.
+        String hdr = """
+            Objecttype de Ding
+                de reisdatum Datum in dagen;
+                de peildatum Datum in dagen;
+                de moment Datum en tijd in millisecondes;
+                is ok kenmerk (bijvoeglijk);
+            """;
+        RegelSpraakModel ma = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    De reisdatum van een Ding moet gesteld worden op de moment van een Ding.
+            """);
+        assertTrue(ma.errors().stream().anyMatch(d -> d.message().contains("tijd-precisie")),
+                () -> "een gemengde-precisie toekenning moet melden, kreeg: " + ma.errors());
+        RegelSpraakModel mb = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    Een Ding is ok indien de reisdatum van een Ding gelijk is aan de moment van een Ding.
+            """);
+        assertTrue(mb.errors().stream().anyMatch(d -> d.message().contains("tijd-precisie")),
+                () -> "een gemengde-precisie gelijk moet melden, kreeg: " + mb.errors());
+        RegelSpraakModel mc = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    Een Ding is ok indien de reisdatum van een Ding gelijk is aan de peildatum van een Ding.
+            """);
+        assertTrue(mc.errors().isEmpty(), () -> "zelfde precisie hoort te resolven: " + mc.errors());
+        RegelSpraakModel md2 = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    Een Ding is ok indien de reisdatum van een Ding eerder is dan de moment van een Ding.
+            """);
+        assertTrue(md2.errors().isEmpty(),
+                () -> "eerder/later blijft precisie-vrij (Tabellen 45-52): " + md2.errors());
+    }
+
+    @Test void elfproef_op_gehele_rekenkunde_geen_fout() {
+        // §5.13 Tabel 55 over an integral SUM: geheel + geheel is geheel, so the elfproef gate must not
+        // falsely reject whole-number arithmetic (the paasdag-shaped geheel-erasure, fixed at the root).
+        String src = """
+            Objecttype de Ding
+                het deel1 Numeriek (geheel getal);
+                het deel2 Numeriek (geheel getal);
+                is ok kenmerk (bijvoeglijk);
+            Regel r
+                geldig altijd
+                    Een Ding is ok
+                    indien het deel1 van een Ding plus het deel2 van een Ding aan de elfproef voldoet.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(),
+                () -> "geheel + geheel moet de elfproef-gate passeren: " + m.errors());
+    }
+
     @Test void gehele_periode_gekwalificeerde_kenmerk_subselectie_wordt_gemarkeerd_niet_stil_gedropt() {
         // §8.2: a "(niet) gedurende de/het gehele <periode>" whole-period qualifier on a kenmerk SUBSELECTIE is not yet
         // lowered onto the accumulate source. The resolver must MARKER it rather than SILENTLY binding a static kenmerk

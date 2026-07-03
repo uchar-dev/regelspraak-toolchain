@@ -44,6 +44,42 @@ class TyperingTest {
         var r = Typering.reken(BinOp.PLUS, datum(), num("kerstdagen", null), false, true);
         assertTrue(r.ok()); assertTrue(r.type().isDatum());
     }
+
+    static Datatype datumTijd() { return new Datatype.DatumTijd(); }
+
+    // Datum-vs-DatumTijd precisie in gelijk/ongelijk/toekenning — a chosen strictness (see
+    // grammar-divergences): a mixed toekenning is a type-broken setter, a mixed gelijk never true.
+    @Test void gelijk_gemengde_tijd_precisie_fout() {
+        var r = Typering.vergelijk(CmpOp.GELIJK, datum(), datumTijd());
+        assertFalse(r.ok()); assertTrue(r.fout().contains("tijd-precisie"), r::fout);
+        assertFalse(Typering.vergelijk(CmpOp.ONGELIJK, datumTijd(), datum()).ok());
+        assertTrue(Typering.vergelijk(CmpOp.GELIJK, datum(), datum()).ok());
+        assertTrue(Typering.vergelijk(CmpOp.GELIJK, datumTijd(), datumTijd()).ok());
+        // the ordering comparisons stay precision-free (Tabellen 45-52 state no restriction)
+        assertTrue(Typering.vergelijk(CmpOp.EERDER, datum(), datumTijd()).ok());
+    }
+    @Test void toekenning_gemengde_tijd_precisie_fout() {
+        assertNotNull(Typering.toekenning(datum(), datumTijd()));
+        assertNotNull(Typering.toekenning(datumTijd(), datum()));
+        assertNull(Typering.toekenning(datum(), datum()));
+        assertNull(Typering.toekenning(datumTijd(), datumTijd()));
+    }
+
+    // §4.1/§4.2/§4.3: geheel ± geheel keeps geheel-ness (the sum of integers is an integer), so a
+    // geheel-demanding gate (§5.13 elfproef) admits whole-number arithmetic; a decimal or unbounded
+    // "getal" operand still drops it.
+    @Test void plus_geheel_en_geheel_blijft_geheel() {
+        var r = Typering.reken(BinOp.PLUS, num(), num());
+        assertTrue(r.ok());
+        assertTrue(r.type() instanceof Datatype.Numeriek n && n.geheel(),
+                () -> "geheel + geheel moet geheel blijven, kreeg " + r.type());
+        assertTrue(Typering.predicaat(UnairePred.ELFPROEF, r.type()).ok(),
+                "de elfproef moet een gehele som toelaten (Tabel 55)");
+        Datatype tweeDec = new Datatype.Numeriek(false, 2, Teken.ONBEPAALD, null);
+        Datatype onbeperkt = new Datatype.Numeriek(false, 0, Teken.ONBEPAALD, null);  // form (c) "getal"
+        assertFalse(Typering.reken(BinOp.MIN, num(), tweeDec).type() instanceof Datatype.Numeriek n2 && n2.geheel());
+        assertFalse(Typering.reken(BinOp.PLUS, num(), onbeperkt).type() instanceof Datatype.Numeriek n3 && n3.geheel());
+    }
     @Test void macht_met_eenheid_fout() {                    // §4.7: no units allowed
         assertFalse(Typering.reken(BinOp.TOT_DE_MACHT, num("km", "afstand"), num()).ok());
     }

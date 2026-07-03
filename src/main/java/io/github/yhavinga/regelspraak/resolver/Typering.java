@@ -114,7 +114,17 @@ public final class Typering {
             return Resultaat.fout("operator '" + op + "' vereist numerieke operanden, kreeg " + l.naam() + " en " + r.naam());
         String unitFout = eenhedenCompatibel(l, r, op);
         if (unitFout != null) return Resultaat.fout(unitFout);
-        return Resultaat.ok(new Datatype.Numeriek(false, maxDec(l, r), Datatype.Teken.ONBEPAALD, l.eenheidOf()));
+        // §4.1/§4.2/§4.3 (plus/min/verminderd met — the only callers): geheel ± geheel IS geheel, so the
+        // result keeps geheel-ness instead of erasing it — a geheel-demanding gate downstream (§5.13
+        // elfproef, §4.19 paasdag, min/max alleGeheel) must not falsely reject whole-number arithmetic.
+        // An unbounded "getal" operand (geheel=false, dec=0) correctly yields a non-geheel result.
+        // decimalen stays maxDec per Tabellen 4/7/10; §6.1.2 checks read decimalen(), never geheel().
+        return Resultaat.ok(new Datatype.Numeriek(geheelVan(l) && geheelVan(r), maxDec(l, r), Datatype.Teken.ONBEPAALD, l.eenheidOf()));
+    }
+
+    private static boolean geheelVan(Datatype t) {
+        return t instanceof Datatype.Numeriek n ? n.geheel()
+             : t instanceof Datatype.Percentage p && p.geheel();
     }
 
     // -------- §5 comparison (result is always Boolean) --------
@@ -127,6 +137,9 @@ public final class Typering {
                 String u = eenhedenCompatibel(l, r, "vergelijking");
                 yield u != null ? Resultaat.fout(u) : Resultaat.ok(new Datatype.Booleaan());
             }
+            // The ordering comparisons deliberately do NOT require equal tijd-precisie: Tabellen 45-52 list
+            // only "Datum-tijd" operands with no precision restriction (unlike tijdsduur/eerste/laatste,
+            // whose prose demands "dezelfde tijd-precisie") — the asymmetry is the spec's, kept as-is.
             case EERDER, EERDER_OF_GELIJK, LATER, LATER_OF_GELIJK -> {
                 if (!l.isDatum() || !r.isDatum())
                     yield Resultaat.fout("eerder/later vereist datum-operanden, kreeg " + l.naam() + " en " + r.naam());
@@ -135,6 +148,8 @@ public final class Typering {
             case GELIJK, ONGELIJK -> {
                 if (!zelfdeFamilie(l, r))
                     yield Resultaat.fout("gelijk/ongelijk vereist operanden van hetzelfde datatype, kreeg " + l.naam() + " en " + r.naam());
+                String p = datumPrecisieFout(l, r, "gelijk/ongelijk vereist");
+                if (p != null) yield Resultaat.fout(p);
                 if (l.isGetalachtig()) {
                     String u = eenhedenCompatibel(l, r, "gelijk");
                     if (u != null) yield Resultaat.fout(u);
@@ -241,6 +256,8 @@ public final class Typering {
         if (doel.isOnbekend() || waarde.isOnbekend()) return null;
         if (!zelfdeFamilie(doel, waarde))
             return "kan een waarde van type " + waarde.naam() + " niet toekennen aan een " + doel.naam();
+        String p = datumPrecisieFout(doel, waarde, "toekenning vereist");
+        if (p != null) return p;
         if (!doel.isGetalachtig()) return null;
         String eenheidFout = eenhedenCompatibel(doel, waarde, "toekenning");
         if (eenheidFout != null) return eenheidFout;
@@ -339,6 +356,19 @@ public final class Typering {
         if (a.isPercentage() && b.isPercentage()) return true;
         if (a.isDatum() && b.isDatum()) return true;
         return a.getClass().equals(b.getClass());
+    }
+
+    /** Mixed tijd-precisie (Datum-in-dagen vs Datum-en-tijd) in gelijk/ongelijk/toekenning — a CHOSEN
+     *  strictness, not a table fact: Tabel 36/61 rij 4 list only "Datum-tijd" with no precision split,
+     *  but a mixed toekenning generates a type-broken setter (a LocalDateTime into a LocalDate property)
+     *  and a mixed gelijk compares values that can never be equal — both silently-dead outcomes. The
+     *  language's own conversion forms are the escape hatch (documented in grammar-divergences). The
+     *  precision test is the same getClass() equality tijdsduur/eerste/laatste already use. */
+    private static String datumPrecisieFout(Datatype a, Datatype b, String wat) {
+        if (a.isDatum() && b.isDatum() && !a.getClass().equals(b.getClass()))
+            return wat + " dezelfde tijd-precisie, kreeg " + a.naam() + " en " + b.naam()
+                    + "; converteer expliciet (bijv. 'de datum met jaar, maand en dag uit …')";
+        return null;
     }
 
     /** Unit rule (§4 note): both unitless, or both present and inter-convertible. {@code waar} is the

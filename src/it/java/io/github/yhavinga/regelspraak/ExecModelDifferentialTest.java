@@ -5985,14 +5985,14 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
-    /** §5.3 Tabel 36 a Datum-in-dagen attribute GELIJK a DATUM-EN-TIJD literal is a type mismatch — the exec datum-equality
-     *  branch requires a DatumInDagen literal RHS, so it SKIPS (honest) rather than lossily extracting the date part and
-     *  mis-firing. Regression lock for the RHS-literal DatumInDagen gate (the model must not fire a mixed-type comparison). */
-    @Test void mixed_datumindagen_vs_datumtijd_literal_skips_no_lossy_fire() {
+    /** §5.3 a Datum-in-dagen attribute GELIJK a DATUM-EN-TIJD literal is a type mismatch. Formerly it resolved
+     *  clean and only the exec back-end skipped it honestly (the RHS-literal DatumInDagen gate); the resolver
+     *  now catches the mixed tijd-precisie at resolve time — the author gets a diagnostic instead of a
+     *  silently skipped rule. The no-lossy-fire property is thereby enforced upstream of both back-ends. */
+    @Test void mixed_datumindagen_vs_datumtijd_literal_is_een_resolver_fout() {
         RegelSpraakModel m = Resolver.resolve(MIXED_DATUMLIT_SRC);
-        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
-        ExecModelTranspiler em = ExecModelTranspiler.build(m);
-        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet de gemengde datum/datum-tijd vergelijking OVERSLAAN (niet lossy mis-vuren), kreeg: " + em.overgeslagen());
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("tijd-precisie")),
+                () -> "een gemengde datum/datum-tijd gelijk moet een tijd-precisie-fout geven, kreeg: " + m.errors());
     }
     /** Regression: the exec model used to INFINITE-LOOP (hang) when a NAVIGATED-comparison rule was co-resident with a
      *  second modify-rule over the same subject (drools.update ping-pong; NO_LOOP blocks only self). The idempotent

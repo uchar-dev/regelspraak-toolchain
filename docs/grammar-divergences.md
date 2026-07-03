@@ -1663,3 +1663,17 @@ overwrites. Without the guard both rules fired unconditionally and the final val
 order. A pre-filled doel (a value supplied with the facts) is likewise left standing. The guard applies to the
 initialisatie resultaatdeel only; gelijkstelling/berekening stay unguarded. Pinned by a DRL-text test, a
 DRL firing test under both declaration orders, and differential fixtures asserting the absolute values.
+
+## §5.3 / §6.1 — mixed Datum-in-dagen vs Datum-en-tijd in gelijk/ongelijk/toekenning is an ERROR (chosen strictness)
+
+Tabel 36 rij 4 (gelijk) and Tabel 61 rij 4 (toekenning) list only "Datum-tijd" and state NO tijd-precisie
+requirement — the spec's precision-match prose exists only for tijdsduur and eerste/laatste (§4.14-§4.17,
+"dezelfde tijd-precisie"). The resolver nevertheless flags a mixed Datum-in-dagen/Datum-en-tijd operand pair in
+gelijk/ongelijk and toekenning as an ERROR, because both silently-dead outcomes are worse than a diagnostic: the
+mixed toekenning lowers to a type-broken setter (a LocalDateTime into a LocalDate bean property) and the mixed
+gelijk compares values that can never be equal (a dead rule). The message points at the language's own conversion
+forms ("de datum met jaar, maand en dag uit …" rebuilds a day-precision date). The ORDERING comparisons
+(eerder/later, Tabellen 45-52) deliberately stay precision-free — those tables state no restriction and a
+cross-precision ordering is well-defined; the asymmetry is the spec's and is kept. This also upgraded the
+differential fixture "mixed datum/datum-tijd literal": formerly the exec back-end skipped it honestly at
+transpile time; the resolver now reports it at authoring time.
