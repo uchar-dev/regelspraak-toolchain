@@ -8,6 +8,7 @@ import io.github.yhavinga.regelspraak.model.Rationaal;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
+import io.github.yhavinga.regelspraak.transpiler.kern.Dagsoorten;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dekking;
 
 import java.util.ArrayList;
@@ -41,12 +42,21 @@ public final class DrlTranspiler {
     // per-rule: accumulate patterns hoisted out of the value into the "when"
     private List<String> accumulates = new ArrayList<>();
     private int accCount = 0;
-    /** DRL `function` definitions a rule needed (name -> body), injected once after the header.
-     *  Only the helpers actually used are emitted, so a model with no dimensieselectie produces
-     *  byte-identical DRL to before. */
-    private final java.util.LinkedHashMap<String, String> hulpFuncties = new java.util.LinkedHashMap<>();
+    /** The {@link io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime} static helpers the rules called (method
+     *  names), emitted once after the fact imports as {@code import function …RegelSpraakRuntime.<naam>;}
+     *  lines — goal-M1 D1: the generated DRL carries NO {@code function} bodies; the ONE rs* implementation
+     *  is the runtime (which must therefore be on the DRL-compiling classpath, see docs/ENGINE.md). Only the
+     *  helpers actually used are imported, sorted for stable output. */
+    private final java.util.TreeSet<String> runtimeImports = new java.util.TreeSet<>();
+    /** §9.8 dagsoort predicates the rules referenced: DRL global name ({@code rsDagsoort_<Naam>}) -> the
+     *  predicate compiled by the SHARED {@link Dagsoorten} compiler. Declared as
+     *  {@code global java.util.function.Predicate rsDagsoort_<Naam>;} after the parameter globals; a session
+     *  builder must supply them from {@link #dagsoortGlobalen()} — the analog of the parameter globals. */
+    private final java.util.LinkedHashMap<String, java.util.function.Predicate<java.time.LocalDate>> dagsoortGlobalen
+            = new java.util.LinkedHashMap<>();
+    private final Dagsoorten dagsoorten;
 
-    public DrlTranspiler(RegelSpraakModel model) { this.model = model; }
+    public DrlTranspiler(RegelSpraakModel model) { this.model = model; this.dagsoorten = new Dagsoorten(model); }
 
     public static String transpile(RegelSpraakModel model) { return new DrlTranspiler(model).run(); }
 
@@ -61,6 +71,15 @@ public final class DrlTranspiler {
     private final List<Dekking> dekking = new ArrayList<>();
     public String drl() { return drl0; }
     public List<Dekking> dekking() { return dekking; }
+    /** The §9.8 dagsoort predicates the emitted DRL declares as globals (name -> predicate): a session builder
+     *  must {@code setGlobal} each before firing — exactly like the parameter globals it already supplies. */
+    public java.util.Map<String, java.util.function.Predicate<java.time.LocalDate>> dagsoortGlobalen() {
+        return java.util.Collections.unmodifiableMap(dagsoortGlobalen);
+    }
+
+    /** Record a {@link io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime} helper as used — it surfaces as one
+     *  header {@code import function} line — and return its name for call-site splicing. Idempotent. */
+    private String fnImport(String naam) { runtimeImports.add(naam); return naam; }
 
     private String run() {
         out.append("package io.github.yhavinga.regelspraak.generated;\n\n");
@@ -68,6 +87,7 @@ public final class DrlTranspiler {
         for (Objecttype ot : model.objecttypen.values())
             out.append("import ").append(FACT_PACKAGE).append('.').append(ident(ot.naam, true)).append(";\n");
         if (!model.objecttypen.isEmpty()) out.append('\n');
+        int naImports = out.length();   // the runtime `import function` lines (if any) are spliced in here
         // Parameters become globals the runtime supplies. A §13.3.6 TEMPORAL parameter ("voor elk jaar") supplies a
         // timeline (a List<Segment>) rather than a scalar — only a §7.3.2 tijdsevenredig base reads it (any scalar use
         // markers in waarde()).
@@ -86,7 +106,7 @@ public final class DrlTranspiler {
                 || model.uniciteitUnies.stream().anyMatch(u -> tijdgebondenGeldigheid(u.geldigheid()))
                 || model.feitCreaties.stream().anyMatch(f -> tijdgebondenGeldigheid(f.geldigheid()));
         if (tijdgebonden) out.append("global java.time.LocalDate rekendatum;\n\n");
-        int naHeader = out.length();   // helper functions (if any) are spliced in here, after the header
+        int naHeader = out.length();   // dagsoort-predicate globals (if any) are spliced in here, after the header
 
         for (ResolvedRegel r : model.resolvedRegels) meet("regel", r.naam(), () -> regel(r));
         for (io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc : model.objectCreaties) meet("objectcreatie", oc.naam(), () -> objectCreatie(oc));
@@ -95,8 +115,24 @@ public final class DrlTranspiler {
         for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteit u : model.uniciteiten) meet("uniciteit", u.naam(), () -> uniciteit(u));
         for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie u : model.uniciteitUnies) meet("uniciteit-unie", u.naam(), () -> uniciteitUnie(u));
         for (io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie f : model.feitCreaties) meet("feitcreatie", f.naam(), () -> feitCreatie(f));
-        if (!hulpFuncties.isEmpty())
-            out.insert(naHeader, String.join("", hulpFuncties.values()));
+        // Splice the deferred header blocks BACK TO FRONT so the earlier offset stays valid.
+        if (!dagsoortGlobalen.isEmpty()) {
+            StringBuilder g = new StringBuilder();
+            for (String naam : dagsoortGlobalen.keySet())
+                g.append("global java.util.function.Predicate ").append(naam).append(";\n");
+            out.insert(naHeader, g.append('\n'));
+        }
+        if (!runtimeImports.isEmpty()) {
+            StringBuilder imp = new StringBuilder();
+            // The tijdlijn helpers construct Segments via a `Segment.class` argument at their call sites; the
+            // fact class is imported iff the emitted text references it — DERIVED from the output, so a new
+            // helper call site can never forget to register the import separately.
+            if (out.indexOf("Segment.class") >= 0)
+                imp.append("import ").append(FACT_PACKAGE).append(".Segment;\n");
+            for (String fn : runtimeImports)
+                imp.append("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.").append(fn).append(";\n");
+            out.insert(naImports, imp.append('\n'));
+        }
         return out.toString();
     }
 
@@ -717,13 +753,13 @@ public final class DrlTranspiler {
             // is NOT redistributed, it falls to the onverdeelde rest (the rest rule reads the capped shares). The
             // cap precedes the §9.7.4 afronding ("als laatste … afgerond"). rsPlafond null-guards both sides (a
             // recipient without a maximum is uncapped).
-            registreerPlafondFunctie();
+            fnImport("rsPlafond");
             aandeel = "rsPlafond(" + aandeel + ", $r." + getter(v.maximumAttribuut()) + "())";
         }
         if (v.afrondingDecimalen() != null) {
             // §9.7.4 / §6.1.2: floor each share to N decimals ("naar beneden") — the explicit afronding the spec
             // requires before a division result may land in a bounded target. rsAfronding null-guards the basis.
-            registreerAfrondingFunctie();
+            fnImport("rsAfronding");
             aandeel = "rsAfronding(" + aandeel + ", " + v.afrondingDecimalen() + ", java.math.RoundingMode.FLOOR)";
         }
         out.append(rule.geldigheid(v.geldigheid())
@@ -741,7 +777,7 @@ public final class DrlTranspiler {
      *  a Map binds it once (a Map is not a Collection, so it is not iterated). Returns the recipient filter (the
      *  bare join — every recipient is collected) for the onverdeelde-rest rule. */
     private String opVolgordeRegel(io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v, Objecttype bron, Objecttype doel, String j) {
-        registreerVerdeelOpVolgordeFunctie();
+        fnImport("rsVerdeelOpVolgorde");
         String doelP = ident(doel.naam, true);
         StringBuilder acc = new StringBuilder("$facts : collectList($p), $groep : collectList($p."
                 + getter(v.groepeerAttribuut()) + "())");
@@ -1163,14 +1199,14 @@ public final class DrlTranspiler {
             if (n != null) {
                 Frag l = arg.apply(b.links());
                 if (l.marker()) return Frag.from("(" + l.text() + ").pow(" + n + ")", l);
-                registreerMachtFunctie();
+                fnImport("rsMacht");
                 return Frag.from("rsMacht(" + l.text() + ", " + n + ")", l);
             }
             // a genuinely fractional/runtime exponent: Math.pow yields a double, wrapped as a BigDecimal.
             Frag l = arg.apply(b.links()), r = arg.apply(b.rechts());
             if (l.marker() || r.marker())
                 return Frag.from("java.math.BigDecimal.valueOf(Math.pow((" + l.text() + ").doubleValue(), (" + r.text() + ").doubleValue()))", l, r);
-            registreerMachtReeelFunctie();
+            fnImport("rsMachtReeel");
             return Frag.from("rsMachtReeel(" + l.text() + ", " + r.text() + ")", l, r);
         }
         if (b.op() == Expr.BinOp.PERCENTAGE_VAN) {
@@ -1186,7 +1222,7 @@ public final class DrlTranspiler {
             Frag l = arg.apply(b.links()), r = arg.apply(b.rechts());
             if (l.marker() || r.marker())
                 return Frag.from("(" + l.text() + ").divide(" + r.text() + ", java.math.MathContext.DECIMAL64)", l, r);
-            registreerGedeeldFunctie();
+            fnImport("rsGedeeld");
             return Frag.from("rsGedeeld(" + l.text() + ", " + r.text() + ")", l, r);
         }
         if (b.op() == Expr.BinOp.GEDEELD_DOOR_ABS) {
@@ -1195,7 +1231,7 @@ public final class DrlTranspiler {
             Frag l = arg.apply(b.links()), r = arg.apply(b.rechts());
             if (l.marker() || r.marker())
                 return Frag.from("(" + l.text() + ").divide(" + r.text() + ", 5, java.math.RoundingMode.DOWN)", l, r);
-            registreerGedeeldAbsFunctie();
+            fnImport("rsGedeeldAbs");
             return Frag.from("rsGedeeldAbs(" + l.text() + ", " + r.text() + ")", l, r);
         }
         if (b.op() == Expr.BinOp.MAAL) {  // §6.4: units multiply, operands are NOT converted to match
@@ -1223,13 +1259,15 @@ public final class DrlTranspiler {
             String dagsoortUnit = durEenheid != null ? model.dagsoortVoorEenheid(durEenheid.afkorting()) : null;
             if (dagsoortUnit != null) {
                 // §4.1/§4.2 Tabel 2/5 rule 2: a datum-EN-tijd left operand yields a datum-en-tijd result — step over the
-                // date part and re-attach the time-of-day (rsDatumTijdPlus_<Naam>). A Datum-in-dagen keeps the LocalDate path.
+                // date part and re-attach the time-of-day (rsDatumTijdPlusDagsoort). A Datum-in-dagen keeps the LocalDate
+                // path. The walking loop lives in the runtime; the §9.8 predicate rides a rsDagsoort_<Naam> global.
                 boolean datumTijd = datumExpr.type() instanceof Datatype.DatumTijd;
-                String stapFn = datumTijd ? dagsoortDuurTijdFunctie(dagsoortUnit) : dagsoortDuurFunctie(dagsoortUnit);
+                String glob = dagsoortGlobaal(dagsoortUnit);
                 Frag d = arg.apply(datumExpr), n = arg.apply(durExpr);
-                if (stapFn == null || d.marker() || n.marker()) return Frag.todo("datum-rekenkunde (dagsoort)", b.bron());
+                if (glob == null || d.marker() || n.marker()) return Frag.todo("datum-rekenkunde (dagsoort)", b.bron());
+                String stapFn = fnImport(datumTijd ? "rsDatumTijdPlusDagsoort" : "rsDatumPlusDagsoort");
                 String cast = datumTijd ? "java.time.LocalDateTime" : "java.time.LocalDate";
-                return Frag.from("((" + cast + ") " + stapFn + "(" + d.text() + ", " + n.text() + ", " + optellen + "))", d, n);
+                return Frag.from("((" + cast + ") " + stapFn + "(" + d.text() + ", " + n.text() + ", " + glob + ", " + optellen + "))", d, n);
             }
             String unit = chronoUnit(durExpr.type());
             if (unit == null) return Frag.todo("datum-rekenkunde (dagsoort/onbekende tijdseenheid)", b.bron());
@@ -1238,7 +1276,7 @@ public final class DrlTranspiler {
                 return Frag.todo("datum-rekenkunde: een tijdseenheid vereist een datum-tijd operand (§6.10)", b.bron());
             Frag d = arg.apply(datumExpr), n = arg.apply(durExpr);
             if (d.marker() || n.marker()) return Frag.todo("datum-rekenkunde", b.bron());
-            registreerDatumRekenFunctie();
+            fnImport("rsDatumReken");
             String cast = datumExpr.type() instanceof Datatype.DatumTijd ? "java.time.LocalDateTime" : "java.time.LocalDate";
             return Frag.from("((" + cast + ") rsDatumReken(" + d.text() + ", " + n.text() + ", \"" + unit + "\", " + optellen + "))", d, n);
         }
@@ -1252,7 +1290,7 @@ public final class DrlTranspiler {
         // whose LEFT operand is empty yields empty (rsVerminderd), while "min" treats an empty operand as 0 like
         // plus (rsNul). Without this they lowered identically — a silent-wrong for a leeg-left case.
         if (b.op() == Expr.BinOp.VERMINDERD_MET) {
-            registreerVerminderdFunctie();
+            fnImport("rsVerminderd");
             return Frag.from("rsVerminderd(" + links.text() + ", " + rechts.text() + ")", links, rechts);
         }
         return Frag.from("(" + nulVeilig(links.text()) + " " + infix(b.op()) + " " + nulVeilig(rechts.text()) + ")", links, rechts); // §6.2/§6.3 leeg=0
@@ -1381,7 +1419,7 @@ public final class DrlTranspiler {
                 return Frag.todo("tijd-component uit een niet-datum-tijd (§13.4.17.21-.24)", f.bron());
             Frag d = arg.apply(a.get(0));
             if (d.marker()) return d;
-            registreerDatumDeelFunctie();
+            fnImport("rsDatumDeel");
             return Frag.from("rsDatumDeel(" + d.text() + ", java.time.temporal.ChronoField." + chronoField + ")", d);
         }
         return switch (f.kind()) {
@@ -1389,7 +1427,7 @@ public final class DrlTranspiler {
                 if (a.size() != 1) yield null;        // through rsAbs (a null guard a constraint cannot ternary).
                 Frag x = arg.apply(a.get(0));
                 if (x.marker()) yield x;
-                registreerAbsFunctie();
+                fnImport("rsAbs");
                 yield Frag.from("rsAbs(" + x.text() + ")", x);
             }
             case WORTEL -> {                          // §13.4.17.13 — the radicand's root, rounded by the
@@ -1400,7 +1438,7 @@ public final class DrlTranspiler {
                 // so a leeg radicand propagates through the afronding. A NEGATIVE radicand also yields leeg (no
                 // session-aborting throw); the §6.6 foutmelding is surfaced by wortelNegatiefFout's companion rule.
                 if (x.marker()) yield x;
-                registreerWortelFunctie();
+                fnImport("rsWortel");
                 yield Frag.from("rsWortel(" + x.text() + ")", x);
             }
             case DATUM_MET     -> datumConstructor(a, arg, "java.time.LocalDate", 3, false);     // §13.4.17.35 (3 parts)
@@ -1409,7 +1447,7 @@ public final class DrlTranspiler {
                 if (a.size() != 1) yield null;
                 Frag j = arg.apply(a.get(0));
                 if (j.marker()) yield j;
-                registreerPaasdagFunctie();
+                fnImport("rsEerstePaasdag");
                 yield Frag.from("rsEerstePaasdag(" + j.text() + ")", j);
             }
             default -> null;
@@ -1431,36 +1469,9 @@ public final class DrlTranspiler {
             if (v.marker()) return v;
             args.add(v.text());
         }
-        if (laatsteIsMilli) { registreerDatumtijdMetFunctie(); return Frag.ok("rsDatumtijdMet(" + String.join(", ", args) + ")"); }
-        registreerDatumMetFunctie();
+        if (laatsteIsMilli) { fnImport("rsDatumtijdMet"); return Frag.ok("rsDatumtijdMet(" + String.join(", ", args) + ")"); }
+        fnImport("rsDatumMet");
         return Frag.ok("rsDatumMet(" + String.join(", ", args) + ")");
-    }
-
-    /** Register the §13.4.17.35 "de datum met jaar/maand/dag" constructor helper: a LocalDate from three numeric
-     *  components, with the §6.9 leegwaarde rule — any empty component yields an empty (null) date instead of
-     *  NPE-ing {@code (null).intValue()}. Idempotent. */
-    private void registreerDatumMetFunctie() {
-        hulpFuncties.putIfAbsent("rsDatumMet",
-                "function java.time.LocalDate rsDatumMet(java.math.BigDecimal jaar, java.math.BigDecimal maand, "
-                + "java.math.BigDecimal dag) {\n"
-                + "    if (jaar == null || maand == null || dag == null) return null;\n"
-                + "    return java.time.LocalDate.of(jaar.intValue(), maand.intValue(), dag.intValue());\n"
-                + "}\n\n");
-    }
-
-    /** Register the §13.4.17.36 "de datumtijd met jaar/…/milliseconde" constructor helper: a LocalDateTime from
-     *  seven numeric components (the 7th, a MILLIsecond, scaled ×1e6 to LocalDateTime.of's nanoOfSecond), with
-     *  the §6.9 leegwaarde rule — any empty component yields an empty (null) datetime instead of NPE-ing. Idempotent. */
-    private void registreerDatumtijdMetFunctie() {
-        hulpFuncties.putIfAbsent("rsDatumtijdMet",
-                "function java.time.LocalDateTime rsDatumtijdMet(java.math.BigDecimal jaar, java.math.BigDecimal maand, "
-                + "java.math.BigDecimal dag, java.math.BigDecimal uur, java.math.BigDecimal minuut, "
-                + "java.math.BigDecimal seconde, java.math.BigDecimal milli) {\n"
-                + "    if (jaar == null || maand == null || dag == null || uur == null || minuut == null "
-                + "|| seconde == null || milli == null) return null;\n"
-                + "    return java.time.LocalDateTime.of(jaar.intValue(), maand.intValue(), dag.intValue(), "
-                + "uur.intValue(), minuut.intValue(), seconde.intValue(), milli.intValue() * 1000000);\n"
-                + "}\n\n");
     }
 
     /**
@@ -1486,10 +1497,12 @@ public final class DrlTranspiler {
             boolean dt0 = a0.type() instanceof Datatype.DatumTijd, dt1 = a1.type() instanceof Datatype.DatumTijd;
             if (dt0 != dt1)
                 return Frag.todo("tijdsduur in een dagsoort vereist datum-operanden van gelijke tijd-precisie (§6.10)", f.bron());
-            String durFn = dt0 ? dagsoortTijdsduurTijdFunctie(dagsoortUnit) : dagsoortTijdsduurFunctie(dagsoortUnit);
+            String glob = dagsoortGlobaal(dagsoortUnit);
             Frag van0 = arg.apply(a0), tot0 = arg.apply(a1);
-            if (durFn == null || van0.marker() || tot0.marker()) return Frag.todo("tijdsduur (dagsoort)", f.bron());
-            return Frag.from(durFn + "(" + van0.text() + ", " + tot0.text() + ", " + (f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR) + ")", van0, tot0);
+            if (glob == null || van0.marker() || tot0.marker()) return Frag.todo("tijdsduur (dagsoort)", f.bron());
+            String durFn = fnImport(dt0 ? "rsTijdsduurTijdDagsoort" : "rsTijdsduurDagsoort");
+            return Frag.from(durFn + "(" + van0.text() + ", " + tot0.text() + ", " + glob + ", "
+                    + (f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR) + ")", van0, tot0);
         }
         String unit = chronoUnit(f.type());
         if (unit == null) return Frag.todo("tijdsduur-eenheid (dagsoort / onbekende tijdseenheid)", f.bron());
@@ -1502,204 +1515,17 @@ public final class DrlTranspiler {
         // Lower via a registered Java-bodied helper, NOT inline mvel: a fully-qualified ChronoUnit.<U>.between
         // does not analyse in a Drools mvel modify-block, and the helper also carries the §6.10 null-guard and
         // the absolute/sign in plain Java where the enum and the overload resolve cleanly.
-        registreerTijdsduurFunctie();
+        fnImport("rsTijdsduur");
         return Frag.from("rsTijdsduur(" + van.text() + ", " + tot.text() + ", \"" + unit + "\", "
                 + (f.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR) + ")", van, tot);
-    }
-
-    /** Register the Java-bodied DRL helper that computes a §6.10 tijdsduur — the whole-unit count between two
-     *  Temporals (signed; absolute when asked), empty when either operand is empty (Tabel 14). Idempotent. */
-    private void registreerTijdsduurFunctie() {
-        hulpFuncties.putIfAbsent("rsTijdsduur",
-                "function java.math.BigDecimal rsTijdsduur(java.time.temporal.Temporal van, "
-                + "java.time.temporal.Temporal tot, String eenheid, boolean absoluut) {\n"
-                + "    if (van == null || tot == null) return null;\n"
-                + "    long n = \"KWARTAAL\".equals(eenheid)\n"   // §3.7 kwartaal = 3 maanden (geen ChronoUnit.QUARTERS)
-                + "            ? java.time.temporal.ChronoUnit.MONTHS.between(van, tot) / 3\n"
-                + "            : java.time.temporal.ChronoUnit.valueOf(eenheid).between(van, tot);\n"
-                + "    return java.math.BigDecimal.valueOf(absoluut ? Math.abs(n) : n);\n"
-                + "}\n\n");
-    }
-
-    /** Register the Java-bodied DRL helper for §6/§13.4.16 date arithmetic: a datum/datumtijd plus/minus a whole
-     *  number of a ChronoUnit -> a new date(time), empty when either operand is empty. The aantal is taken as whole
-     *  units (truncated toward zero). Byte-identical to {@code RegelSpraakRuntime.rsDatumReken}. Idempotent. */
-    private void registreerDatumRekenFunctie() {
-        hulpFuncties.putIfAbsent("rsDatumReken",
-                "function java.time.temporal.Temporal rsDatumReken(java.time.temporal.Temporal datum, "
-                + "java.math.BigDecimal aantal, String eenheid, boolean optellen) {\n"
-                + "    if (datum == null) return null;\n"           // leeg datum -> leeg
-                + "    if (aantal == null) return datum;\n"         // leeg tijdseenheid -> als 0 -> datum onveranderd (Tabel 15)
-                + "    long n = aantal.longValue();\n"
-                + "    boolean kwartaal = \"KWARTAAL\".equals(eenheid);\n"   // §3.7 kwartaal = 3 maanden (geen ChronoUnit.QUARTERS)
-                + "    java.time.temporal.ChronoUnit u = kwartaal ? java.time.temporal.ChronoUnit.MONTHS : java.time.temporal.ChronoUnit.valueOf(eenheid);\n"
-                + "    if (kwartaal) n = n * 3;\n"
-                + "    return optellen ? datum.plus(n, u) : datum.minus(n, u);\n"
-                + "}\n\n");
-    }
-
-    /** Register the Java-bodied DRL helper that returns §13.4.17.37 "de eerste paasdag van" a year — Easter
-     *  Sunday in the Gregorian calendar via the Anonymous Gregorian computus (exact, no lookup table).
-     *  Empty year -> empty result. Idempotent. */
-    private void registreerPaasdagFunctie() {
-        hulpFuncties.putIfAbsent("rsEerstePaasdag",
-                "function java.time.LocalDate rsEerstePaasdag(java.math.BigDecimal jaar) {\n"
-                + "    if (jaar == null) return null;\n"
-                + "    int y = jaar.intValue();\n"
-                + "    int a = y % 19, b = y / 100, c = y % 100, d = b / 4, e = b % 4;\n"
-                + "    int f = (b + 8) / 25, g = (b - f + 1) / 3;\n"
-                + "    int h = (19 * a + b - d - g + 15) % 30;\n"
-                + "    int i = c / 4, k = c % 4;\n"
-                + "    int l = (32 + 2 * e + 2 * i - h - k) % 7;\n"
-                + "    int m = (a + 11 * h + 22 * l) / 451;\n"
-                + "    int maand = (h + l - 7 * m + 114) / 31;\n"
-                + "    int dag = ((h + l - 7 * m + 114) % 31) + 1;\n"
-                + "    return java.time.LocalDate.of(y, maand, dag);\n"
-                + "}\n\n");
-    }
-
-    /** Register the Java-bodied DRL helper that reads one §13.4.17.18-.24 date/time component (a ChronoField)
-     *  off any Temporal as a Numeriek, with the §6.12 / Tabel 28 leegwaarde rule: an empty input yields an
-     *  empty (null) result instead of NPE-ing the field access. One helper for all seven components.
-     *  Idempotent. */
-    private void registreerDatumDeelFunctie() {
-        hulpFuncties.putIfAbsent("rsDatumDeel",
-                "function java.math.BigDecimal rsDatumDeel(java.time.temporal.TemporalAccessor d, "
-                + "java.time.temporal.TemporalField f) {\n"
-                + "    return d == null ? null : java.math.BigDecimal.valueOf(d.getLong(f));\n"
-                + "}\n\n");
-    }
-
-    /** Register the Java-bodied DRL helper for §13.4.17.17 "de absolute waarde van", carrying the §6.9 / Tabel
-     *  20 leegwaarde rule (|leeg| = leeg). A null guard a Drools pattern constraint cannot express with a
-     *  ternary. Idempotent. */
-    private void registreerAbsFunctie() {
-        hulpFuncties.putIfAbsent("rsAbs",
-                "function java.math.BigDecimal rsAbs(java.math.BigDecimal x) {\n"
-                + "    return x == null ? null : x.abs();\n"
-                + "}\n\n");
-    }
-
-    /** §8.1.3 the elfproef: weight each digit by its position FROM THE RIGHT — the controlecijfer (last) by -1,
-     *  the one before it by 2, then 3, … (so an n-digit reeks weights its leftmost digit by n down to 2, the
-     *  last by -1); the number passes iff the weighted sum is divisible by 11 AND it is not all zeros. Admits a
-     *  Numeriek (geheel getal) — leading zeros already gone — or a Tekst of digits (which preserves voor-/
-     *  achterloopnullen); a null, fractional, or non-digit value is not a valid reeks → false. */
-    private void registreerElfproefFunctie() {
-        hulpFuncties.putIfAbsent("rsElfproef",
-                "function boolean rsElfproef(Object x) {\n"
-                + "    if (x == null) return false;\n"
-                + "    String s;\n"
-                + "    if (x instanceof java.math.BigDecimal) {\n"
-                + "        java.math.BigDecimal bd = (java.math.BigDecimal) x;\n"
-                + "        if (bd.stripTrailingZeros().scale() > 0) return false;\n"   // §8.1.3 Numeriek (geheel getal) only — never truncate a fractional value
-                + "        s = bd.toBigInteger().toString();\n"
-                + "    } else { s = x.toString(); }\n"
-                + "    int n = s.length();\n"
-                + "    if (n == 0) return false;\n"
-                + "    long som = 0;\n"
-                + "    for (int i = 0; i < n; i++) {\n"
-                + "        char ch = s.charAt(i);\n"
-                + "        if (ch < '0' || ch > '9') return false;\n"
-                + "        som += (long) (ch - '0') * ((i == n - 1) ? -1 : (n - i));\n"
-                + "    }\n"
-                + "    return som > 0 && (som % 11 == 0);\n"   // §8.1.3 the quotient must be a POSITIEF geheel getal: som==0 (e.g. \"12\", or all zeros) fails
-                + "}\n\n");
-    }
-
-    /** Register the §8.1.4 "numeriek met exact &lt;N&gt; cijfers" predicate (Tabel 16, Tekst-only): true iff the value
-     *  reads as a cijferreeks of EXACTLY N digits — every character a digit (so it can be read as a getal) and the
-     *  length exactly N (voor-/achterloopnullen count, §8.1.4). A null / non-digit / wrong-length value is false.
-     *  Byte-identical to {@code RegelSpraakRuntime.rsNumeriekMetExact}. Idempotent. */
-    private void registreerNumeriekMetExactFunctie() {
-        hulpFuncties.putIfAbsent("rsNumeriekMetExact",
-                "function boolean rsNumeriekMetExact(Object x, int n) {\n"
-                + "    if (x == null) return false;\n"
-                + "    String s = x.toString();\n"
-                + "    if (s.length() != n) return false;\n"
-                + "    for (int i = 0; i < s.length(); i++) {\n"
-                + "        char ch = s.charAt(i);\n"
-                + "        if (ch < '0' || ch > '9') return false;\n"
-                + "    }\n"
-                + "    return true;\n"
-                + "}\n\n");
     }
 
     /** Wrap a value-side arithmetic operand for the §6.2/§6.4/§6.8 "leeg telt als 0" rekentabel via the rsNul
      *  helper. The caller ({@link #binairTerm}) has already excluded a marker operand (which must propagate
      *  unwrapped), so this only ever wraps a real value term. */
     private String nulVeilig(String operand) {
-        registreerNulFunctie();
+        fnImport("rsNul");
         return "rsNul(" + operand + ")";
-    }
-
-    /** Register the DRL helper for the §6.2 (plus) / §6.4 (maal) / §6.8 (percentage) leegwaarde rule — an empty
-     *  operand counts as 0, and the result is therefore never empty. Idempotent. */
-    private void registreerNulFunctie() {
-        hulpFuncties.putIfAbsent("rsNul",
-                "function java.math.BigDecimal rsNul(java.math.BigDecimal x) {\n"
-                + "    return x == null ? java.math.BigDecimal.ZERO : x;\n"
-                + "}\n\n");
-    }
-
-    /** Register the §6.x null-safe navigated-leg read for a numeric attribute reached through a to-ONE relation
-     *  INSIDE arithmetic. mvel's {@code rol!.attr} short-circuits the WHOLE pattern constraint to a non-match when
-     *  the relation is null — wrong inside a +/- (where §4.1 Tabel 3 reads a leeg operand as 0): "de prijs van zijn
-     *  reis plus 1" with no reis must compute 0+1, not silently fail. This helper reads the attribute reflectively
-     *  (relatie null -> null leegwaarde, NO short-circuit), so the surrounding rsNul/rsVerminderd leegwaarde handling
-     *  applies — the constraint-valid mirror of the exec's null-safe navReader read. Idempotent. */
-    private void registreerRelGetalFunctie() {
-        hulpFuncties.putIfAbsent("rsRelGetal",
-                "function java.math.BigDecimal rsRelGetal(Object relatie, String attribuut) {\n"
-                + "    return relatie == null ? null : io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.toBd(\n"
-                + "        io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.get(relatie, attribuut));\n"
-                + "}\n\n");
-    }
-
-    /** Register the §6.1.4 begrenzing helper — clamp a value to an optional minimum then maximum (the value
-     *  side's clamp order), null-safe: a leeg value stays leeg, and a null bound is no bound. Used on the
-     *  CONDITION side, where the value side's inline clamp ternary cannot live in a pattern constraint. Idempotent. */
-    private void registreerBegrensFunctie() {
-        hulpFuncties.putIfAbsent("rsBegrens",
-                "function java.math.BigDecimal rsBegrens(java.math.BigDecimal x, java.math.BigDecimal min, java.math.BigDecimal max) {\n"
-                + "    if (x == null) return null;\n"
-                + "    if (min != null && x.compareTo(min) < 0) x = min;\n"
-                + "    if (max != null && x.compareTo(max) > 0) x = max;\n"
-                + "    return x;\n"
-                + "}\n\n");
-    }
-
-    /** Register the DRL helper for §6.3 Tabel 8 "verminderd met" — the subtraction that differs from "min" only
-     *  in leegwaarde: an empty LEFT operand yields an empty result (regardless of the right), while an empty
-     *  RIGHT counts as 0. Idempotent. */
-    private void registreerVerminderdFunctie() {
-        hulpFuncties.putIfAbsent("rsVerminderd",
-                "function java.math.BigDecimal rsVerminderd(java.math.BigDecimal links, java.math.BigDecimal rechts) {\n"
-                + "    if (links == null) return null;\n"
-                + "    return links.subtract(rechts == null ? java.math.BigDecimal.ZERO : rechts);\n"
-                + "}\n\n");
-    }
-
-    /** Register the §6.5 Tabel 12 "gedeeld door" helper. The leegwaarde order is load-bearing (footnote 22): an
-     *  empty LEFT (dividend) short-circuits to 0 FIRST — so leeg/leeg = 0, not a fout — and only a non-empty
-     *  value over an empty divisor is the fout, returned as leeg (the fout itself is surfaced as an
-     *  Inconsistentie by the companion rule). Idempotent. */
-    private void registreerGedeeldFunctie() {
-        hulpFuncties.putIfAbsent("rsGedeeld",
-                "function java.math.BigDecimal rsGedeeld(java.math.BigDecimal links, java.math.BigDecimal rechts) {\n"
-                + "    if (links == null) return java.math.BigDecimal.ZERO;\n"
-                + "    return rechts == null ? null : links.divide(rechts, java.math.MathContext.DECIMAL64);\n"
-                + "}\n\n");
-    }
-
-    /** Register the §6.5 "gedeeld door (ABS)" helper — same Tabel 12 leegwaarde as plain gedeeld door, but the
-     *  divide truncates toward zero at 5 decimals (the AanslagBelastingenSysteem flavour). Idempotent. */
-    private void registreerGedeeldAbsFunctie() {
-        hulpFuncties.putIfAbsent("rsGedeeldAbs",
-                "function java.math.BigDecimal rsGedeeldAbs(java.math.BigDecimal links, java.math.BigDecimal rechts) {\n"
-                + "    if (links == null) return java.math.BigDecimal.ZERO;\n"
-                + "    return rechts == null ? null : links.divide(rechts, 5, java.math.RoundingMode.DOWN);\n"
-                + "}\n\n");
     }
 
     /** Map a tijdsduur's declared unit (its result {@link Datatype}'s eenheid, e.g. TOKA's "jr" or a bare
@@ -1771,7 +1597,7 @@ public final class DrlTranspiler {
             return null;
         Frag map = attribuutGetter(a, subject);   // the dimensioned attribute reads as its Map<label,value> field
         if (map.marker()) return null;
-        registreerDimensieFunctie(fn);
+        fnImport(fn);
         StringJoiner keys = new StringJoiner(", ");
         for (String label : sel.labels()) keys.add("\"" + label.replace("\"", "") + "\"");
         String call = fn + "(" + map.text() + ", java.util.Arrays.asList(" + keys + "))";
@@ -1783,27 +1609,6 @@ public final class DrlTranspiler {
             return Frag.from("(" + call + " == null ? " + lw.text() + " : " + call + ")", lw);
         }
         return Frag.ok(call);
-    }
-
-    /** Register the Java-bodied DRL helper that folds a dimensioned attribute's per-label values,
-     *  null-skipping empties and returning null for an all-empty selection (§5.8.2). Idempotent. */
-    private void registreerDimensieFunctie(String fn) {
-        if (hulpFuncties.containsKey(fn)) return;
-        String body = switch (fn) {
-            case "rsDimSom" -> "        if (v != null) acc = (acc == null) ? v : acc.add(v);\n";
-            case "rsDimMin" -> "        if (v != null && (acc == null || v.compareTo(acc) < 0)) acc = v;\n";
-            case "rsDimMax" -> "        if (v != null && (acc == null || v.compareTo(acc) > 0)) acc = v;\n";
-            default -> "";
-        };
-        hulpFuncties.put(fn,
-                "function java.math.BigDecimal " + fn + "(java.util.Map m, java.util.List keys) {\n"
-                + "    java.math.BigDecimal acc = null;\n"
-                + "    for (Object k : keys) {\n"
-                + "        java.math.BigDecimal v = (m == null) ? null : (java.math.BigDecimal) m.get(k);\n"
-                + body
-                + "    }\n"
-                + "    return acc;\n"
-                + "}\n\n");
     }
 
     private Frag concatenatieAggregatie(Expr.Functie f, Objecttype subject) {
@@ -1888,8 +1693,8 @@ public final class DrlTranspiler {
             // the value timeline to the to-one role's kenmerk timeline, read root-guarded (a null reference -> leeg).
             String cond = navigatieKenmerkTijdreeks(kn, subject);
             if (cond == null) return null;   // negated / to-many / non-temporal navigated kenmerk -> marker
-            registreerTijdKnipFunctie();
-            waardeTijdreeks = "rsTijdKnip(" + waardeTijdreeks + ", " + cond + ")";
+            fnImport("rsTijdKnip");
+            waardeTijdreeks = "rsTijdKnip(" + waardeTijdreeks + ", " + cond + ", Segment.class)";
         } else if (f.filter() instanceof Conditie.Samengesteld s && subject != null) {
             // §8.4.2 a COMPOUND "gedurende de tijd dat er aan alle/ten minste 1 van de volgende voorwaarden wordt
             // voldaan": partition the members. TEMPORAL kenmerks clip the timeline (ALLE = intersect, ten minste 1 =
@@ -1917,7 +1722,7 @@ public final class DrlTranspiler {
                     // mixed OR: the static guard ORs its members; TRUE -> the full span, FALSE -> the temporal clip.
                     String orGuard = statischeGuard(statisch, subject, " || ");
                     if (orGuard == null) return null;
-                    registreerTijdTotaalFunctie();
+                    fnImport("rsTijdTotaal");
                     return Frag.ok("(" + orGuard
                             + " ? rsTijdTotaal(" + volleReeks + ", \"" + g.name() + "\")"
                             + " : rsTijdTotaal(" + waardeTijdreeks + ", \"" + g.name() + "\"))");
@@ -1932,12 +1737,12 @@ public final class DrlTranspiler {
             // tijd dat het inkomen > 1000"); rsTijdKnip intersects the two timelines' intervals.
             String cond = vergelijkingTijdreeks(vc, subject);
             if (cond == null) return null;   // a non-temporal / cross-unit / datum / navigated comparison -> marker
-            registreerTijdKnipFunctie();
-            waardeTijdreeks = "rsTijdKnip(" + waardeTijdreeks + ", " + cond + ")";
+            fnImport("rsTijdKnip");
+            waardeTijdreeks = "rsTijdKnip(" + waardeTijdreeks + ", " + cond + ", Segment.class)";
         } else if (f.filter() != null) {
             return null;   // a restriction we cannot lower -> marker, never a silently-unrestricted total
         }
-        registreerTijdTotaalFunctie();
+        fnImport("rsTijdTotaal");
         String totaal = "rsTijdTotaal(" + waardeTijdreeks + ", \"" + g.name() + "\")";
         return Frag.ok(guard == null ? totaal : "(" + guard + " ? " + totaal + " : java.math.BigDecimal.ZERO)");
     }
@@ -1965,40 +1770,8 @@ public final class DrlTranspiler {
         // field name (which does not resolve in a then block — KieBase build abort).
         Frag g = waarde(ander, subject);
         if (g.marker()) return null;
-        registreerTijdConditieFunctie();
-        return "rsTijdConditie(" + getter + ", " + code + ", " + g.text() + ")";
-    }
-
-    /** Register the §7.1 EUR71 condition-timeline helper: keep each value Segment whose value satisfies the toets
-     *  (0..5 = KLEINER..ONGELIJK) against the scalar grens — the TRUE periods of a temporal-attribute comparison. A
-     *  leeg (null) segment value or a null grens is onwaar (§5.1 ordering leegwaarde). Byte-identical to
-     *  {@link io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime#rsTijdConditie}. */
-    private void registreerTijdConditieFunctie() {
-        hulpFuncties.putIfAbsent("rsTijdConditie",
-                "function java.util.List rsTijdConditie(java.util.List reeks, int toets, java.math.BigDecimal grens) {\n"
-                + "    java.util.List uit = new java.util.ArrayList();\n"
-                + "    if (reeks == null || grens == null) return uit;\n"
-                + "    for (Object o : reeks) {\n"
-                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
-                + "        if (s.getVan() == null || s.getTot() == null || !s.getVan().isBefore(s.getTot())) continue;\n"
-                + "        Object wo = s.getWaarde();\n"
-                + "        if (wo == null) {\n"
-                + "            if (toets == 5) uit.add(new " + FACT_PACKAGE + ".Segment(s.getVan(), s.getTot(), s.getWaarde()));\n"   // §5.6 Tabel 44: leeg ONGELIJK een gevulde grens = WAAR
-                + "            continue;\n"
-                + "        }\n"
-                + "        int c = ((java.math.BigDecimal) wo).compareTo(grens);\n"
-                + "        boolean ok;\n"
-                + "        if (toets == 0) ok = c < 0;\n"
-                + "        else if (toets == 1) ok = c <= 0;\n"
-                + "        else if (toets == 2) ok = c > 0;\n"
-                + "        else if (toets == 3) ok = c >= 0;\n"
-                + "        else if (toets == 4) ok = c == 0;\n"
-                + "        else if (toets == 5) ok = c != 0;\n"
-                + "        else ok = false;\n"
-                + "        if (ok) uit.add(new " + FACT_PACKAGE + ".Segment(s.getVan(), s.getTot(), s.getWaarde()));\n"
-                + "    }\n"
-                + "    return uit;\n"
-                + "}");
+        fnImport("rsTijdConditie");
+        return "rsTijdConditie(" + getter + ", " + code + ", " + g.text() + ", Segment.class)";
     }
 
     /** §8.4 the value-side static guard for a mixed gedurende: the AND ({@code " && "}) of each non-temporal
@@ -2067,8 +1840,8 @@ public final class DrlTranspiler {
                 && f.granulariteit() == gran && subject != null) {
             String cond = conditieTijdreeks(f.filter(), subject);   // single kenmerk OR a §8.4.2 (mixed) compound; null -> marker
             if (cond != null) {
-                String call = mixedGuardWrap("rsAantalDagenIn(" + cond + ", \"" + gran.name() + "\")", f.filter(), subject);
-                if (call != null) { registreerAantalDagenInFunctie(); return call; }
+                String call = mixedGuardWrap("rsAantalDagenIn(" + cond + ", \"" + gran.name() + "\", Segment.class)", f.filter(), subject);
+                if (call != null) { fnImport("rsAantalDagenIn"); return call; }
             }
         }
         // §13.4.17.58/§7.3.2 "het tijdsevenredig deel per <maand|jaar> van <basis> gedurende de tijd dat <conditie>":
@@ -2128,7 +1901,7 @@ public final class DrlTranspiler {
                 String cond = (zelfdeEenheid || factor != null) ? conditieTijdreeks(f.filter(), subject) : null;
                 String call = null;
                 if (cond != null) {
-                    call = mixedGuardWrap("rsTijdsevenredig(" + cond + ", " + basis + ", \"" + gran.name() + "\")", f.filter(), subject);
+                    call = mixedGuardWrap("rsTijdsevenredig(" + cond + ", " + basis + ", \"" + gran.name() + "\", Segment.class)", f.filter(), subject);
                 } else if (zelfdeEenheid || factor != null) {
                     // §8.4.2 OR-mixed (ten minste 1: a temporal kenmerk OR a static comparison): conditieTijdreeks
                     // markers a mixed OR, but a tijdsevenredig HAS a base whose value-timeline bounds the static-true
@@ -2138,7 +1911,7 @@ public final class DrlTranspiler {
                     // so basis-as-condition is factor 1 per fully-covered bucket); FALSE -> the temporal-union clip.
                     call = orMixedTijdsevenredig(f.filter(), subject, basis, gran);
                 }
-                if (call != null) { registreerTijdsevenredigFunctie(); if (factor != null) registreerTijdSchaalFunctie(); return call; }
+                if (call != null) { fnImport("rsTijdsevenredig"); if (factor != null) fnImport("rsTijdSchaal"); return call; }
             }
         }
         // §5.1.4 a tijdsafhankelijke arithmetic expression PLUS/MIN over two temporal operands: apply the operator per
@@ -2151,8 +1924,8 @@ public final class DrlTranspiler {
             String l = temporeelRekenOperand(bin.links(), subject, gran, sumType);
             String rr = temporeelRekenOperand(bin.rechts(), subject, gran, sumType);
             if (l != null && rr != null) {
-                registreerTijdRekenFunctie();
-                String schaal = schaalTijd("rsTijdReken(" + l + ", " + rr + ", \"" + bin.op().name() + "\")", sumType, doelType);
+                fnImport("rsTijdReken");
+                String schaal = schaalTijd("rsTijdReken(" + l + ", " + rr + ", \"" + bin.op().name() + "\", Segment.class)", sumType, doelType);
                 if (schaal != null) return schaal;   // the sum unit is convertible to the doel (§4.1) -> restate once
             }
         }
@@ -2172,8 +1945,8 @@ public final class DrlTranspiler {
             String l = temporeelRekenOperand(bin.links(), subject, gran, subSum);
             String r = temporeelRekenOperand(bin.rechts(), subject, gran, subSum);
             if (l == null || r == null) return null;
-            registreerTijdRekenFunctie();
-            return schaalTijd("rsTijdReken(" + l + ", " + r + ", \"" + bin.op().name() + "\")", subSum, unitTarget);
+            fnImport("rsTijdReken");
+            return schaalTijd("rsTijdReken(" + l + ", " + r + ", \"" + bin.op().name() + "\", Segment.class)", subSum, unitTarget);
         }
         if (!(e instanceof Expr.AttribuutRef a) || a.set() || a.type() == null || !a.type().isNumeriek()) return null;
         Objecttype ot; String getter;
@@ -2204,7 +1977,7 @@ public final class DrlTranspiler {
         java.math.BigDecimal fwd = omrekenFactor(van, naar), inv = omrekenFactor(naar, van);
         boolean deel = inv != null && inv.precision() < fwd.precision();
         java.math.BigDecimal factor = deel ? inv : fwd;
-        registreerTijdSchaalFunctie();
+        fnImport("rsTijdSchaal");
         return "rsTijdSchaal(" + expr + ", new java.math.BigDecimal(\"" + factor.toPlainString() + "\"), " + deel + ")";
     }
 
@@ -2238,10 +2011,10 @@ public final class DrlTranspiler {
             }
             if (regios.isEmpty()) return null;             // no temporal clip (a pure-static compound)
             if (regios.size() == 1) return regios.get(0);  // one kenmerk (+ optional static members -> the guard)
-            if (alle) registreerTijdKnipFunctie(); else registreerTijdUnieFunctie();
+            if (alle) fnImport("rsTijdKnip"); else fnImport("rsTijdUnie");
             String combiner = alle ? "rsTijdKnip" : "rsTijdUnie";
             String acc = regios.get(0);
-            for (int i = 1; i < regios.size(); i++) acc = combiner + "(" + acc + ", " + regios.get(i) + ")";
+            for (int i = 1; i < regios.size(); i++) acc = combiner + "(" + acc + ", " + regios.get(i) + ", Segment.class)";
             return acc;
         }
         return null;
@@ -2278,8 +2051,8 @@ public final class DrlTranspiler {
         if (orGuard == null) return null;     // a static member we cannot lower -> marker
         String g = "\"" + gran.name() + "\"";
         return "(" + orGuard
-                + " ? rsTijdsevenredig(" + basis + ", " + basis + ", " + g + ")"
-                + " : rsTijdsevenredig(" + unionCond + ", " + basis + ", " + g + "))";
+                + " ? rsTijdsevenredig(" + basis + ", " + basis + ", " + g + ", Segment.class)"
+                + " : rsTijdsevenredig(" + unionCond + ", " + basis + ", " + g + ", Segment.class))";
     }
 
     /** §8.4 wrap a temporal-WRITE producer call in a mixed compound's STATIC guard: a non-temporal comparison member
@@ -2377,7 +2150,7 @@ public final class DrlTranspiler {
             if (getter == null) return Frag.todo("§8.2 navigatie", c.bron());
             Frag g = operand(ander, subject);    // the scalar grenswaarde (literal / parameter-global / own attribute)
             if (g.marker()) return Frag.todo("§8.2 grenswaarde", c.bron());
-            toets = code; grens = crossUnit ? herschaalExact(g.text(), ander.type(), tijd.type(), false) : g.text();
+            toets = code; grens = crossUnit ? herschaalExact(g.text(), ander.type(), tijd.type()) : g.text();
         } else if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.GEVULD
                 && p.operand() instanceof Expr.AttribuutRef pa && isTemporeelAttribuut(pa)) {
             getter = temporeelTijdlijnGetter(pa, subject);
@@ -2398,229 +2171,16 @@ public final class DrlTranspiler {
         } else {
             return Frag.todo("§8.2 predicaat", c.bron());     // LEEG / ELFPROEF / NUMERIEK-met-exact whole-period
         }
-        registreerGeheelPeriodeFunctie();
+        fnImport("rsGeheelPeriode");
         return Frag.ok("rsGeheelPeriode(" + getter + ", \"" + gran + "\", " + toets + ", " + grens + ")");
-    }
-
-    /** Register the §13.4.17.58 tijdsevenredig-deel helper: prorate a base value-timeline over each calendar bucket
-     *  by the fraction of the bucket the condition holds. Buckets are taken from the condition's TRUE {@code
-     *  List<Segment>} timeline (like rsAantalDagenIn); per non-empty bucket [start,eind) the output value is
-     *  {@code basisWaardeInBucket × trueDays / totalDays} at DECIMAL64 — §4.22 keeps the exact fraction, NEVER
-     *  auto-rounding to the doel's decimals (§6.1.2). The base value for a bucket is the basis segment covering the
-     *  bucket start; a leeg base there yields no segment (§4.22 leeg → leeg). Plain Java (TreeMap keeps the buckets
-     *  chronological) so a Drools function body compiles it. The §7.2 example: €18/mnd, recht 7 of Feb's 28 days →
-     *  7/28 × 18 = €4,5 for that month. */
-    private void registreerTijdsevenredigFunctie() {
-        hulpFuncties.putIfAbsent("rsTijdsevenredig",
-                "function java.util.List rsTijdsevenredig(java.util.List conditie, java.util.List basis, String granulariteit) {\n"
-                + "    java.util.List uit = new java.util.ArrayList();\n"
-                + "    if (conditie == null || basis == null) return uit;\n"
-                + "    boolean jaar = \"JAAR\".equals(granulariteit);\n"
-                + "    java.util.Map trueDagen = new java.util.TreeMap();\n"
-                + "    for (Object o : conditie) {\n"
-                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
-                + "        if (s.getVan() == null || s.getTot() == null || !s.getVan().isBefore(s.getTot())) continue;\n"
-                + "        java.time.LocalDate cursor = jaar ? s.getVan().withDayOfYear(1) : s.getVan().withDayOfMonth(1);\n"
-                + "        while (cursor.isBefore(s.getTot())) {\n"
-                + "            java.time.LocalDate next = jaar ? cursor.plusYears(1) : cursor.plusMonths(1);\n"
-                + "            java.time.LocalDate van = s.getVan().isAfter(cursor) ? s.getVan() : cursor;\n"
-                + "            java.time.LocalDate tot = s.getTot().isBefore(next) ? s.getTot() : next;\n"
-                + "            long dagen = java.time.temporal.ChronoUnit.DAYS.between(van, tot);\n"
-                + "            if (dagen > 0) {\n"
-                + "                Object prev = trueDagen.get(cursor);\n"
-                + "                long acc = prev == null ? 0L : ((Long) prev).longValue();\n"
-                + "                trueDagen.put(cursor, Long.valueOf(acc + dagen));\n"
-                + "            }\n"
-                + "            cursor = next;\n"
-                + "        }\n"
-                + "    }\n"
-                + "    java.util.Iterator it = trueDagen.entrySet().iterator();\n"
-                + "    while (it.hasNext()) {\n"
-                + "        java.util.Map.Entry en = (java.util.Map.Entry) it.next();\n"
-                + "        java.time.LocalDate start = (java.time.LocalDate) en.getKey();\n"
-                + "        java.time.LocalDate eind = jaar ? start.plusYears(1) : start.plusMonths(1);\n"
-                + "        long totaal = java.time.temporal.ChronoUnit.DAYS.between(start, eind);\n"
-                + "        long dagen = ((Long) en.getValue()).longValue();\n"
-                + "        java.math.BigDecimal w = null;\n"
-                + "        for (Object o : basis) {\n"
-                + "            " + FACT_PACKAGE + ".Segment b = (" + FACT_PACKAGE + ".Segment) o;\n"
-                + "            if (b.getVan() != null && b.getTot() != null && !b.getVan().isAfter(start) && b.getTot().isAfter(start)) { w = b.getWaarde(); break; }\n"
-                + "        }\n"
-                + "        if (w == null) continue;\n"
-                + "        java.math.BigDecimal deel = w.multiply(java.math.BigDecimal.valueOf(dagen)).divide(java.math.BigDecimal.valueOf(totaal), java.math.MathContext.DECIMAL64);\n"
-                + "        uit.add(new " + FACT_PACKAGE + ".Segment(start, eind, deel));\n"
-                + "    }\n"
-                + "    return uit;\n"
-                + "}");
-    }
-
-    /** §7.3.1: scale every segment value of a rate timeline by a unit factor (€/jr -&gt; €/mnd) at DECIMAL64 — the
-     *  byte-identical DRL mirror of {@link RegelSpraakRuntime#rsTijdSchaal}. */
-    /** Register the §5.1.4 temporal-arithmetic helper: apply PLUS/MIN per period on the merged-knip timeline of two
-     *  operands (leeg -> 0), coalescing adjacent equal segments. Byte-identical to {@link RegelSpraakRuntime#rsTijdReken}. */
-    private void registreerTijdRekenFunctie() {
-        hulpFuncties.putIfAbsent("rsTijdRekenWaarde",
-                "function java.math.BigDecimal rsTijdRekenWaarde(java.util.List lijst, java.time.LocalDate dag) {\n"
-                + "    if (lijst != null) for (Object o : lijst) {\n"
-                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
-                + "        if (s.getVan() != null && s.getTot() != null && !s.getVan().isAfter(dag) && dag.isBefore(s.getTot()))\n"
-                + "            return s.getWaarde() == null ? java.math.BigDecimal.ZERO : s.getWaarde();\n"
-                + "    }\n"
-                + "    return java.math.BigDecimal.ZERO;\n"
-                + "}");
-        hulpFuncties.putIfAbsent("rsTijdReken",
-                "function java.util.List rsTijdReken(java.util.List a, java.util.List b, String op) {\n"
-                + "    java.util.TreeMap knipSet = new java.util.TreeMap();\n"
-                + "    java.util.List bronnen = new java.util.ArrayList(); bronnen.add(a); bronnen.add(b);\n"
-                + "    for (Object lo : bronnen) {\n"
-                + "        java.util.List lst = (java.util.List) lo;\n"
-                + "        if (lst != null) for (Object o : lst) {\n"
-                + "            " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
-                + "            if (s.getVan() != null && s.getTot() != null && s.getVan().isBefore(s.getTot())) { knipSet.put(s.getVan(), Boolean.TRUE); knipSet.put(s.getTot(), Boolean.TRUE); }\n"
-                + "        }\n"
-                + "    }\n"
-                + "    java.util.List uit = new java.util.ArrayList();\n"
-                + "    java.time.LocalDate prev = null; java.time.LocalDate lopendeVan = null; java.math.BigDecimal lopendeWaarde = null;\n"
-                + "    for (Object ko : knipSet.keySet()) {\n"
-                + "        java.time.LocalDate t = (java.time.LocalDate) ko;\n"
-                + "        if (prev != null) {\n"
-                + "            java.math.BigDecimal x = rsTijdRekenWaarde(a, prev); java.math.BigDecimal y = rsTijdRekenWaarde(b, prev);\n"
-                + "            java.math.BigDecimal r = \"MIN\".equals(op) ? x.subtract(y) : x.add(y);\n"
-                + "            if (lopendeVan == null) { lopendeVan = prev; lopendeWaarde = r; }\n"
-                + "            else if (lopendeWaarde.compareTo(r) != 0) { uit.add(new " + FACT_PACKAGE + ".Segment(lopendeVan, prev, lopendeWaarde)); lopendeVan = prev; lopendeWaarde = r; }\n"
-                + "        }\n"
-                + "        prev = t;\n"
-                + "    }\n"
-                + "    if (lopendeVan != null) uit.add(new " + FACT_PACKAGE + ".Segment(lopendeVan, prev, lopendeWaarde));\n"
-                + "    return uit;\n"
-                + "}");
-    }
-
-    private void registreerTijdSchaalFunctie() {
-        hulpFuncties.putIfAbsent("rsTijdSchaal",
-                "function java.util.List rsTijdSchaal(java.util.List tijdlijn, java.math.BigDecimal factor, boolean deel) {\n"
-                + "    java.util.List uit = new java.util.ArrayList();\n"
-                + "    if (tijdlijn == null) return uit;\n"
-                + "    for (Object o : tijdlijn) {\n"
-                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
-                + "        java.math.BigDecimal w = s.getWaarde();\n"
-                + "        java.math.BigDecimal nw = w == null ? null : (deel ? w.divide(factor, java.math.MathContext.DECIMAL64) : w.multiply(factor, java.math.MathContext.DECIMAL64));\n"
-                + "        uit.add(new " + FACT_PACKAGE + ".Segment(s.getVan(), s.getTot(), nw));\n"
-                + "    }\n"
-                + "    return uit;\n"
-                + "}");
-    }
-
-    /** Register the §13.4.17.57 aantal-dagen-in helper: bucket a condition's TRUE {@code List<Segment>} timeline
-     *  into calendar months (or years) and count, per bucket, the days the condition holds — emitting one output
-     *  Segment per non-empty bucket [bucketStart, bucketEnd) whose waarde is that day-count (the §7.2 example yields
-     *  23 dg in Jan, 13 dg in Feb). A null condition -> empty. Plain Java (TreeMap keeps the buckets chronological)
-     *  so a Drools function body compiles it. */
-    private void registreerAantalDagenInFunctie() {
-        hulpFuncties.putIfAbsent("rsAantalDagenIn",
-                "function java.util.List rsAantalDagenIn(java.util.List conditie, String granulariteit) {\n"
-                + "    java.util.Map tellingen = new java.util.TreeMap();\n"
-                + "    if (conditie == null) return new java.util.ArrayList();\n"
-                + "    boolean jaar = \"JAAR\".equals(granulariteit);\n"
-                + "    for (Object o : conditie) {\n"
-                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
-                + "        if (s.getVan() == null || s.getTot() == null || !s.getVan().isBefore(s.getTot())) continue;\n"
-                + "        java.time.LocalDate cursor = jaar ? s.getVan().withDayOfYear(1) : s.getVan().withDayOfMonth(1);\n"
-                + "        while (cursor.isBefore(s.getTot())) {\n"
-                + "            java.time.LocalDate next = jaar ? cursor.plusYears(1) : cursor.plusMonths(1);\n"
-                + "            java.time.LocalDate van = s.getVan().isAfter(cursor) ? s.getVan() : cursor;\n"
-                + "            java.time.LocalDate tot = s.getTot().isBefore(next) ? s.getTot() : next;\n"
-                + "            long dagen = java.time.temporal.ChronoUnit.DAYS.between(van, tot);\n"
-                + "            if (dagen > 0) {\n"
-                + "                Object prev = tellingen.get(cursor);\n"
-                + "                long acc = prev == null ? 0L : ((Long) prev).longValue();\n"
-                + "                tellingen.put(cursor, Long.valueOf(acc + dagen));\n"
-                + "            }\n"
-                + "            cursor = next;\n"
-                + "        }\n"
-                + "    }\n"
-                + "    java.util.List uit = new java.util.ArrayList();\n"
-                + "    java.util.Iterator it = tellingen.entrySet().iterator();\n"
-                + "    while (it.hasNext()) {\n"
-                + "        java.util.Map.Entry en = (java.util.Map.Entry) it.next();\n"
-                + "        java.time.LocalDate start = (java.time.LocalDate) en.getKey();\n"
-                + "        java.time.LocalDate eind = jaar ? start.plusYears(1) : start.plusMonths(1);\n"
-                + "        uit.add(new " + FACT_PACKAGE + ".Segment(start, eind, new java.math.BigDecimal(((Long) en.getValue()).longValue())));\n"
-                + "    }\n"
-                + "    return uit;\n"
-                + "}");
-    }
-
-    /** Register the §8.2/§13.4.15.70 gehele-periode helper: is the per-segment check true at EVERY moment of each
-     *  calendar bucket (MAAND|JAAR) the timeline touches? Buckets like rsAantalDagenIn; a bucket PASSES only when the
-     *  satisfying days equal the bucket's full calendar length (a gap or contrary/leeg segment fails it). AND over
-     *  buckets; an empty timeline -> true. {@code toets}: 0..5 = </>/==/!= of waarde vs grens (leeg never satisfies),
-     *  6 = gevuld, 7 = covered (a §8.2 kenmerk true-period). Byte-identical compute to {@code RegelSpraakRuntime
-     *  .rsGeheelPeriode} (the differential gate); plain Java (java dialect) so a Drools function body runs it. */
-    private void registreerGeheelPeriodeFunctie() {
-        hulpFuncties.putIfAbsent("rsGeheelPeriode",
-                "function boolean rsGeheelPeriode(java.util.List tijdlijn, String granulariteit, int toets, java.math.BigDecimal grens) {\n"
-                + "    if (tijdlijn == null) return true;\n"
-                + "    boolean jaar = \"JAAR\".equals(granulariteit);\n"
-                + "    java.util.Map geraaktDagen = new java.util.TreeMap();\n"
-                + "    java.util.Map goedDagen = new java.util.TreeMap();\n"
-                + "    for (Object o : tijdlijn) {\n"
-                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
-                + "        if (s.getVan() == null || s.getTot() == null || !s.getVan().isBefore(s.getTot())) continue;\n"
-                + "        boolean ok;\n"
-                + "        if (toets == 7) ok = true;\n"
-                + "        else if (toets == 8) ok = (s.getWaarde() == null);\n"   // §8.2 leeg (inverse of gevuld)
-                + "        else if (s.getWaarde() == null) ok = false;\n"
-                + "        else if (toets == 6) ok = true;\n"
-                + "        else if (grens == null) ok = false;\n"   // §5.1 leeg grens -> onwaar (never compareTo(null))
-                + "        else {\n"
-                + "            int c = s.getWaarde().compareTo(grens);\n"
-                + "            if (toets == 0) ok = c < 0;\n"
-                + "            else if (toets == 1) ok = c <= 0;\n"
-                + "            else if (toets == 2) ok = c > 0;\n"
-                + "            else if (toets == 3) ok = c >= 0;\n"
-                + "            else if (toets == 4) ok = c == 0;\n"
-                + "            else if (toets == 5) ok = c != 0;\n"
-                + "            else ok = false;\n"
-                + "        }\n"
-                + "        java.time.LocalDate cursor = jaar ? s.getVan().withDayOfYear(1) : s.getVan().withDayOfMonth(1);\n"
-                + "        while (cursor.isBefore(s.getTot())) {\n"
-                + "            java.time.LocalDate next = jaar ? cursor.plusYears(1) : cursor.plusMonths(1);\n"
-                + "            java.time.LocalDate van = s.getVan().isAfter(cursor) ? s.getVan() : cursor;\n"
-                + "            java.time.LocalDate tot = s.getTot().isBefore(next) ? s.getTot() : next;\n"
-                + "            long dagen = java.time.temporal.ChronoUnit.DAYS.between(van, tot);\n"
-                + "            if (dagen > 0) {\n"
-                + "                Object pg = geraaktDagen.get(cursor);\n"
-                + "                geraaktDagen.put(cursor, Long.valueOf((pg == null ? 0L : ((Long) pg).longValue()) + dagen));\n"
-                + "                if (ok) {\n"
-                + "                    Object pgo = goedDagen.get(cursor);\n"
-                + "                    goedDagen.put(cursor, Long.valueOf((pgo == null ? 0L : ((Long) pgo).longValue()) + dagen));\n"
-                + "                }\n"
-                + "            }\n"
-                + "            cursor = next;\n"
-                + "        }\n"
-                + "    }\n"
-                + "    java.util.Iterator it = geraaktDagen.entrySet().iterator();\n"
-                + "    while (it.hasNext()) {\n"
-                + "        java.util.Map.Entry en = (java.util.Map.Entry) it.next();\n"
-                + "        java.time.LocalDate bucket = (java.time.LocalDate) en.getKey();\n"
-                + "        java.time.LocalDate eind = jaar ? bucket.plusYears(1) : bucket.plusMonths(1);\n"
-                + "        long totaal = java.time.temporal.ChronoUnit.DAYS.between(bucket, eind);\n"
-                + "        Object g = goedDagen.get(bucket);\n"
-                + "        long goed = g == null ? 0L : ((Long) g).longValue();\n"
-                + "        long drempel = toets == 8 ? ((Long) en.getValue()).longValue() : totaal;\n"   // §8.2 LEEG: gaps are leeg -> only touched days must be leeg
-                + "        if (goed < drempel) return false;\n"
-                + "    }\n"
-                + "    return true;\n"
-                + "}");
     }
 
     /** §7.1 clip a value timeline by ONE temporal-kenmerk membership: rsTijdKnip to its TRUE periods, or
      *  rsTijdKnipNiet to the complement for a §8.1.8.1/.2 negated membership ("gedurende de tijd dat hij GEEN …"). */
     private String kenmerkTijdKnip(String waarde, Conditie.Kenmerk k) {
         String knip = k.negatie() ? "rsTijdKnipNiet" : "rsTijdKnip";
-        if (k.negatie()) registreerTijdKnipNietFunctie(); else registreerTijdKnipFunctie();
-        return knip + "(" + waarde + ", " + SUBJECT + "." + getter(k.kenmerk()) + "())";
+        if (k.negatie()) fnImport("rsTijdKnipNiet"); else fnImport("rsTijdKnip");
+        return knip + "(" + waarde + ", " + SUBJECT + "." + getter(k.kenmerk()) + "(), Segment.class)";
     }
 
     /** §8.4.2 fold a COMPOUND gedurende over the value timeline. Every onderdeel must be a single-period temporal
@@ -2641,12 +2201,12 @@ public final class DrlTranspiler {
             // getter timeline; a NEGATED member's region within the value is rsTijdKnipNiet(value, getter) (the
             // value ∩ ¬kenmerk — the span-dependent complement, materialised against the value's own segments). The
             // union (rsTijdUnie coalesces the intervals) is then clipped once: value ∩ (A ∪ ¬B ∪ …) == the OR.
-            registreerTijdUnieFunctie();
-            registreerTijdKnipFunctie();
+            fnImport("rsTijdUnie");
+            fnImport("rsTijdKnip");
             String unie = lidSteun(waarde, (Conditie.Kenmerk) s.onderdelen().get(0));
             for (int i = 1; i < s.onderdelen().size(); i++)
-                unie = "rsTijdUnie(" + unie + ", " + lidSteun(waarde, (Conditie.Kenmerk) s.onderdelen().get(i)) + ")";
-            return "rsTijdKnip(" + waarde + ", " + unie + ")";
+                unie = "rsTijdUnie(" + unie + ", " + lidSteun(waarde, (Conditie.Kenmerk) s.onderdelen().get(i)) + ", Segment.class)";
+            return "rsTijdKnip(" + waarde + ", " + unie + ", Segment.class)";
         }
         return null;
     }
@@ -2657,132 +2217,8 @@ public final class DrlTranspiler {
     private String lidSteun(String waarde, Conditie.Kenmerk k) {
         String g = SUBJECT + "." + getter(k.kenmerk()) + "()";
         if (!k.negatie()) return g;
-        registreerTijdKnipNietFunctie();
-        return "rsTijdKnipNiet(" + waarde + ", " + g + ")";
-    }
-
-    /** Register the §7.1 timeline-clip helper: intersect each value Segment with each condition TRUE-interval,
-     *  emitting the overlapping [max(van), min(tot)) carrying the value's waarde (the kenmerk's timeline lists
-     *  only its true periods). A null value or condition list clips to empty (§4.20 leegwaarde -> 0). */
-    private void registreerTijdKnipFunctie() {
-        hulpFuncties.putIfAbsent("rsTijdKnip",
-                "function java.util.List rsTijdKnip(java.util.List waarde, java.util.List conditie) {\n"
-                + "    java.util.List uit = new java.util.ArrayList();\n"
-                + "    if (waarde == null || conditie == null) return uit;\n"
-                + "    for (Object wo : waarde) {\n"
-                + "        " + FACT_PACKAGE + ".Segment w = (" + FACT_PACKAGE + ".Segment) wo;\n"
-                + "        if (w.getVan() == null || w.getTot() == null) continue;\n"
-                + "        for (Object co : conditie) {\n"
-                + "            " + FACT_PACKAGE + ".Segment c = (" + FACT_PACKAGE + ".Segment) co;\n"
-                + "            if (c.getVan() == null || c.getTot() == null) continue;\n"
-                + "            java.time.LocalDate van = w.getVan().isAfter(c.getVan()) ? w.getVan() : c.getVan();\n"
-                + "            java.time.LocalDate tot = w.getTot().isBefore(c.getTot()) ? w.getTot() : c.getTot();\n"
-                + "            if (van.isBefore(tot)) uit.add(new " + FACT_PACKAGE + ".Segment(van, tot, w.getWaarde()));\n"
-                + "        }\n"
-                + "    }\n"
-                + "    return uit;\n"
-                + "}");
-    }
-
-    /** Register the §8.1.8.1/.2 negated-gedurende complement-clip helper: keep each value Segment's parts where the
-     *  condition is FALSE — i.e. subtract the condition TRUE-intervals (the kenmerk's timeline lists only its true
-     *  periods) from each value segment and emit the gaps. The condition intervals overlapping a value segment are
-     *  clamped to it, selection-sorted by start (small lists; no anonymous Comparator — Drools function bodies stay
-     *  plain Java), then walked, emitting [cursor, next-true-start) and advancing past each true run. A null value
-     *  clips to empty; a null/empty condition leaves the whole value (the kenmerk is never true -> always FALSE). */
-    private void registreerTijdKnipNietFunctie() {
-        hulpFuncties.putIfAbsent("rsTijdKnipNiet",
-                "function java.util.List rsTijdKnipNiet(java.util.List waarde, java.util.List conditie) {\n"
-                + "    java.util.List uit = new java.util.ArrayList();\n"
-                + "    if (waarde == null) return uit;\n"
-                + "    for (Object wo : waarde) {\n"
-                + "        " + FACT_PACKAGE + ".Segment w = (" + FACT_PACKAGE + ".Segment) wo;\n"
-                + "        if (w.getVan() == null || w.getTot() == null) continue;\n"
-                + "        java.util.List knips = new java.util.ArrayList();\n"
-                + "        if (conditie != null) for (Object co : conditie) {\n"
-                + "            " + FACT_PACKAGE + ".Segment c = (" + FACT_PACKAGE + ".Segment) co;\n"
-                + "            if (c.getVan() == null || c.getTot() == null) continue;\n"
-                + "            java.time.LocalDate van = w.getVan().isAfter(c.getVan()) ? w.getVan() : c.getVan();\n"
-                + "            java.time.LocalDate tot = w.getTot().isBefore(c.getTot()) ? w.getTot() : c.getTot();\n"
-                + "            if (van.isBefore(tot)) knips.add(new " + FACT_PACKAGE + ".Segment(van, tot, null));\n"
-                + "        }\n"
-                + "        for (int i = 0; i < knips.size(); i++) {\n"
-                + "            int min = i;\n"
-                + "            for (int j = i + 1; j < knips.size(); j++)\n"
-                + "                if (((" + FACT_PACKAGE + ".Segment) knips.get(j)).getVan().isBefore(((" + FACT_PACKAGE + ".Segment) knips.get(min)).getVan())) min = j;\n"
-                + "            Object t = knips.get(i); knips.set(i, knips.get(min)); knips.set(min, t);\n"
-                + "        }\n"
-                + "        java.time.LocalDate cursor = w.getVan();\n"
-                + "        for (Object ko : knips) {\n"
-                + "            " + FACT_PACKAGE + ".Segment c = (" + FACT_PACKAGE + ".Segment) ko;\n"
-                + "            if (c.getVan().isAfter(cursor)) uit.add(new " + FACT_PACKAGE + ".Segment(cursor, c.getVan(), w.getWaarde()));\n"
-                + "            if (c.getTot().isAfter(cursor)) cursor = c.getTot();\n"
-                + "        }\n"
-                + "        if (cursor.isBefore(w.getTot())) uit.add(new " + FACT_PACKAGE + ".Segment(cursor, w.getTot(), w.getWaarde()));\n"
-                + "    }\n"
-                + "    return uit;\n"
-                + "}");
-    }
-
-    /** Register the §8.4.2 OR-compound union helper: merge two true-period {@code List<Segment>} timelines into
-     *  their union — concatenate, drop empty/null-bounded segments, selection-sort by start (plain Java so a Drools
-     *  function body compiles it), then sweep coalescing overlapping OR ADJACENT intervals ([a,b) ∪ [b,c) = [a,c)
-     *  on the half-open convention). The result carries a null waarde (these are boolean true-periods, fed to
-     *  rsTijdKnip which re-stamps the value's waarde). A null input contributes nothing. */
-    private void registreerTijdUnieFunctie() {
-        hulpFuncties.putIfAbsent("rsTijdUnie",
-                "function java.util.List rsTijdUnie(java.util.List a, java.util.List b) {\n"
-                + "    java.util.List segs = new java.util.ArrayList();\n"
-                + "    if (a != null) for (Object o : a) {\n"
-                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
-                + "        if (s.getVan() != null && s.getTot() != null && s.getVan().isBefore(s.getTot())) segs.add(s);\n"
-                + "    }\n"
-                + "    if (b != null) for (Object o : b) {\n"
-                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
-                + "        if (s.getVan() != null && s.getTot() != null && s.getVan().isBefore(s.getTot())) segs.add(s);\n"
-                + "    }\n"
-                + "    for (int i = 0; i < segs.size(); i++) {\n"
-                + "        int min = i;\n"
-                + "        for (int j = i + 1; j < segs.size(); j++)\n"
-                + "            if (((" + FACT_PACKAGE + ".Segment) segs.get(j)).getVan().isBefore(((" + FACT_PACKAGE + ".Segment) segs.get(min)).getVan())) min = j;\n"
-                + "        Object t = segs.get(i); segs.set(i, segs.get(min)); segs.set(min, t);\n"
-                + "    }\n"
-                + "    java.util.List uit = new java.util.ArrayList();\n"
-                + "    java.time.LocalDate van = null; java.time.LocalDate tot = null;\n"
-                + "    for (Object o : segs) {\n"
-                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
-                + "        if (van == null) { van = s.getVan(); tot = s.getTot(); }\n"
-                + "        else if (!s.getVan().isAfter(tot)) { if (s.getTot().isAfter(tot)) tot = s.getTot(); }\n"
-                + "        else { uit.add(new " + FACT_PACKAGE + ".Segment(van, tot, null)); van = s.getVan(); tot = s.getTot(); }\n"
-                + "    }\n"
-                + "    if (van != null) uit.add(new " + FACT_PACKAGE + ".Segment(van, tot, null));\n"
-                + "    return uit;\n"
-                + "}");
-    }
-
-    /** Register the §7.1 totaal-over-a-timeline helper: fold a {@code List<Segment>} by weighting each segment's
-     *  value by the count of whole granularity periods (DAG/WEEK/MAAND/KWARTAAL/JAAR) between its van and tot. A
-     *  null list, or a segment with a null bound/value, contributes nothing (§4.20 leegwaarde); an empty timeline
-     *  totals 0. A kwartaal is three maanden (ChronoUnit has no quarter). */
-    private void registreerTijdTotaalFunctie() {
-        hulpFuncties.putIfAbsent("rsTijdTotaal",
-                "function java.math.BigDecimal rsTijdTotaal(java.util.List segmenten, String granulariteit) {\n"
-                + "    if (segmenten == null) return null;\n"
-                + "    java.math.BigDecimal som = java.math.BigDecimal.ZERO;\n"
-                + "    for (Object o : segmenten) {\n"
-                + "        " + FACT_PACKAGE + ".Segment s = (" + FACT_PACKAGE + ".Segment) o;\n"
-                + "        if (s.getWaarde() == null || s.getVan() == null || s.getTot() == null || !s.getVan().isBefore(s.getTot())) continue;\n"
-                + "        long n;\n"
-                + "        if (\"DAG\".equals(granulariteit)) n = java.time.temporal.ChronoUnit.DAYS.between(s.getVan(), s.getTot());\n"
-                + "        else if (\"WEEK\".equals(granulariteit)) n = java.time.temporal.ChronoUnit.WEEKS.between(s.getVan(), s.getTot());\n"
-                + "        else if (\"MAAND\".equals(granulariteit)) n = java.time.temporal.ChronoUnit.MONTHS.between(s.getVan(), s.getTot());\n"
-                + "        else if (\"KWARTAAL\".equals(granulariteit)) n = java.time.temporal.ChronoUnit.MONTHS.between(s.getVan(), s.getTot()) / 3;\n"
-                + "        else if (\"JAAR\".equals(granulariteit)) n = java.time.temporal.ChronoUnit.YEARS.between(s.getVan(), s.getTot());\n"
-                + "        else n = 0;\n"
-                + "        som = som.add(s.getWaarde().multiply(java.math.BigDecimal.valueOf(n)));\n"
-                + "    }\n"
-                + "    return som;\n"
-                + "}");
+        fnImport("rsTijdKnipNiet");
+        return "rsTijdKnipNiet(" + waarde + ", " + g + ", Segment.class)";
     }
 
     /**
@@ -2848,7 +2284,7 @@ public final class DrlTranspiler {
         java.util.function.Function<Expr.AttribuutRef, String> elemWaarde = a -> {
             String getr = ev + "." + getter(a.attribuut()) + "()";
             if (!temporeelArg) return getr;
-            registreerTijdTotaalFunctie();
+            fnImport("rsTijdTotaal");
             return "rsTijdTotaal(" + getr + ", \"" + a.objecttype().attribuutGranulariteit.get(a.attribuut()).name() + "\")";
         };
 
@@ -2881,7 +2317,7 @@ public final class DrlTranspiler {
             String cnt = "$n" + n;
             accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true) + "( " + filterScope + " ) ; "
                     + cnt + " : count(" + ev + "), " + var + " : " + fn + "( " + elementExpr + " ) )");
-            return Frag.ok("(" + cnt + " == 0 ? null : " + registreerGetalFunctie() + "(" + var + "))");
+            return Frag.ok("(" + cnt + " == 0 ? null : " + fnImport("toBd") + "(" + var + "))");
         }
         accumulates.add("accumulate( " + ev + " : " + ident(elem.naam, true)
                 + "( " + filterScope + " ) ; " + var + " : " + fn + "( " + elementExpr + " ) )");
@@ -2890,18 +2326,8 @@ public final class DrlTranspiler {
         // resolution (Number has no .multiply). Coerce to BigDecimal, null-safe (an empty min/max stays leeg), mirroring
         // the exec's RegelSpraakRuntime.toBd. SUM already yields a BigDecimal accumulate; COUNT stays an integer count.
         if (f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM)
-            return Frag.ok(registreerGetalFunctie() + "(" + var + ")");
+            return Frag.ok(fnImport("toBd") + "(" + var + ")");
         return Frag.ok(var);
-    }
-
-    /** Register (idempotently) the null-safe Object→BigDecimal coercion {@code rsGetal} — the DRL mirror of
-     *  {@link io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime#toBd}, used to retype a min/max accumulate binding (a
-     *  java.lang.Number) to BigDecimal so a cross-unit restate / arithmetic on it resolves under Drools strict-mode. */
-    private String registreerGetalFunctie() {
-        String fn = "rsGetal";
-        hulpFuncties.putIfAbsent(fn, "function java.math.BigDecimal " + fn
-                + "(Object x) {\n    return x == null ? null : new java.math.BigDecimal(x.toString());\n}\n\n");
-        return fn;
     }
 
     /** The element scope: the join binding the element to the subject ("the passagiers
@@ -2943,13 +2369,13 @@ public final class DrlTranspiler {
         if (!linksAgg && !rechtsAgg) return null;               // no aggregation operand
         if (linksAgg && rechtsAgg) {                            // §5.8 agg-vs-agg ("het aantal X <op> het aantal Y")
             // Two accumulate CEs over the same subject; the eval compares both results via rsAggVergelijk (the right agg
-            // coerced to BigDecimal via rsGetal). leegCount=true so an empty SOM/MIN/MAX on either side reads leeg.
+            // coerced to BigDecimal via toBd). leegCount=true so an empty SOM/MIN/MAX on either side reads leeg.
             Frag a1 = accumulate((Expr.Functie) v.links(), subject, true);
             if (a1 == null || a1.marker()) return aggTerug(mark);
             Frag a2 = accumulate((Expr.Functie) v.rechts(), subject, true);
             if (a2 == null || a2.marker()) return aggTerug(mark);
-            accumulates.add("eval( " + registreerAggVergelijkFunctie() + "(" + a1.text() + ", "
-                    + registreerGetalFunctie() + "(" + a2.text() + "), \"" + drlOp(v.op()) + "\") )");
+            accumulates.add("eval( " + fnImport("rsAggVergelijk") + "(" + a1.text() + ", "
+                    + fnImport("toBd") + "(" + a2.text() + "), \"" + drlOp(v.op()) + "\") )");
             return new LoweredConditie("", java.util.List.of(), false);
         }
         Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
@@ -2988,13 +2414,13 @@ public final class DrlTranspiler {
         if (ander instanceof Expr.AttribuutRef nar && (nar.navigatieRol() != null || nar.objecttype() != subject)) {
             NaviRef nr = naviResolve(nar, subject);
             if (nr.soort() != NaviSoort.GENAVIGEERD) return aggTerug(mark);   // AFWEZIG / NAAR_VEEL / ONOPGELOST -> marker
-            registreerRelGetalFunctie();
+            fnImport("rsRelGetal");
             n = Frag.ok("rsRelGetal(" + SUBJECT + "." + getter(nr.rol()) + "(), \"" + nar.attribuut() + "\")");
         } else {
             n = waarde(ander, subject);
             if (n.marker()) return aggTerug(mark);
         }
-        accumulates.add("eval( " + registreerAggVergelijkFunctie() + "(" + agg.text() + ", " + n.text() + ", \"" + drlOp(op) + "\") )");
+        accumulates.add("eval( " + fnImport("rsAggVergelijk") + "(" + agg.text() + ", " + n.text() + ", \"" + drlOp(op) + "\") )");
         return new LoweredConditie("", java.util.List.of(), false);
     }
 
@@ -3009,33 +2435,6 @@ public final class DrlTranspiler {
     private static boolean isAggregatieFunctie(Expr.FunctieKind k) {
         return k == Expr.FunctieKind.AANTAL || k == Expr.FunctieKind.SOM || k == Expr.FunctieKind.TOTAAL
                 || k == Expr.FunctieKind.MINIMUM || k == Expr.FunctieKind.MAXIMUM;
-    }
-
-    /** Register (idempotently) {@code boolean rsAggVergelijk(Object agg, BigDecimal n, String op)} — the leegwaarde-faithful
-     *  numeric comparison of an aggregation result to a threshold in a condition. A leeg aggregate (empty SOM/MIN/MAX -> null)
-     *  or a leeg threshold reads ONWAAR for the ordering operators (§5, leeg operand); GELIJK is WAAR only both-leeg (§5.3
-     *  Tabel 37); ONGELIJK is WAAR for exactly-one-leeg, onwaar both-leeg (§5.6 Tabel 44). Coerces the agg (a Long count or a
-     *  BigDecimal fold) to BigDecimal by value. Mirrors {@link RegelSpraakRuntime#rsAggVergelijk}. */
-    private String registreerAggVergelijkFunctie() {
-        String fn = "rsAggVergelijk";
-        hulpFuncties.putIfAbsent(fn,
-            "function boolean " + fn + "(Object agg, java.math.BigDecimal n, String op) {\n"
-          + "    java.math.BigDecimal a = agg == null ? null : new java.math.BigDecimal(agg.toString());\n"
-          + "    if (a == null || n == null) {\n"
-          + "        boolean beideLeeg = a == null && n == null;\n"
-          + "        if (op.equals(\"==\")) return beideLeeg;\n"    // §5.3 Tabel 37: leeg==leeg WAAR
-          + "        if (op.equals(\"!=\")) return !beideLeeg;\n"   // §5.6 Tabel 44: leeg!=gevuld WAAR, leeg!=leeg onwaar
-          + "        return false;\n"                               // ordering leeg operand -> onwaar (Tabel 33)
-          + "    }\n"
-          + "    int c = a.compareTo(n);\n"
-          + "    if (op.equals(\">\")) return c > 0;\n"
-          + "    if (op.equals(\">=\")) return c >= 0;\n"
-          + "    if (op.equals(\"<\")) return c < 0;\n"
-          + "    if (op.equals(\"<=\")) return c <= 0;\n"
-          + "    if (op.equals(\"!=\")) return c != 0;\n"
-          + "    return c == 0;\n"
-          + "}\n\n");
-        return fn;
     }
 
     // ---------------- condition ("when" side: bare field constraints) ----------------
@@ -3131,18 +2530,18 @@ public final class DrlTranspiler {
             return switch (p.soort()) {
                 case LEEG   -> LoweredConditie.van(o.text() + " == null");
                 case GEVULD -> LoweredConditie.van(o.text() + " != null");
-                case ELFPROEF -> { registreerElfproefFunctie(); yield LoweredConditie.van((p.negatie() ? "!" : "") + "rsElfproef(" + o.text() + ")"); }  // §8.1.3 (Tabel 16 NIET-vorm)
-                case NUMERIEK_MET_EXACT -> { registreerNumeriekMetExactFunctie();   // §8.1.4 (Tabel 16 NIET-vorm)
+                case ELFPROEF -> { fnImport("rsElfproef"); yield LoweredConditie.van((p.negatie() ? "!" : "") + "rsElfproef(" + o.text() + ")"); }  // §8.1.3 (Tabel 16 NIET-vorm)
+                case NUMERIEK_MET_EXACT -> { fnImport("rsNumeriekMetExact");   // §8.1.4 (Tabel 16 NIET-vorm)
                     yield LoweredConditie.van((p.negatie() ? "!" : "") + "rsNumeriekMetExact(" + o.text() + ", " + p.cijfers() + ")"); }
-                case DAGSOORT -> {  // §8.1.5 "<datum> is (geen) <dagsoort>" -> the §9.8 definitie predicate
-                    String fn = dagsoortFunctie(p.dagsoort());
+                case DAGSOORT -> {  // §8.1.5 "<datum> is (geen) <dagsoort>" -> the §9.8 definitie predicate (a global)
+                    String glob = dagsoortGlobaal(p.dagsoort());
                     // §5.15: een leegwaarde is nooit een dagsoort -> a null date is ONWAAR (no match), not an NPE. The
                     // NEGATED form (Tabel 16 "is geen <dagsoort>") wraps it in "!" -> a leeg/non-dagsoort datum is WAAR.
                     // §8.1.5/§5.15/Tabel 57: a Datum-en-tijd (LocalDateTime) operand is day-granular here — take its
                     // .toLocalDate() for the §9.8 LocalDate predicate (after the != null guard, so no NPE; the && short-circuits).
                     String dag = p.operand().type() instanceof Datatype.DatumTijd ? o.text() + ".toLocalDate()" : o.text();
-                    yield fn == null ? LoweredConditie.marker("dagsoortcontrole '" + p.dagsoort() + "'", p.bron())
-                            : LoweredConditie.van((p.negatie() ? "!" : "") + "(" + o.text() + " != null && " + fn + "(" + dag + "))");
+                    yield glob == null ? LoweredConditie.marker("dagsoortcontrole '" + p.dagsoort() + "'", p.bron())
+                            : LoweredConditie.van((p.negatie() ? "!" : "") + "(" + o.text() + " != null && " + glob + ".test(" + dag + "))");
                 }
                 default     -> LoweredConditie.marker("predicaat " + p.soort(), p.bron());
             };
@@ -3259,183 +2658,22 @@ public final class DrlTranspiler {
     /** A boolean expression true when AT LEAST {@code k} of {@code delen} hold: the OR over
      *  every k-subset, each subset AND-ed. k&lt;=0 is always true; k&gt;size is never. The
      *  bullet lists are small, so the C(size,k) expansion stays modest. */
-    // ---------------- §9.8 dagsoort definitie -> a per-date boolean function ----------------
+    // ---------------- §9.8 dagsoort definitie -> a shared Predicate global ----------------
 
-    /** Register (idempotently) and name a DRL {@code function boolean rsDagsoort_<Naam>(LocalDate dag)} compiled
-     *  from a §9.8 dagsoortdefinitie's condition over "de dag"; null when no such definitie exists or its condition
-     *  is not a pure date predicate (the caller then markers). A dagsoort that references ANOTHER dagsoort
-     *  (a feestdag tests kerstdag/paasdag) registers that one too — its body calls the other function. The name is
-     *  RESERVED before the body is lowered, so a self/cyclic reference resolves to a call rather than recursing. */
-    private String dagsoortFunctie(String dagsoortNaam) {
-        String fn = "rsDagsoort_" + ident(dagsoortNaam, true);
-        if (hulpFuncties.containsKey(fn)) return fn;
-        io.github.yhavinga.regelspraak.ir.ResolvedDagsoort def = null;
-        for (io.github.yhavinga.regelspraak.ir.ResolvedDagsoort d : model.resolvedDagsoorten)
-            if (d.naam().equalsIgnoreCase(dagsoortNaam)) { def = d; break; }
-        if (def == null) return null;
-        hulpFuncties.put(fn, "");                 // reserve the name (cycle / forward-reference guard)
-        String body = dagsoortBool(def.voorwaarde());
-        if (body == null) { hulpFuncties.remove(fn); return null; }
-        hulpFuncties.put(fn, "function boolean " + fn + "(java.time.LocalDate dag) {\n    return " + body + ";\n}\n\n");
-        return fn;
+    /** Resolve (idempotently) the §9.8 definitie of {@code dagsoortNaam} via the SHARED {@link Dagsoorten}
+     *  compiler (goal-M1: ONE predicate implementation for both back-ends) and declare it as a
+     *  {@code global java.util.function.Predicate rsDagsoort_<Naam>;} that a session builder supplies from
+     *  {@link #dagsoortGlobalen()}. Returns the global name, or null when no such definitie exists or its
+     *  condition is not a pure date predicate (the caller then markers) — the same verdict the exec back-end
+     *  reaches from the same compiler, so the two manifests stay aligned. */
+    private String dagsoortGlobaal(String dagsoortNaam) {
+        java.util.function.Predicate<java.time.LocalDate> pred = dagsoorten.predikaat(dagsoortNaam);
+        if (pred == null) return null;
+        String naam = "rsDagsoort_" + ident(dagsoortNaam, true);
+        dagsoortGlobalen.putIfAbsent(naam, pred);
+        return naam;
     }
 
-    /** Register (idempotently) and name a DRL {@code function LocalDate rsDatumPlus_<Naam>(datum, aantal, optellen)}
-     *  for §6.11 "datum ± N &lt;dagsoort&gt;": step one calendar day at a time, counting only days that ARE the
-     *  dagsoort (its §9.8 predicate), until N have passed — the Nth such day is the result. §6.11: X itself never
-     *  counts (step BEFORE testing) and the result is always a dagsoort day, EXCEPT a 0 / leeg count returns X
-     *  unchanged (the spec's 0-case wins over "always a werkdag"); a leeg datum stays leeg. null when the dagsoort's
-     *  definitie cannot be compiled. The body calls the per-dagsoort predicate function, so both are registered. */
-    private String dagsoortDuurFunctie(String dagsoortNaam) {
-        String predFn = dagsoortFunctie(dagsoortNaam);
-        if (predFn == null) return null;
-        String fn = "rsDatumPlus_" + ident(dagsoortNaam, true);
-        if (hulpFuncties.containsKey(fn)) return fn;
-        hulpFuncties.put(fn,
-            "function java.time.LocalDate " + fn + "(java.time.LocalDate datum, java.math.BigDecimal aantal, boolean optellen) {\n"
-          + "    if (datum == null) return null;\n"
-          + "    if (aantal == null) return datum;\n"
-          + "    long n = aantal.longValue();\n"
-          + "    boolean op = optellen;\n"
-          + "    if (n < 0) { op = !op; n = -n; }\n"
-          + "    if (n == 0) return datum;\n"
-          + "    java.time.LocalDate d = datum;\n"
-          + "    long geteld = 0, stappen = 0;\n"
-          + "    while (geteld < n) {\n"
-          + "        d = op ? d.plusDays(1) : d.minusDays(1);\n"
-          + "        if (++stappen > 4000000L) throw new IllegalStateException(\"dagsoort-rekenkunde: geen \" + n + \"-de dagsoort-dag binnen 4000000 dagen (onvervulbare dagsoortdefinitie?)\");\n"
-          + "        if (" + predFn + "(d)) geteld++;\n"
-          + "    }\n"
-          + "    return d;\n"
-          + "}\n\n");
-        return fn;
-    }
-
-    /** Register (idempotently) and name a DRL {@code function LocalDateTime rsDatumTijdPlus_<Naam>(datum, aantal, optellen)}
-     *  for §6.11 "datum-EN-tijd ± N &lt;dagsoort&gt;": §4.1/§4.2 Tabel 2/5 rule 2 — the result is a datum-en-tijd, so step
-     *  over the DATE part via rsDatumPlus_<Naam> and re-attach the original time-of-day. A leeg datum stays leeg. null when
-     *  the dagsoort's definitie cannot be compiled. Registers rsDatumPlus_<Naam> (which it delegates to) as a side effect. */
-    private String dagsoortDuurTijdFunctie(String dagsoortNaam) {
-        String stapFn = dagsoortDuurFunctie(dagsoortNaam);   // registers rsDatumPlus_<Naam> + its predicate
-        if (stapFn == null) return null;
-        String fn = "rsDatumTijdPlus_" + ident(dagsoortNaam, true);
-        if (hulpFuncties.containsKey(fn)) return fn;
-        hulpFuncties.put(fn,
-            "function java.time.LocalDateTime " + fn + "(java.time.LocalDateTime datum, java.math.BigDecimal aantal, boolean optellen) {\n"
-          + "    if (datum == null) return null;\n"
-          + "    java.time.LocalDate d = " + stapFn + "(datum.toLocalDate(), aantal, optellen);\n"
-          + "    return d == null ? null : d.atTime(datum.toLocalTime());\n"
-          + "}\n\n");
-        return fn;
-    }
-
-    /** Register (idempotently) and name a DRL {@code function BigDecimal rsTijdsduur_<Naam>(van, tot, absoluut)} for
-     *  §6.10 "tijdsduur van A tot B in &lt;dagsoort&gt;": COUNT the dagsoort days in the half-open interval (van, tot]
-     *  — consistent with §6.11's "X telt niet mee". The result is signed (negative when tot is earlier than van),
-     *  absolute when asked; a leeg operand -> leeg (§6.10 Tabel 14). null when the definitie cannot be compiled. */
-    private String dagsoortTijdsduurFunctie(String dagsoortNaam) {
-        String predFn = dagsoortFunctie(dagsoortNaam);
-        if (predFn == null) return null;
-        String fn = "rsTijdsduur_" + ident(dagsoortNaam, true);
-        if (hulpFuncties.containsKey(fn)) return fn;
-        hulpFuncties.put(fn,
-            "function java.math.BigDecimal " + fn + "(java.time.LocalDate van, java.time.LocalDate tot, boolean absoluut) {\n"
-          + "    if (van == null || tot == null) return null;\n"
-          + "    boolean negatief = tot.isBefore(van);\n"
-          + "    java.time.LocalDate a = negatief ? tot : van;\n"
-          + "    java.time.LocalDate b = negatief ? van : tot;\n"
-          + "    long count = 0;\n"
-          + "    for (java.time.LocalDate d = a.plusDays(1); !d.isAfter(b); d = d.plusDays(1)) if (" + predFn + "(d)) count++;\n"
-          + "    long result = negatief ? -count : count;\n"
-          + "    return java.math.BigDecimal.valueOf(absoluut ? Math.abs(result) : result);\n"
-          + "}\n\n");
-        return fn;
-    }
-
-    /** Register (idempotently) and name a DRL {@code function BigDecimal rsTijdsduurTijd_<Naam>(van, tot, absoluut)} for
-     *  §6.10 "datum-EN-tijd tijdsduur in &lt;dagsoort&gt;": §4.16 L676 admits datum-en-tijd operands and the count carries
-     *  no time, so null-guard + toLocalDate both operands and delegate to rsTijdsduur_<Naam>. null when the dagsoort's
-     *  definitie cannot be compiled. Registers rsTijdsduur_<Naam> (which it delegates to) as a side effect. */
-    private String dagsoortTijdsduurTijdFunctie(String dagsoortNaam) {
-        String durFn = dagsoortTijdsduurFunctie(dagsoortNaam);   // registers rsTijdsduur_<Naam> + its predicate
-        if (durFn == null) return null;
-        String fn = "rsTijdsduurTijd_" + ident(dagsoortNaam, true);
-        if (hulpFuncties.containsKey(fn)) return fn;
-        hulpFuncties.put(fn,
-            "function java.math.BigDecimal " + fn + "(java.time.LocalDateTime van, java.time.LocalDateTime tot, boolean absoluut) {\n"
-          + "    return " + durFn + "(van == null ? null : van.toLocalDate(), tot == null ? null : tot.toLocalDate(), absoluut);\n"
-          + "}\n\n");
-        return fn;
-    }
-
-    /** Lower a §9.8 condition-over-the-day to a Java boolean over the {@code dag} LocalDate parameter; null when any
-     *  leaf is not a pure date predicate. This is a FUNCTION-BODY (Java) lowering, so numeric/date comparisons use
-     *  Comparable.compareTo — NOT the mvel operators {@link #conditie} emits for in-pattern constraints. */
-    private String dagsoortBool(Conditie c) {
-        if (c instanceof Conditie.Vergelijking v) {
-            // Comparable.compareTo requires both operands the SAME comparable type — a type-mismatched comparison
-            // (a datum vs a numeric date-component) would emit LocalDate.compareTo(BigDecimal), which fails the WHOLE
-            // KieBuilder build. The resolver already flags such a mismatch; here marker it so the DRL stays valid.
-            boolean compat = (v.links().type().isNumeriek() && v.rechts().type().isNumeriek())
-                    || (v.links().type().isDatum() && v.rechts().type().isDatum());
-            if (!compat) return null;
-            Frag lo = dagOperand(v.links()), ro = dagOperand(v.rechts());
-            if (lo.marker() || ro.marker()) return null;
-            return "(" + lo.text() + ".compareTo(" + ro.text() + ") " + compareToOp(v.op()) + ")";
-        }
-        if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.DAGSOORT) {
-            Frag o = dagOperand(p.operand());
-            String fn = dagsoortFunctie(p.dagsoort());
-            if (o.marker() || fn == null) return null;
-            return (p.negatie() ? "!" : "") + "(" + o.text() + " != null && " + fn + "(" + o.text() + "))";   // Tabel 16 "geen <dagsoort>"
-        }
-        if (c instanceof Conditie.Samengesteld s) {
-            List<String> delen = new ArrayList<>();
-            for (Conditie deel : s.onderdelen()) { String d = dagsoortBool(deel); if (d == null) return null; delen.add("(" + d + ")"); }
-            if (delen.isEmpty()) return null;
-            return switch (s.kwantor()) {
-                case ALLE, DE    -> "(" + String.join(" && ", delen) + ")";
-                case GEEN        -> "!(" + String.join(" || ", delen) + ")";
-                case TEN_MINSTE  -> minstens(delen, s.drempel());
-                case TEN_HOOGSTE -> "!(" + minstens(delen, s.drempel() + 1) + ")";
-                case PRECIES     -> "(" + minstens(delen, s.drempel()) + " && !(" + minstens(delen, s.drempel() + 1) + "))";
-            };
-        }
-        return null;   // any other condition shape is not a pure date predicate
-    }
-
-    /** A §9.8 operand over "de dag": the day itself ("de dag" -> the {@code dag} LocalDate), a date-component
-     *  function of it (via {@link #scalarFunctie}, reusing rsDatumDeel), or a fact-free literal — else a marker. */
-    private Frag dagOperand(Expr e) {
-        if (e instanceof Expr.Constante c && "de dag".equalsIgnoreCase(c.naam())) return Frag.ok("dag");
-        // Only the §9.8-realistic date operands, kept in lock-step with ExecModelTranspiler.dagWaarde: a date-component
-        // of the day, or "de eerste paasdag van <year>" (the paasdag/feestdag building block). Anything else (abs,
-        // wortel, datum-met, a fact read) markers in BOTH back-ends, so the per-date predicate never diverges.
-        if (e instanceof Expr.Functie f && dagFunctieToegestaan(f.kind())) {
-            Frag r = scalarFunctie(f, this::dagOperand);
-            return r != null ? r : Frag.todo("dagsoort-operand", e.bron());
-        }
-        if (e instanceof Expr.Literal lit) return literal(lit);
-        return Frag.todo("dagsoort-operand", e.bron());
-    }
-
-    /** The functie kinds a §9.8 dagsoort predicate may read over "de dag" (kept identical in both back-ends): the
-     *  date-component extractions and "de eerste paasdag van". */
-    private static boolean dagFunctieToegestaan(Expr.FunctieKind k) {
-        return switch (k) {
-            case JAAR_UIT, MAAND_UIT, DAG_UIT, UUR_UIT, MINUUT_UIT, SECONDE_UIT, MILLISECONDE_UIT, EERSTE_PAASDAG -> true;
-            default -> false;
-        };
-    }
-
-    /** The Java {@code Comparable.compareTo(...)} tail for a §9.8 numeric/date comparison (a function body, not mvel). */
-    private static String compareToOp(Conditie.Operator op) {
-        return switch (op) {
-            case GELIJK -> "== 0";  case ONGELIJK -> "!= 0";
-            case GROTER, LATER -> "> 0";  case KLEINER, EERDER -> "< 0";
-            case GROTER_OF_GELIJK, LATER_OF_GELIJK -> ">= 0";  case KLEINER_OF_GELIJK, EERDER_OF_GELIJK -> "<= 0";
-        };
-    }
 
     private static String minstens(List<String> delen, int k) {
         if (k <= 0) return "true";
@@ -3522,7 +2760,7 @@ public final class DrlTranspiler {
             // restated EXACTLY into the basis unit via herschaalConditie (×÷ the integer factorNaarCanoniek, like the
             // +/- and value-side begrenzing paths), so a "min van 24 mnd" clamp on a jr basis compares against an
             // exact 2 jr — it FIRES, not markers (only an OPAQUE composite bound, or a marker basis/bound, propagates).
-            registreerBegrensFunctie();
+            fnImport("rsBegrens");
             Datatype bt = bg.basis().type();
             Frag basis = operandReken(bg.basis(), subject);
             Frag min = bg.minimum() != null ? herschaalConditie(operandReken(bg.minimum(), subject), bg.minimum().type(), bt) : Frag.ok("null");
@@ -3573,7 +2811,7 @@ public final class DrlTranspiler {
                 && !isGedimensioneerd(a) && !isTemporeelAttribuut(a)) {
             NaviRef n = naviResolve(a, subject);
             if (n.soort() == NaviSoort.GENAVIGEERD) {
-                registreerRelGetalFunctie();
+                fnImport("rsRelGetal");
                 return Frag.ok("rsRelGetal(" + ident(n.rol(), false) + ", \"" + a.attribuut() + "\")");
             }
         }
@@ -3663,7 +2901,7 @@ public final class DrlTranspiler {
      *  condition side. A markered sub-expression propagates (the Frag marker flag), so an unlowerable «…» part makes
      *  the whole tekstreeks an honest marker. */
     private Frag tekstReeks(Expr.TekstReeks tr, Function<Expr, Frag> arg) {
-        registreerTekstFunctie();
+        fnImport("rsTekst");
         java.util.List<String> delen = new java.util.ArrayList<>();
         boolean marker = false;
         for (Expr.TekstReeks.Deel d : tr.delen()) {
@@ -3676,13 +2914,6 @@ public final class DrlTranspiler {
             }
         }
         return new Frag("(" + String.join(" + ", delen) + ")", marker);
-    }
-
-    /** Register the §5.4 text-coercion helper: a value's text form, null-safe (a leeg value -> empty string, not the
-     *  literal "null"). A BigDecimal renders via toString (528 -> "528"); a date/boolean via its toString. Idempotent. */
-    private void registreerTekstFunctie() {
-        hulpFuncties.putIfAbsent("rsTekst",
-                "function String rsTekst(Object o) {\n    return o == null ? \"\" : o.toString();\n}\n\n");
     }
 
     /** Wrap an emitted value in a unit conversion when its unit differs from (but is
@@ -3705,32 +2936,16 @@ public final class DrlTranspiler {
         return new String[]{l, omreken(r, rt, lt)};   // composite (rate) unit: keep the existing conversion
     }
 
-    /** Multiply {@code expr} by a unit-conversion {@code factor} — the one place the {@code .multiply(new
-     *  BigDecimal("…"))} restatement is emitted. Identity when there is no real conversion (a {@code null} or
-     *  unit (1) factor). The callers (omrekenWaarde / herschaalConditie / naarCanoniek) guard a placeholder
-     *  {@link Frag} BEFORE calling, so {@code expr} here is always real text. When {@code nullVeilig}, the
-     *  multiply is guarded so an empty value converts to empty rather than NPE-ing — the VALUE side only, since
-     *  a Drools pattern constraint cannot host the {@code == null} ternary (it reads as a nested constraint). */
-    private String vermenigvuldigMetFactor(String expr, java.math.BigDecimal factor, boolean nullVeilig) {
+    /** Multiply {@code expr} by a unit-conversion {@code factor} — the one place the ×factor restatement is
+     *  emitted, as a call to the null-safe runtime helper (a leeg operand restates to leeg — never an NPE-abort;
+     *  a Drools pattern constraint could not host an inline {@code == null} ternary anyway, and the SAME call
+     *  form is valid on the value side, so both sides share the ONE {@code rsHerschaal} implementation).
+     *  Identity when there is no real conversion (a {@code null} or unit (1) factor). The callers
+     *  (omrekenWaarde / herschaalConditie / naarCanoniek) guard a placeholder {@link Frag} BEFORE calling. */
+    private String vermenigvuldigMetFactor(String expr, java.math.BigDecimal factor) {
         if (factor == null || factor.compareTo(java.math.BigDecimal.ONE) == 0) return expr;
         String f = "new java.math.BigDecimal(\"" + factor.toPlainString() + "\")";
-        // VALUE side: an inline null-guarded ternary (works in a consequence / value expression).
-        if (nullVeilig) return "(" + expr + " == null ? null : (" + expr + ").multiply(" + f + "))";
-        // CONSTRAINT side: a null-safe helper FUNCTION. A Drools pattern constraint cannot host the == null ternary
-        // (it reads as a nested constraint), and a bare (expr).multiply NPE-ABORTS the session on a leeg operand —
-        // rsHerschaal mirrors ExecModelTranspiler.scale (null -> null), so a cross-unit comparison with a leeg operand
-        // reads as no-match (mvel `null op x`) in BOTH back-ends rather than crashing.
-        return registreerHerschaalFunctie() + "(" + expr + ", " + f + ")";
-    }
-
-    /** Register (idempotently) the null-safe unit-restatement helper {@code rsHerschaal} used in CONSTRAINT contexts —
-     *  the DRL mirror of {@link io.github.yhavinga.regelspraak.transpiler.model.ExecModelTranspiler}'s {@code scale} (a leeg
-     *  operand restates to leeg, never an NPE on {@code .multiply}). See {@link #vermenigvuldigMetFactor}. */
-    private String registreerHerschaalFunctie() {
-        String fn = "rsHerschaal";
-        hulpFuncties.putIfAbsent(fn, "function java.math.BigDecimal " + fn
-                + "(java.math.BigDecimal x, java.math.BigDecimal f) {\n    return x == null ? null : x.multiply(f);\n}\n\n");
-        return fn;
+        return fnImport("rsHerschaal") + "(" + expr + ", " + f + ")";
     }
 
     /** EXACT §4 restatement of a value in {@code van} into {@code naar} for a +/- operand whose units are SIMPLE and
@@ -3738,28 +2953,16 @@ public final class DrlTranspiler {
      *  rounding, AT THE END), NOT a multiply by the pre-rounded ratio (which truncates mnd→jr = 1/12 = 0.0833…, so
      *  "0 jr + 24 mnd" read 1.9999… ≠ 2). Mirrors the §7.3.1 rsTijdSchaal exact-÷ and the comparison path's naarCanoniek.
      *  A COMPOSITE (rate) unit keeps the single-ratio path (its precision edge is separately carded); no conversion is
-     *  the identity. {@code nullVeilig} picks the VALUE-side inline ternary vs the CONSTRAINT-side rsHerschaalExact helper. */
-    private String herschaalExact(String expr, Datatype van, Datatype naar, boolean nullVeilig) {
+     *  the identity. One null-safe form for BOTH sides: the imported {@code rsHerschaalExact} runtime helper. */
+    private String herschaalExact(String expr, Datatype van, Datatype naar) {
         io.github.yhavinga.regelspraak.model.Eenheid ev = van.eenheidOf(), en = naar.eenheidOf();
         if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return expr;
         java.math.BigDecimal[] f = ev.exacteHerschaalFactoren(en);
         if (f == null)   // an opaque product unit (no canonical) / unknown factor: keep the single (lossy) ratio
-            return vermenigvuldigMetFactor(expr, ev.omrekenfactorNaar(en), nullVeilig);
+            return vermenigvuldigMetFactor(expr, ev.omrekenfactorNaar(en));
         String fv = "new java.math.BigDecimal(\"" + f[0].toPlainString() + "\")";
         String fn = "new java.math.BigDecimal(\"" + f[1].toPlainString() + "\")";
-        if (nullVeilig)   // VALUE side: an inline null-guarded ×fv ÷fn (DECIMAL64), valid in a consequence / value expression
-            return "(" + expr + " == null ? null : (" + expr + ").multiply(" + fv + ").divide(" + fn + ", java.math.MathContext.DECIMAL64))";
-        return registreerHerschaalExactFunctie() + "(" + expr + ", " + fv + ", " + fn + ")";   // CONSTRAINT side: null-safe helper
-    }
-
-    /** Register (idempotently) the null-safe EXACT unit-restatement helper {@code rsHerschaalExact} used in CONSTRAINT
-     *  contexts — ×fv ÷fn at DECIMAL64 (a leeg operand restates to leeg). The exact mirror of {@link #registreerHerschaalFunctie}. */
-    private String registreerHerschaalExactFunctie() {
-        String fn = "rsHerschaalExact";
-        hulpFuncties.putIfAbsent(fn, "function java.math.BigDecimal " + fn
-                + "(java.math.BigDecimal x, java.math.BigDecimal fv, java.math.BigDecimal fn) {\n"
-                + "    return x == null ? null : x.multiply(fv).divide(fn, java.math.MathContext.DECIMAL64);\n}\n\n");
-        return fn;
+        return fnImport("rsHerschaalExact") + "(" + expr + ", " + fv + ", " + fn + ")";
     }
 
     /** The §4 conversion factor to restate a {@code van}-typed quantity in the {@code naar} unit, or {@code
@@ -3774,12 +2977,12 @@ public final class DrlTranspiler {
      *  a multiplication, never the lossy division omreken uses. Identity for a canonical/unitless
      *  operand or a placeholder marker. */
     private String naarCanoniek(String expr, io.github.yhavinga.regelspraak.model.Eenheid e) {
-        return vermenigvuldigMetFactor(expr, e.factorNaarCanoniek(), false);
+        return vermenigvuldigMetFactor(expr, e.factorNaarCanoniek());
     }
 
     /** Unit conversion for a CONSTRAINT operand — null-safe via the rsHerschaal helper ({@link #vermenigvuldigMetFactor}). */
     private String omreken(String expr, Datatype van, Datatype naar) {
-        return vermenigvuldigMetFactor(expr, omrekenFactor(van, naar), false);
+        return vermenigvuldigMetFactor(expr, omrekenFactor(van, naar));
     }
 
     /** Unit conversion on the VALUE side, null-safe: a leegwaarde (an empty sommatie has no fallback) converts to a
@@ -3789,7 +2992,7 @@ public final class DrlTranspiler {
      *  attribute = 2, not 1.9999…). A COMPOSITE (rate) keeps the single ratio (carded). Only the "then"/value side — the
      *  constraint form is {@link #omreken} (lossy) / {@link #herschaalConditiePlus} (exact, +/-). */
     private Frag omrekenWaarde(Frag expr, Datatype van, Datatype naar) {
-        return expr.marker() ? expr : Frag.ok(herschaalExact(expr.text(), van, naar, true));
+        return expr.marker() ? expr : Frag.ok(herschaalExact(expr.text(), van, naar));
     }
 
     /** §4 EXACT restatement of a value in {@code van} into {@code naar} on the CONSTRAINT side, shared by a +/- RIGHT
@@ -3804,7 +3007,7 @@ public final class DrlTranspiler {
         if (ev == null || en == null || !ev.convertibleNaar(en) || !ev.vereistOmrekening(en)) return expr;   // no conversion -> identity
         if (ev.exacteHerschaalFactoren(en) == null)   // an opaque product unit (no exact factors) -> honest marker
             return Frag.todo("eenheidconversie in een rekenkundige voorwaarde (niet-herschaalbare samengestelde eenheid)", expr.text());
-        return Frag.ok(herschaalExact(expr.text(), van, naar, false));
+        return Frag.ok(herschaalExact(expr.text(), van, naar));
     }
 
     /** §13.4.17.25 afronding: round a basis term to {@code af.decimalen()} via the matching
@@ -3819,142 +3022,8 @@ public final class DrlTranspiler {
             case NAAR_BENEDEN -> "FLOOR"; case NAAR_BOVEN -> "CEILING";
             case REKENKUNDIG -> "HALF_UP"; case RICHTING_NUL -> "DOWN"; case WEG_VAN_NUL -> "UP";
         };
-        registreerAfrondingFunctie();
+        fnImport("rsAfronding");
         return Frag.from("rsAfronding(" + basis.text() + ", " + af.decimalen() + ", java.math.RoundingMode." + mode + ")", basis);
-    }
-
-    /** Register the §13.4.17.25 afronding helper — round to {@code scale} decimals, but a leeg (null) value
-     *  rounds to leeg (so a wortel/macht/division leeg result propagates instead of NPE-ing the .setScale).
-     *  Idempotent. */
-    private void registreerAfrondingFunctie() {
-        hulpFuncties.putIfAbsent("rsAfronding",
-                "function java.math.BigDecimal rsAfronding(java.math.BigDecimal x, int scale, java.math.RoundingMode mode) {\n"
-                + "    return x == null ? null : x.setScale(scale, mode);\n"
-                + "}\n\n");
-    }
-
-    /** Register the §9.7.3 verdeel-plafond helper — cap a naar-rato share at the recipient's maximum (the
-     *  surplus is not redistributed, §9.7.3). A null share stays leeg. A leeg or NEGATIVE maximum is §9.7.6
-     *  Tabel 19 Fout: the value degrades to UNCAPPED here (never a negative share — that would be silently
-     *  wrong), and the fout is surfaced by the separate "(leeg of negatief maximum)" Inconsistentie rule. A zero
-     *  maximum is valid (the recipient receives nothing). Idempotent. */
-    private void registreerPlafondFunctie() {
-        hulpFuncties.putIfAbsent("rsPlafond",
-                "function java.math.BigDecimal rsPlafond(java.math.BigDecimal waarde, java.math.BigDecimal max) {\n"
-                + "    return (waarde == null || max == null || max.signum() < 0) ? waarde : waarde.min(max);\n"
-                + "}\n\n");
-    }
-
-    /** Register the §9.7.2 ordered-allocation helper. Given the verdeelplafond, the index-aligned recipient lists
-     *  (the facts for identity keying, the ordering criterium {@code groep}, the optional tie weight {@code gewicht}
-     *  and optional cap {@code max}), the sort direction and the optional floor decimals, it computes the whole
-     *  "op volgorde van" distribution and returns an identity-keyed share map. The recipients are partitioned into
-     *  groups of equal criterium and processed in sort order; every member of a tie-group splits the SAME
-     *  group-entry pot (§9.7.2 — Wilma 3/4·1200 and Hans 1/4·1200 both off 1200, not sequentially), naar rato of
-     *  {@code gewicht} or in gelijke delen when no weight is present. The §9.7.3 cap and §9.7.4 floor are applied
-     *  per share, and the pot is then depleted by the group total, so the undistributed remainder carries to the
-     *  next group (§9.7.5, Tabel 18: 1800 → 500/500/433/250/91, rest 26). A leeg/negative cap degrades to uncapped
-     *  (the §9.7.6 Fout is surfaced by the separate companion rule); a null ordering criterium sorts last; an empty
-     *  plafond yields an empty map (§9.7.6 row 1, "niet toegepast"); a zero weight-sum gives that group ZERO (no
-     *  divide-by-zero). Recipients reached after the pot is empty get an assigned ZERO (never null), so the
-     *  onverdeelde-rest rule's {@code != null} guard stays satisfiable. Idempotent. */
-    private void registreerVerdeelOpVolgordeFunctie() {
-        hulpFuncties.putIfAbsent("rsVerdeelOpVolgorde",
-                "function java.util.Map rsVerdeelOpVolgorde(java.math.BigDecimal totaal, java.util.List facts,\n"
-                + "        java.util.List groep, boolean toenemend, java.util.List gewicht, java.util.List max, Integer decimals) {\n"
-                + "    java.util.IdentityHashMap result = new java.util.IdentityHashMap();\n"
-                + "    if (totaal == null) return result;\n"   // §9.7.6 row 1: leeg verdeelplafond -> niet toegepast
-                + "    int aantal = facts.size();\n"
-                + "    java.util.List idx = new java.util.ArrayList();\n"
-                + "    for (int i = 0; i < aantal; i++) idx.add(Integer.valueOf(i));\n"
-                + "    for (int a = 1; a < aantal; a++) {\n"   // stable insertion sort of idx by groep value (nulls last)
-                + "        Integer cur = (Integer) idx.get(a);\n"
-                + "        Object curKey = groep.get(cur.intValue());\n"
-                + "        int b = a - 1;\n"
-                + "        while (b >= 0) {\n"
-                + "            Object bKey = groep.get(((Integer) idx.get(b)).intValue());\n"
-                + "            int cmp;\n"
-                + "            if (bKey == null && curKey == null) cmp = 0;\n"
-                + "            else if (bKey == null) cmp = 1;\n"            // a null criterium sorts after a present one
-                + "            else if (curKey == null) cmp = -1;\n"
-                + "            else { int c = ((Comparable) bKey).compareTo(curKey); cmp = toenemend ? c : -c; }\n"
-                + "            if (cmp > 0) { idx.set(b + 1, idx.get(b)); b--; } else break;\n"
-                + "        }\n"
-                + "        idx.set(b + 1, cur);\n"
-                + "    }\n"
-                + "    java.math.BigDecimal pot = totaal;\n"
-                + "    int p = 0;\n"
-                + "    while (p < aantal) {\n"
-                + "        int q = p;\n"
-                + "        Object key = groep.get(((Integer) idx.get(p)).intValue());\n"
-                + "        while (q < aantal && java.util.Objects.equals(key, groep.get(((Integer) idx.get(q)).intValue()))) q++;\n"
-                + "        java.math.BigDecimal groepPot = pot;\n"   // §9.7.2: every member of the group splits this same pot
-                + "        java.math.BigDecimal som = java.math.BigDecimal.ZERO;\n"
-                + "        boolean naarRato = false;\n"
-                + "        for (int k = p; k < q; k++) {\n"
-                + "            Object w = gewicht == null ? null : gewicht.get(((Integer) idx.get(k)).intValue());\n"
-                + "            if (w != null) { naarRato = true; som = som.add(((java.math.BigDecimal) w).max(java.math.BigDecimal.ZERO)); }\n"
-                + "        }\n"
-                + "        int n = q - p;\n"
-                + "        java.math.BigDecimal groepSom = java.math.BigDecimal.ZERO;\n"
-                + "        for (int k = p; k < q; k++) {\n"
-                + "            int i = ((Integer) idx.get(k)).intValue();\n"
-                + "            java.math.BigDecimal aandeel;\n"
-                + "            if (naarRato) {\n"
-                + "                Object wo = gewicht == null ? null : gewicht.get(i);\n"
-                // a negative weight is no proportional basis: clamp it to 0 (the member then claims nothing) so it
-                // cannot shrink the weight-sum and over-allocate the others past the pot (-> a negative rest, §9.7.6)
-                + "                java.math.BigDecimal w = wo == null ? java.math.BigDecimal.ZERO : ((java.math.BigDecimal) wo).max(java.math.BigDecimal.ZERO);\n"
-                + "                aandeel = som.signum() == 0 ? java.math.BigDecimal.ZERO\n"
-                + "                        : groepPot.multiply(w).divide(som, java.math.MathContext.DECIMAL64);\n"
-                + "            } else {\n"
-                + "                aandeel = groepPot.divide(java.math.BigDecimal.valueOf(n), java.math.MathContext.DECIMAL64);\n"
-                + "            }\n"
-                + "            Object cap = max == null ? null : max.get(i);\n"
-                + "            if (cap != null && ((java.math.BigDecimal) cap).signum() >= 0\n"
-                + "                    && aandeel.compareTo((java.math.BigDecimal) cap) > 0) aandeel = (java.math.BigDecimal) cap;\n"   // §9.7.3 cap
-                + "            if (decimals != null) aandeel = aandeel.setScale(decimals.intValue(), java.math.RoundingMode.FLOOR);\n"   // §9.7.4 floor
-                + "            if (aandeel.signum() < 0) aandeel = java.math.BigDecimal.ZERO;\n"
-                + "            result.put(facts.get(i), aandeel);\n"
-                + "            groepSom = groepSom.add(aandeel);\n"
-                + "        }\n"
-                + "        pot = pot.subtract(groepSom);\n"   // §9.7.5: carry the undistributed remainder to the next group
-                + "        if (pot.signum() < 0) pot = java.math.BigDecimal.ZERO;\n"
-                + "        p = q;\n"
-                + "    }\n"
-                + "    return result;\n"
-                + "}\n\n");
-    }
-
-    /** Register the §13.4.17.13 wortel helper — the radicand's root at 34-digit precision (BigDecimal.sqrt, NOT
-     *  Math.sqrt, whose ~16-digit double noise can flip a directional afronding on a terminating root), with the
-     *  §6.6 leegwaarde (a leeg radicand -> leeg) AND its negative-radicand fout: a negative value yields leeg
-     *  (no session-aborting throw), with the §6.6 foutmelding surfaced by the wortelNegatiefFout companion rule.
-     *  Idempotent. */
-    private void registreerWortelFunctie() {
-        hulpFuncties.putIfAbsent("rsWortel",
-                "function java.math.BigDecimal rsWortel(java.math.BigDecimal x) {\n"
-                + "    if (x == null || x.signum() < 0) return null;\n"   // §6.6: leeg -> leeg; negatief -> leeg + Inconsistentie
-                + "    return x.sqrt(java.math.MathContext.DECIMAL128);\n"
-                + "}\n\n");
-    }
-
-    /** Register the §13.4.17.14 "tot de macht" helpers, both carrying the §6.7 leegwaarde (any empty operand ->
-     *  leeg). rsMacht is the exact integer power (BigDecimal.pow(int) — the exponent is a literal, never empty);
-     *  rsMachtReeel is the fractional/runtime exponent via Math.pow (a double), guarding both operands.
-     *  Idempotent. */
-    private void registreerMachtFunctie() {
-        hulpFuncties.putIfAbsent("rsMacht",
-                "function java.math.BigDecimal rsMacht(java.math.BigDecimal basis, int exponent) {\n"
-                + "    return basis == null ? null : basis.pow(exponent);\n"
-                + "}\n\n");
-    }
-    private void registreerMachtReeelFunctie() {
-        hulpFuncties.putIfAbsent("rsMachtReeel",
-                "function java.math.BigDecimal rsMachtReeel(java.math.BigDecimal basis, java.math.BigDecimal exponent) {\n"
-                + "    if (basis == null || exponent == null) return null;\n"
-                + "    return java.math.BigDecimal.valueOf(Math.pow(basis.doubleValue(), exponent.doubleValue()));\n"
-                + "}\n\n");
     }
 
     private static String infix(Expr.BinOp op) {

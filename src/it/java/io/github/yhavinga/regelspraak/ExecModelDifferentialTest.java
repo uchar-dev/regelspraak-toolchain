@@ -5169,7 +5169,7 @@ class ExecModelDifferentialTest {
         assertTrue(em.overgeslagen().isEmpty(), () -> "model moet de cel-lezing loweren: " + em.overgeslagen());
         for (KieBase kb : List.of(drlBase(m), KieBaseBuilder.createKieBaseFromModel(em.model()))) {
             NatuurlijkPersoon np = new NatuurlijkPersoon();   // betaaldeBelastingInJaar == null
-            KieSession s = kb.newKieSession();
+            KieSession s = sessie(kb);
             s.insert(np);
             s.fireAllRules();   // must NOT throw on the null Map in EITHER back-end (was a DRL ConsequenceException)
             s.dispose();
@@ -5742,7 +5742,7 @@ class ExecModelDifferentialTest {
         // firing must NOT crash, and the co-resident valid rule S must fire in BOTH back-ends (vertrektijd 50 > 0 -> vol).
         for (KieBase kb : List.of(drlBase(m), KieBaseBuilder.createKieBaseFromModel(em.model()))) {
             Vlucht v = new Vlucht(); v.setVertrektijd(new BigDecimal(50));
-            KieSession s = kb.newKieSession(); s.insert(v); s.fireAllRules(); s.dispose();
+            KieSession s = sessie(kb); s.insert(v); s.fireAllRules(); s.dispose();
             assertEquals(Boolean.TRUE, v.isVol(), () -> "de co-residente geldige regel S moet vuren (geen sessie-crash door de SET-regel)");
             assertFalse(Boolean.TRUE.equals(v.isLaat()), () -> "de SET-regel R mag NIET vuren (symmetrische marker)");
         }
@@ -5763,7 +5763,7 @@ class ExecModelDifferentialTest {
         // lowered the consistentie (it skips), so the model inserts 0 Inconsistentie; DRL inserts 1.
         Route rDrl = new Route(); rDrl.setVertrek("A"); rDrl.setBestemming("B");
         Route rModel = new Route(); rModel.setVertrek("A"); rModel.setBestemming("B");
-        KieSession sDrl = drlBase(m).newKieSession(); sDrl.insert(rDrl); sDrl.fireAllRules();
+        KieSession sDrl = sessie(drlBase(m)); sDrl.insert(rDrl); sDrl.fireAllRules();
         long incDrl = sDrl.getObjects().stream().filter(o -> o instanceof Inconsistentie).count(); sDrl.dispose();
         KieSession sModel = KieBaseBuilder.createKieBaseFromModel(em.model()).newKieSession();
         sModel.insert(rModel); sModel.fireAllRules();   // must not throw
@@ -6007,7 +6007,7 @@ class ExecModelDifferentialTest {
         for (KieBase kb : List.of(drlBase(m), KieBaseBuilder.createKieBaseFromModel(em.model()))) {
             Vlucht v = new Vlucht(); v.setVertrektijd(new BigDecimal(10));
             Passagier p = new Passagier(); p.setReis(v); p.setLeeftijd(new BigDecimal(10));
-            KieSession s = kb.newKieSession(); s.insert(v); s.insert(p); s.fireAllRules(); s.dispose();   // must TERMINATE
+            KieSession s = sessie(kb); s.insert(v); s.insert(p); s.fireAllRules(); s.dispose();   // must TERMINATE
             assertEquals(Boolean.TRUE, p.isDuur(), () -> "regel A (vertrektijd 10 > 5) moet vuren");   // navigated comparison
             assertEquals(Boolean.TRUE, p.isKind(), () -> "regel B (leeftijd 10 < 18) moet vuren");      // own comparison
         }
@@ -6034,7 +6034,7 @@ class ExecModelDifferentialTest {
         for (KieBase kb : List.of(drlBase(m), KieBaseBuilder.createKieBaseFromModel(em.model()))) {
             Pot p = new Pot(); p.setTotaal(new BigDecimal(90));
             Deelnemer d1 = deeln(p, null, null, null), d2 = deeln(p, null, null, null), d3 = deeln(p, null, null, null);
-            KieSession s = kb.newKieSession();
+            KieSession s = sessie(kb);
             s.insert(p); s.insert(d1); s.insert(d2); s.insert(d3);
             s.fireAllRules(2_000_000);   // bounded: a regressed loop would hit the cap, then @Timeout fails the test
             s.dispose();
@@ -6375,7 +6375,7 @@ class ExecModelDifferentialTest {
         ms.setGlobal("peildatum", java.time.LocalDate.of(2024, 12, 25));   // must NOT throw "Illegal class for global"
         Vlucht vm = new Vlucht(); ms.insert(vm); ms.fireAllRules(); ms.dispose();
         assertFalse(vm.isLaat(), "the model honestly skips the bare-date-param dagsoort rule (laat stays false)");
-        KieSession ds = drlBase(m).newKieSession();
+        KieSession ds = sessie(drlBase(m));
         ds.setGlobal("peildatum", java.time.LocalDate.of(2024, 12, 25));
         Vlucht vd = new Vlucht(); ds.insert(vd); ds.fireAllRules(); ds.dispose();
         assertTrue(vd.isLaat(), "the DRL oracle fires the bare-date-param dagsoort rule (25-12 is a kerstdag)");
@@ -7613,7 +7613,7 @@ class ExecModelDifferentialTest {
     /** Fire and return the SORTED canonical descriptors of every NEW object inserted (not among the seeded facts) —
      *  comparable across the two back-ends' fresh fact instances (the canon maps a back-reference to its seed index). */
     private List<String> fireCreated(KieBase kb, ObjFixture f) {
-        KieSession s = kb.newKieSession();
+        KieSession s = sessie(kb);
         f.globals().forEach(s::setGlobal);
         List<Object> facts = f.facts().get();
         java.util.Set<Object> seeded = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
@@ -7631,7 +7631,7 @@ class ExecModelDifferentialTest {
     /** Fire and return the SORTED "regel/<subject-key>" descriptors of every inserted Inconsistentie — comparable
      *  across the two back-ends' fresh fact instances (the subject identity differs, the key does not). */
     private List<String> fireFout(KieBase kb, FoutFixture f) {
-        KieSession s = kb.newKieSession();
+        KieSession s = sessie(kb);
         f.globals().forEach(s::setGlobal);
         List<Object> facts = f.facts().get();
         for (Object o : facts) s.insert(o);
@@ -7645,17 +7645,33 @@ class ExecModelDifferentialTest {
     }
 
     // ---- harness plumbing ----
+    /** The §9.8 dagsoort-predicate globals each DRL KieBase declares (goal-M1: the predicates are compiled once
+     *  by kern.Dagsoorten and supplied as session globals, like the parameter globals) — {@link #sessie} sets
+     *  them on every session over that base. Exec-model bases are absent (their predicates are baked in). */
+    private final java.util.IdentityHashMap<KieBase, Map<String, java.util.function.Predicate<java.time.LocalDate>>>
+            dagsoortenPerBase = new java.util.IdentityHashMap<>();
+
     private KieBase drlBase(RegelSpraakModel m) {
-        String drl = DrlTranspiler.transpile(m);
+        DrlTranspiler t = DrlTranspiler.build(m);
+        String drl = t.drl();
         KieHelper h = new KieHelper();
         h.addContent(drl, ResourceType.DRL);
         assertFalse(h.verify().hasMessages(org.kie.api.builder.Message.Level.ERROR),
                 () -> "DRL did not compile:\n" + h.verify().getMessages() + "\n---\n" + drl);
-        return h.build();
+        KieBase kb = h.build();
+        if (!t.dagsoortGlobalen().isEmpty()) dagsoortenPerBase.put(kb, t.dagsoortGlobalen());
+        return kb;
+    }
+
+    /** A session over {@code kb} with its declared dagsoort-predicate globals (if any) already set. */
+    private KieSession sessie(KieBase kb) {
+        KieSession s = kb.newKieSession();
+        dagsoortenPerBase.getOrDefault(kb, Map.of()).forEach(s::setGlobal);
+        return s;
     }
 
     private Object fire(KieBase kb, Fixture f) {
-        KieSession s = kb.newKieSession();
+        KieSession s = sessie(kb);
         f.globals().forEach(s::setGlobal);
         List<Object> facts = f.facts().get();
         for (Object o : facts) s.insert(o);

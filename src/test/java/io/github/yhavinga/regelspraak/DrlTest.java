@@ -518,7 +518,7 @@ class DrlTest {
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertFalse(drl.contains("/* TODO aggregatie"), () -> "de dimensie-som mag geen marker meer zijn:\n" + drl);
-        assertTrue(drl.contains("function java.math.BigDecimal rsDimSom("), () -> "helper-functie ontbreekt:\n" + drl);
+        assertTrue(drl.contains("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsDimSom;"), () -> "helper-functie ontbreekt:\n" + drl);
         // exactly the interval labels [vier..een jaar geleden]; the out-of-interval labels are excluded.
         assertTrue(drl.contains("rsDimSom($subject.getBetaaldeBelastingInJaar(), java.util.Arrays.asList(\"vier jaar geleden\", \"drie jaar geleden\", \"twee jaar geleden\", \"een jaar geleden\"))"),
                 () -> "verwachte dimensie-som-aanroep over het interval ontbreekt:\n" + drl);
@@ -749,9 +749,9 @@ class DrlTest {
         assertTrue(drl.contains("rsGedeeld($subject.getUitkomst(), $subject.getNoemer())"),
                 () -> "gewone 'gedeeld door' moet via rsGedeeld lowert:\n" + drl);
         // ...and the two helpers keep DIFFERENT divides: ABS truncates 5 decimals toward 0, plain stays DECIMAL64.
-        assertTrue(drl.contains(".divide(rechts, 5, java.math.RoundingMode.DOWN)"),
+        assertTrue(drl.contains("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsGedeeldAbs;"),
                 () -> "rsGedeeldAbs moet op 5 decimalen richting 0 afronden:\n" + drl);
-        assertTrue(drl.contains(".divide(rechts, java.math.MathContext.DECIMAL64)"),
+        assertTrue(drl.contains("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsGedeeld;"),
                 () -> "rsGedeeld moet de exacte DECIMAL64-deling houden:\n" + drl);
     }
 
@@ -849,7 +849,7 @@ class DrlTest {
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertTrue(drl.contains("setRoepnaam( (\"nr \" + rsTekst($subject.getLeeftijd()) + \" jaar\") )"),
                 () -> "tekstreeks moet naar een mvel concat met rsTekst lowereren:\n" + drl);
-        assertTrue(drl.contains("function String rsTekst("), () -> "rsTekst helper moet geregistreerd zijn:\n" + drl);
+        assertTrue(drl.contains("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsTekst;"), () -> "rsTekst helper moet geregistreerd zijn:\n" + drl);
         assertTrue(drl.contains("setLabel( \"vast\" )"), () -> "een plain string blijft een plain literal:\n" + drl);
         assertFalse(drl.contains("/* TODO"), () -> "een resolvebare tekstreeks mag geen marker zijn:\n" + drl);
     }
@@ -896,7 +896,7 @@ class DrlTest {
         assertTrue(drl.contains("setStip( rsDatumtijdMet($subject.getBouwjaar(), new java.math.BigDecimal(\"3\"), "
                 + "new java.math.BigDecimal(\"15\"), new java.math.BigDecimal(\"10\"), new java.math.BigDecimal(\"30\"), "
                 + "new java.math.BigDecimal(\"0\"), new java.math.BigDecimal(\"500\")) )"), () -> "datumtijd met:\n" + drl);
-        assertTrue(drl.contains("milli.intValue() * 1000000"), () -> "de milli->nano schaal moet in de helper zitten:\n" + drl);
+        assertTrue(drl.contains("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsDatumtijdMet;"), () -> "de datumtijd-met helper moet geimporteerd zijn (het lijf leeft in de runtime):\n" + drl);
     }
 
     @Test void wortel_lowert_naar_sqrt_binnen_zijn_verplichte_afronding() {
@@ -915,7 +915,7 @@ class DrlTest {
         assertFalse(drl.contains("Math.sqrt"), () -> "geen double-sqrt (rondingsfout op de afrondgrens):\n" + drl);
         assertTrue(drl.contains("rsAfronding(rsWortel($subject.getOppervlakte()), 0, java.math.RoundingMode.FLOOR)"),
                 () -> "de verplichte afronding moet de root afronden (leeg-veilig):\n" + drl);
-        assertTrue(drl.contains(".sqrt(java.math.MathContext.DECIMAL128)"), () -> "rsWortel moet 34-cijferige sqrt gebruiken:\n" + drl);
+        assertTrue(drl.contains("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsWortel;"), () -> "rsWortel moet geimporteerd zijn (de 34-cijferige sqrt leeft in de runtime):\n" + drl);
     }
 
     @Test void wortel_van_negatief_geeft_leeg_plus_een_companion_inconsistentie() {
@@ -930,7 +930,7 @@ class DrlTest {
                     De wortelr van een Heffing moet gesteld worden op de wortel van de basis van een Heffing naar beneden afgerond op 0 decimalen.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        assertTrue(drl.contains("if (x == null || x.signum() < 0) return null;"), () -> "rsWortel moet een negatief radicand op leeg zetten:\n" + drl);
+        assertTrue(drl.contains("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsWortel;"), () -> "rsWortel moet geimporteerd zijn (leeg/negatief-radicand leeft in de runtime):\n" + drl);
         assertTrue(drl.contains("rule \"w (wortel van negatief)\""), () -> "geen wortel-negatief companion:\n" + drl);
         assertTrue(drl.contains("Heffing( basis < new java.math.BigDecimal(\"0\") )"), () -> "geen radicand < 0 guard:\n" + drl);
         assertTrue(drl.contains("insert(new io.github.yhavinga.regelspraak.facts.Inconsistentie(\"w\""), () -> "geen Inconsistentie-insert:\n" + drl);
@@ -964,8 +964,8 @@ class DrlTest {
                 () -> "absolute tijdsduur in maanden:\n" + drl);
         // §6.10 Tabel 14: an empty operand makes the result empty (the guard lives in the helper), and the
         // helper is injected exactly once
-        assertTrue(drl.contains("function java.math.BigDecimal rsTijdsduur("), () -> "helper niet geïnjecteerd:\n" + drl);
-        assertTrue(drl.contains("if (van == null || tot == null) return null;"), () -> "leeg-guard in helper:\n" + drl);
+        assertTrue(drl.contains("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsTijdsduur;"), () -> "helper niet geïnjecteerd:\n" + drl);
+        // the leeg-guard lives in the runtime body (goal-M1); the import-line pin above covers the wiring
     }
 
     @Test void tijdsduur_in_millisecondes_de_s_meervoudsvorm_uit_de_spec_lowert() {
@@ -996,7 +996,7 @@ class DrlTest {
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertTrue(drl.contains("rsEerstePaasdag($subject.getJaartal())"), () -> "eerste paasdag:\n" + drl);
-        assertTrue(drl.contains("function java.time.LocalDate rsEerstePaasdag("), () -> "computus-helper niet geïnjecteerd:\n" + drl);
+        assertTrue(drl.contains("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsEerstePaasdag;"), () -> "computus-helper niet geïnjecteerd:\n" + drl);
     }
 
     @Test void scalaire_builtin_in_voorwaarde_lowert_naar_kale_property() {
@@ -1601,11 +1601,11 @@ class DrlTest {
         assertTrue(m.errors().isEmpty(), () -> "moet parseren+resolven: " + m.errors());
         String drl = DrlTranspiler.transpile(m);
         assertFalse(drl.contains("/* TODO"), () -> "een cross-unit vergelijking moet vuren (geen marker):\n" + drl);
-        assertTrue(drl.contains("function java.math.BigDecimal rsHerschaal"), () -> "de rsHerschaal helper moet geregistreerd zijn:\n" + drl);
+        assertTrue(drl.contains("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsHerschaal;"), () -> "de rsHerschaal helper moet geregistreerd zijn:\n" + drl);
         assertTrue(drl.contains("rsHerschaal(leeftijd,"), () -> "de constraint moet de operand null-veilig herschalen:\n" + drl);
-        // the ONLY .multiply is inside the rsHerschaal function body — never a bare (operand).multiply in the constraint
-        assertTrue(drl.lines().filter(l -> l.contains(".multiply")).allMatch(l -> l.contains("x.multiply(f)")),
-                () -> "geen ongegarde .multiply buiten de rsHerschaal helper:\n" + drl);
+        // the helper BODY lives in the runtime now (goal-M1 D1): no .multiply may appear in the DRL text at all
+        assertTrue(drl.lines().noneMatch(l -> l.contains(".multiply")),
+                () -> "geen ongegarde .multiply in de DRL-tekst (het herschalen leeft in de runtime):\n" + drl);
     }
 
     @Test void genavigeerde_operand_in_rekenkundige_voorwaarde_leest_null_veilig_via_rsRelGetal() {
@@ -1633,7 +1633,7 @@ class DrlTest {
         assertTrue(m.errors().isEmpty(), () -> "moet parseren+resolven: " + m.errors());
         String drl = DrlTranspiler.transpile(m);
         assertFalse(drl.contains("/* TODO"), () -> "een navigated rekenkundige operand moet vuren (geen marker):\n" + drl);
-        assertTrue(drl.contains("function java.math.BigDecimal rsRelGetal"), () -> "de rsRelGetal helper moet geregistreerd zijn:\n" + drl);
+        assertTrue(drl.contains("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsRelGetal;"), () -> "de rsRelGetal helper moet geregistreerd zijn:\n" + drl);
         assertTrue(drl.contains("rsRelGetal(reis, \"vertrektijd\")"), () -> "de navigated arithmetic-leg moet null-veilig via rsRelGetal lezen:\n" + drl);
         // the navigated leg inside arithmetic must NOT use mvel's `!.` short-circuit (which drops the leeg-as-0)
         assertFalse(drl.contains("reis!.vertrektijd"), () -> "een navigated arithmetic-leg mag mvel's `!.` short-circuit NIET gebruiken:\n" + drl);
@@ -2949,8 +2949,8 @@ class DrlTest {
                 () -> "het aandeel wordt niet per ontvanger uit de share-map gelezen:\n" + drl);
         // the §9.7.5 rest rule rides on op-volgorde unchanged, and the helper is registered exactly once
         assertTrue(drl.contains("rule \"verdeel op volgorde (onverdeelde rest)\""), () -> "geen onverdeelde-rest regel:\n" + drl);
-        assertEquals(drl.indexOf("function java.util.Map rsVerdeelOpVolgorde("),
-                     drl.lastIndexOf("function java.util.Map rsVerdeelOpVolgorde("),
+        assertEquals(drl.indexOf("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsVerdeelOpVolgorde;"),
+                     drl.lastIndexOf("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.rsVerdeelOpVolgorde;"),
                      "de allocatie-helper moet precies één keer geregistreerd worden");
     }
 
@@ -3059,7 +3059,7 @@ class DrlTest {
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertTrue(drl.contains("rsTijdTotaal(rsTijdKnip($subject.getBelastingverminderingPerMaand(), "
-                        + "$subject.getRechthebbend()), \"MAAND\")"),
+                        + "$subject.getRechthebbend(), Segment.class), \"MAAND\")"),
                 () -> "een gedurende-conditie moet de tijdreeks klippen voor het totaal:\n" + drl);
         assertFalse(drl.contains("/* TODO"), () -> "de gedurende-conditie mag geen marker meer zijn:\n" + drl);
     }
@@ -3082,7 +3082,7 @@ class DrlTest {
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertTrue(drl.contains("rsTijdTotaal(rsTijdKnip($subject.getBelastingverminderingPerMaand(), "
-                        + "$subject.getRechtOpBelastingvermindering()), \"MAAND\")"),
+                        + "$subject.getRechtOpBelastingvermindering(), Segment.class), \"MAAND\")"),
                 () -> "de heeft-vorm bezittelijk kenmerk moet de tijdreeks klippen voor het totaal:\n" + drl);
         assertFalse(drl.contains("/* TODO"), () -> "de heeft-vorm gedurende-conditie mag geen marker zijn:\n" + drl);
     }
@@ -3122,7 +3122,7 @@ class DrlTest {
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertTrue(drl.contains("rsTijdTotaal(rsTijdKnip($subject.getBelastingverminderingPerMaand(), "
-                        + "$subject.getRechtOpBelastingvermindering()), \"MAAND\")"),
+                        + "$subject.getRechtOpBelastingvermindering(), Segment.class), \"MAAND\")"),
                 () -> "de canonieke 'heeft het <k>' vorm moet de tijdreeks klippen:\n" + drl);
         assertFalse(drl.contains("/* TODO"), () -> "de 'heeft het' vorm mag geen marker zijn:\n" + drl);
     }
@@ -3143,7 +3143,7 @@ class DrlTest {
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertTrue(drl.contains("rsTijdTotaal(rsTijdKnipNiet($subject.getBelastingverminderingPerMaand(), "
-                        + "$subject.getRechtOpBelastingvermindering()), \"MAAND\")"),
+                        + "$subject.getRechtOpBelastingvermindering(), Segment.class), \"MAAND\")"),
                 () -> "de negatie moet via rsTijdKnipNiet (complement) klippen:\n" + drl);
     }
 
@@ -3176,7 +3176,7 @@ class DrlTest {
                 geldig altijd
                     Het aantal dagen recht van een passagier moet gesteld worden op het aantal dagen in de maand dat hij een recht op belastingvermindering heeft.
             """));
-        assertTrue(ok.contains("setAantalDagenRecht( rsAantalDagenIn($subject.getRechtOpBelastingvermindering(), \"MAAND\") )"),
+        assertTrue(ok.contains("setAantalDagenRecht( rsAantalDagenIn($subject.getRechtOpBelastingvermindering(), \"MAAND\", Segment.class) )"),
                 () -> "aantal-dagen-in moet een rsAantalDagenIn tijdreeks naar het temporele doel schrijven:\n" + ok);
         assertFalse(ok.contains("/* TODO"), () -> "de aantal-dagen WRITE mag geen marker zijn:\n" + ok);
 
@@ -3220,7 +3220,7 @@ class DrlTest {
                 geldig altijd
                     De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van zijn standaardbedrag gedurende de tijd dat hij een recht op belastingvermindering heeft).
             """));
-        assertTrue(ok.contains("setBelastingvermindering( rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), $subject.getStandaardbedrag(), \"MAAND\") )"),
+        assertTrue(ok.contains("setBelastingvermindering( rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), $subject.getStandaardbedrag(), \"MAAND\", Segment.class) )"),
                 () -> "tijdsevenredig deel over een temporele basis moet via rsTijdsevenredig lowereren:\n" + ok);
         assertFalse(ok.contains("/* TODO"), () -> "de tijdsevenredig WRITE mag geen marker zijn:\n" + ok);
 
@@ -3299,7 +3299,7 @@ class DrlTest {
                     De belastingvermindering van een Passagier moet gesteld worden op (het tijdsevenredig deel per maand van de STANDAARD gedurende de tijd dat hij een recht op belastingvermindering heeft).
             """));
         assertTrue(tev.contains("global java.util.List sTANDAARD;"), () -> "een temporele parameter moet een List<Segment> global zijn:\n" + tev);
-        assertTrue(tev.contains("rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), sTANDAARD, \"MAAND\")"),
+        assertTrue(tev.contains("rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), sTANDAARD, \"MAAND\", Segment.class)"),
                 () -> "een temporele-parameter basis moet de List global lezen:\n" + tev);
         assertFalse(tev.contains("/* TODO"), () -> "de temporele-parameter tijdsevenredig mag geen marker zijn:\n" + tev);
 
@@ -3360,7 +3360,7 @@ class DrlTest {
                     - hij een recht op belastingvermindering heeft
                     - hij actief is.
             """));
-        assertTrue(alle.contains("rsAantalDagenIn(rsTijdKnip($subject.getRechtOpBelastingvermindering(), $subject.getActief()), \"MAAND\")"),
+        assertTrue(alle.contains("rsAantalDagenIn(rsTijdKnip($subject.getRechtOpBelastingvermindering(), $subject.getActief(), Segment.class), \"MAAND\", Segment.class)"),
                 () -> "een ALLE compound moet de doorsnede tellen via rsTijdKnip:\n" + alle);
         assertFalse(alle.contains("/* TODO"), () -> "een ALLE compound mag geen marker zijn:\n" + alle);
 
@@ -3400,9 +3400,9 @@ class DrlTest {
                     - hij een recht op belastingvermindering heeft
                     - zijn leeftijd is gelijk aan 18).
             """));
-        assertTrue(tev.contains("? rsTijdsevenredig($subject.getStandaardbedrag(), $subject.getStandaardbedrag(), \"MAAND\")"),
+        assertTrue(tev.contains("? rsTijdsevenredig($subject.getStandaardbedrag(), $subject.getStandaardbedrag(), \"MAAND\", Segment.class)"),
                 () -> "static-TRUE moet de basis over de volle span prorateren (basis-als-eigen-conditie):\n" + tev);
-        assertTrue(tev.contains(": rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), $subject.getStandaardbedrag(), \"MAAND\")"),
+        assertTrue(tev.contains(": rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), $subject.getStandaardbedrag(), \"MAAND\", Segment.class)"),
                 () -> "static-FALSE moet over de temporele unie prorateren:\n" + tev);
         assertFalse(tev.contains("/* TODO"), () -> "de OR-mixed tijdsevenredig WRITE mag geen marker zijn:\n" + tev);
 
@@ -3487,11 +3487,11 @@ class DrlTest {
         // in tijdreeksAggregatie/gedurendeSamengesteld and the whole compound falls back to a marker.)
         String drl = compoundGedurende("alle volgende voorwaarden", "hij actief is");
         assertTrue(drl.contains("rsTijdTotaal(rsTijdKnip(rsTijdKnip($subject.getBedragPerMaand(), "
-                        + "$subject.getRechthebbend()), $subject.getActief()), \"MAAND\")"),
+                        + "$subject.getRechthebbend(), Segment.class), $subject.getActief(), Segment.class), \"MAAND\")"),
                 () -> "compound ALLE moet geneste rsTijdKnip-doorsnede zijn:\n" + drl);
         String neg = compoundGedurende("alle volgende voorwaarden", "hij niet actief is");
-        assertTrue(neg.contains("rsTijdKnipNiet(rsTijdKnip($subject.getBedragPerMaand(), $subject.getRechthebbend()), "
-                        + "$subject.getActief())"),
+        assertTrue(neg.contains("rsTijdKnipNiet(rsTijdKnip($subject.getBedragPerMaand(), $subject.getRechthebbend(), Segment.class), "
+                        + "$subject.getActief(), Segment.class)"),
                 () -> "een genegeerde bullet moet rsTijdKnipNiet nesten:\n" + neg);
     }
 
@@ -3500,7 +3500,7 @@ class DrlTest {
         // true-period sets (rsTijdUnie), POSITIVE members only.
         String drl = compoundGedurende("ten minste 1 van de volgende voorwaarden", "hij actief is");
         assertTrue(drl.contains("rsTijdKnip($subject.getBedragPerMaand(), "
-                        + "rsTijdUnie($subject.getRechthebbend(), $subject.getActief()))"),
+                        + "rsTijdUnie($subject.getRechthebbend(), $subject.getActief(), Segment.class), Segment.class)"),
                 () -> "compound OR moet via rsTijdUnie verenigen:\n" + drl);
     }
 
@@ -3512,7 +3512,7 @@ class DrlTest {
         // member in gedurendeSamengesteld and the whole compound markers.)
         String drl = compoundGedurende("ten minste 1 van de volgende voorwaarden", "zijn geboortedatum is eerder dan 01-01-2002");
         assertTrue(drl.contains("? rsTijdTotaal($subject.getBedragPerMaand(), \"MAAND\")"
-                        + " : rsTijdTotaal(rsTijdKnip($subject.getBedragPerMaand(), $subject.getRechthebbend()), \"MAAND\"))"),
+                        + " : rsTijdTotaal(rsTijdKnip($subject.getBedragPerMaand(), $subject.getRechthebbend(), Segment.class), \"MAAND\"))"),
                 () -> "OR-mixed: static-true -> de volle span, static-false -> de klip:\n" + drl);
         assertFalse(drl.contains(": java.math.BigDecimal.ZERO)"),   // the helper body inits "= ...ZERO", so match the ternary else
                 () -> "OR-mixed mag niet naar ZERO gaten (dat is de ALLE-semantiek):\n" + drl);
@@ -3536,7 +3536,7 @@ class DrlTest {
         String drl = compoundGedurende("ten minste 1 van de volgende voorwaarden", "hij niet actief is");
         assertTrue(drl.contains("rsTijdKnip($subject.getBedragPerMaand(), "
                         + "rsTijdUnie($subject.getRechthebbend(), "
-                        + "rsTijdKnipNiet($subject.getBedragPerMaand(), $subject.getActief())))"),
+                        + "rsTijdKnipNiet($subject.getBedragPerMaand(), $subject.getActief(), Segment.class), Segment.class), Segment.class)"),
                 () -> "OR met een genegeerde member moet het span-begrensde complement verenigen:\n" + drl);
         assertFalse(drl.contains("/* TODO"), () -> "OR-negatie mag geen marker meer zijn:\n" + drl);
     }
@@ -3874,5 +3874,43 @@ class DrlTest {
                 "een datum-vs-literal static member (nooit both-empty) blijft vuren");
         assertEquals("FIRES", mixedStaticDrl("zijn leeftijd is groter dan zijn grens"),
                 "een numeriek attr-vs-attr static member (Tabel 42 'onwaar') blijft vuren");
+    }
+
+    /** goal-M1 D1: the generated DRL carries NO {@code function} definitions anywhere in the corpus —
+     *  every helper arrives as an {@code import function} on {@link io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime}
+     *  (the ONE rs* implementation), and the §9.8 dagsoort predicates as session globals. Sweeps every corpus
+     *  snippet AND the full TOKA casus as one model; the exercised-count floor keeps a silent skip from
+     *  hollowing the sweep out. */
+    @Test void d1_corpus_drl_bevat_geen_enkele_function_definitie() throws java.io.IOException {
+        java.nio.file.Path root = java.nio.file.Path.of("examples");
+        org.junit.jupiter.api.Assumptions.assumeTrue(java.nio.file.Files.isDirectory(root),
+                "corpus absent (run tools/extract_corpus.py)");
+        int getranspileerd = 0;
+        try (var files = java.nio.file.Files.walk(root)) {
+            for (java.nio.file.Path f : files.filter(x -> x.toString().endsWith(".rs")).sorted().toList()) {
+                String drl;
+                try {
+                    drl = DrlTranspiler.transpile(Resolver.resolve(java.nio.file.Files.readString(f)));
+                } catch (RuntimeException fragment) { continue; }   // a non-parsing fragment proves nothing here
+                assertTrue(drl.lines().noneMatch(l -> l.startsWith("function ")),
+                        () -> "D1: gegenereerde DRL bevat een function-definitie voor " + f + ":\n" + drl);
+                getranspileerd++;
+            }
+        }
+        // the whole TOKA casus as ONE model (cross-file constructs: verdelingen, feittypen, dagsoorten)
+        java.nio.file.Path toka = root.resolve("toka");
+        if (java.nio.file.Files.isDirectory(toka)) {
+            StringBuilder sb = new StringBuilder();
+            try (var files = java.nio.file.Files.list(toka)) {
+                for (java.nio.file.Path f : files.filter(x -> x.toString().endsWith(".rs")).sorted().toList())
+                    sb.append(java.nio.file.Files.readString(f)).append('\n');
+            }
+            String drl = DrlTranspiler.transpile(Resolver.resolve(sb.toString()));
+            assertTrue(drl.lines().noneMatch(l -> l.startsWith("function ")),
+                    () -> "D1: de volledige TOKA-casus emitteert een function-definitie:\n" + drl);
+            getranspileerd++;
+        }
+        final int n = getranspileerd;
+        assertTrue(n >= 150, () -> "D1-sweep te smal: slechts " + n + " corpusmodellen getranspileerd");
     }
 }

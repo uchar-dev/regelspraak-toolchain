@@ -68,6 +68,17 @@ class DroolsExecutionTest {
         return helper.build();
     }
 
+    /** Resolve + transpile + compile and open a session with the DRL's §9.8 dagsoort-predicate globals set
+     *  (goal-M1: the predicates are compiled once by kern.Dagsoorten and supplied as globals, like parameters). */
+    private KieSession dagsoortSessie(String src) {
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        DrlTranspiler t = DrlTranspiler.build(m);
+        KieSession s = build(t.drl()).newKieSession();
+        t.dagsoortGlobalen().forEach(s::setGlobal);
+        return s;
+    }
+
     @Test void appositieve_eenheid_qualifier_in_minuten_op_genavigeerde_read_vuurt() {
         // §3.7/§5.1 + §12: the appositive "in <eenheid>" on a navigated attribuut read — the spec's §12 reisduur
         // "de reisduur per trein IN MINUTEN van zijn reis groter is dan ..." (main-spec L4744). The resolver strips
@@ -627,7 +638,7 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("rsAantalDagenIn($subject.getRechtOpBelastingvermindering(), \"MAAND\")"),
+        assertTrue(drl.contains("rsAantalDagenIn($subject.getRechtOpBelastingvermindering(), \"MAAND\", Segment.class)"),
                 () -> "aantal-dagen-in moet een tijdreeks schrijven:\n" + drl);
 
         KieSession sessie = build(drl).newKieSession();
@@ -671,7 +682,7 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), $subject.getStandaardbedrag(), \"MAAND\")"),
+        assertTrue(drl.contains("rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), $subject.getStandaardbedrag(), \"MAAND\", Segment.class)"),
                 () -> "tijdsevenredig deel moet via rsTijdsevenredig over de basis-tijdreeks lowereren:\n" + drl);
 
         KieSession sessie = build(drl).newKieSession();
@@ -812,7 +823,7 @@ class DroolsExecutionTest {
         String drl = DrlTranspiler.transpile(m);
         assertTrue(drl.contains("global java.util.List sTANDAARDBELASTINGVERMINDERING;"),
                 () -> "een temporele parameter moet een List<Segment> global worden:\n" + drl);
-        assertTrue(drl.contains("rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), sTANDAARDBELASTINGVERMINDERING, \"MAAND\")"),
+        assertTrue(drl.contains("rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), sTANDAARDBELASTINGVERMINDERING, \"MAAND\", Segment.class)"),
                 () -> "de tijdsevenredig basis moet de parameter-tijdreeks global lezen:\n" + drl);
 
         KieSession sessie = build(drl).newKieSession();
@@ -1134,7 +1145,7 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("rsAantalDagenIn(rsTijdKnip($subject.getRechtOpBelastingvermindering(), $subject.getActief()), \"MAAND\")"),
+        assertTrue(drl.contains("rsAantalDagenIn(rsTijdKnip($subject.getRechtOpBelastingvermindering(), $subject.getActief(), Segment.class), \"MAAND\", Segment.class)"),
                 () -> "een ALLE compound moet de doorsnede tellen via rsTijdKnip:\n" + drl);
 
         KieSession sessie = build(drl).newKieSession();
@@ -1172,7 +1183,7 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("rsTijdsevenredig(rsTijdUnie($subject.getRechtOpBelastingvermindering(), $subject.getActief())"),
+        assertTrue(drl.contains("rsTijdsevenredig(rsTijdUnie($subject.getRechtOpBelastingvermindering(), $subject.getActief(), Segment.class)"),
                 () -> "een ten-minste-1 compound moet over de unie prorateren via rsTijdUnie:\n" + drl);
 
         KieSession sessie = build(drl).newKieSession();
@@ -1217,9 +1228,9 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("? rsTijdsevenredig($subject.getStandaardbedrag(), $subject.getStandaardbedrag(), \"MAAND\")"),
+        assertTrue(drl.contains("? rsTijdsevenredig($subject.getStandaardbedrag(), $subject.getStandaardbedrag(), \"MAAND\", Segment.class)"),
                 () -> "static-TRUE moet de basis over de volle span prorateren (basis-als-eigen-conditie):\n" + drl);
-        assertTrue(drl.contains(": rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), $subject.getStandaardbedrag(), \"MAAND\")"),
+        assertTrue(drl.contains(": rsTijdsevenredig($subject.getRechtOpBelastingvermindering(), $subject.getStandaardbedrag(), \"MAAND\", Segment.class)"),
                 () -> "static-FALSE moet over de temporele unie prorateren:\n" + drl);
 
         var kb = build(drl);
@@ -1878,8 +1889,8 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains(".multiply(new java.math.BigDecimal(\"12\"))"),
-                () -> "rate-omrekening (x12) ontbreekt:\n" + drl);
+        assertTrue(drl.contains("rsHerschaalExact($subject.getBasis(), new java.math.BigDecimal(\"12\")"),
+                () -> "rate-omrekening (x12, null-veilig via rsHerschaalExact) ontbreekt:\n" + drl);
 
         KieSession sessie = build(drl).newKieSession();
         Heffing h = new Heffing(); h.setBasis(new BigDecimal("10"));   // 10 €/mnd
@@ -6393,11 +6404,12 @@ class DroolsExecutionTest {
     }
 
     @Test void dagsoortcontrole_kerstdag_vuurt_alleen_op_25_en_26_december(){
-        // §9.8 dagsoortdefinitie "Een dag is een kerstdag indien maand==12 én dag in {25,26}" compiles to a
-        // function boolean rsDagsoort_Kerstdag(LocalDate); §8.1.5 "<datum> is een kerstdag" calls it. ABSOLUTE spec
-        // semantics (not just DRL/exec parity — a shared bug in the predicate compiler would pass the differential):
-        // only 25 and 26 December are a kerstdag, and §5.15 a leeg datum is NEVER a dagsoort.
-        String drl = DrlTranspiler.transpile(Resolver.resolve("""
+        // §9.8 dagsoortdefinitie "Een dag is een kerstdag indien maand==12 én dag in {25,26}" compiles (via the
+        // shared kern.Dagsoorten) to a Predicate<LocalDate> supplied as the rsDagsoort_Kerstdag global; §8.1.5
+        // "<datum> is een kerstdag" calls it. ABSOLUTE spec semantics (not just DRL/exec parity — a shared bug in
+        // the predicate compiler would pass the differential): only 25 and 26 December are a kerstdag, and §5.15
+        // a leeg datum is NEVER a dagsoort.
+        DrlTranspiler t = DrlTranspiler.build(Resolver.resolve("""
             Dagsoort de kerstdag (mv: kerstdagen)
             Regel Kerstdag
                 geldig altijd
@@ -6415,9 +6427,13 @@ class DroolsExecutionTest {
                     Een Vlucht is laat
                     indien de vluchtdatum van de Vlucht een kerstdag is.
             """));
-        assertTrue(drl.contains("function boolean rsDagsoort_Kerstdag"),
-                () -> "de §9.8 definitie moet een per-datum predicaat-functie worden:\n" + drl);
+        String drl = t.drl();
+        assertTrue(drl.contains("global java.util.function.Predicate rsDagsoort_Kerstdag;"),
+                () -> "de §9.8 definitie moet een sessie-globaal predicaat worden:\n" + drl);
+        assertTrue(drl.contains("rsDagsoort_Kerstdag.test("),
+                () -> "de §8.1.5 dagsoortcontrole moet het predicaat-globaal aanroepen:\n" + drl);
         KieSession s = build(drl).newKieSession();
+        t.dagsoortGlobalen().forEach(s::setGlobal);
         Vlucht k25 = new Vlucht(); k25.setVluchtdatum(LocalDate.of(2024, 12, 25));
         Vlucht k26 = new Vlucht(); k26.setVluchtdatum(LocalDate.of(2024, 12, 26));
         Vlucht d24 = new Vlucht(); d24.setVluchtdatum(LocalDate.of(2024, 12, 24));
@@ -6452,8 +6468,7 @@ class DroolsExecutionTest {
                 de vroegsteVertrek Datum in dagen;
             """;
         java.util.function.BiFunction<String, java.util.function.Consumer<Vlucht>, LocalDate> run = (regel, init) -> {
-            String drl = DrlTranspiler.transpile(Resolver.resolve(def + regel));
-            KieSession s = build(drl).newKieSession();
+            KieSession s = dagsoortSessie(def + regel);
             Vlucht v = new Vlucht(); init.accept(v);
             s.insert(v); s.fireAllRules(); s.dispose();
             return v.getVroegsteVertrek();
@@ -6517,7 +6532,7 @@ class DroolsExecutionTest {
                 de totaalprijs Numeriek (geheel getal) met eenheid kerstdagen;
             """;
         java.util.function.BiFunction<String, java.util.function.Consumer<Vlucht>, BigDecimal> run = (regel, init) -> {
-            KieSession s = build(DrlTranspiler.transpile(Resolver.resolve(def + regel))).newKieSession();
+            KieSession s = dagsoortSessie(def + regel);
             Vlucht v = new Vlucht(); init.accept(v);
             s.insert(v); s.fireAllRules(); s.dispose();
             return v.getTotaalprijs();
@@ -6552,7 +6567,7 @@ class DroolsExecutionTest {
         // §9.8 the spec's CENTRAL example: a feestdag definitie references OTHER dagsoorten (feestdag = kerstdag OF
         // paasdag). The predicate-calling-predicate composition + EERSTE_PAASDAG in a §9.8 body must fire. ABSOLUTE:
         // 25-12 (kerstdag) and 31-03-2024 (paasdag) are feestdagen; an ordinary day is not.
-        String drl = DrlTranspiler.transpile(Resolver.resolve("""
+        DrlTranspiler t = DrlTranspiler.build(Resolver.resolve("""
             Dagsoort de kerstdag (mv: kerstdagen)
             Dagsoort de paasdag (mv: paasdagen)
             Dagsoort de feestdag (mv: feestdagen)
@@ -6581,9 +6596,13 @@ class DroolsExecutionTest {
                 geldig altijd
                     Een Vlucht is laat indien de vluchtdatum van de Vlucht een feestdag is.
             """));
-        assertTrue(drl.contains("function boolean rsDagsoort_Feestdag") && drl.contains("rsDagsoort_Kerstdag") && drl.contains("rsDagsoort_Paasdag"),
-                () -> "feestdag moet kerstdag én paasdag aanroepen:\n" + drl);
+        String drl = t.drl();
+        // the DRL declares only the DIRECTLY referenced predicate; kerstdag/paasdag are composed INSIDE the
+        // feestdag predicate by the shared kern.Dagsoorten compiler (cross-dagsoort reference).
+        assertTrue(drl.contains("global java.util.function.Predicate rsDagsoort_Feestdag;"),
+                () -> "de feestdag-dagsoortcontrole moet een predicaat-globaal declareren:\n" + drl);
         KieSession s = build(drl).newKieSession();
+        t.dagsoortGlobalen().forEach(s::setGlobal);
         Vlucht kerst = new Vlucht(); kerst.setVluchtdatum(LocalDate.of(2024, 12, 25));
         Vlucht pasen = new Vlucht(); pasen.setVluchtdatum(LocalDate.of(2024, 3, 31));   // eerste paasdag 2024
         Vlucht gewoon = new Vlucht(); gewoon.setVluchtdatum(LocalDate.of(2024, 6, 15));

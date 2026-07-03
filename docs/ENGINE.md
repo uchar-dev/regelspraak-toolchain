@@ -43,6 +43,21 @@ Collection<Inconsistentie> fouten = /* a fresh session */ s.facts(Inconsistentie
 The fact classes the Model references must be on the classpath in package `io.github.yhavinga.regelspraak.facts`
 (the consumer's domain beans: Pascal-case class, `getX`/`setX` per attribute, `isX`/`setX` per kenmerk).
 
+## The DRL oracle's classpath contract (goal-M1)
+
+Since goal-M1 the generated DRL text contains **no `function` bodies**: every helper arrives as
+`import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.<naam>;`, so **the `regelspraak-parser`
+artifact must be on the classpath that compiles the DRL** (the test suites already satisfy this — the
+runtime lives in the same artifact as the transpiler). The one rs* implementation is
+`RegelSpraakRuntime`; the DRL and exec back-ends now call the same bodies, so the differential suite
+compares wiring, not re-implementations.
+
+A §9.8 dagsoortdefinitie no longer becomes a generated DRL function either: the shared
+`kern.Dagsoorten` compiler produces a `Predicate<LocalDate>` that the DRL declares as a
+`global java.util.function.Predicate rsDagsoort_<Naam>;`. A session over such DRL must supply those
+globals from `DrlTranspiler.build(model).dagsoortGlobalen()` — exactly like the parameter globals.
+(The exec model bakes the same predicates into its lambdas; its sessions need nothing extra.)
+
 ## Building
 
 ```
