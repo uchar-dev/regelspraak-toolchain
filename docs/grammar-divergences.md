@@ -1721,9 +1721,14 @@ machinery lowers and fires as soon as they bind (empirically isolated per rule).
 Extensie construct. It deliberately lives OUTSIDE `examples/toka/` (which stays the faithful spec extraction
 that `make verify-corpus` parses); TokaDekkingTest and the TokaVuurTest end-to-end firing test load it
 additionally, while CasusTest deliberately keeps the pure extraction. Scoreboard effect: 19/29 → 28/29
-lowered. The honest residual is toka-23, whose operands are §11 "Daarbij geldt" local variables (a real
-frontier feature) and whose A-variable carries the casus's own `datum-tijd plus datum-tijd` type quirk — the
-single expected CasusTest error, unchanged.
+lowered. The honest residual is toka-23 — and NOT for lack of §11 "Daarbij geldt" support: variables ARE
+inlined at resolve time (declaration-order, per §11.1), which is exactly what surfaces its A-operand's
+casus-own `datum-tijd plus datum-tijd` type quirk (§4.1 Tabel 2 admits only datum ± numeriek-met-tijdseenheid)
+— the single expected CasusTest error, unchanged. The errored operand degrades to Onbekend, so the V2a
+mixed-precision gate correctly stays silent (no second concrete datum type survives), and the eerste/laatste
+fold honestly markers rather than folding an errored leg. Lowering toka-23 would require either contradicting
+the typeringen or a reconciliation-style casus data fix (e.g. a Numeriek duration for `bevestigingsinterval`)
+— deliberately not taken: the marker is the spec-correct outcome.
 
 ## Execution semantics — a berekening is an equation: @watch freshness + idempotent (fixpoint) writes
 
@@ -1746,3 +1751,21 @@ inert), leaving it class-reactive like its siblings. Pinned by a DRL-text test (
 absolute-value differential chain fixture (both back-ends 47, not merely equal), the TOKA end-to-end
 belastingketen (60.00 → 50.00 at fixpoint, loop-capped), a resolver kringverwijzing-WARNING pin, and an
 engine test proving the fire cap throws instead of hanging.
+
+## §5.1.4 mixed-unit temporal-arithmetic chains sum in the leftmost operand's unit (~1 ULP order dependence, accepted)
+
+A tijdsafhankelijke `a plus b plus c` whose operands carry DIFFERENT but convertible units is summed in the
+LEFTMOST leaf's unit (`numeriekBinair` types a plus/min result with the left operand's unit; both back-ends
+thread `bin.links().type()` as the sum unit at every recursion level), then restated once to the doel unit.
+When that leftmost unit is FINER than a later operand (`€/mnd + €/jr`), each coarser operand is restated by a
+non-terminating `÷12` at `MathContext.DECIMAL64` BEFORE the exact per-period add — a double round, so the
+result is order-of-writing-dependent at ~1 ULP (`a+b+c ≠ c+b+a`, ~1e-16). §4.1/§5.1.4.2 prescribe "one common
+unit, sum, convert once" but only illustrate same-unit operands; the common-unit choice for a MIXED chain is
+spec-undefined, and leftmost-unit matches the pinned 2-operand behavior (the differential fixture pins the
+sum-first value `0.1666666666666667` explicitly). DECIDED: accept and document, do not chase. The artefact is
+symmetric (DRL == exec, not a back-end divergence), sits inside the engine-wide DECIMAL64-vs-exact-rational
+limitation, and is deterministic per set of inputs — so the freshness/fixpoint semantics cannot oscillate on
+it (a recompute of the same expression over the same facts is bit-identical). Summing in the COARSEST leaf
+unit would be order-independent but threads a coarsest-unit choice through the well-tested shared temporal
+recursion for a sub-decimals artefact — deferred. The DECIMAL64 contract stands: no implicit rounding; where
+sub-16-digit precision matters, the author writes an explicit afronding.

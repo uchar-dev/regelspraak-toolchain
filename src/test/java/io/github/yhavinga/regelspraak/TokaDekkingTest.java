@@ -32,9 +32,11 @@ class TokaDekkingTest {
      *  rules reference members the object model never declares ('de treinmiles', the toka-35/37 cap,
      *  kenmerk 'passagier jonger dan 18 jaar', 'daadwerkelijke datum-tijd van vertrek'); with the
      *  examples/toka-reconciliatie extensie supplying exactly those members (see grammar-divergences),
-     *  all nine lower and fire. The one honest residual is toka-23: its operands are §11 "Daarbij geldt"
-     *  local variables (a real feature, carded on the frontier) and its A-variable carries the casus's
-     *  own datum-tijd-plus-datum-tijd type quirk (the single expected CasusTest error). */
+     *  all nine lower and fire. The one honest residual is toka-23 — NOT a missing feature: §11 "Daarbij
+     *  geldt" variables ARE inlined (declaration-order, DrlTest-pinned), which is exactly what surfaces
+     *  its A-operand's casus-own datum-tijd PLUS datum-tijd type quirk (§4.1 Tabel 2 forbids it — the
+     *  single expected CasusTest error); the errored operand degrades to a marker Frag and the LAATSTE
+     *  fold honestly declines. Lowering it would require contradicting the typeringen. */
     private static final Map<String, String> VERWACHT_MARKER = Map.of(
         "regel: Bevestigingstijdstip vlucht", "TODO aggregatie LAATSTE");
 
