@@ -91,12 +91,6 @@ public final class ExecModelTranspiler {
      *  {@code geldig vanaf/tot} version), read by the per-construct {@link #geldigGuard} window guard. null when
      *  every construct is {@code geldig altijd} (no guard needed). Mirrors DrlTranspiler's {@code rekendatum} global. */
     private Global<java.time.LocalDate> rekendatumGlobal;
-    /** The subject a VALUE-path {@link #scalarWaarde} is lowering for, set tightly around the regel value-path call so
-     *  a to-one NAVIGATED value read ("de X van zijn partner") can resolve its role. null everywhere else (the
-     *  condition path, aggregation fallbacks, creatie/verdeling values) so a navigated read SKIPS there rather than
-     *  resolving against a stale subject — the value side's getter-chain null semantics differ from the condition
-     *  side's {@code !.}, so the two must not share this. */
-    private Objecttype valueSubject;
     private final List<String> overgeslagen = new ArrayList<>();
     /** Monotonic within ONE rule (reset per rule) — keeps each rule's declaration NAMES ({@code $e_0}, {@code $inc_1})
      *  unique. Declaration names are per-rule scoped, so they may repeat across rules. */
@@ -400,14 +394,13 @@ public final class ExecModelTranspiler {
                     werkBij(drools, s, doelGetter, doelSetter, gv));
         } else {
             // scalar value path: a WaardeFn(subject, global-values -> value) plus the Parameter-globals it reads.
-            // valueSubject is set tightly around the lowering so a to-one navigated value read can resolve its role.
-            valueSubject = doel.objecttype();
+            // the doel's objecttype rides along as the VALUE-path subject (goal-M4 D8: a parameter, no field),
+            // so a to-one navigated value read can resolve its role.
             WaardeFn wf = switch (r.soort()) {
                 case KENMERKTOEKENNING -> WaardeFn.constant(Boolean.TRUE);      // "is <kenmerk>" -> kenmerk == true
-                case GELIJKSTELLING, BEREKENING, INITIALISATIE -> scalarWaarde(r.waarde());
+                case GELIJKSTELLING, BEREKENING, INITIALISATIE -> scalarWaarde(doel.objecttype(), r.waarde());
                 default -> null;
             };
-            valueSubject = null;
             if (wf == null) return skip("regel (waarde buiten scope): " + r.naam());
             // §4 value-side unit restatement, EXACT (a kenmerk value is Boolean, no unit). Mirrors DrlTranspiler.omrekenWaarde.
             if (r.soort() != ResolvedRegel.Soort.KENMERKTOEKENNING)
@@ -557,7 +550,7 @@ public final class ExecModelTranspiler {
             // expression (an own attribute / arithmetic) read from the subject — but not one reading a global.
             WaardeFn fallback = null;
             if (f.leegwaarde() != null) {
-                fallback = scalarWaarde(f.leegwaarde());
+                fallback = scalarWaarde(null, f.leegwaarde());
                 if (fallback == null || !fallback.globals().isEmpty()) return null;   // unlowerable / global fallback -> skip
             }
             PatternDSL.PatternDef src2 = src.expr(nextId("nn"), (Predicate1) (e) -> RegelSpraakRuntime.get(e, attr) != null)
@@ -639,9 +632,7 @@ public final class ExecModelTranspiler {
             if (reader == null) return null;   // AFWEZIG / ONOPGELOST / NAAR_VEEL -> marker (symmetric with the DRL)
             rfn = (subj, gm) -> reader.apply(subj);
         } else {
-            Objecttype bewaard = valueSubject; valueSubject = subject;   // enable scalarWaarde's own-attr (value-path) read of the RHS
-            WaardeFn rhs = scalarWaarde(ander);
-            valueSubject = bewaard;
+            WaardeFn rhs = scalarWaarde(subject, ander);   // the value-path subject rides as a parameter (goal-M4 D8)
             if (rhs == null) return null;
             if (!rhs.globals().isEmpty()) {
                 if (rhs.globals().size() != 1) return null;
@@ -990,13 +981,10 @@ public final class ExecModelTranspiler {
         if (code == null) return null;                                           // datum ordering -> skip
         java.util.function.Function<Object, Object> tl = temporeelTijdlijnReader(tijd, subject);
         if (tl == null) return null;                                             // navigated/unresolvable -> skip
-        // the grens is read value-side (own attr / to-one navigated / literal / global); scalarWaarde's navigated
-        // branch needs valueSubject set (tijdreeksTotaal runs before regel() sets it), so set it around the call so a
-        // navigated grens ("... groter is dan de inkomen van zijn partner") lowers — symmetric with DRL's waarde().
-        Objecttype bewaardeValueSubject = valueSubject;
-        valueSubject = subject;
-        WaardeFn g = scalarWaarde(ander);
-        valueSubject = bewaardeValueSubject;
+        // the grens is read value-side (own attr / to-one navigated / literal / global): the subject rides as
+        // the VALUE-path parameter so a navigated grens ("... groter is dan de inkomen van zijn partner")
+        // lowers — symmetric with DRL's waarde() (goal-M4 D8).
+        WaardeFn g = scalarWaarde(subject, ander);
         if (g == null) return null;                                              // unlowerable grens -> skip
         return new VergClip(tl, code, g);
     }
@@ -1535,7 +1523,7 @@ public final class ExecModelTranspiler {
      *  leeg operand -> leeg). Mirrors DrlTranspiler.binairTerm's datum branch and its guards: only +/-, no datum-datum,
      *  a time unit (uur/…) needs a datum-tijd operand, kwartaal lowers (3×MONTHS via rsDatumReken), and a
      *  dagsoort/unresolvable operand -> null (skip). */
-    private WaardeFn datumRekenWaarde(Expr.Binair b) {
+    private WaardeFn datumRekenWaarde(Objecttype valueSubject, Expr.Binair b) {
         Expr.BinOp op = b.op();
         if (op != Expr.BinOp.PLUS && op != Expr.BinOp.MIN && op != Expr.BinOp.VERMINDERD_MET) return null;
         boolean datumLinks = b.links().type().isDatum();
@@ -1544,7 +1532,7 @@ public final class ExecModelTranspiler {
         boolean optellen = op == Expr.BinOp.PLUS;
         if (durExpr.type().isDatum() || (!optellen && !datumLinks)) return null;   // datum-datum / duur-min-datum
         // §6.11 datum ± N <dagsoort> ("5 werkdagen"): step day-by-day counting the §9.8 dagsoort days. A dagsoort is
-        // day-granular -> a Datum in dagen (LocalDate) operand only. Mirrors DrlTranspiler's rsDatumPlus_<Naam>.
+        // day-granular -> a Datum in dagen (LocalDate) operand only. Both back-ends call rsDatumPlusDagsoort (goal-M1).
         io.github.yhavinga.regelspraak.model.Eenheid durEenheid = durExpr.type().eenheidOf();
         String dagsoortUnit = durEenheid != null ? model.dagsoortVoorEenheid(durEenheid.afkorting()) : null;
         if (dagsoortUnit != null) {
@@ -1552,7 +1540,7 @@ public final class ExecModelTranspiler {
             // part and re-attach the time-of-day (rsDatumTijdPlusDagsoort). A Datum-in-dagen keeps the LocalDate path.
             boolean datumTijd = datumExpr.type() instanceof Datatype.DatumTijd;
             java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(dagsoortUnit);
-            WaardeFn df0 = scalarWaarde(datumExpr), nf0 = scalarWaarde(durExpr);
+            WaardeFn df0 = scalarWaarde(valueSubject, datumExpr), nf0 = scalarWaarde(valueSubject, durExpr);
             if (pred == null || df0 == null || nf0 == null) return null;
             BiFunction<Object, Map<String, BigDecimal>, Object> dfn0 = df0.fn(), nfn0 = nf0.fn();
             Set<String> g0 = new LinkedHashSet<>(df0.globals()); g0.addAll(nf0.globals());
@@ -1566,7 +1554,7 @@ public final class ExecModelTranspiler {
         if (unit == null) return null;
         boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
         if (tijdEenheid && !(datumExpr.type() instanceof Datatype.DatumTijd)) return null;
-        WaardeFn df = scalarWaarde(datumExpr), nf = scalarWaarde(durExpr);
+        WaardeFn df = scalarWaarde(valueSubject, datumExpr), nf = scalarWaarde(valueSubject, durExpr);
         if (df == null || nf == null) return null;
         BiFunction<Object, Map<String, BigDecimal>, Object> dfn = df.fn(), nfn = nf.fn();
         Set<String> g = new LinkedHashSet<>(df.globals()); g.addAll(nf.globals());
@@ -1653,7 +1641,7 @@ public final class ExecModelTranspiler {
             if (code == null) return null;
             java.util.function.Function<Object, Object> tl = temporeelTijdlijnReader(tijd, subject);
             if (tl == null) return null;
-            WaardeFn g = scalarWaarde(ander);
+            WaardeFn g = scalarWaarde(null, ander);
             if (g == null) {
                 // scalarWaarde's navigated branch is value-path-only (valueSubject is null here), so a to-ONE navigated
                 // grenswaarde ("… gelijk is aan de drempel van zijn reis") would skip while the DRL oracle FIRES it via
@@ -1904,7 +1892,7 @@ public final class ExecModelTranspiler {
         // toeslag groter is dan de drempel", "zijn prijs maal 2 groter is dan de grens", "de vertrektijd van zijn reis
         // plus de toeslag groter is dan zijn prijs". Bind that one global as a pattern variable (a 2-var expr), lowering
         // BOTH sides via scalarWaarde. DRL reads the global as a free name in the constraint operand. A NAVIGATED operand
-        // inside the expr lowers via scalarWaarde's navigated read — set valueSubject around the calls (value-path-only,
+        // inside the expr lowers via scalarWaarde's navigated read — the subject rides as the value-path parameter (goal-M4 D8,
         // like the leaf expr-comparison branch) so navReader resolves; an absent relation reads leeg -> leeg-as-0 in the
         // arithmetic (DRL's rsRelGetal mirror). 0 globals -> falls through to leafPredicate's fact-only expr-comparison
         // branch; >1 distinct globals -> falls through -> skip (a condition expr binds at most one global -> the N-var
@@ -1915,9 +1903,7 @@ public final class ExecModelTranspiler {
                 && v.rechts().type() != null && v.rechts().type().isNumeriek()
                 && (numeriekeExpressie(v.links()) || numeriekeExpressie(v.rechts()))
                 && !(parityOnveilig(v.links()) || parityOnveilig(v.rechts()))) {
-            Objecttype bewaard = valueSubject; valueSubject = subject;   // enable scalarWaarde's navigated (value-path) read
-            WaardeFn lw = scalarWaarde(v.links()), rw = scalarWaarde(v.rechts());
-            valueSubject = bewaard;
+            WaardeFn lw = scalarWaarde(subject, v.links()), rw = scalarWaarde(subject, v.rechts());
             if (lw != null && rw != null) {
                 Set<String> gset = new LinkedHashSet<>(lw.globals()); gset.addAll(rw.globals());
                 if (gset.size() == 1) {
@@ -1954,7 +1940,7 @@ public final class ExecModelTranspiler {
         if (c instanceof Conditie.Vergelijking v && isDatumVergelijkOp(v.op())
                 && v.links().type().isDatum() && v.rechts().type().isDatum()
                 && (isDatumRekenExpr(v.links()) || isDatumRekenExpr(v.rechts()))) {
-            WaardeFn lw = scalarWaarde(v.links()), rw = scalarWaarde(v.rechts());
+            WaardeFn lw = scalarWaarde(null, v.links()), rw = scalarWaarde(null, v.rechts());
             if (lw != null && rw != null) {
                 Set<String> gset = new LinkedHashSet<>(lw.globals()); gset.addAll(rw.globals());
                 if (gset.size() == 1) {
@@ -1973,7 +1959,7 @@ public final class ExecModelTranspiler {
         // §8.1.5 dagsoortcontrole "<datum> is een <dagsoort>" whose datum operand reads EXACTLY ONE NUMERIC Parameter-
         // GLOBAL (a §6 date-arithmetic expression whose duration is a numeric parameter, "de vluchtdatum plus de MARGE
         // een werkdag is"): bind that global as a pattern variable (a 2-var expr), mirroring the date-arith-vs-global
-        // comparison branch above. DRL reads the global as a free name directly in the rsDagsoort_<N> constraint; the
+        // comparison branch above. DRL calls the rsDagsoort_<N> predicate GLOBAL on the free-name global directly; the
         // exec pattern needs it as a Variable. A fact-only (0-global) operand falls through to leafPredicate. The cases
         // this branch does NOT take — a >1-global operand, a NAVIGATED operand (scalarWaarde's nav read needs the
         // value-path subject, null on the condition path), or a non-numeric date-typed global (globals.get == null) —
@@ -1981,7 +1967,7 @@ public final class ExecModelTranspiler {
         // the differential EXCLUDES an overgeslagen fixture, so each is a documented asymmetry, never a SILENT
         // divergence — close-list follow-ups, not silent wrongs. §5.15: an absent/non-date value is ONWAAR.
         if (c instanceof Conditie.Predicaat dp && dp.soort() == Conditie.Predicaatsoort.DAGSOORT && dp.operand().type().isDatum()) {
-            WaardeFn wf = scalarWaarde(dp.operand());
+            WaardeFn wf = scalarWaarde(null, dp.operand());
             if (wf != null && wf.globals().size() == 1) {
                 String gn = wf.globals().iterator().next();
                 Global<BigDecimal> g = globals.get(gn);   // null for a non-numeric (date/tekst) global -> honest skip below
@@ -2008,7 +1994,7 @@ public final class ExecModelTranspiler {
      *  §8.1.7 near-side rolcheck. A temporal (List<Segment>) operand returns null (Phase F). */
     /** The string label of a comparison RHS that is a §13.3.3.4 Tekst literal (double quotes stripped) or a §13.2.14
      *  enumeratiewaarde 'X' (single quotes stripped, straight or typographic). null otherwise — both compare by
-     *  VALUE equality, mirroring {@link io.github.yhavinga.regelspraak.transpiler.DrlTranspiler#enumLiteralLabel}. */
+     *  VALUE equality — the shared {@link Literalen#tekstOfEnumLabel} reader (goal-M2). */
     private static String tekstOfEnumLabel(Expr e) {
         return e instanceof Expr.Literal lit ? Literalen.tekstOfEnumLabel(lit) : null;   // the shared reader (goal-M2)
     }
@@ -2236,7 +2222,7 @@ public final class ExecModelTranspiler {
         if (c instanceof Conditie.Vergelijking v && isDatumVergelijkOp(v.op())
                 && v.links().type().isDatum() && v.rechts().type().isDatum()
                 && (isDatumRekenExpr(v.links()) || isDatumRekenExpr(v.rechts()))) {
-            WaardeFn lw = scalarWaarde(v.links()), rw = scalarWaarde(v.rechts());
+            WaardeFn lw = scalarWaarde(null, v.links()), rw = scalarWaarde(null, v.rechts());
             if (lw == null || rw == null || !lw.globals().isEmpty() || !rw.globals().isEmpty()) return null;
             BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
             Conditie.Operator op = v.op();
@@ -2276,7 +2262,7 @@ public final class ExecModelTranspiler {
         // literal. Lower the LHS via scalarWaarde (which now covers these); a fact-only reader (0 globals) makes it a
         // Predicate1, then vergelijk + restatement. DRL lowers the same expression as a constraint operand. A NAVIGATED
         // operand inside the LHS ("de vertrektijd van zijn reis plus 1 > 100") lowers via scalarWaarde's navigated read —
-        // valueSubject set around the call (value-path-only); an ABSENT relation reads leeg -> leeg-as-0 in the arithmetic
+        // the subject passed as the value-path parameter; an ABSENT relation reads leeg -> leeg-as-0 in the arithmetic
         // (see the expr-vs-expr branch below for the rsRelGetal parity). A param-reading LHS keeps globals non-empty ->
         // skipped (the global path binds it in voorwaarde).
         if (c instanceof Conditie.Vergelijking v && isNumeriekOp(v.op()) && v.links().type().isNumeriek()
@@ -2284,9 +2270,7 @@ public final class ExecModelTranspiler {
                     || v.links() instanceof Expr.Begrensd || v.links() instanceof Expr.Afgerond)
                 && v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
             if (parityOnveilig(v.links())) return null;   // §3.6 dimensiecel / cross-unit +/- -> DRL markers -> skip (symmetric)
-            Objecttype bewaard = valueSubject; valueSubject = subject;   // enable scalarWaarde's navigated (value-path) read
-            WaardeFn lw = scalarWaarde(v.links());
-            valueSubject = bewaard;
+            WaardeFn lw = scalarWaarde(subject, v.links());   // the value-path subject rides as a parameter (goal-M4 D8)
             if (lw == null || !lw.globals().isEmpty()) return null;   // unlowerable / unresolvable navigation / needs a global -> skip
             BigDecimal rhs = bd(lit);
             if (rhs == null) return null;
@@ -2301,7 +2285,7 @@ public final class ExecModelTranspiler {
         // branch above). Lower BOTH sides via scalarWaarde (the value-path lowering, at parity with DrlTranspiler.binairTerm
         // on the value side), then vergelijk + §5.1 restatement. parityOnveilig skips a §3.6 dimensiecel and a cross-unit
         // +/- (DRL markers those). A NAVIGATED operand inside the expr ("de prijs van zijn reis plus 1 groter is dan zijn
-        // drempel") lowers via scalarWaarde's navigated read — set valueSubject around the calls (value-path-only, like the
+        // drempel") lowers via scalarWaarde's navigated read — the subject rides as the value-path parameter (like the
         // §8.2 grens path) so navReader resolves. An ABSENT relation reads LEEG, which the arithmetic treats per the §4/§6
         // leegwaarde tables (leeg-as-0 in +/-/*, §4.1 Tabel 3 etc.) and then vergelijk's leegwaarde semantics — NOT a
         // short-circuit-to-false (DRL's mvel `rol!.attr` short-circuit was a latent bug; DrlTranspiler now reads a navigated
@@ -2314,9 +2298,7 @@ public final class ExecModelTranspiler {
                 && v.rechts().type() != null && v.rechts().type().isNumeriek()
                 && (numeriekeExpressie(v.links()) || numeriekeExpressie(v.rechts()))) {
             if (parityOnveilig(v.links()) || parityOnveilig(v.rechts())) return null;   // §3.6 dimensiecel / cross-unit +/- -> DRL markers -> skip (symmetric)
-            Objecttype bewaard = valueSubject; valueSubject = subject;   // enable scalarWaarde's navigated (value-path) read
-            WaardeFn lw = scalarWaarde(v.links()), rw = scalarWaarde(v.rechts());
-            valueSubject = bewaard;
+            WaardeFn lw = scalarWaarde(subject, v.links()), rw = scalarWaarde(subject, v.rechts());
             if (lw == null || rw == null || !lw.globals().isEmpty() || !rw.globals().isEmpty()) return null;   // unlowerable / unresolvable navigation / needs a global -> skip
             BigDecimal[] f = restatement(v.links().type(), v.rechts().type());
             BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
@@ -2360,7 +2342,7 @@ public final class ExecModelTranspiler {
         }
         // §8.1.5 dagsoortcontrole "<datum> is een <dagsoort>": test an OWN or to-one NAVIGATED datum attribute
         // against the dagsoort's §9.8 definitie predicate (the mirror of DrlTranspiler's `attr != null &&
-        // rsDagsoort_<Naam>(attr)`). §5.15: een leegwaarde is nooit een dagsoort -> an absent datum is ONWAAR.
+        // rsDagsoort_<Naam>.test(attr)`). §5.15: een leegwaarde is nooit een dagsoort -> an absent datum is ONWAAR.
         if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.DAGSOORT
                 && p.operand() instanceof Expr.AttribuutRef la && la.type().isDatum()) {
             if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> skip
@@ -2389,7 +2371,7 @@ public final class ExecModelTranspiler {
         // a fact-only leaf -> skip. §5.15: an absent/non-date value is ONWAAR.
         if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.DAGSOORT && p.operand().type().isDatum()) {
             java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(p.dagsoort());
-            WaardeFn wf = scalarWaarde(p.operand());
+            WaardeFn wf = scalarWaarde(null, p.operand());
             if (pred == null || wf == null || !wf.globals().isEmpty()) return null;
             BiFunction<Object, Map<String, BigDecimal>, Object> fn = wf.fn();
             boolean neg = p.negatie();   // §8.1.5 + Tabel 16 "is geen <dagsoort>"
@@ -2411,7 +2393,7 @@ public final class ExecModelTranspiler {
     /** Compile (idempotently, cycle-safe) the §9.8 definitie of {@code naam} to a Predicate&lt;LocalDate&gt;; null
      *  when no such definitie exists or its condition is not a pure date predicate. A nested dagsoort reference
      *  resolves via a DEFERRED map lookup, so cross-references work regardless of compilation order and a
-     *  (spec-forbidden, §9.10) cyclic definitie cannot infinite-loop. Mirrors DrlTranspiler.dagsoortFunctie. */
+     *  (spec-forbidden, §9.10) cyclic definitie cannot infinite-loop — inside the shared kern.Dagsoorten (goal-M1). */
     /** §8.1.5/§5.15/Tabel 57: the day-granular date of a dagsoort operand — a Datum-in-dagen (LocalDate) directly, a
      *  Datum-en-tijd (LocalDateTime) via its date part (a dagsoort is day-granular, so the time portion is irrelevant).
      *  null for a leeg / non-date value (a leegwaarde is nooit een dagsoort). Mirrors the DRL `.toLocalDate()` wrap. */
@@ -2478,7 +2460,7 @@ public final class ExecModelTranspiler {
 
     /** Scalar value: Literal | own-attr read | Parameter-global read | a {@code +} of those (rsNul leegwaarde).
      *  null -> skip. The global read pulls its value from the consequence-bound map (see {@link #regel}). */
-    private WaardeFn scalarWaarde(Expr e) {
+    private WaardeFn scalarWaarde(Objecttype valueSubject, Expr e) {
         if (e instanceof Expr.Literal lit && lit.type().isNumeriek()) {
             BigDecimal val = bd(lit);
             return val == null ? null : WaardeFn.constant(val);
@@ -2508,7 +2490,7 @@ public final class ExecModelTranspiler {
             for (Expr.TekstReeks.Deel d : tr.delen()) {
                 if (d instanceof Expr.TekstReeks.Letterlijk lit) { String t = lit.tekst(); parts.add((s, gm) -> t); }
                 else if (d instanceof Expr.TekstReeks.Ingevoegd ing) {
-                    WaardeFn wf = scalarWaarde(ing.expr());
+                    WaardeFn wf = scalarWaarde(valueSubject, ing.expr());
                     if (wf == null) return null;
                     g.addAll(wf.globals());
                     parts.add(wf.fn());
@@ -2566,7 +2548,7 @@ public final class ExecModelTranspiler {
             // §13.4.17.14 power: an INTEGER literal exponent -> exact BigDecimal.pow (rsMacht); else Math.pow
             // (rsMachtReeel). §6.7 a leeg base/operand -> leeg. No unit restatement. Mirrors DrlTranspiler.binairTerm.
             if (b.links().type().isDatum()) return null;
-            WaardeFn base = scalarWaarde(b.links());
+            WaardeFn base = scalarWaarde(valueSubject, b.links());
             if (base == null) return null;
             BiFunction<Object, Map<String, BigDecimal>, Object> bfn = base.fn();
             Integer n = geheelExponent(b.rechts());
@@ -2574,7 +2556,7 @@ public final class ExecModelTranspiler {
                 int exp = n;
                 return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsMacht(bfn.apply(s, gm), exp), base.globals());
             }
-            WaardeFn rf = scalarWaarde(b.rechts());
+            WaardeFn rf = scalarWaarde(valueSubject, b.rechts());
             if (rf == null) return null;
             BiFunction<Object, Map<String, BigDecimal>, Object> rfn = rf.fn();
             Set<String> g = new LinkedHashSet<>(base.globals()); g.addAll(rf.globals());
@@ -2583,17 +2565,17 @@ public final class ExecModelTranspiler {
         if (e instanceof Expr.Begrensd bg) {
             // §6.1.4 begrenzing (clamp): restate the bounds into the basis unit (§4, like +/-) then rsBegrens
             // (min-then-max, a leeg basis stays leeg). Mirrors DrlTranspiler's value-side clamp ternaries.
-            WaardeFn baseF = scalarWaarde(bg.basis());
+            WaardeFn baseF = scalarWaarde(valueSubject, bg.basis());
             if (baseF == null) return null;
             Datatype bt = bg.basis().type();
             WaardeFn minF = null, maxF = null;
             if (bg.minimum() != null) {
-                minF = scalarWaarde(bg.minimum());
+                minF = scalarWaarde(valueSubject, bg.minimum());
                 if (minF == null) return null;
                 minF = minF.herschaald(bg.minimum().type(), bt);   // §4 EXACT restate the bound into the basis unit
             }
             if (bg.maximum() != null) {
-                maxF = scalarWaarde(bg.maximum());
+                maxF = scalarWaarde(valueSubject, bg.maximum());
                 if (maxF == null) return null;
                 maxF = maxF.herschaald(bg.maximum().type(), bt);   // §4 EXACT restate the bound into the basis unit
             }
@@ -2613,8 +2595,8 @@ public final class ExecModelTranspiler {
             // via datumRekenWaarde (.plus/.minus, not "+"). +/- restate the right operand into the LEFT's unit (§4);
             // MAAL does not (units multiply). The op's empty-operand rule: PLUS/MIN/MAAL = leeg counts as 0;
             // VERMINDERD_MET = empty LEFT -> leeg; GEDEELD_DOOR = empty LEFT -> 0, value/empty -> leeg.
-            if (b.links().type().isDatum() || b.rechts().type().isDatum()) return datumRekenWaarde(b);
-            WaardeFn lf = scalarWaarde(b.links()), rf = scalarWaarde(b.rechts());
+            if (b.links().type().isDatum() || b.rechts().type().isDatum()) return datumRekenWaarde(valueSubject, b);
+            WaardeFn lf = scalarWaarde(valueSubject, b.links()), rf = scalarWaarde(valueSubject, b.rechts());
             if (lf == null || rf == null) return null;
             Expr.BinOp op = b.op();
             if (op == Expr.BinOp.PLUS || op == Expr.BinOp.MIN || op == Expr.BinOp.VERMINDERD_MET)
@@ -2641,10 +2623,10 @@ public final class ExecModelTranspiler {
             }, g);
         }
         if (e instanceof Expr.Functie fnc) {
-            WaardeFn sf = scalarFunctie(fnc);   // §13.4.17 abs / date-component / datum-met / paasdag
+            WaardeFn sf = scalarFunctie(valueSubject, fnc);   // §13.4.17 abs / date-component / datum-met / paasdag
             if (sf != null) return sf;
         }
-        return scalarWrapper(e);   // §13.4.17.25 afronding / §13.4.17.13 wortel
+        return scalarWrapper(valueSubject, e);   // §13.4.17.25 afronding / §13.4.17.13 wortel
     }
 
     /** §13.4.17 single-value builtin Functies as a value: §13.4.17.17 ABSOLUTE_WAARDE (rsAbs), §13.4.17.18-.24
@@ -2652,9 +2634,9 @@ public final class ExecModelTranspiler {
      *  DATUM_MET/DATUMTIJD_MET (rsDatumMet/rsDatumtijdMet), §13.4.17.37 EERSTE_PAASDAG. Each argument lowers through
      *  scalarWaarde; null for an unsupported kind/arity or an unlowerable argument. WORTEL is handled by scalarWrapper
      *  (its mandatory afronding); the aggregations/tijdsduur go through other paths. Mirrors DrlTranspiler.scalarFunctie. */
-    private WaardeFn scalarFunctie(Expr.Functie f) {
+    private WaardeFn scalarFunctie(Objecttype valueSubject, Expr.Functie f) {
         List<Expr> a = f.argumenten();
-        WaardeFn fold = concatenatieFold(f);   // §4.12-4.15/§5.8.3 "de minimale/maximale/eerste/laatste van A en B …"
+        WaardeFn fold = concatenatieFold(valueSubject, f);   // §4.12-4.15/§5.8.3 "de minimale/maximale/eerste/laatste van A en B …"
         if (fold != null) return fold;
         java.time.temporal.ChronoField cf = switch (f.kind()) {
             case JAAR_UIT         -> java.time.temporal.ChronoField.YEAR;
@@ -2670,7 +2652,7 @@ public final class ExecModelTranspiler {
             if (a.size() != 1) return null;
             boolean tijdDeel = switch (f.kind()) { case UUR_UIT, MINUUT_UIT, SECONDE_UIT, MILLISECONDE_UIT -> true; default -> false; };
             if (tijdDeel && !(a.get(0).type() instanceof Datatype.DatumTijd)) return null;   // a time part off a plain Datum markers
-            WaardeFn arg = scalarWaarde(a.get(0));
+            WaardeFn arg = scalarWaarde(valueSubject, a.get(0));
             if (arg == null) return null;
             BiFunction<Object, Map<String, BigDecimal>, Object> fn = arg.fn();
             return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsDatumDeel(fn.apply(s, gm), cf), arg.globals());
@@ -2678,20 +2660,20 @@ public final class ExecModelTranspiler {
         switch (f.kind()) {
             case ABSOLUTE_WAARDE -> {
                 if (a.size() != 1) return null;
-                WaardeFn arg = scalarWaarde(a.get(0));
+                WaardeFn arg = scalarWaarde(valueSubject, a.get(0));
                 if (arg == null) return null;
                 BiFunction<Object, Map<String, BigDecimal>, Object> fn = arg.fn();
                 return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsAbs(fn.apply(s, gm)), arg.globals());
             }
             case EERSTE_PAASDAG -> {
                 if (a.size() != 1) return null;
-                WaardeFn arg = scalarWaarde(a.get(0));
+                WaardeFn arg = scalarWaarde(valueSubject, a.get(0));
                 if (arg == null) return null;
                 BiFunction<Object, Map<String, BigDecimal>, Object> fn = arg.fn();
                 return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsEerstePaasdag(fn.apply(s, gm)), arg.globals());
             }
-            case DATUM_MET     -> { return datumConstructor(a, 3); }
-            case DATUMTIJD_MET -> { return datumConstructor(a, 7); }
+            case DATUM_MET     -> { return datumConstructor(valueSubject, a, 3); }
+            case DATUMTIJD_MET -> { return datumConstructor(valueSubject, a, 7); }
             case TIJDSDUUR, ABSOLUTE_TIJDSDUUR -> {
                 // §6.10 / §13.4.17.32 "de [absolute] tijdsduur van A tot B in [hele] <tijdseenheid>" — the number of
                 // COMPLETE units between two dates. Mirrors DrlTranspiler.tijdsduur exactly: a DAGSOORT eenheid counts
@@ -2708,7 +2690,7 @@ public final class ExecModelTranspiler {
                     boolean dt0 = a.get(0).type() instanceof Datatype.DatumTijd, dt1 = a.get(1).type() instanceof Datatype.DatumTijd;
                     if (dt0 != dt1) return null;
                     java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(dagsoortUnit);
-                    WaardeFn vanF = scalarWaarde(a.get(0)), totF = scalarWaarde(a.get(1));
+                    WaardeFn vanF = scalarWaarde(valueSubject, a.get(0)), totF = scalarWaarde(valueSubject, a.get(1));
                     if (pred == null || vanF == null || totF == null) return null;
                     BiFunction<Object, Map<String, BigDecimal>, Object> vfn = vanF.fn(), tfn = totF.fn();
                     Set<String> g = new LinkedHashSet<>(vanF.globals()); g.addAll(totF.globals());
@@ -2724,7 +2706,7 @@ public final class ExecModelTranspiler {
                 boolean tijdEenheid = switch (unit) { case "HOURS", "MINUTES", "SECONDS", "MILLIS" -> true; default -> false; };
                 if (tijdEenheid && (!(a.get(0).type() instanceof Datatype.DatumTijd) || !(a.get(1).type() instanceof Datatype.DatumTijd)))
                     return null;   // a time-unit tijdsduur needs datum-tijd operands (ChronoUnit.HOURS.between throws on a LocalDate)
-                WaardeFn vanF = scalarWaarde(a.get(0)), totF = scalarWaarde(a.get(1));
+                WaardeFn vanF = scalarWaarde(valueSubject, a.get(0)), totF = scalarWaarde(valueSubject, a.get(1));
                 if (vanF == null || totF == null) return null;
                 BiFunction<Object, Map<String, BigDecimal>, Object> vfn = vanF.fn(), tfn = totF.fn();
                 Set<String> g = new LinkedHashSet<>(vanF.globals()); g.addAll(totF.globals());
@@ -2737,12 +2719,12 @@ public final class ExecModelTranspiler {
 
     /** §13.4.17.35/.36 lower a DATUM_MET (3 parts) / DATUMTIJD_MET (7 parts) constructor to a WaardeFn over its
      *  numeric component value-fns (rsDatumMet/rsDatumtijdMet, §6.9 any empty part -> leeg). null on arity/argument. */
-    private WaardeFn datumConstructor(List<Expr> a, int n) {
+    private WaardeFn datumConstructor(Objecttype valueSubject, List<Expr> a, int n) {
         if (a.size() != n) return null;
         List<BiFunction<Object, Map<String, BigDecimal>, Object>> fns = new ArrayList<>();
         Set<String> g = new LinkedHashSet<>();
         for (Expr e : a) {
-            WaardeFn p = scalarWaarde(e);
+            WaardeFn p = scalarWaarde(valueSubject, e);
             if (p == null) return null;
             fns.add(p.fn());
             g.addAll(p.globals());
@@ -2761,7 +2743,7 @@ public final class ExecModelTranspiler {
      *  null. Numeric operands 1..n are restated into the first operand's unit (§Tabel 22/23, the result unit). null
      *  for <2 operands / a restricted (filter) fold / an unlowerable operand. Mirrors DrlTranspiler.concatenatieAggregatie. */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private WaardeFn concatenatieFold(Expr.Functie f) {
+    private WaardeFn concatenatieFold(Objecttype valueSubject, Expr.Functie f) {
         boolean kleinste = f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.EERSTE;
         boolean grootste = f.kind() == Expr.FunctieKind.MAXIMUM || f.kind() == Expr.FunctieKind.LAATSTE;
         if ((!kleinste && !grootste) || f.argumenten().size() < 2 || f.filter() != null) return null;
@@ -2770,7 +2752,7 @@ public final class ExecModelTranspiler {
         Set<String> g = new LinkedHashSet<>();
         for (int i = 0; i < f.argumenten().size(); i++) {
             Expr arg = f.argumenten().get(i);
-            WaardeFn wf = scalarWaarde(arg);
+            WaardeFn wf = scalarWaarde(valueSubject, arg);
             if (wf == null) return null;   // a set/instance-aggregation or unlowerable operand -> skip (DRL markers too)
             if (i > 0) wf = wf.herschaald(arg.type(), doel);   // §4 EXACT restate operand i into the result unit (Eenheid1)
             fns.add(wf.fn());
@@ -2796,7 +2778,7 @@ public final class ExecModelTranspiler {
     }
     /** A non-negative INTEGER literal exponent for §13.4.17.14 "tot de macht" (exact BigDecimal.pow(int)), or null for
      *  a fractional/negative/runtime exponent (-> the Math.pow rsMachtReeel path). Mirrors DrlTranspiler.geheelExponent
-     *  (via bd() — a fraction-literal exponent therefore falls through to scalarWaarde(rechts)). */
+     *  (via bd() — a fraction-literal exponent therefore falls through to scalarWaarde(valueSubject, rechts)). */
     private static Integer geheelExponent(Expr e) {
         if (!(e instanceof Expr.Literal lit) || !lit.type().isNumeriek()) return null;
         BigDecimal v = bd(lit);
@@ -2933,9 +2915,9 @@ public final class ExecModelTranspiler {
 
     /** Extends {@link #scalarWaarde} with §13.4.17.25 afronding (an Afgerond wrapper) and §13.4.17.13 wortel (a scalar
      *  WORTEL Functie, leeg/negatief -> leeg) — the wortel ALWAYS sits under its mandatory afronding. */
-    private WaardeFn scalarWrapper(Expr e) {
+    private WaardeFn scalarWrapper(Objecttype valueSubject, Expr e) {
         if (e instanceof Expr.Afgerond af) {
-            WaardeFn base = scalarWaarde(af.basis());
+            WaardeFn base = scalarWaarde(valueSubject, af.basis());
             if (base == null) return null;
             BiFunction<Object, Map<String, BigDecimal>, Object> bfn = base.fn();
             int dec = af.decimalen();
@@ -2943,7 +2925,7 @@ public final class ExecModelTranspiler {
             return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsAfronding(bfn.apply(s, gm), dec, mode), base.globals());
         }
         if (e instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.WORTEL && f.argumenten().size() == 1) {
-            WaardeFn rad = scalarWaarde(f.argumenten().get(0));
+            WaardeFn rad = scalarWaarde(valueSubject, f.argumenten().get(0));
             if (rad == null) return null;
             BiFunction<Object, Map<String, BigDecimal>, Object> rfn = rad.fn();
             return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsWortel(rfn.apply(s, gm)), rad.globals());
@@ -3257,7 +3239,7 @@ public final class ExecModelTranspiler {
         // flipped comparison) — matching DRL's negated constraint. (Checked before the bare-AttribuutRef-LHS forms.)
         if (isDatumVergelijkOp(v.op()) && v.links().type().isDatum() && v.rechts().type().isDatum()
                 && (isDatumRekenExpr(v.links()) || isDatumRekenExpr(v.rechts()))) {
-            WaardeFn lw = scalarWaarde(v.links()), rw = scalarWaarde(v.rechts());
+            WaardeFn lw = scalarWaarde(null, v.links()), rw = scalarWaarde(null, v.rechts());
             if (lw == null || rw == null || !lw.globals().isEmpty() || !rw.globals().isEmpty()) return null;
             BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
             Conditie.Operator op = v.op();
@@ -3367,7 +3349,7 @@ public final class ExecModelTranspiler {
         // global is bound as a pattern variable by the caller. Mirrors DRL's negated rsDatumReken constraint.
         if (isDatumVergelijkOp(v.op()) && v.links().type().isDatum() && v.rechts().type().isDatum()
                 && (isDatumRekenExpr(v.links()) || isDatumRekenExpr(v.rechts()))) {
-            WaardeFn lw = scalarWaarde(v.links()), rw = scalarWaarde(v.rechts());
+            WaardeFn lw = scalarWaarde(null, v.links()), rw = scalarWaarde(null, v.rechts());
             if (lw != null && rw != null) {
                 Set<String> gset = new LinkedHashSet<>(lw.globals()); gset.addAll(rw.globals());
                 if (gset.size() == 1) {
@@ -3826,7 +3808,7 @@ public final class ExecModelTranspiler {
         List<BiFunction<Object, Map<String, BigDecimal>, Object>> fns = new ArrayList<>();
         Set<String> gNames = new LinkedHashSet<>();
         for (var t : oc.toekenningen()) {
-            WaardeFn wf = scalarWaarde(t.waarde());
+            WaardeFn wf = scalarWaarde(null, t.waarde());
             if (wf == null) return skip("objectcreatie (toekenning-waarde buiten scope): " + oc.naam());
             attrs.add(t.attribuut());
             fns.add(wf.fn());

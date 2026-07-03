@@ -14,5 +14,13 @@ public final class RegelSpraakCompileException extends RuntimeException {
         this.diagnostics = List.copyOf(diagnostics);
     }
 
+    /** goal-M4 D7: the bean↔model contract violations, ALL of them at once (line 0 — a bean defect has no
+     *  source line), so a consumer fixes the fact classes in one round trip. */
+    public static RegelSpraakCompileException contract(List<String> schendingen) {
+        return new RegelSpraakCompileException(schendingen.stream()
+                .map(s -> new Diagnostic(io.github.yhavinga.regelspraak.model.RegelSpraakModel.Severity.ERROR,
+                        "feitmodel-contract: " + s, 0)).toList());
+    }
+
     public List<Diagnostic> diagnostics() { return diagnostics; }
 }

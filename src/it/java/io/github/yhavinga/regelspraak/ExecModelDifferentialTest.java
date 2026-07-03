@@ -7669,6 +7669,12 @@ class ExecModelDifferentialTest {
             dagsoortenPerBase = new java.util.IdentityHashMap<>();
 
     private KieBase drlBase(RegelSpraakModel m) {
+        // goal-M4 D7 (drift test): every model this harness FIRES must honour the bean contract the
+        // hand-written facts implement — the same derivation FactModelGenerator renders. A fixture whose
+        // model implies a member the bean pool lacks fails here with the full list, not with one
+        // reflective fire-time abort.
+        java.util.List<String> schendingen = io.github.yhavinga.regelspraak.schema.ContractValidator.valideer(m, getClass().getClassLoader());
+        assertTrue(schendingen.isEmpty(), () -> "bean-model drift (" + schendingen.size() + "):\n  " + String.join("\n  ", schendingen));
         DrlTranspiler t = DrlTranspiler.build(m);
         String drl = t.drl();
         KieHelper h = new KieHelper();

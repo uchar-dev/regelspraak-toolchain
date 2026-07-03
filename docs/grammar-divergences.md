@@ -303,9 +303,12 @@ setScale and surrounding arithmetic compile and fire.)
 Bounded divergence (same trade as begrenzing): §13.4.17.13/.14 give the operand as a full
 `<getalexpressie>`, but `primaireExpressie` excludes the binary-operator alternatives, so a
 **bare arithmetic radicand/exponent** must be parenthesised — "de wortel van (X maal Y)
-afgerond …". No corpus example uses wortel/macht at all, so none is affected. (`de wortel
-van` still lowers to a `/* TODO aggregatie WORTEL */` marker — no Drools form yet — but the
-afronding and precedence are now captured correctly; `tot de macht` lowers and fires.)
+afgerond …". No corpus example uses wortel/macht at all, so none is affected. Both `de wortel
+van` and `tot de macht` LOWER AND FIRE: the runtime's `rsWortel` computes the radicand's 34-digit
+`BigDecimal.sqrt` inside the mandatory afronding (a leeg or negative radicand yields leeg, the §6.6
+fout surfaced by the separate `(wortel van negatief)` Inconsistentie-companion rule — pinned in
+`DrlTest`/`DroolsExecutionTest`). An earlier revision of this parenthetical still called the wortel
+a `/* TODO */` marker; that claim predated the rsWortel lowering (goal-M4 D10).
 
 `tot de macht` with an integer **decimal** literal exponent — the common case — lowers exactly
 through `BigDecimal.pow(int)`, so e.g. 7¹⁹ = 11398895185373143, not the …144 that an IEEE-754

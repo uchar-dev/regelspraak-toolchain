@@ -28,7 +28,9 @@ import java.util.List;
  *
  * A Quarkus application holds a {@code RegelSpraakEngine} as an application-scoped bean (compiled once) and opens
  * a {@link Session} per request. The fact classes the Model references must be on the classpath in package
- * {@code io.github.yhavinga.regelspraak.facts} (the consumer's domain beans).
+ * {@code io.github.yhavinga.regelspraak.facts} (the consumer's domain beans) — {@code compile} validates that contract
+ * up front via {@link io.github.yhavinga.regelspraak.schema.ContractValidator} and fails fast with EVERY violation
+ * (goal-M4 D7); {@code io.github.yhavinga.regelspraak.schema.FactModelGenerator} emits matching bean sources.
  */
 public final class RegelSpraakEngine {
     private final KieBase kieBase;
@@ -46,6 +48,12 @@ public final class RegelSpraakEngine {
     public static RegelSpraakEngine compile(String regelSpraakSource) {
         RegelSpraakModel model = Resolver.resolve(regelSpraakSource);
         if (!model.errors().isEmpty()) throw new RegelSpraakCompileException(model.errors());
+        // goal-M4 D7: the fact-bean contract is validated FIRST, and completely — every bean the model
+        // implies must exist on this classpath with the right member shapes, or compilation fails with the
+        // FULL violation list (one round trip, not one reflective fire-time abort per run).
+        java.util.List<String> schendingen = io.github.yhavinga.regelspraak.schema.ContractValidator
+                .valideer(model, RegelSpraakEngine.class.getClassLoader());
+        if (!schendingen.isEmpty()) throw RegelSpraakCompileException.contract(schendingen);
         ExecModelTranspiler transpiler = ExecModelTranspiler.build(model);
         KieBase kieBase = KieBaseBuilder.createKieBaseFromModel(transpiler.model());
         return new RegelSpraakEngine(kieBase, transpiler.overgeslagen(), transpiler.dekking());

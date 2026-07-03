@@ -56,4 +56,19 @@ class RegelSpraakEngineTest {
                 () -> RegelSpraakEngine.compile(TYPEFOUT));   // assigning a Tekst to a Numeriek -> type error
         assertFalse(ex.diagnostics().isEmpty(), "a type error must report a diagnostic");
     }
+
+    @Test void ontbrekende_feitklasse_faalt_snel_met_alle_contract_schendingen() {
+        // goal-M4 D7: compile() validates the bean contract FIRST and reports EVERY violation at once.
+        String src = """
+            Objecttype het Spookding
+                de waarde Numeriek (geheel getal);
+                de naam Tekst;
+            """;
+        RegelSpraakCompileException e = org.junit.jupiter.api.Assertions.assertThrows(
+                RegelSpraakCompileException.class, () -> RegelSpraakEngine.compile(src));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                e.diagnostics().stream().anyMatch(d -> d.message().contains("feitmodel-contract")
+                        && d.message().contains("Spookding")),
+                () -> "de ontbrekende feitklasse moet als contract-schending gemeld worden: " + e.diagnostics());
+    }
 }

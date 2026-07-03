@@ -10,6 +10,12 @@ import java.util.List;
  *  fact model to compile and fire against. */
 public class Vlucht {
     private BigDecimal totaalprijs;
+    private String naam;                     // goal-M4 drift test: the fixture models declare it
+    private Passagier passagier;             // goal-M4 drift test: a 1-1 feittype implies the reverse to-one reference
+    public Passagier getPassagier() { return passagier; }
+    public void setPassagier(Passagier v) { this.passagier = v; }
+    public String getNaam() { return naam; }
+    public void setNaam(String v) { this.naam = v; }
     private BigDecimal somMet;     // sommatie with "of 0 als die er niet zijn" fallback
     private BigDecimal somZonder;  // sommatie without a fallback (empty -> leegwaarde)
     private LocalDate verwachtVertrek;       // §4.14 "eerste van" operands (date concatenation)
