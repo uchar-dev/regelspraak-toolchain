@@ -896,6 +896,15 @@ public final class DrlTranspiler {
         LoweredConditie lc = subject != null && r.voorwaarde() != null
                 ? conditie(acc, r.voorwaarde(), subject, true) : LoweredConditie.van("");
         String constraint = lc.inline();
+        // §9.6 initialisatie assigns only when the attribuut holds NO value yet ("controleert of een attribuut
+        // een waarde bevat … als dit niet het geval is"): the leeg-guard makes the rule idempotent and removes
+        // the agenda-order dependence vs a berekening on the same doel — the berekening (unguarded) wins whenever
+        // it applies, the initialisatie fills the rest. Property reactivity then cancels a stale activation.
+        if (r.soort() == ResolvedRegel.Soort.INITIALISATIE && subject != null
+                && r.doel() instanceof Expr.AttribuutRef ia && ia.navigatieRol() == null) {
+            String leegGuard = ident(ia.attribuut(), false) + " == null";
+            constraint = constraint.isEmpty() ? leegGuard : leegGuard + ", " + constraint;
+        }
         if (subject == null) {
             rule.clausule("// onopgelost doel-objecttype: " + commentVeilig(r.doel().bron())).clausule("eval(true)");
         } else {

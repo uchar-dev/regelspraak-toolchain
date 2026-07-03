@@ -7703,6 +7703,54 @@ class ExecModelDifferentialTest {
         return f.uit().apply(facts);
     }
 
+    // ---- §9.6 INITIALISATIE: assigns only when the doel is leeg. Each fixture asserts the ABSOLUTE spec value:
+    //      the leeg-guard means a pre-filled doel stays, and a berekening on the same doel wins under BOTH
+    //      declaration orders (without the guard the outcome is agenda-order last-writer-wins). ----
+    static final String INIT_HDR = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het basistarief Numeriek (geheel getal);
+                de prijs Numeriek (geheel getal);
+            """;
+    static final String INIT_REGEL = """
+            Regel initialiseer prijs
+                geldig altijd
+                    De prijs van een Passagier moet geïnitialiseerd worden op 10.
+            """;
+    static final String INIT_BEREKEN = """
+            Regel bereken prijs
+                geldig altijd
+                    De prijs van een Passagier moet berekend worden als zijn basistarief plus 5
+                    indien zijn basistarief groter is dan 50.
+            """;
+    static final Fixture[] PHASE_INIT = {
+        single("initialisatie vult een leeg doel", INIT_HDR + INIT_REGEL,
+            () -> passagier(p -> {}), Map.of(), Passagier::getPrijs),
+        single("initialisatie laat een gevuld doel staan", INIT_HDR + INIT_REGEL,
+            () -> passagier(p -> p.setPrijs(new BigDecimal(42))), Map.of(), Passagier::getPrijs),
+        single("berekening wint (initialisatie eerst gedeclareerd)", INIT_HDR + INIT_REGEL + INIT_BEREKEN,
+            () -> passagier(p -> p.setBasistarief(new BigDecimal(100))), Map.of(), Passagier::getPrijs),
+        single("berekening wint (initialisatie laatst gedeclareerd)", INIT_HDR + INIT_BEREKEN + INIT_REGEL,
+            () -> passagier(p -> p.setBasistarief(new BigDecimal(100))), Map.of(), Passagier::getPrijs),
+        single("berekening n.v.t. -> initialisatie vult", INIT_HDR + INIT_BEREKEN + INIT_REGEL,
+            () -> passagier(p -> p.setBasistarief(new BigDecimal(40))), Map.of(), Passagier::getPrijs),
+    };
+    static final BigDecimal[] PHASE_INIT_EXPECTED = {
+        new BigDecimal(10), new BigDecimal(42), new BigDecimal(105), new BigDecimal(105), new BigDecimal(10),
+    };
+    @Test void phase_INIT_initialisatie_leeg_guard_is_spec_correct() {
+        for (int i = 0; i < PHASE_INIT.length; i++) {
+            Fixture f = PHASE_INIT[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_INIT_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+
     /** Compare BigDecimals by value (scale-insensitive), everything else by equals — recursing into a {@link #vals}
      *  list so a multi-bean read compares element-wise (42 == 42.00, null stays null). */
     private static Object eq(Object o) {

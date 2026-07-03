@@ -34,6 +34,16 @@ class TyperingTest {
     @Test void plus_datum_en_unitloos_getal_fout() {         // scenario 2 requires a (time) unit
         assertFalse(Typering.reken(BinOp.PLUS, datum(), num()).ok());
     }
+    @Test void plus_datum_en_niet_tijdseenheid_fout() {      // scenario 2: the unit must be a TIJDseenheid
+        var r = Typering.reken(BinOp.PLUS, datum(), num("km", "afstand"));
+        assertFalse(r.ok());
+        assertTrue(r.fout().contains("tijdseenheid"), r::fout);
+        assertFalse(Typering.reken(BinOp.MIN, datum(), num("km", "afstand")).ok());
+    }
+    @Test void plus_datum_en_dagsoort_eenheid_ok() {         // §6.11: a declared dagsoort is a valid duration unit
+        var r = Typering.reken(BinOp.PLUS, datum(), num("kerstdagen", null), false, true);
+        assertTrue(r.ok()); assertTrue(r.type().isDatum());
+    }
     @Test void macht_met_eenheid_fout() {                    // §4.7: no units allowed
         assertFalse(Typering.reken(BinOp.TOT_DE_MACHT, num("km", "afstand"), num()).ok());
     }

@@ -1648,3 +1648,18 @@ reach the DRL accumulate and sink the package at build time). A written form tha
 aggregation `Onopgelost` with a WARNING (an honest marker in both back-ends). This also admits a bindable
 plural in a SCALAR read ("de leeftijden van de passagier" now reads `leeftijd` instead of markering) — the §3.3
 meervoud is declared precisely so the running text can use it; requiring the singular there was the divergence.
+
+## §9.6 — initialisatie assigns only when the doel is leeg (leeg-guard in both back-ends)
+
+An initialisatieregel now lowers with a `doel == null` pattern constraint (DRL: `prijs == null` in the subject
+pattern; exec model: an equivalent getter-is-null `expr`), instead of an unconditional assignment identical to a
+berekening. This encodes the §9.6 text literally: "Een initialisatieregel **controleert of een attribuut een
+waarde bevat** … Als dit niet het geval is, dan kent de initialisatieregel een gespecificeerde waarde toe." The
+practical consequence is determinism: when an initialisatie and a berekening/gelijkstelling target the SAME
+attribute (TOKA: "Initialiseer te betalen belasting op" vs "Te betalen belasting"), the computed value wins under
+EVERY agenda order — if the berekening fires first the initialisatie's activation is cancelled by property
+reactivity (its pattern constrains the written property); if the initialisatie fires first the berekening simply
+overwrites. Without the guard both rules fired unconditionally and the final value was last-writer-wins by agenda
+order. A pre-filled doel (a value supplied with the facts) is likewise left standing. The guard applies to the
+initialisatie resultaatdeel only; gelijkstelling/berekening stay unguarded. Pinned by a DRL-text test, a
+DRL firing test under both declaration orders, and differential fixtures asserting the absolute values.

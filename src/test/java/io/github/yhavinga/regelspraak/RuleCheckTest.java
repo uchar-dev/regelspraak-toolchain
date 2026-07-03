@@ -1636,6 +1636,132 @@ class RuleCheckTest {
                 () -> "'is geen <dagsoort>' mag NIET naar een §3.5 kenmerkcheck mis-folden ondanks een gelijknamig kenmerk: " + c);
     }
 
+    @Test void dagsoortcontrole_op_niet_datum_operand_wordt_gemeld() {
+        // §5.15 Tabel 57: the dagsoortcontrole admits only a datum operand. A Tekst operand against a
+        // DECLARED dagsoort used to fall through to the kenmerk/rol machinery and end as a silent
+        // Onopgelost marker; now it is a resolver ERROR (the Typering DAGSOORT case, un-deadened).
+        String hdr = """
+            Dagsoort de kerstdag (mv: kerstdagen)
+            Objecttype de Vlucht
+                de code Tekst;
+                de vluchtdatum Datum in dagen;
+                is laat kenmerk (bijvoeglijk);
+            """;
+        RegelSpraakModel m = Resolver.resolve(hdr + """
+            Regel R
+                geldig altijd
+                    Een Vlucht is laat indien de code van de Vlucht een kerstdag is.
+            """);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("dagsoort")),
+                () -> "een Tekst-operand op een dagsoortcontrole moet een Tabel-57-fout geven, kreeg: " + m.errors());
+        // the negated writing hits the same gate
+        RegelSpraakModel m2 = Resolver.resolve(hdr + """
+            Regel R
+                geldig altijd
+                    Een Vlucht is laat indien de code van de Vlucht geen kerstdag is.
+            """);
+        assertTrue(m2.errors().stream().anyMatch(d -> d.message().contains("dagsoort")),
+                () -> "ook de ontkende dagsoortcontrole moet de Tabel-57-fout geven, kreeg: " + m2.errors());
+        // a datum operand stays clean (the admitted Tabel-57 case)
+        RegelSpraakModel m3 = Resolver.resolve(hdr + """
+            Regel R
+                geldig altijd
+                    Een Vlucht is laat indien de vluchtdatum van de Vlucht een kerstdag is.
+            """);
+        assertTrue(m3.errors().isEmpty(), () -> "een datum-operand hoort te resolven: " + m3.errors());
+    }
+
+    @Test void datum_plus_niet_tijdseenheid_wordt_gemeld() {
+        // Tabel 2/5 scenario 2: `datum ± <numeriek met eenheid>` requires a TIJDseenheid — "datum plus
+        // 5 km" used to resolve clean and die as a back-end marker; now it is a resolver ERROR.
+        String hdr = """
+            Eenheidsysteem Lengte
+                de meter m
+                de kilometer km = 1000 m
+            Objecttype het Ding
+                de datum Datum in dagen;
+                de afstand Numeriek (geheel getal) met eenheid km;
+                de looptijd Numeriek (geheel getal) met eenheid mnd;
+                de uitkomst Datum in dagen;
+            """;
+        RegelSpraakModel m = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    De uitkomst van een Ding moet gesteld worden op de datum van een Ding plus de afstand van een Ding.
+            """);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("tijdseenheid")),
+                () -> "datum plus km moet een tijdseenheid-fout geven, kreeg: " + m.errors());
+        // min hits the same gate
+        RegelSpraakModel m2 = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    De uitkomst van een Ding moet gesteld worden op de datum van een Ding min de afstand van een Ding.
+            """);
+        assertTrue(m2.errors().stream().anyMatch(d -> d.message().contains("tijdseenheid")),
+                () -> "datum min km moet een tijdseenheid-fout geven, kreeg: " + m2.errors());
+        // a genuine time unit stays clean
+        RegelSpraakModel m3 = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    De uitkomst van een Ding moet gesteld worden op de datum van een Ding plus de looptijd van een Ding.
+            """);
+        assertTrue(m3.errors().isEmpty(), () -> "datum plus mnd hoort te resolven: " + m3.errors());
+    }
+
+    @Test void objectcreatie_met_clause_wordt_getypecheckt_als_toekenning() {
+        // typeringen §6.5: each objectcreatie met-clause init follows the §6.2/Tabel 61 toekenning rules —
+        // family, eenheid and §6.1.2 precision — exactly like the equivalent gelijkstelling. These used to
+        // skip the check entirely (a type-broken setter in the insert-consequence, silently).
+        String hdr = """
+            Eenheidsysteem Geld
+                de euro EUR
+            Eenheidsysteem Lengte
+                de meter m
+            Objecttype de Vlucht
+                de naam Tekst;
+                de omzet Numeriek (getal met 2 decimalen) met eenheid EUR;
+                de factor Numeriek (getal met 2 decimalen);
+            Objecttype de Contingent
+                de aantal Numeriek (geheel getal);
+                de lengte Numeriek (geheel getal) met eenheid m;
+            Feittype contingentrelatie
+                de contingentvlucht Vlucht
+                de contingent Contingent
+            Eén contingentvlucht heeft één contingent
+            """;
+        // (a) family mismatch: Tekst into Numeriek
+        RegelSpraakModel ma = Resolver.resolve(hdr + """
+            Regel maak contingent
+                geldig altijd
+                    Een Vlucht heeft het contingent met aantal gelijk aan de naam van de Vlucht.
+            """);
+        assertTrue(ma.errors().stream().anyMatch(d -> d.message().startsWith("objectcreatie:")),
+                () -> "Tekst in een Numeriek attribuut-init moet melden, kreeg: " + ma.errors());
+        // (b) unit incompatibility: EUR into m
+        RegelSpraakModel mb = Resolver.resolve(hdr + """
+            Regel maak contingent
+                geldig altijd
+                    Een Vlucht heeft het contingent met lengte gelijk aan de omzet van de Vlucht.
+            """);
+        assertTrue(mb.errors().stream().anyMatch(d -> d.message().startsWith("objectcreatie:")),
+                () -> "een eenheids-incompatibele init moet melden, kreeg: " + mb.errors());
+        // (c) §6.1.2: an over-precise value must be explicitly rounded — with afronding it is clean
+        RegelSpraakModel mc = Resolver.resolve(hdr + """
+            Regel maak contingent
+                geldig altijd
+                    Een Vlucht heeft het contingent met aantal gelijk aan de factor van de Vlucht.
+            """);
+        assertTrue(mc.errors().stream().anyMatch(d -> d.message().startsWith("objectcreatie:") && d.message().contains("decimalen")),
+                () -> "een over-precieze init zonder afronding moet §6.1.2 melden, kreeg: " + mc.errors());
+        RegelSpraakModel md = Resolver.resolve(hdr + """
+            Regel maak contingent
+                geldig altijd
+                    Een Vlucht heeft het contingent met aantal gelijk aan de factor van de Vlucht naar beneden afgerond op 0 decimalen.
+            """);
+        assertTrue(md.errors().isEmpty(),
+                () -> "een expliciet afgeronde init hoort te resolven (§6.1.3): " + md.errors());
+    }
+
     @Test void gehele_periode_gekwalificeerde_kenmerk_subselectie_wordt_gemarkeerd_niet_stil_gedropt() {
         // §8.2: a "(niet) gedurende de/het gehele <periode>" whole-period qualifier on a kenmerk SUBSELECTIE is not yet
         // lowered onto the accumulate source. The resolver must MARKER it rather than SILENTLY binding a static kenmerk

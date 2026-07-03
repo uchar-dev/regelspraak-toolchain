@@ -2,6 +2,7 @@ package io.github.yhavinga.regelspraak.resolver;
 
 import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.Eenheid;
+import io.github.yhavinga.regelspraak.transpiler.kern.Tijdrekening;
 
 /**
  * The RegelSpraak v2.3.0 typeringen matrix (the "typeringen" specification),
@@ -43,14 +44,29 @@ public final class Typering {
      *  operand is an ATTRIBUTE, never a literal. Only MAAL — a unitless / unit GEDEELD is a 1/unit rate the Eenheid
      *  model cannot represent (stays Onbekend). */
     public static Resultaat reken(BinOp op, Datatype l, Datatype r, boolean unitlessLinksLiteraal) {
+        return reken(op, l, r, unitlessLinksLiteraal, false);
+    }
+
+    /** {@code dagsoortEenheidRechts}: the right operand's eenheid names a DECLARED §3.12 dagsoort (the caller
+     *  holds the model, this matrix does not) — §6.11 then admits {@code datum ± N <dagsoort>} as a valid
+     *  day-by-day date shift alongside the Tabel 2/5 tijdseenheden. */
+    public static Resultaat reken(BinOp op, Datatype l, Datatype r, boolean unitlessLinksLiteraal, boolean dagsoortEenheidRechts) {
         if (l.isOnbekend() || r.isOnbekend()) return Resultaat.ok(new Datatype.Onbekend("operand"));
         return switch (op) {
             // §4.1 / §4.2: numeriek±numeriek (units convertible), OR datum ± a numerieke
-            // tijdswaarde (a number carrying a unit) -> datum (Tabel 2/5 scenario 2).
+            // tijdsWAARDE -> datum (Tabel 2/5 scenario 2): the right operand must carry a TIJDseenheid
+            // (or a §6.11 dagsoort) — "datum plus 5 km" is a typing ERROR, not a valid date shift (the
+            // kern's chronoUnit is the one time-unit classifier, so the resolver rejects exactly what the
+            // back-ends cannot execute). The result stays the LEFT type; the §4.1 "datum + sub-day unit ->
+            // Datum-tijd" precision nuance is deliberately not modeled here (carded separately if it bites).
             case PLUS, MIN -> {
-                if (l.isDatum() && r instanceof Datatype.Numeriek rn && rn.heeftEenheid())
-                    yield Resultaat.ok(l);
-                yield numeriekBinair(l, r, op == BinOp.PLUS ? "plus" : "min");
+                String opNaam = op == BinOp.PLUS ? "plus" : "min";
+                if (l.isDatum() && r instanceof Datatype.Numeriek rn && rn.heeftEenheid()) {
+                    if (dagsoortEenheidRechts || Tijdrekening.chronoUnit(r) != null) yield Resultaat.ok(l);
+                    yield Resultaat.fout("datum " + opNaam + " vereist een tijdseenheid, kreeg '"
+                            + rn.eenheidOf().afkorting() + "'");
+                }
+                yield numeriekBinair(l, r, opNaam);
             }
             // §4.3 verminderd met: numeriek only
             case VERMINDERD_MET -> numeriekBinair(l, r, "verminderd met");

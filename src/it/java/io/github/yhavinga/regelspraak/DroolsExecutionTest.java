@@ -6652,4 +6652,42 @@ class DroolsExecutionTest {
         assertEquals(0, new BigDecimal(42).compareTo(v.getTotaalprijs()),
                 () -> "som van de leeftijden (30+12) moet 42 zijn, was " + v.getTotaalprijs());
     }
+
+    @Test void initialisatie_vult_alleen_leeg_en_de_berekening_wint_ongeacht_declaratievolgorde() {
+        // §9.6: an initialisatie "controleert of een attribuut een waarde bevat … als dit niet het geval is,
+        // dan kent de initialisatieregel een gespecificeerde waarde toe". With a berekening on the SAME doel
+        // the computed value must win under BOTH declaration (and thus agenda) orders — the leeg-guard cancels
+        // the initialisatie's activation via property reactivity once the berekening writes. RED-before-green:
+        // without the guard both rules fire unconditionally and the final value is last-writer-wins.
+        String hdr = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het basistarief Numeriek (geheel getal);
+                de prijs Numeriek (geheel getal);
+            """;
+        String init = """
+            Regel initialiseer prijs
+                geldig altijd
+                    De prijs van een Passagier moet geïnitialiseerd worden op 10.
+            """;
+        String bereken = """
+            Regel bereken prijs
+                geldig altijd
+                    De prijs van een Passagier moet berekend worden als zijn basistarief plus 5
+                    indien zijn basistarief groter is dan 50.
+            """;
+        for (String src : new String[]{hdr + init + bereken, hdr + bereken + init}) {
+            RegelSpraakModel m = Resolver.resolve(src);
+            assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+            KieSession sessie = build(DrlTranspiler.transpile(m)).newKieSession();
+            Passagier hoog = new Passagier(); hoog.setBasistarief(new BigDecimal(100));  // berekening applies
+            Passagier laag = new Passagier(); laag.setBasistarief(new BigDecimal(40));   // it does not
+            sessie.insert(hoog); sessie.insert(laag);
+            sessie.fireAllRules();
+            sessie.dispose();
+            assertEquals(0, new BigDecimal(105).compareTo(hoog.getPrijs()),
+                    () -> "de berekening (100+5) moet winnen van de initialisatie, was " + hoog.getPrijs());
+            assertEquals(0, new BigDecimal(10).compareTo(laag.getPrijs()),
+                    () -> "zonder toepasselijke berekening vult de initialisatie het lege doel, was " + laag.getPrijs());
+        }
+    }
 }

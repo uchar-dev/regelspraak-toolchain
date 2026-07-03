@@ -84,10 +84,10 @@ class TokaDekkingTest {
                 "de twee startpuntbepalingen (toka-43/44) moeten als WARNING zichtbaar blijven");
     }
 
-    /** The datum-plus-afstand probe: an accepted `datum plus <afstand in km>` lowers to an honest
-     *  marker, but used to do so with ZERO diagnostics and exit 0. Now: MARKER verdict + WARNING
-     *  (the CLI turns this into exit 3 without --allow-markers). */
-    @Test void datum_plus_afstand_markert_niet_stil() {
+    /** The datum-plus-afstand probe (T4). Formerly: resolved clean, honest MARKER + dekking-WARNING was
+     *  the only signal. Now Tabel 2/5 scenario 2 is enforced at resolve time: `datum plus <afstand in km>`
+     *  is a resolver ERROR — the author gets a diagnostic, not a dead rule. */
+    @Test void datum_plus_afstand_is_een_resolver_fout() {
         RegelSpraakModel m = Resolver.resolve("""
                 Objecttype het Ding
                     de datum Datum in dagen;
@@ -98,15 +98,8 @@ class TokaDekkingTest {
                     geldig altijd
                         De uitkomst van een Ding moet berekend worden als de datum van het Ding plus de afstand van het Ding.
                 """);
-        assertTrue(m.errors().isEmpty(), () -> "T4-probe hoort te resolven (resolver-gat #6): " + m.errors());
-        DrlTranspiler t = DrlTranspiler.build(m);
-        assertEquals(1, t.dekking().size());
-        Dekking d = t.dekking().get(0);
-        assertEquals(Dekking.Verdict.MARKER, d.verdict(),
-                () -> "datum+km hoort een eerlijke marker te blijven: " + d);
-        assertTrue(m.diagnostics.stream().anyMatch(w -> w.severity() == RegelSpraakModel.Severity.WARNING
-                        && w.message().startsWith("dekking: regel 'bepaal uitkomst' MARKER")),
-                () -> "de marker moet een WARNING dragen, kreeg: " + m.diagnostics);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("tijdseenheid")),
+                () -> "datum plus km moet een tijdseenheid-ERROR geven (Tabel 2/5 scenario 2), kreeg: " + m.errors());
     }
 
     private static String lees(Path dir) throws IOException {

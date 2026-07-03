@@ -25,12 +25,12 @@ public final class Tijdrekening {
             case "jaar", "jr"             -> "YEARS";
             case "maand", "mnd"           -> "MONTHS";
             case "week", "wk"             -> "WEEKS";
-            case "dag"                    -> "DAYS";
+            case "dag", "dg"              -> "DAYS";     // §3.7 declares the dag afkorting "dg"
             case "uur", "u"               -> "HOURS";
             case "minuut", "min"          -> "MINUTES";
             case "seconde", "secondes", "sec", "s"     -> "SECONDS";
             case "milliseconde", "millisecondes", "ms" -> "MILLIS";   // §6.10 spells the plural with -s
-            case "kwartaal", "kwartalen" -> "KWARTAAL";
+            case "kwartaal", "kwartalen", "kw" -> "KWARTAAL";         // §3.7 declares the kwartaal afkorting "kw"
             default -> null;   // the -en reducer leaves unchanged; dagsoort / custom -> marker
         };
     }

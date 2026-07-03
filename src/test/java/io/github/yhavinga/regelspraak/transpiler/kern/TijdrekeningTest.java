@@ -20,10 +20,12 @@ class TijdrekeningTest {
         assertEquals("MONTHS", Tijdrekening.chronoUnit(met("mnd")));
         assertEquals("WEEKS",  Tijdrekening.chronoUnit(met("wk")));
         assertEquals("DAYS",   Tijdrekening.chronoUnit(met("dag")));
+        assertEquals("DAYS",   Tijdrekening.chronoUnit(met("dg")));   // §3.7 the declared dag afkorting
         assertEquals("HOURS",  Tijdrekening.chronoUnit(met("u")));
         assertEquals("MILLIS", Tijdrekening.chronoUnit(met("ms")));
         // §3.7 kwartaal = 3 maanden; java.time has no QUARTERS -> the runtime's pseudo-unit
         assertEquals("KWARTAAL", Tijdrekening.chronoUnit(met("kwartaal")));
+        assertEquals("KWARTAAL", Tijdrekening.chronoUnit(met("kw"))); // §3.7 the declared kwartaal afkorting
         assertNull(Tijdrekening.chronoUnit(met("werkdagen")), "een dagsoort/onbekende eenheid -> null (marker)");
         assertNull(Tijdrekening.chronoUnit(new Datatype.Numeriek(true, 0, null, null)), "geen eenheid -> null");
     }

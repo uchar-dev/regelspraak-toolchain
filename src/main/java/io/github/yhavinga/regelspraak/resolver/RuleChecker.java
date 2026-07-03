@@ -659,6 +659,20 @@ final class RuleChecker {
         for (int i = 1; i < namen.size() && i < waarden.size(); i++)
             toek.add(new ResolvedObjectCreatie.Toekenning(stripArtikel(src(namen.get(i))), bouwer.bouw(waarden.get(i))));
 
+        // typeringen §6.5: each met-clause init follows the SAME §6.2/Tabel 61 toekenning rules as a
+        // gelijkstelling (family + eenheid + §6.1.2 precision; an Expr.Afgerond value already reports its
+        // rounded decimal count, and toekenning itself no-ops on an Onbekend value). A name that is no
+        // declared attribute of the created type (a kenmerk, or unresolved) carries no type claim: skip.
+        if (nieuwType != null)
+            for (ResolvedObjectCreatie.Toekenning t : toek) {
+                Datatype doelType = nieuwType.attribuut(t.attribuut());
+                if (doelType == null) continue;
+                String fout = Typering.toekenning(doelType, t.waarde().type());
+                if (fout != null)
+                    model.diagnostics.add(new Diagnostic(Severity.ERROR, "objectcreatie: " + fout,
+                            oc.getStart().getLine()));
+            }
+
         model.objectCreaties.add(new ResolvedObjectCreatie(naam, nieuwType, subject, toek, voorwaarde, geldigheid));
     }
 
@@ -1397,9 +1411,15 @@ final class RuleChecker {
         // resolved here BEFORE the kenmerk/rolcheck machinery (the §13.4.15.45 "(een) <dagsoort> is" form). §8.1.5 /
         // §5.15 / Tabel 57 accept ANY datum/tijd operand (Datum-in-dagen OR Datum-en-tijd); the §9.8 dagsoort is
         // day-granular, so a Datum-en-tijd contributes its date part (both back-ends take .toLocalDate()).
-        if (metEen && !heeftWerkwoord && lhs != null && lhs.type().isDatum()) {
+        if (metEen && !heeftWerkwoord && lhs != null) {
             String dag = dagsoortNaam(stripArtikel(src(naamCtx)));
-            if (dag != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.DAGSOORT, lhs, dag, null, bron);
+            if (dag != null && lhs.type().isDatum())
+                return new Conditie.Predicaat(Conditie.Predicaatsoort.DAGSOORT, lhs, dag, null, bron);
+            // Tabel 57: the written name IS a declared dagsoort but the operand is NOT datum-typed — a
+            // resolver ERROR (was: a silent fall-through into the kenmerk/rol machinery ending as an
+            // Onopgelost marker). An Onbekend operand carries no type claim and keeps the fall-through.
+            if (dag != null && !lhs.type().isOnbekend())
+                return dagsoortOperandFout(lhs, naamCtx, bron);
         }
         // §8.1.5 + Tabel 16 (spec L3224) "<datum> is geen <dagsoort>": the NEGATED dagsoortcontrole, kept on the §8.1.5
         // datum-value path — NEVER mis-folded into the §3.5 kenmerkcheck (a dagsoort is no kenmerk; §5.15-based
@@ -1407,19 +1427,22 @@ final class RuleChecker {
         // where it lands depends on the operand shape: for a §6 date-arithmetic operand ("de vluchtdatum plus 1 dag") it
         // stays on the operator's kaleNaam ("geen kerstdag"); for a plain AttribuutRef the greedy onderwerp absorbs it
         // as a TRAILING word of the operand bron (like "niet"), leaving the bare dagsoort as the kaleNaam.
-        if (!heeftWerkwoord && lhs != null && lhs.type().isDatum()) {   // §8.1.5/§5.15/Tabel 57: any datum/tijd operand (date part taken)
+        if (!heeftWerkwoord && lhs != null) {   // §8.1.5/§5.15/Tabel 57: any datum/tijd operand (date part taken)
+            boolean datum = lhs.type().isDatum(), getypt = !lhs.type().isOnbekend();
             String naam0 = stripArtikel(src(naamCtx));
             // (a) "geen <dagsoort>" left on the kaleNaam — a date-arithmetic / non-AttribuutRef datum operand.
             if (naam0 != null && naam0.regionMatches(true, 0, "geen ", 0, 5)) {
                 String dag = dagsoortNaam(stripArtikel(naam0.substring(5).trim()));
-                if (dag != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.DAGSOORT, lhs, dag, true, 0, null, bron);
+                if (dag != null && datum) return new Conditie.Predicaat(Conditie.Predicaatsoort.DAGSOORT, lhs, dag, true, 0, null, bron);
+                if (dag != null && getypt) return dagsoortOperandFout(lhs, naamCtx, bron);   // Tabel 57 operand gate
             }
             // (b) "geen" absorbed as the operand's trailing word — a plain AttribuutRef (mirror absorbedNegator),
             //     guarded against an attribuut literally named "… geen". The kaleNaam is then the bare dagsoort.
             if (lhs instanceof Expr.AttribuutRef la && la.bron() != null
                     && la.bron().stripTrailing().toLowerCase().endsWith(" geen") && !la.attribuut().toLowerCase().endsWith("geen")) {
                 String dag = dagsoortNaam(naam0);
-                if (dag != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.DAGSOORT, la, dag, true, 0, null, bron);
+                if (dag != null && datum) return new Conditie.Predicaat(Conditie.Predicaatsoort.DAGSOORT, la, dag, true, 0, null, bron);
+                if (dag != null && getypt) return dagsoortOperandFout(la, naamCtx, bron);   // Tabel 57 operand gate
             }
         }
         Objecttype subject = bouwer.subject();
@@ -1775,6 +1798,14 @@ final class RuleChecker {
     private void meldPredicaat(Typering.UnairePred p, Datatype operand, int line) {
         var res = Typering.predicaat(p, operand);
         if (!res.ok()) model.diagnostics.add(new Diagnostic(Severity.ERROR, "voorwaarde: " + res.fout(), line));
+    }
+
+    /** Tabel 57 (§5.15): the written name resolved to a DECLARED dagsoort but the operand is not datum-typed —
+     *  the Typering DAGSOORT ERROR (this is its only live call site on the condition path), and the conditie
+     *  stays an Onopgelost marker so neither back-end builds a dagsoort check over a non-date. */
+    private Conditie dagsoortOperandFout(Expr lhs, KaleNaamContext naamCtx, String bron) {
+        meldPredicaat(Typering.UnairePred.DAGSOORT, lhs.type(), naamCtx.getStart().getLine());
+        return new Conditie.Onopgelost(bron);
     }
 
     static Typering.CmpOp cmpOf(VergelijkingsTekenContext c) {

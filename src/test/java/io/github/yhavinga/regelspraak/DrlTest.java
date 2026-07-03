@@ -3952,4 +3952,37 @@ class DrlTest {
                         && d.message().contains("onbekende dingen")),
                 () -> "de onbindbare verzamel-lezing moet een WARNING dragen: " + m2.diagnostics);
     }
+
+    @Test void initialisatie_begrenst_het_doel_op_leeg_een_gelijkstelling_niet() {
+        // §9.6: een initialisatieregel "controleert of een attribuut een waarde bevat … als dit niet het
+        // geval is, dan kent de initialisatieregel een gespecificeerde waarde toe" — the doel-leeg guard is
+        // a pattern constraint, so a berekening on the same doel wins regardless of agenda order.
+        String drl = DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Reis
+                de prijs Numeriek (geheel getal);
+                de toeslag Numeriek (geheel getal);
+            Regel initialiseer prijs
+                geldig altijd
+                    De prijs van een Reis moet geïnitialiseerd worden op 10.
+            Regel stel toeslag
+                geldig altijd
+                    De toeslag van een Reis moet gesteld worden op 5.
+            """));
+        assertTrue(drl.contains("$subject : Reis( prijs == null )"),
+                () -> "de initialisatie moet het doel op leeg begrenzen (§9.6):\n" + drl);
+        assertTrue(drl.contains("$subject : Reis(  )"),
+                () -> "een gelijkstelling blijft onbegrensd:\n" + drl);
+        // with a voorwaarde the leeg-guard joins the inline constraint
+        String drl2 = DrlTranspiler.transpile(Resolver.resolve("""
+            Objecttype de Reis
+                de prijs Numeriek (geheel getal);
+                de toeslag Numeriek (geheel getal);
+            Regel initialiseer prijs
+                geldig altijd
+                    De prijs van een Reis moet geïnitialiseerd worden op 10
+                    indien de toeslag van de Reis groter is dan 3.
+            """));
+        assertTrue(drl2.contains("$subject : Reis( prijs == null, toeslag >"),
+                () -> "de leeg-guard moet naast de voorwaarde-constraint staan:\n" + drl2);
+    }
 }

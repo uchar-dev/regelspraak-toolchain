@@ -252,6 +252,10 @@ public final class ExecModelTranspiler {
             pattern = gate.pattern();
             extra.addAll(gate.extra());
         }
+        // §9.6 initialisatie assigns only when the doel holds NO value yet — the same leeg-guard the DRL
+        // back-end emits, so a berekening on the same doel wins whenever it applies, order-independently.
+        if (r.soort() == ResolvedRegel.Soort.INITIALISATIE)
+            pattern = pattern.expr(nextId("init"), (Predicate1) (s -> doelGetter.apply(s) == null));
         pattern = geldigGuard(pattern, r.geldigheid());   // §4.2 version validity window
 
         RuleItemBuilder<?> consequence;
