@@ -1865,3 +1865,39 @@ carrying value-bound and iteration-bound termination conditions). DECIDED after 
   attribute. Flagging it faithfully is a candidate resolver lint (upgrade path: WARNING citing §9.10), deferred
   until a real model shows the foutief reading matters. Pinned by RecursieTest: the cyclic pair WARNs (never an
   ERROR), the self-read clamp resolves diagnostics-free.
+
+## §8.4.3 / §13.4.15.68-.69 periodevergelijking-als-voorwaarde — lowered as a Rekendatum window
+
+§8.4.3 defines the "specifieke tijdsafhankelijke conditie": a period of dates as a rule condition, standalone
+directly after the resultaatdeel (`… van dd. 1-1-2024 tot dd. 8-2-2025`, the §13.4.13.1 voorwaardendeel branch)
+or as the `het is de periode …` bullet inside a compound (§13.4.15.69, the spec-main-99 shape). §5.1.3 fixes
+the bound semantics: **vanaf inclusive, tot exclusive, tot en met inclusive** (§8.4.3's own pointer to the
+period meanings is a broken "Fout! Verwijzingsbron" reference; §5.1.3 is the resolved target). The resolver
+lifts all five forms (vanaf / van…tot / van…tot en met / tot / tot en met) to a `Conditie.Periode` whose bounds
+are resolved datum-expressies; a non-datum bound is a typing ERROR (§13.4.15.68 requires `<datumexpressie>`).
+
+**Chosen execution reading — the scalar projection.** Per §8.4 the condition is tijdsafhankelijk: it holds
+during the period, and a fully temporal engine would derive a timeline result clipped to it. This engine
+evaluates scalar rules as of the §4.2 Rekendatum (the same posture as versie-geldigheid), so the faithful
+scalar projection is **"the rule fires iff the rekendatum lies inside the period"** — the expression-bound
+analogue of the geldigheidGuard window, identical in both back-ends (DRL: an in-pattern
+`rekendatum != null && !rekendatum.isBefore(van) && rekendatum.isBefore(tot)` constraint; exec: a Predicate2
+binding the rekendatum global). An unset rekendatum never matches; a leeg (null) attribute bound never matches.
+
+Deliberately-bounded surface (all symmetric across the back-ends, pinned by PHASE_PERIODE +
+phase_PERIODE_*_declines_symmetrically):
+- **Bound shapes:** a §13.2.19 Datum-in-dagen literal or the subject's OWN scalar datum attribute lower
+  (the shared `Tijdrekening.periodeGrensLowerbaar` gate); a parameter / navigated / computed / Datum-en-tijd
+  bound stays an honest marker (DRL `/* TODO periodevergelijking-grens */`) + exec-skip.
+- **Counting quantifiers:** a periode-bullet under geen/ten minste/ten hoogste/precies markers in the DRL and
+  skips in the exec — the exec counting fold is fact-only (it cannot bind the rekendatum global), and the DRL
+  markers the same shape so the back-ends never diverge. ALLE/DE conjunctions (the spec's own example) fire.
+- **Tijdsafhankelijk doel:** a periodevergelijking guarding a timeline write should CLIP the written timeline
+  to the period, not all-or-nothing gate it on the rekendatum; that clip is not built, so both back-ends
+  decline honestly (marker/skip).
+- **conditieBijExpressie (§13.4.17.55):** the periodevergelijking branch of the `gedurende`-clip on
+  totaal/tijdsevenredig is untouched — it stays the pre-existing honest marker.
+- **Bare-year/month bounds** (`vanaf 2020`): §5.1.3's examples write them for TIJDLIJN period
+  specifications, but §13.4.15.68 requires a `<datumexpressie>` here — a bare `2020` is a getal literal, so
+  it raises the honest non-datum-bound ERROR rather than being promoted to 1-1-2020. Candidate widening if a
+  real model needs it.

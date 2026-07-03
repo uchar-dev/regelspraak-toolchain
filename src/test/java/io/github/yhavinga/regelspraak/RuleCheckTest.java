@@ -2121,6 +2121,61 @@ class RuleCheckTest {
         assertFalse(m.errors().isEmpty(), () -> "de malformede invoer moet een diagnostic geven: " + m.errors());
     }
 
+    @Test void periodevergelijking_als_voorwaarde_resolvet_en_lowert_in_beide_registers() {
+        // §8.4.3 / §13.4.15.68-.69: the standalone voorwaardendeel form ("… van dd. X tot dd. Y" directly after
+        // the resultaatdeel, §13.4.13.1) AND the "het is de periode …" compound bullet (§13.4.15.69, the
+        // spec-main-99 shape) both build a Conditie.Periode — no Onopgelost marker, a rekendatum window in the DRL.
+        String standalone = "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De prijs van een Passagier moet gesteld worden op 50\n"
+            + "        van dd. 1-1-2024 tot dd. 8-2-2025.\n";
+        RegelSpraakModel ms = Resolver.resolve(standalone);
+        assertTrue(ms.errors().isEmpty(), () -> "moet resolven: " + ms.errors());
+        String drl = DrlTranspiler.transpile(ms);
+        assertFalse(drl.contains("/* TODO"), () -> "de standalone periodevergelijking mag geen marker zijn:\n" + drl);
+        assertTrue(drl.contains("global java.time.LocalDate rekendatum;"), () -> "rekendatum-global ontbreekt:\n" + drl);
+        assertTrue(drl.contains("!rekendatum.isBefore(java.time.LocalDate.of(2024, 1, 1))")
+                && drl.contains("rekendatum.isBefore(java.time.LocalDate.of(2025, 2, 8))"),
+                () -> "verwacht het §5.1.3 venster (vanaf inclusief, tot exclusief):\n" + drl);
+
+        String bullet = "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    is student kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        De prijs van een Passagier moet gesteld worden op 50\n"
+            + "        gedurende de tijd dat er aan alle volgende voorwaarden wordt voldaan:\n"
+            + "        • hij student is\n"
+            + "        • het is de periode van dd. 1-1-2024 tot en met dd. 8-2-2025.\n";
+        RegelSpraakModel mb = Resolver.resolve(bullet);
+        assertTrue(mb.errors().isEmpty(), () -> "moet resolven: " + mb.errors());
+        String drlB = DrlTranspiler.transpile(mb);
+        assertFalse(drlB.contains("/* TODO"), () -> "de periode-bullet mag geen marker zijn:\n" + drlB);
+        assertTrue(drlB.contains("!rekendatum.isAfter(java.time.LocalDate.of(2025, 2, 8))"),
+                () -> "tot en met is INCLUSIEF (§5.1.3, isAfter):\n" + drlB);
+    }
+
+    @Test void periodevergelijking_met_niet_datum_grens_wordt_gemeld() {
+        // §13.4.15.68 the bounds are <datumexpressie>s: a numeric bound is a typing ERROR, not a silent window.
+        String src = "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De prijs van een Passagier moet gesteld worden op 50\n"
+            + "        vanaf 5.\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("periodevergelijking")
+                        && d.message().contains("datum-expressies")),
+                () -> "een numerieke periodegrens had gemeld moeten worden, kreeg: " + m.errors());
+    }
+
+    @Test void periodevergelijking_met_parametergrens_blijft_eerlijke_marker() {
+        // §8.4.3 a parameter-bound period ("vanaf de PEILDATUM") is beyond the lowered bound shapes (literal /
+        // own attribute — Tijdrekening.periodeGrensLowerbaar): it must resolve cleanly but stay an HONEST marker
+        // in the DRL (and a symmetric exec-skip), never a silently-dropped window.
+        String src = "Parameter de PEILDATUM : Datum in dagen\n"
+            + "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De prijs van een Passagier moet gesteld worden op 50\n"
+            + "        vanaf de PEILDATUM.\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("/* TODO") && drl.contains("periodevergelijking-grens"),
+                () -> "een parameter-grens moet een eerlijke marker blijven:\n" + drl);
+    }
+
     @Test void bullet_merge_hergenest_inner_telwoord_0_wordt_gevlagd() {
         // §13.4.14.4: a column-absorbed INNER compound with a degenerate telwoord (ten minste 0) must still raise the
         // drempel-below-1 ERROR through the re-nesting path (bouwUitKnopen builds inner compounds directly), not be

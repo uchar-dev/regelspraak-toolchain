@@ -1015,7 +1015,32 @@ final class RuleChecker {
             if (c.expressie() != null && c.toplevelOperator() != null)
                 return uitToplevel(bouwer.bouw(c.expressie()), c.toplevelOperator(), src(c));
         }
+        // §13.4.13.1 / §8.4.3: a standalone periodevergelijking as the whole voorwaardendeel
+        // ("… van dd. 1-1-2024 tot dd. 8-2-2025" directly after the resultaatdeel, no 'indien').
+        if (v.periodevergelijkingEnkelvoudig() != null) return bouwPeriode(v.periodevergelijkingEnkelvoudig());
         return new Conditie.Onopgelost(src(v));
+    }
+
+    /** §13.4.15.68 / §8.4.3: a periodevergelijkingEnkelvoudig (vanaf / van…tot / van…tot en met / tot /
+     *  tot en met) to a {@link Conditie.Periode}. Each bound is a §13.4.15.68 &lt;datumexpressie&gt;; a bound
+     *  whose resolved type makes a non-datum claim is an ERROR (an Onbekend operand carries no claim and
+     *  passes). §5.1.3 fixes the bound semantics: vanaf inclusive, tot exclusive, tot en met inclusive. */
+    private Conditie bouwPeriode(PeriodevergelijkingEnkelvoudigContext p) {
+        Expr van = null, tot = null;
+        if (p.VANAF() != null) {
+            van = bouwer.bouw(p.expressie(0));
+        } else if (p.VAN() != null) {
+            van = bouwer.bouw(p.expressie(0));
+            tot = bouwer.bouw(p.expressie(1));
+        } else {
+            tot = bouwer.bouw(p.expressie(0));
+        }
+        for (Expr grens : new Expr[]{van, tot})
+            if (grens != null && grens.type() != null && !grens.type().isOnbekend() && !grens.type().isDatum())
+                model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                        "een periodevergelijking (§8.4.3) vereist datum-expressies als grenzen, niet "
+                                + grens.type().naam() + ": '" + grens.bron() + "'", p.getStart().getLine()));
+        return new Conditie.Periode(van, tot, p.TOT_EN_MET() != null, src(p));
     }
 
     private Conditie bouwSamengesteld(VoorwaardeKwantificatieContext k,
@@ -1327,6 +1352,9 @@ final class RuleChecker {
             return uitNonToplevel(bouwer.bouw(c.expressie()), c.nonToplevelOperator(), src(c));
         if (c.expressie() != null && c.toplevelOperator() != null)
             return uitToplevel(bouwer.bouw(c.expressie()), c.toplevelOperator(), src(c));
+        // §13.4.15.69 / §8.4.3: the "het is de periode <periodevergelijkingEnkelvoudig>" bullet form.
+        if (c.periodevergelijkingElementair() != null)
+            return bouwPeriode(c.periodevergelijkingElementair().periodevergelijkingEnkelvoudig());
         return new Conditie.Onopgelost(src(c));
     }
 

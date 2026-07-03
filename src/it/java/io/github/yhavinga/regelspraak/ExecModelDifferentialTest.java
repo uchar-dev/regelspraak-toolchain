@@ -5038,6 +5038,88 @@ class ExecModelDifferentialTest {
             l -> refIndex(l, ((Passagier) l.get(1)).getBonusvlucht())),   // null
     };
 
+    // ---- §8.4.3 / §13.4.15.68-.69 PERIODEVERGELIJKING as a voorwaarde: standalone after the resultaatdeel
+    //      (the §13.4.13.1 branch, "… van dd. 1-1-2024 tot dd. 8-2-2025") and as the "het is de periode …"
+    //      bullet inside a compound (§13.4.15.69, the spec-main-99 shape). The engine evaluates scalar rules
+    //      as of the §4.2 Rekendatum, so the condition is "rekendatum inside the period" — §5.1.3 bounds:
+    //      vanaf INCLUSIVE, tot EXCLUSIVE, tot en met INCLUSIVE. Each fixture pins the ABSOLUTE spec value
+    //      (fires 50 / stays null), not just DRL==exec parity. ----
+    static final String PERIODE_REGEL = PRIJS_OT + "Regel R\n    geldig altijd\n"
+            + "        De prijs van een passagier moet gesteld worden op 50\n"
+            + "        van dd. 1-1-2024 tot dd. 8-2-2025.\n";
+    static final String PERIODE_TEM_REGEL = PRIJS_OT + "Regel R\n    geldig altijd\n"
+            + "        De prijs van een passagier moet gesteld worden op 50\n"
+            + "        van dd. 1-1-2024 tot en met dd. 8-2-2025.\n";
+    static final String PERIODE_VANAF_REGEL = PRIJS_OT + "Regel R\n    geldig altijd\n"
+            + "        De prijs van een passagier moet gesteld worden op 50\n"
+            + "        vanaf dd. 1-1-2024.\n";
+    static final String PERIODE_TOT_REGEL = PRIJS_OT + "Regel R\n    geldig altijd\n"
+            + "        De prijs van een passagier moet gesteld worden op 50\n"
+            + "        tot dd. 1-1-2024.\n";
+    // the §8.4.3 / spec-main-99 compound shape: "gedurende de tijd dat … • <conditie> • het is de periode …".
+    static final String PERIODE_COMPOUND_OT = "Objecttype de Passagier (mv: Passagiers) (bezield)\n"
+            + "    de prijs Numeriek (geheel getal);\n    is student kenmerk (bijvoeglijk);\n";
+    static final String PERIODE_COMPOUND_REGEL = PERIODE_COMPOUND_OT + "Regel R\n    geldig altijd\n"
+            + "        De prijs van een Passagier moet gesteld worden op 50\n"
+            + "        gedurende de tijd dat er aan alle volgende voorwaarden wordt voldaan:\n"
+            + "        • hij student is\n"
+            + "        • het is de periode van dd. 1-1-2024 tot dd. 8-2-2025.\n";
+    static final String PERIODE_EIGEN_ATTR_REGEL = "Objecttype de Passagier (mv: Passagiers) (bezield)\n"
+            + "    de prijs Numeriek (geheel getal);\n    de geboortedatum Datum in dagen;\n"
+            + "Regel R\n    geldig altijd\n"
+            + "        De prijs van een passagier moet gesteld worden op 50\n"
+            + "        vanaf zijn geboortedatum.\n";
+    static final Fixture[] PHASE_PERIODE = {
+        single("van..tot, rekendatum inside -> fires",
+            PERIODE_REGEL, Passagier::new, Map.of("rekendatum", LocalDate.of(2024, 6, 1)), Passagier::getPrijs),          // 50
+        single("van..tot, rekendatum on the inclusive vanaf bound -> fires",
+            PERIODE_REGEL, Passagier::new, Map.of("rekendatum", LocalDate.of(2024, 1, 1)), Passagier::getPrijs),          // 50
+        single("van..tot, rekendatum on the EXCLUSIVE tot bound (§5.1.3) -> no fire",
+            PERIODE_REGEL, Passagier::new, Map.of("rekendatum", LocalDate.of(2025, 2, 8)), Passagier::getPrijs),          // null
+        single("van..tot, rekendatum before vanaf -> no fire",
+            PERIODE_REGEL, Passagier::new, Map.of("rekendatum", LocalDate.of(2023, 12, 31)), Passagier::getPrijs),        // null
+        single("van..tot en met, rekendatum on the INCLUSIVE tot-en-met bound (§5.1.3) -> fires",
+            PERIODE_TEM_REGEL, Passagier::new, Map.of("rekendatum", LocalDate.of(2025, 2, 8)), Passagier::getPrijs),      // 50
+        single("van..tot en met, rekendatum a day past the bound -> no fire",
+            PERIODE_TEM_REGEL, Passagier::new, Map.of("rekendatum", LocalDate.of(2025, 2, 9)), Passagier::getPrijs),      // null
+        single("vanaf (one-sided), rekendatum far after -> fires",
+            PERIODE_VANAF_REGEL, Passagier::new, Map.of("rekendatum", LocalDate.of(2030, 1, 1)), Passagier::getPrijs),    // 50
+        single("vanaf (one-sided), rekendatum before -> no fire",
+            PERIODE_VANAF_REGEL, Passagier::new, Map.of("rekendatum", LocalDate.of(2023, 6, 1)), Passagier::getPrijs),    // null
+        single("tot (one-sided, exclusive), rekendatum the day before -> fires",
+            PERIODE_TOT_REGEL, Passagier::new, Map.of("rekendatum", LocalDate.of(2023, 12, 31)), Passagier::getPrijs),    // 50
+        single("tot (one-sided, exclusive), rekendatum on the bound -> no fire",
+            PERIODE_TOT_REGEL, Passagier::new, Map.of("rekendatum", LocalDate.of(2024, 1, 1)), Passagier::getPrijs),      // null
+        single("periodevergelijking with an UNSET rekendatum -> no fire",
+            PERIODE_REGEL, Passagier::new, Map.of(), Passagier::getPrijs),                                                // null
+        // the spec-main-99 compound: both the kenmerk-bullet AND the periode-bullet must hold.
+        single("compound ALLE: student + periode inside -> fires",
+            PERIODE_COMPOUND_REGEL, () -> passagier(p -> p.setStudent(true)),
+            Map.of("rekendatum", LocalDate.of(2024, 6, 1)), Passagier::getPrijs),                                         // 50
+        single("compound ALLE: student + rekendatum outside the periode -> no fire",
+            PERIODE_COMPOUND_REGEL, () -> passagier(p -> p.setStudent(true)),
+            Map.of("rekendatum", LocalDate.of(2026, 1, 1)), Passagier::getPrijs),                                         // null
+        single("compound ALLE: periode inside but NOT a student -> no fire",
+            PERIODE_COMPOUND_REGEL, Passagier::new,
+            Map.of("rekendatum", LocalDate.of(2024, 6, 1)), Passagier::getPrijs),                                         // null
+        // an OWN-attribute bound ("vanaf zijn geboortedatum"): per-instance window; a leeg bound never matches.
+        single("own-attr bound: rekendatum after the subject's geboortedatum -> fires",
+            PERIODE_EIGEN_ATTR_REGEL, () -> passagier(p -> p.setGeboortedatum(LocalDate.of(2024, 1, 1))),
+            Map.of("rekendatum", LocalDate.of(2024, 6, 1)), Passagier::getPrijs),                                         // 50
+        single("own-attr bound: rekendatum before the subject's geboortedatum -> no fire",
+            PERIODE_EIGEN_ATTR_REGEL, () -> passagier(p -> p.setGeboortedatum(LocalDate.of(2024, 1, 1))),
+            Map.of("rekendatum", LocalDate.of(2023, 6, 1)), Passagier::getPrijs),                                         // null
+        single("own-attr bound: LEEG geboortedatum -> no fire (a leeg bound never matches)",
+            PERIODE_EIGEN_ATTR_REGEL, Passagier::new,
+            Map.of("rekendatum", LocalDate.of(2024, 6, 1)), Passagier::getPrijs),                                         // null
+    };
+    static final BigDecimal V50 = new BigDecimal(50);
+    static final BigDecimal[] PHASE_PERIODE_EXPECTED = {
+        V50, V50, null, null, V50, null, V50, null, V50, null, null,   // standalone forms
+        V50, null, null,                                               // compound (spec-main-99 shape)
+        V50, null, null,                                               // own-attr bound
+    };
+
     // ---- Phase H value-path ops: §13.4.17.14 tot de macht, §6.8 percentage (% van), §6.5 gedeeld door (ABS),
     //      §6.1.4 begrenzing — ported runtime helpers rsMacht/rsMachtReeel/rsGedeeldAbs/rsBegrens. ----
     static final Fixture[] PHASE_H_VAL = {
@@ -5608,6 +5690,56 @@ class ExecModelDifferentialTest {
     }
     @Test void phase_H_navigated_comparison_matches_drl_back_end()  { runDifferential("Phase H", PHASE_H, 17); }
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
+    @Test void phase_PERIODE_matches_drl_back_end()                 { runDifferential("Phase PERIODE", PHASE_PERIODE, 17); }
+    // §8.4.3: every fixture pinned to its ABSOLUTE §5.1.3 window value (DRL as oracle first, then parity) —
+    // never differential-only, so a shared both-back-ends bug cannot hide behind agreement.
+    @Test void phase_PERIODE_is_spec_correct() {
+        for (int i = 0; i < PHASE_PERIODE.length; i++) {
+            Fixture f = PHASE_PERIODE[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_PERIODE_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    // §8.4.3 the shapes NEITHER back-end lowers yet must decline SYMMETRICALLY (an honest marker/skip, never a
+    // DRL-fires/exec-skips divergence): a periode-bullet under a COUNTING quantifier (the exec fact-only fold
+    // cannot bind the rekendatum global), and a periodevergelijking on a TIJDSAFHANKELIJK doel (it should CLIP
+    // the timeline, not gate it on the rekendatum).
+    @Test void phase_PERIODE_counting_quantor_declines_symmetrically() {
+        String src = PERIODE_COMPOUND_OT + "Regel R\n    geldig altijd\n"
+                + "        De prijs van een Passagier moet gesteld worden op 50\n"
+                + "        gedurende de tijd dat er aan ten minste 1 van de volgende voorwaarden wordt voldaan:\n"
+                + "        • hij student is\n"
+                + "        • het is de periode van dd. 1-1-2024 tot dd. 8-2-2025.\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+        String drl = DrlTranspiler.build(m).drl();
+        assertTrue(drl.contains("tellende kwantor"), () -> "verwacht DRL-marker voor de tellende kwantor:\n" + drl);
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertFalse(em.overgeslagen().isEmpty(), "verwacht een exec-skip voor de tellende kwantor");
+        Fixture f = single("counting+periode declines", src, () -> passagier(p -> p.setStudent(true)),
+                Map.of("rekendatum", LocalDate.of(2024, 6, 1)), Passagier::getPrijs);
+        assertEquals(eq(null), eq(fire(drlBase(m), f)), "de DRL-marker mag nooit vuren");
+    }
+    @Test void phase_PERIODE_temporal_doel_declines_symmetrically() {
+        String src = "Objecttype de Passagier (mv: Passagiers) (bezield)\n"
+                + "    de belastingvermindering Numeriek (geheel getal) voor elke maand;\n"
+                + "Regel R\n    geldig altijd\n"
+                + "        De belastingvermindering van een Passagier moet gesteld worden op 10\n"
+                + "        van dd. 1-1-2024 tot dd. 8-2-2025.\n";
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+        String drl = DrlTranspiler.build(m).drl();
+        assertTrue(drl.contains("tijdsafhankelijk doel"), () -> "verwacht DRL-marker op het tijdsafhankelijke doel:\n" + drl);
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().stream().anyMatch(s -> s.contains("tijdsafhankelijk doel")),
+                () -> "verwacht een exec-skip op het tijdsafhankelijke doel: " + em.overgeslagen());
+    }
     @Test void phase_H_value_ops_matches_drl_back_end()             { runDifferential("Phase H val", PHASE_H_VAL, 8); }
     @Test void phase_H_builtin_functies_match_drl_back_end()        { runDifferential("Phase H func", PHASE_H_FUNC, 4); }
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 5); }

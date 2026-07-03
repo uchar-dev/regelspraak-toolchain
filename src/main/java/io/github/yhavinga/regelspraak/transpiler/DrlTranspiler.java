@@ -111,7 +111,12 @@ public final class DrlTranspiler {
                 || model.consistenties.stream().anyMatch(c -> tijdgebondenGeldigheid(c.geldigheid()))
                 || model.uniciteiten.stream().anyMatch(u -> tijdgebondenGeldigheid(u.geldigheid()))
                 || model.uniciteitUnies.stream().anyMatch(u -> tijdgebondenGeldigheid(u.geldigheid()))
-                || model.feitCreaties.stream().anyMatch(f -> tijdgebondenGeldigheid(f.geldigheid()));
+                || model.feitCreaties.stream().anyMatch(f -> tijdgebondenGeldigheid(f.geldigheid()))
+                // §8.4.3: a periodevergelijking-voorwaarde compares the Rekendatum against the period bounds.
+                || model.resolvedRegels.stream().anyMatch(r -> r.voorwaarde() != null && Conditie.bevatPeriode(r.voorwaarde()))
+                || model.objectCreaties.stream().anyMatch(o -> o.voorwaarde() != null && Conditie.bevatPeriode(o.voorwaarde()))
+                || model.feitCreaties.stream().anyMatch(f -> f.voorwaarde() != null && Conditie.bevatPeriode(f.voorwaarde()))
+                || model.verdelingen.stream().anyMatch(v -> v.voorwaarde() != null && Conditie.bevatPeriode(v.voorwaarde()));
         if (tijdgebonden) out.append("global java.time.LocalDate rekendatum;\n\n");
         int naHeader = out.length();   // dagsoort-predicate globals (if any) are spliced in here, after the header
 
@@ -893,8 +898,18 @@ public final class DrlTranspiler {
         // (directly for a top-level membership, carried up through a pure-conjunction §13.4.14 alle/de compound).
         // Each is appended after the subject pattern; a far-side nested under a non-conjunction quantifier stays
         // an honest marker.
+        // §8.4.3 a periodevergelijking on a TIJDSAFHANKELIJK doel should CLIP the written timeline to the
+        // period, not all-or-nothing gate it on the rekendatum — that clip is not built yet, so marker the
+        // voorwaarde (rule inert, never a silently mis-gated timeline). Mirrored by the exec back-end.
+        boolean periodeOpTijdlijnDoel = r.voorwaarde() != null && Conditie.bevatPeriode(r.voorwaarde())
+                && r.doel() instanceof Expr.AttribuutRef da && da.objecttype() != null
+                && (da.objecttype().attribuutGranulariteit.containsKey(da.attribuut())
+                    || da.objecttype().kenmerkGranulariteit.containsKey(da.attribuut()));
         LoweredConditie lc = subject != null && r.voorwaarde() != null
-                ? conditie(acc, r.voorwaarde(), subject, true) : LoweredConditie.van("");
+                ? (periodeOpTijdlijnDoel
+                    ? LoweredConditie.marker("periodevergelijking op een tijdsafhankelijk doel (§8.4.3)", r.voorwaarde().bron())
+                    : conditie(acc, r.voorwaarde(), subject, true))
+                : LoweredConditie.van("");
         String constraint = lc.inline();
         // §9.6 initialisatie assigns only when the attribuut holds NO value yet ("controleert of een attribuut
         // een waarde bevat … als dit niet het geval is"): the leeg-guard makes the rule idempotent and removes
@@ -2531,6 +2546,28 @@ public final class DrlTranspiler {
             if (f.marker()) return LoweredConditie.marker("§8.2 gehele-periode", c.bron());
             return LoweredConditie.van(f.text() + " == " + (gp.niet() ? "false" : "true"));
         }
+        // §8.4.3 / §13.4.15.68-.69 periodevergelijking: the rule applies during the period, and the engine
+        // evaluates scalar rules as of the §4.2 Rekendatum — so lower to "rekendatum inside [vanaf, tot)"
+        // (§5.1.3: vanaf inclusive; tot exclusive; tot en met inclusive), the expression-bound analogue of the
+        // geldigheidGuard window. Bounds are restricted to the shapes the exec back-end mirrors — a Datum-in-dagen
+        // literal or the subject's OWN scalar Datum-in-dagen attribute (null-guarded: a leeg bound never matches);
+        // anything else (parameter/navigated/computed/Datum-en-tijd) stays a SYMMETRIC honest marker.
+        if (c instanceof Conditie.Periode per) {
+            StringJoiner sj = new StringJoiner(" && ");
+            sj.add("rekendatum != null");
+            for (boolean isVan : new boolean[]{true, false}) {
+                Expr grens = isVan ? per.vanaf() : per.tot();
+                if (grens == null) continue;
+                if (!Tijdrekening.periodeGrensLowerbaar(grens, subject))
+                    return LoweredConditie.marker("periodevergelijking-grens '" + grens.bron() + "' (§8.4.3)", c.bron());
+                Frag g = operand(acc, grens, subject);
+                if (g.marker()) return LoweredConditie.marker("periodevergelijking-grens (§8.4.3)", c.bron());
+                if (!(grens instanceof Expr.Literal)) sj.add(g.text() + " != null");
+                sj.add(isVan ? "!rekendatum.isBefore(" + g.text() + ")"
+                             : (per.totInclusief() ? "!rekendatum.isAfter(" : "rekendatum.isBefore(") + g.text() + ")");
+            }
+            return LoweredConditie.van(sj.toString());
+        }
         if (c instanceof Conditie.Vergelijking va) {
             // §5.8/§13.4.14 a COUNT aggregation as one side of the comparison ("het aantal X van Y <op> N") — lower it to
             // a result-constrained accumulate CE hoisted after the subject pattern, not an inline scalar constraint (which
@@ -2643,6 +2680,13 @@ public final class DrlTranspiler {
         if (c instanceof Conditie.VerreRollidmaatschap vr)
             return new LoweredConditie("", List.of(verreRolClausule(vr)), false);
         if (c instanceof Conditie.Samengesteld s) {
+            // §8.4.3 a periodevergelijking-bullet under a COUNTING quantifier (geen/ten minste/ten hoogste/
+            // precies): the exec back-end's counting fold is fact-only (it cannot bind the rekendatum global),
+            // so marker here too — symmetric, never a DRL-fires/exec-skips divergence. ALLE/DE conjunctions
+            // (the spec's own §8.4.3 example) lower normally below.
+            if (s.kwantor() != Conditie.Kwantor.ALLE && s.kwantor() != Conditie.Kwantor.DE
+                    && s.onderdelen().stream().anyMatch(Conditie::bevatPeriode))
+                return LoweredConditie.marker("periodevergelijking onder een tellende kwantor (§8.4.3)", s.bron());
             List<LoweredConditie> kinderen = new ArrayList<>();
             for (Conditie deel : s.onderdelen()) kinderen.add(conditie(acc, deel, subject, alsVoorwaarde));
             if (kinderen.isEmpty()) return LoweredConditie.van("true");

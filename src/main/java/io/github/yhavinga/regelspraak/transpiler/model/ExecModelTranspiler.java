@@ -248,6 +248,13 @@ public final class ExecModelTranspiler {
         List<RuleItemBuilder<?>> extra = new ArrayList<>();
 
         if (r.voorwaarde() != null) {
+            // §8.4.3 a periodevergelijking on a TIJDSAFHANKELIJK doel should CLIP the written timeline to the
+            // period, not all-or-nothing gate it on the rekendatum — that clip is not built yet, so skip
+            // honestly (mirrors the DRL marker; a scalar doel lowers via the voorwaarde() Periode branch).
+            if (Conditie.bevatPeriode(r.voorwaarde())
+                    && (doel.objecttype().attribuutGranulariteit.containsKey(doel.attribuut())
+                        || doel.objecttype().kenmerkGranulariteit.containsKey(doel.attribuut())))
+                return skip("regel (periodevergelijking op tijdsafhankelijk doel — §8.4.3 clip): " + r.naam());
             Gate gate = voorwaarde(r.voorwaarde(), pattern, doel.objecttype(), sVar);
             if (gate == null) return skip("regel (voorwaarde buiten Phase-B scope): " + r.naam());
             pattern = gate.pattern();
@@ -1642,6 +1649,20 @@ public final class ExecModelTranspiler {
         return s -> { Object rel = RegelSpraakRuntime.get(s, rol); return rel == null ? null : (List<?>) RegelSpraakRuntime.get(rel, kenmerk); };
     }
 
+    /** §8.4.3 a periodevergelijking bound as a subject→LocalDate reader — a §13.2.19 datum literal (constant) or
+     *  the subject's own scalar datum attribute (a leeg attribute reads null → the period test fails, matching the
+     *  DRL null-guard). null for an absent bound OR an unsupported shape (the shared
+     *  {@link Tijdrekening#periodeGrensLowerbaar} gate — the caller distinguishes by checking the Expr). */
+    private java.util.function.Function<Object, java.time.LocalDate> periodeGrensLezer(Expr grens, Objecttype subject) {
+        if (grens == null || !Tijdrekening.periodeGrensLowerbaar(grens, subject)) return null;
+        if (grens instanceof Expr.Literal lit) {
+            java.time.LocalDate d = Literalen.parseDatum(lit.waarde());
+            return d == null ? null : s -> d;
+        }
+        String attr = ((Expr.AttribuutRef) grens).attribuut();
+        return s -> RegelSpraakRuntime.get(s, attr) instanceof java.time.LocalDate d ? d : null;
+    }
+
     // ---------------- §8.2 / §13.4.15.70 gehele-periodevergelijking (mirrors DrlTranspiler.geheelPeriodeCall) ------
     /** The §8.2 whole-period qualifier on a predicate, or null when it carries none. */
     private static Conditie.GeheelPeriode geheelPeriodeVan(Conditie c) {
@@ -1795,6 +1816,28 @@ public final class ExecModelTranspiler {
                 };
             };
             return new Gate(pattern.expr(nextId("q"), (Predicate1) combined), List.of());
+        }
+        // §8.4.3 / §13.4.15.68-.69 periodevergelijking: the rule applies during the period; the engine evaluates
+        // scalar rules as of the §4.2 Rekendatum, so bind the rekendatum global as a pattern variable and test
+        // "rekendatum inside [vanaf, tot)" (§5.1.3: vanaf inclusive, tot exclusive, tot en met inclusive) — the
+        // expression-bound analogue of geldigGuard. Bounds share Tijdrekening.periodeGrensLowerbaar with the DRL
+        // back-end (a Datum-in-dagen literal or the subject's own scalar datum attribute); an unsupported bound /
+        // leeg bound -> skip / no match, symmetric with the DRL marker & null-guards. Inside a COUNTING quantifier
+        // the fact-only leafPredicate fold cannot bind the global, so leafPredicate declines a Periode and the
+        // whole compound skips — the DRL side markers that shape for symmetry.
+        if (c instanceof Conditie.Periode per) {
+            if (rekendatumGlobal == null) return null;   // defensive: heeftTijdgebonden registers it
+            java.util.function.Function<Object, java.time.LocalDate> vanF = periodeGrensLezer(per.vanaf(), subject);
+            java.util.function.Function<Object, java.time.LocalDate> totF = periodeGrensLezer(per.tot(), subject);
+            if ((per.vanaf() != null && vanF == null) || (per.tot() != null && totF == null)) return null;
+            boolean inclusief = per.totInclusief();
+            return new Gate(pattern.expr(nextId("per"), (Variable) rekendatumGlobal, (Predicate2) (s, rd) -> {
+                if (!(rd instanceof java.time.LocalDate d)) return false;   // unset rekendatum -> no match
+                if (vanF != null) { java.time.LocalDate v = vanF.apply(s); if (v == null || d.isBefore(v)) return false; }
+                if (totF != null) { java.time.LocalDate t = totF.apply(s); if (t == null) return false;
+                                    if (inclusief ? d.isAfter(t) : !d.isBefore(t)) return false; }
+                return true;
+            }), List.of());
         }
         // §8.2 / §13.4.15.70 "gedurende de/het gehele jaar|maand": a whole-period check over a tijdsafhankelijk
         // onderwerp. A literal/own-attr grens (0 globals) is a fact-only leaf (handled in leafPredicate, reached by
@@ -2474,7 +2517,13 @@ public final class ExecModelTranspiler {
                 || model.consistenties.stream().anyMatch(c -> dated.test(c.geldigheid()))
                 || model.uniciteiten.stream().anyMatch(u -> dated.test(u.geldigheid()))
                 || model.uniciteitUnies.stream().anyMatch(u -> dated.test(u.geldigheid()))
-                || model.feitCreaties.stream().anyMatch(f -> dated.test(f.geldigheid()));
+                || model.feitCreaties.stream().anyMatch(f -> dated.test(f.geldigheid()))
+                // §8.4.3: a periodevergelijking-voorwaarde compares the Rekendatum against the period bounds
+                // (mirrors DrlTranspiler's tijdgebonden disjunction).
+                || model.resolvedRegels.stream().anyMatch(r -> r.voorwaarde() != null && Conditie.bevatPeriode(r.voorwaarde()))
+                || model.objectCreaties.stream().anyMatch(o -> o.voorwaarde() != null && Conditie.bevatPeriode(o.voorwaarde()))
+                || model.feitCreaties.stream().anyMatch(f -> f.voorwaarde() != null && Conditie.bevatPeriode(f.voorwaarde()))
+                || model.verdelingen.stream().anyMatch(v -> v.voorwaarde() != null && Conditie.bevatPeriode(v.voorwaarde()));
     }
 
     /** §4.2 add the validity-window guard to a construct's pattern: an {@code .expr} over the Rekendatum global

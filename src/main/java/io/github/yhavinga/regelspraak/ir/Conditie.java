@@ -92,6 +92,24 @@ public sealed interface Conditie {
      *  stays a marker. {@code negatie} is the "heeft geen" form ({@code not <filler>(...)}). */
     record VerreRollidmaatschap(Objecttype filler, String backref, boolean negatie, String bron) implements Conditie {}
 
+    /** §8.4.3 / §13.4.15.68-.69 periodevergelijking as a CONDITION: the rule applies during the period
+     *  bounded by the datum-expressies — "vanaf X" / "van X tot [en met] Y" / "tot [en met] X". Standalone it is
+     *  the §13.4.13.1 voorwaardendeel alternative ("… van dd. 1-1-2024 tot dd. 8-2-2025"); inside a compound it
+     *  is the §13.4.15.69 "het is de periode …" bullet. §5.1.3 bound semantics: {@code vanaf} is INCLUSIVE,
+     *  {@code tot} EXCLUSIVE unless {@code totInclusief} (the "tot en met" form). Either bound may be null
+     *  (the one-sided vanaf/tot forms); never both. The engine evaluates scalar rules as of the §4.2 Rekendatum,
+     *  so the transpilers lower this to "rekendatum inside the period" (see docs/grammar-divergences.md). */
+    record Periode(Expr vanaf, Expr tot, boolean totInclusief, String bron) implements Conditie {}
+
+    /** Whether {@code c} is or contains a {@link Periode} — the §4.2 Rekendatum-global trigger, and the
+     *  transpilers' symmetric marker/skip gate for the contexts that cannot host one (a counting quantifier's
+     *  fold, a tijdsafhankelijk doel whose timeline the period should CLIP rather than gate). */
+    static boolean bevatPeriode(Conditie c) {
+        if (c instanceof Periode) return true;
+        if (c instanceof Samengesteld s) return s.onderdelen().stream().anyMatch(Conditie::bevatPeriode);
+        return false;
+    }
+
     /** §13.4.14 compound condition: a quantifier over a bullet list of sub-conditions.
      *  `drempel` is the threshold count N for the counting quantifiers (ten minste / ten
      *  hoogste / precies N, §13.4.14.4); 0 and unused for alle / geen / de. */

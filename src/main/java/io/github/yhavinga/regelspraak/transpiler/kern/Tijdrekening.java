@@ -1,9 +1,11 @@
 package io.github.yhavinga.regelspraak.transpiler.kern;
 
 import io.github.yhavinga.regelspraak.ir.Conditie;
+import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.Eenheid;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 
 /**
  * THE time-unit mapping both back-ends share (single shared implementation): a declared tijdseenheid → the
@@ -37,6 +39,19 @@ public final class Tijdrekening {
             case "kwartaal", "kwartalen", "kw" -> "KWARTAAL";         // §3.7 declares the kwartaal afkorting "kw"
             default -> null;   // the -en reducer leaves unchanged; dagsoort / custom -> marker
         };
+    }
+
+    /** §8.4.3: whether a periodevergelijking bound can be lowered — a §13.2.19 Datum-in-dagen LITERAL or the
+     *  subject's OWN scalar (non-temporal, non-dimensioned) Datum-in-dagen attribute. Everything else — a
+     *  parameter/navigated/computed bound, a Datum-en-tijd (the §4.2 Rekendatum is day-granular) — stays an
+     *  honest marker/skip, SHARED by both back-ends so they fire/skip the same shapes. */
+    public static boolean periodeGrensLowerbaar(Expr grens, Objecttype subject) {
+        if (!(grens.type() instanceof Datatype.DatumInDagen)) return false;
+        if (grens instanceof Expr.Literal) return true;
+        return grens instanceof Expr.AttribuutRef a && a.navigatieRol() == null && !a.set()
+                && a.objecttype() != null && a.objecttype() == subject
+                && !subject.attribuutGranulariteit.containsKey(a.attribuut())
+                && subject.dimensiesVan(a.attribuut()).isEmpty();
     }
 
     /** The §8.2 {@code rsGeheelPeriode}/{@code rsTijdConditie} toets code for a comparison operator
