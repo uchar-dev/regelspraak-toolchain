@@ -1840,3 +1840,28 @@ previously fell through to a silent onopgelost):
 
 Pinned by RangtelwoordTest (bare resolution fires; positie-beyond ERROR incl. the numeric "als 6e genoemde"
 form; multi-binding WARNING + marker; the ordinal-attribute form resolves).
+
+## §9.10 recursie / regelgroep — decided: no construct to implement; the WARNING-plus-fire-cap posture stands
+
+§9.10 names a "regelgroep" that groups rules and marks them recursief (recursion = deriving a property of an
+instance from the same property of ANOTHER instance, legitimized inside such a group with an objectcreatie rule
+carrying value-bound and iteration-bound termination conditions). DECIDED after verification:
+
+- **There is nothing to parse or lower.** v2.3.0 defines NO written form for a regelgroep: no EBNF production
+  (Chapter 13 has none), no syntax diagram, no worked example, no corpus fragment — the word occurs only in the
+  §9.10 prose. The construct is a tooling/organisation-level requirement without concrete syntax; implementing
+  it would mean inventing syntax. Out of transpiler scope until the spec gives it a written form. The §9.10
+  termination conditions on the objectcreatie rule are equally uncheckable without the grouping construct.
+- **Cyclic specifications stay a WARNING + engine fire cap, not the "in principe afgekeurd" hard ERROR.** §9.10
+  itself states the cyclic-vs-recursive distinction "is niet betrouwbaar geautomatiseerd te bepalen"; a hard
+  ERROR would also reject legitimate other-instance recursion the static read-write detector cannot tell apart,
+  and v2.3.0 gives the author no regelgroep syntax to legitimize it with. A voorwaarde may break a cycle at
+  runtime (statically undecidable). The existing posture — resolver kringverwijzing-WARNING + the
+  RegelSpraakEngine 100k-activation cap that throws instead of hanging — is the faithful implementable reading.
+- **Same-instance self-derivation ("x = x met een maximum van m") is tolerated, a documented divergence.**
+  §9.10's first sentence declares deriving a property from the SAME property of the SAME instance foutief; the
+  engine deliberately allows it: no-loop makes the single writer a terminating one-shot (it is excluded from the
+  @watch mask and the kring detector), and the self-read begrenzing/clamp idiom is a natural way to bound an
+  attribute. Flagging it faithfully is a candidate resolver lint (upgrade path: WARNING citing §9.10), deferred
+  until a real model shows the foutief reading matters. Pinned by RecursieTest: the cyclic pair WARNs (never an
+  ERROR), the self-read clamp resolves diagnostics-free.
