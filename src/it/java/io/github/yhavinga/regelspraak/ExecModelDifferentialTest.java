@@ -5215,6 +5215,78 @@ class ExecModelDifferentialTest {
         new BigDecimal(2024), null, new BigDecimal(24), Boolean.TRUE, Boolean.FALSE,
     };
 
+    // ---- UNTESTED-TAIL pins: implemented-but-unasserted behaviours, each pinned to its ABSOLUTE spec value —
+    //      §13.4.17.39/.40 eerste/laatste van (the actual earliest/latest DATE, not just operand legality),
+    //      §6.1.3 Tabel 3 richting-nul vs weg-van-nul distinct rounding of negative/positive halves,
+    //      §8.1.1 Tabel 16 of-gelijk boundary firing (KLEINER_OF_GELIJK / GROTER_OF_GELIJK / LATER_OF_GELIJK
+    //      from source, each against its strict counterpart), and the §13.4.14.4 bare-DE quantor — read as
+    //      conjunction (=ALLE): the §5.6 semantic list does not spell bare-DE out; AND is the natural reading. ----
+    static final String TAIL_DATUM_OT = "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de geboortedatum Datum in dagen;\n    de einddatum Datum in dagen;\n";
+    static final String TAIL_PRIJS_OT = "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    het basistarief Numeriek (getal met 1 decimalen);\n";
+    static final String TAIL_KENMERK_OT = "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de prijs Numeriek (geheel getal);\n    is student kenmerk (bijvoeglijk);\n    is duur kenmerk (bijvoeglijk);\n";
+    static final String DE_QUANTOR_REGEL = TAIL_KENMERK_OT + "Regel R\n    geldig altijd\n"
+            + "        Een Passagier is duur indien er aan de volgende voorwaarden wordt voldaan:\n"
+            + "        • hij student is\n"
+            + "        • zijn prijs groter is dan 10.\n";
+    static final Fixture[] PHASE_TAIL = {
+        // §13.4.17.40 laatste van: the LATEST of the listed dates — mixed literal + attribute operands.
+        single("laatste van twee datums -> de laatste (15-6-2024)",
+            TAIL_DATUM_OT + "Regel R\n    geldig altijd\n        De einddatum van een passagier moet gesteld worden op de laatste van dd. 1-1-2024 en dd. 15-6-2024.\n",
+            Passagier::new, Map.of(), Passagier::getEinddatum),                                                   // 2024-06-15
+        single("laatste van attribuut en literal -> het attribuut wint (1-1-2030)",
+            TAIL_DATUM_OT + "Regel R\n    geldig altijd\n        De einddatum van een passagier moet gesteld worden op de laatste van zijn geboortedatum en dd. 15-6-2024.\n",
+            () -> passagier(p -> p.setGeboortedatum(LocalDate.of(2030, 1, 1))), Map.of(), Passagier::getEinddatum), // 2030-01-01
+        single("eerste van twee datums -> de eerste (1-1-2024)",
+            TAIL_DATUM_OT + "Regel R\n    geldig altijd\n        De einddatum van een passagier moet gesteld worden op de eerste van dd. 1-1-2024 en dd. 15-6-2024.\n",
+            Passagier::new, Map.of(), Passagier::getEinddatum),                                                   // 2024-01-01
+        // §6.1.3 Tabel 3: RICHTING_NUL truncates toward zero; WEG_VAN_NUL rounds away — distinct on ±x,5.
+        single("afronding richting nul: -2,5 -> -2",
+            TAIL_PRIJS_OT + "Regel R\n    geldig altijd\n        De prijs van een passagier moet gesteld worden op zijn basistarief richting nul afgerond op 0 decimalen.\n",
+            () -> passagier(p -> p.setBasistarief(new BigDecimal("-2.5"))), Map.of(), Passagier::getPrijs),       // -2
+        single("afronding weg van nul: -2,5 -> -3",
+            TAIL_PRIJS_OT + "Regel R\n    geldig altijd\n        De prijs van een passagier moet gesteld worden op zijn basistarief weg van nul afgerond op 0 decimalen.\n",
+            () -> passagier(p -> p.setBasistarief(new BigDecimal("-2.5"))), Map.of(), Passagier::getPrijs),       // -3
+        single("afronding richting nul: 2,5 -> 2",
+            TAIL_PRIJS_OT + "Regel R\n    geldig altijd\n        De prijs van een passagier moet gesteld worden op zijn basistarief richting nul afgerond op 0 decimalen.\n",
+            () -> passagier(p -> p.setBasistarief(new BigDecimal("2.5"))), Map.of(), Passagier::getPrijs),        // 2
+        single("afronding weg van nul: 2,5 -> 3",
+            TAIL_PRIJS_OT + "Regel R\n    geldig altijd\n        De prijs van een passagier moet gesteld worden op zijn basistarief weg van nul afgerond op 0 decimalen.\n",
+            () -> passagier(p -> p.setBasistarief(new BigDecimal("2.5"))), Map.of(), Passagier::getPrijs),        // 3
+        // §8.1.1 Tabel 16 of-gelijk boundary firing, each against its strict counterpart on the SAME value.
+        single("groter of gelijk aan: op de grens -> vuurt",
+            TAIL_KENMERK_OT + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn prijs groter of gelijk is aan 100.\n",
+            () -> passagier(p -> p.setPrijs(new BigDecimal(100))), Map.of(), Passagier::isDuur),                  // true
+        single("groter dan (strikt): op de grens -> vuurt niet",
+            TAIL_KENMERK_OT + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn prijs groter is dan 100.\n",
+            () -> passagier(p -> p.setPrijs(new BigDecimal(100))), Map.of(), Passagier::isDuur),                  // false
+        single("kleiner of gelijk aan: op de grens -> vuurt",
+            TAIL_KENMERK_OT + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn prijs kleiner of gelijk is aan 100.\n",
+            () -> passagier(p -> p.setPrijs(new BigDecimal(100))), Map.of(), Passagier::isDuur),                  // true
+        // §8.1.1 Tabel 16 LATER_OF_GELIJK from source: on the boundary fires, the day before does not.
+        single("later of gelijk aan: op de grensdag -> vuurt",
+            TAIL_DATUM_OT.replace("de einddatum Datum in dagen;\n", "de einddatum Datum in dagen;\n    is duur kenmerk (bijvoeglijk);\n")
+            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn geboortedatum later of gelijk is aan 1-1-2000.\n",
+            () -> passagier(p -> p.setGeboortedatum(LocalDate.of(2000, 1, 1))), Map.of(), Passagier::isDuur),     // true
+        single("later of gelijk aan: dag ervoor -> vuurt niet",
+            TAIL_DATUM_OT.replace("de einddatum Datum in dagen;\n", "de einddatum Datum in dagen;\n    is duur kenmerk (bijvoeglijk);\n")
+            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn geboortedatum later of gelijk is aan 1-1-2000.\n",
+            () -> passagier(p -> p.setGeboortedatum(LocalDate.of(1999, 12, 31))), Map.of(), Passagier::isDuur),   // false
+        // §13.4.14.4 the bare-DE quantor ("er aan de volgende voorwaarden wordt voldaan") = conjunction.
+        single("DE-quantor: beide bullets waar -> vuurt",
+            DE_QUANTOR_REGEL, () -> passagier(p -> { p.setStudent(true); p.setPrijs(new BigDecimal(20)); }),
+            Map.of(), Passagier::isDuur),                                                                          // true
+        single("DE-quantor: één bullet onwaar -> vuurt niet",
+            DE_QUANTOR_REGEL, () -> passagier(p -> { p.setStudent(false); p.setPrijs(new BigDecimal(20)); }),
+            Map.of(), Passagier::isDuur),                                                                          // false
+    };
+    static final Object[] PHASE_TAIL_EXPECTED = {
+        LocalDate.of(2024, 6, 15), LocalDate.of(2030, 1, 1), LocalDate.of(2024, 1, 1),
+        new BigDecimal(-2), new BigDecimal(-3), new BigDecimal(2), new BigDecimal(3),
+        Boolean.TRUE, Boolean.FALSE, Boolean.TRUE,
+        Boolean.TRUE, Boolean.FALSE,
+        Boolean.TRUE, Boolean.FALSE,
+    };
+
     // ---- Phase H value-path ops: §13.4.17.14 tot de macht, §6.8 percentage (% van), §6.5 gedeeld door (ABS),
     //      §6.1.4 begrenzing — ported runtime helpers rsMacht/rsMachtReeel/rsGedeeldAbs/rsBegrens. ----
     static final Fixture[] PHASE_H_VAL = {
@@ -5787,6 +5859,21 @@ class ExecModelDifferentialTest {
     @Test void phase_H_versie_geldigheid_matches_drl_back_end()     { runDifferential("Phase H geldig", PHASE_GELDIG, 12); }
     @Test void phase_PERIODE_matches_drl_back_end()                 { runDifferential("Phase PERIODE", PHASE_PERIODE, 17); }
     @Test void phase_REKENDATUM_matches_drl_back_end()              { runDifferential("Phase REKENDATUM", PHASE_REKENDATUM, 13); }
+    @Test void phase_TAIL_matches_drl_back_end()                    { runDifferential("Phase TAIL", PHASE_TAIL, 14); }
+    // the untested-tail behaviours pinned to their ABSOLUTE spec values (DRL as oracle first, then parity).
+    @Test void phase_TAIL_is_spec_correct() {
+        for (int i = 0; i < PHASE_TAIL.length; i++) {
+            Fixture f = PHASE_TAIL[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_TAIL_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     // §5.3: every fixture pinned to its ABSOLUTE value (DRL as oracle first, then parity).
     @Test void phase_REKENDATUM_is_spec_correct() {
         for (int i = 0; i < PHASE_REKENDATUM.length; i++) {

@@ -406,4 +406,66 @@ class ModelTest {
         assertTrue(ft.rollen.get(0).meervoudig(), "passagier is meervoudig (meerdere passagiers ...)");
         assertFalse(ft.rollen.get(1).meervoudig(), "reis mag niet meervoudig zijn enkel omdat de relatiebeschrijving 'reis' noemt");
     }
+
+    @Test void extensie_van_objecttype_merget_leden_in_het_bestaande_type() {
+        // §13.3.1.2 extensievanobjecttype: the extension's attributes/kenmerken land on the ALREADY-declared
+        // objecttype (one merged type, not a second type) — the toka-04 shape, until now only parse-covered.
+        String src = """
+            Objecttype de Natuurlijk persoon (mv: Natuurlijke personen) (bezield)
+                de leeftijd Numeriek (geheel getal);
+            Extensie van objecttype de Natuurlijk persoon
+                het burgerservicenummer Tekst;
+                is student kenmerk (bijvoeglijk);
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+        assertEquals(1, m.objecttypen.size(), "de extensie mag geen tweede objecttype opleveren");
+        Objecttype np = m.objecttypen.get("Natuurlijk persoon");
+        assertInstanceOf(Datatype.Numeriek.class, np.attributen.get("leeftijd"), "het oorspronkelijke attribuut blijft");
+        assertInstanceOf(Datatype.Tekst.class, np.attributen.get("burgerservicenummer"), "het extensie-attribuut is gemerged");
+        assertTrue(np.kenmerken.contains("student"), "het extensie-kenmerk is gemerged");
+    }
+
+    @Test void omrekenspecificatie_legt_de_factor_naar_canoniek_vast() {
+        // §13.3.5 eenheidsysteem + omrekenspecificatie: "de kilometer km = 1000 m" must resolve to an Eenheid
+        // whose factorNaarCanoniek VALUE is 1000 with canonical unit m — until now only convertibility (not the
+        // factor value itself) was asserted.
+        String src = """
+            Eenheidsysteem Afstand
+                de meter          m
+                de kilometer      km    =    1000 m
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+        var km = m.resolveEenheid("km");
+        assertNotNull(km, "km ontbreekt");
+        assertEquals("m", km.canoniek(), "canonieke eenheid");
+        assertEquals(0, new java.math.BigDecimal(1000).compareTo(km.factorNaarCanoniek()),
+                () -> "factorNaarCanoniek: " + km.factorNaarCanoniek());
+        var meter = m.resolveEenheid("m");
+        assertEquals(0, java.math.BigDecimal.ONE.compareTo(meter.factorNaarCanoniek()),
+                () -> "de basiseenheid heeft factor 1: " + meter.factorNaarCanoniek());
+    }
+
+    @Test void koptekst_regel_parseert_zonder_fouten() {
+        // §13.3.1.1/.5: a koptekst is a '--- heading' line BETWEEN an objecttype's members
+        // (((<koptekst> | <kenmerk> | <attribuut>) \n)+). A mis-lex (the '---' read as a bullet DASH or
+        // minus) would surface as a syntax error here; the surrounding members must resolve normally.
+        String src = """
+            Objecttype de Natuurlijk persoon (mv: Natuurlijke personen) (bezield)
+                --- persoonsgegevens
+                de leeftijd Numeriek (geheel getal);
+                --- kenmerken
+                is student kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    De leeftijd van een Natuurlijk persoon moet gesteld worden op 42.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "een koptekst tussen leden mag geen fouten geven: " + m.errors());
+        Objecttype np = m.objecttypen.get("Natuurlijk persoon");
+        assertInstanceOf(Datatype.Numeriek.class, np.attributen.get("leeftijd"), "attribuut na een koptekst resolvet");
+        assertTrue(np.kenmerken.contains("student"), "kenmerk na een koptekst resolvet");
+        assertEquals(1, m.resolvedRegels.size(), "de regel is gewoon geresolved");
+    }
 }

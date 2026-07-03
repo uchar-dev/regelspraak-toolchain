@@ -55,6 +55,9 @@ public class Passagier {
     private LocalDate geboortedatum;                      // §8.4 a non-temporal attribute for the MIXED compound static guard
     public LocalDate getGeboortedatum() { return geboortedatum; }
     public void setGeboortedatum(LocalDate v) { this.geboortedatum = v; }
+    private LocalDate einddatum;                          // §13.4.17.39/.40 the eerste/laatste-van value-pin doel
+    public LocalDate getEinddatum() { return einddatum; }
+    public void setEinddatum(LocalDate v) { this.einddatum = v; }
     private LocalDate startpuntContractperiode;           // §9.9 the synthetic startpunt-anchor of a variable-startpunt tijdlijn
     public LocalDate getStartpuntContractperiode() { return startpuntContractperiode; }
     public void setStartpuntContractperiode(LocalDate v) { this.startpuntContractperiode = v; }

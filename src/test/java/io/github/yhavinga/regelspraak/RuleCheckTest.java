@@ -2176,6 +2176,38 @@ class RuleCheckTest {
                 () -> "een parameter-grens moet een eerlijke marker blijven:\n" + drl);
     }
 
+    @Test void dagsoortdefinitie_zonder_voorwaarde_en_duplicaat_geven_een_waarschuwing() {
+        // §9.8/§13.4.11: a bare dagsoortdefinitie (no voorwaarde) is dropped with a WARNING, and a SECOND
+        // definitie of the same dagsoort warns first-wins — both messages existed but no test named them.
+        String zonder = "Dagsoort de kerstdag (mv: kerstdagen)\n"
+            + "Regel altijd kerst\n    geldig altijd\n        Een dag is een kerstdag.\n";
+        RegelSpraakModel mz = Resolver.resolve(zonder);
+        assertTrue(mz.diagnostics.stream().anyMatch(d -> d.message().contains("mist een voorwaarde")),
+                () -> "een dagsoortdefinitie zonder voorwaarde moet waarschuwen: " + mz.diagnostics);
+        String dubbel = "Dagsoort de kerstdag (mv: kerstdagen)\n"
+            + "Regel kerst een\n    geldig altijd\n        Een dag is een kerstdag\n"
+            + "        indien de dag uit (de dag) gelijk is aan 25.\n"
+            + "Regel kerst twee\n    geldig altijd\n        Een dag is een kerstdag\n"
+            + "        indien de dag uit (de dag) gelijk is aan 26.\n";
+        RegelSpraakModel md = Resolver.resolve(dubbel);
+        assertTrue(md.diagnostics.stream().anyMatch(d -> d.message().contains("meerdere definities")),
+                () -> "een tweede definitie van dezelfde dagsoort moet eerste-wint waarschuwen: " + md.diagnostics);
+    }
+
+    @Test void ongelijk_aan_legaliteit_wordt_zelfstandig_gehandhaafd() {
+        // §5.6 Tabel 43: "ongelijk aan" has the SAME legality rows as "gelijk aan" — until now only the shared
+        // GELIJK switch case was exercised; this names the ONGELIJK operator explicitly: a cross-family
+        // (getal vs tekst) ongelijk is an ERROR, a same-family one resolves clean.
+        String fout = "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    de naam Tekst;\n    is duur kenmerk (bijvoeglijk);\n"
+            + "Regel R\n    geldig altijd\n        Een Passagier is duur indien zijn prijs ongelijk is aan zijn naam.\n";
+        RegelSpraakModel mf = Resolver.resolve(fout);
+        assertTrue(mf.errors().stream().anyMatch(d -> d.message().contains("gelijk/ongelijk vereist operanden van hetzelfde datatype")),
+                () -> "een cross-familie ongelijk moet Tabel 43 melden: " + mf.errors());
+        String goed = fout.replace("aan zijn naam", "aan 100");
+        RegelSpraakModel mg = Resolver.resolve(goed);
+        assertTrue(mg.errors().isEmpty(), () -> "een getal-ongelijk-getal is legaal: " + mg.errors());
+    }
+
     @Test void teken_beperking_wordt_statisch_gehandhaafd_op_literal_waarden() {
         // §3.3.1 / §13.3.3.7: the Teken-beperking narrows the toegestane waarden (§3.3.6 Tabel). The spec
         // states no runtime rule for computed values (unlike §6.1.2 decimals), so enforcement is resolver-
