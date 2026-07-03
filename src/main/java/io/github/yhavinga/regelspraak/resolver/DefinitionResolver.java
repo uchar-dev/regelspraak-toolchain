@@ -138,15 +138,15 @@ public final class DefinitionResolver {
     // ---------------- §13.3.3/§13.3.4 datatypes & domains ----------------
     private void domein(DomeinDefinitionContext ctx) {
         Datatype dt = ctx.enumeratieSpecificatie() != null
-                ? enumeratie(ctx.enumeratieSpecificatie())
+                ? enumeratie(src(ctx.domeinNaam()), ctx.enumeratieSpecificatie())
                 : datatypeVan(ctx.datatype(), null);
         model.domeinen.put(src(ctx.domeinNaam()), dt);
     }
 
-    private Datatype enumeratie(EnumeratieSpecificatieContext ctx) {
+    private Datatype enumeratie(String domein, EnumeratieSpecificatieContext ctx) {
         List<String> waarden = ctx.ENUM_LITERAL().stream()
                 .map(t -> unquote(t.getText())).toList();
-        return new Datatype.Enumeratie(waarden);
+        return new Datatype.Enumeratie(domein, waarden);
     }
 
     /** Resolve an attribute/parameter type: a concrete datatype, or a (possibly forward) domain reference. */

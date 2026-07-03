@@ -35,8 +35,9 @@ public sealed interface Datatype
     record DatumInDagen() implements Datatype {}
     /** §13.3.3.6 Datum en tijd in millisecondes. */
     record DatumTijd() implements Datatype {}
-    /** §13.3.4.2 Enumeratie domain. */
-    record Enumeratie(List<String> waarden) implements Datatype {}
+    /** §13.3.4.2 Enumeratie domain: the declaring domain's NAME (its identity — Tabel 36/43/61 rij 7
+     *  require the SAME enumeration on both sides, not merely any enumeration) plus the declared value set. */
+    record Enumeratie(String domein, List<String> waarden) implements Datatype {}
     /** A reference that could not be resolved to a concrete datatype. */
     record Onbekend(String reden) implements Datatype {}
 
@@ -85,7 +86,7 @@ public sealed interface Datatype
             case Booleaan b   -> "Boolean";
             case DatumInDagen d -> "Datum in dagen";
             case DatumTijd d  -> "Datum-tijd";
-            case Enumeratie e -> "Enumeratie";
+            case Enumeratie e -> "Enumeratie " + e.domein();
             case Onbekend o   -> "onbekend(" + o.reden() + ")";
         };
     }

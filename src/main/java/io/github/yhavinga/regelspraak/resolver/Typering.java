@@ -150,6 +150,8 @@ public final class Typering {
                     yield Resultaat.fout("gelijk/ongelijk vereist operanden van hetzelfde datatype, kreeg " + l.naam() + " en " + r.naam());
                 String p = datumPrecisieFout(l, r, "gelijk/ongelijk vereist");
                 if (p != null) yield Resultaat.fout(p);
+                String e = enumDomeinFout(l, r, "gelijk/ongelijk vereist");
+                if (e != null) yield Resultaat.fout(e);
                 if (l.isGetalachtig()) {
                     String u = eenhedenCompatibel(l, r, "gelijk");
                     if (u != null) yield Resultaat.fout(u);
@@ -258,6 +260,8 @@ public final class Typering {
             return "kan een waarde van type " + waarde.naam() + " niet toekennen aan een " + doel.naam();
         String p = datumPrecisieFout(doel, waarde, "toekenning vereist");
         if (p != null) return p;
+        String e = enumDomeinFout(doel, waarde, "toekenning vereist");
+        if (e != null) return e;
         if (!doel.isGetalachtig()) return null;
         String eenheidFout = eenhedenCompatibel(doel, waarde, "toekenning");
         if (eenheidFout != null) return eenheidFout;
@@ -368,6 +372,16 @@ public final class Typering {
         if (a.isDatum() && b.isDatum() && !a.getClass().equals(b.getClass()))
             return wat + " dezelfde tijd-precisie, kreeg " + a.naam() + " en " + b.naam()
                     + "; converteer expliciet (bijv. 'de datum met jaar, maand en dag uit …')";
+        return null;
+    }
+
+    /** Tabel 36/43 rij 7 (vergelijking) and Tabel 61 rij 7 (toekenning): both sides must be the SAME
+     *  enumeration — two attributes of DIFFERENT declared domains used to pass silently on class equality
+     *  (a comparison that could only be label-coincidence, an assignment that puts a foreign label in). */
+    private static String enumDomeinFout(Datatype a, Datatype b, String wat) {
+        if (a instanceof Datatype.Enumeratie ea && b instanceof Datatype.Enumeratie eb
+                && !ea.domein().equals(eb.domein()))
+            return wat + " dezelfde enumeratie, kreeg " + ea.naam() + " en " + eb.naam() + " (rij 7)";
         return null;
     }
 

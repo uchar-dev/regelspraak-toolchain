@@ -1893,6 +1893,68 @@ class RuleCheckTest {
                 () -> "geheel + geheel moet de elfproef-gate passeren: " + m.errors());
     }
 
+    @Test void enumeratie_domeinvalidatie_wordt_gemeld() {
+        // §13.3.4.2 + Tabel 36/43 rij 7 / Tabel 61 rij 7. Three formerly silent-accept shapes:
+        // (a) an UNDECLARED label assigned ('paars' into Kleur={rood,groen} — the T2 probe: a foreign
+        //     string in the setter), (b) an undeclared label compared (a condition that can never be
+        //     true — a dead rule), (c) two DIFFERENT enum domains compared/assigned (class-equality
+        //     let them pass). Declared labels and same-domain pairs stay clean.
+        String hdr = """
+            Domein Kleur is van het type Enumeratie
+                'rood'
+                'groen'
+            Domein Smaak is van het type Enumeratie
+                'zoet'
+                'zuur'
+            Objecttype de Ding
+                de kleur Kleur;
+                de tint Kleur;
+                de smaak Smaak;
+                is ok kenmerk (bijvoeglijk);
+            """;
+        RegelSpraakModel ma = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    De kleur van een Ding moet gesteld worden op 'paars'.
+            """);
+        assertTrue(ma.errors().stream().anyMatch(d -> d.message().contains("geen waarde van Enumeratie Kleur")),
+                () -> "een niet-gedeclareerd label in een toekenning moet melden, kreeg: " + ma.errors());
+        RegelSpraakModel mb = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    Een Ding is ok indien de kleur van een Ding gelijk is aan 'paars'.
+            """);
+        assertTrue(mb.errors().stream().anyMatch(d -> d.message().contains("geen waarde van Enumeratie Kleur")),
+                () -> "een niet-gedeclareerd label in een voorwaarde moet melden, kreeg: " + mb.errors());
+        RegelSpraakModel mc = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    Een Ding is ok indien de kleur van een Ding gelijk is aan de smaak van een Ding.
+            """);
+        assertTrue(mc.errors().stream().anyMatch(d -> d.message().contains("dezelfde enumeratie")),
+                () -> "een cross-domein gelijk moet melden (rij 7), kreeg: " + mc.errors());
+        RegelSpraakModel md = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    De kleur van een Ding moet gesteld worden op de smaak van een Ding.
+            """);
+        assertTrue(md.errors().stream().anyMatch(d -> d.message().contains("dezelfde enumeratie")),
+                () -> "een cross-domein toekenning moet melden (rij 7), kreeg: " + md.errors());
+        RegelSpraakModel me = Resolver.resolve(hdr + """
+            Regel a
+                geldig altijd
+                    De kleur van een Ding moet gesteld worden op 'rood'.
+            Regel b
+                geldig altijd
+                    Een Ding is ok indien de kleur van een Ding gelijk is aan 'groen'.
+            Regel c
+                geldig altijd
+                    De kleur van een Ding moet gesteld worden op de tint van een Ding.
+            """);
+        assertTrue(me.errors().isEmpty(),
+                () -> "gedeclareerde labels en zelfde-domein paren horen te resolven: " + me.errors());
+    }
+
     @Test void gehele_periode_gekwalificeerde_kenmerk_subselectie_wordt_gemarkeerd_niet_stil_gedropt() {
         // §8.2: a "(niet) gedurende de/het gehele <periode>" whole-period qualifier on a kenmerk SUBSELECTIE is not yet
         // lowered onto the accumulate source. The resolver must MARKER it rather than SILENTLY binding a static kenmerk

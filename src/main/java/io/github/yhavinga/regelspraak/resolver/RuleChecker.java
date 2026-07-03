@@ -14,6 +14,7 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel.*;
 import io.github.yhavinga.regelspraak.parser.RegelSpraak;
 import io.github.yhavinga.regelspraak.parser.RegelSpraak.*;
 import io.github.yhavinga.regelspraak.parser.RegelSpraakLexer;
+import io.github.yhavinga.regelspraak.transpiler.kern.Literalen;
 import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
@@ -667,6 +668,8 @@ final class RuleChecker {
             for (ResolvedObjectCreatie.Toekenning t : toek) {
                 Datatype doelType = nieuwType.attribuut(t.attribuut());
                 if (doelType == null) continue;
+                if (t.waarde() instanceof Expr.Literal lit)   // §13.3.4.2 enum-label membership, like registreer
+                    keurEnumLabel(doelType, Literalen.enumLabel(lit.waarde()), oc.getStart().getLine());
                 String fout = Typering.toekenning(doelType, t.waarde().type());
                 if (fout != null)
                     model.diagnostics.add(new Diagnostic(Severity.ERROR, "objectcreatie: " + fout,
@@ -847,10 +850,29 @@ final class RuleChecker {
         Expr waardeExpr = bouwer.bouw(waarde);
         model.resolvedRegels.add(new ResolvedRegel(naam, soort, doelExpr, waardeExpr, voorwaarde, geldigheid));
         Datatype doelType = doelExpr.type(), waardeType = waardeExpr.type();
+        // §13.3.4.2 membership runs BEFORE the Onbekend bail: an enum literal is deliberately typed
+        // Onbekend (its domain is context-dependent), and the doel IS that context here.
+        if (waardeExpr instanceof Expr.Literal lit)
+            keurEnumLabel(doelType, Literalen.enumLabel(lit.waarde()), line);
         if (doelType.isOnbekend() || waardeType.isOnbekend()) return; // not enough resolved to judge
         String fout = Typering.toekenning(doelType, waardeType);
         if (fout != null)
             model.diagnostics.add(new Diagnostic(Severity.ERROR, soort.name().toLowerCase() + ": " + fout, line));
+    }
+
+    /** Tabel 36/43/61 rij 7 + §13.3.4.2: a written enum label must be IN the context domain's declared
+     *  value set — an undeclared label is a dead comparison or a foreign-value assignment, silently. The
+     *  literal itself stays typed Onbekend (which domain applies IS this context); a null label (the
+     *  expression is not a quoted enumeratiewaarde) or a non-enum context makes no claim. */
+    private void keurEnumLabel(Datatype context, String label, int line) {
+        if (!(context instanceof Datatype.Enumeratie en) || label == null || en.waarden().contains(label)) return;
+        model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                "'" + label + "' is geen waarde van " + en.naam() + " " + en.waarden() + " (§13.3.4.2)", line));
+    }
+
+    /** The enum label when the WHOLE expressie is a single quoted enumeratiewaarde, else null. */
+    private static String enumLabelVan(ExpressieContext e) {
+        return e == null ? null : Literalen.enumLabel(src(e).trim());
     }
 
     // ---- §13.4.13/.14/.15 condition IR (structure for the transpiler "when" side) ----
@@ -1722,7 +1744,8 @@ final class RuleChecker {
         int line = c.getStart().getLine();
         if (op.vergelijkingsTekenGesplitst() != null && op.expressie() != null)
             meldVergelijk(cmpOf(op.vergelijkingsTekenGesplitst()), lhs, infer(op.expressie()),
-                    bareGetalLiteraal(c.expressie()), bareGetalLiteraal(op.expressie()), line);
+                    bareGetalLiteraal(c.expressie()), bareGetalLiteraal(op.expressie()), line,
+                    enumLabelVan(c.expressie()), enumLabelVan(op.expressie()));
         else if (op.AAN_DE_ELFPROEF() != null)
             meldPredicaat(Typering.UnairePred.ELFPROEF, lhs, line);
         else if (op.NUMERIEK_IS_MET_EXACT() != null || op.NUMERIEK_ZIJN_MET_EXACT() != null)
@@ -1737,7 +1760,7 @@ final class RuleChecker {
         if (c.expressie() == null) return;
         Datatype lhs = infer(c.expressie());
         int line = c.getStart().getLine();
-        checkToplevelOp(lhs, c.toplevelOperator(), line, bareGetalLiteraal(c.expressie()));
+        checkToplevelOp(lhs, c.toplevelOperator(), line, bareGetalLiteraal(c.expressie()), enumLabelVan(c.expressie()));
     }
 
     private void checkElemVoorwaarde(ElementaireVoorwaardeContext c) {
@@ -1745,15 +1768,17 @@ final class RuleChecker {
         Datatype lhs = infer(c.expressie());
         int line = c.getStart().getLine();
         boolean lhsLit = bareGetalLiteraal(c.expressie());
-        checkNonToplevelOp(lhs, c.nonToplevelOperator(), line, lhsLit);
-        checkToplevelOp(lhs, c.toplevelOperator(), line, lhsLit);
+        String lhsEnum = enumLabelVan(c.expressie());
+        checkNonToplevelOp(lhs, c.nonToplevelOperator(), line, lhsLit, lhsEnum);
+        checkToplevelOp(lhs, c.toplevelOperator(), line, lhsLit, lhsEnum);
     }
 
     /** Type-check a verb-split / trailing operator (vergelijking, elfproef, numeriek-met-exact). */
-    private void checkToplevelOp(Datatype lhs, ToplevelOperatorContext op, int line, boolean lhsLit) {
+    private void checkToplevelOp(Datatype lhs, ToplevelOperatorContext op, int line, boolean lhsLit, String lhsEnum) {
         if (op == null) return;
         if (op.vergelijkingsTekenGesplitst() != null && op.expressie() != null)
-            meldVergelijk(cmpOf(op.vergelijkingsTekenGesplitst()), lhs, infer(op.expressie()), lhsLit, bareGetalLiteraal(op.expressie()), line);
+            meldVergelijk(cmpOf(op.vergelijkingsTekenGesplitst()), lhs, infer(op.expressie()), lhsLit, bareGetalLiteraal(op.expressie()), line,
+                    lhsEnum, enumLabelVan(op.expressie()));
         else if (op.AAN_DE_ELFPROEF() != null)
             meldPredicaat(Typering.UnairePred.ELFPROEF, lhs, line);
         else if (op.NUMERIEK_IS_MET_EXACT() != null || op.NUMERIEK_ZIJN_MET_EXACT() != null)
@@ -1761,18 +1786,27 @@ final class RuleChecker {
     }
 
     /** Type-check a verb-leading operator (vergelijking, elfproef, numeriek-met-exact). */
-    private void checkNonToplevelOp(Datatype lhs, NonToplevelOperatorContext op, int line, boolean lhsLit) {
+    private void checkNonToplevelOp(Datatype lhs, NonToplevelOperatorContext op, int line, boolean lhsLit, String lhsEnum) {
         if (op == null) return;
         if (op.vergelijkingsTeken() != null && op.expressie() != null)
-            meldVergelijk(cmpOf(op.vergelijkingsTeken()), lhs, infer(op.expressie()), lhsLit, bareGetalLiteraal(op.expressie()), line);
+            meldVergelijk(cmpOf(op.vergelijkingsTeken()), lhs, infer(op.expressie()), lhsLit, bareGetalLiteraal(op.expressie()), line,
+                    lhsEnum, enumLabelVan(op.expressie()));
         else if (op.AAN_DE_ELFPROEF() != null)
             meldPredicaat(Typering.UnairePred.ELFPROEF, lhs, line);
         else if (op.NUMERIEK_MET_EXACT() != null)
             meldPredicaat(Typering.UnairePred.NUMERIEK_MET_EXACT, lhs, line);
     }
 
-    private void meldVergelijk(Typering.CmpOp op, Datatype l, Datatype r, boolean lLit, boolean rLit, int line) {
+    private void meldVergelijk(Typering.CmpOp op, Datatype l, Datatype r, boolean lLit, boolean rLit, int line,
+                               String lEnum, String rEnum) {
         if (op == null) return;
+        // §13.3.4.2 membership: an enum LITERAL on one side is checked against the OTHER side's declared
+        // domain (the literal itself is typed Onbekend — its domain IS this context). GELIJK/ONGELIJK only:
+        // Tabel 36/43 rij 7 is the enum comparison row; the ordering tables carry no Enumeratie row.
+        if (op == Typering.CmpOp.GELIJK || op == Typering.CmpOp.ONGELIJK) {
+            keurEnumLabel(l, rEnum, line);
+            keurEnumLabel(r, lEnum, line);
+        }
         // §13.3.5 / typeringen: a DIMENSIONLESS numeric literal adopts the other operand's unit in a comparison
         // (the spec's TOKA "de afstand tot bestemming in kilometers van zijn reis is groter dan 0", main-spec
         // L325 of the concatenated casus). Promote the literal so the unit rule does not reject a legal
