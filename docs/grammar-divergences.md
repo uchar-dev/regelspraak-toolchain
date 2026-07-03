@@ -1677,3 +1677,17 @@ forms ("de datum met jaar, maand en dag uit …" rebuilds a day-precision date).
 cross-precision ordering is well-defined; the asymmetry is the spec's and is kept. This also upgraded the
 differential fixture "mixed datum/datum-tijd literal": formerly the exec back-end skipped it honestly at
 transpile time; the resolver now reports it at authoring time.
+
+## §4.10 Tabel 21 — "som van" excludes a Percentage operand (decided: the strict Numeriek reading)
+
+Tabel 21 says the som-van operands "moeten wel allemaal numeriek zijn" and lists every operand/result row as
+Numeriek — wording identical to the MIN/MAX Tabellen 22/23, which this resolver already enforces strictly. The
+tension: §3.3.5 calls Percentage "in basis een gespecialiseerd numeriek datatype", under which reading a
+Percentage som would be admissible. Decided for the STRICT reading, on the spec's own drafting pattern: where it
+means to admit Percentage it adds an explicit Percentage row AND prose ("kan alleen worden toegepast op numerieke
+en percentage expressies" — §5.1 Tabel 32, §5.3 Tabel 36), and where it means to exclude it, it says so
+(§6.7: maal "niet mogelijk … Percentage expressies"). Tabel 21/22/23 do neither, so Percentage is out — the
+single §3.3.5 sentence does not override the tables. Consequence: `de som van <Percentage>` is a resolver ERROR
+(was: silently summed); the differential fixture that summed a Percentage end-to-end (review FSD-1) converts to
+a resolver-ERROR pin. The exec back-end's isGetalachtig fold guard stays as robustness, now unreachable for
+aggregation operands by construction.

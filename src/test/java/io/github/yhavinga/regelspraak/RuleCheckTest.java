@@ -792,6 +792,28 @@ class RuleCheckTest {
                 () -> "een Percentage min/max-operand had gemeld moeten worden, kreeg: " + m.errors());
     }
 
+    @Test void som_van_percentages_wordt_gemeld() {
+        // §4.10 Tabel 21 lists the som-van operand strictly as Numeriek, wording identical to the MIN/MAX
+        // Tabel 22/23 — decided consistently (the spec adds a Percentage row exactly where it admits one,
+        // §5.1/§5.3; see grammar-divergences). A Percentage som used to resolve silently.
+        String src = """
+            Objecttype de Vlucht
+                de totaalkorting Percentage (geheel getal);
+            Objecttype de Passagier (mv: passagiers)
+                de korting Percentage (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel pctsom
+                geldig altijd
+                    De totaalkorting van een reis moet berekend worden als de som van de korting van alle passagiers van de reis.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("som van vereist numerieke")),
+                () -> "een Percentage som-operand had gemeld moeten worden, kreeg: " + m.errors());
+    }
+
     @Test void schone_maximale_waarde_geen_fout() {
         // two numeriek operands, no units -> no false positive.
         String src = MODEL + """

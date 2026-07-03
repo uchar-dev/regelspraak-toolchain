@@ -1695,17 +1695,21 @@ class ExecModelDifferentialTest {
             () -> { Vlucht v = new Vlucht(); return List.of(v, pas(v, 30), pas(v, 70), pas(v, 40)); },
             Map.of("grens", new BigDecimal(50)),
             l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // max{30,40} = 40
-        // §4.8 a PERCENTAGE element attr + Percentage Parameter RHS — the filterSource LHS guard must accept percentage
-        // (isGetalachtig), not just numeriek; the runtime stores a Percentage as a BigDecimal so the fold matches. (DRL
-        // fired it while the isNumeriek-only guard made the exec skip — review FSD-1.) SOM of prijs<grens(50) -> 70.
-        new Fixture("SOM with a PERCENTAGE PARAMETER-RHS comparison die-filter (prijs < de grens)",
-            "Parameter de grens : Percentage (geheel getal)\nObjecttype de Vlucht\n    de totaalprijs Percentage (geheel getal);\nObjecttype de Passagier\n    de prijs Percentage (geheel getal);\n" + AGG_FEIT
-            + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die kleiner zijn dan de grens.\n",
-            () -> { Vlucht v = new Vlucht(); return List.of(v, pas(v, 30), pas(v, 70), pas(v, 40)); },
-            Map.of("grens", new BigDecimal(50)),
-            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 30 + 40 = 70
     };
-    static final Object[] PHASE_C_PARAM_RHS_EXPECTED = { new BigDecimal(70), new BigDecimal(40), new BigDecimal(70) };
+    static final Object[] PHASE_C_PARAM_RHS_EXPECTED = { new BigDecimal(70), new BigDecimal(40) };
+
+    /** §4.10 Tabel 21 lists the som-van operand strictly as Numeriek (decided like MIN/MAX Tabel 22/23; see
+     *  grammar-divergences). The former review-FSD-1 fixture here summed a PERCENTAGE attribute end-to-end —
+     *  a shape the resolver now rejects, so it converts to a resolver-ERROR pin. (The exec filterSource's
+     *  isGetalachtig guard the fixture once exercised stays as harmless robustness; every aggregation operand
+     *  reaching it is now Numeriek by construction.) */
+    @Test void som_van_percentage_operand_is_een_resolver_fout() {
+        RegelSpraakModel m = Resolver.resolve(
+            "Parameter de grens : Percentage (geheel getal)\nObjecttype de Vlucht\n    de totaalprijs Percentage (geheel getal);\nObjecttype de Passagier\n    de prijs Percentage (geheel getal);\n" + AGG_FEIT
+            + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die kleiner zijn dan de grens.\n");
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("som van vereist numerieke")),
+                () -> "een Percentage som-operand moet een Tabel-21-fout geven, kreeg: " + m.errors());
+    }
 
     // ---- §13.4.13.4 the COMPOUND subselectie "die aan alle volgende voorwaarden voldoen: - … - …" — subject-FUL
     //      bullets (the spec EBNF form) resolved against the ELEMENT, an ALLE compound AND-ed on the accumulate
@@ -5522,7 +5526,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 11); }
-    @Test void phase_C_param_rhs_subselectie_matches_drl_back_end() { runDifferential("Phase C param-RHS", PHASE_C_PARAM_RHS, 3); }
+    @Test void phase_C_param_rhs_subselectie_matches_drl_back_end() { runDifferential("Phase C param-RHS", PHASE_C_PARAM_RHS, 2); }
     @Test void phase_C_compound_subselectie_matches_drl_back_end() { runDifferential("Phase C compound", PHASE_C_COMPOUND, 2); }
     @Test void phase_C_count_global_subselectie_matches_drl_back_end() { runDifferential("Phase C count+global", PHASE_C_COUNT_GLOBAL, 4); }
     @Test void phase_crossunit_matches_drl_back_end() { runDifferential("Phase cross-unit", PHASE_CROSSUNIT, 2); }
