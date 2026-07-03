@@ -896,15 +896,12 @@ final class ExpressieBouwer {
             // met 4 cijfers". EERSTE_PAASDAG always types Datum, so an illegal operand produced a Datum result with no
             // diagnostic.
             case EERSTE_PAASDAG -> paasdagOperandFout(typen);
-            // §4.20 Tabel 30 (totaal van / aggregeren in de tijd): the operand "moet numeriek zijn met een eenheid per
-            // tijdseenheid". Enforce the NUMERIEK part here (getalAggregatie, like MIN/MAX) — a non-numeriek totaal operand
-            // ("het totaal van <tekst>") was silently accepted (TOTAAL types its operand type). The stronger "eenheid PER
-            // TIJDSEENHEID" (rate) requirement is NOT enforced: a temporal attribute's declared type does not always carry a
-            // rate eenheid (the temporality lives in the timeline), so a rate-unit gate risks a false positive on the well-
-            // tested §7.1 temporal-aggregation path — carded (20260701-totaal-van-rate-unit-and-result-unit-tabel30). Unlike
-            // SOM (Tabel 21, carded), TOTAAL has no Percentage-operand fixture and Tabel 30 says "numeriek", so getalAggregatie
-            // (which excludes Percentage) is regression-free here (full gate green).
-            case TOTAAL -> Typering.getalAggregatie("totaal van", typen);
+            // §4.20 Tabel 30 (totaal van / aggregeren in de tijd): the operand "moet numeriek zijn met een
+            // eenheid per tijdseenheid" — the NUMERIEK part via getalAggregatie (like MIN/MAX), the rate part
+            // via totaalOperandFout: a unit-BEARING operand must carry a tijdseenheid denominator; a UNITLESS
+            // operand is admitted, because the spec's own §7.1 worked example totals a unitless Bedrag (the
+            // temporality lives in the timeline, not the unit) — see grammar-divergences.
+            case TOTAAL -> totaalOperandFout(typen);
             case EERSTE  -> Typering.datumAggregatie("eerste van", typen);
             case LAATSTE -> Typering.datumAggregatie("laatste van", typen);
             // §6.12 / §13.4.17.21-.24: a time-of-day component is defined only on a datum-TIJD — a plain
@@ -941,6 +938,22 @@ final class ExpressieBouwer {
         // 4-cijfer value range stays a runtime concern).
         if (n.decimalen() > 0 || n.heeftEenheid())
             return "eerste paasdag van vereist een geheel getal zonder eenheid (een 4-cijferig jaartal), kreeg " + d.naam() + " (§4.19 Tabel 29)";
+        return null;
+    }
+
+    /** §4.20 Tabel 30 (totaal van): the operand is "numeriek met een eenheid per tijdseenheid". The NUMERIEK
+     *  part rides {@link Typering#getalAggregatie}; the RATE part is enforced only when the operand CARRIES a
+     *  unit — a plain unit (EUR, no denominator) or a non-time denominator (EUR/km) is the Tabel-30 fout. A
+     *  UNITLESS operand is admitted: the spec's own §7.1 worked example totals a unitless Bedrag — the
+     *  temporality lives in the timeline, not the unit (see grammar-divergences). Onbekend makes no claim. */
+    private static String totaalOperandFout(List<Datatype> typen) {
+        String f = Typering.getalAggregatie("totaal van", typen);
+        if (f != null) return f;
+        for (Datatype d : typen) {
+            Eenheid e = d.eenheidOf();
+            if (e != null && io.github.yhavinga.regelspraak.transpiler.kern.Tijdrekening.chronoUnit(e.noemer()) == null)
+                return "totaal van vereist een eenheid per tijdseenheid (§4.20 Tabel 30), kreeg '" + e.weergave() + "'";
+        }
         return null;
     }
 
@@ -1062,7 +1075,14 @@ final class ExpressieBouwer {
     private Datatype functieType(Expr.FunctieKind kind, List<Expr> args) {
         Datatype eerste = args.isEmpty() ? onbekend() : args.get(0).type();
         return switch (kind) {
-            case SOM, TOTAAL, EERSTE, LAATSTE, ABSOLUTE_WAARDE -> eerste;
+            case SOM, EERSTE, LAATSTE, ABSOLUTE_WAARDE -> eerste;
+            // §4.20 Tabel 30: totaal-van INTEGRATES a rate over time, so the result drops the /tijdseenheid —
+            // row 1 result eenheid "-", row 2 "Eenheid1" (the numerator). "het totaal van <EUR/mnd>" types EUR
+            // and assigns cleanly to a EUR target (a EUR/mnd target is now the unit mismatch it should be).
+            // A non-rate operand type passes through unchanged (the §7.1 unitless-Bedrag path).
+            case TOTAAL -> eerste instanceof Datatype.Numeriek n && n.eenheid() != null && n.eenheid().noemer() != null
+                    ? new Datatype.Numeriek(n.geheel(), n.decimalen(), n.teken(), n.eenheid().teller())
+                    : eerste;
             // §4.12/§4.13: a multi-operand min/max result is the SMALLEST/LARGEST VALUE, whose
             // precision is value-dependent and not statically known. A single-operand min/max over a
             // set carries the element's precision (reliable). For the value-fold, report the LEAST

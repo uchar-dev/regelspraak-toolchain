@@ -345,7 +345,7 @@ public final class Typering {
     }
     /** A rate's numerator unit, with the denominator stripped. */
     private static Eenheid teller(Eenheid rate) {
-        return new Eenheid(rate.afkorting(), rate.stelsel(), rate.canoniek(), rate.factorNaarCanoniek());
+        return rate.teller();
     }
 
     /** Same datatype family for gelijk/ongelijk/toekenning. Numeriek and Percentage are

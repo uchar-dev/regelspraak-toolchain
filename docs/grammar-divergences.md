@@ -1691,3 +1691,18 @@ single §3.3.5 sentence does not override the tables. Consequence: `de som van <
 (was: silently summed); the differential fixture that summed a Percentage end-to-end (review FSD-1) converts to
 a resolver-ERROR pin. The exec back-end's isGetalachtig fold guard stays as robustness, now unreachable for
 aggregation operands by construction.
+
+## §4.20 Tabel 30 — totaal-van: result drops the /tijdseenheid; a unitless operand stays admitted
+
+Two Tabel-30 readings now enforced. RESULT UNIT: totaal-van integrates a rate over time, so the result eenheid is
+the NUMERATOR (row 1: operand `1/tijdseenheid` → result `-`; row 2: operand convertible naar
+`Eenheid1/tijdseenheid` → result `Eenheid1`). `het totaal van <EUR/mnd>` now types EUR — assignable to a EUR
+target, and a EUR/mnd target is the unit mismatch it should be (the runtime `rsTijdTotaal` always integrated —
+value × period count — so this is typing-only; no fired value changes). OPERAND UNIT: Tabel 30's prose demands
+"numeriek met een eenheid per tijdseenheid", enforced only for a unit-BEARING operand (a plain `EUR` or a
+non-time rate `EUR/km` is the Tabel-30 ERROR). A UNITLESS operand is deliberately admitted, against a literal
+table reading: the spec's own §7.1 worked example ("de belastingvermindering per maand" of Domein Bedrag —
+`Numeriek (getal met 2 decimalen)`, no eenheid) totals a unitless attribute whose temporality lives in the
+timeline declaration ("voor elke maand"), not in a rate unit — rejecting that would reject the spec's own
+canonical example. The per-tijdseenheid dimension of a unitless temporal attribute is carried by the timeline
+granularity instead.

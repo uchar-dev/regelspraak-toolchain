@@ -955,10 +955,11 @@ class RuleCheckTest {
                 () -> "verwachtte een operand-typefout voor totaal van, kreeg: " + m.errors());
     }
 
-    @Test void schone_totaal_van_rate_operand_geen_valse_fout() {
-        // a numeric rate operand (EUR/mnd) must NOT trigger the numeric-operand check (the §7.1 temporal-aggregation
-        // path). Result carries the operand unit (functieType = eerste), so assign to a matching EUR/mnd target.
-        String src = """
+    @Test void totaal_van_rate_operand_integreert_naar_de_teller_eenheid() {
+        // §4.20 Tabel 30: totaal-van integrates a rate over time — the RESULT drops the /tijdseenheid
+        // (row 2: result eenheid = Eenheid1, the numerator). "het totaal van <EUR/mnd>" now types EUR:
+        // a EUR target is clean, the formerly-clean EUR/mnd target is the unit mismatch it should be.
+        String hdr = """
             Eenheidsysteem Geld
                 de euro EUR
             Eenheidsysteem Tijd
@@ -966,13 +967,61 @@ class RuleCheckTest {
             Objecttype de Ding
                 de tarief Numeriek (geheel getal) met eenheid EUR/mnd;
                 de maandtotaal Numeriek (geheel getal) met eenheid EUR/mnd;
+                de jaarsom Numeriek (geheel getal) met eenheid EUR;
+            """;
+        RegelSpraakModel ma = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    De jaarsom van een Ding moet berekend worden als het totaal van de tarief van een Ding.
+            """);
+        assertTrue(ma.errors().isEmpty(),
+                () -> "totaal van EUR/mnd naar een EUR-doel hoort te resolven (Tabel 30 rij 2): " + ma.errors());
+        RegelSpraakModel mb = Resolver.resolve(hdr + """
             Regel r
                 geldig altijd
                     De maandtotaal van een Ding moet berekend worden als het totaal van de tarief van een Ding.
+            """);
+        assertTrue(mb.errors().stream().anyMatch(d -> d.message().contains("om te rekenen")),
+                () -> "totaal van EUR/mnd naar een EUR/mnd-doel is nu de eenheids-mismatch die het hoort te zijn: " + mb.errors());
+    }
+
+    @Test void totaal_van_niet_tijdseenheid_rate_wordt_gemeld() {
+        // §4.20 Tabel 30: a unit-BEARING totaal-operand must carry a tijdseenheid denominator — a plain EUR
+        // or a EUR/km rate is the Tabel-30 fout. A UNITLESS operand stays admitted (the spec's own §7.1
+        // worked example totals a unitless Bedrag; see grammar-divergences).
+        String hdr = """
+            Eenheidsysteem Geld
+                de euro EUR
+            Eenheidsysteem Lengte
+                de kilometer km
+            Objecttype de Ding
+                de bedrag Numeriek (geheel getal) met eenheid EUR;
+                de kmtarief Numeriek (geheel getal) met eenheid EUR/km;
+                de kaal Numeriek (geheel getal);
+                de uitkomst Numeriek (geheel getal) met eenheid EUR;
+                de kale uitkomst Numeriek (geheel getal);
             """;
-        RegelSpraakModel m = Resolver.resolve(src);
-        assertFalse(m.errors().stream().anyMatch(d -> d.message().contains("totaal van vereist numerieke")),
-                () -> "een numeriek rate-operand had niet als niet-numeriek gemeld mogen worden: " + m.errors());
+        RegelSpraakModel ma = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    De uitkomst van een Ding moet berekend worden als het totaal van de bedrag van een Ding.
+            """);
+        assertTrue(ma.errors().stream().anyMatch(d -> d.message().contains("eenheid per tijdseenheid")),
+                () -> "een plain-EUR totaal-operand moet de Tabel-30-fout geven: " + ma.errors());
+        RegelSpraakModel mb = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    De uitkomst van een Ding moet berekend worden als het totaal van de kmtarief van een Ding.
+            """);
+        assertTrue(mb.errors().stream().anyMatch(d -> d.message().contains("eenheid per tijdseenheid")),
+                () -> "een EUR/km totaal-operand moet de Tabel-30-fout geven: " + mb.errors());
+        RegelSpraakModel mc = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    De kale uitkomst van een Ding moet berekend worden als het totaal van de kaal van een Ding.
+            """);
+        assertTrue(mc.errors().isEmpty(),
+                () -> "een unitless totaal-operand blijft toegestaan (§7.1-lezing): " + mc.errors());
     }
 
     @Test void schone_wortel_en_abs_geen_fout() {

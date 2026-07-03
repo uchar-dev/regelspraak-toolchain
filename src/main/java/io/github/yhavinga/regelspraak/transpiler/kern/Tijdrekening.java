@@ -19,7 +19,11 @@ public final class Tijdrekening {
      *  java.time has no ChronoUnit.QUARTERS, so it maps to the pseudo-unit "KWARTAAL" the runtime
      *  special-cases as 3×MONTHS. null for a dagsoort or an unrecognised unit — the caller markers/skips. */
     public static String chronoUnit(Datatype t) {
-        Eenheid e = t.eenheidOf();
+        return chronoUnit(t.eenheidOf());
+    }
+
+    /** As {@link #chronoUnit(Datatype)}, keyed directly on an {@link Eenheid} ({@code null}-safe). */
+    public static String chronoUnit(Eenheid e) {
         if (e == null) return null;
         return switch (RegelSpraakModel.normaliseerTijdseenheid(e.afkorting())) {
             case "jaar", "jr"             -> "YEARS";

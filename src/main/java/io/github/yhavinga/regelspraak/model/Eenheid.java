@@ -56,6 +56,11 @@ public record Eenheid(String afkorting, String stelsel, String canoniek, BigDeci
     /** Human-readable spelling, including the denominator for a composite ("€/jr"). */
     public String weergave() { return noemer == null ? afkorting : afkorting + "/" + noemer.afkorting; }
 
+    /** The rate's NUMERATOR as a stand-alone unit (denominator stripped); this unit itself when plain. */
+    public Eenheid teller() {
+        return noemer == null ? this : new Eenheid(afkorting, stelsel, canoniek, factorNaarCanoniek);
+    }
+
     /** Convertible iff numerator and denominator are each convertible (or both denominators
      *  absent). A composite and a plain unit are never convertible. */
     public boolean convertibleNaar(Eenheid other) {
