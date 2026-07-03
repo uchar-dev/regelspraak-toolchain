@@ -2176,6 +2176,48 @@ class RuleCheckTest {
                 () -> "een parameter-grens moet een eerlijke marker blijven:\n" + drl);
     }
 
+    @Test void teken_beperking_wordt_statisch_gehandhaafd_op_literal_waarden() {
+        // §3.3.1 / §13.3.3.7: the Teken-beperking narrows the toegestane waarden (§3.3.6 Tabel). The spec
+        // states no runtime rule for computed values (unlike §6.1.2 decimals), so enforcement is resolver-
+        // static over literals — the enum-domein posture. Boundary per the Tabel: 0 is niet-negatief but NOT
+        // positief; -49 violates niet-negatief; 12 violates negatief.
+        String basis = "Objecttype de Passagier\n    de leeftijd Numeriek (%s geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De leeftijd van een Passagier moet gesteld worden op %s.\n";
+        record Geval(String teken, String waarde, boolean fout) {}
+        for (Geval g : new Geval[]{
+                new Geval("niet-negatief", "-49", true),  new Geval("niet-negatief", "0", false),
+                new Geval("positief", "0", true),         new Geval("positief", "12", false),
+                new Geval("negatief", "12", true),        new Geval("negatief", "-49", false)}) {
+            RegelSpraakModel m = Resolver.resolve(String.format(basis, g.teken(), g.waarde()));
+            boolean gemeld = m.errors().stream().anyMatch(d -> d.message().contains("teken-beperking"));
+            assertEquals(g.fout(), gemeld, () -> g.teken() + " doel, waarde " + g.waarde()
+                    + (g.fout() ? " had gemeld moeten worden" : " is toegestaan") + ": " + m.errors());
+        }
+        // an objectcreatie met-clause init follows the same rule.
+        String oc = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Contingent
+                de aantal Numeriek (positief geheel getal);
+            Feittype contingentrelatie
+                de contingentvlucht Vlucht
+                de contingent Contingent
+            Eén contingentvlucht heeft één contingent
+            Regel maak contingent
+                geldig altijd
+                    Een Vlucht heeft het contingent met aantal gelijk aan 0.
+            """;
+        RegelSpraakModel mo = Resolver.resolve(oc);
+        assertTrue(mo.errors().stream().anyMatch(d -> d.message().contains("teken-beperking")),
+                () -> "de objectcreatie-init 0 op een positief doel had gemeld moeten worden: " + mo.errors());
+        // a COMPUTED value's sign is statically undecidable -> deliberately unchecked (documented).
+        String computed = "Objecttype de Passagier\n    de leeftijd Numeriek (niet-negatief geheel getal);\n    de a Numeriek (geheel getal);\n"
+            + "Regel R\n    geldig altijd\n        De leeftijd van een Passagier moet berekend worden als zijn a min 100.\n";
+        RegelSpraakModel mc = Resolver.resolve(computed);
+        assertTrue(mc.errors().stream().noneMatch(d -> d.message().contains("teken-beperking")),
+                () -> "een berekende waarde blijft ongecontroleerd: " + mc.errors());
+    }
+
     @Test void rekendatum_als_waarde_lowert_naar_de_global_en_spliced_de_declaratie() {
         // §5.3 / §13.4.17.34: Rekendatum/Rekenjaar as a VALUE operand lower to the §4.2 rekendatum global —
         // no marker — and the global declaration is spliced in EXACTLY when rule text references it, also

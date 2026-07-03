@@ -1929,3 +1929,24 @@ established dagsoort-global posture): Rekendatum inside a consistentieregel-verg
 gehele-periode grens, inside an aggregation-condition RHS, or a datum-arith-with-global expression
 compared to Rekendatum — the exec's specialised lowerings there bind
 only Parameter-globals. Each is an overgeslagen-recorded skip, never a silent divergence.
+
+## §3.3.1 / §13.3.3.7 Teken-beperking — decided: resolver-static over literal values, no runtime rule
+
+The optional getalspecificatie Teken (negatief / niet-negatief / positief) narrows the datatype's
+toegestane waarden (§3.3.6 Tabel: "-49" is niet toegestaan for a niet-negatief geheel getal; "0" is niet
+toegestaan for positief). It was parsed and carried into `Datatype.Numeriek.teken` but never enforced.
+DECIDED after checking the spec:
+
+- **Enforcement is RESOLVER-STATIC, over the statically-decidable surface**: a LITERAL value assigned,
+  computed-as, initialised or objectcreatie-init'ed into a sign-restricted Numeriek doel raises an ERROR —
+  exactly the posture of the existing enum-domein (Tabel 61 rij 7) and §6.1.2 decimals checks. Boundary
+  semantics per §3.3.1: niet-negatief = positief inclusief 0.
+- **No runtime-fout for a computed value.** Unlike the decimals restriction — where §6.1.2 explicitly
+  demands an afronding when dv>dd, and the resolver ERRORs statically — the spec attaches NO rule to a
+  rule-computed value that lands outside the sign restriction; a runtime clamp or Inconsistentie would be
+  invented semantics and would change fired-rule behaviour. A computed value's sign therefore stays
+  unchecked (pinned by the RuleCheckTest computed-value case). If a future spec version defines the
+  runtime meaning, the hook is the same keurTeken site.
+- **Percentage**: the §13.3.3.3 percentagedatatype grammatically admits the same getalspecificatie, but the
+  model's `Datatype.Percentage` does not carry a Teken (pre-existing narrowing) — the check scopes to
+  Numeriek until that is widened.

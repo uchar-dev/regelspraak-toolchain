@@ -739,6 +739,7 @@ final class RuleChecker {
                 if (doelType == null) continue;
                 if (t.waarde() instanceof Expr.Literal lit)   // §13.3.4.2 enum-label membership, like registreer
                     keurEnumLabel(doelType, Literalen.enumLabel(lit.waarde()), oc.getStart().getLine());
+                keurTeken(doelType, t.waarde(), oc.getStart().getLine());   // §3.3.1 Teken-beperking, like registreer
                 String fout = Typering.toekenning(doelType, t.waarde().type());
                 if (fout != null)
                     model.diagnostics.add(new Diagnostic(Severity.ERROR, "objectcreatie: " + fout,
@@ -977,10 +978,42 @@ final class RuleChecker {
         // Onbekend (its domain is context-dependent), and the doel IS that context here.
         if (waardeExpr instanceof Expr.Literal lit)
             keurEnumLabel(doelType, Literalen.enumLabel(lit.waarde()), line);
+        keurTeken(doelType, waardeExpr, line);   // §3.3.1 Teken-beperking, static over a literal value
         if (doelType.isOnbekend() || waardeType.isOnbekend()) return; // not enough resolved to judge
         String fout = Typering.toekenning(doelType, waardeType);
         if (fout != null)
             model.diagnostics.add(new Diagnostic(Severity.ERROR, soort.name().toLowerCase() + ": " + fout, line));
+    }
+
+    /** §3.3.1 / §13.3.3.7: the optional Teken-beperking (negatief / niet-negatief / positief) narrows the
+     *  datatype's toegestane waarden (§3.3.6 Tabel: "-49" is niet toegestaan for a niet-negatief geheel
+     *  getal). The spec states NO runtime rule for a computed out-of-sign value (unlike §6.1.2 decimals,
+     *  which demands an explicit afronding), so enforcement is RESOLVER-STATIC over the statically-decidable
+     *  surface — a LITERAL assigned/initialised into a sign-restricted Numeriek doel — exactly the
+     *  enum-domein posture (Tabel 61 rij 7). A computed value's sign is undecidable here and stays
+     *  unchecked (documented in docs/grammar-divergences.md). Percentage carries no Teken in the model. */
+    private void keurTeken(Datatype doelType, Expr waarde, int line) {
+        if (!(doelType instanceof Datatype.Numeriek n) || n.teken() == Datatype.Teken.ONBEPAALD) return;
+        if (!(waarde instanceof Expr.Literal lit) || lit.type() == null || !lit.type().isNumeriek()) return;
+        java.math.BigDecimal v = Literalen.getal(lit);
+        if (v == null) return;
+        boolean ok = switch (n.teken()) {
+            case NEGATIEF      -> v.signum() < 0;
+            case NIET_NEGATIEF -> v.signum() >= 0;
+            case POSITIEF      -> v.signum() > 0;
+            case ONBEPAALD     -> true;   // unreachable (guarded above)
+        };
+        if (!ok) model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                "waarde " + lit.waarde().trim() + " voldoet niet aan de teken-beperking '"
+                        + tekenNaam(n.teken()) + "' van het doel-datatype (§3.3.1)", line));
+    }
+
+    /** The §13.3.3.7 source spelling of a Teken. */
+    private static String tekenNaam(Datatype.Teken t) {
+        return switch (t) {
+            case NEGATIEF -> "negatief"; case NIET_NEGATIEF -> "niet-negatief";
+            case POSITIEF -> "positief"; case ONBEPAALD -> "";
+        };
     }
 
     /** Tabel 36/43/61 rij 7 + §13.3.4.2: a written enum label must be IN the context domain's declared
