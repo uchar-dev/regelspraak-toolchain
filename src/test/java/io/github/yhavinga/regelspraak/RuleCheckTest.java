@@ -1993,6 +1993,42 @@ class RuleCheckTest {
                 () -> "een gedeclareerd label in een objectcreatie-init hoort te resolven: " + mg.errors());
     }
 
+    @Test void kringverwijzing_tussen_berekeningen_wordt_gewaarschuwd() {
+        // A read-write dependency cycle (x = y+1; y = x+1) never reaches a fixpoint under the freshness
+        // semantics — the resolver WARNs (a voorwaarde may break it at runtime, so no ERROR) and the
+        // engine caps the activations. An acyclic chain and a SELF-read (no-loop terminates it) stay silent.
+        String hdr = """
+            Objecttype de Reis
+                de x Numeriek (geheel getal);
+                de y Numeriek (geheel getal);
+                de z Numeriek (geheel getal);
+            """;
+        RegelSpraakModel ma = Resolver.resolve(hdr + """
+            Regel bereken x
+                geldig altijd
+                    De x van een Reis moet berekend worden als de y van de Reis plus 1.
+            Regel bereken y
+                geldig altijd
+                    De y van een Reis moet berekend worden als de x van de Reis plus 1.
+            """);
+        assertTrue(ma.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
+                        && d.message().contains("kringverwijzing")),
+                () -> "een lees-schrijf-kring moet waarschuwen, kreeg: " + ma.diagnostics);
+        RegelSpraakModel mb = Resolver.resolve(hdr + """
+            Regel bereken x
+                geldig altijd
+                    De x van een Reis moet berekend worden als de y van de Reis plus 1.
+            Regel bereken z
+                geldig altijd
+                    De z van een Reis moet berekend worden als de x van de Reis plus de x van de Reis.
+            Regel verhoog y
+                geldig altijd
+                    De y van een Reis moet berekend worden als de y van de Reis plus 1.
+            """);
+        assertFalse(mb.diagnostics.stream().anyMatch(d -> d.message().contains("kringverwijzing")),
+                () -> "een acyclische keten en een zelf-lezing mogen niet waarschuwen: " + mb.diagnostics);
+    }
+
     @Test void gehele_periode_gekwalificeerde_kenmerk_subselectie_wordt_gemarkeerd_niet_stil_gedropt() {
         // §8.2: a "(niet) gedurende de/het gehele <periode>" whole-period qualifier on a kenmerk SUBSELECTIE is not yet
         // lowered onto the accumulate source. The resolver must MARKER it rather than SILENTLY binding a static kenmerk

@@ -26,7 +26,10 @@ import org.antlr.v4.runtime.tree.TerminalNode;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Type-checks rules against the typeringen matrix (Phase: rule checking). It
@@ -56,6 +59,71 @@ final class RuleChecker {
         domeinReferenties(doc);
         for (RegelContext r : doc.regel()) regelVersies(r);
         beslistabellen(doc);
+        keurKringverwijzingen();
+    }
+
+    /** A read-write dependency CYCLE between assignments (x = y+1; y = x+1) never reaches a fixpoint
+     *  under the freshness semantics (each write re-fires the other reader with a CHANGED value — the
+     *  engine caps the run-away instead of hanging, and both back-ends would diverge forever). The spec
+     *  does not forbid the writing, so this is a WARNING, not an ERROR: a voorwaarde may break the cycle
+     *  at runtime (statically undecidable). Edges: doel-attribuut -> every OWN attribute its value reads,
+     *  same objecttype; a SELF-read (x = x+1) is excluded — no-loop makes the single writer terminate. */
+    private void keurKringverwijzingen() {
+        Map<String, Set<String>> leest = new LinkedHashMap<>();
+        for (ResolvedRegel r : model.resolvedRegels) {
+            if (!(r.doel() instanceof Expr.AttribuutRef d) || d.navigatieRol() != null || d.objecttype() == null) continue;
+            String doel = d.objecttype().naam + "." + d.attribuut();
+            Set<String> reads = leest.computeIfAbsent(doel, k -> new java.util.LinkedHashSet<>());
+            verzamelEigenReads(r.waarde(), d.objecttype(), doel, reads);
+        }
+        Set<String> gemeld = new java.util.HashSet<>();
+        for (String start : leest.keySet()) {
+            List<String> pad = zoekKring(start, start, leest, new java.util.HashSet<>(), new ArrayList<>());
+            if (pad != null && gemeld.addAll(new java.util.TreeSet<>(pad)))
+                model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                        "kringverwijzing tussen berekeningen: " + String.join(" -> ", pad) + " -> " + start
+                        + " — herberekening bereikt mogelijk geen fixpunt (de engine begrenst het aantal activaties)", 0));
+        }
+    }
+
+    private static List<String> zoekKring(String start, String hier, Map<String, Set<String>> leest,
+                                          Set<String> bezocht, List<String> pad) {
+        if (!bezocht.add(hier)) return null;
+        pad.add(hier);
+        for (String naar : leest.getOrDefault(hier, Set.of())) {
+            if (naar.equals(start) && pad.size() > 1) return new ArrayList<>(pad);
+            List<String> diep = zoekKring(start, naar, leest, bezocht, pad);
+            if (diep != null) return diep;
+        }
+        pad.remove(pad.size() - 1);
+        return null;
+    }
+
+    /** The OWN attributes (same objecttype) an expression reads, as "Objecttype.attribuut" nodes —
+     *  {@code zelf} (the doel itself) excluded: a self-read terminates via no-loop. */
+    private static void verzamelEigenReads(Expr e, Objecttype subject, String zelf, Set<String> uit) {
+        if (e instanceof Expr.AttribuutRef a) {
+            if (a.navigatieRol() == null && a.objecttype() == subject) {
+                String node = subject.naam + "." + a.attribuut();
+                if (!node.equals(zelf)) uit.add(node);
+            }
+        } else if (e instanceof Expr.Binair b) {
+            verzamelEigenReads(b.links(), subject, zelf, uit);
+            verzamelEigenReads(b.rechts(), subject, zelf, uit);
+        } else if (e instanceof Expr.Functie f) {
+            for (Expr a : f.argumenten()) verzamelEigenReads(a, subject, zelf, uit);
+        } else if (e instanceof Expr.Afgerond af) {
+            verzamelEigenReads(af.basis(), subject, zelf, uit);
+        } else if (e instanceof Expr.Begrensd bg) {
+            verzamelEigenReads(bg.basis(), subject, zelf, uit);
+            verzamelEigenReads(bg.minimum(), subject, zelf, uit);
+            verzamelEigenReads(bg.maximum(), subject, zelf, uit);
+        } else if (e instanceof Expr.TekstReeks tr) {
+            for (Expr.TekstReeks.Deel d : tr.delen())
+                if (d instanceof Expr.TekstReeks.Ingevoegd i) verzamelEigenReads(i.expr(), subject, zelf, uit);
+        } else if (e instanceof Expr.DimensieCel dc) {
+            verzamelEigenReads(dc.attribuut(), subject, zelf, uit);
+        }
     }
 
     /** Process one §13.4.2 regel's versions into the model. Reused for each §12 beslistabel row, which

@@ -1719,7 +1719,8 @@ scoreboard markers reduced to exactly these unresolved references — the distri
 machinery lowers and fires as soon as they bind (empirically isolated per rule). Reconciliation:
 `examples/toka-reconciliatie/casus-omissies.rs` supplements precisely these members via the casus's own
 Extensie construct. It deliberately lives OUTSIDE `examples/toka/` (which stays the faithful spec extraction
-that `make verify-corpus` parses); the TOKA tests load it additionally. Scoreboard effect: 19/29 → 28/29
+that `make verify-corpus` parses); TokaDekkingTest and the TokaVuurTest end-to-end firing test load it
+additionally, while CasusTest deliberately keeps the pure extraction. Scoreboard effect: 19/29 → 28/29
 lowered. The honest residual is toka-23, whose operands are §11 "Daarbij geldt" local variables (a real
 frontier feature) and whose A-variable carries the casus's own `datum-tijd plus datum-tijd` type quirk — the
 single expected CasusTest error, unchanged.
@@ -1737,7 +1738,11 @@ back-end's `werkBij`, mirrored). The second half is what makes the first safe: c
 (function calls, navigated reads) leave a pattern CLASS-reactive, so an always-modifying pair of rules over one
 subject ping-pongs forever (NO_LOOP blocks only the self-retrigger); a same-valued rebuild now skips the modify
 and the recompute chain reaches a fixpoint (RegelSpraak's one-writer-per-attribute discipline keeps it
-acyclic). The exec back-end needs no change: its opaque lambda constraints were already class-reactive and its
-werkBij already idempotent — the DRL (oracle) hereby adopts its twin's proven semantics. Pinned by a DRL-text
-test (@watch + guard), an absolute-value differential chain fixture (both back-ends 47, not merely equal), and
-the TOKA end-to-end belastingketen (60.00 → 50.00 at fixpoint, loop-capped).
+acyclic — a read-write CYCLE between rules is resolver-WARNed and the engine caps fireAllRules, turning a
+would-be hang into an exception). The exec back-end's voorwaarde-bearing patterns were already class-reactive
+(opaque lambdas) and its werkBij already idempotent, but its EXPR-LESS patterns had the same empty mask — an
+unconditioned reader gets an opaque always-true anchor constraint (a bare .watch on an expr-less pattern is
+inert), leaving it class-reactive like its siblings. Pinned by a DRL-text test (@watch + guard), an
+absolute-value differential chain fixture (both back-ends 47, not merely equal), the TOKA end-to-end
+belastingketen (60.00 → 50.00 at fixpoint, loop-capped), a resolver kringverwijzing-WARNING pin, and an
+engine test proving the fire cap throws instead of hanging.

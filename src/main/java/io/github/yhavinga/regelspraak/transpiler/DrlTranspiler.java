@@ -912,9 +912,11 @@ public final class DrlTranspiler {
             // pattern does not constrain what its VALUE reads goes stale — it computes once (possibly against
             // leeg) and never recomputes when another rule writes an input (the TOKA toka-45 -> toka-24 chain:
             // an unconditioned berekening kept 0 after its operand arrived). @watch the subject's OWN
-            // attributes the value expression reads; no-loop still blocks the self-retrigger, and
-            // RegelSpraak's one-writer-per-attribute discipline keeps the recompute chain acyclic. The exec
-            // back-end needs no analog: its opaque lambda constraints leave the pattern class-reactive.
+            // attributes the value expression reads; no-loop still blocks the self-retrigger. A read-write
+            // CYCLE between rules (x = y+1; y = x+1) would recompute divergently forever — the resolver
+            // WARNs on it (keurKringverwijzingen) and the engine caps fireAllRules, since one-writer-per-
+            // attribute does NOT make the dependency graph acyclic. The exec back-end needs no analog:
+            // its opaque lambda constraints leave the pattern class-reactive.
             java.util.LinkedHashSet<String> watch = new java.util.LinkedHashSet<>();
             verzamelEigenReads(r.waarde(), subject, watch);
             rule.clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + constraint + " )"

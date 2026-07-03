@@ -78,8 +78,18 @@ public final class RegelSpraakEngine {
         public Session insertAll(Object... facts) { for (Object f : facts) session.insert(f); return this; }
         public Session setGlobal(String name, Object value) { session.setGlobal(name, value); return this; }
 
-        /** Fire all rules to quiescence; returns the number of rule activations fired. */
-        public int fire() { return session.fireAllRules(); }
+        /** Fire all rules to quiescence; returns the number of rule activations fired. BOUNDED: a
+         *  read-write dependency CYCLE between berekeningen (x = y+1; y = x+1 — resolver-diagnosed as a
+         *  WARNING, but a voorwaarde may or may not break it at runtime) recomputes divergently forever
+         *  under the freshness semantics; the cap turns that authoring error into an exception instead
+         *  of a hung session. Any real model reaches its fixpoint in a tiny fraction of the bound. */
+        public int fire() {
+            int n = session.fireAllRules(100_000);
+            if (n >= 100_000)
+                throw new IllegalStateException("regel-herberekening bereikt geen fixpunt binnen 100000 activaties"
+                        + " — vermoedelijk een kringverwijzing tussen berekeningen (zie de resolver-WARNING)");
+            return n;
+        }
 
         /** All facts in working memory that are instances of {@code type} — e.g. inserted §9.5 Inconsistentie
          *  facts, or objects a §13.4.6 objectcreatie produced. */

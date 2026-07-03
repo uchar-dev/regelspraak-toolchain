@@ -14,4 +14,6 @@ The TOKA casus's own rules reference four members its object model never declare
 construct so the casus's rules can resolve and fire. It lives OUTSIDE `examples/toka/`
 on purpose: that directory is the faithful spec extraction and is parsed by
 `make verify-corpus`; this reconciliation is ours, loaded additionally by the
-TOKA tests (CasusTest / TokaDekkingTest / the end-to-end firing test).
+TOKA tests that need the rules to LOWER (TokaDekkingTest, the TokaVuurTest end-to-end firing test).
+CasusTest deliberately does NOT load it: it pins that the pure spec extraction resolves with exactly
+its one known error.

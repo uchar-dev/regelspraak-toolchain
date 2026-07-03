@@ -13,4 +13,9 @@ public class Persoon {
     public void setLeeftijd(BigDecimal v) { this.leeftijd = v; }
     public boolean isMinderjarig() { return minderjarig; }
     public void setMinderjarig(boolean v) { this.minderjarig = v; }
+
+    // second numeric attribute for the kringverwijzing (fire-cap) test
+    private BigDecimal uitkomst;
+    public BigDecimal getUitkomst() { return uitkomst; }
+    public void setUitkomst(BigDecimal v) { this.uitkomst = v; }
 }

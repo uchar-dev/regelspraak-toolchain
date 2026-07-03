@@ -71,4 +71,30 @@ class RegelSpraakEngineTest {
                         && d.message().contains("Spookding")),
                 () -> "de ontbrekende feitklasse moet als contract-schending gemeld worden: " + e.diagnostics());
     }
+
+    @org.junit.jupiter.api.Timeout(60)
+    @Test void kringverwijzing_wordt_begrensd_niet_gehangen() {
+        // A read-write dependency cycle (leeftijd = uitkomst+1; uitkomst = leeftijd+1) never reaches a
+        // fixpoint — the resolver WARNs, and fire() must turn the run-away into an exception, never a
+        // hung session (the @Timeout converts a regression into a failure instead of a hung build).
+        String kring = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de leeftijd Numeriek (geheel getal);
+                de uitkomst Numeriek (geheel getal);
+            Regel a
+                geldig altijd
+                    De leeftijd van een Persoon moet berekend worden als de uitkomst van de Persoon plus 1.
+            Regel b
+                geldig altijd
+                    De uitkomst van een Persoon moet berekend worden als de leeftijd van een Persoon plus 1.
+            """;
+        RegelSpraakEngine engine = RegelSpraakEngine.compile(kring);
+        assertTrue(engine.overgeslagen().isEmpty(), () -> "beide kring-regels moeten loweren: " + engine.overgeslagen());
+        Persoon p = new Persoon(); p.setLeeftijd(new BigDecimal(1));
+        try (RegelSpraakEngine.Session s = engine.newSession()) {
+            s.insert(p);
+            assertThrows(IllegalStateException.class, s::fire,
+                    "een kringverwijzing moet begrensd falen, niet hangen");
+        }
+    }
 }

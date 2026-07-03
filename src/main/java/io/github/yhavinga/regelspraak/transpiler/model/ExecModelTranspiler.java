@@ -257,6 +257,22 @@ public final class ExecModelTranspiler {
         if (r.soort() == ResolvedRegel.Soort.INITIALISATIE)
             pattern = pattern.expr(nextId("init"), (Predicate1) (s -> doelGetter.apply(s) == null));
         pattern = geldigGuard(pattern, r.geldigheid());   // §4.2 version validity window
+        // Freshness (the DRL @watch mirrored): a pattern WITHOUT constraints has an EMPTY reactivity mask,
+        // so an unconditioned chained berekening computed once (possibly against leeg) and never recomputed
+        // when a sibling wrote its input — the differential chain fixture only passed on agenda-order luck.
+        // Watch the OWN attributes the value reads; a pattern WITH any opaque expr is already class-reactive
+        // (an explicit watch there would NARROW it — never add one). The idempotent werkBij keeps the
+        // recompute chain at a fixpoint; a read-write CYCLE (resolver-WARNed) hits the engine's fire cap.
+        boolean klasseReactief = r.voorwaarde() != null || r.soort() == ResolvedRegel.Soort.INITIALISATIE
+                || (r.geldigheid() != null && !r.geldigheid().altijd() && rekendatumGlobal != null);
+        if (!klasseReactief) {
+            java.util.Set<String> reads = eigenReads(r.waarde(), doel.objecttype());
+            // a watch on an EXPR-LESS pattern is inert (empirically: no reactivity registers), so anchor
+            // freshness with an opaque always-true constraint — the black-box lambda leaves the pattern
+            // CLASS-reactive (any subject update re-evaluates it), the exec's established idiom.
+            if (!reads.isEmpty())
+                pattern = pattern.expr(nextId("fresh"), (Predicate1) (s -> true));
+        }
 
         RuleItemBuilder<?> consequence;
         // §5.1.4 a single-period TEMPORAL doel (a List<Segment> timeline attribute) is WRITTEN a timeline, not a
@@ -4133,5 +4149,35 @@ public final class ExecModelTranspiler {
     static String prop(String naam) {
         String p = RegelSpraakRuntime.pascal(naam);
         return p.isEmpty() ? p : Character.toLowerCase(p.charAt(0)) + p.substring(1);
+    }
+
+    /** The subject's OWN declared attributes a value expression READS, as bean property names — the
+     *  {@code .watch} set for an otherwise constraint-less pattern (mirrors the DRL's verzamelEigenReads). */
+    private static java.util.Set<String> eigenReads(Expr e, Objecttype subject) {
+        java.util.LinkedHashSet<String> uit = new java.util.LinkedHashSet<>();
+        eigenReads(e, subject, uit);
+        return uit;
+    }
+    private static void eigenReads(Expr e, Objecttype subject, java.util.Set<String> uit) {
+        if (e instanceof Expr.AttribuutRef a) {
+            if (a.navigatieRol() == null && a.objecttype() == subject && subject.attribuut(a.attribuut()) != null)
+                uit.add(prop(a.attribuut()));
+        } else if (e instanceof Expr.Binair b) {
+            eigenReads(b.links(), subject, uit);
+            eigenReads(b.rechts(), subject, uit);
+        } else if (e instanceof Expr.Functie f) {
+            for (Expr a : f.argumenten()) eigenReads(a, subject, uit);
+        } else if (e instanceof Expr.Afgerond af) {
+            eigenReads(af.basis(), subject, uit);
+        } else if (e instanceof Expr.Begrensd bg) {
+            eigenReads(bg.basis(), subject, uit);
+            eigenReads(bg.minimum(), subject, uit);
+            eigenReads(bg.maximum(), subject, uit);
+        } else if (e instanceof Expr.TekstReeks tr) {
+            for (Expr.TekstReeks.Deel d : tr.delen())
+                if (d instanceof Expr.TekstReeks.Ingevoegd i) eigenReads(i.expr(), subject, uit);
+        } else if (e instanceof Expr.DimensieCel dc) {
+            eigenReads(dc.attribuut(), subject, uit);
+        }
     }
 }
