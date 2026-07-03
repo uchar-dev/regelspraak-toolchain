@@ -998,6 +998,7 @@ class RuleCheckTest {
                 de bedrag Numeriek (geheel getal) met eenheid EUR;
                 de kmtarief Numeriek (geheel getal) met eenheid EUR/km;
                 de kaal Numeriek (geheel getal);
+                de maandbedrag Numeriek (geheel getal) met eenheid EUR voor elke maand;
                 de uitkomst Numeriek (geheel getal) met eenheid EUR;
                 de kale uitkomst Numeriek (geheel getal);
             """;
@@ -1022,6 +1023,15 @@ class RuleCheckTest {
             """);
         assertTrue(mc.errors().isEmpty(),
                 () -> "een unitless totaal-operand blijft toegestaan (§7.1-lezing): " + mc.errors());
+        // a plain-unit TEMPORAL attribute is likewise admitted: the per-tijdseenheid dimension lives in the
+        // timeline declaration ("voor elke maand"), not the unit — the §7.1 shape with a EUR-carrying Bedrag.
+        RegelSpraakModel md = Resolver.resolve(hdr + """
+            Regel r
+                geldig altijd
+                    De uitkomst van een Ding moet berekend worden als het totaal van de maandbedrag van een Ding.
+            """);
+        assertTrue(md.errors().isEmpty(),
+                () -> "een plain-unit TEMPOREEL totaal-operand blijft toegestaan (tijdlijn draagt de tijdseenheid): " + md.errors());
     }
 
     @Test void schone_wortel_en_abs_geen_fout() {
@@ -1953,6 +1963,34 @@ class RuleCheckTest {
             """);
         assertTrue(me.errors().isEmpty(),
                 () -> "gedeclareerde labels en zelfde-domein paren horen te resolven: " + me.errors());
+        // the objectcreatie met-clause is the third membership site — an undeclared label there melds too
+        String ocHdr = """
+            Domein Kleur is van het type Enumeratie
+                'rood'
+                'groen'
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Doos
+                de kleur Kleur;
+            Feittype doosrelatie
+                de doosvlucht Vlucht
+                de doos Doos
+            Eén doosvlucht heeft één doos
+            """;
+        RegelSpraakModel mf = Resolver.resolve(ocHdr + """
+            Regel maak doos
+                geldig altijd
+                    Een Vlucht heeft de doos met kleur gelijk aan 'paars'.
+            """);
+        assertTrue(mf.errors().stream().anyMatch(d -> d.message().contains("geen waarde van Enumeratie Kleur")),
+                () -> "een niet-gedeclareerd label in een objectcreatie-init moet melden, kreeg: " + mf.errors());
+        RegelSpraakModel mg = Resolver.resolve(ocHdr + """
+            Regel maak doos
+                geldig altijd
+                    Een Vlucht heeft de doos met kleur gelijk aan 'rood'.
+            """);
+        assertTrue(mg.errors().isEmpty(),
+                () -> "een gedeclareerd label in een objectcreatie-init hoort te resolven: " + mg.errors());
     }
 
     @Test void gehele_periode_gekwalificeerde_kenmerk_subselectie_wordt_gemarkeerd_niet_stil_gedropt() {

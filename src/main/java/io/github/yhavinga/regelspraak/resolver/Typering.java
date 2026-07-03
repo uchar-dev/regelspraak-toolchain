@@ -330,9 +330,9 @@ public final class Typering {
     private static Datatype samengesteldeEenheid(BinOp op, int dec, Eenheid el, Eenheid er) {
         if (op == BinOp.MAAL) {
             if (el.noemer() != null && er.noemer() == null && er.convertibleNaar(el.noemer()))
-                return new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, teller(el));
+                return new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, el.teller());
             if (er.noemer() != null && el.noemer() == null && el.convertibleNaar(er.noemer()))
-                return new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, teller(er));
+                return new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, er.teller());
             // §4.4: two plain units multiply to a PRODUCT unit ("€ maal m = €·m"). An opaque composite (no
             // canonical), so it is convertible only to an identical product — a €·m result assigned to a € target
             // now flags a unit mismatch (it used to degrade to Onbekend and pass silently). A rate factor (a
@@ -346,10 +346,6 @@ public final class Typering {
                     ? new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, null)                       // €/€ -> getal
                     : new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, Eenheid.samengesteld(el, er)); // €/jr
         return new Datatype.Onbekend("samengestelde eenheid");
-    }
-    /** A rate's numerator unit, with the denominator stripped. */
-    private static Eenheid teller(Eenheid rate) {
-        return rate.teller();
     }
 
     /** Same datatype family for gelijk/ongelijk/toekenning. Numeriek and Percentage are

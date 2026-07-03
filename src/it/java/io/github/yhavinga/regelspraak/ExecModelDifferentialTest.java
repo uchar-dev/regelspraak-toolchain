@@ -5997,6 +5997,12 @@ class ExecModelDifferentialTest {
         RegelSpraakModel m = Resolver.resolve(MIXED_DATUMLIT_SRC);
         assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("tijd-precisie")),
                 () -> "een gemengde datum/datum-tijd gelijk moet een tijd-precisie-fout geven, kreeg: " + m.errors());
+        // Defense-in-depth: the exec back-end's own sameDatumKind gate must ALSO keep skipping the mixed
+        // comparison (no lossy date-part fire) — the resolver ERROR and the transpile-time skip are two
+        // independent guards, and this keeps the downstream one exercised.
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertFalse(em.overgeslagen().isEmpty(),
+                () -> "de exec moet de gemengde datum/datum-tijd vergelijking blijven overslaan: " + em.overgeslagen());
     }
     /** Regression: the exec model used to INFINITE-LOOP (hang) when a NAVIGATED-comparison rule was co-resident with a
      *  second modify-rule over the same subject (drools.update ping-pong; NO_LOOP blocks only self). The idempotent

@@ -1699,10 +1699,9 @@ the NUMERATOR (row 1: operand `1/tijdseenheid` → result `-`; row 2: operand co
 `Eenheid1/tijdseenheid` → result `Eenheid1`). `het totaal van <EUR/mnd>` now types EUR — assignable to a EUR
 target, and a EUR/mnd target is the unit mismatch it should be (the runtime `rsTijdTotaal` always integrated —
 value × period count — so this is typing-only; no fired value changes). OPERAND UNIT: Tabel 30's prose demands
-"numeriek met een eenheid per tijdseenheid", enforced only for a unit-BEARING operand (a plain `EUR` or a
-non-time rate `EUR/km` is the Tabel-30 ERROR). A UNITLESS operand is deliberately admitted, against a literal
-table reading: the spec's own §7.1 worked example ("de belastingvermindering per maand" of Domein Bedrag —
-`Numeriek (getal met 2 decimalen)`, no eenheid) totals a unitless attribute whose temporality lives in the
-timeline declaration ("voor elke maand"), not in a rate unit — rejecting that would reject the spec's own
-canonical example. The per-tijdseenheid dimension of a unitless temporal attribute is carried by the timeline
-granularity instead.
+"numeriek met een eenheid per tijdseenheid", enforced only for a unit-BEARING, NON-temporal operand (a plain
+`EUR` or a non-time rate `EUR/km` there is the Tabel-30 ERROR). Two shapes are deliberately admitted, against a
+literal table reading: a UNITLESS operand, and a §5.1.4 TEMPORAL attribute with a plain unit — the spec's own
+§7.1 worked example ("de belastingvermindering per maand" of Domein Bedrag) totals an attribute whose
+per-tijdseenheid dimension lives in the timeline declaration ("voor elke maand"), not in a rate unit; rejecting
+that shape would reject the spec's own canonical example (with or without a currency unit on the Bedrag).

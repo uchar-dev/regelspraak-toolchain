@@ -870,9 +870,11 @@ final class RuleChecker {
                 "'" + label + "' is geen waarde van " + en.naam() + " " + en.waarden() + " (§13.3.4.2)", line));
     }
 
-    /** The enum label when the WHOLE expressie is a single quoted enumeratiewaarde, else null. */
+    /** The enum label when the WHOLE expressie is a single quoted enumeratiewaarde, else null. An
+     *  ENUM_LITERAL is one lexer token, so getText() preserves its interior spaces — no need for the
+     *  costlier src() stream reconstruction that runs on every comparison operand. */
     private static String enumLabelVan(ExpressieContext e) {
-        return e == null ? null : Literalen.enumLabel(src(e).trim());
+        return e == null ? null : Literalen.enumLabel(e.getText().trim());
     }
 
     // ---- §13.4.13/.14/.15 condition IR (structure for the transpiler "when" side) ----

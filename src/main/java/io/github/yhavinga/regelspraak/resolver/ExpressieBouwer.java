@@ -7,6 +7,7 @@ import io.github.yhavinga.regelspraak.model.Eenheid;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
+import io.github.yhavinga.regelspraak.transpiler.kern.Tijdrekening;
 import io.github.yhavinga.regelspraak.parser.RegelSpraak.*;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.tree.ParseTree;
@@ -901,7 +902,7 @@ final class ExpressieBouwer {
             // via totaalOperandFout: a unit-BEARING operand must carry a tijdseenheid denominator; a UNITLESS
             // operand is admitted, because the spec's own §7.1 worked example totals a unitless Bedrag (the
             // temporality lives in the timeline, not the unit) — see grammar-divergences.
-            case TOTAAL -> totaalOperandFout(typen);
+            case TOTAAL -> totaalOperandFout(argumenten);
             case EERSTE  -> Typering.datumAggregatie("eerste van", typen);
             case LAATSTE -> Typering.datumAggregatie("laatste van", typen);
             // §6.12 / §13.4.17.21-.24: a time-of-day component is defined only on a datum-TIJD — a plain
@@ -943,15 +944,20 @@ final class ExpressieBouwer {
 
     /** §4.20 Tabel 30 (totaal van): the operand is "numeriek met een eenheid per tijdseenheid". The NUMERIEK
      *  part rides {@link Typering#getalAggregatie}; the RATE part is enforced only when the operand CARRIES a
-     *  unit — a plain unit (EUR, no denominator) or a non-time denominator (EUR/km) is the Tabel-30 fout. A
-     *  UNITLESS operand is admitted: the spec's own §7.1 worked example totals a unitless Bedrag — the
-     *  temporality lives in the timeline, not the unit (see grammar-divergences). Onbekend makes no claim. */
-    private static String totaalOperandFout(List<Datatype> typen) {
-        String f = Typering.getalAggregatie("totaal van", typen);
+     *  unit AND is not a §5.1.4 TEMPORAL attribute — a plain unit (EUR) or a non-time denominator (EUR/km)
+     *  on a NON-temporal operand is the Tabel-30 fout, while a temporal attribute's per-tijdseenheid
+     *  dimension lives in its TIMELINE declaration ("voor elke maand"), not its unit: the spec's own §7.1
+     *  worked example totals a timeline-declared Bedrag, so a plain-unit temporal operand must not be
+     *  rejected (see grammar-divergences). A unitless operand is likewise admitted; Onbekend makes no claim. */
+    private static String totaalOperandFout(List<Expr> argumenten) {
+        String f = Typering.getalAggregatie("totaal van", argumenten.stream().map(Expr::type).toList());
         if (f != null) return f;
-        for (Datatype d : typen) {
-            Eenheid e = d.eenheidOf();
-            if (e != null && io.github.yhavinga.regelspraak.transpiler.kern.Tijdrekening.chronoUnit(e.noemer()) == null)
+        for (Expr arg : argumenten) {
+            Eenheid e = arg.type().eenheidOf();
+            if (e == null || Tijdrekening.chronoUnit(e.noemer()) != null) continue;
+            boolean temporeel = arg instanceof Expr.AttribuutRef a && a.objecttype() != null
+                    && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut());
+            if (!temporeel)
                 return "totaal van vereist een eenheid per tijdseenheid (§4.20 Tabel 30), kreeg '" + e.weergave() + "'";
         }
         return null;
