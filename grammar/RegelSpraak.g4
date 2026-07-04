@@ -41,6 +41,114 @@ regelSpraakDocument
 regelGroep : REGELGROEP kaleNaam ( IS RECURSIEF )? groepLid+ ;
 groepLid   : regel | beslistabel ;
 
+// ====================================================================
+// Scenariotoetsen — a DOCUMENTED EXTENSION, not a §13 production (v2.3.0 has no
+// test chapter). Reachable ONLY via `testDocument`; `regelSpraakDocument` and
+// `corpusEntry` above stay byte-for-byte unchanged, so production parsing and the
+// corpus verifier are isolated (gate G6). Binding contract: docs/SCENARIOTOETSEN.md;
+// token/collision analysis: the '§Scenariotoetsen' section of grammar-divergences.md.
+// Alternatives are #-labelled so the resolver can visit each form directly.
+// ====================================================================
+testDocument
+    : ( definitie | regelGroep | regel | beslistabel | situatieDefinitie | scenario )* EOF
+    ;
+
+// A herbruikbare situatie: `Situatie <naam>:` header, then a situatieblok. The name
+// is a vrijeNaam and ends at the COLON (SITUATIE is a keyword, so it never opens a
+// bare rule/definition; the ':' closes the name).
+situatieDefinitie : SITUATIE situatieNaam COLON situatieBlok ;
+situatieNaam      : vrijeNaam ; // free name up to the ':'
+
+// A scenario: header (name + scope + optional peildatum + optional gebaseerd-op),
+// then an optional inline situatiesectie, then the (mandatory) verwachtingsectie.
+// The scenarionaam is the token run up to the `toetst …` scope keyword.
+scenario
+    : SCENARIO scenarioNaam scenarioScope
+      scenarioPeildatum? scenarioBasis*
+      inlineSituatie?
+      MET_ALS_VERWACHT_RESULTAAT verwachting+
+    ;
+scenarioNaam : ~( TOETST_DE_REGEL | TOETST_DE_REGELS | TOETST_DE_REGELGROEP )+ ; // free name up to 'toetst …'
+
+scenarioScope
+    : TOETST_DE_REGEL      regelReferentie                                  # scopeEnkeleRegel
+    | TOETST_DE_REGELS     regelReferentie ( COMMA regelReferentie )* EN regelReferentie # scopeMeerdereRegels
+    | TOETST_DE_REGELGROEP regelReferentie                                  # scopeRegelgroep
+    ;
+// A rule/group name in a scope list: a free token run bounded by the list separators
+// (',' , 'en') and by the header keywords that can follow the scope (peildatum /
+// gebaseerd-op / the verwachtingsectie opener). A regelnaam containing a bare ' en '
+// or ',' is not expressible here — a documented limitation, consistent with the
+// existing EN-splitting in §13.4 names.
+regelReferentie : regelReferentieWoord+ ;
+regelReferentieWoord
+    : LOWER_ID | UPPER_ID | NUMBER | PERCENT_SIGN | AANTAL_WORD
+    | VAN | OP | IN | VOOR | OVER | BIJ | TOT | TOT_EN_MET | PER | MET | OF | DAN | NIET
+    | DE | HET | EEN | ZIJN | VANAF | GELDIG
+    | IS | HEEFT | HEBBEN | WORDT_VERDEELD_OVER
+    | EEN_TELWOORD | TWEE_TELWOORD | DRIE_TELWOORD | VIER_TELWOORD
+    | JAAR | MAAND | DAG | WEEK | KWARTAAL | UUR | MINUUT | SECONDE | MILLISECONDE
+    | PERIODE | DAGEN | WEKEN | MAANDEN | KWARTALEN | JAREN
+    ;
+
+scenarioPeildatum : MET_PEILDATUM datumWaarde ;                         // §4.2 rekendatum-global
+scenarioBasis     : GEBASEERD_OP_DE_SITUATIE situatieNaam ;             // herhaalbaar
+inlineSituatie    : GEGEVEN_IS_DE_VOLGENDE_SITUATIE situatieBlok ;      // optionele inline situatiesectie
+
+// ---- Situatieblok: instanties + parameterwaarden, in vrije volgorde ----
+situatieBlok : situatieOnderdeel+ ;
+situatieOnderdeel
+    : instantie          # instantieOnderdeel
+    | parameterWaarde    # parameterWaardeOnderdeel
+    ;
+// `een <objecttypenaam> <LABEL>` opener + gebullette toewijzingen. The LABEL is one
+// UPPER_ID (V1, Tom); the resolver checks its uniqueness and non-collision with a type.
+instantie : EEN objectTypeNaam UPPER_ID toewijzing* ;
+toewijzing
+    : bullet DE toewijzingNaam IS situatieWaarde              DOT? # attribuutToewijzing   // de <attr> is <waarde>
+    | bullet DE toewijzingNaam IS UPPER_ID                    DOT? # rolToOneToewijzing    // de <rol> is <LABEL>
+    | bullet DE toewijzingNaam ZIJN UPPER_ID ( EN UPPER_ID )* DOT? # rolToManyToewijzing   // de <rol> zijn <LABEL> en <LABEL> …
+    | bullet ( IS | HEEFT ) lidwoord? kaleNaam               DOT? # kenmerkToewijzing     // is/heeft [lidw] <kenmerk>
+    ;
+// The attribute/role name in a bulleted toewijzing. It must STOP before the trailing
+// ' is <UPPER_ID>' / ' is <waarde>' / ' zijn <UPPER_ID>' — kaleNaam already excludes
+// the UPPER_ID of a following LABEL, and IS/ZIJN are not name words, so the name loop
+// halts at the verb (the same UPPER_ID-lookahead boundary the §13.4 names rely on).
+toewijzingNaam : kaleNaam ;
+
+// Ongebullette parameterwaarde — the missing bullet is what distinguishes it from an
+// instantie-toewijzing (`de parameter …`, whole-phrase token DE_PARAMETER).
+parameterWaarde : DE_PARAMETER parameterNaam IS situatieWaarde DOT? ;
+
+// A situatie/verwachting value: the existing literal tokens (nothing new). A bare
+// `NUMBER` unit run reuses getalWaarde. `leeg` is NOT a situatieWaarde — only a
+// verwachting states `… is leeg` (its own `verwachtAttribuutLeeg` alternative), so a
+// situatie assignment always carries a concrete value.
+situatieWaarde
+    : getalWaarde       # getalSituatieWaarde
+    | datumWaarde       # datumSituatieWaarde
+    | booleanWaarde     # booleanSituatieWaarde
+    | ENUM_LITERAL      # enumSituatieWaarde
+    | tekstWaarde       # tekstSituatieWaarde
+    ;
+
+// ---- Verwachtingregels (bullets) ----
+// The `is geen <kenmerk>` / `heeft geen <kenmerk>` (absent) forms are NOT separate
+// alternatives: `geen` lexes as a plain LOWER_ID and rides inside the trailing
+// `kaleNaam`, so `verwachtKenmerk`/`verwachtKenmerkHeeft` already MATCH them and the
+// resolver strips the `geen` prefix to read the negation — exactly the production
+// `<subject> is/heeft geen <kenmerk>` condition path (grammar-divergences 'negated
+// membership'). The optional lidwoord (een|de|het) covers `is een/de/het <kenmerk>`.
+verwachting
+    : bullet DE verwachtingNaam VAN UPPER_ID IS LEEG                 DOT? # verwachtAttribuutLeeg     // … is leeg (listed first: LEEG is not a situatieWaarde)
+    | bullet DE verwachtingNaam VAN UPPER_ID IS situatieWaarde       DOT? # verwachtAttribuutWaarde   // de <attr> van <LABEL> is <waarde>
+    | bullet UPPER_ID IS      lidwoord? kaleNaam                     DOT? # verwachtKenmerk           // <LABEL> is [lidw]|geen <kenmerk>
+    | bullet UPPER_ID HEEFT   lidwoord? kaleNaam                     DOT? # verwachtKenmerkHeeft      // <LABEL> heeft [lidw]|geen <kenmerk>
+    | bullet DE_GEGEVENS_ZIJN INCONSISTENT                           DOT? # verwachtInconsistent      // de gegevens zijn inconsistent
+    | bullet DE_GEGEVENS_ZIJN CONSISTENT                             DOT? # verwachtConsistent        // de gegevens zijn consistent
+    ;
+verwachtingNaam : kaleNaam ; // attribuutnaam, stops before ' van <LABEL>' (VAN then UPPER_ID)
+
 // Verification entry point for the spec corpus. The worked examples in the spec
 // are not all whole documents — most are FRAGMENTS of a single non-terminal: a
 // bare expressie, a condition, an attribuutspecificatie, a resultaatdeel. To

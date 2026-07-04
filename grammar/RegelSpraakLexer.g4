@@ -145,6 +145,31 @@ GEEN_VAN_DE           : 'geen' WSP 'van' WSP 'de'           ; // §13.4.14 quant
 TEN_MINSTE            : 'ten' WSP 'minste' | 'tenminste' ; // §13.4.14 quantifier
 TEN_HOOGSTE           : 'ten' WSP 'hoogste'           ; // §13.4.14 quantifier
 
+// --- scenariotoetsen (DOCUMENTED EXTENSION — see docs/SCENARIOTOETSEN.md and the
+//     '§Scenariotoetsen' section of docs/grammar-divergences.md). v2.3.0 has NO test
+//     chapter; these forms are reachable ONLY via the `testDocument` start rule and are
+//     inert on production input. Each surface form is a WHOLE-PHRASE token (WSP-joined),
+//     so it wins by maximal munch ONLY when the complete phrase is present — none of the
+//     phrases below occurs anywhere in the 193-file corpus (grepped whitespace-collapsed).
+//     Longest / most-specific phrases first, all before the ID tokens.
+//     Deliberately NO token for 'is geen'/'heeft geen': `geen` must keep lexing as a
+//     plain LOWER_ID inside a kaleNaam so the DOCUMENTED production condition path
+//     `<subject> is/heeft geen <kenmerk/rol>` (grammar-divergences 'negated membership')
+//     is untouched; the verwachting reuses `IS/HEEFT kaleNaam` with the `geen`-prefix
+//     absorbed and the resolver strips it (mirrors that production path exactly).
+TOETST_DE_REGELGROEP : 'toetst' WSP 'de' WSP 'regelgroep' ; // scope: één regelgroep
+TOETST_DE_REGELS     : 'toetst' WSP 'de' WSP 'regels'     ; // scope: meerdere regels (,/en-lijst)
+TOETST_DE_REGEL      : 'toetst' WSP 'de' WSP 'regel'      ; // scope: één regel
+GEBASEERD_OP_DE_SITUATIE : 'gebaseerd' WSP 'op' WSP 'de' WSP 'situatie' ; // herbruikbare-situatie-verwijzing
+GEGEVEN_IS_DE_VOLGENDE_SITUATIE : 'Gegeven' WSP 'is' WSP 'de' WSP 'volgende' WSP 'situatie:' ; // inline situatiesectie-opener (colon folded in)
+MET_ALS_VERWACHT_RESULTAAT : 'Met' WSP 'als' WSP 'verwacht' WSP 'resultaat:' ; // verwachtingsectie-opener (colon folded in)
+MET_PEILDATUM        : 'met' WSP 'peildatum'  ; // §4.2 rekendatum-global voor het scenario
+DE_GEGEVENS_ZIJN     : 'de' WSP 'gegevens' WSP 'zijn' ; // consistentie-verwachting opener
+DE_PARAMETER         : 'de' WSP 'parameter'   ; // ongebullette parameterwaarde in een situatieblok
+SCENARIO             : 'Scenario'             ; // scenario-kop
+SITUATIE             : 'Situatie'             ; // herbruikbare-situatie-kop
+CONSISTENT           : 'consistent'           ; // 'de gegevens zijn consistent' (INCONSISTENT bestaat al)
+
 // --- GegevensSpraak phrases ---
 EXTENSIE_VAN_OBJECTTYPE : 'Extensie' WSP 'van' WSP 'objecttype'         ; // §13.3.1.2
 DATUM_TIJD_MILLIS       : 'Datum' WSP 'en' WSP 'tijd' WSP 'in' WSP 'millisecondes'  ; // §13.3.3.6

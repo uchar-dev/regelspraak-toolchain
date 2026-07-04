@@ -2175,3 +2175,81 @@ dimension; the fold operand is rebuilt with the declared spelling and element da
 §13.4.17.52 "over alle <meervoud>" and §13.4.17.54 "in {…}" forms parse cleanly (ALLE / IN LBRACE are
 not name words) and needed no re-split — they already lowered, previously untested. All four OVER-forms
 are pinned by phase_G_dim_over_vormen_zijn_spec_correct (absolute values, both back-ends).
+
+## §Scenariotoetsen — out of SPEC scope; available as a DOCUMENTED EXTENSION (own start rule `testDocument`)
+
+RegelSpraak v2.3.0 has NO test chapter: no §13 production, no syntax diagram, no worked example, no corpus
+fragment defines a way to write a rule's EXPECTED outcome alongside the rule. The **scenariotoetsen** surface —
+a regelanalist writing regels AND their expected results in one `.rs` file — is therefore a DELIBERATELY-FLAGGED
+grammar superset, the SAME posture as the §9.10 regelgroep extension above. Its BINDING contract (surface, resolver,
+IR, runner) is `docs/SCENARIOTOETSEN.md`; this section records only the **grammar** layer (this task) — the tokens,
+the collision analysis that freed each token, and the isolation guarantee. Semantics/expected VALUES are
+re-derived from the spec's own worked examples + the TOKA casus (the prior-repo ban stands; no prior code consulted).
+
+- **Own start rule, never presented as §13 (isolation gate G6).** The extension lives ONLY behind
+  `testDocument : ( definitie | regelGroep | regel | beslistabel | situatieDefinitie | scenario )* EOF ;`.
+  The production start rule `regelSpraakDocument` and the corpus harness `corpusEntry` are BYTE-FOR-BYTE
+  unchanged, so production parsing and `make verify-corpus` are untouched: the corpus stays **192-0-1**, the
+  CorpusVuurTest partitions stay **59/54/79/9**, and `ScenarioParseTest` proves a scenario block is REJECTED under
+  `regelSpraakDocument` (clean only under `testDocument`). A `.rs` with no `Scenario`/`Situatie` header parses
+  identically under either start rule — the new alternatives are inert on non-extension input.
+
+- **Two constructs.** `situatieDefinitie : SITUATIE situatieNaam COLON situatieBlok` (a reusable
+  test-initialisation analogue; the `:` closes the free name) and
+  `scenario : SCENARIO scenarioNaam scenarioScope scenarioPeildatum? scenarioBasis* inlineSituatie?
+  MET_ALS_VERWACHT_RESULTAAT verwachting+` (header + optional inline situatie section + the mandatory
+  expectation section). A `situatieBlok` is `situatieOnderdeel+`, each an `instantie`
+  (`EEN objectTypeNaam UPPER_ID` opener + bulleted toewijzingen) or an ongebullette `parameterWaarde`
+  (`DE_PARAMETER parameterNaam IS situatieWaarde`). Every alternative is `#`-labelled for the resolver.
+
+- **Token choices + the collision grep that freed each (all phrases whitespace-collapsed over the exact
+  192-file `verify-corpus` `.rs` set — `examples/toka` + re-extracted `examples/spec-antlr`/`examples/spec-main`;
+  every count was 0):**
+  - `SCENARIO : 'Scenario'`, `SITUATIE : 'Situatie'`, `CONSISTENT : 'consistent'` — single-word keywords; none
+    occurs in the corpus (`Scenario` 0, `Situatie` 0 in `.rs`, `consistent` 0; only `inconsistent`, matched by the
+    pre-existing `INCONSISTENT` token — the lexer is anchored at token start, so `inconsistent` never yields
+    `CONSISTENT`). Placed before `UPPER_ID`/`LOWER_ID` per the existing ordering.
+  - Whole-phrase, WSP-joined tokens (win by maximal munch ONLY when the full phrase is present):
+    `TOETST_DE_REGEL(GROEP|S)?`, `MET_PEILDATUM`, `GEBASEERD_OP_DE_SITUATIE`,
+    `GEGEVEN_IS_DE_VOLGENDE_SITUATIE` (trailing `:` folded in, self-delimiting like `DAARBIJ_GELDT`'s siblings),
+    `MET_ALS_VERWACHT_RESULTAAT` (colon folded in), `DE_PARAMETER`, `DE_GEGEVENS_ZIJN`. None of `toetst`,
+    `peildatum`, `gebaseerd op`, `verwacht resultaat`, `Gegeven is`, `de parameter` (lowercase), `de gegevens zijn`
+    appears in the corpus — including collapsed across line wraps. The shared-prefix cases resolve by
+    longest-match: `MET_PEILDATUM` vs `MET_EENHEID`/`MET_EEN_MINIMUM_VAN` diverge after `met `, so a production
+    `met eenheid`/`met een …` is unaffected; `DE_PARAMETER`/`DE_GEGEVENS_ZIJN` vs the bare `DE` article diverge
+    after `de `, so an ordinary `de <attr>` still lexes `DE` + name.
+  - **Deliberately NO token for `is geen` / `heeft geen`.** A phrase token there would BREAK a DOCUMENTED
+    PRODUCTION path: `geen` carries no token (only `GEEN_VAN_DE`) and lexes as a plain `LOWER_ID` inside a
+    `kaleNaam`, which is exactly what the negated-membership condition `<subject> is/heeft geen <kenmerk/rol>`
+    relies on (see the 'negated membership' notes above; exercised by RuleCheckTest `- hij is geen recht`).
+    The verwachting forms `<LABEL> is geen <k>` / `heeft geen <k>` therefore REUSE the `verwachtKenmerk` /
+    `verwachtKenmerkHeeft` alternatives (`UPPER_ID (IS|HEEFT) lidwoord? kaleNaam`) with the `geen`-prefix
+    absorbed into the trailing `kaleNaam`; the resolver strips it post-parse — mirroring the production path,
+    not shadowing it. (Likewise there is no separate `is een/de/het <k>` alternative: the optional `lidwoord?`
+    covers the article, and a §8.1.8-style `een`-membership is a resolver distinction, not a parse one.)
+
+- **The `van <LABEL>` name-boundary valkuil is handled by the existing UPPER_ID lookahead.** In
+  `de belasting op basis van afstand van Tom is …` the attribute name is a `kaleNaam` whose VAN-loop absorbs the
+  internal `van afstand` (a bare lowercase word) but STOPS before `van Tom`, because `kaleNaamWoord` excludes
+  `UPPER_ID` and the rule's own `VAN UPPER_ID` then consumes the navigation — the same context-free split the
+  §13.4 names use, no symbol table needed. Verified in the tree of the contract's own second example.
+
+- **Value rule reuses existing literals only.** `situatieWaarde` unions `getalWaarde` (NUMBER + optional unit),
+  `datumWaarde` (DATE, incl. the datum-en-tijd form), `booleanWaarde`, `ENUM_LITERAL`, `tekstWaarde` — nothing new.
+  `leeg` is NOT a `situatieWaarde` (a situatie assignment always carries a concrete value); only a verwachting
+  states `… is leeg`, via its own `verwachtAttribuutLeeg` alternative (listed first, since `LEEG` is a keyword
+  token the `situatieWaarde` union does not admit). Numeric unit conversion / type legality is a RESOLVER concern.
+
+- **Documented limitations (contract-consistent, not divergences from it).** A rule/group name in a scope list
+  (`regelReferentie`) is a token run bounded by the list separators `,` and `en` and by the header keywords that
+  may follow the scope — so a regelnaam that itself contains a bare ` en ` or `,` is not expressible in the scope
+  list (the contract states this explicitly; it is the same EN-splitting limitation as §13.4 names). Attribuut-vs-rol
+  and value-vs-LABEL toewijzingen (`de <naam> is <waarde>` vs `de <rol> is <UPPER_ID>` vs the `zijn`-list to-many)
+  ARE split at parse time by capitalisation/verb (`situatieWaarde` vs `UPPER_ID`, `IS` vs `ZIJN`); which reading is
+  legal against the fact type (arity, role-vs-attribute) is checked by the resolver, as everywhere.
+
+**No contract deviation.** The grammar realises `docs/SCENARIOTOETSEN.md` as written — same start rule, same two
+constructs, same surface forms, same value table, same stated limitations. `docs/SCENARIOTOETSEN.md` therefore
+needed no update for this layer. Pinned by `ScenarioParseTest` (the two verbatim contract examples + representative
+single-form scenarios/situaties parse clean under `testDocument`; the negative rejects under `regelSpraakDocument`;
+a TOKA-shaped multi-word scope list parses).
