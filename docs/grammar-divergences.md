@@ -1950,3 +1950,22 @@ DECIDED after checking the spec:
 - **Percentage**: the §13.3.3.3 percentagedatatype grammatically admits the same getalspecificatie, but the
   model's `Datatype.Percentage` does not carry a Teken (pre-existing narrowing) — the check scopes to
   Numeriek until that is widened.
+
+## §13.4.13.4 / §5.6 samengesteldpredicaat inline-tail — beide registers toegelaten
+
+The §13.4.13.4 EBNF's second tail alternative, `<toplevelvoorwaardevergelijking>`, is the INLINE
+single-comparison predicate: "… die aan de volgende voorwaarde voldoet: zijn leeftijd is kleiner dan de
+volwassenleeftijd." (the §5.6 worked example) — one non-bulleted voorwaarde directly after the colon,
+where the bulleted `<samengesteldevoorwaardeonderdeel>` needs 2+ bullets.
+
+- **Register**: the EBNF names the verb-TRAILING (toplevel/vragende) family, but the spec's only worked
+  example of this very form writes it verb-LEADING ("is kleiner dan"). The grammar therefore reuses
+  `elementaireVoorwaarde` for the inline tail — both registers parse, the same over-acceptance posture as
+  the §13.4.14.7 bullets (the resolver gives the right meaning either way).
+- **Over-acceptance**: `elementaireVoorwaarde` also admits the consistentie- and periodevergelijking
+  alternatives the spec does not list here; those resolve to their usual non-subselectie handling
+  (Onopgelost markers where unlowerable) and never silently mean the wrong thing.
+- **IR**: the inline tail resolves through the SAME `bouwElementair` machinery a bullet uses, against the
+  aggregated element, wrapped as a 1-onderdeel `Conditie.Samengesteld` so every §13.4.14.5 kwantificatie
+  lowers through the existing compound path. Pinned by the phase_INLINE differential fixtures (both
+  registers + a kenmerk tail, absolute spec values, both back-ends).

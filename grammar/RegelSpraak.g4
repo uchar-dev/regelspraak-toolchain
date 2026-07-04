@@ -558,9 +558,16 @@ predicaat // §13.4.13.2 (used in subselectie)
     | toplevelOperator
     | nonToplevelOperator
     ;
+// The tail after the ':' is EITHER the bulleted onderdeel OR the spec's inline
+// <toplevelvoorwaardevergelijking> — a single non-bulleted comparison ("… die aan de
+// volgende voorwaarde voldoet: zijn leeftijd is kleiner dan de volwassenleeftijd.",
+// the §5.6 worked example). The EBNF names the verb-trailing register, but that very
+// worked example writes it verb-LEADING, so the inline tail reuses elementaireVoorwaarde
+// (both registers; the same over-acceptance posture as the bullets — the resolver gives
+// the right meaning, and its consistentie/periode alternatives stay resolver-rejected).
 samengesteldPredicaat // §13.4.13.4
     : AAN kwantificatie ( VOLGENDE_VOORWAARDE | VOLGENDE_VOORWAARDEN ) ( VOLDOET | VOLDOEN ) COLON
-      samengesteldeVoorwaardeOnderdeel
+      ( samengesteldeVoorwaardeOnderdeel | elementaireVoorwaarde )
     ;
 
 // §8.3.1/§8.1 Tabel 16: an ENKELE conditie used as a voorwaarde (after 'indien', or

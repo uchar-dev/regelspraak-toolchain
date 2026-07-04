@@ -1266,10 +1266,19 @@ final class RuleChecker {
      *  restored around the bullet walk — aggregatieFilter runs DURING {@code bouwer.bouw}, nested inside the outer rule
      *  resolution, so the rule subject must be put back (in a finally, even on a bullet-resolution throw). */
     private Conditie samengesteldeElementFilter(SamengesteldPredicaatContext sp, Objecttype elem) {
-        if (sp == null || elem == null || sp.samengesteldeVoorwaardeOnderdeel() == null) return null;
+        if (sp == null || elem == null
+                || (sp.samengesteldeVoorwaardeOnderdeel() == null && sp.elementaireVoorwaarde() == null)) return null;
         Objecttype vorig = bouwer.subject();          // SAVE the outer rule subject
         try {
             bouwer.setSubject(elem);                   // "zijn X" / "hij" in the bullets resolve against the element
+            // §13.4.13.4 the INLINE single-comparison tail ("… die aan de volgende voorwaarde voldoet: zijn
+            // leeftijd is kleiner dan …") — one non-bulleted voorwaarde, resolved by the same elementaire
+            // machinery a bullet uses and wrapped as a 1-onderdeel compound so every quantifier lowers
+            // through the existing Samengesteld path.
+            if (sp.samengesteldeVoorwaardeOnderdeel() == null)
+                return new Conditie.Samengesteld(kwantorVanKwantificatie(sp.kwantificatie()),
+                        sp.kwantificatie() == null ? 0 : telwoordWaarde(sp.kwantificatie().telwoord()),
+                        List.of(bouwElementair(sp.elementaireVoorwaarde())), src(sp));
             // §13.4.14.6 re-nest a column-absorbed bullet list (the SAME depth-aware machinery as a voorwaarde compound)
             List<Conditie> herNest = herNestOnderdelen(sp.samengesteldeVoorwaardeOnderdeel());
             List<Conditie> onderdelen;

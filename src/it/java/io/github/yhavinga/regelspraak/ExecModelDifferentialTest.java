@@ -1742,6 +1742,29 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_C_COMPOUND_EXPECTED = { new BigDecimal(55), new BigDecimal(55) };
 
+    // ---- §13.4.13.4 the INLINE single-comparison predicate tail — "… die aan de volgende voorwaarde
+    //      voldoet: <één niet-gebullete vergelijking>." (the §5.6 worked example "zijn leeftijd is kleiner
+    //      dan de volwassenleeftijd"). Resolves as a 1-onderdeel DE-compound on the accumulate source; the
+    //      EBNF names the verb-trailing register but the worked example writes verb-leading, so both fire. ----
+    static Supplier<List<Object>> inlineFacts() {
+        return () -> { Vlucht v = new Vlucht(); return List.of(v,
+            paxLM(v, 30, 10, true),     // leeftijd<18, minderjarig
+            paxLM(v, 70, 20, true),     // leeftijd 20, minderjarig
+            paxLM(v, 40, 15, false)); };// leeftijd<18, niet minderjarig
+    }
+    static final Fixture[] PHASE_INLINE = {
+        new Fixture("AANTAL, inline tail verb-leading (§5.6 shape: zijn leeftijd is kleiner dan 18)",
+            COMPOUND_HDR + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis die aan de volgende voorwaarde voldoet:\n        zijn leeftijd is kleiner dan 18.\n",
+            inlineFacts(), Map.of(), l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // leeftijden 10, 15 -> 2
+        new Fixture("SOM, inline tail verb-trailing (EBNF register: zijn leeftijd kleiner is dan 18)",
+            COMPOUND_HDR + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan de volgende voorwaarde voldoet:\n        zijn leeftijd kleiner is dan 18.\n",
+            inlineFacts(), Map.of(), l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 30 + 40 = 70
+        new Fixture("SOM, inline kenmerk-tail (hij is minderjarig)",
+            COMPOUND_HDR + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die aan de volgende voorwaarde voldoet:\n        hij is minderjarig.\n",
+            inlineFacts(), Map.of(), l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 30 + 70 = 100
+    };
+    static final Object[] PHASE_INLINE_EXPECTED = { new BigDecimal(2), new BigDecimal(70), new BigDecimal(100) };
+
     // ---- §13.4.13.4 a COUNTING-quantifier compound subselectie ("die aan ten minste 1 / geen / precies 1 / ten
     //      hoogste 1 van de volgende voorwaarden voldoen: …") whose bullet reads a SINGLE Parameter-global ("zijn
     //      leeftijd is kleiner dan de grens"). The exec binds that one global on the accumulate source (a 2-var
@@ -5951,6 +5974,7 @@ class ExecModelDifferentialTest {
     @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 11); }
     @Test void phase_C_param_rhs_subselectie_matches_drl_back_end() { runDifferential("Phase C param-RHS", PHASE_C_PARAM_RHS, 2); }
     @Test void phase_C_compound_subselectie_matches_drl_back_end() { runDifferential("Phase C compound", PHASE_C_COMPOUND, 2); }
+    @Test void phase_INLINE_predicaat_matches_drl_back_end()      { runDifferential("Phase INLINE", PHASE_INLINE, 3); }
     @Test void phase_C_count_global_subselectie_matches_drl_back_end() { runDifferential("Phase C count+global", PHASE_C_COUNT_GLOBAL, 4); }
     @Test void phase_crossunit_matches_drl_back_end() { runDifferential("Phase cross-unit", PHASE_CROSSUNIT, 2); }
     @Test void phase_cu_arith_matches_drl_back_end() { runDifferential("Phase cross-unit +/-", PHASE_CU_ARITH, 5); }
@@ -6695,6 +6719,22 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(eq(PHASE_C_COMPOUND_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §13.4.13.4 the INLINE single-comparison predicate tail, in both registers plus a kenmerk tail — a
+     *  closed-form filtered fold, so assert the ABSOLUTE spec value (a shared filter-dropped bug would pass a
+     *  pure differential) as well as parity. */
+    @Test void phase_INLINE_predicaat_is_spec_correct() {
+        for (int i = 0; i < PHASE_INLINE.length; i++) {
+            Fixture f = PHASE_INLINE[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_INLINE_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
