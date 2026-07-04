@@ -1381,8 +1381,63 @@ final class ExpressieBouwer {
                 dt = ot.attribuut(enkelvoud);
             }
         }
+        // §13.4.1 MULTI-HOP to-one navigation chain ("de X van de Y van de Z"): the greedy kaleNaam absorbs
+        // every inner 'van', so a chained reference reaches here as ONE attr string ("capaciteit van het
+        // vliegtuig") whose TRAILING delen are role hops beyond the onderwerp. When no direct reading above
+        // bound an attribute, walk those delen outward from the onderwerp's type: each deel must resolve to a
+        // to-ONE hop (ketenHop: written role name or objecttype name) and the remaining prefix must name a
+        // declared attribute — checked at EVERY boundary, so a multi-word attribute name containing 'van'
+        // ("datum van vertrek") wins over deeper navigation and is never split. The resolved DECLARED role
+        // names (subject-first, including the onderwerp hop) thread into the IR as navigatiePad; both
+        // back-ends re-validate the walk against their pattern subject (volgKeten) and emit one null-guarded
+        // getter per hop. Any unresolvable/ambiguous/to-many hop declines the WHOLE chain (dt stays null ->
+        // the downstream marker, never a wrong join). navigatieRol stays non-null for a chain (the AttribuutRef
+        // invariant), so every own-attribute fast path routes it to the navigated branches.
+        java.util.List<String> navigatiePad = java.util.List.of();
+        if (dt == null && huidigSubject != null && noun != null && attr.contains(" van ")
+                && !isSetOnderwerp(onderwerp)) {
+            // The onderwerp anchor: the type the chain starts its delen-walk from. The 1326 fix-up above only
+            // rebinds ot when the ROLE TYPE carries the (still-chained) attr — which fails for a chain by
+            // construction — so recover the role reading here when ot is still unbound.
+            Objecttype anker = ot != null ? ot : model.rolDoeltypeNaarSubject(huidigSubject, noun);
+            java.util.List<String> pad = null;
+            Objecttype cur = null;
+            if (anker != null) {
+                // First hop (subject -> anker), mirroring the transpiler's naviRol order: by written name,
+                // then the §5.5.3 own-type back-reference (no hop), then by pair; declined when to-many.
+                String rol1 = navRol != null ? model.verbindendeRolViaNaam(huidigSubject, anker, navRol) : null;
+                boolean eigenStart = rol1 == null && anker == huidigSubject;
+                if (rol1 == null && !eigenStart) rol1 = model.verbindendeRol(huidigSubject, anker);
+                if (eigenStart || (rol1 != null && !model.naarVeelRol(huidigSubject, anker, rol1))) {
+                    pad = new java.util.ArrayList<>();
+                    if (!eigenStart) pad.add(rol1);
+                    cur = anker;
+                }
+            }
+            if (pad != null) {
+                String[] delen = attr.split("\\s+van\\s+");
+                for (int i = delen.length - 1; i >= 1; i--) {
+                    RegelSpraakModel.KetenHop hop = model.ketenHop(cur, stripArtikel(delen[i]).trim());
+                    if (hop == null) break;   // unresolvable / ambiguous / to-many -> decline the whole chain
+                    pad.add(hop.rol());
+                    cur = hop.doel();
+                    String prefix = String.join(" van ", java.util.Arrays.copyOfRange(delen, 0, i));
+                    Datatype d2 = cur.attribuut(prefix);
+                    if (d2 == null) {
+                        String ev = MeervoudMatcher.vindAttribuut(cur, prefix);
+                        if (ev != null) { prefix = ev; d2 = cur.attribuut(ev); }
+                    }
+                    if (d2 != null) {
+                        attr = prefix; ot = cur; dt = d2;
+                        navigatiePad = java.util.List.copyOf(pad);
+                        if (navRol == null) navRol = noun;   // invariant: a chain always reads as navigated
+                        break;
+                    }
+                }
+            }
+        }
         if (dt == null) dt = onbekend();
-        return new Expr.AttribuutRef(attr, ot, onderwerpBron, navRol, dt, bron, isSetOnderwerp(onderwerp));
+        return new Expr.AttribuutRef(attr, ot, onderwerpBron, navRol, dt, bron, isSetOnderwerp(onderwerp), navigatiePad);
     }
 
     /** The {@link Parameter} named {@code naam} (lidwoord-stripped) when it is Percentage-typed — the §13.4.17.12

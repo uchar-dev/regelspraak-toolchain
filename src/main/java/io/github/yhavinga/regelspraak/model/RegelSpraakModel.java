@@ -509,6 +509,46 @@ public final class RegelSpraakModel {
      *  noun onto a role. */
     public static boolean rolNaamMatcht(Rol r, String woord) { return rolMatcht(r, woord); }
 
+    /** One resolved hop of a §13.4.1 multi-hop navigation chain ("de X van de Y van de Z"):
+     *  the DECLARED role name to navigate through from the holder, and the object type it reaches. */
+    public record KetenHop(String rol, Objecttype doel) {}
+
+    /** Resolve one written chain filler (a role name or an objecttype name, article already stripped)
+     *  into a to-ONE hop from {@code houder} — or null when it does not resolve uniquely or crosses a
+     *  to-many role, in which case the caller declines the WHOLE chain (an honest marker, never a wrong
+     *  join). A filler that names an objecttype directly takes the by-pair role (§13.4.1.2/.3: the
+     *  objecttype reading), any other filler the by-name role reading. */
+    public KetenHop ketenHop(Objecttype houder, String geschreven) {
+        if (houder == null || geschreven == null) return null;
+        Objecttype alsType = objecttypeOpNaam(geschreven);   // STRICT name match — a role-named filler must take the role reading
+        String rol; Objecttype doel;
+        if (alsType != null) { doel = alsType; rol = verbindendeRol(houder, alsType); }
+        else {
+            doel = rolDoeltypeNaarSubject(houder, geschreven);
+            rol = doel == null ? null : verbindendeRolViaNaam(houder, doel, geschreven);
+        }
+        if (rol == null || doel == null || naarVeelRol(houder, doel, rol)) return null;
+        return new KetenHop(rol, doel);
+    }
+
+    /** Re-walk a RESOLVED navigation chain (declared role names, subject-outward) from {@code van},
+     *  returning the object type reached per hop (size == pad size) — or null when any hop does not
+     *  resolve to-one from there. The transpilers re-validate a chain against their actual pattern
+     *  subject with this before emitting getters, so a chain resolved against one subject can never
+     *  silently lower against another. */
+    public List<Objecttype> volgKeten(Objecttype van, List<String> pad) {
+        List<Objecttype> bereikt = new ArrayList<>();
+        Objecttype cur = van;
+        for (String rol : pad) {
+            if (cur == null) return null;
+            Objecttype doel = rolDoeltypeNaarSubject(cur, rol);
+            if (doel == null || naarVeelRol(cur, doel, rol)) return null;
+            bereikt.add(doel);
+            cur = doel;
+        }
+        return bereikt;
+    }
+
     public static final class Eenheidstelsel {
         public final String naam;
         public final Map<String, Eenheid> eenheden = new LinkedHashMap<>(); // abbreviation -> unit

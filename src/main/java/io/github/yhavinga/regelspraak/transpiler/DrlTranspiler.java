@@ -1220,12 +1220,21 @@ public final class DrlTranspiler {
      *  context-specific emitters (the value getter, the condition property, the leegwaarde decomposition,
      *  the leeg/gevuld guard) format from it instead of each re-deriving {@link #naviRol} + the
      *  EIGEN/naar-veel/absent branching. {@code EIGEN} = the subject's own attribute; {@code GENAVIGEERD} =
-     *  a single to-one navigation through {@code rol}; the rest are the marker cases. */
-    private enum NaviSoort { EIGEN, GENAVIGEERD, AFWEZIG, NAAR_VEEL, ONOPGELOST }
+     *  a single to-one navigation through {@code rol}; {@code KETEN} = a resolved §13.4.1 MULTI-hop to-one
+     *  chain (the ref's navigatiePad, re-validated against this subject) — lowered only by the value read,
+     *  every other emitter treats it as a marker case; the rest are the marker cases. */
+    private enum NaviSoort { EIGEN, GENAVIGEERD, KETEN, AFWEZIG, NAAR_VEEL, ONOPGELOST }
     private record NaviRef(NaviSoort soort, String rol) {}
 
     private NaviRef naviResolve(Expr.AttribuutRef a, Objecttype subject) {
         if (attribuutOntbreekt(a)) return new NaviRef(NaviSoort.AFWEZIG, null);
+        if (!a.navigatiePad().isEmpty()) {
+            // A chain is lowered ONLY when the pad re-walks to-one from THIS subject and lands on the type
+            // that declares the attribute (volgKeten) — a chain resolved against another subject markers.
+            List<Objecttype> bereikt = model.volgKeten(subject, a.navigatiePad());
+            boolean ok = bereikt != null && bereikt.get(bereikt.size() - 1) == a.objecttype();
+            return new NaviRef(ok ? NaviSoort.KETEN : NaviSoort.ONOPGELOST, null);
+        }
         String rol = naviRol(subject, a);
         if (EIGEN.equals(rol))          return new NaviRef(NaviSoort.EIGEN, null);
         if (naarVeel(subject, a, rol))  return new NaviRef(NaviSoort.NAAR_VEEL, rol);
@@ -1415,6 +1424,18 @@ public final class DrlTranspiler {
                 // (The condition side already guards via genavigeerdLeegGevuld / "!."; only this value read did not.)
                 String root = SUBJECT + "." + getter(n.rol()) + "()";
                 return Frag.ok("(" + root + " == null ? null : " + root + "." + getter(a.attribuut()) + "())");
+            }
+            if (n.soort() == NaviSoort.KETEN) {
+                // §13.4.1/§13.3.9 multi-hop to-one chain: one getter per declared role hop, EVERY relation prefix
+                // null-guarded so an intervening leeg relation reads as leeg (never an NPE-abort) — the chain
+                // generalisation of the single-hop root-guard above.
+                List<String> guards = new ArrayList<>();
+                String pad = SUBJECT;
+                for (String rol : a.navigatiePad()) {
+                    pad = pad + "." + getter(rol) + "()";
+                    guards.add(pad + " == null");
+                }
+                return Frag.ok("(" + String.join(" || ", guards) + " ? null : " + pad + "." + getter(a.attribuut()) + "())");
             }
             return attribuutGetter(a, subject);
         }

@@ -2445,6 +2445,139 @@ class ExecModelDifferentialTest {
         vals(true, false, true, true),           // ONGELIJK (TEKST): Anna!=Maria, Maria!=Maria, absent!=Maria, null-attr!=Maria
     };
 
+    // ---- §13.4.1/§7 MULTI-HOP to-one navigation chain ("de X van de Y van de Z"): the resolver re-interprets the
+    //      greedy kaleNaam's trailing 'van'-delen as to-one role hops (navigatiePad, declared role names), and BOTH
+    //      back-ends lower the consequence VALUE read as one null-guarded getter per hop — an intervening leeg
+    //      relation (or leeg leaf attribute) reads as leeg, never an NPE / wrong write. Passagier -reis-> Vlucht
+    //      -vliegtuig-> Vliegtuig (2 hops), Persoon -partner->^3 (3 hops, self-relation), and the §5.5.3 own-type
+    //      back-reference start ("van de Vlucht", 1 hop after an EIGEN anchor). Chains in a CONDITION stay a
+    //      symmetric marker in both back-ends (out of scope here). ----
+    static final String KETEN_HDR =
+            "Objecttype de Vliegtuig\n    de capaciteit Numeriek (geheel getal);\n"
+            + "Objecttype de Vlucht\n    de vertrektijd Numeriek (geheel getal);\n"
+            + "Objecttype de Passagier\n    het basistarief Numeriek (geheel getal);\n    de prijs Numeriek (geheel getal);\n"
+            + AGG_FEIT
+            + "Feittype toewijzing van vliegtuig\n    de vlucht Vlucht\n    het vliegtuig Vliegtuig\nEén vlucht heeft één vliegtuig\n";
+    static final String KETEN_PARTNER_SRC = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de leeftijd Numeriek (geheel getal);
+                de gekopieerd Numeriek (geheel getal);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel drie hops
+                geldig altijd
+                    De gekopieerd van een Persoon moet berekend worden als de leeftijd van de partner van de partner van zijn partner.
+            """;
+    static Vlucht vluchtMet(Vliegtuig vt) { Vlucht v = new Vlucht(); v.setVliegtuig(vt); return v; }
+    static final Fixture[] PHASE_KETEN = {
+        // 2 hops, possessive anchor: prijs := capaciteit van het vliegtuig van zijn reis. Rows: present (180),
+        // ABSENT root relation (leeg), ABSENT middle relation (leeg — THE chain corner), present chain w/ leeg
+        // leaf attribute (leeg). A leeg result never writes (the changed-value guard), so prijs stays null.
+        new Fixture("2-hop keten waarde (leeg root / leeg midden / leeg blad -> leeg)",
+            KETEN_HDR + "Regel keten\n    geldig altijd\n"
+            + "        De prijs van een Passagier moet berekend worden als de capaciteit van het vliegtuig van zijn reis.\n",
+            () -> { Vliegtuig vt = new Vliegtuig(); vt.setCapaciteit(new BigDecimal(180));
+                    Vliegtuig vtLeeg = new Vliegtuig();   // capaciteit null
+                    Vlucht vA = vluchtMet(vt); Vlucht vB = vluchtMet(null); Vlucht vC = vluchtMet(vtLeeg);
+                    return List.of(vt, vtLeeg, vA, vB, vC,
+                                   paxNav(vA, null, null), paxNav(null, null, null), paxNav(vB, null, null), paxNav(vC, null, null)); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(5)).getPrijs(), ((Passagier) l.get(6)).getPrijs(),
+                      ((Passagier) l.get(7)).getPrijs(), ((Passagier) l.get(8)).getPrijs())),
+        // The DEFINITE spelling of the same chain ("van de reis") resolves identically (§13.4.1.3 role reference).
+        new Fixture("2-hop keten waarde, definiete spelling (van de reis)",
+            KETEN_HDR + "Regel keten\n    geldig altijd\n"
+            + "        De prijs van een Passagier moet berekend worden als de capaciteit van het vliegtuig van de reis.\n",
+            () -> { Vliegtuig vt = new Vliegtuig(); vt.setCapaciteit(new BigDecimal(180));
+                    Vlucht v = vluchtMet(vt);
+                    return List.of(vt, v, paxNav(v, null, null)); },
+            Map.of(),
+            l -> ((Passagier) l.get(2)).getPrijs()),
+        // A chain leg INSIDE value arithmetic: prijs := (capaciteit van het vliegtuig van zijn reis) plus basistarief.
+        // Present: 180+20=200; a broken chain reads leeg -> §6.2 leeg telt als 0 -> 0+20=20.
+        new Fixture("keten-leg in waarde-rekenkunde (leeg midden telt als 0 in +)",
+            KETEN_HDR + "Regel keten plus\n    geldig altijd\n"
+            + "        De prijs van een Passagier moet berekend worden als de capaciteit van het vliegtuig van zijn reis plus zijn basistarief.\n",
+            () -> { Vliegtuig vt = new Vliegtuig(); vt.setCapaciteit(new BigDecimal(180));
+                    Vlucht vA = vluchtMet(vt); Vlucht vB = vluchtMet(null);
+                    return List.of(vt, vA, vB, paxNav(vA, 20, null), paxNav(vB, 20, null)); },
+            Map.of(),
+            l -> vals(((Passagier) l.get(3)).getPrijs(), ((Passagier) l.get(4)).getPrijs())),
+        // 3 hops through a SELF-relation (partner van de partner van zijn partner): p1 -> p2 -> p3 -> p4 (40);
+        // p2's chain ends at p4's absent partner -> leeg; p4 has no partner at all -> leeg.
+        new Fixture("3-hop keten door zelfrelatie (partner^3)",
+            KETEN_PARTNER_SRC,
+            () -> { Persoon p4 = new Persoon(); p4.setLeeftijd(new BigDecimal(40));
+                    Persoon p3 = new Persoon(); p3.setPartner(p4);
+                    Persoon p2 = new Persoon(); p2.setPartner(p3);
+                    Persoon p1 = new Persoon(); p1.setPartner(p2);
+                    return List.of(p1, p2, p3, p4); },
+            Map.of(),
+            l -> vals(((Persoon) l.get(0)).getGekopieerd(), ((Persoon) l.get(1)).getGekopieerd(),
+                      ((Persoon) l.get(3)).getGekopieerd())),
+        // §5.5.3 own-type back-reference anchor: subject Vlucht, "van de Vlucht" = the subject itself, then ONE
+        // hop (vliegtuig). Closes the documented "…van het vliegtuig van de Vlucht" residual for the VALUE read.
+        new Fixture("keten na eigen-type terugverwijzing (van de Vlucht)",
+            KETEN_HDR + "Regel eigen keten\n    geldig altijd\n"
+            + "        De vertrektijd van een Vlucht moet berekend worden als de capaciteit van het vliegtuig van de Vlucht.\n",
+            () -> { Vliegtuig vt = new Vliegtuig(); vt.setCapaciteit(new BigDecimal(180));
+                    return List.of(vt, vluchtMet(vt), vluchtMet(null)); },
+            Map.of(),
+            l -> vals(((Vlucht) l.get(1)).getVertrektijd(), ((Vlucht) l.get(2)).getVertrektijd())),
+        // §4 CROSS-UNIT chain leaf: the leaf carries mnd, the doel jr — the ordinary value-side EXACT restatement
+        // (herschaalWaarde/omrekenWaarde) applies to the chain read like any value: 24 mnd -> 2 jr exactly.
+        new Fixture("keten-blad met eenheid (24 mnd blad -> 2 jr doel, exacte herschaling)",
+            "Eenheidsysteem Tijd\n    de maand    mnd\n    het jaar    jr    =    12 mnd\n"
+            + "Objecttype de Vliegtuig\n    de capaciteit Numeriek (geheel getal) met eenheid mnd;\n"
+            + "Objecttype de Vlucht\n    de vertrektijd Numeriek (geheel getal);\n"
+            + "Objecttype de Passagier\n    het basistarief Numeriek (geheel getal);\n    de prijs Numeriek (geheel getal) met eenheid jr;\n"
+            + AGG_FEIT
+            + "Feittype toewijzing van vliegtuig\n    de vlucht Vlucht\n    het vliegtuig Vliegtuig\nEén vlucht heeft één vliegtuig\n"
+            + "Regel keten eenheid\n    geldig altijd\n"
+            + "        De prijs van een Passagier moet berekend worden als de capaciteit van het vliegtuig van zijn reis.\n",
+            () -> { Vliegtuig vt = new Vliegtuig(); vt.setCapaciteit(new BigDecimal(24));
+                    Vlucht v = vluchtMet(vt);
+                    return List.of(vt, v, paxNav(v, null, null)); },
+            Map.of(),
+            l -> ((Passagier) l.get(2)).getPrijs()),
+    };
+    static final Object[] PHASE_KETEN_EXPECTED = {
+        vals(new BigDecimal(180), null, null, null),
+        new BigDecimal(180),
+        vals(new BigDecimal(200), new BigDecimal(20)),
+        vals(new BigDecimal(40), null, null),
+        vals(new BigDecimal(180), null),
+        new BigDecimal(2),
+    };
+
+    // ---- §13.4.6 objectcreatie attribute-INIT values through a navigation: the toekenning value is a consequence
+    //      value evaluated against the ANCHOR $subject, so a single-hop navigated read AND a §13.4.1 chain lower in
+    //      BOTH back-ends (the exec used to pass valueSubject=null there: every navigated init value skipped while
+    //      DRL fired it — the chain work surfaced that asymmetry, review wf keten). ----
+    static final ObjFixture[] PHASE_KETEN_OBJ = {
+        new ObjFixture("§13.4.6 objectcreatie-init via een §13.4.1 keten (eigen-anker + 1 hop)",
+            KETEN_HDR + "Regel maak\n    geldig altijd\n"
+            + "        Een Vlucht heeft een passagier met prijs gelijk aan de capaciteit van het vliegtuig van zijn reis.\n",
+            () -> { Vliegtuig vt = new Vliegtuig(); vt.setCapaciteit(new BigDecimal(77));
+                    return List.<Object>of(vt, vluchtMet(vt)); },
+            Map.of(),
+            (o, facts) -> { Passagier p = (Passagier) o; return "Passagier|prijs=" + p.getPrijs().toPlainString()
+                    + "|reis=" + refIndex(facts, p.getReis()); }),
+            // -> ["Passagier|prijs=77|reis=1"]
+        new ObjFixture("§13.4.6 objectcreatie-init via een ENKELE to-one navigatie (zijn vliegtuig)",
+            KETEN_HDR + "Regel maak\n    geldig altijd\n"
+            + "        Een Vlucht heeft een passagier met prijs gelijk aan de capaciteit van zijn vliegtuig.\n",
+            () -> { Vliegtuig vt = new Vliegtuig(); vt.setCapaciteit(new BigDecimal(88));
+                    return List.<Object>of(vt, vluchtMet(vt)); },
+            Map.of(),
+            (o, facts) -> { Passagier p = (Passagier) o; return "Passagier|prijs=" + p.getPrijs().toPlainString()
+                    + "|reis=" + refIndex(facts, p.getReis()); }),
+            // -> ["Passagier|prijs=88|reis=1"]
+    };
+    static final String[] PHASE_KETEN_OBJ_EXPECTED = { "Passagier|prijs=77|reis=1", "Passagier|prijs=88|reis=1" };
+
     // ---- §5.3/§5.6 DATUM EQUALITY (gelijk/ongelijk) of an OWN or to-one NAVIGATED datum attribute vs a datum literal OR
     //      another datum attribute. The exec had a datum ORDERING branch but no datum EQUALITY branch -> it SKIPPED these
     //      (DRL fired them correctly). Now both fire: an absent navigation / leeg datum reads LEEGWAARDE, then GELIJK uses
@@ -6440,6 +6573,43 @@ class ExecModelDifferentialTest {
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(eq(PHASE_NAV_LEEG_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §13.4.1 a MULTI-HOP to-one navigation chain ("de X van de Y van de Z") now fires as a consequence VALUE in both
+     *  back-ends: the resolver threads the declared role hops as navigatiePad, DRL emits one null-guarded getter per
+     *  hop, the exec composes typed getters with the same per-hop short-circuit. An intervening leeg relation or a
+     *  leeg leaf reads as leeg (lege waarde, hoofdspec §5.5.5/§13.3.9); inside + the leeg then counts as 0 (§6.2
+     *  Tabel 5). Covers 2 hops (possessive + definite spelling), 3 hops through a self-relation, the §5.5.3 own-type
+     *  back-reference anchor, and a cross-unit leaf (§4 exact restatement). Closed-form -> assert the ABSOLUTE spec
+     *  values + parity. */
+    @Test void phase_keten_is_spec_correct() {
+        for (int i = 0; i < PHASE_KETEN.length; i++) {
+            Fixture f = PHASE_KETEN[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_KETEN_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §13.4.6 an objectcreatie attribute-INIT through a navigation (single hop AND a §13.4.1 chain) creates the
+     *  object with the navigated value in BOTH back-ends — the exec used to lower toekenning values with
+     *  valueSubject=null, silently skipping every navigated init while DRL fired it (found by the keten fire-both
+     *  review). ABSOLUTE pin of the created object + parity. */
+    @Test void phase_keten_objectcreatie_init_is_spec_correct() {
+        for (int i = 0; i < PHASE_KETEN_OBJ.length; i++) {
+            ObjFixture f = PHASE_KETEN_OBJ[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            List<String> viaDrl = fireCreated(drlBase(m), f);
+            List<String> viaModel = fireCreated(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(List.of(PHASE_KETEN_OBJ_EXPECTED[i]), viaDrl, () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(viaDrl, viaModel, () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
     /** §5.3/§5.6 a DATUM EQUALITY (gelijk/ongelijk) of an own/navigated datum attribute vs a literal/datum-attr now fires

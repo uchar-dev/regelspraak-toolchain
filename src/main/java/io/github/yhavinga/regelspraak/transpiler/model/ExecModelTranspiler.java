@@ -92,6 +92,11 @@ public final class ExecModelTranspiler {
      *  every construct is {@code geldig altijd} (no guard needed). Mirrors DrlTranspiler's {@code rekendatum} global. */
     private Global<java.time.LocalDate> rekendatumGlobal;
     private final List<String> overgeslagen = new ArrayList<>();
+    /** Build-time-only gate: true WHILE lowering a scalar consequence value (the THEN-waarde), the single
+     *  context where a §13.4.1 multi-hop navigation chain may lower ({@link #navKetenReader}) — mirroring
+     *  DrlTranspiler.waarde's KETEN branch. A chain reaching any CONDITION lowering (which also passes a
+     *  non-null valueSubject into scalarWaarde) must keep the symmetric marker the DRL back-end emits. */
+    private boolean ketenWaardePad;
     /** Monotonic within ONE rule (reset per rule) — keeps each rule's declaration NAMES ({@code $e_0}, {@code $inc_1})
      *  unique. Declaration names are per-rule scoped, so they may repeat across rules. */
     private int seq;
@@ -444,11 +449,19 @@ public final class ExecModelTranspiler {
             // scalar value path: a WaardeFn(subject, global-values -> value) plus the Parameter-globals it reads.
             // the doel's objecttype rides along as the VALUE-path subject (no-mutable-build-state: a parameter, no field),
             // so a to-one navigated value read can resolve its role.
-            WaardeFn wf = switch (r.soort()) {
-                case KENMERKTOEKENNING -> WaardeFn.constant(Boolean.TRUE);      // "is <kenmerk>" -> kenmerk == true
-                case GELIJKSTELLING, BEREKENING, INITIALISATIE -> scalarWaarde(doel.objecttype(), r.waarde());
-                default -> null;
-            };
+            WaardeFn wf;
+            try {
+                // §13.4.1 multi-hop chains lower only here (the consequence VALUE), mirroring DrlTranspiler.waarde's
+                // KETEN branch; the flag is build-time-only and strictly scoped so no condition lowering sees it.
+                ketenWaardePad = true;
+                wf = switch (r.soort()) {
+                    case KENMERKTOEKENNING -> WaardeFn.constant(Boolean.TRUE);      // "is <kenmerk>" -> kenmerk == true
+                    case GELIJKSTELLING, BEREKENING, INITIALISATIE -> scalarWaarde(doel.objecttype(), r.waarde());
+                    default -> null;
+                };
+            } finally {
+                ketenWaardePad = false;
+            }
             if (wf == null) return skip("regel (waarde buiten scope): " + r.naam());
             // §4 value-side unit restatement, EXACT (a kenmerk value is Boolean, no unit). Mirrors DrlTranspiler.omrekenWaarde.
             if (r.soort() != ResolvedRegel.Soort.KENMERKTOEKENNING)
@@ -1080,6 +1093,7 @@ public final class ExecModelTranspiler {
      *  back-ends agree.) */
     private java.util.function.Function<Object, Object> navReader(Expr.AttribuutRef a, Objecttype subject) {
         if (a.objecttype() == null || !a.objecttype().heeftLid(a.attribuut())) return null;   // AFWEZIG
+        if (!a.navigatiePad().isEmpty()) return null;   // §13.4.1 multi-hop chain: ONLY navKetenReader (value path) lowers it
         String rol = null;
         if (a.navigatieRol() != null) rol = model.verbindendeRolViaNaam(subject, a.objecttype(), a.navigatieRol());
         final String attr = a.attribuut();
@@ -1094,6 +1108,33 @@ public final class ExecModelTranspiler {
         java.util.function.Function<Object, Object> roleGet = typedGetter(factClass(subject), rol);
         java.util.function.Function<Object, Object> attrGet = typedGetter(factClass(a.objecttype()), attr);
         return s -> { Object rel = roleGet.apply(s); return rel == null ? null : attrGet.apply(rel); };
+    }
+
+    /** The §13.4.1 MULTI-hop to-one chain reader ("de X van de Y van de Z", the ref's navigatiePad): one typed
+     *  getter per declared role hop, short-circuiting to null (leeg) on ANY intervening null relation — the chain
+     *  generalisation of {@link #navReader}'s single-hop root-guard, mirroring DrlTranspiler's KETEN value read.
+     *  The pad is re-validated against THIS subject (volgKeten), so a chain resolved against another subject skips.
+     *  Deliberately reached ONLY from the consequence VALUE path (scalarWaarde's chain branch, gated by
+     *  {@code ketenWaardePad}) — the condition side keeps the symmetric marker both back-ends emit. */
+    private java.util.function.Function<Object, Object> navKetenReader(Expr.AttribuutRef a, Objecttype subject) {
+        if (a.objecttype() == null || !a.objecttype().heeftLid(a.attribuut())) return null;   // AFWEZIG
+        List<Objecttype> bereikt = model.volgKeten(subject, a.navigatiePad());
+        if (bereikt == null || bereikt.get(bereikt.size() - 1) != a.objecttype()) return null;   // ONOPGELOST / to-many
+        List<java.util.function.Function<Object, Object>> hops = new ArrayList<>();
+        Objecttype cur = subject;
+        for (int i = 0; i < a.navigatiePad().size(); i++) {
+            hops.add(typedGetter(factClass(cur), a.navigatiePad().get(i)));
+            cur = bereikt.get(i);
+        }
+        java.util.function.Function<Object, Object> attrGet = typedGetter(factClass(a.objecttype()), a.attribuut());
+        return s -> {
+            Object o = s;
+            for (java.util.function.Function<Object, Object> h : hops) {
+                o = h.apply(o);
+                if (o == null) return null;   // §5.5.5 an intervening leeg relation reads the operand as leeg
+            }
+            return attrGet.apply(o);
+        };
     }
 
     /** A getter for {@code prop} on {@code cls}: a TYPED {@link Accessors} LMF accessor when the fact class is known
@@ -1112,6 +1153,7 @@ public final class ExecModelTranspiler {
      *  voorwaarde now also reads a navigated comparison leegwaarde-faithfully (genavigeerdeVergelijkingVoorwaarde). */
     private String navComparisonRole(Expr.AttribuutRef a, Objecttype subject) {
         if (a.objecttype() == null || a.navigatieRol() == null || !a.objecttype().heeftLid(a.attribuut())) return null;
+        if (!a.navigatiePad().isEmpty()) return null;   // §13.4.1 multi-hop chain: comparisons keep the symmetric marker
         String rol = model.verbindendeRolViaNaam(subject, a.objecttype(), a.navigatieRol());
         if (rol == null) return null;
         if (subject != null && model.naarVeelRol(subject, a.objecttype(), rol)) return null;   // NAAR_VEEL
@@ -2699,6 +2741,16 @@ public final class ExecModelTranspiler {
             // §3.6 a bare read of a gedimensioneerd attribuut (its field is a Map<label,value>) is under-specified —
             // a scalar slot needs a pinned label (a DimensieCel) or a dimensie-fold. Skip (DRL markers it likewise).
             if (a.objecttype() != null && !a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;
+            // §13.3.9 a BY-PAIR navigation: when the written noun NAMES the objecttype ("zijn vliegtuig", type
+            // Vliegtuig) the resolver records navigatieRol=null with objecttype != subject — NOT an own read.
+            // Route it through navReader (which resolves the unique by-pair role, null-safe), mirroring
+            // DrlTranspiler.naviRol's by-pair fallback; reading it as get(subject, attr) THREW at fire time
+            // (no such getter on the subject — surfaced by the keten objectcreatie review fixture).
+            if (valueSubject != null && a.objecttype() != null && a.objecttype() != valueSubject) {
+                java.util.function.Function<Object, Object> reader = navReader(a, valueSubject);
+                if (reader == null) return null;
+                return new WaardeFn((s, gm) -> reader.apply(s), Set.of());
+            }
             String attr = a.attribuut();
             return new WaardeFn((s, gm) -> RegelSpraakRuntime.get(s, attr), Set.of());
         }
@@ -2710,7 +2762,11 @@ public final class ExecModelTranspiler {
             // testable — DRL crashes). Only reached on the VALUE path (valueSubject set); the condition path skips it.
             if (a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;   // temporal -> Phase F
             if (a.objecttype() != null && !a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;             // §3.6 gedimensioneerd -> marker
-            java.util.function.Function<Object, Object> reader = navReader(a, valueSubject);
+            // §13.4.1 a MULTI-hop chain lowers ONLY on the consequence value path (ketenWaardePad, set around the
+            // scalar THEN-waarde) — a chain in a CONDITION keeps the symmetric marker DRL emits (operand/attribuutOperand
+            // marker KETEN), so neither back-end fires ahead of the other.
+            java.util.function.Function<Object, Object> reader = a.navigatiePad().isEmpty() ? navReader(a, valueSubject)
+                    : ketenWaardePad ? navKetenReader(a, valueSubject) : null;
             if (reader == null) return null;
             return new WaardeFn((s, gm) -> reader.apply(s), Set.of());
         }
@@ -3989,15 +4045,25 @@ public final class ExecModelTranspiler {
         String backRef = model.verbindendeRol(nieuw, subject);   // field on $new -> subject (null -> orphan insert, like DRL)
 
         // lower each toekenning value to a (subject, globals) -> value function; collect the Parameter-globals read.
+        // The runtime receiver of each fn IS the anchor $subject (body below applies fn to args[0]), so the anchor
+        // objecttype rides as the VALUE-path subject — a to-one navigated or §13.4.1 multi-hop chain value resolves
+        // against it, mirroring DrlTranspiler.objectCreatie's waarde(acc, t.waarde(), subject). The chain gate
+        // (ketenWaardePad) is set here for the same reason as the scalar THEN-waarde: a toekenning value IS a
+        // consequence value. (Was scalarWaarde(null, ...): every navigated init value skipped while DRL fired it.)
         List<String> attrs = new ArrayList<>();
         List<BiFunction<Object, Map<String, BigDecimal>, Object>> fns = new ArrayList<>();
         Set<String> gNames = new LinkedHashSet<>();
-        for (var t : oc.toekenningen()) {
-            WaardeFn wf = scalarWaarde(null, t.waarde());
-            if (wf == null) return skip("objectcreatie (toekenning-waarde buiten scope): " + oc.naam());
-            attrs.add(t.attribuut());
-            fns.add(wf.fn());
-            gNames.addAll(wf.globals());
+        try {
+            ketenWaardePad = true;
+            for (var t : oc.toekenningen()) {
+                WaardeFn wf = scalarWaarde(subject, t.waarde());
+                if (wf == null) return skip("objectcreatie (toekenning-waarde buiten scope): " + oc.naam());
+                attrs.add(t.attribuut());
+                fns.add(wf.fn());
+                gNames.addAll(wf.globals());
+            }
+        } finally {
+            ketenWaardePad = false;
         }
         List<String> gList = new ArrayList<>(gNames);
 

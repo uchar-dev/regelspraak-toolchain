@@ -157,14 +157,26 @@ public sealed interface Expr {
      * navigated type equals the subject's) from a plain own-attribute read (§13.3.9.2).
      */
     record AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
-                        String navigatieRol, Datatype type, String bron, boolean set) implements Expr {
+                        String navigatieRol, Datatype type, String bron, boolean set,
+                        java.util.List<String> navigatiePad) implements Expr {
         /** {@code set} marks an operand that ranges over a SET (a §13.4.2 set quantifier — alle/al/geen van de/
          *  ten minste…/ten hoogste…/precies… — NOT the bare definite "de"), computed structurally from the
          *  onderwerp's quantifier rather than re-scanned from the onderwerp text. Lets the transpiler/resolver
-         *  distinguish a set aggregation from a single-object read even when the element type equals the subject. */
+         *  distinguish a set aggregation from a single-object read even when the element type equals the subject.
+         *
+         *  {@code navigatiePad} is the resolved MULTI-HOP to-one navigation chain (§13.4.1 "de X van de Y van de Z"):
+         *  the DECLARED feittype role names from the rule subject to the object carrying {@code attribuut}, in
+         *  navigation order — empty for the subject's own attribute and for a single-hop navigation (which stays
+         *  the written {@code navigatieRol}). INVARIANT: a non-empty pad implies a non-null {@code navigatieRol},
+         *  so every own-attribute fast path (keyed on navigatieRol == null) routes a chain to the navigated
+         *  branches, whose choke points (naviResolve / navReader / navComparisonRole) are pad-aware. */
+        public AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
+                            String navigatieRol, Datatype type, String bron, boolean set) {
+            this(attribuut, objecttype, onderwerpBron, navigatieRol, type, bron, set, java.util.List.of());
+        }
         public AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
                             String navigatieRol, Datatype type, String bron) {
-            this(attribuut, objecttype, onderwerpBron, navigatieRol, type, bron, false);
+            this(attribuut, objecttype, onderwerpBron, navigatieRol, type, bron, false, java.util.List.of());
         }
     }
 
