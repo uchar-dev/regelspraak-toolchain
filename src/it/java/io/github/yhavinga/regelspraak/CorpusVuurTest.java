@@ -118,7 +118,15 @@ class CorpusVuurTest {
 
         List<Path> files;
         try (var s = Files.walk(root)) {
-            files = s.filter(x -> x.toString().endsWith(".rs")).sorted().toList();
+            // examples/toka-scenarios/ holds scenariotoetsen fixtures (docs/SCENARIOTOETSEN.md) — a DOCUMENTED
+            // EXTENSION reachable only via the `testDocument` front-end, NOT the production `regelSpraakDocument`
+            // resolver this walk exercises. A bare scenario .rs is not standalone-resolvable (it needs its
+            // companion model files + the scenario runner), so it belongs to no production bucket; excluding the
+            // directory keeps this walk a pure production-corpus census and the 59/54/79/9 partition byte-identical
+            // (the G6 isolation the scenario extension guarantees).
+            files = s.filter(x -> x.toString().endsWith(".rs"))
+                     .filter(x -> !x.toString().contains("toka-scenarios"))
+                     .sorted().toList();
         }
 
         for (Path f : files) {

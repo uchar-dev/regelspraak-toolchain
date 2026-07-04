@@ -68,12 +68,23 @@ Met als verwacht resultaat:
 **Kop**, in vaste volgorde:
 1. `Scenario <scenarionaam>` — naam eindigt bij het `toetst …`-sleutelwoord.
 2. Scope, precies één van:
-   - `toetst de regel <regelnaam>`
-   - `toetst de regels <regelnaam>, <regelnaam> en <regelnaam>` — separatoren
-     `,` en `en`; een regelnaam die zelf een kale ` en ` of `,` bevat is hier
-     niet uitdrukbaar (gedocumenteerde beperking, consistent met de bestaande
-     EN-splitsing in namen).
-   - `toetst de regelgroep <groepnaam>`
+   - `toetst de regel <regelnaam>` — de ENKELE-regelvorm. De regelnaam is een
+     vrije tokenreeks die pas eindigt bij het eerstvolgende kopsleutelwoord
+     (`met peildatum` / `gebaseerd op de situatie` /
+     `Gegeven is de volgende situatie:` / `Met als verwacht resultaat:`). Omdat
+     hier GEEN lijst is, mag de naam een kale ` en `, een `,`, of een meerwoord-
+     keyword (bv. `in gelijke delen`, `op basis van`) bevatten — dat is precies
+     wat het scopen van een §9.7-verdelingsregel of een beslistabelrij mogelijk
+     maakt. De naam mag zowel een top-level regel als een resolved-regel noemen:
+     een §12-beslistabel desugart naar één resolved-regel per rij, genaamd
+     `<tabelnaam> <rijnr>` (bv. `Woonregio factor 1`) zonder eigen top-level
+     `regel`-record, dus scopen van zo'n rij gebruikt de resolved-regelnaam.
+   - `toetst de regels <regelnaam>, <regelnaam> en <regelnaam>` — de LIJSTvorm,
+     met separatoren `,` en `en`; een regelnaam die zelf een kale ` en ` of `,`
+     bevat is HIER niet uitdrukbaar (gedocumenteerde beperking, consistent met de
+     bestaande EN-splitsing in namen — gebruik dan de enkele-regelvorm hierboven).
+   - `toetst de regelgroep <groepnaam>` — zelfde vrije-tokenreeks-naam als de
+     enkele-regelvorm.
 3. Optioneel: `met peildatum <datumwaarde>` (dd-mm-jjjj, optioneel met tijd).
 4. Optioneel, herhaalbaar: `gebaseerd op de situatie <situatienaam>`.
 
@@ -215,8 +226,16 @@ omgerekend; een onverenigbare eenheid is een resolve-time ERROR (gate G4).
 
 - **G1** `ScenarioOrakelTest`: ≥ 40 triples uit de bestaande executiesuites
   reproduceren IDENTIEKE waarden via het scenariopad (Java-API == runner).
-- **G2** golden TOKA: 30/30 vurende manifestregels PASS via
-  `make scenario-test`; toka-23 (de eerlijke marker) oefent exit 3.
+  Geleverd: 64 triples (engine-suite 88/88).
+- **G2** golden TOKA: 30/30 vurende manifestregels PASS via `make scenario-test`
+  (`examples/toka-scenarios/manifest`, één scenario per gelowerde manifestregel,
+  scope = precies één regel). De exit-3 MARKER-lezing wordt geoefend door
+  `scenario-marker-exit3.rs` (een schoon markerende regel, exit 3). De TOKA-
+  markerregel toka-23 ("Bevestigingstijdstip vlucht") is BOVENDIEN spec-illegaal
+  getypeerd — A = datum-tijd PLUS datum-tijd, door §4.1 Tabel 2 verboden — dus
+  een bundel met toka-23 resolvet NIET en de CLI leest exit 1 (resolve-fout), niet
+  exit 3: de runner mag een ill-getypeerde bundel nooit stil laten passeren. Het
+  manifest verwacht daarom exit 1 voor toka-23 en exit 3 voor de schone marker.
 - **G3** mutatiegate: ≥ 10 bewust-foute verwachtingen FALEN elk met een
   diagnose die regel + afwijkende waarde noemt (RED-first).
 - **G4** typegate: ≥ 6 slecht-getypeerde scenario's zijn resolver-ERRORS met

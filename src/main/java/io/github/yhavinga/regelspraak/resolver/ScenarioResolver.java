@@ -171,7 +171,7 @@ public final class ScenarioResolver {
 
     private Scope resolveScope(ScenarioScopeContext scope) {
         if (scope instanceof ScopeEnkeleRegelContext s) {
-            ScopeRegel r = scopeRegel(s.regelReferentie());
+            ScopeRegel r = scopeRegel(s.enkeleRegelReferentie());
             return new Scope(ScopeSoort.ENKELE_REGEL, List.of(r), List.of());
         }
         if (scope instanceof ScopeMeerdereRegelsContext s) {
@@ -180,7 +180,7 @@ public final class ScenarioResolver {
             return new Scope(ScopeSoort.MEERDERE_REGELS, regels, List.of());
         }
         ScopeRegelgroepContext s = (ScopeRegelgroepContext) scope;
-        String groep = src(s.regelReferentie());
+        String groep = src(s.enkeleRegelReferentie());
         var g = model.regelGroepen.stream().filter(rg -> normNaam(rg.naam()).equals(normNaam(groep)))
                 .findFirst().orElse(null);
         if (g == null) {
@@ -190,8 +190,9 @@ public final class ScenarioResolver {
         return new Scope(ScopeSoort.REGELGROEP, List.of(new ScopeRegel(groep, true)), List.copyOf(g.leden()));
     }
 
-    /** Resolve one scope rule reference, checking it names a rule that exists in the model. */
-    private ScopeRegel scopeRegel(RegelReferentieContext ref) {
+    /** Resolve one scope rule reference (either the list-form {@code regelReferentie} or the single-form
+     *  {@code enkeleRegelReferentie}), checking it names a rule that exists in the model. */
+    private ScopeRegel scopeRegel(ParserRuleContext ref) {
         String naam = src(ref);
         boolean bestaat = regelBestaat(naam);
         if (!bestaat)
@@ -199,10 +200,16 @@ public final class ScenarioResolver {
         return new ScopeRegel(naam, bestaat);
     }
 
-    /** Does the model declare a rule named {@code naam} (a top-level regel or a beslistabel row's parent)? */
+    /** Does the model declare a rule named {@code naam}? Checks the raw {@code regels} (top-level regels and the
+     *  verdeling/consistentie/objectcreatie/feitcreatie constructs, which keep a raw {@link RegelSpraakModel.Regel}
+     *  record) AND the {@code resolvedRegels} — a §12 beslistabel desugars to one resolved rule per row named
+     *  "&lt;tabelnaam&gt; &lt;rijnr&gt;" ("Woonregio factor 1") with NO raw {@code regels} entry, so scoping such a
+     *  row (the golden toka-46 rows) requires the resolved-rule name too. The match tolerates a §13.4.2.3 " #k"
+     *  version suffix on a resolved name. */
     private boolean regelBestaat(String naam) {
         String n = normNaam(naam);
-        return model.regels.stream().anyMatch(r -> normNaam(r.naam()).equals(n));
+        if (model.regels.stream().anyMatch(r -> normNaam(r.naam()).equals(n))) return true;
+        return model.resolvedRegels.stream().anyMatch(r -> naamMatcht(r.naam(), n));
     }
 
     // ---------------- situatie validatie + merge ----------------

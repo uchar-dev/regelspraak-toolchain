@@ -71,15 +71,15 @@ scenario
 scenarioNaam : ~( TOETST_DE_REGEL | TOETST_DE_REGELS | TOETST_DE_REGELGROEP )+ ; // free name up to 'toetst …'
 
 scenarioScope
-    : TOETST_DE_REGEL      regelReferentie                                  # scopeEnkeleRegel
+    : TOETST_DE_REGEL      enkeleRegelReferentie                            # scopeEnkeleRegel
     | TOETST_DE_REGELS     regelReferentie ( COMMA regelReferentie )* EN regelReferentie # scopeMeerdereRegels
-    | TOETST_DE_REGELGROEP regelReferentie                                  # scopeRegelgroep
+    | TOETST_DE_REGELGROEP enkeleRegelReferentie                            # scopeRegelgroep
     ;
-// A rule/group name in a scope list: a free token run bounded by the list separators
-// (',' , 'en') and by the header keywords that can follow the scope (peildatum /
-// gebaseerd-op / the verwachtingsectie opener). A regelnaam containing a bare ' en '
-// or ',' is not expressible here — a documented limitation, consistent with the
-// existing EN-splitting in §13.4 names.
+// A rule/group name in a scope LIST ('toetst de regels a, b en c'): a free token run
+// bounded by the list separators (',' , 'en') and by the header keywords that can
+// follow the scope (peildatum / gebaseerd-op / the verwachtingsectie opener). A
+// regelnaam containing a bare ' en ' or ',' is not expressible in the LIST form — a
+// documented limitation, consistent with the existing EN-splitting in §13.4 names.
 regelReferentie : regelReferentieWoord+ ;
 regelReferentieWoord
     : LOWER_ID | UPPER_ID | NUMBER | PERCENT_SIGN | AANTAL_WORD
@@ -90,6 +90,19 @@ regelReferentieWoord
     | JAAR | MAAND | DAG | WEEK | KWARTAAL | UUR | MINUUT | SECONDE | MILLISECONDE
     | PERIODE | DAGEN | WEKEN | MAANDEN | KWARTALEN | JAREN
     ;
+// A rule/group name in the SINGLE-rule scope ('toetst de regel <naam>' / 'toetst de
+// regelgroep <naam>'). There is no list here, so the name is a FREE token run bounded
+// only by the four dedicated header tokens that can follow the scope (MET_PEILDATUM /
+// GEBASEERD_OP_DE_SITUATIE / GEGEVEN_IS_DE_VOLGENDE_SITUATIE / MET_ALS_VERWACHT_RESULTAAT) —
+// the verwachtingsectie opener is mandatory, so the run always terminates. Unlike the
+// LIST form (regelReferentie above, which is bounded by the ',' / 'en' separators), the
+// single-rule name may therefore contain a bare ' en ', ',', or any multi-word keyword
+// token (e.g. 'in gelijke delen', 'op basis van'), which is exactly what lets a golden
+// scenario scope a real §9.7 verdeling rule (toka-32/34/35/37) or any rule whose name
+// embeds such words. The resolver reconstructs the name from the token text and matches
+// it against the model's rule names (normalised). See docs/SCENARIOTOETSEN.md.
+enkeleRegelReferentie
+    : ~( MET_PEILDATUM | GEBASEERD_OP_DE_SITUATIE | GEGEVEN_IS_DE_VOLGENDE_SITUATIE | MET_ALS_VERWACHT_RESULTAAT )+ ;
 
 scenarioPeildatum : MET_PEILDATUM datumWaarde ;                         // §4.2 rekendatum-global
 scenarioBasis     : GEBASEERD_OP_DE_SITUATIE situatieNaam ;             // herhaalbaar
