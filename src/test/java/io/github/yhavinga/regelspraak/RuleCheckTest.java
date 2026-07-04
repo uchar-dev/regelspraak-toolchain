@@ -2346,4 +2346,60 @@ class RuleCheckTest {
         assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("telwoord van een kwantificatie")),
                 () -> "het gededenteerde inner ten-minste-0 moet gevlagd worden, niet stil vuren: " + m.errors());
     }
+
+    // §9.10 Regelgroep (DOCUMENTED EXTENSION — docs/grammar-divergences.md). Fase-2 structural checks.
+
+    @Test void recursieve_regelgroep_zonder_objectcreatie_is_een_fout() {
+        // §9.10 fase-2: 'is recursief' claims a self-advancing chain — with NO objectcreatie member nothing can
+        // advance it, so the marker is meaningless: a fail-fast ERROR.
+        String src = MODEL + """
+            Regelgroep g is recursief
+            Regel R
+                geldig altijd
+                    De teller van een Ding moet gesteld worden op 5.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertFalse(m.errors().isEmpty(), "een recursieve groep zonder objectcreatie had een ERROR moeten geven");
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("zonder objectcreatieregel")),
+                () -> "verwachtte de 'zonder objectcreatieregel'-fout, kreeg: " + m.errors());
+    }
+
+    @Test void recursieve_objectcreatie_zonder_voorwaarde_is_een_waarschuwing() {
+        // §9.10 fase-2: an objectcreatie member without a bounding voorwaarde cannot be shown to terminate — a
+        // WARNING (the engine fire cap is the backstop), never an ERROR. It must NOT raise the no-objectcreatie ERROR.
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de leeftijd Numeriek (geheel getal);
+            Wederkerig feittype Partnerrelatie
+                de partner Persoon
+            Eén partner heeft één partner
+            Regelgroep g is recursief
+            Regel maak partner
+                geldig altijd
+                    Een Persoon heeft een partner met leeftijd gelijk aan de leeftijd van een Persoon plus 1.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().noneMatch(d -> d.message().contains("zonder objectcreatieregel")),
+                () -> "een recursieve groep MET een objectcreatie mag de no-objectcreatie ERROR niet geven: " + m.errors());
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
+                        && d.message().contains("heeft geen voorwaarde")),
+                () -> "verwachtte een 'heeft geen voorwaarde' WARNING, kreeg: " + m.diagnostics);
+    }
+
+    @Test void niet_recursieve_regelgroep_is_pure_namespacing_geen_diagnostiek() {
+        // §9.10 fase-1: a NON-recursief group over ordinary rules is pure namespacing — no fase-2 diagnostics.
+        String src = MODEL + """
+            Regelgroep g
+            Regel R
+                geldig altijd
+                    De teller van een Ding moet gesteld worden op 5.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "een niet-recursieve groep mag geen fout geven: " + m.errors());
+        assertEquals(1, m.regelGroepen.size());
+        assertFalse(m.regelGroepen.get(0).recursief());
+        assertEquals(java.util.List.of("R"), m.regelGroepen.get(0).leden());
+        assertTrue(m.diagnostics.stream().noneMatch(d -> d.message().contains("regelgroep")),
+                () -> "geen regelgroep-diagnostiek verwacht: " + m.diagnostics);
+    }
 }

@@ -116,6 +116,12 @@ public final class ExecModelTranspiler {
 
     private ExecModelTranspiler(RegelSpraakModel m) { this.model = m; this.dagsoorten = new Dagsoorten(m); }
 
+    /** §9.10 fase-1 namespacing: the ENGINE-VISIBLE rule-name header for an emitted rule name — "<groep>: <naam>"
+     *  for a §9.10 Regelgroep member, else the bare name (identity for ungrouped rules). Applied ONLY at the
+     *  {@code PatternDSL.rule(...)} header; every data key (Inconsistentie/CreationMarker/RuleFired {@code regel})
+     *  keeps the bare name, so all name-keyed mechanisms are unaffected. Mirrors DrlTranspiler's header prefix. */
+    private String kop(String geëmitteerdeNaam) { return model.geëmitteerdeRegelNaam(geëmitteerdeNaam); }
+
     public static Model transpile(RegelSpraakModel m) { return new ExecModelTranspiler(m).run(); }
     /** As {@link #transpile} but also exposes the skipped-construct reasons (for the differential harness to
      *  decide a fixture is "not yet migrated" rather than a divergence). */
@@ -497,7 +503,7 @@ public final class ExecModelTranspiler {
         items.add(pattern);
         items.addAll(extra);
         items.add(consequence);
-        return PatternDSL.rule(r.naam())
+        return PatternDSL.rule(kop(r.naam()))
                 .attribute(Rule.Attribute.NO_LOOP, true)
                 .build(items.toArray(new RuleItemBuilder[0]));
     }
@@ -3544,7 +3550,7 @@ public final class ExecModelTranspiler {
                 .expr(nextId("ig"), (Variable) sVar, (Predicate2) (i, s) -> RegelSpraakRuntime.get(i, "subject") == s);
         Block2<org.drools.model.Drools, Object> body = (drools, s) ->
                 drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, naam, s));
-        return PatternDSL.rule(naam).build(pattern, DSL.not(guard), DSL.on(sVar).execute(body));
+        return PatternDSL.rule(kop(naam)).build(pattern, DSL.not(guard), DSL.on(sVar).execute(body));
     }
 
     /** The §9.5 VIOLATION predicate of an assertie: the negation that fires the Inconsistentie. Phase D scope = a
@@ -3805,7 +3811,7 @@ public final class ExecModelTranspiler {
                 .expr(nextId("ig"), (Variable) sVar, (Predicate2) (i, s) -> RegelSpraakRuntime.get(i, "subject") == s);
         Block2<org.drools.model.Drools, Object> body = (drools, s) ->
                 drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, naam, s));
-        return PatternDSL.rule(naam).build(subjPat, accItem, cntPat, DSL.not(guard), DSL.on(sVar).execute(body));
+        return PatternDSL.rule(kop(naam)).build(subjPat, accItem, cntPat, DSL.not(guard), DSL.on(sVar).execute(body));
     }
 
     /** §8.1.6 "verenigd met" cross-type union uniqueness ("de namen van alle Cirkels verenigd met de namen van alle
@@ -3880,7 +3886,7 @@ public final class ExecModelTranspiler {
             });
             if (consequence == null) { overgeslagen.add("uniciteit-unie (te veel bronnen): " + u.naam()); return rules; }
             items.add(consequence);
-            rules.add(PatternDSL.rule(naam + " (" + subj.type().naam + " " + (s + 1) + ")").build(items.toArray(new RuleItemBuilder[0])));
+            rules.add(PatternDSL.rule(kop(naam + " (" + subj.type().naam + " " + (s + 1) + ")")).build(items.toArray(new RuleItemBuilder[0])));
         }
         return rules;
     }
@@ -4014,7 +4020,7 @@ public final class ExecModelTranspiler {
             werkBijReflectief(drools, r, doelAttr, aandeel);   // idempotent: no re-propagate on a no-op re-write (anti-loop)
         };
         items.add(DSL.on(srcVar, (Variable) rVar, (Variable) foldVar).execute(body));
-        return PatternDSL.rule(v.naam()).attribute(Rule.Attribute.NO_LOOP, true).build(items.toArray(new RuleItemBuilder[0]));
+        return PatternDSL.rule(kop(v.naam())).attribute(Rule.Attribute.NO_LOOP, true).build(items.toArray(new RuleItemBuilder[0]));
     }
 
     /** §9.7.2 "op volgorde van": one share rule whose accumulate collects every recipient joined to {@code $src} into
@@ -4058,7 +4064,7 @@ public final class ExecModelTranspiler {
             Map<Object, BigDecimal> shares = RegelSpraakRuntime.rsVerdeelOpVolgorde(totaal, fl, groepL, toenemend, gewL, maxL, dec);
             werkBijReflectief(drools, r, doelAttr, shares.get(r));   // idempotent: no re-propagate on a no-op re-write (anti-loop)
         };
-        return PatternDSL.rule(v.naam()).attribute(Rule.Attribute.NO_LOOP, true)
+        return PatternDSL.rule(kop(v.naam())).attribute(Rule.Attribute.NO_LOOP, true)
                 .build(srcPat, acc, rPat, DSL.on(srcVar, (Variable) rVar, (Variable) factsVar).execute(body));
     }
 
@@ -4083,7 +4089,7 @@ public final class ExecModelTranspiler {
                 .expr(nextId("ig"), (Variable) srcVar, (Predicate2) (i, s) -> RegelSpraakRuntime.get(i, "subject") == s);
         Block2<org.drools.model.Drools, Object> body = (drools, s) ->
                 drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, hostNaam, s));
-        return PatternDSL.rule(compNaam).build(srcPat, DSL.exists(dPat), DSL.not(guard), DSL.on(srcVar).execute(body));
+        return PatternDSL.rule(kop(compNaam)).build(srcPat, DSL.exists(dPat), DSL.not(guard), DSL.on(srcVar).execute(body));
     }
 
     /** The §9.7.5 recipient filter shared by the rest rule's {@code not} guard and its sum accumulate: the join,
@@ -4135,7 +4141,7 @@ public final class ExecModelTranspiler {
             // only the no-op re-propagation is suppressed — the source pattern already watches bronAttr (not restAttr).
             werkBijReflectief(drools, s, restAttr, totaal.subtract(sum == null ? BigDecimal.ZERO : sum));
         };
-        return PatternDSL.rule(v.naam() + " (onverdeelde rest)").attribute(Rule.Attribute.NO_LOOP, true)
+        return PatternDSL.rule(kop(v.naam() + " (onverdeelde rest)")).attribute(Rule.Attribute.NO_LOOP, true)
                 .build(srcPat, DSL.not(notPat), acc, DSL.on(srcVar, (Variable) sumVar).execute(body));
     }
 
@@ -4240,7 +4246,7 @@ public final class ExecModelTranspiler {
 
         List<RuleItemBuilder<?>> items = new ArrayList<>();
         items.add(pattern); items.addAll(extra); items.add(idemGuard); items.add(consequence);
-        return PatternDSL.rule(oc.naam()).build(items.toArray(new RuleItemBuilder[0]));
+        return PatternDSL.rule(kop(oc.naam())).build(items.toArray(new RuleItemBuilder[0]));
     }
 
     /** §13.4.7 feitcreatie: for each {@code anker} and each {@code doel} ALREADY related to it (the §9.4 path: the
@@ -4313,7 +4319,7 @@ public final class ExecModelTranspiler {
         Block3<org.drools.model.Drools, Object, Object> body = (drools, subj, d) ->
             werkBijReflectief(drools, d, zetVeld, subj);
         items.add(DSL.on(sVar, (Variable) doelVar).execute(body));
-        return PatternDSL.rule(fc.naam()).attribute(Rule.Attribute.NO_LOOP, true).build(items.toArray(new RuleItemBuilder[0]));
+        return PatternDSL.rule(kop(fc.naam())).attribute(Rule.Attribute.NO_LOOP, true).build(items.toArray(new RuleItemBuilder[0]));
     }
 
     /** A null-safe {@code (subject -> value)} reader for a §6.5/§6.6 fout-companion OPERAND, or null when the operand
@@ -4501,7 +4507,7 @@ public final class ExecModelTranspiler {
         items.add(pattern);
         items.addAll(extra);
         items.add(DSL.on(sVar).execute(body));
-        return List.of(PatternDSL.rule(naam + " (gevuurd)").build(items.toArray(new RuleItemBuilder[0])));
+        return List.of(PatternDSL.rule(kop(naam + " (gevuurd)")).build(items.toArray(new RuleItemBuilder[0])));
     }
 
     private static void verzamelWortels(Expr e, List<Expr.Functie> uit) {
@@ -4540,7 +4546,7 @@ public final class ExecModelTranspiler {
         items.addAll(gateExtra);                          // the host rule's far-side membership gate, if any
         items.add(DSL.not(guard));
         items.add(DSL.on(sVar).execute(body));
-        return PatternDSL.rule(compNaam).build(items.toArray(new RuleItemBuilder[0]));
+        return PatternDSL.rule(kop(compNaam)).build(items.toArray(new RuleItemBuilder[0]));
     }
     /** Collect the GEDEELD_DOOR / GEDEELD_DOOR_ABS nodes through the arithmetic-wrapper layers of a value (for the
      *  §6.5 fout) — byte-identical to DrlTranspiler.verzamelDelingen so both back-ends surface the SAME divisions. */

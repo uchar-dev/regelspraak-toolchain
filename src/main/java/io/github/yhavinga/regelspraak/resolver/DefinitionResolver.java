@@ -42,10 +42,38 @@ public final class DefinitionResolver {
             if (d.dagsoortDefinition() != null) dagsoort(d.dagsoortDefinition());
             if (d.dimensieDefinition() != null) dimensie(d.dimensieDefinition());
         }
-        for (RegelContext r : doc.regel()) {
+        for (RegelContext r : alleRegels(doc)) {
             model.regels.add(new Regel(src(r.regelNaam()), "regel"));
         }
         return model;
+    }
+
+    /** Every §13.4.2 regel of the document — the top-level ones AND the members of a §9.10 {@link RegelGroepContext}
+     *  (a DOCUMENTED EXTENSION; see docs/grammar-divergences.md). A grouped rule resolves EXACTLY as an ungrouped
+     *  one — the group is namespacing only — so the whole rule pipeline walks this flattened list. Order is
+     *  preserved (a group's members appear where the group's header sits). */
+    static List<RegelContext> alleRegels(RegelSpraakDocumentContext doc) {
+        List<RegelContext> uit = new ArrayList<>();
+        for (ParseTree kind : doc.children == null ? List.<ParseTree>of() : doc.children) {
+            if (kind instanceof RegelContext r) uit.add(r);
+            else if (kind instanceof RegelGroepContext g)
+                for (GroepLidContext lid : g.groepLid())
+                    if (lid.regel() != null) uit.add(lid.regel());
+        }
+        return uit;
+    }
+
+    /** Every §12 beslistabel of the document — top-level ones AND the members of a §9.10 {@link RegelGroepContext}
+     *  (a grouped beslistabel is namespacing only; it desugars to grouped regels exactly like an ungrouped one). */
+    static List<BeslistabelContext> alleBeslistabellen(RegelSpraakDocumentContext doc) {
+        List<BeslistabelContext> uit = new ArrayList<>();
+        for (ParseTree kind : doc.children == null ? List.<ParseTree>of() : doc.children) {
+            if (kind instanceof BeslistabelContext b) uit.add(b);
+            else if (kind instanceof RegelGroepContext g)
+                for (GroepLidContext lid : g.groepLid())
+                    if (lid.beslistabel() != null) uit.add(lid.beslistabel());
+        }
+        return uit;
     }
 
     private static List<DefinitieContext> definities(RegelSpraakDocumentContext doc) {

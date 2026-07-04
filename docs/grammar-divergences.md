@@ -1841,17 +1841,49 @@ previously fell through to a silent onopgelost):
 Pinned by RangtelwoordTest (bare resolution fires; positie-beyond ERROR incl. the numeric "als 6e genoemde"
 form; multi-binding WARNING + marker; the ordinal-attribute form resolves).
 
-## §9.10 recursie / regelgroep — decided: no construct to implement; the WARNING-plus-fire-cap posture stands
+## §9.10 recursie / regelgroep — out of SPEC scope; available as a DOCUMENTED EXTENSION
 
 §9.10 names a "regelgroep" that groups rules and marks them recursief (recursion = deriving a property of an
 instance from the same property of ANOTHER instance, legitimized inside such a group with an objectcreatie rule
 carrying value-bound and iteration-bound termination conditions). DECIDED after verification:
 
-- **There is nothing to parse or lower.** v2.3.0 defines NO written form for a regelgroep: no EBNF production
+- **The SPEC-scope ruling stands (396710d).** v2.3.0 defines NO written form for a regelgroep: no EBNF production
   (Chapter 13 has none), no syntax diagram, no worked example, no corpus fragment — the word occurs only in the
-  §9.10 prose. The construct is a tooling/organisation-level requirement without concrete syntax; implementing
-  it would mean inventing syntax. Out of transpiler scope until the spec gives it a written form. The §9.10
-  termination conditions on the objectcreatie rule are equally uncheckable without the grouping construct.
+  §9.10 prose. It is therefore NEVER presented as §13; the corpus/§13-grammar surface is untouched, and the
+  §9.10 termination conditions on the objectcreatie rule remain uncheckable *within the spec grammar*.
+- **Now ALSO available as a DOCUMENTED EXTENSION** (a deliberately-flagged grammar superset, the same posture
+  as any future scenario-DSL surface — recorded here, never in §13). Semantics re-derived from the §9.10 prose +
+  own design only (the prior-repo ban stands; no prior code consulted). Surface, IR and lowering:
+  - **Surface (extension keywords `Regelgroep` / `recursief`):** a top-level header `Regelgroep <naam>`, optionally
+    `is recursief`, scoping the CONSECUTIVE rule constructs that follow — `regelGroep : REGELGROEP kaleNaam (IS
+    RECURSIEF)? groepLid+` with `groepLid : regel | beslistabel`. The group ends at the first construct that is not
+    a rule (an Objecttype / Parameter / Feittype / another Regelgroep), so the extension is INERT on non-extension
+    input (corpus floor unchanged; grammar generation warning-free). REGELGROEP is lexed before REGEL
+    (longest-keyword-first); `recursief` is lowercase and never a name word.
+  - **IR:** `ResolvedRegelGroep(naam, recursief, leden, bron, line)` (leden = member RULE NAMES in order) on
+    `RegelSpraakModel.regelGroepen`. Members resolve EXACTLY as ungrouped rules — the IR naam is the written name
+    UNCHANGED, so every name-keyed mechanism (Inconsistentie / RuleFired / regelversie references) keeps working.
+  - **Lowering fase 1 (namespacing only, no semantics):** both back-ends emit member rules IDENTICALLY to ungrouped
+    rules EXCEPT the engine-visible rule-name header gets the prefix `"<groep>: "` (DRL `rule "<groep>: <naam>"`;
+    exec `PatternDSL.rule("<groep>: <naam>")`). ALL data keys (Inconsistentie/RuleFired/CreationMarker `regel`) stay
+    the BARE IR naam. Applied at exactly one point per back-end (`RegelSpraakModel.geëmitteerdeRegelNaam`), so the
+    grouped DRL differs from the ungrouped DRL ONLY by that prefix (pinned by `regelgroep_fase1_namespacing_is_inert`).
+    The Dekking manifest keeps the BARE naam as its cross-back-end key (positionally comparable); the owning group
+    is discoverable via `regelGroepVan(naam)` rather than duplicated onto every Dekking entry (minimal wiring).
+  - **Lowering fase 2 (`is recursief`):** the marker is STRUCTURAL VALIDATION + documentation, NOT an execution
+    mechanism. Drools forward-chaining reaches the fixpoint within one `fireAllRules`; the 10:22 objectcreatie
+    idempotence guard (`not <NieuwType>(backRef==$subject)` / CreationMarker) makes each creation advance exactly one
+    generation per instance. The ONE lowering change a recursief group needs: its objectcreatie member is emitted
+    WITHOUT `no-loop` — `no-loop true` blocks a rule from forward-chaining on its OWN inserts, which would freeze the
+    chain after one step; the idempotence guard (not no-loop) is the anti-runaway control here. Non-recursief
+    objectcreatie keeps `no-loop true` (DRL byte-stability preserved). This DEPENDS on the 10:22 guard having landed
+    (backlog/done/20260704-10:22): a pre-guard unconditional insert would mint duplicates and never converge.
+    Resolver structural checks (fail-fast): (a) a recursief group with NO objectcreatie member -> ERROR
+    ("recursieve regelgroep zonder objectcreatieregel"); (b) an objectcreatie member without any voorwaarde ->
+    WARNING (termination not automatable; the engine fire cap is the backstop). Pinned by
+    `regelgroep_fase2_recursief_chain_reaches_fixpoint` (a Persoon leeftijd-N -> linked leeftijd-N+1 chain,
+    `zijn leeftijd kleiner is dan 5`, terminates at 5 instances, both back-ends, no fire-cap hit) and by
+    `RuleCheckTest` (the ERROR / WARNING pins). The ungrouped cyclic-WARNING posture below is UNCHANGED.
 - **Cyclic specifications stay a WARNING + engine fire cap, not the "in principe afgekeurd" hard ERROR.** §9.10
   itself states the cyclic-vs-recursive distinction "is niet betrouwbaar geautomatiseerd te bepalen"; a hard
   ERROR would also reject legitimate other-instance recursion the static read-write detector cannot tell apart,

@@ -216,6 +216,9 @@ PARAMETER      : 'Parameter'      ;
 FEITTYPE       : 'Feittype'       ;
 DAGSOORT       : 'Dagsoort'       ;
 TIJDLIJN       : 'Tijdlijn'       ;
+// REGELGROEP is a DOCUMENTED EXTENSION (v2.3.0 §9.10 is prose-only; see docs/grammar-divergences.md).
+// Listed BEFORE REGEL so maximal-munch prefers the longer 'Regelgroep' keyword over 'Regel' + a name word.
+REGELGROEP     : 'Regelgroep'     ;
 REGEL          : 'Regel'          ;
 BESLISTABEL    : 'Beslistabel'    ;
 ENUMERATIE     : 'Enumeratie'     ;
@@ -243,6 +246,9 @@ ZIJN    : 'zijn'    ;
 IS      : 'is'      ;
 VOLDOET : 'voldoet' ;
 VOLDOEN : 'voldoen' ;
+// RECURSIEF marks a §9.10 Regelgroep recursief (DOCUMENTED EXTENSION — see docs/grammar-divergences.md).
+// Lowercase, only ever read in the group header "is recursief"; not a name word, so it never mis-splits a name.
+RECURSIEF : 'recursief' ;
 
 // --- comparison: state predicates / atomic operator words (see header note 3) ---
 GELIJK   : 'gelijk'   ;

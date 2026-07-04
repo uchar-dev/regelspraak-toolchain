@@ -26,8 +26,20 @@ options { tokenVocab = RegelSpraakLexer; }
 // Document
 // ====================================================================
 regelSpraakDocument
-    : ( definitie | regel | beslistabel )* EOF
+    : ( definitie | regelGroep | regel | beslistabel )* EOF
     ;
+
+// §9.10 Regelgroep — a DOCUMENTED EXTENSION, not a §13 production (v2.3.0 gives regelgroep no written
+// form; see docs/grammar-divergences.md '§9.10 recursie / regelgroep'). A `Regelgroep <naam>` header,
+// optionally `is recursief`, scopes the CONSECUTIVE rule constructs (regel / beslistabel — the latter
+// desugars to regels; a consistentieRegel is already a regel's resultaatdeel) that follow it. The group
+// ends at the first construct that is NOT a rule (an Objecttype / Parameter / Feittype / another
+// Regelgroep), because `groepLid` only matches the rule alternatives — the extension is inert on any
+// non-extension document. The name is a `kaleNaam` (it stops at `is` and at the `Regel` keyword, so it
+// never swallows the marker or the first member). REGELGROEP is listed before `regel` in the document
+// alternation so a leading 'Regelgroep' opens a group, not a bare rule.
+regelGroep : REGELGROEP kaleNaam ( IS RECURSIEF )? groepLid+ ;
+groepLid   : regel | beslistabel ;
 
 // Verification entry point for the spec corpus. The worked examples in the spec
 // are not all whole documents — most are FRAGMENTS of a single non-terminal: a

@@ -216,12 +216,18 @@ public final class DrlTranspiler {
      * comment and an {@code eval(true)} with an empty consequence — so the no-op is built structurally,
      * not special-cased in the renderer.
      */
-    private static final class Regel {
+    private final class Regel {
         private final String naam;
         private final List<String> when = new ArrayList<>();
         private String then = "";
+        private boolean noLoop = true;
 
         Regel(String naam) { this.naam = naam; }
+
+        /** §9.10 fase-2: drop {@code no-loop} so the rule can forward-chain on its OWN inserts (a recursief-group
+         *  objectcreatie must reach the fixpoint). Safe ONLY because the §13.4.6/§9 idempotence guard already caps
+         *  each subject at one creation — it, not no-loop, is the anti-runaway control here. */
+        Regel zonderNoLoop() { this.noLoop = false; return this; }
 
         /** Add one when-clause (a pattern, an accumulate, or a guard) — rendered as a single indented line. */
         Regel clausule(String c) { when.add(c); return this; }
@@ -241,8 +247,11 @@ public final class DrlTranspiler {
 
         String render() {
             StringBuilder b = new StringBuilder();
-            b.append("rule \"").append(escapeRegelNaam(naam)).append("\"\n");
-            b.append("    dialect \"mvel\"\n    no-loop true\nwhen\n");
+            // §9.10 fase-1 namespacing: the ENGINE-VISIBLE header alone gets the "<groep>: " prefix; every DATA
+            // KEY below (RuleFired/CreationMarker/Inconsistentie `regel ==`) keeps the BARE name. Non-grouped
+            // rules are unchanged (geëmitteerdeRegelNaam is identity for them).
+            b.append("rule \"").append(escapeRegelNaam(model.geëmitteerdeRegelNaam(naam))).append("\"\n");
+            b.append("    dialect \"mvel\"\n").append(noLoop ? "    no-loop true\n" : "").append("when\n");
             for (String c : when) b.append("    ").append(c).append('\n');
             b.append("then\n").append(then).append("end\n\n");
             return b.toString();
@@ -882,14 +891,17 @@ public final class DrlTranspiler {
         // join after the subject pattern; a near guard yields empty extra and keeps the output byte-identical.
         LoweredConditie opVw = oc.voorwaarde() != null
                 ? conditie(acc, oc.voorwaarde(), subject, true) : LoweredConditie.van("");
-        out.append(new Regel(oc.naam())
+        // §9.10 fase-2: a recursief-group objectcreatie drops no-loop so it forward-chains on its own inserts to the
+        // fixpoint (the idempotence guard above is the anti-runaway control, not no-loop). Non-recursief: unchanged.
+        Regel r = new Regel(oc.naam())
             .clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + opVw.inline() + " )")
             .clausules(opVw.extra())
             .clausules(acc.clausules)
             .clausule(idemGuard)
             .geldigheid(oc.geldigheid())
-            .dan(dan.toString())
-            .render());
+            .dan(dan.toString());
+        if (model.isRecursiefGroepslid(oc.naam())) r.zonderNoLoop();
+        out.append(r.render());
     }
 
     /** §13.4.7 feitcreatie -> a rule that, for each anker and each doel ALREADY related to it by the

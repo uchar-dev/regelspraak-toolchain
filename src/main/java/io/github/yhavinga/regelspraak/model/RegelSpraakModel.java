@@ -49,7 +49,45 @@ public final class RegelSpraakModel {
     /** Resolved §9.9/§13.4.12 startpuntbepalingen — the anchor member per (objecttype, variable tijdlijn);
      *  the anchor WRITE itself is an ordinary entry in {@link #resolvedRegels}. */
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedStartpunt> resolvedStartpunten = new ArrayList<>();
+    /** §9.10 Regelgroepen — a DOCUMENTED EXTENSION (see docs/grammar-divergences.md). Each carries its member
+     *  RULE NAMES (the bare written names); members otherwise resolve exactly as ungrouped rules. Both back-ends
+     *  prefix ONLY the engine-visible rule-name header with "<groep>: " — every data key stays the bare name. */
+    public final List<io.github.yhavinga.regelspraak.ir.ResolvedRegelGroep> regelGroepen = new ArrayList<>();
     public final List<Diagnostic> diagnostics = new ArrayList<>();
+
+    /** §9.10 the group a rule belongs to, given an EMITTED rule name — which is the bare member name, optionally
+     *  with a §13.4.2.3 version suffix ("<naam> #k") or a back-end-derived qualifier ("<naam> (onverdeelde rest)").
+     *  Matches the LONGEST group member name that is a prefix of {@code geëmitteerdeNaam} at a token boundary (end,
+     *  " #", or " ("), so a member "R" never spuriously captures an ungrouped "R2". Null when the rule is ungrouped
+     *  — the back-ends then emit the bare header. */
+    public io.github.yhavinga.regelspraak.ir.ResolvedRegelGroep regelGroepVan(String geëmitteerdeNaam) {
+        if (geëmitteerdeNaam == null) return null;
+        io.github.yhavinga.regelspraak.ir.ResolvedRegelGroep beste = null;
+        int besteLen = -1;
+        for (var g : regelGroepen)
+            for (String lid : g.leden())
+                if (lid.length() > besteLen && geëmitteerdeNaam.equals(lid)
+                        || lid.length() > besteLen && (geëmitteerdeNaam.startsWith(lid + " #") || geëmitteerdeNaam.startsWith(lid + " ("))) {
+                    beste = g; besteLen = lid.length();
+                }
+        return beste;
+    }
+
+    /** §9.10 fase-2: whether the EMITTED rule {@code geëmitteerdeNaam} belongs to a {@code is recursief} Regelgroep.
+     *  A recursief-group objectcreatie must forward-chain on its own inserts to reach the fixpoint, so both back-ends
+     *  drop {@code no-loop} for it — sound because the §13.4.6/§9 idempotence guard is the anti-runaway control. */
+    public boolean isRecursiefGroepslid(String geëmitteerdeNaam) {
+        var g = regelGroepVan(geëmitteerdeNaam);
+        return g != null && g.recursief();
+    }
+
+    /** §9.10 fase-1 namespacing: the ENGINE-VISIBLE rule-name header for an emitted rule name — "<groep>: <naam>"
+     *  when the rule belongs to a Regelgroep, else the bare name. Called by both back-ends at (and only at) the
+     *  point a rule name becomes an engine header; every data key keeps the bare name. */
+    public String geëmitteerdeRegelNaam(String geëmitteerdeNaam) {
+        var g = regelGroepVan(geëmitteerdeNaam);
+        return g == null ? geëmitteerdeNaam : g.naam() + ": " + geëmitteerdeNaam;
+    }
 
     /** Normalise a tijdlijn name for cross-reference matching: collapse internal whitespace (names may wrap
      *  across source lines), lowercase, and strip a single leading lidwoord (the definition writes "de

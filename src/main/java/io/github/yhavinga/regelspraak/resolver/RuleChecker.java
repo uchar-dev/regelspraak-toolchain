@@ -57,9 +57,51 @@ final class RuleChecker {
 
     void check(RegelSpraakDocumentContext doc) {
         domeinReferenties(doc);
-        for (RegelContext r : doc.regel()) regelVersies(r);
+        // §9.10 Regelgroep (DOCUMENTED EXTENSION): a grouped rule resolves EXACTLY as an ungrouped one, so the
+        // whole rule pipeline runs over the flattened list (top-level + group members, in document order).
+        for (RegelContext r : DefinitionResolver.alleRegels(doc)) regelVersies(r);
         beslistabellen(doc);
+        regelGroepen(doc);   // build the §9.10 group IR + the fase-2 recursief structural checks
         keurKringverwijzingen();
+    }
+
+    /** §9.10 build the {@link io.github.yhavinga.regelspraak.ir.ResolvedRegelGroep} carriers (member RULE NAMES + the
+     *  {@code recursief} marker) and run the fase-2 structural checks — a DOCUMENTED EXTENSION (see
+     *  docs/grammar-divergences.md '§9.10 recursie / regelgroep'). Members were already resolved as ungrouped
+     *  rules above (their {@link ResolvedRegel}/objectcreatie/… entries keep the bare written name); this only
+     *  records the grouping and validates the recursief marker. Fase-2 checks:
+     *  (a) a recursief group with NO objectcreatie member -> ERROR (nothing can advance the chain);
+     *  (b) an objectcreatie member WITHOUT any voorwaarde -> WARNING (termination is not automatable — the engine
+     *      fire cap is the backstop, sound because the §13.4.6/§9 idempotence guard advances one generation per
+     *      instance). The ungrouped cyclic-WARNING posture (RecursieTest) is unchanged. */
+    private void regelGroepen(RegelSpraakDocumentContext doc) {
+        for (RegelGroepContext g : doc.regelGroep()) {
+            boolean recursief = g.RECURSIEF() != null;
+            int line = g.getStart().getLine();
+            List<String> leden = new ArrayList<>();
+            for (GroepLidContext lid : g.groepLid())
+                if (lid.regel() != null) leden.add(DefinitionResolver.src(lid.regel().regelNaam()));
+                else if (lid.beslistabel() != null) leden.add(DefinitionResolver.src(lid.beslistabel().beslistabelNaam()));
+            String naam = DefinitionResolver.src(g.kaleNaam());
+            model.regelGroepen.add(new io.github.yhavinga.regelspraak.ir.ResolvedRegelGroep(naam, recursief, leden, naam, line));
+            if (!recursief) continue;
+
+            // §9.10 fase-2: which members are objectcreatie rules (by bare name, the same key the IR uses).
+            List<ResolvedObjectCreatie> creaties = model.objectCreaties.stream()
+                    .filter(oc -> leden.stream().anyMatch(l -> l.equals(oc.naam()))).toList();
+            if (creaties.isEmpty()) {
+                model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                        "recursieve regelgroep '" + naam + "' zonder objectcreatieregel — de 'is recursief'-markering "
+                        + "kan de keten niet laten voortschrijden (§9.10, gedocumenteerde extensie)", line));
+                continue;
+            }
+            for (ResolvedObjectCreatie oc : creaties)
+                if (oc.voorwaarde() == null)
+                    model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                            "objectcreatieregel '" + oc.naam() + "' in recursieve regelgroep '" + naam
+                            + "' heeft geen voorwaarde — terminatie is niet automatisch te garanderen "
+                            + "(de engine begrenst het aantal activaties als vangnet; §9.10, gedocumenteerde extensie)", line));
+        }
     }
 
     /** A read-write dependency CYCLE between assignments (x = y+1; y = x+1) never reaches a fixpoint
@@ -160,7 +202,7 @@ final class RuleChecker {
      *  rows for free, with zero new IR. A header-only shell (the pre-body corpus, or a table with no data rows) keeps
      *  the honest WARNING — restoring the never-silently-dropped invariant (toka-46/47, spec-main-133-139). */
     private void beslistabellen(RegelSpraakDocumentContext doc) {
-        for (BeslistabelContext b : doc.beslistabel()) {
+        for (BeslistabelContext b : DefinitionResolver.alleBeslistabellen(doc)) {
             String naam = DefinitionResolver.src(b.beslistabelNaam());
             // Split each captured row on '|', dropping the markdown '---' separator row(s).
             List<List<String>> grid = new ArrayList<>();

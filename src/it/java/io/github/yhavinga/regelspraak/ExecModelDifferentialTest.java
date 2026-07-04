@@ -5849,6 +5849,130 @@ class ExecModelDifferentialTest {
         }
     }
 
+    // ==== §9.10 Regelgroep (DOCUMENTED EXTENSION — see docs/grammar-divergences.md) ====================
+    // FASE 1 (namespacing): the SAME two rules, grouped vs ungrouped, over identical facts -> IDENTICAL
+    //   results in BOTH back-ends, and the DRL text differs ONLY by the rule-name prefix "<groep>: ".
+    // FASE 2 (`is recursief`): an objectcreatie that advances a chain (leeftijd N -> a linked successor
+    //   leeftijd N+1, bounded by a voorwaarde) terminates at the exact instance count at fixpoint. This
+    //   works PRECISELY because of the 10:22 idempotence guard: each subject creates exactly one successor
+    //   (1:1 back-reference guard `not Persoon(partner==$subject)`), so forward-chaining converges within
+    //   one fireAllRules instead of minting duplicates — no fire-cap hit.
+
+    // The two rules: a kenmerktoekenning (minderjarig) + a gelijkstelling (prijs), each over a Passagier.
+    private static final String RG_FASE1_REGELS = """
+            Regel zet minderjarig
+                geldig altijd
+                    Een Passagier is minderjarig indien zijn leeftijd kleiner is dan 18.
+            Regel zet prijs
+                geldig altijd
+                    De prijs van een Passagier moet gesteld worden op zijn basistarief plus 5.
+            """;
+    private static final String RG_FASE1_OT = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal);
+                de prijs Numeriek (geheel getal);
+                het basistarief Numeriek (geheel getal);
+                is minderjarig kenmerk (bijvoeglijk);
+            """;
+    private static final String RG_FASE1_UNGROUPED = RG_FASE1_OT + RG_FASE1_REGELS;
+    // A non-recursief group scoping the two rules (fase-1 pure namespacing — no `is recursief`).
+    private static final String RG_FASE1_GROUPED = RG_FASE1_OT
+            + "Regelgroep passagierregels\n" + RG_FASE1_REGELS;
+
+    /** §9.10 fase-1: grouped vs ungrouped rules produce IDENTICAL firing results in BOTH back-ends over the
+     *  same facts (leeftijd 16, basistarief 42 -> minderjarig=true, prijs=47), and the DRL differs ONLY by the
+     *  "<groep>: " rule-name prefix (asserted by normalizing the prefix away and diffing the two DRL texts). */
+    @Test void regelgroep_fase1_namespacing_is_inert() {
+        RegelSpraakModel ung = Resolver.resolve(RG_FASE1_UNGROUPED);
+        RegelSpraakModel grp = Resolver.resolve(RG_FASE1_GROUPED);
+        assertTrue(ung.errors().isEmpty() && grp.errors().isEmpty(),
+                () -> "resolver-fout ung=" + ung.errors() + " grp=" + grp.errors());
+        // the group IR is recorded, member names bare, not recursief
+        assertEquals(1, grp.regelGroepen.size());
+        assertEquals("passagierregels", grp.regelGroepen.get(0).naam());
+        assertFalse(grp.regelGroepen.get(0).recursief());
+        assertEquals(List.of("zet minderjarig", "zet prijs"), grp.regelGroepen.get(0).leden());
+        assertTrue(ung.regelGroepen.isEmpty());
+
+        // DRL differs ONLY by the "<groep>: " header prefix: strip it and the two texts are identical.
+        String drlUng = DrlTranspiler.transpile(ung);
+        String drlGrp = DrlTranspiler.transpile(grp);
+        assertNotEquals(drlUng, drlGrp, "grouped DRL must carry the prefix (so it is not identical raw)");
+        assertEquals(drlUng, drlGrp.replace("passagierregels: ", ""),
+                "grouped DRL must differ from ungrouped ONLY by the '<groep>: ' rule-name prefix");
+        // ...and each data key stays BARE (no prefix leaked into a CreationMarker/RuleFired/Inconsistentie key).
+        assertTrue(drlGrp.contains("rule \"passagierregels: zet prijs\""), "header must be prefixed");
+
+        // Firing results are IDENTICAL in BOTH back-ends. Same facts, read both fields back.
+        Supplier<List<Object>> facts = () -> { Passagier p = passagier(x -> {
+            x.setLeeftijd(new BigDecimal(16)); x.setBasistarief(new BigDecimal(42)); }); return List.of(p); };
+        for (RegelSpraakModel m : List.of(ung, grp)) {
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> "overgeslagen: " + em.overgeslagen());
+            for (KieBase kb : List.of(drlBase(m), KieBaseBuilder.createKieBaseFromModel(em.model()))) {
+                KieSession s = sessie(kb);
+                List<Object> fs = facts.get();
+                fs.forEach(s::insert);
+                s.fireAllRules();
+                Passagier p = (Passagier) fs.get(0);
+                assertTrue(p.isMinderjarig(), "minderjarig moet true zijn");
+                assertEquals(new BigDecimal(47), p.getPrijs(), "prijs moet 47 zijn");
+                s.dispose();
+            }
+        }
+    }
+
+    // FASE 2 chain: a Persoon (leeftijd N) creates a linked successor (leeftijd N+1) via the wederkerig
+    // Partnerrelatie (a 1:1 self-relation, so the back-reference role "partner" resolves uniquely and the
+    // idempotence guard is `not Persoon(partner==$subject)`), bounded by `zijn leeftijd kleiner is dan 5`.
+    // Seed one Persoon (leeftijd 1) -> the chain mints leeftijd 2,3,4,5 and STOPS (leeftijd 5 fails the
+    // voorwaarde). EXACT expected: 5 Persoon instances total (1 seed + 4 created), no fire-cap diagnostic.
+    private static final String RG_FASE2_CHAIN = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de leeftijd Numeriek (geheel getal);
+            Wederkerig feittype Partnerrelatie
+                de partner Persoon
+            Eén partner heeft één partner
+            Regelgroep partnerketen is recursief
+            Regel maak partner
+                geldig altijd
+                    Een Persoon heeft een partner met leeftijd gelijk aan de leeftijd van een Persoon plus 1 indien de leeftijd van een Persoon kleiner is dan 5.
+            """;
+
+    /** §9.10 fase-2: a recursief group whose objectcreatie advances a chain terminates at the EXACT instance
+     *  count at fixpoint, both back-ends at parity, no fire-cap hit. Sound BECAUSE of the 10:22 idempotence
+     *  guard (each Persoon creates exactly one successor via `not Persoon(partner==$subject)`), so the
+     *  forward-chaining fixpoint is reached in one fireAllRules — a pre-guard unconditional insert would have
+     *  minted duplicates and never converged. Seed leeftijd 1 -> {1,2,3,4,5} = 5 Persoon instances. */
+    @Test void regelgroep_fase2_recursief_chain_reaches_fixpoint() {
+        RegelSpraakModel m = Resolver.resolve(RG_FASE2_CHAIN);
+        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+        assertEquals(1, m.regelGroepen.size());
+        assertTrue(m.regelGroepen.get(0).recursief(), "group must be recursief");
+        // the recursief group HAS an objectcreatie member with a voorwaarde -> no ERROR, no unbounded-WARNING.
+        assertFalse(m.diagnostics.stream().anyMatch(d ->
+                d.message().contains("zonder objectcreatieregel") || d.message().contains("heeft geen voorwaarde")),
+                () -> "unexpected recursief diagnostic: " + m.diagnostics);
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> "overgeslagen: " + em.overgeslagen());
+
+        for (KieBase kb : List.of(drlBase(m), KieBaseBuilder.createKieBaseFromModel(em.model()))) {
+            KieSession s = sessie(kb);
+            Persoon seed = new Persoon(); seed.setLeeftijd(new BigDecimal(1));
+            s.insert(seed);
+            int fired = s.fireAllRules();   // returns the activation count — never near the fire cap
+            List<BigDecimal> leeftijden = s.getObjects().stream()
+                    .filter(o -> o instanceof Persoon)
+                    .map(o -> ((Persoon) o).getLeeftijd())
+                    .sorted().toList();
+            assertEquals(List.of(new BigDecimal(1), new BigDecimal(2), new BigDecimal(3),
+                    new BigDecimal(4), new BigDecimal(5)), leeftijden,
+                    "chain must terminate at leeftijd 1..5 (5 instances)");
+            assertTrue(fired < 100, () -> "must converge well below the fire cap, fired=" + fired);
+            s.dispose();
+        }
+    }
+
     // ---- Phase G dimensie fixtures: §5.8.5 dimensie-fold (rsDimSom) + §3.6 DimensieCel read (Map.get) ----
     private static NatuurlijkPersoon np(Map<String, BigDecimal> m) {
         NatuurlijkPersoon n = new NatuurlijkPersoon(); n.setBetaaldeBelastingInJaar(m); return n;
