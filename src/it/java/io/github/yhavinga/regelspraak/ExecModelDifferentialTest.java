@@ -5656,6 +5656,115 @@ class ExecModelDifferentialTest {
             // -> ["Passagier|prijs=10|reis=0"]
     };
 
+    // ---- §13.4.6/§9 objectcreatie IDEMPOTENCE: the creation is a function of the fact base, not of the fire count.
+    //      no-loop only blocks a rule re-activating on its OWN insert; when ANOTHER rule modifies a matched subject
+    //      the unguarded creation re-fires and mints duplicates. PRE-FIX these fixtures RAN AWAY (fireAllRules never
+    //      terminated: R2's modify re-woke R1, which created another instance, which re-woke R2, …). The guard makes
+    //      the creation fire at most once per subject — asserted here as EXACTLY ONE created object in both back-ends.
+    static final ObjFixture[] PHASE_IDEM = {
+        // IDEM1 RE-FIRE (to-many target, CreationMarker guard): R1 creates a Passagier (prijs 10) for every Vlucht
+        //   whose totaalprijs > 0; R2 sets totaalprijs = #passagiers + 1. R1's pattern reads totaalprijs, so R2's
+        //   modify re-activates it — pre-fix an unbounded create-count-modify cascade (verified RED: it hit the
+        //   fire cap at 100 Passagiers in both back-ends). The marker (regel+subject) caps R1 at one creation.
+        new ObjFixture("§9 objectcreatie re-fire: R2 modifieert het subject -> R1 vuurt niet opnieuw (precies 1)",
+            """
+            Objecttype de Vlucht
+                de totaalprijs Numeriek (geheel getal);
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel maak passagier
+                geldig altijd
+                    Een Vlucht heeft een passagier met prijs gelijk aan 10 indien de totaalprijs van een Vlucht groter is dan 0.
+            Regel zet totaalprijs
+                geldig altijd
+                    De totaalprijs van een Vlucht moet berekend worden als het aantal passagiers van een Vlucht plus 1.
+            """,
+            () -> { Vlucht v = new Vlucht(); v.setTotaalprijs(new BigDecimal(1)); return List.of(v); },
+            Map.of(),
+            (o, facts) -> { Passagier p = (Passagier) o; return "Passagier|prijs=" + bdStr(p.getPrijs()) + "|reis=" + refIndex(facts, p.getReis()); }),
+            // -> ["Passagier|prijs=10|reis=0"]  (exactly one, whoever re-modifies the Vlucht)
+
+        // IDEM2 1:1 SUPPRESSION (instance guard): a Bestelling:Factuur is 1:1 (PHASE_G_OBJ O1). With a Factuur
+        //   ALREADY linked to the Bestelling (seeded), the guard not(Factuur(bestelling==$subject)) suppresses the
+        //   creation — the creation is a function of the fact base, so no second Factuur is minted. Empty created set.
+        new ObjFixture("§9 objectcreatie 1:1 met reeds-gekoppelde Factuur -> maakt niets (functie van de feitenbasis)",
+            """
+            Objecttype de Bestelling
+                de waarde Numeriek (geheel getal);
+            Objecttype de Factuur
+                de bedrag Numeriek (geheel getal);
+            Feittype Bestelling met factuur
+                de bestelling Bestelling
+                de factuur Factuur
+            Eén bestelling heeft één factuur
+            Regel maak factuur
+                geldig altijd
+                    Een Bestelling heeft een factuur met bedrag gelijk aan de waarde van een Bestelling.
+            """,
+            () -> {
+                Bestelling b = new Bestelling(); b.setWaarde(new BigDecimal(50));
+                Factuur bestaand = new Factuur(); bestaand.setBedrag(new BigDecimal(999)); bestaand.setBestelling(b);
+                return List.<Object>of(b, bestaand);
+            },
+            Map.of(),
+            (o, facts) -> { Factuur f = (Factuur) o; return "Factuur|bedrag=" + bdStr(f.getBedrag()) + "|best=" + refIndex(facts, f.getBestelling()); }),
+            // -> []  (the seeded Factuur is not "created"; no new one is minted)
+
+        // IDEM3 TO-MANY with a PRE-EXISTING related instance: a Vlucht already has one Passagier (seeded). The
+        //   CreationMarker keys on (rule, subject), NOT on pre-existing instances, so the creation STILL happens
+        //   exactly once — the pre-existing passenger does not suppress it, and no duplicate is minted either.
+        new ObjFixture("§9 objectcreatie to-many met reeds-bestaande passagier -> maakt nog precies één",
+            """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel maak passagier
+                geldig altijd
+                    Een Vlucht heeft een passagier met prijs gelijk aan 10.
+            """,
+            () -> {
+                Vlucht v = new Vlucht();
+                Passagier bestaand = new Passagier(); bestaand.setPrijs(new BigDecimal(7)); bestaand.setReis(v);
+                return List.<Object>of(v, bestaand);   // the seeded passenger is not "created"; only the new one is observed
+            },
+            Map.of(),
+            (o, facts) -> { Passagier p = (Passagier) o; return "Passagier|prijs=" + bdStr(p.getPrijs()) + "|reis=" + refIndex(facts, p.getReis()); }),
+            // -> ["Passagier|prijs=10|reis=0"]  (the new one; the seeded prijs=7 passenger is a seed, not observed)
+    };
+
+    /** §13.4.6/§9 the objectcreatie idempotence guard: the creation is a function of the fact base, not of the fire
+     *  count. ABSOLUTE created-sets in BOTH back-ends (like {@link #phase_keten_objectcreatie_init_is_spec_correct}):
+     *  a re-firing subject creates exactly one instance (not a runaway), a 1:1 pre-linked target creates nothing, and
+     *  a to-many pre-existing instance does not suppress the (rule,subject)-keyed creation. Runs uncapped
+     *  fireAllRules — pre-fix IDEM1 did not terminate. */
+    @Test void phase_G_objectcreatie_idempotentie_is_spec_correct() {
+        List<List<String>> verwacht = List.of(
+                List.of("Passagier|prijs=10|reis=0"),   // IDEM1: exactly one, despite R2 re-modifying the Vlucht
+                List.of(),                              // IDEM2: 1:1 pre-linked -> nothing created
+                List.of("Passagier|prijs=10|reis=0"));  // IDEM3: to-many pre-existing -> still exactly one new
+        for (int i = 0; i < PHASE_IDEM.length; i++) {
+            ObjFixture f = PHASE_IDEM[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            List<String> viaDrl = fireCreated(drlBase(m), f);
+            List<String> viaModel = fireCreated(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            final int idx = i;
+            assertEquals(verwacht.get(idx), viaDrl, () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(viaDrl, viaModel, () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+
     // ---- Phase G dimensie fixtures: §5.8.5 dimensie-fold (rsDimSom) + §3.6 DimensieCel read (Map.get) ----
     private static NatuurlijkPersoon np(Map<String, BigDecimal> m) {
         NatuurlijkPersoon n = new NatuurlijkPersoon(); n.setBetaaldeBelastingInJaar(m); return n;
@@ -8463,6 +8572,10 @@ class ExecModelDifferentialTest {
         s.fireAllRules();
         List<String> created = s.getObjects().stream()
                 .filter(o -> !seeded.contains(o))
+                // §9 objectcreatie idempotence: a CreationMarker is a per-(rule,subject) control fact the
+                // creation rule inserts alongside $new — it is not a created domain object, so it never
+                // reaches the fixture canon (which casts to the created type). Filter it out of the observed set.
+                .filter(o -> !(o instanceof io.github.yhavinga.regelspraak.runtime.CreationMarker))
                 .map(o -> f.canon().apply(o, facts))
                 .sorted().toList();
         s.dispose();

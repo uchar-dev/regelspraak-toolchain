@@ -11,6 +11,7 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
 import io.github.yhavinga.regelspraak.model.Rationaal;
 import io.github.yhavinga.regelspraak.runtime.Accessors;
+import io.github.yhavinga.regelspraak.runtime.CreationMarker;
 import io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dagsoorten;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dekking;
@@ -4035,7 +4036,12 @@ public final class ExecModelTranspiler {
      *  the back-reference to {@code $subject} (the §9.4 feittype role on the new object), and inserts it. An
      *  insert-only rule (NO no-loop — it never modifies the subject, so it cannot self-retrigger), gated by the
      *  voorwaarde (incl. a §8.1.7 far-side exists). null -> skip (unresolved type / no fact class / a toekenning value
-     *  out of the scalar scope / >1 global). Mirrors DrlTranspiler.objectCreatie. */
+     *  out of the scalar scope / >1 global). Mirrors DrlTranspiler.objectCreatie.
+     *
+     *  <p>§9 idempotence: no-loop does not stop the rule re-firing when ANOTHER rule later modifies a matched subject
+     *  (which would mint a duplicate), so the LHS carries an absence guard — a 1:1 target keys on the linked
+     *  instance's absence ({@code not <NieuwType>(backRef == $subject)}); a to-many target (or a missing back-ref)
+     *  keys on a per-rule per-subject {@link CreationMarker} (inserted in the consequence). Mirrors DrlTranspiler. */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private Rule objectCreatie(io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc) {
         Objecttype nieuw = oc.nieuwType(), subject = oc.subject();
@@ -4043,6 +4049,7 @@ public final class ExecModelTranspiler {
         Class<?> subjClass = factClass(subject), nieuwClass = factClass(nieuw);
         if (subjClass == null || nieuwClass == null) return skip("objectcreatie (geen fact-class): " + oc.naam());
         String backRef = model.verbindendeRol(nieuw, subject);   // field on $new -> subject (null -> orphan insert, like DRL)
+        boolean eenOpEen = backRef != null && !model.subjectNaarVeelCreatie(subject, nieuw);   // §9 guard shape (see doc)
 
         // lower each toekenning value to a (subject, globals) -> value function; collect the Parameter-globals read.
         // The runtime receiver of each fn IS the anchor $subject (body below applies fn to args[0]), so the anchor
@@ -4079,6 +4086,25 @@ public final class ExecModelTranspiler {
         }
         pattern = geldigGuard(pattern, oc.geldigheid());   // §4.2 version validity window
 
+        // §9 idempotence guard: 1:1 -> not <NieuwType>(backRef == $subject); to-many/orphan -> not CreationMarker(
+        // regel == naam, subject == $subject). The marker case ALSO inserts the marker in the consequence body.
+        final String ruleNaam = oc.naam();
+        RuleItemBuilder<?> idemGuard;
+        if (eenOpEen) {
+            final String fBackRef1 = backRef;
+            Variable linkVar = DSL.declarationOf(nieuwClass, "$link_" + (seq++));
+            PatternDSL.PatternDef linkPat = PatternDSL.pattern(linkVar)
+                    .expr(nextId("idem"), (Variable) sVar, (Predicate2) (n, s) -> RegelSpraakRuntime.get(n, fBackRef1) == s);
+            idemGuard = DSL.not(linkPat);
+        } else {
+            Variable markVar = DSL.declarationOf(CreationMarker.class, "$mark_" + (seq++));
+            PatternDSL.PatternDef markPat = PatternDSL.pattern(markVar)
+                    .expr(nextId("idem"), (Predicate1) mk -> ruleNaam.equals(((CreationMarker) mk).getRegel()))
+                    .expr(nextId("idem"), (Variable) sVar, (Predicate2) (mk, s) -> ((CreationMarker) mk).getSubject() == s);
+            idemGuard = DSL.not(markPat);
+        }
+        final boolean fMarker = !eenOpEen;
+
         final List<String> fAttrs = attrs; final List<BiFunction<Object, Map<String, BigDecimal>, Object>> fFns = fns;
         final String fBackRef = backRef; final Class<?> fNieuwClass = nieuwClass;
         final List<String> fG = gList; final int nG = gList.size();
@@ -4090,6 +4116,7 @@ public final class ExecModelTranspiler {
             for (int i = 0; i < fAttrs.size(); i++) RegelSpraakRuntime.set(newObj, fAttrs.get(i), fFns.get(i).apply(s, gm));
             if (fBackRef != null) RegelSpraakRuntime.set(newObj, fBackRef, s);
             drools.insert(newObj);
+            if (fMarker) drools.insert(new CreationMarker(ruleNaam, s));   // §9 mark this (rule, subject) created
         };
         List<Variable> vars = new ArrayList<>();
         vars.add(sVar);
@@ -4102,7 +4129,7 @@ public final class ExecModelTranspiler {
         if (consequence == null) return skip("objectcreatie (te veel gebonden variabelen): " + oc.naam());
 
         List<RuleItemBuilder<?>> items = new ArrayList<>();
-        items.add(pattern); items.addAll(extra); items.add(consequence);
+        items.add(pattern); items.addAll(extra); items.add(idemGuard); items.add(consequence);
         return PatternDSL.rule(oc.naam()).build(items.toArray(new RuleItemBuilder[0]));
     }
 

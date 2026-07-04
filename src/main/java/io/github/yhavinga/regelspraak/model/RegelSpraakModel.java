@@ -504,6 +504,22 @@ public final class RegelSpraakModel {
         return n == 1 && gevonden.meervoudig();
     }
 
+    /** §13.4.6/§9 whether {@code subject} can relate to MORE THAN ONE instance of the created type
+     *  {@code nieuw} — the cardinality that decides an objectcreatie's idempotence guard shape: a 1:1
+     *  target ({@code false}) can be keyed on the LINKED-INSTANCE's absence (a fact-base-derived check on
+     *  the created type itself); a to-many target ({@code true}) needs a per-rule per-subject control fact
+     *  (a linked instance already existing is legitimate). Reads the cardinality of {@code nieuw}'s own role
+     *  in the unique feittype relating the pair — {@link #verbindendeRol}(subject, nieuw) names that role,
+     *  {@link #naarVeelRol} reads its meervoudig. Fail-open to to-many ({@code true}) when the role cannot be
+     *  uniquely resolved: the control-fact guard is always correct (at-most-once), only less tight than the
+     *  1:1 instance check, so an unprovable pair is never wrongly treated as 1:1. */
+    public boolean subjectNaarVeelCreatie(Objecttype subject, Objecttype nieuw) {
+        if (subject == null || nieuw == null) return true;   // no cardinality knowledge -> the safe (control-fact) path
+        String nieuwRol = verbindendeRol(subject, nieuw);    // the role nieuw plays, from the subject's side
+        if (nieuwRol == null) return true;                   // ambiguous / self-pair -> control-fact path
+        return naarVeelRol(subject, nieuw, nieuwRol);
+    }
+
     /** Package-visible role-name match (singular, declared plural, or best-effort plural),
      *  used by {@link io.github.yhavinga.regelspraak.resolver.DefinitionResolver} to map a cardinaliteit
      *  noun onto a role. */

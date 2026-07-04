@@ -55,6 +55,9 @@ public final class DrlTranspiler {
      *  is the runtime (which must therefore be on the DRL-compiling classpath, see docs/ENGINE.md). Only the
      *  helpers actually used are imported, sorted for stable output. */
     private final java.util.TreeSet<String> runtimeImports = new java.util.TreeSet<>();
+    /** §13.4.6/§9 set iff an objectcreatie emitted a {@link io.github.yhavinga.regelspraak.runtime.CreationMarker} idempotence
+     *  guard, so the header imports that runtime fact class exactly when it is referenced (like the Segment import). */
+    private boolean creationMarkerNodig;
     /** Set exactly where emitted rule text references the §4.2 rekendatum global (a §8.4.3 periode-window, a
      *  §5.3 Rekendatum/Rekenjaar value read), so the global is spliced into the header iff actually used. */
     private boolean rekendatumNodig;
@@ -136,13 +139,15 @@ public final class DrlTranspiler {
                 g.append("global java.util.function.Predicate ").append(naam).append(";\n");
             out.insert(naHeader, g.append('\n'));
         }
-        if (!runtimeImports.isEmpty()) {
+        if (!runtimeImports.isEmpty() || creationMarkerNodig) {
             StringBuilder imp = new StringBuilder();
             // The tijdlijn helpers construct Segments via a `Segment.class` argument at their call sites; the
             // fact class is imported iff the emitted text references it — DERIVED from the output, so a new
             // helper call site can never forget to register the import separately.
             if (out.indexOf("Segment.class") >= 0)
                 imp.append("import ").append(FACT_PACKAGE).append(".Segment;\n");
+            if (creationMarkerNodig)   // §13.4.6/§9 the objectcreatie idempotence control fact (a runtime class, not a per-model bean)
+                imp.append("import io.github.yhavinga.regelspraak.runtime.CreationMarker;\n");
             for (String fn : runtimeImports)
                 imp.append("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.").append(fn).append(";\n");
             out.insert(naImports, imp.append('\n'));
@@ -779,7 +784,21 @@ public final class DrlTranspiler {
     }
 
     /** §13.4.6 objectcreatie -> a rule that inserts a new fact, sets its attributes,
-     *  and links it back to the subject through the feittype role. */
+     *  and links it back to the subject through the feittype role.
+     *
+     *  <p>§9 idempotence: the creation must be a FUNCTION of the fact base, not of the fire count. {@code no-loop}
+     *  only blocks the rule re-activating on its OWN insertion — when ANOTHER rule later modifies a matched
+     *  subject the unguarded rule re-fires and mints a DUPLICATE instance. So the LHS carries an absence guard:
+     *  <ul>
+     *    <li><b>1:1 target</b> (the subject relates to at most ONE created-type instance, and the created object
+     *        back-references the subject): {@code not( <NieuwType>( <backRef> == $subject ) )} — if a linked
+     *        instance already exists (whoever made it), create no other. A fact-base check on the created type.</li>
+     *    <li><b>to-many target, or no back-reference</b> (an orphan insert): a per-rule per-subject
+     *        {@link io.github.yhavinga.regelspraak.runtime.CreationMarker} control fact — {@code not( CreationMarker(
+     *        regel == "<rule>", subject == $subject ) )} on the LHS, {@code insert(new CreationMarker(...))} in
+     *        the consequence. Each subject then creates at most one instance per creation rule, while a
+     *        pre-existing linked instance stays legitimate (the key is rule+subject, not the instance).</li>
+     *  </ul> */
     private void objectCreatie(io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie oc) {
         Acc acc = new Acc();
         Objecttype nieuw = oc.nieuwType(), subject = oc.subject();
@@ -807,6 +826,21 @@ public final class DrlTranspiler {
             dan.append("    // onopgelost terugkoppeling naar ").append(commentVeilig(subject.naam)).append('\n');
         dan.append("    insert($new);\n");
 
+        // §9 idempotence guard (see method doc): a 1:1 target keys on the linked instance's absence; a to-many
+        // target (or a missing back-reference — an orphan insert we cannot key on the instance) keys on a
+        // per-rule per-subject CreationMarker.
+        boolean eenOpEen = rolNaarSubject != null && !model.subjectNaarVeelCreatie(subject, nieuw);
+        String idemGuard;
+        if (eenOpEen) {
+            idemGuard = "not " + ident(nieuw.naam, true) + "( " + ident(rolNaarSubject, false) + " == " + SUBJECT + " )";
+        } else {
+            creationMarkerNodig = true;
+            idemGuard = "not CreationMarker( regel == \"" + escapeRegelNaam(oc.naam())
+                    + "\", subject == " + SUBJECT + " )";
+            dan.append("    insert(new CreationMarker(\"").append(escapeRegelNaam(oc.naam())).append("\", ")
+               .append(SUBJECT).append("));\n");
+        }
+
         // Like the feitcreatie anker, a §8.1.7 far-side guard on the objectcreatie subject hosts its exists/not
         // join after the subject pattern; a near guard yields empty extra and keeps the output byte-identical.
         LoweredConditie opVw = oc.voorwaarde() != null
@@ -815,6 +849,7 @@ public final class DrlTranspiler {
             .clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + opVw.inline() + " )")
             .clausules(opVw.extra())
             .clausules(acc.clausules)
+            .clausule(idemGuard)
             .geldigheid(oc.geldigheid())
             .dan(dan.toString())
             .render());
