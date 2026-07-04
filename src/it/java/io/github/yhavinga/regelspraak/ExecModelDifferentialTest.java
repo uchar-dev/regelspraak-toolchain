@@ -7359,7 +7359,50 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
-    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 11); }
+    @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 12); }
+
+    /** §5.7/§8.1.6 tuple (concatenatie) uniciteit — ABSOLUTE spec outcome, not just DRL==exec parity (a shared bug in the
+     *  tuple key would pass a parity-only check). "de concatenatie van luchthaven en vertrektijd" keys on the PAIR: only the
+     *  two Vluchten that share BOTH luchthaven AND vertrektijd are inconsistent; a single-component match is a distinct
+     *  tuple and a null component leaves the identity unestablished (§8.1.6), so neither is flagged. The DRL back-end is the
+     *  spec oracle here (asserted against the hand-computed set); the exec model must agree. */
+    @Test void phase_D_tuple_uniciteit_flags_only_full_pair_duplicates() {
+        FoutFixture f = null;
+        for (FoutFixture cand : PHASE_D) if (cand.naam().contains("concatenatie tuple")) f = cand;
+        assertNotNull(f, "de tuple-uniciteit fixture ontbreekt in PHASE_D");
+        final FoutFixture fx = f;
+        RegelSpraakModel m = Resolver.resolve(fx.src());
+        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> "model overgeslagen: " + em.overgeslagen());
+        // exactly the (1,800) pair is a duplicate; (1,900)/(2,800)/the two (3,null) are not.
+        List<String> verwacht = List.of("vlucht uniek/lh=1,tijd=800", "vlucht uniek/lh=1,tijd=800");
+        List<String> viaDrl   = fireFout(drlBase(m), fx);
+        List<String> viaModel = fireFout(KieBaseBuilder.createKieBaseFromModel(em.model()), fx);
+        assertEquals(verwacht, viaDrl,   "DRL (oracle) wrong vs spec: alleen het volledige (luchthaven,vertrektijd)-paar is niet-uniek");
+        assertEquals(viaDrl, viaModel,   "back-ends DIVERGE op de tuple-uniciteit");
+    }
+
+    /** §9.5/§13.4.8 compound (ALLE) consistentie — ABSOLUTE spec outcome. "moet voldoen aan alle volgende criteria" is
+     *  inconsistent when NOT all criteria hold (§9.5: "Als niet aan één van deze criteria voldaan wordt, dan zal de regel
+     *  inconsistent opleveren") — the OR of the per-criterion violations. Both bullets hold -> consistent; either bullet
+     *  fails (or a leeg operand makes an ordering onwaar) -> flagged. DRL is the oracle; the exec model must agree. */
+    @Test void phase_D_compound_consistentie_fires_on_any_failing_criterion() {
+        FoutFixture f = null;
+        for (FoutFixture cand : PHASE_D) if (cand.naam().contains("compound ALLE")) f = cand;
+        assertNotNull(f, "de compound-consistentie fixture ontbreekt in PHASE_D");
+        final FoutFixture fx = f;
+        RegelSpraakModel m = Resolver.resolve(fx.src());
+        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> "model overgeslagen: " + em.overgeslagen());
+        // binnen (50, both hold) NOT flagged; teHoog (150>limiet), teLaag (-10<minimum), leeg (saldo null) ALL flagged.
+        List<String> verwacht = List.of("grenzen/saldo=-10", "grenzen/saldo=150", "grenzen/saldo=null");
+        List<String> viaDrl   = fireFout(drlBase(m), fx);
+        List<String> viaModel = fireFout(KieBaseBuilder.createKieBaseFromModel(em.model()), fx);
+        assertEquals(verwacht, viaDrl,   "DRL (oracle) wrong vs spec: inconsistent zodra één criterium faalt");
+        assertEquals(viaDrl, viaModel,   "back-ends DIVERGE op de samengestelde consistentie");
+    }
     @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 7); }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
@@ -7608,6 +7651,33 @@ class ExecModelDifferentialTest {
                 return List.of(a, b, c, d, e);
             },
             o -> "bsn=" + ((NatuurlijkPersoon) o).getBurgerservicenummer()),
+
+        // §5.7/§8.1.6 TUPLE (concatenatie) UNICITEIT: "de concatenatie van luchthaven en vertrektijd van alle Vluchten
+        // moeten uniek zijn" keys uniqueness on the (luchthaven, vertrektijd) PAIR — a duplicate is TWO instances sharing
+        // BOTH components. Both back-ends bind + non-null EACH component on the subject and join on EACH in the accumulate
+        // (DrlTranspiler.uniciteit / ExecModelTranspiler.uniciteit walk the full u.sleutels()). Rows: a full-pair duplicate
+        // (both flagged); a pair that matches on ONLY ONE component (distinct tuple -> NOT flagged); and a tuple with ONE
+        // null component (§8.1.6 identity is not established when any key part is null -> guarded out, NOT flagged, and does
+        // NOT collide with another same-shaped null-component tuple). Proves the key is the TUPLE, not just sleutels.get(0).
+        new FoutFixture("uniciteit: concatenatie tuple (luchthaven, vertrektijd)",
+            """
+            Objecttype de Vlucht (mv: Vluchten)
+                de luchthaven Numeriek (geheel getal);
+                de vertrektijd Numeriek (geheel getal);
+            Regel vlucht uniek
+                geldig altijd
+                    De concatenatie van luchthaven en vertrektijd van alle Vluchten moeten uniek zijn.
+            """,
+            () -> {
+                Vlucht dupA = new Vlucht(); dupA.setLuchthaven(new BigDecimal(1)); dupA.setVertrektijd(new BigDecimal(800));  // (1,800)
+                Vlucht dupB = new Vlucht(); dupB.setLuchthaven(new BigDecimal(1)); dupB.setVertrektijd(new BigDecimal(800));  // (1,800) -> collides with dupA (both flagged)
+                Vlucht sameLh = new Vlucht(); sameLh.setLuchthaven(new BigDecimal(1)); sameLh.setVertrektijd(new BigDecimal(900)); // (1,900) shares only luchthaven -> distinct tuple, NOT flagged
+                Vlucht sameTijd = new Vlucht(); sameTijd.setLuchthaven(new BigDecimal(2)); sameTijd.setVertrektijd(new BigDecimal(800)); // (2,800) shares only vertrektijd -> distinct tuple, NOT flagged
+                Vlucht nullTijdA = new Vlucht(); nullTijdA.setLuchthaven(new BigDecimal(3));   // (3,null) -> null component, identity not established, NOT flagged
+                Vlucht nullTijdB = new Vlucht(); nullTijdB.setLuchthaven(new BigDecimal(3));   // (3,null) -> two null-component tuples do NOT collide
+                return List.of(dupA, dupB, sameLh, sameTijd, nullTijdA, nullTijdB);
+            },
+            o -> "lh=" + ((Vlucht) o).getLuchthaven() + ",tijd=" + ((Vlucht) o).getVertrektijd()),
 
         // (adversary repro) uniciteit keys of different SCALE (100 vs 100.0): mvel '==' is scale-INSENSITIVE
         // (compareTo), so DRL flags BOTH as a duplicate. Agrees only after the model's key join uses gelijkWaarde

@@ -1105,6 +1105,31 @@ class DrlTest {
                 () -> "inconsistentie-markering ontbreekt:\n" + drl);
     }
 
+    @Test void samengestelde_consistentieregel_lowert_naar_een_or_van_schendingen() {
+        // §9.5/§13.4.8: "moet voldoen aan alle volgende criteria: - <c1> - <c2>" is inconsistent when NOT all criteria
+        // hold (§9.5: "Als niet aan één van deze criteria voldaan wordt, dan zal de regel inconsistent opleveren"). So the
+        // VIOLATION is the OR of the per-criterion violations, with each ordering criterion also onwaar on a leeg operand.
+        String src = """
+            Objecttype de Konto
+                de saldo Numeriek (geheel getal);
+                de limiet Numeriek (geheel getal);
+                de minimum Numeriek (geheel getal);
+            Regel grenzen
+                geldig altijd
+                    Een Konto moet voldoen aan alle volgende criteria:
+                        - het saldo van een Konto is kleiner dan de limiet van een Konto.
+                        - het saldo van een Konto is groter dan het minimum van een Konto.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        // both bullets lifted, OR-ed, each with its leeg-operand guard
+        assertTrue(drl.contains("((saldo == null || limiet == null || saldo >= limiet) || (saldo == null || minimum == null || saldo <= minimum))"),
+                () -> "de twee criteria moeten als een OR van schendingen lowered worden:\n" + drl);
+        assertTrue(drl.contains("insert(new io.github.yhavinga.regelspraak.facts.Inconsistentie(\"grenzen\", $subject))"),
+                () -> "inconsistentie-markering ontbreekt:\n" + drl);
+    }
+
     @Test void consistentieregel_ordening_bewaakt_lege_operanden() {
         // §9.5 + leegwaarde rekentabels: "saldo moet kleiner zijn dan limiet" is onwaar —
         // inconsistent — when violated AND when an operand is empty. The algebraic
@@ -2028,6 +2053,30 @@ class DrlTest {
                 () -> "de sleutel moet niet-leeg gebonden worden:\n" + drl);
         assertTrue(drl.contains("Number( intValue > 1 ) from accumulate( $o : NatuurlijkPersoon( burgerservicenummer == $k0 ), count($o) )"),
                 () -> "meer dan een instantie met dezelfde sleutel is de schending:\n" + drl);
+    }
+
+    @Test void uniciteit_over_een_concatenatie_keyt_op_het_hele_tupel() {
+        // §5.7/§8.1.6: "de concatenatie van <a> en <b> van alle <Type> moeten uniek zijn" keys uniqueness on the
+        // (a, b) TUPLE — a duplicate is two instances sharing BOTH components. The subject binds AND non-nulls EACH
+        // key part, and the accumulate joins on EACH; keying on only sleutels.get(0) would flag a mere first-component
+        // match (a distinct tuple) and under-report the genuine full-pair duplicate. This pins the full-tuple key.
+        String src = """
+            Objecttype de Vlucht (mv: Vluchten)
+                de luchthaven Numeriek (geheel getal);
+                de vertrektijd Numeriek (geheel getal);
+            Regel vlucht uniek
+                geldig altijd
+                    De concatenatie van luchthaven en vertrektijd van alle Vluchten moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        // both key parts bound and non-null on the subject
+        assertTrue(drl.contains("$subject : Vlucht( $k0 : luchthaven != null, $k1 : vertrektijd != null )"),
+                () -> "beide sleuteldelen moeten niet-leeg gebonden worden:\n" + drl);
+        // the accumulate counts instances matching BOTH parts — a duplicate is a full-pair collision
+        assertTrue(drl.contains("Number( intValue > 1 ) from accumulate( $o : Vlucht( luchthaven == $k0, vertrektijd == $k1 ), count($o) )"),
+                () -> "de telling moet op het hele tupel joinen:\n" + drl);
     }
 
     @Test void uniciteit_met_gedeclareerd_onregelmatig_attribuut_meervoud_lowert() {
