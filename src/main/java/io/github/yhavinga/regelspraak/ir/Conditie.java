@@ -110,6 +110,17 @@ public sealed interface Conditie {
         return false;
     }
 
+    /** §8.1.9 collect the rule names referenced by a "regelversie &lt;X&gt; is gevuurd" predicate inside
+     *  {@code c} into {@code uit} — the gevuurd (NOT inconsistent) arm of {@link Regelversie}, recursing
+     *  through compound children. The transpilers walk every construct's voorwaarde with this FIRST, so
+     *  only a rule whose fired-status is actually referenced emits the {@code RuleFired} marker (§8.1.9
+     *  opt-in emission — no fact-base bloat from markers no rule reads). Null-safe. */
+    static void verzamelGevuurdReferenties(Conditie c, java.util.Set<String> uit) {
+        if (c == null) return;
+        if (c instanceof Regelversie rv && !rv.inconsistent() && rv.regel() != null) uit.add(rv.regel());
+        if (c instanceof Samengesteld s) s.onderdelen().forEach(d -> verzamelGevuurdReferenties(d, uit));
+    }
+
     /** Whether any operand {@link Expr} inside {@code c} matches {@code toets} — comparison sides, the
      *  one-sided predicate operand, periode bounds, recursing through compound children. Null-safe. */
     static boolean bevatExpr(Conditie c, java.util.function.Predicate<Expr> toets) {

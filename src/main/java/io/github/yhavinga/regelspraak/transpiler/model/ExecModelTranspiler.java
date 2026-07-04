@@ -12,6 +12,7 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
 import io.github.yhavinga.regelspraak.model.Rationaal;
 import io.github.yhavinga.regelspraak.runtime.Accessors;
 import io.github.yhavinga.regelspraak.runtime.CreationMarker;
+import io.github.yhavinga.regelspraak.runtime.RuleFired;
 import io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dagsoorten;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dekking;
@@ -202,6 +203,7 @@ public final class ExecModelTranspiler {
                 alle.addAll(delingCompanions(r));   // §6.5 deling-door-leeg fout (Phase D)
                 alle.addAll(wortelCompanions(r));   // §6.6 wortel-van-negatief fout (Phase D)
                 alle.addAll(startpuntCompanions(r)); // §6.8 leeg startpunt-anker fout
+                alle.addAll(gevuurdCompanions(r));  // §8.1.9 "is gevuurd" RuleFired marker (opt-in)
                 return alle;
             });
             for (Rule rule : rules) m.addRule(rule);
@@ -2035,14 +2037,25 @@ public final class ExecModelTranspiler {
         // rolcheck below). "is gevuurd" (no runtime record) and an unknown producer name skip the whole
         // rule — symmetric with the DRL marker, never a silent never-matching exists.
         if (c instanceof Conditie.Regelversie rv) {
-            if (!rv.inconsistent() || !model.inconsistentieProducent(rv.regel())) return null;
-            Class<?> incClass = inconsistentieClass();
-            if (incClass == null) return null;
             String rvNaam = rv.regel();
-            Variable iVar = DSL.declarationOf(incClass, "$rv_inc_" + (seq++));
-            PatternDSL.PatternDef ip = PatternDSL.pattern(iVar)
-                    .expr(nextId("rv"), (Predicate1) i -> rvNaam.equals(RegelSpraakRuntime.get(i, "regel")));
-            return new Gate(pattern, List.of(DSL.exists(ip)));
+            // §8.1.9 "is inconsistent": exists on the §9.5 Inconsistentie flag fact of the named producer.
+            if (rv.inconsistent() && model.inconsistentieProducent(rvNaam)) {
+                Class<?> incClass = inconsistentieClass();
+                if (incClass == null) return null;
+                Variable iVar = DSL.declarationOf(incClass, "$rv_inc_" + (seq++));
+                PatternDSL.PatternDef ip = PatternDSL.pattern(iVar)
+                        .expr(nextId("rv"), (Predicate1) i -> rvNaam.equals(RegelSpraakRuntime.get(i, "regel")));
+                return new Gate(pattern, List.of(DSL.exists(ip)));
+            }
+            // §8.1.9 "is gevuurd" over an instrumented main-regel() producer: exists on the RuleFired marker its
+            // gevuurdCompanion inserts (mirrors the DRL exists-join; re-activated when the producer fires later).
+            if (!rv.inconsistent() && model.gevuurdProducent(rvNaam)) {
+                Variable fVar = DSL.declarationOf(RuleFired.class, "$rv_fired_" + (seq++));
+                PatternDSL.PatternDef fp = PatternDSL.pattern(fVar)
+                        .expr(nextId("rvf"), (Predicate1) f -> rvNaam.equals(((RuleFired) f).getRegel()));
+                return new Gate(pattern, List.of(DSL.exists(fp)));
+            }
+            return null;   // un-instrumented / unknown -> skip (symmetric with the DRL marker)
         }
         // §8.1.7 far-side "heeft een <rol>": the reference lives on the to-many filler, so this is an exists-join —
         // a SEPARATE rule item that cannot live inside the subject pattern. It binds the filler against $subject.
@@ -4444,6 +4457,51 @@ public final class ExecModelTranspiler {
         pattern = geldigGuard(pattern, r.geldigheid());     // §4.2 the companion only flags inside the host's window
         pattern = pattern.expr(nextId("anker"), (Predicate1) s -> anker.apply(s) == null);
         return List.of(companionRule(naam + " (leeg startpunt)", naam, incClass, sVar, pattern, gateExtra));
+    }
+
+    /** §8.1.9 emit a RuleFired-inserting companion for a main-regel() rule whose firing is referenced by a live
+     *  "regelversie X is gevuurd" predicate (opt-in — an unreferenced rule marks nothing). The companion shares
+     *  the host rule's firing conditions (subject pattern + voorwaarde gate + §9.6 initialisatie leeg-guard +
+     *  §4.2 window) and inserts one {@code RuleFired(naam)} per matching subject — the model analog of
+     *  DrlTranspiler.markeerGevuurd's UNCONDITIONAL top-of-consequence insert. It is insert-only (NO no-loop, no
+     *  idempotency guard): a RuleFired insert does not touch the subject pattern, so it never re-activates
+     *  itself, and per §8.1.9 design the reader's exists collapses the duplicate markers a rule firing for N
+     *  subjects produces (a not-exists guard here would change the HOST's firing semantics — deliberately
+     *  omitted; bounded bloat: #referenced-rules × #subjects). Scoped to the same main-regel() instrumented
+     *  kinds {@link RegelSpraakModel#gevuurdProducent} covers — an unlowerable host voorwaarde yields no
+     *  companion (symmetric with the reader staying a marker). */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private List<Rule> gevuurdCompanions(ResolvedRegel r) {
+        if (!model.gevuurdProducent(r.naam()) || !model.gevuurdReferenties().contains(r.naam())) return List.of();
+        if (!(r.doel() instanceof Expr.AttribuutRef doel) || doel.navigatieRol() != null || doel.objecttype() == null)
+            return List.of();
+        Objecttype subject = doel.objecttype();
+        Class<?> factClass = factClass(subject);
+        if (factClass == null) return List.of();
+        final String naam = r.naam();
+        seq = 0;
+        Variable sVar = DSL.declarationOf(factClass, "$subject");
+        PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
+        List<RuleItemBuilder<?>> extra = new ArrayList<>();
+        if (r.voorwaarde() != null) {
+            Gate gate = voorwaarde(r.voorwaarde(), pattern, subject, sVar);
+            if (gate == null) return List.of();             // unlowerable host voorwaarde -> no companion (reader stays a marker)
+            pattern = gate.pattern();
+            extra.addAll(gate.extra());
+        }
+        // §9.6: the initialisatie leeg-guard is part of the host's firing condition — mirror it so the marker
+        // records "gevuurd" exactly when the initialisatie would actually write (a pre-filled doel does not fire).
+        if (r.soort() == ResolvedRegel.Soort.INITIALISATIE) {
+            java.util.function.Function<Object, Object> doelGetter = Accessors.getter(factClass, doel.attribuut());
+            pattern = pattern.expr(nextId("init"), (Predicate1) (s -> doelGetter.apply(s) == null));
+        }
+        pattern = geldigGuard(pattern, r.geldigheid());     // §4.2 the marker only records inside the host's window
+        Block2<org.drools.model.Drools, Object> body = (drools, s) -> drools.insert(new RuleFired(naam));
+        List<RuleItemBuilder<?>> items = new ArrayList<>();
+        items.add(pattern);
+        items.addAll(extra);
+        items.add(DSL.on(sVar).execute(body));
+        return List.of(PatternDSL.rule(naam + " (gevuurd)").build(items.toArray(new RuleItemBuilder[0])));
     }
 
     private static void verzamelWortels(Expr e, List<Expr.Functie> uit) {

@@ -59,6 +59,13 @@ public final class DrlTranspiler {
     /** §13.4.6/§9 set iff an objectcreatie emitted a {@link io.github.yhavinga.regelspraak.runtime.CreationMarker} idempotence
      *  guard, so the header imports that runtime fact class exactly when it is referenced (like the Segment import). */
     private boolean creationMarkerNodig;
+    /** §8.1.9 set iff a referenced rule emitted a {@link io.github.yhavinga.regelspraak.runtime.RuleFired} "is gevuurd"
+     *  marker (or a condition read one), so the header imports that runtime fact class exactly when referenced. */
+    private boolean ruleFiredNodig;
+    /** §8.1.9 the rule names referenced by a live "regelversie X is gevuurd" predicate — walked from the model
+     *  ONCE up front, so only a referenced rule's consequence inserts the {@link io.github.yhavinga.regelspraak.runtime.RuleFired}
+     *  marker (opt-in emission, no fact-base bloat). Populated at {@link #run} start. */
+    private java.util.Set<String> gevuurdReferenties = java.util.Set.of();
     /** Set exactly where emitted rule text references the §4.2 rekendatum global (a §8.4.3 periode-window, a
      *  §5.3 Rekendatum/Rekenjaar value read), so the global is spliced into the header iff actually used. */
     private boolean rekendatumNodig;
@@ -96,6 +103,7 @@ public final class DrlTranspiler {
     private String fnImport(String naam) { runtimeImports.add(naam); return naam; }
 
     private String run() {
+        gevuurdReferenties = model.gevuurdReferenties();   // §8.1.9 opt-in: only these rules mark their firing
         out.append("package io.github.yhavinga.regelspraak.generated;\n\n");
         // Import the fact class for each object type so Drools resolves the patterns.
         for (Objecttype ot : model.objecttypen.values())
@@ -140,7 +148,7 @@ public final class DrlTranspiler {
                 g.append("global java.util.function.Predicate ").append(naam).append(";\n");
             out.insert(naHeader, g.append('\n'));
         }
-        if (!runtimeImports.isEmpty() || creationMarkerNodig) {
+        if (!runtimeImports.isEmpty() || creationMarkerNodig || ruleFiredNodig) {
             StringBuilder imp = new StringBuilder();
             // The tijdlijn helpers construct Segments via a `Segment.class` argument at their call sites; the
             // fact class is imported iff the emitted text references it — DERIVED from the output, so a new
@@ -149,6 +157,8 @@ public final class DrlTranspiler {
                 imp.append("import ").append(FACT_PACKAGE).append(".Segment;\n");
             if (creationMarkerNodig)   // §13.4.6/§9 the objectcreatie idempotence control fact (a runtime class, not a per-model bean)
                 imp.append("import io.github.yhavinga.regelspraak.runtime.CreationMarker;\n");
+            if (ruleFiredNodig)        // §8.1.9 the "is gevuurd" execution-status control fact (a runtime class, not a per-model bean)
+                imp.append("import io.github.yhavinga.regelspraak.runtime.RuleFired;\n");
             for (String fn : runtimeImports)
                 imp.append("import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.").append(fn).append(";\n");
             out.insert(naImports, imp.append('\n'));
@@ -225,6 +235,10 @@ public final class DrlTranspiler {
          *  indented and newline-terminated (empty for an inconsistency-free / inert rule). */
         Regel dan(String body) { this.then = body; return this; }
 
+        /** Prepend a line to the consequence body — used to inject the §8.1.9 {@code RuleFired} insert at the
+         *  TOP of the {@code then} (before any changed-value guard), so a no-op modify still records "gevuurd". */
+        Regel danVoor(String prefix) { this.then = prefix + this.then; return this; }
+
         String render() {
             StringBuilder b = new StringBuilder();
             b.append("rule \"").append(escapeRegelNaam(naam)).append("\"\n");
@@ -251,6 +265,28 @@ public final class DrlTranspiler {
     private String inconsistentieDan(String naam) {
         return "    insert(new " + FACT_PACKAGE + ".Inconsistentie(\""
                 + escapeRegelNaam(naam) + "\", " + SUBJECT + "));\n";
+    }
+
+    /** §8.1.9 prepend a {@code RuleFired} insert to {@code rule}'s consequence iff {@code naam}'s firing is
+     *  referenced by a live "regelversie X is gevuurd" predicate (§8.1.9 opt-in — an unreferenced rule marks
+     *  nothing). The insert is UNCONDITIONAL and at the TOP of the {@code then}, OUTSIDE the changed-value
+     *  guard: "gevuurd" means the voorwaardendeel held and the consequence ran (§8.1.9: "of er aan de
+     *  voorwaarden in het voorwaardendeel van de regel is voldaan"), so even a no-op modify is "gevuurd". A
+     *  rule firing for N subjects inserts N RuleFired facts with the same {@code regel}; the reader's exists
+     *  collapses them, and a not-exists guard here would change THIS rule's firing semantics, so it is
+     *  deliberately omitted (bounded bloat: #referenced-rules × #subjects). The name is escaped to match the
+     *  {@link #ruleFiredGuard} the reader keys off the same literal. */
+    private void markeerGevuurd(Regel rule, String naam) {
+        if (!gevuurdReferenties.contains(naam)) return;
+        ruleFiredNodig = true;
+        rule.danVoor("    insert(new RuleFired(\"" + escapeRegelNaam(naam) + "\"));\n");
+    }
+
+    /** §8.1.9 the "regelversie X is gevuurd" reader's hoisted LHS existential — mirrors the "is inconsistent"
+     *  {@code exists Inconsistentie( regel == "X" )}, keyed on the same escaped rule-name literal that
+     *  {@link #markeerGevuurd} inserts. */
+    private String ruleFiredGuard(String naam) {
+        return "exists RuleFired( regel == \"" + escapeRegelNaam(naam) + "\" )";
     }
 
     /** §13.4.8 consistentieregel. The assertion MUST hold, so the rule fires on its
@@ -1041,6 +1077,7 @@ public final class DrlTranspiler {
         } else {
             rule.dan("    // onopgelost doel: " + commentVeilig(r.doel().bron()) + "\n");
         }
+        markeerGevuurd(rule, r.naam());   // §8.1.9 prepend the RuleFired insert iff this rule's firing is referenced
         out.append(rule.render());
         // §6.5/§6.6 fout companions are gated by the rule's INLINE constraint PLUS its hoisted join clauses. A
         // far-side condition is a separate exists/not clause, not an inline constraint, so the companion must
@@ -2799,8 +2836,20 @@ public final class DrlTranspiler {
             if (rv.inconsistent() && model.inconsistentieProducent(rv.regel()))
                 return new LoweredConditie("", List.of("exists " + FACT_PACKAGE + ".Inconsistentie( regel == \""
                         + escapeRegelNaam(rv.regel()) + "\" )"), false);
+            // §8.1.9 "is gevuurd" over an instrumented main-regel() producer: an exists on the RuleFired marker
+            // that producer's consequence inserts (hoisted like the Inconsistentie exists — it has no subject of
+            // its own, so it cannot live inside the subject pattern). Drools re-activates this reader when the
+            // producer fires later in the same session (§8.1.9 fixpoint: the insert re-triggers the exists).
+            if (!rv.inconsistent() && model.gevuurdProducent(rv.regel())) {
+                ruleFiredNodig = true;
+                return new LoweredConditie("", List.of(ruleFiredGuard(rv.regel())), false);
+            }
+            // Un-instrumented target (a consistentie/uniciteit rule whose "result" is the Inconsistentie channel,
+            // an objectcreatie/verdeling, or an unknown name) stays an honest marker, symmetric with the exec skip
+            // — never a never-matching exists (a silent never-fire).
             return LoweredConditie.marker("regelpredicaat (§8.1.9): " + (rv.inconsistent()
-                    ? "onbekende regelversie '" + rv.regel() + "'" : "'is gevuurd' heeft geen runtime-registratie"), c.bron());
+                    ? "onbekende regelversie '" + rv.regel() + "'"
+                    : "'is gevuurd' over niet-geïnstrumenteerde regelversie '" + rv.regel() + "'"), c.bron());
         }
         // §8.1.7 far-side "heeft een <rol>": the reference lives on the to-many filler, so this is an EXISTS-join
         // — a separate when-clause that CANNOT live inside the subject pattern's inline constraint. It rides out as

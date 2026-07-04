@@ -7343,6 +7343,74 @@ class ExecModelDifferentialTest {
                     () -> "DRL moet '" + vorm + "' markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
         }
     }
+
+    // ---- §8.1.9 / §13.4.15.66 regelpredicaat "regelversie <X> (altijd) is gevuurd": an exists-join on the
+    //      RuleFired control fact the referenced main-regel() rule inserts in its consequence. §8.1.9 (main spec
+    //      ~line 3433): "gevuurd" = "of er aan de voorwaarden in het voorwaardendeel van de regel is voldaan" —
+    //      the named rule's voorwaardendeel held and its consequence ran. KEYING IS PER-RULE (no onderwerp): the
+    //      flag is existential over the RULE, so when A has fired for ANY subject, B fires for ALL its subjects
+    //      (exactly like the sibling "is inconsistent"). A = a kenmerktoekenning whose consequence marks itself;
+    //      B reads the marker. Absolute values on the oracle (not just parity — a shared always-true exists would
+    //      pass a differential) plus DRL==exec parity plus NO exec skip. ----
+    static final String GEVUURD_HDR =
+            "Objecttype de Passagier\n    de leeftijd Numeriek (geheel getal);\n    is minderjarig kenmerk (bijvoeglijk);\n    is duur kenmerk (bijvoeglijk);\n"
+          + "Regel bepaal minderjarig\n    geldig altijd\n        Een Passagier is minderjarig indien zijn leeftijd kleiner is dan 18.\n"
+          + "Regel duur\n    geldig altijd\n        Een Passagier is duur indien regelversie bepaal minderjarig (altijd) is gevuurd.\n";
+    static final Fixture[] PHASE_GEVUURD = {
+        // (a) A fires (leeftijd<18 holds) -> RuleFired inserted -> B fires for its subject.
+        new Fixture("is gevuurd: A vuurt -> de conditie geldt (B vuurt)", GEVUURD_HDR,
+            () -> List.of(passagier(p -> p.setLeeftijd(new BigDecimal(10)))),
+            Map.of(), l -> ((Passagier) l.get(0)).isDuur()),
+        // (b) A does NOT fire (leeftijd>=18) -> no RuleFired -> B does not fire.
+        new Fixture("is gevuurd: A vuurt niet -> de conditie geldt niet (B vuurt niet)", GEVUURD_HDR,
+            () -> List.of(passagier(p -> p.setLeeftijd(new BigDecimal(30)))),
+            Map.of(), l -> ((Passagier) l.get(0)).isDuur()),
+        // (c) PER-RULE existential + ordering: two passengers, only the FIRST triggers A. RuleFired is keyed on the
+        //     RULE (not the subject), so B fires for the SECOND (non-triggering) passenger too. Drools re-activates
+        //     B when RuleFired lands mid-session (one fireAllRules) even if B was evaluated before A fired.
+        new Fixture("is gevuurd: per-regel bereik + volgorde (B vuurt voor de niet-triggerende passagier)", GEVUURD_HDR,
+            () -> List.of(passagier(p -> p.setLeeftijd(new BigDecimal(10))),   // triggert A
+                          passagier(p -> p.setLeeftijd(new BigDecimal(30)))),  // triggert A niet
+            Map.of(), l -> ((Passagier) l.get(1)).isDuur()),
+    };
+    static final Object[] PHASE_GEVUURD_EXPECTED = { Boolean.TRUE, Boolean.FALSE, Boolean.TRUE };
+
+    /** §8.1.9 "is gevuurd" -> exists RuleFired, absolute values in both back-ends (a shared always-true exists
+     *  would pass a pure differential); (a) A fires -> B fires, (b) A does not fire -> B does not, (c) per-rule
+     *  key + mid-session re-activation (B fires for a subject that never triggered A, and even if evaluated first). */
+    @Test void phase_GEVUURD_is_spec_correct() {
+        for (int i = 0; i < PHASE_GEVUURD.length; i++) {
+            Fixture f = PHASE_GEVUURD[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_GEVUURD_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §8.1.9 (d) a "is gevuurd" reference to an UN-INSTRUMENTED / UNKNOWN regelversie stays a SYMMETRIC decline:
+     *  DRL markers (/* TODO regelpredicaat *&#47;), exec SKIPS the rule — never a never-matching exists. "controleer
+     *  de prijs" is a CONSISTENTIEregel (its "result" is the Inconsistentie channel that "is inconsistent" reads;
+     *  "gevuurd" over it is semantically murky), "bestaat niet" is unknown. Pinned so neither back-end silently
+     *  lowers a never-firing shape. */
+    @Test void phase_GEVUURD_un_instrumented_blijft_symmetrische_marker() {
+        for (String vorm : new String[]{
+                "regelversie controleer de prijs (altijd) is gevuurd",   // consistentie -> not a RuleFired producer
+                "regelversie bestaat niet (altijd) is gevuurd"}) {       // unknown rule name
+            RegelSpraakModel m = Resolver.resolve(REGELVERSIE_HDR
+                    + "Regel duur\n    geldig altijd\n        Een Passagier is duur indien " + vorm + ".\n");
+            assertTrue(m.errors().isEmpty(), () -> vorm + " moet resolven: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet '" + vorm + "' overslaan, kreeg: " + em.overgeslagen());
+            String drl = DrlTranspiler.transpile(m);
+            assertTrue(drl.contains("/* TODO regelpredicaat"),
+                    () -> "DRL moet '" + vorm + "' markeren (symmetrie):\n" + drl);
+            assertFalse(drl.contains("RuleFired"), () -> "geen RuleFired voor een niet-geïnstrumenteerde '" + vorm + "':\n" + drl);
+        }
+    }
     /** §5.6 the spec's worked-example RHS "die kleiner zijn dan de volwassenleeftijd" — a comparison subselectie whose RHS
      *  is a Parameter-global, now FIRING in BOTH back-ends (DRL reads the global free name in the accumulate source; the
      *  exec binds it on the source pattern). A closed-form filtered fold -> assert the ABSOLUTE spec value AND parity. */
