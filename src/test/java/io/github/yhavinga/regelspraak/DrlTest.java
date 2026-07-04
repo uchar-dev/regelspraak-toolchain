@@ -41,10 +41,11 @@ class DrlTest {
 
     @Test void toekenning_wordt_modify_setter() {
         String drl = DrlTranspiler.transpile(Resolver.resolve(SRC));
-        // "de prijs ... := de toeslag plus de grens" -> modify { setPrijs( ($subject.getToeslag() + grens) ) }
+        // "de prijs ... := de toeslag plus de grens" -> modify { setPrijs( rsWaarde(rsPlus($subject.getToeslag(), grens)) ) }
         assertTrue(drl.contains("modify($subject)"), () -> "modify-blok ontbreekt:\n" + drl);
         assertTrue(drl.contains("setPrijs("), () -> "setter ontbreekt:\n" + drl);
-        assertTrue(drl.contains("rsNul($subject.getToeslag()) + rsNul(grens)"), () -> "waarde-expressie (leeg-veilige plus) ontbreekt:\n" + drl);
+        // §6.2 the value-side plus routes through the Breuk-aware rsPlus (single-runtime), collapsed at the write boundary by rsWaarde
+        assertTrue(drl.contains("rsPlus($subject.getToeslag(), grens)"), () -> "waarde-expressie (leeg-veilige plus via rsPlus) ontbreekt:\n" + drl);
     }
 
     @Test void aggregaties_worden_accumulate_patronen() {
@@ -634,7 +635,9 @@ class DrlTest {
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertTrue(drl.contains("rsAfronding($subject.getBasis(), 2, java.math.RoundingMode.FLOOR)"), () -> "afronding:\n" + drl);
-        assertTrue(drl.contains("< bodem ? bodem :"), () -> "begrenzing-minimum:\n" + drl);
+        // §6.1.4 the value-side begrenzing routes through the Breuk-aware rsBegrens (single-runtime) — the inline
+        // "r < m ? m : r" mvel ternary cannot clamp a Breuk basis/bound; the minimum is the second arg, no maximum -> null.
+        assertTrue(drl.contains("rsBegrens($subject.getBasis(), bodem, null)"), () -> "begrenzing-minimum via rsBegrens:\n" + drl);
     }
 
     @Test void rekenkundige_voorwaarde_lowert_ternary_vrij_via_binairTerm() {
@@ -651,9 +654,9 @@ class DrlTest {
                     Een Klok is oud indien de a van een Klok maal 2 gelijk is aan de b van een Klok.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        // the exact constraint is ternary-free (a "?:" in the pattern would mis-parse); the rsNul helper BODY
-        // may carry a ternary, so assert on the constraint line, not the whole DRL.
-        assertTrue(drl.contains("$subject : Klok( (rsNul(a) * rsNul(new java.math.BigDecimal(\"2\"))) == b )"),
+        // the exact constraint is ternary-free (a "?:" in the pattern would mis-parse); the rsMaal helper is a
+        // method call valid in a pattern constraint. §389 the maal routes through the Breuk-aware rsMaal (single-runtime).
+        assertTrue(drl.contains("$subject : Klok( rsMaal(a, new java.math.BigDecimal(\"2\")) == b )"),
                 () -> "rekenkundige voorwaarde niet ternary-vrij gelowerd:\n" + drl);
         String constraintRegel = drl.lines().filter(l -> l.contains("$subject : Klok(")).findFirst().orElse("");
         assertFalse(constraintRegel.contains(" ? "), () -> "de voorwaarde-constraint mag geen ternary bevatten:\n" + constraintRegel);
@@ -698,8 +701,8 @@ class DrlTest {
                     De netto van een Heffing moet gesteld worden op de basis van een Heffing tot de macht 2 naar beneden afgerond op 0 decimalen maal 3.
             """;
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
-        // the afronding (rounding the power) is the maal's left operand -> the maal binds OUTSIDE it
-        assertTrue(drl.contains("rsAfronding(rsMacht($subject.getBasis(), 2), 0, java.math.RoundingMode.FLOOR)) * rsNul(new java.math.BigDecimal(\"3\"))"),
+        // the afronding (rounding the power) is the maal's left operand -> the maal binds OUTSIDE it, via rsMaal
+        assertTrue(drl.contains("rsMaal(rsAfronding(rsMacht($subject.getBasis(), 2), 0, java.math.RoundingMode.FLOOR), new java.math.BigDecimal(\"3\"))"),
                 () -> "afronding moet de macht afronden en 'maal 3' moet erbuiten binden:\n" + drl);
     }
 
@@ -723,8 +726,9 @@ class DrlTest {
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertTrue(drl.contains("rsVerminderd($subject.getA(), $subject.getB())"),
                 () -> "verminderd met moet leeg-links -> leeg afdwingen via rsVerminderd:\n" + drl);
-        assertTrue(drl.contains("(rsNul($subject.getA()) - rsNul($subject.getB()))"),
-                () -> "min moet leeg als 0 behandelen via rsNul:\n" + drl);
+        // §6.2 "min" routes through the Breuk-aware rsMin (single-runtime), leeg=0 inside the helper — distinct from rsVerminderd
+        assertTrue(drl.contains("rsMin($subject.getA(), $subject.getB())"),
+                () -> "min moet leeg als 0 behandelen via rsMin:\n" + drl);
     }
 
     @Test void gedeeld_door_abs_rondt_op_vijf_decimalen_af_gewoon_delen_blijft_exact() {
@@ -3869,7 +3873,8 @@ class DrlTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("setUitkomst( (rsNul(korting) / 100 * rsNul($subject.getPrijs())) )"),
+        // §486 the percentage-van routes through the Breuk-aware rsPercentageVan (single-runtime), collapsed at the write boundary
+        assertTrue(drl.contains("setUitkomst( rsWaarde(rsPercentageVan(korting, $subject.getPrijs())) )"),
                 () -> "'de korting van de prijs' (korting een Percentage-parameter) moet als PERCENTAGE_VAN loweren:\n" + drl);
     }
 

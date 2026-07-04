@@ -329,11 +329,13 @@ leading decimal head, silently dropping the `"/c"` of a `<rationeelgetal>`. So `
 wrong, not only exponents. The reader now parses all four §13.2.5 forms via `rationaal`: a bare
 integer, an `a,b` decimal, the simple `a/c`, and the mixed `a_b/c` (= a + b/c, the fraction carrying
 the whole part's sign). A rational whose quotient **terminates** lowers to its exact `BigDecimal`
-value (`4/2` → `2`, `3/2` → `1.5`, `1_1/2` → `1.5`); a non-terminating one (`1/3`) lowers to a
-`DECIMAL64` division so it computes at runtime rather than throwing. Because the exact value is now
-read, an integer-valued rational exponent (`4/2`) reduces to an exact `pow(2)`, while a true fraction
-(`3/2`) or non-terminating quotient falls through to the `Math.pow` path as before. No corpus example
-uses a rational literal, so corpus coverage is unchanged; proven by firing in Drools.
+value (`4/2` → `2`, `3/2` → `1.5`, `1_1/2` → `1.5`); a **non-terminating** one (`1/3`) now lowers to an
+**exact `Breuk`** (`rsBreuk("1", "3")` in DRL, a `Breuk` constant in the exec back-end) — see the
+exact-rational precision model section below — so its arithmetic stays exact instead of the former
+16-digit DECIMAL64 approximation. Because the exact value is now read, an integer-valued rational
+exponent (`4/2`) reduces to an exact `pow(2)`, while a true fraction (`3/2`) or non-terminating quotient
+falls through to the `Math.pow` path as before. No corpus example uses a rational literal, so corpus
+coverage is unchanged; proven by firing in Drools.
 
 Three points the adversarial review surfaced, all addressed or deliberately bounded:
 
@@ -346,20 +348,70 @@ Three points the adversarial review surfaced, all addressed or deliberately boun
 - **Mixed-form sign from the text, not the value.** The mixed `a_b/c` sign is read from a leading `-`
   in the literal, because `BigDecimal("-0")` has `signum() == 0` — so `-0_1/2` (= −0.5) would otherwise
   lose its minus and lower to +0.5.
-- **Non-terminating rationals are approximated at `DECIMAL64`, not kept exact.** The typeringen
-  precision clauses (gedeeld door §389, percentage van §486) describe a rationeelgetal as an *exact*
-  fraction, decimal notation used only when it terminates. The engine, however, is `BigDecimal`
-  throughout — `gedeeld door` itself already divides under `DECIMAL64` — so a non-terminating literal
-  like `1/3` is approximated to 16 digits (`9 maal 1/3` fires 2.9999999999999997, not an exact 3).
-  This is the engine-wide decimal-vs-exact-fraction limitation, not specific to literals; carried as a
-  backlog item rather than fixed here, since exact-rational arithmetic would have to be threaded
-  through every operator.
+- **Non-terminating rationals are now kept EXACT (was DECIMAL64).** The typeringen precision clauses
+  (gedeeld door §389, percentage van §486, tijdsevenredig deel §845) describe a rationeelgetal as an
+  *exact* fraction, decimal notation used only when it terminates. Computed intermediates are now exact
+  rationals (`io.github.yhavinga.regelspraak.runtime.Breuk`), collapsing to decimal only at an afronding or a
+  terminating boundary — see the exact-rational precision model section below. A non-terminating literal
+  like `1/3` therefore stays exact: `9 maal 1/3` afgerond op 0 decimalen fires exactly `3` (was
+  2.9999999999999997 → floor 2), `(1/3)% van 600` exactly `2` (was ~1.999998 → floor 1).
 
 A note on the mixed form's spelling: the EBNF (syntaxdiagrammen §13.2.5, and the spec-for-ANTLR
 `NUMBER` token) writes the mixed number with an underscore (`a_b/c`), and the parser follows it.
 The spec's *rendered* values in prose and tables show a space instead (`2 1/11`, `1 319/365 €/mnd`) —
 a display convention (a space-separated `2 1/11` would lex as two separate numbers), so those table
 values are not single-literal input. The underscore form is the one the grammar admits.
+
+### Exact-rational precision model (§389 / §486 / §845) — computed intermediates are exact
+
+The typeringen **Precisie** clauses for `gedeeld door` (§389), `percentage van` (§486) and
+`tijdsevenredig deel` (§845) state that the result "is altijd een geheel getal of een breuk … en dit
+zal dan altijd het exacte getal zijn": a division/percentage/pro-rata result is an EXACT rational, the
+decimal notation used only when it terminates without loss of precision. The engine used to compute
+every intermediate in `DECIMAL64` `BigDecimal`, so a non-terminating rational diverged (`9 maal 1/3`
+fired 2.9999999999999997, not 3; `(1/3)% van 600` ~1.9999998, not 2; and `1/3 maal 3 gelijk aan 1`
+read *onwaar*). This was the engine-wide decimal-vs-exact-fraction gap carded in
+`20260619-16:05-exacte-breuk-rekenkunde-niet-eindigend.md`.
+
+Now **computed intermediates are exact rationals.** A new runtime type
+`io.github.yhavinga.regelspraak.runtime.Breuk` (a gcd-reduced, sign-normalized `BigInteger teller/noemer`, extending
+`java.lang.Number`) carries exactness through the computation, and it collapses to a `BigDecimal` **only**
+at an afronding (§6.1.2 — the §389/§486 exact value is rounded, never a pre-truncated DECIMAL64
+approximation) or at a naturally-terminating boundary. Where exactness lives:
+
+- **Fact fields stay `BigDecimal`.** Values at rest are decimal-typed per the declared datatypes; the
+  resolver's §6.1.2 write-precision guard already rejects a write of a value with more decimals than the
+  doel unless it was explicitly rounded, so a non-terminating exact value only ever reaches an afronding
+  or terminates. A `Breuk` never reaches a field: the write boundary (`werkBij` / the DRL `rsWaarde`
+  wrapper / the reflective objectcreatie/verdeling set) coerces any remaining `Breuk` to
+  `naarDecimal()` (exact when terminating, a defensive DECIMAL64 collapse otherwise — never a throw).
+- **The `rs*` runtime helpers are Breuk-aware (single-runtime, both back-ends).** `rsGedeeld`/`rsPercentageVan`
+  RETURN a `Breuk` when their exact result does not terminate; `rsPlus`/`rsMin`/`rsMaal`/`rsVerminderd`/
+  `rsMacht`/`rsAbs`/`rsBegrens` PROPAGATE a `Breuk` when any operand is one (else the fast BigDecimal path,
+  byte-identical to before). A terminating exact result is reduced back to a plain `BigDecimal` (`verklein`),
+  so the common case does not churn. Comparisons compare EXACTLY when either side is a `Breuk`
+  (`rsAggVergelijk`, by cross-multiplication). `rsGedeeldAbs` and `rsAfronding` are collapse points
+  (they round the exact rational and return a `BigDecimal`). Leegwaarde semantics per helper are unchanged.
+- **Emitted arithmetic routes through the helpers.** Both back-ends used to emit some arithmetic inline
+  (DRL mvel `(a / 100 * b)` for percentage, `(a * b)`, `(a + b)`; the exec's binary lambda calling
+  `rsNul(..).add/multiply`) — inline host-language arithmetic cannot carry a `Breuk`. Every such site now
+  routes through an `rs*` helper (`rsPlus`/`rsMin`/`rsMaal`/`rsPercentageVan`/`rsBegrens`). A numeric
+  COMPARISON whose operand can genuinely be a `Breuk` (it contains a division/percentage or a
+  non-terminating rational literal — `bevatBreukBron`/`kanBreukOpleveren`) lowers through `rsAggVergelijk`;
+  an ordinary field/literal comparison keeps its inline mvel form (no churn). A `1/3`-type literal lowers to
+  `rsBreuk("1","3")` (DRL) / a `Breuk` constant (exec) instead of the former DECIMAL64 decimal.
+- **Residual DECIMAL64 only at defensive collapses.** A `Breuk` that survives to a write boundary with a
+  non-terminating value (impossible by the resolver guard) collapses at DECIMAL64 rather than throwing; a
+  cross-unit unit restatement of a `Breuk` value (`rsHerschaal`/`rsHerschaalExact`, a mvel-resolvable
+  `BigDecimal` return) collapses early — the cross-unit counterpart of the documented reverse-factor
+  DECIMAL64 residual. The `sqrt`/`Math.pow` (rsWortel/rsMachtReeel) paths are inherently irrational and
+  stay DECIMAL128/double. `rsTijdsevenredig` (§845) stores a terminating pro-rata EXACTLY and a
+  non-terminating one at DECIMAL64 (a Segment holds a `BigDecimal`), rounded only by the doel afronding.
+
+Verified as differential fixtures with ABSOLUTE spec values on both back-ends
+(`ExecModelDifferentialTest.phase_BREUK_*`): `9 maal 1/3` afgerond op 0 → exactly 3; `(1/3)% van 600`
+afgerond op 0 → exactly 2; a terminating `10 gedeeld door 4` → 2.5 unchanged; `basis 3 maal 1/3 gelijk
+aan 1` → WAAR → fires (was onwaar). `Breuk` itself is unit-pinned in `BreukTest`.
 
 ### Literal precision and §6.1.2 assignment-precision — enforced
 

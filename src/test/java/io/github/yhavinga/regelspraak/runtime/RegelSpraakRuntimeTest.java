@@ -53,7 +53,7 @@ class RegelSpraakRuntimeTest {
         assertNull(RegelSpraakRuntime.rsHerschaal(null, new BigDecimal("12")));
         assertNull(RegelSpraakRuntime.rsHerschaalExact(null, new BigDecimal("12"), BigDecimal.ONE));
         assertEquals(0, new BigDecimal("2").compareTo(
-                RegelSpraakRuntime.rsHerschaalExact(new BigDecimal("24"), BigDecimal.ONE, new BigDecimal("12"))),
+                (BigDecimal) RegelSpraakRuntime.rsHerschaalExact(new BigDecimal("24"), BigDecimal.ONE, new BigDecimal("12"))),
                 "24 mnd ->  2 jr via de EXACTE ×fv ÷fn (nooit de afgeknotte 1/12-ratio)");
     }
 }

@@ -851,8 +851,14 @@ public final class DrlTranspiler {
         // value expressions may carry aggregations -> collected into the "when" via the threaded Acc
         // context (so lower them BEFORE reading acc.clausules into the rule, even on the no-op path).
         java.util.List<String> setters = new ArrayList<>();
-        for (var t : oc.toekenningen())
-            setters.add("    $new." + setter(t.attribuut()) + "( " + waarde(acc, t.waarde(), subject).text() + " );");
+        for (var t : oc.toekenningen()) {
+            Frag v = waarde(acc, t.waarde(), subject);
+            // §6.1.2 write boundary (as in regel()): a COMPUTED numeric value (arithmetic / non-terminating rational)
+            // collapses through rsWaarde so a Breuk never reaches a BigDecimal setter (mvel strict-mode) — inert for a
+            // plain BigDecimal, skipped for a marker / a non-Breuk-capable value.
+            if (kanBreukOpleveren(t.waarde()) && !v.marker()) { fnImport("rsWaarde"); v = Frag.from("rsWaarde(" + v.text() + ")", v); }
+            setters.add("    $new." + setter(t.attribuut()) + "( " + v.text() + " );");
+        }
 
         if (subject == null || nieuw == null) {
             out.append(new Regel(oc.naam())
@@ -1102,6 +1108,16 @@ public final class DrlTranspiler {
             // if the result has too many decimals the author must add an explicit afronding.
             if (r.waarde().type().isNumeriek())
                 valueStr = omrekenWaarde(valueStr, r.waarde().type(), a.type());
+            // §6.1.2 write boundary: collapse any remaining exact Breuk to its decimal value BEFORE the setter, so a
+            // Breuk never reaches a BigDecimal field (mvel strict-mode resolves setX(BigDecimal), never setX(Object))
+            // and the idempotent Objects.equals guard compares like-typed values. Only a COMPUTED value can be a Breuk
+            // (arithmetic / percentage / division / a non-terminating rational literal), so a bare attribute/parameter
+            // copy is left unwrapped (no churn, never a Breuk). Never wrap a MARKER placeholder. The wrap is an
+            // identity for a terminating BigDecimal (rsWaarde = toBd), so it is inert where it does fire.
+            if (kanBreukOpleveren(r.waarde()) && !valueStr.marker()) {
+                fnImport("rsWaarde");
+                valueStr = Frag.from("rsWaarde(" + valueStr.text() + ")", valueStr);
+            }
             // IDEMPOTENT write (the exec back-end's werkBij, mirrored): modify only when the value actually
             // CHANGES, so recomputation reaches a FIXPOINT. Complex mvel constraints (function calls,
             // navigated reads) make a pattern CLASS-reactive — it re-fires on EVERY subject update — and the
@@ -1425,9 +1441,12 @@ public final class DrlTranspiler {
             return Frag.from("rsMachtReeel(" + l.text() + ", " + r.text() + ")", l, r);
         }
         if (b.op() == Expr.BinOp.PERCENTAGE_VAN) {
+            // §486: route through the Breuk-aware rsPercentageVan (single-runtime, shared with the exec back-end) so
+            // a non-terminating percentage ((1/3)% van 600) keeps its exact rational until an afronding — inline mvel
+            // `l/100*r` computes at DECIMAL128 and would diverge. leeg counts as 0 inside the helper.
             Frag l = arg.apply(b.links()), r = arg.apply(b.rechts());
-            if (l.marker() || r.marker()) return Frag.from("(" + l.text() + " / 100 * " + r.text() + ")", l, r);
-            return Frag.from("(" + nulVeilig(acc, l.text()) + " / 100 * " + nulVeilig(acc, r.text()) + ")", l, r);  // §6.8 Tabel 13: leeg telt als 0
+            fnImport("rsPercentageVan");
+            return Frag.from("rsPercentageVan(" + l.text() + ", " + r.text() + ")", l, r);
         }
         if (b.op() == Expr.BinOp.GEDEELD_DOOR) {
             // §6.5 Tabel 12 leegwaarde: an empty LEFT (dividend) short-circuits to 0 — even leeg/leeg = 0; a
@@ -1450,9 +1469,12 @@ public final class DrlTranspiler {
             return Frag.from("rsGedeeldAbs(" + l.text() + ", " + r.text() + ")", l, r);
         }
         if (b.op() == Expr.BinOp.MAAL) {  // §6.4: units multiply, operands are NOT converted to match
+            // §389: route through the Breuk-aware rsMaal (single-runtime) so exactness propagates when an operand is
+            // a Breuk (9 maal 1/3 = 3), else the fast BigDecimal path. §6.4 Tabel 10: any empty operand -> 0 (in helper).
             Frag l = arg.apply(b.links()), r = arg.apply(b.rechts());
             if (l.marker() || r.marker()) return Frag.from("(" + l.text() + " * " + r.text() + ")", l, r);
-            return Frag.from("(" + nulVeilig(acc, l.text()) + " * " + nulVeilig(acc, r.text()) + ")", l, r);  // §6.4 Tabel 10: any empty operand -> 0
+            fnImport("rsMaal");
+            return Frag.from("rsMaal(" + l.text() + ", " + r.text() + ")", l, r);
         }
         // §6/§13.4.16 date arithmetic: a datum/datumtijd ± a numeric-with-time-unit -> a new date (optellen=later,
         // aftrekken=earlier; an aantal of 0 leaves the date unchanged). NOT mvel "+": "LocalDate + BigDecimal" is a
@@ -1508,7 +1530,11 @@ public final class DrlTranspiler {
             fnImport("rsVerminderd");
             return Frag.from("rsVerminderd(" + links.text() + ", " + rechts.text() + ")", links, rechts);
         }
-        return Frag.from("(" + nulVeilig(acc, links.text()) + " " + infix(b.op()) + " " + nulVeilig(acc, rechts.text()) + ")", links, rechts); // §6.2/§6.3 leeg=0
+        // §6.2/§6.3: route PLUS/MIN through the Breuk-aware rsPlus/rsMin (single-runtime, shared with the exec
+        // back-end) so exactness propagates when an operand is a Breuk; leeg counts as 0 inside the helper. Inline
+        // mvel `l + r` would compute at DECIMAL128 and cannot carry a Breuk. (A marker propagated above.)
+        String plusFn = fnImport(b.op() == Expr.BinOp.PLUS ? "rsPlus" : "rsMin");
+        return Frag.from(plusFn + "(" + links.text() + ", " + rechts.text() + ")", links, rechts);
     }
 
     // ---------------- value expression ("then" side: getters) ----------------
@@ -1575,18 +1601,19 @@ public final class DrlTranspiler {
         if (e instanceof Expr.Begrensd bg) {
             // §4/§6.1.4: a convertible-but-different bound unit (a jr bound on a mnd basis) is
             // restated in the basis unit before the clamp compares magnitudes, exactly as the
-            // +/- path does. No-op when the units match or are absent.
+            // +/- path does. No-op when the units match or are absent. Route through the Breuk-aware
+            // rsBegrens (single-runtime, shared with the exec back-end): an inline mvel ternary
+            // `r < m ? m : r` cannot compare a Breuk basis/bound, and clamps EXACTLY inside the helper.
             Frag r = waarde(acc, bg.basis(), subject);
             Datatype bt = bg.basis().type();
-            if (bg.minimum() != null) {
-                Frag m = omrekenWaarde(waarde(acc, bg.minimum(), subject), bg.minimum().type(), bt);
-                r = Frag.from("(" + r.text() + " < " + m.text() + " ? " + m.text() + " : " + r.text() + ")", r, m);
-            }
-            if (bg.maximum() != null) {
-                Frag m = omrekenWaarde(waarde(acc, bg.maximum(), subject), bg.maximum().type(), bt);
-                r = Frag.from("(" + r.text() + " > " + m.text() + " ? " + m.text() + " : " + r.text() + ")", r, m);
-            }
-            return r;
+            Frag min = bg.minimum() == null ? null : omrekenWaarde(waarde(acc, bg.minimum(), subject), bg.minimum().type(), bt);
+            Frag max = bg.maximum() == null ? null : omrekenWaarde(waarde(acc, bg.maximum(), subject), bg.maximum().type(), bt);
+            java.util.List<Frag> delen = new java.util.ArrayList<>(); delen.add(r);
+            if (min != null) delen.add(min);
+            if (max != null) delen.add(max);
+            fnImport("rsBegrens");
+            return Frag.from("rsBegrens(" + r.text() + ", " + (min == null ? "null" : min.text())
+                    + ", " + (max == null ? "null" : max.text()) + ")", delen.toArray(new Frag[0]));
         }
         if (e instanceof Expr.Constante c) {
             Frag rk = rekenConstante(c);   // §5.3 Rekendatum/Rekenjaar as a VALUE operand (§13.4.17.34)
@@ -2917,6 +2944,17 @@ public final class DrlTranspiler {
             // §5.1 Tabel 32: a comparison across convertible-but-different units restates
             // the right operand in the left's unit first ("24 mnd > 2 jr", not "24 > 2").
             String[] o = vergelijkingsOperanden(lo.text(), v.links().type(), ro.text(), v.rechts().type());
+            // §389/§486: when a numeric operand is arithmetic that can carry an exact Breuk (a non-terminating
+            // division/percentage or a rational literal), an inline mvel "l OP r" would throw on a Breuk (mvel's
+            // == casts to BigDecimal) — so compare EXACTLY via the Breuk-aware rsAggVergelijk (single-runtime; it
+            // also handles the numeric leegwaarde tables 37/44/33). Only for a numeric comparison with a Breuk-capable
+            // operand; the ordinary field/literal comparison keeps its inline form (no churn).
+            boolean numeriek = (v.links().type() != null && v.links().type().isGetalachtig())
+                    || (v.rechts().type() != null && v.rechts().type().isGetalachtig());
+            if (numeriek && (bevatBreukBron(v.links()) || bevatBreukBron(v.rechts()))) {
+                fnImport("rsAggVergelijk");
+                return LoweredConditie.van("rsAggVergelijk(" + o[0] + ", " + o[1] + ", \"" + Operatoren.symbool(v.op()) + "\")");
+            }
             String cmp = o[0] + " " + Operatoren.symbool(v.op()) + " " + o[1];
             // §5.3 / typeringen Tabel 38: a NON-numeriek "gelijk aan" with BOTH operands empty is "fout"
             // (a foutmelding), NOT "waar" — so as a rule GUARD the condition is not satisfied and the rule
@@ -3298,6 +3336,54 @@ public final class DrlTranspiler {
     }
 
     // ---------------- leaves & helpers ----------------
+    /** Whether an expression tree can ACTUALLY introduce an exact {@link io.github.yhavinga.regelspraak.runtime.Breuk} — i.e. it
+     *  contains a §389 division (GEDEELD_DOOR, whose non-terminating quotient becomes a Breuk), a §486 PERCENTAGE_VAN,
+     *  or a NON-terminating rational literal. A plain maal/plus/min of decimals never yields a Breuk, so it is NOT a
+     *  source. Used to route a COMPARISON through the Breuk-aware rsAggVergelijk only when a Breuk can genuinely reach
+     *  it (else the ordinary inline mvel comparison stays — no churn, no over-wrap). Recurses through the operands. */
+    static boolean bevatBreukBron(Expr e) {
+        if (e == null) return false;
+        if (e instanceof Expr.Binair b) {
+            if (b.op() == Expr.BinOp.GEDEELD_DOOR || b.op() == Expr.BinOp.PERCENTAGE_VAN) return true;
+            return bevatBreukBron(b.links()) || bevatBreukBron(b.rechts());
+        }
+        if (e instanceof Expr.Begrensd bg) return bevatBreukBron(bg.basis()) || bevatBreukBron(bg.minimum()) || bevatBreukBron(bg.maximum());
+        if (e instanceof Expr.Afgerond) return false;   // an afronding collapses any Breuk to a BigDecimal
+        if (e instanceof Expr.Functie f) { for (Expr a : f.argumenten()) if (bevatBreukBron(a)) return true; return false; }
+        if (e instanceof Expr.Literal lit && lit.type() != null && lit.type().isNumeriek()) {
+            java.math.BigDecimal[] r = Rationaal.van(lit.waarde());
+            if (r == null) return false;
+            try { r[0].divide(r[1]); return false; } catch (ArithmeticException nietEindig) { return true; }
+        }
+        return false;
+    }
+
+    /** Whether a value expression could compute to an exact {@link io.github.yhavinga.regelspraak.runtime.Breuk} — the trigger
+     *  for the §6.1.2 rsWaarde write-boundary collapse. True for any arithmetic (a §389/§486 division/percentage/
+     *  maal/plus/min whose exactness can propagate), a begrenzing/afronding wrapping such arithmetic, and a
+     *  NON-TERMINATING rational LITERAL (1/3 → a Breuk). A bare attribute/parameter read, a terminating literal, a
+     *  date/text/boolean, or an aggregation is never a Breuk, so it stays unwrapped (no pin churn). Conservative:
+     *  when in doubt (a compound), it wraps — the wrap is an identity for a BigDecimal. */
+    private static boolean kanBreukOpleveren(Expr e) {
+        // Only a NUMERIC-typed result can be a Breuk. A DATUM-arithmetic Binair (a date ± a duration) or a
+        // date/text builtin yields a KNOWN non-numeric value that rsWaarde (→ BigDecimal) would wrongly cast, so it
+        // must NOT be wrapped — reject a known non-numeric result type. An Onbekend type (a beslistabel-desugared
+        // arithmetic value carries one) falls through to the structural check: a Binair there is arithmetic (numeric),
+        // and rsWaarde is a safe identity for its BigDecimal / Breuk result.
+        if (e.type() != null && !e.type().isGetalachtig() && !e.type().isOnbekend()) return false;
+        if (e instanceof Expr.Binair || e instanceof Expr.Begrensd || e instanceof Expr.Afgerond) return true;
+        // §6.9 "de absolute waarde van" preserves a Breuk (rsAbs returns Object); other builtins (date-component,
+        // datum-met, aggregation) return a BigDecimal/date, so they need no collapse and stay unwrapped.
+        if (e instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.ABSOLUTE_WAARDE) return true;
+        if (e instanceof Expr.Literal lit && lit.type().isNumeriek()) {
+            java.math.BigDecimal[] r = Rationaal.van(lit.waarde());
+            if (r == null) return false;
+            try { r[0].divide(r[1]); return false; }              // terminating -> a plain BigDecimal
+            catch (ArithmeticException nietEindig) { return true; } // non-terminating -> a Breuk
+        }
+        return false;
+    }
+
     /** The integer exponent when {@code e} is an integer-valued numeric literal ("2" in "tot de
      *  macht 2"), else null — lets an integer power lower exactly via {@code BigDecimal.pow(int)}
      *  rather than through Math.pow's double. Reads the number as {@link #literal} does, so a
@@ -3321,7 +3407,7 @@ public final class DrlTranspiler {
 
     /** Render a literal as DRL text — the VALUE comes from the shared {@link Literalen} reader (single shared implementation:
      *  one interpretation for both back-ends), this method only formats it for mvel. */
-    private static Frag literal(Expr.Literal lit) {
+    private Frag literal(Expr.Literal lit) {
         Datatype t = lit.type();
         // §13.3.3.4 Tekst / §13.2.14 enumeratiewaarde 'X' (typed Onbekend at parse): both compare by VALUE
         // equality on the label (§8.1.1), so render the label as a double-quoted string — embedded quotes
@@ -3342,9 +3428,22 @@ public final class DrlTranspiler {
             if (d == null) return Frag.todo("datumliteral", lit.waarde());
             return Frag.ok("java.time.LocalDate.of(" + d.getYear() + ", " + d.getMonthValue() + ", " + d.getDayOfMonth() + ")");
         }
-        // numeric (possibly "0 €"), incl. a §13.2.5 rational ("4/2", "1_1/2", "1/3"): the shared reader yields
-        // the exact value for a terminating quotient and the DECIMAL64 quotient otherwise — spliced as ONE
-        // BigDecimal constant (the same value mvel's division at DECIMAL64 used to compute).
+        // numeric (possibly "0 €"), incl. a §13.2.5 rational ("4/2", "1_1/2", "1/3"). A terminating quotient
+        // ("4/2"->2, "3/2"->1.5) splices as an exact BigDecimal constant (the fast path). A NON-terminating
+        // rational ("1/3") lowers to an EXACT Breuk (rsBreuk("1","3")) — §389 — so its arithmetic stays exact
+        // instead of the former 16-digit DECIMAL64 approximation (9 maal 1/3 = 3, not 2.9999999999999997).
+        java.math.BigDecimal[] r = Rationaal.van(lit.waarde());
+        if (r != null) {
+            try {
+                java.math.BigDecimal exact = r[0].divide(r[1]);   // throws when non-terminating
+                return Frag.ok("new java.math.BigDecimal(\"" + exact.toPlainString() + "\")");
+            } catch (ArithmeticException nietEindig) {
+                // reduce to lowest terms so the emitted teller/noemer are the canonical fraction
+                io.github.yhavinga.regelspraak.runtime.Breuk b = io.github.yhavinga.regelspraak.runtime.Breuk.van(r[0]).delen(io.github.yhavinga.regelspraak.runtime.Breuk.van(r[1]));
+                fnImport("rsBreuk");
+                return Frag.ok("rsBreuk(\"" + b.teller() + "\", \"" + b.noemer() + "\")");
+            }
+        }
         java.math.BigDecimal n = Literalen.getal(lit);
         if (n == null) return Frag.todo("literal", lit.waarde());
         return Frag.ok("new java.math.BigDecimal(\"" + n.toPlainString() + "\")");

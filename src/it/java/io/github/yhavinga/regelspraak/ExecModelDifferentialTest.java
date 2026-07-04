@@ -171,6 +171,82 @@ class ExecModelDifferentialTest {
         }
     }
 
+    // ---- §389 (gedeeld door) / §486 (percentage van): the Precisie clauses say a division/percentage result is
+    //      "altijd een geheel getal of een breuk … dit zal dan altijd het exacte getal zijn". The engine computes in
+    //      DECIMAL64 BigDecimal, so a NON-terminating rational diverged: "de basis maal 1/3" with basis 9 fired
+    //      2.9999999999999997 (not 3), and "(1/3)% van 600" ~1.9999998 (not 2). Computed intermediates are now EXACT
+    //      rationals (io.github.yhavinga.regelspraak.runtime.Breuk), collapsing to decimal only at an afronding or a terminating
+    //      boundary. Each fixture asserts the ABSOLUTE spec value on BOTH back-ends (the pre-fix value is shown in the
+    //      comment as the RED evidence). basis is a whole getal; the doel carries an explicit afronding (§6.1.2). ----
+    static Fixture breukHeffing(String naam, String waarde, java.util.function.Consumer<Heffing> seed) {
+        String src =
+            "Objecttype de Heffing (mv: Heffingen)\n" +
+            "    de basis Numeriek (geheel getal);\n" +
+            "    de netto Numeriek (geheel getal);\n" +
+            "Regel R\n" +
+            "    geldig altijd\n" +
+            "        De netto van een Heffing moet berekend worden als " + waarde + ".\n";
+        return new Fixture(naam, src,
+            () -> { Heffing h = new Heffing(); seed.accept(h); return List.<Object>of(h); },
+            Map.of(),
+            l -> ((Heffing) l.get(0)).getNetto());
+    }
+    // a numeric-comparison-gated write: netto := 7 iff the comparison holds (a Breuk-vs-Breuk exact compare).
+    static Fixture breukCmp(String naam, String voorwaarde, java.util.function.Consumer<Heffing> seed) {
+        String src =
+            "Objecttype de Heffing (mv: Heffingen)\n" +
+            "    de basis Numeriek (geheel getal);\n" +
+            "    de netto Numeriek (geheel getal);\n" +
+            "Regel R\n" +
+            "    geldig altijd\n" +
+            "        De netto van een Heffing moet gesteld worden op 7 indien " + voorwaarde + ".\n";
+        return new Fixture(naam, src,
+            () -> { Heffing h = new Heffing(); seed.accept(h); return List.<Object>of(h); },
+            Map.of(),
+            l -> ((Heffing) l.get(0)).getNetto());
+    }
+    static final Fixture[] PHASE_BREUK = {
+        // (1) THE card's own case: 9 · 1/3 rounded to 0 dec = EXACTLY 3 (pre-fix DECIMAL64: 2.9999999999999997 -> floor 2).
+        breukHeffing("9 maal 1/3 afgerond op 0 dec = 3 (was floor 2.999…)",
+                "de basis van een Heffing maal 1/3 naar beneden afgerond op 0 decimalen", h -> h.setBasis(new BigDecimal(9))),
+        // (2) percentage: (1/3)% van 600 rounded to 0 dec = EXACTLY 2 (pre-fix ~1.9999998 -> floor 1).
+        breukHeffing("1/3 % van 600 afgerond op 0 dec = 2 (was floor 1.999…)",
+                "1/3 % van 600 naar beneden afgerond op 0 decimalen", h -> {}),
+        // (3) exact-terminating chain (10 gedeeld door 4 = 2.5) stays exact and unchanged — no Breuk churn. The doel
+        //     is a 1-decimal getal so the 2.5 lands without an afronding (a terminating quotient collapses exactly).
+        new Fixture("10 gedeeld door 4 = 2.5 (terminating, unchanged, no afronding)",
+                "Objecttype de Heffing (mv: Heffingen)\n" +
+                "    de basis Numeriek (geheel getal);\n" +
+                "    de netto Numeriek (getal met 1 decimalen);\n" +
+                "Regel R\n    geldig altijd\n" +
+                "        De netto van een Heffing moet berekend worden als de basis van een Heffing gedeeld door 4.\n",
+                () -> { Heffing h = new Heffing(); h.setBasis(new BigDecimal(10)); return List.<Object>of(h); },
+                Map.of(), l -> ((Heffing) l.get(0)).getNetto()),
+        // (4) a non-terminating intermediate feeding a COMPARISON compares EXACTLY: basis 3, 3·1/3 = 1 -> WAAR -> 7
+        //     (pre-fix 3·0.3333… = 0.9999… != 1 -> ONWAAR -> no fire -> null).
+        breukCmp("basis 3 maal 1/3 gelijk aan 1 -> WAAR -> netto 7 (was onwaar/null)",
+                "de basis van een Heffing maal 1/3 gelijk is aan 1", h -> h.setBasis(new BigDecimal(3))),
+        // (4b) the negative control: basis 4, 4·1/3 = 4/3 != 1 -> ONWAAR -> no fire -> null (still correct).
+        breukCmp("basis 4 maal 1/3 gelijk aan 1 -> ONWAAR -> null",
+                "de basis van een Heffing maal 1/3 gelijk is aan 1", h -> h.setBasis(new BigDecimal(4))),
+    };
+    static final Object[] PHASE_BREUK_EXPECTED = {
+        new BigDecimal(3), new BigDecimal(2), new BigDecimal("2.5"), new BigDecimal(7), null,
+    };
+    @Test void phase_BREUK_exact_rational_arithmetic_is_spec_correct() {
+        for (int i = 0; i < PHASE_BREUK.length; i++) {
+            Fixture f = PHASE_BREUK[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_BREUK_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec (exact-rational) on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+
     // ---- §13.2.17 NUMERIC LITERAL carrying a COMPOSITE (rate) unit with a "/"-denominator ("120 EUR/jr",
     //      "10 EUR/mnd"). The literal-with-unit surface admits {@code <getal> (<afk>+ "/" <afk>+)?} (§13.2.17
     //      syntaxdiagram); the resolver used to read only eenheidMacht(0), typing "120 EUR/jr" as bare EUR and

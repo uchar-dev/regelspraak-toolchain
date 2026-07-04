@@ -1827,7 +1827,9 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("rsAfronding((") && drl.contains(", 0, java.math.RoundingMode.FLOOR) )"),
+        // §6.1.4 the begrenzing now lowers through rsBegrens (Breuk-aware, single-runtime); the afronding still
+        // wraps the WHOLE bounded result (floor of the clamp), so rsAfronding encloses rsBegrens.
+        assertTrue(drl.contains("rsAfronding(rsBegrens(") && drl.contains("0, java.math.RoundingMode.FLOOR)"),
                 () -> "de afronding (rsAfronding) moet de hele begrensde expressie omsluiten:\n" + drl);
 
         KieSession sessie = build(drl).newKieSession();
@@ -2563,8 +2565,8 @@ class DroolsExecutionTest {
 
     @Test void rekenkundige_voorwaarde_gate_vuurt_in_echte_drools() {
         // §6.2-6.8 arithmetic in a CONDITION: "indien de somMet maal 2 gelijk is aan de somZonder" lowers to the
-        // ternary-free constraint (rsNul(somMet) * rsNul(2)) == somZonder and must compile + evaluate in a real
-        // Drools pattern — gating the rule for a Vlucht where it holds, not where it does not.
+        // ternary-free constraint rsMaal(somMet, 2) == somZonder (the Breuk-aware helper, a method call valid in a
+        // pattern) and must compile + evaluate in a real Drools pattern — gating the rule where it holds.
         String src = """
                 Objecttype de Vlucht
                     de somMet Numeriek (geheel getal);
@@ -2577,7 +2579,7 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("(rsNul(somMet) * rsNul(new java.math.BigDecimal(\"2\"))) == somZonder"), () -> drl);
+        assertTrue(drl.contains("rsMaal(somMet, new java.math.BigDecimal(\"2\")) == somZonder"), () -> drl);
 
         KieSession sessie = build(drl).newKieSession();
         Vlucht match = new Vlucht(); match.setSomMet(new BigDecimal("5")); match.setSomZonder(new BigDecimal("10")); // 5*2 == 10
@@ -2768,7 +2770,7 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("(rsNul($acc1) * rsNul(factor))"), () -> "de maal moet buiten de telling binden:\n" + drl);
+        assertTrue(drl.contains("rsMaal($acc1, factor)"), () -> "de maal moet buiten de telling binden:\n" + drl);
         assertFalse(drl.contains("TODO aggregatie"), () -> "de telling mag de maal niet opslokken:\n" + drl);
 
         KieSession sessie = build(drl).newKieSession();
@@ -2806,7 +2808,7 @@ class DroolsExecutionTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("(rsNul($acc1) * rsNul(aantalPuntenPerPassagier))"),
+        assertTrue(drl.contains("rsMaal($acc1, aantalPuntenPerPassagier)"),
                 () -> "de aantal-parameter moet als parameter binden:\n" + drl);
         assertFalse(drl.contains("TODO aggregatie"), () -> "de parameternaam mag geen geneste telling worden:\n" + drl);
 

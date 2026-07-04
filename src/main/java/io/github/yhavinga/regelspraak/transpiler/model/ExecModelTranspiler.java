@@ -421,18 +421,17 @@ public final class ExecModelTranspiler {
                 Variable cntVar = agg.countVar(), sumVar = agg.resultVar();
                 WaardeFn fallback = agg.somFallback();
                 Block4<org.drools.model.Drools, Object, Object, Object> body = (drools, s, cnt, sum) -> {
-                    BigDecimal v = ((Number) cnt).longValue() == 0L
+                    BigDecimal v0 = ((Number) cnt).longValue() == 0L
                             ? (fallback == null ? null : (BigDecimal) fallback.fn().apply(s, Map.of()))
                             : RegelSpraakRuntime.toBd(sum);
-                    v = herschaalWaarde(v, fx.type(), doel.type());   // §4 EXACT restate the aggregate into the doel unit
+                    Object v = herschaalWaarde(v0, fx.type(), doel.type());   // §4 EXACT restate the aggregate into the doel unit
                     werkBij(drools, s, doelGetter, doelSetter, v);
                 };
                 consequence = DSL.on(sVar, (Variable) cntVar, (Variable) sumVar).execute(body);
             } else {
                 Variable resVar = agg.resultVar();
                 Block3<org.drools.model.Drools, Object, Object> body = (drools, s, res) -> {
-                    BigDecimal v = RegelSpraakRuntime.toBd(res);
-                    v = herschaalWaarde(v, fx.type(), doel.type());   // §4 EXACT restate the aggregate into the doel unit
+                    Object v = herschaalWaarde(RegelSpraakRuntime.toBd(res), fx.type(), doel.type());   // §4 EXACT restate the aggregate into the doel unit
                     werkBij(drools, s, doelGetter, doelSetter, v);
                 };
                 consequence = DSL.on(sVar, (Variable) resVar).execute(body);
@@ -465,7 +464,7 @@ public final class ExecModelTranspiler {
                 Object[] aggs = new Object[nAgg];
                 for (int i = 0; i < nAgg; i++) aggs[i] = args[1 + nG + i];
                 Object v = eval.apply(s, gm, aggs);
-                v = herschaalWaarde((BigDecimal) v, r.waarde().type(), doel.type());   // §4 EXACT restate the whole value into the doel unit
+                v = herschaalWaarde(v, r.waarde().type(), doel.type());   // §4 EXACT restate the whole value into the doel unit
                 werkBij(drools, s, doelGetter, doelSetter, v);
             });
             if (consequence == null) return skip("regel (aggregatie-waarde: te veel gebonden variabelen): " + r.naam());
@@ -543,9 +542,18 @@ public final class ExecModelTranspiler {
      *  scale BigDecimal re-propagates harmlessly); it never UNDER-updates, so the fixpoint outcome still matches DRL. */
     private static void werkBij(org.drools.model.Drools drools, Object s,
             java.util.function.Function<Object, Object> getter, BiConsumer<Object, Object> setter, Object v) {
+        v = collapseBreuk(v);   // §6.1.2 write boundary: a remaining exact rational collapses to its decimal value
         Object oud = getter.apply(s);
         setter.accept(s, v);
         if (!java.util.Objects.equals(oud, v)) drools.update(s);
+    }
+
+    /** §6.1.2 write-boundary collapse: a value at rest is decimal-typed, so any exact {@link io.github.yhavinga.regelspraak.runtime.Breuk}
+     *  that survived the computation (unrounded terminating result, or — impossible-by-resolver-guard — a
+     *  non-terminating one) is reduced to its {@link io.github.yhavinga.regelspraak.runtime.Breuk#naarDecimal()} value here:
+     *  exact when it terminates, a defensive DECIMAL64 collapse otherwise (never a throw). A non-Breuk passes through. */
+    private static Object collapseBreuk(Object v) {
+        return v instanceof io.github.yhavinga.regelspraak.runtime.Breuk b ? b.naarDecimal() : v;
     }
 
     /** Reflective analogue of {@link #werkBij} for the verdeling / feitcreatie consequences, which read+write a
@@ -557,6 +565,7 @@ public final class ExecModelTranspiler {
      *  recipient attributes, empirically a 1e6-fire run-away) ping-pong forever (NO_LOOP blocks only self-retrigger).
      *  Updating only on a real change reaches the same fixpoint the DRL back-end reaches via mvel property reactivity. */
     private static void werkBijReflectief(org.drools.model.Drools drools, Object fact, String attr, Object v) {
+        v = collapseBreuk(v);   // §6.1.2 write boundary: collapse a remaining exact rational to its decimal value
         Object oud = RegelSpraakRuntime.get(fact, attr);
         RegelSpraakRuntime.set(fact, attr, v);
         if (!java.util.Objects.equals(oud, v)) drools.update(fact);
@@ -2756,12 +2765,21 @@ public final class ExecModelTranspiler {
             if (parityOnveilig(v.links())) return null;   // §3.6 dimensiecel / cross-unit +/- -> DRL markers -> skip (symmetric)
             WaardeFn lw = scalarWaarde(subject, v.links());   // the value-path subject rides as a parameter (no-mutable-build-state)
             if (lw == null || !lw.globals().isEmpty()) return null;   // unlowerable / unresolvable navigation / needs a global -> skip
-            BigDecimal rhs = bd(lit);
-            if (rhs == null) return null;
             BigDecimal[] f = restatement(v.links().type(), lit.type());
-            BigDecimal rhsScaled = scale(rhs, f[1]);
             BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn();
             Conditie.Operator op = v.op();
+            // §389/§486: a Breuk-capable left operand (a non-terminating division/percentage or a rational literal)
+            // compares EXACTLY via rsAggVergelijk (single-runtime; a (BigDecimal) cast would throw on a Breuk and
+            // DECIMAL64 would decide "basis maal 1/3 == 1" wrong). Its RHS is the EXACT literal (numeriekLit ->
+            // Breuk when non-terminating). No unit restatement applies to an arithmetic comparison here.
+            if (kanBreukOpleveren(v.links())) {
+                Object rhsExact = numeriekLit(lit);
+                String opStr = Operatoren.symbool(op);
+                return s -> RegelSpraakRuntime.rsAggVergelijk(lfn.apply(s, Map.of()), rhsExact, opStr);
+            }
+            BigDecimal rhs = bd(lit);
+            if (rhs == null) return null;
+            BigDecimal rhsScaled = scale(rhs, f[1]);
             return s -> vergelijk(scale((BigDecimal) lfn.apply(s, Map.of()), f[0]), rhsScaled, op);
         }
         // §8.1.1 a comparison where at least one side is a NUMERIC EXPRESSION (arithmetic Binair / builtin Functie /
@@ -2787,6 +2805,15 @@ public final class ExecModelTranspiler {
             BigDecimal[] f = restatement(v.links().type(), v.rechts().type());
             BiFunction<Object, Map<String, BigDecimal>, Object> lfn = lw.fn(), rfn = rw.fn();
             Conditie.Operator op = v.op();
+            // §389/§486: when an operand can carry an exact Breuk (a non-terminating division/percentage or a
+            // rational literal), compare EXACTLY via the Breuk-aware rsAggVergelijk (single-runtime, shared with the
+            // DRL back-end) — a (BigDecimal) cast would throw on a Breuk, and DECIMAL64 would decide the comparison
+            // wrong (1/3·3 == 1). No unit restatement applies here (a cross-unit +/- is parityOnveilig-skipped), so
+            // pass the raw operand values. The ordinary numeric comparison keeps the exact BigDecimal path.
+            if (kanBreukOpleveren(v.links()) || kanBreukOpleveren(v.rechts())) {
+                String opStr = Operatoren.symbool(op);
+                return s -> RegelSpraakRuntime.rsAggVergelijk(lfn.apply(s, Map.of()), rfn.apply(s, Map.of()), opStr);
+            }
             return s -> vergelijk(scale((BigDecimal) lfn.apply(s, Map.of()), f[0]), scale((BigDecimal) rfn.apply(s, Map.of()), f[1]), op);
         }
         // §5.3 an own-attribute equality vs a §13.3.3.4 Tekst literal OR a §13.2.14 enumeratiewaarde 'X' (the §12
@@ -2953,7 +2980,8 @@ public final class ExecModelTranspiler {
          *  {@link #herschaalWaarde} (a non-number passes through; a leeg stays leeg). Self-noops when no conversion is due. */
         WaardeFn herschaald(Datatype van, Datatype naar) {
             BiFunction<Object, Map<String, BigDecimal>, Object> inner = fn;
-            return new WaardeFn((s, gm) -> { Object v = inner.apply(s, gm); return v instanceof BigDecimal bd ? herschaalWaarde(bd, van, naar) : v; }, globals);
+            return new WaardeFn((s, gm) -> { Object v = inner.apply(s, gm);
+                return (v instanceof BigDecimal || v instanceof io.github.yhavinga.regelspraak.runtime.Breuk) ? herschaalWaarde(v, van, naar) : v; }, globals);
         }
     }
 
@@ -2961,7 +2989,9 @@ public final class ExecModelTranspiler {
      *  null -> skip. The global read pulls its value from the consequence-bound map (see {@link #regel}). */
     private WaardeFn scalarWaarde(Objecttype valueSubject, Expr e) {
         if (e instanceof Expr.Literal lit && lit.type().isNumeriek()) {
-            BigDecimal val = bd(lit);
+            // §13.2.5/§389: a non-terminating rational literal (1/3) becomes an EXACT Breuk so downstream +,-,×,÷
+            // stay exact (9 maal 1/3 = 3); a terminating one (4/2, 3/2) stays a plain BigDecimal (fast path).
+            Object val = numeriekLit(lit);
             return val == null ? null : WaardeFn.constant(val);
         }
         // §13.2.16 waar|onwaar literal as a VALUE (the §13.4.6.4 kenmerkwaardetoekenning RHS, or a Booleaan
@@ -3116,9 +3146,9 @@ public final class ExecModelTranspiler {
             if (minF != null) g.addAll(minF.globals());
             if (maxF != null) g.addAll(maxF.globals());
             return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsBegrens(
-                    (BigDecimal) bfn.apply(s, gm),
-                    mnfn == null ? null : (BigDecimal) mnfn.apply(s, gm),
-                    mxfn == null ? null : (BigDecimal) mxfn.apply(s, gm)), g);
+                    bfn.apply(s, gm),
+                    mnfn == null ? null : mnfn.apply(s, gm),
+                    mxfn == null ? null : mxfn.apply(s, gm)), g);
         }
         if (e instanceof Expr.Binair b && arithmeticOp(b.op())) {
             // §6.2-6.5 binary arithmetic with the leegwaarde tables. Datum arithmetic (datum ± tijdsduur) lowers
@@ -3135,19 +3165,18 @@ public final class ExecModelTranspiler {
             Set<String> g = new LinkedHashSet<>(lf.globals()); g.addAll(rf.globals());
             return new WaardeFn((s, gm) -> {
                 Object lv = lfn.apply(s, gm), rv = rfn.apply(s, gm);
-                // PLUS/MIN/MAAL mirror DRL's mvel INFIX (+/-/*), which rounds to MathContext.DECIMAL128 — NOT
-                // Java's exact BigDecimal arithmetic (which diverges once the exact result exceeds 34 sig digits).
-                // VERMINDERD_MET uses the EXACT rsVerminderd helper and GEDEELD_DOOR the DECIMAL64 rsGedeeld — as DRL.
-                java.math.MathContext mc = java.math.MathContext.DECIMAL128;
+                // §389/§486 route ALL arithmetic through the Breuk-aware rs* helpers (the single-runtime principle,
+                // shared with the DRL import functions): +,-,× propagate exactness when an operand is a Breuk and
+                // otherwise stay on the fast DECIMAL128 BigDecimal path; ÷ and percentage keep the exact rational
+                // when it does not terminate. No host-language infix ever sees a Breuk.
                 return switch (op) {
-                    case PLUS           -> RegelSpraakRuntime.rsNul(lv).add(RegelSpraakRuntime.rsNul(rv), mc);
-                    case MIN            -> RegelSpraakRuntime.rsNul(lv).subtract(RegelSpraakRuntime.rsNul(rv), mc);
+                    case PLUS           -> RegelSpraakRuntime.rsPlus(lv, rv);
+                    case MIN            -> RegelSpraakRuntime.rsMin(lv, rv);
                     case VERMINDERD_MET -> RegelSpraakRuntime.rsVerminderd(lv, rv);
-                    case MAAL           -> RegelSpraakRuntime.rsNul(lv).multiply(RegelSpraakRuntime.rsNul(rv), mc);
+                    case MAAL           -> RegelSpraakRuntime.rsMaal(lv, rv);
                     case GEDEELD_DOOR   -> RegelSpraakRuntime.rsGedeeld(lv, rv);
                     case GEDEELD_DOOR_ABS -> RegelSpraakRuntime.rsGedeeldAbs(lv, rv);   // §6.5 (5 dec, toward zero)
-                    // §6.8 Tabel 13 percentage: leeg counts as 0; mvel infix `l/100*r` (DECIMAL128). The /100 is exact.
-                    case PERCENTAGE_VAN -> RegelSpraakRuntime.rsNul(lv).divide(java.math.BigDecimal.valueOf(100), mc).multiply(RegelSpraakRuntime.rsNul(rv), mc);
+                    case PERCENTAGE_VAN -> RegelSpraakRuntime.rsPercentageVan(lv, rv);
                     default             -> null;   // unreachable (arithmeticOp gates)
                 };
             }, g);
@@ -3393,7 +3422,7 @@ public final class ExecModelTranspiler {
             if (op == Expr.BinOp.PLUS || op == Expr.BinOp.MIN || op == Expr.BinOp.VERMINDERD_MET) {
                 Datatype rt = b.rechts().type(), lt = b.links().type();
                 if (valueFactor(rt, lt) != null || exactHerschaalFactoren(rt, lt) != null) {   // a real conversion is due
-                    Eval inner = r; r = (s, g, a) -> { Object x = inner.apply(s, g, a); return x == null ? null : herschaalWaarde((BigDecimal) x, rt, lt); };
+                    Eval inner = r; r = (s, g, a) -> { Object x = inner.apply(s, g, a); return x == null ? null : herschaalWaarde(x, rt, lt); };
                 }
             }
             Eval lf = l, rf = r;
@@ -3510,12 +3539,21 @@ public final class ExecModelTranspiler {
     /** §4 restate a scalar value from {@code van} into {@code naar}: EXACT ×fv ÷fn (DECIMAL64) for simple convertible
      *  units (mirrors DRL herschaalExact / §7.3.1 rsTijdSchaal), the lossy single ratio for a rate, identity otherwise.
      *  A leeg (null) value stays leeg. */
-    private static BigDecimal herschaalWaarde(BigDecimal v, Datatype van, Datatype naar) {
+    private static Object herschaalWaarde(Object v, Datatype van, Datatype naar) {
         if (v == null) return null;
         BigDecimal[] ex = exactHerschaalFactoren(van, naar);
-        if (ex != null) return v.multiply(ex[0]).divide(ex[1], java.math.MathContext.DECIMAL64);
+        // A Breuk value keeps its exact restatement (×fv ÷fn as exact rationals); a BigDecimal value takes the
+        // original DECIMAL64 path unchanged. The single-runtime rs* helpers already return Breuk/BigDecimal, and a
+        // unit restatement must not force a premature decimal collapse of a non-terminating intermediate.
+        if (v instanceof io.github.yhavinga.regelspraak.runtime.Breuk) {
+            if (ex != null) return RegelSpraakRuntime.rsGedeeld(RegelSpraakRuntime.rsMaal(v, ex[0]), ex[1]);
+            BigDecimal vf = valueFactor(van, naar);
+            return vf == null ? v : RegelSpraakRuntime.rsMaal(v, vf);
+        }
+        BigDecimal bd = (BigDecimal) v;
+        if (ex != null) return bd.multiply(ex[0]).divide(ex[1], java.math.MathContext.DECIMAL64);
         BigDecimal vf = valueFactor(van, naar);
-        return vf == null ? v : v.multiply(vf);
+        return vf == null ? bd : bd.multiply(vf);
     }
 
     // ---- small helpers ----
@@ -3528,6 +3566,16 @@ public final class ExecModelTranspiler {
      *  ("4/2" -> 4) and DIVERGE from the DRL oracle (grondslag maal 4/2 = 40 in exec vs 20 in DRL). */
     private static BigDecimal bd(Expr.Literal lit) {
         return Literalen.getal(lit);   // the shared literal reader (single shared implementation)
+    }
+    /** §13.2.5/§389 a numeric literal as an EXACT value: a §13.2.16 rational whose quotient does NOT terminate
+     *  (1/3) becomes a {@link io.github.yhavinga.regelspraak.runtime.Breuk} (teller/noemer), so subsequent arithmetic keeps its
+     *  precision; a terminating literal (4/2, 3/2, 2,5) stays a plain BigDecimal (the fast path, pins unchanged).
+     *  null for a non-numeric literal. */
+    private static Object numeriekLit(Expr.Literal lit) {
+        BigDecimal[] r = Rationaal.van(lit.waarde());
+        if (r == null) return null;
+        io.github.yhavinga.regelspraak.runtime.Breuk b = io.github.yhavinga.regelspraak.runtime.Breuk.van(r[0]).delen(io.github.yhavinga.regelspraak.runtime.Breuk.van(r[1]));
+        return b.isTerminerend() ? b.naarDecimal() : b;
     }
     /** A numeric EXPRESSION operand (an arithmetic {@link Expr.Binair}, a builtin {@link Expr.Functie}, a §6.1.4
      *  begrenzing or a §13.4.17.25 afronding) — i.e. NOT a plain attribute/literal/parameter leaf. Used to route an
@@ -3586,6 +3634,28 @@ public final class ExecModelTranspiler {
      *  so ONGELIJK must be true when exactly one operand is leeg, while {@code ==} is false there and BOTH-leeg makes
      *  {@code ==} true / {@code !=} false. The ordering ops do NOT match when either operand is leeg (mvel returns
      *  false, no NPE). Getting this wrong flips firing decisions under the negated quantifiers (geen/precies/ten hoogste). */
+    /** Whether a value expression can compute to an exact {@link io.github.yhavinga.regelspraak.runtime.Breuk} — the trigger for
+     *  routing a numeric comparison through the Breuk-aware rsAggVergelijk (mirrors DrlTranspiler.kanBreukOpleveren).
+     *  A KNOWN non-numeric result (datum/text) is never a Breuk; arithmetic / begrenzing / afronding / abs / a
+     *  NON-terminating rational literal can be. */
+    private static boolean kanBreukOpleveren(Expr e) {
+        if (e == null) return false;
+        if (e instanceof Expr.Binair b) {
+            if (b.op() == Expr.BinOp.GEDEELD_DOOR || b.op() == Expr.BinOp.PERCENTAGE_VAN) return true;
+            return kanBreukOpleveren(b.links()) || kanBreukOpleveren(b.rechts());
+        }
+        if (e instanceof Expr.Begrensd bg) return kanBreukOpleveren(bg.basis()) || kanBreukOpleveren(bg.minimum()) || kanBreukOpleveren(bg.maximum());
+        if (e instanceof Expr.Afgerond) return false;   // an afronding collapses any Breuk to a BigDecimal
+        if (e instanceof Expr.Functie f) { for (Expr a : f.argumenten()) if (kanBreukOpleveren(a)) return true; return false; }
+        if (e instanceof Expr.Literal lit && lit.type() != null && lit.type().isNumeriek()) {
+            BigDecimal[] r = Rationaal.van(lit.waarde());
+            if (r == null) return false;
+            try { r[0].divide(r[1]); return false; }
+            catch (ArithmeticException nietEindig) { return true; }
+        }
+        return false;
+    }
+
     private static boolean vergelijk(BigDecimal a, BigDecimal b, Conditie.Operator op) {
         boolean aNull = a == null, bNull = b == null;
         return switch (op) {
@@ -4404,7 +4474,9 @@ public final class ExecModelTranspiler {
             Map<String, BigDecimal> gm = new LinkedHashMap<>();
             for (int i = 0; i < nG; i++) gm.put(fG.get(i), (BigDecimal) args[1 + i]);
             Object newObj = RegelSpraakRuntime.newInstance(fNieuwClass);
-            for (int i = 0; i < fAttrs.size(); i++) RegelSpraakRuntime.set(newObj, fAttrs.get(i), fFns.get(i).apply(s, gm));
+            // §6.1.2 write boundary: collapse a remaining exact Breuk (a computed met-clause value) to its decimal
+            // form before the reflective set, so it never reaches a BigDecimal field (mirrors werkBij).
+            for (int i = 0; i < fAttrs.size(); i++) RegelSpraakRuntime.set(newObj, fAttrs.get(i), collapseBreuk(fFns.get(i).apply(s, gm)));
             if (fBackRef != null) RegelSpraakRuntime.set(newObj, fBackRef, s);
             drools.insert(newObj);
             if (fMarker) drools.insert(new CreationMarker(ruleNaam, s));   // §9 mark this (rule, subject) created

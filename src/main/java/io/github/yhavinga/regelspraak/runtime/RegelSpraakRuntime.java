@@ -4,6 +4,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.math.MathContext;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -145,27 +146,49 @@ public final class RegelSpraakRuntime {
     }
 
     /** Coerce a Drools accumulate result (a Long count, a BigDecimal sum, a min/max BigDecimal) to BigDecimal for
-     *  assignment into a Numeriek attribute — mirrors the mvel widening the DRL consequence does. null stays null. */
+     *  assignment into a Numeriek attribute — mirrors the mvel widening the DRL consequence does. null stays null.
+     *  A {@link Breuk} (an exact rational produced by the Precisie-clause ops) COLLAPSES via {@link Breuk#naarDecimal()}
+     *  (exact when terminating, DECIMAL64 defensively otherwise); it must be handled BEFORE the generic Number arm,
+     *  because {@code new BigDecimal("1/3")} (Breuk.toString) would throw. */
     public static BigDecimal toBd(Object o) {
         if (o == null) return null;
         if (o instanceof BigDecimal b) return b;
+        if (o instanceof Breuk br) return br.naarDecimal();
         if (o instanceof Number n) return new BigDecimal(n.toString());
         throw new IllegalStateException("kan accumulate-resultaat niet naar BigDecimal omzetten: " + o.getClass());
+    }
+
+    /** Coerce any number-like value (BigDecimal / Breuk / other Number) to an EXACT {@link Breuk}, preserving a
+     *  non-terminating rational instead of truncating it. {@code null} stays {@code null} (the leegwaarde tables run
+     *  in the callers). The exact-path twin of {@link #toBd}; use it wherever an rs* helper computes on the exact
+     *  rational. */
+    public static Breuk numeriek(Object o) { return Breuk.van(o); }
+
+    /** Whether any of the operands is already an exact {@link Breuk} — the trigger for exactness to PROPAGATE
+     *  through +,-,×,÷ (a Breuk-tainted operand keeps the result exact even for an otherwise-terminating op). */
+    private static boolean enigeBreuk(Object a, Object b) { return a instanceof Breuk || b instanceof Breuk; }
+
+    /** Reduce a {@link Breuk} result to a plain {@link BigDecimal} when it terminates (so the common, exact-decimal
+     *  case stays on the fast BigDecimal path and pins do not churn), else keep it a {@link Breuk} so a later op /
+     *  afronding stays exact. A non-Breuk value is returned unchanged. */
+    private static Object verklein(Object v) {
+        if (v instanceof Breuk b) return b.isTerminerend() ? b.naarDecimal() : b;
+        return v;
     }
 
     /** §5.8/§5.6 the leegwaarde-faithful numeric comparison of an aggregation result to a threshold in a CONDITION: a leeg
      *  aggregate (empty SOM/MIN/MAX -> null) or a leeg threshold reads ONWAAR for the ordering operators (§5, a leeg
      *  operand); GELIJK is WAAR only when BOTH are leeg (§5.3 Tabel 37); ONGELIJK is WAAR for exactly-one-leeg and onwaar
      *  for both-leeg (§5.6 Tabel 44). Coerces the agg (a Long count or a BigDecimal fold) to BigDecimal by value. */
-    public static boolean rsAggVergelijk(Object agg, BigDecimal n, String op) {
-        BigDecimal a = toBd(agg);
-        if (a == null || n == null) {
-            boolean beideLeeg = a == null && n == null;
+    public static boolean rsAggVergelijk(Object agg, Object n, String op) {
+        if (agg == null || n == null) {
+            boolean beideLeeg = agg == null && n == null;
             if (op.equals("==")) return beideLeeg;     // §5.3 Tabel 37: leeg==leeg WAAR, exactly-one-leeg onwaar
             if (op.equals("!=")) return !beideLeeg;    // §5.6 Tabel 44: leeg!=gevuld WAAR, leeg!=leeg onwaar
             return false;                              // ordering with a leeg operand -> onwaar (Tabel 33)
         }
-        int c = a.compareTo(n);
+        // Compare EXACTLY when either side is an exact Breuk (1/3 maal 3 gelijk aan 1 -> WAAR); else by BigDecimal value.
+        int c = (agg instanceof Breuk || n instanceof Breuk) ? Breuk.van(agg).compareTo(Breuk.van(n)) : toBd(agg).compareTo(toBd(n));
         return switch (op) {
             case ">" -> c > 0;   case ">=" -> c >= 0;
             case "<" -> c < 0;   case "<=" -> c <= 0;
@@ -178,46 +201,114 @@ public final class RegelSpraakRuntime {
     /** §6.2-6.4 Tabel: an empty (null) numeric operand counts as 0 in +/-. The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsNul(Object o) { return o == null ? BigDecimal.ZERO : toBd(o); }
 
+    /** §13.2.5/§389 an EXACT rational literal factory — the DRL emits {@code rsBreuk("t", "n")} for a non-terminating
+     *  rational literal (1/3) so its arithmetic stays exact (the exec back-end lowers the same literal to a Breuk
+     *  constant). A terminating literal never reaches this — it stays a plain BigDecimal on both sides. */
+    public static Breuk rsBreuk(String teller, String noemer) {
+        return Breuk.van(new java.math.BigInteger(teller), new java.math.BigInteger(noemer));
+    }
+
+    /** §6.1.2 write-boundary collapse: a computed value assigned to a decimal-typed field must be a BigDecimal, so a
+     *  remaining exact {@link Breuk} (an unrounded terminating result; a non-terminating one is resolver-guarded)
+     *  collapses to {@link Breuk#naarDecimal()} — exact when terminating, defensive DECIMAL64 otherwise. The DRL
+     *  wraps its final scalar assignment value in this so the idempotent {@code Objects.equals(field, value)} guard
+     *  compares like-typed values (a Breuk vs a BigDecimal field would never be equal — an infinite modify loop). A
+     *  null / non-Breuk passes through. Mirrors the exec back-end's {@code collapseBreuk} at werkBij. */
+    public static BigDecimal rsWaarde(Object o) {
+        return toBd(o);   // BigDecimal as-is, Breuk collapses (exact/DECIMAL64), a Long/Number (accumulate count) widens
+    }
+
+    // ---- Breuk-aware +,-,×,÷ and percentage (Precisie §389/§486): exactness PROPAGATES through +,-,×,÷ when any
+    // operand is a Breuk, and division/percentage RETURN a Breuk when their exact result does not terminate. Both
+    // back-ends route their formerly-inline arithmetic (DRL mvel infix, exec rsNul(..).add) through these, so the
+    // single-runtime principle holds and no host-language infix ever sees a Breuk. Each returns Object (a BigDecimal
+    // on the fast/terminating path, else a Breuk); leegwaarde per §6.2-6.4 Tabel: an empty operand counts as 0. ----
+
+    /** §6.2 "plus": leeg counts as 0; exact when either operand is a Breuk (else the DECIMAL128 BigDecimal add,
+     *  byte-identical to the former mvel infix). */
+    public static Object rsPlus(Object links, Object rechts) {
+        if (enigeBreuk(links, rechts)) return verklein(nulBreuk(links).optellen(nulBreuk(rechts)));
+        return rsNul(links).add(rsNul(rechts), java.math.MathContext.DECIMAL128);
+    }
+    /** §6.2 "min" (both empties -> 0, unlike "verminderd met"): exact when either operand is a Breuk. */
+    public static Object rsMin(Object links, Object rechts) {
+        if (enigeBreuk(links, rechts)) return verklein(nulBreuk(links).aftrekken(nulBreuk(rechts)));
+        return rsNul(links).subtract(rsNul(rechts), java.math.MathContext.DECIMAL128);
+    }
+    /** §6.4 Tabel 10 "maal": any empty operand -> 0; exact when either operand is a Breuk (so 9 maal 1/3 = 3 exactly,
+     *  not 2.9999999999999997). The single implementation; the DRL imports it (single-runtime principle). */
+    public static Object rsMaal(Object links, Object rechts) {
+        if (enigeBreuk(links, rechts)) return verklein(nulBreuk(links).vermenigvuldigen(nulBreuk(rechts)));
+        return rsNul(links).multiply(rsNul(rechts), java.math.MathContext.DECIMAL128);
+    }
+    /** §6.8/§486 "percentage van": {@code l/100 · r}, leeg counts as 0. The exact fraction is always kept as a Breuk
+     *  when it does not terminate ((1/3)% van 600 = 2 exactly, not 1.9999…998), and whenever either operand is a
+     *  Breuk. The /100 is exact. The single implementation; the DRL imports it (single-runtime principle). */
+    public static Object rsPercentageVan(Object links, Object rechts) {
+        Breuk r = nulBreuk(links).delen(HONDERD).vermenigvuldigen(nulBreuk(rechts));
+        // §486 the result is exact — keep it a Breuk unless it terminates (then the fast BigDecimal path).
+        return verklein(r);
+    }
+    private static final Breuk HONDERD = Breuk.van(java.math.BigInteger.valueOf(100), java.math.BigInteger.ONE);
+    /** A leeg operand as the exact rational 0; else its exact {@link Breuk} form. */
+    private static Breuk nulBreuk(Object o) { return o == null ? Breuk.van(java.math.BigInteger.ZERO, java.math.BigInteger.ONE) : Breuk.van(o); }
+
     /** §6.3 Tabel 7/8 "verminderd met": the ONE subtraction whose empty LEFT yields empty (an empty RIGHT counts as
-     *  0); plain "min" treats both empties as 0 (rsNul). The single implementation; the DRL imports it (single-runtime principle). */
-    public static BigDecimal rsVerminderd(Object links, Object rechts) {
+     *  0); plain "min" treats both empties as 0 (rsNul). Exact when either operand is a Breuk. The single implementation; the DRL imports it (single-runtime principle). */
+    public static Object rsVerminderd(Object links, Object rechts) {
         if (links == null) return null;
+        if (enigeBreuk(links, rechts)) return verklein(Breuk.van(links).aftrekken(nulBreuk(rechts)));
         return toBd(links).subtract(rsNul(rechts));
     }
 
-    /** §6.5 Tabel 12 division: an empty LEFT short-circuits to 0; an empty RIGHT (deling door leeg) is a Fout that
-     *  degrades to leeg (null) on the value side — the §9.5 Inconsistentie is raised separately by the companion
-     *  rule. The single implementation; the DRL imports it (single-runtime principle). */
-    public static BigDecimal rsGedeeld(Object links, Object rechts) {
+    /** §6.5 Tabel 12 / §389 division: an empty LEFT short-circuits to 0; an empty RIGHT (deling door leeg) is a Fout
+     *  that degrades to leeg (null) on the value side — the §9.5 Inconsistentie is raised separately by the companion
+     *  rule. §389: the exact quotient is kept as a Breuk when it does not terminate (1/3 stays exact instead of the
+     *  16-digit DECIMAL64 approximation), else a plain BigDecimal. The single implementation; the DRL imports it (single-runtime principle). */
+    public static Object rsGedeeld(Object links, Object rechts) {
         if (links == null) return BigDecimal.ZERO;
-        return rechts == null ? null : toBd(links).divide(toBd(rechts), java.math.MathContext.DECIMAL64);
+        if (rechts == null) return null;
+        return verklein(Breuk.van(links).delen(Breuk.van(rechts)));   // §389 exact rational; verklein keeps the fast path when it terminates
     }
 
     /** §13.4.17.13/§6.6 square root: a leeg OR negative radicand -> leeg (the negative is a Fout surfaced by the
      *  companion rule, never a session-aborting sqrt throw); else the 34-digit sqrt (NOT Math.sqrt double-noise,
      *  which can flip a directional afronding). The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsWortel(Object x) {
-        BigDecimal b = toBd(x);
+        BigDecimal b = toBd(x);   // sqrt is a natural DECIMAL128 collapse; a Breuk radicand reduces exactly first
         return (b == null || b.signum() < 0) ? null : b.sqrt(java.math.MathContext.DECIMAL128);
     }
 
-    /** §13.4.17.25 afronding: round to {@code scale} decimals; a leeg (null) value rounds to leeg (so a wortel/
-     *  macht/division leeg result propagates instead of NPE-ing .setScale). The single implementation; the DRL imports it (single-runtime principle). */
+    /** §13.4.17.25/§6.1.2 afronding — THE collapse point: round to {@code scale} decimals; a leeg (null) value
+     *  rounds to leeg (so a wortel/macht/division leeg result propagates instead of NPE-ing .setScale). A
+     *  {@link Breuk} is rounded on its EXACT value ({@link Breuk#naarDecimal(int,java.math.RoundingMode)} — the true
+     *  division at the requested scale), so a non-terminating intermediate collapses to the exact rounded decimal
+     *  ((1/3)% van 600 rounds to exactly 2, 9 maal 1/3 to exactly 3). The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsAfronding(Object x, int scale, java.math.RoundingMode mode) {
-        return x == null ? null : toBd(x).setScale(scale, mode);
+        if (x == null) return null;
+        if (x instanceof Breuk b) return b.naarDecimal(scale, mode);
+        return toBd(x).setScale(scale, mode);
     }
 
     /** §6.5 "gedeeld door (ABS)": the same Tabel 12 leegwaarde as {@link #rsGedeeld} (empty LEFT -> 0, value/empty
-     *  -> leeg), but the divide truncates TOWARD ZERO at 5 decimals. The single implementation; the DRL imports it (single-runtime principle). */
+     *  -> leeg), but the divide truncates TOWARD ZERO at 5 decimals — a deliberate collapse, so it returns a
+     *  BigDecimal even for a Breuk input (the exact rational is rounded DOWN at 5 dec). The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsGedeeldAbs(Object links, Object rechts) {
         if (links == null) return BigDecimal.ZERO;
-        return rechts == null ? null : toBd(links).divide(toBd(rechts), 5, java.math.RoundingMode.DOWN);
+        if (rechts == null) return null;
+        return Breuk.van(links).delen(Breuk.van(rechts)).naarDecimal(5, java.math.RoundingMode.DOWN);
     }
 
     /** §13.4.17.14 "tot de macht" with an INTEGER exponent: BigDecimal.pow(int) (exact, unlike Math.pow's double
-     *  noise above 2^53); §6.7 a leeg base -> leeg. The single implementation; the DRL imports it (single-runtime principle). */
-    public static BigDecimal rsMacht(Object basis, int exponent) {
-        return basis == null ? null : toBd(basis).pow(exponent);
+     *  noise above 2^53); §6.7 a leeg base -> leeg. A {@link Breuk} base stays exact (teller^n / noemer^n), so an
+     *  exact rational raised to an integer power keeps its precision. The single implementation; the DRL imports it (single-runtime principle). */
+    public static Object rsMacht(Object basis, int exponent) {
+        if (basis == null) return null;
+        if (basis instanceof Breuk b) {
+            if (exponent >= 0) return verklein(Breuk.van(b.teller().pow(exponent), b.noemer().pow(exponent)));
+            return verklein(Breuk.van(b.noemer().pow(-exponent), b.teller().pow(-exponent)));   // x^-n = (1/x)^n
+        }
+        return toBd(basis).pow(exponent);
     }
 
     /** §13.4.17.14 "tot de macht" with a FRACTIONAL/runtime exponent: Math.pow at double precision; any leeg
@@ -264,16 +355,23 @@ public final class RegelSpraakRuntime {
     }
 
     /** §6.1.4 begrenzing (clamp): a leeg value stays leeg, a null bound is no bound; clamps min-then-max (the value
-     *  side's order). The single implementation; the DRL imports it (single-runtime principle). */
-    public static BigDecimal rsBegrens(BigDecimal x, BigDecimal min, BigDecimal max) {
+     *  side's order). Accepts a {@link Breuk} value/bound (a begrensde exact division) and compares EXACTLY,
+     *  returning the clamped operand as-is (Breuk stays Breuk, BigDecimal stays BigDecimal) so a non-terminating
+     *  bounded value can still collapse exactly at a later afronding. The single implementation; the DRL imports it (single-runtime principle). */
+    public static Object rsBegrens(Object x, Object min, Object max) {
         if (x == null) return null;
-        if (min != null && x.compareTo(min) < 0) x = min;
-        if (max != null && x.compareTo(max) > 0) x = max;
+        Breuk xb = Breuk.van(x);
+        if (min != null && xb.compareTo(Breuk.van(min)) < 0) return min;
+        if (max != null && xb.compareTo(Breuk.van(max)) > 0) return max;
         return x;
     }
 
-    /** §13.4.17.17/§6.9 Tabel 20 "de absolute waarde van": |leeg| = leeg. The single implementation; the DRL imports it (single-runtime principle). */
-    public static BigDecimal rsAbs(Object x) { return x == null ? null : toBd(x).abs(); }
+    /** §13.4.17.17/§6.9 Tabel 20 "de absolute waarde van": |leeg| = leeg. A {@link Breuk} keeps its exact value. The single implementation; the DRL imports it (single-runtime principle). */
+    public static Object rsAbs(Object x) {
+        if (x == null) return null;
+        if (x instanceof Breuk b) return b.abs();
+        return toBd(x).abs();
+    }
 
     /** §6.x the null-safe navigated-leg read of a numeric attribute reached through a to-ONE relation INSIDE
      *  arithmetic or an eval: an absent relation reads a leegwaarde (null) — never a pattern short-circuit or an
@@ -283,17 +381,21 @@ public final class RegelSpraakRuntime {
         return relatie == null ? null : toBd(get(relatie, attribuut));
     }
 
-    /** §4 null-safe unit restatement (single ratio) for a CONSTRAINT context: a leeg operand restates to leeg,
-     *  never an NPE on {@code .multiply} (which would abort the session). */
-    public static BigDecimal rsHerschaal(BigDecimal x, BigDecimal f) {
-        return x == null ? null : x.multiply(f);
+    /** §4 null-safe unit restatement (single ratio): a leeg operand restates to leeg, never an NPE on
+     *  {@code .multiply} (which would abort the session). Returns BigDecimal so mvel strict-mode can resolve the
+     *  helper param it feeds (a comparison grens, rsGeheelPeriode); a {@link Breuk} operand — only reachable on the
+     *  value side of a cross-unit restatement of a non-terminating intermediate — COLLAPSES via toBd first (a
+     *  bounded early-collapse, the cross-unit counterpart of the documented DECIMAL64 rate-conversion residual). */
+    public static BigDecimal rsHerschaal(Object x, BigDecimal f) {
+        return x == null ? null : toBd(x).multiply(f);
     }
 
-    /** §4 null-safe EXACT unit restatement (×fv ÷fn at DECIMAL64, one rounding AT THE END) for a CONSTRAINT
-     *  context — the exact mirror of the value side's inline ×fv ÷fn ternary, so mnd→jr never truncates to
-     *  0.0833… A leeg operand restates to leeg. */
-    public static BigDecimal rsHerschaalExact(BigDecimal x, BigDecimal fv, BigDecimal fn) {
-        return x == null ? null : x.multiply(fv).divide(fn, java.math.MathContext.DECIMAL64);
+    /** §4 null-safe EXACT unit restatement (×fv ÷fn at DECIMAL64, one rounding AT THE END) — the exact mirror of
+     *  the value side's inline ×fv ÷fn ternary, so mnd→jr never truncates to 0.0833… A leeg operand restates to
+     *  leeg. Returns BigDecimal (mvel-resolvable); a {@link Breuk} operand collapses via toBd first (see
+     *  {@link #rsHerschaal}). */
+    public static BigDecimal rsHerschaalExact(Object x, BigDecimal fv, BigDecimal fn) {
+        return x == null ? null : toBd(x).multiply(fv).divide(fn, java.math.MathContext.DECIMAL64);
     }
 
     /** §5.4 text coercion for a §13.4.17.9 tekstreeks: a value's text form, null-safe (leeg -> "", not "null"); a
@@ -814,8 +916,12 @@ public final class RegelSpraakRuntime {
                 if (bv != null && bt != null && !bv.isAfter(start) && bt.isAfter(start)) { w = segWaarde(o); break; }
             }
             if (w == null) continue;
-            BigDecimal deel = w.multiply(BigDecimal.valueOf(dagen)).divide(BigDecimal.valueOf(totaal), MathContext.DECIMAL64);
-            uit.add(newSegment(segCls, start, eind, deel));
+            // §845 tijdsevenredig deel: keep the EXACT fraction w·(dagen/totaal). When it terminates the exact
+            // BigDecimal is stored (no DECIMAL64 truncation); a non-terminating pro-rata is stored at DECIMAL64
+            // (a Segment holds a BigDecimal, not a Breuk) — the §6.1.2 doel afronding then rounds the value the
+            // spec keeps exact. Never auto-rounds to the doel's decimals.
+            Breuk deelB = Breuk.van(w).vermenigvuldigen(Breuk.van(BigInteger.valueOf(dagen), BigInteger.valueOf(totaal)));
+            uit.add(newSegment(segCls, start, eind, deelB.naarDecimal()));
         }
         return uit;
     }
