@@ -1047,6 +1047,8 @@ final class RuleChecker {
             // (vragende) toplevelOperator — the verb-leading register is reserved for samengestelde bullets.
             if (c.expressie() != null && c.toplevelOperator() != null)
                 return uitToplevel(bouwer.bouw(c.expressie()), c.toplevelOperator(), src(c));
+            // §8.1.9 / §13.4.15.18: "indien regelversie <X> is gevuurd|inconsistent" as the whole voorwaarde.
+            if (c.consistentieVoorwaarde() != null) return bouwRegelversie(c.consistentieVoorwaarde());
         }
         // §13.4.13.1 / §8.4.3: a standalone periodevergelijking as the whole voorwaardendeel
         // ("… van dd. 1-1-2024 tot dd. 8-2-2025" directly after the resultaatdeel, no 'indien').
@@ -1397,7 +1399,18 @@ final class RuleChecker {
         // §13.4.15.69 / §8.4.3: the "het is de periode <periodevergelijkingEnkelvoudig>" bullet form.
         if (c.periodevergelijkingElementair() != null)
             return bouwPeriode(c.periodevergelijkingElementair().periodevergelijkingEnkelvoudig());
+        // §8.1.9 / §13.4.15.66: the "regelversie <X> is gevuurd|inconsistent" regelpredicaat as a bullet.
+        if (c.consistentieVoorwaarde() != null) return bouwRegelversie(c.consistentieVoorwaarde());
         return new Conditie.Onopgelost(src(c));
+    }
+
+    /** §8.1.9 / §13.4.15.66/.18 regelpredicaat to a {@link Conditie.Regelversie}. The reference may point
+     *  FORWARD to a rule defined later in the document, so no existence check happens here — the back-ends
+     *  verify the name against the model's Inconsistentie producers and decline an unknown reference as an
+     *  honest marker (never a silent never-matching exists). The parenthesised versie-aanduiding is parsed
+     *  but only carried in bron (see Conditie.Regelversie). */
+    private Conditie bouwRegelversie(ConsistentieVoorwaardeContext c) {
+        return new Conditie.Regelversie(src(c.vrijeNaam()), c.INCONSISTENT() != null, src(c));
     }
 
     /** §8.2 / §13.4.15.70: the optional "(niet) gedurende de/het gehele jaar|maand" whole-period qualifier that

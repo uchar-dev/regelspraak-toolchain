@@ -1889,6 +1889,21 @@ public final class ExecModelTranspiler {
         // markers safely, so only the exec needs this guard.
         if (c instanceof Conditie.Vergelijking cv && heeftAggregatieOperand(cv))
             return aggregatieVoorwaarde(cv, pattern, subject, subjectVar);
+        // §8.1.9 / §13.4.15.66 regelpredicaat "regelversie <X> is gevuurd|inconsistent". "is inconsistent"
+        // mirrors the DRL exists-join on the §9.5 Inconsistentie flag fact of the named consistentie/
+        // uniciteit/verdeling rule (a separate rule item, carried up through ALLE/DE like the far-side
+        // rolcheck below). "is gevuurd" (no runtime record) and an unknown producer name skip the whole
+        // rule — symmetric with the DRL marker, never a silent never-matching exists.
+        if (c instanceof Conditie.Regelversie rv) {
+            if (!rv.inconsistent() || !model.inconsistentieProducent(rv.regel())) return null;
+            Class<?> incClass = inconsistentieClass();
+            if (incClass == null) return null;
+            String rvNaam = rv.regel();
+            Variable iVar = DSL.declarationOf(incClass, "$rv_inc_" + (seq++));
+            PatternDSL.PatternDef ip = PatternDSL.pattern(iVar)
+                    .expr(nextId("rv"), (Predicate1) i -> rvNaam.equals(RegelSpraakRuntime.get(i, "regel")));
+            return new Gate(pattern, List.of(DSL.exists(ip)));
+        }
         // §8.1.7 far-side "heeft een <rol>": the reference lives on the to-many filler, so this is an exists-join —
         // a SEPARATE rule item that cannot live inside the subject pattern. It binds the filler against $subject.
         if (c instanceof Conditie.VerreRollidmaatschap vr) {

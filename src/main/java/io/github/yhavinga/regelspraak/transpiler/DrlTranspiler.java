@@ -2679,6 +2679,19 @@ public final class DrlTranspiler {
                 return LoweredConditie.van(ident(veld, false) + (r.negatie() ? " == null" : " != null"));
             return LoweredConditie.marker("rollidmaatschap '" + r.rol() + "'", c.bron());
         }
+        // §8.1.9 / §13.4.15.66 regelpredicaat "regelversie <X> is gevuurd|inconsistent". "is inconsistent"
+        // reads the §9.5 Inconsistentie channel: an exists-join on the flag fact the named consistentie/
+        // uniciteit/verdeling rule inserts (hoisted like the far-side rolcheck below — it cannot live inside
+        // the subject pattern). "is gevuurd" has NO observable runtime record (rules write values, they do
+        // not log firing) and a name that is not a known Inconsistentie producer would be a never-matching
+        // exists (a silent never-fire) — both stay an honest marker, symmetric with the exec skip.
+        if (c instanceof Conditie.Regelversie rv) {
+            if (rv.inconsistent() && model.inconsistentieProducent(rv.regel()))
+                return new LoweredConditie("", List.of("exists " + FACT_PACKAGE + ".Inconsistentie( regel == \""
+                        + escapeRegelNaam(rv.regel()) + "\" )"), false);
+            return LoweredConditie.marker("regelpredicaat (§8.1.9): " + (rv.inconsistent()
+                    ? "onbekende regelversie '" + rv.regel() + "'" : "'is gevuurd' heeft geen runtime-registratie"), c.bron());
+        }
         // §8.1.7 far-side "heeft een <rol>": the reference lives on the to-many filler, so this is an EXISTS-join
         // — a separate when-clause that CANNOT live inside the subject pattern's inline constraint. It rides out as
         // an extra clause (empty inline); regel() appends it after the subject pattern, and a pure-conjunction

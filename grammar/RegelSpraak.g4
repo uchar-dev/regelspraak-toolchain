@@ -629,7 +629,11 @@ elementaireVoorwaarde // §13.4.15.49-.50
     | expressie ( nonToplevelOperator | toplevelOperator )
     | periodevergelijkingElementair
     ;
-consistentieVoorwaarde : REGELVERSIE vrijeNaam IS ( GEVUURD | INCONSISTENT ) ; // §13.4.15.66
+// §13.4.15.66/.18 / §8.1.9: the regelversie reference names the rule and — per the §8.1.9 worked
+// example "regelversie Controleer of vlucht geen rondvlucht (altijd) is inconsistent." — carries the
+// version's geldigheid in parens. The EBNF's <karakterreeks> subsumes both; here the name (which cannot
+// contain '(') and the parenthesised versie-aanduiding (the §13.4.2.5 geldigheid vocabulary) split cleanly.
+consistentieVoorwaarde : REGELVERSIE vrijeNaam ( LPAREN versieGeldigheid RPAREN )? IS ( GEVUURD | INCONSISTENT ) ; // §13.4.15.66
 
 gehelePeriodevergelijking // §13.4.15.70
     : NIET? ( GEDURENDE_HET_GEHELE JAAR | GEDURENDE_DE_GEHELE MAAND )

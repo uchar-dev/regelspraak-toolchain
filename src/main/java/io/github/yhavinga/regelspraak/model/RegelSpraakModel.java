@@ -104,6 +104,19 @@ public final class RegelSpraakModel {
     public boolean isOk() { return diagnostics.stream().noneMatch(Diagnostic::isError); }
     public List<Diagnostic> errors() { return diagnostics.stream().filter(Diagnostic::isError).toList(); }
 
+    /** §8.1.9 whether {@code naam} names a rule that INSERTS §9.5 Inconsistentie flag facts — a
+     *  consistentie, uniciteit, uniciteit-unie or (via the §9.7.6 Tabel-19 fout channel) verdeling.
+     *  The "regelversie X is inconsistent" regelpredicaat lowers to an exists on that channel ONLY for
+     *  a known producer; any other name would be a never-matching exists (a silent never-fire), so the
+     *  back-ends decline it as an honest marker instead. */
+    public boolean inconsistentieProducent(String naam) {
+        if (naam == null) return false;
+        return consistenties.stream().anyMatch(c -> naam.equals(c.naam()))
+                || uniciteiten.stream().anyMatch(u -> naam.equals(u.naam()))
+                || uniciteitUnies.stream().anyMatch(u -> naam.equals(u.naam()))
+                || verdelingen.stream().anyMatch(v -> naam.equals(v.naam()));
+    }
+
     /**
      * Resolve a subject noun to the object type it denotes (§13.4.1). The noun may
      * name an object type directly (case-insensitive: "de vlucht" → Vlucht) or be a

@@ -127,6 +127,16 @@ public sealed interface Conditie {
     enum Kwantor { DE, ALLE, GEEN, TEN_MINSTE, TEN_HOOGSTE, PRECIES }
     record Samengesteld(Kwantor kwantor, int drempel, List<Conditie> onderdelen, String bron) implements Conditie {}
 
+    /** §8.1.9 / §13.4.15.66 regelpredicaat: "regelversie &lt;regel&gt; [(&lt;geldigheid&gt;)] is gevuurd |
+     *  is inconsistent" — a control on the EXECUTION of the named rule, not on a subject. {@code regel} is
+     *  the referenced rule's name (the parenthesised versie-aanduiding is parsed but kept only in
+     *  {@code bron}: the §9.5 Inconsistentie channel is already geldigheids-window-gated at insert time).
+     *  {@code inconsistent} distinguishes "is inconsistent" (reads the §9.5 Inconsistentie flag facts of a
+     *  consistentie/uniciteit/verdeling rule — an exists-join) from "is gevuurd" (whether the named rule's
+     *  voorwaardendeel was satisfied — no observable runtime record, so both back-ends decline it
+     *  symmetrically; see docs/grammar-divergences.md). */
+    record Regelversie(String regel, boolean inconsistent, String bron) implements Conditie {}
+
     /** A condition form the resolver did not yet structure (membership/period tests). */
     record Onopgelost(String bron) implements Conditie {}
 }

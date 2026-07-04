@@ -1765,6 +1765,25 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_INLINE_EXPECTED = { new BigDecimal(2), new BigDecimal(70), new BigDecimal(100) };
 
+    // ---- §8.1.9 / §13.4.15.66 regelpredicaat "regelversie <X> (altijd) is inconsistent": an exists-join on
+    //      the §9.5 Inconsistentie flag fact of the named consistentieregel. The predicate has no subject of
+    //      its own, so when the flag exists EVERY instance of the conditioned rule's subject fires. ----
+    static final String REGELVERSIE_HDR =
+            "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    is duur kenmerk (bijvoeglijk);\n"
+            + "Regel controleer de prijs\n    geldig altijd\n        De prijs van een Passagier moet kleiner zijn dan 100.\n";
+    static final Fixture[] PHASE_REGELVERSIE = {
+        new Fixture("is inconsistent: een schending -> de conditie geldt (ook voor de niet-schender)",
+            REGELVERSIE_HDR + "Regel duur\n    geldig altijd\n        Een Passagier is duur indien regelversie controleer de prijs (altijd) is inconsistent.\n",
+            () -> List.of(passagier(p -> p.setPrijs(new BigDecimal(150))),   // schendt (>=100) -> Inconsistentie
+                          passagier(p -> p.setPrijs(new BigDecimal(50)))),
+            Map.of(), l -> ((Passagier) l.get(1)).isDuur()),   // true — the flag is global, not per-subject
+        new Fixture("is inconsistent: geen schending -> de conditie geldt niet",
+            REGELVERSIE_HDR + "Regel duur\n    geldig altijd\n        Een Passagier is duur indien regelversie controleer de prijs (altijd) is inconsistent.\n",
+            () -> List.of(passagier(p -> p.setPrijs(new BigDecimal(50)))),
+            Map.of(), l -> ((Passagier) l.get(0)).isDuur()),   // false/null — no Inconsistentie inserted
+    };
+    static final Object[] PHASE_REGELVERSIE_EXPECTED = { Boolean.TRUE, Boolean.FALSE };
+
     // ---- §13.4.13.4 a COUNTING-quantifier compound subselectie ("die aan ten minste 1 / geen / precies 1 / ten
     //      hoogste 1 van de volgende voorwaarden voldoen: …") whose bullet reads a SINGLE Parameter-global ("zijn
     //      leeftijd is kleiner dan de grens"). The exec binds that one global on the accumulate source (a 2-var
@@ -5975,6 +5994,7 @@ class ExecModelDifferentialTest {
     @Test void phase_C_param_rhs_subselectie_matches_drl_back_end() { runDifferential("Phase C param-RHS", PHASE_C_PARAM_RHS, 2); }
     @Test void phase_C_compound_subselectie_matches_drl_back_end() { runDifferential("Phase C compound", PHASE_C_COMPOUND, 2); }
     @Test void phase_INLINE_predicaat_matches_drl_back_end()      { runDifferential("Phase INLINE", PHASE_INLINE, 3); }
+    @Test void phase_REGELVERSIE_matches_drl_back_end()           { runDifferential("Phase REGELVERSIE", PHASE_REGELVERSIE, 2); }
     @Test void phase_C_count_global_subselectie_matches_drl_back_end() { runDifferential("Phase C count+global", PHASE_C_COUNT_GLOBAL, 4); }
     @Test void phase_crossunit_matches_drl_back_end() { runDifferential("Phase cross-unit", PHASE_CROSSUNIT, 2); }
     @Test void phase_cu_arith_matches_drl_back_end() { runDifferential("Phase cross-unit +/-", PHASE_CU_ARITH, 5); }
@@ -6736,6 +6756,37 @@ class ExecModelDifferentialTest {
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(eq(PHASE_INLINE_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §8.1.9 / §13.4.15.66 "regelversie <X> is inconsistent" — an exists on the §9.5 Inconsistentie flag
+     *  fact, absolute values in both back-ends (a shared exists-always-true bug would pass a pure differential). */
+    @Test void phase_REGELVERSIE_is_spec_correct() {
+        for (int i = 0; i < PHASE_REGELVERSIE.length; i++) {
+            Fixture f = PHASE_REGELVERSIE[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_REGELVERSIE_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §8.1.9 "is gevuurd" has no observable runtime record and an UNKNOWN regelversie would be a
+     *  never-matching exists — both decline SYMMETRICALLY (DRL marker, exec skip), pinned so neither
+     *  back-end ever silently lowers a never-firing or wrongly-firing shape (docs/grammar-divergences.md). */
+    @Test void regelversie_gevuurd_en_onbekende_naam_blijven_symmetrische_markers() {
+        for (String vorm : new String[]{
+                "regelversie controleer de prijs (altijd) is gevuurd",     // no runtime firing record
+                "regelversie bestaat niet (altijd) is inconsistent"}) {    // unknown producer name
+            RegelSpraakModel m = Resolver.resolve(REGELVERSIE_HDR
+                    + "Regel duur\n    geldig altijd\n        Een Passagier is duur indien " + vorm + ".\n");
+            assertTrue(m.errors().isEmpty(), () -> vorm + " moet resolven: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet '" + vorm + "' overslaan, kreeg: " + em.overgeslagen());
+            assertTrue(DrlTranspiler.transpile(m).contains("/* TODO regelpredicaat"),
+                    () -> "DRL moet '" + vorm + "' markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
         }
     }
     /** §5.6 the spec's worked-example RHS "die kleiner zijn dan de volwassenleeftijd" — a comparison subselectie whose RHS

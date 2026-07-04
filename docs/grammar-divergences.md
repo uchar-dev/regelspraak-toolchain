@@ -1969,3 +1969,29 @@ where the bulleted `<samengesteldevoorwaardeonderdeel>` needs 2+ bullets.
   aggregated element, wrapped as a 1-onderdeel `Conditie.Samengesteld` so every §13.4.14.5 kwantificatie
   lowers through the existing compound path. Pinned by the phase_INLINE differential fixtures (both
   registers + a kenmerk tail, absolute spec values, both back-ends).
+
+## §8.1.9 / §13.4.15.66 regelpredicaat — "is inconsistent" leest het Inconsistentie-kanaal; "is gevuurd" symmetrisch geweigerd
+
+The §8.1.9 regelpredicaat "regelversie <X> [(<geldigheid>)] is gevuurd | is inconsistent" controls the
+EXECUTION of a named rule instead of a subject (the only §8.1 predicate without an onderwerpexpressie).
+Decided readings:
+
+- **Reference syntax**: the EBNF's `<karakterreeks>` is split as `vrijeNaam ( '(' versieGeldigheid ')' )?`
+  — the §8.1.9 worked example "regelversie Controleer of vlucht geen rondvlucht (altijd) is inconsistent."
+  carries the version's geldigheid in parens, and a name cannot contain '('. The versie-aanduiding is
+  parsed but only kept in the bron: the §9.5 Inconsistentie channel is already geldigheids-window-gated at
+  insert time, so version dispatch adds nothing observable.
+- **"is inconsistent" FIRES**: it lowers in BOTH back-ends to an exists-join on the §9.5 Inconsistentie
+  flag fact (`exists Inconsistentie(regel == "<X>")` / the exec DSL.exists mirror) — the channel every
+  consistentie, uniciteit, uniciteit-unie and (§9.7.6 fout) verdeling rule inserts into. The predicate has
+  no subject, so when the flag exists the conditioned rule fires for EVERY instance of its own subject.
+  Name matching is exact against the model's known Inconsistentie producers.
+- **An UNKNOWN regelversie name declines symmetrically** (DRL marker / exec skip): an exists on a name no
+  rule inserts would be a silent never-fire; the honest marker keeps the no-silent-inertness discipline.
+- **"is gevuurd" declines symmetrically**: rules write attribute values — there is no observable runtime
+  record of "the voorwaardendeel was satisfied", and inventing a per-rule firing-log fact would grow every
+  rule's RHS (a fact-model contract change) for a construct no corpus file uses. Documented deferral; the
+  hook is the same Conditie.Regelversie IR if a future need funds the firing-record fact.
+
+Pinned by phase_REGELVERSIE (absolute values, both back-ends) and the
+regelversie_gevuurd_en_onbekende_naam_blijven_symmetrische_markers decline pins.
