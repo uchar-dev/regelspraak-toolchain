@@ -56,6 +56,8 @@ help:
 	@echo "  make verify-corpus                   Parse every spec example under corpusEntry; report pass/fail"
 	@echo "  make drl  FILE=<input>               Transpile a .rs file to Drools (DRL) on stdout"
 	@echo "  make drools-it                       (needs Maven+network) Compile & fire the DRL in Drools"
+	@echo "  make engine                          (needs Maven) Build + test the shippable engine consumer"
+	@echo "  make scenario-test FILES=\"a.rs …\"    (needs Maven) Run the scenariotoetsen CLI over .rs files"
 	@echo "  make grun RULE=<rule> FILE=<input>   Print the parse tree for FILE (ANTLR TestRig, text)"
 	@echo "  make gui  RULE=<rule> FILE=<input>   Open the parse tree in the TestRig GUI inspector"
 	@echo "  make clean                           Remove generated sources (gen/) and classes (out/)"
@@ -149,6 +151,24 @@ drools-it:
 engine:
 	$(MVN) -B -f pom.xml install -DskipTests
 	$(MVN) -B -f engine/pom.xml test
+
+# Run the scenariotoetsen CLI (docs/SCENARIOTOETSEN.md) over one or more .rs files via the engine classpath.
+#   make scenario-test FILES="model.rs regels.rs scenario.rs"   # concatenated in order; PASS/FAIL/MARKER per scenario
+# Options ride FILES too, e.g. FILES="--trace a.rs". Exit: 1 on any FAIL/resolve-error, 3 on a MARKER scope, else 0.
+# Installs the lean transpiler (-DskipTests), compiles the engine offline, resolves its classpath, and runs the CLI.
+# Without FILES it runs the golden TOKA set via examples/toka-scenarios/manifest — which does NOT exist yet (the
+# next phase), so it fails with exit 2 and a clear message.
+scenario-test:
+	$(MVN) -B -o -f pom.xml install -DskipTests -q
+	$(MVN) -B -o -f engine/pom.xml compile -q
+	$(MVN) -B -o -f engine/pom.xml dependency:build-classpath -Dmdep.outputFile=$(CURDIR)/engine/target/.scenario-cp -q
+ifeq ($(strip $(FILES)),)
+	@echo "make scenario-test zonder FILES draait de golden TOKA-set (examples/toka-scenarios/manifest)."
+	@echo "Die set bestaat nog niet (volgende fase). Geef FILES=\"a.rs b.rs ...\" op, of wacht op de golden-fase."
+	@exit 2
+else
+	java -cp "engine/target/classes:$$(cat engine/target/.scenario-cp)" io.github.yhavinga.regelspraak.engine.ScenarioRunnerCli $(FILES)
+endif
 
 # Token dump (no parse tree), for lexer debugging.
 tokens: compile

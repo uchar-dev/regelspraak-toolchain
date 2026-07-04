@@ -159,7 +159,10 @@ public final class ScenarioResolver {
         parameterGate(scope, situatie, line);
 
         List<Verwachting> verwachtingen = new ArrayList<>();
-        for (VerwachtingContext v : sc.verwachting()) verwachtingen.add(resolveVerwachting(v, situatie));
+        for (VerwachtingContext v : sc.verwachting()) {
+            Verwachting r = resolveVerwachting(v, situatie);
+            if (r != null) verwachtingen.add(r);
+        }
 
         return new ResolvedScenario(naam, scope, peildatum, situatie, verwachtingen, line);
     }
@@ -376,8 +379,12 @@ public final class ScenarioResolver {
                 k.UPPER_ID().getText(), stripArtikel(src(k.kaleNaam())), true, situatie, k.getStart().getLine(), src(k));
         if (v instanceof VerwachtInconsistentContext c)
             return new Verwachting(VerwachtingSoort.INCONSISTENT, null, null, null, false, null, c.getStart().getLine(), src(c));
-        VerwachtConsistentContext c = (VerwachtConsistentContext) v;
-        return new Verwachting(VerwachtingSoort.CONSISTENT, null, null, null, false, null, c.getStart().getLine(), src(c));
+        if (v instanceof VerwachtConsistentContext c)
+            return new Verwachting(VerwachtingSoort.CONSISTENT, null, null, null, false, null, c.getStart().getLine(), src(c));
+        // Error-recovery leaves a bare base VerwachtingContext (no labelled alternative); the syntax ERROR is
+        // already reported by the parse listener — add a pointer instead of a ClassCastException.
+        fout(v.getStart().getLine(), "verwachting is syntactisch niet herkend: '" + src(v) + "'");
+        return null;
     }
 
     private Verwachting verwachtKenmerk(String label, String geschreven, boolean bezittelijk,

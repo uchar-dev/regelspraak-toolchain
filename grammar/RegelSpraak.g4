@@ -105,9 +105,9 @@ situatieOnderdeel
 // UPPER_ID (V1, Tom); the resolver checks its uniqueness and non-collision with a type.
 instantie : EEN objectTypeNaam UPPER_ID toewijzing* ;
 toewijzing
-    : bullet DE toewijzingNaam IS situatieWaarde              DOT? # attribuutToewijzing   // de <attr> is <waarde>
-    | bullet DE toewijzingNaam IS UPPER_ID                    DOT? # rolToOneToewijzing    // de <rol> is <LABEL>
-    | bullet DE toewijzingNaam ZIJN UPPER_ID ( EN UPPER_ID )* DOT? # rolToManyToewijzing   // de <rol> zijn <LABEL> en <LABEL> …
+    : bullet bepaaldLidwoord toewijzingNaam IS situatieWaarde              DOT? # attribuutToewijzing   // de/het <attr> is <waarde>
+    | bullet bepaaldLidwoord toewijzingNaam IS UPPER_ID                    DOT? # rolToOneToewijzing    // de/het <rol> is <LABEL>
+    | bullet bepaaldLidwoord toewijzingNaam ZIJN UPPER_ID ( EN UPPER_ID )* DOT? # rolToManyToewijzing   // de/het <rol> zijn <LABEL> en <LABEL> …
     | bullet ( IS | HEEFT ) lidwoord? kaleNaam               DOT? # kenmerkToewijzing     // is/heeft [lidw] <kenmerk>
     ;
 // The attribute/role name in a bulleted toewijzing. It must STOP before the trailing
@@ -143,8 +143,8 @@ situatieWaarde
 // `<subject> is/heeft geen <kenmerk>` condition path (grammar-divergences 'negated
 // membership'). The optional lidwoord (een|de|het) covers `is een/de/het <kenmerk>`.
 verwachting
-    : bullet DE verwachtingNaam VAN UPPER_ID IS LEEG                 DOT? # verwachtAttribuutLeeg     // … is leeg (listed first: LEEG is not a situatieWaarde)
-    | bullet DE verwachtingNaam VAN UPPER_ID IS situatieWaarde       DOT? # verwachtAttribuutWaarde   // de <attr> van <LABEL> is <waarde>
+    : bullet bepaaldLidwoord verwachtingNaam VAN UPPER_ID IS LEEG                 DOT? # verwachtAttribuutLeeg     // … is leeg (listed first: LEEG is not a situatieWaarde)
+    | bullet bepaaldLidwoord verwachtingNaam VAN UPPER_ID IS situatieWaarde       DOT? # verwachtAttribuutWaarde   // de/het <attr> van <LABEL> is <waarde>
     | bullet UPPER_ID IS      lidwoord? kaleNaam                     DOT? # verwachtKenmerk           // <LABEL> is [lidw]|geen <kenmerk>
     | bullet UPPER_ID HEEFT   lidwoord? kaleNaam                     DOT? # verwachtKenmerkHeeft      // <LABEL> heeft [lidw]|geen <kenmerk>
     | bullet DE_GEGEVENS_ZIJN INCONSISTENT                           DOT? # verwachtInconsistent      // de gegevens zijn inconsistent

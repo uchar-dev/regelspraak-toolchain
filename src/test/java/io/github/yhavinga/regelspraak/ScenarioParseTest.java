@@ -159,6 +159,20 @@ class ScenarioParseTest {
               + "- de afstand tot bestemming van V1 is 200 km\n");
     }
 
+    @Test void het_lidwoord_in_toewijzing_en_verwachting() {
+        // TOKA-attributen dragen ook het het-lidwoord ('het restant na verdeling', 'het totaal aantal
+        // treinmiles') — de openers accepteren de|het (bepaaldLidwoord), het kenmerk-lidwoord blijft optioneel.
+        assertSchoon("het-lidwoord",
+                "Situatie s:\n"
+              + "een Contingent treinmiles C1\n"
+              + "- het totaal aantal treinmiles is 1000\n"
+              + "Scenario check\n"
+              + "toetst de regel verdeling\n"
+              + "gebaseerd op de situatie s\n"
+              + "Met als verwacht resultaat:\n"
+              + "- het restant na verdeling van C1 is 26\n");
+    }
+
     // ---- (c) TOKA-shaped scope list with multi-word rule names ----
 
     @Test void toets_de_regels_met_multiwoord_regelnamen_in_de_scope_lijst() {

@@ -51,6 +51,19 @@
       <version>${drools.version}</version>
     </dependency>
 
+    <!-- The DRL-string dialect + KieHelper (kie-internal) that the ScenarioRunner uses to build a KieBase with an
+         EXPLICIT classloader (KieHelper.setClassLoader) over the FactModelGenerator beans compiled in-memory.
+         The exec-model back-end (drools-engine above, the shippable path RegelSpraakEngine rides) cannot bind its
+         LambdaMetafactory accessors against a FOREIGN (child) fact classloader — a parent Lookup cannot link a
+         child loader's classes — so the runner takes the DOCUMENTED DRL fallback (docs/SCENARIOTOETSEN.md,
+         § "Runner & CLI"), the proven TokaVuurTest pattern. DRL==exec parity is already differentially pinned.
+         The root pom test-scopes drools-mvel, so it is declared here explicitly for the runner's main path. -->
+    <dependency>
+      <groupId>org.drools</groupId>
+      <artifactId>drools-mvel</artifactId>
+      <version>${drools.version}</version>
+    </dependency>
+
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

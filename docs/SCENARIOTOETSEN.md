@@ -96,9 +96,9 @@ Een reeks van, in willekeurige volgorde:
 
 ```
 een <objecttypenaam> <LABEL>
-- de <attribuutnaam> is <waarde>
-- de <rolnaam> is <LABEL>
-- de <rolnaam-meervoud> zijn <LABEL> en <LABEL>
+- de|het <attribuutnaam> is <waarde>
+- de|het <rolnaam> is <LABEL>
+- de|het <rolnaam-meervoud> zijn <LABEL> en <LABEL>
 - is [een|de|het] <kenmerknaam>            (bijvoeglijk kenmerk)
 - heeft [een|de|het] <kenmerknaam>         (bezittelijk kenmerk)
 ```
@@ -137,8 +137,8 @@ omgerekend; een onverenigbare eenheid is een resolve-time ERROR (gate G4).
 ### Verwachtingregels
 
 ```
-- de <attribuutnaam> van <LABEL> is <waarde>
-- de <attribuutnaam> van <LABEL> is leeg
+- de|het <attribuutnaam> van <LABEL> is <waarde>
+- de|het <attribuutnaam> van <LABEL> is leeg
 - <LABEL> is [een|de|het] <kenmerknaam>          (kenmerk aanwezig)
 - <LABEL> is geen <kenmerknaam>                  (kenmerk afwezig)
 - <LABEL> heeft [een|de|het] <kenmerknaam>       (bezittelijk, aanwezig)
@@ -179,12 +179,28 @@ omgerekend; een onverenigbare eenheid is een resolve-time ERROR (gate G4).
 
 ## Runner & CLI
 
-- Runner leeft in `engine/` en gebruikt bij voorkeur de exec-model-back-end
-  (het shippable pad): FactModelGenerator-beans in-memory gecompileerd,
-  ContractValidator, dan `ExecModelTranspiler` + `KieBaseBuilder` met de
-  bean-classloader. Blijkt de classloader-doorvoer invasief, dan is het
-  DRL-pad (`KieHelper.setClassLoader`, het TokaVuurTest-patroon) de
-  gedocumenteerde fallback — de differentiële suites pinnen de pariteit al.
+- Runner leeft in `engine/`. Voorkeur was de exec-model-back-end (het shippable
+  pad), maar die bleek **invasief onverenigbaar** met een in-memory-bean-loader:
+  `ExecModelTranspiler`'s fact-`Class.forName` laat zich nog inert doorvoeren
+  (een `ThreadLocal`-classloader om `run()`, ~26 regels, geen gedragsverandering
+  zonder argument), maar de LambdaMetafactory-accessors van `runtime.Accessors`
+  binden een fact-getter via een `Lookup` op de PARENT-loader — en een
+  parent-`Lookup` kan een klasse van een CHILD-loader niet linken, dus een run
+  tegen in-memory-beans `NoClassDefFound`t bij de eerste consequence. Dat raakt
+  de vertaallogica (Accessors zou een per-owner-`Lookup` moeten krijgen), ver
+  boven het "inerte doorvoer"-budget. **Beslissing: het DRL-pad als
+  gedocumenteerde fallback** — `DrlTranspiler` + `KieHelper.setClassLoader(cl)`
+  (het bewezen TokaVuurTest-patroon), met de `FactModelGenerator`-beans één keer
+  per bundel in-memory gecompileerd (`engine.BeanCompiler`) en `ContractValidator`
+  ervoor. De differentiële suites pinnen DRL==exec al, dus de runner-oordelen
+  zijn óók die van het shippable pad. De ExecModelTranspiler-doorvoer is NIET
+  gemergd (fallback ⇒ transpiler onaangeraakt). Eén detail van het DRL-pad: een
+  MARKER-regel emitteert een `/* TODO … */` die het MVEL-dialect niet parseert en
+  anders de hele DRL-compilatie zou kelderen; de runner **strippt** die regel-
+  blokken vóór compilatie (een marker is per definitie inert en vuurt niets), en
+  de Dekking-manifest markeert hem alsnog als MARKER → scope-marker leest exit 3.
+  Engine-pom: `drools-mvel` is expliciet toegevoegd (de root-pom test-scope't hem;
+  het DRL-dialect heeft hem nodig).
 - CLI: `io.github.yhavinga.regelspraak.engine.ScenarioRunner <file.rs>…` — meerdere
   bestanden worden in volgorde geconcateneerd (het TokaVuurTest-patroon:
   objectmodel + regels + scenariobestand). Per scenario `PASS`/`FAIL` naar
