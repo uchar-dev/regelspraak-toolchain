@@ -5447,6 +5447,51 @@ class ExecModelDifferentialTest {
             (o, facts) -> { Factuur f = (Factuur) o; return "Factuur|bedrag=" + bdStr(f.getBedrag()) + "|best=" + refIndex(facts, f.getBestelling()); }),
             // -> ["Factuur|bedrag=50|best=0"]
 
+        // O3 §13.4.6.4: the DISTINCT kenmerkwaardetoekenning — "duur gelijk aan waar" sets the created object's
+        //     KENMERK (a boolean property), next to an ordinary attribuut init. Absolute pin: waar -> true.
+        new ObjFixture("§13.4.6.4 kenmerkwaardetoekenning 'gelijk aan waar' zet het kenmerk op de nieuwe instantie",
+            """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+                is duur kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel maak passagier
+                geldig altijd
+                    Een Vlucht heeft een passagier met prijs gelijk aan 10, duur gelijk aan waar.
+            """,
+            () -> List.of(new Vlucht()),
+            Map.of(),
+            (o, facts) -> { Passagier p = (Passagier) o; return "Passagier|prijs=" + bdStr(p.getPrijs())
+                    + "|duur=" + p.isDuur() + "|reis=" + refIndex(facts, p.getReis()); }),
+            // -> ["Passagier|prijs=10|duur=true|reis=0"]
+
+        // O4 §13.4.6.4: "gelijk aan onwaar" — the explicit false form.
+        new ObjFixture("§13.4.6.4 kenmerkwaardetoekenning 'gelijk aan onwaar' zet het kenmerk expliciet op onwaar",
+            """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+                is duur kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel maak passagier
+                geldig altijd
+                    Een Vlucht heeft een passagier met prijs gelijk aan 10, duur gelijk aan onwaar.
+            """,
+            () -> List.of(new Vlucht()),
+            Map.of(),
+            (o, facts) -> { Passagier p = (Passagier) o; return "Passagier|prijs=" + bdStr(p.getPrijs())
+                    + "|duur=" + p.isDuur() + "|reis=" + refIndex(facts, p.getReis()); }),
+            // -> ["Passagier|prijs=10|duur=false|reis=0"]
+
         // O2 §13.4.6 + §8.1.7: a Passagier (prijs 10) is created only for a Vlucht that HAS crew (a far-side exists guard).
         new ObjFixture("§13.4.6 objectcreatie met far-side voorwaarde maakt alleen voor bemande vluchten",
             """
@@ -5566,7 +5611,27 @@ class ExecModelDifferentialTest {
     }
 
     @Test void phase_G_dimensie_matches_drl_back_end()             { runDifferential("Phase G dim", PHASE_G_DIM, 3); }
-    @Test void phase_G_objectcreatie_matches_drl_back_end()        { runObjDifferential("Phase G obj", PHASE_G_OBJ, 2); }
+    @Test void phase_G_objectcreatie_matches_drl_back_end()        { runObjDifferential("Phase G obj", PHASE_G_OBJ, 4); }
+    /** §13.4.6.4 kenmerkwaardetoekenning — ABSOLUTE pin of the created object's kenmerk in BOTH back-ends
+     *  (waar -> true, onwaar -> false; a shared drop-the-kenmerk bug would pass the parity-only Phase G run). */
+    @Test void phase_G_kenmerkwaardetoekenning_is_spec_correct() {
+        String[] verwacht = { "Passagier|prijs=10|duur=true|reis=0", "Passagier|prijs=10|duur=false|reis=0" };
+        ObjFixture[] fixtures = { PHASE_G_OBJ[1], PHASE_G_OBJ[2] };   // O3 waar, O4 onwaar
+        for (int i = 0; i < fixtures.length; i++) {
+            ObjFixture f = fixtures[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            assertTrue(m.objectCreaties.get(0).toekenningen().stream().anyMatch(
+                    t -> t.kenmerk() && "duur".equals(t.attribuut())),
+                    () -> f.naam() + " moet een kenmerk-toekenning in de IR dragen: " + m.objectCreaties.get(0).toekenningen());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            List<String> viaDrl = fireCreated(drlBase(m), f);
+            List<String> viaModel = fireCreated(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(List.of(verwacht[i]), viaDrl, () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(viaDrl, viaModel, () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     // The inert-voorwaarde fixture is a VERDICT divergence but a behavioral AGREEMENT: the DRL back-end
     // surfaces "create nothing" as an eval(false) marker rule (verdict MARKER), the exec back-end as no
     // rule at all — a deliberate correct lowering, not a skip (verdict LOWERED). The fixture FIRES in the

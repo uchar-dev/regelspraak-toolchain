@@ -725,14 +725,14 @@ final class RuleChecker {
 
         List<ResolvedObjectCreatie.Toekenning> toek = new ArrayList<>();
         if (rolEnAttr.length == 2 && !waarden.isEmpty())
-            toek.add(new ResolvedObjectCreatie.Toekenning(stripArtikel(rolEnAttr[1]), bouwer.bouw(waarden.get(0))));
+            toek.add(maakToekenning(nieuwType, stripArtikel(rolEnAttr[1]), waarden.get(0), oc));
         for (int i = 1; i < namen.size() && i < waarden.size(); i++)
-            toek.add(new ResolvedObjectCreatie.Toekenning(stripArtikel(src(namen.get(i))), bouwer.bouw(waarden.get(i))));
+            toek.add(maakToekenning(nieuwType, stripArtikel(src(namen.get(i))), waarden.get(i), oc));
 
-        // typeringen §6.5: each met-clause init follows the SAME §6.2/Tabel 61 toekenning rules as a
-        // gelijkstelling (family + eenheid + §6.1.2 precision; an Expr.Afgerond value already reports its
-        // rounded decimal count, and toekenning itself no-ops on an Onbekend value). A name that is no
-        // declared attribute of the created type (a kenmerk, or unresolved) carries no type claim: skip.
+        // typeringen §6.5: each ATTRIBUUT met-clause init follows the SAME §6.2/Tabel 61 toekenning rules
+        // as a gelijkstelling (family + eenheid + §6.1.2 precision; an Expr.Afgerond value already reports
+        // its rounded decimal count, and toekenning itself no-ops on an Onbekend value). A kenmerk-init was
+        // already §13.4.6.4-checked in maakToekenning; an unresolved created type carries no claim: skip.
         if (nieuwType != null)
             for (ResolvedObjectCreatie.Toekenning t : toek) {
                 Datatype doelType = nieuwType.attribuut(t.attribuut());
@@ -747,6 +747,32 @@ final class RuleChecker {
             }
 
         model.objectCreaties.add(new ResolvedObjectCreatie(naam, nieuwType, subject, toek, voorwaarde, geldigheid));
+    }
+
+    /** §13.4.6.2 one waardetoekenning of an objectcreatie: the §13.4.6.3 ATTRIBUUT form (generic expressie
+     *  RHS, §6.5-type-checked by the caller) or the DISTINCT §13.4.6.4 KENMERK form, whose RHS the EBNF
+     *  restricts to the waar|onwaar literal — anything else is an ERROR (it would otherwise lower to a
+     *  boolean setter fed a non-boolean: a broken rule at build/fire time). A matched kenmerk stores its
+     *  DECLARED name (the match is case-insensitive, the fact property is not). A name that is NEITHER a
+     *  declared attribute NOR a kenmerk of the created type is an ERROR too — the old silent skip emitted
+     *  a setter on a property that does not exist. */
+    private ResolvedObjectCreatie.Toekenning maakToekenning(Objecttype nieuwType, String naam,
+                                                            ExpressieContext waardeCtx, ObjectCreatieContext oc) {
+        Expr waarde = bouwer.bouw(waardeCtx);
+        if (nieuwType == null || nieuwType.attribuut(naam) != null)
+            return new ResolvedObjectCreatie.Toekenning(naam, waarde);
+        String kenmerk = nieuwType.kenmerken.stream().filter(k -> k.equalsIgnoreCase(naam)).findFirst().orElse(null);
+        if (kenmerk != null) {
+            if (!(waarde instanceof Expr.Literal lit && lit.type() instanceof Datatype.Booleaan))
+                model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                        "kenmerkwaardetoekenning '" + kenmerk + "' vereist waar of onwaar (§13.4.6.4), niet '"
+                                + waarde.bron() + "'", oc.getStart().getLine()));
+            return new ResolvedObjectCreatie.Toekenning(kenmerk, waarde, true);
+        }
+        model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                "objectcreatie: '" + naam + "' is geen attribuut of kenmerk van " + nieuwType.naam + " (§13.4.6.2)",
+                oc.getStart().getLine()));
+        return new ResolvedObjectCreatie.Toekenning(naam, waarde);
     }
 
     private static String stripArtikel(String s) { return s.replaceFirst("^(?i)(de|het|een)\\s+", "").trim(); }

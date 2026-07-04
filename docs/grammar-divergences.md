@@ -1995,3 +1995,26 @@ Decided readings:
 
 Pinned by phase_REGELVERSIE (absolute values, both back-ends) and the
 regelversie_gevuurd_en_onbekende_naam_blijven_symmetrische_markers decline pins.
+
+## §13.4.6.4 kenmerkwaardetoekenning — distinct resolver-pad, waar/onwaar-restrictie statisch
+
+The objectcreatie waardetoekenning (§13.4.6.2) splits per the EBNF into the attribuut form (generic
+expressie RHS, §6.5-type-checked) and the DISTINCT kenmerk form, whose RHS is restricted to the
+waar|onwaar literal. Both used to fold into one generic attribute assignment: a kenmerk name skipped
+every check (its non-attribute name carried "no type claim"), so "duur gelijk aan 5" lowered to a boolean
+setter fed a BigDecimal and an unknown init name to a setter on a nonexistent property — broken rules at
+build/fire time, without a diagnostic. Decided:
+
+- The resolver resolves a non-attribute init name against the created type's KENMERKEN
+  (case-insensitively; the IR stores the DECLARED name, since the generated fact property is
+  case-sensitive) and marks the Toekenning as the §13.4.6.4 form.
+- A kenmerk-init RHS that is not the waar|onwaar literal is a resolver ERROR (statically decidable:
+  the EBNF admits only those two terminals there).
+- An init name that is NEITHER a declared attribute NOR a kenmerk of the created type is a resolver
+  ERROR (§13.4.6.2 — previously a silent skip).
+- The exec back-end gained the waar|onwaar literal as a scalar VALUE (Boolean constant), at parity with
+  the DRL true/false rendering — before this the exec SKIPPED any objectcreatie carrying a kenmerk-init
+  while DRL fired it (a live divergence no fixture reached).
+
+Pinned by phase_G_kenmerkwaardetoekenning_is_spec_correct (absolute created-object descriptors, both
+back-ends, waar and onwaar) and the RuleCheckTest §13.4.6.4 legality cases.

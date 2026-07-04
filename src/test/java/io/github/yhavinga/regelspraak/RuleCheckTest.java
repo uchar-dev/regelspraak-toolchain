@@ -1843,6 +1843,51 @@ class RuleCheckTest {
                 () -> "een expliciet afgeronde init hoort te resolven (§6.1.3): " + md.errors());
     }
 
+    @Test void objectcreatie_kenmerkwaardetoekenning_vereist_waar_of_onwaar_en_kent_de_naam() {
+        // §13.4.6.4: the DISTINCT kenmerkwaardetoekenning restricts its RHS to the waar|onwaar literal, and
+        // §13.4.6.2 admits only declared attributes/kenmerken as init names. Both used to pass silently: a
+        // kenmerk fed a number lowered to a boolean setter fed a BigDecimal, an unknown name to a setter on
+        // a property that does not exist — broken rules at build/fire time, no diagnostic.
+        String hdr = """
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+                is duur kenmerk (bijvoeglijk);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            """;
+        // (a) kenmerk-init with a non-boolean RHS
+        RegelSpraakModel ma = Resolver.resolve(hdr + """
+            Regel maak passagier
+                geldig altijd
+                    Een Vlucht heeft een passagier met duur gelijk aan 5.
+            """);
+        assertTrue(ma.errors().stream().anyMatch(d -> d.message().contains("kenmerkwaardetoekenning")
+                        && d.message().contains("waar of onwaar")),
+                () -> "een kenmerk-init met een getal moet §13.4.6.4 melden, kreeg: " + ma.errors());
+        // (b) a name that is neither attribute nor kenmerk of the created type
+        RegelSpraakModel mb = Resolver.resolve(hdr + """
+            Regel maak passagier
+                geldig altijd
+                    Een Vlucht heeft een passagier met gewicht gelijk aan 5.
+            """);
+        assertTrue(mb.errors().stream().anyMatch(d -> d.message().contains("geen attribuut of kenmerk")),
+                () -> "een onbekende init-naam moet melden, kreeg: " + mb.errors());
+        // (c) the well-formed kenmerk-init resolves clean and carries the kenmerk flag in the IR
+        RegelSpraakModel mc = Resolver.resolve(hdr + """
+            Regel maak passagier
+                geldig altijd
+                    Een Vlucht heeft een passagier met prijs gelijk aan 10, duur gelijk aan waar.
+            """);
+        assertTrue(mc.errors().isEmpty(), () -> "een waar/onwaar kenmerk-init hoort te resolven: " + mc.errors());
+        assertTrue(mc.objectCreaties.get(0).toekenningen().stream().anyMatch(
+                        t -> t.kenmerk() && "duur".equals(t.attribuut())),
+                () -> "de IR moet de §13.4.6.4 kenmerk-toekenning dragen: " + mc.objectCreaties.get(0).toekenningen());
+    }
+
     @Test void gemengde_datum_precisie_in_gelijk_en_toekenning_wordt_gemeld() {
         // A Datum-in-dagen vs Datum-en-tijd mix in gelijk/ongelijk or toekenning used to pass the family
         // check silently: the assignment lowered to a type-broken setter (a LocalDateTime into a LocalDate

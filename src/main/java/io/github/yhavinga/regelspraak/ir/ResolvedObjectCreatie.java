@@ -19,6 +19,13 @@ import java.util.List;
  */
 public record ResolvedObjectCreatie(String naam, Objecttype nieuwType, Objecttype subject,
                                     List<Toekenning> toekenningen, Conditie voorwaarde, Geldigheid geldigheid) {
-    /** One attribute of the new object set to a resolved value expression. */
-    public record Toekenning(String attribuut, Expr waarde) {}
+    /** One §13.4.6.2 waardetoekenning on the new object. {@code kenmerk} distinguishes the DISTINCT
+     *  §13.4.6.4 kenmerkwaardetoekenning ("&lt;kenmerknaam&gt; gelijk aan waar|onwaar" — {@code attribuut}
+     *  then holds the DECLARED kenmerk name and {@code waarde} a Booleaan literal, resolver-enforced)
+     *  from the §13.4.6.3 attribuutwaardetoekenning (generic expressie RHS). Both back-ends set the
+     *  same-named property either way; the flag keeps the IR honest about which spec form it carries. */
+    public record Toekenning(String attribuut, Expr waarde, boolean kenmerk) {
+        /** An attribuutwaardetoekenning (§13.4.6.3). */
+        public Toekenning(String attribuut, Expr waarde) { this(attribuut, waarde, false); }
+    }
 }

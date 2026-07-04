@@ -2630,6 +2630,10 @@ public final class ExecModelTranspiler {
             BigDecimal val = bd(lit);
             return val == null ? null : WaardeFn.constant(val);
         }
+        // §13.2.16 waar|onwaar literal as a VALUE (the §13.4.6.4 kenmerkwaardetoekenning RHS, or a Booleaan
+        // attribute init) -> its Boolean constant; DRL renders the same true/false.
+        if (e instanceof Expr.Literal bl && bl.type() instanceof Datatype.Booleaan)
+            return WaardeFn.constant(Literalen.waar(bl.waarde()));
         // §5.3 Rekendatum/Rekenjaar as a VALUE operand (§13.4.17.34): the §4.2 rekendatum global, bound into the
         // globals map under its own name (the map's values are BigDecimal-typed but ERASED; only this reader
         // touches the "rekendatum" slot and it instanceof-guards, so the LocalDate rides through safely — the
