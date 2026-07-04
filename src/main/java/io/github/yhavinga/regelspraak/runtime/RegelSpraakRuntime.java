@@ -861,6 +861,59 @@ public final class RegelSpraakRuntime {
     }
     private static List<?> leeg(List<?> l) { return l == null ? java.util.Collections.emptyList() : l; }
     private static BigDecimal nul(BigDecimal w) { return w == null ? BigDecimal.ZERO : w; }
+
+    /** §5.8.2 the SOMMATIE ("de som van") of MANY temporal operands' timelines, evaluated PER PERIOD on the MERGED
+     *  knip timeline of every operand — the temporal analogue of {@link #rsTijdTotaal} for a SET. This is the
+     *  §5.1.4 "voor elke periode tussen twee knips" fold, but with the §5.8.2 (NOT §6.1.4 plus) leegwaarde rule:
+     *  in a period, an operand that carries no value is SKIPPED (not treated as 0), and only when EVERY operand is
+     *  leeg in that period is the result leeg — "een lege waarde plus een lege waarde is nog steeds een lege
+     *  waarde" (§5.8.2 line 2120). {@code fallbackNul}=true is the "of 0 als die er niet zijn" clause (§5.8.2 line
+     *  2128): an all-empty period then yields 0 instead of leeg. Adjacent equal-value (incl. equal-leeg) segments
+     *  are coalesced, so an unchanged value carries no knip. An empty operand LIST (no elements at all) yields an
+     *  empty timeline (the SOM over 0 contributors is leeg everywhere — or a single 0-span under fallbackNul is not
+     *  emitted, since there is no knip to bound it). The single implementation; the DRL imports it (single-runtime principle). */
+    public static List<Object> rsTijdSomAlle(List<? extends List<?>> reeksen, boolean fallbackNul, Class<?> segCls) {
+        TreeMap<LocalDate, Boolean> knipSet = new TreeMap<>();
+        if (reeksen != null) for (List<?> r : reeksen) for (Object o : leeg(r)) {
+            LocalDate v = segVan(o), t = segTot(o);
+            if (v != null && t != null && v.isBefore(t)) { knipSet.put(v, true); knipSet.put(t, true); }
+        }
+        List<Object> uit = new ArrayList<>();
+        LocalDate prev = null, lopendeVan = null; BigDecimal lopendeWaarde = null; boolean lopendeGezet = false;
+        for (LocalDate t : knipSet.keySet()) {
+            if (prev != null) {
+                // §5.8.2 sum the NON-leeg operands in this period; leeg iff every operand is leeg (unless fallbackNul).
+                BigDecimal som = null;
+                if (reeksen != null) for (List<?> r : reeksen) {
+                    BigDecimal w = waardeOpDag(r, prev);
+                    if (w != null) som = som == null ? w : som.add(w);
+                }
+                if (som == null && fallbackNul) som = BigDecimal.ZERO;
+                if (!lopendeGezet) { lopendeVan = prev; lopendeWaarde = som; lopendeGezet = true; }
+                else if (!gelijkeWaarde(lopendeWaarde, som)) {
+                    uit.add(newSegment(segCls, lopendeVan, prev, lopendeWaarde)); lopendeVan = prev; lopendeWaarde = som;
+                }
+            }
+            prev = t;
+        }
+        if (lopendeGezet) uit.add(newSegment(segCls, lopendeVan, prev, lopendeWaarde));
+        return uit;
+    }
+    private static boolean gelijkeWaarde(BigDecimal a, BigDecimal b) {
+        return a == null ? b == null : (b != null && a.compareTo(b) == 0);
+    }
+
+    /** §8.2 over a NAVIGATED to-many temporal set ("de X van alle Y ... gedurende het gehele jaar &lt;op&gt; grens"):
+     *  the whole-period check holds iff it holds for EVERY element's timeline (a forall across the accumulated set) —
+     *  the §8.2 predicate applied per element via {@link #rsGeheelPeriode}, AND-ed over the set. An EMPTY set is
+     *  vacuously WAAR (no element violates; consistent with rsGeheelPeriode's empty-timeline true). The single
+     *  implementation; the DRL imports it (single-runtime principle). */
+    public static boolean rsGeheelPeriodeAlle(List<? extends List<?>> reeksen, String granulariteit, int toets, BigDecimal grens) {
+        if (reeksen == null) return true;
+        for (List<?> r : reeksen) if (!rsGeheelPeriode(r, granulariteit, toets, grens)) return false;
+        return true;
+    }
+
     /** The value of the segment covering {@code dag} (van &le; dag &lt; tot), or null (leeg) when no segment covers it. */
     private static BigDecimal waardeOpDag(List<?> lijst, LocalDate dag) {
         for (Object o : leeg(lijst)) {

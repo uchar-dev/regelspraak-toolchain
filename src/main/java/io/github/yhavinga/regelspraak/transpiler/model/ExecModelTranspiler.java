@@ -329,6 +329,28 @@ public final class ExecModelTranspiler {
             // with NO startpuntbepaling resolved the timeline has no periodization -> honest skip (mirror DRL).
             if (startpuntAnker == null && model.heeftVariabelStartpunt(doel.objecttype(), doel.attribuut()))
                 return skip("regel (tijdlijn met variabel startpunt zonder startpuntbepaling §9.9): " + r.naam());
+            // §5.8.2/§5.1.4 "de som van <temporeel attr> van alle <naar-veel-rol>" into a TEMPORAL doel: a PER-PERIOD
+            // sommatie over the navigated SET (kept temporal — §5.1.4; only the §7.1 "totaal van" collapses to scalar).
+            // A collectList accumulate binds the element timelines; rsTijdSomAlle folds them per merged-knip period with
+            // the §5.8.2 leeg rule. Anchored doelen stay a skip (set-fold × per-object bucket out of scope — mirror DRL).
+            if (startpuntAnker == null) {
+                SomAlleSet sas = tijdreeksSomAlleSet(r.waarde(), doel.objecttype(), sVar, doel.type(), doelGran);
+                if (sas != null) {
+                    extra.add(sas.accItem());
+                    final BiConsumer<Object, Object> setter = doelSetter;
+                    final java.util.function.Function<Object, Object> getr = doelGetter;
+                    final boolean fbNul = sas.fallbackNul();
+                    RuleItemBuilder<?> cons = DSL.on(sVar, sas.tijdlijnenVar()).execute((Block3<org.drools.model.Drools, Object, Object>) (drools, s, tls) ->
+                            werkBij(drools, s, getr, setter, RegelSpraakRuntime.rsTijdSomAlle((List<? extends List<?>>) tls, fbNul, segmentClass())));
+                    List<RuleItemBuilder<?>> items = new ArrayList<>();
+                    items.add(pattern);
+                    items.addAll(extra);
+                    items.add(cons);
+                    return PatternDSL.rule(kop(r.naam()))
+                            .attribute(Rule.Attribute.NO_LOOP, true)
+                            .build(items.toArray(new RuleItemBuilder[0]));
+                }
+            }
             final String ankerLid = startpuntAnker;
             java.util.function.Function<Object, Object> ankerReader =
                     ankerLid == null ? null : s -> RegelSpraakRuntime.get(s, ankerLid);
@@ -657,6 +679,62 @@ public final class ExecModelTranspiler {
             return new Agg(acc, resultVar, cntVar, null, false);   // countVar set, no fallback, not SOM
         }
         return new Agg(DSL.accumulate(src2, DSL.accFunction(accClass, amtVar).as(resultVar)), resultVar, null, null, false);
+    }
+
+    /** A §5.8.2 to-many temporal sommatie: the collectList accumulate CE (binding the element {@code List<Segment>}
+     *  timelines into {@code tijdlijnenVar}) and the §5.8.2 "of 0 als die er niet zijn" flag. */
+    private record SomAlleSet(RuleItemBuilder<?> accItem, Variable tijdlijnenVar, boolean fallbackNul) {}
+
+    /** §5.8.2/§5.1.4 "de som van &lt;temporeel attr&gt; van alle &lt;naar-veel-rol&gt;" into a TEMPORAL doel — a per-period
+     *  sommatie over the navigated SET. Builds a {@code CollectListAccumulateFunction} accumulate binding a
+     *  {@code List<List<Segment>>} of the element timelines (each restated §4.1 into the doel unit), which the consequence
+     *  folds via {@link RegelSpraakRuntime#rsTijdSomAlle}. null when it is not such a set fold (SOM over a to-many
+     *  single-period temporal numeric attribute, resolvable join, structured die-filter, unit-convertible). Mirrors
+     *  DrlTranspiler.tijdreeksSomAlleSet. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private SomAlleSet tijdreeksSomAlleSet(Expr w, Objecttype subject, Variable subjectVar, Datatype doelType,
+            RegelSpraakModel.Granulariteit doelGran) {
+        if (!(w instanceof Expr.Functie f) || f.kind() != Expr.FunctieKind.SOM || f.argumenten().size() != 1) return null;
+        if (!(f.argumenten().get(0) instanceof Expr.AttribuutRef a) || !a.set() || a.objecttype() == null) return null;
+        RegelSpraakModel.Granulariteit eg = a.objecttype().attribuutGranulariteit.get(a.attribuut());
+        if (eg == null || a.objecttype().attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;   // non/multi-period -> not this fold
+        if (eg != doelGran) return null;   // §5.1.4 element tijdlijn must match the doel's (no set-fold gran promotion yet) — mirror DRL
+        if (a.type() == null || !a.type().isNumeriek()) return null;
+        Objecttype elem = f.elementObjecttype();
+        if (elem == null || subject == null) return null;
+        Class<?> elemClass = factClass(elem);
+        if (elemClass == null) return null;
+        String rol = model.verbindendeRol(elem, subject);
+        if (rol == null) return null;
+        // §4.1 the per-element unit restatement factor (equal unit -> no scale; incompatible -> not this fold).
+        Eenheid eu = a.type().eenheidOf(), du = doelType == null ? null : doelType.eenheidOf();
+        BigDecimal factor = null; boolean deel = false;
+        if (!java.util.Objects.equals(eu, du)) {
+            if (eu == null || du == null || !eu.convertibleNaar(du)) return null;
+            if (eu.vereistOmrekening(du)) {
+                BigDecimal fwd = valueFactor(a.type(), doelType), inv = valueFactor(doelType, a.type());
+                deel = inv != null && inv.precision() < fwd.precision();
+                factor = deel ? inv : fwd;
+            }
+        }
+        final String backref = rol, attr = a.attribuut();
+        final BigDecimal fFactor = factor; final boolean fDeel = deel;
+        Variable elemVar = DSL.declarationOf(elemClass, "$se_" + (seq++));
+        PatternDSL.PatternDef src = PatternDSL.pattern(elemVar).expr(nextId("join"), (Variable) subjectVar,
+                (Predicate2) (e, subj) -> RegelSpraakRuntime.get(e, backref) == subj);
+        if (f.filter() != null) {                       // §13.4.2 die/dat <predicaat> on the element
+            src = filterSource(src, f.filter(), elem);
+            if (src == null) return null;
+        }
+        // the accumulate function reads each element's timeline (restated to the doel unit) — collectList gathers them.
+        Function1<Object, Object> elemTijdlijn = fFactor == null
+                ? (e) -> RegelSpraakRuntime.get(e, attr)
+                : (e) -> RegelSpraakRuntime.rsTijdSchaal((List<?>) RegelSpraakRuntime.get(e, attr), fFactor, fDeel);
+        Variable elemTlVar = DSL.declarationOf(List.class, "$setl_" + (seq++));   // per-element timeline (accumulate source)
+        Variable tlVar = DSL.declarationOf(List.class, "$stl_" + (seq++));        // collected List<List<Segment>> (accumulate result)
+        PatternDSL.PatternDef src2 = src.bind(elemTlVar, (Function1) elemTijdlijn);
+        RuleItemBuilder acc = DSL.accumulate(src2, DSL.accFunction(accFn("CollectListAccumulateFunction"), elemTlVar).as(tlVar));
+        return new SomAlleSet(acc, tlVar, f.leegwaarde() != null);
     }
 
     /** §5.8/§13.4.14 an AGGREGATION (count / sum / totaal / min / max) as one side of a condition comparison ("het aantal
@@ -1917,6 +1995,95 @@ public final class ExecModelTranspiler {
         return null;
     }
 
+    /** §8.2 over a NAVIGATED to-many temporal SET: "de &lt;temporeel attr&gt; van alle &lt;naar-veel-rol&gt; ... gedurende
+     *  het gehele jaar|maand &lt;op&gt; &lt;scalar grens&gt;" (or GEVULD/LEEG over the set) — the check holds iff it holds
+     *  for EVERY element's timeline (a forall). A collectList accumulate binds a {@code List<List<Segment>>}; an
+     *  rsGeheelPeriodeAlle result-var eval decides it. Returns a Gate when fully lowered, or null (fall through: not a set
+     *  form, or an unlowerable set form the caller then skips via geheelPeriode82). A timeline-vs-timeline set comparison
+     *  is unlowerable -> null -> skip (symmetric with the DRL marker). Mirrors DrlTranspiler.geheelPeriodeAlleVoorwaarde. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Gate geheelPeriodeAlleVoorwaarde(Conditie c, Conditie.GeheelPeriode gp, PatternDSL.PatternDef pattern,
+            Objecttype subject, Variable subjectVar) {
+        String gran = gp.jaar() ? "JAAR" : "MAAND";
+        Expr.AttribuutRef tijd; int toets; WaardeFn grensFn = null; Datatype tijdType;
+        if (c instanceof Conditie.Vergelijking v) {
+            Expr ander; boolean linksTemp;
+            if (v.links() instanceof Expr.AttribuutRef la && la.set() && isTemporeelSet82(la))      { tijd = la; ander = v.rechts(); linksTemp = true; }
+            else if (v.rechts() instanceof Expr.AttribuutRef ra && ra.set() && isTemporeelSet82(ra)) { tijd = ra; ander = v.links();  linksTemp = false; }
+            else return null;   // not a temporal-set comparison -> scalar path
+            if (!(tijd.type().isNumeriek() || tijd.type().isPercentage())) return null;
+            if (ander instanceof Expr.AttribuutRef ar && isTemporeel82(ar)) return null;   // timeline-vs-timeline -> skip (symmetric marker)
+            Eenheid el = tijd.type().eenheidOf(), er = ander.type().eenheidOf();
+            boolean crossUnit = el != null && er != null && el.vereistOmrekening(er);
+            if (crossUnit && er.exacteHerschaalFactoren(el) == null) return null;
+            Integer code = Tijdrekening.toets(linksTemp ? v.op() : Operatoren.omkeren(v.op()));
+            if (code == null) return null;
+            // The grens rides an eval AFTER the collectList accumulate (no $subject bound on the collected-list pattern),
+            // so restrict to a LITERAL or a scalar Parameter-GLOBAL — an own/navigated grens stays a symmetric marker
+            // (matching the DRL set §8.2 guard, which also declines a $subject-qualified grens here).
+            if (!(ander instanceof Expr.Literal) && !(ander instanceof Expr.ParameterRef pr && pr.parameter().granulariteit() == null))
+                return null;
+            WaardeFn g = scalarWaarde(null, ander);
+            if (g == null) return null;   // unlowerable grens -> skip (symmetric marker)
+            if (crossUnit) g = g.herschaald(ander.type(), tijd.type());
+            toets = code; grensFn = g; tijdType = tijd.type();
+        } else if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.GEVULD
+                && p.operand() instanceof Expr.AttribuutRef pa && pa.set() && isTemporeelSet82(pa)) {
+            tijd = pa; toets = 6; tijdType = pa.type();
+        } else if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.LEEG
+                && p.operand() instanceof Expr.AttribuutRef pa && pa.set() && isTemporeelSet82(pa)) {
+            tijd = pa; toets = 8; tijdType = pa.type();
+        } else {
+            return null;   // not a set §8.2 form
+        }
+        Objecttype elem = tijd.objecttype();
+        Class<?> elemClass = factClass(elem);
+        if (elemClass == null || subject == null) return null;
+        String rol = model.verbindendeRol(elem, subject);
+        if (rol == null) return null;
+        final String backref = rol, attr = tijd.attribuut();
+        Variable elemVar = DSL.declarationOf(elemClass, "$ge_" + (seq++));
+        PatternDSL.PatternDef src = PatternDSL.pattern(elemVar).expr(nextId("join"), (Variable) subjectVar,
+                (Predicate2) (e, subj) -> RegelSpraakRuntime.get(e, backref) == subj);
+        Variable elemTlVar = DSL.declarationOf(List.class, "$getl_" + (seq++));
+        Variable tlVar = DSL.declarationOf(List.class, "$gtl_" + (seq++));
+        PatternDSL.PatternDef src2 = src.bind(elemTlVar, (Function1) (e) -> RegelSpraakRuntime.get(e, attr));
+        RuleItemBuilder accItem = DSL.accumulate(src2, DSL.accFunction(accFn("CollectListAccumulateFunction"), elemTlVar).as(tlVar));
+        final int fToets = toets; final String fGran = gran; final boolean niet = gp.niet();
+        final WaardeFn gf = grensFn;
+        // the eval reads the collected list + (≤1) grens global; the grens is restated to the element unit above.
+        java.util.Set<String> gGlobals = gf == null ? java.util.Set.of() : gf.globals();
+        if (gGlobals.isEmpty()) {
+            Predicate1<Object> ev = tls -> {
+                BigDecimal grens = gf == null ? null : RegelSpraakRuntime.toBd(gf.fn().apply(null, java.util.Map.of()));
+                boolean b = RegelSpraakRuntime.rsGeheelPeriodeAlle((List<? extends List<?>>) tls, fGran, fToets, grens);
+                return niet ? !b : b;
+            };
+            PatternDSL.PatternDef check = PatternDSL.pattern(tlVar).expr(nextId("c"), (Predicate1) ev);
+            return new Gate(pattern, List.of(accItem, check));
+        }
+        if (gGlobals.size() == 1) {
+            String gn = gGlobals.iterator().next();
+            Global<BigDecimal> gg = globals.get(gn);
+            if (gg == null) return null;
+            Predicate2<Object, Object> ev = (tls, gv) -> {
+                BigDecimal grens = RegelSpraakRuntime.toBd(gf.fn().apply(null, bindGlobal(gn, gv)));
+                boolean b = RegelSpraakRuntime.rsGeheelPeriodeAlle((List<? extends List<?>>) tls, fGran, fToets, grens);
+                return niet ? !b : b;
+            };
+            PatternDSL.PatternDef check = PatternDSL.pattern(tlVar).expr(nextId("c"), (Variable) gg, (Predicate2) ev);
+            return new Gate(pattern, List.of(accItem, check));
+        }
+        return null;   // >1 global grens -> skip (symmetric marker)
+    }
+
+    /** Whether {@code a} is a temporal (tijdlijn) attribute of its (set-element) objecttype — the set analogue of
+     *  {@link #isTemporeel82}, admitting a to-many set element whose objecttype != subject; multi-period excluded. */
+    private static boolean isTemporeelSet82(Expr.AttribuutRef a) {
+        return a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())
+                && !a.objecttype().attribuutTijdlijnAantal.containsKey(a.attribuut());
+    }
+
     /** A fact-only Predicate1 for "the §8.2 check holds" (the NIET prefix complements the rsGeheelPeriode result), or
      *  null when the grens reads a Parameter-global (the caller binds it as a pattern variable). */
     private Predicate1<Object> geheelPeriodeLeaf(Gp82 g) {
@@ -2014,6 +2181,10 @@ public final class ExecModelTranspiler {
         // §6 datum-arith branch. An unsupported form -> skip the whole rule (symmetric with the DRL marker -> no fire).
         Conditie.GeheelPeriode gp82 = geheelPeriodeVan(c);
         if (gp82 != null) {
+            // §8.2 over a NAVIGATED to-many temporal SET: a forall across the accumulated element timelines — a
+            // collectList accumulate binding List<List<Segment>> + an rsGeheelPeriodeAlle result-var eval. Mirrors DRL.
+            Gate alle = geheelPeriodeAlleVoorwaarde(c, gp82, pattern, subject, subjectVar);
+            if (alle != null) return alle;
             Gp82 g = geheelPeriode82(c, gp82, subject);
             if (g == null) return null;
             Predicate1<Object> leaf = geheelPeriodeLeaf(g);

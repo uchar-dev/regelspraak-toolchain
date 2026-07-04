@@ -75,4 +75,10 @@ public class Vlucht {
     private List<Segment> actief;            // §8.2 a NAVIGATED temporal kenmerk: the to-one role's timeline a §8.2 whole-period check reads
     public List<Segment> getActief() { return actief; }
     public void setActief(List<Segment> v) { this.actief = v; }
+    private List<Segment> totaleBijdrage;    // §5.8.2/§5.1.4 a per-maand TEMPORAL doel written by a to-many SOM fold over the passagiers
+    public List<Segment> getTotaleBijdrage() { return totaleBijdrage; }
+    public void setTotaleBijdrage(List<Segment> v) { this.totaleBijdrage = v; }
+    private boolean groot;                    // §8.2 kenmerk doel set by a whole-period forall over the navigated to-many temporal set
+    public boolean isGroot() { return groot; }
+    public void setGroot(boolean v) { this.groot = v; }
 }

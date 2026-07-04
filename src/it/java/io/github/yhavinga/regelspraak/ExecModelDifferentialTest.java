@@ -3611,6 +3611,100 @@ class ExecModelDifferentialTest {
         java.util.List.of("2024-01-01|2024-01-15|60", "2024-01-15|2024-02-01|65"),
     };
 
+    // ---- §5.8.2/§5.1.4 a SOM over a NAVIGATED to-many TEMPORAL attribute folded PER PERIOD into a TEMPORAL doel
+    //      ("De totale bijdrage van een Vlucht ... als de som van de belastingvermindering per maand van alle
+    //      passagiers van de Vlucht"): was a symmetric marker ("temporele toekenning"). Now a collectList accumulate
+    //      gathers the element timelines and rsTijdSomAlle folds them per merged-knip period with the §5.8.2 leeg rule
+    //      (skip empties, all-empty period -> leeg; "of 0 als die er niet zijn" -> 0). Both back-ends call the byte-
+    //      identical rsTijdSomAlle. ABSOLUTE folded-Segment expectations + DRL==exec parity. ----
+    static final String SOMALLE_SRC =
+        "Domein Bedrag is van het type Numeriek (geheel getal)\n" +
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+        "    de belastingvermindering per maand Bedrag voor elke maand;\n" +
+        "Objecttype de Vlucht (mv: Vluchten)\n" +
+        "    de totale bijdrage Bedrag voor elke maand;\n" +
+        "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+        "Regel R\n    geldig altijd\n        De totale bijdrage van een Vlucht moet berekend worden als de som van de belastingvermindering per maand van alle passagiers van de Vlucht.\n";
+    // "of 0 als die er niet zijn": an all-empty period folds to 0 instead of leeg.
+    static final String SOMALLE_NUL_SRC = SOMALLE_SRC.replace(
+        "van alle passagiers van de Vlucht.",
+        "van alle passagiers van de Vlucht of 0 als die er niet zijn.");
+    // CROSS-UNIT: element €/mnd, doel €/jr — each element timeline restated ×12 (§4.1) BEFORE the per-period sum.
+    static final String SOMALLE_CU_SRC =
+        "Eenheidsysteem Valuta\n    de euro (mv: euros) EUR €\n" +
+        "Eenheidsysteem Tijd\n    de maand mnd\n    het jaar jr = 12 mnd\n" +
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+        "    de belastingvermindering per maand Numeriek (geheel getal) met eenheid €/mnd voor elke maand;\n" +
+        "Objecttype de Vlucht (mv: Vluchten)\n" +
+        "    de totale bijdrage Numeriek (geheel getal) met eenheid €/jr voor elke maand;\n" +
+        "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+        "Regel R\n    geldig altijd\n        De totale bijdrage van een Vlucht moet berekend worden als de som van de belastingvermindering per maand van alle passagiers van de Vlucht.\n";
+    static Passagier passOp(Vlucht v, List<Segment> tl) { Passagier p = new Passagier(); p.setReis(v); p.setBelastingverminderingPerMaand(tl); return p; }
+    static Fixture somAlleFix(String naam, String src, java.util.function.Function<Vlucht, List<Object>> bouw) {
+        return new Fixture(naam, src, () -> bouw.apply(new Vlucht()), Map.of(), l -> tl(((Vlucht) l.get(0)).getTotaleBijdrage()));
+    }
+    static final Fixture[] PHASE_SOMALLE = {
+        // two passengers, staggered timelines: Jan p1=50; Feb p1=60,p2=10 -> 70; Mar p2=10 (p1 leeg, SKIPPED not 0).
+        somAlleFix("§5.8.2 SOM to-many per period (leeg SKIPPED: 50 | 70 | 10)", SOMALLE_SRC, v -> List.of(v,
+            passOp(v, List.of(seg(2024, 1, 1, 2024, 2, 1, "50"), seg(2024, 2, 1, 2024, 3, 1, "60"))),
+            passOp(v, List.of(seg(2024, 2, 1, 2024, 4, 1, "10"))))),
+        // ALL passengers leeg in a period where only one overlaps -> that period is the single value (no phantom 0).
+        somAlleFix("§5.8.2 SOM to-many, one passenger only (verbatim, no phantom 0)", SOMALLE_SRC, v -> List.of(v,
+            passOp(v, List.of(seg(2024, 3, 1, 2024, 5, 1, "33"))))),
+        // EMPTY set (no passengers) -> leeg timeline (empty List<Segment>), §5.8.2 all-empty is leeg.
+        somAlleFix("§5.8.2 SOM to-many over EMPTY set -> leeg", SOMALLE_SRC, v -> List.of(v)),
+        // a GAP period between two passengers' spans is all-empty -> leeg (a knip with a leeg segment), NOT 0.
+        somAlleFix("§5.8.2 SOM to-many with an all-empty GAP -> leeg segment (not 0)", SOMALLE_SRC, v -> List.of(v,
+            passOp(v, List.of(seg(2024, 1, 1, 2024, 2, 1, "40"))),
+            passOp(v, List.of(seg(2024, 3, 1, 2024, 4, 1, "20"))))),
+        // "of 0 als die er niet zijn": the same GAP now folds to 0 instead of leeg.
+        somAlleFix("§5.8.2 SOM to-many 'of 0 als die er niet zijn' -> GAP is 0", SOMALLE_NUL_SRC, v -> List.of(v,
+            passOp(v, List.of(seg(2024, 1, 1, 2024, 2, 1, "40"))),
+            passOp(v, List.of(seg(2024, 3, 1, 2024, 4, 1, "20"))))),
+        // CROSS-UNIT (€/mnd elements -> €/jr doel, each restated ×12 BEFORE the sum): p1=50,p2=10 in Jan -> (50+10)×12=720.
+        somAlleFix("§5.8.2/§4.1 SOM to-many cross-unit (€/mnd->€/jr ×12): (50+10)×12=720", SOMALLE_CU_SRC, v -> List.of(v,
+            passOp(v, List.of(seg(2024, 1, 1, 2024, 2, 1, "50"))),
+            passOp(v, List.of(seg(2024, 1, 1, 2024, 2, 1, "10"))))),
+    };
+    static final Object[] PHASE_SOMALLE_EXPECTED = {
+        java.util.List.of("2024-01-01|2024-02-01|50", "2024-02-01|2024-03-01|70", "2024-03-01|2024-04-01|10"),
+        java.util.List.of("2024-03-01|2024-05-01|33"),
+        java.util.List.of(),
+        java.util.List.of("2024-01-01|2024-02-01|40", "2024-02-01|2024-03-01|leeg", "2024-03-01|2024-04-01|20"),
+        java.util.List.of("2024-01-01|2024-02-01|40", "2024-02-01|2024-03-01|0", "2024-03-01|2024-04-01|20"),
+        java.util.List.of("2024-01-01|2024-02-01|720"),
+    };
+
+    // ---- §8.2 over a NAVIGATED to-many TEMPORAL attribute: a whole-period FORALL across the accumulated element
+    //      timelines ("Een Vlucht is groot indien de belastingvermindering per maand van alle passagiers van de Vlucht
+    //      gedurende het gehele jaar groter is dan 40"): was a symmetric marker. Now a collectList accumulate + an
+    //      rsGeheelPeriodeAlle result-var eval (the §8.2 predicate AND-ed over every element). Both back-ends call the
+    //      byte-identical rsGeheelPeriodeAlle. Absolute firing + DRL==exec parity. Empty set = vacuously WAAR. ----
+    static final String GP_ALLE_SRC =
+        "Domein Bedrag is van het type Numeriek (geheel getal)\n" +
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+        "    de belastingvermindering per maand Bedrag voor elke maand;\n" +
+        "Objecttype de Vlucht (mv: Vluchten)\n    is groot kenmerk (bijvoeglijk);\n" +
+        "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+        "Regel R\n    geldig altijd\n        Een Vlucht is groot indien de belastingvermindering per maand van alle passagiers van de Vlucht gedurende het gehele jaar groter is dan 40.\n";
+    // a full-year segment (1-1-2024 .. 1-1-2025) with value w — the whole-year check needs the full calendar year covered.
+    static Passagier passJaar(Vlucht v, String w) { Passagier p = new Passagier(); p.setReis(v); p.setBelastingverminderingPerMaand(List.of(seg(2024, 1, 1, 2025, 1, 1, w))); return p; }
+    static Fixture gpAlleFix(String naam, java.util.function.Function<Vlucht, List<Object>> bouw) {
+        return new Fixture(naam, GP_ALLE_SRC, () -> bouw.apply(new Vlucht()), Map.of(), l -> ((Vlucht) l.get(0)).isGroot());
+    }
+    static final Fixture[] PHASE_GP_ALLE = {
+        gpAlleFix("§8.2 forall > 40: all passengers 50,60 whole year -> groot", v -> List.of(v, passJaar(v, "50"), passJaar(v, "60"))),
+        gpAlleFix("§8.2 forall > 40: one passenger 30 -> NIET groot (forall fails)", v -> List.of(v, passJaar(v, "50"), passJaar(v, "30"))),
+        gpAlleFix("§8.2 forall > 40: a passenger with a GAP (not whole year) -> NIET groot", v -> List.of(v,
+            passJaar(v, "50"),
+            passOp(v, List.of(seg(2024, 1, 1, 2024, 6, 1, "60"))))),   // only half the year covered -> the bucket fails
+        gpAlleFix("§8.2 forall > 40 over EMPTY set -> groot (vacuous)", v -> List.of(v)),
+        gpAlleFix("§8.2 forall > 40: exactly 40 (not strictly greater) -> NIET groot", v -> List.of(v, passJaar(v, "40"))),
+    };
+    static final Object[] PHASE_GP_ALLE_EXPECTED = {
+        Boolean.TRUE, Boolean.FALSE, Boolean.FALSE, Boolean.TRUE, Boolean.FALSE,
+    };
+
     // ---- §5.8/§13.4.14 a COUNT aggregation as one side of a CONDITION comparison ("Een Vlucht is vol indien het aantal
     //      passagiers van de Vlucht <op> N"): was a symmetric marker ("voorwaarde buiten Phase-B scope"). Now a result-
     //      constrained accumulate CE hoisted after the subject pattern — DRL `Number(intValue <op> N) from accumulate(
@@ -6391,6 +6485,71 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
+    /** §5.8.2/§5.1.4 a SOM over a NAVIGATED to-many TEMPORAL attribute folded PER PERIOD into a TEMPORAL doel now FIRES
+     *  in both back-ends — a collectList accumulate + rsTijdSomAlle (was a symmetric "temporele toekenning" marker). The
+     *  ABSOLUTE folded Segment lists pin the §5.8.2 leeg semantics: an empty contributor is SKIPPED (not 0), an all-empty
+     *  period is leeg, and "of 0 als die er niet zijn" folds that period to 0 instead. DRL==exec parity + no exec skip. */
+    @Test void phase_SOMALLE_temporal_som_over_to_many_is_spec_correct() {
+        for (int i = 0; i < PHASE_SOMALLE.length; i++) {
+            Fixture f = PHASE_SOMALLE[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_SOMALLE_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §8.2 over a NAVIGATED to-many TEMPORAL attribute — a whole-period FORALL across the accumulated element timelines —
+     *  now FIRES in both back-ends (a collectList accumulate + rsGeheelPeriodeAlle result-var eval; was a symmetric
+     *  marker). Absolute firing (forall passes iff EVERY element's whole-year check holds; empty set = vacuously WAAR) +
+     *  DRL==exec parity + no exec skip. The genuinely-undefined timeline-vs-timeline comparison stays a symmetric marker. */
+    @Test void phase_GP_ALLE_wholeperiod_forall_over_to_many_is_spec_correct() {
+        for (int i = 0; i < PHASE_GP_ALLE.length; i++) {
+            Fixture f = PHASE_GP_ALLE[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_GP_ALLE_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §8.2 the genuinely-undefined TIMELINE-vs-TIMELINE whole-period comparison over a navigated to-many set stays a
+     *  SYMMETRIC marker in both back-ends (the DRL markers, the exec skips) — the reachable §8.2 win is the forall vs a
+     *  SCALAR grens (phase_GP_ALLE); a per-moment comparison of one element-set's timeline against ANOTHER's has no §8.2
+     *  fold and is deliberately NOT lowered. Also pins the non-scalar-grens set §8.2 (grens = an own attribute) as a
+     *  symmetric marker: the set eval rides after the collectList accumulate with no $subject-qualified field. */
+    @Test void gehele_periode_over_verzameling_niet_lowerbaar_is_symmetrische_marker() {
+        String hdr =
+            "Domein Bedrag is van het type Numeriek (geheel getal)\n" +
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+            "    de belastingvermindering per maand Bedrag voor elke maand;\n" +
+            "    de inkomen per maand Bedrag voor elke maand;\n" +
+            "Objecttype de Vlucht (mv: Vluchten)\n    is groot kenmerk (bijvoeglijk);\n    de drempel Numeriek (geheel getal);\n" +
+            "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n";
+        record Geval(String naam, String voorwaarde) {}
+        Geval[] gevallen = {
+            // timeline-vs-timeline: both sides are to-many temporal sets — no §8.2 fold defined -> marker/skip.
+            new Geval("tijdlijn-vs-tijdlijn", "de belastingvermindering per maand van alle passagiers van de Vlucht gedurende het gehele jaar groter is dan de inkomen per maand van alle passagiers van de Vlucht"),
+            // non-scalar grens (an OWN attribute of the subject): the set eval has no $subject-qualified field -> marker/skip.
+            new Geval("niet-scalaire grens (eigen attribuut)", "de belastingvermindering per maand van alle passagiers van de Vlucht gedurende het gehele jaar groter is dan de drempel van de Vlucht"),
+        };
+        for (Geval g : gevallen) {
+            String src = hdr + "Regel R\n    geldig altijd\n        Een Vlucht is groot indien " + g.voorwaarde() + ".\n";
+            RegelSpraakModel m = Resolver.resolve(src);
+            assertTrue(m.errors().isEmpty(), () -> g.naam() + " resolver-fout: " + m.errors());
+            String drl = DrlTranspiler.transpile(m);
+            assertTrue(drl.contains("/* TODO"), () -> g.naam() + ": DRL moet markeren (tijdlijn-vs-tijdlijn / niet-scalaire grens over §8.2-verzameling):\n" + drl);
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertFalse(em.overgeslagen().isEmpty(), () -> g.naam() + ": exec moet SKIPPEN, symmetrisch met de DRL-marker");
+        }
+    }
+
     /** §5.8/§13.4.14 a COUNT aggregation as one side of a CONDITION comparison now FIRES in both back-ends — a result-
      *  constrained accumulate CE (was a symmetric marker). Absolute (count vs the literal N over the subject's related
      *  count) across >, >=, ==, < and their boundaries + DRL==exec parity + no exec skip. */
