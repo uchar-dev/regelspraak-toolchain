@@ -825,10 +825,13 @@ final class RuleChecker {
      *  greedy kaleNaam splits the RHS at the LAST "van" (the rule's trailing {@code VAN onderwerp}),
      *  so the role part is the FIRST kaleNaam segment and any further segment is a navigation; this
      *  resolver re-splits per the §13.4-names design rather than changing the grammar.
-     *  <p>Lifts only the 1-hop shape — {@code onderwerpD} is the anker itself, reached by the single
-     *  role {@code rolC} — into a {@link ResolvedFeitCreatie}. A multi-hop navigation (the TOKA
-     *  "verdeling contingent treinmiles over passagiers" example) or an unresolvable role/onderwerp
-     *  keeps an honest WARNING rather than a silent wrong link. */
+     *  <p>Lifts BOTH the 1-hop shape — {@code onderwerpD} is the anker itself, reached by the single
+     *  role {@code rolC} — AND the §9.4 MULTI-HOP shape (the TOKA "verdeling contingent treinmiles over
+     *  passagiers" example, {@code een passagier van de contingentvlucht van het contingent}), whose
+     *  intermediate hops become {@link ResolvedFeitCreatie.Tussenstap}s walked below. The one hard gate
+     *  is that {@code onderwerpD} must be a back-reference to the iterated anker itself (a DIFFERENT
+     *  object of the same type reached by a role — "de aansluitvlucht" — keeps an honest WARNING rather
+     *  than a silent wrong link); an unresolvable role/onderwerp/cardinaliteit likewise WARNs. */
     private void feitCreatie(String naam, FeitCreatieContext fc, VoorwaardeDeelContext vd, Conditie voorwaarde, Geldigheid geldigheid) {
         String rolB = stripArtikel(src(fc.kaleNaam(0)));               // LHS role — the relation being created
         Objecttype anker = bouwer.resolveOnderwerp(fc.onderwerp(0));   // the "one" side / iterated subject

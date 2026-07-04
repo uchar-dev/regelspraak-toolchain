@@ -5063,6 +5063,47 @@ class ExecModelDifferentialTest {
         }
     }
 
+    /** §5.7/§13.4.17.2 a bare "de concatenatie van X, Y en Z" as a STANDALONE gelijkstelling VALUE has NO scalar
+     *  meaning: §5.8.1 says a concatenatie is ALWAYS meervoudig, so it is only defined once an aggregation (het
+     *  aantal / de som / de min-max / de eerste-laatste) consumes it — a bare concatenatie assigned to a scalar
+     *  attribute is a multi-valued-into-scalar with no spec semantics. (And "de concatenatie van" is NOT even a
+     *  spec value keyword: it belongs to §13.4.8.14 uniciteitconcatenatie only; the real §13.4.17.2 value
+     *  concatenatie has no keyword and rides inline in each aggregation's operand list — the aantal/min/max folds.)
+     *  So BOTH back-ends decline it SYMMETRICALLY: the DRL markers ({@code TODO aggregatie CONCATENATIE}), the exec
+     *  skips (overgeslagen). This pins the symmetry AND guards the resolver fix: typing the kind Tekst used to
+     *  fabricate a spurious "Tekst→Numeriek" mismatch over numeric operands that MASKED the honest marker — the
+     *  resolver now leaves it onbekend, so a numeric-operand concatenatie resolves clean and markers like a
+     *  tekst-operand one. See docs/grammar-divergences.md "concatenatie as a standalone value". */
+    @Test void concatenatie_als_standalone_waarde_is_een_symmetrische_marker() {
+        record Geval(String naam, String src) {}
+        Geval[] gevallen = {
+            // numeric operands: post-fix this resolves clean (was a spurious Tekst→Numeriek ERROR that masked the marker)
+            new Geval("numerieke operanden", """
+                Objecttype de Passagier (mv: Passagiers) (bezield)
+                    de prijs Numeriek (geheel getal);
+                    het basistarief Numeriek (geheel getal);
+                    de bodem Numeriek (geheel getal);
+                    het plafond Numeriek (geheel getal);
+                Regel R
+                    geldig altijd
+                        De prijs van een Passagier moet gesteld worden op de concatenatie van het basistarief van een Passagier, de bodem van een Passagier en het plafond van een Passagier.
+                """),
+        };
+        for (Geval g : gevallen) {
+            RegelSpraakModel m = Resolver.resolve(g.src());
+            assertTrue(m.errors().isEmpty(),
+                    () -> "een bare concatenatie-waarde mag geen resolver-fout geven (" + g.naam() + "), enkel een symmetrische marker: " + m.errors());
+            // DRL: the honest marker, never a silently-wrong scalar fold.
+            String drl = DrlTranspiler.transpile(m);
+            assertTrue(drl.contains("/* TODO aggregatie CONCATENATIE"),
+                    () -> "DRL moet de concatenatie MARKEREN (" + g.naam() + "):\n" + drl);
+            // exec: the SAME decline, recorded as an honest skip (never a mis-render).
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertFalse(em.overgeslagen().isEmpty(),
+                    () -> "exec moet de bare concatenatie-waarde SKIPPEN (" + g.naam() + "), symmetrisch met de DRL-marker: " + em.overgeslagen());
+        }
+    }
+
     /** §8.4/§13.4.5 a KENMERKTOEKENNING whose kenmerk is TEMPORAL (kenmerkGranulariteit — its runtime field is a
      *  List&lt;Segment&gt; TRUE-period timeline, not a boolean) must be a SYMMETRIC DECLINE in both back-ends: the
      *  clip that lowers the rule's voorwaarde/geldigheid into a List&lt;Segment&gt; of true-periods is an

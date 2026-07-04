@@ -1021,6 +1021,35 @@ of one object) is unaffected — it lowers to a nested ternary via `concatenatie
 emits its accumulate. Carded: the real per-operand multi-set fold (one accumulate per set, combined),
 and the analogous `SOM`/`TOTAAL` multi-set case.
 
+### Concatenatie as a standalone value — symmetric marker (spec-undefined)
+
+A bare **`de concatenatie van X, Y en Z`** used as a *standalone* value (e.g. a gelijkstelling
+RHS) has **no spec VALUE meaning**, and both back-ends decline it symmetrically — the DRL emits
+`/* TODO aggregatie CONCATENATIE */`, the exec records an `overgeslagen` skip. Two spec facts
+settle this (decide-and-document, cf. the Teken / temporal-kenmerktoekenning precedents):
+
+1. **The keyword is not a value keyword.** The literal phrase *"de concatenatie van"* appears in
+   the spec **only** as `uniciteitconcatenatie` (§13.4.8.14) — the uniqueness-validation form. The
+   real §13.4.17.2 value concatenatie has **no keyword**: `<concatenatie> ::= <expressie>
+   [(", " <expressie>)*] (" en " | " of ") <expressie>`. So this `primaireExpressie` surface
+   (`CONCATENATIE_VAN expressie … EN expressie`) is a repo artifact that borrowed the uniciteit
+   keyword; the genuine §5.7 value concatenatie is consumed **inline** in each aggregation's
+   operand list (`het aantal X, Y en Z`; `de minimale/maximale/eerste/laatste van A en B`) and in
+   the beslistabel `is gelijk aan A, B of C` condition cell — all of which DO lower.
+2. **A concatenatie is always meervoudig (§5.8.1).** "Een concatenatie is altijd meervoudig." It
+   is a *set/list* of the operands' common type, produced to be **aggregated** (§5.8: aantal / som /
+   min-max / eerste-laatste). Assigning a multi-valued concatenatie to a *scalar* attribute is
+   therefore meaningless — there is nothing to fold it into a single value. The honest, symmetric
+   marker is correct.
+
+Resolver note: the kind was formerly typed `Datatype.Tekst()`, which was doubly wrong (a
+concatenatie is not tekst) and, for numeric operands, fabricated a spurious "kan een waarde van
+type Tekst niet toekennen aan een Numeriek" ERROR that **masked** the honest marker. It now types
+`onbekend()` (the not-lowered-kind convention), so a numeric-operand concatenatie resolves clean
+and markers exactly like a tekst-operand one. Pinned by
+`ExecModelDifferentialTest.concatenatie_als_standalone_waarde_is_een_symmetrische_marker` (DRL
+marker + exec skip) and `DrlTest.onmapbare_functie_wordt_gemarkeerd_niet_verzonnen`.
+
 ### Aggregation operand separator — `en` splits, it is not a name word
 
 The §13.4.17 concatenation-of-expressies forms — "de eerste/laatste/minimale/maximale

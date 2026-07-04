@@ -1126,7 +1126,16 @@ final class ExpressieBouwer {
             case MINIMUM, MAXIMUM -> args.size() <= 1 || !(eerste instanceof Datatype.Numeriek n) ? eerste
                     : new Datatype.Numeriek(alleGeheel(args), minDecimalen(args), n.teken(), n.eenheid());
             case AANTAL -> new Datatype.Numeriek(true, 0, Datatype.Teken.NIET_NEGATIEF, null); // a count
-            case CONCATENATIE -> new Datatype.Tekst();
+            // §5.7/§13.4.17.2: a concatenatie is a MULTI-VALUED set (§5.8.1 "altijd meervoudig"), NOT a scalar
+            // Tekst — it carries the common type of its operands and is only meaningful once an aggregation
+            // (het aantal / de som / de min-max / de eerste-laatste) consumes it (§5.8). This "de concatenatie
+            // van …" primaireExpressie surface is a repo artifact (the spec keyword belongs to §13.4.8.14
+            // uniciteitconcatenatie only; the real §13.4.17.2 value concatenatie has no keyword and lives inline
+            // in each aggregation's operand list). As a STANDALONE value it has no scalar meaning, so both back-
+            // ends marker it symmetrically; typing it Tekst fabricated a spurious "Tekst→Numeriek" mismatch that
+            // MASKED that honest marker. Leave it onbekend (the not-lowered-kind convention) — see
+            // docs/grammar-divergences.md "concatenatie as a standalone value".
+            case CONCATENATIE -> onbekend();
             // §13.4.17.13: a square root is non-negative; its precision comes from the MANDATORY afronding that
             // wraps it (a sqrt is generally irrational), and its unit would be the operand's unit's root —
             // composite-unit territory, dropped for now (carded). The afronding's Afgerond re-derives decimals.
