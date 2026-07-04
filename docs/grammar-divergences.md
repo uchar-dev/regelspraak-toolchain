@@ -1921,11 +1921,34 @@ previously fell through to a silent onopgelost):
   passagiers) needs one pattern variable PER mention, which the single-subject rule IR does not carry —
   WARNING + honest marker in BOTH back-ends. Before this change the ordinal was silently DROPPED, so every
   same-named mention aliased to the one resolved binding: a latent silent-wrong that is now visible.
-  Per-mention binding is the documented residual (no corpus program and only one truncated spec fragment,
-  spec-antlr-06, use the construct at all).
+
+**Why this stays a marker — a spec gap, not just an unbuilt feature (DECIDED, per-mention-binding residual
+closed).** §5.5.3 ¶1888 is the SOLE normative sentence on ordinals; it says only that the rangtelwoord gives
+"de plaats van het bedoelde onderwerp in de regel". It pins no operational semantics: there is not one worked
+rule in the whole spec (main + syntaxdiagrammen + typeringen + TOKA) that binds two same-named onderwerpen and
+resolves an ordinal over them; "plaats … in de regel" is never made precise (textual mention order vs
+role-declaration order vs binding order); the symmetric wederkerig case — the only same-name-twice construct the
+spec defines, the Partnerrelatie with two roles both named `partner`, main-spec L1296-1308 — is never exercised
+with `eerstgenoemde`/`laatstgenoemde`; and the typeringen matrix is silent on ordinals entirely. So a genuinely
+multi-bound rule is spec-UNDERDETERMINED: even with a per-mention IR we would have no spec-defined pairing/ranging
+to lower to. Building it now would invent semantics, so it stays a visible WARNING + honest marker. (The one
+truncated spec fragment that uses the construct at all, spec-antlr-06, is an isolated expression with no rule and
+no binding context; no corpus PROGRAM reaches it.)
+
+**No silent wrong-fire without an ordinal (probe verdict).** RegelSpraak's single-subject model (§5.5.3 head,
+L1874-1888) is that a rule has AT LEAST ONE universeel onderwerp and every same-typed `een <X>` mention without a
+rangtelwoord binds the SAME universal instance — this is the spec's own worked style (the corpus writes `een
+passagier` two or three times per rule, all the subject: toka-42/-45/-24, spec-main-63/-125/…). So the resolver
+reading a bare repeated `een X` as the subject's own attribute (probed: `de leeftijd … groter dan de leeftijd van
+een Persoon` → `Persoon( leeftijd > leeftijd )`; `de bijdrage van een Passagier plus de bijdrage van een
+Passagier` → `rsPlus(getBijdrage(), getBijdrage())`) is the CORRECT single-subject lowering, not a wrong-fire —
+a second DISTINCT binding of the same name is expressible ONLY with a rangtelwoord, which is exactly the
+WARNING+marker path above. There is therefore nothing to "un-alias": the marker is required only when an ordinal
+asks for a per-mention distinction the IR (and the spec) cannot supply.
 
 Pinned by RangtelwoordTest (bare resolution fires; positie-beyond ERROR incl. the numeric "als 6e genoemde"
-form; multi-binding WARNING + marker; the ordinal-attribute form resolves).
+form; multi-binding WARNING + marker in both the arithmetic and same-type-two-role-feittype shape; the bare
+repeated `een X` fires as a single-subject read with no diagnostic; the ordinal-attribute form resolves).
 
 ## §9.10 recursie / regelgroep — out of SPEC scope; available as a DOCUMENTED EXTENSION
 

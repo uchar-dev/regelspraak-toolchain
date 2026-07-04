@@ -68,6 +68,40 @@ class RangtelwoordTest {
                 "de meervoudig-gebonden ordinale verwijzing moet een marker blijven");
     }
 
+    @Test void twee_kale_bindingen_zonder_rangtelwoord_zijn_het_universele_subject_geen_marker() {
+        // §5.5.3 (head, main-spec L1874-1888): a rule's universeel onderwerp binds ONE instance and every same-typed
+        // "een <X>" WITHOUT a rangtelwoord refers to that SAME instance (the spec's own worked style — the corpus
+        // writes "een passagier" 2-3× per rule, all the subject). So a bare repeated "een Passagier" is the
+        // single-subject own-read, NOT a second binding: it fires with NO diagnostic. A second DISTINCT binding is
+        // expressible only WITH a rangtelwoord (the WARNING+marker path), so there is no silent wrong-fire to fix here.
+        RegelSpraakModel m = regel("de bijdrage van een Passagier plus de bijdrage van een Passagier");
+        assertTrue(m.diagnostics.isEmpty(), () -> "geen diagnostiek verwacht voor het kale universele subject: " + m.diagnostics);
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("TODO"), () -> "kale herhaalde 'een X' is het subject, geen marker:\n" + drl);
+        assertTrue(drl.contains("$subject.getBijdrage()"), () -> "beide vermeldingen lezen het eigen attribuut:\n" + drl);
+    }
+
+    @Test void gelijktypige_tweerol_feittype_ordinaal_over_de_enige_binding_lost_op() {
+        // §5.5.3: a same-TYPE two-role feittype (persoon/partner, both Persoon). The rule binds Persoon ONCE via the
+        // universeel onderwerp, so an ordinal ("de eerstgenoemde Persoon") trivially selects that one binding and reads
+        // bare. (A rule that bound Persoon twice would take the WARNING+marker path — see below.)
+        String src = """
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de leeftijd Numeriek (geheel getal);
+                de score Numeriek (geheel getal);
+            Feittype partnerschap
+                de persoon Persoon
+                de partner Persoon
+            Eén persoon heeft één partner
+            Regel score
+                geldig altijd
+                    De score van een Persoon moet berekend worden als de leeftijd van de eerstgenoemde Persoon.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte errors: " + m.errors());
+        assertFalse(DrlTranspiler.transpile(m).contains("TODO"), "eerstgenoemde over de enige binding moet vuren");
+    }
+
     @Test void ordinale_attribuutvorm_lost_kaal_op() {
         // §13.4.2.9 "de <rangtelwoord> <attribuutnaam> van <onderwerp>" — the eerstgenoemde reading over a
         // single mention is the bare attribute read (this branch of attribuutVanOnderwerp was a silent

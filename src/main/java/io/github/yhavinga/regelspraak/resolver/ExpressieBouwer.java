@@ -1252,9 +1252,16 @@ final class ExpressieBouwer {
             return onopgelost(bron);
         }
         if (bindingen >= 2) {
+            // §5.5.3 ¶1888 states ONLY that a rangtelwoord points out "de plaats van het bedoelde onderwerp in de
+            // regel"; it pins no operational semantics — no worked multi-binding rule, no definition of what the
+            // pairing/ranging over the several bindings is, and the typeringen matrix is silent. So a genuinely
+            // multi-bound rule is spec-UNDERDETERMINED, not merely unimplemented: we cannot lower it soundly (which
+            // mention order, which pairing). It stays a visible WARNING + honest marker in both back-ends — never a
+            // silent alias of one binding (which is what dropping the ordinal used to mean).
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
                     "rangtelwoord: de regel bindt " + bindingen + " onderwerpen '" + naam
-                    + "'; een verwijzing per vermelding (§5.5.3) wordt nog niet ondersteund — de verwijzing blijft een marker",
+                    + "'; §5.5.3 definieert geen bindings-/ordeningssemantiek voor zo'n verwijzing per vermelding — "
+                    + "de verwijzing blijft een marker (wordt nog niet ondersteund)",
                     r.getStart().getLine()));
             return onopgelost(bron);
         }
