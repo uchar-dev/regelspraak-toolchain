@@ -2018,3 +2018,19 @@ build/fire time, without a diagnostic. Decided:
 
 Pinned by phase_G_kenmerkwaardetoekenning_is_spec_correct (absolute created-object descriptors, both
 back-ends, waar and onwaar) and the RuleCheckTest §13.4.6.4 legality cases.
+
+## §13.4.17.53 "over de <meervoud> vanaf … t/m …" — resolver-hersplitsing van de opgeslokte staart
+
+The explicit §13.4.17.53 aggregeren-over-verzameling form ("de som van zijn belasting in jaar over de
+jaardimensies vanaf X t/m Y") cannot be carved out syntactically: OVER and DE are necessarily name words
+(declared attribute names like "belasting over de afgelopen vier jaar" contain them), so the greedy
+attribute kaleNaam absorbs the " over de <meervoud>" tail, the possessive operand fails to resolve, and
+the selection reaches the resolver as the BARE §5.8.5 interval with an Onopgelost operand. Consistent
+with the §13.4-names design (the objectcreatie 'rol met attribuut' and feitcreatie 'van'-splits), the
+RESOLVER re-splits by declared names: the tail is peeled only when it is a declared dimension's
+meervoudsvorm AND the peeled head is the subject's OWN declared attribute dimensioned by exactly that
+dimension; the fold operand is rebuilt with the declared spelling and element datatype. Anything else
+(unknown meervoud, undimensioned head, navigated operand) keeps the honest marker. The
+§13.4.17.52 "over alle <meervoud>" and §13.4.17.54 "in {…}" forms parse cleanly (ALLE / IN LBRACE are
+not name words) and needed no re-split — they already lowered, previously untested. All four OVER-forms
+are pinned by phase_G_dim_over_vormen_zijn_spec_correct (absolute values, both back-ends).

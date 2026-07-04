@@ -325,7 +325,10 @@ final class ExpressieBouwer {
         // transpiler folds the attribute over exactly those labels.
         Expr.DimensieSelectie dimSel = resolveerDimensieSelectie(f, argumenten);
         if (dimSel != null)
-            return new Expr.Functie(kind, argumenten, elem, leegwaarde, filter, dimSel, type, bron);
+            // recomputed: the §13.4.17.53 re-split may have rebuilt the polluted operand in-place, so the
+            // pre-computed type/element (derived from the then-Onopgelost argument) can be stale.
+            return new Expr.Functie(kind, argumenten, aggregatieElement(kind, argumenten), leegwaarde, filter,
+                    dimSel, functieType(kind, argumenten), bron);
         // §13.4.17.51-.58: a dimensieselectie that did NOT resolve, or a conditiebijexpressie ("gedurende
         // de tijd dat …") — the temporal axis is not built yet (p5) — must not be SILENTLY DROPPED, which
         // would aggregate the whole set as if unrestricted. Capture its source as an Onopgelost filter so
@@ -412,8 +415,34 @@ final class ExpressieBouwer {
         DimensieSelectieContext dim = f instanceof SomFuncContext s ? s.dimensieSelectie()
                 : f instanceof MinMaxFuncContext m ? m.dimensieSelectie() : null;
         if (dim == null) return null;
-        if (argumenten.size() != 1 || !(argumenten.get(0) instanceof Expr.AttribuutRef a) || a.objecttype() == null)
-            return null;
+        if (argumenten.size() != 1) return null;
+        // §13.4.17.53 the EXPLICIT "over de <meervoud> vanaf … t/m …" form: OVER and DE are name words
+        // (attribute names like "belasting over de afgelopen vier jaar" need them), so the greedy attribute
+        // kaleNaam absorbs the " over de <meervoud>" tail — the possessive operand then fails to resolve
+        // AT ALL (an Expr.Onopgelost) and the explicit form reaches here as the BARE interval. Re-split by
+        // declared names (the §13.4-names design, like the objectcreatie/feitcreatie re-splits): peel the
+        // tail only when it is a declared dimension's meervoud AND the peeled head is the subject's OWN
+        // declared attribute ("zijn/haar …") dimensioned by exactly that dimension; the fold operand is
+        // rebuilt clean (declared spelling + element datatype) in the argument list.
+        RegelSpraakModel.Dimensie expliciet = null;
+        if (dim.VANAF() != null && argumenten.get(0) instanceof Expr.Onopgelost on && huidigSubject != null
+                && on.bron() != null && on.bron().matches("(?is)(zijn|haar)\\s+.*")) {
+            int snee = on.bron().toLowerCase().lastIndexOf(" over de ");
+            if (snee >= 0) {
+                String kop = on.bron().substring(0, snee).replaceFirst("^(?is)(zijn|haar)\\s+", "");
+                String mv = on.bron().substring(snee + " over de ".length()).trim();
+                RegelSpraakModel.Dimensie dd = model.dimensieOpMeervoud(mv);
+                List<String> kopDims = dd == null ? List.of() : huidigSubject.dimensiesVan(kop);
+                if (dd != null && kopDims.size() == 1 && kopDims.get(0).equalsIgnoreCase(dd.naam())) {
+                    String declared = huidigSubject.attributen.keySet().stream()
+                            .filter(n -> n.equalsIgnoreCase(kop)).findFirst().orElse(kop);
+                    argumenten.set(0, new Expr.AttribuutRef(declared, huidigSubject, "zijn", null,
+                            huidigSubject.attribuut(declared), on.bron(), false));
+                    expliciet = dd;
+                }
+            }
+        }
+        if (!(argumenten.get(0) instanceof Expr.AttribuutRef a) || a.objecttype() == null) return null;
         if (a.objecttype() != huidigSubject) return null;   // only the subject's OWN dimensioned attribuut folds; a navigated read is deferred
         List<String> attrDims = a.objecttype().dimensiesVan(a.attribuut());
         if (attrDims.size() != 1) return null;   // not gedimensioneerd, or multi-dimension (composite key) — deferred
@@ -421,9 +450,9 @@ final class ExpressieBouwer {
         RegelSpraakModel.Dimensie d;
         List<String> labels;
         if (dim.VANAF() != null) {
-            // §5.8.5 bare interval: the dimension is left implicit; unambiguous because the attribute carries
-            // exactly one dimension (guaranteed above).
-            d = model.dimensieOpNaam(attrDims.get(0));
+            // §5.8.5 bare interval: the dimension is left implicit (unambiguous — the attribute carries
+            // exactly one dimension, guaranteed above); the re-split §13.4.17.53 form carries it explicitly.
+            d = expliciet != null ? expliciet : model.dimensieOpNaam(attrDims.get(0));
             if (d == null) return null;
             labels = interval(d, src(dim.dimensieWaarde(0)), src(dim.dimensieWaarde(1)));
         } else if (dim.aggregerenOverAlleDimensies() != null) {

@@ -5545,6 +5545,11 @@ class ExecModelDifferentialTest {
               geldig altijd
                 De betaalde belasting over de afgelopen vier jaar van een Natuurlijk persoon moet berekend worden als de som van zijn betaalde belasting in jaar vanaf vier jaar geleden t/m een jaar geleden.
             """;
+    private static final Map<String, BigDecimal> DIM7_WAARDEN = Map.of(
+            "zes jaar geleden", new BigDecimal(11), "vijf jaar geleden", new BigDecimal(22),
+            "vier jaar geleden", new BigDecimal(100), "drie jaar geleden", new BigDecimal(200),
+            "twee jaar geleden", new BigDecimal(300), "een jaar geleden", new BigDecimal(400),
+            "heden", new BigDecimal(9999));
     static final Fixture[] PHASE_G_DIM = {
         // D1 §5.8.5 interval fold: sum only the labels in [vier jaar geleden … een jaar geleden] = 100+200+300+400 = 1000.
         new Fixture("§5.8.5 dimensie-som vanaf/t-m telt alleen het interval (1000)",
@@ -5561,6 +5566,47 @@ class ExecModelDifferentialTest {
             () -> List.<Object>of(np(Map.of("drie jaar geleden", new BigDecimal(200), "een jaar geleden", new BigDecimal(400)))),
             Map.of(),
             l -> ((NatuurlijkPersoon) l.get(0)).getBetaaldeBelastingOverDeAfgelopenVierJaar()),   // 600
+
+        // D4 §13.4.17.52 "over alle <meervoud>": every declared label folds — 11+22+100+200+300+400+9999 = 11032.
+        new Fixture("§13.4.17.52 som over alle jaardimensies telt elk label (11032)",
+            DIM7_HDR + """
+            Regel Totaal betaalde belasting over 4 jaar
+              geldig altijd
+                De betaalde belasting over de afgelopen vier jaar van een Natuurlijk persoon moet berekend worden als de som van zijn betaalde belasting in jaar over alle jaardimensies.
+            """,
+            () -> List.<Object>of(np(DIM7_WAARDEN)), Map.of(),
+            l -> ((NatuurlijkPersoon) l.get(0)).getBetaaldeBelastingOverDeAfgelopenVierJaar()),   // 11032
+
+        // D5 §13.4.17.53 the EXPLICIT "over de <meervoud> vanaf … t/m …" form (the resolver re-splits the
+        //    ' over de jaardimensies' tail the greedy attribute name absorbed): same interval as D1 = 1000.
+        new Fixture("§13.4.17.53 som over de jaardimensies vanaf/t-m (expliciete vorm) telt het interval (1000)",
+            DIM7_HDR + """
+            Regel Totaal betaalde belasting over 4 jaar
+              geldig altijd
+                De betaalde belasting over de afgelopen vier jaar van een Natuurlijk persoon moet berekend worden als de som van zijn betaalde belasting in jaar over de jaardimensies vanaf vier jaar geleden t/m een jaar geleden.
+            """,
+            () -> List.<Object>of(np(DIM7_WAARDEN)), Map.of(),
+            l -> ((NatuurlijkPersoon) l.get(0)).getBetaaldeBelastingOverDeAfgelopenVierJaar()),   // 1000
+
+        // D6 §13.4.17.54 "in {A, B en C}" bereik: exactly the listed labels — 100+300+9999 = 10399.
+        new Fixture("§13.4.17.54 som over de jaardimensies in {…} telt precies de genoemde labels (10399)",
+            DIM7_HDR + """
+            Regel Totaal betaalde belasting over 4 jaar
+              geldig altijd
+                De betaalde belasting over de afgelopen vier jaar van een Natuurlijk persoon moet berekend worden als de som van zijn betaalde belasting in jaar over de jaardimensies in {vier jaar geleden, twee jaar geleden en heden}.
+            """,
+            () -> List.<Object>of(np(DIM7_WAARDEN)), Map.of(),
+            l -> ((NatuurlijkPersoon) l.get(0)).getBetaaldeBelastingOverDeAfgelopenVierJaar()),   // 10399
+
+        // D7 §13.4.17.52 MAX over alle labels: max of the seven values = 9999.
+        new Fixture("§13.4.17.52 maximale waarde over alle jaardimensies (9999)",
+            DIM7_HDR + """
+            Regel Totaal betaalde belasting over 4 jaar
+              geldig altijd
+                De betaalde belasting over de afgelopen vier jaar van een Natuurlijk persoon moet berekend worden als de maximale waarde van zijn betaalde belasting in jaar over alle jaardimensies.
+            """,
+            () -> List.<Object>of(np(DIM7_WAARDEN)), Map.of(),
+            l -> ((NatuurlijkPersoon) l.get(0)).getBetaaldeBelastingOverDeAfgelopenVierJaar()),   // 9999
 
         // D3 §3.6 DimensieCel read: "… van huidig jaar" lowers to map.get("huidig jaar") = 222.
         new Fixture("§3.6 dimensiecel lezen pakt het juiste label (222)",
@@ -5610,7 +5656,26 @@ class ExecModelDifferentialTest {
         }
     }
 
-    @Test void phase_G_dimensie_matches_drl_back_end()             { runDifferential("Phase G dim", PHASE_G_DIM, 3); }
+    @Test void phase_G_dimensie_matches_drl_back_end()             { runDifferential("Phase G dim", PHASE_G_DIM, 7); }
+    /** §13.4.17.52-.54 the three OVER-forms (alle / vanaf-t/m expliciet / in {…}) + MAX-over-alle —
+     *  ABSOLUTE values in BOTH back-ends (a shared wrong-label-set bug would pass the parity-only run).
+     *  The .53 explicit form also locks the resolver's " over de <meervoud>"-tail re-split. */
+    @Test void phase_G_dim_over_vormen_zijn_spec_correct() {
+        Object[] verwacht = { new BigDecimal(11032), new BigDecimal(1000), new BigDecimal(10399), new BigDecimal(9999) };
+        for (int i = 0; i < verwacht.length; i++) {
+            Fixture f = PHASE_G_DIM[2 + i];   // D4..D7
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            assertFalse(DrlTranspiler.transpile(m).contains("/* TODO"),
+                    () -> f.naam() + " DRL moet vuren (geen marker):\n" + DrlTranspiler.transpile(m));
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(verwacht[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_G_objectcreatie_matches_drl_back_end()        { runObjDifferential("Phase G obj", PHASE_G_OBJ, 4); }
     /** §13.4.6.4 kenmerkwaardetoekenning — ABSOLUTE pin of the created object's kenmerk in BOTH back-ends
      *  (waar -> true, onwaar -> false; a shared drop-the-kenmerk bug would pass the parity-only Phase G run). */
