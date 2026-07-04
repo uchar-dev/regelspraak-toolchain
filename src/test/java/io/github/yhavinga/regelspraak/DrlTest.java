@@ -3883,17 +3883,34 @@ class DrlTest {
      *  (the ONE rs* implementation), and the §9.8 dagsoort predicates as session globals. Sweeps every corpus
      *  snippet AND the full TOKA casus as one model; the exercised-count floor keeps a silent skip from
      *  hollowing the sweep out. */
+    /** The corpus files this sweep may skip, each with its documented reason. EVERY corpus file
+     *  resolves+transpiles today, so the list is EMPTY — a file that stops transpiling FAILS the sweep
+     *  (the former catch-continue hid that silently), and a listed file that transpiles again fails as a
+     *  stale entry so the skip cannot outlive its reason. Add a name here only deliberately. */
+    private static final java.util.Set<String> CORPUS_FRAGMENT_SKIPS = java.util.Set.of();
+
     @Test void corpus_drl_bevat_geen_enkele_function_definitie() throws java.io.IOException {
         java.nio.file.Path root = java.nio.file.Path.of("examples");
-        org.junit.jupiter.api.Assumptions.assumeTrue(java.nio.file.Files.isDirectory(root),
-                "corpus absent (run tools/extract_corpus.py)");
+        // key the assumption on the EXTRACTED corpus (spec-main is gitignored, produced by
+        // tools/extract_corpus.py): a fresh clone has examples/ via its tracked subdirs but only ~55
+        // files, which would fail the 202-floor below instead of skipping.
+        org.junit.jupiter.api.Assumptions.assumeTrue(java.nio.file.Files.isDirectory(root.resolve("spec-main")),
+                "extracted corpus absent (run tools/extract_corpus.py / make verify-corpus)");
         int getranspileerd = 0;
         try (var files = java.nio.file.Files.walk(root)) {
             for (java.nio.file.Path f : files.filter(x -> x.toString().endsWith(".rs")).sorted().toList()) {
+                String naam = f.getFileName().toString();
                 String drl;
                 try {
                     drl = DrlTranspiler.transpile(Resolver.resolve(java.nio.file.Files.readString(f)));
-                } catch (RuntimeException fragment) { continue; }   // a non-parsing fragment proves nothing here
+                } catch (RuntimeException e) {
+                    assertTrue(CORPUS_FRAGMENT_SKIPS.contains(naam), () -> "corpusbestand " + f
+                            + " transpileert niet meer — geen stille skip; onderzoek de regressie of voeg het"
+                            + " BEWUST aan CORPUS_FRAGMENT_SKIPS toe met reden: " + e);
+                    continue;
+                }
+                assertFalse(CORPUS_FRAGMENT_SKIPS.contains(naam), () -> "CORPUS_FRAGMENT_SKIPS-entry '" + naam
+                        + "' is verouderd — het bestand transpileert weer; verwijder de entry");
                 assertTrue(drl.lines().noneMatch(l -> l.startsWith("function ")),
                         () -> "gegenereerde DRL bevat een function-definitie voor " + f + ":\n" + drl);
                 getranspileerd++;
@@ -3913,7 +3930,8 @@ class DrlTest {
             getranspileerd++;
         }
         final int n = getranspileerd;
-        assertTrue(n >= 150, () -> "corpus-sweep te smal: slechts " + n + " corpusmodellen getranspileerd");
+        // 201 corpus files + the assembled TOKA model at HEAD; the floor may only ever grow.
+        assertTrue(n >= 202, () -> "corpus-sweep te smal: slechts " + n + " corpusmodellen getranspileerd");
     }
 
     /** declared-names-only IR: the IR carries only DECLARED names — a WRITTEN PLURAL binds its declared singular at
