@@ -305,11 +305,15 @@ public final class ExecModelTranspiler {
         // scalar: the value must be a §13.4.17.57/.58 timeline producer (aantal-dagen-in / tijdsevenredig deel).
         RegelSpraakModel.Granulariteit doelGran = doel.objecttype().attribuutGranulariteit.get(doel.attribuut());
         boolean temporalDoel = doelGran != null && !doel.objecttype().attribuutTijdlijnAantal.containsKey(doel.attribuut());
-        // §8.2 a temporal KENMERK doel (a List<Segment> true-period timeline) cannot be written a scalar boolean —
-        // setX(true) on a List field throws at fire time. No producer for it yet, so skip honestly (never mis-render).
+        // §8.4/§13.4.5 a temporal KENMERK doel (kenmerkGranulariteit — a List<Segment> true-period timeline) cannot
+        // be written a scalar boolean: setX(true) on a List field throws at fire time. The clip that lowers the
+        // rule's voorwaarde/geldigheid into a List<Segment> of TRUE-periods is an under-specified WRITE producer
+        // (§8.4 fixes the READ side — "gedurende de tijd dat <temporeel kenmerk>" — not the toekenning's
+        // periodization), so skip honestly (never mis-render). The DRL back-end MARKERS it identically (its
+        // "temporele kenmerktoekenning" TODO), keeping the two symmetric.
         if (r.soort() == ResolvedRegel.Soort.KENMERKTOEKENNING
                 && doel.objecttype().kenmerkGranulariteit.containsKey(doel.attribuut()))
-            return skip("regel (temporele kenmerktoekenning — latere fase): " + r.naam());
+            return skip("regel (temporele kenmerktoekenning — §8.4/§13.4.5 onbepaalde write-producer): " + r.naam());
         // §5.8/§13.4.17 AGGREGATION value (SOM/TOTAAL/AANTAL/MIN/MAX over related elements): an accumulate CE binds
         // the result in the when, read in the consequence — distinct from a scalar fact-local value.
         WaardeFn tijdTotaal = !temporalDoel && isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie ftt

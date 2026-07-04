@@ -5063,6 +5063,46 @@ class ExecModelDifferentialTest {
         }
     }
 
+    /** §8.4/§13.4.5 a KENMERKTOEKENNING whose kenmerk is TEMPORAL (kenmerkGranulariteit — its runtime field is a
+     *  List&lt;Segment&gt; TRUE-period timeline, not a boolean) must be a SYMMETRIC DECLINE in both back-ends: the
+     *  clip that lowers the rule's voorwaarde/geldigheid into a List&lt;Segment&gt; of true-periods is an
+     *  under-specified WRITE producer (§8.4 fixes the READ side — "gedurende de tijd dat &lt;temporeel kenmerk&gt;" —
+     *  not the toekenning's periodization). This USED to be a masked back-end split: the exec honestly SKIPPED it,
+     *  but the DRL fell through to a scalar setX(true) on the List field, which does NOT even compile ("Unable to
+     *  Analyse Expression"). Now the DRL MARKERS it — the rule COMPILES, FIRES, and leaves the timeline untouched
+     *  (an inert /* TODO *&#47; null modify) — and the exec still records overgeslagen. Assert BOTH: exec skips,
+     *  DRL compiles + fires + writes nothing (never a crash, never a mis-typed write). */
+    @Test void temporal_kenmerktoekenning_is_a_symmetric_decline() {
+        // The gating voorwaarde shape is irrelevant to the decline (the doel itself is the reason); pin two.
+        for (String voorwaarde : new String[]{"indien zijn leeftijd groter is dan 18", ""}) {
+            String src = ("""
+                Objecttype de Passagier (mv: Passagiers) (bezield)
+                    de leeftijd Numeriek (geheel getal);
+                    is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
+                Regel Rechthebbend
+                    geldig altijd
+                        Een Passagier is rechthebbend %s.
+                """).formatted(voorwaarde).replace(" .", ".");
+            RegelSpraakModel m = Resolver.resolve(src);
+            assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+
+            // exec: an honest skip (overgeslagen names the temporele kenmerktoekenning).
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertFalse(em.overgeslagen().isEmpty(),
+                    () -> "exec moet de temporele kenmerktoekenning SKIPPEN, niet mis-renderen: " + em.overgeslagen());
+            assertTrue(em.overgeslagen().stream().anyMatch(s -> s.contains("temporele kenmerktoekenning")),
+                    () -> "exec skip moet de temporele kenmerktoekenning benoemen: " + em.overgeslagen());
+
+            // DRL: MUST compile (drlBase asserts no ERROR — pre-fix this THREW "Unable to Analyse Expression"), and
+            // firing over an in-range Passagier must leave the temporal kenmerk field NULL (an inert marker, never a
+            // scalar boolean written into the List<Segment> field).
+            Fixture f = single("temporele kenmerktoekenning (" + voorwaarde + ")", src,
+                    () -> passagier(p -> p.setLeeftijd(new BigDecimal(20))), Map.of(), Passagier::getRechthebbend);
+            Object viaDrl = fire(drlBase(m), f);
+            assertNull(viaDrl, () -> "DRL moet de tijdlijn ONGEMOEID laten (inert marker), niet schrijven: " + viaDrl);
+        }
+    }
+
     // ---- Phase G fixtures: §13.4.7 feitcreatie (a created relation = a reference field set on the doel) ----
     /** The index of {@code ref} within the facts list (stable across both back-ends' fresh facts), or null when the
      *  reference is unset — so a created relation compares by WHICH fact it points at, not by (per-fire) identity. */

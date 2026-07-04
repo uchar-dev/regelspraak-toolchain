@@ -1069,6 +1069,18 @@ public final class DrlTranspiler {
             // Mirrors the exec multi-period doel skip.
             rule.dan("    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( "
                     + todo("meer-periodieke temporele toekenning (§13.3.6.7)", r.waarde().bron()) + " )\n    }\n");
+        } else if (r.doel() instanceof Expr.AttribuutRef a && a.navigatieRol() == null && a.objecttype() != null
+                && a.objecttype().kenmerkGranulariteit.containsKey(a.attribuut())) {
+            // §8.4/§13.4.5 a TEMPORAL KENMERK doel (kenmerkGranulariteit — its field is a List<Segment> TRUE-period
+            // timeline, not a boolean) cannot take the scalar `setK(true)` the bare value branch below would emit:
+            // that write does not even compile ("Unable to Analyse Expression" — a boolean into a List field). The
+            // clip that lowers the rule's voorwaarde/geldigheid into a List<Segment> of TRUE-periods is an
+            // under-specified WRITE producer (§8.4 fixes the READ side — "gedurende de tijd dat <temporeel kenmerk>"
+            // — but not the toekenning's periodization), so MARKER it honestly. Mirrors the exec back-end's skip
+            // (ExecModelTranspiler: "temporele kenmerktoekenning — latere fase"), keeping the two symmetric. The
+            // marker is COMMENT-ONLY (no modify): a `setK(null)` write would WIPE a seeded timeline the exec skip
+            // leaves intact — a destructive "marker" and an asymmetry, not an inert one.
+            rule.dan("    /* TODO " + commentVeilig("temporele kenmerktoekenning (§8.4/§13.4.5): " + r.doel().bron()) + " */\n");
         } else if (valueStr != null && r.doel() instanceof Expr.AttribuutRef a) {
             // restate the value in the target's unit (§4); §6.1.2 forbids AUTO-rounding —
             // if the result has too many decimals the author must add an explicit afronding.
