@@ -1093,6 +1093,40 @@ class RuleCheckTest {
                 () -> "verwachtte een eenheidfout met de samengestelde weergave, kreeg: " + m.errors());
     }
 
+    @Test void getalwaarde_met_samengestelde_eenheid_behoudt_de_noemer() {
+        // §13.2.17 <getalwaarde> ::= <getal> [(<afk>+) | (<afk>+ "/" <afk>+)]: a numeric LITERAL may carry a
+        // composite (rate) unit with a "/"-denominator. The resolver used to read only the numerator of the
+        // literal's eenheidExpressie (typing "120 €/jr" as bare €), so a €/mnd attribute assigned/compared
+        // against it FAILED with a spurious "'€/mnd' en '€' zijn niet om te rekenen". The literal now resolves
+        // its composite through the same helper the attribute datatype uses -> convertible, no false error.
+        String src = RATE_SYS + """
+            Objecttype de Abonnement
+                de maandprijs Numeriek (geheel getal) met eenheid €/mnd;
+            Regel r
+                geldig altijd
+                    De maandprijs van een Abonnement moet gesteld worden op 120 €/jr.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(),
+                () -> "een 120 €/jr LITERAAL naar een €/mnd-doel is een geldige koersherschaling: " + m.errors());
+    }
+
+    @Test void getalwaarde_met_onverenigbare_samengestelde_eenheid_meldt_de_volle_eenheid() {
+        // The literal's denominator is now type-checked: a km/jr LITERAL against a €/jr attribute is a
+        // numerator mismatch, and the diagnostic must name the FULL composite units (not the bare numerators),
+        // proving the /jr denominator survived onto the literal.
+        String src = RATE_SYS + """
+            Objecttype de Abonnement
+                de jaarprijs Numeriek (geheel getal) met eenheid €/jr;
+            Regel r
+                geldig altijd
+                    De jaarprijs van een Abonnement moet gesteld worden op 5 km/jr.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("km/jr")),
+                () -> "verwachtte de volle samengestelde literaal-eenheid in de fout, kreeg: " + m.errors());
+    }
+
     static final String BEGRENS_MODEL = """
         Objecttype de Reis
             de prijs Numeriek (geheel getal);

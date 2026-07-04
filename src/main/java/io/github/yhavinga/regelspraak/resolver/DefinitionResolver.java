@@ -253,11 +253,17 @@ public final class DefinitionResolver {
         return new GetalInfo(geheel, decimalen, teken);
     }
 
-    private Eenheid eenheidVan(EenheidExpressieContext e) {
-        // §13.3.3.2: <eenheidexpressie> ::= <eenheidmacht> ("/" <eenheidmacht>)* — the numerator
-        // is the first power; a single trailing "/<unit>" is the denominator of a rate unit
-        // (€/jr). A second denominator (€/u/s) is not yet modelled — keep the numerator only.
-        if (e.eenheidMacht().isEmpty()) return null;
+    private Eenheid eenheidVan(EenheidExpressieContext e) { return eenheidVan(model, e); }
+
+    /** §13.3.3.2: {@code <eenheidexpressie> ::= <eenheidmacht> ("/" <eenheidmacht>)*} — the numerator
+     *  is the first power; a single trailing {@code "/<unit>"} is the denominator of a rate unit
+     *  (€/jr). A second denominator (€/u/s) is not yet modelled — keep the numerator only.
+     *  Package-static so the attribute-datatype path (here) and the §13.2.17 numeric LITERAL path
+     *  ({@link ExpressieBouwer}) resolve a composite (rate) unit IDENTICALLY — a literal "120 EUR/jr"
+     *  must carry the same {@code Eenheid.samengesteld(EUR, jr)} an attribute "met eenheid EUR/jr"
+     *  does, so §4 unit checking and the exacte cross-unit restatement apply to both alike. */
+    static Eenheid eenheidVan(RegelSpraakModel model, EenheidExpressieContext e) {
+        if (e == null || e.eenheidMacht().isEmpty()) return null;
         Eenheid teller = model.resolveEenheid(src(e.eenheidMacht(0).eenheidAfkorting()));
         if (e.eenheidMacht().size() == 2)
             return Eenheid.samengesteld(teller, model.resolveEenheid(src(e.eenheidMacht(1).eenheidAfkorting())));

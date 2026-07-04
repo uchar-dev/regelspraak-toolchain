@@ -171,6 +171,86 @@ class ExecModelDifferentialTest {
         }
     }
 
+    // ---- §13.2.17 NUMERIC LITERAL carrying a COMPOSITE (rate) unit with a "/"-denominator ("120 EUR/jr",
+    //      "10 EUR/mnd"). The literal-with-unit surface admits {@code <getal> (<afk>+ "/" <afk>+)?} (§13.2.17
+    //      syntaxdiagram); the resolver used to read only eenheidMacht(0), typing "120 EUR/jr" as bare EUR and
+    //      DROPPING the /jr — a EUR/mnd attribute compared/assigned against it then FAILED with a spurious
+    //      "'EUR/mnd' en 'EUR' zijn niet om te rekenen" unit error (or, past that, restated the wrong unit). The
+    //      literal now resolves its composite through the SAME helper the attribute datatype uses
+    //      (DefinitionResolver.eenheidVan), so §4 unit checking and the EXACT cross-unit restatement
+    //      (Eenheid.exacteHerschaalFactoren) apply to the LITERAL exactly as to an attribute value. Each fixture
+    //      asserts the ABSOLUTE spec value in the EXACT (×N -> smaller-unit) direction: 10 EUR/mnd = 120 EUR/jr.
+    static final String RATE_HDR = """
+            Eenheidsysteem Geld
+                de euro EUR
+            Eenheidsysteem Tijd
+                de maand mnd
+                het jaar jr = 12 mnd
+            """;
+    // (c) ASSIGNMENT: 10 EUR/mnd literal INTO a EUR/jr attribute -> exact ×12 = 120 (no 1e-16 drift).
+    static final String RATE_ASSIGN = RATE_HDR + """
+            Objecttype de Konto (mv: Kontos)
+                de saldo Numeriek (geheel getal) met eenheid EUR/jr;
+            Regel R
+                geldig altijd
+                    De saldo van een Konto moet gesteld worden op 10 EUR/mnd.
+            """;
+    // (rev) ASSIGNMENT the other way: 120 EUR/jr literal INTO a EUR/mnd attribute -> ÷12 = 10 (parity-clean).
+    static final String RATE_ASSIGN_REV = RATE_HDR + """
+            Objecttype de Konto (mv: Kontos)
+                de saldo Numeriek (geheel getal) met eenheid EUR/mnd;
+            Regel R
+                geldig altijd
+                    De saldo van een Konto moet gesteld worden op 120 EUR/jr.
+            """;
+    // (b) ARITHMETIC operand: 10 EUR/mnd literal (=120 EUR/jr) plus a 30 EUR/jr attribute -> 150 EUR/jr.
+    static final String RATE_ARITH = RATE_HDR + """
+            Objecttype de Konto (mv: Kontos)
+                de saldo Numeriek (geheel getal) met eenheid EUR/jr;
+                de limiet Numeriek (geheel getal) met eenheid EUR/jr;
+            Regel R
+                geldig altijd
+                    De saldo van een Konto moet gesteld worden op 10 EUR/mnd plus de limiet van een Konto.
+            """;
+    // (a) COMPARISON grens: a EUR/jr attribute > a 10 EUR/mnd literal (=120 EUR/jr). saldo 130 > 120 -> fire.
+    static final String RATE_CMP = RATE_HDR + """
+            Objecttype de Konto (mv: Kontos)
+                de saldo Numeriek (geheel getal) met eenheid EUR/jr;
+                de limiet Numeriek (geheel getal) met eenheid EUR/jr;
+            Regel R
+                geldig altijd
+                    De limiet van een Konto moet gesteld worden op 5 EUR/jr indien zijn saldo groter is dan 10 EUR/mnd.
+            """;
+    static Fixture kontoFix(String naam, String src, java.util.function.Consumer<Konto> seed, Function<Konto, Object> uit) {
+        return new Fixture(naam, src,
+            () -> { Konto k = new Konto(); seed.accept(k); return List.<Object>of(k); },
+            Map.of(),
+            l -> uit.apply((Konto) l.get(0)));
+    }
+    static final Fixture[] PHASE_RATE_LITERAL = {
+        kontoFix("(c) assign 10 EUR/mnd -> EUR/jr = 120 (exact ×12)", RATE_ASSIGN, k -> {}, Konto::getSaldo),
+        kontoFix("(rev) assign 120 EUR/jr -> EUR/mnd = 10 (÷12)",      RATE_ASSIGN_REV, k -> {}, Konto::getSaldo),
+        kontoFix("(b) arith 10 EUR/mnd + 30 EUR/jr = 150",            RATE_ARITH, k -> k.setLimiet(new BigDecimal(30)), Konto::getSaldo),
+        kontoFix("(a) cmp saldo 130 EUR/jr > 10 EUR/mnd(=120) -> fire limiet 5", RATE_CMP, k -> k.setSaldo(new BigDecimal(130)), Konto::getLimiet),
+        kontoFix("(a) cmp saldo 100 EUR/jr > 10 EUR/mnd(=120) -> no fire",       RATE_CMP, k -> k.setSaldo(new BigDecimal(100)), Konto::getLimiet),
+    };
+    static final Object[] PHASE_RATE_LITERAL_EXPECTED = {
+        new BigDecimal(120), new BigDecimal(10), new BigDecimal(150), new BigDecimal(5), null,
+    };
+    @Test void phase_RATE_LITERAL_composite_unit_denominator_is_spec_correct() {
+        for (int i = 0; i < PHASE_RATE_LITERAL.length; i++) {
+            Fixture f = PHASE_RATE_LITERAL[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_RATE_LITERAL_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+
     // ---- §6/§13.4.16 DATE ARITHMETIC: a datum/datumtijd +/- a numeric-with-time-unit -> a new date(time) via
     //      rsDatumReken (.plus/.minus keyed on the ChronoUnit). Both back-ends call the byte-identical helper.
     //      Covers: LocalDate + MONTHS (later), - MONTHS (earlier); the DatumTijd + MINUTES spec example (the

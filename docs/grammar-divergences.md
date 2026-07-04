@@ -169,6 +169,11 @@ Two rates are convertible iff their numerators AND denominators are each convert
 the conversion restates the numerator and **inverts** the denominator: assigning `10 €/mnd`
 to a `€/jr` attribute scales by 12 (a `jr` is 12 of the `mnd` it replaces), so `10 €/mnd =
 120 €/jr`; mismatched numerators (`€/jr` vs `km/jr`) are a type error naming the full units.
+A numeric **LITERAL** with a rate unit (§13.2.17 `<getalwaarde> ::= <getal> [<afk>+ "/"
+<afk>+]`, e.g. `120 EUR/jr`) resolves its composite through the SAME
+`DefinitionResolver.eenheidVan` helper the attribute datatype uses, so it carries the full
+`Eenheid.samengesteld` — a rate literal is unit-checked and cross-unit-restated exactly as an
+attribute value is, not typed by its numerator alone (which previously dropped the `/jr`).
 
 Deliberately **not yet** handled (documented rather than half-done):
 - **Composite-unit ALGEBRA** (the §6.4/§6.5 result unit of `maal`/`gedeeld door`:

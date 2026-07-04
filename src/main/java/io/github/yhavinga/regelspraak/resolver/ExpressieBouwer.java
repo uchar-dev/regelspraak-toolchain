@@ -193,8 +193,13 @@ final class ExpressieBouwer {
             boolean geheel = dec == 0;
             if (g.PERCENT_SIGN() != null) return new Expr.Literal(bron, new Datatype.Percentage(geheel, dec), bron);
             if (g.eenheidExpressie() != null) {
-                String afk = src(g.eenheidExpressie().eenheidMacht(0).eenheidAfkorting());
-                return new Expr.Literal(bron, new Datatype.Numeriek(geheel, dec, Datatype.Teken.ONBEPAALD, model.resolveEenheid(afk)), bron);
+                // §13.2.17: the literal-with-unit surface admits a composite (rate) denominator
+                // ("120 EUR/jr"). Resolve it through the SAME composite-aware helper the attribute
+                // datatype uses, so the denominator survives and the literal carries a full
+                // Eenheid.samengesteld — otherwise a rate literal is typed by its numerator alone and
+                // both §4 unit checking and the exacte cross-unit restatement operate on the wrong unit.
+                Eenheid e = DefinitionResolver.eenheidVan(model, g.eenheidExpressie());
+                return new Expr.Literal(bron, new Datatype.Numeriek(geheel, dec, Datatype.Teken.ONBEPAALD, e), bron);
             }
             return new Expr.Literal(bron, new Datatype.Numeriek(geheel, dec, Datatype.Teken.ONBEPAALD, null), bron);
         }
