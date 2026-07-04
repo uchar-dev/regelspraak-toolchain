@@ -654,22 +654,33 @@ public final class ExecModelTranspiler {
      *  A SOM binds the count var too for the §5.8.2 empty-sum leegwaarde. The exec mirror of the DRL accumulate + eval.
      *  Scoped to a literal / own-attribute / numeric-scalar-global threshold and any comparison operator (ordering, GELIJK,
      *  ONGELIJK); null otherwise (a navigated / multi- or non-numeric-global RHS, agg-vs-agg -> caller falls through). */
-    @SuppressWarnings({"unchecked", "rawtypes"})
     private Gate aggregatieVoorwaarde(Conditie.Vergelijking v, PatternDSL.PatternDef pattern, Objecttype subject, Variable subjectVar) {
+        return aggregatieVoorwaarde(v, pattern, subject, subjectVar, false);
+    }
+    /** {@code negeer} negates the boolean RESULT of the comparison (not the operator) — for a single aggregation bullet
+     *  under a GEEN quantifier. Result-negation is leegwaarde-correct (NOT(SOM(leeg) > 10)=WAAR); operator-flip would
+     *  read onwaar over an empty SOM. Mirrors the DRL eval-level {@code !( … )}. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Gate aggregatieVoorwaarde(Conditie.Vergelijking v, PatternDSL.PatternDef pattern, Objecttype subject, Variable subjectVar, boolean negeer) {
         if (subject == null || subjectVar == null) return null;
+        final boolean neg = negeer;
         boolean linksAgg = v.links() instanceof Expr.Functie fl && isAggregatieKind(fl.kind());
         boolean rechtsAgg = v.rechts() instanceof Expr.Functie fr && isAggregatieKind(fr.kind());
         if (!linksAgg && !rechtsAgg) return null;               // no aggregation operand
-        if (linksAgg && rechtsAgg) return aggVsAgg(v, pattern, subject, subjectVar);   // §5.8 agg-vs-agg
+        if (linksAgg && rechtsAgg) return aggVsAgg(v, pattern, subject, subjectVar, neg);   // §5.8 agg-vs-agg
         Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
         Expr ander = linksAgg ? v.rechts() : v.links();
-        // scope: a LITERAL, an OWN (non-navigated) attribute, a numeric scalar Parameter-GLOBAL, or a numeric to-ONE
-        // NAVIGATED attribute threshold. The own-attr containsKey clause is load-bearing: a navigation the resolver could
-        // NOT encode ("de afstand van de luchthaven van de Vlucht") can surface as an AttribuutRef with navRol==null and
-        // objecttype==subject yet a name NOT on the subject — scalarWaarde would build a reader for a non-existent getter
-        // that THROWS at fireAllRules (review wf_900d3055-a62 F2). Only a PROPER navigation (navRol != null) is admitted,
-        // read null-safely via navReader (absent relation -> null; to-many/unresolvable -> navReader null -> marker). The
-        // global/navigated attr must be numeric (isNumeriek/isPercentage) and non-temporal; a global is scalar.
+        // scope: a LITERAL, an OWN (non-navigated) attribute, a numeric scalar Parameter-GLOBAL, a numeric to-ONE
+        // NAVIGATED attribute threshold, or a numeric arithmetic EXPRESSION reading 2 DISTINCT scalar numeric globals
+        // ("... groter is dan de grensa plus de grensb"). The own-attr containsKey clause is load-bearing: a navigation
+        // the resolver could NOT encode ("de afstand van de luchthaven van de Vlucht") can surface as an AttribuutRef
+        // with navRol==null and objecttype==subject yet a name NOT on the subject — scalarWaarde would build a reader for
+        // a non-existent getter that THROWS at fireAllRules (review wf_900d3055-a62 F2). Only a PROPER navigation (navRol
+        // != null) is admitted, read null-safely via navReader (absent relation -> null; to-many/unresolvable -> navReader
+        // null -> marker). The global/navigated attr must be numeric (isNumeriek/isPercentage) and non-temporal; a global
+        // is scalar. The multi-global EXPRESSION arm is admitted below (aggMultiGlobalRhs), keyed on scalarWaarde's globals.
+        boolean multiGlobalRhs = !(ander instanceof Expr.AttribuutRef) && !(ander instanceof Expr.Literal)
+                && !(ander instanceof Expr.ParameterRef) && aggRhsGlobalCount(subject, ander) >= 2;
         if (!(ander instanceof Expr.Literal)
                 && !(ander instanceof Expr.AttribuutRef ar && ar.navigatieRol() == null && ar.objecttype() == subject
                      && subject.attributen.containsKey(ar.attribuut()))
@@ -678,11 +689,19 @@ public final class ExecModelTranspiler {
                 && !(ander instanceof Expr.AttribuutRef nav && nav.objecttype() != null
                      && (nav.navigatieRol() != null || nav.objecttype() != subject) && nav.objecttype().heeftLid(nav.attribuut())
                      && nav.type() != null && (nav.type().isNumeriek() || nav.type().isPercentage())
-                     && !nav.objecttype().attribuutGranulariteit.containsKey(nav.attribuut()))) return null;
+                     && !nav.objecttype().attribuutGranulariteit.containsKey(nav.attribuut()))
+                && !multiGlobalRhs) return null;
         Conditie.Operator op = linksAgg ? v.op() : Operatoren.omkeren(v.op());   // orient the aggregation on the LEFT (Operatoren.omkeren(ONGELIJK)=ONGELIJK, != symmetric)
         final String opStr = Operatoren.symbool(op);
         Agg agg = aggregatie(f, subject, subjectVar, true);   // condition side: bind count for MIN/MAX so an empty set fires the leeg compare
         if (agg == null) return null;
+        // §8.1.1 the RHS is a numeric arithmetic expression reading 2 DISTINCT scalar Parameter-globals — bind each into
+        // its OWN Optional from-declaration (the nGlobalGate idiom: two global Variables in ONE expr collapse to the last
+        // in the exec-model, so distinct decls are mandatory), then the accumulate-result comparison references BOTH. A
+        // LEEG global arrives as null through the Optional carrier -> the scalarWaarde fns apply the §6/§5 leegwaarde
+        // rules. Capped at 2 distinct globals (Predicate5 is the arity ceiling for a count-bound SOM/MIN/MAX: result +
+        // count + subject + 2 globals); 3+ stays a symmetric skip, deliberately matching the DRL cap.
+        if (multiGlobalRhs) return aggMultiGlobalRhs(v, f, ander, op, opStr, agg, pattern, subject, subjectVar, neg);
         // The threshold reader rfn(subj, globalsMap) + at most one bound Global. A to-ONE navigated RHS reads null-safely via
         // navReader (absent relation -> null leeg; to-many/unresolvable -> null -> marker). A single numeric Parameter-GLOBAL
         // binds the Global directly into the result constraint (the null-tolerant single-global idiom, like §8.2's whole-period
@@ -716,26 +735,90 @@ public final class ExecModelTranspiler {
             if (global == null) {
                 Predicate3<Object, Object, Object> pred = (sum, cnt, subj) -> {   // (resultVar=sum, countVar=count, subjectVar)
                     Object aggVal = ((Number) cnt).longValue() == 0L ? (fb == null ? null : fb.fn().apply(subj, Map.of())) : sum;
-                    return RegelSpraakRuntime.rsAggVergelijk(aggVal, RegelSpraakRuntime.toBd(rfn.apply(subj, Map.of())), opStr);
+                    return neg != RegelSpraakRuntime.rsAggVergelijk(aggVal, RegelSpraakRuntime.toBd(rfn.apply(subj, Map.of())), opStr);
                 };
                 resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) agg.countVar(), (Variable) subjectVar, (Predicate3) pred);
             } else {
                 Predicate4<Object, Object, Object, Object> pred = (sum, cnt, subj, gv) -> {   // + the bound global
                     Object aggVal = ((Number) cnt).longValue() == 0L ? (fb == null ? null : fb.fn().apply(subj, Map.of())) : sum;
-                    return RegelSpraakRuntime.rsAggVergelijk(aggVal, RegelSpraakRuntime.toBd(rfn.apply(subj, bindGlobal(globalNaam, gv))), opStr);
+                    return neg != RegelSpraakRuntime.rsAggVergelijk(aggVal, RegelSpraakRuntime.toBd(rfn.apply(subj, bindGlobal(globalNaam, gv))), opStr);
                 };
                 resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) agg.countVar(), (Variable) subjectVar, (Variable) global, (Predicate4) pred);
             }
         } else {                                                // count / totaal / min / max: the result var IS the agg value
             if (global == null) {
                 Predicate2<Object, Object> pred = (res, subj) ->
-                        RegelSpraakRuntime.rsAggVergelijk(res, RegelSpraakRuntime.toBd(rfn.apply(subj, Map.of())), opStr);
+                        neg != RegelSpraakRuntime.rsAggVergelijk(res, RegelSpraakRuntime.toBd(rfn.apply(subj, Map.of())), opStr);
                 resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) subjectVar, (Predicate2) pred);
             } else {
                 Predicate3<Object, Object, Object> pred = (res, subj, gv) ->
-                        RegelSpraakRuntime.rsAggVergelijk(res, RegelSpraakRuntime.toBd(rfn.apply(subj, bindGlobal(globalNaam, gv))), opStr);
+                        neg != RegelSpraakRuntime.rsAggVergelijk(res, RegelSpraakRuntime.toBd(rfn.apply(subj, bindGlobal(globalNaam, gv))), opStr);
                 resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) subjectVar, (Variable) global, (Predicate3) pred);
             }
+        }
+        extra.add(resultPat);
+        return new Gate(pattern, extra);
+    }
+
+    /** The number of DISTINCT scalar Parameter-globals an aggregation-condition RHS expression reads (via
+     *  {@link #scalarWaarde}), or 0 if it does not lower / any global is non-numeric. Used by
+     *  {@link #aggregatieVoorwaarde} to detect the 2-distinct-global expression RHS ("de grensa plus de grensb"). */
+    private int aggRhsGlobalCount(Objecttype subject, Expr ander) {
+        WaardeFn rhs = scalarWaarde(subject, ander);
+        if (rhs == null || rhs.globals().isEmpty()) return 0;
+        for (String gn : rhs.globals()) if (globals.get(gn) == null) return 0;   // a non-numeric global -> not bindable
+        return rhs.globals().size();
+    }
+
+    /** §8.1.1 an aggregation-condition whose RHS is a numeric arithmetic expression reading 2 DISTINCT scalar
+     *  Parameter-globals ("het aantal passagiers van de Vlucht groter is dan de grensa plus de grensb"). Bind each
+     *  distinct global into its OWN {@link java.util.Optional} from-declaration (the {@link #nGlobalGate} idiom: two
+     *  global {@link Variable}s in ONE exec-model expr collapse to the LAST global's value, so distinct decls are
+     *  mandatory), then the accumulate-result comparison references the aggregate + count + subject + BOTH global
+     *  Optionals via {@link RegelSpraakRuntime#rsAggVergelijk}. A LEEG global arrives as null through the Optional
+     *  carrier -> the scalarWaarde fns apply the §6/§5 leegwaarde rules (leeg-as-0 inside +/-). Capped at 2 distinct
+     *  globals (Predicate5 is the arity ceiling for a count-bound SOM/MIN/MAX: result + count + subject + 2 globals);
+     *  a 3rd distinct global returns null -> a symmetric skip matching the DRL cap. DRL reads each global as a free name. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Gate aggMultiGlobalRhs(Conditie.Vergelijking v, Expr.Functie f, Expr ander, Conditie.Operator op, String opStr,
+                                   Agg agg, PatternDSL.PatternDef pattern, Objecttype subject, Variable subjectVar, boolean neg) {
+        WaardeFn rhs = scalarWaarde(subject, ander);
+        if (rhs == null) return null;
+        List<String> gns = new ArrayList<>(rhs.globals());
+        if (gns.size() != 2) return null;   // >2 distinct globals -> symmetric skip (arity ceiling); 0/1 handled above
+        Global<BigDecimal> g0 = globals.get(gns.get(0)), g1 = globals.get(gns.get(1));
+        if (g0 == null || g1 == null) return null;
+        final BiFunction<Object, Map<String, BigDecimal>, Object> rfn = rhs.fn();
+        // Two distinct Optional from-declarations, anchored on the (always-present) subject so a LEEG global still yields
+        // one element (unwrapping to null), exactly like nGlobalGate.
+        Variable<java.util.Optional> dv0 = DSL.declarationOf(java.util.Optional.class, "$agg_gg_" + (seq++),
+                DSL.from((Variable) subjectVar, (Variable) g0, (Function2) (subj, gv) -> java.util.Optional.ofNullable(gv)));
+        Variable<java.util.Optional> dv1 = DSL.declarationOf(java.util.Optional.class, "$agg_gg_" + (seq++),
+                DSL.from((Variable) subjectVar, (Variable) g1, (Function2) (subj, gv) -> java.util.Optional.ofNullable(gv)));
+        final String n0 = gns.get(0), n1 = gns.get(1);
+        List<RuleItemBuilder<?>> extra = new ArrayList<>();
+        // The two global Optionals bind FIRST (upstream of the accumulate node) so the result-var constraint — which
+        // lives ON the accumulate node — can reference them as cached-left. Binding them AFTER the accumulate crashes
+        // PhreakAccumulateNode.evaluateResultConstraints (the same upstream-vs-downstream rule as aggVsAgg).
+        extra.add(PatternDSL.pattern(dv0));   // bare binders for both global Optionals (a from-decl needs a pattern to bind)
+        extra.add(PatternDSL.pattern(dv1));
+        extra.add(agg.accItem());
+        PatternDSL.PatternDef resultPat;
+        if (agg.countVar() != null) {
+            final WaardeFn fb = agg.somFallback();
+            Predicate5<Object, Object, Object, Object, Object> pred = (sum, cnt, subj, o0, o1) -> {
+                Object aggVal = ((Number) cnt).longValue() == 0L ? (fb == null ? null : fb.fn().apply(subj, Map.of())) : sum;
+                return neg != RegelSpraakRuntime.rsAggVergelijk(aggVal,
+                        RegelSpraakRuntime.toBd(rfn.apply(subj, gmap(List.of(n0, n1), unwrapGlobal(o0), unwrapGlobal(o1)))), opStr);
+            };
+            resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) agg.countVar(),
+                    (Variable) subjectVar, (Variable) dv1, (Variable) dv0, (Predicate5) pred);
+        } else {
+            Predicate4<Object, Object, Object, Object> pred = (res, subj, o0, o1) ->
+                    neg != RegelSpraakRuntime.rsAggVergelijk(res,
+                            RegelSpraakRuntime.toBd(rfn.apply(subj, gmap(List.of(n0, n1), unwrapGlobal(o0), unwrapGlobal(o1)))), opStr);
+            resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) subjectVar,
+                    (Variable) dv1, (Variable) dv0, (Predicate4) pred);
         }
         extra.add(resultPat);
         return new Gate(pattern, extra);
@@ -745,13 +828,17 @@ public final class ExecModelTranspiler {
      *  accumulate CEs, then a result-var constraint comparing both folds via rsAggVergelijk (the right coerced to
      *  BigDecimal). A count-bound side (SOM / empty MIN·MAX) resolves count==0 -&gt; its leegwaarde (fallback or null); the
      *  predicate arity flexes with how many sides carry a count var. The DRL mirror rides one eval over two accumulates. */
-    @SuppressWarnings({"unchecked", "rawtypes"})
     private Gate aggVsAgg(Conditie.Vergelijking v, PatternDSL.PatternDef pattern, Objecttype subject, Variable subjectVar) {
+        return aggVsAgg(v, pattern, subject, subjectVar, false);
+    }
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Gate aggVsAgg(Conditie.Vergelijking v, PatternDSL.PatternDef pattern, Objecttype subject, Variable subjectVar, boolean negeer) {
         Agg a1 = aggregatie((Expr.Functie) v.links(), subject, subjectVar, true);
         if (a1 == null) return null;
         Agg a2 = aggregatie((Expr.Functie) v.rechts(), subject, subjectVar, true);
         if (a2 == null) return null;
         final String opStr = Operatoren.symbool(v.op());
+        final boolean neg = negeer;
         final boolean c1 = a1.countVar() != null, c2 = a2.countVar() != null;
         final WaardeFn fb1 = a1.somFallback(), fb2 = a2.somFallback();
         List<RuleItemBuilder<?>> extra = new ArrayList<>();
@@ -765,19 +852,19 @@ public final class ExecModelTranspiler {
         PatternDSL.PatternDef rp;
         if (!c1 && !c2) {                                       // count / totaal both sides: the result var IS each value
             Predicate3<Object, Object, Object> p = (res2, res1, subj) ->
-                    RegelSpraakRuntime.rsAggVergelijk(res1, RegelSpraakRuntime.toBd(res2), opStr);
+                    neg != RegelSpraakRuntime.rsAggVergelijk(res1, RegelSpraakRuntime.toBd(res2), opStr);
             rp = PatternDSL.pattern(r2).expr(nextId("aggcmp"), (Variable) r1, (Variable) subjectVar, (Predicate3) p);
         } else if (c1 && !c2) {
             Predicate4<Object, Object, Object, Object> p = (res2, res1, cnt1, subj) ->
-                    RegelSpraakRuntime.rsAggVergelijk(foldLeeg(res1, cnt1, fb1, subj), RegelSpraakRuntime.toBd(res2), opStr);
+                    neg != RegelSpraakRuntime.rsAggVergelijk(foldLeeg(res1, cnt1, fb1, subj), RegelSpraakRuntime.toBd(res2), opStr);
             rp = PatternDSL.pattern(r2).expr(nextId("aggcmp"), (Variable) r1, (Variable) a1.countVar(), (Variable) subjectVar, (Predicate4) p);
         } else if (!c1 && c2) {
             Predicate4<Object, Object, Object, Object> p = (res2, res1, cnt2, subj) ->
-                    RegelSpraakRuntime.rsAggVergelijk(res1, RegelSpraakRuntime.toBd(foldLeeg(res2, cnt2, fb2, subj)), opStr);
+                    neg != RegelSpraakRuntime.rsAggVergelijk(res1, RegelSpraakRuntime.toBd(foldLeeg(res2, cnt2, fb2, subj)), opStr);
             rp = PatternDSL.pattern(r2).expr(nextId("aggcmp"), (Variable) r1, (Variable) a2.countVar(), (Variable) subjectVar, (Predicate4) p);
         } else {                                                // both count-bound (SOM / empty MIN·MAX): resolve each leeg
             Predicate5<Object, Object, Object, Object, Object> p = (res2, res1, cnt1, cnt2, subj) ->
-                    RegelSpraakRuntime.rsAggVergelijk(foldLeeg(res1, cnt1, fb1, subj), RegelSpraakRuntime.toBd(foldLeeg(res2, cnt2, fb2, subj)), opStr);
+                    neg != RegelSpraakRuntime.rsAggVergelijk(foldLeeg(res1, cnt1, fb1, subj), RegelSpraakRuntime.toBd(foldLeeg(res2, cnt2, fb2, subj)), opStr);
             rp = PatternDSL.pattern(r2).expr(nextId("aggcmp"), (Variable) r1, (Variable) a1.countVar(), (Variable) a2.countVar(), (Variable) subjectVar, (Predicate5) p);
         }
         extra.add(rp);
@@ -1853,6 +1940,16 @@ public final class ExecModelTranspiler {
                 }
                 return new Gate(pattern, extra);
             }
+            // §13.4.14.4 a SINGLE aggregation bullet under GEEN / "ten minste 1": the quantifier reduces to a plain
+            // boolean transform of the one leaf (GEEN = NOT the leaf, ten minste 1 = the leaf). The counting fold below
+            // is fact-only (Predicate1) and CANNOT host an aggregation leaf (which needs an accumulate CE), so route it
+            // to aggregatieVoorwaarde with a boolean-NEGATION flag for GEEN (leegwaarde-correct, unlike an operator-flip).
+            // >1 bullet / ten hoogste / precies / an unlowerable RHS fall through to the fact-only fold below -> skip.
+            if ((s.kwantor() == Conditie.Kwantor.GEEN
+                 || (s.kwantor() == Conditie.Kwantor.TEN_MINSTE && s.drempel() == 1))
+                    && s.onderdelen().size() == 1
+                    && s.onderdelen().get(0) instanceof Conditie.Vergelijking av && heeftAggregatieOperand(av))
+                return aggregatieVoorwaarde(av, pattern, subject, subjectVar, s.kwantor() == Conditie.Kwantor.GEEN);
             // §13.4.14.4 counting quantifiers: GEEN = none hold, TEN_MINSTE/TEN_HOOGSTE/PRECIES = count vs N. The
             // children fold with ||/!/count, so a hoisted exists/not (or any non-leaf) cannot ride along — every
             // onderdeel must reduce to a fact-only Predicate1, else the WHOLE compound skips (never a partial gate).

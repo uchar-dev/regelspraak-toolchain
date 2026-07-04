@@ -23,6 +23,7 @@ import static io.github.yhavinga.regelspraak.transpiler.kern.Namen.setter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.function.Function;
 
@@ -2484,6 +2485,12 @@ public final class DrlTranspiler {
      *  accumulate CEs). null when unlowerable (an unresolved join / a navigated-or-multi-global RHS / a to-many RHS) -> the
      *  caller falls through to the marker path. Mirrors the exec Gate. */
     private LoweredConditie aggregatieVoorwaarde(Acc acc, Conditie.Vergelijking v, Objecttype subject) {
+        return aggregatieVoorwaarde(acc, v, subject, false);
+    }
+    /** {@code negeer} negates the boolean RESULT of the comparison (an eval-level {@code !( … )}), NOT the operator — for
+     *  a single aggregation bullet under a GEEN quantifier ("aan geen van de volgende voorwaarden: - het aantal … > 10").
+     *  Result-negation is leegwaarde-correct (NOT(SOM(leeg) > 10)=WAAR, whereas SOM(leeg) <= 10 stays onwaar). */
+    private LoweredConditie aggregatieVoorwaarde(Acc acc, Conditie.Vergelijking v, Objecttype subject, boolean negeer) {
         if (subject == null) return null;
         // accumulate() appends its CE to the THREADED Acc context (no-mutable-build-state) before returning the result Frag.
         // A post-accumulate bail (an unresolvable 2nd aggregation in agg-vs-agg, a to-many/unresolvable navigated RHS) must
@@ -2499,8 +2506,9 @@ public final class DrlTranspiler {
             if (a1 == null || a1.marker()) return aggTerug(acc, mark);
             Frag a2 = accumulate(acc, (Expr.Functie) v.rechts(), subject, true);
             if (a2 == null || a2.marker()) return aggTerug(acc, mark);
-            acc.clausules.add("eval( " + fnImport("rsAggVergelijk") + "(" + a1.text() + ", "
-                    + fnImport("toBd") + "(" + a2.text() + "), \"" + Operatoren.symbool(v.op()) + "\") )");
+            String cmp = fnImport("rsAggVergelijk") + "(" + a1.text() + ", "
+                    + fnImport("toBd") + "(" + a2.text() + "), \"" + Operatoren.symbool(v.op()) + "\")";
+            acc.clausules.add("eval( " + (negeer ? "!(" + cmp + ")" : cmp) + " )");
             return new LoweredConditie("", java.util.List.of(), false);
         }
         Expr.Functie f = (Expr.Functie) (linksAgg ? v.links() : v.rechts());
@@ -2513,6 +2521,12 @@ public final class DrlTranspiler {
         // admitted, read null-safely (rsRelGetal / navReader). The global/navigated attr must be numeric (isNumeriek/
         // isPercentage -> a BigDecimal, matching rsAggVergelijk's `n`) and non-temporal; a global is also scalar
         // (granulariteit==null) — EXACTLY the set the exec tracks/reads. A tekst/datum/temporal/to-many RHS stays a marker.
+        // ALSO admitted: a numeric arithmetic EXPRESSION reading 2 DISTINCT scalar numeric globals ("de grensa plus de
+        // grensb") — DRL renders each global as a free mvel name in the eval (waarde() below), the exec binds each into
+        // its own Optional from-decl (aggMultiGlobalRhs). Capped at 2 distinct globals to match the exec Predicate-arity
+        // ceiling; 3+ distinct stays a symmetric marker. A single global goes through the ParameterRef arm above.
+        boolean multiGlobalRhs = !(ander instanceof Expr.AttribuutRef) && !(ander instanceof Expr.Literal)
+                && !(ander instanceof Expr.ParameterRef) && aggRhsGlobalNamen(ander).size() == 2;
         if (!(ander instanceof Expr.Literal)
                 && !(ander instanceof Expr.AttribuutRef ar && ar.navigatieRol() == null && ar.objecttype() == subject
                      && subject.attributen.containsKey(ar.attribuut()))
@@ -2521,7 +2535,8 @@ public final class DrlTranspiler {
                 && !(ander instanceof Expr.AttribuutRef nav && nav.objecttype() != null
                      && (nav.navigatieRol() != null || nav.objecttype() != subject) && nav.objecttype().heeftLid(nav.attribuut())
                      && nav.type() != null && (nav.type().isNumeriek() || nav.type().isPercentage())
-                     && !isTemporeelAttribuut(nav))) return null;
+                     && !isTemporeelAttribuut(nav))
+                && !multiGlobalRhs) return null;
         Conditie.Operator op = linksAgg ? v.op() : Operatoren.omkeren(v.op());   // orient the aggregation on the LEFT (Operatoren.omkeren(ONGELIJK)=ONGELIJK, != symmetric)
         // Reuse the VALUE-side accumulate lowering: it registers the accumulate CE (count / BigDecimal sum with the §5.8.2
         // empty-sum leegwaarde branch / min·max coerced to BigDecimal) in the Acc context and returns the RESULT value expr
@@ -2545,8 +2560,41 @@ public final class DrlTranspiler {
             n = waarde(acc, ander, subject);
             if (n.marker()) return aggTerug(acc, mark);
         }
-        acc.clausules.add("eval( " + fnImport("rsAggVergelijk") + "(" + agg.text() + ", " + n.text() + ", \"" + Operatoren.symbool(op) + "\") )");
+        String cmp = fnImport("rsAggVergelijk") + "(" + agg.text() + ", " + n.text() + ", \"" + Operatoren.symbool(op) + "\")";
+        acc.clausules.add("eval( " + (negeer ? "!(" + cmp + ")" : cmp) + " )");
         return new LoweredConditie("", java.util.List.of(), false);
+    }
+
+    /** The DISTINCT scalar-numeric Parameter-global names an aggregation-condition RHS expression reads, walking the
+     *  arithmetic tree (Binair/Afgerond/Begrensd/Functie args). Only §13.3.8 scalar (granulariteit==null) numeric/
+     *  percentage parameters count — a temporal or non-numeric parameter yields an EMPTY set, so the multi-global arm
+     *  declines it (staying a marker). A §13.4.1 multi-hop CHAIN ref anywhere in the tree POISONS the walk (empty set):
+     *  this arm lowers the RHS through the value-side {@code waarde()}, which fires chains, while the exec's condition
+     *  path (ketenWaardePad off) declines them — admitting it here would be a DRL-fires/exec-skips split. Used by
+     *  {@link #aggregatieVoorwaarde} to admit the 2-distinct-global RHS. */
+    private static Set<String> aggRhsGlobalNamen(Expr e) {
+        Set<String> uit = new java.util.LinkedHashSet<>();
+        return aggRhsGlobalNamen(e, uit) ? uit : java.util.Set.of();
+    }
+    private static boolean aggRhsGlobalNamen(Expr e, Set<String> uit) {
+        if (e instanceof Expr.AttribuutRef a) return a.navigatiePad().isEmpty();   // a chain leg -> poison (see doc)
+        if (e instanceof Expr.ParameterRef p) {
+            if (p.parameter().granulariteit() == null
+                    && (p.parameter().datatype().isNumeriek() || p.parameter().datatype().isPercentage()))
+                uit.add(p.parameter().naam());
+            return true;
+        }
+        if (e instanceof Expr.Binair b) return aggRhsGlobalNamen(b.links(), uit) && aggRhsGlobalNamen(b.rechts(), uit);
+        if (e instanceof Expr.Afgerond a) return aggRhsGlobalNamen(a.basis(), uit);
+        if (e instanceof Expr.Begrensd bg)
+            return aggRhsGlobalNamen(bg.basis(), uit)
+                    && (bg.minimum() == null || aggRhsGlobalNamen(bg.minimum(), uit))
+                    && (bg.maximum() == null || aggRhsGlobalNamen(bg.maximum(), uit));
+        if (e instanceof Expr.Functie fn) {
+            for (Expr a : fn.argumenten()) if (!aggRhsGlobalNamen(a, uit)) return false;
+            return true;
+        }
+        return true;
     }
 
     /** Roll back any accumulate CEs {@link #accumulate} appended into the Acc context since {@code mark}, then signal
@@ -2560,6 +2608,12 @@ public final class DrlTranspiler {
     private static boolean isAggregatieFunctie(Expr.FunctieKind k) {
         return k == Expr.FunctieKind.AANTAL || k == Expr.FunctieKind.SOM || k == Expr.FunctieKind.TOTAAL
                 || k == Expr.FunctieKind.MINIMUM || k == Expr.FunctieKind.MAXIMUM;
+    }
+    /** Does the comparison have an aggregation (count/sum/totaal/min/max) as either operand? — a bullet routed through
+     *  {@link #aggregatieVoorwaarde} rather than the counting fold's inline-boolean expansion (which cannot host it). */
+    private static boolean isAggregatieVergelijking(Conditie.Vergelijking v) {
+        return (v.links() instanceof Expr.Functie fl && isAggregatieFunctie(fl.kind()))
+                || (v.rechts() instanceof Expr.Functie fr && isAggregatieFunctie(fr.kind()));
     }
 
     // ---------------- condition ("when" side: bare field constraints) ----------------
@@ -2762,6 +2816,28 @@ public final class DrlTranspiler {
             if (s.kwantor() != Conditie.Kwantor.ALLE && s.kwantor() != Conditie.Kwantor.DE
                     && s.onderdelen().stream().anyMatch(Conditie::bevatPeriode))
                 return LoweredConditie.marker("periodevergelijking onder een tellende kwantor (§8.4.3)", s.bron());
+            // §13.4.14.4 a SINGLE aggregation bullet under GEEN / "ten minste 1": the quantifier reduces to a plain
+            // boolean transform of the one leaf (GEEN = NOT the leaf; ten minste 1 = the leaf), so route it through the
+            // aggregation lowering with a boolean-NEGATION flag for GEEN. Negating the rsAggVergelijk RESULT (not the
+            // comparison operator) is leegwaarde-correct: NOT(SOM(leeg) > 10)=WAAR, whereas SOM(leeg) <= 10 would be
+            // onwaar (§5 empty-set ordering). The aggregation contributes an accumulate CE (a separate when-clause) +
+            // an eval, which the counting fold's inline-boolean expansion below CANNOT host — so this is the only way
+            // an aggregation bullet fires under a counting quantifier. >1 bullet / ten hoogste / precies stay markers.
+            if ((s.kwantor() == Conditie.Kwantor.GEEN
+                 || (s.kwantor() == Conditie.Kwantor.TEN_MINSTE && s.drempel() == 1))
+                    && s.onderdelen().size() == 1
+                    && s.onderdelen().get(0) instanceof Conditie.Vergelijking av && isAggregatieVergelijking(av)) {
+                LoweredConditie agg = aggregatieVoorwaarde(acc, av, subject, s.kwantor() == Conditie.Kwantor.GEEN);
+                if (agg != null) return agg;   // null -> unlowerable RHS -> fall through to the general marker below
+                return LoweredConditie.marker("aggregatie-bullet onder tellende kwantor", s.bron());
+            }
+            // Any OTHER aggregation bullet under a counting (non-conjunction) quantifier — a MULTI-bullet compound, or a
+            // ten hoogste / precies — cannot be folded into the inline-boolean expansion (an aggregation is an accumulate
+            // CE + eval, not a pattern constraint), so it MARKERS symmetrically (the exec's fact-only fold skips it too).
+            // Checked BEFORE recursing so no orphan accumulate leaks into a broken "!(())" fold.
+            if (s.kwantor() != Conditie.Kwantor.ALLE && s.kwantor() != Conditie.Kwantor.DE
+                    && s.onderdelen().stream().anyMatch(d -> d instanceof Conditie.Vergelijking cv && isAggregatieVergelijking(cv)))
+                return LoweredConditie.marker("aggregatie-bullet onder tellende kwantor (>1 bullet / ten hoogste / precies)", s.bron());
             List<LoweredConditie> kinderen = new ArrayList<>();
             for (Conditie deel : s.onderdelen()) kinderen.add(conditie(acc, deel, subject, alsVoorwaarde));
             if (kinderen.isEmpty()) return LoweredConditie.van("true");

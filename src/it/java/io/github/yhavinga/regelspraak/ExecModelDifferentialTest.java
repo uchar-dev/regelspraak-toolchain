@@ -3818,6 +3818,90 @@ class ExecModelDifferentialTest {
         Boolean.TRUE, Boolean.FALSE, Boolean.TRUE,
     };
 
+    // ---- §8.1.1 an aggregation-in-condition vs a RHS arithmetic EXPRESSION reading 2 DISTINCT scalar Parameter-globals
+    //      ("het aantal passagiers van de Vlucht groter is dan de grensa plus de grensb"): was a SYMMETRIC marker (DRL
+    //      /* TODO */, exec "voorwaarde buiten Phase-B scope"). Now the DRL reads each global as a free mvel name in the
+    //      eval, the exec binds each into its OWN Optional from-declaration (aggMultiGlobalRhs, the 88ef44f nGlobalGate
+    //      idiom — two globals in ONE exec-model expr collapse to the last). A LEEG global INSIDE the +/- is leeg-as-0
+    //      (§6.2, matching PHASE_EXPR_MULTI_GLOBAL's "toeslag LEEG inside arith" row). Capped at 2 distinct globals
+    //      (exec Predicate5 arity ceiling for a count-bound SOM); 3+ stays a symmetric marker. ----
+    static final String AGG_2G_SRC =
+        "Parameter de grensa : Numeriek (geheel getal)\nParameter de grensb : Numeriek (geheel getal)\n" +
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+        "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n" +
+        "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+        "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien het aantal passagiers van de Vlucht groter is dan de grensa plus de grensb.\n";
+    static Fixture agg2gFix(String naam, Integer ga, Integer gb, int nPass) {
+        Map<String, Object> g = new java.util.HashMap<>();
+        if (ga != null) g.put("grensa", new BigDecimal(ga));
+        if (gb != null) g.put("grensb", new BigDecimal(gb));   // an absent key -> UNSET (leeg) global -> leeg-as-0 in the +/-
+        return new Fixture(naam, AGG_2G_SRC,
+                () -> { List<Object> fs = new ArrayList<>(); Vlucht v = new Vlucht(); fs.add(v);
+                        for (int i = 0; i < nPass; i++) { Passagier p = new Passagier(); p.setReis(v); fs.add(p); } return fs; },
+                g, l -> ((Vlucht) l.get(0)).isVol());
+    }
+    static final Fixture[] PHASE_AGG_MULTI_GLOBAL = {
+        agg2gFix("§8.1.1 count 4 > grensa(2)+grensb(1)=3 -> WAAR", 2, 1, 4),
+        agg2gFix("§8.1.1 count 3 > grensa(2)+grensb(1)=3 -> onwaar (strikt)", 2, 1, 3),
+        agg2gFix("§8.1.1 count 6 > grensa(2)+grensb(3)=5 -> WAAR", 2, 3, 6),
+        // grensb LEEG inside the +/- -> leeg-as-0 (§6.2): threshold = grensa(2)+0 = 2. count 3 > 2 -> WAAR.
+        agg2gFix("§6.2 count 3 > grensa(2)+grensb(LEEG=0)=2 -> WAAR (leeg-as-0)", 2, null, 3),
+        // both LEEG -> threshold 0. count 1 > 0 -> WAAR; count 0 > 0 -> onwaar.
+        agg2gFix("§6.2 count 1 > grensa(LEEG)+grensb(LEEG)=0 -> WAAR", null, null, 1),
+        agg2gFix("§6.2 count 0 > grensa(LEEG)+grensb(LEEG)=0 -> onwaar", null, null, 0),
+    };
+    static final Object[] PHASE_AGG_MULTI_GLOBAL_EXPECTED = {
+        Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, Boolean.TRUE, Boolean.TRUE, Boolean.FALSE };
+
+    // ---- §13.4.14.4 a SINGLE aggregation bullet under a NON-ALLE counting quantifier ("indien de Vlucht aan GEEN /
+    //      ten minste 1 van de volgende voorwaarden voldoet: - het aantal passagiers … groter is dan 10"): was a broken
+    //      lowering (DRL emitted an uncompilable "!(())" AND leaked the accumulate; exec SKIPPED). A single-bullet
+    //      counting quantifier reduces to a plain boolean transform of the one leaf — GEEN = NOT the leaf, ten minste 1 =
+    //      the leaf — so it routes through the aggregation lowering with a boolean-NEGATION flag for GEEN. Negating the
+    //      rsAggVergelijk RESULT (an eval-level "!( … )" / a "neg != …" XOR), NOT the operator, is leegwaarde-correct:
+    //      NOT(SOM(leeg) > 10) is WAAR (§5.8.2 empty SOM leeg -> §5 ordering onwaar -> NOT waar), whereas the operator-flip
+    //      "SOM(leeg) <= 10" would read onwaar. The empty-set count is 0 (§5.8). >1 bullet / ten hoogste / precies stay
+    //      symmetric markers (phase_AGG_quantifier_multibullet_is_symmetric_marker). ----
+    static final String AGG_QUANT_SRC =
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de leeftijd Numeriek (geheel getal);\n" +
+        "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n" +
+        "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+        "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien de Vlucht aan %s van de volgende voorwaarden voldoet:\n        - %s.\n";
+    static Fixture aggQuantFix(String naam, String kwantor, String bullet, int[] leeftijds) {
+        String src = String.format(AGG_QUANT_SRC, kwantor, bullet);
+        return new Fixture(naam, src,
+                () -> { List<Object> fs = new ArrayList<>(); Vlucht v = new Vlucht(); fs.add(v);
+                        for (int lt : leeftijds) { Passagier p = new Passagier(); p.setLeeftijd(new BigDecimal(lt)); p.setReis(v); fs.add(p); } return fs; },
+                Map.of(), l -> ((Vlucht) l.get(0)).isVol());
+    }
+    static final String CNT_GT_10 = "het aantal passagiers van de Vlucht groter is dan 10";
+    static final String SOM_GT_10 = "de som van de leeftijd van alle passagiers van de Vlucht groter is dan 10";
+    static int[] nPax(int n) { int[] a = new int[n]; java.util.Arrays.fill(a, 1); return a; }
+    static final Fixture[] PHASE_AGG_QUANTIFIER = {
+        // GEEN(count > 10): fire iff NOT(count > 10). 11 -> onwaar; 5 -> WAAR; empty (count 0) -> WAAR (0 > 10 is onwaar).
+        aggQuantFix("GEEN(count > 10): 11 passagiers -> NIET vol", "geen", CNT_GT_10, nPax(11)),
+        aggQuantFix("GEEN(count > 10): 5 passagiers -> vol", "geen", CNT_GT_10, nPax(5)),
+        aggQuantFix("GEEN(count > 10): 0 passagiers (empty set count 0) -> vol", "geen", CNT_GT_10, nPax(0)),
+        // ten minste 1(count > 10): fire iff count > 10 (single bullet). 11 -> WAAR; 5 -> onwaar; empty -> onwaar.
+        aggQuantFix("ten minste 1(count > 10): 11 passagiers -> vol", "ten minste 1", CNT_GT_10, nPax(11)),
+        aggQuantFix("ten minste 1(count > 10): 5 passagiers -> NIET vol", "ten minste 1", CNT_GT_10, nPax(5)),
+        aggQuantFix("ten minste 1(count > 10): 0 passagiers -> NIET vol", "ten minste 1", CNT_GT_10, nPax(0)),
+        // GEEN(SOM > 10) over the EMPTY set — the leegwaarde soundness check: empty SOM is LEEG (§5.8.2), SOM(leeg) > 10 is
+        // onwaar (§5 ordering), so NOT(onwaar) -> WAAR. An operator-flip (SOM(leeg) <= 10) would read onwaar -> the wrong
+        // gate. This row is the whole reason CORNER 2 negates the RESULT, not the operator.
+        aggQuantFix("GEEN(SOM > 10) over EMPTY -> vol (NOT(leeg>10)=WAAR, the leegwaarde soundness pin)", "geen", SOM_GT_10, new int[]{}),
+        aggQuantFix("GEEN(SOM > 10): 5+7=12 > 10 -> NIET vol", "geen", SOM_GT_10, new int[]{5, 7}),
+        aggQuantFix("GEEN(SOM > 10): 3+4=7 > 10 onwaar -> vol", "geen", SOM_GT_10, new int[]{3, 4}),
+        // ten minste 1(SOM > 10) over EMPTY -> onwaar (SOM(leeg)>10 onwaar) -> NIET vol.
+        aggQuantFix("ten minste 1(SOM > 10) over EMPTY -> NIET vol", "ten minste 1", SOM_GT_10, new int[]{}),
+    };
+    static final Object[] PHASE_AGG_QUANTIFIER_EXPECTED = {
+        Boolean.FALSE, Boolean.TRUE, Boolean.TRUE,
+        Boolean.TRUE, Boolean.FALSE, Boolean.FALSE,
+        Boolean.TRUE, Boolean.FALSE, Boolean.TRUE,
+        Boolean.FALSE,
+    };
+
     // ---- review wf_900d3055-a62 F2: an aggregation-in-condition vs a NAVIGATED RHS ("het aantal passagiers van de Vlucht
     //      groter is dan de afstand van de luchthaven van de Vlucht") must stay a SYMMETRIC marker — DRL markers, exec SKIPS
     //      (was: DRL markers but exec built a LIVE rule that THREW at fireAllRules). ----
@@ -6163,6 +6247,67 @@ class ExecModelDifferentialTest {
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(PHASE_AGG_VS_AGG_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §8.1.1 CORNER 1: an aggregation-in-condition vs a RHS arithmetic expression reading 2 DISTINCT scalar
+     *  Parameter-globals ("het aantal … groter is dan de grensa plus de grensb") now FIRES in both back-ends (was a
+     *  symmetric marker). Absolute + DRL==exec parity + no skip, incl. a LEEG global inside the +/- (leeg-as-0, §6.2). */
+    @Test void phase_AGG_MULTI_GLOBAL_rhs_is_spec_correct() {
+        for (int i = 0; i < PHASE_AGG_MULTI_GLOBAL.length; i++) {
+            Fixture f = PHASE_AGG_MULTI_GLOBAL[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_AGG_MULTI_GLOBAL_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** §13.4.14.4 CORNER 2: a SINGLE aggregation bullet under GEEN / "ten minste 1" now FIRES in both back-ends (was a
+     *  broken DRL "!(())" + leaked accumulate / exec skip). Absolute + DRL==exec parity + no skip. The GEEN(SOM>10)-over-
+     *  empty row is the leegwaarde soundness pin: result-negation gives WAAR, an operator-flip would give the wrong onwaar. */
+    @Test void phase_AGG_QUANTIFIER_single_bullet_is_spec_correct() {
+        for (int i = 0; i < PHASE_AGG_QUANTIFIER.length; i++) {
+            Fixture f = PHASE_AGG_QUANTIFIER[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_AGG_QUANTIFIER_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** CORNER 1/2 boundaries stay SYMMETRIC markers: 3+ DISTINCT globals in an aggregation RHS (exec Predicate arity
+     *  ceiling), and a MULTI-bullet or ten hoogste / precies aggregation compound (the counting fold cannot host >1
+     *  accumulate leaf). DRL markers AND exec SKIPS — never one firing while the other declines. */
+    @Test void phase_AGG_corner_boundaries_are_symmetric_markers() {
+        String threeGlobals =
+            "Parameter de a : Numeriek (geheel getal)\nParameter de b : Numeriek (geheel getal)\nParameter de c : Numeriek (geheel getal)\n" +
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+            "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n" +
+            "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+            "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien het aantal passagiers van de Vlucht groter is dan de a plus de b plus de c.\n";
+        String multiBullet =
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de leeftijd Numeriek (geheel getal);\n" +
+            "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n    de vertrektijd Numeriek (geheel getal);\n" +
+            "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+            "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien de Vlucht aan geen van de volgende voorwaarden voldoet:\n" +
+            "        - het aantal passagiers van de Vlucht groter is dan 10\n        - zijn vertrektijd is groter dan 5.\n";
+        String tenHoogste =
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+            "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n" +
+            "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+            "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien de Vlucht aan ten hoogste 1 van de volgende voorwaarden voldoet:\n        - het aantal passagiers van de Vlucht groter is dan 10.\n";
+        for (String src : new String[]{threeGlobals, multiBullet, tenHoogste}) {
+            RegelSpraakModel m = Resolver.resolve(src);
+            assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+            assertTrue(DrlTranspiler.transpile(m).contains("/* TODO"), () -> "DRL must MARKER the out-of-scope aggregation corner");
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertFalse(em.overgeslagen().isEmpty(), () -> "exec must SKIP the out-of-scope aggregation corner");
         }
     }
     /** review wf_ee9d1919-c3c: a post-accumulate bail in aggregatieVoorwaarde (an unresolvable 2nd aggregation in
