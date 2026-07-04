@@ -114,7 +114,10 @@ toewijzing
 // ' is <UPPER_ID>' / ' is <waarde>' / ' zijn <UPPER_ID>' — kaleNaam already excludes
 // the UPPER_ID of a following LABEL, and IS/ZIJN are not name words, so the name loop
 // halts at the verb (the same UPPER_ID-lookahead boundary the §13.4 names rely on).
-toewijzingNaam : kaleNaam ;
+// Same bound as verwachtingNaam: a 'de <rolnaam> is <LABEL>' / 'de <attr> is <waarde>' toewijzing
+// must stop before the trailing ' is/zijn <…>' AND never absorb a 'van <UPPER_ID>' as a name-segment
+// (a rolnaam/attribuutnaam 'van'-segment is LOWER_ID-led). Uses the shared begrensdeNaam.
+toewijzingNaam : begrensdeNaam ;
 
 // Ongebullette parameterwaarde — the missing bullet is what distinguishes it from an
 // instantie-toewijzing (`de parameter …`, whole-phrase token DE_PARAMETER).
@@ -147,7 +150,19 @@ verwachting
     | bullet DE_GEGEVENS_ZIJN INCONSISTENT                           DOT? # verwachtInconsistent      // de gegevens zijn inconsistent
     | bullet DE_GEGEVENS_ZIJN CONSISTENT                             DOT? # verwachtConsistent        // de gegevens zijn consistent
     ;
-verwachtingNaam : kaleNaam ; // attribuutnaam, stops before ' van <LABEL>' (VAN then UPPER_ID)
+// The attribuutnaam of a verwachting, which MUST stop before the trailing ' van <LABEL>'
+// (VAN then the UPPER_ID label). A plain kaleNaam would ambiguously absorb ' van <LABEL>'
+// because kaleNaam's '(VAN kaleNaamDeel)*' loop accepts a bare UPPER_ID as a kaleNaamDeel —
+// which made ANTLR's prediction context-dependent (a multi-word attribuut over a UPPER_ID
+// label sometimes swallowed the label, mismatching the outer 'VAN UPPER_ID IS'). The bounded
+// form below extends a 'van'-segment ONLY when it is LOWER_ID-led (an attribute-name segment
+// is always a lowercase word: 'van afstand', 'van bestemming'), so a 'van <UPPER_ID>' label
+// is never absorbed. Deterministic; see docs/grammar-divergences.md '§Scenariotoetsen'.
+verwachtingNaam : begrensdeNaam ;
+// A name that may contain internal ' van <lowercase segment>' but never a trailing
+// ' van <UPPER_ID>' — the UPPER_ID label/right-hand side is left for the enclosing rule.
+begrensdeNaam : kaleNaamDeel ( VAN naamVervolgDeel )* ;
+naamVervolgDeel : naamWoordLower kaleNaamWoord* ; // LOWER_ID-led, so a bare UPPER_ID label ends the name
 
 // Verification entry point for the spec corpus. The worked examples in the spec
 // are not all whole documents — most are FRAGMENTS of a single non-terminal: a

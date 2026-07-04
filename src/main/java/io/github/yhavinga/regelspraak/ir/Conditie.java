@@ -132,6 +132,14 @@ public sealed interface Conditie {
         return false;
     }
 
+    /** Whether any operand {@link Expr} inside {@code c} matches {@code toets} — the PUBLIC form of
+     *  {@link #bevatExpr}, for cross-package IR consumers (the scenariotoetsen resolver's parametergate /
+     *  peildatum-gate need to see whether a scope rule's condition references a parameter or the Rekendatum).
+     *  A pure read; identical semantics to the package-private walker. Null-safe. */
+    public static boolean bevatOperand(Conditie c, java.util.function.Predicate<Expr> toets) {
+        return bevatExpr(c, toets);
+    }
+
     /** §13.4.14 compound condition: a quantifier over a bullet list of sub-conditions.
      *  `drempel` is the threshold count N for the counting quantifiers (ten minste / ten
      *  hoogste / precies N, §13.4.14.4); 0 and unused for alle / geen / de. */

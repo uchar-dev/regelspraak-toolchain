@@ -2228,11 +2228,31 @@ re-derived from the spec's own worked examples + the TOKA casus (the prior-repo 
     not shadowing it. (Likewise there is no separate `is een/de/het <k>` alternative: the optional `lidwoord?`
     covers the article, and a §8.1.8-style `een`-membership is a resolver distinction, not a parse one.)
 
-- **The `van <LABEL>` name-boundary valkuil is handled by the existing UPPER_ID lookahead.** In
-  `de belasting op basis van afstand van Tom is …` the attribute name is a `kaleNaam` whose VAN-loop absorbs the
-  internal `van afstand` (a bare lowercase word) but STOPS before `van Tom`, because `kaleNaamWoord` excludes
-  `UPPER_ID` and the rule's own `VAN UPPER_ID` then consumes the navigation — the same context-free split the
-  §13.4 names use, no symbol table needed. Verified in the tree of the contract's own second example.
+- **The `van <LABEL>` name-boundary valkuil needed a BOUNDED name rule (grammar change, this task).** The
+  original layer used a plain `kaleNaam` for `verwachtingNaam`/`toewijzingNaam` and claimed the `VAN UPPER_ID`
+  lookahead alone split `de belasting op basis van afstand van Tom is …`. That is TRUE for a name that itself
+  contains an internal `van` (`… van afstand` is a bare lowercase word, so the VAN-loop absorbs it and the outer
+  `VAN UPPER_ID` takes `van Tom`), and the contract's second example parses on it. But it is NOT reliable for a
+  SINGLE `van <LABEL>` over a UPPER_ID label (`de afstand tot bestemming van V1 is …`): because `kaleNaamWoord`
+  ADMITS `UPPER_ID`, `kaleNaam`'s `(VAN kaleNaamDeel)*` loop can absorb `van V1` as a name-segment, and ANTLR's
+  ALL(*) prediction did so DEPENDING ON DOWNSTREAM TOKENS — a multi-word attribuut over a bare `V1` label
+  sometimes swallowed the label, leaving `is` to mismatch the outer `VAN UPPER_ID IS` (a hard `mismatched input`
+  parse error, context-dependent and flaky). Fixed with a bounded name whose `van`-continuation is **LOWER_ID-led**:
+  ```
+  verwachtingNaam : begrensdeNaam ;   toewijzingNaam : begrensdeNaam ;
+  begrensdeNaam   : kaleNaamDeel ( VAN naamVervolgDeel )* ;
+  naamVervolgDeel : naamWoordLower kaleNaamWoord* ;   // LOWER_ID-led → a bare UPPER_ID label ends the name
+  ```
+  An attribuut/rol `van`-segment in RegelSpraak is ALWAYS a lowercase word (`van afstand`, `van bestemming`), while
+  a LABEL is UPPER_ID, so this deterministically stops the name before `van <LABEL>` and leaves it for the outer
+  `VAN UPPER_ID`. The resolver additionally keeps a defensive fallback (`ScenarioResolver.attrEnLabel`) that
+  re-splits at the last ` van ` if a label were ever still absorbed. This is a **bounded grammar change confined to
+  the extension's two name rules** — `begrensdeNaam`/`naamVervolgDeel` are new non-terminals reachable only from
+  `verwachtingNaam`/`toewijzingNaam`, which are themselves reachable only from `scenario`/`instantie` under
+  `testDocument`. ANTLR generation is warning-free, the corpus stays **192-0-1**, the CorpusVuurTest partitions stay
+  **59/54/79/9**, and all 477 `make test` + 887 `mvn verify` tests hold — so the production grammar is provably
+  unperturbed (G6). Pinned by `ScenarioTypeGateTest` (multi-word attribuut over a `V1` label resolves clean) and
+  the contract's own examples.
 
 - **Value rule reuses existing literals only.** `situatieWaarde` unions `getalWaarde` (NUMBER + optional unit),
   `datumWaarde` (DATE, incl. the datum-en-tijd form), `booleanWaarde`, `ENUM_LITERAL`, `tekstWaarde` — nothing new.
@@ -2248,8 +2268,27 @@ re-derived from the spec's own worked examples + the TOKA casus (the prior-repo 
   ARE split at parse time by capitalisation/verb (`situatieWaarde` vs `UPPER_ID`, `IS` vs `ZIJN`); which reading is
   legal against the fact type (arity, role-vs-attribute) is checked by the resolver, as everywhere.
 
-**No contract deviation.** The grammar realises `docs/SCENARIOTOETSEN.md` as written — same start rule, same two
-constructs, same surface forms, same value table, same stated limitations. `docs/SCENARIOTOETSEN.md` therefore
-needed no update for this layer. Pinned by `ScenarioParseTest` (the two verbatim contract examples + representative
-single-form scenarios/situaties parse clean under `testDocument`; the negative rejects under `regelSpraakDocument`;
-a TOKA-shaped multi-word scope list parses).
+**No contract deviation (the bounded name rule is an internal parse fix, not a surface change).** The grammar
+realises `docs/SCENARIOTOETSEN.md` as written — same start rule, same two constructs, same surface forms
+(`de <attr> van <LABEL> is <waarde>` is byte-for-byte the same input, now parsed deterministically), same value
+table, same stated limitations. The `begrensdeNaam`/`naamVervolgDeel` change (above) is a resolvability fix
+INTERNAL to the two extension name rules — it accepts exactly the surface the contract documents and rejects
+nothing the contract admits — so `docs/SCENARIOTOETSEN.md` needs no surface update. Pinned by `ScenarioParseTest`
+(the two verbatim contract examples + representative single-form scenarios/situaties parse clean under
+`testDocument`; the negative rejects under `regelSpraakDocument`; a TOKA-shaped multi-word scope list parses),
+`ScenarioTypeGateTest` (the resolver/IR layer: G4 typegate + merge/conversion positives), and `ScenarioMutatieTest`
+(G3 RED-first mutation fixtures resolve clean).
+
+### Resolver + IR layer (this task) — `ScenarioResolver` reuses the production pipeline byte-neutrally
+
+The resolver/IR layer (`ir/ResolvedScenario`, `resolver/ScenarioResolver`) resolves a `testDocument` to
+`List<ResolvedScenario>` + line-numbered diagnostics on the `RegelSpraakModel`, and does so **without changing
+`Resolver.resolve`'s behaviour**: `ScenarioResolver.resolve` parses under `testDocument`, then builds a synthetic
+`regelSpraakDocument` holding exactly the NON-scenario children (definitie / regelGroep / regel / beslistabel, in
+document order — ANTLR's typed accessors scan `children` dynamically, so re-parenting suffices) and hands it to the
+SAME `DefinitionResolver.build` + `RuleChecker.check` the production path calls. The scenario/situatie children are
+then resolved separately. So `Resolver.resolve` is untouched (all 477 make-test + 887 mvn tests hold), and every
+value type-checks through the existing `Typering`/`Eenheid` machinery: a convertible unit is exactly restated to the
+target's declared unit (2 u → 120 minuut), an inconvertible one is a resolve-time ERROR. The one added IR helper is
+a public `Conditie.bevatOperand` (a read-only alias of the package-private `bevatExpr`) so the parametergate /
+peildatum-gate can see a scope rule's parameter/Rekendatum operands from the `resolver` package.
