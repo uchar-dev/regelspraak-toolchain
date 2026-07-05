@@ -97,28 +97,28 @@
       "pad": "verdeling-treinmiles-op-basis-van-leeftijd-en-woonregio-factor",
       "scope": { "regelnamen": ["Verdeling treinmiles op basis van leeftijd en woonregio factor"] },
       "invoer": ["Contingent treinmiles", "Natuurlijk persoon"],
-      "uitvoer": ["Natuurlijk persoon.treinmiles"]
+      "uitvoer": ["Natuurlijk persoon.treinmiles", "Contingent treinmiles.restant na verdeling"]
     },
     {
       "naam": "verdeling treinmiles op basis van woonregio factor en met maximum waarde",
       "pad": "verdeling-treinmiles-op-basis-van-woonregio-factor-en-met-maximum-waarde",
       "scope": { "regelnamen": ["verdeling treinmiles op basis van woonregio factor en met maximum waarde"] },
       "invoer": ["Contingent treinmiles", "Natuurlijk persoon"],
-      "uitvoer": ["Natuurlijk persoon.treinmiles"]
+      "uitvoer": ["Natuurlijk persoon.treinmiles", "Contingent treinmiles.restant na verdeling"]
     },
     {
       "naam": "verdeling treinmiles op basis van woonregio factor met afronding",
       "pad": "verdeling-treinmiles-op-basis-van-woonregio-factor-met-afronding",
       "scope": { "regelnamen": ["verdeling treinmiles op basis van woonregio factor met afronding"] },
       "invoer": ["Contingent treinmiles", "Natuurlijk persoon"],
-      "uitvoer": ["Natuurlijk persoon.treinmiles"]
+      "uitvoer": ["Natuurlijk persoon.treinmiles", "Contingent treinmiles.restant na verdeling"]
     },
     {
       "naam": "Verdeling treinmiles op basis van leeftijd, woonregio factor, met maximum waarde en afronding",
       "pad": "verdeling-treinmiles-op-basis-van-leeftijd-woonregio-factor-met-maximum-waarde-en-afronding",
       "scope": { "regelnamen": ["Verdeling treinmiles op basis van leeftijd, woonregio factor, met maximum waarde en afronding"] },
       "invoer": ["Contingent treinmiles", "Natuurlijk persoon"],
-      "uitvoer": ["Natuurlijk persoon.treinmiles"]
+      "uitvoer": ["Natuurlijk persoon.treinmiles", "Contingent treinmiles.restant na verdeling"]
     },
     {
       "naam": "belaste reis",
