@@ -2292,3 +2292,54 @@ value type-checks through the existing `Typering`/`Eenheid` machinery: a convert
 target's declared unit (2 u → 120 minuut), an inconvertible one is a resolve-time ERROR. The one added IR helper is
 a public `Conditie.bevatOperand` (a read-only alias of the package-private `bevatExpr`) so the parametergate /
 peildatum-gate can see a scope rule's parameter/Rekendatum operands from the `resolver` package.
+
+## §12 beslistabellen — a CSV IMPORT PATH, not a second grammar (`tools/csv_naar_beslistabel.py`)
+
+The markdown pipe-table surface STAYS the one canonical §12 authoring form (it is the spec's own table presentation
+serialized to text — agent-native and git-diffable). Analysts, however, live in spreadsheets. Rather than grow a
+second grammar (an ALEF-beslistabelspraak-like projection with no textual serialization to adopt — permanent
+maintenance for zero semantic gain), a **pure-python converter** (`tools/csv_naar_beslistabel.py`, sibling of
+`tools/extract_corpus.py`; stdlib only, no deps; `make csv-beslistabel FILE=<csv> [OUT=<pad>]`) turns a CSV
+decision table into the EXACT `Beslistabel`-block `.rs` fragment the parser already accepts. This adds an import
+path, NOT a grammar surface: the grammar, resolver, transpilers and runtime are UNTOUCHED. The tool does **not**
+validate RegelSpraak content — the resolver remains the sole authority on meaning; the tool only SHAPES the table.
+
+**The CSV contract.**
+
+- **Optional metadata rows, before the header.** Recognised by an EXACTLY-two-field row whose first cell is
+  case-sensitively `naam` or `geldig`: `naam;<beslistabelnaam>` sets the `Beslistabel <naam>` header, `geldig;<geldigheid>`
+  sets the geldigheid line (default `geldig altijd` when absent).
+- **Row 1 = the column-header sentences**, exactly as the markdown form expects: the doelkolom sentence, then the
+  `indien …` condition columns. There is **NO leading empty/row-number column** in the CSV — the tool prepends that
+  column and emits the running row numbers (1..N) itself.
+- **Data rows = the numbered rows**, each carrying ONLY the value cell + condition cells (no number). The tool emits
+  the running number. Every data row must have EXACTLY as many cells as the header row, else a hard error naming the
+  row and the expected/got column counts.
+- **Cell escaping.** Cells pass VERBATIM into the markdown cells, EXCEPT `|`, which is invalid in the markdown
+  pipe-table form → **hard error** naming row+column (never silent mangling). `csv`-module RFC-4180 quoting is
+  honoured for field splitting. **UNQUOTED** cells are trimmed of edge whitespace (cosmetic padding — leading/trailing
+  spaces are NOT significant); **RFC-4180-QUOTED** cells keep their content verbatim, so a quoted separator (`"a; b"`
+  → `a; b`), embedded RegelSpraak literal quotes, and quoted leading/trailing spaces (`" x "` → ` x `) all survive.
+- **Separator `;` or `,`.** Chosen structurally with `;` preferred (the metadata rows are `;`-shaped and RegelSpraak
+  enum cells legitimately contain commas, e.g. `"Friesland", "Groningen" of "Limburg"`); `,` is picked only when `;`
+  fails to split the header into more than one column. `;` is the fallback. So a comma-heavy enum cell stays intact
+  under the default `;`.
+
+**Alignment is cosmetic.** The tool emits simple single-space padding (`| cel |`) with a 4-space block indent and one
+`---` per column (incl. the row-number column) in the separator line; the parser skips whitespace and trims cells, so
+the emitted layout differs from a hand-aligned original yet parses and lowers identically.
+
+**Round-trip gate (byte-equal DRL).** A CSV render of the two §12 examples — `examples/beslistabel/spec12-woonregio-factor.rs`
+(1 enum-OR condition column) and `.../spec12-belasting-reisduur-band.rs` (2 EN-columns with `n.v.t.` open ends) —
+converts to a `Beslistabel` block that, spliced onto the original's pre-table prefix (comments + `Objecttype`
+declaration), produces **byte-identical DRL** via `Resolver --drl --allow-markers` (the CSV `naam` matches the
+original beslistabelnaam so no name difference leaks). Fixtures and the runner live under `tools/testdata/`
+(`*.csv`, `*.expected.rs`, `run_tests.sh`): V1 the DRL differential, V2 the three error paths (pipe cell / wrong
+column count / missing header — each exit 1 with row+column, nothing written), V3 the quoting/whitespace survival.
+
+**Tool limit (documented).** The simple CSV form expresses a rectangular table of a doelkolom + `indien …` condition
+columns — exactly the two spec worked examples. A `Beslistabel` construct that a real spreadsheet cannot express as a
+flat grid (were the surface to grow one — e.g. multi-line prose inside a single header cell beyond RFC-4180 quoted
+newlines, or per-column structure the pipe table itself cannot carry) is out of the converter's scope; the markdown
+surface remains authorable by hand for such cases. No such case exists in the current §12 corpus.
+

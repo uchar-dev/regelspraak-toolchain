@@ -8,7 +8,7 @@
 # the Drools transpiler grow into real JVM code (see CLAUDE.md / docs/ANTLR-HOWTO.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus drl facts drools-it engine grun gui tokens clean clean-jar image kind-smoke run-sandbox
+.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus drl facts drools-it engine grun gui tokens clean clean-jar image kind-smoke run-sandbox csv-beslistabel
 
 ANTLR4_VERSION := 4.13.2
 ANTLR4_URL     := https://www.antlr.org/download/antlr-$(ANTLR4_VERSION)-complete.jar
@@ -56,6 +56,7 @@ help:
 	@echo "  make verify-corpus                   Parse every spec example under corpusEntry; report pass/fail"
 	@echo "  make drl  FILE=<input>               Transpile a .rs file to Drools (DRL) on stdout"
 	@echo "  make facts                           Generate the TOKA fact-model beans and javac them (out/facts/)"
+	@echo "  make csv-beslistabel FILE=<csv> [OUT=<pad>]  Convert a CSV decision table to a §12 Beslistabel .rs fragment"
 	@echo "  make drools-it                       (needs Maven+network) Compile & fire the DRL in Drools"
 	@echo "  make engine                          (needs Maven) Build + test the shippable engine consumer"
 	@echo "  make scenario-test FILES=\"a.rs …\"    (needs Maven) Run the scenariotoetsen CLI over .rs files"
@@ -140,6 +141,16 @@ verify-corpus: compile
 # `Resolver --drl` without the flag exits 3 on any marker — the CI-facing contract.
 drl: resolver
 	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver --drl --allow-markers $(FILE)
+
+# Convert a CSV decision table into the canonical §12 Beslistabel markdown-pipe-table
+# .rs fragment (docs/grammar-divergences.md §12 CSV-import note). Pure-python, no deps
+# (sibling of tools/extract_corpus.py). CSV in -> Beslistabel block on stdout:
+#   make csv-beslistabel FILE=tools/testdata/woonregio-factor.csv
+# Add OUT=<pad> to write a file instead of stdout. Exit 1 (with row+column on stderr)
+# on a bad cell / wrong column count / missing header; the resolver remains the sole
+# authority on RegelSpraak content — this target only SHAPES the table.
+csv-beslistabel:
+	@python3 tools/csv_naar_beslistabel.py $(if $(OUT),--out $(OUT)) $(FILE)
 
 # Generate the fact-model beans the TOKA casus implies, then PROVE they are pure-JDK by javac'ing them.
 # The input is the TOKA *model foundation* — the exact companion model files the golden scenario manifest
