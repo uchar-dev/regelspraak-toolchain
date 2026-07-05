@@ -1,0 +1,2183 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "TOKA belastingdienst",
+    "version": "2.3.0"
+  },
+  "paths": {
+    "/bepaal-leeftijd": {
+      "post": {
+        "operationId": "bepaalLeeftijd",
+        "summary": "bepaal leeftijd",
+        "description": "Entrypoint 'bepaal leeftijd'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.leeftijd.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kenmerktoekenning-persoon-minderjarig": {
+      "post": {
+        "operationId": "kenmerktoekenningPersoonMinderjarig",
+        "summary": "Kenmerktoekenning persoon minderjarig",
+        "description": "Entrypoint 'Kenmerktoekenning persoon minderjarig'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon:minderjarig.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hoeveelheid-passagiers-van-een-reis": {
+      "post": {
+        "operationId": "hoeveelheidPassagiersVanEenReis",
+        "summary": "Hoeveelheid passagiers van een reis",
+        "description": "Entrypoint 'Hoeveelheid passagiers van een reis'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Vlucht.hoeveelheid passagiers.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/totaal-te-betalen-belasting": {
+      "post": {
+        "operationId": "totaalTeBetalenBelasting",
+        "summary": "Totaal te betalen belasting",
+        "description": "Entrypoint 'Totaal te betalen belasting'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Vlucht.totaal te betalen belasting.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/leeftijd-oudste-passagier": {
+      "post": {
+        "operationId": "leeftijdOudstePassagier",
+        "summary": "Leeftijd oudste passagier",
+        "description": "Entrypoint 'Leeftijd oudste passagier'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Vlucht.leeftijd van de oudste passagier.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/te-betalen-belasting-van-een-passagier": {
+      "post": {
+        "operationId": "teBetalenBelastingVanEenPassagier",
+        "summary": "Te betalen belasting van een passagier",
+        "description": "Entrypoint 'Te betalen belasting van een passagier'. Invoer-objecttypen: Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.te betalen belasting.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hoogseizoen": {
+      "post": {
+        "operationId": "hoogseizoen",
+        "summary": "Hoogseizoen",
+        "description": "Entrypoint 'Hoogseizoen'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: Vlucht:in het hoogseizoen.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/paaskorting": {
+      "post": {
+        "operationId": "paaskorting",
+        "summary": "Paaskorting",
+        "description": "Entrypoint 'Paaskorting'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: Vlucht:reis met paaskorting.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vastgestelde-contingent-treinmiles": {
+      "post": {
+        "operationId": "vastgesteldeContingentTreinmiles",
+        "summary": "vastgestelde contingent treinmiles",
+        "description": "Entrypoint 'vastgestelde contingent treinmiles'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: (geen).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/controleer-of-vlucht-geen-rondvlucht-is": {
+      "post": {
+        "operationId": "controleerOfVluchtGeenRondvluchtIs",
+        "summary": "Controleer of vlucht geen rondvlucht is",
+        "description": "Entrypoint 'Controleer of vlucht geen rondvlucht is'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: (geen).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/initialiseer-te-betalen-belasting-op-initiele-belasting": {
+      "post": {
+        "operationId": "initialiseerTeBetalenBelastingOpInitieleBelasting",
+        "summary": "Initialiseer te betalen belasting op initiele belasting",
+        "description": "Entrypoint 'Initialiseer te betalen belasting op initiele belasting'. Invoer-objecttypen: Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.te betalen belasting.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/verdeling-treinmiles-in-gelijke-delen": {
+      "post": {
+        "operationId": "verdelingTreinmilesInGelijkeDelen",
+        "summary": "verdeling treinmiles in gelijke delen",
+        "description": "Entrypoint 'verdeling treinmiles in gelijke delen'. Invoer-objecttypen: Contingent treinmiles, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.treinmiles.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/verdeling-treinmiles-op-basis-van-woonregio-factor": {
+      "post": {
+        "operationId": "verdelingTreinmilesOpBasisVanWoonregioFactor",
+        "summary": "verdeling treinmiles op basis van woonregio factor",
+        "description": "Entrypoint 'verdeling treinmiles op basis van woonregio factor'. Invoer-objecttypen: Contingent treinmiles, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.treinmiles.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/verdeling-treinmiles-op-basis-van-leeftijd-en-woonregio-factor": {
+      "post": {
+        "operationId": "verdelingTreinmilesOpBasisVanLeeftijdEnWoonregioFactor",
+        "summary": "Verdeling treinmiles op basis van leeftijd en woonregio factor",
+        "description": "Entrypoint 'Verdeling treinmiles op basis van leeftijd en woonregio factor'. Invoer-objecttypen: Contingent treinmiles, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.treinmiles.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/verdeling-treinmiles-op-basis-van-woonregio-factor-en-met-maximum-waarde": {
+      "post": {
+        "operationId": "verdelingTreinmilesOpBasisVanWoonregioFactorEnMetMaximumWaarde",
+        "summary": "verdeling treinmiles op basis van woonregio factor en met maximum waarde",
+        "description": "Entrypoint 'verdeling treinmiles op basis van woonregio factor en met maximum waarde'. Invoer-objecttypen: Contingent treinmiles, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.treinmiles.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/verdeling-treinmiles-op-basis-van-woonregio-factor-met-afronding": {
+      "post": {
+        "operationId": "verdelingTreinmilesOpBasisVanWoonregioFactorMetAfronding",
+        "summary": "verdeling treinmiles op basis van woonregio factor met afronding",
+        "description": "Entrypoint 'verdeling treinmiles op basis van woonregio factor met afronding'. Invoer-objecttypen: Contingent treinmiles, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.treinmiles.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/verdeling-treinmiles-op-basis-van-leeftijd-woonregio-factor-met-maximum-waarde-en-afronding": {
+      "post": {
+        "operationId": "verdelingTreinmilesOpBasisVanLeeftijdWoonregioFactorMetMaximumWaardeEnAfronding",
+        "summary": "Verdeling treinmiles op basis van leeftijd, woonregio factor, met maximum waarde en afronding",
+        "description": "Entrypoint 'Verdeling treinmiles op basis van leeftijd, woonregio factor, met maximum waarde en afronding'. Invoer-objecttypen: Contingent treinmiles, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.treinmiles.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/belaste-reis": {
+      "post": {
+        "operationId": "belasteReis",
+        "summary": "belaste reis",
+        "description": "Entrypoint 'belaste reis'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: Vlucht:belaste reis.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recht-op-duurzaamheidskorting": {
+      "post": {
+        "operationId": "rechtOpDuurzaamheidskorting",
+        "summary": "Recht op Duurzaamheidskorting",
+        "description": "Entrypoint 'Recht op Duurzaamheidskorting'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon:recht op duurzaamheidskorting.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recht-op-duurzaamheidskorting-alternatief": {
+      "post": {
+        "operationId": "rechtOpDuurzaamheidskortingAlternatief",
+        "summary": "Recht op Duurzaamheidskorting alternatief",
+        "description": "Entrypoint 'Recht op Duurzaamheidskorting alternatief'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon:recht op duurzaamheidskorting.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/passagier-van-18-tm-24-jaar": {
+      "post": {
+        "operationId": "passagierVan18Tm24Jaar",
+        "summary": "Passagier van 18 tm 24 jaar",
+        "description": "Entrypoint 'Passagier van 18 tm 24 jaar'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon:passagier van 18 tot en met 24 jaar.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/startpunt-variabele-periode-op-datum-van-vertrek": {
+      "post": {
+        "operationId": "startpuntVariabelePeriodeOpDatumVanVertrek",
+        "summary": "Startpunt variabele periode op datum van vertrek",
+        "description": "Entrypoint 'Startpunt variabele periode op datum van vertrek'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: (geen).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/startpunt-variabele-periode-op-datum-van-vertrek-min-reserveringstermijn": {
+      "post": {
+        "operationId": "startpuntVariabelePeriodeOpDatumVanVertrekMinReserveringstermijn",
+        "summary": "Startpunt variabele periode op datum van vertrek min reserveringstermijn",
+        "description": "Entrypoint 'Startpunt variabele periode op datum van vertrek min reserveringstermijn'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: (geen).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/belasting-op-basis-van-afstand": {
+      "post": {
+        "operationId": "belastingOpBasisVanAfstand",
+        "summary": "belasting op basis van afstand",
+        "description": "Entrypoint 'belasting op basis van afstand'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.belasting op basis van afstand.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/woonregio-factor-1": {
+      "post": {
+        "operationId": "woonregioFactor1",
+        "summary": "Woonregio factor 1",
+        "description": "Entrypoint 'Woonregio factor 1'. Invoer-objecttypen: Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.woonregio factor.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/woonregio-factor-2": {
+      "post": {
+        "operationId": "woonregioFactor2",
+        "summary": "Woonregio factor 2",
+        "description": "Entrypoint 'Woonregio factor 2'. Invoer-objecttypen: Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.woonregio factor.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/woonregio-factor-3": {
+      "post": {
+        "operationId": "woonregioFactor3",
+        "summary": "Woonregio factor 3",
+        "description": "Entrypoint 'Woonregio factor 3'. Invoer-objecttypen: Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.woonregio factor.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/datum-tijd-voor-het-berekenen-van-de-belasting-op-basis-van-afstand": {
+      "post": {
+        "operationId": "datumTijdVoorHetBerekenenVanDeBelastingOpBasisVanAfstand",
+        "summary": "Datum-tijd voor het berekenen van de belasting op basis van afstand",
+        "description": "Entrypoint 'Datum-tijd voor het berekenen van de belasting op basis van afstand'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: Vlucht.datum-tijd voor het berekenen van de belasting op basis van afstand.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/verwachte-datum-tijd-van-aankomst-van-een-vlucht": {
+      "post": {
+        "operationId": "verwachteDatumTijdVanAankomstVanEenVlucht",
+        "summary": "Verwachte datum-tijd van aankomst van een Vlucht",
+        "description": "Entrypoint 'Verwachte datum-tijd van aankomst van een Vlucht'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: Vlucht.verwachte datum-tijd van aankomst.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/passagier-met-recht-op-treinmiles": {
+      "post": {
+        "operationId": "passagierMetRechtOpTreinmiles",
+        "summary": "passagier met recht op treinmiles",
+        "description": "Entrypoint 'passagier met recht op treinmiles'. Invoer-objecttypen: Vlucht, Contingent treinmiles, Natuurlijk persoon. Uitvoer-selectoren: (geen).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/info": {
+      "get": {
+        "operationId": "info",
+        "summary": "dienst-info",
+        "description": "De dienst-identiteit, de per-regel Dekking-verdicten, de overgeslagen (marker) regels en de parameter-defaults.",
+        "responses": {
+          "200": {
+            "description": "dienst-info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Info"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "NatuurlijkPersoon": {
+        "type": "object",
+        "properties": {
+          "identificatienummer": {
+            "type": "integer"
+          },
+          "geboortedatum": {
+            "type": "string",
+            "format": "date"
+          },
+          "leeftijd": {
+            "type": "integer",
+            "x-eenheid": "jr",
+            "description": "eenheid: jr (een getal in deze eenheid, of {\"waarde\": n, \"eenheid\": \"jr\"})"
+          },
+          "belasting op basis van afstand": {
+            "type": "number"
+          },
+          "belasting op basis van reisduur": {
+            "type": "number"
+          },
+          "te betalen belasting": {
+            "type": "number"
+          },
+          "treinmiles op basis van evenredige verdeling": {
+            "type": "integer"
+          },
+          "maximaal te ontvangen treinmiles bij evenredige verdeling volgens rangorde": {
+            "type": "integer"
+          },
+          "burgerservicenummer": {
+            "type": "string"
+          },
+          "woonprovincie": {
+            "type": "string"
+          },
+          "woonregio factor": {
+            "type": "integer"
+          },
+          "treinmiles": {
+            "type": "integer"
+          },
+          "maximaal aantal te ontvangen treinmiles": {
+            "type": "integer"
+          },
+          "minderjarig": {
+            "type": "boolean",
+            "description": "kenmerk"
+          },
+          "passagier van 18 tot en met 24 jaar": {
+            "type": "boolean",
+            "description": "kenmerk"
+          },
+          "passagier van 25 tot en met 64 jaar": {
+            "type": "boolean",
+            "description": "kenmerk"
+          },
+          "passagier van 65 jaar of ouder": {
+            "type": "boolean",
+            "description": "kenmerk"
+          },
+          "recht op duurzaamheidskorting": {
+            "type": "boolean",
+            "description": "kenmerk"
+          },
+          "passagier jonger dan 18 jaar": {
+            "type": "boolean",
+            "description": "kenmerk"
+          }
+        },
+        "description": "Objecttype 'Natuurlijk persoon'. Kenmerken (boolean-eigenschappen): minderjarig, passagier van 18 tot en met 24 jaar, passagier van 25 tot en met 64 jaar, passagier van 65 jaar of ouder, recht op duurzaamheidskorting, passagier jonger dan 18 jaar."
+      },
+      "Vlucht": {
+        "type": "object",
+        "properties": {
+          "luchthaven van vertrek": {
+            "type": "string",
+            "enum": [
+              "Amsterdam Schiphol",
+              "Groningen Eelde",
+              "Parijs Charles de Gaulle",
+              "Londen Heathrow"
+            ]
+          },
+          "luchthaven van bestemming": {
+            "type": "string",
+            "enum": [
+              "Amsterdam Schiphol",
+              "Groningen Eelde",
+              "Parijs Charles de Gaulle",
+              "Londen Heathrow"
+            ]
+          },
+          "vluchtdatum": {
+            "type": "string",
+            "format": "date"
+          },
+          "afstand tot bestemming": {
+            "type": "integer",
+            "x-eenheid": "km",
+            "description": "eenheid: km (een getal in deze eenheid, of {\"waarde\": n, \"eenheid\": \"km\"})"
+          },
+          "bereikbaar per trein": {
+            "type": "boolean",
+            "description": "kenmerk"
+          },
+          "gebruik fossiele brandstof minder dan 50 procent": {
+            "type": "boolean"
+          },
+          "reisduur per trein": {
+            "type": "integer",
+            "x-eenheid": "minuut",
+            "description": "eenheid: minuut (een getal in deze eenheid, of {\"waarde\": n, \"eenheid\": \"minuut\"})"
+          },
+          "hoeveelheid passagiers": {
+            "type": "integer"
+          },
+          "hoeveelheid uitzonderingspassagiers": {
+            "type": "integer"
+          },
+          "leeftijd van de oudste passagier": {
+            "type": "integer",
+            "x-eenheid": "jr",
+            "description": "eenheid: jr (een getal in deze eenheid, of {\"waarde\": n, \"eenheid\": \"jr\"})"
+          },
+          "totale belasting op basis van afstand": {
+            "type": "number"
+          },
+          "totale belasting op basis van reisduur": {
+            "type": "number"
+          },
+          "totaal te betalen belasting": {
+            "type": "number"
+          },
+          "verwachte datum-tijd van aankomst": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "verwachte datum-tijd van vertrek": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "verwachte duur": {
+            "type": "integer",
+            "x-eenheid": "minuut",
+            "description": "eenheid: minuut (een getal in deze eenheid, of {\"waarde\": n, \"eenheid\": \"minuut\"})"
+          },
+          "datum-tijd voor het berekenen van de belasting op basis van afstand": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "bevestigingstijdstip": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "uiterste boekingstijdstip": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "datum van vertrek van de vlucht": {
+            "type": "string",
+            "format": "date"
+          },
+          "daadwerkelijke datum-tijd van vertrek": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "datum van vertrek": {
+            "type": "string",
+            "format": "date"
+          },
+          "startpunt variabele periode van 3 maanden": {
+            "type": "string",
+            "format": "date"
+          },
+          "gebruik fossiele brandstoffen minder dan 50%": {
+            "type": "boolean",
+            "description": "kenmerk"
+          },
+          "reis met paaskorting": {
+            "type": "boolean",
+            "description": "kenmerk"
+          },
+          "reiziger": {
+            "type": "boolean",
+            "description": "kenmerk"
+          },
+          "duurzaam": {
+            "type": "boolean",
+            "description": "kenmerk"
+          },
+          "belaste reis": {
+            "type": "boolean",
+            "description": "kenmerk"
+          },
+          "belast": {
+            "type": "boolean",
+            "description": "kenmerk"
+          },
+          "rondvlucht": {
+            "type": "boolean",
+            "description": "kenmerk"
+          },
+          "bestemd voor minderjarigen": {
+            "type": "boolean",
+            "description": "kenmerk"
+          },
+          "in het hoogseizoen": {
+            "type": "boolean",
+            "description": "kenmerk"
+          }
+        },
+        "description": "Objecttype 'Vlucht'. Kenmerken (boolean-eigenschappen): bereikbaar per trein, gebruik fossiele brandstoffen minder dan 50%, reis met paaskorting, reiziger, duurzaam, belaste reis, belast, rondvlucht, bestemd voor minderjarigen, in het hoogseizoen."
+      },
+      "ContingentTreinmiles": {
+        "type": "object",
+        "properties": {
+          "totaal aantal treinmiles": {
+            "type": "integer"
+          },
+          "aantal treinmiles op basis van aantal passagiers": {
+            "type": "integer"
+          },
+          "restant na verdeling": {
+            "type": "integer"
+          }
+        },
+        "description": "Objecttype 'Contingent treinmiles'."
+      },
+      "Verzoek": {
+        "type": "object",
+        "description": "Een beslissingsverzoek: gelabelde object-instanties met attribuut-/kenmerk-waarden en rol-relaties, plus optionele parameter-overrides en rekendatum.",
+        "required": [
+          "instanties"
+        ],
+        "properties": {
+          "rekendatum": {
+            "type": "string",
+            "format": "date",
+            "description": "ISO-datum (yyyy-MM-dd); optioneel."
+          },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "parameternaam -> waarde; overschrijft de descriptor-defaults."
+          },
+          "instanties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "type",
+                "id"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "attributen": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "attribuutnaam -> waarde (per het objecttype-schema)."
+                },
+                "kenmerken": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "kenmerknaam -> boolean."
+                },
+                "rollen": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "rolnaam -> doel-id of lijst van doel-ids."
+                }
+              }
+            }
+          },
+          "relaties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "feittype",
+                "rollen"
+              ],
+              "properties": {
+                "feittype": {
+                  "type": "string"
+                },
+                "rollen": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "rolnaam -> id of lijst van ids."
+                }
+              }
+            }
+          }
+        }
+      },
+      "Antwoord": {
+        "type": "object",
+        "description": "Het beslissingsantwoord: per instantie de gevraagde uitvoer-attributen/-kenmerken, plus de namen van de regels waarvan een consistentietoets faalde.",
+        "properties": {
+          "instanties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "attributen": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "attribuutnaam -> waarde (of null bij leeg)."
+                },
+                "kenmerken": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "kenmerknaam -> boolean."
+                }
+              }
+            }
+          },
+          "inconsistenties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "de namen van de regels waarvan een consistentietoets INCONSISTENT opleverde."
+          }
+        }
+      },
+      "Fout": {
+        "type": "object",
+        "description": "Een dienst-fout; noemt waar mogelijk het foutieve veld/pad.",
+        "required": [
+          "fout"
+        ],
+        "properties": {
+          "fout": {
+            "type": "string"
+          },
+          "veld": {
+            "type": "string"
+          },
+          "schendingen": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "de verzameling schendingen, elk met soort/veld/melding."
+          }
+        }
+      },
+      "Info": {
+        "type": "object",
+        "description": "De dienst-info: identiteit, per-regel Dekking, overgeslagen markers, parameters.",
+        "properties": {
+          "dienst": {
+            "type": "object"
+          },
+          "dekking": {
+            "type": "object"
+          },
+          "overgeslagen": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "parameters": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}
