@@ -41,7 +41,12 @@ Collection<Inconsistentie> fouten = /* a fresh session */ s.facts(Inconsistentie
 ```
 
 The fact classes the Model references must be on the classpath in package `io.github.yhavinga.regelspraak.facts`
-(the consumer's domain beans: Pascal-case class, `getX`/`setX` per attribute, `isX`/`setX` per kenmerk).
+(Pascal-case class, `getX`/`setX` per attribute, `isX`/`setX` per kenmerk, plus `Segment`/`Inconsistentie`
+carriers). You do **not** hand-write them: `Resolver --facts <outdir>` (or `make facts` for the TOKA casus)
+**generates** exactly the beans a resolved model implies into that package, and `RegelSpraakEngine.compile`
+runs `ContractValidator` at build time to enforce the same contract — a missing or mistyped member fails fast
+with the full list of violations rather than a reflective abort mid-fire. Generate the beans once from the rule
+source, keep them on the engine's classpath, and let the validator guarantee they still match after any rule change.
 
 ## The DRL oracle's classpath contract
 

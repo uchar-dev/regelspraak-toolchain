@@ -8,7 +8,7 @@
 # the Drools transpiler grow into real JVM code (see CLAUDE.md / docs/ANTLR-HOWTO.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus drl drools-it engine grun gui tokens clean clean-jar run-sandbox
+.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus drl facts drools-it engine grun gui tokens clean clean-jar run-sandbox
 
 ANTLR4_VERSION := 4.13.2
 ANTLR4_URL     := https://www.antlr.org/download/antlr-$(ANTLR4_VERSION)-complete.jar
@@ -55,6 +55,7 @@ help:
 	@echo "  make test                            Run the resolver/type-checker JUnit suite"
 	@echo "  make verify-corpus                   Parse every spec example under corpusEntry; report pass/fail"
 	@echo "  make drl  FILE=<input>               Transpile a .rs file to Drools (DRL) on stdout"
+	@echo "  make facts                           Generate the TOKA fact-model beans and javac them (out/facts/)"
 	@echo "  make drools-it                       (needs Maven+network) Compile & fire the DRL in Drools"
 	@echo "  make engine                          (needs Maven) Build + test the shippable engine consumer"
 	@echo "  make scenario-test FILES=\"a.rs …\"    (needs Maven) Run the scenariotoetsen CLI over .rs files"
@@ -136,6 +137,27 @@ verify-corpus: compile
 # `Resolver --drl` without the flag exits 3 on any marker — the CI-facing contract.
 drl: resolver
 	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver --drl --allow-markers $(FILE)
+
+# Generate the fact-model beans the TOKA casus implies, then PROVE they are pure-JDK by javac'ing them.
+# The input is the TOKA *model foundation* — the exact companion model files the golden scenario manifest
+# (examples/toka-scenarios/manifest) lists: toka-01..16 plus the reconciliatie/model-extensie companions. That
+# set resolves WITHOUT errors; the toka-2x regel files carry the known §4.1 datum+datum casus-quirk (see
+# CasusTest / the --facts error contract) and add no fact-model structure, so the beans are fully determined by
+# the foundation. `Resolver --facts` is model-level: it writes NOTHING when the model has errors, so this target
+# doubles as a resolve gate. The generated beans need no external classpath (java.* only), so plain javac proves them.
+TOKA_MODEL_FOUNDATION := \
+	$(wildcard examples/toka/toka-0[1-9]-*.rs) \
+	$(wildcard examples/toka/toka-1[0-6]-*.rs) \
+	examples/toka-reconciliatie/casus-omissies.rs \
+	examples/toka-scenarios/scenario-model-extensie.rs
+FACTS_DIR := $(OUT_DIR)/facts
+facts: resolver
+	@rm -rf $(FACTS_DIR)
+	@mkdir -p $(FACTS_DIR)/src $(FACTS_DIR)/classes
+	@cat $(TOKA_MODEL_FOUNDATION) > $(FACTS_DIR)/toka-model.rs
+	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver --facts $(FACTS_DIR)/src $(FACTS_DIR)/toka-model.rs
+	@javac -d $(FACTS_DIR)/classes $$(find $(FACTS_DIR)/src -name '*.java')
+	@echo "PASS: facts gegenereerd én gecompileerd naar $(FACTS_DIR)/classes"
 
 # Compile AND FIRE the generated DRL in a real Drools engine — the executable
 # proof that transpilation is correct, not merely well-shaped. Unlike the jar-only
