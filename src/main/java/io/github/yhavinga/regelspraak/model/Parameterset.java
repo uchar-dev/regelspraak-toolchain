@@ -41,8 +41,14 @@ public record Parameterset(String naam, Map<String, List<WaardeInterval>> waarde
      */
     public record WaardeInterval(Object waarde, Geldigheid geldigheid) {}
 
-    /** De UNIE van alle intervallen per parameternaam over alle sets heen (de waarheid per parameter). */
-    private static Map<String, List<WaardeInterval>> pool(List<Parameterset> sets) {
+    /**
+     * De UNIE van alle intervallen per parameternaam over alle sets heen (de waarheid per parameter). Publiek zodat de
+     * compile-time consistentiecheck ({@link io.github.yhavinga.regelspraak.transpiler.kern.PeriodeDekking}) exact dezelfde
+     * pool-semantiek deelt: dekking-per-parameter is de vereniging over alle sets, precies zoals {@link #waardenOp} en
+     * {@link #overlapFouten} die zien. De keys zijn de parameternamen zoals ze in de sets staan (canoniek genormaliseerd
+     * door de lader). Een lege/afwezige set draagt niets bij.
+     */
+    public static Map<String, List<WaardeInterval>> pool(List<Parameterset> sets) {
         Map<String, List<WaardeInterval>> pool = new LinkedHashMap<>();
         for (Parameterset s : sets)
             if (s != null && s.waarden() != null)
