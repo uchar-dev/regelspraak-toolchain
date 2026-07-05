@@ -5,12 +5,18 @@ import io.github.yhavinga.regelspraak.resolver.Resolver;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dekking;
 import io.github.yhavinga.regelspraak.transpiler.model.ExecModelTranspiler;
 
+import io.github.yhavinga.regelspraak.model.Parameterset;
+import io.github.yhavinga.regelspraak.transpiler.kern.Namen;
+
 import org.drools.modelcompiler.KieBaseBuilder;
 import org.kie.api.KieBase;
 import org.kie.api.runtime.KieSession;
 
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The shippable RegelSpraak runtime: compile a RegelSpraak v2.3.0 source into a ready-to-fire Drools engine and
@@ -61,6 +67,69 @@ public final class RegelSpraakEngine {
 
     /** Open a fresh fact session against the compiled rule base. */
     public Session newSession() { return new Session(kieBase.newKieSession()); }
+
+    /**
+     * Open a fresh session op één datumautoriteit: {@code peildatum} wordt de {@code rekendatum}-global. Een model
+     * dat geen rekendatum-global declareert (niet-tijdgebonden) is tolerant — {@code setGlobal} wordt dan opgeslikt,
+     * geen fout (spiegel {@code setGlobalVeilig} uit ScenarioRunner/Uitvoerder). Dit is het pad zonder parametersets;
+     * de sessie draagt dan alleen de datum, geen parameter-globals.
+     */
+    public Session newSession(LocalDate peildatum) {
+        Session s = new Session(kieBase.newKieSession());
+        setGlobalVeilig(s, "rekendatum", peildatum);
+        return s;
+    }
+
+    /**
+     * Open een sessie op de ÉÉN-DATUMAUTORITEIT-unificatie: de {@code peildatum} selecteert de parameter-vintage
+     * EN wordt de {@code rekendatum}-global — een regel die Rekendatum/Rekenjaar leest en de vintage-selectie volgen
+     * dus ALTIJD dezelfde datum; een tweede datumnotie is onmogelijk. Fail-fast:
+     * <ul>
+     *   <li><b>peildatum {@code null}</b> — de datumautoriteit is verplicht op dit pad ({@link IllegalArgumentException});</li>
+     *   <li><b>overlap</b> — {@link Parameterset#overlapFouten} niet-leeg is nooit last-one-wins, ook voor
+     *       hand-gebouwde sets ({@link IllegalArgumentException}); de lader vangt dit normaal al af;</li>
+     *   <li><b>gap</b> — geen interval bevat de peildatum voor een parameter is een SESSION-fout die parameter +
+     *       peildatum noemt ({@link IllegalStateException} met alle gap-regels; geen compile-fout, dus geen
+     *       {@link RegelSpraakCompileException}: de bron compileerde prima, de session-DATA dekt deze datum niet).</li>
+     * </ul>
+     * Elke opgeloste parameter wordt als global gezet onder {@code Namen.ident(parameternaam, false)} (dezelfde formule
+     * als ScenarioRunner en de service-VerzoekMapper), tolerant voor niet-gedeclareerde globals: een parameter die geen
+     * enkele regel leest is geen fout.
+     */
+    public Session newSession(LocalDate peildatum, List<Parameterset> parametersets) {
+        if (peildatum == null)
+            throw new IllegalArgumentException("peildatum is verplicht: de datumautoriteit selecteert de "
+                    + "parameter-vintage en is tevens de rekendatum — een null-datum kan geen vintage kiezen");
+
+        List<Parameterset> sets = parametersets == null ? List.of() : parametersets;
+
+        // defensieve overlap-hercheck: ook hand-gebouwde sets krijgen nooit last-one-wins (de lader vangt dit al af).
+        List<String> overlap = Parameterset.overlapFouten(sets);
+        if (!overlap.isEmpty())
+            throw new IllegalArgumentException("parametersets bevatten overlappende geldigheidsperiodes: "
+                    + String.join("; ", overlap));
+
+        List<String> gaten = new ArrayList<>();
+        Map<String, Object> opgelost = Parameterset.waardenOp(sets, peildatum, gaten);
+        if (!gaten.isEmpty())
+            throw new IllegalStateException("geen parameterwaarde geldig op peildatum " + peildatum + ": "
+                    + String.join("; ", gaten));
+
+        Session s = new Session(kieBase.newKieSession());
+        for (Map.Entry<String, Object> e : opgelost.entrySet())
+            setGlobalVeilig(s, Namen.ident(e.getKey(), false), e.getValue());
+        // de unificatie: dezelfde peildatum is de rekendatum-global.
+        setGlobalVeilig(s, "rekendatum", peildatum);
+        return s;
+    }
+
+    /** setGlobal, tolerant voor een model dat geen zodanige global declareerde (een parameter die geen regel leest,
+     *  of een niet-tijdgebonden model zonder rekendatum-global): schrijven zou throwen — hier onschadelijk gemaakt
+     *  (spiegel ScenarioRunner/Uitvoerder.setGlobalVeilig). */
+    private static void setGlobalVeilig(Session s, String naam, Object waarde) {
+        try { s.setGlobal(naam, waarde); }
+        catch (RuntimeException onbekend) { /* global niet gedeclareerd: onschadelijk — geen regel leest hem */ }
+    }
 
     /** Rules the transpiler could not lower (honest markers); empty for a fully-supported source. */
     public List<String> overgeslagen() { return overgeslagen; }

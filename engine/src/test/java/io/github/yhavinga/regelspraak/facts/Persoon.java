@@ -18,4 +18,14 @@ public class Persoon {
     private BigDecimal uitkomst;
     public BigDecimal getUitkomst() { return uitkomst; }
     public void setUitkomst(BigDecimal v) { this.uitkomst = v; }
+
+    // vintage-selected parameter target (PeildatumSessieTest): grens is set to the resolved parameter value,
+    // prijs is set to Rekenjaar (the rekendatum global's year) — the one-date-authority pair.
+    private BigDecimal grens;
+    public BigDecimal getGrens() { return grens; }
+    public void setGrens(BigDecimal v) { this.grens = v; }
+
+    private BigDecimal prijs;
+    public BigDecimal getPrijs() { return prijs; }
+    public void setPrijs(BigDecimal v) { this.prijs = v; }
 }
