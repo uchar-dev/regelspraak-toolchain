@@ -1,8 +1,7 @@
 package io.github.yhavinga.regelspraak.runtime;
 
-import java.lang.invoke.CallSite;
-import java.lang.invoke.LambdaMetafactory;
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandleProxies;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
@@ -14,9 +13,14 @@ import java.util.function.Function;
 /**
  * Typed per-objecttype fact accessors — the executable-model back-end's "codegen" path (migration option B /
  * the deferred Phase-H optimization). Where {@code ExecModelTranspiler} knows an objecttype's fact CLASS at
- * model-build time, it resolves a getter/setter to a TYPED lambda via {@link LambdaMetafactory}: the JVM spins a
- * hidden accessor class that calls {@code bean.get<Prop>()} / {@code bean.set<Prop>(v)} DIRECTLY, the same
- * direct-dispatch a Kogito-generated executable model uses. Two wins over the reflective bridge
+ * model-build time, it resolves a getter/setter to a TYPED {@code Function}/{@code BiConsumer} bound to the
+ * bean's {@code get<Prop>()} / {@code set<Prop>(v)} via a per-owner {@link MethodHandles.Lookup} — a direct
+ * MethodHandle invoke, no reflection, the same direct-dispatch a Kogito-generated executable model uses. The
+ * handle is adapted to the interface with {@link MethodHandleProxies#asInterfaceInstance} (a hidden-class proxy
+ * on JDK 21+); {@link java.lang.invoke.LambdaMetafactory} is deliberately NOT used because it demands a
+ * full-privilege ({@code ORIGINAL}) lookup, a bar a cross-module {@code privateLookupIn} into a CHILD-classloader
+ * bean cannot clear — the reason the typed path used to {@code NoClassDefFound} against generated beans (see
+ * {@code ownerLookup}). Two wins over the reflective bridge
  * ({@link RegelSpraakRuntime#get}/{@link RegelSpraakRuntime#set}):
  *
  * <ul>
@@ -45,6 +49,34 @@ public final class Accessors {
     private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
     private static final Map<Class<?>, Map<String, Function<Object, Object>>> GETTERS = new ConcurrentHashMap<>();
     private static final Map<Class<?>, Map<String, BiConsumer<Object, Object>>> SETTERS = new ConcurrentHashMap<>();
+    /** Per-owner lookups. A fact bean loaded in a CHILD classloader lives in a DIFFERENT (unnamed) module than this
+     *  class, so the static parent-bound {@link #LOOKUP} cannot unreflect its methods; a {@code privateLookupIn}
+     *  teleported into the owner can. Cached because {@code privateLookupIn} is a security-checked call and the same
+     *  owner recurs across every one of its props. */
+    private static final Map<Class<?>, MethodHandles.Lookup> LOOKUPS = new ConcurrentHashMap<>();
+
+    /** A {@link MethodHandles.Lookup} that can unreflect {@code owner}'s methods wherever it lives (parent OR child
+     *  classloader), or {@code null} when the owner's module forbids private access — the caller then keeps the
+     *  reflective bridge. For a same-module (app-loaded) owner this is the full-privilege {@link #LOOKUP} itself; for
+     *  a child-loaded owner it is a lookup teleported into the owner via {@link MethodHandles#privateLookupIn}. */
+    private static MethodHandles.Lookup ownerLookup(Class<?> owner) {
+        return LOOKUPS.computeIfAbsent(owner, o -> {
+            try { return MethodHandles.privateLookupIn(o, LOOKUP); }
+            catch (IllegalAccessException e) { return null; }   // module forbids private access -> reflective guard
+        });
+    }
+
+    /** Adapt a per-owner unreflected accessor {@link MethodHandle} to a {@code Function}/{@code BiConsumer} via
+     *  {@link MethodHandleProxies}. Unlike {@link java.lang.invoke.LambdaMetafactory}, which demands a full-privilege
+     *  ({@code ORIGINAL}) lookup in the owner's module — a bar a cross-module {@code privateLookupIn} cannot clear, so
+     *  LMF throws {@code LambdaConversionException} against a CHILD-loaded bean — {@code asInterfaceInstance} binds the
+     *  handle directly and links wherever the owner lives. It stays reflection-free at call time (a direct MH invoke,
+     *  no {@code Method.invoke}); the reflective {@link RegelSpraakRuntime} bridge remains the guard for the shapes
+     *  below (no unique setter, forbidden module, subtype/null owner). */
+    @SuppressWarnings("unchecked")
+    private static <T> T proxy(Class<T> iface, MethodHandle mh, MethodType erased) {
+        return MethodHandleProxies.asInterfaceInstance(iface, mh.asType(erased));
+    }
 
     /** How many accessor builds fell back to the reflective bridge because LambdaMetafactory could not bind the
      *  signature. Stays 0 for ordinary POJO getters/setters — a regression in the typed path makes it climb. A
@@ -72,24 +104,22 @@ public final class Accessors {
     private static Function<Object, Object> buildGetter(Class<?> owner, String prop) {
         Method m = getterMethod(owner, prop);
         if (m == null) throw new IllegalStateException("geen getter voor '" + prop + "' op " + owner.getName());
+        // A Lookup that can unreflect on the owner wherever it lives (parent OR child loader). null -> the owner's
+        // module forbids private access: keep the reflective bridge.
+        MethodHandles.Lookup lk = ownerLookup(owner);
+        if (lk == null) { lmfFallbacks++; return o -> RegelSpraakRuntime.get(o, prop); }
         MethodHandle mh;
-        try { mh = LOOKUP.unreflect(m); }
+        try { mh = lk.unreflect(m); }
         catch (IllegalAccessException e) { throw new IllegalStateException(e); }
         try {
-            CallSite cs = LambdaMetafactory.metafactory(
-                    LOOKUP, "apply",
-                    MethodType.methodType(Function.class),                 // factory: () -> Function (no captures)
-                    MethodType.methodType(Object.class, Object.class),     // Function.apply erased
-                    mh,                                                    // impl: (Owner)Ret
-                    mh.type());                                            // specialized: (Owner)Ret
-            @SuppressWarnings("unchecked")
-            Function<Object, Object> raw = (Function<Object, Object>) cs.getTarget().invoke();
+            Function<Object, Object> raw = proxy(Function.class, mh,
+                    MethodType.methodType(Object.class, Object.class));    // Function.apply erased: (Owner)Ret
             // null owner -> null (leeg). A non-owner instance (only possible if a future objecttype specialisatie /
             // a relation field broader than the navigation target ever feeds a SUBTYPE/sibling here) defers to the
             // bridge, which re-resolves on the ACTUAL class -- so the typed path stays a true drop-in, not a cast trap.
             return o -> o == null ? null : owner.isInstance(o) ? raw.apply(o) : RegelSpraakRuntime.get(o, prop);
         } catch (Throwable t) {
-            // a signature LMF cannot bind -> the cached reflective bridge (still correct, just untyped)
+            // a signature the proxy cannot bind -> the cached reflective bridge (still correct, just untyped)
             lmfFallbacks++;
             return o -> RegelSpraakRuntime.get(o, prop);
         }
@@ -98,13 +128,17 @@ public final class Accessors {
     private static BiConsumer<Object, Object> buildSetter(Class<?> owner, String prop) {
         Method m = uniqueSetterMethod(owner, prop);
         if (m == null) return (o, v) -> RegelSpraakRuntime.set(o, prop, v);   // 0 or >1 overloads: value-directed bridge
+        // Owner Lookup: both the direct-handle (primitive-setter) and the proxy (object-setter) branches must unreflect
+        // on the owner's class, which fails cross-loader off the parent LOOKUP. null -> reflective bridge.
+        MethodHandles.Lookup lk = ownerLookup(owner);
+        if (lk == null) { lmfFallbacks++; return (o, v) -> RegelSpraakRuntime.set(o, prop, v); }
         MethodHandle mh;
-        try { mh = LOOKUP.unreflect(m); }
+        try { mh = lk.unreflect(m); }
         catch (IllegalAccessException e) { throw new IllegalStateException(e); }
         if (m.getParameterTypes()[0].isPrimitive()) {
-            // LambdaMetafactory cannot adapt the BiConsumer's Object parameter to a PRIMITIVE setter parameter (a
-            // boolean kenmerk's setX(boolean)); invoke the direct cached handle, which unboxes at the call. Still
-            // typed + reflection-free (NOT an lmfFallback — a principled path, not a binding regression).
+            // A PRIMITIVE setter parameter (a boolean kenmerk's setX(boolean)): invoke the direct cached handle, which
+            // unboxes at the call. Still typed + reflection-free (NOT an lmfFallback — a principled path, not a binding
+            // regression). The owner Lookup lets this handle link against a CHILD-loaded bean too.
             final MethodHandle fmh = mh;
             return (o, v) -> {
                 if (!owner.isInstance(o)) { RegelSpraakRuntime.set(o, prop, v); return; }   // subtype-safe drop-in
@@ -114,14 +148,8 @@ public final class Accessors {
             };
         }
         try {
-            CallSite cs = LambdaMetafactory.metafactory(
-                    LOOKUP, "accept",
-                    MethodType.methodType(BiConsumer.class),                       // factory: () -> BiConsumer
-                    MethodType.methodType(void.class, Object.class, Object.class),  // BiConsumer.accept erased
-                    mh,                                                            // impl: (Owner, ParamT)void
-                    mh.type());                                                    // specialized: (Owner, ParamT)void
-            @SuppressWarnings("unchecked")
-            BiConsumer<Object, Object> bc = (BiConsumer<Object, Object>) cs.getTarget().invoke();
+            BiConsumer<Object, Object> bc = proxy(BiConsumer.class, mh,
+                    MethodType.methodType(void.class, Object.class, Object.class));  // BiConsumer.accept erased: (Owner,ParamT)void
             return (o, v) -> { if (owner.isInstance(o)) bc.accept(o, v); else RegelSpraakRuntime.set(o, prop, v); };
         } catch (Throwable t) {
             lmfFallbacks++;
