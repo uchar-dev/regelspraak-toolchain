@@ -72,6 +72,40 @@ make engine          # mvn install (transpiler, canonical-model only) + mvn -f e
 `RegelSpraakEngineTest` is the end-to-end proof: a rule compiles, fires over real facts, and mutates them;
 a type error surfaces as `RegelSpraakCompileException`.
 
+## Deploying the beslisservice (container + Helm + kind) — HOST only
+
+The decision service (`service/`, `DienstMain`) ships as a container image with a Helm chart; there is
+no Docker inside the agent sandbox, so everything below runs on the host.
+
+```
+make image  [TAG=dev] [DESCRIPTOR_SRC=examples/toka/toka.dienst.json]
+                     # multi-stage build (docker/service.Dockerfile): stage 1 chains
+                     # mvn install parser → engine → service (no aggregator pom, so no -pl/-am),
+                     # stage 2 = JRE 21 + service.jar + the baked TOKA rule set & descriptor.
+docker run --rm -p 8080:8080 beslisservice:dev          # POST /<pad> per entrypoint, GET /info
+make kind-smoke      # scripts/kind-smoke.sh: kind cluster (create/reuse) → kind load →
+                     # helm install → H2 golden oracle → H3 fail-fast pins → H4 rollout pin
+```
+
+Container contract (see `docker/service-entrypoint.sh`): env `DESCRIPTOR`, `BRONNEN_MANIFEST` (file
+listing the `.rs` sources in order), `POORT`, `ALLOW_MARKERS`. Defaults serve the baked TOKA demo; mount
+a volume at `/app/rules` and override the two paths to serve any other rule set from the same image.
+The image also bakes `/app/rules/marker/` — a self-contained marker-scoping fixture for the fail-fast gate.
+
+Helm chart `helm/beslisservice/` (values-dev/values-prod overlays): all probes hit `/info`.
+**Listening == rules compiled** — `DienstMain` compiles every scoped rule *before* binding the port, so
+a Ready pod has a fully built KieBase; the startupProbe grants that compilation up to ~10 minutes. A
+descriptor scoping a MARKER rule without `allowMarkers=true` exits 3 → CrashLoopBackOff *by design*.
+
+The third transport: `GoldenOverHttpTest` accepts `-Ddienst.url=<base-url>` (or env `DIENST_URL`) and
+then runs the IDENTICAL 30 golden TOKA assertions against that already-running service instead of an
+in-process one — scenario-runner == local HTTP == in-cluster HTTP, zero re-typed expected values:
+
+```
+kubectl port-forward svc/beslisservice 18080:8080 &
+mvn -o -f service/pom.xml test -Dtest=GoldenOverHttpTest -Ddienst.url=http://127.0.0.1:18080
+```
+
 ## Wiring into Quarkus
 
 A Quarkus application consumes the model in exactly this shape:
