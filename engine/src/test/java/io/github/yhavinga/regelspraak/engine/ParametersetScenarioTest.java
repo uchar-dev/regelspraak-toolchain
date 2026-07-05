@@ -81,6 +81,39 @@ class ParametersetScenarioTest {
                 () -> "verwacht PASS (2026-vintage = 21): " + r.get(1).diagnose() + " / " + r.get(1).verwachtingen());
     }
 
+    // ---------------- s1b : G4 op het scenario-transport (Rekendatum + vintage, één kop-peildatum) ----------------
+
+    @Test void s1b_een_kop_peildatum_drijft_rekendatum_en_vintage() {
+        // G4: een regel die de Rekendatum leest ÉN een vintage-geselecteerde parameter — één kop-peildatum drijft
+        // beide (de één-datumautoriteit op het scenario-transport; de service-kant pint dit in ParametersetServiceTest).
+        String bron = """
+            Objecttype de Persoon (mv: Personen)
+                de grens Numeriek (geheel getal);
+                het geboortejaar Numeriek (geheel getal);
+            Parameter de volwassenleeftijd : Numeriek (geheel getal);
+            Regel grensregel
+            geldig altijd
+            De grens van een Persoon moet berekend worden als de volwassenleeftijd.
+            Regel jaarregel
+            geldig altijd
+            Het geboortejaar van een Persoon moet berekend worden als het jaar uit de Rekendatum.
+            Situatie basis:
+            een Persoon P1
+            Scenario een datum drijft beide
+            toetst de regels grensregel en jaarregel
+            met peildatum 01-06-2026
+            gebaseerd op de situatie basis
+            Met als verwacht resultaat:
+            - de grens van P1 is 21
+            - het geboortejaar van P1 is 2026
+            """;
+        List<ScenarioResultaat> r = ScenarioRunner.run(bron, vintageSet());
+        assertEquals(1, r.size());
+        assertEquals(Status.PASS, r.get(0).status(),
+                () -> "één peildatum moet zowel de 2026-vintage (21) als Rekenjaar 2026 dragen: "
+                        + r.get(0).diagnose() + " / " + r.get(0).verwachtingen());
+    }
+
     // ---------------- s2 : geen peildatum + multi-vintage ----------------
 
     @Test void s2_geen_peildatum_multi_vintage_is_resolvefout() {
