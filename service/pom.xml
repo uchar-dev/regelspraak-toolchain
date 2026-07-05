@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.github.yhavinga.regelspraak</groupId>
+  <artifactId>regelspraak-service</artifactId>
+  <version>2.3.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+  <name>RegelSpraak v2.3.0 decision-service core (HTTP + OpenAPI)</name>
+
+  <!--
+    The DECISION-SERVICE CORE: descriptor-driven HTTP delivery of the engine.
+    Framework-agnostic core (descriptor model, request->facts mapping,
+    session-per-request execution, response building) with the JDK built-in
+    com.sun.net.httpserver as the only HTTP layer — a host-side Quarkus wrap
+    later reuses the core unchanged. JSON via jackson-databind only (the one
+    new dependency, per the dependency policy: it must resolve OFFLINE).
+  -->
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <jackson.version>2.21.2</jackson.version>
+    <junit.version>5.10.2</junit.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.github.yhavinga.regelspraak</groupId>
+      <artifactId>regelspraak-engine</artifactId>
+      <version>2.3.0-SNAPSHOT</version>
+    </dependency>
+
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>${jackson.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+        <configuration>
+          <!-- Drools' in-JVM DRL (KieHelper) build accumulates classloader/knowledge state across the many DRL
+               builds a full run makes (one KieBase per entrypoint × several test classes). Under one shared forked
+               JVM that accumulation occasionally mis-resolves a VALID generated DRL. Run each test CLASS in a
+               FRESH JVM (mirrors the root pom's rationale). -->
+          <forkCount>1</forkCount>
+          <reuseForks>false</reuseForks>
+          <argLine>-Xmx1536m</argLine>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
