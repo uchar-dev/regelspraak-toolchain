@@ -18,6 +18,7 @@ import io.github.yhavinga.regelspraak.ir.ResolvedScenario.ScopeSoort;
 import io.github.yhavinga.regelspraak.ir.ResolvedScenario.Verwachting;
 import io.github.yhavinga.regelspraak.ir.ResolvedScenario.Waarde;
 import io.github.yhavinga.regelspraak.model.Datatype;
+import io.github.yhavinga.regelspraak.model.Parameterset;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.resolver.ScenarioResolver;
@@ -69,14 +70,67 @@ public final class ScenarioRunner {
     /** Resolve {@code bron} under the scenario front-end and run every scenario in it. A resolve error throws
      *  {@link ResolveFout} carrying the diagnostics (the CLI turns that into exit 1). */
     public static List<ScenarioResultaat> run(String bron) {
-        return run(ScenarioResolver.resolve(bron));
+        return run(bron, List.of());
+    }
+
+    /** As {@link #run(String)} but with loaded {@code sets}: the scenario-kop peildatum drives the parameter-vintage
+     *  selection (§ card fase 4). The bare {@link #run(String)} delegates here with {@code List.of()} — gedrags-identiek. */
+    public static List<ScenarioResultaat> run(String bron, List<Parameterset> sets) {
+        List<Parameterset> parametersets = sets == null ? List.of() : sets;
+        // De parametergate moet de door-de-sets-geleverde parameters doorlaten: geef hun namen (de pool-keys) mee aan
+        // de resolver als externe parameters. Een lege set → resolve met een lege set (gedrags-identiek aan run(bron)).
+        java.util.Set<String> externeParameters = Parameterset.pool(parametersets).keySet();
+        return run(ScenarioResolver.resolve(bron, externeParameters), parametersets);
     }
 
     /** Run every scenario in an already-resolved bundle. Throws {@link ResolveFout} if the bundle has resolver
      *  errors (a scenario cannot run against an ill-typed model). */
     public static List<ScenarioResultaat> run(ScenarioBundel bundel) {
+        return run(bundel, List.of());
+    }
+
+    /**
+     * Run every scenario in {@code bundel} met geladen {@code sets}. Per scenario drijft de kop-peildatum de
+     * parameter-vintage-selectie (de ÉÉN-datumautoriteit: dezelfde peildatum is de rekendatum-global). VÓÓR het
+     * draaien loopt een deterministische, VERZAMELENDE pre-check (resolve-time), die bij fouten één {@link ResolveFout}
+     * gooit (de CLI mapt dat al naar exit 1); alleen als {@code sets} niet-leeg is:
+     * <ul>
+     *   <li><b>geen peildatum + multi-vintage</b> — ambiguë waarheid: een fout die het scenario noemt en 'peildatum'
+     *       bevat;</li>
+     *   <li><b>gap</b> — een parameter zonder geldige waarde op de peildatum: elke gap-fout, met het scenario ervoor;</li>
+     *   <li><b>geen peildatum + NIET multi-vintage</b> (alle waarden ALTIJD-geldig) — het degenererende
+     *       single-value-geval is TOEGESTAAN: de resolutie gebruikt {@link LocalDate#EPOCH} als willekeurige datum,
+     *       want de uitkomst is per definitie datum-onafhankelijk.</li>
+     * </ul>
+     * De opgeloste waarden worden per scenario EERST als globals gezet; een situatie-gedeclareerde ParameterWaarde
+     * OVERRIDET daarna (expliciet lokaal arrangement wint) — zie {@link Loop#zetGlobals}. {@code List.of()} → exact het
+     * bestaande pad (byte-identiek).
+     */
+    public static List<ScenarioResultaat> run(ScenarioBundel bundel, List<Parameterset> sets) {
         if (!bundel.isOk()) throw new ResolveFout(diagnostiek(bundel));
         RegelSpraakModel model = bundel.model();
+        List<Parameterset> parametersets = sets == null ? List.of() : sets;
+
+        // PRE-CHECK (resolve-time, verzamelend): per scenario de parameterset-vintage op de kop-peildatum oplossen.
+        // Cache de opgeloste waarden per scenario (identity), zodat de Loop niet nog eens hoeft op te lossen.
+        Map<ResolvedScenario, Map<String, Object>> opgelostPerScenario = new IdentityHashMap<>();
+        if (!parametersets.isEmpty()) {
+            List<String> fouten = new ArrayList<>();
+            boolean multi = Parameterset.meerVintage(parametersets);
+            for (ResolvedScenario s : bundel.scenarios()) {
+                if (s.peildatum() == null && multi) {
+                    fouten.add("scenario '" + s.naam() + "': geen peildatum terwijl de parametersets meer dan één "
+                            + "vintage dragen (ambiguë waarheid) — voeg 'met peildatum <datum>' toe");
+                    continue;
+                }
+                LocalDate datum = peildatumVan(s);   // EPOCH als de kop er geen zette (per definitie datum-onafhankelijk)
+                List<String> gaten = new ArrayList<>();
+                Map<String, Object> opgelost = Parameterset.waardenOp(parametersets, datum, gaten);
+                for (String g : gaten) fouten.add("scenario '" + s.naam() + "': " + g);
+                if (gaten.isEmpty()) opgelostPerScenario.put(s, opgelost);
+            }
+            if (!fouten.isEmpty()) throw new ResolveFout(fouten);
+        }
 
         // Compile the beans ONCE for the whole bundle (same objectmodel for every scenario), validate the
         // fact-model contract against them, then build the KieBase (DRL path below) over that bean classloader.
@@ -115,8 +169,18 @@ public final class ScenarioRunner {
 
         List<ScenarioResultaat> uit = new ArrayList<>();
         for (ResolvedScenario s : bundel.scenarios())
-            uit.add(new Loop(model, kieBase, cl, dekkingPerRegel).run(s));
+            uit.add(new Loop(model, kieBase, cl, dekkingPerRegel,
+                    opgelostPerScenario.getOrDefault(s, Map.of())).run(s));
         return uit;
+    }
+
+    /** De peildatum voor de vintage-selectie: de kop-peildatum als {@link LocalDate} (een {@link LocalDateTime} →
+     *  {@code toLocalDate}, dezelfde afleiding als {@link Loop#zetGlobals} de rekendatum-global maakt), of
+     *  {@link LocalDate#EPOCH} als de kop er geen zette (alleen bereikt op het degenererende single-value-pad; de
+     *  uitkomst is dan per definitie datum-onafhankelijk). */
+    private static LocalDate peildatumVan(ResolvedScenario s) {
+        if (s.peildatum() == null) return LocalDate.EPOCH;
+        return s.peildatum() instanceof LocalDateTime dt ? dt.toLocalDate() : (LocalDate) s.peildatum();
     }
 
     /** The resolver errors of a bundle rendered as "regel N: message" lines (for the CLI diagnostics). */
@@ -141,11 +205,16 @@ public final class ScenarioRunner {
         private final KieBase kieBase;
         private final ClassLoader cl;
         private final Map<String, Dekking> dekkingPerRegel;
+        /** De parameterset-opgeloste waarden (canonieke parameternaam → Java-waarde) voor DIT scenario, op de
+         *  kop-peildatum; leeg als er geen sets zijn. Worden EERST als globals gezet, de situatie overridet ze. */
+        private final Map<String, Object> parametersetWaarden;
         private final Map<String, Object> labelNaarBean = new LinkedHashMap<>();
         private final Map<Object, String> beanNaarLabel = new IdentityHashMap<>();
 
-        Loop(RegelSpraakModel model, KieBase kieBase, ClassLoader cl, Map<String, Dekking> dekkingPerRegel) {
+        Loop(RegelSpraakModel model, KieBase kieBase, ClassLoader cl, Map<String, Dekking> dekkingPerRegel,
+             Map<String, Object> parametersetWaarden) {
             this.model = model; this.kieBase = kieBase; this.cl = cl; this.dekkingPerRegel = dekkingPerRegel;
+            this.parametersetWaarden = parametersetWaarden;
         }
 
         ScenarioResultaat run(ResolvedScenario s) {
@@ -265,8 +334,17 @@ public final class ScenarioRunner {
             return doel;
         }
 
+        /**
+         * Zet de globals van dit scenario. PRECEDENTIE (card fase 4): de parameterset-opgeloste waarden worden EERST
+         * gezet (globalnaam {@code Namen.ident(naam, false)}); een situatie-gedeclareerde ParameterWaarde OVERRIDET
+         * die daarna — expliciet lokaal arrangement wint, zodat golden scenario's die alles in de situatie zetten
+         * byte-stabiel blijven. De rekendatum-global blijft ongewijzigd de kop-peildatum (de ÉÉN-datumautoriteit,
+         * dezelfde datum die de vintage koos).
+         */
         private void zetGlobals(KieSession sessie, ResolvedScenario s) {
-            for (ParameterWaarde p : s.situatie().parameters())
+            for (Map.Entry<String, Object> e : parametersetWaarden.entrySet())   // sets EERST
+                setGlobalVeilig(sessie, Namen.ident(e.getKey(), false), e.getValue());
+            for (ParameterWaarde p : s.situatie().parameters())                  // situatie OVERRIDET
                 setGlobalVeilig(sessie, Namen.ident(p.parameter(), false), waardeNaarArg(p.waarde()));
             if (s.peildatum() != null)
                 setGlobalVeilig(sessie, "rekendatum", s.peildatum() instanceof LocalDateTime dt ? dt.toLocalDate() : s.peildatum());

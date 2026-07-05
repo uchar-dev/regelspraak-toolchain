@@ -52,12 +52,34 @@ public final class ScenarioResolver {
 
     private final RegelSpraakModel model;
     private final Map<String, BlokResultaat> situaties = new LinkedHashMap<>(); // genormaliseerde naam -> gevalideerd blok
+    /** Parameternamen (genormaliseerd) die door een EXTERNE bron (parametersets) worden geleverd i.p.v. de situatie —
+     *  de parametergate laat een scope-parameter door als hij hier in zit (card fase 4, punt 2). */
+    private final java.util.Set<String> externeParameters;
 
-    private ScenarioResolver(RegelSpraakModel model) { this.model = model; }
+    private ScenarioResolver(RegelSpraakModel model, java.util.Set<String> externeParameters) {
+        this.model = model;
+        this.externeParameters = externeParameters;
+    }
 
     // ---------------- entry point ----------------
 
     public static ScenarioBundel resolve(String bron) {
+        return resolve(bron, java.util.Set.of());
+    }
+
+    /**
+     * Resolve {@code bron} waarbij {@code externeParameters} de namen zijn van parameters die NIET in de situatie
+     * staan maar door een externe bron (parametersets, per session op peildatum opgelost) worden geleverd. De
+     * {@link #parameterGate} laat zo'n parameter door (hij hoeft geen situatie-waarde te hebben). De namen worden
+     * genormaliseerd zoals de gate matcht ({@link #normNaam}); {@link #resolve(String)} delegeert met een lege set,
+     * gedrags-identiek aan vóór deze card.
+     */
+    public static ScenarioBundel resolve(String bron, java.util.Set<String> externeParameters) {
+        // Namen genormaliseerd zoals de parametergate matcht: het canonieke parameter-{@code naam()} draagt geen
+        // bepaald lidwoord (de grammar consumeert {@code bepaaldLidwoord?} vóór {@code parameterNaam}), dus strip een
+        // leidend "de/het/een" zodat een ruwe set-key ("de volwassenleeftijd") matcht met de canonieke naam.
+        java.util.Set<String> extern = new java.util.HashSet<>();
+        for (String p : externeParameters) extern.add(normNaam(stripArtikel(p)));
         RegelSpraakLexer lexer = new RegelSpraakLexer(CharStreams.fromString(bron));
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         RegelSpraak parser = new RegelSpraak(tokens);
@@ -84,7 +106,7 @@ public final class ScenarioResolver {
         model.diagnostics.addAll(syntax);
         new RuleChecker(model).check(prod);
 
-        ScenarioResolver r = new ScenarioResolver(model);
+        ScenarioResolver r = new ScenarioResolver(model, extern);
         List<ResolvedScenario> scenarios = r.resolveScenarios(test);
         return new ScenarioBundel(model, scenarios);
     }
@@ -449,16 +471,20 @@ public final class ScenarioResolver {
             }
     }
 
-    /** parametergate: every parameter a scope rule references must have a value in the merged situatie. */
+    /** parametergate: every parameter a scope rule references must have a value in the merged situatie, OR be
+     *  delivered by an external source (a loaded parameterset, resolved per session on the peildatum — its
+     *  genormaliseerde naam sits in {@link #externeParameters}). */
     private void parameterGate(Scope scope, Situatie situatie, int line) {
         java.util.Set<String> gezet = new java.util.HashSet<>();
         for (ParameterWaarde p : situatie.parameters()) gezet.add(normNaam(p.parameter()));
         java.util.LinkedHashSet<String> gemeld = new java.util.LinkedHashSet<>();
         for (String regel : scopeRegelNamen(scope))
-            for (String param : regelParameters(regel))
-                if (!gezet.contains(normNaam(param)) && gemeld.add(normNaam(param)))
+            for (String param : regelParameters(regel)) {
+                String n = normNaam(param);
+                if (!gezet.contains(n) && !externeParameters.contains(n) && gemeld.add(n))
                     fout(line, "scope-regel '" + regel + "' verwijst naar parameter '" + param
                             + "' die geen waarde heeft in de samengestelde situatie");
+            }
     }
 
     /** The rule names a scope covers: the scope's own rule names, or a regelgroep's member names. */

@@ -69,6 +69,39 @@ public final class ParametersetLader {
         public List<String> fouten() { return fouten; }
     }
 
+    /**
+     * De RUWE parameternamen (zoals opgeschreven) onder elke {@code parametersets[i].waarden}, PUUR structureel —
+     * zonder een model, vóór de typed {@link #laad}. De CLI/service heeft deze namen nodig om
+     * {@link io.github.yhavinga.regelspraak.resolver.ScenarioResolver#resolve(String, java.util.Set)} met de externe parameters
+     * te draaien VÓÓR het model bestaat; daarna volgt de volledige typed laad tegen {@code bundel.model()}. Malformed
+     * JSON of een ontbrekende/ongeldige {@code parametersets}-lijst is een {@link ParametersetFout}. De namen zijn
+     * ruw (niet gecanoniseerd — dat kan pas met een model); de resolver normaliseert ze zelf.
+     */
+    public static List<String> parameterNamen(String json) {
+        JsonNode wortel;
+        try {
+            wortel = MAPPER.readTree(json);
+        } catch (IOException e) {
+            throw new ParametersetFout("parametersets zijn geen geldige JSON", List.of(e.getMessage()));
+        }
+        if (wortel == null || !wortel.isObject())
+            throw new ParametersetFout("parametersets zijn geen geldige JSON",
+                    List.of("verwacht een JSON-object met sleutel 'parametersets'"));
+        JsonNode arr = wortel.get("parametersets");
+        if (arr == null || !arr.isArray())
+            throw new ParametersetFout("parametersets valideren niet",
+                    List.of("veld 'parametersets' ontbreekt of is geen lijst"));
+        java.util.LinkedHashSet<String> namen = new java.util.LinkedHashSet<>();
+        for (JsonNode setNode : arr) {
+            JsonNode waardenNode = setNode.get("waarden");
+            if (waardenNode != null && waardenNode.isObject()) {
+                var velden = waardenNode.fieldNames();
+                while (velden.hasNext()) namen.add(velden.next());
+            }
+        }
+        return new ArrayList<>(namen);
+    }
+
     /** Parse + valideer een parameterset-bestand tegen {@code model}. */
     public static List<Parameterset> laad(Path bestand, RegelSpraakModel model) throws IOException {
         return laad(Files.readString(bestand), model);

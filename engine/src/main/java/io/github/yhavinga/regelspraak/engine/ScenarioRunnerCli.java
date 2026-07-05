@@ -4,12 +4,17 @@ import io.github.yhavinga.regelspraak.engine.ScenarioResultaat.DekkingRegel;
 import io.github.yhavinga.regelspraak.engine.ScenarioResultaat.Status;
 import io.github.yhavinga.regelspraak.engine.ScenarioResultaat.VerwachtingResultaat;
 import io.github.yhavinga.regelspraak.engine.ScenarioResultaat.Vuring;
+import io.github.yhavinga.regelspraak.model.Parameterset;
+import io.github.yhavinga.regelspraak.resolver.ScenarioResolver;
+import io.github.yhavinga.regelspraak.resolver.ScenarioResolver.ScenarioBundel;
+import io.github.yhavinga.regelspraak.transpiler.kern.PeriodeDekking;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -31,10 +36,17 @@ public final class ScenarioRunnerCli {
 
     public static void main(String[] args) {
         boolean trace = false;
+        Path parametersets = null;
         List<Path> files = new ArrayList<>();
-        for (String a : args) {
+        for (int i = 0; i < args.length; i++) {
+            String a = args[i];
             if (a.equals("--trace")) trace = true;
-            else if (a.startsWith("--")) { System.err.println("onbekende optie: " + a); System.exit(2); }
+            else if (a.equals("--parametersets")) {
+                if (parametersets != null) { System.err.println("--parametersets mag maar één keer"); System.exit(2); return; }
+                if (i + 1 >= args.length) { System.err.println("--parametersets verwacht een pad naar een .json-bestand"); System.exit(2); return; }
+                parametersets = Path.of(args[++i]);
+            }
+            else if (a.startsWith("--")) { System.err.println("onbekende optie: " + a); System.exit(2); return; }
             else files.add(Path.of(a));
         }
         if (files.isEmpty()) {
@@ -57,7 +69,34 @@ public final class ScenarioRunnerCli {
 
         List<ScenarioResultaat> resultaten;
         try {
-            resultaten = ScenarioRunner.run(bron);
+            if (parametersets == null) {
+                // ZONDER de vlag: exact het bestaande pad (byte-identiek).
+                resultaten = ScenarioRunner.run(bron);
+            } else {
+                // MET sets: eerst de RUWE namen -> resolve met externe parameters (de parametergate laat ze door) ->
+                // dan de typed laad tegen bundel.model() -> periodedekking-WARNINGs -> run(bundel, sets).
+                String json = Files.readString(parametersets);
+                List<String> namen = ParametersetLader.parameterNamen(json);
+                ScenarioBundel bundel = ScenarioResolver.resolve(bron, new HashSet<>(namen));
+                List<Parameterset> sets = ParametersetLader.laad(json, bundel.model());
+                var bevindingen = PeriodeDekking.controleer(bundel.model(), sets);
+                PeriodeDekking.meldAlle(bevindingen, bundel.model());
+                // G3 CLI-zichtbaarheid: elke periodedekking-WARNING op stdout in de samenvatting (prefix per regel).
+                for (var d : bundel.model().diagnostics)
+                    if (d.severity() == io.github.yhavinga.regelspraak.model.RegelSpraakModel.Severity.WARNING
+                            && d.message().startsWith("periodedekking:"))
+                        System.out.println("WAARSCHUWING: " + d.message());
+                resultaten = ScenarioRunner.run(bundel, sets);
+            }
+        } catch (ParametersetLader.ParametersetFout f) {
+            System.err.println("parametersets fout — " + f.fouten().size() + " diagnose(s):");
+            for (String d : f.fouten()) System.err.println("  " + d);
+            System.exit(1);
+            return;
+        } catch (IOException e) {
+            System.err.println("kon de parametersets niet lezen: " + e.getMessage());
+            System.exit(1);
+            return;
         } catch (ScenarioRunner.ResolveFout f) {
             System.err.println("de bron resolvet niet — " + f.diagnostiek().size() + " diagnose(s):");
             for (String d : f.diagnostiek()) System.err.println("  " + d);
