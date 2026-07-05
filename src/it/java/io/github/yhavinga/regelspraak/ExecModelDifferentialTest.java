@@ -9522,6 +9522,45 @@ class ExecModelDifferentialTest {
         assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
     }
 
+    // ---- KOPPELTEKEN (card V1): a hyphenated attribute name must resolve the SAME bean getter on BOTH back-ends.
+    //      kern.Namen.ident splits on EVERY non-letter/digit run, so "de datum-tijd voor het berekenen" ->
+    //      DatumTijdVoorHetBerekenen and the FactModelGenerator wrote getDatumTijdVoorHetBerekenen. The exec/runtime
+    //      read used to derive its accessor name via a whitespace-ONLY split (RegelSpraakRuntime.pascal), leaving the
+    //      "-" in -> getDatum-tijd… -> a getter mismatch that made toka-22/25 non-compilable under exec. pascal now
+    //      DELEGATES to kern.Namen.ident, so both back-ends target the one bean getter. This fixture is the toka-22
+    //      shape shrunk to a precompiled facts.Heffing bean carrying the three koppelteken DatumTijd members: "de
+    //      eerste van" the two vertrek moments -> the hyphenated result. The daadwerkelijke (09:30) precedes the
+    //      verwachte (10:00), so the earliest = 09:30 — an ABSOLUTE value asserted (a shared bug a pure parity would
+    //      mask), plus DRL==exec parity. Without the fix the exec build would throw on the missing getter. ----
+    @Test void phase_KOPPELTEKEN_hyphenated_attribute_resolves_same_getter_both_back_ends() {
+        String src = """
+            Objecttype de Heffing (mv: Heffingen)
+                de verwachte datum-tijd van vertrek Datum en tijd in millisecondes;
+                de daadwerkelijke datum-tijd van vertrek Datum en tijd in millisecondes;
+                de datum-tijd voor het berekenen Datum en tijd in millisecondes;
+            Regel R
+                geldig altijd
+                    De datum-tijd voor het berekenen van een Heffing moet berekend worden als de eerste van de verwachte datum-tijd van vertrek van een Heffing en de daadwerkelijke datum-tijd van vertrek van een Heffing.
+            """;
+        LocalDateTime verwacht = LocalDateTime.of(2024, 6, 15, 10, 0);
+        LocalDateTime echt = LocalDateTime.of(2024, 6, 15, 9, 30);
+        Fixture f = new Fixture("koppelteken: eerste van twee datum-tijden", src,
+                () -> { Heffing h = new Heffing();
+                        h.setVerwachteDatumTijdVanVertrek(verwacht);
+                        h.setDaadwerkelijkeDatumTijdVanVertrek(echt);
+                        return List.<Object>of(h); },
+                Map.of(),
+                l -> ((Heffing) l.get(0)).getDatumTijdVoorHetBerekenen());
+        RegelSpraakModel m = Resolver.resolve(f.src());
+        assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen (koppelteken-getter?): " + em.overgeslagen());
+        Object viaDrl = fire(drlBase(m), f);
+        Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+        assertEquals(echt, viaDrl, () -> "DRL (oracle) wrong vs spec (eerste-van) on '" + f.naam() + "'");
+        assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+    }
+
     /** Compare BigDecimals by value (scale-insensitive), everything else by equals — recursing into a {@link #vals}
      *  list so a multi-bean read compares element-wise (42 == 42.00, null stays null). */
     private static Object eq(Object o) {

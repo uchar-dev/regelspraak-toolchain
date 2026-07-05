@@ -1127,30 +1127,17 @@ public final class RegelSpraakRuntime {
         return acc;
     }
 
-    // ---- identifier convention (matches the transpiler's kern.Namen ident()/getter() Pascal-casing) ----
-    /** Strip a leading lidwoord, PascalCase the whitespace-separated words (so a getter/setter name matches the
-     *  hand-written fact bean: "leeftijd" -> "Leeftijd", "recht op korting" -> "RechtOpKorting"). An ALL-CAPS
-     *  word title-cases first ("BTW tarief" -> "BtwTarief"), matching kern.Namen.ident (the shared naming contract) — without
-     *  this the two back-ends would target DIFFERENT getters for an acronym-carrying name. */
+    // ---- identifier convention: DELEGATES to the single naming authority kern.Namen.ident ----
+    /** The PascalCase bean-member/class name for a RegelSpraak name — now a thin delegate to
+     *  {@link io.github.yhavinga.regelspraak.transpiler.kern.Namen#ident(String, boolean)}, the ONE authority the
+     *  fact-model generator and the DRL back-end also derive from. Delegating (instead of a whitespace-only
+     *  twin split) is what routes BOTH back-ends through the single naming authority: the exec/runtime reads
+     *  now split a name on EVERY non-letter/digit run exactly as the beans were generated, so a koppelteken
+     *  attribute ("de datum-tijd voor het berekenen…" -> {@code DatumTijdVoorHetBerekenen…}) resolves the
+     *  same getter the FactModelGenerator emitted — the old {@code \s+}-only split left the "-" in and
+     *  targeted a non-existent {@code getDatum-tijd…}. No lidwoord stripping (Namen.ident carries the full
+     *  name), matching the bean the generator wrote; the resolver already delivers declared names bare. */
     public static String pascal(String naam) {
-        String s = naam.replaceFirst("^(?i)(de|het|een)\\s+", "").trim();
-        StringBuilder b = new StringBuilder();
-        for (String w : s.split("\\s+")) {
-            if (w.isEmpty()) continue;
-            if (isSchreeuw(w)) w = w.charAt(0) + w.substring(1).toLowerCase();
-            b.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1));
-        }
-        return b.toString();
-    }
-    /** An ALL-CAPS word of length > 1 (at least one letter, no lowercase) — kern.Namen's twin. */
-    private static boolean isSchreeuw(String w) {
-        if (w.length() < 2) return false;
-        boolean letter = false;
-        for (int i = 0; i < w.length(); i++) {
-            char c = w.charAt(i);
-            if (Character.isLowerCase(c)) return false;
-            letter |= Character.isLetter(c);
-        }
-        return letter;
+        return io.github.yhavinga.regelspraak.transpiler.kern.Namen.ident(naam, true);
     }
 }

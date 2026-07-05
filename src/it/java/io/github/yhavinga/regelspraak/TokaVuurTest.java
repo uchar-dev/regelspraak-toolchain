@@ -206,6 +206,42 @@ class TokaVuurTest {
         assertGetal(25, w.getal(p, "getTeBetalenBelasting"), "toka-31 initialisatie");
     }
 
+    // ---- CARD V1 MEASUREMENT: toka-22/25 under the EXEC back-end after the shared-naming fix. Root cause was that
+    //      the exec/runtime accessor-name derivation (RegelSpraakRuntime.pascal) split a name on whitespace ONLY,
+    //      leaving the "-" in a koppelteken attribute and targeting a getter that does not exist — so toka-22
+    //      ("de datum-tijd voor het berekenen…") and toka-25 ("de verwachte datum-tijd van aankomst") could not
+    //      compile under exec. pascal now delegates to kern.Namen.ident (split on every non-letter/digit run), the
+    //      SAME authority the DRL back-end and FactModelGenerator use. This test builds each rule under the exec
+    //      transpiler and asserts NO skip reason is a koppelteken getter/accessor mismatch. (The exec transpiler's
+    //      factClass resolves facts.* from ITS OWN classloader — the precompiled TOKA fact beans lack toka-22/25's
+    //      own DatumTijd members, so any residual skip here is the fase-3 classloader/bean-shape gap, NOT the naming
+    //      bug this card's fase 1 closes; the koppelteken proof is phase_KOPPELTEKEN in ExecModelDifferentialTest.) ----
+    @Test void toka_22_25_geen_koppelteken_getter_skip_onder_exec() {
+        for (String nr : new String[]{"22", "25"}) {
+            RegelSpraakModel m = Resolver.resolve(regels(nr));
+            assertTrue(m.errors().isEmpty(), () -> "toka-" + nr + " hoort te resolven: " + m.errors());
+            // The exec transpiler resolves facts.* from ITS OWN classloader; the precompiled TOKA fact beans do NOT
+            // declare toka-22/25's own DatumTijd members, so exec's eager typed-accessor wiring throws a bean-SHAPE
+            // miss. That residual is the fase-3 classloader/bean-shape gap. What fase 1 fixed is the getter NAME: the
+            // miss must be reported against the attribute's REAL member name (kern.Namen.ident collapses the "-"), NOT
+            // a mangled getter that still carries the koppelteken ("getDatum-tijd…"). We assert exactly that shape.
+            try {
+                var em = io.github.yhavinga.regelspraak.transpiler.model.ExecModelTranspiler.build(m);
+                System.out.println("toka-" + nr + " exec overgeslagen: " + em.overgeslagen());
+                for (String reden : em.overgeslagen())
+                    assertFalse(reden.contains("getDatum-tijd") || reden.contains("Datum-tijd"),
+                            "toka-" + nr + ": koppelteken lekt in een afgeleide getter-naam: " + reden);
+            } catch (RuntimeException ex) {
+                String msg = String.valueOf(ex.getMessage());
+                System.out.println("toka-" + nr + " exec build faalt (fase-3 bean-shape gap): " + msg);
+                // the koppelteken NAME fix: the derived getter/accessor must NOT still carry a "-" (would read
+                // "getDatum-tijd…"); the residual is a missing MEMBER on the precompiled bean, not a mangled name.
+                assertFalse(msg.contains("getDatum-tijd") || msg.contains("Datum-tijdVoor"),
+                        "toka-" + nr + ": koppelteken lekt in de afgeleide getter-naam: " + msg);
+            }
+        }
+    }
+
     @Test void eerste_van_verwachte_en_daadwerkelijke_vertrektijd() throws Exception {
         // toka-22: de eerste (vroegste) van de verwachte en de daadwerkelijke datum-tijd van vertrek —
         // de daadwerkelijke (09:30) ligt voor de verwachte (10:00), dus die wint.
