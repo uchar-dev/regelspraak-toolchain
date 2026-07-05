@@ -8,7 +8,7 @@
 # the Drools transpiler grow into real JVM code (see CLAUDE.md / docs/ANTLR-HOWTO.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus drl facts drools-it engine grun gui tokens clean clean-jar run-sandbox
+.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus drl facts drools-it engine grun gui tokens clean clean-jar image kind-smoke run-sandbox
 
 ANTLR4_VERSION := 4.13.2
 ANTLR4_URL     := https://www.antlr.org/download/antlr-$(ANTLR4_VERSION)-complete.jar
@@ -63,6 +63,9 @@ help:
 	@echo "  make gui  RULE=<rule> FILE=<input>   Open the parse tree in the TestRig GUI inspector"
 	@echo "  make clean                           Remove generated sources (gen/) and classes (out/)"
 	@echo "  make clean-jar                       Remove the downloaded ANTLR jar"
+	@echo ""
+	@echo "  make image  [TAG=… DESCRIPTOR_SRC=…] (host only) Build the beslisservice service image"
+	@echo "  make kind-smoke                      (host only) kind H2/H3/H4 gates against the live service"
 	@echo ""
 	@echo "  make run-sandbox                     (host only) Launch the container that IS the agent's"
 	@echo "                                       environment; cannot run from inside the sandbox"
@@ -223,6 +226,18 @@ clean:
 
 clean-jar:
 	rm -f $(ANTLR4_JAR)
+
+# HOST-side packaging targets (there is no Docker inside the sandbox): build the
+# beslisservice image and run the kind H2/H3/H4 smoke gates. DESCRIPTOR_SRC swaps the
+# baked descriptor at build time (the H4 rollout overlay).
+IMAGE_REPO ?= beslisservice
+TAG ?= dev
+DESCRIPTOR_SRC ?= examples/toka/toka.dienst.json
+image:
+	docker build -f docker/service.Dockerfile --build-arg DESCRIPTOR_SRC=$(DESCRIPTOR_SRC) -t $(IMAGE_REPO):$(TAG) .
+
+kind-smoke:
+	bash scripts/kind-smoke.sh
 
 # Host-side launcher: build and enter the container sandbox that becomes the
 # coding agent's environment. There is no Docker inside the sandbox, so this is
