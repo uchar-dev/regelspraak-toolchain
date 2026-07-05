@@ -46,8 +46,20 @@ public final class Uitvoerder {
 
     /** Fire the entry point's rules over {@code wereld} and return the mutated beans + inconsistenties. */
     public Uitkomst vuur(Wereld wereld) {
-        // descriptor defaults first, request parameters override
+        return vuur(wereld, Map.of());
+    }
+
+    /**
+     * Fire the entry point's rules over {@code wereld}, with {@code setGlobals} the parameterset-vintage resolved
+     * values (fase 5). PRECEDENCE (decision D): descriptor defaults FIRST, then the set-resolved values (the
+     * BeslisserKern conflict rule guarantees these never name the same parameter as a default), then the request
+     * parameter overrides LAST (explicit caller-intent wins — mirrors the scenario situatie-override). The
+     * rekendatum global stays {@code wereld.rekendatum()} — that IS the peildatum (the one date authority).
+     */
+    public Uitkomst vuur(Wereld wereld, Map<String, Object> setGlobals) {
+        // descriptor defaults first, set-vintage values next, request parameters override last
         Map<String, Object> globals = new LinkedHashMap<>(defaultGlobals);
+        if (setGlobals != null) globals.putAll(setGlobals);
         globals.putAll(wereld.globals());
 
         ClassLoader vorige = Thread.currentThread().getContextClassLoader();

@@ -19,15 +19,26 @@ import java.util.Map;
  * <p>This is a pure data shape (Jackson-bound records); the framework-agnostic core
  * ({@link BeslisserKern}) consumes it and the HTTP layer (fase 3) is a thin adapter on top.
  *
- * @param dienst      the service identity (name + version)
- * @param entrypoints the exposed entry points, in declared order
- * @param parameters  service-wide parameter defaults (name → JSON value); a request may override each
+ * @param dienst        the service identity (name + version)
+ * @param entrypoints   the exposed entry points, in declared order
+ * @param parameters    service-wide parameter defaults (name → JSON value); a request may override each
+ * @param parametersets OPTIONAL (fase 5, card {@code 20260705-15:18-geldigheid-parametersets-peildatum.md}):
+ *                      the file name of the validity-versioned parameterset sidecar (a
+ *                      {@code <naam>.parameters.json} in the {@link io.github.yhavinga.regelspraak.engine.ParametersetLader}
+ *                      shape), resolved RELATIVE to this descriptor file. When present, {@link BeslisserKern}
+ *                      loads it against the resolved model at startup and resolves each parameter's VINTAGE per
+ *                      request against the one date authority (the peildatum, which IS the rekendatum global).
+ *                      Absent = no sidecar (the degenerate single-value / descriptor-default path, byte-identical
+ *                      to fase 1-4). <b>Conflict rule (pinned):</b> a parameter named in BOTH {@code parameters}
+ *                      (defaults) AND the sets is a startup error — ambiguous authority, {@link BeslisserKern}
+ *                      refuses start naming the parameter.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record DienstDescriptor(
         Dienst dienst,
         List<Entrypoint> entrypoints,
-        Map<String, JsonNode> parameters) {
+        Map<String, JsonNode> parameters,
+        String parametersets) {
 
     /** The service identity block. */
     @JsonIgnoreProperties(ignoreUnknown = true)

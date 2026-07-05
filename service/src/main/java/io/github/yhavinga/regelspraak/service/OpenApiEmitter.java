@@ -242,10 +242,20 @@ public final class OpenApiEmitter {
         req.add("instanties");
         ObjectNode props = s.putObject("properties");
 
+        // peildatum: the ONE date authority (fase 5). It IS the rekendatum — a rule reading Rekendatum and the
+        // parameterset-vintage selection follow this same date; 'rekendatum' remains as an alias.
+        ObjectNode peildatum = props.putObject("peildatum");
+        peildatum.put("type", "string");
+        peildatum.put("format", "date");
+        peildatum.put("description", "ISO-datum (yyyy-MM-dd); optioneel. De ÉÉN datumautoriteit: dezelfde datum"
+                + " selecteert de parameterset-vintage EN is de rekendatum-global. Gelijk aan 'rekendatum'"
+                + " (alias); beide meegeven met verschillende waarden is een 400.");
+
         ObjectNode rekendatum = props.putObject("rekendatum");
         rekendatum.put("type", "string");
         rekendatum.put("format", "date");
-        rekendatum.put("description", "ISO-datum (yyyy-MM-dd); optioneel.");
+        rekendatum.put("description", "ISO-datum (yyyy-MM-dd); optioneel. Alias van 'peildatum' (dezelfde"
+                + " datumautoriteit).");
 
         ObjectNode parameters = props.putObject("parameters");
         parameters.put("type", "object");
@@ -337,6 +347,11 @@ public final class OpenApiEmitter {
         overgeslagen.put("type", "array");
         overgeslagen.putObject("items").put("type", "string");
         props.putObject("parameters").put("type", "object");
+        // fase 5: the loaded parametersets with their validity ranges, and the period-coverage WARNINGs.
+        props.putObject("parametersets").put("type", "array");
+        ObjectNode pw = props.putObject("periodeWaarschuwingen");
+        pw.put("type", "array");
+        pw.putObject("items").put("type", "string");
         return s;
     }
 

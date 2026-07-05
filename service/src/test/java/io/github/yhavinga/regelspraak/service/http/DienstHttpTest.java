@@ -75,6 +75,37 @@ class DienstHttpTest {
                 Thread.currentThread().getContextClassLoader());
     }
 
+    /** A self-contained VINTAGE service (fase 5): a two-vintage parameterset (volwassenleeftijd 18 in 2025 / 21
+     *  from 2026) driving a rule, built over the String-form with an in-memory parametersets sidecar. */
+    private static final String VINTAGE_BRON = """
+        Objecttype de Persoon (mv: Personen)
+            de grens Numeriek (geheel getal);
+        Parameter de volwassenleeftijd : Numeriek (geheel getal);
+        Regel grensregel
+        geldig altijd
+        De grens van een Persoon moet berekend worden als de volwassenleeftijd.
+        """;
+    private static final String VINTAGE_DESCRIPTOR = """
+        { "dienst": {"naam":"vintage-http","versie":"1"},
+          "entrypoints": [ { "naam":"grens","pad":"grens",
+            "scope": {"regelnamen": ["grensregel"]},
+            "invoer": ["Persoon"], "uitvoer": ["Persoon.grens"] } ],
+          "parameters": {},
+          "parametersets": "vintage.parameters.json" }""";
+    private static final String VINTAGE_SETS = """
+        { "parametersets": [
+            { "naam": "leeftijden",
+              "waarden": { "volwassenleeftijd": [
+                  { "waarde": 18, "vanaf": "2025-01-01", "tot": "2025-12-31" },
+                  { "waarde": 21, "vanaf": "2026-01-01" } ] } } ] }""";
+
+    private static BeslisserKern vintageKern() {
+        Map<String, String> bron = new LinkedHashMap<>();
+        bron.put("vintage.rs", VINTAGE_BRON);
+        return BeslisserKern.bouw(VINTAGE_DESCRIPTOR, bron, KernConfig.strikt(),
+                Thread.currentThread().getContextClassLoader(), VINTAGE_SETS);
+    }
+
     private void serveer(BeslisserKern kern) throws IOException {
         dienst = DienstHttp.bind(kern, "127.0.0.1", 0).start();
     }
@@ -140,6 +171,62 @@ class DienstHttpTest {
         // exact BigDecimal render, never a double: the value round-trips as a JSON number, never a double.
         assertTrue(totaal.isNumber(), resp.body());
         assertFalse(totaal.isDouble(), "een som mag NOOIT als double renderen: " + resp.body());
+    }
+
+    // ---------------- fase 5: vintage over HTTP (G1(b)) ----------------
+
+    @Test
+    void g1b_twee_peildatums_over_http_leveren_verschillende_uitkomsten() throws Exception {
+        serveer(vintageKern());
+        // two requests differing ONLY in the peildatum field -> two different pinned outcomes.
+        HttpResponse<String> r2025 = post("/grens",
+                "{ \"peildatum\": \"2025-06-01\", \"instanties\": [ { \"type\": \"Persoon\", \"id\": \"P1\" } ] }");
+        assertEquals(200, r2025.statusCode(), r2025.body());
+        assertEquals(0, new BigDecimal("18").compareTo(vind(boom(r2025.body()), "P1", "attributen", "grens").decimalValue()),
+                r2025.body());
+
+        HttpResponse<String> r2026 = post("/grens",
+                "{ \"peildatum\": \"2026-06-01\", \"instanties\": [ { \"type\": \"Persoon\", \"id\": \"P1\" } ] }");
+        assertEquals(200, r2026.statusCode(), r2026.body());
+        assertEquals(0, new BigDecimal("21").compareTo(vind(boom(r2026.body()), "P1", "attributen", "grens").decimalValue()),
+                r2026.body());
+    }
+
+    @Test
+    void g6_geen_peildatum_multi_vintage_over_http_is_400_veld_peildatum() throws Exception {
+        serveer(vintageKern());
+        HttpResponse<String> resp = post("/grens",
+                "{ \"instanties\": [ { \"type\": \"Persoon\", \"id\": \"P1\" } ] }");
+        assertEquals(400, resp.statusCode(), resp.body());
+        boolean noemtPeildatum = false;
+        for (JsonNode s : boom(resp.body()).get("schendingen"))
+            if ("peildatum".equals(s.path("veld").asText())) noemtPeildatum = true;
+        assertTrue(noemtPeildatum, "de 400 hoort veld 'peildatum' te noemen: " + resp.body());
+    }
+
+    @Test
+    void info_toont_parametersets_met_geldigheidsranges() throws Exception {
+        serveer(vintageKern());
+        JsonNode info = boom(get("/info").body());
+        assertTrue(info.get("parametersets").isArray(), info.toString());
+        assertEquals(1, info.get("parametersets").size(), info.toString());
+        JsonNode set = info.get("parametersets").get(0);
+        assertEquals("leeftijden", set.get("naam").asText(), set.toString());
+        JsonNode intervallen = set.get("waarden").get("volwassenleeftijd");
+        assertEquals(2, intervallen.size(), set.toString());
+        // first interval: 18, 2025-01-01..2025-12-31 ; second: 21, 2026-01-01..open
+        assertEquals("2025-01-01", intervallen.get(0).get("vanaf").asText(), set.toString());
+        assertEquals("2025-12-31", intervallen.get(0).get("tot").asText(), set.toString());
+        assertEquals(0, new BigDecimal("18").compareTo(intervallen.get(0).get("waarde").decimalValue()), set.toString());
+        assertEquals("2026-01-01", intervallen.get(1).get("vanaf").asText(), set.toString());
+        assertTrue(intervallen.get(1).get("tot").isNull(), "open tot: " + set);
+        // grensregel is 'geldig altijd' but the parameter is only valued from 2025 -> a pre-2025 coverage gap
+        // WARNING is present and names the parameter (gate G3 visible on /info).
+        assertTrue(info.get("periodeWaarschuwingen").isArray(), info.toString());
+        assertFalse(info.get("periodeWaarschuwingen").isEmpty(),
+                "geldig altijd × vanaf-2025 = een pre-2025 gat: " + info.get("periodeWaarschuwingen"));
+        assertTrue(info.get("periodeWaarschuwingen").get(0).asText().contains("volwassenleeftijd"),
+                info.get("periodeWaarschuwingen").toString());
     }
 
     // ---------------- /info ----------------

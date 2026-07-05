@@ -72,6 +72,7 @@ public final class DienstMain {
             return;
         }
 
+        drukPeriodeWaarschuwingen(kern);
         try {
             DienstHttp dienst = DienstHttp.bind(kern, "0.0.0.0", args.poort()).start();
             drukServingLijnen(kern, dienst.poort());
@@ -107,6 +108,13 @@ public final class DienstMain {
 
     static void drukSchendingen(DienstFout fout) {
         System.err.println(fout.getMessage());
+    }
+
+    /** Log every regel-geldigheid × parameter-geldigheid coverage gap (gate G3) as a {@code WAARSCHUWING: …}
+     *  line at startup — the CLI-visibility of the same period-coverage story /info serves. Silent when no gap. */
+    static void drukPeriodeWaarschuwingen(BeslisserKern kern) {
+        for (String w : kern.periodeWaarschuwingen())
+            System.err.println("WAARSCHUWING: " + w);
     }
 
     static void drukServingLijnen(BeslisserKern kern, int poort) {

@@ -2033,10 +2033,15 @@
           "instanties"
         ],
         "properties": {
+          "peildatum": {
+            "type": "string",
+            "format": "date",
+            "description": "ISO-datum (yyyy-MM-dd); optioneel. De ÉÉN datumautoriteit: dezelfde datum selecteert de parameterset-vintage EN is de rekendatum-global. Gelijk aan 'rekendatum' (alias); beide meegeven met verschillende waarden is een 400."
+          },
           "rekendatum": {
             "type": "string",
             "format": "date",
-            "description": "ISO-datum (yyyy-MM-dd); optioneel."
+            "description": "ISO-datum (yyyy-MM-dd); optioneel. Alias van 'peildatum' (dezelfde datumautoriteit)."
           },
           "parameters": {
             "type": "object",
@@ -2175,6 +2180,15 @@
           },
           "parameters": {
             "type": "object"
+          },
+          "parametersets": {
+            "type": "array"
+          },
+          "periodeWaarschuwingen": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       }

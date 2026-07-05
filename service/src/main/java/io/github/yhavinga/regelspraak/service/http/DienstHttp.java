@@ -11,6 +11,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
+import io.github.yhavinga.regelspraak.ir.Geldigheid;
+import io.github.yhavinga.regelspraak.model.Parameterset;
+import io.github.yhavinga.regelspraak.model.Parameterset.WaardeInterval;
 import io.github.yhavinga.regelspraak.service.BeslisserKern;
 import io.github.yhavinga.regelspraak.service.DienstDescriptor;
 import io.github.yhavinga.regelspraak.service.DienstFout;
@@ -20,8 +23,11 @@ import io.github.yhavinga.regelspraak.transpiler.kern.Dekking;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
@@ -234,7 +240,42 @@ public final class DienstHttp {
         if (params != null)
             for (var e : params.entrySet()) parameters.set(e.getKey(), e.getValue());
 
+        // parametersets (fase 5): each loaded set with its per-parameter validity ranges + the versioned value.
+        ArrayNode parametersets = root.putArray("parametersets");
+        for (Parameterset set : kern.parametersets()) {
+            ObjectNode sn = parametersets.addObject();
+            sn.put("naam", set.naam());
+            ObjectNode waarden = sn.putObject("waarden");
+            for (var e : set.waarden().entrySet()) {
+                ArrayNode intervallen = waarden.putArray(e.getKey());
+                for (WaardeInterval wi : e.getValue()) {
+                    ObjectNode iv = intervallen.addObject();
+                    Geldigheid g = wi.geldigheid();
+                    if (g.vanaf() != null) iv.put("vanaf", g.vanaf().toString()); else iv.putNull("vanaf");
+                    if (g.tot() != null) iv.put("tot", g.tot().toString()); else iv.putNull("tot");
+                    iv.set("waarde", rendWaarde(wi.waarde()));
+                }
+            }
+        }
+
+        // periodeWaarschuwingen (gate G3): the rendered regel×parameter period-coverage WARNING lines.
+        ArrayNode waarschuwingen = root.putArray("periodeWaarschuwingen");
+        for (String w : kern.periodeWaarschuwingen()) waarschuwingen.add(w);
+
         return root;
+    }
+
+    /** Render a parameterset value as an EXACT JSON node for /info (WaardeCoder-symmetric with
+     *  {@code AntwoordBouwer.rend}): BigDecimal as a number (never a double), date/datetime as an ISO string,
+     *  boolean as boolean, tekst/enum as string, explicit leegwaarde as JSON null. */
+    private JsonNode rendWaarde(Object v) {
+        if (v == null) return NF.nullNode();
+        if (v instanceof BigDecimal b) return NF.numberNode(b);
+        if (v instanceof Boolean b) return NF.booleanNode(b);
+        if (v instanceof LocalDate d) return NF.textNode(d.toString());
+        if (v instanceof LocalDateTime d) return NF.textNode(d.toString());
+        if (v instanceof String s) return NF.textNode(s);
+        return NF.textNode(v.toString());
     }
 
     // ---------------- error bodies ----------------

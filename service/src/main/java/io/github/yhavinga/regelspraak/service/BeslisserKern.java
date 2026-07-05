@@ -4,12 +4,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import io.github.yhavinga.regelspraak.engine.BeanCompiler;
+import io.github.yhavinga.regelspraak.engine.ParametersetLader;
+import io.github.yhavinga.regelspraak.engine.ParametersetLader.ParametersetFout;
+import io.github.yhavinga.regelspraak.model.Parameterset;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
 import io.github.yhavinga.regelspraak.schema.ContractValidator;
 import io.github.yhavinga.regelspraak.schema.FactModelGenerator;
 import io.github.yhavinga.regelspraak.transpiler.DrlTranspiler;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dekking;
+import io.github.yhavinga.regelspraak.transpiler.kern.PeriodeDekking;
 
 import org.kie.api.KieBase;
 import org.kie.api.builder.Message;
@@ -19,6 +23,7 @@ import org.kie.internal.utils.KieHelper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -64,13 +69,21 @@ public final class BeslisserKern {
     private final RegelSpraakModel model;
     private final ClassLoader beanLoader;   // the shared child bean classloader
     private final Map<String, Entrypoint> perPad;   // URL path -> compiled entry point
+    /** The loaded, validity-versioned parameter sets (fase 5), or empty when the descriptor names no sidecar. */
+    private final List<Parameterset> parametersets;
+    /** The rendered {@link PeriodeDekking} WARNING lines (regel-geldigheid × parameter-geldigheid gaps), computed
+     *  once at startup; served verbatim on /info and logged by DienstMain. Empty when no gap or no sets. */
+    private final List<String> periodeWaarschuwingen;
 
     private BeslisserKern(DienstDescriptor descriptor, RegelSpraakModel model, ClassLoader beanLoader,
-                          Map<String, Entrypoint> perPad) {
+                          Map<String, Entrypoint> perPad, List<Parameterset> parametersets,
+                          List<String> periodeWaarschuwingen) {
         this.descriptor = descriptor;
         this.model = model;
         this.beanLoader = beanLoader;
         this.perPad = perPad;
+        this.parametersets = parametersets;
+        this.periodeWaarschuwingen = periodeWaarschuwingen;
     }
 
     /** One compiled entry point: its descriptor entry, its scoped {@link KieBase}, its marker rule list, the
@@ -92,18 +105,60 @@ public final class BeslisserKern {
 
     /** Build the core from a descriptor file and the service's {@code .rs} source files (in order). The
      *  {@code loader} is the parent for the bean classloader; the generated beans are served from a child
-     *  loader created here, not looked up on {@code loader}. */
+     *  loader created here, not looked up on {@code loader}.
+     *
+     *  <p><b>Parametersets (fase 5, decision A).</b> When the descriptor names a {@code parametersets} sidecar
+     *  file, it is read RELATIVE to {@code descriptorBestand} ({@code descriptorBestand.getParent().resolve(naam)})
+     *  and handed to the String-form as {@code parametersetsJson}. A named-but-unreadable sidecar refuses startup
+     *  with a {@link DienstFout} naming the bouw-pad (never a silent skip). */
     public static BeslisserKern bouw(Path descriptorBestand, List<Path> bronBestanden, KernConfig config,
                                      ClassLoader loader) throws IOException {
         Map<String, String> tekst = new LinkedHashMap<>();
         for (Path p : bronBestanden) tekst.put(p.toString(), Files.readString(p));
         String json = Files.readString(descriptorBestand);
-        return bouw(json, tekst, config, loader);
+        // resolve the parametersets sidecar (if the descriptor names one) relative to the descriptor file.
+        String parametersetsJson = null;
+        String naam = parametersetsNaamUit(json);
+        if (naam != null) {
+            Path parent = descriptorBestand.toAbsolutePath().getParent();
+            Path sidecar = parent == null ? Path.of(naam) : parent.resolve(naam);
+            try {
+                parametersetsJson = Files.readString(sidecar);
+            } catch (IOException e) {
+                throw new DienstFout("dienst start niet: parametersets-bestand kan niet gelezen worden op dit"
+                        + " bouwpad", List.of(Schending.van(Schending.Soort.MALFORMED, "parametersets",
+                        "kon parametersets-bestand '" + sidecar + "' niet lezen: " + e.getMessage())));
+            }
+        }
+        return bouw(json, tekst, config, loader, parametersetsJson);
     }
 
-    /** Build the core from descriptor JSON text and the ordered file-id→source-text map. */
+    /** Peek the {@code parametersets} file-name field out of a descriptor JSON WITHOUT a full validated bind
+     *  (which needs the model). Returns null when absent/blank. A malformed descriptor here is left for the full
+     *  {@link #bouw} to report as its own MALFORMED startup fout. */
+    private static String parametersetsNaamUit(String descriptorJson) {
+        try {
+            var boom = DescriptorLoader.MAPPER.readTree(descriptorJson);
+            var node = boom == null ? null : boom.get("parametersets");
+            if (node != null && node.isTextual() && !node.asText().isBlank()) return node.asText();
+        } catch (IOException ignore) { /* full bouw reports the malformed descriptor */ }
+        return null;
+    }
+
+    /** Build the core from descriptor JSON text and the ordered file-id→source-text map, WITHOUT a parametersets
+     *  sidecar (delegates with {@code null}). A descriptor that DOES name a {@code parametersets} file on this
+     *  String-form path — where no sidecar JSON can be resolved — is a startup {@link DienstFout} (decision A). */
     public static BeslisserKern bouw(String descriptorJson, Map<String, String> bronPerBestand, KernConfig config,
                                      ClassLoader loader) {
+        return bouw(descriptorJson, bronPerBestand, config, loader, null);
+    }
+
+    /** Build the core from descriptor JSON text, the ordered file-id→source-text map, and OPTIONALLY the
+     *  parameterset sidecar JSON (fase 5). {@code parametersetsJson == null} = no sidecar (the fase 1-4 path,
+     *  byte-identical). When the descriptor names a {@code parametersets} file but {@code parametersetsJson} is
+     *  null, that is a startup {@link DienstFout} (decision A: the String-form cannot resolve a bestandsnaam). */
+    public static BeslisserKern bouw(String descriptorJson, Map<String, String> bronPerBestand, KernConfig config,
+                                     ClassLoader loader, String parametersetsJson) {
         // 1. resolve the FULL concatenated source once -> the shared model. A union that does not resolve
         //    refuses startup naming each resolver diagnostic (a scope cannot fire against an ill-typed model).
         StringBuilder full = new StringBuilder();
@@ -176,7 +231,76 @@ public final class BeslisserKern {
         if (!markerFouten.isEmpty() && !config.allowMarkers())
             throw new DienstFout("dienst start niet: marker-regels in scope", markerFouten);
 
-        return new BeslisserKern(descriptor, model, beanLoader, perPad);
+        // 6. parametersets (fase 5, decision B). Load + validate the sidecar against the model, apply the
+        //    default×set conflict rule, then compute the regel×parameter period-coverage WARNINGs.
+        List<Parameterset> sets = laadParametersets(descriptor, parametersetsJson, model);
+        List<String> waarschuwingen = periodeWaarschuwingen(model, sets);
+
+        return new BeslisserKern(descriptor, model, beanLoader, perPad, sets, waarschuwingen);
+    }
+
+    /**
+     * Load the parameterset sidecar (fase 5, decision B). Returns the empty list when the descriptor names no
+     * sidecar. When it DOES:
+     * <ul>
+     *   <li>{@code parametersetsJson == null} — a named-but-unresolvable sidecar on the String-form path: a
+     *       startup {@link DienstFout} (decision A);</li>
+     *   <li>{@link ParametersetLader#laad} — every {@link ParametersetFout} becomes a MALFORMED startup schending
+     *       (a set that does not validate against the model refuses start);</li>
+     *   <li><b>conflict rule (pinned):</b> a parameter present in BOTH {@code descriptor.parameters} (defaults)
+     *       AND the sets is a startup ERROR naming the parameter — ambiguous authority, never last-one-wins.</li>
+     * </ul>
+     */
+    private static List<Parameterset> laadParametersets(DienstDescriptor descriptor, String parametersetsJson,
+                                                        RegelSpraakModel model) {
+        if (descriptor.parametersets() == null || descriptor.parametersets().isBlank()) return List.of();
+        if (parametersetsJson == null)
+            throw new DienstFout("dienst start niet: parametersets-bestand kan niet gelezen worden op dit bouwpad",
+                    List.of(Schending.van(Schending.Soort.MALFORMED, "parametersets",
+                            "de descriptor noemt parametersets '" + descriptor.parametersets() + "' maar er is geen"
+                                    + " parametersets-JSON meegegeven op dit bouwpad")));
+        List<Parameterset> sets;
+        try {
+            sets = ParametersetLader.laad(parametersetsJson, model);
+        } catch (ParametersetFout f) {
+            List<Schending> uit = new ArrayList<>();
+            for (String fout : f.fouten())
+                uit.add(Schending.van(Schending.Soort.MALFORMED, "parametersets", fout));
+            if (uit.isEmpty())   // malformed-JSON single-throw carries the message, not the fouten list
+                uit.add(Schending.van(Schending.Soort.MALFORMED, "parametersets", f.getMessage()));
+            throw new DienstFout("dienst start niet: parametersets valideren niet tegen het model", uit);
+        }
+
+        // conflict rule: a parameter that is a descriptor default AND a set value has ambiguous authority.
+        List<Schending> conflict = new ArrayList<>();
+        if (descriptor.parameters() != null) {
+            java.util.Set<String> setNamen = Parameterset.pool(sets).keySet();
+            for (String d : descriptor.parameters().keySet()) {
+                RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, d);
+                String canoniek = p == null ? d : p.naam();
+                if (setNamen.contains(canoniek))
+                    conflict.add(Schending.van(Schending.Soort.MALFORMED, "parameters." + d,
+                            "parameter '" + canoniek + "' staat ZOWEL in descriptor.parameters (default) ALS in de"
+                                    + " parametersets — ambigue autoriteit; kies er één"));
+            }
+        }
+        if (!conflict.isEmpty())
+            throw new DienstFout("dienst start niet: parameter staat zowel in de defaults als in de sets", conflict);
+        return sets;
+    }
+
+    /** The rendered {@link PeriodeDekking} WARNING lines for the regel-geldigheid × parameter-geldigheid gaps
+     *  (fase 5, gate G3). {@link PeriodeDekking#controleer} is pure; {@link PeriodeDekking#meldAlle} renders each
+     *  finding onto a throw-away model so we can lift the WARNING message text out verbatim (the SAME text the
+     *  engine surfaces), without polluting the real service model's diagnostics. Empty when no gap / no sets. */
+    private static List<String> periodeWaarschuwingen(RegelSpraakModel model, List<Parameterset> sets) {
+        List<PeriodeDekking> bevindingen = PeriodeDekking.controleer(model, sets);
+        List<String> uit = new ArrayList<>();
+        RegelSpraakModel schaduw = new RegelSpraakModel();
+        PeriodeDekking.meldAlle(bevindingen, schaduw);
+        for (var d : schaduw.diagnostics)
+            if (d.severity() == RegelSpraakModel.Severity.WARNING) uit.add(d.message());
+        return uit;
     }
 
     /** Strip the marker rule blocks off the transpiled DRL and build a {@link KieBase} over the shared bean
@@ -310,9 +434,49 @@ public final class BeslisserKern {
         List<Schending> ontbrekend = ontbrekendeInvoer(ep, mr.typePerLabel());
         if (!ontbrekend.isEmpty())
             throw new DienstFout("verzoek valideert niet", ontbrekend);
+        // fase 5, decision D: resolve the parameterset vintage against the one date authority (the request
+        // peildatum, which IS Wereld.rekendatum). The resolved values sit BETWEEN the descriptor defaults and the
+        // request parameter overrides (descriptor default first, set-value next — the conflict rule guarantees
+        // they never name the same parameter — request override last: explicit caller-intent wins).
+        Map<String, Object> setGlobals = vintageGlobals(mr.wereld().rekendatum());
         Uitvoerder uitvoerder = new Uitvoerder(ep.kieBase(), ep.defaultGlobals(), ep.dagsoortGlobalen(), beanLoader);
-        Uitvoerder.Uitkomst uitkomst = uitvoerder.vuur(mr.wereld());
+        Uitvoerder.Uitkomst uitkomst = uitvoerder.vuur(mr.wereld(), setGlobals);
         return new AntwoordBouwer(model).bouw(uitkomst, ep.descriptor().uitvoer(), mr.typePerLabel());
+    }
+
+    /**
+     * Resolve the parameterset vintage for one request (fase 5, decision D). Returns the (global-name → value) map
+     * of set-resolved parameters, empty when no sets are loaded. Fail-fast against the one date authority
+     * ({@code datum} = the request peildatum = {@code Wereld.rekendatum}):
+     * <ul>
+     *   <li><b>datum present</b> — {@link Parameterset#waardenOp}; any gap is a 4xx {@link DienstFout} whose
+     *       schendingen name the parameter + the datum, on veld {@code "peildatum"};</li>
+     *   <li><b>datum absent + multi-vintage</b> — a 4xx naming veld {@code "peildatum"}: the peildatum is
+     *       mandatory because the sets carry more than one vintage (ambiguous truth);</li>
+     *   <li><b>datum absent + NOT multi-vintage</b> — the degenerate single-value case: resolve with
+     *       {@link LocalDate#EPOCH} (date-independent by construction, mirroring the ScenarioRunner).</li>
+     * </ul>
+     * The resolved values are keyed by the engine's camelCase global name ({@link VerzoekMapper#globalNaam}),
+     * exactly as the descriptor defaults are.
+     */
+    private Map<String, Object> vintageGlobals(LocalDate datum) {
+        if (parametersets.isEmpty()) return Map.of();
+        if (datum == null && Parameterset.meerVintage(parametersets))
+            throw new DienstFout("verzoek valideert niet", List.of(Schending.van(Schending.Soort.VERKEERD_TYPE,
+                    "peildatum", "peildatum is verplicht: de geladen parametersets dragen meer dan één vintage")));
+        LocalDate peil = datum != null ? datum : LocalDate.EPOCH;   // degeneraat: datum-onafhankelijk
+        List<String> gaten = new ArrayList<>();
+        Map<String, Object> opgelost = Parameterset.waardenOp(parametersets, peil, gaten);
+        if (!gaten.isEmpty()) {
+            List<Schending> fouten = new ArrayList<>();
+            for (String gat : gaten)
+                fouten.add(Schending.van(Schending.Soort.VERKEERD_TYPE, "peildatum", gat));
+            throw new DienstFout("verzoek valideert niet", fouten);
+        }
+        Map<String, Object> globals = new LinkedHashMap<>();
+        for (var e : opgelost.entrySet())
+            globals.put(VerzoekMapper.globalNaam(e.getKey()), e.getValue());
+        return globals;
     }
 
     /**
@@ -346,6 +510,13 @@ public final class BeslisserKern {
     public RegelSpraakModel model() { return model; }
     public Map<String, Entrypoint> entrypoints() { return perPad; }
     public Entrypoint entrypoint(String pad) { return perPad.get(pad); }
+
+    /** The loaded validity-versioned parameter sets (fase 5), or the empty list when the descriptor names none. */
+    public List<Parameterset> parametersets() { return parametersets; }
+
+    /** The rendered regel-geldigheid × parameter-geldigheid WARNING lines (gate G3), served on /info and logged
+     *  by {@link io.github.yhavinga.regelspraak.service.http.DienstMain} at startup. Empty when no gap / no sets. */
+    public List<String> periodeWaarschuwingen() { return periodeWaarschuwingen; }
 
     /** Thrown when a request targets a path no entry point serves. */
     public static final class OnbekendPad extends RuntimeException {

@@ -35,6 +35,10 @@ public record Verzoek(JsonNode boom) {
     /** The {@code rekendatum} node, or null when absent. */
     public JsonNode rekendatum() { return boom.get("rekendatum"); }
 
+    /** The {@code peildatum} node, or null when absent (fase 5). {@code peildatum} is the PREFERRED name for the
+     *  one date authority; {@code rekendatum} is the existing alias — {@link VerzoekMapper} unifies the two. */
+    public JsonNode peildatum() { return boom.get("peildatum"); }
+
     /** The {@code parameters} object node, or null when absent. */
     public JsonNode parameters() { return boom.get("parameters"); }
 

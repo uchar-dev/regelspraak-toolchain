@@ -53,20 +53,21 @@ public final class VerzoekMapper {
         Map<String, Object> globals = new LinkedHashMap<>();
         Map<String, Objecttype> typePerLabel = new LinkedHashMap<>();
 
-        // 1. rekendatum
-        LocalDate rekendatum = null;
-        JsonNode rd = verzoek.rekendatum();
-        if (rd != null && !rd.isNull()) {
-            if (!rd.isTextual()) {
-                s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, "rekendatum",
-                        "rekendatum moet een ISO-datum (yyyy-MM-dd) zijn"));
-            } else {
-                try { rekendatum = LocalDate.parse(rd.asText()); }
-                catch (DateTimeParseException e) {
-                    s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, "rekendatum",
-                            "'" + rd.asText() + "' is geen geldige ISO-datum (yyyy-MM-dd)"));
-                }
-            }
+        // 1. peildatum / rekendatum — ONE date authority (fase 5). 'peildatum' is the preferred name, 'rekendatum'
+        //    the existing alias: the two are the SAME notion. Both present and UNEQUAL is a violation naming BOTH
+        //    fields and BOTH values (a caller must never give two conflicting dates); otherwise the date is the one
+        //    present (peildatum wins when both are given and equal). The unified date drives Wereld.rekendatum —
+        //    which the vintage-selection ALSO reads, so a rule reading Rekendatum and the vintage follow ONE date.
+        LocalDate peildatum = leesDatum(verzoek.peildatum(), "peildatum", s);
+        LocalDate rekendatum = leesDatum(verzoek.rekendatum(), "rekendatum", s);
+        LocalDate datum;
+        if (peildatum != null && rekendatum != null && !peildatum.equals(rekendatum)) {
+            s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, "peildatum",
+                    "peildatum " + peildatum + " en rekendatum " + rekendatum + " zijn dezelfde datumautoriteit"
+                            + " maar verschillen — geef er één (of gelijke waarden)"));
+            datum = peildatum;
+        } else {
+            datum = peildatum != null ? peildatum : rekendatum;   // peildatum wins when both equal
         }
 
         // 2. parameters
@@ -143,7 +144,24 @@ public final class VerzoekMapper {
             }
         zetRelaties(verzoek.relaties(), beans, typePerLabel, s);
 
-        return new Resultaat(new Wereld(beans, globals, rekendatum), typePerLabel, s);
+        return new Resultaat(new Wereld(beans, globals, datum), typePerLabel, s);
+    }
+
+    /** Parse an ISO-datum node (yyyy-MM-dd) into a {@link LocalDate}, or {@code null} when absent/null. A
+     *  non-textual or unparseable value adds a {@link Schending.Soort#VERKEERD_TYPE} on {@code veld}. Shared by
+     *  the {@code peildatum} and {@code rekendatum} legs of the one date authority (fase 5). */
+    private static LocalDate leesDatum(JsonNode node, String veld, List<Schending> s) {
+        if (node == null || node.isNull()) return null;
+        if (!node.isTextual()) {
+            s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, veld, veld + " moet een ISO-datum (yyyy-MM-dd) zijn"));
+            return null;
+        }
+        try { return LocalDate.parse(node.asText()); }
+        catch (DateTimeParseException e) {
+            s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, veld,
+                    "'" + node.asText() + "' is geen geldige ISO-datum (yyyy-MM-dd)"));
+            return null;
+        }
     }
 
     // ---- bean construction ----
