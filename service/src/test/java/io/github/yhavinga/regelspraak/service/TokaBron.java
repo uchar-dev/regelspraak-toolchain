@@ -24,11 +24,11 @@ import java.util.stream.Stream;
  * are built over. Paths are resolved relative to the repo root ({@code ../examples} from the {@code service/}
  * module dir), or {@code examples} when run from the root.
  */
-final class TokaBron {
+public final class TokaBron {
 
     private TokaBron() {}
 
-    static final Path REPO = repoRoot();
+    public static final Path REPO = repoRoot();
     static final Path DESCRIPTOR = REPO.resolve("examples/toka/toka.dienst.json");
 
     private static Path repoRoot() {
@@ -61,7 +61,7 @@ final class TokaBron {
     }
 
     /** file-id (path string) → source text, in manifest order. */
-    static Map<String, String> bronPerBestand() {
+    public static Map<String, String> bronPerBestand() {
         Map<String, String> m = new LinkedHashMap<>();
         for (Path p : bronBestanden()) {
             try { m.put(p.toString(), Files.readString(p)); }
@@ -70,7 +70,7 @@ final class TokaBron {
         return m;
     }
 
-    static String descriptorJson() {
+    public static String descriptorJson() {
         try { return Files.readString(DESCRIPTOR); }
         catch (IOException e) { throw new UncheckedIOException(e); }
     }

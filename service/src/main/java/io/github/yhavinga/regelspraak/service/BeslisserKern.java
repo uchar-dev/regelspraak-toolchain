@@ -74,12 +74,19 @@ public final class BeslisserKern {
     }
 
     /** One compiled entry point: its descriptor entry, its scoped {@link KieBase}, its marker rule list, the
-     *  descriptor parameter defaults resolved to globals, and the §9.8 dagsoort predicates its DRL declares as
+     *  descriptor parameter defaults resolved to globals, the §9.8 dagsoort predicates its DRL declares as
      *  globals (the session builder must supply those per {@link DrlTranspiler#dagsoortGlobalen()} — the analog
-     *  of the parameter globals). */
+     *  of the parameter globals), and the in-scope {@link Dekking} manifest.
+     *
+     *  <p>{@code dekking} carries EVERY per-construct verdict the DRL back-end reached for a construct whose base
+     *  name is in this entry point's scope — LOWERED entries included, filtered the SAME way {@link #markers} is
+     *  ({@link #dekkingInScope}). Fase 3 reports it verbatim on {@code /info} so a caller sees the per-regel
+     *  verdict (LOWERED / MARKER / SKIP). A §13.4.7 feitcreatie scope (toka-29) has NO dekking entry at all, so
+     *  this list is legitimately empty there and /info shows the empty list as-is. */
     public record Entrypoint(DienstDescriptor.Entrypoint descriptor, KieBase kieBase,
                              List<String> markers, Map<String, Object> defaultGlobals,
-                             Map<String, java.util.function.Predicate<java.time.LocalDate>> dagsoortGlobalen) {}
+                             Map<String, java.util.function.Predicate<java.time.LocalDate>> dagsoortGlobalen,
+                             List<Dekking> dekking) {}
 
     // ---------------- startup ----------------
 
@@ -160,7 +167,9 @@ public final class BeslisserKern {
             KieBase kieBase = bouwKieBase(transpiler, beanLoader, ep, hardeFouten);
             if (kieBase == null) continue;
             Map<String, Object> defaults = defaultGlobals(descriptor, model);
-            perPad.put(ep.pad(), new Entrypoint(ep, kieBase, markers, defaults, transpiler.dagsoortGlobalen()));
+            List<Dekking> dekking = dekkingInScope(ep, transpiler, model);
+            perPad.put(ep.pad(), new Entrypoint(ep, kieBase, markers, defaults,
+                    transpiler.dagsoortGlobalen(), dekking));
         }
         if (!hardeFouten.isEmpty())
             throw new DienstFout("dienst start niet: entrypoint(s) niet bouwbaar", hardeFouten);
@@ -242,6 +251,28 @@ public final class BeslisserKern {
             if (!d.lowered() && scope.contains(basisNaam(d.naam())) && !markers.contains(basisNaam(d.naam())))
                 markers.add(basisNaam(d.naam()));
         return markers;
+    }
+
+    /**
+     * The FULL in-scope {@link Dekking} manifest for an entry point — every per-construct verdict the DRL
+     * back-end reached for a construct whose base name is in the entry point's scope, filtered EXACTLY the way
+     * {@link #markersInScope} filters (same scope set, same {@link #basisNaam} normalisation) but keeping ALL
+     * verdicts, LOWERED included. This is what fase-3 {@code /info} reports per-regel; {@code markersInScope} is
+     * just the {@code !lowered()} sub-view of the same list. A feitcreatie scope (toka-29) yields ZERO dekking
+     * entries and therefore an empty manifest here — reported as-is.
+     */
+    private static List<Dekking> dekkingInScope(DienstDescriptor.Entrypoint ep, DrlTranspiler transpiler,
+                                                RegelSpraakModel model) {
+        java.util.Set<String> scope = new java.util.LinkedHashSet<>();
+        for (String n : ep.scope().regelnamenOfLeeg()) scope.add(basisNaam(n));
+        for (String groep : ep.scope().regelgroepenOfLeeg())
+            for (var g : model.regelGroepen) if (g.naam().equals(groep))
+                for (String lid : g.leden()) scope.add(basisNaam(lid));
+
+        List<Dekking> uit = new ArrayList<>();
+        for (Dekking d : transpiler.dekking())
+            if (scope.contains(basisNaam(d.naam()))) uit.add(d);
+        return uit;
     }
 
     /** The descriptor parameter defaults, decoded per-parameter datatype to (globalNaam -> value). */
