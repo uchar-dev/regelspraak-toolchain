@@ -29,6 +29,10 @@ public record Schending(Soort soort, String veld, String bericht) {
         ONBEKENDE_ENUM_WAARDE,
         /** A construct the service core deliberately does not support (dimensie/tijdlijn-valued input). */
         NIET_ONDERSTEUND,
+        /** The entrypoint declares an invoer objecttype but the request supplies no instance of it. The invoer
+         *  list is the declared contract; an absent required instance can never fire meaningfully (the scoped
+         *  rules quantify over instances of that objecttype), so this is a hard 400 before any fire. */
+        ONTBREKENDE_INSTANTIE,
         /** The request JSON itself is malformed / structurally wrong. */
         MALFORMED
     }

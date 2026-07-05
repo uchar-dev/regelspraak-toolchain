@@ -1,0 +1,12 @@
+{
+  "naam": "kenmerk met niet-boolean waarde",
+  "pad": "bepaal-leeftijd",
+  "body": {
+    "instanties": [
+      { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } },
+      { "type": "Natuurlijk persoon", "id": "P1", "kenmerken": { "minderjarig": "ja" }, "rollen": { "reis": "V1" } }
+    ]
+  },
+  "verwachtStatus": 400,
+  "verwachtVeldBevat": "minderjarig"
+}

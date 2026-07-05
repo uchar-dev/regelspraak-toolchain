@@ -1,0 +1,11 @@
+{
+  "naam": "verplichte invoer-instantie ontbreekt (Natuurlijk persoon niet geleverd)",
+  "pad": "bepaal-leeftijd",
+  "body": {
+    "instanties": [
+      { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } }
+    ]
+  },
+  "verwachtStatus": 400,
+  "verwachtVeldBevat": "Natuurlijk persoon"
+}

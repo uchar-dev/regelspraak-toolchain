@@ -1,0 +1,11 @@
+{
+  "naam": "onbekend pad (geen entrypoint)",
+  "pad": "onzin",
+  "body": {
+    "instanties": [
+      { "type": "Vlucht", "id": "V1" }
+    ]
+  },
+  "verwachtStatus": 404,
+  "verwachtVeldBevat": "onzin"
+}

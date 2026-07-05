@@ -1,0 +1,12 @@
+{
+  "naam": "onbekende rol vanaf Natuurlijk persoon",
+  "pad": "bepaal-leeftijd",
+  "body": {
+    "instanties": [
+      { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } },
+      { "type": "Natuurlijk persoon", "id": "P1", "attributen": { "geboortedatum": "1990-06-15" }, "rollen": { "bestaat-niet-rol": "V1" } }
+    ]
+  },
+  "verwachtStatus": 400,
+  "verwachtVeldBevat": "bestaat-niet-rol"
+}

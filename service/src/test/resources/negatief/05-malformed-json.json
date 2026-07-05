@@ -1,0 +1,7 @@
+{
+  "naam": "misvormde JSON in de request-body",
+  "pad": "bepaal-leeftijd",
+  "body": "{ dit is geen geldige json ",
+  "verwachtStatus": 400,
+  "verwachtVeldBevat": "body"
+}

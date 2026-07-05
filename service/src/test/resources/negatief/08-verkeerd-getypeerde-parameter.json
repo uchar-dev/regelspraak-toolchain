@@ -1,0 +1,13 @@
+{
+  "naam": "verkeerd getypeerde parameter (tekst waar numeriek verwacht wordt)",
+  "pad": "bepaal-leeftijd",
+  "body": {
+    "parameters": { "de volwassenleeftijd": "geen-getal" },
+    "instanties": [
+      { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } },
+      { "type": "Natuurlijk persoon", "id": "P1", "attributen": { "geboortedatum": "1990-06-15" }, "rollen": { "reis": "V1" } }
+    ]
+  },
+  "verwachtStatus": 400,
+  "verwachtVeldBevat": "de volwassenleeftijd"
+}

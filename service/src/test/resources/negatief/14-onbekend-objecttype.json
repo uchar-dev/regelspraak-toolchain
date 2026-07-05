@@ -1,0 +1,11 @@
+{
+  "naam": "onbekend objecttype in instantie",
+  "pad": "bepaal-leeftijd",
+  "body": {
+    "instanties": [
+      { "type": "Ruimteschip", "id": "R1" }
+    ]
+  },
+  "verwachtStatus": 400,
+  "verwachtVeldBevat": "Ruimteschip"
+}

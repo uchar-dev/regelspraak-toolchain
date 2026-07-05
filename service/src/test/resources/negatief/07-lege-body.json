@@ -1,0 +1,7 @@
+{
+  "naam": "lege request-body",
+  "pad": "bepaal-leeftijd",
+  "body": "",
+  "verwachtStatus": 400,
+  "verwachtVeldBevat": "body"
+}
