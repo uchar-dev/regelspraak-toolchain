@@ -1,0 +1,21 @@
+image:
+  repository: beslisservice
+  tag: dev
+  # IfNotPresent is REQUIRED for `kind load docker-image`: the tag is loaded into the
+  # node, never a registry, so Always would make the kubelet try (and fail) to pull it.
+  pullPolicy: IfNotPresent
+
+replicas: 1
+
+# Container HTTP port (DienstMain --poort). Also the Service port.
+poort: 8080
+
+# When false a marker-scoping descriptor fails fast (exit 3 → CrashLoopBackOff).
+allowMarkers: false
+
+# Empty descriptor/bronnenManifest = use the image's baked TOKA defaults. Set both to
+# serve a different rule set from a mounted volume (see NOTES.txt / the Dockerfile).
+descriptor: ""
+bronnenManifest: ""
+
+resources: {}

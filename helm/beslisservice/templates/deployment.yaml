@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "beslisservice.fullname" . }}
+  labels:
+    {{- include "beslisservice.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "beslisservice.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "beslisservice.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: beslisservice
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: POORT
+              value: {{ .Values.poort | quote }}
+            - name: ALLOW_MARKERS
+              value: {{ .Values.allowMarkers | quote }}
+            {{- if .Values.descriptor }}
+            - name: DESCRIPTOR
+              value: {{ .Values.descriptor | quote }}
+            {{- end }}
+            {{- if .Values.bronnenManifest }}
+            - name: BRONNEN_MANIFEST
+              value: {{ .Values.bronnenManifest | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.poort }}
+          # Rule compilation happens BEFORE the port binds, so a slow first bind is
+          # normal startup, not a hang. The startupProbe grants up to ~10 min
+          # (5s × 120) for compilation before readiness/liveness take over.
+          startupProbe:
+            httpGet:
+              path: /info
+              port: http
+            periodSeconds: 5
+            failureThreshold: 120
+          readinessProbe:
+            httpGet:
+              path: /info
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /info
+              port: http
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

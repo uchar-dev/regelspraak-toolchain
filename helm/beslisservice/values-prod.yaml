@@ -1,0 +1,9 @@
+# Prod overlay: two replicas, headroom for the Drools KieBase build at startup.
+replicas: 2
+resources:
+  requests:
+    memory: 1Gi
+    cpu: 500m
+  limits:
+    memory: 2Gi
+    cpu: "2"

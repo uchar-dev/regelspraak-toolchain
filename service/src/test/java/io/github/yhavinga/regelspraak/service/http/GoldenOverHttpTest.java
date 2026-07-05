@@ -64,14 +64,27 @@ class GoldenOverHttpTest {
 
     private static DienstHttp dienst;
     private static DienstDescriptor descriptor;
+    private static String baseUrl;
     private static final HttpClient CLIENT =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
     @BeforeAll
     static void startDienst() throws IOException {
+        // dienst.url override (chunk B, the third transport): when set — system property `dienst.url` or env
+        // DIENST_URL — the IDENTICAL 30 golden assertions run against an already-running service (e.g. the
+        // in-cluster pod) instead of an in-process DienstHttp. The descriptor is the same toka.dienst.json,
+        // parsed standalone for scope→entrypoint ROUTING only; every expected value still comes from the
+        // scenario fixtures, so nothing is duplicated or re-typed.
+        String override = System.getProperty("dienst.url", System.getenv("DIENST_URL"));
+        if (override != null && !override.isBlank()) {
+            baseUrl = override.endsWith("/") ? override.substring(0, override.length() - 1) : override;
+            descriptor = DienstHttp.MAPPER.readValue(TokaBron.descriptorJson(), DienstDescriptor.class);
+            return;
+        }
         BeslisserKern kern = BeslisserKern.bouw(TokaBron.descriptorJson(), TokaBron.bronPerBestand(),
                 KernConfig.strikt(), Thread.currentThread().getContextClassLoader());
         dienst = DienstHttp.bind(kern, "127.0.0.1", 0).start();
+        baseUrl = "http://127.0.0.1:" + dienst.poort();
         // the kern already parsed the descriptor with DescriptorLoader.MAPPER at startup; reuse that resolved
         // descriptor so the scope→entrypoint lookup is over the very same entry set the routes were built from.
         descriptor = kern.descriptor();
@@ -277,7 +290,7 @@ class GoldenOverHttpTest {
 
     private HttpResponse<String> post(String pad, String body) throws Exception {
         HttpRequest req = HttpRequest.newBuilder()
-                .uri(URI.create("http://127.0.0.1:" + dienst.poort() + "/" + pad))
+                .uri(URI.create(baseUrl + "/" + pad))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                 .build();
