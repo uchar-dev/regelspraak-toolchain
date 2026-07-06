@@ -4,6 +4,7 @@ import io.github.yhavinga.regelspraak.facts.Bemanningslid;
 import io.github.yhavinga.regelspraak.facts.Bestelling;
 import io.github.yhavinga.regelspraak.facts.Contingent;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
+import io.github.yhavinga.regelspraak.facts.Ding;
 import io.github.yhavinga.regelspraak.facts.Factuur;
 import io.github.yhavinga.regelspraak.facts.Heffing;
 import io.github.yhavinga.regelspraak.facts.Inconsistentie;
@@ -128,6 +129,61 @@ class ExecModelDifferentialTest {
             () -> passagier(p -> p.setBasistarief(new BigDecimal(42))),
             Map.of(),
             Passagier::getPrijs),
+    };
+
+    // ---- PHASE VW-EQ: the two exec condition-lowering lifts that let two golden TOKA shapes leave the SKIP set.
+    //      LIFT 1 (toka-39 "belaste reis"): an own Boolean ATTRIBUTE == a boolean literal (waar/onwaar). A null Boolean
+    //      prop reads leeg -> GELIJK onwaar / ONGELIJK WAAR (§5.5.5 + Tabel 44), mirroring DRL's mvel `prop == true|false`.
+    //      LIFT 2 (toka-27 "paaskorting"): a datum attribute == a datum-typed builtin EXPRESSION ("de eerste paasdag van
+    //      (het jaar uit (...))"), lowered via scalarWaarde. Fresh Ding beans so the fixtures own their facts. ----
+    static final String VW_EQ_BOOL_OT = """
+            Objecttype de Ding (mv: Dingen)
+                bereikbaar per trein Boolean;
+                is belaste reis kenmerk;
+            """;
+    static final String VW_EQ_BOOL_EQ = VW_EQ_BOOL_OT + """
+            Regel belaste reis
+                geldig altijd
+                    Een Ding is een belaste reis indien bereikbaar per trein van de Ding gelijk is aan waar.
+            """;
+    static final String VW_EQ_BOOL_NE = VW_EQ_BOOL_OT + """
+            Regel belaste reis
+                geldig altijd
+                    Een Ding is een belaste reis indien bereikbaar per trein van de Ding ongelijk is aan waar.
+            """;
+    static final String VW_EQ_DATUM_OT = """
+            Objecttype de Ding (mv: Dingen)
+                de vluchtdatum Datum in dagen;
+                is reis met paaskorting kenmerk;
+            """;
+    static final String VW_EQ_DATUM_PAAS = VW_EQ_DATUM_OT + """
+            Regel paaskorting
+                geldig altijd
+                    Een Ding is een reis met paaskorting indien de vluchtdatum van de Ding gelijk is aan de eerste paasdag van (het jaar uit (de vluchtdatum van de Ding)).
+            """;
+    static Fixture ding(String naam, String src, Consumer<Ding> setup, Function<Ding, Object> uit) {
+        return new Fixture(naam, src, () -> { Ding d = new Ding(); setup.accept(d); return List.<Object>of(d); },
+                Map.of(), l -> uit.apply((Ding) l.get(0)));
+    }
+    static final Fixture[] PHASE_VW_EQ = {
+        // LIFT 1: Boolean-attribute equality vs a boolean literal
+        ding("bool-attr == waar, attr=true -> kenmerk true",  VW_EQ_BOOL_EQ,
+            d -> d.setBereikbaarPerTrein(Boolean.TRUE),  Ding::isBelasteReis),
+        ding("bool-attr == waar, attr=false -> kenmerk false", VW_EQ_BOOL_EQ,
+            d -> d.setBereikbaarPerTrein(Boolean.FALSE), Ding::isBelasteReis),
+        ding("bool-attr == waar, attr=leeg -> GELIJK onwaar (Tabel 44)", VW_EQ_BOOL_EQ,
+            d -> {},                                     Ding::isBelasteReis),
+        ding("bool-attr != waar, attr=leeg -> ONGELIJK WAAR (Tabel 44)", VW_EQ_BOOL_NE,
+            d -> {},                                     Ding::isBelasteReis),
+        // LIFT 2: datum equality vs the eerste-paasdag builtin EXPRESSION
+        ding("vluchtdatum == eerste paasdag (2024-03-31 IS Easter 2024) -> kenmerk true", VW_EQ_DATUM_PAAS,
+            d -> d.setVluchtdatum(LocalDate.of(2024, 3, 31)), Ding::isReisMetPaaskorting),
+        ding("vluchtdatum == eerste paasdag (2024-04-01 is NOT Easter) -> kenmerk false", VW_EQ_DATUM_PAAS,
+            d -> d.setVluchtdatum(LocalDate.of(2024, 4, 1)),  Ding::isReisMetPaaskorting),
+    };
+    // The hand-verified spec outcomes (Easter 2024 = 2024-03-31 via the §6.13 Gauss algorithm rsEerstePaasdag).
+    static final Boolean[] PHASE_VW_EQ_EXPECTED = {
+        Boolean.TRUE, Boolean.FALSE, Boolean.FALSE, Boolean.TRUE, Boolean.TRUE, Boolean.FALSE,
     };
 
     // ---- §13.2.5 RATIONAL NUMBER LITERAL in a VALUE (maal) position. The exec bd() used to read only the leading
@@ -7022,6 +7078,23 @@ class ExecModelDifferentialTest {
     @Test void phase_C2_aggregation_in_arithmetic_matches_drl_back_end() { runDifferential("Phase C2", PHASE_C2, 5); }
     @Test void beslistabel_rows_match_drl_back_end()          { runDifferential("Beslistabel", BESLISTABEL, 6); }
     @Test void phase_A_model_back_end_matches_drl_back_end()  { runDifferential("Phase A", PHASE_A, 3); }
+    @Test void phase_VW_EQ_model_back_end_matches_drl_back_end() { runDifferential("Phase VW-EQ", PHASE_VW_EQ, 6); }
+    /** The two exec condition-lowering lifts (Boolean-attr == literal; datum == eerste-paasdag builtin) — the ABSOLUTE
+     *  spec outcomes, not just DRL==exec parity (a shared upstream bug would pass parity alone). The DRL back-end is the
+     *  oracle for the outcome; a hand-checked TRUE case (attr=true fires; 2024-03-31 IS Easter 2024) anchors each lift. */
+    @Test void phase_VW_EQ_condition_lowering_is_spec_correct() {
+        for (int i = 0; i < PHASE_VW_EQ.length; i++) {
+            Fixture f = PHASE_VW_EQ[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_VW_EQ_EXPECTED[i], viaDrl, () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_B_model_back_end_matches_drl_back_end()  { runDifferential("Phase B", PHASE_B, 3); }
     @Test void phase_B2_quantifiers_match_drl_back_end()       { runDifferential("Phase B2", PHASE_B2, 5); }
     @Test void phase_B3_relational_match_drl_back_end()        { runDifferential("Phase B3", PHASE_B3, 6); }

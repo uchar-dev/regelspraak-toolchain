@@ -2763,7 +2763,19 @@ public final class ExecModelTranspiler {
                 if (rf == null) return null;
                 return s -> datumVergelijkTemporal(lf.apply(s), rf.apply(s), op);
             }
-            return null;   // datum-vs-(global/expr/other) -> not a fact-only datum-equality leaf
+            // §5.3 the RHS is a datum-typed EXPRESSION (a §13.4 builtin like "de eerste paasdag van (...)", a date-arith
+            // Binair, a date-valued function) rather than a literal/attribute. Lower it via scalarWaarde (which covers
+            // EERSTE_PAASDAG et al.); passing `subject` lets any navigation inside the RHS resolve. A fact-only leaf
+            // (0 globals) — a global-reading RHS falls through to skip, symmetric with the frontier. DRL lowers the same
+            // `attr == <expr>` via its operand path (the builtin lowers to rsEerstePaasdag(...)).
+            if (v.rechts().type() != null && v.rechts().type().isDatum() && sameDatumKind(la.type(), v.rechts().type())) {
+                WaardeFn rw = scalarWaarde(subject, v.rechts());
+                if (rw != null && rw.globals().isEmpty()) {
+                    BiFunction<Object, Map<String, BigDecimal>, Object> rfn = rw.fn();
+                    return s -> datumVergelijkTemporal(lf.apply(s), rfn.apply(s, Map.of()), op);
+                }
+            }
+            return null;   // datum-vs-(global/other) -> not a fact-only datum-equality leaf
         }
         // §8.1.1 a comparison whose LHS is a NUMERIC EXPRESSION — a builtin Functie ("de maand uit (...)", abs), an
         // arithmetic Binair ("de prijs plus 10"), a §6.1.4 begrenzing or a §13.4.17.25 afronding — vs a numeric
@@ -2859,6 +2871,41 @@ public final class ExecModelTranspiler {
             if (rol == null) return null;
             String attr = la.attribuut();
             String rhs = tekstOfEnumLabel(lit);
+            boolean gelijk = v.op() == Conditie.Operator.GELIJK;
+            return s -> {
+                Object rel = RegelSpraakRuntime.get(s, rol);
+                Object val = rel == null ? null : RegelSpraakRuntime.get(rel, attr);   // §5.5.5 null relation -> leeg
+                return rhs.equals(val) == gelijk;   // leeg != literal -> ONGELIJK WAAR (Tabel 44); leeg == literal -> GELIJK onwaar
+            };
+        }
+        // §5.3 an own-attribute BOOLEAN equality vs a §13.2.14 boolean literal ("<attr> is gelijk aan waar|onwaar").
+        // Mirrors the own Tekst/enum branch above but for a Booleaan attribute: read the literal's boolean value with
+        // Literalen.waar, then compare `rhs.equals(prop) == gelijk`. A null Boolean prop reads leeg -> rhs.equals(null)
+        // is false, so GELIJK -> onwaar / ONGELIJK -> WAAR (Tabel 44), matching DrlTranspiler's mvel `prop == true|false`.
+        if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
+                && v.rechts() instanceof Expr.Literal lit && lit.type() instanceof io.github.yhavinga.regelspraak.model.Datatype.Booleaan
+                && (v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)) {
+            if (subject == null || !subject.heeftLid(la.attribuut())) return null;            // not the subject's own member
+            if (subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;      // temporal -> Phase F
+            if (!subject.dimensiesVan(la.attribuut()).isEmpty()) return null;                 // §3.6 gedimensioneerd -> marker
+            String attr = la.attribuut();
+            Boolean rhs = io.github.yhavinga.regelspraak.transpiler.kern.Literalen.waar(lit.waarde());
+            boolean gelijk = v.op() == Conditie.Operator.GELIJK;
+            return s -> rhs.equals(RegelSpraakRuntime.get(s, attr)) == gelijk;   // prop may be null; rhs non-null
+        }
+        // §5.3 the to-ONE NAVIGATED BOOLEAN equality ("<attr> van zijn rol is gelijk aan waar|onwaar"): §5.5.5 a null
+        // relation reads LEEG (same as a present relation with a null Boolean attribute), then boolean equality decides —
+        // GELIJK of leeg vs the literal -> onwaar, ONGELIJK of leeg vs the literal -> WAAR (Tabel 44). Mirrors the
+        // navigated Tekst/enum branch above.
+        if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() != null
+                && v.rechts() instanceof Expr.Literal lit && lit.type() instanceof io.github.yhavinga.regelspraak.model.Datatype.Booleaan
+                && (v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)) {
+            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 gedimensioneerd -> marker
+            String rol = navComparisonRole(la, subject);
+            if (rol == null) return null;
+            String attr = la.attribuut();
+            Boolean rhs = io.github.yhavinga.regelspraak.transpiler.kern.Literalen.waar(lit.waarde());
             boolean gelijk = v.op() == Conditie.Operator.GELIJK;
             return s -> {
                 Object rel = RegelSpraakRuntime.get(s, rol);
