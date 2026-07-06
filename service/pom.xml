@@ -49,6 +49,23 @@
 
   <build>
     <plugins>
+      <!-- Publish a test-jar alongside the main jar so the ADDITIVE, opt-in service-quarkus adapter module can
+           reuse the golden-parity harness (TokaBron, SituatieNaarVerzoek, the manifest reader) mechanically — no
+           expected value is re-typed there. Build-config only: it adds an artifact, it does NOT change any main
+           or test behavior of this module. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.1</version>
+        <executions>
+          <execution>
+            <id>test-jar</id>
+            <goals>
+              <goal>test-jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
