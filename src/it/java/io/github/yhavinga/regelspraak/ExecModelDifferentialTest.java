@@ -6200,6 +6200,69 @@ class ExecModelDifferentialTest {
             // -> ["Passagier|prijs=10|reis=0"]
     };
 
+    // ---- §13.4.6 + §5.8.2 AGGREGATION-VALUED objectcreatie toekenning (toka-28 in miniature). The created object's
+    //      attribute value is an aggregation over the subject's related elements ("het aantal passagiers van de Vlucht
+    //      maal <param>") — a COUNT, not an attribute. The scalarWaarde path cannot host an accumulate CE, so the exec
+    //      used to SKIP the whole objectcreatie (DRL lowered it). Now the aggregation-toekenning lowers via lowerVal to
+    //      its own accumulate CE threaded through the consequence, exactly like the regel aggregatie-in-arithmetiek
+    //      path. Absolute pin: 3 passengers * 5 = 15 on the created Contingent; an EMPTY Vlucht counts 0 -> 0*5 = 0
+    //      (§5.8.2 count of empty is 0, NOT the leegwaarde — verified against DRL). The Contingent target is TO-MANY
+    //      (contingentrelatie: één contingentvlucht heeft meerdere contingenten), so a CreationMarker idempotence guard
+    //      caps it at one per (rule, Vlucht) — and creating a Contingent does NOT feed back into the passenger count. ----
+    static final ObjFixture[] PHASE_OBJ_AGG = {
+        new ObjFixture("§13.4.6+§5.8.2 aggregatie-waarde objectcreatie: aantal treinmiles = het aantal passagiers maal param",
+            """
+            Parameter de treinmiles per passagier : Numeriek (geheel getal)
+            Objecttype de Vlucht
+                de naam Tekst;
+            Objecttype de Passagier
+                de prijs Numeriek (geheel getal);
+            Objecttype de Contingent
+                de aantal treinmiles Numeriek (positief geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Feittype contingentrelatie
+                de contingentvlucht Vlucht
+                de contingent Contingent
+            Eén contingentvlucht heeft meerdere contingenten
+            Regel maak contingent
+                geldig altijd
+                    Een Vlucht heeft een contingent met aantal treinmiles gelijk aan het aantal passagiers van de Vlucht maal de treinmiles per passagier.
+            """,
+            () -> {
+                Vlucht vol = new Vlucht(), leeg = new Vlucht();
+                Passagier p1 = new Passagier(), p2 = new Passagier(), p3 = new Passagier();
+                p1.setReis(vol); p2.setReis(vol); p3.setReis(vol);
+                return List.<Object>of(vol, leeg, p1, p2, p3);   // vol has 3 passengers, leeg has 0
+            },
+            Map.of("treinmilesPerPassagier", new BigDecimal(5)),
+            (o, facts) -> { Contingent c = (Contingent) o; return "Contingent|treinmiles=" + bdStr(c.getAantalTreinmiles())
+                    + "|vlucht=" + refIndex(facts, c.getContingentvlucht()); }),
+            // -> ["Contingent|treinmiles=0|vlucht=1", "Contingent|treinmiles=15|vlucht=0"]  (sorted)
+    };
+    // 3 passengers * 5 = 15 (vlucht 0); 0 passengers * 5 = 0 (vlucht 1, empty-count is 0 not leeg).
+    static final List<String> PHASE_OBJ_AGG_EXPECTED =
+            List.of("Contingent|treinmiles=0|vlucht=1", "Contingent|treinmiles=15|vlucht=0");
+
+    /** §13.4.6 + §5.8.2 an AGGREGATION-valued objectcreatie toekenning lowers in BOTH back-ends (was an exec skip):
+     *  the created object's attribute = "het aantal passagiers van de Vlucht maal <param>", a count over the subject's
+     *  related elements. ABSOLUTE created-set pin (3*5=15, empty-count 0*5=0) AND DRL==exec parity. Mirrors
+     *  {@link #phase_keten_objectcreatie_init_is_spec_correct} / {@link #phase_G_objectcreatie_idempotentie_is_spec_correct}. */
+    @Test void phase_OBJ_AGG_aggregatie_waarde_objectcreatie_is_spec_correct() {
+        for (ObjFixture f : PHASE_OBJ_AGG) {
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            List<String> viaDrl = fireCreated(drlBase(m), f);
+            List<String> viaModel = fireCreated(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_OBJ_AGG_EXPECTED, viaDrl, () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(viaDrl, viaModel, () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+
     // ---- §13.4.6/§9 objectcreatie IDEMPOTENCE: the creation is a function of the fact base, not of the fire count.
     //      no-loop only blocks a rule re-activating on its OWN insert; when ANOTHER rule modifies a matched subject
     //      the unguarded creation re-fires and mints duplicates. PRE-FIX these fixtures RAN AWAY (fireAllRules never

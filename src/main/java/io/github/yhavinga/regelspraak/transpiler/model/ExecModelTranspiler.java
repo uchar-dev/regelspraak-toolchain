@@ -3434,6 +3434,13 @@ public final class ExecModelTranspiler {
     @FunctionalInterface
     interface Eval { Object apply(Object subject, Map<String, BigDecimal> globals, Object[] aggResults); }
 
+    /** §13.4.6 one lowered objectcreatie toekenning value: EITHER a scalar {@link WaardeFn#fn()} ({@code eval==null},
+     *  no aggregation — restates inside scalarWaarde) OR an aggregation {@link Eval} ({@code fn==null}) reading its slice
+     *  {@code [aggOff, aggOff+aggCnt)} of the consequence's aggsAll[], then §4-restated from {@code van} (the value type)
+     *  into {@code naar} (the new object's attribuut unit). */
+    private record TkLower(String attr, BiFunction<Object, Map<String, BigDecimal>, Object> fn, Eval eval,
+                           int aggOff, int aggCnt, Datatype van, Datatype naar) {}
+
     private static boolean isScalarSoort(ResolvedRegel.Soort s) {
         return s == ResolvedRegel.Soort.GELIJKSTELLING || s == ResolvedRegel.Soort.BEREKENING || s == ResolvedRegel.Soort.INITIALISATIE;
     }
@@ -4533,31 +4540,46 @@ public final class ExecModelTranspiler {
         String backRef = model.verbindendeRol(nieuw, subject);   // field on $new -> subject (null -> orphan insert, like DRL)
         boolean eenOpEen = backRef != null && !model.subjectNaarVeelCreatie(subject, nieuw);   // §9 guard shape (see doc)
 
-        // lower each toekenning value to a (subject, globals) -> value function; collect the Parameter-globals read.
-        // The runtime receiver of each fn IS the anchor $subject (body below applies fn to args[0]), so the anchor
-        // objecttype rides as the VALUE-path subject — a to-one navigated or §13.4.1 multi-hop chain value resolves
-        // against it, mirroring DrlTranspiler.objectCreatie's waarde(acc, t.waarde(), subject). The chain gate
-        // (ketenWaardePad) is set here for the same reason as the scalar THEN-waarde: a toekenning value IS a
-        // consequence value. (Was scalarWaarde(null, ...): every navigated init value skipped while DRL fired it.)
-        List<String> attrs = new ArrayList<>();
-        List<BiFunction<Object, Map<String, BigDecimal>, Object>> fns = new ArrayList<>();
+        // Lower each toekenning value to a §13.4.6.2 value producer (TkLower). The runtime receiver is the anchor
+        // $subject (body below applies it to args[0]), so the anchor objecttype rides as the VALUE-path subject — a
+        // to-one navigated or §13.4.1 multi-hop chain value resolves against it, mirroring DrlTranspiler.objectCreatie's
+        // waarde(acc, t.waarde(), subject). The chain gate (ketenWaardePad) is set here for the same reason as the
+        // scalar THEN-waarde: a toekenning value IS a consequence value.
+        //   - A NON-aggregation value stays on the existing scalarWaarde WaardeFn path (navigated chains / builtins /
+        //     dimensiecel that lowerVal does not cover; it also restates into the target unit internally).
+        //   - A §5.8 AGGREGATION-valued toekenning (toka-28: "het aantal passagiers van de Vlucht maal <param>", the
+        //     count is NOT an attribute) cannot host its accumulate CE inside a WaardeFn, so it lowers via lowerVal to
+        //     an Eval + its own accumulate CE(s) + result Variable(s) threaded through the consequence's aggsAll[],
+        //     exactly like the regel aggregatie-in-arithmetiek path (L454-486). DrlTranspiler.objectCreatie likewise
+        //     collects an embedded aggregation into the "when" via its Acc context.
+        seq = 0;                                                     // aggregatie() names its patterns off seq
+        Variable sVar = DSL.declarationOf(subjClass, "$subject");
+        List<TkLower> tks = new ArrayList<>();
         Set<String> gNames = new LinkedHashSet<>();
+        List<RuleItemBuilder<?>> accItems = new ArrayList<>();       // all aggregation accumulate CEs, across toekenningen
+        List<Variable> accVars = new ArrayList<>();                  // all aggregation result vars, in order (aggsAll[])
         try {
             ketenWaardePad = true;
             for (var t : oc.toekenningen()) {
-                WaardeFn wf = scalarWaarde(subject, t.waarde());
-                if (wf == null) return skip("objectcreatie (toekenning-waarde buiten scope): " + oc.naam());
-                attrs.add(t.attribuut());
-                fns.add(wf.fn());
-                gNames.addAll(wf.globals());
+                Datatype naar = nieuw.attribuut(t.attribuut());     // the new object's attribute unit — the §4 restate target
+                if (containsAggregatie(t.waarde())) {
+                    List<Variable> tAccVars = new ArrayList<>();     // THIS toekenning's slice of the shared accVars
+                    Eval eval = lowerVal(t.waarde(), subject, sVar, gNames, accItems, tAccVars);
+                    if (eval == null) return skip("objectcreatie (aggregatie-toekenning buiten scope): " + oc.naam());
+                    int off = accVars.size(); accVars.addAll(tAccVars);   // remember offset BEFORE appending
+                    tks.add(new TkLower(t.attribuut(), null, eval, off, tAccVars.size(), t.waarde().type(), naar));
+                } else {
+                    WaardeFn wf = scalarWaarde(subject, t.waarde());
+                    if (wf == null) return skip("objectcreatie (toekenning-waarde buiten scope): " + oc.naam());
+                    gNames.addAll(wf.globals());
+                    tks.add(new TkLower(t.attribuut(), wf.fn(), null, 0, 0, t.waarde().type(), naar));
+                }
             }
         } finally {
             ketenWaardePad = false;
         }
         List<String> gList = new ArrayList<>(gNames);
 
-        seq = 0;
-        Variable sVar = DSL.declarationOf(subjClass, "$subject");
         PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
         List<RuleItemBuilder<?>> extra = new ArrayList<>();
         if (oc.voorwaarde() != null) {
@@ -4587,17 +4609,28 @@ public final class ExecModelTranspiler {
         }
         final boolean fMarker = !eenOpEen;
 
-        final List<String> fAttrs = attrs; final List<BiFunction<Object, Map<String, BigDecimal>, Object>> fFns = fns;
+        final List<TkLower> fTks = tks;
         final String fBackRef = backRef; final Class<?> fNieuwClass = nieuwClass;
-        final List<String> fG = gList; final int nG = gList.size();
+        final List<String> fG = gList; final int nG = gList.size(); final int nAgg = accVars.size();
         java.util.function.BiConsumer<org.drools.model.Drools, Object[]> body = (drools, args) -> {
             Object s = args[0];
             Map<String, BigDecimal> gm = new LinkedHashMap<>();
             for (int i = 0; i < nG; i++) gm.put(fG.get(i), (BigDecimal) args[1 + i]);
+            Object[] aggsAll = new Object[nAgg];                     // the aggregation result vars, bound after [subject, globals...]
+            for (int i = 0; i < nAgg; i++) aggsAll[i] = args[1 + nG + i];
             Object newObj = RegelSpraakRuntime.newInstance(fNieuwClass);
-            // §6.1.2 write boundary: collapse a remaining exact Breuk (a computed met-clause value) to its decimal
-            // form before the reflective set, so it never reaches a BigDecimal field (mirrors werkBij).
-            for (int i = 0; i < fAttrs.size(); i++) RegelSpraakRuntime.set(newObj, fAttrs.get(i), collapseBreuk(fFns.get(i).apply(s, gm)));
+            for (TkLower tk : fTks) {
+                Object v;
+                if (tk.fn() != null) {
+                    v = tk.fn().apply(s, gm);                        // scalar path already restates inside scalarWaarde — do NOT double-restate
+                } else {
+                    Object[] slice = java.util.Arrays.copyOfRange(aggsAll, tk.aggOff(), tk.aggOff() + tk.aggCnt());
+                    v = herschaalWaarde(tk.eval().apply(s, gm, slice), tk.van(), tk.naar());   // §4 EXACT restate the aggregate into the attribuut unit
+                }
+                // §6.1.2 write boundary: collapse a remaining exact Breuk (a computed met-clause value) to its decimal
+                // form before the reflective set, so it never reaches a BigDecimal field (mirrors werkBij).
+                RegelSpraakRuntime.set(newObj, tk.attr(), collapseBreuk(v));
+            }
             if (fBackRef != null) RegelSpraakRuntime.set(newObj, fBackRef, s);
             drools.insert(newObj);
             if (fMarker) drools.insert(new CreationMarker(ruleNaam, s));   // §9 mark this (rule, subject) created
@@ -4609,11 +4642,14 @@ public final class ExecModelTranspiler {
             if (g == null) return skip("objectcreatie (niet-geregistreerde global): " + oc.naam());
             vars.add((Variable) g);
         }
+        vars.addAll(accVars);                                       // [subject, globals..., accVars...] — aggsAll[] reads from args[1+nG..]
         RuleItemBuilder<?> consequence = consequenceOf(vars.toArray(new Variable[0]), body);
         if (consequence == null) return skip("objectcreatie (te veel gebonden variabelen): " + oc.naam());
 
+        // accumulate CEs join the related elements to $subject, so they follow the subject pattern + idempotence guard
+        // (like the regel path's extra.addAll(accItems) after the doel pattern). Order: pattern; extra; idemGuard; accItems; consequence.
         List<RuleItemBuilder<?>> items = new ArrayList<>();
-        items.add(pattern); items.addAll(extra); items.add(idemGuard); items.add(consequence);
+        items.add(pattern); items.addAll(extra); items.add(idemGuard); items.addAll(accItems); items.add(consequence);
         return PatternDSL.rule(kop(oc.naam())).build(items.toArray(new RuleItemBuilder[0]));
     }
 

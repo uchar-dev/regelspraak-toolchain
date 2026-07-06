@@ -10,4 +10,7 @@ public class Contingent {
     private Vlucht contingentvlucht;   // to-one parent->child reference the intermediate hop reads
     public Vlucht getContingentvlucht() { return contingentvlucht; }
     public void setContingentvlucht(Vlucht v) { this.contingentvlucht = v; }
+    private java.math.BigDecimal aantalTreinmiles;   // §13.4.6 aggregation-valued objectcreatie toekenning target (toka-28-in-miniatuur)
+    public java.math.BigDecimal getAantalTreinmiles() { return aantalTreinmiles; }
+    public void setAantalTreinmiles(java.math.BigDecimal v) { this.aantalTreinmiles = v; }
 }
