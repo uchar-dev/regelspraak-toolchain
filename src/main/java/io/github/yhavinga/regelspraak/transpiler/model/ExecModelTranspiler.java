@@ -2878,6 +2878,26 @@ public final class ExecModelTranspiler {
                 return rhs.equals(val) == gelijk;   // leeg != literal -> ONGELIJK WAAR (Tabel 44); leeg == literal -> GELIJK onwaar
             };
         }
+        // §5.3 / typeringen Tabel 38 (GELIJK) + Tabel 44 (ONGELIJK): a NON-numeriek (Tekst / §13.2.14 enumeratiewaarde /
+        // Booleaan) equality where BOTH operands are the subject's OWN attributes (attr-vs-attr). Mirrors the vs-literal
+        // branches above but with the RHS read from the second own attribute; the leeg/gelijk truth table (tekstAttrGelijk)
+        // is derived from the SAME DRL mvel the vs-literal `rhs.equals(prop) == gelijk` form uses, extended for a leeg RHS
+        // (DrlTranspiler L2958-2966: both-leeg GELIJK -> onwaar, one-leeg ONGELIJK -> WAAR). Excludes DATUM (its own
+        // ordering/equality lower elsewhere) + numeriek (the arithmetic-comparison branch above). A navigated operand on
+        // either side is NOT handled here (own-vs-own suffices for parity; a navigated attr-vs-attr falls through -> skip).
+        if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
+                && v.rechts() instanceof Expr.AttribuutRef ra && ra.navigatieRol() == null
+                && (v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)
+                && la.type() != null && !la.type().isNumeriek() && !la.type().isPercentage() && !la.type().isDatum()
+                && ra.type() != null && !ra.type().isNumeriek() && !ra.type().isPercentage() && !ra.type().isDatum()) {
+            if (subject == null || !subject.heeftLid(la.attribuut()) || !subject.heeftLid(ra.attribuut())) return null;   // both must be own members
+            if (subject.attribuutGranulariteit.containsKey(la.attribuut())
+                    || subject.attribuutGranulariteit.containsKey(ra.attribuut())) return null;                          // temporal -> Phase F
+            if (!subject.dimensiesVan(la.attribuut()).isEmpty() || !subject.dimensiesVan(ra.attribuut()).isEmpty()) return null;   // §3.6 gedimensioneerd -> marker
+            String lAttr = la.attribuut(), rAttr = ra.attribuut();
+            boolean gelijk = v.op() == Conditie.Operator.GELIJK;
+            return s -> tekstAttrGelijk(RegelSpraakRuntime.get(s, lAttr), RegelSpraakRuntime.get(s, rAttr), gelijk);
+        }
         // §5.3 an own-attribute BOOLEAN equality vs a §13.2.14 boolean literal ("<attr> is gelijk aan waar|onwaar").
         // Mirrors the own Tekst/enum branch above but for a Booleaan attribute: read the literal's boolean value with
         // Literalen.waar, then compare `rhs.equals(prop) == gelijk`. A null Boolean prop reads leeg -> rhs.equals(null)
@@ -3958,6 +3978,24 @@ public final class ExecModelTranspiler {
             boolean assertGelijk = v.op() == Conditie.Operator.GELIJK;
             return s -> rhs.equals(lRead.apply(s)) != assertGelijk;   // violation = criterion not satisfied
         }
+        // §13.4.8 / typeringen Tabel 38 (GELIJK) + Tabel 44 (ONGELIJK): a NON-numeriek (Tekst / §13.2.14
+        // enumeratiewaarde / Booleaan) equality assertie where v.rechts() is ALSO an ATTRIBUTE (attr-vs-attr, own or
+        // navigated). DATUM equality is handled by the ordering/equality branch above (isDatumOp GELIJK/ONGELIJK), so
+        // exclude it here. The satisfied/violated truth table is derived EXACTLY from DrlTranspiler's emitted mvel
+        // constraints (genavigeerdeVergelijkingSchending L563-573, and the voorwaarde complement L2958-2966): mvel `==`
+        // is VALUE equality and `null == null` is WAAR, so GELIJK is WAAR only when BOTH present and equal (both-leeg or
+        // one-leeg -> onwaar/fout -> a VIOLATION of "moet gelijk"); ONGELIJK is WAAR for exactly-one-leeg OR both-present-
+        // unequal (both-leeg -> onwaar -> a VIOLATION of "moet ongelijk"). See tekstAttrGelijk below.
+        if ((v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)
+                && v.rechts() instanceof Expr.AttribuutRef ra && ra.type() != null
+                && !ra.type().isNumeriek() && !ra.type().isPercentage()
+                && la.type() != null && !la.type().isNumeriek() && !la.type().isPercentage()
+                && !la.type().isDatum()) {   // datum handled by the ordering/equality branches above; this is Tekst/enum/boolean
+            java.util.function.Function<Object, Object> rRead = consistentieReader(ra, subject);
+            if (rRead == null) return null;
+            boolean assertGelijk = v.op() == Conditie.Operator.GELIJK;
+            return s -> !tekstAttrGelijk(lRead.apply(s), rRead.apply(s), assertGelijk);   // violation = criterion not satisfied
+        }
 
         if (!isNumeriekOp(v.op())) return null;                              // remaining non-numeric op (EERDER/LATER datum): later
         // §5.3 a GELIJK/ONGELIJK assertie over NON-numeric operands (Tekst/datum/enum/boolean — attr-vs-attr or navigated-
@@ -4050,6 +4088,19 @@ public final class ExecModelTranspiler {
             BigDecimal a = scale(RegelSpraakRuntime.toBd(lRead.apply(s)), f[0]), b = scale(gv, f[1]);
             return gelijkheid ? vergelijk(a, b, flip) : (a == null || b == null || vergelijk(a, b, flip));
         });
+    }
+
+    /** The §5.3 / typeringen Tabel 38 (GELIJK) + Tabel 44 (ONGELIJK) satisfied truth value of a NON-numeriek
+     *  (Tekst / enumeratiewaarde / Booleaan) equality between two operand VALUES ({@code null} == leeg), mirroring the
+     *  mvel that DrlTranspiler emits: {@code ==} is VALUE equality and mvel reads {@code null == null} as WAAR, so a
+     *  GELIJK is WAAR only when BOTH operands are present and equal (both-leeg / one-leeg -> onwaar/fout); an ONGELIJK is
+     *  WAAR for exactly-one-leeg OR both-present-and-unequal (both-leeg -> onwaar). Both lifts (the §9.5 schending and the
+     *  condition leafPredicate) share this so they stay in lock-step with the DRL back-end. */
+    static boolean tekstAttrGelijk(Object lv, Object rv, boolean gelijk) {
+        boolean bothLeeg = lv == null && rv == null;
+        boolean gelijkeWaarden = java.util.Objects.equals(lv, rv);   // true when both null OR both equal-value
+        return gelijk ? (gelijkeWaarden && !bothLeeg)                 // Tabel 38: WAAR only both-present-and-equal
+                      : (!gelijkeWaarden && !bothLeeg);               // Tabel 44: WAAR for one-leeg OR both-present-unequal
     }
 
     /** A §13.4.8 consistentie comparison-operand reader: the subject's OWN attribute (get) or a to-ONE NAVIGATED read

@@ -139,7 +139,12 @@ public final class RegelSpraakRuntime {
      *  rule to insert. The model back-end's analog of the DRL {@code insert(new ….Inconsistentie(...))}. */
     public static Object newInconsistentie(String fqcn, String regel, Object subject) {
         try {
-            return Class.forName(fqcn).getConstructor(String.class, Object.class).newInstance(regel, subject);
+            // Resolve the Inconsistentie bean via the thread context classloader (both exec runners set TCCL=beanLoader
+            // at fire time) so a CHILD-loaded bean is found; fall back to RegelSpraakRuntime's own loader when no TCCL.
+            // A bare Class.forName(fqcn) resolves against the parent loader -> ClassNotFound under child-loaded beans.
+            ClassLoader tccl = Thread.currentThread().getContextClassLoader();
+            Class<?> c = tccl != null ? Class.forName(fqcn, true, tccl) : Class.forName(fqcn);
+            return c.getConstructor(String.class, Object.class).newInstance(regel, subject);
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException("kan geen " + fqcn + "(String, Object) construeren", e);
         }

@@ -187,6 +187,38 @@ class ExecModelDifferentialTest {
         Boolean.TRUE, Boolean.FALSE, Boolean.FALSE, Boolean.TRUE, Boolean.TRUE, Boolean.FALSE,
     };
 
+    // ---- PHASE TEKST-ATTR (LIFT B): a NON-numeriek (Tekst) GELIJK/ONGELIJK equality where BOTH operands are the
+    //      subject's OWN attributes ("zijn vertrek gelijk/ongelijk is aan zijn bestemming") lowers in the exec CONDITION
+    //      path (leafPredicate). §5.3/Tabel 38 (GELIJK): WAAR only when both present and equal (both-leeg/one-leeg ->
+    //      onwaar). Tabel 44 (ONGELIJK): WAAR for exactly-one-leeg OR both-present-unequal (both-leeg -> onwaar). Route
+    //      has two Tekst attributes (vertrek, bestemming) + the "gemarkeerd" kenmerk the rule sets. ----
+    static final String TEKST_ATTR_OT =
+        "Objecttype de Route\n    de vertrek Tekst;\n    de bestemming Tekst;\n    is gemarkeerd kenmerk (bijvoeglijk);\n";
+    static final String TEKST_ATTR_GELIJK = TEKST_ATTR_OT
+        + "Regel R\n    geldig altijd\n        Een Route is gemarkeerd indien zijn vertrek gelijk is aan zijn bestemming.\n";
+    static final String TEKST_ATTR_ONGELIJK = TEKST_ATTR_OT
+        + "Regel R\n    geldig altijd\n        Een Route is gemarkeerd indien zijn vertrek ongelijk is aan zijn bestemming.\n";
+    static Fixture routeCond(String naam, String src, String vertrek, String bestemming) {
+        return new Fixture(naam, src,
+            () -> { Route r = new Route(); if (vertrek != null) r.setVertrek(vertrek); if (bestemming != null) r.setBestemming(bestemming);
+                    return List.<Object>of(r); },
+            Map.of(), l -> ((Route) l.get(0)).isGemarkeerd());
+    }
+    static final Fixture[] PHASE_TEKST_ATTR = {
+        routeCond("GELIJK a==b (A==A) -> kenmerk true",  TEKST_ATTR_GELIJK, "A", "A"),
+        routeCond("GELIJK a!=b (A!=B) -> kenmerk false", TEKST_ATTR_GELIJK, "A", "B"),
+        routeCond("GELIJK one-leeg (A vs leeg) -> onwaar (Tabel 38)", TEKST_ATTR_GELIJK, "A", null),
+        routeCond("GELIJK both-leeg -> onwaar (Tabel 38)",           TEKST_ATTR_GELIJK, null, null),
+        routeCond("ONGELIJK a!=b (A!=B) -> kenmerk true", TEKST_ATTR_ONGELIJK, "A", "B"),
+        routeCond("ONGELIJK a==b (A==A) -> kenmerk false", TEKST_ATTR_ONGELIJK, "A", "A"),
+        routeCond("ONGELIJK one-leeg (A vs leeg) -> WAAR (Tabel 44)", TEKST_ATTR_ONGELIJK, "A", null),
+        routeCond("ONGELIJK both-leeg -> onwaar (Tabel 44)",         TEKST_ATTR_ONGELIJK, null, null),
+    };
+    static final Boolean[] PHASE_TEKST_ATTR_EXPECTED = {
+        Boolean.TRUE, Boolean.FALSE, Boolean.FALSE, Boolean.FALSE,   // GELIJK: only both-present-equal
+        Boolean.TRUE, Boolean.FALSE, Boolean.TRUE, Boolean.FALSE,    // ONGELIJK: one-leeg or both-present-unequal
+    };
+
     // ---- §13.2.5 RATIONAL NUMBER LITERAL in a VALUE (maal) position. The exec bd() used to read only the leading
     //      integer of a §13.2.5 rationeelgetal, dropping the denominator ("4/2" -> 4), so "grondslag maal 4/2" fired
     //      40 in the exec but 20 in DRL (which lowers via the shared Rationaal.van). A SILENT DRL-vs-exec divergence
@@ -7136,6 +7168,24 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
+    @Test void phase_TEKST_ATTR_model_back_end_matches_drl_back_end() { runDifferential("Phase TEKST-ATTR", PHASE_TEKST_ATTR, 8); }
+    /** LIFT B: a NON-numeriek (Tekst) GELIJK/ONGELIJK own-attr-vs-own-attr equality in a CONDITION — the ABSOLUTE spec
+     *  outcomes (Tabel 38 GELIJK / Tabel 44 ONGELIJK leegwaarde cells), not just DRL==exec parity. A parity-only test
+     *  would pass VACUOUSLY when the rule is silently skipped, so every cell (incl. the VIOLATING/firing case) is pinned
+     *  against the hand-computed truth table AND the DRL oracle. */
+    @Test void phase_TEKST_ATTR_condition_lowering_is_spec_correct() {
+        for (int i = 0; i < PHASE_TEKST_ATTR.length; i++) {
+            Fixture f = PHASE_TEKST_ATTR[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_TEKST_ATTR_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     @Test void phase_B_model_back_end_matches_drl_back_end()  { runDifferential("Phase B", PHASE_B, 3); }
     @Test void phase_B2_quantifiers_match_drl_back_end()       { runDifferential("Phase B2", PHASE_B2, 5); }
     @Test void phase_B3_relational_match_drl_back_end()        { runDifferential("Phase B3", PHASE_B3, 6); }
@@ -7387,20 +7437,18 @@ class ExecModelDifferentialTest {
             assertFalse(Boolean.TRUE.equals(v.isLaat()), () -> "de SET-regel R mag NIET vuren (symmetrische marker)");
         }
     }
-    /** §5.3 a NON-numeriek (Tekst) GELIJK/ONGELIJK attr-vs-attr CONSISTENTIE must SKIP in the exec (the schending path's
-     *  toBd coercion would crash the session on a String), NOT abort fireAllRules. DRL flags it correctly. The co-resident
-     *  Tekst vs-LITERAL voorwaarde rule S (which the exec DOES lower) must still fire in BOTH back-ends -> no blast radius.
-     *  Regression lock for the schending non-numeric guard (review wf_d51218ac crash finding). */
-    @Test void tekst_attr_vs_attr_consistentie_skips_no_session_crash() {
+    /** §5.3 / typeringen Tabel 38 a NON-numeriek (Tekst) GELIJK attr-vs-attr CONSISTENTIE now LOWERS in the exec (LIFT A):
+     *  "de vertrek moet gelijk zijn aan de bestemming" reads the two Tekst attributes VALUE-equal (no toBd coercion, no
+     *  session crash). vertrek="A" != bestemming="B" -> the GELIJK criterion is NOT satisfied -> a violation -> 1
+     *  Inconsistentie, exactly as DRL. The co-resident vs-LITERAL rule S (vertrek == "A") still fires -> gemarkeerd. */
+    @Test void tekst_attr_vs_attr_consistentie_lowers_and_flags() {
         RegelSpraakModel m = Resolver.resolve(TEKST_CONSISTENTIE_SRC);
         assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
         ExecModelTranspiler em = ExecModelTranspiler.build(m);
-        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet de Tekst attr-vs-attr consistentie overslaan, kreeg: " + em.overgeslagen());
+        assertTrue(em.overgeslagen().isEmpty(), () -> "de exec moet de Tekst attr-vs-attr consistentie NIET meer overslaan, kreeg: " + em.overgeslagen());
         assertTrue(DrlTranspiler.transpile(m).contains("Inconsistentie"),
                 () -> "DRL moet de consistentie wel flaggen:\n" + DrlTranspiler.transpile(m));
-        // firing the MODEL must NOT crash (was a ConstraintEvaluationException via toBd(String)); the co-resident kenmerk
-        // rule S (vertrek == "A") must still fire -> gemarkeerd. A vertrek != bestemming would be a violation IF the exec
-        // lowered the consistentie (it skips), so the model inserts 0 Inconsistentie; DRL inserts 1.
+        // vertrek="A" != bestemming="B" -> GELIJK-criterium onwaar -> een violation in BEIDE back-ends (1 Inconsistentie).
         Route rDrl = new Route(); rDrl.setVertrek("A"); rDrl.setBestemming("B");
         Route rModel = new Route(); rModel.setVertrek("A"); rModel.setBestemming("B");
         KieSession sDrl = sessie(drlBase(m)); sDrl.insert(rDrl); sDrl.fireAllRules();
@@ -7408,10 +7456,11 @@ class ExecModelDifferentialTest {
         KieSession sModel = KieBaseBuilder.createKieBaseFromModel(em.model()).newKieSession();
         sModel.insert(rModel); sModel.fireAllRules();   // must not throw
         long incModel = sModel.getObjects().stream().filter(o -> o instanceof Inconsistentie).count(); sModel.dispose();
-        assertEquals(Boolean.TRUE, rModel.isGemarkeerd(), () -> "de co-residente regel S moet vuren (geen sessie-crash door de Tekst-consistentie)");
+        assertEquals(Boolean.TRUE, rModel.isGemarkeerd(), () -> "de co-residente regel S moet vuren");
         assertEquals(Boolean.TRUE, rDrl.isGemarkeerd(), () -> "regel S vuurt ook in DRL");
-        assertEquals(1L, incDrl, () -> "DRL flagt de A!=B consistentie");
-        assertEquals(0L, incModel, () -> "de exec SLAAT de Tekst-consistentie OVER (honest skip, geen crash, geen flag)");
+        assertEquals(1L, incDrl, () -> "DRL flagt de A!=B GELIJK-consistentie");
+        assertEquals(1L, incModel, () -> "de exec LOWERT de Tekst-consistentie nu ook en flagt A!=B (LIFT A)");
+        assertEquals(incDrl, incModel, () -> "back-ends DIVERGE op de Tekst attr-vs-attr consistentie");
     }
     /** §8.1.1 a comparison whose operand is an arithmetic/builtin EXPRESSION vs an attribute (not a literal) now fires in
      *  the exec (was a masked DRL-fires/exec-skips). Closed-form -> assert the ABSOLUTE spec value + parity, incl. a
@@ -8080,6 +8129,36 @@ class ExecModelDifferentialTest {
         }
     }
     @Test void phase_D_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase D", PHASE_D, 12); }
+    @Test void phase_TEKST_CONS_matches_drl_back_end()            { runFoutDifferential("Phase TEKST-CONS", PHASE_TEKST_CONS, 2); }
+    /** LIFT A: a §9.5 NON-numeriek (Tekst) attr-vs-attr GELIJK/ONGELIJK consistentie — the ABSOLUTE flagged SET (the
+     *  toka-30 "geen rondvlucht" shape), not just DRL==exec parity. A consistentie fixture that tests only the satisfied
+     *  case passes VACUOUSLY even when the rule is silently skipped, so both the VIOLATING (Inconsistentie-inserting) and
+     *  the satisfied cells are pinned against the hand-computed Tabel 38/44 truth AND the DRL oracle. */
+    @Test void phase_TEKST_CONS_consistentie_is_spec_correct() {
+        // ONGELIJK: only the A==A rondvlucht and the both-leeg are violations.
+        FoutFixture ong = PHASE_TEKST_CONS[0];
+        RegelSpraakModel mo = Resolver.resolve(ong.src());
+        assertTrue(mo.errors().isEmpty(), () -> "resolver-fout: " + mo.errors());
+        ExecModelTranspiler eo = ExecModelTranspiler.build(mo);
+        assertTrue(eo.overgeslagen().isEmpty(), () -> "de exec moet de ONGELIJK Tekst-consistentie lowern, kreeg: " + eo.overgeslagen());
+        List<String> verwachtOng = List.of("geen rondvlucht/v=A,b=A", "geen rondvlucht/v=null,b=null");
+        List<String> ongDrl   = fireFout(drlBase(mo), ong);
+        List<String> ongModel = fireFout(KieBaseBuilder.createKieBaseFromModel(eo.model()), ong);
+        assertEquals(verwachtOng, ongDrl,   "DRL (oracle) wrong vs spec: ONGELIJK geschonden door A==A en both-leeg");
+        assertEquals(ongDrl, ongModel,      "back-ends DIVERGE op de ONGELIJK Tekst-consistentie");
+
+        // GELIJK: everything EXCEPT A==A is a violation (mismatch, one-leeg, both-leeg all onwaar/fout).
+        FoutFixture gel = PHASE_TEKST_CONS[1];
+        RegelSpraakModel mg = Resolver.resolve(gel.src());
+        assertTrue(mg.errors().isEmpty(), () -> "resolver-fout: " + mg.errors());
+        ExecModelTranspiler eg = ExecModelTranspiler.build(mg);
+        assertTrue(eg.overgeslagen().isEmpty(), () -> "de exec moet de GELIJK Tekst-consistentie lowern, kreeg: " + eg.overgeslagen());
+        List<String> verwachtGel = List.of("zelfde plek/v=A,b=B", "zelfde plek/v=A,b=null", "zelfde plek/v=null,b=null");
+        List<String> gelDrl   = fireFout(drlBase(mg), gel);
+        List<String> gelModel = fireFout(KieBaseBuilder.createKieBaseFromModel(eg.model()), gel);
+        assertEquals(verwachtGel, gelDrl,   "DRL (oracle) wrong vs spec: GELIJK geschonden tenzij beide gevuld en gelijk");
+        assertEquals(gelDrl, gelModel,      "back-ends DIVERGE op de GELIJK Tekst-consistentie");
+    }
 
     /** §5.7/§8.1.6 tuple (concatenatie) uniciteit — ABSOLUTE spec outcome, not just DRL==exec parity (a shared bug in the
      *  tuple key would pass a parity-only check). "de concatenatie van luchthaven en vertrektijd" keys on the PAIR: only the
@@ -8535,6 +8614,37 @@ class ExecModelDifferentialTest {
                 return List.of(leegDeler, okDeler);
             },
             o -> "g=" + ((Rekensom) o).getGrondslag() + ",a=" + ((Rekensom) o).getAftrek()),
+    };
+
+    // ---- Phase TEKST-CONS (LIFT A): a §9.5/§13.4.8 NON-numeriek (Tekst) attr-vs-attr GELIJK/ONGELIJK CONSISTENTIE now
+    //      lowers in the exec schending path (was an honest skip). This is the toka-30 "geen rondvlucht" shape:
+    //      "de vertrek moet ongelijk zijn aan de bestemming". Tabel 38 (GELIJK): satisfied only both-present-and-equal
+    //      -> a violation for a mismatch / any leeg. Tabel 44 (ONGELIJK): satisfied for one-leeg OR both-present-unequal
+    //      -> a violation for both-present-EQUAL (a rondvlucht: vertrek == bestemming) OR both-leeg. Every fixture
+    //      INCLUDES the VIOLATING (Inconsistentie-inserting) case so a silent skip cannot pass it vacuously. ----
+    static final String TEKST_CONS_ONGELIJK =
+        "Objecttype de Route\n    de vertrek Tekst;\n    de bestemming Tekst;\n"
+        + "Regel geen rondvlucht\n    geldig altijd\n        De vertrek van een Route moet ongelijk zijn aan de bestemming van een Route.\n";
+    static final String TEKST_CONS_GELIJK =
+        "Objecttype de Route\n    de vertrek Tekst;\n    de bestemming Tekst;\n"
+        + "Regel zelfde plek\n    geldig altijd\n        De vertrek van een Route moet gelijk zijn aan de bestemming van een Route.\n";
+    static Route routeVB(String vertrek, String bestemming) {
+        Route r = new Route(); if (vertrek != null) r.setVertrek(vertrek); if (bestemming != null) r.setBestemming(bestemming); return r;
+    }
+    static final FoutFixture[] PHASE_TEKST_CONS = {
+        // ONGELIJK (toka-30 "geen rondvlucht"): A!=B satisfied (NOT flagged); A==A a rondvlucht -> VIOLATION (flagged);
+        // A vs leeg satisfied (Tabel 44 one-leeg -> WAAR, NOT flagged); both-leeg -> VIOLATION (Tabel 44 both-leeg onwaar).
+        new FoutFixture("Tekst attr-vs-attr ONGELIJK consistentie (geen rondvlucht)",
+            TEKST_CONS_ONGELIJK,
+            () -> List.of(routeVB("A", "B"), routeVB("A", "A"), routeVB("A", null), routeVB(null, null)),
+            o -> "v=" + ((Route) o).getVertrek() + ",b=" + ((Route) o).getBestemming()),
+
+        // GELIJK: A==A satisfied (NOT flagged); A!=B -> VIOLATION (flagged); A vs leeg -> VIOLATION (Tabel 38 one-leeg
+        // onwaar); both-leeg -> VIOLATION (Tabel 38 both-leeg onwaar/fout).
+        new FoutFixture("Tekst attr-vs-attr GELIJK consistentie",
+            TEKST_CONS_GELIJK,
+            () -> List.of(routeVB("A", "A"), routeVB("A", "B"), routeVB("A", null), routeVB(null, null)),
+            o -> "v=" + ((Route) o).getVertrek() + ",b=" + ((Route) o).getBestemming()),
     };
 
     // ---- Phase D FAR-SIDE: a §6.5/§6.6 fout companion whose HOST rule is gated by a §8.1.7 FAR-side membership
