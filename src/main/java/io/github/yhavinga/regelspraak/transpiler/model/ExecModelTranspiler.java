@@ -2407,8 +2407,8 @@ public final class ExecModelTranspiler {
         // PatternDSL.expr is a carded follow-up). parityOnveilig (a §3.6 dimensiecel / cross-unit +/-) -> skip (DRL marker).
         // Mirrors the date-arith-vs-global branch below.
         if (c instanceof Conditie.Vergelijking v && isNumeriekOp(v.op())
-                && v.links().type() != null && v.links().type().isNumeriek()
-                && v.rechts().type() != null && v.rechts().type().isNumeriek()
+                && getalachtigVergelijkbaar(v.links())
+                && getalachtigVergelijkbaar(v.rechts())
                 && (numeriekeExpressie(v.links()) || numeriekeExpressie(v.rechts()))
                 && !(parityOnveilig(v.links()) || parityOnveilig(v.rechts()))) {
             WaardeFn lw = scalarWaarde(subject, v.links()), rw = scalarWaarde(subject, v.rechts());
@@ -2785,7 +2785,7 @@ public final class ExecModelTranspiler {
         // the subject passed as the value-path parameter; an ABSENT relation reads leeg -> leeg-as-0 in the arithmetic
         // (see the expr-vs-expr branch below for the rsRelGetal parity). A param-reading LHS keeps globals non-empty ->
         // skipped (the global path binds it in voorwaarde).
-        if (c instanceof Conditie.Vergelijking v && isNumeriekOp(v.op()) && v.links().type().isNumeriek()
+        if (c instanceof Conditie.Vergelijking v && isNumeriekOp(v.op()) && getalachtigVergelijkbaar(v.links())
                 && (v.links() instanceof Expr.Functie || v.links() instanceof Expr.Binair
                     || v.links() instanceof Expr.Begrensd || v.links() instanceof Expr.Afgerond)
                 && v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
@@ -2823,8 +2823,8 @@ public final class ExecModelTranspiler {
         // navigation -> scalarWaarde null -> skip. Closes the masked DRL-fires/exec-skips for "de a plus de b is gelijk aan
         // de c" / "de prijs van zijn reis plus 1 groter is dan zijn drempel".
         if (c instanceof Conditie.Vergelijking v && isNumeriekOp(v.op())
-                && v.links().type() != null && v.links().type().isNumeriek()
-                && v.rechts().type() != null && v.rechts().type().isNumeriek()
+                && getalachtigVergelijkbaar(v.links())
+                && getalachtigVergelijkbaar(v.rechts())
                 && (numeriekeExpressie(v.links()) || numeriekeExpressie(v.rechts()))) {
             if (parityOnveilig(v.links()) || parityOnveilig(v.rechts())) return null;   // §3.6 dimensiecel / cross-unit +/- -> DRL markers -> skip (symmetric)
             WaardeFn lw = scalarWaarde(subject, v.links()), rw = scalarWaarde(subject, v.rechts());
@@ -3647,6 +3647,14 @@ public final class ExecModelTranspiler {
         // routes to the vs-global branch (it binds the rekendatum pseudo-global; the fact-only leaf skips it).
         return e instanceof Expr.Binair || e instanceof Expr.Functie || e instanceof Expr.Begrensd
                 || e instanceof Expr.Afgerond || Expr.isRekenConstante(e);
+    }
+    /** An operand admissible to a NUMERIC comparison branch: a genuinely numeric/percentage type, OR a numeric-domain
+     *  arithmetic EXPRESSION the resolver could not unit-type (Onbekend, e.g. a §4 composite/rate unit from Bedrag×km) —
+     *  scalarWaarde still lowers it to a BigDecimal. Datum expressions are typed isDatum (NOT Onbekend), so they are
+     *  excluded; a Tekst/Boolean is not a numeriekeExpressie. Mirrors DRL, which structurally descends with no isNumeriek gate. */
+    private static boolean getalachtigVergelijkbaar(Expr e) {
+        return e != null && e.type() != null
+            && (e.type().isNumeriek() || (e.type().isOnbekend() && numeriekeExpressie(e)));
     }
     /** Whether an expression operand contains a construct the DRL CONDITION path MARKERS (so the exec must also skip, to
      *  stay symmetric) or that restates LOSSILY: a §3.6 DimensieCel (DrlTranspiler.operand markers a dimensioned read in a

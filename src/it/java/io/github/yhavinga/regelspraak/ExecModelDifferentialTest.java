@@ -9,6 +9,7 @@ import io.github.yhavinga.regelspraak.facts.Factuur;
 import io.github.yhavinga.regelspraak.facts.Heffing;
 import io.github.yhavinga.regelspraak.facts.Inconsistentie;
 import io.github.yhavinga.regelspraak.facts.Route;
+import io.github.yhavinga.regelspraak.facts.Schijf;
 import io.github.yhavinga.regelspraak.facts.Klok;
 import io.github.yhavinga.regelspraak.facts.Konto;
 import io.github.yhavinga.regelspraak.facts.Pot;
@@ -2376,6 +2377,46 @@ class ExecModelDifferentialTest {
             Map.of(), l -> ((Tarief) l.get(0)).isHoog()),
     };
     static final Object[] PHASE_CU_RATE_EXPECTED = { new BigDecimal("10"), Boolean.TRUE };
+
+    // ---- §8.1.1 the toka-45 "belasting op basis van afstand" shape in miniature: a condition whose LHS is an
+    //      arithmetic expression reading TWO distinct numeric Parameter-GLOBALS as a COMPOSITE (rate) product —
+    //      "het lage basistarief eerste schijf min (het lage tarief vermindering eerste schijf maal zijn afstand)"
+    //      (unitless-Bedrag × km, exactly TOKA's under-model) — compared >= 0, gating a gelijkstelling. The resolver
+    //      types the inner MAAL Onbekend[samengestelde eenheid] and the outer MIN Onbekend[operand], so the exec
+    //      voorwaarde branch's OLD isNumeriek() operand guard REJECTED it (a masked DRL-fires/exec-skips). The new
+    //      getalachtigVergelijkbaar guard admits a numeric-domain Onbekend arithmetic expr (scalarWaarde lowers it),
+    //      and the 2-global gset routes through nGlobalGate. basistarief 100 - 0.20*200 = 60 >= 0 -> fires -> 60. ----
+    static final String VW_MULTIGLOBAL_SRC = """
+        Eenheidsysteem Afstand
+            de kilometer km
+        Parameter het lage basistarief eerste schijf : Numeriek (getal)
+        Parameter het lage tarief vermindering eerste schijf : Numeriek (getal)
+        Objecttype de Schijf (mv: Schijven)
+            de afstand Numeriek (geheel getal) met eenheid km;
+            de belasting Numeriek (getal);
+        Regel belasting op basis van afstand
+            geldig altijd
+                De belasting van een Schijf moet gesteld worden op X min Y
+                indien X min Y groter of gelijk is aan 0.
+                Daarbij geldt:
+                    X is het lage basistarief eerste schijf
+                    Y is het lage tarief vermindering eerste schijf maal zijn afstand.
+        """;
+    static Fixture schijfFix(String naam, java.util.function.Consumer<Schijf> seed, Map<String, Object> globals) {
+        return new Fixture(naam, VW_MULTIGLOBAL_SRC,
+            () -> { Schijf s = new Schijf(); seed.accept(s); return List.<Object>of(s); },
+            globals, l -> ((Schijf) l.get(0)).getBelasting());
+    }
+    static final Map<String, Object> VW_MG_PARAMS = Map.of(
+        "lageBasistariefEersteSchijf", new BigDecimal("100"),
+        "lageTariefVerminderingEersteSchijf", new BigDecimal("0.20"));
+    static final Fixture[] PHASE_VW_MULTIGLOBAL = {
+        // 100 - 0.20*200 = 60 >= 0 -> the compound guard fires -> belasting := 60
+        schijfFix("100 - 0.20*200 = 60 >= 0 -> fires -> 60", s -> s.setAfstand(new BigDecimal(200)), VW_MG_PARAMS),
+        // 100 - 0.20*600 = -20 < 0 -> the guard is FALSE -> belasting stays null (no fire)
+        schijfFix("100 - 0.20*600 = -20 < 0 -> no fire -> null", s -> s.setAfstand(new BigDecimal(600)), VW_MG_PARAMS),
+    };
+    static final Object[] PHASE_VW_MULTIGLOBAL_EXPECTED = { new BigDecimal("60"), null };
 
     // ---- §5.3 an ENUMERATIE attribute compared to an enum-typed Parameter-GLOBAL ("zijn roepnaam gelijk is aan de
     //      STANDAARDNAAM"). DRL reads the enum global as a free name (String equality); the exec used to SKIP (the
@@ -7124,6 +7165,24 @@ class ExecModelDifferentialTest {
             Object viaDrl = fire(drlBase(m), f);
             Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
             assertEquals(eq(PHASE_CU_RATE_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    @Test void phase_VW_multiglobal_matches_drl_back_end() { runDifferential("Phase VW-multiglobal", PHASE_VW_MULTIGLOBAL, 2); }
+    /** §8.1.1 the toka-45 unblock: a condition whose LHS is an Onbekend-typed composite-unit (unitless-Bedrag × km)
+     *  arithmetic expr reading TWO Parameter-globals, compared >= 0, gating a gelijkstelling. ABSOLUTE outcome (not
+     *  just DRL==exec parity — a shared upstream bug would pass parity alone): basistarief 100 - 0.20*200 = 60 >= 0
+     *  fires -> belasting 60; 100 - 0.20*600 = -20 < 0 does NOT fire -> belasting null. DRL is the oracle first. */
+    @Test void phase_VW_multiglobal_is_spec_correct() {
+        for (int i = 0; i < PHASE_VW_MULTIGLOBAL.length; i++) {
+            Fixture f = PHASE_VW_MULTIGLOBAL[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(PHASE_VW_MULTIGLOBAL_EXPECTED[i]), eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
