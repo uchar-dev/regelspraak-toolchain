@@ -32,9 +32,7 @@ import io.github.yhavinga.regelspraak.transpiler.kern.Namen;
 import org.kie.api.KieBase;
 import org.kie.api.event.rule.AfterMatchFiredEvent;
 import org.kie.api.event.rule.DefaultAgendaEventListener;
-import org.kie.api.io.ResourceType;
 import org.kie.api.runtime.KieSession;
-import org.kie.internal.utils.KieHelper;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -53,14 +51,15 @@ import java.util.Map;
  * {@link ScenarioResultaat} per scenario carrying PASS/FAIL/MARKER, the per-expectation verwacht/werkelijk, the
  * fired-rules trace, and the per-scope-rule coverage.
  *
- * <p><b>Back-end</b>: the DOCUMENTED DRL fallback (docs/SCENARIOTOETSEN.md, § "Runner & CLI"). The bundle's beans
- * are compiled ONCE (in {@link BeanCompiler}), the model is contract-validated against them, and
- * {@link DrlTranspiler} + {@link org.kie.internal.utils.KieHelper#setClassLoader} build the KieBase over those
- * in-memory beans (the proven {@code TokaVuurTest} pattern). The exec-model back-end is preferred in principle, but
- * its LambdaMetafactory fact-accessors cannot bind against a FOREIGN (child) bean classloader — a parent Lookup
- * cannot link a child loader's classes — so it NoClassDefFounds at the first consequence; the differential suites
- * already pin DRL==exec parity, so the runner's verdicts are the shippable path's too. Compilation is done once per
- * bundle (not per scenario) — only the SESSION and the facts are fresh per scenario.
+ * <p><b>Back-end</b>: the KieBase is built via the EXEC-model back-end over the child bean classloader — the bundle's
+ * beans are compiled ONCE (in {@link BeanCompiler}), the model is contract-validated against them, and
+ * {@link io.github.yhavinga.regelspraak.transpiler.model.ExecModelTranspiler#build(RegelSpraakModel, ClassLoader)} +
+ * {@link org.drools.modelcompiler.KieBaseBuilder#createKieBaseFromModel} build it under TCCL=cl (a per-owner Lookup
+ * links the child-loaded beans, so the LambdaMetafactory fact-accessors bind against the foreign loader). The
+ * {@link DrlTranspiler} is retained as the coverage/marker manifest ({@code dekking()}, the exit-3 verdict) and the
+ * differential oracle; a no-mixed-truth GUARD refuses the build if the exec back-end skips a rule the DRL back-end
+ * lowers. Compilation is done once per bundle (not per scenario) — only the SESSION and the facts are fresh per
+ * scenario.
  */
 public final class ScenarioRunner {
     private ScenarioRunner() {}
@@ -139,26 +138,26 @@ public final class ScenarioRunner {
         List<String> schendingen = ContractValidator.valideer(model, cl);
         if (!schendingen.isEmpty()) throw new ResolveFout(schendingen);
 
-        // Back-end: the DOCUMENTED DRL fallback (docs/SCENARIOTOETSEN.md, § "Runner & CLI"). The shippable
-        // exec-model back-end cannot bind its LambdaMetafactory fact-accessors against a FOREIGN (child) bean
-        // classloader — Accessors' Lookup lives on the parent loader and a parent Lookup cannot link a child
-        // loader's classes — so an in-memory-bean run would NoClassDefFound at the first consequence. The DRL
-        // path takes an EXPLICIT classloader (KieHelper.setClassLoader, the proven TokaVuurTest pattern), and the
-        // differential suites already pin DRL==exec parity, so the runner's verdicts are the shippable path's too.
+        // Back-end: build the KieBase via the EXEC-model back-end over the child bean classloader. DrlTranspiler is
+        // retained as the coverage/marker manifest (dekking() drives the exit-3 verdict below) and the differential
+        // oracle; the exec model is what actually FIRES. A no-mixed-truth GUARD refuses the build if the exec
+        // back-end skips a rule the DRL back-end lowers (otherwise the exec KieBase would silently omit a rule the
+        // manifest reports as covered). All exec lowering gaps are lifted, so this guard should never trip.
         DrlTranspiler transpiler = DrlTranspiler.build(model);
-        // A MARKER rule emits a "/* TODO expressie … */" the MVEL dialect cannot parse, so it would sink the WHOLE
-        // DRL compilation. The marker is by definition an accepted-but-inert no-op (it produces no value), so strip
-        // those rule blocks BEFORE compiling — an omitted marker rule never fires, which is exactly its semantics.
-        // The Dekking manifest below still records it as MARKER, so a scenario whose scope includes it reads MARKER
-        // (exit 3), never PASS. The stripped-out set is precisely the manifest's non-LOWERED verdicts.
-        String drl = stripMarkerRegels(transpiler.drl());
-        KieHelper helper = new KieHelper();
-        helper.setClassLoader(cl);
-        helper.addContent(drl, ResourceType.DRL);
-        var meldingen = helper.verify();
-        if (meldingen.hasMessages(org.kie.api.builder.Message.Level.ERROR))
-            throw new ResolveFout(List.of("DRL compileert niet tegen de gegenereerde beans: " + meldingen.getMessages()));
-        KieBase kieBase = helper.build();
+        io.github.yhavinga.regelspraak.transpiler.model.ExecModelTranspiler et =
+                io.github.yhavinga.regelspraak.transpiler.model.ExecModelTranspiler.build(model, cl);
+        // no-mixed-truth guard: exec must not skip a rule DRL lowers
+        java.util.Set<String> drlLowered = new java.util.HashSet<>();
+        for (Dekking d : transpiler.dekking()) if (d.lowered()) drlLowered.add(basisNaam(d.naam()));
+        java.util.List<String> mixed = new java.util.ArrayList<>();
+        for (Dekking d : et.dekking()) if (!d.lowered() && drlLowered.contains(basisNaam(d.naam())) && !mixed.contains(basisNaam(d.naam()))) mixed.add(basisNaam(d.naam()));
+        if (!mixed.isEmpty())
+            throw new ResolveFout(List.of("exec-model kan regel(s) niet loweren die DRL wel lowert (geen mixed-truth): " + mixed));
+        ClassLoader vorigeCl = Thread.currentThread().getContextClassLoader();
+        Thread.currentThread().setContextClassLoader(cl);
+        KieBase kieBase;
+        try { kieBase = org.drools.modelcompiler.KieBaseBuilder.createKieBaseFromModel(et.model()); }
+        finally { Thread.currentThread().setContextClassLoader(vorigeCl); }
 
         // Coverage lookup: rule name -> its lowering verdict. A rule can carry SEVERAL manifest entries (one per
         // version / desugared construct); a non-LOWERED verdict DOMINATES, so a rule with one lowered and one
@@ -529,40 +528,6 @@ public final class ScenarioRunner {
         if (w.bool() != null) return w.bool().toString();
         if (w.enumWaarde() != null) return "'" + w.enumWaarde() + "'";
         return "\"" + w.tekst() + "\"";
-    }
-
-    /** Remove every DRL {@code rule "…" … end} block whose body carries an honest marker ({@code /* TODO} or
-     *  {@code // onopgelost}) — the MVEL dialect cannot parse the placeholder, so keeping the block would sink the
-     *  whole compilation. A marker rule produces no value (accepted-but-inert), so dropping it is behaviour-neutral;
-     *  the Dekking manifest still flags it MARKER for the coverage/exit-3 verdict. The package header and every
-     *  lowered rule are preserved verbatim. */
-    static String stripMarkerRegels(String drl) {
-        String[] regels = drl.split("\n", -1);
-        StringBuilder uit = new StringBuilder();
-        List<String> blok = new ArrayList<>();
-        boolean inRegel = false;
-        for (String r : regels) {
-            String t = r.stripLeading();
-            if (!inRegel && t.startsWith("rule ")) { inRegel = true; blok.clear(); blok.add(r); continue; }
-            if (inRegel) {
-                blok.add(r);
-                if (t.equals("end") || t.startsWith("end ")) {
-                    inRegel = false;
-                    String tekst = String.join("\n", blok);
-                    // Detect the marker sentinels the SAME way the Dekking manifest does (DrlTranspiler.markerVerdict):
-                    // over the text with STRING LITERALS blanked, so a genuinely-lowered rule whose emitted DRL carries
-                    // a Tekst/enum literal like "/* TODO …" or "// onopgelost" (a value the model compares against) is
-                    // NOT mistaken for a marker and stripped. Mirrors DrlTranspiler.zonderStrings.
-                    String zonderStrings = tekst.replaceAll("\"(?:\\\\.|[^\"\\\\\n])*\"", "\"\"");
-                    if (!zonderStrings.contains("/* TODO") && !zonderStrings.contains("// onopgelost"))
-                        uit.append(tekst).append('\n');
-                }
-                continue;
-            }
-            uit.append(r).append('\n');
-        }
-        if (uit.length() > 0) uit.setLength(uit.length() - 1);   // drop the trailing newline we added last
-        return uit.toString();
     }
 
     /** Strip a §9.10 "<groep>: " prefix and a §13.4.2.3 " #k" version suffix off an emitted rule name. */

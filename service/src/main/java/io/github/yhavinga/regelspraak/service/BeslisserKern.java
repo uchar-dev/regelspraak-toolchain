@@ -14,11 +14,9 @@ import io.github.yhavinga.regelspraak.schema.FactModelGenerator;
 import io.github.yhavinga.regelspraak.transpiler.DrlTranspiler;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dekking;
 import io.github.yhavinga.regelspraak.transpiler.kern.PeriodeDekking;
+import io.github.yhavinga.regelspraak.transpiler.model.ExecModelTranspiler;
 
 import org.kie.api.KieBase;
-import org.kie.api.builder.Message;
-import org.kie.api.io.ResourceType;
-import org.kie.internal.utils.KieHelper;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -53,12 +51,14 @@ import java.util.Map;
  *       accepted-but-inert no-op never fires — dropping its block is behaviour-neutral).</li>
  * </ol>
  *
- * <p><b>Back-end</b>: the DRL back-end, exactly the ScenarioRunner recipe — the pinned path for gate G2. The
- * exec-model back-end cannot compile toka-22/25 (hyphenated datum-tijd getter mismatch) and SKIPs several
- * golden scopes (Paaskorting, vastgestelde contingent, rondvlucht, belaste reis, belasting op afstand), so it
- * cannot reach 30/30; the DRL back-end lowers all of them (verified via the golden manifest, whose exit-0 lines
- * are the 30 golden scenarios). The generated beans live on the CHILD classloader, so all fact
- * {@code Class.forName}/read/write go through the bean classloader.
+ * <p><b>Back-end</b>: the KieBase is built via the EXEC-model back-end over the child bean classloader
+ * ({@link ExecModelTranspiler#build(RegelSpraakModel, ClassLoader)} +
+ * {@link org.drools.modelcompiler.KieBaseBuilder#createKieBaseFromModel} under TCCL=beanLoader — a per-owner
+ * Lookup links the child-loaded beans, so all 30 golden scopes fire under exec). {@link DrlTranspiler} is
+ * retained as the coverage/marker manifest AUTHORITY (markers, dekking — so {@code /info} stays byte-identical)
+ * and the differential oracle; a startup GUARD refuses any entry point where the exec back-end skips an
+ * in-scope rule the DRL back-end lowers (no mixed-truth transport). The generated beans live on the CHILD
+ * classloader, so all fact {@code Class.forName}/read/write go through the bean classloader.
  *
  * <p>KieBases are immutable after startup; a session is opened per request ({@link Uitvoerder}), so the core is
  * thread-safe by construction.
@@ -219,7 +219,19 @@ public final class BeslisserKern {
                 for (String m : markers)
                     markerFouten.add(Schending.van(Schending.Soort.MARKER, "entrypoint:" + ep.pad(),
                             "in-scope regel '" + m + "' is een marker (niet-gelowerd) in entrypoint '" + ep.naam() + "'"));
-            KieBase kieBase = bouwKieBase(transpiler, beanLoader, ep, hardeFouten);
+            // Build the KieBase via the exec-model back-end (what FIRES); DrlTranspiler stays the manifest authority.
+            ExecModelTranspiler et = ExecModelTranspiler.build(scopeModel, beanLoader);
+            // no-mixed-truth guard: exec must not skip an in-scope rule DRL lowers (otherwise the exec KieBase would
+            // silently omit a rule /info reports as covered). All exec lowering gaps are lifted, so this never trips.
+            java.util.Set<String> drlLowered = new java.util.LinkedHashSet<>(inScopeLoweredNames(ep, transpiler.dekking(), model));
+            List<String> execSkips = markersInScope(ep, et.dekking(), model);
+            List<String> mixed = execSkips.stream().filter(drlLowered::contains).collect(java.util.stream.Collectors.toList());
+            if (!mixed.isEmpty()) {
+                hardeFouten.add(Schending.van(Schending.Soort.MALFORMED, "entrypoint:" + ep.pad(),
+                        "exec-model kan in-scope regel(s) niet loweren die DRL wel lowert (geen mixed-truth transport): " + mixed));
+                continue;
+            }
+            KieBase kieBase = bouwKieBaseExec(et, beanLoader, ep, hardeFouten);
             if (kieBase == null) continue;
             Map<String, Object> defaults = defaultGlobals(descriptor, model);
             List<Dekking> dekking = dekkingInScope(ep, transpiler, model);
@@ -303,24 +315,20 @@ public final class BeslisserKern {
         return uit;
     }
 
-    /** Strip the marker rule blocks off the transpiled DRL and build a {@link KieBase} over the shared bean
-     *  classloader via {@link KieHelper#setClassLoader} (the proven ScenarioRunner / TokaVuurTest pattern). A
-     *  compile ERROR is a startup violation naming the entrypoint. Returns null on failure (the caller records
-     *  it and skips the entrypoint). */
-    private static KieBase bouwKieBase(DrlTranspiler transpiler, ClassLoader beanLoader,
-                                       DienstDescriptor.Entrypoint ep, List<Schending> fouten) {
-        String drl = stripMarkerRegels(transpiler.drl());
-        KieHelper helper = new KieHelper();
-        helper.setClassLoader(beanLoader);
-        helper.addContent(drl, ResourceType.DRL);
-        var meldingen = helper.verify();
-        if (meldingen.hasMessages(Message.Level.ERROR)) {
+    /** Build a {@link KieBase} over the shared child bean classloader via the EXEC-model back-end
+     *  ({@link org.drools.modelcompiler.KieBaseBuilder#createKieBaseFromModel} under TCCL=beanLoader, so the
+     *  LambdaMetafactory fact-accessors bind against the child-loaded beans). A build failure is a startup
+     *  violation naming the entrypoint. Returns null on failure (the caller records it and skips the entrypoint). */
+    private static KieBase bouwKieBaseExec(ExecModelTranspiler et, ClassLoader beanLoader,
+                                           DienstDescriptor.Entrypoint ep, List<Schending> fouten) {
+        ClassLoader vorige = Thread.currentThread().getContextClassLoader();
+        Thread.currentThread().setContextClassLoader(beanLoader);
+        try { return org.drools.modelcompiler.KieBaseBuilder.createKieBaseFromModel(et.model()); }
+        catch (RuntimeException e) {
             fouten.add(Schending.van(Schending.Soort.MALFORMED, "entrypoint:" + ep.pad(),
-                    "entrypoint '" + ep.naam() + "' DRL compileert niet tegen de gegenereerde beans: "
-                            + meldingen.getMessages()));
+                    "entrypoint '" + ep.naam() + "' exec-model KieBase-build faalt: " + e.getMessage()));
             return null;
-        }
-        return helper.build();
+        } finally { Thread.currentThread().setContextClassLoader(vorige); }
     }
 
     /** The rule FILES an entry point's scope needs, from its scoped rule names (via the index). */
@@ -364,17 +372,44 @@ public final class BeslisserKern {
      */
     private static List<String> markersInScope(DienstDescriptor.Entrypoint ep, DrlTranspiler transpiler,
                                                RegelSpraakModel model) {
+        return markersInScope(ep, transpiler.dekking(), model);
+    }
+
+    /** The {@code !lowered()} sub-view of an arbitrary {@link Dekking} manifest, filtered to this entry point's
+     *  scope — the SAME scope-set + {@link #basisNaam} logic as the DrlTranspiler overload above, over ANY
+     *  manifest (used for the exec back-end's dekking in the no-mixed-truth guard). */
+    private static List<String> markersInScope(DienstDescriptor.Entrypoint ep, List<Dekking> dekking,
+                                               RegelSpraakModel model) {
+        java.util.Set<String> scope = scopeBasisNamen(ep, model);
+        List<String> markers = new ArrayList<>();
+        for (Dekking d : dekking)
+            if (!d.lowered() && scope.contains(basisNaam(d.naam())) && !markers.contains(basisNaam(d.naam())))
+                markers.add(basisNaam(d.naam()));
+        return markers;
+    }
+
+    /** The in-scope base-names a manifest LOWERS ({@code lowered()} TRUE) — the positive counterpart of
+     *  {@link #markersInScope(DienstDescriptor.Entrypoint, List, RegelSpraakModel)}, used to compute the DRL-lowered
+     *  set the no-mixed-truth guard compares the exec skips against. */
+    private static List<String> inScopeLoweredNames(DienstDescriptor.Entrypoint ep, List<Dekking> dekking,
+                                                    RegelSpraakModel model) {
+        java.util.Set<String> scope = scopeBasisNamen(ep, model);
+        List<String> lowered = new ArrayList<>();
+        for (Dekking d : dekking)
+            if (d.lowered() && scope.contains(basisNaam(d.naam())) && !lowered.contains(basisNaam(d.naam())))
+                lowered.add(basisNaam(d.naam()));
+        return lowered;
+    }
+
+    /** The set of in-scope base-names for an entry point: its scoped rule names plus every member of its scoped
+     *  regelgroepen, {@link #basisNaam}-normalised. Shared by the marker/lowered scope filters. */
+    private static java.util.Set<String> scopeBasisNamen(DienstDescriptor.Entrypoint ep, RegelSpraakModel model) {
         java.util.Set<String> scope = new java.util.LinkedHashSet<>();
         for (String n : ep.scope().regelnamenOfLeeg()) scope.add(basisNaam(n));
         for (String groep : ep.scope().regelgroepenOfLeeg())
             for (var g : model.regelGroepen) if (g.naam().equals(groep))
                 for (String lid : g.leden()) scope.add(basisNaam(lid));
-
-        List<String> markers = new ArrayList<>();
-        for (Dekking d : transpiler.dekking())
-            if (!d.lowered() && scope.contains(basisNaam(d.naam())) && !markers.contains(basisNaam(d.naam())))
-                markers.add(basisNaam(d.naam()));
-        return markers;
+        return scope;
     }
 
     /**
@@ -521,45 +556,6 @@ public final class BeslisserKern {
     /** Thrown when a request targets a path no entry point serves. */
     public static final class OnbekendPad extends RuntimeException {
         public OnbekendPad(String pad) { super("onbekend pad: '" + pad + "'"); }
-    }
-
-    // ---------------- marker-strip (reimplemented from ScenarioRunner) ----------------
-
-    /**
-     * Remove every DRL {@code rule "…" … end} block whose body carries an honest marker ({@code /* TODO} or
-     * {@code // onopgelost}) — the MVEL dialect cannot parse the placeholder, so keeping the block would sink
-     * the whole compilation. A marker rule produces no value (accepted-but-inert), so dropping it is
-     * behaviour-neutral. This is a minimal reimplementation of
-     * {@code io.github.yhavinga.regelspraak.engine.ScenarioRunner#stripMarkerRegels} (package-private there); equivalence
-     * is pinned by test — the golden marker scope (scenario-marker-exit3 "het absolute tijdsevenredig deel per
-     * maand") lowers to a marker and this strip must leave a compilable DRL exactly as the runner does.
-     */
-    static String stripMarkerRegels(String drl) {
-        String[] regels = drl.split("\n", -1);
-        StringBuilder uit = new StringBuilder();
-        List<String> blok = new ArrayList<>();
-        boolean inRegel = false;
-        for (String r : regels) {
-            String t = r.stripLeading();
-            if (!inRegel && t.startsWith("rule ")) { inRegel = true; blok.clear(); blok.add(r); continue; }
-            if (inRegel) {
-                blok.add(r);
-                if (t.equals("end") || t.startsWith("end ")) {
-                    inRegel = false;
-                    String tekst = String.join("\n", blok);
-                    // detect the marker sentinels the SAME way DrlTranspiler.meet does — over the text with
-                    // STRING LITERALS blanked, so a genuinely-lowered rule carrying a Tekst/enum literal that
-                    // happens to read "/* TODO …" is not mistaken for a marker (mirrors DrlTranspiler.zonderStrings).
-                    String zonderStrings = tekst.replaceAll("\"(?:\\\\.|[^\"\\\\\n])*\"", "\"\"");
-                    if (!zonderStrings.contains("/* TODO") && !zonderStrings.contains("// onopgelost"))
-                        uit.append(tekst).append('\n');
-                }
-                continue;
-            }
-            uit.append(r).append('\n');
-        }
-        if (uit.length() > 0) uit.setLength(uit.length() - 1);   // drop the trailing newline we added last
-        return uit.toString();
     }
 
     /** Strip a §9.10 "<groep>: " prefix and a §13.4.2.3 " #k" version suffix (and a beslistabel " (n)"
