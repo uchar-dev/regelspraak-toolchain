@@ -37,6 +37,8 @@ import java.util.Map;
  * {@code io.github.yhavinga.regelspraak.facts} (the consumer's domain beans) — {@code compile} validates that contract
  * up front via {@link io.github.yhavinga.regelspraak.schema.ContractValidator} and fails fast with EVERY violation
  * (the fact-model contract); {@code io.github.yhavinga.regelspraak.schema.FactModelGenerator} emits matching bean sources.
+ * The {@link #compile(String, ClassLoader)} overload threads a bean {@link ClassLoader} for beans compiled into a
+ * CHILD loader (the {@code FactModelGenerator} + {@code BeanCompiler} shape); the 1-arg form uses the app loader.
  */
 public final class RegelSpraakEngine {
     private final KieBase kieBase;
@@ -52,16 +54,29 @@ public final class RegelSpraakEngine {
     /** Resolve + transpile a RegelSpraak source to an executable {@link org.drools.model.Model} and build its
      *  {@link KieBase}. Throws {@link RegelSpraakCompileException} if the source has resolver errors. */
     public static RegelSpraakEngine compile(String regelSpraakSource) {
+        return compile(regelSpraakSource, null);
+    }
+
+    /** As {@link #compile(String)} but resolves the fact beans against {@code beanLoader} (card fase 1): beans
+     *  compiled into a CHILD classloader ({@code FactModelGenerator} + {@code BeanCompiler}) are then visible to the
+     *  contract validator, the exec-model back-end, and Drools-internal linking. A null loader uses the app loader. */
+    public static RegelSpraakEngine compile(String regelSpraakSource, ClassLoader beanLoader) {
+        ClassLoader cl = beanLoader != null ? beanLoader : RegelSpraakEngine.class.getClassLoader();
         RegelSpraakModel model = Resolver.resolve(regelSpraakSource);
         if (!model.errors().isEmpty()) throw new RegelSpraakCompileException(model.errors());
         // the fact-model contract: the fact-bean contract is validated FIRST, and completely — every bean the model
         // implies must exist on this classpath with the right member shapes, or compilation fails with the
         // FULL violation list (one round trip, not one reflective fire-time abort per run).
         java.util.List<String> schendingen = io.github.yhavinga.regelspraak.schema.ContractValidator
-                .valideer(model, RegelSpraakEngine.class.getClassLoader());
+                .valideer(model, cl);
         if (!schendingen.isEmpty()) throw RegelSpraakCompileException.contract(schendingen);
-        ExecModelTranspiler transpiler = ExecModelTranspiler.build(model);
-        KieBase kieBase = KieBaseBuilder.createKieBaseFromModel(transpiler.model());
+        ExecModelTranspiler transpiler = ExecModelTranspiler.build(model, cl);
+        // TCCL swap so any Drools-internal linking of the Model sees the bean loader (child-loaded beans).
+        ClassLoader vorige = Thread.currentThread().getContextClassLoader();
+        Thread.currentThread().setContextClassLoader(cl);
+        KieBase kieBase;
+        try { kieBase = KieBaseBuilder.createKieBaseFromModel(transpiler.model()); }
+        finally { Thread.currentThread().setContextClassLoader(vorige); }
         return new RegelSpraakEngine(kieBase, transpiler.overgeslagen(), transpiler.dekking());
     }
 

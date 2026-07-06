@@ -74,6 +74,11 @@ public final class ExecModelTranspiler {
     static final String FACTS = "io.github.yhavinga.regelspraak.facts";
 
     private final RegelSpraakModel model;
+    /** The classloader the bean fact classes ({@code io.github.yhavinga.regelspraak.facts.*}, Segment, Inconsistentie) are
+     *  resolved against (card fase 1). Defaults to this transpiler's OWN loader; the {@link ScenarioRunner}/
+     *  BeslisserKern shape (FactModelGenerator + BeanCompiler) threads a CHILD loader so child-loaded beans are
+     *  visible at model-build time (a zero-arg {@code Class.forName} would miss them → a "geen fact-class" skip). */
+    private final ClassLoader beanLoader;
     private final Map<String, Global<BigDecimal>> globals = new LinkedHashMap<>();
     /** §9.8 dagsoortdefinities compiled to per-date predicates by the SHARED {@link Dagsoorten} compiler
      *  (single-runtime principle: one implementation for both back-ends). Compiled lazily on first reference (§8.1.5 / §6
@@ -114,7 +119,12 @@ public final class ExecModelTranspiler {
      *  {@code DrlTranspiler.LoweredConditie}'s inline + extra split. */
     private record Gate(PatternDSL.PatternDef pattern, List<RuleItemBuilder<?>> extra) {}
 
-    private ExecModelTranspiler(RegelSpraakModel m) { this.model = m; this.dagsoorten = new Dagsoorten(m); }
+    private ExecModelTranspiler(RegelSpraakModel m) { this(m, null); }
+    private ExecModelTranspiler(RegelSpraakModel m, ClassLoader beanLoader) {
+        this.model = m;
+        this.dagsoorten = new Dagsoorten(m);
+        this.beanLoader = beanLoader != null ? beanLoader : ExecModelTranspiler.class.getClassLoader();
+    }
 
     /** §9.10 fase-1 namespacing: the ENGINE-VISIBLE rule-name header for an emitted rule name — "<groep>: <naam>"
      *  for a §9.10 Regelgroep member, else the bare name (identity for ungrouped rules). Applied ONLY at the
@@ -122,10 +132,15 @@ public final class ExecModelTranspiler {
      *  keeps the bare name, so all name-keyed mechanisms are unaffected. Mirrors DrlTranspiler's header prefix. */
     private String kop(String geëmitteerdeNaam) { return model.geëmitteerdeRegelNaam(geëmitteerdeNaam); }
 
-    public static Model transpile(RegelSpraakModel m) { return new ExecModelTranspiler(m).run(); }
+    public static Model transpile(RegelSpraakModel m) { return transpile(m, null); }
+    /** As {@link #transpile(RegelSpraakModel)} but resolves fact beans against {@code beanLoader} (card fase 1:
+     *  the child-loaded-bean shape); null routes to this transpiler's own loader (identical to the 1-arg form). */
+    public static Model transpile(RegelSpraakModel m, ClassLoader beanLoader) { return new ExecModelTranspiler(m, beanLoader).run(); }
     /** As {@link #transpile} but also exposes the skipped-construct reasons (for the differential harness to
      *  decide a fixture is "not yet migrated" rather than a divergence). */
-    public static ExecModelTranspiler build(RegelSpraakModel m) { ExecModelTranspiler t = new ExecModelTranspiler(m); t.model0 = t.run(); return t; }
+    public static ExecModelTranspiler build(RegelSpraakModel m) { return build(m, null); }
+    /** As {@link #build(RegelSpraakModel)} but resolves fact beans against {@code beanLoader} (card fase 1). */
+    public static ExecModelTranspiler build(RegelSpraakModel m, ClassLoader beanLoader) { ExecModelTranspiler t = new ExecModelTranspiler(m, beanLoader); t.model0 = t.run(); return t; }
     private Model model0;
     public Model model() { return model0; }
     public List<String> overgeslagen() { return overgeslagen; }
@@ -1349,8 +1364,8 @@ public final class ExecModelTranspiler {
 
     /** The fact {@code Segment} class (a runtime objecttype) reflectively, or null when absent — needed by the
      *  timeline-constructing helpers (rsTijdKnip/rsTijdUnie/rsAantalDagenIn/rsTijdsevenredig) to build new segments. */
-    static Class<?> segmentClass() {
-        try { return Class.forName(FACTS + ".Segment"); }
+    Class<?> segmentClass() {
+        try { return Class.forName(FACTS + ".Segment", true, beanLoader); }
         catch (ClassNotFoundException e) { return null; }
     }
 
@@ -4811,8 +4826,8 @@ public final class ExecModelTranspiler {
         }
     }
 
-    private static Class<?> inconsistentieClass() {
-        try { return Class.forName(FACTS + ".Inconsistentie"); }
+    private Class<?> inconsistentieClass() {
+        try { return Class.forName(FACTS + ".Inconsistentie", true, beanLoader); }
         catch (ClassNotFoundException e) { return null; }
     }
 
@@ -4837,8 +4852,8 @@ public final class ExecModelTranspiler {
     }
 
     private Rule skip(String reason) { overgeslagen.add(reason); return null; }
-    static Class<?> factClass(Objecttype ot) {
-        try { return Class.forName(FACTS + "." + RegelSpraakRuntime.pascal(ot.naam)); }
+    Class<?> factClass(Objecttype ot) {
+        try { return Class.forName(FACTS + "." + RegelSpraakRuntime.pascal(ot.naam), true, beanLoader); }
         catch (ClassNotFoundException e) { return null; }
     }
     /** The parameter-GLOBAL name — kern.Namen.ident(.., false) (the shared naming contract), so the model's global name
