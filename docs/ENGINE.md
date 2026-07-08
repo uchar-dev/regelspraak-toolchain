@@ -97,6 +97,16 @@ Helm chart `helm/beslisservice/` (values-dev/values-prod overlays): all probes h
 a Ready pod has a fully built KieBase; the startupProbe grants that compilation up to ~10 minutes. A
 descriptor scoping a MARKER rule without `allowMarkers=true` exits 3 → CrashLoopBackOff *by design*.
 
+**peildatum-contract (multi-vintage deploys).** When the descriptor names a parameterset sidecar whose values
+carry more than one vintage (validity-versioned parameters — e.g. a rate that changes every 1 January), the
+service selects each parameter's vintage against ONE date authority: the request `peildatum`, which *is* the
+rekendatum global. The runtime already enforces this — a request without `peildatum` gets `400 "peildatum
+verplicht"`, a peildatum/rekendatum clash gets 400, and `/info` lists the loaded validity ranges plus
+`periodeWaarschuwingen`. To make the contract visible at deploy time, declare it: `--set
+parametersets.multiVintage=true` prints the reminder in the post-install NOTES. The advisory
+`scripts/peildatum-vintage-check.sh <parametersets.json> <true|false>` WARNs (never blocks) on a
+declared/actual mismatch — run it pre-install against the sidecar you are about to bake or mount.
+
 The third transport: `GoldenOverHttpTest` accepts `-Ddienst.url=<base-url>` (or env `DIENST_URL`) and
 then runs the IDENTICAL 30 golden TOKA assertions against that already-running service instead of an
 in-process one — scenario-runner == local HTTP == in-cluster HTTP, zero re-typed expected values:

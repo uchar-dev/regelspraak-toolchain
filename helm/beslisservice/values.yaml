@@ -18,4 +18,18 @@ allowMarkers: false
 descriptor: ""
 bronnenManifest: ""
 
+# --- peildatum-contract (operator visibility only; the RUNTIME already enforces it) ---
+# When the descriptor names a parameterset sidecar carrying MORE THAN ONE vintage
+# (validity-versioned parameter values, e.g. a rate that changes every 1 January), the
+# service resolves each parameter's vintage against ONE date authority: the request
+# `peildatum` (which IS the rekendatum global). The runtime already fails a request 400
+# "peildatum verplicht" when multi-vintage sets are loaded and the field is absent, and
+# 400s on a peildatum/rekendatum mismatch — see /info for the loaded validity ranges.
+#
+# This flag adds NO runtime mechanism. It is an operator-declared hint so a multi-vintage
+# deploy surfaces the contract at `helm install` time (the post-install NOTES print the
+# reminder) instead of silently shipping. Leave false for the single-value/TOKA default.
+parametersets:
+  multiVintage: false
+
 resources: {}

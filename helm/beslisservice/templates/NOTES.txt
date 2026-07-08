@@ -12,6 +12,18 @@ allowMarkers = {{ .Values.allowMarkers }}
   pod in CrashLoopBackOff — dit is by design (de honest startup-contract). Zet
   --set allowMarkers=true om de dienst toch te starten met de markers zichtbaar in /info.
 
+{{- if .Values.parametersets.multiVintage }}
+
+peildatum-contract (multiVintage = true):
+  Deze deploy is als MULTI-VINTAGE gedeclareerd — de geladen parametersets dragen
+  meer dan één geldigheidsversie. ELK verzoek MOET dan een `peildatum` meesturen:
+  de dienst kiest daarmee de geldende vintage én die datum IS de rekendatum-global.
+  Een verzoek zonder `peildatum` krijgt 400 "peildatum verplicht"; peildatum en een
+  eventuele rekendatum die botsen krijgen 400. Zie de geladen geldigheidsranges op:
+    kubectl port-forward svc/{{ include "beslisservice.fullname" . }} 8080:8080
+    curl -fsS http://127.0.0.1:8080/info    # → "parametersets" + "periodeWaarschuwingen"
+{{- end }}
+
 Bereik de dienst lokaal met port-forward:
   kubectl port-forward svc/{{ include "beslisservice.fullname" . }} 8080:8080
   curl -fsS http://127.0.0.1:8080/info
