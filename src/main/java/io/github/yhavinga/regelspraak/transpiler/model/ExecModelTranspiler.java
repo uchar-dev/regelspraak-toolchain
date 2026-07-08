@@ -512,6 +512,10 @@ public final class ExecModelTranspiler {
                 ketenWaardePad = false;
             }
             if (wf == null) return skip("regel (waarde buiten scope): " + r.naam());
+            // Navigated-read reactivity: a to-one navigated value read makes the rule stale on the FAR fact's update
+            // (property/class reactivity is per fact TYPE). Add a far-side JOIN per distinct navigation so the spiegel
+            // re-fires when the navigated fact lands (the order-fragility fix). The consequence's read stays as-is.
+            extra.addAll(navReactiviteit(r.waarde(), doel.objecttype(), sVar));
             // §4 value-side unit restatement, EXACT (a kenmerk value is Boolean, no unit). Mirrors DrlTranspiler.omrekenWaarde.
             if (r.soort() != ResolvedRegel.Soort.KENMERKTOEKENNING)
                 wf = wf.herschaald(r.waarde().type(), doel.type());
@@ -1344,6 +1348,67 @@ public final class ExecModelTranspiler {
             }
             return attrGet.apply(o);
         };
+    }
+
+    /** §13.4.1/§13.3.9 REACTIVITY over a to-ONE navigated value read: property/class reactivity is per fact TYPE,
+     *  so a subject pattern re-fires only on the SUBJECT's update — never on the FAR fact's. A spiegel-regel whose
+     *  RHS navigates to another object's attribute ("de X van een A ... als de Y van de B van A") therefore computed
+     *  once against a still-leeg Y and kept the stale value when a sibling rule of the SAME fire-cycle wrote B.Y (the
+     *  order-fragility of navigated reads). For each DISTINCT to-one navigation the value reads, add a far-side
+     *  reactivity item {@code OR( FarType(this == reachFar(subject)), eval(reachFar(subject) == null) )}: the JOIN
+     *  alternative binds the reached fact so its modify re-activates the rule; the {@code eval} alternative fires the
+     *  NULL-relation subject (which reads leeg and never goes stale, but MUST still fire, §6.9 — e.g. a broken chain
+     *  whose value still adds an OWN attribute). The two alternatives are mutually exclusive, so no subject
+     *  double-fires. The consequence keeps its OWN null-safe navigated read. Unresolvable / to-many navigations are
+     *  skipped (they lower elsewhere / stay a marker). Mirrors the DRL back-end navReactiviteitClausules. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private List<RuleItemBuilder<?>> navReactiviteit(Expr waarde, Objecttype subject, Variable subjectVar) {
+        List<Expr.AttribuutRef> refs = new ArrayList<>();
+        navRefs(waarde, subject, refs);
+        if (refs.isEmpty()) return List.of();
+        // Distinct by the reached FAR type + full role path (subject -> reader): the same relation read twice needs
+        // one item. Key on the ordered role hops that reach the fact whose attribute is read.
+        java.util.LinkedHashMap<String, java.util.function.Function<Object, Object>> joins = new java.util.LinkedHashMap<>();
+        java.util.LinkedHashMap<String, Objecttype> farTypes = new java.util.LinkedHashMap<>();
+        for (Expr.AttribuutRef a : refs) {
+            if (a.objecttype() == null || !a.objecttype().heeftLid(a.attribuut())) continue;   // AFWEZIG -> no join
+            java.util.function.Function<Object, Object> reachFar; String key; Objecttype far = a.objecttype();
+            if (!a.navigatiePad().isEmpty()) {
+                // §13.4.1 multi-hop chain: walk the declared role hops to the fact declaring the read attribute.
+                List<Objecttype> bereikt = model.volgKeten(subject, a.navigatiePad());
+                if (bereikt == null || bereikt.get(bereikt.size() - 1) != a.objecttype()) continue;
+                List<java.util.function.Function<Object, Object>> hops = new ArrayList<>();
+                Objecttype cur = subject;
+                for (int i = 0; i < a.navigatiePad().size(); i++) { hops.add(typedGetter(factClass(cur), a.navigatiePad().get(i))); cur = bereikt.get(i); }
+                reachFar = s -> { Object o = s; for (var h : hops) { o = h.apply(o); if (o == null) return null; } return o; };
+                key = far.naam + "|" + String.join(".", a.navigatiePad());
+            } else {
+                // single-hop to-one: resolve the connecting role exactly as navReader does (named, self-anaphora, or
+                // the unique connecting role); a to-many / unresolvable navigation is left to its own lowering.
+                String rol = a.navigatieRol() != null ? model.verbindendeRolViaNaam(subject, far, a.navigatieRol()) : null;
+                if (rol == null && far == subject) continue;   // EIGEN read (own-attr) — the eigenReads watch covers it
+                if (rol == null) rol = model.verbindendeRol(subject, far);
+                if (rol == null) continue;                     // ONOPGELOST
+                if (model.naarVeelRol(subject, far, rol)) continue;   // NAAR_VEEL -> aggregate path, not a scalar join
+                java.util.function.Function<Object, Object> roleGet = typedGetter(factClass(subject), rol);
+                reachFar = roleGet;
+                key = far.naam + "|" + rol;
+            }
+            if (factClass(far) == null) continue;
+            joins.putIfAbsent(key, reachFar);
+            farTypes.putIfAbsent(key, far);
+        }
+        List<RuleItemBuilder<?>> uit = new ArrayList<>();
+        for (var entry : joins.entrySet()) {
+            final java.util.function.Function<Object, Object> reachFar = entry.getValue();
+            Variable farVar = DSL.declarationOf(factClass(farTypes.get(entry.getKey())), "$nav_" + (seq++));
+            PatternDSL.PatternDef joinPat = PatternDSL.pattern(farVar).expr(nextId("navjoin"), (Variable) subjectVar,
+                    (Predicate2) (far, subj) -> reachFar.apply(subj) == far);
+            org.drools.model.view.ViewItem nullGuard = DSL.expr(nextId("navnull"), (Variable) subjectVar,
+                    (Predicate1) (subj) -> reachFar.apply(subj) == null);
+            uit.add(DSL.or(joinPat, nullGuard));
+        }
+        return uit;
     }
 
     /** A getter for {@code prop} on {@code cls}: a TYPED {@link Accessors} LMF accessor when the fact class is known
@@ -5042,6 +5107,33 @@ public final class ExecModelTranspiler {
                 if (d instanceof Expr.TekstReeks.Ingevoegd i) eigenReads(i.expr(), subject, uit);
         } else if (e instanceof Expr.DimensieCel dc) {
             eigenReads(dc.attribuut(), subject, uit);
+        }
+    }
+
+    /** The to-ONE NAVIGATED AttribuutRefs a value expression READS (a ref with a navigatieRol, or one whose
+     *  objecttype differs from {@code subject} — the self-anaphora "van de &lt;rol&gt;" form) — the far-side reads
+     *  the freshness watch CANNOT cover: property/class reactivity is per fact TYPE, so a subject pattern never
+     *  re-fires on the FAR fact's update. Each is turned into a far-side JOIN pattern (see {@link #navReactiviteit})
+     *  so the rule reacts to the navigated fact's mutation. Walks the SAME tree shape as {@link #eigenReads}. */
+    private static void navRefs(Expr e, Objecttype subject, java.util.List<Expr.AttribuutRef> uit) {
+        if (e instanceof Expr.AttribuutRef a) {
+            if (a.navigatieRol() != null || (a.objecttype() != null && a.objecttype() != subject)) uit.add(a);
+        } else if (e instanceof Expr.Binair b) {
+            navRefs(b.links(), subject, uit);
+            navRefs(b.rechts(), subject, uit);
+        } else if (e instanceof Expr.Functie f) {
+            for (Expr a : f.argumenten()) navRefs(a, subject, uit);
+        } else if (e instanceof Expr.Afgerond af) {
+            navRefs(af.basis(), subject, uit);
+        } else if (e instanceof Expr.Begrensd bg) {
+            navRefs(bg.basis(), subject, uit);
+            navRefs(bg.minimum(), subject, uit);
+            navRefs(bg.maximum(), subject, uit);
+        } else if (e instanceof Expr.TekstReeks tr) {
+            for (Expr.TekstReeks.Deel d : tr.delen())
+                if (d instanceof Expr.TekstReeks.Ingevoegd i) navRefs(i.expr(), subject, uit);
+        } else if (e instanceof Expr.DimensieCel dc) {
+            navRefs(dc.attribuut(), subject, uit);
         }
     }
 }

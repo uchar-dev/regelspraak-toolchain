@@ -9862,6 +9862,98 @@ class ExecModelDifferentialTest {
         assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
     }
 
+    // ---- NAVIGATED FRESHNESS (the order-fragility of navigated reads — the second-most-bitten defect after the
+    //      accumulate reverse). A spiegel-regel whose RHS NAVIGATES to another object's attribute ("de prijs van een
+    //      Passagier ... als de totaalprijs van zijn reis") reads a fact (the Vlucht B) that a SIBLING rule computes
+    //      later in the SAME fire-cycle. The freshness watch only ever collected the subject's OWN reads (eigenReads
+    //      skips a navigated ref), so the spiegel pattern was EXPR-LESS -> not reactive to B's update -> it computed
+    //      once against a null totaalprijs and kept the stale value when B.totaalprijs landed. The producer chain on B
+    //      is 2 hops deep (luchthaven -> vertrektijd -> totaalprijs) so the spiegel reliably fires FIRST, against the
+    //      still-null navigated value — the downstream reproducer (a producing chain that gains a hop). Fix: the
+    //      navigated read makes the subject pattern reactive to the FAR type's update (a watch on the read property /
+    //      class-reactivity), mirroring the DRL back-end. Absolute value asserted (100), not just parity — both stale
+    //      would read null and a pure parity would mask it. ----
+    @Test void navigated_spiegel_recomputes_when_far_side_lands() {
+        String src = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+            Objecttype de Vlucht (mv: Vluchten)
+                de luchthaven Numeriek (geheel getal);
+                de vertrektijd Numeriek (geheel getal);
+                de totaalprijs Numeriek (geheel getal);
+            Feittype Vlucht met passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            Regel spiegel prijs
+                geldig altijd
+                    De prijs van een Passagier moet berekend worden als de totaalprijs van zijn reis.
+            Regel bereken totaalprijs
+                geldig altijd
+                    De totaalprijs van een Vlucht moet berekend worden als de vertrektijd van een Vlucht plus 10.
+            Regel bereken vertrektijd
+                geldig altijd
+                    De vertrektijd van een Vlucht moet berekend worden als de luchthaven van een Vlucht plus 40.
+            """;
+        Fixture f = new Fixture("navigated spiegel (totaalprijs van zijn reis)", src,
+                () -> { Vlucht v = new Vlucht(); v.setLuchthaven(new BigDecimal(50));
+                        Passagier p = new Passagier(); p.setReis(v);
+                        return List.<Object>of(p, v); },
+                Map.of(),
+                l -> ((Passagier) l.get(0)).getPrijs());   // 50 -> +40 -> 90 -> +10 -> 100
+        RegelSpraakModel m = Resolver.resolve(f.src());
+        assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+        Object viaDrl = fire(drlBase(m), f);
+        Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+        assertEquals(eq(new BigDecimal(100)), eq(viaDrl), () -> "DRL (oracle) stale navigated read on '" + f.naam() + "'");
+        assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+    }
+
+    // ---- INVERSE-ROL navigated freshness (the dgl-05 shape): the spiegel navigates the INVERSE role of a 1-1
+    //      feittype — a Vlucht reads an attribute of its Passagier ("de totaalprijs van een Vlucht ... als de prijs
+    //      van zijn passagier"), where the Passagier attribute is itself derived by a 2-hop producer chain on the
+    //      Passagier side. The mirror fires on stale data once the producing chain gains a hop, for the same reason:
+    //      the far-side (Passagier) update did not re-trigger the Vlucht pattern. Absolute value asserted (100). ----
+    @Test void inverse_rol_spiegel_recomputes_when_far_side_lands() {
+        String src = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                het basistarief Numeriek (geheel getal);
+                de bodem Numeriek (geheel getal);
+                de prijs Numeriek (geheel getal);
+            Objecttype de Vlucht (mv: Vluchten)
+                de totaalprijs Numeriek (geheel getal);
+            Feittype Vlucht met passagier
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft één passagier
+            Regel spiegel totaalprijs
+                geldig altijd
+                    De totaalprijs van een Vlucht moet berekend worden als de prijs van zijn passagier.
+            Regel bereken prijs
+                geldig altijd
+                    De prijs van een Passagier moet berekend worden als de bodem van een Passagier plus 10.
+            Regel bereken bodem
+                geldig altijd
+                    De bodem van een Passagier moet berekend worden als het basistarief van een Passagier plus 40.
+            """;
+        Fixture f = new Fixture("inverse-rol spiegel (prijs van zijn passagier)", src,
+                () -> { Vlucht v = new Vlucht(); Passagier p = new Passagier(); p.setBasistarief(new BigDecimal(50));
+                        p.setReis(v); v.setPassagier(p);
+                        return List.<Object>of(v, p); },
+                Map.of(),
+                l -> ((Vlucht) l.get(0)).getTotaalprijs());   // 50 -> +40 -> 90 -> +10 -> 100
+        RegelSpraakModel m = Resolver.resolve(f.src());
+        assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+        Object viaDrl = fire(drlBase(m), f);
+        Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+        assertEquals(eq(new BigDecimal(100)), eq(viaDrl), () -> "DRL (oracle) stale inverse-rol read on '" + f.naam() + "'");
+        assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+    }
+
     // ---- KOPPELTEKEN (card V1): a hyphenated attribute name must resolve the SAME bean getter on BOTH back-ends.
     //      kern.Namen.ident splits on EVERY non-letter/digit run, so "de datum-tijd voor het berekenen" ->
     //      DatumTijdVoorHetBerekenen and the FactModelGenerator wrote getDatumTijdVoorHetBerekenen. The exec/runtime

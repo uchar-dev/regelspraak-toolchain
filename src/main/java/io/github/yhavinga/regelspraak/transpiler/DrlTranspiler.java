@@ -1104,6 +1104,10 @@ public final class DrlTranspiler {
             // leaves intact — a destructive "marker" and an asymmetry, not an inert one.
             rule.dan("    /* TODO " + commentVeilig("temporele kenmerktoekenning (§8.4/§13.4.5): " + r.doel().bron()) + " */\n");
         } else if (valueStr != null && r.doel() instanceof Expr.AttribuutRef a) {
+            // Navigated-read reactivity: a to-one navigated value read leaves the rule stale on the FAR fact's update
+            // (mvel property reactivity is per subject TYPE). Add a far-side JOIN per distinct navigation so the
+            // spiegel re-fires when the navigated fact lands (the order-fragility fix). The getter-chain read stays.
+            navReactiviteitClausules(rule, r.waarde(), subject);
             // restate the value in the target's unit (§4); §6.1.2 forbids AUTO-rounding —
             // if the result has too many decimals the author must add an explicit afronding.
             if (r.waarde().type().isNumeriek())
@@ -1234,6 +1238,76 @@ public final class DrlTranspiler {
                 if (d instanceof Expr.TekstReeks.Ingevoegd i) verzamelEigenReads(i.expr(), subject, uit);
         } else if (e instanceof Expr.DimensieCel dc) {
             verzamelEigenReads(dc.attribuut(), subject, uit);
+        }
+    }
+
+    /** §13.4.1/§13.3.9 REACTIVITY over a to-ONE navigated value read: mvel property reactivity listens only to the
+     *  subject pattern's OWN constrained/@watch-ed properties — never to a FAR fact reached by navigation. A
+     *  spiegel-regel whose RHS navigates to another object's attribute therefore computed once against a still-leeg
+     *  navigated value and kept it stale when a sibling rule of the SAME fire-cycle wrote the far attribute (the
+     *  order-fragility of navigated reads). For each DISTINCT to-one navigation the value reads, add a far-side
+     *  reactivity clause {@code ( FarType(this == $subject.rol) or eval(rol == null) )}: the JOIN alternative binds
+     *  the reached fact so its modify re-activates the rule; the {@code eval} alternative fires the NULL-relation
+     *  subject (which reads leeg and never goes stale, so it needs no far reactivity — but MUST still fire, §6.9). The
+     *  two alternatives are mutually exclusive (join needs a non-null path; eval needs a null one), so no subject
+     *  double-fires. The chain form guards EVERY intervening relation. The consequence keeps its own null-safe getter
+     *  chain read. Mirrors the exec back-end navReactiviteit. */
+    private void navReactiviteitClausules(Regel rule, Expr waarde, Objecttype subject) {
+        List<Expr.AttribuutRef> refs = new ArrayList<>();
+        verzamelNavRefs(waarde, subject, refs);
+        java.util.LinkedHashMap<String, String> clausules = new java.util.LinkedHashMap<>();
+        int n = 0;
+        for (Expr.AttribuutRef a : refs) {
+            NaviRef nr = naviResolve(a, subject);
+            String pad; String nullGuard; String key;
+            if (nr.soort() == NaviSoort.GENAVIGEERD) {
+                pad = SUBJECT + "." + getter(nr.rol()) + "()";
+                nullGuard = pad + " == null";
+                key = a.objecttype().naam + "|" + nr.rol();
+            } else if (nr.soort() == NaviSoort.KETEN) {
+                // the JOIN pad uses mvel null-safe `!.` so a null intermediate makes the constraint a NON-match (never
+                // an NPE); the eval null-guard walks the same prefixes with plain getters to fire the null-relation subject.
+                StringBuilder padSb = new StringBuilder(SUBJECT);
+                StringBuilder guardSb = new StringBuilder(SUBJECT);
+                List<String> guards = new ArrayList<>();
+                List<String> hops = a.navigatiePad();
+                for (int i = 0; i < hops.size(); i++) {
+                    padSb.append(i == 0 ? "." : "!.").append(ident(hops.get(i), false));
+                    guardSb.append(".").append(getter(hops.get(i))).append("()");
+                    guards.add(guardSb + " == null");
+                }
+                pad = padSb.toString();
+                nullGuard = String.join(" || ", guards);
+                key = a.objecttype().naam + "|" + String.join(".", a.navigatiePad());
+            } else continue;   // EIGEN (own-attr @watch covers it) / NAAR_VEEL (aggregate join) / unresolvable (marker)
+            clausules.putIfAbsent(key, "( " + ident(a.objecttype().naam, true) + "( this == " + pad + " )"
+                    + " or eval( " + nullGuard + " ) )");
+        }
+        for (String c : clausules.values()) { rule.clausule(c); n++; }
+    }
+
+    /** The to-ONE NAVIGATED AttribuutRefs a value expression reads (the far-side reads mvel reactivity cannot cover),
+     *  walked over the SAME tree shape as {@link #verzamelEigenReads}. */
+    private void verzamelNavRefs(Expr e, Objecttype subject, List<Expr.AttribuutRef> uit) {
+        if (e instanceof Expr.AttribuutRef a) {
+            NaviSoort s = naviResolve(a, subject).soort();
+            if (s == NaviSoort.GENAVIGEERD || s == NaviSoort.KETEN) uit.add(a);
+        } else if (e instanceof Expr.Binair b) {
+            verzamelNavRefs(b.links(), subject, uit);
+            verzamelNavRefs(b.rechts(), subject, uit);
+        } else if (e instanceof Expr.Functie f) {
+            for (Expr a : f.argumenten()) verzamelNavRefs(a, subject, uit);
+        } else if (e instanceof Expr.Afgerond af) {
+            verzamelNavRefs(af.basis(), subject, uit);
+        } else if (e instanceof Expr.Begrensd bg) {
+            verzamelNavRefs(bg.basis(), subject, uit);
+            verzamelNavRefs(bg.minimum(), subject, uit);
+            verzamelNavRefs(bg.maximum(), subject, uit);
+        } else if (e instanceof Expr.TekstReeks tr) {
+            for (Expr.TekstReeks.Deel d : tr.delen())
+                if (d instanceof Expr.TekstReeks.Ingevoegd i) verzamelNavRefs(i.expr(), subject, uit);
+        } else if (e instanceof Expr.DimensieCel dc) {
+            verzamelNavRefs(dc.attribuut(), subject, uit);
         }
     }
 
