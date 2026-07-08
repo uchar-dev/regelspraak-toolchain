@@ -1802,9 +1802,11 @@ basis van evenredige verdeling`); the toka-35/37 maximum-bullet reads `maximaal 
 the kenmerk `passagier jonger dan 18 jaar` (only the 18-24 / 25-64 / 65+ brackets exist); toka-22 reads
 `de daadwerkelijke datum-tijd van vertrek` (only the `verwachte` twin exists); and the toka-43/44
 startpuntbepalingen — the same sentences are normative §9.9 main-spec text — anchor on `de datum van vertrek
-van de reis`, i.e. attribute `datum van vertrek` + a subject back-reference, which cannot bind the declared
-`de datum van vertrek van de vlucht` (the declared name embeds an extra `van de vlucht` tail that the written
-reference form cannot reach). Every one of the former ten
+van de reis`, i.e. attribute `datum van vertrek` + a subject back-reference, for which the published spec
+declares NO `datum van vertrek` attribute at all on the Vlucht objecttype. This is a PURE OMISSION, not a
+naming drift: the `de datum van vertrek van de vlucht` line in our casus-md copy is our own reconciliation aid,
+not spec-declared, and our `casus-omissies.rs` supplies the attribute TAIL-FREE (`de datum van vertrek`),
+matching the written §9.9 reference form. Every one of the former ten
 scoreboard markers reduced to exactly these unresolved references — the distribution/aggregation/compound
 machinery lowers and fires as soon as they bind (empirically isolated per rule). Reconciliation:
 `examples/toka-reconciliatie/casus-omissies.rs` supplements precisely these members via the casus's own
@@ -1895,7 +1897,9 @@ FactModelGenerator derives the bean member from the registered attribute like an
   limitation, unrelated to §9.9).
 - **Scoreboard effect**: toka-43/44 lift and lower — the TOKA manifest grows 29 → 31 with 30 LOWERED; toka-23
   stays the single honest marker (the casus-data ceiling is unchanged). Their anchor `de datum van vertrek` is
-  the FIFTH reconciled casus omission (see the TOKA casus omissions entry above).
+  the FIFTH reconciled casus omission (see the TOKA casus omissions entry above) — a pure omission: the
+  published spec declares no `datum van vertrek` attribute at all, and `casus-omissies.rs` supplies it tail-free
+  to match the §9.9 reference.
 
 Absolute pins: PHASE_STARTPUNT (anchored walls on the 15th → 26/19 dg across a leap February; a
 global-shifted datum-arithmetic anchor → walls on the 1st → 12/29/4 dg; leeg anchor → empty), PHASE_STARTPUNT_FOUT
