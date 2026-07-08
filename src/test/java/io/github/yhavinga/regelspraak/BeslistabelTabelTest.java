@@ -1,6 +1,9 @@
 package io.github.yhavinga.regelspraak;
 
+import io.github.yhavinga.regelspraak.ir.Conditie;
+import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
+import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
 import org.junit.jupiter.api.Test;
@@ -142,6 +145,43 @@ class BeslistabelTabelTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "fouten: " + m.errors());
         assertEquals(3, m.resolvedRegels.size());
+    }
+
+    @Test void kenmerk_conclusie_column_resolves_to_a_firing_kenmerktoekenning() {
+        // §12 L4762: a conclusie-kolom that ASSERTS a kenmerk ("een passagier is minderjarig", cell "waar") — NOT a
+        // value gelijkstelling. The desugared regel must resolve to Soort.KENMERKTOEKENNING whose doel is the boolean
+        // kenmerk-attribuut and whose waarde is the "waar" assertion, under its row voorwaarde (so it FIRES when the
+        // guard holds). Pins the spec12-kenmerk-minderjarig fixture (the desugar STRING is unit-tested separately in
+        // BeslistabelDesugarTest; nothing pinned the RESOLVED kenmerktoekenning IR shape before).
+        RegelSpraakModel m = Resolver.resolve(read(Path.of("examples/beslistabel/spec12-kenmerk-minderjarig.rs")));
+        assertTrue(m.errors().isEmpty(), () -> "fouten: " + m.errors());
+        assertEquals(1, m.resolvedRegels.size());
+        ResolvedRegel r = m.resolvedRegels.get(0);
+        assertEquals(ResolvedRegel.Soort.KENMERKTOEKENNING, r.soort());
+        assertTrue(r.doel() instanceof Expr.AttribuutRef a
+                        && a.attribuut().equals("minderjarig") && a.type() instanceof Datatype.Booleaan,
+                () -> "doel niet het minderjarig-kenmerk: " + r.doel());
+        assertTrue(r.waarde() instanceof Expr.Literal lit && lit.waarde().equals("waar"),
+                () -> "waarde niet de 'waar'-toekenning: " + r.waarde());
+        assertNotNull(r.voorwaarde(), "voorwaarde ontbreekt");
+    }
+
+    @Test void a_cell_unit_different_from_the_attribute_unit_converts_rather_than_erroring() {
+        // §12/§4/§13.3.5: a conditie cell may carry a unit DIFFERENT from the context attribute's declared unit
+        // ("1000 m" against an afstand declared in km). km and m are verenigbaar (both reduce to canoniek m), so the
+        // desugared cross-unit comparison resolves with NO eenheidsfout — the comparison is unit-aware (LHS km, RHS m)
+        // and both back-ends restate exactly (the DRL ≡ exec-model differential suite proves the identical lowering).
+        RegelSpraakModel m = Resolver.resolve(read(Path.of("examples/beslistabel/spec12-cel-eenheid-conversie.rs")));
+        assertTrue(m.errors().isEmpty(), () -> "fouten: " + m.errors());
+        assertTrue(m.diagnostics.isEmpty(), () -> "geen eenheids-waarschuwing verwacht: " + m.diagnostics);
+        assertEquals(1, m.resolvedRegels.size());
+        ResolvedRegel r = m.resolvedRegels.get(0);
+        assertTrue(r.voorwaarde() instanceof Conditie.Vergelijking v
+                        && v.links() instanceof Expr.AttribuutRef la && la.type().eenheidOf() != null
+                        && la.type().eenheidOf().afkorting().equals("km")
+                        && v.rechts() instanceof Expr.Literal lit && lit.type().eenheidOf() != null
+                        && lit.type().eenheidOf().afkorting().equals("m"),
+                () -> "cel-eenheid niet als m tegen km-attribuut opgelost: " + r.voorwaarde());
     }
 
     @Test void header_only_beslistabel_warns_it_is_empty_rather_than_silently_dropping() {

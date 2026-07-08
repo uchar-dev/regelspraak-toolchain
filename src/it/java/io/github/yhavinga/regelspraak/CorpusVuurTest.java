@@ -82,13 +82,13 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  *   <li>WALKED = 9 (fully lowers on BOTH back-ends AND every objecttype maps to a hand-written fact class)</li>
  * </ul>
  * Example WALKED files: spec-main-90 (controleer minderjarig), spec-main-111/toka-30 (rondvlucht ongelijk),
- * spec-main-119/toka-38 (Kerstdag), toka-29 (passagier met recht op treinmiles). The four counts sum to 201.
+ * spec-main-119/toka-38 (Kerstdag), toka-29 (passagier met recht op treinmiles). The four counts sum to 202.
  */
 class CorpusVuurTest {
 
     // ---- EXACT bucket floors (the b56bab6 discipline: a file moving buckets must FAIL so drift is visible). ----
     private static final int VERWACHT_RESOLVER_ERROR = 59;
-    private static final int VERWACHT_NO_RULES        = 54;
+    private static final int VERWACHT_NO_RULES        = 55;
     private static final int VERWACHT_HONEST_SKIP     = 79;
     private static final int VERWACHT_WALKED          = 9;
 
