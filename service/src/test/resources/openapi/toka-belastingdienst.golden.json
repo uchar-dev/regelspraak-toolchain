@@ -1956,10 +1956,6 @@
             "type": "string",
             "format": "date-time"
           },
-          "datum van vertrek van de vlucht": {
-            "type": "string",
-            "format": "date"
-          },
           "daadwerkelijke datum-tijd van vertrek": {
             "type": "string",
             "format": "date-time"

@@ -9,7 +9,7 @@ The TOKA casus's own rules reference five members its object model never declare
 | toka-35/37 (maximum-bullet) | `maximaal aantal te ontvangen treinmiles` | `de maximaal te ontvangen treinmiles bij evenredige verdeling volgens rangorde` |
 | toka-41/45 (voorwaarden) | kenmerk `passagier jonger dan 18 jaar` | only the 18-24 / 25-64 / 65+ brackets exist |
 | toka-22 (eerste van) | `de daadwerkelijke datum-tijd van vertrek` | only `de verwachte datum-tijd van vertrek` exists |
-| toka-43/44 (startpuntbepaling; the same sentences are normative §9.9 main-spec text) | `de datum van vertrek` (of `de reis`) | `de datum van vertrek van de vlucht` — the declared name embeds a `van de vlucht` tail, so the written `de datum van vertrek van de reis` (attribute + subject back-reference) cannot bind it |
+| toka-43/44 (startpuntbepaling; the same sentences are normative §9.9 main-spec text) | `de datum van vertrek` (of `de reis`) | none — the published Vlucht objecttype declares NO `datum van vertrek` attribute at all, so the written `de datum van vertrek van de reis` (attribute + subject back-reference) has nothing to bind against |
 
 `casus-omissies.rs` supplements exactly these members via the casus's own Extensie
 construct so the casus's rules can resolve and fire. It lives OUTSIDE `examples/toka/`

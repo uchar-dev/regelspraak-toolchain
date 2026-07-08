@@ -27,4 +27,3 @@ Objecttype de Vlucht (mv: Vluchten)
     de datum-tijd voor het berekenen van de belasting op basis van afstand Datum en tijd in millisecondes;
     het bevestigingstijdstip Datum en tijd in millisecondes;
     het uiterste boekingstijdstip Datum en tijd in millisecondes;
-    de datum van vertrek van de vlucht Datum in dagen;
