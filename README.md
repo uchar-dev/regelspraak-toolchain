@@ -41,12 +41,11 @@ and **[docs/](docs/)** for the architecture and runbooks.
 | `examples/` | `toka/` (the TOKA casus, `toka-01..47` + `toka.dienst.json`), `beslistabel/` (§12 decision tables), `toka-reconciliatie/` (casus-omissie companions), `toka-scenarios/` (the golden scenariotoetsen + their `manifest`) |
 | `specification/` | the v2.3.0 spec (Markdown + authoritative PDFs) — the oracle |
 | `docs/` | `ENGINE.md` (engine + deploy runbook), `TRANSPILER-ARCHITECTURE.md` (core + two back-ends), `SCENARIOTOETSEN.md` (the analyst-toets contract), `grammar-divergences.md` (spec reconciliations), `ANTLR-HOWTO.md` (grammar workflow) |
-| `docker/` | two roles: the **agent sandbox** image (`Dockerfile`, launched by `run-sandbox.sh`) and the **beslisservice** production image (`service.Dockerfile`, built via `make image`) — see `docker/README.md` |
+| `docker/` | the **beslisservice** production image (`Dockerfile`, built via `make image`) — see `docker/README.md` |
 | `helm/` | `beslisservice/` Helm chart (dev/prod value overlays) |
 | `scripts/` | `kind-smoke.sh` (in-cluster smoke gates), `peildatum-vintage-check.sh` (advisory) |
 | `tools/` | `Parse.java` (grammar smoke harness), corpus extraction, CSV→Beslistabel converter |
 | `Makefile` | the build entry point (`make help`) |
-| `run-sandbox.sh` | host launcher for the agent's container sandbox |
 
 **The root `pom.xml` is NOT an aggregator.** It builds only `regelspraak-parser`;
 `engine/`, `service/`, and `service-quarkus/` are separate builds wired together
@@ -72,10 +71,9 @@ Author rules and their expected outcomes in one surface, no Java. See
 Embed the engine via `RegelSpraakEngine.compile(source)` → `newSession()` →
 `fire()`. See `docs/ENGINE.md`.
 
-**Ops** — build the image and smoke-test in-cluster (**host only** — no Docker
-inside the agent sandbox):
+**Ops** — build the image and smoke-test in-cluster (needs Docker):
 
-    make image                   # build the beslisservice image (docker/service.Dockerfile)
+    make image                   # build the beslisservice image (docker/Dockerfile)
     helm install beslisservice helm/beslisservice
     make kind-smoke              # kind H2/H3/H4 gates against the live service
 

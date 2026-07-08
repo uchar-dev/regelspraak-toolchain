@@ -48,26 +48,6 @@ That code is the thing being rebooted; mirroring it would replicate its bugs and
 defeat the purpose. Derive everything from the specification in this repo. (Web
 search for general ANTLR/Java knowledge is fine — just not that prior work.)
 
-### Permitted: the Drools knowledge bridge
-
-One **narrow, mediated** exception to the constraint above. A bridge at
-`/work/.bridge` (governed by `/work/.bridge/POLICY.md`) is fed by a host-side
-oracle that *filters* the prior work and may deliver only:
-
-- **target-platform facts** (Drools / MVEL / Quarkus / ANTLR / Java) grounded in
-  official docs, and
-- **spec-derived test goals and coverage checklists** that cite v2.3.0 sections.
-
-The prior parser / resolver / engine remain off-limits as a source of RegelSpraak
-**meaning** or **expected values**. You MAY post questions to the bridge and
-consume its answers, but you MUST **reject** any answer that conveys prior source
-code, a prior construct→DRL mapping, or prior-engine output (provenance
-`prior-repo` ⇒ reject), and you MUST **re-derive all RegelSpraak semantics from
-the v2.3.0 spec** regardless. Ask "what does Drools require for X?" or "what
-should §Y compute?" — never "how did the old repo do X?". Post questions with
-`.bridge/ask.sh`. The bridge is the ONLY permitted contact with the prior work;
-never read the prior repos directly.
-
 ## Tooling & build
 
 - **ANTLR 4.13.2** — the latest 4.x; **not** ANTLR 5. The complete jar lives in
@@ -152,8 +132,8 @@ HEAD", never a number to chase down:
 7. `make verify-corpus` — every spec snippet under `corpusEntry` parses (no
    lexer errors, no `error` nodes), known defects excepted.
 
-`make image` / `make kind-smoke` are host-only packaging gates (no Docker in the
-sandbox); run them on the host before a release, not per change.
+`make image` / `make kind-smoke` are host-only packaging gates (they need
+Docker); run them on the host before a release, not per change.
 
 **The loop:** new work enters as a backlog card (`backlog/` is git-ignored local
 planning). Per card: derive the construct from the v2.3.0 spec → extend against a
@@ -180,12 +160,8 @@ it runs without prompts. **Only run this repo inside a sandbox / VM.** `rm -rf /
 `rm -rf ~`, and `sudo` are still blocked as circuit-breakers. To dial back,
 change `defaultMode` to `acceptEdits`.
 
-**Your environment is the sandbox.** A human launches you with `./run-sandbox.sh`
-(or `make run-sandbox`) on the host; you then run inside a container with this repo
-mounted at `/work` — JDK 21, make, git, and the ANTLR jar already present — and
-nothing else of the host reachable. If you are the coding agent reading this, you
-are *already inside* that container: never run `./run-sandbox.sh` or
-`make run-sandbox` yourself — there is no Docker in here and the nesting is
-meaningless.
-Just build in `/work`. The `bypassPermissions` posture is safe because the
-container is the boundary, and your login persists in a named volume across runs.
+**The sandbox launcher lives in the sibling repo** `the sandbox repo`: its
+`run-sandbox.sh` builds a container (JDK 21, make, git, ANTLR jar) and mounts this
+repo at `/work`. If you are a coding agent running inside that container, just
+build in `/work` — there is no Docker in there, so the host-only packaging gates
+(`make image`, `make kind-smoke`) cannot run from inside it.

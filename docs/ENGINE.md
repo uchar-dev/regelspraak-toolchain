@@ -74,12 +74,12 @@ a type error surfaces as `RegelSpraakCompileException`.
 
 ## Deploying the beslisservice (container + Helm + kind) — HOST only
 
-The decision service (`service/`, `DienstMain`) ships as a container image with a Helm chart; there is
-no Docker inside the agent sandbox, so everything below runs on the host.
+The decision service (`service/`, `DienstMain`) ships as a container image with a Helm chart;
+everything below needs Docker, so it runs on the host.
 
 ```
 make image  [TAG=dev] [DESCRIPTOR_SRC=examples/toka/toka.dienst.json]
-                     # multi-stage build (docker/service.Dockerfile): stage 1 chains
+                     # multi-stage build (docker/Dockerfile): stage 1 chains
                      # mvn install parser → engine → service (no aggregator pom, so no -pl/-am),
                      # stage 2 = JRE 21 + service.jar + the baked TOKA rule set & descriptor.
 docker run --rm -p 8080:8080 beslisservice:dev          # POST /<pad> per entrypoint, GET /info
@@ -87,7 +87,7 @@ make kind-smoke      # scripts/kind-smoke.sh: kind cluster (create/reuse) → ki
                      # helm install → H2 golden oracle → H3 fail-fast pins → H4 rollout pin
 ```
 
-Container contract (see `docker/service-entrypoint.sh`): env `DESCRIPTOR`, `BRONNEN_MANIFEST` (file
+Container contract (see `docker/entrypoint.sh`): env `DESCRIPTOR`, `BRONNEN_MANIFEST` (file
 listing the `.rs` sources in order), `POORT`, `ALLOW_MARKERS`. Defaults serve the baked TOKA demo; mount
 a volume at `/app/rules` and override the two paths to serve any other rule set from the same image.
 The image also bakes `/app/rules/marker/` — a self-contained marker-scoping fixture for the fail-fast gate.

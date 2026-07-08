@@ -28,6 +28,3 @@ specification/*/_work/
 examples/spec-main/
 examples/spec-antlr/
 backlog/
-
-# Knowledge-bridge mailbox (host dir mounted at /work/.bridge by run-sandbox.sh)
-/.bridge/

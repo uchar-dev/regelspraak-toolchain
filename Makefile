@@ -8,7 +8,7 @@
 # the Drools transpiler grow into real JVM code (see CLAUDE.md / docs/ANTLR-HOWTO.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus drl facts drools-it engine grun gui tokens clean clean-jar image kind-smoke run-sandbox csv-beslistabel
+.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus drl facts drools-it engine grun gui tokens clean clean-jar image kind-smoke csv-beslistabel
 
 ANTLR4_VERSION := 4.13.2
 ANTLR4_URL     := https://www.antlr.org/download/antlr-$(ANTLR4_VERSION)-complete.jar
@@ -67,9 +67,6 @@ help:
 	@echo ""
 	@echo "  make image  [TAG=… DESCRIPTOR_SRC=…] (host only) Build the beslisservice service image"
 	@echo "  make kind-smoke                      (host only) kind H2/H3/H4 gates against the live service"
-	@echo ""
-	@echo "  make run-sandbox                     (host only) Launch the container that IS the agent's"
-	@echo "                                       environment; cannot run from inside the sandbox"
 	@echo ""
 	@echo "  PACKAGE = $(PACKAGE)"
 	@echo "  Grammar files expected: $(LEXER_G4), $(PARSER_G4)"
@@ -238,20 +235,14 @@ clean:
 clean-jar:
 	rm -f $(ANTLR4_JAR)
 
-# HOST-side packaging targets (there is no Docker inside the sandbox): build the
-# beslisservice image and run the kind H2/H3/H4 smoke gates. DESCRIPTOR_SRC swaps the
-# baked descriptor at build time (the H4 rollout overlay).
+# HOST-side packaging targets (needs Docker): build the beslisservice image and
+# run the kind H2/H3/H4 smoke gates. DESCRIPTOR_SRC swaps the baked descriptor at
+# build time (the H4 rollout overlay).
 IMAGE_REPO ?= beslisservice
 TAG ?= dev
 DESCRIPTOR_SRC ?= examples/toka/toka.dienst.json
 image:
-	docker build -f docker/service.Dockerfile --build-arg DESCRIPTOR_SRC=$(DESCRIPTOR_SRC) -t $(IMAGE_REPO):$(TAG) .
+	docker build -f docker/Dockerfile --build-arg DESCRIPTOR_SRC=$(DESCRIPTOR_SRC) -t $(IMAGE_REPO):$(TAG) .
 
 kind-smoke:
 	bash scripts/kind-smoke.sh
-
-# Host-side launcher: build and enter the container sandbox that becomes the
-# coding agent's environment. There is no Docker inside the sandbox, so this is
-# for the host only — the agent itself already runs in /work and must not call it.
-run-sandbox:
-	./run-sandbox.sh

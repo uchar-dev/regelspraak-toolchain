@@ -1,39 +1,91 @@
-# Minimal sandbox for running Claude Code on the RegelSpraak Java build.
+# Decision-service (beslisservice) image — multi-stage.
 #
-# Ships a JDK 21 (java/javac), make, git, jq, and Node + Claude Code. The ANTLR jar
-# rides in with the bind-mounted repo (lib/), so the build needs no Maven and no
-# network. Launched by run-sandbox.sh in the project root, which mounts only this
-# repo and persists the login in a named volume. See ../CLAUDE.md "Working autonomously".
-#
-# JDK 21 (below the host's newest JDK) is deliberate: Drools 10.x and Quarkus
-# 3.35 require Java >= 17 and are validated against 21 LTS, so the parser builds
-# on the same runtime as the Drools engine it eventually feeds.
-FROM eclipse-temurin:21-jdk-jammy
+# The card said `mvn -pl service -am package`, but this repo has NO aggregator pom
+# (root pom.xml, engine/pom.xml, service/pom.xml are three standalone builds chained
+# through the local repo), so -am is impossible. The equivalent is the sequential
+# install chain below: install the parser, install the engine on top, then package
+# the service + copy its runtime dependencies.
 
+# ---- Stage 1: build the service jar + its runtime classpath -------------------
+FROM maven:3.9-eclipse-temurin-21 AS build
+
+# `make parser` (root pom generate-sources) shells out to make + curl (the Makefile
+# downloads the ANTLR complete jar into lib/); the maven image lacks both.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends make git ca-certificates curl gnupg jq \
-    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g @anthropic-ai/claude-code \
-    && apt-get purge -y gnupg && apt-get autoremove -y \
+    && apt-get install -y --no-install-recommends make curl \
     && rm -rf /var/lib/apt/lists/*
 
-# --dangerously-skip-permissions refuses to run as root, so run as a normal user.
-# Claude Code writes its login token (~/.claude/.credentials.json) and onboarding
-# state (~/.claude.json) under this user's HOME, which run-sandbox.sh persists in
-# a named volume so you authenticate only once.
-RUN useradd -m -s /bin/bash claude
+WORKDIR /build
 
-# Baked-in Claude config; entrypoint.sh seeds it into ~/.claude on every start so
-# the setup (model, status line, telemetry-off env) is reproducible from version
-# control rather than hand-written into the volume. Credentials and session
-# history already in the volume are left untouched.
-COPY claude-config/ /opt/claude-config/
-COPY entrypoint.sh  /usr/local/bin/entrypoint.sh
-RUN  chmod +x /usr/local/bin/entrypoint.sh
+# Copy exactly what the three poms compile from (see .dockerignore for the inverse).
+COPY Makefile pom.xml ./
+COPY grammar/ grammar/
+COPY tools/ tools/
+COPY src/ src/
+COPY engine/ engine/
+COPY service/ service/
 
-USER claude
-WORKDIR /work
+# Sequential install chain (no aggregator). Tests are skipped in the image build —
+# the Drools-firing suites run in the kind-smoke gate against the live service.
+RUN mvn -B -ntp -f pom.xml install -Dmaven.test.skip=true
+RUN mvn -B -ntp -f engine/pom.xml install -Dmaven.test.skip=true
+RUN mvn -B -ntp -f service/pom.xml package dependency:copy-dependencies \
+        -Dmaven.test.skip=true -DincludeScope=runtime -DoutputDirectory=target/lib
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["claude", "--dangerously-skip-permissions"]
+# ---- Stage 2: lean JDK runtime -------------------------------------------------
+# JDK, not JRE: BeslisserKern compiles the generated fact beans IN MEMORY at startup
+# (BeanCompiler needs javax.tools' system Java compiler), so a JRE-only image fails
+# with "geen JDK-compiler beschikbaar". This is the one deliberate deviation from
+# the card's "minimal JRE 21".
+FROM eclipse-temurin:21-jdk-jammy
+
+# curl is only for the HEALTHCHECK below (the JRE image has no curl).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=build /build/service/target/regelspraak-service-2.3.0-SNAPSHOT.jar /app/service.jar
+COPY --from=build /build/service/target/lib/ /app/lib/
+
+# The served rule set: the TOKA rule files, the two model companions, and the
+# self-contained marker source (used by the fail-fast / --allow-markers gate).
+COPY examples/toka/ /app/rules/toka/
+COPY examples/toka-reconciliatie/casus-omissies.rs /app/rules/companions/casus-omissies.rs
+COPY examples/toka-scenarios/scenario-model-extensie.rs /app/rules/companions/scenario-model-extensie.rs
+COPY docker/marker/ /app/rules/marker/
+
+# H4 rollout rebuilds the image with a different descriptor via this build-arg; the
+# overlay COPY lands on top of the TOKA descriptor already copied under rules/toka/.
+ARG DESCRIPTOR_SRC=examples/toka/toka.dienst.json
+COPY ${DESCRIPTOR_SRC} /app/rules/toka/toka.dienst.json
+
+COPY docker/entrypoint.sh /app/entrypoint.sh
+
+# Bake the ordered TOKA source manifest at build time so the entrypoint feeds
+# DienstMain the bronbestanden in exactly TokaBron.bronBestanden() order: the
+# model foundation (toka-01..16) + the two companions, then the served rules
+# (toka-17..47) EXCLUDING toka-23 (its datum+datum is an exit-1 resolve error).
+RUN chmod +x /app/entrypoint.sh \
+    && { ls /app/rules/toka/toka-0[1-9]-*.rs /app/rules/toka/toka-1[0-6]-*.rs | sort; \
+         echo /app/rules/companions/casus-omissies.rs; \
+         echo /app/rules/companions/scenario-model-extensie.rs; \
+         ls /app/rules/toka/toka-1[7-9]-*.rs /app/rules/toka/toka-[2-9][0-9]-*.rs | sort | grep -v 'toka-23-'; \
+       } > /app/rules/toka-manifest.txt
+
+# Mounting a volume at /app/rules and overriding DESCRIPTOR + BRONNEN_MANIFEST
+# serves an entirely different rule set from the same image.
+ENV POORT=8080 \
+    ALLOW_MARKERS=false \
+    DESCRIPTOR=/app/rules/toka/toka.dienst.json \
+    BRONNEN_MANIFEST=/app/rules/toka-manifest.txt
+
+EXPOSE 8080
+
+# DienstMain compiles every scoped rule BEFORE binding the port, so /info answering
+# means startup fully succeeded. Give it a long start-period for that compilation.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=180s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:${POORT}/info >/dev/null || exit 1
+
+ENTRYPOINT ["/app/entrypoint.sh"]
