@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unittests voor {@link PeriodeDekking}: de compile-time consistentiecheck regel-geldigheid × parameter-geldigheid
- * (card fase 3, gate G3). Model via {@link Resolver#resolve} over een klein inline .rs-bronnetje; dekking via
+ * (card fase 3, gate G3). Model via {@link Resolver#resolve} over een klein inline .rgs-bronnetje; dekking via
  * puur-Java {@link Parameterset}en (geen Jackson). WARNING niet ERROR, per-periode, gededupliceerd.
  */
 class PeriodeDekkingTest {

@@ -9,7 +9,7 @@ import java.util.Map;
 
 /**
  * The declarative service descriptor — a JSON sidecar {@code <naam>.dienst.json} that sits next to the
- * RegelSpraak {@code .rs} source and turns a resolved rule model into a decision service: which entry
+ * RegelSpraak {@code .rgs} source and turns a resolved rule model into a decision service: which entry
  * points to expose, which rules each scopes, which objecttypes it takes in and which
  * attribuut/kenmerk values it returns, plus the parameter defaults. It carries NO RegelSpraak
  * meaning of its own — every name in it is validated against the resolved model by

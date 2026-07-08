@@ -88,7 +88,7 @@ make kind-smoke      # scripts/kind-smoke.sh: kind cluster (create/reuse) → ki
 ```
 
 Container contract (see `docker/entrypoint.sh`): env `DESCRIPTOR`, `BRONNEN_MANIFEST` (file
-listing the `.rs` sources in order), `POORT`, `ALLOW_MARKERS`. Defaults serve the baked TOKA demo; mount
+listing the `.rgs` sources in order), `POORT`, `ALLOW_MARKERS`. Defaults serve the baked TOKA demo; mount
 a volume at `/app/rules` and override the two paths to serve any other rule set from the same image.
 The image also bakes `/app/rules/marker/` — a self-contained marker-scoping fixture for the fail-fast gate.
 

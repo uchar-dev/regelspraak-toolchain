@@ -42,7 +42,7 @@ class DienstMainTest {
 
     private static Map<String, String> markerBron() {
         Map<String, String> m = new LinkedHashMap<>();
-        m.put("marker.rs", MARKER_BRON);
+        m.put("marker.rgs", MARKER_BRON);
         return m;
     }
 
@@ -90,16 +90,16 @@ class DienstMainTest {
     @Test
     void args_parseren_descriptor_bronnen_flags() {
         DienstMain.Args a = DienstMain.parseArgs(new String[]{
-                "toka.dienst.json", "a.rs", "b.rs", "--allow-markers", "--poort", "9090"});
+                "toka.dienst.json", "a.rgs", "b.rgs", "--allow-markers", "--poort", "9090"});
         assertEquals(Path.of("toka.dienst.json"), a.descriptor());
-        assertEquals(List.of(Path.of("a.rs"), Path.of("b.rs")), a.bronnen());
+        assertEquals(List.of(Path.of("a.rgs"), Path.of("b.rgs")), a.bronnen());
         assertTrue(a.allowMarkers());
         assertEquals(9090, a.poort());
     }
 
     @Test
     void args_default_poort_8080_geen_allow_markers() {
-        DienstMain.Args a = DienstMain.parseArgs(new String[]{"d.json", "x.rs"});
+        DienstMain.Args a = DienstMain.parseArgs(new String[]{"d.json", "x.rgs"});
         assertEquals(8080, a.poort());
         assertTrue(!a.allowMarkers());
     }
@@ -109,6 +109,6 @@ class DienstMainTest {
         assertThrows(IllegalArgumentException.class, () -> DienstMain.parseArgs(new String[]{}));
         assertThrows(IllegalArgumentException.class, () -> DienstMain.parseArgs(new String[]{"alleen-descriptor.json"}));
         assertThrows(IllegalArgumentException.class,
-                () -> DienstMain.parseArgs(new String[]{"d.json", "x.rs", "--poort"}));
+                () -> DienstMain.parseArgs(new String[]{"d.json", "x.rgs", "--poort"}));
     }
 }

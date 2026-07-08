@@ -27,7 +27,7 @@ class ScenarioMutatieRunTest {
 
     private static List<Path> fixtures() throws IOException {
         try (Stream<Path> s = Files.list(MAP)) {
-            return s.filter(p -> p.getFileName().toString().endsWith(".rs")).sorted().toList();
+            return s.filter(p -> p.getFileName().toString().endsWith(".rgs")).sorted().toList();
         }
     }
 

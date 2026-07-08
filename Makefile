@@ -54,12 +54,12 @@ help:
 	@echo "  make compile                         Compile the generated parser with javac"
 	@echo "  make test                            Run the resolver/type-checker JUnit suite"
 	@echo "  make verify-corpus                   Parse every spec example under corpusEntry; report pass/fail"
-	@echo "  make drl  FILE=<input>               Transpile a .rs file to Drools (DRL) on stdout"
+	@echo "  make drl  FILE=<input>               Transpile a .rgs file to Drools (DRL) on stdout"
 	@echo "  make facts                           Generate the TOKA fact-model beans and javac them (out/facts/)"
-	@echo "  make csv-beslistabel FILE=<csv> [OUT=<pad>]  Convert a CSV decision table to a §12 Beslistabel .rs fragment"
+	@echo "  make csv-beslistabel FILE=<csv> [OUT=<pad>]  Convert a CSV decision table to a §12 Beslistabel .rgs fragment"
 	@echo "  make drools-it                       (needs Maven+network) Compile & fire the DRL in Drools"
 	@echo "  make engine                          (needs Maven) Build + test the shippable engine consumer"
-	@echo "  make scenario-test FILES=\"a.rs …\"    (needs Maven) Run the scenariotoetsen CLI over .rs files"
+	@echo "  make scenario-test FILES=\"a.rgs …\"    (needs Maven) Run the scenariotoetsen CLI over .rgs files"
 	@echo "  make grun RULE=<rule> FILE=<input>   Print the parse tree for FILE (ANTLR TestRig, text)"
 	@echo "  make gui  RULE=<rule> FILE=<input>   Open the parse tree in the TestRig GUI inspector"
 	@echo "  make clean                           Remove generated sources (gen/) and classes (out/)"
@@ -119,7 +119,7 @@ test: resolver $(JUNIT_JAR)
 		--scan-class-path --details=tree --disable-banner
 
 # Smoke-test the grammar with no application code, e.g.:
-#   make grun RULE=regelSpraakDocument FILE=examples/toka/toka-01-....rs
+#   make grun RULE=regelSpraakDocument FILE=examples/toka/toka-01-....rgs
 # Uses tools/Parse (not ANTLR's TestRig): a `parser grammar RegelSpraak;` emits a
 # class named `RegelSpraak`, but TestRig insists on a `RegelSpraakParser` suffix.
 # Parse also exits non-zero on any syntax error or `error` node — the clean
@@ -132,7 +132,7 @@ grun: compile
 verify-corpus: compile
 	@bash tools/verify_corpus.sh
 
-# Transpile a .rs file to Drools (DRL): parse -> resolve -> emit DRL on stdout.
+# Transpile a .rgs file to Drools (DRL): parse -> resolve -> emit DRL on stdout.
 # --allow-markers: this is an inspection tool, so show the DRL even when a construct
 # stays an honest marker (the dekking-WARNINGs still land on stderr). A bare
 # `Resolver --drl` without the flag exits 3 on any marker — the CI-facing contract.
@@ -140,7 +140,7 @@ drl: resolver
 	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver --drl --allow-markers $(FILE)
 
 # Convert a CSV decision table into the canonical §12 Beslistabel markdown-pipe-table
-# .rs fragment (docs/grammar-divergences.md §12 CSV-import note). Pure-python, no deps
+# .rgs fragment (docs/grammar-divergences.md §12 CSV-import note). Pure-python, no deps
 # (sibling of tools/extract_corpus.py). CSV in -> Beslistabel block on stdout:
 #   make csv-beslistabel FILE=tools/testdata/woonregio-factor.csv
 # Add OUT=<pad> to write a file instead of stdout. Exit 1 (with row+column on stderr)
@@ -157,16 +157,16 @@ csv-beslistabel:
 # the foundation. `Resolver --facts` is model-level: it writes NOTHING when the model has errors, so this target
 # doubles as a resolve gate. The generated beans need no external classpath (java.* only), so plain javac proves them.
 TOKA_MODEL_FOUNDATION := \
-	$(wildcard examples/toka/toka-0[1-9]-*.rs) \
-	$(wildcard examples/toka/toka-1[0-6]-*.rs) \
-	examples/toka-reconciliatie/casus-omissies.rs \
-	examples/toka-scenarios/scenario-model-extensie.rs
+	$(wildcard examples/toka/toka-0[1-9]-*.rgs) \
+	$(wildcard examples/toka/toka-1[0-6]-*.rgs) \
+	examples/toka-reconciliatie/casus-omissies.rgs \
+	examples/toka-scenarios/scenario-model-extensie.rgs
 FACTS_DIR := $(OUT_DIR)/facts
 facts: resolver
 	@rm -rf $(FACTS_DIR)
 	@mkdir -p $(FACTS_DIR)/src $(FACTS_DIR)/classes
-	@cat $(TOKA_MODEL_FOUNDATION) > $(FACTS_DIR)/toka-model.rs
-	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver --facts $(FACTS_DIR)/src $(FACTS_DIR)/toka-model.rs
+	@cat $(TOKA_MODEL_FOUNDATION) > $(FACTS_DIR)/toka-model.rgs
+	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver --facts $(FACTS_DIR)/src $(FACTS_DIR)/toka-model.rgs
 	@javac -d $(FACTS_DIR)/classes $$(find $(FACTS_DIR)/src -name '*.java')
 	@echo "PASS: facts gegenereerd én gecompileerd naar $(FACTS_DIR)/classes"
 
@@ -185,9 +185,9 @@ engine:
 	$(MVN) -B -f pom.xml install -DskipTests
 	$(MVN) -B -f engine/pom.xml test
 
-# Run the scenariotoetsen CLI (docs/SCENARIOTOETSEN.md) over one or more .rs files via the engine classpath.
-#   make scenario-test FILES="model.rs regels.rs scenario.rs"   # concatenated in order; PASS/FAIL/MARKER per scenario
-# Options ride FILES too, e.g. FILES="--trace a.rs". Exit: 1 on any FAIL/resolve-error, 3 on a MARKER scope, else 0.
+# Run the scenariotoetsen CLI (docs/SCENARIOTOETSEN.md) over one or more .rgs files via the engine classpath.
+#   make scenario-test FILES="model.rgs regels.rgs scenario.rgs"   # concatenated in order; PASS/FAIL/MARKER per scenario
+# Options ride FILES too, e.g. FILES="--trace a.rgs". Exit: 1 on any FAIL/resolve-error, 3 on a MARKER scope, else 0.
 # Installs the lean transpiler (-DskipTests), compiles the engine offline, resolves its classpath, and runs the CLI.
 # Without FILES it runs the golden TOKA set via examples/toka-scenarios/manifest — which does NOT exist yet (the
 # next phase), so it fails with exit 2 and a clear message.

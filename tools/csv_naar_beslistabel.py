@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """csv_naar_beslistabel.py — convert a CSV decision table into the canonical §12
-RegelSpraak `Beslistabel` markdown-pipe-table surface (an .rs fragment).
+RegelSpraak `Beslistabel` markdown-pipe-table surface (an .rgs fragment).
 
 Sibling of tools/extract_corpus.py: pure stdlib, python3, no deps. This is an
 IMPORT PATH, not a second grammar — analysts draft in Excel/CSV and the tool
@@ -55,7 +55,7 @@ USAGE
 -----
     csv_naar_beslistabel.py [--out <pad>] [<csv-in>]
       <csv-in>   input CSV file; omit (or "-") to read stdin
-      --out      output .rs path; omit to write stdout
+      --out      output .rgs path; omit to write stdout
 
 Exit 0 on success, 1 on error. On error the message (with row+column where
 applicable) goes to stderr and NOTHING is written to the output stream.
@@ -197,7 +197,7 @@ def _check_cell(pair, row_label, col_idx):
 
 
 def convert(text):
-    """CSV text -> the `Beslistabel` .rs fragment (str). Raises ConvertError."""
+    """CSV text -> the `Beslistabel` .rgs fragment (str). Raises ConvertError."""
     dialect = _choose_delimiter(text)
     delim = dialect.delimiter
     rows = _parse_rows(text, delim)
@@ -291,7 +291,7 @@ def main(argv=None):
         prog="csv_naar_beslistabel.py",
         description=(
             "Convert a CSV decision table into the canonical §12 RegelSpraak "
-            "Beslistabel markdown-pipe-table .rs fragment.\n\n"
+            "Beslistabel markdown-pipe-table .rgs fragment.\n\n"
             "CSV CONTRACT: optional metadata rows first (each exactly 2 fields, "
             "first cell 'naam' or 'geldig'; default geldig = 'geldig altijd'), "
             "then row 1 = the column-header sentences (doelkolom then 'indien …' "
@@ -310,7 +310,7 @@ def main(argv=None):
     p.add_argument("csv_in", nargs="?", default="-",
                    help="input CSV file; omit or '-' to read stdin")
     p.add_argument("--out", default=None,
-                   help="output .rs path; omit to write stdout")
+                   help="output .rgs path; omit to write stdout")
     args = p.parse_args(argv)
 
     try:

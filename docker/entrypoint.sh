@@ -1,6 +1,6 @@
 #!/bin/sh
 # Launch DienstMain from the baked (or volume-mounted) rule set. The manifest holds
-# one absolute .rs path per line in bronbestanden() order; we feed them as positional
+# one absolute .rgs path per line in bronbestanden() order; we feed them as positional
 # bronnen. --allow-markers is added only when ALLOW_MARKERS=true, so a marker-scoping
 # descriptor fails fast (exit 3) by default — the honest startup contract.
 set -eu

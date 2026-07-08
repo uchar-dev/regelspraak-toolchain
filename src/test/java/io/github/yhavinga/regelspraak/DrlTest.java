@@ -3952,7 +3952,7 @@ class DrlTest {
                 "extracted corpus absent (run tools/extract_corpus.py / make verify-corpus)");
         int getranspileerd = 0;
         try (var files = java.nio.file.Files.walk(root)) {
-            for (java.nio.file.Path f : files.filter(x -> x.toString().endsWith(".rs")).sorted().toList()) {
+            for (java.nio.file.Path f : files.filter(x -> x.toString().endsWith(".rgs")).sorted().toList()) {
                 String naam = f.getFileName().toString();
                 String drl;
                 try {
@@ -3975,7 +3975,7 @@ class DrlTest {
         if (java.nio.file.Files.isDirectory(toka)) {
             StringBuilder sb = new StringBuilder();
             try (var files = java.nio.file.Files.list(toka)) {
-                for (java.nio.file.Path f : files.filter(x -> x.toString().endsWith(".rs")).sorted().toList())
+                for (java.nio.file.Path f : files.filter(x -> x.toString().endsWith(".rgs")).sorted().toList())
                     sb.append(java.nio.file.Files.readString(f)).append('\n');
             }
             String drl = DrlTranspiler.transpile(Resolver.resolve(sb.toString()));

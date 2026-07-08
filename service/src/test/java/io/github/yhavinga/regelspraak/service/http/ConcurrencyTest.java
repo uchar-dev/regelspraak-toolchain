@@ -189,7 +189,7 @@ class ConcurrencyTest {
         List<Verzoekje> uit = new ArrayList<>();
 
         // Family A — bepaal-leeftijd, from scenario-toka-17. Vary geboortedatum + id per index.
-        ObjectNode a0 = situatieVerzoek("examples/toka-scenarios/scenario-toka-17-bepaal-leeftijd.rs");
+        ObjectNode a0 = situatieVerzoek("examples/toka-scenarios/scenario-toka-17-bepaal-leeftijd.rgs");
         String padA = padVoorScope(descriptor, "bepaal leeftijd");
         String[] geboortes = {"1990-06-15", "1985-01-01", "2000-12-31"};
         for (int i = 0; i < geboortes.length; i++) {
@@ -205,7 +205,7 @@ class ConcurrencyTest {
         }
 
         // Family B — totaal-te-betalen-belasting, from scenario-toka-20. Vary the passenger bedragen per index.
-        ObjectNode b0 = situatieVerzoek("examples/toka-scenarios/scenario-toka-20-totaal-te-betalen.rs");
+        ObjectNode b0 = situatieVerzoek("examples/toka-scenarios/scenario-toka-20-totaal-te-betalen.rgs");
         String padB = padVoorScope(descriptor, "Totaal te betalen belasting");
         String[][] bedragen = {{"30.00", "20.00"}, {"10.00", "5.00"}, {"100.00", "0.00"}};
         for (String[] paar : bedragen) {
@@ -222,7 +222,7 @@ class ConcurrencyTest {
         // Family C — controleer-of-vlucht-geen-rondvlucht-is (§9.5), from scenario-toka-30. The golden is
         // CONSISTENT; make it INCONSISTENT by setting bestemming = vertrek (a rondvlucht), varying which airport
         // per index. Inputs only; the inconsistentie is the emergent truth, checked against its serial baseline.
-        ObjectNode c0 = situatieVerzoek("examples/toka-scenarios/scenario-toka-30-geen-rondvlucht.rs");
+        ObjectNode c0 = situatieVerzoek("examples/toka-scenarios/scenario-toka-30-geen-rondvlucht.rgs");
         String padC = padVoorScope(descriptor, "Controleer of vlucht geen rondvlucht is");
         String[] luchthavens = {"Amsterdam Schiphol", "Parijs Charles de Gaulle", "Londen Heathrow"};
         for (String lh : luchthavens) {

@@ -70,7 +70,7 @@ class DienstHttpTest {
 
     private static BeslisserKern markerKern() {
         Map<String, String> bron = new LinkedHashMap<>();
-        bron.put("marker.rs", MARKER_BRON);
+        bron.put("marker.rgs", MARKER_BRON);
         return BeslisserKern.bouw(MARKER_DESCRIPTOR, bron, KernConfig.metMarkers(),
                 Thread.currentThread().getContextClassLoader());
     }
@@ -101,7 +101,7 @@ class DienstHttpTest {
 
     private static BeslisserKern vintageKern() {
         Map<String, String> bron = new LinkedHashMap<>();
-        bron.put("vintage.rs", VINTAGE_BRON);
+        bron.put("vintage.rgs", VINTAGE_BRON);
         return BeslisserKern.bouw(VINTAGE_DESCRIPTOR, bron, KernConfig.strikt(),
                 Thread.currentThread().getContextClassLoader(), VINTAGE_SETS);
     }

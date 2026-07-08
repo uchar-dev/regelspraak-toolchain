@@ -29,7 +29,7 @@ import java.util.List;
  *
  * <p><b>Cell value syntax</b>: cells hold native RegelSpraak rule-fragment text — text literals are DOUBLE-quoted
  * ("Friesland"), as a hand-written regel would write them. (The spec's printed tables use single quotes purely as a
- * presentation delimiter; the `.rs` is real RegelSpraak, where '"' opens a tekstwaarde and "'" does not.)
+ * presentation delimiter; the `.rgs` is real RegelSpraak, where '"' opens a tekstwaarde and "'" does not.)
  */
 public final class BeslistabelDesugar {
     private BeslistabelDesugar() {}

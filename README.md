@@ -3,7 +3,7 @@
 A complete **RegelSpraak v2.3.0** (TOKA) toolchain: from an ANTLR grammar and a
 semantic resolver, through a typed IR and two Drools back-ends, to a deployable
 decision service. RegelSpraak is a Dutch business-rules DSL; this repo takes a
-`.rs` rule set from authoring all the way to a firing, HTTP-exposed engine.
+`.rgs` rule set from authoring all the way to a firing, HTTP-exposed engine.
 
 The specification in `specification/v2.3.0/` is the **single source of truth**.
 Correctness means adherence to that spec — not parity with any prior engine. See
@@ -23,7 +23,7 @@ and **[docs/](docs/)** for the architecture and runbooks.
   exactly the beans a resolved model implies; `ContractValidator` fails fast on
   drift.
 - **Author-side scenariotoetsen** — a rule analyst writes rules *and* expected
-  outcomes in one `.rs` surface and gets machine-checkable PASS/FAIL per scenario
+  outcomes in one `.rgs` surface and gets machine-checkable PASS/FAIL per scenario
   (contract: `docs/SCENARIOTOETSEN.md`).
 - **Serve** — a JSON descriptor becomes an HTTP decision service with build-time
   OpenAPI, an `/info` endpoint reporting coverage (dekking), and validity-
@@ -54,9 +54,9 @@ with `make help`.
 
 ## Quickstarts
 
-**Rule analyst** — write a `.rs` model plus scenariotoetsen, then check them:
+**Rule analyst** — write a `.rgs` model plus scenariotoetsen, then check them:
 
-    make scenario-test FILES="model.rs regels.rs scenario.rs"   # PASS/FAIL per scenario
+    make scenario-test FILES="model.rgs regels.rgs scenario.rgs"   # PASS/FAIL per scenario
     make scenario-test                                          # the golden TOKA set
 
 Author rules and their expected outcomes in one surface, no Java. See

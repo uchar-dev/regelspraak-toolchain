@@ -29,7 +29,7 @@ import java.util.Map;
 
 /**
  * The framework-agnostic decision-service CORE (fase 2). Constructed from a descriptor and the ordered list of
- * {@code .rs} source files that make up the service (manifest-style), it performs, at startup, exactly the
+ * {@code .rgs} source files that make up the service (manifest-style), it performs, at startup, exactly the
  * pinned steps, mirroring {@link io.github.yhavinga.regelspraak.engine.ScenarioRunner#run} (its L79-107):
  *
  * <ol>
@@ -103,7 +103,7 @@ public final class BeslisserKern {
 
     // ---------------- startup ----------------
 
-    /** Build the core from a descriptor file and the service's {@code .rs} source files (in order). The
+    /** Build the core from a descriptor file and the service's {@code .rgs} source files (in order). The
      *  {@code loader} is the parent for the bean classloader; the generated beans are served from a child
      *  loader created here, not looked up on {@code loader}.
      *

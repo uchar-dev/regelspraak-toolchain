@@ -21,7 +21,7 @@ SPEC_DIR="specification/v2.3.0"
 CP="lib/antlr-4.13.2-complete.jar:out"
 
 # (Re)extract the corpus from the spec — keeps fixtures in lock-step with the spec.
-rm -f examples/spec-main/*.rs examples/spec-antlr/*.rs
+rm -f examples/spec-main/*.rs examples/spec-antlr/*.rs examples/spec-main/*.rgs examples/spec-antlr/*.rgs
 python3 tools/extract_corpus.py "$SPEC_DIR/RegelSpraak-specificatie v2.3.0.md"        examples/spec-main  spec-main  2>/dev/null >/dev/null
 python3 tools/extract_corpus.py "$SPEC_DIR/RegelSpraak-spec-for-ANTLR-v2.3.0.md"      examples/spec-antlr spec-antlr 2>/dev/null >/dev/null
 
@@ -33,13 +33,13 @@ is_known_defect() {
         # enumeration values (quoted everywhere else in the spec), and glued an
         # orphaned objecttype member block onto two Domein definitions. With
         # newlines non-structural, unquoted multi-word enum values are unparseable.
-        spec-main-*-de-datum-tijd-voor-het-berekenen.rs) return 0 ;;
+        spec-main-*-de-datum-tijd-voor-het-berekenen.rgs) return 0 ;;
     esac
     return 1
 }
 
 pass=0; fail=0; defect=0; failures=""
-for f in examples/toka/*.rs examples/spec-antlr/*.rs examples/spec-main/*.rs; do
+for f in examples/toka/*.rgs examples/spec-antlr/*.rgs examples/spec-main/*.rgs; do
     base=$(basename "$f")
     err=$(java -cp "$CP" Parse corpusEntry "$f" -no-tree 2>&1 >/dev/null)
     if [ -z "$err" ]; then

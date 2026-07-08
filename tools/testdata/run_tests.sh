@@ -12,7 +12,7 @@
 #      a row+column message and write NOTHING to the output stream.
 #   V3 QUOTING: quoted separators, embedded RegelSpraak literal quotes, and quoted
 #      leading/trailing spaces survive verbatim; unquoted edge spaces are trimmed.
-#      Pinned against tools/testdata/quoting-probe.expected.rs.
+#      Pinned against tools/testdata/quoting-probe.expected.rgs.
 #
 # Requires: python3, a JDK, and `make compile` already run (out/ present). Run from
 # the repo root or anywhere — paths are resolved relative to the repo root.
@@ -31,10 +31,10 @@ ok()   { echo "  PASS: $1"; pass=$((pass+1)); }
 bad()  { echo "  FAIL: $1"; fail=$((fail+1)); }
 
 echo "== V1 round-trip differential (byte-equal DRL) =="
-# name -> original example .rs
+# name -> original example .rgs
 declare -A ORIG=(
-  [woonregio-factor]="examples/beslistabel/spec12-woonregio-factor.rs"
-  [reisduur-band]="examples/beslistabel/spec12-belasting-reisduur-band.rs"
+  [woonregio-factor]="examples/beslistabel/spec12-woonregio-factor.rgs"
+  [reisduur-band]="examples/beslistabel/spec12-belasting-reisduur-band.rgs"
 )
 for name in woonregio-factor reisduur-band; do
   orig="${ORIG[$name]}"
@@ -42,12 +42,12 @@ for name in woonregio-factor reisduur-band; do
   awk '/^Beslistabel /{exit} {print}' "$orig" > "$TMP/$name.prefix"
   $TOOL --out "$TMP/$name.frag" "$TD/$name.csv" || { bad "$name tool exit"; continue; }
   # The committed golden fragment must match the freshly-generated one.
-  if ! diff -q "$TMP/$name.frag" "$TD/$name.expected.rs" >/dev/null; then
-    bad "$name: tool output drifted from $TD/$name.expected.rs"; diff "$TD/$name.expected.rs" "$TMP/$name.frag"; continue
+  if ! diff -q "$TMP/$name.frag" "$TD/$name.expected.rgs" >/dev/null; then
+    bad "$name: tool output drifted from $TD/$name.expected.rgs"; diff "$TD/$name.expected.rgs" "$TMP/$name.frag"; continue
   fi
-  cat "$TMP/$name.prefix" "$TMP/$name.frag" > "$TMP/$name.tool.rs"
+  cat "$TMP/$name.prefix" "$TMP/$name.frag" > "$TMP/$name.tool.rgs"
   $DRL "$orig"           2>/dev/null > "$TMP/$name.orig.drl"
-  $DRL "$TMP/$name.tool.rs" 2>/dev/null > "$TMP/$name.tool.drl"
+  $DRL "$TMP/$name.tool.rgs" 2>/dev/null > "$TMP/$name.tool.drl"
   if diff -q "$TMP/$name.orig.drl" "$TMP/$name.tool.drl" >/dev/null; then
     ok "$name: BYTE-EQUAL DRL"
   else
@@ -75,10 +75,10 @@ if [ "$rc" = 1 ] && [ ! -s "$out" ]; then ok "empty stdin (exit 1, empty stdout)
 
 echo "== V3 quoting (verbatim survival, pinned) =="
 $TOOL --out "$TMP/quoting.frag" "$TD/quoting-probe.csv" || bad "quoting tool exit"
-if diff -q "$TMP/quoting.frag" "$TD/quoting-probe.expected.rs" >/dev/null; then
+if diff -q "$TMP/quoting.frag" "$TD/quoting-probe.expected.rgs" >/dev/null; then
   ok "quoting-probe matches expected (quoted sep/quotes/spaces preserved, unquoted trimmed)"
 else
-  bad "quoting-probe drift"; diff "$TD/quoting-probe.expected.rs" "$TMP/quoting.frag"
+  bad "quoting-probe drift"; diff "$TD/quoting-probe.expected.rgs" "$TMP/quoting.frag"
 fi
 
 echo "-------------------------------------------------------------"

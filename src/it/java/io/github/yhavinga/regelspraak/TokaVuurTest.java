@@ -42,10 +42,10 @@ class TokaVuurTest {
     private static final String MODEL;
     static {
         try (Stream<Path> files = Files.list(Path.of("examples/toka"))) {
-            MODEL = Files.readString(Path.of("examples/toka-reconciliatie/casus-omissies.rs")) + "\n"
+            MODEL = Files.readString(Path.of("examples/toka-reconciliatie/casus-omissies.rgs")) + "\n"
                     + files.filter(p -> {
                             String n = p.getFileName().toString();
-                            return n.endsWith(".rs") && !n.contains("-regel-") && !n.contains("beslistabel");
+                            return n.endsWith(".rgs") && !n.contains("-regel-") && !n.contains("beslistabel");
                         }).sorted()
                         .map(p -> { try { return Files.readString(p); } catch (IOException e) { throw new UncheckedIOException(e); } })
                         .collect(Collectors.joining("\n"));

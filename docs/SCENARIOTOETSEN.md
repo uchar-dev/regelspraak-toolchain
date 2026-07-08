@@ -15,7 +15,7 @@ wordt dít document in dezelfde commit bijgewerkt — het contract drift nooit.
 ## Doel
 
 Een regelanalist (of coding agent) schrijft regels ÉN hun verwachte uitkomsten
-in één `.rs`-oppervlak en krijgt machine-checkbaar PASS/FAIL per scenario, een
+in één `.rgs`-oppervlak en krijgt machine-checkbaar PASS/FAIL per scenario, een
 fired-rules-trace bij FAIL, en een dekkingsoordeel per regel in scope — zonder
 Java te schrijven. (Feature-pariteit met ALEF's Testset/Testgeval/testdekking;
 de syntaxis is NIET ALEF's maar v2.3.0-stijl: lidwoorden, eenheden verplicht
@@ -212,7 +212,7 @@ omgerekend; een onverenigbare eenheid is een resolve-time ERROR (gate G4).
   de Dekking-manifest markeert hem alsnog als MARKER → scope-marker leest exit 3.
   Engine-pom: `drools-mvel` is expliciet toegevoegd (de root-pom test-scope't hem;
   het DRL-dialect heeft hem nodig).
-- CLI: `io.github.yhavinga.regelspraak.engine.ScenarioRunner <file.rs>…` — meerdere
+- CLI: `io.github.yhavinga.regelspraak.engine.ScenarioRunner <file.rgs>…` — meerdere
   bestanden worden in volgorde geconcateneerd (het TokaVuurTest-patroon:
   objectmodel + regels + scenariobestand). Per scenario `PASS`/`FAIL` naar
   stdout; bij FAIL per verwachting verwacht/werkelijk + de trace.
@@ -230,7 +230,7 @@ omgerekend; een onverenigbare eenheid is een resolve-time ERROR (gate G4).
 - **G2** golden TOKA: 30/30 vurende manifestregels PASS via `make scenario-test`
   (`examples/toka-scenarios/manifest`, één scenario per gelowerde manifestregel,
   scope = precies één regel). De exit-3 MARKER-lezing wordt geoefend door
-  `scenario-marker-exit3.rs` (een schoon markerende regel, exit 3). De TOKA-
+  `scenario-marker-exit3.rgs` (een schoon markerende regel, exit 3). De TOKA-
   markerregel toka-23 ("Bevestigingstijdstip vlucht") is BOVENDIEN spec-illegaal
   getypeerd — A = datum-tijd PLUS datum-tijd, door §4.1 Tabel 2 verboden — dus
   een bundel met toka-23 resolvet NIET en de CLI leest exit 1 (resolve-fout), niet

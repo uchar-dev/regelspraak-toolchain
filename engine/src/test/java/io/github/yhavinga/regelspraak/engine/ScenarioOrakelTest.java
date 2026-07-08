@@ -35,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *       ({@code KieHelper.setClassLoader}, the proven TokaVuurTest pattern), sets globals, fires, and READS the
  *       target getter(s). This is the ground-truth value asserted with the SAME exact comparator the suites use
  *       (BigDecimal.compareTo==0 / equals / boolean read / null⇔leeg).</li>
- *   <li><b>Scenario path</b> — the SAME model + facts + expectation as a {@code .rs} scenario document, run
+ *   <li><b>Scenario path</b> — the SAME model + facts + expectation as a {@code .rgs} scenario document, run
  *       through {@link ScenarioRunner#run(String)}. We assert status == PASS (which means every expectation's
  *       EXACT comparator held INSIDE the runner: scenario-expectation-value == runner-actual), AND we assert
  *       directly that the value we WROTE into the scenario expectation equals the Java-API reading. Together:

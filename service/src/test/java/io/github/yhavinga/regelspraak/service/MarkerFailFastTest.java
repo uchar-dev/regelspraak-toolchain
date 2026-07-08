@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * a MARKER is a construct the DRL transpiler emits as an accepted-but-inert no-op ({@code /* TODO} placeholder,
  * stripped before compile). The Paaskorting rule the earlier exec-model version used LOWERS under DRL, so this
  * test drives the DRL-MARKER construct instead: "het absolute tijdsevenredig deel per maand" (the same
- * construct the golden {@code scenario-marker-exit3.rs} scopes for its exit-3 reading). A descriptor scoping it
+ * construct the golden {@code scenario-marker-exit3.rgs} scopes for its exit-3 reading). A descriptor scoping it
  * must refuse startup naming the rule when markers are disallowed, and start + expose it when allowed.
  *
  * <p>The source is self-contained (its own Objecttype), so {@link BeslisserKern} compiles its beans in memory
@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class MarkerFailFastTest {
 
-    /** A self-contained model whose one rule lowers to a DRL marker (mirrors scenario-marker-exit3.rs). */
+    /** A self-contained model whose one rule lowers to a DRL marker (mirrors scenario-marker-exit3.rgs). */
     private static final String MARKER_BRON = """
         Objecttype de Vlucht (mv: Vluchten)
             de heffing Numeriek (getal met 2 decimalen) met eenheid EUR;
@@ -40,7 +40,7 @@ class MarkerFailFastTest {
 
     private static Map<String, String> bron() {
         Map<String, String> m = new LinkedHashMap<>();
-        m.put("marker.rs", MARKER_BRON);
+        m.put("marker.rgs", MARKER_BRON);
         return m;
     }
 

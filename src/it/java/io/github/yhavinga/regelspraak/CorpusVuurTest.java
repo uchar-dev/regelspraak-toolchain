@@ -73,7 +73,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * per-construct absolute-value assertions live in {@link TokaVuurTest}.
  *
  * <p><b>BUCKET CENSUS (the b56bab6 no-silent-narrowing discipline — EXACT counts, a file moving buckets FAILS).</b>
- * Over the 201 extracted {@code .rs} files:
+ * Over the 201 extracted {@code .rgs} files:
  * <ul>
  *   <li>resolver-error = 59 (fragment resolves with ERRORs alone — e.g. a rule over an undeclared attribute)</li>
  *   <li>no-rules = 54 (declarations-only fragment: objecttype/feittype/parameter/eenheidsysteem/beslistabel-shell)</li>
@@ -120,11 +120,11 @@ class CorpusVuurTest {
         try (var s = Files.walk(root)) {
             // examples/toka-scenarios/ holds scenariotoetsen fixtures (docs/SCENARIOTOETSEN.md) — a DOCUMENTED
             // EXTENSION reachable only via the `testDocument` front-end, NOT the production `regelSpraakDocument`
-            // resolver this walk exercises. A bare scenario .rs is not standalone-resolvable (it needs its
+            // resolver this walk exercises. A bare scenario .rgs is not standalone-resolvable (it needs its
             // companion model files + the scenario runner), so it belongs to no production bucket; excluding the
             // directory keeps this walk a pure production-corpus census and the 59/54/79/9 partition byte-identical
             // (the G6 isolation the scenario extension guarantees).
-            files = s.filter(x -> x.toString().endsWith(".rs"))
+            files = s.filter(x -> x.toString().endsWith(".rgs"))
                      .filter(x -> !x.toString().contains("toka-scenarios"))
                      .sorted().toList();
         }
@@ -182,7 +182,7 @@ class CorpusVuurTest {
         // ---- the census (recorded so a run always PRINTS the bucketing, per the b56bab6 discipline). ----
         System.out.println("[corpus-vuur] resolver-error=" + resolverError.size()
                 + " no-rules=" + noRules.size() + " honest-skip=" + honestSkip.size()
-                + " WALKED=" + walked.size() + " (van " + files.size() + " .rs)");
+                + " WALKED=" + walked.size() + " (van " + files.size() + " .rgs)");
         System.out.println("[corpus-vuur] WALKED: " + walked);
 
         // EXACT floors: a file moving buckets fails HERE so the drift is visible and must be re-blessed.
@@ -196,7 +196,7 @@ class CorpusVuurTest {
                 () -> "WALKED-bucket verschoven: " + walked);
         assertEquals(files.size(),
                 resolverError.size() + noRules.size() + honestSkip.size() + walked.size(),
-                "de vier buckets moeten ALLE .rs-bestanden partitioneren");
+                "de vier buckets moeten ALLE .rgs-bestanden partitioneren");
     }
 
     // ---- deterministic fact synthesis (NO Math.random / no Date.now — fixed values only) --------------------

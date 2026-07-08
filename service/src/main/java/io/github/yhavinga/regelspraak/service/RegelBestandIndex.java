@@ -11,7 +11,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The regelnaam → bronbestand index (decision 2b): given the ordered list of {@code .rs} source files that
+ * The regelnaam → bronbestand index (decision 2b): given the ordered list of {@code .rgs} source files that
  * make up a service, work out which rules each file DECLARES, and which files declare NONE (the PRELUDE —
  * objecttypen, feittypen, domeinen, parameters, eenheidstelsels, …). The core then compiles one
  * {@link org.kie.api.KieBase} per entry point (the DRL recipe) over {@code prelude + scoped-rule-files},
@@ -44,7 +44,7 @@ public final class RegelBestandIndex {
     }
 
     /**
-     * Build the index from the ordered source-text list (one entry per {@code .rs} file, its full text). The
+     * Build the index from the ordered source-text list (one entry per {@code .rgs} file, its full text). The
      * caller supplies file text keyed by a stable file id (its path); order matters, because a rule file may
      * depend on prelude declarations earlier in the list.
      *

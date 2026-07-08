@@ -68,7 +68,7 @@ class ParametersetServiceTest {
 
     private static Map<String, String> bron(String tekst) {
         Map<String, String> m = new LinkedHashMap<>();
-        m.put("bron.rs", tekst);
+        m.put("bron.rgs", tekst);
         return m;
     }
 

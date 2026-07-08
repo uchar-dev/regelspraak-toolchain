@@ -1,5 +1,5 @@
 // Golden-scenario model-extensie — the casus-omission the golden set needs on top of
-// examples/toka-reconciliatie/casus-omissies.rs. Kept SEPARATE from the reconciliatie
+// examples/toka-reconciliatie/casus-omissies.rgs. Kept SEPARATE from the reconciliatie
 // file so TokaVuurTest / TokaDekkingTest stay byte-identical (they never load this).
 //
 // toka-26 "Hoogseizoen" assigns the kenmerk "in het hoogseizoen" to a Vlucht, but the

@@ -52,8 +52,8 @@ COPY --from=build /build/service/target/lib/ /app/lib/
 # The served rule set: the TOKA rule files, the two model companions, and the
 # self-contained marker source (used by the fail-fast / --allow-markers gate).
 COPY examples/toka/ /app/rules/toka/
-COPY examples/toka-reconciliatie/casus-omissies.rs /app/rules/companions/casus-omissies.rs
-COPY examples/toka-scenarios/scenario-model-extensie.rs /app/rules/companions/scenario-model-extensie.rs
+COPY examples/toka-reconciliatie/casus-omissies.rgs /app/rules/companions/casus-omissies.rgs
+COPY examples/toka-scenarios/scenario-model-extensie.rgs /app/rules/companions/scenario-model-extensie.rgs
 COPY docker/marker/ /app/rules/marker/
 
 # H4 rollout rebuilds the image with a different descriptor via this build-arg; the
@@ -68,10 +68,10 @@ COPY docker/entrypoint.sh /app/entrypoint.sh
 # model foundation (toka-01..16) + the two companions, then the served rules
 # (toka-17..47) EXCLUDING toka-23 (its datum+datum is an exit-1 resolve error).
 RUN chmod +x /app/entrypoint.sh \
-    && { ls /app/rules/toka/toka-0[1-9]-*.rs /app/rules/toka/toka-1[0-6]-*.rs | sort; \
-         echo /app/rules/companions/casus-omissies.rs; \
-         echo /app/rules/companions/scenario-model-extensie.rs; \
-         ls /app/rules/toka/toka-1[7-9]-*.rs /app/rules/toka/toka-[2-9][0-9]-*.rs | sort | grep -v 'toka-23-'; \
+    && { ls /app/rules/toka/toka-0[1-9]-*.rgs /app/rules/toka/toka-1[0-6]-*.rgs | sort; \
+         echo /app/rules/companions/casus-omissies.rgs; \
+         echo /app/rules/companions/scenario-model-extensie.rgs; \
+         ls /app/rules/toka/toka-1[7-9]-*.rgs /app/rules/toka/toka-[2-9][0-9]-*.rgs | sort | grep -v 'toka-23-'; \
        } > /app/rules/toka-manifest.txt
 
 # Mounting a volume at /app/rules and overriding DESCRIPTOR + BRONNEN_MANIFEST

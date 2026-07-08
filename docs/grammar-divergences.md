@@ -1805,11 +1805,11 @@ startpuntbepalingen — the same sentences are normative §9.9 main-spec text �
 van de reis`, i.e. attribute `datum van vertrek` + a subject back-reference, for which the published spec
 declares NO `datum van vertrek` attribute at all on the Vlucht objecttype. This is a PURE OMISSION, not a
 naming drift: the `de datum van vertrek van de vlucht` line in our casus-md copy is our own reconciliation aid,
-not spec-declared, and our `casus-omissies.rs` supplies the attribute TAIL-FREE (`de datum van vertrek`),
+not spec-declared, and our `casus-omissies.rgs` supplies the attribute TAIL-FREE (`de datum van vertrek`),
 matching the written §9.9 reference form. Every one of the former ten
 scoreboard markers reduced to exactly these unresolved references — the distribution/aggregation/compound
 machinery lowers and fires as soon as they bind (empirically isolated per rule). Reconciliation:
-`examples/toka-reconciliatie/casus-omissies.rs` supplements precisely these members via the casus's own
+`examples/toka-reconciliatie/casus-omissies.rgs` supplements precisely these members via the casus's own
 Extensie construct. It deliberately lives OUTSIDE `examples/toka/` (which stays the faithful spec extraction
 that `make verify-corpus` parses); TokaDekkingTest and the TokaVuurTest end-to-end firing test load it
 additionally, while CasusTest deliberately keeps the pure extraction. Scoreboard effect: 19/29 → 28/29
@@ -1898,7 +1898,7 @@ FactModelGenerator derives the bean member from the registered attribute like an
 - **Scoreboard effect**: toka-43/44 lift and lower — the TOKA manifest grows 29 → 31 with 30 LOWERED; toka-23
   stays the single honest marker (the casus-data ceiling is unchanged). Their anchor `de datum van vertrek` is
   the FIFTH reconciled casus omission (see the TOKA casus omissions entry above) — a pure omission: the
-  published spec declares no `datum van vertrek` attribute at all, and `casus-omissies.rs` supplies it tail-free
+  published spec declares no `datum van vertrek` attribute at all, and `casus-omissies.rgs` supplies it tail-free
   to match the §9.9 reference.
 
 Absolute pins: PHASE_STARTPUNT (anchored walls on the 15th → 26/19 dg across a leap February; a
@@ -2184,7 +2184,7 @@ are pinned by phase_G_dim_over_vormen_zijn_spec_correct (absolute values, both b
 
 RegelSpraak v2.3.0 has NO test chapter: no §13 production, no syntax diagram, no worked example, no corpus
 fragment defines a way to write a rule's EXPECTED outcome alongside the rule. The **scenariotoetsen** surface —
-a regelanalist writing regels AND their expected results in one `.rs` file — is therefore a DELIBERATELY-FLAGGED
+a regelanalist writing regels AND their expected results in one `.rgs` file — is therefore a DELIBERATELY-FLAGGED
 grammar superset, the SAME posture as the §9.10 regelgroep extension above. Its BINDING contract (surface, resolver,
 IR, runner) is `docs/SCENARIOTOETSEN.md`; this section records only the **grammar** layer (this task) — the tokens,
 the collision analysis that freed each token, and the isolation guarantee. Semantics/expected VALUES are
@@ -2195,7 +2195,7 @@ re-derived from the spec's own worked examples + the TOKA casus (the prior-repo 
   The production start rule `regelSpraakDocument` and the corpus harness `corpusEntry` are BYTE-FOR-BYTE
   unchanged, so production parsing and `make verify-corpus` are untouched: the corpus stays **192-0-1**, the
   CorpusVuurTest partitions stay **59/54/79/9**, and `ScenarioParseTest` proves a scenario block is REJECTED under
-  `regelSpraakDocument` (clean only under `testDocument`). A `.rs` with no `Scenario`/`Situatie` header parses
+  `regelSpraakDocument` (clean only under `testDocument`). A `.rgs` with no `Scenario`/`Situatie` header parses
   identically under either start rule — the new alternatives are inert on non-extension input.
 
 - **Two constructs.** `situatieDefinitie : SITUATIE situatieNaam COLON situatieBlok` (a reusable
@@ -2207,10 +2207,10 @@ re-derived from the spec's own worked examples + the TOKA casus (the prior-repo 
   (`DE_PARAMETER parameterNaam IS situatieWaarde`). Every alternative is `#`-labelled for the resolver.
 
 - **Token choices + the collision grep that freed each (all phrases whitespace-collapsed over the exact
-  192-file `verify-corpus` `.rs` set — `examples/toka` + re-extracted `examples/spec-antlr`/`examples/spec-main`;
+  192-file `verify-corpus` `.rgs` set — `examples/toka` + re-extracted `examples/spec-antlr`/`examples/spec-main`;
   every count was 0):**
   - `SCENARIO : 'Scenario'`, `SITUATIE : 'Situatie'`, `CONSISTENT : 'consistent'` — single-word keywords; none
-    occurs in the corpus (`Scenario` 0, `Situatie` 0 in `.rs`, `consistent` 0; only `inconsistent`, matched by the
+    occurs in the corpus (`Scenario` 0, `Situatie` 0 in `.rgs`, `consistent` 0; only `inconsistent`, matched by the
     pre-existing `INCONSISTENT` token — the lexer is anchored at token start, so `inconsistent` never yields
     `CONSISTENT`). Placed before `UPPER_ID`/`LOWER_ID` per the existing ordering.
   - Whole-phrase, WSP-joined tokens (win by maximal munch ONLY when the full phrase is present):
@@ -2304,7 +2304,7 @@ serialized to text — agent-native and git-diffable). Analysts, however, live i
 second grammar (an ALEF-beslistabelspraak-like projection with no textual serialization to adopt — permanent
 maintenance for zero semantic gain), a **pure-python converter** (`tools/csv_naar_beslistabel.py`, sibling of
 `tools/extract_corpus.py`; stdlib only, no deps; `make csv-beslistabel FILE=<csv> [OUT=<pad>]`) turns a CSV
-decision table into the EXACT `Beslistabel`-block `.rs` fragment the parser already accepts. This adds an import
+decision table into the EXACT `Beslistabel`-block `.rgs` fragment the parser already accepts. This adds an import
 path, NOT a grammar surface: the grammar, resolver, transpilers and runtime are UNTOUCHED. The tool does **not**
 validate RegelSpraak content — the resolver remains the sole authority on meaning; the tool only SHAPES the table.
 
@@ -2333,12 +2333,12 @@ validate RegelSpraak content — the resolver remains the sole authority on mean
 `---` per column (incl. the row-number column) in the separator line; the parser skips whitespace and trims cells, so
 the emitted layout differs from a hand-aligned original yet parses and lowers identically.
 
-**Round-trip gate (byte-equal DRL).** A CSV render of the two §12 examples — `examples/beslistabel/spec12-woonregio-factor.rs`
-(1 enum-OR condition column) and `.../spec12-belasting-reisduur-band.rs` (2 EN-columns with `n.v.t.` open ends) —
+**Round-trip gate (byte-equal DRL).** A CSV render of the two §12 examples — `examples/beslistabel/spec12-woonregio-factor.rgs`
+(1 enum-OR condition column) and `.../spec12-belasting-reisduur-band.rgs` (2 EN-columns with `n.v.t.` open ends) —
 converts to a `Beslistabel` block that, spliced onto the original's pre-table prefix (comments + `Objecttype`
 declaration), produces **byte-identical DRL** via `Resolver --drl --allow-markers` (the CSV `naam` matches the
 original beslistabelnaam so no name difference leaks). Fixtures and the runner live under `tools/testdata/`
-(`*.csv`, `*.expected.rs`, `run_tests.sh`): V1 the DRL differential, V2 the three error paths (pipe cell / wrong
+(`*.csv`, `*.expected.rgs`, `run_tests.sh`): V1 the DRL differential, V2 the three error paths (pipe cell / wrong
 column count / missing header — each exit 1 with row+column, nothing written), V3 the quoting/whitespace survival.
 
 **Tool limit (documented).** The simple CSV form expresses a rectangular table of a doelkolom + `indien …` condition

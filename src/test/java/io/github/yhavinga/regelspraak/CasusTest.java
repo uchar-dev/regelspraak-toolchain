@@ -30,7 +30,7 @@ class CasusTest {
 
         String bron;
         try (Stream<Path> files = Files.list(dir)) {
-            bron = files.filter(p -> p.toString().endsWith(".rs")).sorted()
+            bron = files.filter(p -> p.toString().endsWith(".rgs")).sorted()
                     .map(CasusTest::read)
                     .collect(Collectors.joining("\n"));
         }

@@ -12,10 +12,10 @@ import java.util.List;
 
 /**
  * The CLI entry point for the decision service. It builds a {@link BeslisserKern} from a descriptor + the
- * service's {@code .rs} sources, then serves it over {@link DienstHttp}.
+ * service's {@code .rgs} sources, then serves it over {@link DienstHttp}.
  *
  * <pre>{@code
- *   DienstMain <descriptor.dienst.json> <bron.rs...> [--allow-markers] [--poort N]
+ *   DienstMain <descriptor.dienst.json> <bron.rgs...> [--allow-markers] [--poort N]
  * }</pre>
  *
  * <h2>Startup / exit discipline (the exit-3 MARKER discipline at the service boundary)</h2>
@@ -49,7 +49,7 @@ public final class DienstMain {
             args = parseArgs(rawArgs);
         } catch (IllegalArgumentException e) {
             System.err.println(e.getMessage());
-            System.err.println("gebruik: DienstMain <descriptor.dienst.json> <bron.rs...> "
+            System.err.println("gebruik: DienstMain <descriptor.dienst.json> <bron.rgs...> "
                     + "[--allow-markers] [--poort N]");
             System.exit(2);
             return;
@@ -128,7 +128,7 @@ public final class DienstMain {
         return kern.descriptor().dienst() == null ? "?" : kern.descriptor().dienst().naam();
     }
 
-    /** Parse {@code <descriptor> <bron.rs...> [--allow-markers] [--poort N]}. */
+    /** Parse {@code <descriptor> <bron.rgs...> [--allow-markers] [--poort N]}. */
     static Args parseArgs(String[] raw) {
         Path descriptor = null;
         List<Path> bronnen = new ArrayList<>();
@@ -151,7 +151,7 @@ public final class DienstMain {
             }
         }
         if (descriptor == null) throw new IllegalArgumentException("geen descriptor (.dienst.json) opgegeven");
-        if (bronnen.isEmpty()) throw new IllegalArgumentException("geen .rs bronbestanden opgegeven");
+        if (bronnen.isEmpty()) throw new IllegalArgumentException("geen .rgs bronbestanden opgegeven");
         return new Args(descriptor, bronnen, allowMarkers, poort);
     }
 }

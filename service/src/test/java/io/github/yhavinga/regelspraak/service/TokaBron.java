@@ -45,15 +45,15 @@ public final class TokaBron {
         for (int i = 1; i <= 16; i++) {
             final int n = i;
             try (Stream<Path> st = Files.list(toka)) {
-                st.filter(p -> p.getFileName().toString().matches("toka-" + String.format("%02d", n) + "-.*\\.rs"))
+                st.filter(p -> p.getFileName().toString().matches("toka-" + String.format("%02d", n) + "-.*\\.rgs"))
                   .sorted().forEach(uit::add);
             } catch (IOException e) { throw new UncheckedIOException(e); }
         }
-        uit.add(REPO.resolve("examples/toka-reconciliatie/casus-omissies.rs"));
-        uit.add(REPO.resolve("examples/toka-scenarios/scenario-model-extensie.rs"));
+        uit.add(REPO.resolve("examples/toka-reconciliatie/casus-omissies.rgs"));
+        uit.add(REPO.resolve("examples/toka-scenarios/scenario-model-extensie.rgs"));
         // served rule files toka-17..47 except toka-23
         try (Stream<Path> st = Files.list(toka)) {
-            st.filter(p -> p.getFileName().toString().matches("toka-(1[7-9]|[2-9][0-9])-.*\\.rs"))
+            st.filter(p -> p.getFileName().toString().matches("toka-(1[7-9]|[2-9][0-9])-.*\\.rgs"))
               .filter(p -> !p.getFileName().toString().startsWith("toka-23-"))
               .sorted().forEach(uit::add);
         } catch (IOException e) { throw new UncheckedIOException(e); }

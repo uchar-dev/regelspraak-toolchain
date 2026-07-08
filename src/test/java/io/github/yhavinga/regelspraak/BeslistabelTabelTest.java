@@ -153,7 +153,7 @@ class BeslistabelTabelTest {
         // kenmerk-attribuut and whose waarde is the "waar" assertion, under its row voorwaarde (so it FIRES when the
         // guard holds). Pins the spec12-kenmerk-minderjarig fixture (the desugar STRING is unit-tested separately in
         // BeslistabelDesugarTest; nothing pinned the RESOLVED kenmerktoekenning IR shape before).
-        RegelSpraakModel m = Resolver.resolve(read(Path.of("examples/beslistabel/spec12-kenmerk-minderjarig.rs")));
+        RegelSpraakModel m = Resolver.resolve(read(Path.of("examples/beslistabel/spec12-kenmerk-minderjarig.rgs")));
         assertTrue(m.errors().isEmpty(), () -> "fouten: " + m.errors());
         assertEquals(1, m.resolvedRegels.size());
         ResolvedRegel r = m.resolvedRegels.get(0);
@@ -171,7 +171,7 @@ class BeslistabelTabelTest {
         // ("1000 m" against an afstand declared in km). km and m are verenigbaar (both reduce to canoniek m), so the
         // desugared cross-unit comparison resolves with NO eenheidsfout — the comparison is unit-aware (LHS km, RHS m)
         // and both back-ends restate exactly (the DRL ≡ exec-model differential suite proves the identical lowering).
-        RegelSpraakModel m = Resolver.resolve(read(Path.of("examples/beslistabel/spec12-cel-eenheid-conversie.rs")));
+        RegelSpraakModel m = Resolver.resolve(read(Path.of("examples/beslistabel/spec12-cel-eenheid-conversie.rgs")));
         assertTrue(m.errors().isEmpty(), () -> "fouten: " + m.errors());
         assertTrue(m.diagnostics.isEmpty(), () -> "geen eenheids-waarschuwing verwacht: " + m.diagnostics);
         assertEquals(1, m.resolvedRegels.size());
@@ -197,7 +197,7 @@ class BeslistabelTabelTest {
         Path dir = Path.of("examples/beslistabel");
         assumeTrue(Files.isDirectory(dir), "beslistabel-fixtures afwezig");
         try (var files = Files.list(dir)) {
-            files.filter(p -> p.toString().endsWith(".rs")).sorted().forEach(p -> {
+            files.filter(p -> p.toString().endsWith(".rgs")).sorted().forEach(p -> {
                 RegelSpraakModel m = Resolver.resolve(read(p));
                 assertTrue(m.errors().isEmpty(), () -> p.getFileName() + " fouten: " + m.errors());
                 assertFalse(m.resolvedRegels.isEmpty(), () -> p.getFileName() + " leverde geen regels op");

@@ -52,9 +52,9 @@ class FactModelCliTest {
                     "toka-14-eenheidsysteem-afstand",
                     "toka-15-dagsoort-de-kerstdag-mv-kerstdagen",
                     "toka-16-tijdlijn-de-variabele-periode-van-3")
-                    .map(n -> "examples/toka/" + n + ".rs"),
-            Stream.of("examples/toka-reconciliatie/casus-omissies.rs",
-                    "examples/toka-scenarios/scenario-model-extensie.rs"))
+                    .map(n -> "examples/toka/" + n + ".rgs"),
+            Stream.of("examples/toka-reconciliatie/casus-omissies.rgs",
+                    "examples/toka-scenarios/scenario-model-extensie.rgs"))
             .collect(Collectors.toList());
 
     @Test void gegenereerde_toka_facts_compileren_en_valideren(@TempDir Path work) throws IOException {
@@ -110,7 +110,7 @@ class FactModelCliTest {
                     geldig altijd
                         De leeftijd van een Persoon moet berekend worden als de naam van de Persoon.
                 """;
-        Path bronBestand = work.resolve("fout.rs");
+        Path bronBestand = work.resolve("fout.rgs");
         Files.writeString(bronBestand, bron);
         assertFalse(Resolver.resolve(bron).isOk(), "de fixture moet een typefout opleveren");
 

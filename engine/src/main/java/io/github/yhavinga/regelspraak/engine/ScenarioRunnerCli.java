@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
  * CLI for the {@link ScenarioRunner} (docs/SCENARIOTOETSEN.md, § "Runner & CLI"). Usage:
  *
  * <pre>{@code
- *   io.github.yhavinga.regelspraak.engine.ScenarioRunnerCli [--trace] <file.rs> [<file.rs> ...]
+ *   io.github.yhavinga.regelspraak.engine.ScenarioRunnerCli [--trace] <file.rgs> [<file.rgs> ...]
  * }</pre>
  *
  * Multiple files are CONCATENATED in argument order (the TokaVuurTest pattern: objectmodel + rules + scenario
@@ -50,8 +50,8 @@ public final class ScenarioRunnerCli {
             else files.add(Path.of(a));
         }
         if (files.isEmpty()) {
-            System.err.println("geen .rs-bestand opgegeven — de golden TOKA-set (examples/toka-scenarios/manifest) "
-                    + "bestaat nog niet (volgende fase). Geef één of meer .rs-paden op.");
+            System.err.println("geen .rgs-bestand opgegeven — de golden TOKA-set (examples/toka-scenarios/manifest) "
+                    + "bestaat nog niet (volgende fase). Geef één of meer .rgs-paden op.");
             System.exit(2);
             return;
         }

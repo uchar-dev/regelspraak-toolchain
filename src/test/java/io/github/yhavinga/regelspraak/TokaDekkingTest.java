@@ -102,13 +102,13 @@ class TokaDekkingTest {
      *  its object model never declares (see that directory's README + grammar-divergences). */
     static final String RECONCILIATIE;
     static {
-        try { RECONCILIATIE = Files.readString(Path.of("examples/toka-reconciliatie/casus-omissies.rs")) + "\n"; }
+        try { RECONCILIATIE = Files.readString(Path.of("examples/toka-reconciliatie/casus-omissies.rgs")) + "\n"; }
         catch (IOException e) { throw new UncheckedIOException(e); }
     }
 
     private static String lees(Path dir) throws IOException {
         try (Stream<Path> files = Files.list(dir)) {
-            return files.filter(p -> p.toString().endsWith(".rs")).sorted()
+            return files.filter(p -> p.toString().endsWith(".rgs")).sorted()
                     .map(p -> { try { return Files.readString(p); } catch (IOException e) { throw new UncheckedIOException(e); } })
                     .collect(Collectors.joining("\n"));
         }

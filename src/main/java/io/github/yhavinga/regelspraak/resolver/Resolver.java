@@ -56,13 +56,13 @@ public final class Resolver {
         return bronnen.size();
     }
 
-    /** The --facts mode body: {@code rest} = [outdir, file.rs] after flag removal. Returns the process
+    /** The --facts mode body: {@code rest} = [outdir, file.rgs] after flag removal. Returns the process
      *  exit code (0 = beans geschreven, 1 = resolver-fouten, 2 = usage) instead of exiting, so the error
      *  discipline — an unresolvable model writes NOTHING under outdir — is testable as the REAL CLI path. */
     public static int factsModus(java.util.List<String> rest) throws java.io.IOException {
-        // --facts <outdir> <file.rs>: after --facts is consumed, the FIRST remaining arg is the outdir,
+        // --facts <outdir> <file.rgs>: after --facts is consumed, the FIRST remaining arg is the outdir,
         // the SECOND the source. (--allow-markers is meaningless here but tolerated, already removed.)
-        if (rest.size() < 2) { System.err.println("usage: Resolver --facts <outdir> <file.rs>"); return 2; }
+        if (rest.size() < 2) { System.err.println("usage: Resolver --facts <outdir> <file.rgs>"); return 2; }
         java.nio.file.Path outdir = java.nio.file.Path.of(rest.get(0));
         RegelSpraakModel mf = resolve(java.nio.file.Files.readString(java.nio.file.Path.of(rest.get(1))));
         // Check errors BEFORE touching disk: an unresolvable model writes NOTHING under outdir.
@@ -76,7 +76,7 @@ public final class Resolver {
         return 0;
     }
 
-    /** CLI: resolve a .rs file, print a model summary and any diagnostics; exit 1 if any error.
+    /** CLI: resolve a .rgs file, print a model summary and any diagnostics; exit 1 if any error.
      *  With --drl, print the transpiled Drools (DRL) instead of the summary; a DRL whose coverage
      *  manifest is not fully LOWERED (semantically inert marker rules) exits 3 unless
      *  --allow-markers is given — accepted input with inert output must never look like success.
@@ -91,7 +91,7 @@ public final class Resolver {
         boolean facts = rest.remove("--facts");
         if (drl && facts) { System.err.println("usage: --drl en --facts sluiten elkaar uit"); System.exit(2); }
         if (facts) System.exit(factsModus(rest));
-        if (rest.isEmpty()) { System.err.println("usage: Resolver [--drl] [--allow-markers] <file.rs>"); System.exit(2); }
+        if (rest.isEmpty()) { System.err.println("usage: Resolver [--drl] [--allow-markers] <file.rgs>"); System.exit(2); }
         RegelSpraakModel m = resolve(java.nio.file.Files.readString(java.nio.file.Path.of(rest.get(0))));
         if (drl) {
             // Transpiling also surfaces lowering-phase diagnostics (the dekking-WARNINGs per marker,

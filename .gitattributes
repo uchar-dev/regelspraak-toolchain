@@ -1,0 +1,2 @@
+# .rgs is RegelSpraak source (natural-language Dutch rule text), not a data file.
+*.rgs linguist-detectable=false

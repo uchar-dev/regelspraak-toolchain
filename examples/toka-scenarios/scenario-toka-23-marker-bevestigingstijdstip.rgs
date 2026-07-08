@@ -11,7 +11,7 @@
 // Dat is de eerlijke uitkomst: accepted input, maar de scope-regel zelf is spec-illegaal
 // getypeerd, en de runner mag zo'n bundel nooit stil laten passeren. De exit-3 MARKER-lezing
 // (een scope-regel die schoon tot een marker lowert ZONDER resolve-fout) wordt geoefend door
-// scenario-marker-exit3.rs en door ScenarioRunnerTest.marker_scope. Het manifest verwacht
+// scenario-marker-exit3.rgs en door ScenarioRunnerTest.marker_scope. Het manifest verwacht
 // voor dit scenario dus exit 1 (zie examples/toka-scenarios/manifest, met deze reden).
 Situatie basis-23:
 een Vlucht V1
