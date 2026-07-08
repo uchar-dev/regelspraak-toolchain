@@ -689,7 +689,14 @@ public final class ExecModelTranspiler {
             default      -> null;
         };
         if (accClass == null) return null;
-        PatternDSL.PatternDef src2 = src.bind(amtVar, (Function1) elemWaarde);
+        // §4.12 a leegwaarde (null) contributor is not counted — AND (crucially for a source DERIVED in the same
+        // fireAllRules pass) an element must not enter the accumulate window until its value exists: an element joined
+        // with a null value, then modify-fired once another rule of the cycle derives it, triggers a phreak REVERSE of
+        // the null prior contribution, which crashes ("Reversing a not existing accumulated object"). The `!= null`
+        // source guard makes that transition an INSERT (null -> present) instead of a reverse. (SOM already guards; this
+        // extends it to TOTAAL/MIN/MAX. A temporal per-element fold reads a List<Segment> getter, never null here.)
+        PatternDSL.PatternDef src2 = (temporeel ? src : src.expr(nextId("nn"), (Predicate1) (e) -> RegelSpraakRuntime.get(e, attr) != null))
+                .bind(amtVar, (Function1) elemWaarde);
         if (leegCount && (f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM)) {
             // §5.8.3 an empty MIN/MAX is LEEG (§5.3 Tabel 37 / §5.6 Tabel 44), but MinAccumulateFunction/MaxAccumulateFunction
             // bind NO result row over an EMPTY source, so a condition compare would never run (the rule silently reads onwaar).

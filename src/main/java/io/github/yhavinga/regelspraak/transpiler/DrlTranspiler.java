@@ -2665,6 +2665,15 @@ public final class DrlTranspiler {
         String elementExpr = ev;
         if (!fn.equals("count") && arg instanceof Expr.AttribuutRef a)
             elementExpr = elemWaarde.apply(a);
+        // §4.12 a leegwaarde (null) contributor is not counted — AND (crucially for a source DERIVED in the same
+        // fireAllRules pass) an element must not enter the accumulate window until its value exists: an element joined
+        // with a null value, then modify-fired once another rule of the cycle derives it, triggers a phreak REVERSE of
+        // the null prior contribution, which crashes ("Reversing a not existing accumulated object"). A `!= null` source
+        // guard makes that transition an INSERT (null -> present) rather than a reverse. (SOM guards above; extend it to
+        // TOTAAL/MIN/MAX over a plain attribute. A temporal per-element fold reads a List<Segment> getter, never null.)
+        String foldScope = filterScope;
+        if (!fn.equals("count") && !temporeelArg && arg instanceof Expr.AttribuutRef a)
+            foldScope = filterScope + ", " + ident(a.attribuut(), false) + " != null";
         // §5.8.3 an empty MIN/MAX is LEEG (§5.3 Tabel 37 / §5.6 Tabel 44), but a bare min()/max() accumulate binds NO
         // result row over an EMPTY source — so a downstream CONDITION compare would never run (the rule silently reads
         // onwaar, wrong for leeg==leeg / leeg!=gevuld). In a condition context (leegCount) bind count() alongside the
@@ -2673,12 +2682,12 @@ public final class DrlTranspiler {
         // the bare fold: an empty value-aggregation simply does not fire (unchanged).
         if (leegCount && (f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM)) {
             String cnt = "$n" + n;
-            acc.clausules.add("accumulate( " + ev + " : " + ident(elem.naam, true) + "( " + filterScope + " ) ; "
+            acc.clausules.add("accumulate( " + ev + " : " + ident(elem.naam, true) + "( " + foldScope + " ) ; "
                     + cnt + " : count(" + ev + "), " + var + " : " + fn + "( " + elementExpr + " ) )");
             return Frag.ok("(" + cnt + " == 0 ? null : " + fnImport("toBd") + "(" + var + "))");
         }
         acc.clausules.add("accumulate( " + ev + " : " + ident(elem.naam, true)
-                + "( " + filterScope + " ) ; " + var + " : " + fn + "( " + elementExpr + " ) )");
+                + "( " + foldScope + " ) ; " + var + " : " + fn + "( " + elementExpr + " ) )");
         // §5.8.3 a min/max reduction binds $accN as a java.lang.Number (the element's static type in the accumulate),
         // so a downstream cross-unit restate (.multiply/.divide) or arithmetic on it fails Drools' strict-mode method
         // resolution (Number has no .multiply). Coerce to BigDecimal, null-safe (an empty min/max stays leeg), mirroring

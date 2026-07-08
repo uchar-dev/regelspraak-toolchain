@@ -1780,6 +1780,9 @@ class ExecModelDifferentialTest {
             Eén reis betreft meerdere passagiers
             """;
     static Passagier pas(Vlucht reis, int prijs) { Passagier p = new Passagier(); p.setReis(reis); p.setPrijs(new BigDecimal(prijs)); return p; }
+    // A Passagier whose prijs is NOT seeded but DERIVED (from basistarief) by a rule in the same pass — so the max/min/som
+    // accumulate over prijs sees each element modify-fired after it entered the window (the reverse-crash reproducer).
+    static Passagier tarief(Vlucht reis, int basistarief) { Passagier p = new Passagier(); p.setReis(reis); p.setBasistarief(new BigDecimal(basistarief)); return p; }
     static final Fixture[] PHASE_C = {
         // §5.8.2 SOM "de som van de prijs van alle passagiers": non-empty sums; an EMPTY reis -> leegwaarde (null).
         new Fixture("SOM over the join (empty -> leegwaarde null)",
@@ -1847,6 +1850,38 @@ class ExecModelDifferentialTest {
             () -> { Vlucht v = new Vlucht(); return List.of(v, pas(v, 30), pas(v, 70)); },
             Map.of(),
             l -> ((Vlucht) l.get(0)).getTotaalprijs()),
+
+        // §13.4.17 aggregation over a source MUTATED in the SAME fireAllRules pass: the aggregated attribute (prijs) is
+        // itself DERIVED by another rule ("De prijs ... als zijn basistarief"), so each Passagier joins the accumulate
+        // with prijs==null, then is modify-fired once prijs is derived. Without a `!= null` source guard the null->value
+        // transition triggers a phreak REVERSE of the null prior contribution, crashing with "Reversing a not existing
+        // accumulated object" (LambdaAccumulator.tryReverse). The guard makes it an INSERT. Final max over {30,70} -> 70.
+        new Fixture("MAXIMUM over a source derived in the same cycle (reverse-crash regression)",
+            "Objecttype de Vlucht\n    de totaalprijs Numeriek (geheel getal);\nObjecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    het basistarief Numeriek (geheel getal);\n" + AGG_FEIT
+            + "Regel prijs\n    geldig altijd\n        De prijs van een Passagier moet berekend worden als zijn basistarief.\n"
+            + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de maximale waarde van de prijs van alle passagiers van de reis.\n",
+            () -> { Vlucht v = new Vlucht(); return List.of(v, tarief(v, 30), tarief(v, 70)); },
+            Map.of(),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 70
+
+        // As above, MINIMUM over a same-cycle derived source: min over {30,70} -> 30.
+        new Fixture("MINIMUM over a source derived in the same cycle (reverse-crash regression)",
+            "Objecttype de Vlucht\n    de totaalprijs Numeriek (geheel getal);\nObjecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    het basistarief Numeriek (geheel getal);\n" + AGG_FEIT
+            + "Regel prijs\n    geldig altijd\n        De prijs van een Passagier moet berekend worden als zijn basistarief.\n"
+            + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als de minimale waarde van de prijs van alle passagiers van de reis.\n",
+            () -> { Vlucht v = new Vlucht(); return List.of(v, tarief(v, 30), tarief(v, 70)); },
+            Map.of(),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 30
+
+        // As above, SOM over a same-cycle derived source: sum over {30,70} -> 100. (BigDecimalSum already reverses
+        // cleanly, but the fixture pins the same shape so a future non-reversing SOM swap stays parity-checked.)
+        new Fixture("SOM over a source derived in the same cycle (reverse-crash regression)",
+            "Objecttype de Vlucht\n    de totaalprijs Numeriek (geheel getal);\nObjecttype de Passagier\n    de prijs Numeriek (geheel getal);\n    het basistarief Numeriek (geheel getal);\n" + AGG_FEIT
+            + "Regel prijs\n    geldig altijd\n        De prijs van een Passagier moet berekend worden als zijn basistarief.\n"
+            + "Regel R\n    geldig altijd\n        De totaalprijs van een reis moet berekend worden als het totaal van de prijs van alle passagiers van de reis.\n",
+            () -> { Vlucht v = new Vlucht(); return List.of(v, tarief(v, 30), tarief(v, 70)); },
+            Map.of(),
+            l -> ((Vlucht) l.get(0)).getTotaalprijs()),   // 100
 
         // §5.6 getalpredicaat subselectie "die kleiner zijn dan 50": the comparison filters the AGGREGATED attribute
         // (prijs) on the accumulate source pattern. SOM of prijs over {30,70,40} keeping prijs<50 -> 30+40=70.
@@ -7254,7 +7289,7 @@ class ExecModelDifferentialTest {
     @Test void phase_B3_relational_match_drl_back_end()        { runDifferential("Phase B3", PHASE_B3, 6); }
     @Test void phase_B4_comparison_semantics_match_drl_back_end() { runDifferential("Phase B4", PHASE_B4, 7); }
     @Test void phase_B5_then_side_global_matches_drl_back_end()   { runDifferential("Phase B5", PHASE_B5, 4); }
-    @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 11); }
+    @Test void phase_C_aggregations_match_drl_back_end()          { runDifferential("Phase C", PHASE_C, 14); }
     @Test void phase_C_param_rhs_subselectie_matches_drl_back_end() { runDifferential("Phase C param-RHS", PHASE_C_PARAM_RHS, 2); }
     @Test void phase_C_compound_subselectie_matches_drl_back_end() { runDifferential("Phase C compound", PHASE_C_COMPOUND, 2); }
     @Test void phase_INLINE_predicaat_matches_drl_back_end()      { runDifferential("Phase INLINE", PHASE_INLINE, 3); }
