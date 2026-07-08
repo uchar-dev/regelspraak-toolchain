@@ -2,15 +2,22 @@
 
 ## Mission
 
-Build, **from scratch**, a new ANTLR 4 **parser + semantic resolver** for
-**RegelSpraak v2.3.0**, written in **Java**, to serve as the front-end and
-intermediate representation (IR) for a **RegelSpraak → Drools (DRL) transpiler**.
+Build, **from scratch**, a new **RegelSpraak v2.3.0** toolchain in **Java** — an
+ANTLR 4 parser + semantic resolver, a typed IR, a RegelSpraak → Drools
+transpiler, a firing engine, and a decision service on top.
+
+**The mission is achieved.** Parser, resolver, typed IR, both Drools back-ends
+(exec-model + DRL oracle), the fact-model generator, the analyst scenariotoetsen,
+and the HTTP decision service (JDK + Quarkus adapters, container/Helm/kind) have
+all landed. The repo is now in **maintenance/extension mode**: new work extends
+or hardens a shipped chain, it does not bootstrap it. Read `README.md` for the
+map and `docs/` for the architecture.
 
 This is a deliberate reboot. A prior parser/resolver exists (TypeScript,
 ANTLR-based) but was built quickly with weaker tooling and carries accumulated
-bugs. We are **not** refactoring it — we are re-deriving the grammar and the
-resolver directly from the specification, with the specification as the single
-source of truth.
+bugs. We did **not** refactor it — every construct was re-derived directly from
+the specification, with the specification as the single source of truth. That
+discipline still governs every extension.
 
 ## The specification is the oracle
 
@@ -69,13 +76,18 @@ never read the prior repos directly.
 - **Java**: JDK 21+ (the dev machine runs JDK 26). The Java target is chosen so
   the parser/resolver can eventually compile straight into the Quarkus/Drools
   engine it feeds.
-- **Makefile** is the entry point — `make help` lists targets. Core loop:
+- **Makefile** is the entry point — `make help` lists targets. The grammar
+  bootstrap loop (still the way to iterate on a grammar change):
   ```
-  # author grammar/RegelSpraakLexer.g4 and grammar/RegelSpraak.g4 first, then:
-  make parser                                   # generate Java sources (lexer first)
+  make parser                                   # regenerate Java sources (lexer first)
   make compile                                  # javac the generated parser
   make grun RULE=<startRule> FILE=<snippet>     # print the parse tree
   ```
+  The Maven-backed targets (`make test` for the jar-only resolver suite,
+  `mvn -o clean verify`, `make engine`, `make scenario-test`, `make image`,
+  `make kind-smoke`) build the rest of the chain — see the gate-set below.
+- The root `pom.xml` is **not** an aggregator: `engine/`, `service/`, and
+  `service-quarkus/` are separate builds, chained by explicit `mvn install`.
 - `lib/` is git-ignored; `make antlr-jar` re-fetches the jar on a fresh clone.
 
 See `docs/ANTLR-HOWTO.md` for the full workflow and the lexer/parser gotchas.
@@ -104,70 +116,64 @@ See `docs/ANTLR-HOWTO.md` for the full workflow and the lexer/parser gotchas.
 7. **Treat generation warnings as errors.** An ambiguity or nondeterminism warning
    is a grammar defect; a parse that works on top of it is luck.
 
-## From-scratch discipline
+## From-scratch discipline (how it was built — and how to extend it)
 
-- `grammar/` is intentionally empty except for a README. Author
-  `RegelSpraakLexer.g4`, then `RegelSpraak.g4`.
-- Grow the grammar incrementally against real input: start from the TOKA casus
-  and the spec's worked examples; extend rules until they parse, smoke-testing
-  with `make grun`.
-- The resolver comes after a stable parse tree: walk it with the generated
-  visitor, build the resolved AST (the transpiler's IR), and enforce the
-  typeringen matrix.
+This is context now, not a task list. The grammar (`grammar/RegelSpraakLexer.g4`,
+`grammar/RegelSpraak.g4`) was grown incrementally against real input — the TOKA
+casus and the spec's worked examples — smoke-tested with `make grun`. The
+resolver walks the parse tree with the generated visitor, builds the resolved AST
+(the transpiler's IR), and enforces the typeringen matrix. The transpiler, engine,
+and service were layered on top; the Maven/Quarkus build the old plan deferred now
+exists (root `pom.xml` + `engine/`, `service/`, `service-quarkus/`).
 
-## What is deliberately not here yet
-
-- **No grammar** (`*.g4`) — that is the first task.
-- **No Maven/Quarkus project.** The jar-only Makefile is sufficient until the
-  resolver and transpiler need a JVM dependency graph and JUnit. When that time
-  comes, add a `pom.xml` (Java 21, `org.antlr:antlr4-runtime:4.13.2`, JUnit 5)
-  and have Maven compile the ANTLR-generated sources; the Drools engine this
-  feeds is Quarkus/Maven, so a Maven build aligns the eventual integration.
+The same discipline governs any extension: derive every RegelSpraak construct
+from the v2.3.0 spec, extend a rule against a failing example, and keep the whole
+gate-set green (below). Documented, spec-honest divergences go in
+`docs/grammar-divergences.md`; the analyst-toets extension is contracted in
+`docs/SCENARIOTOETSEN.md`.
 
 ## Working autonomously
 
-This project is built to run hands-off. The done-condition is verifiable, so let
-the verifier drive.
+This project is built to run hands-off. The green-condition is verifiable, so let
+the verifier drive. The chain is shipped; new work extends or hardens it and must
+leave the **whole** gate-set green — a green subset is not green.
 
-**Definition of done**
-1. `grammar/RegelSpraakLexer.g4` and `grammar/RegelSpraak.g4` exist.
-2. `make compile` is green.
-3. Every RegelSpraak snippet in the TOKA casus and the spec's worked examples
-   parses cleanly via `make grun` (no lexer errors, no `error` nodes).
-4. The resolver builds a typed AST and enforces the typeringen matrix, with
-   passing tests.
+**The standing gate-set (the definition of green)** — floors are "≥ the value at
+HEAD", never a number to chase down:
+1. `make test` — the jar-only parser/resolver JUnit suite (offline, no Maven).
+2. `mvn -o clean verify` — the full differential suite incl. `src/it/java`
+   (DRL fired in Drools, DRL≡exec-model); ≥ 922 green.
+3. `make engine` — the exec-model engine consumer; ≥ 112 green.
+4. `make scenario-test` — the golden TOKA analyst set via
+   `examples/toka-scenarios/manifest`; 30/30 PASS, marker-exit-3 present.
+5. `make facts` — the TOKA fact-model beans generate *and* javac clean (doubles
+   as a model-level resolve gate).
+6. The service modules stay green: `service` ≥ 131, `service-quarkus` ≥ 34.
+7. `make verify-corpus` — every spec snippet under `corpusEntry` parses (no
+   lexer errors, no `error` nodes), known defects excepted.
 
-**The loop** (per Chapter 13 section): map → implement → `make compile` →
-`make grun` the examples → adversarial review → next. Work section by section in
-§13 order.
+`make image` / `make kind-smoke` are host-only packaging gates (no Docker in the
+sandbox); run them on the host before a release, not per change.
+
+**The loop:** new work enters as a backlog card (`backlog/` is git-ignored local
+planning). Per card: derive the construct from the v2.3.0 spec → extend against a
+failing example → run the affected gate red-then-green → re-run the full gate-set
+→ commit. Documented, spec-honest divergences go in `docs/grammar-divergences.md`.
 
 **Subagents** (`.claude/agents/`):
 - `spec-cartographer` — read-only; maps a §13 section to tokens/rules/examples.
   Fan out over sections in parallel.
 - `grammar-adversary` — builds and runs the grammar against spec inputs to find
-  mis-parses. Run before declaring a section done.
+  mis-parses. Run before declaring a grammar change done.
 - `resolver-typechecker` — checks resolver code against the typeringen matrix.
 
-**Commands** (`.claude/commands/`): `/grammar-section <§>` does one section
+**Commands** (`.claude/commands/`): `/grammar-section <§>` does one §13 section
 end-to-end; `/verify-corpus` builds and parses the whole example corpus and
 reports.
 
-**Launching**
-```
-claude --permission-mode plan        # approve the build plan first
-/goal Drive this build to the Definition of done above, section by section through
-      Chapter 13, spec as the only oracle; commit each green section. Met only once
-      a turn has shown `make compile` succeeding, `/verify-corpus` reporting every
-      snippet passing, and the resolver tests green — surface that output each turn.
-      If blocked, explain and stop after ~25 turns.
-```
-The `/goal` evaluator is a separate model that reads only this transcript and
-cannot run commands, so *show* the `make` / `/verify-corpus` output rather than
-asserting success; there is no turn cap unless the condition names one.
-
-Or fan out hard: ask Claude to "create a workflow that maps all of Chapter 13 in
-parallel, drafts the lexer then the parser, and adversarially verifies each
-section against the TOKA casus."
+When a turn claims a gate is green, *show* the `make` / `mvn` output rather than
+asserting it — a reader (or a `/goal` evaluator) cannot run commands and reads
+only the transcript.
 
 **Permissions:** `.claude/settings.json` sets `defaultMode: bypassPermissions` —
 it runs without prompts. **Only run this repo inside a sandbox / VM.** `rm -rf /`,
