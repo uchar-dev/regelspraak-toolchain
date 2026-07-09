@@ -108,6 +108,11 @@ public final class DescriptorLoader {
             List<String> uitv = ep.uitvoer() == null ? List.of() : ep.uitvoer();
             for (int j = 0; j < uitv.size(); j++)
                 valideerUitvoer(model, uitv.get(j), pad + ".uitvoer[" + j + "]", uit);
+
+            // invoerElementen: same selector syntax as uitvoer — element-level scope-completeness opt-outs
+            List<String> invEl = ep.invoerElementenOfLeeg();
+            for (int j = 0; j < invEl.size(); j++)
+                valideerUitvoer(model, invEl.get(j), pad + ".invoerElementen[" + j + "]", uit);
         }
         return uit;
     }

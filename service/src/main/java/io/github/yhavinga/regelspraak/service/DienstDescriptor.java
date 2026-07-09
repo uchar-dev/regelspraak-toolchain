@@ -53,6 +53,17 @@ public record DienstDescriptor(
      * @param scope   which rules/regelgroepen this entry point fires
      * @param invoer  the objecttype names accepted as request instances
      * @param uitvoer the output selectors: {@code "Objecttype.attribuut"} or {@code "Objecttype:kenmerk"}
+     * @param invoerElementen OPTIONAL element-level input declarations, in the {@code uitvoer} selector syntax
+     *        ({@code "Objecttype.attribuut"} / {@code "Objecttype:kenmerk"}): each names a kenmerk/attribuut the
+     *        CALLER supplies in the request rather than one the scope derives. The scope-completeness check
+     *        ({@link BeslisserKern#bouw}) skips a consumed element declared here — its missing in-scope producer
+     *        is intentional (an ordinary {@code invoer} objecttype only declares instance presence, NOT that its
+     *        derived kenmerk/attribuut values are caller-supplied, so the opt-out is element-granular).
+     * @param scopeControleUit OPT-OUT of the whole startup scope-completeness validation for this entry point.
+     *        The check verifies that every kenmerk/attribuut the scoped rules CONSUME has an in-scope producer
+     *        (or an {@code invoerElementen} declaration); a producer that exists but sits OUTSIDE the scope makes
+     *        the scoped rule read a stale-false/leeg value, semantically diverging from the source concatenation
+     *        the scenariotoetsen run against. {@code true} waives the check entirely; absent/false = strict.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Entrypoint(
@@ -60,7 +71,12 @@ public record DienstDescriptor(
             String pad,
             Scope scope,
             List<String> invoer,
-            List<String> uitvoer) {}
+            List<String> uitvoer,
+            @JsonProperty("invoerElementen") List<String> invoerElementen,
+            @JsonProperty("scopeControleUit") boolean scopeControleUit) {
+
+        public List<String> invoerElementenOfLeeg() { return invoerElementen == null ? List.of() : invoerElementen; }
+    }
 
     /**
      * The rule scope of an entry point: named rules ({@code regelnamen}) and/or named regelgroepen

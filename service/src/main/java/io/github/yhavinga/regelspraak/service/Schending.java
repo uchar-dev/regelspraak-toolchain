@@ -33,6 +33,11 @@ public record Schending(Soort soort, String veld, String bericht) {
          *  list is the declared contract; an absent required instance can never fire meaningfully (the scoped
          *  rules quantify over instances of that objecttype), so this is a hard 400 before any fire. */
         ONTBREKENDE_INSTANTIE,
+        /** The entrypoint scopes a rule that CONSUMES a kenmerk/attribuut whose only PRODUCER (a
+         *  kenmerktoekenning / gelijkstelling) sits OUTSIDE the scope, and the element is not a declared invoer.
+         *  The scoped rule would read that element as a stale false/leeg — semantically diverging from the source
+         *  concatenation the scenariotoetsen run against. A hard startup error unless the entrypoint opts out. */
+        SCOPE_ONVOLLEDIG,
         /** The request JSON itself is malformed / structurally wrong. */
         MALFORMED
     }
