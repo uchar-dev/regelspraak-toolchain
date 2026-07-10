@@ -547,9 +547,10 @@ public final class ExecModelTranspiler {
         items.add(pattern);
         items.addAll(extra);
         items.add(consequence);
-        return PatternDSL.rule(kop(r.naam()))
-                .attribute(Rule.Attribute.NO_LOOP, true)
-                .build(items.toArray(new RuleItemBuilder[0]));
+        int salience = stratificatieSalience(r);   // §9.2 negation-stratification: producers of a negated-read kenmerk first
+        var bouwer = PatternDSL.rule(kop(r.naam())).attribute(Rule.Attribute.NO_LOOP, true);
+        if (salience != 0) bouwer = bouwer.attribute(Rule.Attribute.SALIENCE, salience);
+        return bouwer.build(items.toArray(new RuleItemBuilder[0]));
     }
 
     /** Write {@code v} to the doel via {@code setter}, then {@code drools.update} ONLY when the value actually CHANGED
@@ -5078,6 +5079,28 @@ public final class ExecModelTranspiler {
     static String prop(String naam) {
         String p = RegelSpraakRuntime.pascal(naam);
         return p.isEmpty() ? p : Character.toLowerCase(p.charAt(0)) + p.substring(1);
+    }
+
+    /** §9.2 the stratification salience for a rule. A §13.4.5 kenmerktoekenning is MONOTONIC (spec §3.4 l.795: a
+     *  kenmerk is default-onwaar and a toekenning only ever makes it WAAR — never un-sets it), so a rule that reads
+     *  "niet &lt;kenmerk&gt;" must be evaluated at the FIXPOINT, after every producer of that kenmerk (and their
+     *  own computation chains) has run. Forward-chaining gives no such guarantee: a negation-consumer eligible in
+     *  the transient window fires and its once-true write persists. We push every rule whose voorwaarde reads a
+     *  NEGATED kenmerk to the BOTTOM of the agenda (salience -1) so it fires only after the default-0 positive
+     *  computation has quiesced (the producer set the kenmerk). This is stronger than lifting the direct producer:
+     *  the producer may itself depend on a berekening (drempelwaarde) that must fire first — sinking the consumer
+     *  keeps the whole positive chain ahead of it. Every non-negation rule keeps salience 0 (unchanged agenda). */
+    private int stratificatieSalience(ResolvedRegel r) {
+        if (r.voorwaarde() == null) return 0;
+        return leestNegatieKenmerk(r.voorwaarde()) ? -1 : 0;
+    }
+
+    /** Whether a condition tree reads a kenmerk in a NEGATED membership test. */
+    private static boolean leestNegatieKenmerk(Conditie c) {
+        if (c == null) return false;
+        if (c instanceof Conditie.Kenmerk k && k.negatie()) return true;
+        if (c instanceof Conditie.Samengesteld s) for (Conditie d : s.onderdelen()) if (leestNegatieKenmerk(d)) return true;
+        return false;
     }
 
     /** The subject's OWN declared attributes a value expression READS, as bean property names — the
