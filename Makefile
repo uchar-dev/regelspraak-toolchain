@@ -8,7 +8,7 @@
 # the Drools transpiler grow into real JVM code (see CLAUDE.md / docs/ANTLR-HOWTO.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus verify-negatief-corpus drl facts drools-it engine grun gui tokens clean clean-jar image kind-smoke csv-beslistabel
+.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus verify-negatief-corpus drl facts graaf drools-it engine grun gui tokens clean clean-jar image kind-smoke csv-beslistabel
 
 ANTLR4_VERSION := 4.13.2
 ANTLR4_URL     := https://www.antlr.org/download/antlr-$(ANTLR4_VERSION)-complete.jar
@@ -57,6 +57,7 @@ help:
 	@echo "  make verify-negatief-corpus          Parse the malformed negative corpus; report over/under-acceptance"
 	@echo "  make drl  FILE=<input>               Transpile a .rgs file to Drools (DRL) on stdout"
 	@echo "  make facts                           Generate the TOKA fact-model beans and javac them (out/facts/)"
+	@echo "  make graaf FILE=\"a.rgs …\" [OUT=… MMD=1]  Emit the dataflow regelgraaf (regels ↔ gegevens) as HTML (or bare Mermaid with MMD=1)"
 	@echo "  make csv-beslistabel FILE=<csv> [OUT=<pad>]  Convert a CSV decision table to a §12 Beslistabel .rgs fragment"
 	@echo "  make drools-it                       (needs Maven+network) Compile & fire the DRL in Drools"
 	@echo "  make engine                          (needs Maven) Build + test the shippable engine consumer"
@@ -177,6 +178,17 @@ facts: resolver
 	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver --facts $(FACTS_DIR)/src $(FACTS_DIR)/toka-model.rgs
 	@javac -d $(FACTS_DIR)/classes $$(find $(FACTS_DIR)/src -name '*.java')
 	@echo "PASS: facts gegenereerd én gecompileerd naar $(FACTS_DIR)/classes"
+
+# Emit the regelgraaf — the bipartite dataflow graph regels ↔ gegevens the resolved model implies — over one or
+# more .rgs files (concatenated in listed order, so a model chain is FILE="a.rgs b.rgs …"). Default output is a
+# self-contained HTML page with an embedded Mermaid flowchart (Mermaid loads from a CDN, so rendering needs the
+# network); add MMD=1 for the bare, offline-usable Mermaid text. OUT overrides the default out/regelgraaf.{html,mmd}.
+# Model-level and jar-only (no Drools): an unresolvable model writes NOTHING and exits 1 (the same disk discipline
+# as --facts). The producer/consumer analysis is the shared ProducentConsument core behind the service's
+# scope-completeness check, so the graph never diverges from that gate.
+GRAAF_OUT := $(if $(OUT),$(OUT),$(OUT_DIR)/regelgraaf.$(if $(MMD),mmd,html))
+graaf: resolver
+	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver $(if $(MMD),--graaf-mmd,--graaf) $(GRAAF_OUT) $(FILE)
 
 # Compile AND FIRE the generated DRL in a real Drools engine — the executable
 # proof that transpilation is correct, not merely well-shaped. Unlike the jar-only

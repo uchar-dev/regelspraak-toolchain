@@ -7,6 +7,8 @@ import io.github.yhavinga.regelspraak.engine.BeanCompiler;
 import io.github.yhavinga.regelspraak.engine.ParametersetLader;
 import io.github.yhavinga.regelspraak.engine.Verbalisator;
 import io.github.yhavinga.regelspraak.engine.ParametersetLader.ParametersetFout;
+import io.github.yhavinga.regelspraak.graaf.ProducentConsument;
+import io.github.yhavinga.regelspraak.graaf.ProducentConsument.ElementSleutel;
 import io.github.yhavinga.regelspraak.model.Parameterset;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
@@ -206,7 +208,7 @@ public final class BeslisserKern {
         List<Schending> hardeFouten = new ArrayList<>();
         List<Schending> scopeFouten = new ArrayList<>();
         // the producer index is model-wide (every rule that WRITES a kenmerk/attribuut), computed once.
-        Map<ElementSleutel, java.util.Set<String>> producenten = producentIndex(model);
+        Map<ElementSleutel, java.util.Set<String>> producenten = ProducentConsument.producentIndex(model);
         for (DienstDescriptor.Entrypoint ep : descriptor.entrypoints()) {
             if (!ep.scopeControleUit())
                 scopeFouten.addAll(scopeVolledigheid(ep, model, producenten));
@@ -445,35 +447,10 @@ public final class BeslisserKern {
 
     // ---------------- scope-completeness validation ----------------
 
-    /** The identity of a consumed/produced model element: the objecttype it lives on (canonical name, or "" when
-     *  the resolver could not bind the owner), its kenmerk/attribuut naam, and whether it is a kenmerk (a boolean
-     *  property, §13.4.5) rather than an ordinary attribuut. Case-folded so a case-only spelling difference (the
-     *  resolver's own tolerance) still matches producer to consumer. */
-    private record ElementSleutel(String objecttype, String naam, boolean kenmerk) {
-        static ElementSleutel van(String objecttype, String naam, boolean kenmerk) {
-            return new ElementSleutel(objecttype == null ? "" : objecttype.toLowerCase(java.util.Locale.ROOT),
-                    naam == null ? "" : naam.trim().toLowerCase(java.util.Locale.ROOT), kenmerk);
-        }
-    }
-
-    /**
-     * The model-wide producer index: for every value-writing {@link io.github.yhavinga.regelspraak.ir.ResolvedRegel} (a
-     * kenmerktoekenning, gelijkstelling, berekening or initialisatie), map the element it WRITES (its
-     * {@code doel}) to the set of rule base-names that write it. A kenmerk and an attribuut of the same spelling
-     * are distinct keys. This is the authority a scoped rule's CONSUMED elements are checked against: an element
-     * consumed in scope whose every producer sits outside the scope reads stale-false at runtime.
-     */
-    private static Map<ElementSleutel, java.util.Set<String>> producentIndex(RegelSpraakModel model) {
-        Map<ElementSleutel, java.util.Set<String>> uit = new LinkedHashMap<>();
-        for (var r : model.resolvedRegels) {
-            if (!(r.doel() instanceof io.github.yhavinga.regelspraak.ir.Expr.AttribuutRef ref)) continue;
-            boolean kenmerk = r.soort() == io.github.yhavinga.regelspraak.ir.ResolvedRegel.Soort.KENMERKTOEKENNING;
-            String ot = ref.objecttype() == null ? "" : ref.objecttype().naam;
-            uit.computeIfAbsent(ElementSleutel.van(ot, ref.attribuut(), kenmerk),
-                    k -> new java.util.LinkedHashSet<>()).add(basisNaam(r.naam()));
-        }
-        return uit;
-    }
+    // The producer/consumer analysis — the producer index, the consumed-element walk, and the ElementSleutel
+    // identity — is the SHARED {@link ProducentConsument} core (jar-only, no Drools). This class is one of its
+    // two consumers (the regelgraaf builder is the other); both check producer against consumer over the same
+    // IR-derived facts, so this scope-completeness gate and the graph never diverge.
 
     /**
      * The scope-completeness violations for one entry point (decision: fail-fast, opt-out per entrypoint). For
@@ -497,7 +474,7 @@ public final class BeslisserKern {
         java.util.Set<ElementSleutel> gemeld = new java.util.LinkedHashSet<>();
         for (var r : model.resolvedRegels) {
             if (!scope.contains(basisNaam(r.naam()))) continue;
-            for (ElementSleutel consumed : verbruikt(r)) {
+            for (ElementSleutel consumed : ProducentConsument.verbruikt(r)) {
                 java.util.Set<String> writers = producenten.get(consumed);
                 if (writers == null || writers.isEmpty()) continue;          // a genuine request input
                 if (writers.stream().anyMatch(scope::contains)) continue;    // produced in scope: fine
@@ -512,47 +489,6 @@ public final class BeslisserKern {
             }
         }
         return uit;
-    }
-
-    /** The kenmerken/attributen a resolved rule CONSUMES: the kenmerk-membership tests + operand attribuut-reads
-     *  of its voorwaarde, plus every attribuut-read in its RHS {@code waarde}. The rule's OWN write target
-     *  ({@code doel}) is excluded — a rule reading what it writes is not a cross-rule dependency. */
-    private static java.util.Set<ElementSleutel> verbruikt(io.github.yhavinga.regelspraak.ir.ResolvedRegel r) {
-        java.util.Set<ElementSleutel> uit = new java.util.LinkedHashSet<>();
-        String subject = r.doel() instanceof io.github.yhavinga.regelspraak.ir.Expr.AttribuutRef ref && ref.objecttype() != null
-                ? ref.objecttype().naam : "";
-        verzamelConditie(r.voorwaarde(), subject, uit);
-        verzamelExpr(r.waarde(), uit);
-        return uit;
-    }
-
-    /** Collect consumed kenmerken (from {@link io.github.yhavinga.regelspraak.ir.Conditie.Kenmerk}) and operand attributen out
-     *  of a condition tree. A subject-own kenmerk (no navigatie, no eigenaar) is attributed to {@code subject};
-     *  a kenmerk with a bound {@code eigenaar} to that owner; a navigated kenmerk stays owner-unknown ("")
-     *  (matched producer-side by naam only). */
-    private static void verzamelConditie(io.github.yhavinga.regelspraak.ir.Conditie c, String subject,
-            java.util.Set<ElementSleutel> uit) {
-        if (c == null) return;
-        if (c instanceof io.github.yhavinga.regelspraak.ir.Conditie.Kenmerk k) {
-            String ot = k.eigenaar() != null ? k.eigenaar().naam : (k.navigatie() == null ? subject : "");
-            uit.add(ElementSleutel.van(ot, k.kenmerk(), true));
-        }
-        if (c instanceof io.github.yhavinga.regelspraak.ir.Conditie.Samengesteld s)
-            for (var d : s.onderdelen()) verzamelConditie(d, subject, uit);
-        // operand attribuut-reads inside comparisons/predicates/periodes
-        io.github.yhavinga.regelspraak.ir.Conditie.bevatOperand(c, e -> { verzamelExpr(e, uit); return false; });
-    }
-
-    /** Collect the attribuut-reads ({@link io.github.yhavinga.regelspraak.ir.Expr.AttribuutRef}, kenmerk-flag false) out of
-     *  an expression tree via the generic IR scan. */
-    private static void verzamelExpr(io.github.yhavinga.regelspraak.ir.Expr e, java.util.Set<ElementSleutel> uit) {
-        io.github.yhavinga.regelspraak.ir.Expr.bevat(e, x -> {
-            if (x instanceof io.github.yhavinga.regelspraak.ir.Expr.AttribuutRef ref) {
-                String ot = ref.objecttype() == null ? "" : ref.objecttype().naam;
-                uit.add(ElementSleutel.van(ot, ref.attribuut(), false));
-            }
-            return false;
-        });
     }
 
     /** The descriptor parameter defaults, decoded per-parameter datatype to (globalNaam -> value). */

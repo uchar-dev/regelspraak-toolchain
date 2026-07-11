@@ -76,6 +76,39 @@ public final class Resolver {
         return 0;
     }
 
+    /** The --graaf / --graaf-mmd mode body: {@code rest} = [out, file.rgs...] after flag removal — the FIRST
+     *  remaining arg is the output file, the rest are the source files of the model chain (concatenated in
+     *  order). {@code html} picks the self-contained HTML page (embedded Mermaid via CDN) over the bare Mermaid
+     *  text. Returns the process exit code (0 = graaf geschreven, 1 = resolver-fouten, 2 = usage) instead of
+     *  exiting, so an unresolvable model writes NOTHING — the same disk discipline as --facts. The graph is
+     *  model-level, so it deliberately does NOT run the DRL transpiler nor apply the exit-3 marker discipline. */
+    public static int graafModus(java.util.List<String> rest, boolean html) throws java.io.IOException {
+        if (rest.size() < 2) {
+            System.err.println("usage: Resolver " + (html ? "--graaf" : "--graaf-mmd") + " <out> <file.rgs...>");
+            return 2;
+        }
+        java.nio.file.Path out = java.nio.file.Path.of(rest.get(0));
+        StringBuilder bron = new StringBuilder();
+        for (String f : rest.subList(1, rest.size()))
+            bron.append(java.nio.file.Files.readString(java.nio.file.Path.of(f))).append('\n');
+        RegelSpraakModel m = resolve(bron.toString());
+        // Check errors BEFORE touching disk: an unresolvable model writes NOTHING (a graph over a broken model
+        // would show half-bound edges).
+        if (!m.isOk()) {
+            m.diagnostics.forEach(d -> System.out.println("  " + d));
+            return 1;
+        }
+        var graaf = io.github.yhavinga.regelspraak.graaf.RegelGraaf.bouw(m);
+        java.nio.file.Files.writeString(out, html ? graaf.html() : graaf.mermaid(),
+                java.nio.charset.StandardCharsets.UTF_8);
+        long invoer = graaf.nodes().stream()
+                .filter(n -> n.kind() == io.github.yhavinga.regelspraak.graaf.RegelGraaf.NodeKind.INVOER).count();
+        long eind = graaf.nodes().stream().filter(io.github.yhavinga.regelspraak.graaf.RegelGraaf.Node::eindOutput).count();
+        System.out.printf("graaf: %d knopen, %d kanten (%d invoer-bronnen, %d eind-outputs) geschreven naar %s%n",
+                graaf.nodes().size(), graaf.edges().size(), invoer, eind, out);
+        return 0;
+    }
+
     /** CLI: resolve a .rgs file, print a model summary and any diagnostics; exit 1 if any error.
      *  With --drl, print the transpiled Drools (DRL) instead of the summary; a DRL whose coverage
      *  manifest is not fully LOWERED (semantically inert marker rules) exits 3 unless
@@ -83,13 +116,20 @@ public final class Resolver {
      *  With --facts &lt;outdir&gt;, generate the implied fact-model beans (§13.3) into &lt;outdir&gt;
      *  and exit 0. --facts is model-level: it deliberately does NOT run the DRL transpiler and does NOT
      *  apply the exit-3 marker discipline (that discipline is about RULE lowering, orthogonal to the
-     *  fact-model the beans encode). --facts and --drl are mutually exclusive output modes. */
+     *  fact-model the beans encode). --facts and --drl are mutually exclusive output modes.
+     *  With --graaf &lt;out.html&gt; / --graaf-mmd &lt;out.mmd&gt; over one-or-more source files, emit the
+     *  regelgraaf (dataflow regels &harr; gegevens) as a self-contained HTML page (embedded Mermaid via CDN) or
+     *  as bare Mermaid text (offline-usable). Also model-level; mutually exclusive with --drl and --facts. */
     public static void main(String[] args) throws java.io.IOException {
         var rest = new java.util.ArrayList<>(java.util.List.of(args));
         boolean drl = rest.remove("--drl");
         boolean allowMarkers = rest.remove("--allow-markers");
         boolean facts = rest.remove("--facts");
-        if (drl && facts) { System.err.println("usage: --drl en --facts sluiten elkaar uit"); System.exit(2); }
+        boolean graaf = rest.remove("--graaf");
+        boolean graafMmd = rest.remove("--graaf-mmd");
+        int uitvoerModi = (drl ? 1 : 0) + (facts ? 1 : 0) + (graaf || graafMmd ? 1 : 0);
+        if (uitvoerModi > 1) { System.err.println("usage: --drl, --facts en --graaf[-mmd] sluiten elkaar uit"); System.exit(2); }
+        if (graaf || graafMmd) System.exit(graafModus(rest, graaf));
         if (facts) System.exit(factsModus(rest));
         if (rest.isEmpty()) { System.err.println("usage: Resolver [--drl] [--allow-markers] <file.rgs>"); System.exit(2); }
         RegelSpraakModel m = resolve(java.nio.file.Files.readString(java.nio.file.Path.of(rest.get(0))));
