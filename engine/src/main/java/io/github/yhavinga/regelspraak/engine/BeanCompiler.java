@@ -13,10 +13,15 @@ import javax.tools.ToolProvider;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Compiles the {@link FactModelGenerator}-emitted bean sources IN MEMORY (javax.tools) and serves the resulting
@@ -33,8 +38,41 @@ import java.util.Map;
 public final class BeanCompiler {
     private BeanCompiler() {}
 
-    /** Compile {@code bronnen} (simple class name → Java source) in memory; return a loader serving them. */
+    /**
+     * Content-keyed cache of compiled bean bundles for the lifetime of the JVM: a SHA-256 over the (className →
+     * source) map maps to the loader serving THAT exact bytecode. The generated beans are immutable classes and
+     * the loader is stateless, so many callers that regenerate the SAME fact model (a mini-model shared across
+     * dozens of differential/scenario cases, or the 32 golden manifest lines that share one TOKA foundation) get
+     * ONE javac invocation + ONE loader instead of recompiling identical sources every time. A distinct model
+     * (different beans) keys to a distinct entry, so no two models are ever conflated.
+     */
+    private static final Map<String, ClassLoader> CACHE = new ConcurrentHashMap<>();
+
+    /** Compile {@code bronnen} (simple class name → Java source) in memory; return a loader serving them.
+     *  Identical {@code bronnen} within one JVM are compiled ONCE (content-keyed cache) and share the loader. */
     public static ClassLoader compileer(Map<String, String> bronnen) {
+        return CACHE.computeIfAbsent(sleutel(bronnen), k -> compileerOngecached(bronnen));
+    }
+
+    /** SHA-256 over the sorted (className → source) entries — the content key that decides cache identity. */
+    private static String sleutel(Map<String, String> bronnen) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            for (Map.Entry<String, String> e : new TreeMap<>(bronnen).entrySet()) {
+                md.update(e.getKey().getBytes(StandardCharsets.UTF_8));
+                md.update((byte) 0);
+                md.update(e.getValue().getBytes(StandardCharsets.UTF_8));
+                md.update((byte) 0);
+            }
+            StringBuilder hex = new StringBuilder(64);
+            for (byte b : md.digest()) hex.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+            return hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 niet beschikbaar", e);
+        }
+    }
+
+    private static ClassLoader compileerOngecached(Map<String, String> bronnen) {
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         if (javac == null)
             throw new IllegalStateException("geen JDK-compiler beschikbaar (draai op een JDK, niet een JRE)");

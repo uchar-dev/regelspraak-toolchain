@@ -219,8 +219,17 @@ omgerekend; een onverenigbare eenheid is een resolve-time ERROR (gate G4).
 - **Exitcodes**: `1` zodra een scenario FAALT; anders `3` zodra een regel in
   scope een MARKER is (Dekking niet-LOWERED — accepted-but-inert mag nooit als
   PASS lezen); anders `0`. Resolve-errors: `1` met de diagnostics.
+- `--manifest <bestand>`: draait ELKE manifestregel in ÉÉN JVM (i.p.v. één JVM
+  per regel). Per regel `<verwachte-exit> <scenario.rgs> <companion.rgs…>`; de
+  bron wordt in dezelfde volgorde geconcateneerd, per regel dezelfde
+  `OK (exit N)` / `MISMATCH …`-uitvoer + de golden-samenvatting als de shell-loop,
+  en dezelfde per-regel exit-semantiek (1 FAIL/resolve-fout, 3 MARKER, anders 0).
+  De gedeelde TOKA-fundering + fact-beans worden via de content-gekeyde
+  `BeanCompiler`-cache hergebruikt, dus de 31 regels compileren de beans één keer
+  i.p.v. per regel. Overall exit: `0` als de golden set slaagt, anders `1`.
 - `make scenario-test FILES="…"` draait de CLI; `make scenario-test` zonder
-  argument draait de golden TOKA-set via `examples/toka-scenarios/manifest`.
+  argument draait de golden TOKA-set via `--manifest examples/toka-scenarios/manifest`
+  (één JVM).
 
 ## Gates (definition of done — zie de backlogcard van 2026-07-04)
 

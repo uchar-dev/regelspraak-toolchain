@@ -205,27 +205,10 @@ scenario-test:
 	$(MVN) -B -o -f engine/pom.xml dependency:build-classpath -Dmdep.outputFile=$(CURDIR)/engine/target/.scenario-cp -q
 ifeq ($(strip $(FILES)),)
 	@echo "Golden TOKA-set — examples/toka-scenarios/manifest (docs/SCENARIOTOETSEN.md gate G2)"
+	@# Single JVM: --manifest draait alle regels in één proces (deelt de TOKA-fundering + fact-beans via de
+	@# BeanCompiler-cache), reproduceert dezelfde OK/MISMATCH/summary-uitvoer en de golden-verdict-exitcode.
 	@CP="engine/target/classes:$$(cat engine/target/.scenario-cp)"; \
-	MAN=examples/toka-scenarios/manifest; \
-	value_ok=0; other_ok=0; fail=0; marker_ok=no; \
-	while read -r verwacht scenario companions; do \
-	  case "$$verwacht" in ''|'#'*) continue;; esac; \
-	  java -cp "$$CP" io.github.yhavinga.regelspraak.engine.ScenarioRunnerCli $$scenario $$companions >/tmp/.scenario-out 2>/dev/null; \
-	  got=$$?; \
-	  name=$$(basename $$scenario); \
-	  if [ "$$got" = "$$verwacht" ]; then \
-	    echo "  OK (exit $$got)  $$name"; \
-	    if [ "$$verwacht" = "0" ]; then value_ok=$$((value_ok+1)); else other_ok=$$((other_ok+1)); fi; \
-	    if [ "$$verwacht" = "3" ]; then marker_ok=yes; fi; \
-	  else \
-	    echo "  MISMATCH (verwacht exit $$verwacht, kreeg $$got)  $$name"; fail=$$((fail+1)); \
-	    grep -v SLF4J /tmp/.scenario-out | sed 's/^/      /'; \
-	  fi; \
-	done < $$MAN; \
-	echo "-------------------------------------------------------------------"; \
-	echo "golden TOKA: $$value_ok/30 PASS, marker-exit-3: $$marker_ok  (+$$other_ok andere manifestregels ok, $$fail mismatch)"; \
-	[ "$$value_ok" = "30" ] && [ "$$fail" = "0" ] && [ "$$marker_ok" = "yes" ] || { echo "GOLDEN FAALT"; exit 1; }; \
-	echo "golden TOKA: 30/30 PASS, marker-exit-3: ok"
+	java -cp "$$CP" io.github.yhavinga.regelspraak.engine.ScenarioRunnerCli --manifest examples/toka-scenarios/manifest 2>/dev/null
 else
 	java -cp "engine/target/classes:$$(cat engine/target/.scenario-cp)" io.github.yhavinga.regelspraak.engine.ScenarioRunnerCli $(FILES)
 endif
