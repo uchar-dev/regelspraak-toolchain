@@ -123,7 +123,10 @@ HEAD", never a number to chase down:
 1. `make test` — the jar-only parser/resolver JUnit suite (offline, no Maven).
 2. `mvn -o clean verify` — the full differential suite incl. `src/it/java`
    (DRL fired in Drools, DRL≡exec-model); ≥ 922 green.
-3. `make engine` — the exec-model engine consumer; ≥ 112 green.
+3. `make engine` — the exec-model engine consumer; ≥ 112 green. Note: an
+   exec-model semantics mutation (e.g. a kenmerk-default or negation-salience
+   flip) is caught ONLY by the gate-2 differential (DRL≡exec over `src/it/java`),
+   not by `make engine` — the consumer fires one back-end and has no oracle.
 4. `make scenario-test` — the golden TOKA analyst set via
    `examples/toka-scenarios/manifest`; 30/30 PASS, marker-exit-3 present.
 5. `make facts` — the TOKA fact-model beans generate *and* javac clean (doubles

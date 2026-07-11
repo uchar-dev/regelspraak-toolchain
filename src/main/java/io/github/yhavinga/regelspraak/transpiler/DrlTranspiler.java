@@ -221,6 +221,7 @@ public final class DrlTranspiler {
         private final List<String> when = new ArrayList<>();
         private String then = "";
         private boolean noLoop = true;
+        private int salience = 0;
 
         Regel(String naam) { this.naam = naam; }
 
@@ -228,6 +229,11 @@ public final class DrlTranspiler {
          *  objectcreatie must reach the fixpoint). Safe ONLY because the §13.4.6/§9 idempotence guard already caps
          *  each subject at one creation — it, not no-loop, is the anti-runaway control here. */
         Regel zonderNoLoop() { this.noLoop = false; return this; }
+
+        /** §9.2 negation-stratification: set the rule's agenda salience. A rule whose voorwaarde reads a NEGATED
+         *  kenmerk sinks to the bottom of the agenda (salience &lt; 0) so every producer of that kenmerk fires
+         *  first — mirrors {@link ExecModelTranspiler#stratificatieSalience}. Salience 0 (the default) is unchanged. */
+        Regel salience(int s) { this.salience = s; return this; }
 
         /** Add one when-clause (a pattern, an accumulate, or a guard) — rendered as a single indented line. */
         Regel clausule(String c) { when.add(c); return this; }
@@ -251,7 +257,9 @@ public final class DrlTranspiler {
             // KEY below (RuleFired/CreationMarker/Inconsistentie `regel ==`) keeps the BARE name. Non-grouped
             // rules are unchanged (geëmitteerdeRegelNaam is identity for them).
             b.append("rule \"").append(escapeRegelNaam(model.geëmitteerdeRegelNaam(naam))).append("\"\n");
-            b.append("    dialect \"mvel\"\n").append(noLoop ? "    no-loop true\n" : "").append("when\n");
+            b.append("    dialect \"mvel\"\n")
+             .append(salience != 0 ? "    salience " + salience + "\n" : "")
+             .append(noLoop ? "    no-loop true\n" : "").append("when\n");
             for (String c : when) b.append("    ").append(c).append('\n');
             b.append("then\n").append(then).append("end\n\n");
             return b.toString();
@@ -634,6 +642,15 @@ public final class DrlTranspiler {
         return null;
     }
 
+    /** §9.2 whether a condition tree reads a kenmerk in a NEGATED membership test ("… indien hij niet &lt;kenmerk&gt;
+     *  is") — the shape that must be stratified to the fixpoint. Byte-for-byte the ExecModelTranspiler predicate. */
+    private static boolean leestNegatieKenmerk(Conditie c) {
+        if (c == null) return false;
+        if (c instanceof Conditie.Kenmerk k && k.negatie()) return true;
+        if (c instanceof Conditie.Samengesteld s) for (Conditie d : s.onderdelen()) if (leestNegatieKenmerk(d)) return true;
+        return false;
+    }
+
     /** §13.4.10 verdeling. Two methods have a single forward-rule form: EQUAL SHARES binds the source,
      *  counts the recipients joined to it, and gives each total/count; NAAR RATO (proportional) instead
      *  SUMS each recipient's weight attribute and gives each total·weight/sum. Both fold the recipients in
@@ -1000,7 +1017,14 @@ public final class DrlTranspiler {
 
         // A forward calculation should not retrigger itself on its own modify (no-loop, in the header);
         // it still recomputes when another rule changes the facts it reads.
+        // §9.2 negation-stratification (mirrors ExecModelTranspiler.stratificatieSalience): a §13.4.5
+        // kenmerktoekenning is MONOTONIC (a kenmerk is default-onwaar and only ever set WAAR), so a rule whose
+        // voorwaarde reads "niet <kenmerk>" must be evaluated at the FIXPOINT, after every producer of that kenmerk
+        // has run. The DRL agenda gives no such guarantee: a negation-consumer eligible in the transient window
+        // fires under SOURCE RULE ORDER and its once-true write persists (the ConfluenceFuzzTest non-confluence).
+        // Sinking the consumer to salience -1 keeps the whole positive computation chain ahead of it.
         Regel rule = new Regel(r.naam());
+        if (r.voorwaarde() != null && leestNegatieKenmerk(r.voorwaarde())) rule.salience(-1);
         // §8.1.7 far-side "heeft een <rol>" lowers to an EXISTS-join — a separate when-clause that cannot live
         // inside the subject pattern's inline constraint, so condition lowering hands it back as an extra clause
         // (directly for a top-level membership, carried up through a pure-conjunction §13.4.14 alle/de compound).

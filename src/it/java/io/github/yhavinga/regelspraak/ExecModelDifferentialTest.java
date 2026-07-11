@@ -2,6 +2,7 @@ package io.github.yhavinga.regelspraak;
 
 import io.github.yhavinga.regelspraak.facts.Bemanningslid;
 import io.github.yhavinga.regelspraak.facts.Bestelling;
+import io.github.yhavinga.regelspraak.facts.Bravo;
 import io.github.yhavinga.regelspraak.facts.Contingent;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Ding;
@@ -9990,6 +9991,100 @@ class ExecModelDifferentialTest {
         Object viaDrl = fire(drlBase(m), f);
         Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
         assertEquals(echt, viaDrl, () -> "DRL (oracle) wrong vs spec (eerste-van) on '" + f.naam() + "'");
+        assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+    }
+
+    // ---- §9.2 NEGATION-STRATIFICATION (the fuzzer's minimised reproducer, PERMANENT differential fixture). A §13.4.5
+    //      kenmerktoekenning is MONOTONIC: a kenmerk is default-onwaar and a toekenning only ever makes it WAAR. So a
+    //      rule N whose voorwaarde reads "niet <kenmerk>" must fire at the FIXPOINT, after every PRODUCER of that
+    //      kenmerk. The DRL agenda gives no such guarantee: with N declared BEFORE its producer P, N was eligible in the
+    //      transient window (bevoorrecht still onwaar), fired, and its once-true belast=WAAR persisted — a source-order
+    //      dependent fixpoint (belast=true when N first, belast=false when P first). ExecModelTranspiler sinks such a
+    //      consumer to SALIENCE -1; DrlTranspiler now emits the SAME salience, so both back-ends give belast=FALSE
+    //      (bevoorrecht=true) under BOTH declaration orders. The fixture RUNS BOTH orders and asserts the ABSOLUTE
+    //      spec value on each back-end (a pure DRL≡exec parity would pass while both are agenda-order wrong). ----
+    static final String STRAT_HDR = """
+            Objecttype de Bravo (mv: Bravos)
+                het bedrag Numeriek (geheel getal);
+                is bevoorrecht kenmerk (bijvoeglijk);
+                is belast kenmerk (bijvoeglijk);
+            """;
+    static final String STRAT_P = """
+            Regel P bevoorrecht
+                geldig altijd
+                    Een Bravo is bevoorrecht indien zijn bedrag groter is dan 2.
+            """;
+    static final String STRAT_N = """
+            Regel N belast
+                geldig altijd
+                    Een Bravo is belast indien hij niet bevoorrecht is.
+            """;
+    @Test void phase_STRAT_negation_consumer_is_confluent_both_declaration_orders() {
+        // bedrag 14 > 2 -> bevoorrecht WAAR -> "niet bevoorrecht" onwaar -> belast stays FALSE (the §9.2 fixpoint).
+        record Order(String naam, String src) {}
+        Order[] orders = {
+            new Order("P (producent) eerst gedeclareerd", STRAT_HDR + STRAT_P + STRAT_N),
+            new Order("N (negatie-consument) eerst gedeclareerd", STRAT_HDR + STRAT_N + STRAT_P),
+        };
+        for (Order o : orders) {
+            Fixture f = new Fixture("stratificatie: " + o.naam(), o.src(),
+                    () -> { Bravo b = new Bravo(); b.setBedrag(new BigDecimal(14)); return List.<Object>of(b); },
+                    Map.of(),
+                    l -> vals(((Bravo) l.get(0)).isBevoorrecht(), ((Bravo) l.get(0)).isBelast()));
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(vals(true, false), eq(viaDrl),
+                    () -> "DRL (oracle) agenda-order wrong (§9.2 stratificatie) on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+
+    // ---- §13.4.17.26 REKENKUNDIGE AFRONDING op de halve cent (tie-breaking). 1/8 = 0,125 is exact-terminating, so no
+    //      Breuk churn; rounded REKENKUNDIG (HALF_UP) to 2 decimalen the tie 0,125 goes UP to 0,13. A HALF_DOWN mutant
+    //      would give 0,12. Both back-ends call the same runtime rounding helper (RoundingMode.HALF_UP), so the fixture
+    //      asserts the ABSOLUTE spec value 0,13 (a pure parity would pass on a shared HALF_DOWN bug). ----
+    @Test void phase_AFRONDING_rekenkundig_halve_cent_tie_rounds_up() {
+        String src = STRAT_HDR.replace("het bedrag Numeriek (geheel getal);", "het bedrag Numeriek (getal met 2 decimalen);")
+                .replace("    is bevoorrecht kenmerk (bijvoeglijk);\n    is belast kenmerk (bijvoeglijk);\n", "")
+                + """
+                Regel R afronding
+                    geldig altijd
+                        Het bedrag van een Bravo moet gesteld worden op 1 gedeeld door 8 rekenkundig afgerond op 2 decimalen.
+                """;
+        Fixture f = new Fixture("afronding: 1/8 = 0,125 rekenkundig -> 0,13", src,
+                () -> List.<Object>of(new Bravo()), Map.of(),
+                l -> ((Bravo) l.get(0)).getBedrag());
+        RegelSpraakModel m = Resolver.resolve(f.src());
+        assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+        Object viaDrl = fire(drlBase(m), f);
+        Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+        assertEquals(eq(new BigDecimal("0.13")), eq(viaDrl), () -> "DRL (oracle) wrong rekenkundige afronding on '" + f.naam() + "'");
+        assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+    }
+
+    // ---- §5.5.5 / §8.1 KENMERK-DEFAULT: a kenmerk that is NEVER set is default-onwaar, so "niet <kenmerk>" is WAAR
+    //      and a rule guarded on it MUST fire. The exec-model reads the kenmerk via !Boolean.FALSE.equals(...) (a null
+    //      wrapper reads as onwaar); a Boolean.TRUE.equals mutant would read the unset kenmerk as onwaar-for-the-test
+    //      and SKIP the fire. No producer of bevoorrecht exists here, so bevoorrecht stays default-onwaar and belast
+    //      must become WAAR on both back-ends (absolute value, not parity). ----
+    @Test void phase_KENMERK_DEFAULT_niet_unset_kenmerk_fires() {
+        String src = STRAT_HDR + STRAT_N;   // only N: "belast indien hij niet bevoorrecht is", no producer of bevoorrecht
+        Fixture f = new Fixture("kenmerk-default: niet <ongezet kenmerk> vuurt", src,
+                () -> List.<Object>of(new Bravo()), Map.of(),
+                l -> ((Bravo) l.get(0)).isBelast());
+        RegelSpraakModel m = Resolver.resolve(f.src());
+        assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+        Object viaDrl = fire(drlBase(m), f);
+        Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+        assertEquals(Boolean.TRUE, viaDrl, () -> "DRL (oracle) did not fire on unset kenmerk on '" + f.naam() + "'");
         assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
     }
 
