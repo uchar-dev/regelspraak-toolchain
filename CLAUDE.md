@@ -122,18 +122,23 @@ leave the **whole** gate-set green — a green subset is not green.
 HEAD", never a number to chase down:
 1. `make test` — the jar-only parser/resolver JUnit suite (offline, no Maven).
 2. `mvn -o clean verify` — the full differential suite incl. `src/it/java`
-   (DRL fired in Drools, DRL≡exec-model); ≥ 922 green.
-3. `make engine` — the exec-model engine consumer; ≥ 112 green. Note: an
+   (DRL fired in Drools, DRL≡exec-model, plus the `ConfluenceFuzzTest`); ≥ 937 green.
+3. `make engine` — the exec-model engine consumer; ≥ 115 green. Note: an
    exec-model semantics mutation (e.g. a kenmerk-default or negation-salience
    flip) is caught ONLY by the gate-2 differential (DRL≡exec over `src/it/java`),
    not by `make engine` — the consumer fires one back-end and has no oracle.
 4. `make scenario-test` — the golden TOKA analyst set via
-   `examples/toka-scenarios/manifest`; 30/30 PASS, marker-exit-3 present.
+   `examples/toka-scenarios/manifest` (single-JVM `--manifest` route);
+   30/30 PASS, marker-exit-3 present.
 5. `make facts` — the TOKA fact-model beans generate *and* javac clean (doubles
    as a model-level resolve gate).
-6. The service modules stay green: `service` ≥ 131, `service-quarkus` ≥ 34.
+6. The service modules stay green: `service` ≥ 146, `service-quarkus` ≥ 34.
 7. `make verify-corpus` — every spec snippet under `corpusEntry` parses (no
    lexer errors, no `error` nodes), known defects excepted.
+7bis. `make verify-negatief-corpus` — every malformed snippet under
+   `tools/negatief-corpus/` matches its manifest verdict (correctly rejected, or
+   parses-as-expected with a documented `[GAT]` where the grammar is knowingly
+   too loose) — the negative counterpart to gate 7.
 
 `make image` / `make kind-smoke` are host-only packaging gates (they need
 Docker); run them on the host before a release, not per change.

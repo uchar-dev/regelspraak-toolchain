@@ -25,9 +25,15 @@ and **[docs/](docs/)** for the architecture and runbooks.
 - **Author-side scenariotoetsen** — a rule analyst writes rules *and* expected
   outcomes in one `.rgs` surface and gets machine-checkable PASS/FAIL per scenario
   (contract: `docs/SCENARIOTOETSEN.md`).
+- **Explain** — `--uitleg` (CLI) / `?uitleg=true` (service) attaches a plain-NL
+  uitleg-verhaal: one sentence per assigned/withheld kenmerk, justified with the
+  evaluated operandwaarden read from the IR.
+- **Visualise dataflow** — `make graaf` emits the regelgraaf: which rule writes
+  which kenmerk/attribuut and which rules read it, as HTML (or bare Mermaid).
 - **Serve** — a JSON descriptor becomes an HTTP decision service with build-time
   OpenAPI, an `/info` endpoint reporting coverage (dekking), and validity-
-  versioned parametersets selected against the request `peildatum`.
+  versioned parametersets selected against the request `peildatum`. A dev-only
+  RegelSpraak workbench binds at `/playground` when `PLAYGROUND=true` (off in prod).
 
 ## Layout
 
@@ -57,9 +63,10 @@ with `make help`.
 **Rule analyst** — write a `.rgs` model plus scenariotoetsen, then check them:
 
     make scenario-test FILES="model.rgs regels.rgs scenario.rgs"   # PASS/FAIL per scenario
-    make scenario-test                                          # the golden TOKA set
+    make scenario-test                                          # the golden TOKA set (--manifest, one JVM)
 
-Author rules and their expected outcomes in one surface, no Java. See
+Author rules and their expected outcomes in one surface, no Java. Add `--uitleg`
+to the CLI for the plain-NL uitleg-verhaal per scenario. See
 `docs/SCENARIOTOETSEN.md`.
 
 **Developer** — build, test, embed:
