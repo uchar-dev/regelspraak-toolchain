@@ -112,7 +112,9 @@ public final class DienstHttp {
         return dienst;
     }
 
-    /** The POST-handling delegate — {@code (pad, boom) -> ObjectNode}, satisfied by {@code kern::verwerk}. */
+    /** The POST-handling delegate — {@code (pad, boom) -> ObjectNode}, satisfied by {@code kern::verwerk}. The
+     *  {@code ?uitleg=true} path does NOT go through this delegate: it calls {@link BeslisserKern#verwerk} with the
+     *  uitleg flag directly (the delegate is the 500-never-leaks test seam, uitleg-independent). */
     @FunctionalInterface
     interface Verwerker {
         ObjectNode verwerk(String pad, JsonNode verzoekBoom);
@@ -156,7 +158,11 @@ public final class DienstHttp {
                 return;
             }
 
-            ObjectNode antwoord = verwerker.verwerk(pad, boom);
+            // ?uitleg=true bypasses the (uitleg-independent) test-seam delegate and asks the core for the verhaal;
+            // the plain path stays byte-identical through the delegate (kern::verwerk in production).
+            ObjectNode antwoord = vraagtUitleg(ex.getRequestURI().getRawQuery())
+                    ? kern.verwerk(pad, boom, true)
+                    : verwerker.verwerk(pad, boom);
             stuur(ex, 200, antwoord);
         } catch (BeslisserKern.OnbekendPad onbekend) {
             stuur(ex, 404, foutBody(onbekend.getMessage(), null));
@@ -167,6 +173,22 @@ public final class DienstHttp {
             intern.printStackTrace(System.err);
             stuur(ex, 500, foutBody("interne fout", null));
         }
+    }
+
+    /** Whether the query string opts into the uitleg field: {@code uitleg=true} (case-insensitive) or a bare
+     *  {@code uitleg}. Any other value (incl. {@code uitleg=false}) means no — the response is byte-identical to
+     *  a request without the flag. Null/empty query → false. Public so a test can pin the parse (the Quarkus
+     *  adapter carries the equivalent inline). */
+    public static boolean vraagtUitleg(String rawQuery) {
+        if (rawQuery == null || rawQuery.isEmpty()) return false;
+        for (String deel : rawQuery.split("&")) {
+            int eq = deel.indexOf('=');
+            String sleutel = eq < 0 ? deel : deel.substring(0, eq);
+            if (!"uitleg".equalsIgnoreCase(sleutel)) continue;
+            String waarde = eq < 0 ? "true" : deel.substring(eq + 1);
+            return "true".equalsIgnoreCase(waarde) || waarde.isEmpty();
+        }
+        return false;
     }
 
     // ---------------- GET /info ----------------

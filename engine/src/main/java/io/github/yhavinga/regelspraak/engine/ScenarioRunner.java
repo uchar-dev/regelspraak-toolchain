@@ -267,7 +267,10 @@ public final class ScenarioRunner {
 
                 Status status = !allePass ? Status.FAIL : marker ? Status.MARKER : Status.PASS;
                 String diagnose = diagnose(status, vr, dekking);
-                return new ScenarioResultaat(s.naam(), status, vr, trace, dekking, diagnose);
+                // 8. uitleg: verbaliseer de toegekende kenmerken tegen de eindtoestand (read-only, pure).
+                List<String> uitleg = new Verbalisator(model, verbalisatieGlobals(s))
+                        .verbaliseer(labelNaarBean, typePerLabel(s));
+                return new ScenarioResultaat(s.naam(), status, vr, trace, dekking, diagnose, uitleg);
             } finally {
                 sessie.dispose();
             }
@@ -347,6 +350,29 @@ public final class ScenarioRunner {
                 setGlobalVeilig(sessie, Namen.ident(p.parameter(), false), waardeNaarArg(p.waarde()));
             if (s.peildatum() != null)
                 setGlobalVeilig(sessie, "rekendatum", s.peildatum() instanceof LocalDateTime dt ? dt.toLocalDate() : s.peildatum());
+        }
+
+        /** The globals the {@link Verbalisator} reads to re-evaluate condition operands (parameter-canonical name
+         *  {@code Namen.ident(naam,false)} → value, plus "rekendatum"), computed with the SAME precedence
+         *  {@link #zetGlobals} sets them on the session: parameterset waarden first, situatie-parameters override,
+         *  then the peildatum as rekendatum. A pure read of the resolved scenario — no session touched. */
+        private Map<String, Object> verbalisatieGlobals(ResolvedScenario s) {
+            Map<String, Object> g = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> e : parametersetWaarden.entrySet())
+                g.put(Namen.ident(e.getKey(), false), e.getValue());
+            for (ParameterWaarde p : s.situatie().parameters())
+                g.put(Namen.ident(p.parameter(), false), waardeNaarArg(p.waarde()));
+            if (s.peildatum() != null)
+                g.put("rekendatum", s.peildatum() instanceof LocalDateTime dt ? dt.toLocalDate() : s.peildatum());
+            return g;
+        }
+
+        /** The objecttype per LABEL for THIS scenario's instances — the {@link Verbalisator}'s type lookup, taken
+         *  from the resolved situatie (every built bean has a labelled instantie). */
+        private Map<String, Objecttype> typePerLabel(ResolvedScenario s) {
+            Map<String, Objecttype> uit = new LinkedHashMap<>();
+            for (Instantie i : s.situatie().instanties()) uit.put(i.label(), i.objecttype());
+            return uit;
         }
 
         /** setGlobal, tolerating a model that declared no such global (a parameter a scope rule never reads is not

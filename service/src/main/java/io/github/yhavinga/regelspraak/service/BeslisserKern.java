@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import io.github.yhavinga.regelspraak.engine.BeanCompiler;
 import io.github.yhavinga.regelspraak.engine.ParametersetLader;
+import io.github.yhavinga.regelspraak.engine.Verbalisator;
 import io.github.yhavinga.regelspraak.engine.ParametersetLader.ParametersetFout;
 import io.github.yhavinga.regelspraak.model.Parameterset;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
@@ -572,8 +573,20 @@ public final class BeslisserKern {
 
     // ---------------- request handling ----------------
 
-    /** Handle a request against the entry point at {@code pad}: map → fire → build response. */
+    /** Handle a request against the entry point at {@code pad}: map → fire → build response. Existing 2-arg
+     *  contract (no uitleg); delegates with {@code uitleg=false}, byte-identical for every current caller. */
     public ObjectNode verwerk(String pad, JsonNode verzoekBoom) {
+        return verwerk(pad, verzoekBoom, false);
+    }
+
+    /**
+     * As {@link #verwerk(String, JsonNode)} but OPTIONALLY attaching the {@link Verbalisator} verhaal. When
+     * {@code uitleg} is true, an {@code "uitleg"} array is added to the response — one NL sentence per assigned/
+     * withheld kenmerk of a request instance, justified with the evaluated operandwaarden (§norm read via the
+     * IR, not the programmer). This is DESCRIPTOR-INDEPENDENT and ADDITIVE: with {@code uitleg=false} the
+     * response tree is byte-identical to the pre-verbalisator shape, so no existing caller's contract breaks.
+     */
+    public ObjectNode verwerk(String pad, JsonNode verzoekBoom, boolean uitleg) {
         Entrypoint ep = perPad.get(pad);
         if (ep == null) throw new OnbekendPad(pad);
         VerzoekMapper mapper = new VerzoekMapper(model, beanLoader);
@@ -596,7 +609,27 @@ public final class BeslisserKern {
         Map<String, Object> setGlobals = vintageGlobals(mr.wereld().rekendatum());
         Uitvoerder uitvoerder = new Uitvoerder(ep.kieBase(), ep.defaultGlobals(), ep.dagsoortGlobalen(), beanLoader);
         Uitvoerder.Uitkomst uitkomst = uitvoerder.vuur(mr.wereld(), setGlobals);
-        return new AntwoordBouwer(model).bouw(uitkomst, ep.descriptor().uitvoer(), mr.typePerLabel());
+        ObjectNode antwoord = new AntwoordBouwer(model).bouw(uitkomst, ep.descriptor().uitvoer(), mr.typePerLabel());
+        if (uitleg) voegUitlegToe(antwoord, uitkomst, mr, setGlobals, ep);
+        return antwoord;
+    }
+
+    /**
+     * Attach the {@link Verbalisator} verhaal to {@code antwoord} as an {@code "uitleg"} array. The globals the
+     * verbalisator re-evaluates condition operands against are rebuilt with the SAME precedence
+     * {@link Uitvoerder#vuur} fired them under (descriptor defaults → set-vintage → request overrides → rekendatum);
+     * the keys are {@link VerzoekMapper#globalNaam}, which the verbalisator reads a {@code ParameterRef} on. A pure
+     * read of the already-fired beans — nothing re-fires.
+     */
+    private void voegUitlegToe(ObjectNode antwoord, Uitvoerder.Uitkomst uitkomst, VerzoekMapper.Resultaat mr,
+                               Map<String, Object> setGlobals, Entrypoint ep) {
+        Map<String, Object> globals = new LinkedHashMap<>(ep.defaultGlobals());
+        globals.putAll(setGlobals);
+        globals.putAll(mr.wereld().globals());
+        if (mr.wereld().rekendatum() != null) globals.put("rekendatum", mr.wereld().rekendatum());
+        List<String> zinnen = new Verbalisator(model, globals).verbaliseer(uitkomst.beans(), mr.typePerLabel());
+        var arr = antwoord.putArray("uitleg");
+        for (String zin : zinnen) arr.add(zin);
     }
 
     /**

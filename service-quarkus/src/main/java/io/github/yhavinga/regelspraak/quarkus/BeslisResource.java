@@ -14,6 +14,7 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
@@ -53,7 +54,7 @@ public class BeslisResource {
     @Path("{pad}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response verwerk(@PathParam("pad") String pad, String body) {
+    public Response verwerk(@PathParam("pad") String pad, @QueryParam("uitleg") String uitleg, String body) {
         JsonNode boom;
         if (body == null || body.isEmpty())
             return response(400, foutBody("leeg verzoek-body: verwacht JSON met een 'instanties'-array", "body"));
@@ -67,7 +68,10 @@ public class BeslisResource {
             return response(400, foutBody("verzoek-body is geen geldige JSON (null)", "body"));
 
         try {
-            ObjectNode antwoord = kern.verwerk(pad, boom);
+            // ?uitleg=true (or a bare ?uitleg) opts into the Verbalisator verhaal; any other value = no (mirror
+            // of DienstHttp.vraagtUitleg). Additive + descriptor-independent: no existing caller's contract breaks.
+            boolean metUitleg = "true".equalsIgnoreCase(uitleg) || (uitleg != null && uitleg.isEmpty());
+            ObjectNode antwoord = kern.verwerk(pad, boom, metUitleg);
             return response(200, antwoord);
         } catch (BeslisserKern.OnbekendPad onbekend) {
             return response(404, foutBody(onbekend.getMessage(), null));

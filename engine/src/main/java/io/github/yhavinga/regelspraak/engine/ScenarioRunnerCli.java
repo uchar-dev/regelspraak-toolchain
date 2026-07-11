@@ -27,7 +27,9 @@ import java.util.stream.Collectors;
  *
  * Multiple files are CONCATENATED in argument order (the TokaVuurTest pattern: objectmodel + rules + scenario
  * file). Per scenario one line PASS/FAIL/MARKER; a FAIL prints per-expectation verwacht/werkelijk, the trace, and
- * the coverage lines; {@code --trace} prints the trace even for a PASS. Exit codes: {@code 1} as soon as a
+ * the coverage lines; {@code --trace} prints the trace even for a PASS; {@code --uitleg} prints the
+ * {@link Verbalisator} verhaal (the assigned kenmerken justified with their evaluated operandwaarden) under each
+ * scenario. Exit codes: {@code 1} as soon as a
  * scenario FAILS (or the source does not resolve — with the diagnostics); else {@code 3} as soon as a scope rule
  * is a MARKER; else {@code 0}. With no files: exit {@code 2} with a clear message (the golden manifest phase).
  */
@@ -36,12 +38,14 @@ public final class ScenarioRunnerCli {
 
     public static void main(String[] args) {
         boolean trace = false;
+        boolean uitleg = false;
         Path parametersets = null;
         Path manifest = null;
         List<Path> files = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
             if (a.equals("--trace")) trace = true;
+            else if (a.equals("--uitleg")) uitleg = true;
             else if (a.equals("--parametersets")) {
                 if (parametersets != null) { System.err.println("--parametersets mag maar één keer"); System.exit(2); return; }
                 if (i + 1 >= args.length) { System.err.println("--parametersets verwacht een pad naar een .json-bestand"); System.exit(2); return; }
@@ -61,7 +65,7 @@ public final class ScenarioRunnerCli {
         // regel dezelfde OK/MISMATCH-uitvoer als de shell-loop, zodat `make scenario-test` vergelijkbaar blijft.
         if (manifest != null) {
             if (!files.isEmpty()) { System.err.println("--manifest neemt zelf de scenario's uit het manifest; geef geen losse .rgs-paden mee"); System.exit(2); return; }
-            System.exit(draaiManifest(manifest, trace));
+            System.exit(draaiManifest(manifest, trace, uitleg));
             return;
         }
 
@@ -120,12 +124,14 @@ public final class ScenarioRunnerCli {
             return;
         }
 
-        System.exit(rapporteerEnCode(resultaten, trace));
+        System.exit(rapporteerEnCode(resultaten, trace, uitleg));
     }
 
-    /** Print each result (FAIL detail / MARKER / optional trace) and return the run's exit code: 1 if any FAIL,
-     *  else 3 if any MARKER, else 0 — the single-file CLI's exit contract, extracted so {@code --manifest} reuses it. */
-    private static int rapporteerEnCode(List<ScenarioResultaat> resultaten, boolean trace) {
+    /** Print each result (FAIL detail / MARKER / optional trace / optional uitleg-verhaal) and return the run's exit
+     *  code: 1 if any FAIL, else 3 if any MARKER, else 0 — the single-file CLI's exit contract, extracted so
+     *  {@code --manifest} reuses it. {@code uitleg} threads {@code --uitleg} through so the verhaal prints on both
+     *  the single-file and the {@code --manifest} route (incl. {@code --manifest … --uitleg}). */
+    private static int rapporteerEnCode(List<ScenarioResultaat> resultaten, boolean trace, boolean uitleg) {
         boolean enigeFail = false, enigeMarker = false;
         for (ScenarioResultaat r : resultaten) {
             System.out.println(r.status() + "  " + r.naam());
@@ -143,6 +149,7 @@ public final class ScenarioRunnerCli {
                 drukDekking(r);
             }
             if (trace && r.status() != Status.FAIL) drukTrace(r);
+            if (uitleg) drukUitleg(r);
         }
         return enigeFail ? 1 : enigeMarker ? 3 : 0;
     }
@@ -160,7 +167,7 @@ public final class ScenarioRunnerCli {
      * <p>Returns the OVERALL exit code: 0 when the golden set passes (all 30 exit-0 lines OK, no mismatch, the
      * exit-3 marker line present), else 1 — matching the Makefile's own pass/fail gate.
      */
-    private static int draaiManifest(Path manifest, boolean trace) {
+    private static int draaiManifest(Path manifest, boolean trace, boolean uitleg) {
         List<String> regels;
         try {
             regels = Files.readAllLines(manifest);
@@ -185,7 +192,7 @@ public final class ScenarioRunnerCli {
             List<Path> paden = new ArrayList<>();
             for (int i = 1; i < velden.length; i++) paden.add(Path.of(velden[i]));
             String naam = paden.isEmpty() ? "?" : paden.get(0).getFileName().toString();
-            int got = draaiRegel(paden, trace);
+            int got = draaiRegel(paden, trace, uitleg);
             if (got == verwacht) {
                 System.out.println("  OK (exit " + got + ")  " + naam);
                 if (verwacht == 0) valueOk++; else otherOk++;
@@ -209,7 +216,7 @@ public final class ScenarioRunnerCli {
     /** Run ONE manifest line's concatenated sources and return its exit code (1 FAIL/resolve-fout, 3 MARKER, else
      *  0) WITHOUT the per-scenario stdout noise — the single-JVM analog of forking the CLI over {@code paden}. A
      *  read/resolve failure is exit 1, mirroring the single-file path's ResolveFout→1 / read-error→1. */
-    private static int draaiRegel(List<Path> paden, boolean trace) {
+    private static int draaiRegel(List<Path> paden, boolean trace, boolean uitleg) {
         String bron;
         try {
             bron = paden.stream()
@@ -225,9 +232,10 @@ public final class ScenarioRunnerCli {
         } catch (ScenarioRunner.ResolveFout f) {
             return 1;
         }
-        // Reuse the exact per-run exit contract; suppress the per-scenario detail unless --trace (the shell loop
-        // printed only OK/MISMATCH per line, and the failing detail on a mismatch — kept here on --trace).
-        return trace ? rapporteerEnCode(resultaten, true) : stilCode(resultaten);
+        // Reuse the exact per-run exit contract; suppress the per-scenario detail unless --trace of --uitleg (the
+        // shell loop printed only OK/MISMATCH per line). --uitleg moet ook op de --manifest-route het verhaal tonen,
+        // dus dan door rapporteerEnCode (die print) i.p.v. de stille code.
+        return (trace || uitleg) ? rapporteerEnCode(resultaten, trace, uitleg) : stilCode(resultaten);
     }
 
     /** The exit code for a result list WITHOUT printing (1 FAIL, else 3 MARKER, else 0). */
@@ -251,5 +259,13 @@ public final class ScenarioRunnerCli {
         System.out.println("    dekking:");
         for (DekkingRegel d : r.dekking())
             System.out.println("      " + d.regel() + " : " + d.soort());
+    }
+
+    /** The {@link Verbalisator} verhaal under a scenario: one NL sentence per assigned/withheld kenmerk, with the
+     *  evaluated operandwaarden — the human-readable justification the jurist/burger reads. Silent when empty. */
+    private static void drukUitleg(ScenarioResultaat r) {
+        if (r.uitleg().isEmpty()) return;
+        System.out.println("    uitleg:");
+        for (String zin : r.uitleg()) System.out.println("      " + zin);
     }
 }

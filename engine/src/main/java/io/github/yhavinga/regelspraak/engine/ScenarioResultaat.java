@@ -15,9 +15,25 @@ import java.util.List;
  * @param trace       the fired-rules trace (rule name + bound LABELs + produced values), always available
  * @param dekking     the per-scope-rule coverage (getest/gevuurd/niet-geraakt/marker)
  * @param diagnose    a human-readable one-line summary of WHY it is not a PASS (empty for PASS)
+ * @param uitleg      the {@link Verbalisator} verhaal — one NL sentence per line justifying the assigned
+ *                    kenmerken with their evaluated operand values, empty when {@code --uitleg} was not asked
+ *                    (or nothing to verbalise). Optional/additive: the six-arg constructor defaults it empty,
+ *                    so every existing call site (and the golden differential) is byte-unchanged.
  */
 public record ScenarioResultaat(String naam, Status status, List<VerwachtingResultaat> verwachtingen,
-                                Trace trace, List<DekkingRegel> dekking, String diagnose) {
+                                Trace trace, List<DekkingRegel> dekking, String diagnose, List<String> uitleg) {
+
+    /** Backward-compatible constructor: no uitleg (the pre-verbalisator shape). */
+    public ScenarioResultaat(String naam, Status status, List<VerwachtingResultaat> verwachtingen,
+                             Trace trace, List<DekkingRegel> dekking, String diagnose) {
+        this(naam, status, verwachtingen, trace, dekking, diagnose, List.of());
+    }
+
+    /** This resultaat with the verbalised uitleg attached (the runner adds it after firing when asked). */
+    public ScenarioResultaat metUitleg(List<String> uitleg) {
+        return new ScenarioResultaat(naam, status, verwachtingen, trace, dekking, diagnose,
+                uitleg == null ? List.of() : List.copyOf(uitleg));
+    }
 
     public enum Status { PASS, FAIL, MARKER }
 
