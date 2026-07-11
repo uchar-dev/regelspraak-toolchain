@@ -8,7 +8,7 @@
 # the Drools transpiler grow into real JVM code (see CLAUDE.md / docs/ANTLR-HOWTO.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus drl facts drools-it engine grun gui tokens clean clean-jar image kind-smoke csv-beslistabel
+.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus verify-negatief-corpus drl facts drools-it engine grun gui tokens clean clean-jar image kind-smoke csv-beslistabel
 
 ANTLR4_VERSION := 4.13.2
 ANTLR4_URL     := https://www.antlr.org/download/antlr-$(ANTLR4_VERSION)-complete.jar
@@ -54,6 +54,7 @@ help:
 	@echo "  make compile                         Compile the generated parser with javac"
 	@echo "  make test                            Run the resolver/type-checker JUnit suite"
 	@echo "  make verify-corpus                   Parse every spec example under corpusEntry; report pass/fail"
+	@echo "  make verify-negatief-corpus          Parse the malformed negative corpus; report over/under-acceptance"
 	@echo "  make drl  FILE=<input>               Transpile a .rgs file to Drools (DRL) on stdout"
 	@echo "  make facts                           Generate the TOKA fact-model beans and javac them (out/facts/)"
 	@echo "  make csv-beslistabel FILE=<csv> [OUT=<pad>]  Convert a CSV decision table to a §12 Beslistabel .rgs fragment"
@@ -131,6 +132,13 @@ grun: compile
 # reporting passed / failed / known-defect. Non-zero exit on any unexpected fail.
 verify-corpus: compile
 	@bash tools/verify_corpus.sh
+
+# NEGATIVE corpus: parse the malformed snippets under tools/negatief-corpus/ and
+# check each against its manifest verdict (FAIL = must be rejected, SURPRISE =
+# parses on purpose). Complements verify-corpus, which only proves valid input
+# parses. Non-zero exit on any verdict mismatch (grammar too loose OR too strict).
+verify-negatief-corpus: compile
+	@bash tools/negatief-corpus/run_negatief_corpus.sh
 
 # Transpile a .rgs file to Drools (DRL): parse -> resolve -> emit DRL on stdout.
 # --allow-markers: this is an inspection tool, so show the DRL even when a construct

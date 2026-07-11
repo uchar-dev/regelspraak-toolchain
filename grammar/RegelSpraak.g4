@@ -22,6 +22,21 @@ parser grammar RegelSpraak;
 
 options { tokenVocab = RegelSpraakLexer; }
 
+@members {
+// §13.2.24: a <jaar> is exactly four digits — no sign, no decimal/rational
+// separator. The lexer folds "12-2024" into NUMBER('12') NUMBER('-2024'), so
+// without this guard datumOfJaar would accept the bare '12' as a jaar and leak
+// the stray '-2024' into the next name. Gate the NUMBER branch on the literal
+// shape so half-dates (12-2024, 3-15) are a hard parse error while a real jaar
+// (2024) and a full datumwaarde (01-03-2024, one DATE token) still match.
+private static boolean isJaar(org.antlr.v4.runtime.Token t) {
+    String s = t.getText();
+    if (s.length() != 4) return false;
+    for (int i = 0; i < 4; i++) if (s.charAt(i) < '0' || s.charAt(i) > '9') return false;
+    return true;
+}
+}
+
 // ====================================================================
 // Document
 // ====================================================================
@@ -567,7 +582,7 @@ versieGeldigheid                                     // §13.4.2.5
     | VANAF datumOfJaar ( TM datumOfJaar )?
     | TM datumOfJaar
     ;
-datumOfJaar : DATE | NUMBER ;
+datumOfJaar : DATE | {isJaar(_input.LT(1))}? NUMBER ; // §13.2.24: jaar = 4 digits
 // §13.4.2.6 — the terminating '.' is made lenient: TOKA omits it on several rules.
 regelSpraakRegel
     : resultaatDeel voorwaardeDeel? DOT? variabeleDeel?

@@ -108,6 +108,46 @@ The result: **192 of 193** snippets parse (TOKA 47/47). The one exception:
   multi-word enum values are intrinsically unparseable — re-quoting them would be
   editing the source, not parsing it. Catalogued as a conversion defect.
 
+### Versiegeldigheid jaar shape (§13.2.24 / §13.4.2.5) — tightened to a 4-digit jaar
+
+`<versiegeldigheid>` (§13.4.2.5) admits `<datumwaarde> | <jaar>` after `vanaf`/`t/m`,
+and §13.2.24 defines `<jaar>` as exactly four digits. The lexer folds a half-date
+like `12-2024` into `NUMBER('12') NUMBER('-2024')` (the `-2024` is a valid signed
+NUMBER), so `datumOfJaar : DATE | NUMBER` used to accept the bare `12` as a jaar and
+the stray `-2024` was silently swallowed into the following name — the D01/D04 gap in
+the negative corpus. The NUMBER branch is now gated on a semantic predicate
+(`isJaar`) that requires exactly four ASCII digits (no sign, no decimal/rational
+separator), encoding §13.2.24's lexeme shape. `12-2024`/`3-15` are now a hard parse
+error (neither a 4-digit jaar nor a three-part §13.2.20 `<datumwaarde>`), while a real
+jaar (`2024`), a full date (`01-03-2024`, one DATE token), and a range
+(`2024 t/m 2025`) still parse.
+
+### Objecttypedefinitie member-less form — §13.3.1.1 `+` NOT enforced (deliberate)
+
+§13.3.1.1's EBNF is `"Objecttype" <naamwoord> ["(bezield)"] \n ((<koptekst>|<kenmerk>|
+<attribuut>) \n)+` — the `+` reads as ≥1 member, so a bare `Objecttype de Reis` with no
+members is EBNF-invalid (the negative-corpus I02 [GAT]). The grammar nonetheless keeps
+`objectTypeMember*` (member-less permitted) and does NOT tighten to `+`, a DELIBERATE
+divergence for two reasons that outweigh the literal EBNF here:
+
+- **Shipped design.** A member-less objecttype is a first-class role-target / count-target
+  STUB: `DefinitionResolver.objecttype` resolves it to an empty `Objecttype`, and this is
+  used pervasively (≈200 fixtures: `Objecttype de Vlucht`, `Objecttype de Passagier`, …
+  declare a role target whose members are irrelevant to the rule under test). Enforcing
+  `+` breaks `make test` (6 DrlTest fixtures fail with "extraneous input 'Objecttype'")
+  and the fix would require editing those test fixtures — forbidden (CLAUDE.md: tests
+  encode intent, never modify them).
+- **Spec-internal support.** §3.1/§3.1.1 prose ISOLATE the objecttype header (`Objecttype
+  de Natuurlijk persoon (mv: …)` and its `(bezield)` variant) to teach naamwoord/bezield
+  syntax with no members, and the §3.1.1 informal syntax box quotes only `"Objecttype"
+  <naamwoord> ["(bezield)"] \n` — no member clause. So the spec's own worked text admits
+  the header-only form the §13.3.1.1 `+` would reject.
+
+The `+` tightening is therefore a spec-vs-shipped-design conflict left UN-adopted; I02
+stays a documented [GAT]/STRICT-PARSE in the negative-corpus manifest. Enforcing ≥1
+member (if ever wanted) belongs on a separate card that also reworks the role-target-stub
+convention and its fixtures — out of scope for a pure grammar tightening.
+
 ### Begrenzing + afronding precedence — fixed, with a bounded bound-operand divergence
 
 A trailing afronding on a begrensde expressie — "… min de korting, met een minimum
