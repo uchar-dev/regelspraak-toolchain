@@ -30,7 +30,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * The THIN HTTP adapter over the framework-agnostic {@link BeslisserKern}. It owns no RegelSpraak meaning: it
@@ -100,6 +104,15 @@ public final class DienstHttp {
      * unchanged); only the POST handling is delegated.
      */
     static DienstHttp bindMet(BeslisserKern kern, Verwerker verwerker, String host, int poort) throws IOException {
+        return bindMet(kern, verwerker, host, poort, playgroundAan());
+    }
+
+    /**
+     * Test seam: bind with an EXPLICIT {@code playground} flag so a test can force the dev-workbench routes on
+     * without setting a process env var. Production always derives the flag from {@link #playgroundAan()}.
+     */
+    static DienstHttp bindMet(BeslisserKern kern, Verwerker verwerker, String host, int poort, boolean playground)
+            throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(host, poort), 0);
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         DienstHttp dienst = new DienstHttp(kern, verwerker, server);
@@ -107,6 +120,12 @@ public final class DienstHttp {
         for (String pad : kern.entrypoints().keySet())
             server.createContext("/" + pad, dienst::verwerkPost);
         server.createContext("/info", dienst::verwerkInfo);
+        // DEV-ONLY playground: register the workbench routes ONLY when PLAYGROUND=true (default off). A production
+        // deploy leaves them entirely unbound — the paths then 404 via the catch-all below.
+        if (playground) {
+            server.createContext("/playground/analyse", dienst::verwerkPlaygroundAnalyse);
+            server.createContext("/playground", dienst::verwerkPlaygroundPagina);
+        }
         // catch-all: any path not matched by a more-specific context (longest-prefix wins) -> JSON 404 naming it
         server.createContext("/", dienst::verwerkOnbekend);
         return dienst;
@@ -214,6 +233,75 @@ public final class DienstHttp {
         try {
             String pad = ex.getRequestURI().getPath();
             stuur(ex, 404, foutBody("onbekend pad: '" + pad + "'", null));
+        } catch (Exception intern) {
+            intern.printStackTrace(System.err);
+            stuur(ex, 500, foutBody("interne fout", null));
+        }
+    }
+
+    // ---------------- DEV-ONLY playground (env PLAYGROUND=true) ----------------
+
+    /** Per-request compile budget for the playground (ms). A learner's snippet is tiny; a runaway analysis (e.g. a
+     *  pathological grammar input) is capped so the dev workbench never wedges a thread indefinitely. */
+    static final long PLAYGROUND_TIMEOUT_MS = 15_000;
+
+    /** The workbench is bound ONLY when env {@code PLAYGROUND=true} — a dev switch, default OFF, so a production
+     *  service never exposes the compile-per-request surface. Read once at bind time, never persisted. */
+    static boolean playgroundAan() {
+        return "true".equalsIgnoreCase(System.getenv("PLAYGROUND"));
+    }
+
+    /** {@code POST /playground/analyse}: the request body is the raw RegelSpraak source (text/plain). It is analyzed
+     *  compile-per-request under a timeout with NO persistence, and the {@link Playground} answer tree is written
+     *  back as JSON. Errors at the RegelSpraak level (parse/resolve/scenario) are part of that tree, not HTTP
+     *  errors; only a timeout (503) or an unexpected internal fault (500) map to a status. */
+    private void verwerkPlaygroundAnalyse(HttpExchange ex) throws IOException {
+        try {
+            if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+                stuur(ex, 405, foutBody("methode '" + ex.getRequestMethod()
+                        + "' niet toegestaan op '/playground/analyse' (gebruik POST)", null));
+                return;
+            }
+            String bron = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            // Compile-per-request under a hard timeout, on a throwaway single-use executor (no shared state).
+            ExecutorService exec = Executors.newSingleThreadExecutor();
+            try {
+                Future<ObjectNode> f = exec.submit(() -> Playground.analyseer(bron));
+                stuur(ex, 200, f.get(PLAYGROUND_TIMEOUT_MS, TimeUnit.MILLISECONDS));
+            } catch (TimeoutException te) {
+                stuur(ex, 503, foutBody("analyse overschreed de tijdslimiet ("
+                        + PLAYGROUND_TIMEOUT_MS + " ms)", null));
+            } catch (java.util.concurrent.ExecutionException ee) {
+                ee.getCause().printStackTrace(System.err);
+                stuur(ex, 500, foutBody("interne fout", null));
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                stuur(ex, 500, foutBody("interne fout", null));
+            } finally {
+                exec.shutdownNow();
+            }
+        } catch (Exception intern) {
+            intern.printStackTrace(System.err);
+            stuur(ex, 500, foutBody("interne fout", null));
+        }
+    }
+
+    /** {@code GET /playground}: serve the one self-contained HTML page (a classpath resource, no build tooling). */
+    private void verwerkPlaygroundPagina(HttpExchange ex) throws IOException {
+        try {
+            if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
+                stuur(ex, 405, foutBody("methode '" + ex.getRequestMethod()
+                        + "' niet toegestaan op '/playground' (gebruik GET)", null));
+                return;
+            }
+            byte[] html;
+            try (InputStream in = DienstHttp.class.getResourceAsStream("playground.html")) {
+                if (in == null) { stuur(ex, 500, foutBody("playground.html niet gevonden", null)); return; }
+                html = in.readAllBytes();
+            }
+            ex.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            ex.sendResponseHeaders(200, html.length);
+            try (OutputStream os = ex.getResponseBody()) { os.write(html); }
         } catch (Exception intern) {
             intern.printStackTrace(System.err);
             stuur(ex, 500, foutBody("interne fout", null));

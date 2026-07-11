@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RegelSpraak-playground</title>
+<style>
+  :root {
+    --bg: #f7f7f4; --panel: #fff; --ink: #1c1c1c; --muted: #6b6b6b;
+    --line: #dcdcd6; --accent: #2b5d8a; --ok: #1f7a4d; --warn: #a86400; --err: #b3261e;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+         color: var(--ink); background: var(--bg); }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel);
+           display: flex; align-items: baseline; gap: 14px; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 650; }
+  header .badge { font-size: 11px; color: #fff; background: var(--warn); padding: 2px 8px;
+                  border-radius: 10px; letter-spacing: .3px; }
+  header .hint { font-size: 12px; color: var(--muted); }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 14px 20px; height: calc(100vh - 55px); }
+  .col { display: flex; flex-direction: column; min-height: 0; }
+  .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  button { font: inherit; font-size: 13px; padding: 6px 14px; border: 1px solid var(--line);
+           background: var(--panel); border-radius: 6px; cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  textarea { flex: 1; font-family: var(--mono); font-size: 13px; line-height: 1.5; padding: 12px;
+             border: 1px solid var(--line); border-radius: 8px; background: var(--panel); resize: none;
+             tab-size: 4; color: var(--ink); }
+  .tabs { display: flex; gap: 2px; margin-bottom: 8px; }
+  .tabs button { border-radius: 6px 6px 0 0; }
+  .tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .view { flex: 1; overflow: auto; border: 1px solid var(--line); border-radius: 8px;
+          background: var(--panel); padding: 12px; }
+  pre { margin: 0; font-family: var(--mono); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap;
+        word-break: break-word; }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 10px; font-weight: 600; }
+  .pill.ok { background: #e2f0e8; color: var(--ok); }
+  .pill.err { background: #f6e0de; color: var(--err); }
+  .pill.warn { background: #f5ecd9; color: var(--warn); }
+  .diag { border-left: 3px solid var(--line); padding: 4px 0 4px 10px; margin: 6px 0; font-size: 13px; }
+  .diag.err { border-color: var(--err); }
+  .diag.warn { border-color: var(--warn); }
+  .diag .loc { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
+  .expect { color: var(--accent); font-family: var(--mono); font-size: 12px; }
+  h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  td, th { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  .row-ok td:first-child { color: var(--ok); }
+  .row-bad td:first-child { color: var(--err); }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>RegelSpraak-playground</h1>
+  <span class="badge">DEV</span>
+  <span class="hint">typ links, druk <b>Analyseer</b> (of Ctrl/&#8984;+Enter) &mdash; parse &middot; resolver &middot; DRL &middot; scenario</span>
+</header>
+<main>
+  <div class="col">
+    <div class="bar">
+      <button class="primary" id="run">Analyseer</button>
+      <button id="voorbeeld">Voorbeeld</button>
+      <button id="leeg">Leeg</button>
+      <span class="hint" id="status"></span>
+    </div>
+    <textarea id="bron" spellcheck="false" placeholder="Plak of typ hier een RegelSpraak-model, regel en (optioneel) Scenario-blok..."></textarea>
+  </div>
+  <div class="col">
+    <div class="tabs" id="tabs">
+      <button data-tab="parse" class="active">Parse</button>
+      <button data-tab="resolver">Resolver</button>
+      <button data-tab="drl">DRL</button>
+      <button data-tab="scenario">Scenario</button>
+    </div>
+    <div class="view" id="view"><span class="muted">Nog geen analyse.</span></div>
+  </div>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let laatste = null, actief = "parse";
+
+const VOORBEELD = `Objecttype de Persoon (mv: Personen)
+    de leeftijd Numeriek (geheel getal);
+    de korting Numeriek (geheel getal);
+    is minderjarig (bijvoeglijk);
+
+Regel bepaal minderjarigheid
+geldig altijd
+Een Persoon is minderjarig indien de leeftijd van de Persoon kleiner is dan 18.
+
+Regel bepaal korting
+geldig altijd
+De korting van een Persoon moet berekend worden als 25 indien de Persoon minderjarig is, anders 0.
+
+Scenario Jonge persoon krijgt korting
+    toetst de regels bepaal minderjarigheid, bepaal korting
+    met een Persoon p met leeftijd 12
+    verwacht dat p minderjarig is
+    verwacht dat de korting van p 25 is
+`;
+
+function esc(s) {
+  return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+
+function render() {
+  const v = $("view");
+  if (!laatste) { v.innerHTML = '<span class="muted">Nog geen analyse.</span>'; return; }
+  if (laatste.__transport) { v.innerHTML = '<span class="pill err">FOUT</span> ' + esc(laatste.__transport); return; }
+  v.innerHTML = ({ parse: renderParse, resolver: renderResolver, drl: renderDrl, scenario: renderScenario }[actief])();
+}
+
+function renderParse() {
+  const p = laatste.parse || {};
+  let h = p.ok ? '<span class="pill ok">GEEN PARSE-FOUTEN</span>'
+               : '<span class="pill err">' + (p.fouten || []).length + ' PARSE-FOUT(EN)</span>';
+  for (const f of (p.fouten || [])) {
+    h += '<div class="diag err"><div class="loc">regel ' + f.regel + ', kolom ' + f.kolom
+       + (f.token ? " &mdash; bij &lsquo;" + esc(f.token) + "&rsquo;" : "") + '</div>'
+       + esc(f.boodschap);
+    if (f.verwacht && f.verwacht.length)
+      h += '<div class="expect">verwacht: ' + f.verwacht.map(esc).join(", ") + "</div>";
+    h += "</div>";
+  }
+  return h;
+}
+
+function renderResolver() {
+  const r = laatste.resolver || {};
+  let h = r.ok ? '<span class="pill ok">RESOLVET</span>' : '<span class="pill err">RESOLVER-FOUTEN</span>';
+  for (const d of (r.fouten || []))
+    h += '<div class="diag err"><span class="loc">regel ' + d.regel + '</span> &mdash; ' + esc(d.boodschap) + "</div>";
+  for (const d of (r.waarschuwingen || []))
+    h += '<div class="diag warn"><span class="loc">regel ' + d.regel + '</span> &mdash; ' + esc(d.boodschap) + "</div>";
+  if (r.ok && !(r.waarschuwingen || []).length) h += '<div class="diag muted">Geen waarschuwingen.</div>';
+  return h;
+}
+
+function renderDrl() {
+  if (laatste.drl == null)
+    return '<span class="pill warn">GEEN DRL</span><div class="diag muted">Er is pas DRL als het model schoon parset en resolvet.</div>';
+  if (laatste.drlFout) return '<span class="pill err">TRANSPILER-FOUT</span><pre>' + esc(laatste.drlFout) + "</pre>";
+  return '<span class="pill ok">DRL</span><pre>' + esc(laatste.drl) + "</pre>";
+}
+
+function renderScenario() {
+  const s = laatste.scenario;
+  if (!s) return '<div class="diag muted">Geen <b>Scenario</b>-blok in de bron.</div>';
+  if (s.fout) {
+    let h = '<span class="pill err">FOUT</span> ' + esc(s.fout);
+    for (const d of (s.diagnostiek || [])) h += '<div class="diag err">' + esc(d) + "</div>";
+    return h;
+  }
+  let h = "";
+  for (const r of (s.resultaten || [])) {
+    const cls = r.status === "PASS" ? "ok" : r.status === "MARKER" ? "warn" : "err";
+    h += '<h3><span class="pill ' + cls + '">' + esc(r.status) + "</span> " + esc(r.naam) + "</h3>";
+    if (r.diagnose) h += '<div class="diag ' + cls + '">' + esc(r.diagnose) + "</div>";
+    if ((r.verwachtingen || []).length) {
+      h += "<table><tr><th></th><th>verwachting</th><th>verwacht</th><th>werkelijk</th></tr>";
+      for (const v of r.verwachtingen)
+        h += '<tr class="' + (v.ok ? "row-ok" : "row-bad") + '"><td>' + (v.ok ? "&#10003;" : "&#10007;")
+           + "</td><td>" + esc(v.bron) + "</td><td>" + esc(v.verwacht) + "</td><td>" + esc(v.werkelijk) + "</td></tr>";
+      h += "</table>";
+    }
+  }
+  return h || '<div class="diag muted">Geen scenario&rsquo;s gevonden.</div>';
+}
+
+async function analyseer() {
+  const bron = $("bron").value;
+  $("run").disabled = true; $("status").textContent = "bezig...";
+  try {
+    const resp = await fetch("/playground/analyse", {
+      method: "POST", headers: { "Content-Type": "text/plain; charset=utf-8" }, body: bron,
+    });
+    if (!resp.ok) { laatste = { __transport: "HTTP " + resp.status + " " + (await resp.text()) }; }
+    else { laatste = await resp.json(); }
+    $("status").textContent = "";
+  } catch (e) {
+    laatste = { __transport: String(e) }; $("status").textContent = "";
+  } finally {
+    $("run").disabled = false; render();
+  }
+}
+
+$("run").addEventListener("click", analyseer);
+$("voorbeeld").addEventListener("click", () => { $("bron").value = VOORBEELD; analyseer(); });
+$("leeg").addEventListener("click", () => { $("bron").value = ""; laatste = null; render(); });
+$("bron").addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); analyseer(); }
+});
+for (const b of $("tabs").querySelectorAll("button"))
+  b.addEventListener("click", () => {
+    actief = b.dataset.tab;
+    for (const x of $("tabs").querySelectorAll("button")) x.classList.toggle("active", x === b);
+    render();
+  });
+</script>
+</body>
+</html>
