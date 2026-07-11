@@ -5520,43 +5520,79 @@ class ExecModelDifferentialTest {
     }
 
     /** §8.4/§13.4.5 a KENMERKTOEKENNING whose kenmerk is TEMPORAL (kenmerkGranulariteit — its runtime field is a
-     *  List&lt;Segment&gt; TRUE-period timeline, not a boolean) must be a SYMMETRIC DECLINE in both back-ends: the
-     *  clip that lowers the rule's voorwaarde/geldigheid into a List&lt;Segment&gt; of true-periods is an
-     *  under-specified WRITE producer (§8.4 fixes the READ side — "gedurende de tijd dat &lt;temporeel kenmerk&gt;" —
-     *  not the toekenning's periodization). This USED to be a masked back-end split: the exec honestly SKIPPED it,
-     *  but the DRL fell through to a scalar setX(true) on the List field, which does NOT even compile ("Unable to
-     *  Analyse Expression"). Now the DRL MARKERS it — the rule COMPILES, FIRES, and leaves the timeline untouched
-     *  (an inert /* TODO *&#47; null modify) — and the exec still records overgeslagen. Assert BOTH: exec skips,
-     *  DRL compiles + fires + writes nothing (never a crash, never a mis-typed write). */
-    @Test void temporal_kenmerktoekenning_is_a_symmetric_decline() {
-        // The gating voorwaarde shape is irrelevant to the decline (the doel itself is the reason); pin two.
-        for (String voorwaarde : new String[]{"indien zijn leeftijd groter is dan 18", ""}) {
-            String src = ("""
-                Objecttype de Passagier (mv: Passagiers) (bezield)
-                    de leeftijd Numeriek (geheel getal);
-                    is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
-                Regel Rechthebbend
-                    geldig altijd
-                        Een Passagier is rechthebbend %s.
-                """).formatted(voorwaarde).replace(" .", ".");
-            RegelSpraakModel m = Resolver.resolve(src);
-            assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+     *  List&lt;Segment&gt; TRUE-period timeline, not a boolean) is LOWERED SYMMETRICALLY when its voorwaarde is a
+     *  "gedurende de tijd dat &lt;temporeel kenmerk&gt;": §3.8 a kenmerk-tijdlijn IS a boolean-tijdlijn, so the doel
+     *  holds exactly where the gating kenmerk does (§3.4 default-onwaar elsewhere — monotone). The write producer is
+     *  the SAME conditieTijdreeks lowering the §7.1 gedurende READ uses, so a WRITTEN kenmerk-tijdlijn can then DRIVE a
+     *  gedurende-voorwaarde. This fixture pins the WRITE→READ chain: rule R1 writes {@code rechthebbend} from a seeded
+     *  bezittelijk source kenmerk, rule R2's §7.1 totaal "gedurende de tijd dat hij rechthebbend is" reads it back —
+     *  and BOTH back-ends must AGREE (no skip/marker) AND match the spec value (6×10 + 1×11 = 71). The residual
+     *  UNDER-SPECIFIED case (an EMPTY voorwaarde is an UNBOUNDED true-timeline; a geldigheids-window needs a
+     *  timeline×window clip §8.4 leaves open) stays a symmetric decline — the DRL inert /* TODO *&#47; marker leaves the
+     *  timeline NULL, the exec records overgeslagen. */
+    @Test void temporal_kenmerktoekenning_gedurende_lowert_symmetrisch() {
+        // R1: a temporal kenmerktoekenning driven by a "gedurende de tijd dat <bezittelijk temporeel kenmerk>"
+        // voorwaarde -> rechthebbend inherits the source kenmerk's TRUE periods. R2: a §7.1 totaal READS the WRITTEN
+        // kenmerk-tijdlijn back (the write-then-consume chain), clipping the value to 6×10 + 1×11 = 71.
+        String src = TOTAAL_HDR + """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
+                het recht op belastingvermindering kenmerk (bezittelijk) voor elke maand;
+                de totale belastingvermindering Bedrag;
+            Regel Rechthebbend
+                geldig altijd
+                    Een Passagier is rechthebbend gedurende de tijd dat hij een recht op belastingvermindering heeft.
+            Regel Totaal
+                geldig altijd
+                    De totale belastingvermindering van een Passagier moet gesteld worden op (het totaal van zijn belastingvermindering per maand gedurende de tijd dat hij rechthebbend is).
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
 
-            // exec: an honest skip (overgeslagen names the temporele kenmerktoekenning).
-            ExecModelTranspiler em = ExecModelTranspiler.build(m);
-            assertFalse(em.overgeslagen().isEmpty(),
-                    () -> "exec moet de temporele kenmerktoekenning SKIPPEN, niet mis-renderen: " + em.overgeslagen());
-            assertTrue(em.overgeslagen().stream().anyMatch(s -> s.contains("temporele kenmerktoekenning")),
-                    () -> "exec skip moet de temporele kenmerktoekenning benoemen: " + em.overgeslagen());
+        // BOTH back-ends must lower the WHOLE model — no skip on the temporal kenmerktoekenning.
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(),
+                () -> "exec moet de gedurende-gedreven temporele kenmerktoekenning LOWEREN, niet skippen: " + em.overgeslagen());
 
-            // DRL: MUST compile (drlBase asserts no ERROR — pre-fix this THREW "Unable to Analyse Expression"), and
-            // firing over an in-range Passagier must leave the temporal kenmerk field NULL (an inert marker, never a
-            // scalar boolean written into the List<Segment> field).
-            Fixture f = single("temporele kenmerktoekenning (" + voorwaarde + ")", src,
-                    () -> passagier(p -> p.setLeeftijd(new BigDecimal(20))), Map.of(), Passagier::getRechthebbend);
-            Object viaDrl = fire(drlBase(m), f);
-            assertNull(viaDrl, () -> "DRL moet de tijdlijn ONGEMOEID laten (inert marker), niet schrijven: " + viaDrl);
-        }
+        Fixture f = single("temporele kenmerktoekenning (gedurende) schrijft + wordt gelezen", src,
+                () -> passagier(p -> {
+                    p.setBelastingverminderingPerMaand(List.of(seg(2023, 1, 1, 2024, 1, 1, "10.00"), seg(2024, 1, 1, 2024, 7, 1, "11.00")));
+                    p.setRechtOpBelastingvermindering(List.of(seg(2023, 7, 1, 2024, 2, 1, null)));
+                }),
+                Map.of(), Passagier::getTotaleBelastingvermindering);
+        Object viaDrl = fire(drlBase(m), f);
+        Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+        assertEquals(new BigDecimal("71.00"), viaDrl, () -> "DRL (oracle) verkeerd: de geschreven kenmerk-tijdlijn moet 71 opleveren, kreeg " + viaDrl);
+        assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends WIJKEN AF op de geschreven+gelezen kenmerk-tijdlijn: drl=" + viaDrl + " model=" + viaModel);
+    }
+
+    /** §8.4/§13.4.5 the residual UNDER-SPECIFIED temporal kenmerktoekenning — an EMPTY voorwaarde ("geldig altijd, geen
+     *  gedurende") is an UNBOUNDED true-timeline with no finite List&lt;Segment&gt; producer — stays a SYMMETRIC
+     *  DECLINE: the exec records overgeslagen, the DRL emits an inert /* TODO *&#47; marker (the rule COMPILES + FIRES,
+     *  a `setK(null)` would WIPE a seeded timeline, so the marker writes NOTHING). Never a crash, never a mis-typed
+     *  scalar boolean into the List field. */
+    @Test void temporal_kenmerktoekenning_zonder_gedurende_is_een_symmetrische_decline() {
+        String src = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de leeftijd Numeriek (geheel getal);
+                is rechthebbend kenmerk (bijvoeglijk) voor elke maand;
+            Regel Rechthebbend
+                geldig altijd
+                    Een Passagier is rechthebbend.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().stream().anyMatch(s -> s.contains("temporele kenmerktoekenning")),
+                () -> "exec skip moet de onbepaalde temporele kenmerktoekenning benoemen: " + em.overgeslagen());
+
+        // DRL: MUST compile (drlBase asserts no ERROR), and firing must leave the temporal kenmerk field NULL.
+        Fixture f = single("temporele kenmerktoekenning (geen gedurende)", src,
+                () -> passagier(p -> p.setLeeftijd(new BigDecimal(20))), Map.of(), Passagier::getRechthebbend);
+        Object viaDrl = fire(drlBase(m), f);
+        assertNull(viaDrl, () -> "DRL moet de tijdlijn ONGEMOEID laten (inert marker), niet schrijven: " + viaDrl);
     }
 
     // ---- Phase G fixtures: §13.4.7 feitcreatie (a created relation = a reference field set on the doel) ----

@@ -276,7 +276,22 @@ public final class ExecModelTranspiler {
         PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
         List<RuleItemBuilder<?>> extra = new ArrayList<>();
 
-        if (r.voorwaarde() != null) {
+        // §8.4/§13.4.5 a TEMPORAL KENMERK doel (kenmerkGranulariteit — a List<Segment> TRUE-period timeline, not a
+        // boolean) is written the timeline of its voorwaarde's TRUE-periods: the doel-kenmerk holds exactly where the
+        // gating kenmerk-tijdlijn does (§3.8 kenmerk-tijdlijn = boolean-tijdlijn), default-onwaar elsewhere (§3.4 —
+        // monotone). The producer is conditieTijdreeks (the SAME lowering the §7.1 gedurende READ uses), so the WRITE
+        // and READ of a kenmerk-tijdlijn are symmetric. DECIDABLE only with geldig altijd and a voorwaarde that lowers
+        // to a finite timeline: an EMPTY voorwaarde is unbounded and a geldigheids-WINDOW needs a timeline×window clip
+        // (§8.4 leaves that under-specified) — both stay a skip below. Mirrors the DRL back-end.
+        boolean temporeelKenmerkDoel = r.soort() == ResolvedRegel.Soort.KENMERKTOEKENNING
+                && doel.objecttype().kenmerkGranulariteit.containsKey(doel.attribuut())
+                && !doel.objecttype().kenmerkTijdlijnAantal.containsKey(doel.attribuut());
+        java.util.function.Function<Object, List<?>> kenmerkTl =
+                temporeelKenmerkDoel && r.voorwaarde() != null && r.geldigheid().altijd()
+                        ? conditieTijdreeks(r.voorwaarde(), doel.objecttype()) : null;
+        // A decidable temporal-kenmerk write ignores the scalar voorwaarde gate (the voorwaarde IS the write timeline)
+        // and keeps the pattern class-reactive so it re-fires when the source kenmerk lands.
+        if (r.voorwaarde() != null && kenmerkTl == null) {
             // §8.4.3 a periodevergelijking on a TIJDSAFHANKELIJK doel should CLIP the written timeline to the
             // period, not all-or-nothing gate it on the rekendatum — that clip is not built yet, so skip
             // honestly (mirrors the DRL marker; a scalar doel lowers via the voorwaarde() Periode branch).
@@ -300,8 +315,11 @@ public final class ExecModelTranspiler {
         // Watch the OWN attributes the value reads; a pattern WITH any opaque expr is already class-reactive
         // (an explicit watch there would NARROW it — never add one). The idempotent werkBij keeps the
         // recompute chain at a fixpoint; a read-write CYCLE (resolver-WARNed) hits the engine's fire cap.
-        boolean klasseReactief = r.voorwaarde() != null || r.soort() == ResolvedRegel.Soort.INITIALISATIE
+        // §8.4/§13.4.5 a decidable temporal-kenmerk write has NO scalar voorwaarde gate but still reads its source
+        // kenmerk-tijdlijn — force class-reactivity (via the opaque freshness expr below) so it rebuilds when it lands.
+        boolean klasseReactief = (r.voorwaarde() != null && kenmerkTl == null) || r.soort() == ResolvedRegel.Soort.INITIALISATIE
                 || (r.geldigheid() != null && !r.geldigheid().altijd() && rekendatumGlobal != null);
+        if (kenmerkTl != null) pattern = pattern.expr(nextId("fresh"), (Predicate1) (s -> true));
         // §9.9: an anchored temporal write reads the startpunt attribute (injected at lowering, invisible to
         // eigenReads) — count it as an own read, so the write re-fires when the startpunt rule lands.
         String startpuntAnker = doel.navigatieRol() == null
@@ -321,14 +339,32 @@ public final class ExecModelTranspiler {
         RegelSpraakModel.Granulariteit doelGran = doel.objecttype().attribuutGranulariteit.get(doel.attribuut());
         boolean temporalDoel = doelGran != null && !doel.objecttype().attribuutTijdlijnAantal.containsKey(doel.attribuut());
         // §8.4/§13.4.5 a temporal KENMERK doel (kenmerkGranulariteit — a List<Segment> true-period timeline) cannot
-        // be written a scalar boolean: setX(true) on a List field throws at fire time. The clip that lowers the
-        // rule's voorwaarde/geldigheid into a List<Segment> of TRUE-periods is an under-specified WRITE producer
-        // (§8.4 fixes the READ side — "gedurende de tijd dat <temporeel kenmerk>" — not the toekenning's
-        // periodization), so skip honestly (never mis-render). The DRL back-end MARKERS it identically (its
-        // "temporele kenmerktoekenning" TODO), keeping the two symmetric.
-        if (r.soort() == ResolvedRegel.Soort.KENMERKTOEKENNING
-                && doel.objecttype().kenmerkGranulariteit.containsKey(doel.attribuut()))
-            return skip("regel (temporele kenmerktoekenning — §8.4/§13.4.5 onbepaalde write-producer): " + r.naam());
+        // be written a scalar boolean: setX(true) on a List field throws at fire time. The DECIDABLE case writes the
+        // voorwaarde's TRUE-period timeline (kenmerkTl, the SAME conditieTijdreeks lowering the §7.1 gedurende READ
+        // uses): the doel-kenmerk holds exactly where the gating kenmerk-tijdlijn does (§3.8), default-onwaar elsewhere
+        // (§3.4 — monotone, no complement seed). IDEMPOTENT (rsTijdreeksGelijk, mirroring the anchored-attribuut write
+        // and the DRL guard): the freshness expr made the pattern class-reactive, so the guard stops a same-valued
+        // rebuild from re-propagating. An EMPTY / geldigheids-windowed / negated / non-kenmerk voorwaarde left kenmerkTl
+        // null (under-specified periodization) -> an honest skip (never a mis-typed boolean into the List field). The
+        // DRL back-end MARKERS the same split, keeping the two symmetric.
+        if (temporeelKenmerkDoel) {
+            if (kenmerkTl == null)
+                return skip("regel (temporele kenmerktoekenning — §8.4/§13.4.5 onbepaalde write-producer): " + r.naam());
+            final java.util.function.Function<Object, List<?>> tl = kenmerkTl;
+            consequence = DSL.on(sVar).execute((Block2<org.drools.model.Drools, Object>) (drools, s) -> {
+                Object nieuw = tl.apply(s);
+                if (RegelSpraakRuntime.rsTijdreeksGelijk((List<?>) doelGetter.apply(s), (List<?>) nieuw)) return;
+                doelSetter.accept(s, nieuw);
+                drools.update(s);
+            });
+            List<RuleItemBuilder<?>> items = new ArrayList<>();
+            items.add(pattern);
+            items.addAll(extra);
+            items.add(consequence);
+            return PatternDSL.rule(kop(r.naam()))
+                    .attribute(Rule.Attribute.NO_LOOP, true)
+                    .build(items.toArray(new RuleItemBuilder[0]));
+        }
         // §5.8/§13.4.17 AGGREGATION value (SOM/TOTAAL/AANTAL/MIN/MAX over related elements): an accumulate CE binds
         // the result in the when, read in the consequence — distinct from a scalar fact-local value.
         WaardeFn tijdTotaal = !temporalDoel && isAggregatieWaarde(r) && r.waarde() instanceof Expr.Functie ftt

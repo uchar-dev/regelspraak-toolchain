@@ -1014,6 +1014,26 @@ public final class DrlTranspiler {
             temporeelTl = temporeelOngeankerd ? null
                     : temporeleWaarde(acc, r.waarde(), subject, td.objecttype().attribuutGranulariteit.get(td.attribuut()), td.type(), anker0);
         }
+        // §8.4/§13.4.5 a TEMPORAL KENMERK doel (kenmerkGranulariteit — a List<Segment> TRUE-period timeline, not a
+        // boolean) is written the timeline of its voorwaarde's TRUE-periods: "Een reis is duur gedurende de tijd dat
+        // <temporeel kenmerk>" makes the doel-kenmerk hold exactly where the gating kenmerk does (§3.8 kenmerk-tijdlijn
+        // = boolean-tijdlijn; §3.4 default-onwaar OUTSIDE those periods, so the write is monotone — no complement to
+        // seed). The producer is conditieTijdreeks (the SAME TRUE-period lowering the §7.1 gedurende READ uses), so the
+        // WRITE and the READ of a kenmerk-tijdlijn are symmetric. DECIDABLE only when the voorwaarde lowers to a finite
+        // timeline (a positive single-period subject-kenmerk, or an ALLE/ten-minste-1 compound of them) AND geldig
+        // altijd: an EMPTY voorwaarde is "altijd" (an UNBOUNDED true-timeline, no finite List<Segment>) and a
+        // geldigheids-WINDOW would need a timeline×window clip (§8.4 leaves that periodization under-specified) — both
+        // stay a marker below. Mirrored by the exec back-end.
+        boolean temporeelKenmerkDoel = subject != null && r.soort() == ResolvedRegel.Soort.KENMERKTOEKENNING
+                && r.doel() instanceof Expr.AttribuutRef ka && ka.navigatieRol() == null && ka.objecttype() != null
+                && ka.objecttype().kenmerkGranulariteit.containsKey(ka.attribuut())
+                && !ka.objecttype().kenmerkTijdlijnAantal.containsKey(ka.attribuut());
+        String kenmerkTl = null;
+        if (temporeelKenmerkDoel && r.voorwaarde() != null && r.geldigheid().altijd())
+            kenmerkTl = conditieTijdreeks(r.voorwaarde(), subject);
+        // A decidable temporal-kenmerk write ignores the scalar voorwaarde gate (the voorwaarde IS the write timeline,
+        // not a rekendatum point-check) — the pattern stays class-reactive so it re-fires when the source kenmerk lands.
+        boolean kenmerkTlGelowerd = kenmerkTl != null;
 
         // A forward calculation should not retrigger itself on its own modify (no-loop, in the header);
         // it still recomputes when another rule changes the facts it reads.
@@ -1037,7 +1057,7 @@ public final class DrlTranspiler {
                 && r.doel() instanceof Expr.AttribuutRef da && da.objecttype() != null
                 && (da.objecttype().attribuutGranulariteit.containsKey(da.attribuut())
                     || da.objecttype().kenmerkGranulariteit.containsKey(da.attribuut()));
-        LoweredConditie lc = subject != null && r.voorwaarde() != null
+        LoweredConditie lc = subject != null && r.voorwaarde() != null && !kenmerkTlGelowerd
                 ? (periodeOpTijdlijnDoel
                     ? LoweredConditie.marker("periodevergelijking op een tijdsafhankelijk doel (§8.4.3)", r.voorwaarde().bron())
                     : conditie(acc, r.voorwaarde(), subject, true))
@@ -1072,6 +1092,16 @@ public final class DrlTranspiler {
                 String ankerLid = model.startpuntAnkerLid(subject, da.attribuut());
                 if (ankerLid != null) watch.add(ident(ankerLid, false));
             }
+            // §8.4/§13.4.5: a decidable temporal-kenmerk write reads its SOURCE kenmerk-tijdlijn(s) from the voorwaarde
+            // (which is NOT lowered into the scalar constraint here), invisible to the value-read walk — watch them so
+            // the write rebuilds when the source kenmerk lands.
+            if (kenmerkTlGelowerd) verzamelKenmerkReads(r.voorwaarde(), subject, watch);
+            // §7.1/§8.4: a SCALAR-doel §7.1 totaal "gedurende de tijd dat <temporeel kenmerk>" CLIPS by the subject's own
+            // kenmerk-tijdlijn (in the function's filter, invisible to the argument walk). Watch it so the totaal re-fires
+            // when that kenmerk is WRITTEN by a §8.4 temporal kenmerktoekenning (the write→read chain). Scoped to a scalar
+            // doel: a temporal ATTRIBUTE producer (aantal-dagen-in / tijdsevenredig) already rides its own anchor/class
+            // reactivity, and broadening its @watch would churn the pinned anchored-bucket DRL.
+            if (!temporeelDoel && !temporeelKenmerkDoel) verzamelFilterKenmerkReads(r.waarde(), subject, watch);
             rule.clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + constraint + " )"
                     + (watch.isEmpty() ? "" : " @watch( " + String.join(", ", watch) + " )"));
             for (String e : lc.extra()) rule.clausule(e);   // the exists-join(s), after $subject is bound
@@ -1118,15 +1148,23 @@ public final class DrlTranspiler {
         } else if (r.doel() instanceof Expr.AttribuutRef a && a.navigatieRol() == null && a.objecttype() != null
                 && a.objecttype().kenmerkGranulariteit.containsKey(a.attribuut())) {
             // §8.4/§13.4.5 a TEMPORAL KENMERK doel (kenmerkGranulariteit — its field is a List<Segment> TRUE-period
-            // timeline, not a boolean) cannot take the scalar `setK(true)` the bare value branch below would emit:
-            // that write does not even compile ("Unable to Analyse Expression" — a boolean into a List field). The
-            // clip that lowers the rule's voorwaarde/geldigheid into a List<Segment> of TRUE-periods is an
-            // under-specified WRITE producer (§8.4 fixes the READ side — "gedurende de tijd dat <temporeel kenmerk>"
-            // — but not the toekenning's periodization), so MARKER it honestly. Mirrors the exec back-end's skip
-            // (ExecModelTranspiler: "temporele kenmerktoekenning — latere fase"), keeping the two symmetric. The
-            // marker is COMMENT-ONLY (no modify): a `setK(null)` write would WIPE a seeded timeline the exec skip
-            // leaves intact — a destructive "marker" and an asymmetry, not an inert one.
-            rule.dan("    /* TODO " + commentVeilig("temporele kenmerktoekenning (§8.4/§13.4.5): " + r.doel().bron()) + " */\n");
+            // timeline, not a boolean) cannot take the scalar `setK(true)` the bare value branch below would emit
+            // (a boolean into a List field does not compile). The DECIDABLE case writes the voorwaarde's TRUE-period
+            // timeline (kenmerkTl, computed above via the SAME conditieTijdreeks lowering the §7.1 gedurende READ uses):
+            // the doel-kenmerk holds exactly where the gating kenmerk-tijdlijn does (§3.8), default-onwaar elsewhere
+            // (§3.4 — monotone, no complement seed). IDEMPOTENT (rsTijdreeksGelijk, mirroring the anchored-attribuut
+            // guard): the @watch on the source kenmerk re-fires this rule when it lands, and the guard stops a same-
+            // valued rebuild from re-propagating. An EMPTY / geldigheids-windowed / negated / non-kenmerk voorwaarde
+            // left kenmerkTl null (under-specified periodization) -> a COMMENT-ONLY marker: a `setK(null)` write would
+            // WIPE a seeded timeline, a destructive "marker" and an asymmetry, not an inert one.
+            if (kenmerkTl != null) {
+                fnImport("rsTijdreeksGelijk");
+                rule.dan("    if (!rsTijdreeksGelijk(" + SUBJECT + "." + getter(a.attribuut()) + "(), " + kenmerkTl + ")) {\n"
+                        + "    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( " + kenmerkTl + " )\n    }\n"
+                        + "    }\n");
+            } else {
+                rule.dan("    /* TODO " + commentVeilig("temporele kenmerktoekenning (§8.4/§13.4.5) — onbepaalde write-producer (lege/geldigheids-vensterde/genavigeerde voorwaarde): " + r.doel().bron()) + " */\n");
+            }
         } else if (valueStr != null && r.doel() instanceof Expr.AttribuutRef a) {
             // Navigated-read reactivity: a to-one navigated value read leaves the rule stale on the FAR fact's update
             // (mvel property reactivity is per subject TYPE). Add a far-side JOIN per distinct navigation so the
@@ -1262,6 +1300,38 @@ public final class DrlTranspiler {
                 if (d instanceof Expr.TekstReeks.Ingevoegd i) verzamelEigenReads(i.expr(), subject, uit);
         } else if (e instanceof Expr.DimensieCel dc) {
             verzamelEigenReads(dc.attribuut(), subject, uit);
+        }
+    }
+
+    /** §8.4/§13.4.5 the subject's OWN kenmerk-tijdlijn properties a temporal-kenmerk write's voorwaarde READS (the
+     *  gedurende source): a single {@link Conditie.Kenmerk} adds its property; an ALLE / ten-minste-1 compound recurses
+     *  its kenmerk members. Only the shapes conditieTijdreeks lowers reach here (a positive own subject kenmerk), so
+     *  the @watch set matches exactly the fields the write timeline reads. */
+    private void verzamelKenmerkReads(Conditie c, Objecttype subject, java.util.Set<String> uit) {
+        if (c instanceof Conditie.Kenmerk k && k.navigatie() == null && subject != null
+                && subject.kenmerkGranulariteit.containsKey(k.kenmerk()))
+            uit.add(ident(k.kenmerk(), false));
+        else if (c instanceof Conditie.Samengesteld s)
+            for (Conditie o : s.onderdelen()) verzamelKenmerkReads(o, subject, uit);
+    }
+
+    /** §7.1/§8.4 the own-kenmerk reads inside a value expression's aggregation FILTERS ("gedurende de tijd dat
+     *  &lt;temporeel kenmerk&gt;") — the clipping kenmerk rides {@link Expr.Functie#filter()}, not an argument, so the
+     *  {@link #verzamelEigenReads} value walk misses it. Watching it lets a §7.1 totaal re-fire when that kenmerk is
+     *  WRITTEN by a §8.4 temporal kenmerktoekenning. Recurses the same wrapper layers as verzamelEigenReads. */
+    private void verzamelFilterKenmerkReads(Expr e, Objecttype subject, java.util.Set<String> uit) {
+        if (e instanceof Expr.Functie f) {
+            verzamelKenmerkReads(f.filter(), subject, uit);
+            for (Expr a : f.argumenten()) verzamelFilterKenmerkReads(a, subject, uit);
+        } else if (e instanceof Expr.Binair b) {
+            verzamelFilterKenmerkReads(b.links(), subject, uit);
+            verzamelFilterKenmerkReads(b.rechts(), subject, uit);
+        } else if (e instanceof Expr.Afgerond af) {
+            verzamelFilterKenmerkReads(af.basis(), subject, uit);
+        } else if (e instanceof Expr.Begrensd bg) {
+            verzamelFilterKenmerkReads(bg.basis(), subject, uit);
+            verzamelFilterKenmerkReads(bg.minimum(), subject, uit);
+            verzamelFilterKenmerkReads(bg.maximum(), subject, uit);
         }
     }
 
