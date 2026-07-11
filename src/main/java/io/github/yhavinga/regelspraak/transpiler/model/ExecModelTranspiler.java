@@ -4356,16 +4356,39 @@ public final class ExecModelTranspiler {
                     .expr(nextId("uig"), (Predicate1) i -> naam.equals(RegelSpraakRuntime.get(i, "regel")))
                     .expr(nextId("uig"), (Variable) sVar, (Predicate2) (i, ss) -> RegelSpraakRuntime.get(i, "subject") == ss);
             items.add(DSL.not(guard));
-            // consequence: sum the per-source counts; insert iff > 1 (insert-only -> NO no-loop).
+            // consequence: sum the per-source counts; insert iff > 1 (insert-only -> NO no-loop). consequenceOf binds
+            // at most 9 vars (Block10), so [subject + one count per source] overflows past 8 sources. To stay general
+            // over ANY source count (DRL's string sum has no ceiling — keeping the differential faithful) WITHOUT
+            // changing the ≤8-source form, FOLD the counts pairwise into one running total via DSL.from: each fold var
+            // is a from-sourced declaration ($sum = from($prev, $cj, (p,c) -> p+c)) matched by a bare pattern, so the
+            // consequence then binds only [subject, total]. from(...) gives the fold var a real binding source the
+            // consequence can resolve (a re-bound accumulate result cannot).
             List<Variable> vars = new ArrayList<>();
             vars.add(sVar);
-            vars.addAll(countVars);
-            final int nC = countVars.size();
-            RuleItemBuilder<?> consequence = consequenceOf(vars.toArray(new Variable[0]), (drools, args) -> {
-                int sum = 0;
-                for (int c = 0; c < nC; c++) sum += ((Number) args[1 + c]).intValue();
-                if (sum > 1) drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, naam, args[0]));
-            });
+            RuleItemBuilder<?> consequence;
+            if (countVars.size() + 1 <= 9) {
+                vars.addAll(countVars);
+                final int nC = countVars.size();
+                consequence = consequenceOf(vars.toArray(new Variable[0]), (drools, args) -> {
+                    int sum = 0;
+                    for (int c = 0; c < nC; c++) sum += ((Number) args[1 + c]).intValue();
+                    if (sum > 1) drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, naam, args[0]));
+                });
+            } else {
+                Variable runningSum = countVars.get(0);            // seed with the first count (already a bound Number)
+                for (int j = 1; j < countVars.size(); j++) {
+                    final Variable prev = runningSum;
+                    Variable sumVar = DSL.declarationOf(Object.class,
+                            DSL.from((Variable) prev, (Variable) countVars.get(j),
+                                    (Function2) (p, c) -> ((Number) p).intValue() + ((Number) c).intValue()));
+                    items.add(PatternDSL.pattern(sumVar));
+                    runningSum = sumVar;
+                }
+                vars.add(runningSum);
+                consequence = consequenceOf(vars.toArray(new Variable[0]), (drools, args) -> {
+                    if (((Number) args[1]).intValue() > 1) drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, naam, args[0]));
+                });
+            }
             if (consequence == null) { overgeslagen.add("uniciteit-unie (te veel bronnen): " + u.naam()); return rules; }
             items.add(consequence);
             rules.add(PatternDSL.rule(kop(naam + " (" + subj.type().naam + " " + (s + 1) + ")")).build(items.toArray(new RuleItemBuilder[0])));

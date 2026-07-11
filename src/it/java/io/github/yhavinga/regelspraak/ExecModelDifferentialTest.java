@@ -8337,7 +8337,72 @@ class ExecModelDifferentialTest {
         assertEquals(verwacht, viaDrl,   "DRL (oracle) wrong vs spec: inconsistent zodra één criterium faalt");
         assertEquals(viaDrl, viaModel,   "back-ends DIVERGE op de samengestelde consistentie");
     }
-    @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 7); }
+    @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 9); }
+    /** §13.4.8.12/.14 "verenigd met" over NINE sources — past the exec-model consequence's 9-variable bind ceiling
+     *  ([subject]+[9 per-source counts] = 10 vars). The DRL back-end sums the counts as a string and has no ceiling;
+     *  the exec back-end now FOLDS the per-source counts into one running-total variable so the consequence binds only
+     *  [subject, total], general over any source count. Before this lowering the exec back-end SKIPPED ("te veel
+     *  bronnen"); now it FIRES and must agree with the oracle. The value 7 appears in the 1st source (leeftijd) AND the
+     *  9th (bedrag) -> both flagged; the collision spanning the LAST source proves the fold counts every source. */
+    @Test void phase_H_uniciteit_unie_negen_bronnen_gevouwen() {
+        String src = """
+            Objecttype de Persoon (mv: Personen)
+                de leeftijd Numeriek (geheel getal);
+            Objecttype de Meting (mv: Metingen)
+                de uitkomst Numeriek (geheel getal);
+            Objecttype de Konto (mv: Kontos)
+                de saldo Numeriek (geheel getal);
+            Objecttype de Vlucht (mv: Vluchten)
+                de luchthaven Numeriek (geheel getal);
+            Objecttype de Pot (mv: Potten)
+                de totaal Numeriek (geheel getal);
+            Objecttype de Schijf (mv: Schijven)
+                de afstand Numeriek (geheel getal);
+            Objecttype de Tarief (mv: Tarieven)
+                de grens Numeriek (geheel getal);
+            Objecttype de Heffing (mv: Heffingen)
+                de prijs Numeriek (geheel getal);
+            Objecttype de Factuur (mv: Facturen)
+                de bedrag Numeriek (geheel getal);
+            Regel uniek
+                geldig altijd
+                    De leeftijd van alle Personen verenigd met de uitkomst van alle Metingen verenigd met de saldo van alle Kontos verenigd met de luchthaven van alle Vluchten verenigd met de totaal van alle Potten verenigd met de afstand van alle Schijven verenigd met de grens van alle Tarieven verenigd met de prijs van alle Heffingen verenigd met de bedrag van alle Facturen moeten uniek zijn.
+            """;
+        FoutFixture fx = new FoutFixture("uniciteit-unie: 9 bronnen — duplicaat over de negende bron", src,
+            () -> {
+                Persoon p = new Persoon(); p.setLeeftijd(new BigDecimal(7));            // 1e bron
+                Meting me = new Meting(); me.setUitkomst(new BigDecimal(1));
+                Konto k = new Konto(); k.setSaldo(new BigDecimal(2));
+                Vlucht vl = new Vlucht(); vl.setLuchthaven(new BigDecimal(3));
+                Pot po = new Pot(); po.setTotaal(new BigDecimal(4));
+                io.github.yhavinga.regelspraak.facts.Schijf sc = new io.github.yhavinga.regelspraak.facts.Schijf(); sc.setAfstand(new BigDecimal(5));
+                io.github.yhavinga.regelspraak.facts.Tarief ta = new io.github.yhavinga.regelspraak.facts.Tarief(); ta.setGrens(new BigDecimal(6));
+                io.github.yhavinga.regelspraak.facts.Heffing he = new io.github.yhavinga.regelspraak.facts.Heffing(); he.setPrijs(new BigDecimal(8));
+                io.github.yhavinga.regelspraak.facts.Factuur fa = new io.github.yhavinga.regelspraak.facts.Factuur(); fa.setBedrag(new BigDecimal(7));  // 9e bron: botst met 7
+                return List.of(p, me, k, vl, po, sc, ta, he, fa);
+            },
+            o -> {
+                if (o instanceof Persoon x) return "Persoon:" + x.getLeeftijd();
+                if (o instanceof io.github.yhavinga.regelspraak.facts.Factuur x) return "Factuur:" + x.getBedrag();
+                if (o instanceof Meting x) return "Meting:" + x.getUitkomst();
+                if (o instanceof Konto x) return "Konto:" + x.getSaldo();
+                if (o instanceof Vlucht x) return "Vlucht:" + x.getLuchthaven();
+                if (o instanceof Pot x) return "Pot:" + x.getTotaal();
+                if (o instanceof io.github.yhavinga.regelspraak.facts.Schijf x) return "Schijf:" + x.getAfstand();
+                if (o instanceof io.github.yhavinga.regelspraak.facts.Tarief x) return "Tarief:" + x.getGrens();
+                return "Heffing:" + ((io.github.yhavinga.regelspraak.facts.Heffing) o).getPrijs();
+            });
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(),
+                () -> "9-bronnen 'verenigd met' moet nu LOWEREN, geen 'te veel bronnen' skip: " + em.overgeslagen());
+        List<String> verwacht = List.of("uniek/Factuur:7", "uniek/Persoon:7");
+        List<String> viaDrl   = fireFout(drlBase(m), fx);
+        List<String> viaModel = fireFout(KieBaseBuilder.createKieBaseFromModel(em.model()), fx);
+        assertEquals(verwacht, viaDrl,   "DRL (oracle) wrong vs spec: alleen de over de 9e bron botsende waarde 7 is niet-uniek");
+        assertEquals(viaDrl, viaModel,   "back-ends DIVERGE op de 9-bronnen (gevouwen) uniciteit-unie");
+    }
     @Test void phase_div_value_matches_drl_back_end()             { runDifferential("Phase DIV", PHASE_DIV, 2); }
     @Test void phase_arith_value_matches_drl_back_end()           { runDifferential("Phase ARITH", PHASE_ARITH, 3); }
     @Test void phase_datum_arithmetic_matches_drl_back_end()      { runDifferential("Phase DATUM", PHASE_DATUM, 16); }
@@ -9522,6 +9587,51 @@ class ExecModelDifferentialTest {
             o -> (o instanceof io.github.yhavinga.regelspraak.facts.Cirkel c ? "Cirkel:" + c.getNaam()
                                                                  : "Vierkant:" + ((io.github.yhavinga.regelspraak.facts.Vierkant) o).getNaam())),
 
+        // §8.1.6/§13.4.8.12 THREE-source "verenigd met": the union counts EVERY source, so a value shared between the
+        // FIRST and THIRD source is a collision the 3rd-source count must catch. "A" appears in a Cirkel AND a Bestemming
+        // (the 3rd source) -> both flagged; "B" (Cirkel only) and "C" (Vierkant only) stay unique.
+        new FoutFixture("uniciteit-unie: 3 bronnen — duplicaat over de derde bron",
+            """
+            Objecttype de Cirkel
+                de naam Tekst;
+            Objecttype het Vierkant
+                de naam Tekst;
+            Objecttype de Bestemming (mv: Bestemmingen)
+                de naam Tekst;
+            Regel uniek
+                geldig altijd
+                    De namen van alle Cirkels verenigd met de namen van alle Vierkanten verenigd met de namen van alle Bestemmingen moeten uniek zijn.
+            """,
+            () -> { io.github.yhavinga.regelspraak.facts.Cirkel ca = new io.github.yhavinga.regelspraak.facts.Cirkel(); ca.setNaam("A");
+                    io.github.yhavinga.regelspraak.facts.Cirkel cb = new io.github.yhavinga.regelspraak.facts.Cirkel(); cb.setNaam("B");
+                    io.github.yhavinga.regelspraak.facts.Vierkant vc = new io.github.yhavinga.regelspraak.facts.Vierkant(); vc.setNaam("C");
+                    io.github.yhavinga.regelspraak.facts.Bestemming ba = new io.github.yhavinga.regelspraak.facts.Bestemming(); ba.setNaam("A");
+                    return List.of(ca, cb, vc, ba); },
+            o -> unieKey(o)),
+
+        // §8.1.6/§13.4.8.12 FOUR-source "verenigd met": a value shared between the SECOND and FOURTH source collides.
+        // "D" appears in a Vierkant AND a Contingent (the 4th source) -> both flagged; "A"(Cirkel), "B"(Bestemming) unique.
+        new FoutFixture("uniciteit-unie: 4 bronnen — duplicaat over de vierde bron",
+            """
+            Objecttype de Cirkel
+                de naam Tekst;
+            Objecttype het Vierkant
+                de naam Tekst;
+            Objecttype de Bestemming (mv: Bestemmingen)
+                de naam Tekst;
+            Objecttype de Contingent (mv: Contingenten)
+                de naam Tekst;
+            Regel uniek
+                geldig altijd
+                    De namen van alle Cirkels verenigd met de namen van alle Vierkanten verenigd met de namen van alle Bestemmingen verenigd met de namen van alle Contingenten moeten uniek zijn.
+            """,
+            () -> { io.github.yhavinga.regelspraak.facts.Cirkel ca = new io.github.yhavinga.regelspraak.facts.Cirkel(); ca.setNaam("A");
+                    io.github.yhavinga.regelspraak.facts.Vierkant vd = new io.github.yhavinga.regelspraak.facts.Vierkant(); vd.setNaam("D");
+                    io.github.yhavinga.regelspraak.facts.Bestemming bb = new io.github.yhavinga.regelspraak.facts.Bestemming(); bb.setNaam("B");
+                    io.github.yhavinga.regelspraak.facts.Contingent kd = new io.github.yhavinga.regelspraak.facts.Contingent(); kd.setNaam("D");
+                    return List.of(ca, vd, bb, kd); },
+            o -> unieKey(o)),
+
         // §9.5 a vs-PARAMETER assertie (spec-main-90 "leeftijd moet kleiner zijn dan de grens"): the global is bound
         // as a pattern variable. grens 18 -> 10 ok, 30 violated, a leeg leeftijd -> ordering violation.
         new FoutFixture("consistentie: own attr vs Parameter-global (leeftijd < de grens)",
@@ -9760,6 +9870,15 @@ class ExecModelDifferentialTest {
                 .sorted().toList();
         s.dispose();
         return created;
+    }
+
+    /** Stable per-instance key for a §8.1.6 "verenigd met" Inconsistentie subject across the four naam-carrying fact
+     *  types — the subject identity differs between the two back-ends, its "Type:naam" descriptor does not. */
+    private static String unieKey(Object o) {
+        if (o instanceof io.github.yhavinga.regelspraak.facts.Cirkel c) return "Cirkel:" + c.getNaam();
+        if (o instanceof io.github.yhavinga.regelspraak.facts.Vierkant v) return "Vierkant:" + v.getNaam();
+        if (o instanceof io.github.yhavinga.regelspraak.facts.Bestemming b) return "Bestemming:" + b.getNaam();
+        return "Contingent:" + ((io.github.yhavinga.regelspraak.facts.Contingent) o).getNaam();
     }
 
     /** Fire and return the SORTED "regel/<subject-key>" descriptors of every inserted Inconsistentie — comparable
