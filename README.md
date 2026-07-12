@@ -87,6 +87,50 @@ Embed the engine via `RegelSpraakEngine.compile(source)` → `newSession()` →
 Deploy runbook (container contract, Helm probes, peildatum contract):
 `docs/ENGINE.md`.
 
+## Uitleg, regelgraaf & playground
+
+Three capabilities on top of the decision chain, aimed at the people *around*
+the engine — the jurist who must trust a decision, the analyst who must see the
+model, and the newcomer who must learn the language.
+
+**Uitleg — the decision explains itself.** The engine already knows, per fired
+rule, which voorwaarden held and with which evaluated values; the `Verbalisator`
+(engine module) turns that into plain-Dutch sentences: one per assigned kenmerk
+("… omdat de maandloon nieuw van de Eindiging (1.750,01) groter is dan de
+drempelwaarde van de Eindiging (1.750,00)") and one per *withheld* kenmerk,
+naming the first failing conjunct. Numbers and dates in NL notation; forms the
+verbaliser cannot structure are reported honestly as "(onbekend)" rather than
+paraphrased. Invoke it anywhere the engine fires:
+
+    java … ScenarioRunnerCli --uitleg model.rgs scenario.rgs   # per scenario, under PASS/FAIL
+    curl -X POST 'http://…/<entrypoint>?uitleg=true' -d @casus.json   # extra response field
+
+Both are additive — existing callers see byte-identical output without the flag.
+Known limit: `// Bron:`-annotaties from `.rgs` sources are skipped by the lexer,
+so the uitleg cannot yet cite wetsartikelen; carrying comments on a hidden
+channel is the natural next step.
+
+**Regelgraaf — the model as a picture.** `Resolver --graaf out.html bron.rgs…`
+(or `make graaf FILE=…`) renders the producer/consumer graph of the resolved IR:
+rules, attributen and kenmerken as nodes, dataflow as edges, with two colours
+that matter — **inputs** (nothing produces them: exactly the request/koppelvlak
+boundary of a rule set) and **terminal outputs** (nothing consumes them: the
+service's deliverables). The extraction shares its core (`ProducentConsument`)
+with the service's scope-completeness validation, so the picture and the
+enforcement can never disagree. The HTML embeds Mermaid via CDN; use
+`--graaf-mmd` for a bare offline `.mmd`.
+
+**Playground — type RegelSpraak, see everything.** A dev-only workbench in the
+service: `GET /playground` serves a single self-contained page (textarea left;
+parse tree / resolver verdict / generated DRL / scenario outcome as tabs right),
+backed by `POST /playground/analyse`. Parse errors come back with position and
+expected tokens; include a `Scenario`-blok in the source and it fires for real.
+Compile-per-request with a 15 s timeout, no persistence, and **off by default**
+— it binds only when `PLAYGROUND=true`, and is meant for a developer laptop, not
+production.
+
+    PLAYGROUND=true make serve       # then open http://localhost:8080/playground
+
 ## Naming convention
 
 Infrastructure and directory names are English; domain code and the DSL surface
