@@ -129,7 +129,9 @@ Compile-per-request with a 15 s timeout, no persistence, and **off by default**
 — it binds only when `PLAYGROUND=true`, and is meant for a developer laptop, not
 production.
 
-    PLAYGROUND=true make serve       # then open http://localhost:8080/playground
+    PLAYGROUND=true java -cp … io.github.yhavinga.regelspraak.service.http.DienstMain \
+        <descriptor.dienst.json> <bron.rgs…>        # then open /playground
+    # or from a rule repo (a domain rule repo): PLAYGROUND=true make serve
 
 ## Naming convention
 
