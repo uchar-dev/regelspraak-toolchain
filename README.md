@@ -49,6 +49,8 @@ and **[docs/](docs/)** for the architecture and runbooks.
 | `docs/` | `ENGINE.md` (engine + deploy runbook), `TRANSPILER-ARCHITECTURE.md` (core + two back-ends), `SCENARIOTOETSEN.md` (the analyst-toets contract), `grammar-divergences.md` (spec reconciliations), `ANTLR-HOWTO.md` (grammar workflow) |
 | `docker/` | the **beslisservice** production image (`Dockerfile`, built via `make image`) — see `docker/README.md` |
 | `helm/` | `beslisservice/` Helm chart (dev/prod value overlays) |
+| `htmldocs/` | the static toolchain docs page, published to the shared VM via `make docs-deploy` — ownership split with the sibling repos in `htmldocs/README.md` |
+| `deployment/` | `transpiler-docs/deploy-transpiler-docs.sh` (rsync of `htmldocs/transpiler/` to the VM; dry-run supported) |
 | `scripts/` | `kind-smoke.sh` (in-cluster smoke gates), `peildatum-vintage-check.sh` (advisory) |
 | `tools/` | `Parse.java` (grammar smoke harness), corpus extraction, CSV→Beslistabel converter |
 | `Makefile` | the build entry point (`make help`) |
