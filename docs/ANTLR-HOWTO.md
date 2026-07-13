@@ -1,4 +1,4 @@
-# ANTLR HOWTO (RegelSpraak-rebooted)
+# ANTLR HOWTO (RegelSpraak-java)
 
 Everything needed to run ANTLR 4 for this project. Distilled from experience
 building RegelSpraak grammars and adapted to the Java target.

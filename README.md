@@ -1,6 +1,6 @@
-# RegelSpraak-rebooted
+# RegelSpraak-java
 
-A complete **RegelSpraak v2.3.0** (TOKA) toolchain: from an ANTLR grammar and a
+A complete **RegelSpraak v2.3.0** toolchain: from an ANTLR grammar and a
 semantic resolver, through a typed IR and two Drools back-ends, to a deployable
 decision service. RegelSpraak is a Dutch business-rules DSL; this repo takes a
 `.rgs` rule set from authoring all the way to a firing, HTTP-exposed engine.

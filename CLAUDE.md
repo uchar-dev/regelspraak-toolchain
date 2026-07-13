@@ -1,4 +1,4 @@
-# CLAUDE.md — RegelSpraak-rebooted
+# CLAUDE.md — RegelSpraak-java
 
 ## Mission
 

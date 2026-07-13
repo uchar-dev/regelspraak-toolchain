@@ -1,4 +1,4 @@
-# RegelSpraak-rebooted — ANTLR build (Java target)
+# RegelSpraak-java — ANTLR build (Java target)
 #
 # Builds a RegelSpraak v2.3.0 parser from grammar/*.g4 using a *local* ANTLR jar,
 # so no global `antlr4` install is required. The complete jar bundles the ANTLR
@@ -47,7 +47,7 @@ LEXER_G4  := $(GRAMMAR_DIR)/RegelSpraakLexer.g4
 PARSER_G4 := $(GRAMMAR_DIR)/RegelSpraak.g4
 
 help:
-	@echo "RegelSpraak-rebooted — ANTLR $(ANTLR4_VERSION) (Java target)"
+	@echo "RegelSpraak-java — ANTLR $(ANTLR4_VERSION) (Java target)"
 	@echo ""
 	@echo "  make antlr-jar                       Ensure lib/antlr-$(ANTLR4_VERSION)-complete.jar is present"
 	@echo "  make parser                          Generate the Java lexer+parser (lexer first, then parser)"
