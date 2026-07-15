@@ -89,21 +89,30 @@ let laatste = null, actief = "parse";
 const VOORBEELD = `Objecttype de Persoon (mv: Personen)
     de leeftijd Numeriek (geheel getal);
     de korting Numeriek (geheel getal);
-    is minderjarig (bijvoeglijk);
+    is minderjarig kenmerk (bijvoeglijk);
 
 Regel bepaal minderjarigheid
 geldig altijd
 Een Persoon is minderjarig indien de leeftijd van de Persoon kleiner is dan 18.
 
-Regel bepaal korting
+Regel bepaal korting minderjarig
 geldig altijd
-De korting van een Persoon moet berekend worden als 25 indien de Persoon minderjarig is, anders 0.
+De korting van een Persoon moet gesteld worden op 25 indien de Persoon minderjarig is.
+
+Regel bepaal korting meerderjarig
+geldig altijd
+De korting van een Persoon moet gesteld worden op 0 indien de Persoon niet minderjarig is.
+
+Situatie jonge-persoon:
+een Persoon P1
+- de leeftijd is 12
 
 Scenario Jonge persoon krijgt korting
-    toetst de regels bepaal minderjarigheid, bepaal korting
-    met een Persoon p met leeftijd 12
-    verwacht dat p minderjarig is
-    verwacht dat de korting van p 25 is
+toetst de regels bepaal minderjarigheid, bepaal korting minderjarig en bepaal korting meerderjarig
+gebaseerd op de situatie jonge-persoon
+Met als verwacht resultaat:
+- P1 is minderjarig
+- de korting van P1 is 25
 `;
 
 function esc(s) {
