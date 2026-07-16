@@ -8,6 +8,7 @@ import io.github.yhavinga.regelspraak.engine.ScenarioResultaat;
 import io.github.yhavinga.regelspraak.engine.ScenarioResultaat.DekkingRegel;
 import io.github.yhavinga.regelspraak.engine.ScenarioResultaat.VerwachtingResultaat;
 import io.github.yhavinga.regelspraak.engine.ScenarioRunner;
+import io.github.yhavinga.regelspraak.graaf.RegelGraaf;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Diagnostic;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Severity;
@@ -31,7 +32,7 @@ import java.util.List;
 
 /**
  * The DEV-ONLY RegelSpraak playground core (a "type-and-see" workbench). It is a pure analyzer: given a
- * RegelSpraak source it returns ONE JSON tree carrying, in order, the four things a learner wants to see:
+ * RegelSpraak source it returns ONE JSON tree carrying, in order, the five things a learner wants to see:
  * <ol>
  *   <li><b>parse</b> — {@code ok} plus, per syntax error, its {@code regel}/{@code kolom}, the offending token
  *       and the {@code verwacht} token set (the ANTLR follow set), so a beginner sees WHERE and WHAT was
@@ -39,6 +40,8 @@ import java.util.List;
  *   <li><b>resolver</b> — the {@link Resolver} verdict: the ERROR and WARNING diagnostics (line + message);</li>
  *   <li><b>drl</b> — the transpiled Drools text, present only when parse + resolve are clean (a broken model has
  *       no honest DRL);</li>
+ *   <li><b>graaf</b> — the regelgraaf: the resolved model's producer/consumer dataflow as Mermaid source, present
+ *       under the same clean-model gate as {@code drl} (a broken model has no honest dataflow graph);</li>
  *   <li><b>scenario</b> — only when the source contains a {@code Scenario} block: the in-proc
  *       {@link ScenarioRunner} outcome per scenario (status + per-expectation verwacht/werkelijk).</li>
  * </ol>
@@ -119,6 +122,16 @@ public final class Playground {
             } catch (RuntimeException e) {
                 root.put("drl", "");
                 root.put("drlFout", boodschap(e));
+            }
+            // 3b. GRAAF — the dataflow projection of the SAME resolved model (rules <-> gegevens) as bare Mermaid
+            //     source the page renders. A peer of DRL under the clean-model gate: a broken model has no honest
+            //     dataflow graph. Built from the shared ProducentConsument core, so the picture can never disagree
+            //     with the engine's scope-validation; the page degrades to a <pre> of the source offline.
+            try {
+                root.put("graaf", RegelGraaf.bouw(model).mermaid());
+            } catch (RuntimeException e) {
+                root.put("graaf", "");
+                root.put("graafFout", boodschap(e));
             }
         }
 

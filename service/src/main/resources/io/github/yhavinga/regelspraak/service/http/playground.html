@@ -52,13 +52,21 @@
   .row-ok td:first-child { color: var(--ok); }
   .row-bad td:first-child { color: var(--err); }
   .muted { color: var(--muted); }
+  .legend { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .legend .lg { font-size: 11px; padding: 1px 7px; border-radius: 10px; border: 1px solid; }
+  .lg.regel { background:#dbeafe; border-color:#2563eb; color:#1e3a8a; }
+  .lg.attribuut { background:#dcfce7; border-color:#16a34a; color:#14532d; }
+  .lg.kenmerk { background:#fef9c3; border-color:#ca8a04; color:#713f12; }
+  .lg.invoer { background:#fae8ff; border-color:#a21caf; color:#701a75; }
+  .lg.eind { background:#fff; border-color:#111827; color:#111827; border-style:dashed; }
+  .graafview { border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto; background:var(--panel); }
 </style>
 </head>
 <body>
 <header>
   <h1>RegelSpraak-playground</h1>
   <span class="badge">DEV</span>
-  <span class="hint">typ links, druk <b>Analyseer</b> (of Ctrl/&#8984;+Enter) &mdash; parse &middot; resolver &middot; DRL &middot; scenario</span>
+  <span class="hint">typ links, druk <b>Analyseer</b> (of Ctrl/&#8984;+Enter) &mdash; parse &middot; resolver &middot; DRL &middot; graaf &middot; scenario</span>
 </header>
 <main>
   <div class="col">
@@ -75,6 +83,7 @@
       <button data-tab="parse" class="active">Parse</button>
       <button data-tab="resolver">Resolver</button>
       <button data-tab="drl">DRL</button>
+      <button data-tab="graaf">Graaf</button>
       <button data-tab="scenario">Scenario</button>
     </div>
     <div class="view" id="view"><span class="muted">Nog geen analyse.</span></div>
@@ -123,7 +132,10 @@ function render() {
   const v = $("view");
   if (!laatste) { v.innerHTML = '<span class="muted">Nog geen analyse.</span>'; return; }
   if (laatste.__transport) { v.innerHTML = '<span class="pill err">FOUT</span> ' + esc(laatste.__transport); return; }
-  v.innerHTML = ({ parse: renderParse, resolver: renderResolver, drl: renderDrl, scenario: renderScenario }[actief])();
+  v.innerHTML = ({ parse: renderParse, resolver: renderResolver, drl: renderDrl, graaf: renderGraaf, scenario: renderScenario }[actief])();
+  // The graaf pane injects a fresh .mermaid node above; render it now that the node is live (Mermaid loads lazily,
+  // and degrades to the readable source <pre> when the runtime cannot be reached).
+  if (actief === "graaf" && laatste.graaf != null) renderMermaid();
 }
 
 function renderParse() {
@@ -157,6 +169,42 @@ function renderDrl() {
     return '<span class="pill warn">GEEN DRL</span><div class="diag muted">Er is pas DRL als het model schoon parset en resolvet.</div>';
   if (laatste.drlFout) return '<span class="pill err">TRANSPILER-FOUT</span><pre>' + esc(laatste.drlFout) + "</pre>";
   return '<span class="pill ok">DRL</span><pre>' + esc(laatste.drl) + "</pre>";
+}
+
+function renderGraaf() {
+  if (laatste.graaf == null)
+    return laatste.graafFout
+      ? '<span class="pill err">GRAAF-FOUT</span><pre>' + esc(laatste.graafFout) + "</pre>"
+      : '<span class="pill warn">GEEN GRAAF</span><div class="diag muted">Er is pas een graaf als het model schoon parset en resolvet.</div>';
+  // The dataflow graph as Mermaid source, with the static legend baked in (shapes/colours mean nothing without it).
+  // Mermaid renders the <pre> into a diagram when reachable; otherwise the source stays readable in the box.
+  return '<div class="legend">'
+       + '<span class="lg regel">regel</span><span class="lg attribuut">attribuut</span>'
+       + '<span class="lg kenmerk">kenmerk</span><span class="lg invoer">invoer</span>'
+       + '<span class="lg eind">eind-output</span></div>'
+       + '<div class="graafview"><pre class="mermaid">' + esc(laatste.graaf) + "</pre></div>";
+}
+
+// Lazy-load the Mermaid runtime from a pinned, SRI-checked CDN URL, then render the current graaf. Progressive
+// enhancement: if the script cannot load (offline, or an integrity/transport mismatch) the readable source <pre>
+// above is the whole result and state returns to idle, so a later render retries when the network recovers -- the
+// playground never hard-requires the network for its data, only for the pretty diagram. render() calls this AFTER
+// injecting the fresh .mermaid node, so run() targets a live node.
+const MERMAID_SRC = "https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.min.js";
+const MERMAID_SRI = "sha384-T/0lMUdJpd2S1ZHtRiofG3htU3xPCrFVeAQ1UUE2TJwlEJSV5NUwn30kP28n238E";
+let mermaidState = "idle"; // idle | loading | ready (a failed load returns to idle, so it is never terminal)
+function renderMermaid() {
+  const run = () => { if (window.mermaid) window.mermaid.run({ querySelector: ".graafview .mermaid" }).catch(() => {}); };
+  if (mermaidState === "ready") return run();
+  if (mermaidState === "loading") return;        // onload run()s against the live node
+  mermaidState = "loading";
+  const s = document.createElement("script");
+  s.src = MERMAID_SRC;
+  s.integrity = MERMAID_SRI;                     // SRI: refuse to run if the CDN file no longer matches the pinned hash
+  s.crossOrigin = "anonymous";
+  s.onload = () => { mermaidState = "ready"; window.mermaid.initialize({ startOnLoad: false }); run(); };
+  s.onerror = () => { mermaidState = "idle"; s.remove(); };  // retryable: a later render re-attempts when reachable
+  document.head.appendChild(s);
 }
 
 function renderScenario() {

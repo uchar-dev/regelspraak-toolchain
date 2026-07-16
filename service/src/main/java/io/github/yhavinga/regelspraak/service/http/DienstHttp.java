@@ -300,6 +300,11 @@ public final class DienstHttp {
                 html = in.readAllBytes();
             }
             ex.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            // Lock the dev workbench to its own inline JS/CSS plus the pinned, SRI-checked Mermaid CDN origin, so a
+            // compromised or tampered CDN path cannot inject anything the page does not already allow.
+            ex.getResponseHeaders().set("Content-Security-Policy",
+                "default-src 'self'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; "
+                + "style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'");
             ex.sendResponseHeaders(200, html.length);
             try (OutputStream os = ex.getResponseBody()) { os.write(html); }
         } catch (Exception intern) {

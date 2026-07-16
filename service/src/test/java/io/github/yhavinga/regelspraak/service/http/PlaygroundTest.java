@@ -10,10 +10,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The dev-only playground analyzer, exercised for its FOUR answer shapes (the payload {@code POST
+ * The dev-only playground analyzer, exercised for its five answer shapes (the payload {@code POST
  * /playground/analyse} returns): a parse error (position + expected tokens), a resolver error, a clean model with
- * DRL text, and a scenario outcome. These pin the core {@link Playground#analyseer} contract; the wiring over HTTP
- * (env-gated route) is covered by {@link PlaygroundHttpTest}.
+ * DRL text and its dataflow graaf, and a scenario outcome. These pin the core {@link Playground#analyseer}
+ * contract; the wiring over HTTP (env-gated route) is covered by {@link PlaygroundHttpTest}.
  */
 class PlaygroundTest {
 
@@ -64,8 +64,9 @@ class PlaygroundTest {
         assertTrue(f.get("regel").asInt() >= 1, f.toString());
         assertTrue(f.has("kolom"), f.toString());
         assertTrue(f.get("verwacht").isArray(), f.toString());
-        // a broken model has no DRL
+        // a broken model has no DRL and no graaf
         assertFalse(a.has("drl"), "een parse-fout mag geen DRL opleveren: " + a);
+        assertFalse(a.has("graaf"), "een parse-fout mag geen graaf opleveren: " + a);
     }
 
     // ---------------- shape 2: resolver error ----------------
@@ -86,6 +87,7 @@ class PlaygroundTest {
         assertFalse(resolver.get("ok").asBoolean(), "type-mismatch hoort een resolver-fout te zijn: " + a);
         assertTrue(resolver.get("fouten").size() >= 1, a.toString());
         assertFalse(a.has("drl"), "een resolver-fout mag geen DRL opleveren: " + a);
+        assertFalse(a.has("graaf"), "een resolver-fout mag geen graaf opleveren: " + a);
     }
 
     // ---------------- shape 3: DRL ok ----------------
@@ -98,6 +100,14 @@ class PlaygroundTest {
         assertTrue(a.has("drl"), "een schoon model hoort DRL te leveren: " + a);
         String drl = a.get("drl").asText();
         assertTrue(drl.contains("rule "), "de DRL hoort minstens één rule te bevatten: " + drl);
+        // a clean model also yields a graaf: the dataflow projection, as bare Mermaid flowchart source carrying
+        // the rule nodes (bepaal minderjarigheid writes the kenmerk, bepaal korting reads it and writes korting).
+        assertTrue(a.has("graaf"), "een schoon model hoort een graaf te leveren: " + a);
+        assertFalse(a.has("graafFout"), "geen graaf-fout verwacht bij een schoon model: " + a);
+        String graaf = a.get("graaf").asText();
+        assertTrue(graaf.startsWith("flowchart LR"), "de graaf is Mermaid-flowchart-bron: " + graaf);
+        assertTrue(graaf.contains("bepaal minderjarigheid"), "regel-knoop ontbreekt: " + graaf);
+        assertTrue(graaf.contains("bepaal korting"), "regel-knoop ontbreekt: " + graaf);
         // no scenario block -> no scenario section
         assertFalse(a.has("scenario"), "zonder Scenario-blok geen scenario-sectie: " + a);
     }
