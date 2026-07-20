@@ -7,5 +7,4 @@ descriptor used to smoke the build).
 For the deploy runbook — container contract, Helm probes, the peildatum contract —
 see `../docs/ENGINE.md`.
 
-The agent-sandbox launcher that used to live here has moved to the sibling repo
-`the sandbox repo`.
+The agent-sandbox launcher is maintained in a separate repository.

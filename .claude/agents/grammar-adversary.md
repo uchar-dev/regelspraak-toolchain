@@ -12,8 +12,8 @@ your job is to BREAK the grammar, then report only real defects.
 Method:
 1. Build first: `make compile` (it generates lexer → parser, then runs javac).
    If it fails, report the exact error and stop.
-2. Pull real inputs from `specification/v2.3.0/RegelSpraak-TOKA-casus-v2.3.0.md`
-   and the worked examples in the spec. Write a snippet to a temp file and run
+2. Pull real inputs from the TOKA casus fixtures in `examples/toka/*.rgs` and the
+   worked examples. Write a snippet to a temp file and run
    `make grun RULE=<rule> FILE=<tmp>`.
 3. Probe the failure modes of a natural-language Dutch DSL:
    - multi-word keywords mis-tokenized because a shorter prefix or `IDENTIFIER`

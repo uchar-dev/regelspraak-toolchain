@@ -23,26 +23,27 @@ discipline still governs every extension.
 
 Correctness means **adherence to the RegelSpraak v2.3.0 specification**, not
 value-for-value parity with any prior engine or parser. When in doubt, the spec
-decides. It lives in `specification/v2.3.0/`:
+decides.
+
+The normative specification — the main spec, the Chapter 13 syntax diagrams, the
+typeringen (datatype matrix), and the TOKA casus — is © Belastingdienst (Dutch
+Tax & Customs Administration), all rights reserved, and is **not** redistributed
+in this repo. Obtain it from the official source (Wendbare Wetuitvoering Pleio
+community); see `specification/v2.3.0/README.md`. This repo keeps only two
+project-authored, derived notes under `specification/v2.3.0/`:
 
 | File | Role |
 |------|------|
-| `RegelSpraak-specificatie v2.3.0.md` | The full normative specification. Chapter 13 holds the EBNF grammar. |
-| `RegelSpraak-specificatie - syntaxdiagrammen v2.3.0.md` | Chapter 13 syntax diagrams (the EBNF non-terminals) — primary source for parser rules. |
-| `RegelSpraak-specificatie - typeringen v2.3.0.md` | The typing/datatype matrix — drives the resolver's type checking (operand datatypes, comparisons, units). |
-| `RegelSpraak-spec-for-ANTLR-v2.3.0.md` | The EBNF already mapped onto ANTLR lexer/parser rules. **Start here** for grammar authoring; cross-check against the syntaxdiagrammen. |
-| `RegelSpraak-TOKA-casus-v2.3.0.md` | A complete worked example (TOKA case). The first end-to-end parse target and a regression fixture. |
-| `conversie-bevindingen.md` | Notes on PDF→Markdown conversion fidelity (where the Markdown may diverge). Consult before trusting a surprising detail. |
-
-The authoritative PDFs sit next to the Markdown in the same directory.
+| `RegelSpraak-spec-for-ANTLR-v2.3.0.md` | The EBNF mapped onto ANTLR lexer/parser rules. **Start here** for grammar authoring; cross-check against the spec's Chapter 13 syntax diagrams. |
+| `conversie-bevindingen.md` | Notes on PDF→Markdown conversion fidelity (where a transcription may diverge). Consult before trusting a surprising detail. |
 
 ## Hard constraint: do not consult the prior parser
 
 **Ignore the existing RegelSpraak parser entirely.** Do not read, fetch, copy,
 mirror, or be guided by:
 
-- any `yhavinga` GitHub repositories (`a prior TypeScript implementation`, `regelspraak-parser`, …);
-- any sibling checkout of that work on this machine.
+- any prior implementation of this parser (an earlier TypeScript/ANTLR version exists and is maintained separately);
+- any sibling checkout of that prior work on this machine.
 
 That code is the thing being rebooted; mirroring it would replicate its bugs and
 defeat the purpose. Derive everything from the specification in this repo. (Web
@@ -168,7 +169,7 @@ it runs without prompts. **Only run this repo inside a sandbox / VM.** `rm -rf /
 `rm -rf ~`, and `sudo` are still blocked as circuit-breakers. To dial back,
 change `defaultMode` to `acceptEdits`.
 
-**The sandbox launcher lives in the sibling repo** `the sandbox repo`: its
+A sandbox launcher is maintained in a separate repository: its
 `run-sandbox.sh` builds a container (JDK 21, make, git, ANTLR jar) and mounts this
 repo at `/work`. If you are a coding agent running inside that container, just
 build in `/work` — there is no Docker in there, so the host-only packaging gates

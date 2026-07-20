@@ -9,6 +9,27 @@
   <version>2.3.0-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>RegelSpraak v2.3.0 parser + resolver</name>
+  <description>An ANTLR 4 parser, semantic resolver, typed IR, and RegelSpraak-to-Drools transpiler implementing the RegelSpraak v2.3.0 specification.</description>
+  <url>https://github.com/yhavinga/regelspraak-java</url>
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <id>yhavinga</id>
+      <name>Yeb Havinga</name>
+      <email>yhavinga@gmail.com</email>
+    </developer>
+  </developers>
+  <scm>
+    <connection>scm:git:https://github.com/yhavinga/regelspraak-java.git</connection>
+    <developerConnection>scm:git:git@github.com:yhavinga/regelspraak-java.git</developerConnection>
+    <url>https://github.com/yhavinga/regelspraak-java</url>
+  </scm>
 
   <!--
     Front-end (ANTLR parser + semantic resolver) for the RegelSpraak -> Drools

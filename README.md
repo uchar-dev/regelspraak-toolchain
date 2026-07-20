@@ -45,7 +45,7 @@ and **[docs/](docs/)** for the architecture and runbooks.
 | `service/` | `regelspraak-service` — zero-dependency JDK-`HttpServer` decision service (`BeslisserKern`, OpenAPI emitter) |
 | `service-quarkus/` | `regelspraak-service-quarkus` — opt-in Quarkus HTTP adapter over `BeslisserKern` (SmallRye health, config injection) |
 | `examples/` | `toka/` (the TOKA casus, `toka-01..47` + `toka.dienst.json`), `beslistabel/` (§12 decision tables), `toka-reconciliatie/` (casus-omissie companions), `toka-scenarios/` (the golden scenariotoetsen + their `manifest`) |
-| `specification/` | the v2.3.0 spec (Markdown + authoritative PDFs) — the oracle |
+| `specification/` | derived spec notes (ANTLR mapping + conversion findings); the normative v2.3.0 spec is external (© Belastingdienst) — see `specification/v2.3.0/README.md` |
 | `docs/` | `ENGINE.md` (engine + deploy runbook), `TRANSPILER-ARCHITECTURE.md` (core + two back-ends), `SCENARIOTOETSEN.md` (the analyst-toets contract), `grammar-divergences.md` (spec reconciliations), `ANTLR-HOWTO.md` (grammar workflow) |
 | `docker/` | the **beslisservice** production image (`Dockerfile`, built via `make image`) — see `docker/README.md` |
 | `helm/` | `beslisservice/` Helm chart (dev/prod value overlays) |
@@ -133,7 +133,7 @@ production.
 
     PLAYGROUND=true java -cp … io.github.yhavinga.regelspraak.service.http.DienstMain \
         <descriptor.dienst.json> <bron.rgs…>        # then open /playground
-    # or from a rule repo (a domain rule repo): PLAYGROUND=true make serve
+    # or from a domain rule repo: PLAYGROUND=true make serve
 
 ## Naming convention
 

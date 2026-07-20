@@ -8,7 +8,7 @@
 # the Drools transpiler grow into real JVM code (see CLAUDE.md / docs/ANTLR-HOWTO.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus verify-negatief-corpus drl facts graaf drools-it engine grun gui tokens clean clean-jar image kind-smoke docs-deploy docs-deploy-dry csv-beslistabel
+.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus verify-negatief-corpus drl facts graaf drools-it engine grun gui tokens clean clean-jar image kind-smoke csv-beslistabel
 
 ANTLR4_VERSION := 4.13.2
 ANTLR4_URL     := https://www.antlr.org/download/antlr-$(ANTLR4_VERSION)-complete.jar
@@ -73,7 +73,6 @@ help:
 	@echo ""
 	@echo "  make image  [TAG=… DESCRIPTOR_SRC=…] (host only) Build the beslisservice service image"
 	@echo "  make kind-smoke                      (host only) kind H2/H3/H4 gates against the live service"
-	@echo "  make docs-deploy[-dry]               (host only) Publish htmldocs/transpiler/ to the shared VM"
 	@echo ""
 	@echo "  PACKAGE = $(PACKAGE)"
 	@echo "  Grammar files expected: $(LEXER_G4), $(PARSER_G4)"
@@ -254,11 +253,3 @@ image:
 
 kind-smoke:
 	bash scripts/kind-smoke.sh
-
-# Publish htmldocs/transpiler/ to the shared VM (host only; SSH as azureuser).
-# Ownership split with the sibling repos: see htmldocs/README.md.
-docs-deploy:
-	bash deployment/transpiler-docs/deploy-transpiler-docs.sh
-
-docs-deploy-dry:
-	bash deployment/transpiler-docs/deploy-transpiler-docs.sh --dry-run

@@ -21,8 +21,16 @@ SPEC_DIR="specification/v2.3.0"
 CP="lib/antlr-4.13.2-complete.jar:out"
 
 # (Re)extract the corpus from the spec — keeps fixtures in lock-step with the spec.
+# The normative spec (RegelSpraak-specificatie v2.3.0.md) and TOKA casus are NOT
+# redistributed here (© Belastingdienst, external — see $SPEC_DIR/README.md).
+# examples/spec-main extracts from it, so that corpus only exists when the spec is
+# present locally; examples/spec-antlr comes from the in-repo ANTLR mapping.
 rm -f examples/spec-main/*.rs examples/spec-antlr/*.rs examples/spec-main/*.rgs examples/spec-antlr/*.rgs
-python3 tools/extract_corpus.py "$SPEC_DIR/RegelSpraak-specificatie v2.3.0.md"        examples/spec-main  spec-main  2>/dev/null >/dev/null
+if [ -f "$SPEC_DIR/RegelSpraak-specificatie v2.3.0.md" ]; then
+  python3 tools/extract_corpus.py "$SPEC_DIR/RegelSpraak-specificatie v2.3.0.md"        examples/spec-main  spec-main  2>/dev/null >/dev/null
+else
+  echo "verify_corpus: normative spec absent (external, © Belastingdienst) — skipping examples/spec-main corpus."
+fi
 python3 tools/extract_corpus.py "$SPEC_DIR/RegelSpraak-spec-for-ANTLR-v2.3.0.md"      examples/spec-antlr spec-antlr 2>/dev/null >/dev/null
 
 # A snippet that is a known, documented source/conversion defect (see

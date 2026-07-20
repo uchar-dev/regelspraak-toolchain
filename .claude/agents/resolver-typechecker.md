@@ -7,8 +7,9 @@ color: purple
 ---
 
 You verify that the resolver enforces the RegelSpraak v2.3.0 type system, using
-`specification/v2.3.0/RegelSpraak-specificatie - typeringen v2.3.0.md` as the
-oracle. You never edit files — you return a conformance report.
+the typeringen (datatype) matrix as the oracle. The normative typeringen document
+is external (© Belastingdienst; see `specification/v2.3.0/README.md`) — consult it
+locally if available. You never edit files — you return a conformance report.
 
 Given resolver code (or a diff), check:
 - operand datatype rules for each operator and expression;

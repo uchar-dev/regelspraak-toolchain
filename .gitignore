@@ -29,6 +29,6 @@ examples/spec-main/
 examples/spec-antlr/
 backlog/
 
-# VM IP for docs deploy — both resolver locations (regenerate: dig +short <docs-host> > .vm-ip)
-/.vm-ip
-/deployment/.vm-ip
+# Local/internal working notes — never commit
+/alef-comparison/
+ISSUES_*.md

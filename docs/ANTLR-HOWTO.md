@@ -73,13 +73,14 @@ skipped (`-> skip`).
 ## 5. Where the grammar comes from
 
 - **`specification/v2.3.0/RegelSpraak-spec-for-ANTLR-v2.3.0.md`** — the EBNF
-  already mapped onto ANTLR lexer/parser rules. The best starting point.
-- **`… - syntaxdiagrammen v2.3.0.md`** — Chapter 13 syntax diagrams; the
-  authoritative non-terminal structure to cross-check against.
-- **`… - typeringen v2.3.0.md`** — the datatype matrix; not grammar, but the
-  contract the **resolver** enforces after parsing.
-- **`RegelSpraak-TOKA-casus-v2.3.0.md`** — a full example; the first thing the
-  grammar should parse end-to-end and a natural regression fixture.
+  already mapped onto ANTLR lexer/parser rules (in-repo). The best starting point.
+- The normative **Chapter 13 syntax diagrams**, the **typeringen** (datatype
+  matrix), and the **TOKA casus** live in the external RegelSpraak v2.3.0
+  specification (© Belastingdienst; see `specification/v2.3.0/README.md` for the
+  source). Cross-check the grammar against the syntax diagrams; the typeringen
+  matrix is the contract the **resolver** enforces after parsing; the TOKA casus
+  is the first thing the grammar should parse end-to-end and is kept as test data
+  under `examples/toka/`.
 
 ## 6. Targets other than Java (reference)
 

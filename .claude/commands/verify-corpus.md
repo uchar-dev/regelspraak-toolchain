@@ -7,10 +7,10 @@ Verify the current grammar against the full RegelSpraak v2.3.0 example corpus.
 This is a report — do not fix anything.
 
 1. `make compile` — if it fails, report the error and stop.
-2. Extract every RegelSpraak snippet from
-   `specification/v2.3.0/RegelSpraak-TOKA-casus-v2.3.0.md` and the worked
-   examples in `RegelSpraak-specificatie v2.3.0.md` and
-   `RegelSpraak-spec-for-ANTLR-v2.3.0.md` into temp files.
+2. Extract every RegelSpraak snippet from the TOKA casus fixtures
+   (`examples/toka/*.rgs`, in-repo) and `RegelSpraak-spec-for-ANTLR-v2.3.0.md`
+   (in-repo). The normative spec and TOKA-casus document are external
+   (© Belastingdienst; see `specification/v2.3.0/README.md`).
 3. For each snippet, run `make grun RULE=<appropriate start rule> FILE=<tmp>` and
    record whether it parses cleanly (no lexer errors, no `error` nodes).
 4. Produce a table: snippet → start rule → pass/fail → first error if any.

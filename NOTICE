@@ -1,0 +1,15 @@
+RegelSpraak-java
+Copyright 2026 Yeb Havinga
+
+This product includes software developed by third parties:
+  - Apache Drools, Quarkus, and Jackson  (Apache License 2.0)
+  - ANTLR 4 runtime                       (BSD-3-Clause)
+  - JUnit 5                               (Eclipse Public License 2.0)
+
+The RegelSpraak v2.3.0 specification and the TOKA casus are
+© Belastingdienst (Dutch Tax & Customs Administration),
+"Alle rechten voorbehouden" (all rights reserved). They are NOT redistributed
+in this repository; obtain them from the official source:
+  https://wendbarewetsuitvoering.pleio.nl/   (search: "specificaties RegelSpraak")
+This implementation is derived from that specification; the sample/test rules
+use the public, explicitly-fictitious TOKA training case.
