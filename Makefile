@@ -8,7 +8,7 @@
 # the Drools transpiler grow into real JVM code (see CLAUDE.md / docs/ANTLR-HOWTO.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus verify-negatief-corpus drl facts graaf drools-it engine grun gui tokens clean clean-jar image kind-smoke csv-beslistabel
+.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus verify-negatief-corpus drl facts graaf ir drools-it engine grun gui tokens clean clean-jar image kind-smoke csv-beslistabel
 
 ANTLR4_VERSION := 4.13.2
 ANTLR4_URL     := https://www.antlr.org/download/antlr-$(ANTLR4_VERSION)-complete.jar
@@ -58,6 +58,7 @@ help:
 	@echo "  make drl  FILE=<input>               Transpile a .rgs file to Drools (DRL) on stdout"
 	@echo "  make facts                           Generate the TOKA fact-model beans and javac them (out/facts/)"
 	@echo "  make graaf FILE=\"a.rgs …\" [OUT=… MMD=1]  Emit the dataflow regelgraaf (regels ↔ gegevens) as HTML (or bare Mermaid with MMD=1)"
+	@echo "  make ir FILE=\"a.rgs …\" [OUT=…]       Emit a faithful v0 JSON dump of the resolved model (the uchar mirror)"
 	@echo "  make csv-beslistabel FILE=<csv> [OUT=<pad>]  Convert a CSV decision table to a §12 Beslistabel .rgs fragment"
 	@echo "  make drools-it                       (needs Maven+network) Compile & fire the DRL in Drools"
 	@echo "  make engine                          (needs Maven) Build + test the shippable engine consumer"
@@ -193,6 +194,17 @@ facts: resolver
 GRAAF_OUT := $(if $(OUT),$(OUT),$(OUT_DIR)/regelgraaf.$(if $(MMD),mmd,html))
 graaf: resolver
 	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver $(if $(MMD),--graaf-mmd,--graaf) $(GRAAF_OUT) $(FILE)
+
+# Emit the v0 IR — a FAITHFUL JSON dump of the complete resolved in-memory model (objecttypen with every
+# side-map, domeinen, parameters, eenheidstelsels, feittypen, dimensies, tijdlijnen, the resolved rule/creatie/
+# verdeling/consistentie/uniciteit/feitcreatie/startpunt/regelgroep lists, and diagnostics) with the Dutch v0
+# field names EXACTLY as the Java records name them. This is the uchar-programme "mirror" artifact — mirror
+# first, diverge later; no renaming, no cleanup, no filtering. Over one-or-more .rgs files (concatenated in
+# listed order, so a model chain is FILE="a.rgs b.rgs …"). Model-level and jar-only (no Drools): an unresolvable
+# model writes NOTHING and exits 1 (the same disk discipline as --facts/--graaf). OUT overrides the default.
+IR_OUT := $(if $(OUT),$(OUT),$(OUT_DIR)/ir.json)
+ir: resolver
+	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver --ir $(IR_OUT) $(FILE)
 
 # Compile AND FIRE the generated DRL in a real Drools engine — the executable
 # proof that transpilation is correct, not merely well-shaped. Unlike the jar-only
