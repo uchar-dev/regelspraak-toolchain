@@ -162,7 +162,7 @@ public final class Resolver {
         if (ir) System.exit(irModus(rest));
         if (graaf || graafMmd) System.exit(graafModus(rest, graaf));
         if (facts) System.exit(factsModus(rest));
-        if (rest.isEmpty()) { System.err.println("usage: Resolver [--drl] [--allow-markers] <file.rgs>"); System.exit(2); }
+        if (rest.isEmpty()) { System.err.println("usage: Resolver [--drl [--allow-markers] | --facts <outdir> | --graaf <out.html> | --graaf-mmd <out.mmd> | --ir <out.json>] <file.rgs...>"); System.exit(2); }
         RegelSpraakModel m = resolve(java.nio.file.Files.readString(java.nio.file.Path.of(rest.get(0))));
         if (drl) {
             // Transpiling also surfaces lowering-phase diagnostics (the dekking-WARNINGs per marker,
