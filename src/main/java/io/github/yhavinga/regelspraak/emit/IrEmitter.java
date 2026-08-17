@@ -642,8 +642,11 @@ public final class IrEmitter {
         if (m == null || huidigSubject == null || f.elementObjecttype() == null) return null;
         if (f.argumenten().size() != 1 || !(f.argumenten().get(0) instanceof Expr.AttribuutRef arg)) return null;
         if (arg.navigatieRol() != null || (arg.navigatiePad() != null && !arg.navigatiePad().isEmpty())) return null;
-        if (arg.set()) return m.verbindendeRolBinding(huidigSubject, f.elementObjecttype());
+        // classification order mirrors the uchar verifier's fold_source
+        // (Onbekend-typed name wart first, member fold second), so the two
+        // sides can never classify one source differently
         if (arg.type() instanceof Datatype.Onbekend) return m.elementRolBinding(huidigSubject, arg.attribuut());
+        if (arg.set()) return m.verbindendeRolBinding(huidigSubject, f.elementObjecttype());
         return null;
     }
 
