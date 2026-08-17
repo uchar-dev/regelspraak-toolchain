@@ -377,6 +377,58 @@ public final class RegelSpraakModel {
         return n == 1 ? gevonden : null;
     }
 
+    /** A symbolic role binding: the fact type plus the DECLARED (singular) role name —
+     *  the pair the IR emitter's {@code RolBinding} extension fields carry (a plural
+     *  never binds; the wire names the declared role). */
+    public record RolBindingRef(String feittype, String rol) {}
+
+    /**
+     * Like {@link #verbindendeRol}, but returning the fact type together with the bound
+     * role — the pair the IR emitter's symbolic role-binding extension needs. The search
+     * and its uniqueness contract are IDENTICAL to {@link #verbindendeRol} (same counting,
+     * so "unique" means the same thing on both paths); on top of that, a winner from a
+     * wederkerig feittype is withheld — the two-role binding form does not cover the
+     * single-role reciprocal shape, so it stays bindingless there rather than mis-bound.
+     */
+    public RolBindingRef verbindendeRolBinding(Objecttype houder, Objecttype doelwit) {
+        if (houder == null || doelwit == null) return null;
+        RolBindingRef gevonden = null;
+        boolean wederkerig = false;
+        int n = 0;
+        for (Feittype ft : feittypen.values())
+            for (Rol doel : ft.rollen)
+                if (rolHeeftObjecttype(doel, doelwit) && feittypeRelateert(ft, doel, houder)) {
+                    gevonden = new RolBindingRef(ft.naam, doel.naam());
+                    wederkerig = ft.wederkerig;
+                    n++;
+                }
+        return n == 1 && !wederkerig ? gevonden : null;
+    }
+
+    /**
+     * The ELEMENT-role binding of an instance fold, disambiguated by the written element
+     * name — the {@link #verbindendeRolViaElementnaam} search capturing the fact type and
+     * the ELEMENT role instead of the subject's back-reference, with one deliberate
+     * narrowing: only a DECLARED name (singular or declared plural) matches, never the
+     * best-effort plural — a binding must name what the author declared, so a guessed
+     * plural stays bindingless rather than bound to a spelling the model never defined.
+     * Null when no role, or more than one, matches.
+     */
+    public RolBindingRef elementRolBinding(Objecttype subject, String geschrevenRol) {
+        if (subject == null || geschrevenRol == null) return null;
+        RolBindingRef gevonden = null;
+        int n = 0;
+        for (Feittype ft : feittypen.values())
+            for (Rol elemRol : ft.rollen)
+                if (rolMatchtExact(elemRol, geschrevenRol) && feittypeRelateert(ft, elemRol, subject))
+                    for (Rol subjRol : ft.rollen)
+                        if (subjRol != elemRol && rolHeeftObjecttype(subjRol, subject)) {
+                            gevonden = new RolBindingRef(ft.naam, elemRol.naam());
+                            n++;
+                        }
+        return n == 1 ? gevonden : null;
+    }
+
     /**
      * The written role name to record on a navigation reference: the {@code noun}
      * itself when it denotes a feittype role (and not an object type by that name),

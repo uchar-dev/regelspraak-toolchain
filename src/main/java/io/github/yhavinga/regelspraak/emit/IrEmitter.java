@@ -63,9 +63,17 @@ public final class IrEmitter {
 
     private IrEmitter() {}
 
+    /** The resolved model, kept for the role-binding derivations of the uchar extension
+     *  fields (emitted only when uniquely derivable — absent otherwise, never null). */
+    private RegelSpraakModel m;
+    /** The subject object type of the form being emitted; fold-source role bindings
+     *  resolve against it (null outside a subject-bearing form). */
+    private Objecttype huidigSubject;
+
     // --- top-level model ---------------------------------------------------
 
     private void model(RegelSpraakModel m) {
+        this.m = m;
         w.beginObject();
         w.key("formaat").value("regelspraak-ir-v0");
 
@@ -336,6 +344,8 @@ public final class IrEmitter {
                 w.key("type"); datatype(f.type());
                 w.key("bron").value(f.bron());
                 w.key("granulariteit").value(f.granulariteit() == null ? null : f.granulariteit().name());
+                RegelSpraakModel.RolBindingRef rb = bronRolBinding(f);
+                if (rb != null) { w.key("bronRol"); rolBinding(rb); }
             }
             case Expr.Afgerond a -> {
                 w.key("node").value("Afgerond");
@@ -512,6 +522,7 @@ public final class IrEmitter {
     // --- resolved IR lists -------------------------------------------------
 
     private void resolvedRegel(ResolvedRegel r) {
+        huidigSubject = r.doel() instanceof Expr.AttribuutRef a ? a.objecttype() : null;
         w.beginObject();
         w.key("node").value("ResolvedRegel");
         w.key("naam").value(r.naam());
@@ -521,6 +532,7 @@ public final class IrEmitter {
         w.key("voorwaarde"); conditie(r.voorwaarde());
         w.key("geldigheid"); geldigheid(r.geldigheid());
         w.endObject();
+        huidigSubject = null;
     }
 
     private void resolvedDagsoort(ResolvedDagsoort d) {
@@ -554,6 +566,7 @@ public final class IrEmitter {
     }
 
     private void verdeling(ResolvedVerdeling v) {
+        huidigSubject = v.bronType();
         w.beginObject();
         w.key("node").value("ResolvedVerdeling");
         w.key("naam").value(v.naam());
@@ -570,10 +583,14 @@ public final class IrEmitter {
         w.key("afnemend").value(v.afnemend());
         w.key("voorwaarde"); conditie(v.voorwaarde());
         w.key("geldigheid"); geldigheid(v.geldigheid());
+        RegelSpraakModel.RolBindingRef rb = m.verbindendeRolBinding(v.bronType(), v.doelType());
+        if (rb != null) { w.key("verbindendeRol"); rolBinding(rb); }
         w.endObject();
+        huidigSubject = null;
     }
 
     private void consistentie(ResolvedConsistentie c) {
+        huidigSubject = c.subject();
         w.beginObject();
         w.key("node").value("ResolvedConsistentie");
         w.key("naam").value(c.naam());
@@ -583,6 +600,7 @@ public final class IrEmitter {
         w.key("line").value(c.line());
         w.key("geldigheid"); geldigheid(c.geldigheid());
         w.endObject();
+        huidigSubject = null;
     }
 
     private void uniciteit(ResolvedUniciteit u) {
@@ -612,6 +630,28 @@ public final class IrEmitter {
         w.endArray();
         w.key("bron").value(u.bron());
         w.key("geldigheid"); geldigheid(u.geldigheid());
+        w.endObject();
+    }
+
+    /** The fold-source role binding of an instance fold (the uchar {@code bronRol}
+     *  extension): for a member fold ({@code set}) the by-pair search; for the
+     *  count-names-a-role wart (an Onbekend-typed source) the declared-name search.
+     *  Null — and thus absent from the wire — unless uniquely derivable and
+     *  navigation-free; a binding is never emitted as null. */
+    private RegelSpraakModel.RolBindingRef bronRolBinding(Expr.Functie f) {
+        if (m == null || huidigSubject == null || f.elementObjecttype() == null) return null;
+        if (f.argumenten().size() != 1 || !(f.argumenten().get(0) instanceof Expr.AttribuutRef arg)) return null;
+        if (arg.navigatieRol() != null || (arg.navigatiePad() != null && !arg.navigatiePad().isEmpty())) return null;
+        if (arg.set()) return m.verbindendeRolBinding(huidigSubject, f.elementObjecttype());
+        if (arg.type() instanceof Datatype.Onbekend) return m.elementRolBinding(huidigSubject, arg.attribuut());
+        return null;
+    }
+
+    private void rolBinding(RegelSpraakModel.RolBindingRef rb) {
+        w.beginObject();
+        w.key("node").value("RolBinding");
+        w.key("feittype").value(rb.feittype());
+        w.key("rol").value(rb.rol());
         w.endObject();
     }
 
