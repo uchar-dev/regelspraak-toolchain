@@ -406,6 +406,29 @@ public final class RegelSpraakModel {
     }
 
     /**
+     * Like {@link #verbindendeRolViaNaam} but returning the fact type together with the reached
+     * (far) role — the pair the IR emitter's {@code navigatieBindingen} extension carries for a
+     * by-name hop. Only a DECLARED role name (singular or declared plural) binds: the best-effort
+     * plural is deliberately NOT mirrored (a binding names what the author declared, the same
+     * narrowing {@link #elementRolBinding} makes and the uchar verifier's by-name derivation runs),
+     * so a guessed plural stays bindingless rather than bound to a spelling the model never defined.
+     * Null when no role, or more than one, matches.
+     */
+    public RolBindingRef verbindendeRolViaNaamBinding(Objecttype houder, Objecttype doelwit, String geschrevenRol) {
+        if (doelwit == null || geschrevenRol == null) return null;
+        RolBindingRef gevonden = null;
+        int n = 0;
+        for (Feittype ft : feittypen.values())
+            for (Rol doel : ft.rollen)
+                if (rolMatchtExact(doel, geschrevenRol) && rolHeeftObjecttype(doel, doelwit)
+                        && feittypeRelateert(ft, doel, houder)) {
+                    gevonden = new RolBindingRef(ft.naam, doel.naam());
+                    n++;
+                }
+        return n == 1 ? gevonden : null;
+    }
+
+    /**
      * The ELEMENT-role binding of an instance fold, disambiguated by the written element
      * name — the {@link #verbindendeRolViaElementnaam} search capturing the fact type and
      * the ELEMENT role instead of the subject's back-reference, with one deliberate
@@ -415,15 +438,28 @@ public final class RegelSpraakModel {
      * Null when no role, or more than one, matches.
      */
     public RolBindingRef elementRolBinding(Objecttype subject, String geschrevenRol) {
+        ElementBindingRef eb = elementBinding(subject, geschrevenRol);
+        return eb == null ? null : new RolBindingRef(eb.feittype(), eb.elementRol());
+    }
+
+    /** A symbolic navigation binding capturing BOTH ends of one element-name hop: the fact type,
+     *  the role the {@code subject} fills (the near/back-reference side), and the ELEMENT role
+     *  {@code geschrevenRol} names (the far side) — the {@link #verbindendeRolViaElementnaam} search
+     *  returning the whole pair, so a §13.4.7 feitcreatie can materialise its symbolic hops
+     *  (created relation, join, tussenstap) at resolution time. Only a DECLARED role name binds
+     *  (never the best-effort plural). Null when no role, or more than one, matches. */
+    public record ElementBindingRef(String feittype, String subjectRol, String elementRol) {}
+
+    public ElementBindingRef elementBinding(Objecttype subject, String geschrevenRol) {
         if (subject == null || geschrevenRol == null) return null;
-        RolBindingRef gevonden = null;
+        ElementBindingRef gevonden = null;
         int n = 0;
         for (Feittype ft : feittypen.values())
             for (Rol elemRol : ft.rollen)
                 if (rolMatchtExact(elemRol, geschrevenRol) && feittypeRelateert(ft, elemRol, subject))
                     for (Rol subjRol : ft.rollen)
                         if (subjRol != elemRol && rolHeeftObjecttype(subjRol, subject)) {
-                            gevonden = new RolBindingRef(ft.naam, elemRol.naam());
+                            gevonden = new ElementBindingRef(ft.naam, subjRol.naam(), elemRol.naam());
                             n++;
                         }
         return n == 1 ? gevonden : null;

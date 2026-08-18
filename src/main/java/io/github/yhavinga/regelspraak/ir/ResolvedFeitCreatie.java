@@ -1,5 +1,6 @@
 package io.github.yhavinga.regelspraak.ir;
 
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 
 /**
@@ -27,15 +28,36 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
  * @param tussenstappen the intermediate objects on the navigation path anker &rarr; … &rarr; doel-parent (empty = 1-hop)
  * @param voorwaarde    the condition guarding the creation (on the anker or doel), or null
  * @param geldigheid    the §13.4.2.5 validity window ({@link Geldigheid#ALTIJD} if always)
+ * @param feittype      the uchar symbolic form: the created fact type's name (null unless the whole
+ *                      symbolic form is derivable — WF-028 all-or-nothing)
+ * @param ankerRol      the created fact type's role filled by {@code anker} (== {@code zetVeld}), symbolic
+ * @param doelRol       the created fact type's role filled by {@code doel}, symbolic
+ * @param joinRol       the RolBinding of the FINAL hop onto {@code doel} (the existing relation), symbolic
  */
 public record ResolvedFeitCreatie(String naam, Objecttype anker, Objecttype doel,
                                   String zetVeld, String joinVeld,
                                   java.util.List<Tussenstap> tussenstappen,
-                                  Conditie voorwaarde, Geldigheid geldigheid) {
+                                  Conditie voorwaarde, Geldigheid geldigheid,
+                                  String feittype, String ankerRol, String doelRol,
+                                  RegelSpraakModel.RolBindingRef joinRol) {
+
+    /** The v0 bean-field-only form, without the symbolic creation fields (they stay absent unless the
+     *  whole symbolic form — created relation, both ends, join, and every tussenstap — is derivable). */
+    public ResolvedFeitCreatie(String naam, Objecttype anker, Objecttype doel, String zetVeld, String joinVeld,
+                               java.util.List<Tussenstap> tussenstappen, Conditie voorwaarde, Geldigheid geldigheid) {
+        this(naam, anker, doel, zetVeld, joinVeld, tussenstappen, voorwaarde, geldigheid, null, null, null, null);
+    }
+
     /** One intermediate object on the §9.4 multi-hop navigation path from {@code anker} to {@code doel}.
      *  The reference field lives on the many side (§13.3.9.1): for a TO-MANY hop the CHILD ({@code type})
      *  holds it, joined {@code type( veld == $prev )}; for a TO-ONE hop the PARENT holds it (the side
      *  objectcreatie set it on), joined {@code type( this == $prev.veld )} — {@code viaOuderVeld} selects
-     *  which. {@code $prev} is the anker for the first step, the prior step otherwise. */
-    public record Tussenstap(Objecttype type, String veld, boolean viaOuderVeld) {}
+     *  which. {@code $prev} is the anker for the first step, the prior step otherwise. {@code rolBinding}
+     *  is this hop's symbolic RolBinding (null unless the whole feitcreatie symbolic form is derivable). */
+    public record Tussenstap(Objecttype type, String veld, boolean viaOuderVeld,
+                             RegelSpraakModel.RolBindingRef rolBinding) {
+        public Tussenstap(Objecttype type, String veld, boolean viaOuderVeld) {
+            this(type, veld, viaOuderVeld, null);
+        }
+    }
 }

@@ -597,7 +597,12 @@ final class RuleChecker {
         if (parentType == null) return null;
         String joinVeld = model.verbindendeRol(elem, parentType);    // field on a Y pointing at its <parent>
         if (joinVeld == null) return null;
-        return new io.github.yhavinga.regelspraak.ir.ResolvedUniciteit(naam, elem, java.util.List.of(attr), joinVeld, bron, g);
+        // uchar scopeRol: the same reference field made symbolic — the fact type plus the (declared)
+        // scope-parent role. Withheld (null -> absent) when the connecting relation is not the
+        // two-role shape the binding form covers; the wire then keeps only the bean-field scopeVeld.
+        RolBindingRef scopeRol = model.verbindendeRolBinding(elem, parentType);
+        return new io.github.yhavinga.regelspraak.ir.ResolvedUniciteit(
+                naam, elem, java.util.List.of(attr), joinVeld, bron, g, scopeRol);
     }
 
     /** §8.1.6: two union sources may be combined only when their key parts share a datatype. Compared
@@ -885,8 +890,28 @@ final class RuleChecker {
                     reden = "referentieveld hoort aan de meervoudige kant; het doel is hier niet de meervoudige kant";
                 else {
                     Conditie effectief = doelVoorwaarde(voorwaarde, vd, anker, doel, rolC);
-                    model.feitCreaties.add(new io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie(
-                            naam, anker, doel, zetVeld, joinVeld, stappen, effectief, geldigheid));
+                    // uchar symbolic form (WF-028, all-or-nothing): the created relation (anker/doel via
+                    // rolB) and the final join relation (cur/doel via rolC), each as a declared-name
+                    // binding, plus a RolBinding on every tussenstap. Emitted only when all of that is
+                    // uniquely derivable AND the created relation differs from the final hop's; otherwise
+                    // the bean-field-only form stays (symbolic fields, and the tussenstap bindings, absent).
+                    ElementBindingRef created = model.elementBinding(anker, rolB);
+                    ElementBindingRef join = model.elementBinding(cur, rolC);
+                    boolean symbolisch = created != null && join != null
+                            && !created.feittype().equalsIgnoreCase(join.feittype())
+                            && stappen.stream().allMatch(s -> s.rolBinding() != null);
+                    if (symbolisch) {
+                        RolBindingRef joinRol = new RolBindingRef(join.feittype(), join.elementRol());
+                        model.feitCreaties.add(new io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie(
+                                naam, anker, doel, zetVeld, joinVeld, stappen, effectief, geldigheid,
+                                created.feittype(), created.subjectRol(), created.elementRol(), joinRol));
+                    } else {
+                        List<ResolvedFeitCreatie.Tussenstap> kaal = new ArrayList<>();
+                        for (ResolvedFeitCreatie.Tussenstap s : stappen)
+                            kaal.add(new ResolvedFeitCreatie.Tussenstap(s.type(), s.veld(), s.viaOuderVeld()));
+                        model.feitCreaties.add(new io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie(
+                                naam, anker, doel, zetVeld, joinVeld, kaal, effectief, geldigheid));
+                    }
                     return;
                 }
             }
@@ -904,19 +929,25 @@ final class RuleChecker {
      *  bare one-to-one with NEITHER signal is not derivable from the model — return null (honest WARN), never a
      *  guessed side that may emit an uncompilable wrong-side join. */
     private ResolvedFeitCreatie.Tussenstap tussenstap(Objecttype cur, Objecttype next, String role) {
+        // The uchar RolBinding of a hop names the REACHED (far) role: for a to-many / on-child hop that
+        // is the ELEMENT role the written name denotes (elementRolBinding); for a to-one / on-parent hop
+        // it is the role next fills (verbindendeRolBinding). Null there withholds the whole symbolic form.
         if (model.naarVeelRol(cur, next, role)) {                            // to-many: field on the child
             String veld = model.verbindendeRolViaElementnaam(cur, role);
-            return veld == null ? null : new ResolvedFeitCreatie.Tussenstap(next, veld, false);
+            return veld == null ? null
+                    : new ResolvedFeitCreatie.Tussenstap(next, veld, false, model.elementRolBinding(cur, role));
         }
         String curRol = model.verbindendeRolViaElementnaam(cur, role);       // cur's own role in this feittype
         boolean curIsVeel = curRol != null && model.naarVeelRol(next, cur, curRol); // reverse to-many -> cur is many
         if (curIsVeel || aangemaaktNaar(cur, next)) {                        // field on cur (parent)
             String veld = model.verbindendeRol(cur, next);
-            return veld == null ? null : new ResolvedFeitCreatie.Tussenstap(next, veld, true);
+            return veld == null ? null
+                    : new ResolvedFeitCreatie.Tussenstap(next, veld, true, model.verbindendeRolBinding(cur, next));
         }
         if (aangemaaktNaar(next, cur)) {                                     // 1-1: objectcreatie put it on next
             String veld = model.verbindendeRolViaElementnaam(cur, role);
-            return veld == null ? null : new ResolvedFeitCreatie.Tussenstap(next, veld, false);
+            return veld == null ? null
+                    : new ResolvedFeitCreatie.Tussenstap(next, veld, false, model.elementRolBinding(cur, role));
         }
         return null;                                                        // bare 1-1: side not derivable
     }

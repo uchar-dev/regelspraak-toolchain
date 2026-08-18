@@ -1,5 +1,6 @@
 package io.github.yhavinga.regelspraak.ir;
 
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 
 import java.util.List;
@@ -22,6 +23,19 @@ import java.util.List;
  * unique within each Z rather than globally: it is the reference field on a {@code subject} fact that
  * points at the scope owner, so the count is restricted to instances sharing the subject's scope
  * (e.g. seat numbers unique per flight: scopeVeld "reis", counting only passagiers of the same reis).
+ *
+ * <p>{@code scopeRol} (the uchar {@code scopeRol} extension, null unless the uniqueness is scoped and
+ * the scope relation is uniquely derivable) is the symbolic form of {@code scopeVeld}: the fact type
+ * and the (declared) scope-parent role — the reference field's relation, made explicit on the wire.
  */
 public record ResolvedUniciteit(String naam, Objecttype subject, List<String> sleutels, String scopeVeld,
-                                String bron, Geldigheid geldigheid) {}
+                                String bron, Geldigheid geldigheid,
+                                RegelSpraakModel.RolBindingRef scopeRol) {
+
+    /** The v0 form without the symbolic scope binding (a global uniqueness, or a scope whose
+     *  relation is not uniquely derivable — the extension field then stays absent). */
+    public ResolvedUniciteit(String naam, Objecttype subject, List<String> sleutels, String scopeVeld,
+                             String bron, Geldigheid geldigheid) {
+        this(naam, subject, sleutels, scopeVeld, bron, geldigheid, null);
+    }
+}
