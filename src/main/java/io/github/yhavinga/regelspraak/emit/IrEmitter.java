@@ -349,7 +349,15 @@ public final class IrEmitter {
                 w.endArray();
                 w.key("elementObjecttype").value(naamVan(f.elementObjecttype()));
                 w.key("leegwaarde"); expr(f.leegwaarde());
-                w.key("filter"); conditie(f.filter());
+                // the filter is a subselectie over the fold ELEMENT: an element-own read there is an own
+                // read, not a navigation from the outer subject — emit the filter (and only the filter)
+                // with the element as subject so such reads take the own-attribute branch and carry no
+                // spurious by-pair navigatieBindingen. Restore the outer subject afterwards.
+                w.key("filter");
+                Objecttype vorigSubject = huidigSubject;
+                if (f.elementObjecttype() != null) huidigSubject = f.elementObjecttype();
+                conditie(f.filter());
+                huidigSubject = vorigSubject;
                 w.key("dimensieSelectie"); dimensieSelectie(f.dimensieSelectie());
                 w.key("type"); datatype(f.type());
                 w.key("bron").value(f.bron());
