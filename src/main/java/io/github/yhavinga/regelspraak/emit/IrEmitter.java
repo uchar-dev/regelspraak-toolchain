@@ -69,6 +69,10 @@ public final class IrEmitter {
     /** The subject object type of the form being emitted; fold-source role bindings
      *  resolve against it (null outside a subject-bearing form). */
     private Objecttype huidigSubject;
+    /** The one AttribuutRef currently being emitted as a fold's SOURCE argument: its relation is the
+     *  fold's {@code bronRol}, so it never carries {@code navigatieBindingen} (IR-SPEC ch. 4.1a emitter
+     *  discipline; the uchar verifier rejects nav bindings in a fold slot, WF-053). Null otherwise. */
+    private Expr foldBron;
 
     // --- top-level model ---------------------------------------------------
 
@@ -335,7 +339,13 @@ public final class IrEmitter {
                 w.key("node").value("Functie");
                 w.key("kind").value(f.kind().name());
                 w.key("argumenten").beginArray();
+                // an instance fold's source argument routes through bronRol, never navigatieBindingen
+                Expr vorigeFoldBron = foldBron;
+                if (f.elementObjecttype() != null && !f.argumenten().isEmpty()
+                        && f.argumenten().get(0) instanceof Expr.AttribuutRef)
+                    foldBron = f.argumenten().get(0);
                 for (Expr a : f.argumenten()) expr(a);
+                foldBron = vorigeFoldBron;
                 w.endArray();
                 w.key("elementObjecttype").value(naamVan(f.elementObjecttype()));
                 w.key("leegwaarde"); expr(f.leegwaarde());
@@ -373,6 +383,14 @@ public final class IrEmitter {
                 w.key("bron").value(r.bron());
                 w.key("set").value(r.set());
                 w.key("navigatiePad"); stringList(r.navigatiePad());
+                if (r != foldBron) {
+                    List<RegelSpraakModel.RolBindingRef> nb = navigatieBindingen(r);
+                    if (!nb.isEmpty()) {
+                        w.key("navigatieBindingen").beginArray();
+                        for (RegelSpraakModel.RolBindingRef b : nb) rolBinding(b);
+                        w.endArray();
+                    }
+                }
             }
             case Expr.DimensieCel c -> {
                 w.key("node").value("DimensieCel");
@@ -465,6 +483,8 @@ public final class IrEmitter {
                 w.key("eigenaar").value(naamVan(k.eigenaar()));
                 w.key("periode"); geheelPeriode(k.periode());
                 w.key("bron").value(k.bron());
+                RegelSpraakModel.RolBindingRef nb = navigatieBinding(k);
+                if (nb != null) { w.key("navigatieBinding"); rolBinding(nb); }
             }
             case Conditie.Rollidmaatschap r -> {
                 w.key("node").value("Rollidmaatschap");
@@ -545,6 +565,7 @@ public final class IrEmitter {
     }
 
     private void objectCreatie(ResolvedObjectCreatie oc) {
+        huidigSubject = oc.subject();   // member values and the guard navigate from the creation subject
         w.beginObject();
         w.key("node").value("ResolvedObjectCreatie");
         w.key("naam").value(oc.naam());
@@ -563,6 +584,7 @@ public final class IrEmitter {
         w.key("voorwaarde"); conditie(oc.voorwaarde());
         w.key("geldigheid"); geldigheid(oc.geldigheid());
         w.endObject();
+        huidigSubject = null;
     }
 
     private void verdeling(ResolvedVerdeling v) {
@@ -612,6 +634,7 @@ public final class IrEmitter {
         w.key("scopeVeld").value(u.scopeVeld());
         w.key("bron").value(u.bron());
         w.key("geldigheid"); geldigheid(u.geldigheid());
+        if (u.scopeRol() != null) { w.key("scopeRol"); rolBinding(u.scopeRol()); }
         w.endObject();
     }
 
@@ -658,7 +681,52 @@ public final class IrEmitter {
         w.endObject();
     }
 
+    /** The uchar {@code navigatieBindingen} of a value/condition-position AttribuutRef: one RolBinding
+     *  per navigation hop, subject-outward, each naming the reached (far) role — the emit-time
+     *  materialisation of the executors' navReader / navKetenReader route. Three shapes: a declared
+     *  CHAIN (one binding per pad step, whole-or-not — all hops derivable, or none), a single by-NAME
+     *  hop, and a by-PAIR read of an off-subject type. Empty (absent from the wire) when there is no
+     *  navigation, no subject anchors the walk, or any hop is not uniquely derivable. */
+    private List<RegelSpraakModel.RolBindingRef> navigatieBindingen(Expr.AttribuutRef a) {
+        if (m == null || huidigSubject == null || a.objecttype() == null) return List.of();
+        if (a.navigatiePad() != null && !a.navigatiePad().isEmpty()) {        // §13.4.1 declared chain
+            List<Objecttype> bereikt = m.volgKeten(huidigSubject, a.navigatiePad());
+            if (bereikt == null) return List.of();
+            List<RegelSpraakModel.RolBindingRef> uit = new java.util.ArrayList<>();
+            Objecttype cur = huidigSubject;
+            for (int i = 0; i < a.navigatiePad().size(); i++) {
+                RegelSpraakModel.RolBindingRef b =
+                        m.verbindendeRolViaNaamBinding(cur, bereikt.get(i), a.navigatiePad().get(i));
+                if (b == null) return List.of();                             // heel-of-niet over the chain
+                uit.add(b);
+                cur = bereikt.get(i);
+            }
+            return uit;
+        }
+        if (a.navigatieRol() != null) {                                      // single-hop by-name
+            RegelSpraakModel.RolBindingRef b =
+                    m.verbindendeRolViaNaamBinding(huidigSubject, a.objecttype(), a.navigatieRol());
+            return b == null ? List.of() : List.of(b);
+        }
+        if (a.objecttype() != huidigSubject) {                               // by-pair (off-subject type)
+            RegelSpraakModel.RolBindingRef b = m.verbindendeRolBinding(huidigSubject, a.objecttype());
+            return b == null ? List.of() : List.of(b);
+        }
+        return List.of();                                                    // own attribute — not navigated
+    }
+
+    /** The uchar {@code navigatieBinding} of a navigated §8.1.8 kenmerk check: the single reached role,
+     *  found exactly as {@code RuleChecker.navigatieKenmerk} finds it (the target type via the written
+     *  role, then the by-name binding). Null — absent — when the check does not navigate or the hop is
+     *  not uniquely derivable. */
+    private RegelSpraakModel.RolBindingRef navigatieBinding(Conditie.Kenmerk k) {
+        if (m == null || huidigSubject == null || k.navigatie() == null) return null;
+        Objecttype doel = m.rolDoeltypeNaarSubject(huidigSubject, k.navigatie());
+        return doel == null ? null : m.verbindendeRolViaNaamBinding(huidigSubject, doel, k.navigatie());
+    }
+
     private void feitCreatie(ResolvedFeitCreatie fc) {
+        huidigSubject = fc.anker();   // the §13.4.7 guard navigates from the anker
         w.beginObject();
         w.key("node").value("ResolvedFeitCreatie");
         w.key("naam").value(fc.naam());
@@ -673,12 +741,20 @@ public final class IrEmitter {
             w.key("type").value(naamVan(t.type()));
             w.key("veld").value(t.veld());
             w.key("viaOuderVeld").value(t.viaOuderVeld());
+            if (t.rolBinding() != null) { w.key("rolBinding"); rolBinding(t.rolBinding()); }
             w.endObject();
         }
         w.endArray();
         w.key("voorwaarde"); conditie(fc.voorwaarde());
         w.key("geldigheid"); geldigheid(fc.geldigheid());
+        if (fc.feittype() != null) {   // the symbolic form is whole-or-not (WF-028)
+            w.key("feittype").value(fc.feittype());
+            w.key("ankerRol").value(fc.ankerRol());
+            w.key("doelRol").value(fc.doelRol());
+            w.key("joinRol"); rolBinding(fc.joinRol());
+        }
         w.endObject();
+        huidigSubject = null;
     }
 
     private void startpunt(ResolvedStartpunt s) {
