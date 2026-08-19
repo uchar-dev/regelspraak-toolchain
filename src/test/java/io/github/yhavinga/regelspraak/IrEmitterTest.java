@@ -197,13 +197,18 @@ class IrEmitterTest {
                     De onderhoudsbijdrage van een Bakenmeester moet gesteld worden op het tijdsevenredig deel per maand van zijn onderhoudstarief gedurende de tijd dat hij dienstdoend is.
             """;
         String c = emitCompact(src);
-        assertTrue(c.contains("\"kind\":\"TIJDSEVENREDIG_DEEL\""),
-                () -> "de pro-rata-node ontbreekt:\n" + c);
         int at = c.indexOf("\"kind\":\"TIJDSEVENREDIG_DEEL\"");
-        String node = c.substring(at, Math.min(c.length(), at + 900));
-        assertTrue(node.contains("\"decimalen\":2"),
-                () -> "de pro-rata-node draagt het basistype (2 decimalen) niet:\n" + node);
-        assertFalse(node.contains("DatatypeOnbekend"),
-                () -> "de pro-rata-node mag niet de onbekend-sentinel dragen:\n" + node);
+        assertTrue(at >= 0, () -> "de pro-rata-node ontbreekt:\n" + c);
+        // scope to the node's OWN type field: it sits between the node's dimensieSelectie
+        // (the first one after kind — argument refs and the Kenmerk filter carry none) and
+        // its bron, so the base argument's type object cannot satisfy the assertion.
+        int from = c.indexOf("\"dimensieSelectie\"", at);
+        int to = c.indexOf("\"bron\"", from);
+        assertTrue(from > at && to > from, () -> "de node-veldvolgorde is onverwacht:\n" + c);
+        String ownType = c.substring(from, to);
+        assertTrue(ownType.contains("\"type\":{\"node\":\"Numeriek\"") && ownType.contains("\"decimalen\":2"),
+                () -> "de pro-rata-node draagt het basistype (Numeriek, 2 decimalen) niet zelf:\n" + ownType);
+        assertFalse(ownType.contains("\"node\":\"Onbekend\""),
+                () -> "de pro-rata-node mag niet de onbekend-sentinel dragen:\n" + ownType);
     }
 }
