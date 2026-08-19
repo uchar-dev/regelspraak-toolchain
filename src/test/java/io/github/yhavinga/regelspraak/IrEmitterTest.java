@@ -182,4 +182,28 @@ class IrEmitterTest {
         assertFalse(c.contains("navigatieBindingen"),
                 () -> "een element-eigen filter-lezing mag GEEN navigatieBindingen dragen:\n" + c);
     }
+
+    @Test void tijdsevenredig_deel_draagt_basistype_geen_sentinel() {
+        // §7.3.2/§13.4.17.58: the pro-rata node carries its BASE's value type on the wire — the
+        // uchar spec forbids the unknown-type sentinel inside a structured node (its WF-034), so
+        // an onbekend-typed TIJDSEVENREDIG_DEEL cannot enter its corpus.
+        String src = """
+            Objecttype de Bakenmeester (mv: Bakenmeesters) (bezield)
+                het onderhoudstarief Numeriek (getal met 2 decimalen) voor elk jaar;
+                de onderhoudsbijdrage Numeriek (getal met 2 decimalen) voor elke maand;
+                is dienstdoend kenmerk (bijvoeglijk) voor elke maand;
+            Regel onderhoudsbijdrage
+                geldig altijd
+                    De onderhoudsbijdrage van een Bakenmeester moet gesteld worden op het tijdsevenredig deel per maand van zijn onderhoudstarief gedurende de tijd dat hij dienstdoend is.
+            """;
+        String c = emitCompact(src);
+        assertTrue(c.contains("\"kind\":\"TIJDSEVENREDIG_DEEL\""),
+                () -> "de pro-rata-node ontbreekt:\n" + c);
+        int at = c.indexOf("\"kind\":\"TIJDSEVENREDIG_DEEL\"");
+        String node = c.substring(at, Math.min(c.length(), at + 900));
+        assertTrue(node.contains("\"decimalen\":2"),
+                () -> "de pro-rata-node draagt het basistype (2 decimalen) niet:\n" + node);
+        assertFalse(node.contains("DatatypeOnbekend"),
+                () -> "de pro-rata-node mag niet de onbekend-sentinel dragen:\n" + node);
+    }
 }

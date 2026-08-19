@@ -1154,6 +1154,12 @@ final class ExpressieBouwer {
             // — instead of the transpiler now lowering it to an uncompilable BigDecimal-vs-LocalDate term.
             case JAAR_UIT, MAAND_UIT, DAG_UIT, UUR_UIT, MINUUT_UIT, SECONDE_UIT, MILLISECONDE_UIT ->
                     new Datatype.Numeriek(true, 0, Datatype.Teken.NIET_NEGATIEF, null);
+            // §7.3.2/§13.4.17.58: the pro-rata part carries the BASE's value type — the per-bucket fraction
+            // scales the base within one bucket and never changes its unit or family (a rate base is restated
+            // by the transpiler BEFORE proration, §4.20-style). Typing it — instead of the not-lowered
+            // onbekend — puts the concrete datatype on the emitted IR node (the uchar spec forbids the
+            // unknown-type sentinel inside a structured node, its WF-034).
+            case TIJDSEVENREDIG_DEEL -> eerste;
             default -> onbekend();
         };
     }
