@@ -8337,7 +8337,7 @@ class ExecModelDifferentialTest {
         assertEquals(verwacht, viaDrl,   "DRL (oracle) wrong vs spec: inconsistent zodra één criterium faalt");
         assertEquals(viaDrl, viaModel,   "back-ends DIVERGE op de samengestelde consistentie");
     }
-    @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 9); }
+    @Test void phase_H_consistentie_matches_drl_back_end()        { runFoutDifferential("Phase H fout", PHASE_H_FOUT, 11); }
     /** §13.4.8.12/.14 "verenigd met" over NINE sources — past the exec-model consequence's 9-variable bind ceiling
      *  ([subject]+[9 per-source counts] = 10 vars). The DRL back-end sums the counts as a string and has no ceiling;
      *  the exec back-end now FOLDS the per-source counts into one running-total variable so the consequence binds only
