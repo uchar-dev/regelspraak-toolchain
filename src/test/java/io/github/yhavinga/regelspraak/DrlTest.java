@@ -2187,6 +2187,51 @@ class DrlTest {
                 () -> "een zelfde-eenheid vereniging mag niet waarschuwen: " + m.diagnostics);
     }
 
+    @Test void uniciteit_unie_temporele_sleutel_lowert_met_ooit_join() {
+        // §8.1.6 ever-uniqueness (uchar RS ch. 5.9): a TEMPORAL union key is an identity — the join
+        // must intersect the ever-value sets (rsOoitBotst), never compare the List<Segment> by
+        // identity (Segment has no equals, so the bare == silently never fired).
+        String src = """
+            Objecttype de Strandvondst
+                het vondstnummer Numeriek (geheel getal) voor elk jaar;
+            Objecttype de Wrakvondst
+                het vondstnummer Numeriek (geheel getal) voor elk jaar;
+            Regel nummer uniek
+                geldig altijd
+                    De vondstnummers van alle Strandvondsten verenigd met de vondstnummers van alle Wrakvondsten moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        assertEquals(1, m.uniciteitUnies.size(), () -> "de unie moet resolven: " + m.diagnostics);
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("rsOoitBotst(vondstnummer, $k0)"),
+                () -> "de temporele sleutel moet op de ooit-waardensnit joinen:\n" + drl);
+        assertFalse(drl.contains("vondstnummer == $k0"),
+                () -> "de kale List-identiteitsjoin mag niet meer emitten:\n" + drl);
+    }
+
+    @Test void uniciteit_unie_twee_temporele_componenten_blijft_waarschuwing() {
+        // §8.1.6 ever-uniqueness: at most ONE temporal component per compound source key — a second
+        // needs the same-moment tuple join, which no reading defines. The whole rule stays a WARNING
+        // so both back-ends are identically silent on the undefined shape.
+        String src = """
+            Objecttype de Strandvondst
+                het volgnummer Numeriek (geheel getal) voor elk jaar;
+                de wijkcode Numeriek (geheel getal) voor elk jaar;
+            Objecttype de Wrakvondst
+                het volgnummer Numeriek (geheel getal) voor elk jaar;
+                de wijkcode Numeriek (geheel getal) voor elk jaar;
+            Regel dubbel temporeel
+                geldig altijd
+                    De concatenatie van volgnummer en wijkcode van alle Strandvondsten verenigd met de concatenatie van volgnummer en wijkcode van alle Wrakvondsten moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        assertTrue(m.uniciteitUnies.isEmpty(), "de twee-temporele unie mag de IR niet bereiken");
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("consistentieregel")),
+                () -> "de twee-temporele unie moet de consistentieregel-waarschuwing dragen: " + m.diagnostics);
+    }
+
     @Test void samengestelde_consistentie_alle_lowert_naar_or_van_schendingen() {
         // §13.4.8 "alle volgende criteria": the violation is OR of the per-criterion violations.
         String src = """

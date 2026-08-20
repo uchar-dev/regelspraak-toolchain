@@ -9665,6 +9665,34 @@ class ExecModelDifferentialTest {
                     Persoon p3 = new Persoon(); p3.setLeeftijd(new BigDecimal(3)); p3.setBedragPerMaand(List.of(seg(2024, 1, 1, 2024, 6, 1, "100")));
                     return List.of(p1, p2, p3); },
             o -> "lft=" + ((Persoon) o).getLeeftijd()),
+
+        // §8.1.6 ever-uniqueness (uchar RS ch. 5.9): a temporal key in a UNION reads the ever-value
+        // intersection — 7-in-2024 collides with 7-in-2026 across the union's two types even though the
+        // periods are disjoint; the same-instance redeclaration (9 in both years) claims once and stays
+        // unique, as does the sole 8. Both routes call the shared rsOoitBotst, so the differential
+        // guards the reading.
+        new FoutFixture("uniciteit-unie: temporele sleutel botst ooit over disjuncte periodes",
+            """
+            Objecttype de Strandvondst
+                het vondstnummer Numeriek (geheel getal) voor elk jaar;
+            Objecttype de Wrakvondst
+                het vondstnummer Numeriek (geheel getal) voor elk jaar;
+            Regel nummer uniek
+                geldig altijd
+                    De vondstnummers van alle Strandvondsten verenigd met de vondstnummers van alle Wrakvondsten moeten uniek zijn.
+            """,
+            () -> { io.github.yhavinga.regelspraak.facts.Strandvondst s1 = new io.github.yhavinga.regelspraak.facts.Strandvondst();
+                    s1.setVondstnummer(List.of(seg(2024, 1, 1, 2025, 1, 1, "7")));
+                    io.github.yhavinga.regelspraak.facts.Strandvondst s2 = new io.github.yhavinga.regelspraak.facts.Strandvondst();
+                    s2.setVondstnummer(List.of(seg(2024, 1, 1, 2025, 1, 1, "9"), seg(2026, 1, 1, 2027, 1, 1, "9")));
+                    io.github.yhavinga.regelspraak.facts.Wrakvondst w1 = new io.github.yhavinga.regelspraak.facts.Wrakvondst();
+                    w1.setVondstnummer(List.of(seg(2026, 1, 1, 2027, 1, 1, "7")));
+                    io.github.yhavinga.regelspraak.facts.Wrakvondst w2 = new io.github.yhavinga.regelspraak.facts.Wrakvondst();
+                    w2.setVondstnummer(List.of(seg(2024, 1, 1, 2025, 1, 1, "8")));
+                    return List.of(s1, s2, w1, w2); },
+            o -> (o instanceof io.github.yhavinga.regelspraak.facts.Strandvondst s
+                    ? "S:" + s.getVondstnummer().get(0).getWaarde()
+                    : "W:" + ((io.github.yhavinga.regelspraak.facts.Wrakvondst) o).getVondstnummer().get(0).getWaarde())),
     };
 
     // ---- Phase E fout: §9.7.6 Tabel 19 — an empty weight (naar rato) or a leeg/negatief maximum at ANY recipient is

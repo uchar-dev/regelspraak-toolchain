@@ -541,6 +541,14 @@ final class RuleChecker {
                 return false;
             bronnen.add(b);
         }
+        // §8.1.6 ever-uniqueness (uchar RS ch. 5.9): at most ONE temporal component per compound source
+        // key is defined — a second would need the same-moment tuple join, which no reading pins yet.
+        // More than one leaves the whole rule a WARNING, like an arity mismatch, so BOTH back-ends stay
+        // identically silent on the undefined shape.
+        for (Bron b : bronnen) {
+            long temporeel = b.sleutels().stream().filter(k -> b.type().attribuutGranulariteit.containsKey(k)).count();
+            if (temporeel > 1) return false;
+        }
         model.uniciteitUnies.add(new io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie(naam, bronnen, src(u), geldigheid));
         return true;
     }

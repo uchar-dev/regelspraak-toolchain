@@ -5,6 +5,8 @@ import io.github.yhavinga.regelspraak.facts.Bestelling;
 import io.github.yhavinga.regelspraak.facts.Bestemming;
 import io.github.yhavinga.regelspraak.facts.Gebeurtenis;
 import io.github.yhavinga.regelspraak.facts.Segment;
+import io.github.yhavinga.regelspraak.facts.Strandvondst;
+import io.github.yhavinga.regelspraak.facts.Wrakvondst;
 import io.github.yhavinga.regelspraak.facts.Burger;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
@@ -4281,6 +4283,86 @@ class DroolsExecutionTest {
                 "de twee '100'-bedragen over beide typen gemarkeerd");
         assertTrue(fouten.stream().noneMatch(f -> f.getSubject() == h2 || f.getSubject() == p2),
                 "de unieke bedragen mogen niet gemarkeerd zijn");
+    }
+
+    @Test void uniciteit_unie_temporele_sleutel_botst_ooit_over_disjuncte_periodes() {
+        // §8.1.6 ever-uniqueness (uchar RS ch. 5.9): a temporal key is an identity — S1 carrying
+        // number 7 over 2024 collides with W1 carrying 7 over 2026 even though the periods never
+        // overlap (a number once issued stays issued). Same-instance redeclaration (S2 carrying 9 in
+        // BOTH 2024 and 2026) claims the value once and does not self-collide.
+        String src = """
+            Objecttype de Strandvondst
+                het vondstnummer Numeriek (geheel getal) voor elk jaar;
+            Objecttype de Wrakvondst
+                het vondstnummer Numeriek (geheel getal) voor elk jaar;
+            Regel nummer uniek
+                geldig altijd
+                    De vondstnummers van alle Strandvondsten verenigd met de vondstnummers van alle Wrakvondsten moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        var jaar24 = List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("7")));
+        var jaar26 = List.of(new Segment(LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 1), new BigDecimal("7")));
+        var herdeclaratie = List.of(
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("9")),
+                new Segment(LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 1), new BigDecimal("9")));
+        Strandvondst s1 = new Strandvondst(); s1.setVondstnummer(jaar24);        // 7 ooit
+        Strandvondst s2 = new Strandvondst(); s2.setVondstnummer(herdeclaratie); // 9 tweemaal, één claim
+        Wrakvondst w1 = new Wrakvondst(); w1.setVondstnummer(jaar26);            // 7 ooit — botst met s1
+        Wrakvondst w2 = new Wrakvondst(); w2.setVondstnummer(
+                List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("8"))));
+        sessie.insert(s1); sessie.insert(s2); sessie.insert(w1); sessie.insert(w2);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> (Inconsistentie) o).toList();
+        sessie.dispose();
+        assertEquals(2, fouten.size(), () -> "alleen de ooit-gedeelde 7 over disjuncte periodes: " + fouten);
+        assertTrue(fouten.stream().anyMatch(f -> f.getSubject() == s1) && fouten.stream().anyMatch(f -> f.getSubject() == w1),
+                "s1 en w1 (7 in 2024 vs 7 in 2026) gemarkeerd");
+        assertTrue(fouten.stream().noneMatch(f -> f.getSubject() == s2 || f.getSubject() == w2),
+                "de herdeclaratie (9,9) en de unieke 8 mogen niet gemarkeerd zijn");
+    }
+
+    @Test void uniciteit_unie_samengestelde_sleutel_temporele_component_botst_over_momenten() {
+        // §8.1.6 ever-uniqueness, compound key (reekscode scalar, volgnummer temporal): the tuple
+        // (4, 3) carried by a Strandvondst in 2024 collides with (4, 3) carried by a Wrakvondst in
+        // 2026 — the scalar joins by value, the temporal component by ever-value intersection;
+        // (9, 3) shares only the volgnummer and stays unique.
+        String src = """
+            Objecttype de Strandvondst
+                de reekscode Numeriek (geheel getal);
+                het volgnummer Numeriek (geheel getal) voor elk jaar;
+            Objecttype de Wrakvondst
+                de reekscode Numeriek (geheel getal);
+                het volgnummer Numeriek (geheel getal) voor elk jaar;
+            Regel reeks uniek
+                geldig altijd
+                    De concatenatie van reekscode en volgnummer van alle Strandvondsten verenigd met de concatenatie van reekscode en volgnummer van alle Wrakvondsten moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Strandvondst s1 = new Strandvondst(); s1.setReekscode(new BigDecimal("4"));
+        s1.setVolgnummer(List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("3"))));
+        Wrakvondst w1 = new Wrakvondst(); w1.setReekscode(new BigDecimal("4"));
+        w1.setVolgnummer(List.of(new Segment(LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 1), new BigDecimal("3"))));
+        Wrakvondst w2 = new Wrakvondst(); w2.setReekscode(new BigDecimal("9"));
+        w2.setVolgnummer(List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("3"))));
+        sessie.insert(s1); sessie.insert(w1); sessie.insert(w2);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> (Inconsistentie) o).toList();
+        sessie.dispose();
+        assertEquals(2, fouten.size(), () -> "alleen het (4,3)-tupel over verschillende momenten: " + fouten);
+        assertTrue(fouten.stream().anyMatch(f -> f.getSubject() == s1) && fouten.stream().anyMatch(f -> f.getSubject() == w1),
+                "s1 en w1 ((4,3) in 2024 vs (4,3) in 2026) gemarkeerd");
+        assertTrue(fouten.stream().noneMatch(f -> f.getSubject() == w2),
+                "(9,3) deelt alleen het volgnummer en blijft uniek");
     }
 
     @Test void uniciteit_scoped_telt_alleen_binnen_dezelfde_ouder() {

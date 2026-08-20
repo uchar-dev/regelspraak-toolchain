@@ -4314,8 +4314,6 @@ public final class ExecModelTranspiler {
         for (var b : bronnen) {
             if (b.sleutels().size() != arity) return skipList("uniciteit-unie (sleutel-ariteit verschilt): " + u.naam());
             if (factClass(b.type()) == null) return skipList("uniciteit-unie (geen fact-class " + b.type().naam + "): " + u.naam());
-            for (String k : b.sleutels())
-                if (b.type().attribuutGranulariteit.containsKey(k)) return skipList("uniciteit-unie (temporele sleutel): " + u.naam());
         }
         String naam = u.naam();
         String fqcn = FACTS + ".Inconsistentie";
@@ -4343,8 +4341,14 @@ public final class ExecModelTranspiler {
                 PatternDSL.PatternDef src = PatternDSL.pattern(oVar);
                 for (int i = 0; i < arity; i++) {
                     String key = b.sleutels().get(i);
-                    src = src.expr(nextId("ukj"), (Variable) keyVars.get(i),
-                            (Predicate2) (e, k) -> RegelSpraakRuntime.gelijkWaarde(RegelSpraakRuntime.get(e, key), k));
+                    if (b.type().attribuutGranulariteit.containsKey(key))
+                        // ever-uniqueness (uchar RS ch. 5.9): a temporal key joins on the EVER-value
+                        // intersection — the same shared-runtime predicate the DRL route calls
+                        src = src.expr(nextId("ukj"), (Variable) keyVars.get(i),
+                                (Predicate2) (e, k) -> RegelSpraakRuntime.rsOoitBotst(RegelSpraakRuntime.get(e, key), k));
+                    else
+                        src = src.expr(nextId("ukj"), (Variable) keyVars.get(i),
+                                (Predicate2) (e, k) -> RegelSpraakRuntime.gelijkWaarde(RegelSpraakRuntime.get(e, key), k));
                 }
                 Variable cntVar = DSL.declarationOf(Object.class, "$c" + j + "_" + (seq++));
                 items.add(DSL.accumulate(src, DSL.accFunction(accFn("CountAccumulateFunction")).as(cntVar)));

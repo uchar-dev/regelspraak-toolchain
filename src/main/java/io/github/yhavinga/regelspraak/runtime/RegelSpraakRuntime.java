@@ -636,6 +636,31 @@ public final class RegelSpraakRuntime {
     private static LocalDate segVan(Object seg) { return (LocalDate) get(seg, "van"); }
     private static LocalDate segTot(Object seg) { return (LocalDate) get(seg, "tot"); }
     private static BigDecimal segWaarde(Object seg) { return (BigDecimal) get(seg, "waarde"); }
+
+    /** §8.1.6 ever-uniqueness (uchar RS ch. 5.9, decided 2026-08-20): a temporal key is an identity,
+     *  not a measurement — the values a key timeline EVER carries, deduplicated (so a same-instance
+     *  redeclaration of the same number claims it once). Values normalise via stripTrailingZeros so
+     *  5 and 5.00 collide, matching the scalar union's coercive equality. A null or empty timeline
+     *  claims nothing (an empty key never collides). */
+    public static java.util.Set<BigDecimal> rsOoitWaarden(Object tijdlijn) {
+        if (!(tijdlijn instanceof List<?> l) || l.isEmpty()) return java.util.Set.of();
+        var out = new java.util.HashSet<BigDecimal>();
+        for (Object seg : l) {
+            BigDecimal w = segWaarde(seg);
+            if (w != null) out.add(w.stripTrailingZeros());
+        }
+        return out;
+    }
+
+    /** Two key timelines EVER collide: their ever-value sets intersect — a VALUE intersection, never a
+     *  time intersection, so two instances carrying the same number over non-overlapping periods
+     *  collide (a number once issued stays issued; date-bound numbering is modelled explicitly). */
+    public static boolean rsOoitBotst(Object a, Object b) {
+        var sa = rsOoitWaarden(a);
+        if (sa.isEmpty()) return false;
+        for (BigDecimal w : rsOoitWaarden(b)) if (sa.contains(w)) return true;
+        return false;
+    }
     /** Construct a Segment(van, tot, waarde) of the given fact class reflectively — the model analog of the DRL
      *  {@code new ….Segment(van, tot, waarde)} (the class is a runtime objecttype, unknown at compile time). */
     public static Object newSegment(Class<?> segCls, LocalDate van, LocalDate tot, BigDecimal waarde) {

@@ -396,7 +396,14 @@ public final class DrlTranspiler {
                 StringBuilder match = new StringBuilder();
                 for (int i = 0; i < arity; i++) {
                     if (i > 0) match.append(", ");
-                    match.append(ident(b.sleutels().get(i), false)).append(" == $k").append(i);
+                    String veld = ident(b.sleutels().get(i), false);
+                    if (b.type().attribuutGranulariteit.containsKey(b.sleutels().get(i)))
+                        // ever-uniqueness (uchar RS ch. 5.9): a temporal key joins on the EVER-value
+                        // intersection, not on List identity (Segment has no equals — the bare == never
+                        // fired, silently missing every collision)
+                        match.append(fnImport("rsOoitBotst")).append("(").append(veld).append(", $k").append(i).append(")");
+                    else
+                        match.append(veld).append(" == $k").append(i);
                 }
                 rule.clausule("$o" + j + " : Number() from accumulate( $i" + j + " : "
                         + ident(b.type().naam, true) + "( " + match + " ), count($i" + j + ") )");
