@@ -7,6 +7,7 @@ import io.github.yhavinga.regelspraak.facts.Gebeurtenis;
 import io.github.yhavinga.regelspraak.facts.Segment;
 import io.github.yhavinga.regelspraak.facts.Strandvondst;
 import io.github.yhavinga.regelspraak.facts.Wrakvondst;
+import io.github.yhavinga.regelspraak.facts.Kust;
 import io.github.yhavinga.regelspraak.facts.Burger;
 import io.github.yhavinga.regelspraak.facts.Deelnemer;
 import io.github.yhavinga.regelspraak.facts.Factuur;
@@ -4363,6 +4364,85 @@ class DroolsExecutionTest {
                 "s1 en w1 ((4,3) in 2024 vs (4,3) in 2026) gemarkeerd");
         assertTrue(fouten.stream().noneMatch(f -> f.getSubject() == w2),
                 "(9,3) deelt alleen het volgnummer en blijft uniek");
+    }
+
+    @Test void uniciteit_enkele_vorm_temporele_sleutel_botst_ooit() {
+        // §8.1.6 ever-uniqueness on the SINGLE form (uchar RS ch. 5.9, extended 2026-08-20,
+        // compositionality): the same reading as the union, through the same shared predicate —
+        // 7-in-2024 collides with 7-in-2026 within ONE type; the redeclared 9/9 and the sole 8 stay
+        // unique.
+        String src = """
+            Objecttype de Strandvondst
+                het vondstnummer Numeriek (geheel getal) voor elk jaar;
+            Regel nummer uniek
+                geldig altijd
+                    De vondstnummers van alle Strandvondsten moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Strandvondst s1 = new Strandvondst();
+        s1.setVondstnummer(List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("7"))));
+        Strandvondst s2 = new Strandvondst();
+        s2.setVondstnummer(List.of(new Segment(LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 1), new BigDecimal("7"))));
+        Strandvondst s3 = new Strandvondst();
+        s3.setVondstnummer(List.of(
+                new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("9")),
+                new Segment(LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 1), new BigDecimal("9"))));
+        Strandvondst s4 = new Strandvondst();
+        s4.setVondstnummer(List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("8"))));
+        sessie.insert(s1); sessie.insert(s2); sessie.insert(s3); sessie.insert(s4);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> (Inconsistentie) o).toList();
+        sessie.dispose();
+        assertEquals(2, fouten.size(), () -> "alleen de ooit-gedeelde 7 binnen het ene type: " + fouten);
+        assertTrue(fouten.stream().anyMatch(f -> f.getSubject() == s1) && fouten.stream().anyMatch(f -> f.getSubject() == s2),
+                "s1 en s2 (7 in 2024 vs 7 in 2026) gemarkeerd");
+        assertTrue(fouten.stream().noneMatch(f -> f.getSubject() == s3 || f.getSubject() == s4),
+                "de herdeclaratie (9,9) en de unieke 8 mogen niet gemarkeerd zijn");
+    }
+
+    @Test void uniciteit_scoped_temporele_sleutel_botst_ooit_binnen_dezelfde_ouder() {
+        // scope × ever (uchar RS ch. 5.9): the parent scope narrows the population, the temporal key
+        // reads ever within it — the same kavel number ever-carried by two vondsten of ONE kust
+        // collides across disjoint years; the same pair under two DIFFERENT kusten stays consistent.
+        String src = """
+            Objecttype de Strandvondst
+                het kavelnummer Numeriek (geheel getal) voor elk jaar;
+            Objecttype de Kust
+            Feittype ligging
+                de kust Kust
+                de strandvondst (mv: strandvondsten) Strandvondst
+            Eén kust telt meerdere strandvondsten
+            Regel kavel per kust
+                geldig altijd
+                    De kavelnummers van alle strandvondsten van de kust moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+
+        KieSession sessie = build(drl).newKieSession();
+        Kust k1 = new Kust(); Kust k2 = new Kust();
+        Strandvondst s1 = new Strandvondst(); s1.setKust(k1);
+        s1.setKavelnummer(List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("3"))));
+        Strandvondst s2 = new Strandvondst(); s2.setKust(k1);   // zelfde kust, ooit hetzelfde kavel
+        s2.setKavelnummer(List.of(new Segment(LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 1), new BigDecimal("3"))));
+        Strandvondst s3 = new Strandvondst(); s3.setKust(k2);   // andere kust: buiten de scope
+        s3.setKavelnummer(List.of(new Segment(LocalDate.of(2024, 1, 1), LocalDate.of(2025, 1, 1), new BigDecimal("3"))));
+        sessie.insert(k1); sessie.insert(k2); sessie.insert(s1); sessie.insert(s2); sessie.insert(s3);
+        sessie.fireAllRules();
+        var fouten = sessie.getObjects().stream().filter(o -> o instanceof Inconsistentie)
+                .map(o -> (Inconsistentie) o).toList();
+        sessie.dispose();
+        assertEquals(2, fouten.size(), () -> "alleen het ooit-gedeelde kavel binnen dezelfde kust: " + fouten);
+        assertTrue(fouten.stream().anyMatch(f -> f.getSubject() == s1) && fouten.stream().anyMatch(f -> f.getSubject() == s2),
+                "s1 en s2 (kavel 3 onder dezelfde kust, disjuncte jaren) gemarkeerd");
+        assertTrue(fouten.stream().noneMatch(f -> f.getSubject() == s3),
+                "hetzelfde kavel onder een ANDERE kust blijft consistent");
     }
 
     @Test void uniciteit_scoped_telt_alleen_binnen_dezelfde_ouder() {

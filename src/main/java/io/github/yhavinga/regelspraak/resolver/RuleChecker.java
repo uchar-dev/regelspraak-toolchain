@@ -513,15 +513,24 @@ final class RuleChecker {
      *  {@link io.github.yhavinga.regelspraak.ir.ResolvedUniciteit}. Returns false — leaving the WARNING — for the
      *  cross-type "verenigd met" union, a uniqueness scoped within a parent ("… van alle X van &lt;Y&gt;"),
      *  or any name that does not resolve; the transpiler then never silently drops or mis-checks. */
+    /** The count of temporal (attribuutGranulariteit) components in a uniqueness key list. */
+    private static long telTemporeel(Objecttype type, java.util.List<String> sleutels) {
+        return sleutels.stream().filter(k -> type.attribuutGranulariteit.containsKey(k)).count();
+    }
+
     private boolean uniciteit(String naam, UniciteitsControleContext u, Geldigheid geldigheid) {
         // §8.1.6 parent-scoped "de X van alle Y van <parent>": unique within each parent, not globally.
         if (u.vereniging().isEmpty() && u.alleAttribuutVanOnderwerp() != null) {
             var scoped = parentScoped(naam, u.alleAttribuutVanOnderwerp(), src(u), geldigheid);
-            if (scoped != null) { model.uniciteiten.add(scoped); return true; }
+            if (scoped != null) {
+                if (telTemporeel(scoped.subject(), scoped.sleutels()) > 1) return false;
+                model.uniciteiten.add(scoped); return true;
+            }
         }
         Bron eerste = bronVan(u.alleAttribuutVanOnderwerp(), u.uniciteitConcatenatie());
         if (eerste == null) return false;
         if (u.vereniging().isEmpty()) {                              // the common single-source form
+            if (telTemporeel(eerste.type(), eerste.sleutels()) > 1) return false;
             model.uniciteiten.add(new io.github.yhavinga.regelspraak.ir.ResolvedUniciteit(
                     naam, eerste.type(), eerste.sleutels(), null, src(u), geldigheid));
             return true;
@@ -541,13 +550,12 @@ final class RuleChecker {
                 return false;
             bronnen.add(b);
         }
-        // §8.1.6 ever-uniqueness (uchar RS ch. 5.9): at most ONE temporal component per compound source
-        // key is defined — a second would need the same-moment tuple join, which no reading pins yet.
-        // More than one leaves the whole rule a WARNING, like an arity mismatch, so BOTH back-ends stay
-        // identically silent on the undefined shape.
+        // §8.1.6 ever-uniqueness (uchar RS ch. 5.9): at most ONE temporal component per key list —
+        // in the single form and per union source alike; a second would need the same-moment tuple
+        // join, which no reading pins yet. More than one leaves the whole rule a WARNING, like an
+        // arity mismatch, so BOTH back-ends stay identically silent on the undefined shape.
         for (Bron b : bronnen) {
-            long temporeel = b.sleutels().stream().filter(k -> b.type().attribuutGranulariteit.containsKey(k)).count();
-            if (temporeel > 1) return false;
+            if (telTemporeel(b.type(), b.sleutels()) > 1) return false;
         }
         model.uniciteitUnies.add(new io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie(naam, bronnen, src(u), geldigheid));
         return true;

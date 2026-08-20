@@ -10,6 +10,12 @@ public class Strandvondst {
     private List<Segment> vondstnummer;   // "voor elk jaar" -> a Tijdreeks
     private BigDecimal reekscode;         // scalar component of the compound key
     private List<Segment> volgnummer;     // temporal component of the compound key
+    private Object kust;                  // parent-scope reference (scope × ever composition)
+    private List<Segment> kavelnummer;    // the scoped ever-unique key
+    public Object getKust() { return kust; }
+    public void setKust(Object v) { this.kust = v; }
+    public List<Segment> getKavelnummer() { return kavelnummer; }
+    public void setKavelnummer(List<Segment> v) { this.kavelnummer = v; }
     public List<Segment> getVondstnummer() { return vondstnummer; }
     public void setVondstnummer(List<Segment> v) { this.vondstnummer = v; }
     public BigDecimal getReekscode() { return reekscode; }

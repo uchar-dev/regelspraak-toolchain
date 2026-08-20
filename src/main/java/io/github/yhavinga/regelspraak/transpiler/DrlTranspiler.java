@@ -360,7 +360,12 @@ public final class DrlTranspiler {
         for (int i = 0; i < u.sleutels().size(); i++) {
             String prop = ident(u.sleutels().get(i), false);
             binders.append("$k").append(i).append(" : ").append(prop).append(" != null");
-            matchers.append(prop).append(" == $k").append(i);
+            if (u.subject().attribuutGranulariteit.containsKey(u.sleutels().get(i)))
+                // ever-uniqueness (uchar RS ch. 5.9, both forms): a temporal key joins on the
+                // EVER-value intersection — the same shared predicate the union emits
+                matchers.append(fnImport("rsOoitBotst")).append("(").append(prop).append(", $k").append(i).append(")");
+            else
+                matchers.append(prop).append(" == $k").append(i);
             if (i < u.sleutels().size() - 1) { binders.append(", "); matchers.append(", "); }
         }
         out.append(new Regel(u.naam())

@@ -9652,10 +9652,11 @@ class ExecModelDifferentialTest {
             () -> { Persoon metNaam = new Persoon(); metNaam.setRoepnaam("Maria"); return List.of(metNaam, new Persoon()); },
             o -> "naam=" + ((Persoon) o).getRoepnaam()),
 
-        // §8.1.6 a TEMPORAL (List<Segment>) uniciteit key — DRL is NOT special-cased (`timeline == $k`, List.equals,
-        // so only instance-equal timelines collide). p1/p2 SHARE the same List instance -> both flagged; p3 has a
-        // distinct (content-equal) timeline -> matches only itself -> not flagged. The model's gelijkWaarde matches.
-        new FoutFixture("uniciteit: temporal key (shared timeline instance collides)",
+        // §8.1.6 ever-uniqueness on the SINGLE form (uchar RS ch. 5.9, extended 2026-08-20): a temporal
+        // key joins on the ever-value intersection, so ALL THREE persons ever-carry 100 and are flagged —
+        // including p3, whose content-equal-but-distinct timeline the old List-identity join silently
+        // missed. Both routes call the shared rsOoitBotst; the differential guards the reading.
+        new FoutFixture("uniciteit: temporal key (ever-value collision, single form)",
             "Objecttype de Persoon (mv: Personen) (bezield)\n    de leeftijd Numeriek (geheel getal);\n"
             + "    de bedrag per maand Numeriek (geheel getal) voor elke maand;\n"
             + "Regel uniek\n    geldig altijd\n        De bedrag per maand van alle Personen moeten uniek zijn.\n",

@@ -2232,6 +2232,24 @@ class DrlTest {
                 () -> "de twee-temporele unie moet de consistentieregel-waarschuwing dragen: " + m.diagnostics);
     }
 
+    @Test void uniciteit_enkele_vorm_twee_temporele_componenten_blijft_waarschuwing() {
+        // The same at-most-one-temporal fence on the SINGLE form (compositionality): a compound key
+        // with two temporal components stays a WARNING and never reaches the IR.
+        String src = """
+            Objecttype de Strandvondst
+                het volgnummer Numeriek (geheel getal) voor elk jaar;
+                de wijkcode Numeriek (geheel getal) voor elk jaar;
+            Regel dubbel temporeel enkelvoudig
+                geldig altijd
+                    De concatenatie van volgnummer en wijkcode van alle Strandvondsten moeten uniek zijn.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        assertTrue(m.uniciteiten.isEmpty(), "de twee-temporele enkele vorm mag de IR niet bereiken");
+        assertTrue(m.diagnostics.stream().anyMatch(d -> d.message().contains("consistentieregel")),
+                () -> "de twee-temporele enkele vorm moet de consistentieregel-waarschuwing dragen: " + m.diagnostics);
+    }
+
     @Test void samengestelde_consistentie_alle_lowert_naar_or_van_schendingen() {
         // §13.4.8 "alle volgende criteria": the violation is OR of the per-criterion violations.
         String src = """

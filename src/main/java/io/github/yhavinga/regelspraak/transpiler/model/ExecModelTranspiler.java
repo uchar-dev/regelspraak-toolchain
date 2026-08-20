@@ -4247,8 +4247,6 @@ public final class ExecModelTranspiler {
         if (factClass == null) return skip("uniciteit (geen fact-class " + subject.naam + "): " + u.naam());
         Class<?> incClass = inconsistentieClass();
         if (incClass == null) return skip("uniciteit (geen Inconsistentie-fact): " + u.naam());
-        // A temporal (List<Segment>) key is NOT special-cased: gelijkWaarde -> List.equals matches DRL's mvel
-        // `timeline == $k` (only instance-equal timelines collide, so it is degenerate but parity-faithful).
 
         seq = 0;
         String naam = u.naam();
@@ -4275,8 +4273,13 @@ public final class ExecModelTranspiler {
         PatternDSL.PatternDef src = PatternDSL.pattern(oVar);
         for (int i = 0; i < u.sleutels().size(); i++) {
             String key = u.sleutels().get(i);
-            src = src.expr(nextId("kj"), (Variable) keyVars.get(i),
-                    (Predicate2) (o, k) -> RegelSpraakRuntime.gelijkWaarde(RegelSpraakRuntime.get(o, key), k));
+            if (subject.attribuutGranulariteit.containsKey(key))
+                // ever-uniqueness (uchar RS ch. 5.9, both forms): the shared ever-value predicate
+                src = src.expr(nextId("kj"), (Variable) keyVars.get(i),
+                        (Predicate2) (o, k) -> RegelSpraakRuntime.rsOoitBotst(RegelSpraakRuntime.get(o, key), k));
+            else
+                src = src.expr(nextId("kj"), (Variable) keyVars.get(i),
+                        (Predicate2) (o, k) -> RegelSpraakRuntime.gelijkWaarde(RegelSpraakRuntime.get(o, key), k));
         }
         if (scopeVar != null) {
             String sv = u.scopeVeld();
