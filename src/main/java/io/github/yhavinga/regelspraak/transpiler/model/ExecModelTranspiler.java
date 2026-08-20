@@ -74,6 +74,8 @@ public final class ExecModelTranspiler {
     static final String FACTS = "io.github.yhavinga.regelspraak.facts";
 
     private final RegelSpraakModel model;
+    /** §9.2: the salience derivation over the declared kenmerk graph, shared with DrlTranspiler. */
+    private final io.github.yhavinga.regelspraak.transpiler.Stratificatie strat;
     /** The classloader the bean fact classes ({@code io.github.yhavinga.regelspraak.facts.*}, Segment, Inconsistentie) are
      *  resolved against (card fase 1). Defaults to this transpiler's OWN loader; the {@link ScenarioRunner}/
      *  BeslisserKern shape (FactModelGenerator + BeanCompiler) threads a CHILD loader so child-loaded beans are
@@ -123,6 +125,7 @@ public final class ExecModelTranspiler {
     private ExecModelTranspiler(RegelSpraakModel m, ClassLoader beanLoader) {
         this.model = m;
         this.dagsoorten = new Dagsoorten(m);
+        this.strat = io.github.yhavinga.regelspraak.transpiler.Stratificatie.bereken(m.resolvedRegels);
         this.beanLoader = beanLoader != null ? beanLoader : ExecModelTranspiler.class.getClassLoader();
     }
 
@@ -5155,18 +5158,13 @@ public final class ExecModelTranspiler {
      *  NEGATED kenmerk to the BOTTOM of the agenda (salience -1) so it fires only after the default-0 positive
      *  computation has quiesced (the producer set the kenmerk). This is stronger than lifting the direct producer:
      *  the producer may itself depend on a berekening (drempelwaarde) that must fire first — sinking the consumer
-     *  keeps the whole positive chain ahead of it. Every non-negation rule keeps salience 0 (unchanged agenda). */
+     *  keeps the whole positive chain ahead of it. Every non-negation rule keeps salience 0 (unchanged agenda).
+     *  DERIVED (no longer the one-level heuristic): the shared {@link Stratificatie} computes the stratum over
+     *  the declared kenmerk graph, so a chain of negation-consumers sinks level by level instead of collapsing
+     *  into one -1 band where source order decides (the StratificatieKetenTest red case). Both back-ends read
+     *  the SAME derivation — the single-runtime principle for the agenda. */
     private int stratificatieSalience(ResolvedRegel r) {
-        if (r.voorwaarde() == null) return 0;
-        return leestNegatieKenmerk(r.voorwaarde()) ? -1 : 0;
-    }
-
-    /** Whether a condition tree reads a kenmerk in a NEGATED membership test. */
-    private static boolean leestNegatieKenmerk(Conditie c) {
-        if (c == null) return false;
-        if (c instanceof Conditie.Kenmerk k && k.negatie()) return true;
-        if (c instanceof Conditie.Samengesteld s) for (Conditie d : s.onderdelen()) if (leestNegatieKenmerk(d)) return true;
-        return false;
+        return strat.salience(r);
     }
 
     /** The subject's OWN declared attributes a value expression READS, as bean property names — the

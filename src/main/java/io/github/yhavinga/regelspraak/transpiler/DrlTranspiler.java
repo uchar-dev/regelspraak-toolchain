@@ -49,6 +49,8 @@ public final class DrlTranspiler {
      *  the contract between the generated rules and the runtime. */
     public static final String FACT_PACKAGE = "io.github.yhavinga.regelspraak.facts";
     private final RegelSpraakModel model;
+    /** §9.2: the salience derivation over the declared kenmerk graph, shared with ExecModelTranspiler. */
+    private final Stratificatie strat;
     private final StringBuilder out = new StringBuilder();
     /** The {@link io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime} static helpers the rules called (method
      *  names), emitted once after the fact imports as {@code import function …RegelSpraakRuntime.<naam>;}
@@ -77,7 +79,11 @@ public final class DrlTranspiler {
             = new java.util.LinkedHashMap<>();
     private final Dagsoorten dagsoorten;
 
-    public DrlTranspiler(RegelSpraakModel model) { this.model = model; this.dagsoorten = new Dagsoorten(model); }
+    public DrlTranspiler(RegelSpraakModel model) {
+        this.model = model;
+        this.dagsoorten = new Dagsoorten(model);
+        this.strat = Stratificatie.bereken(model.resolvedRegels);
+    }
 
     public static String transpile(RegelSpraakModel model) { return new DrlTranspiler(model).run(); }
 
@@ -654,15 +660,6 @@ public final class DrlTranspiler {
         return null;
     }
 
-    /** §9.2 whether a condition tree reads a kenmerk in a NEGATED membership test ("… indien hij niet &lt;kenmerk&gt;
-     *  is") — the shape that must be stratified to the fixpoint. Byte-for-byte the ExecModelTranspiler predicate. */
-    private static boolean leestNegatieKenmerk(Conditie c) {
-        if (c == null) return false;
-        if (c instanceof Conditie.Kenmerk k && k.negatie()) return true;
-        if (c instanceof Conditie.Samengesteld s) for (Conditie d : s.onderdelen()) if (leestNegatieKenmerk(d)) return true;
-        return false;
-    }
-
     /** §13.4.10 verdeling. Two methods have a single forward-rule form: EQUAL SHARES binds the source,
      *  counts the recipients joined to it, and gives each total/count; NAAR RATO (proportional) instead
      *  SUMS each recipient's weight attribute and gives each total·weight/sum. Both fold the recipients in
@@ -1049,14 +1046,14 @@ public final class DrlTranspiler {
 
         // A forward calculation should not retrigger itself on its own modify (no-loop, in the header);
         // it still recomputes when another rule changes the facts it reads.
-        // §9.2 negation-stratification (mirrors ExecModelTranspiler.stratificatieSalience): a §13.4.5
-        // kenmerktoekenning is MONOTONIC (a kenmerk is default-onwaar and only ever set WAAR), so a rule whose
-        // voorwaarde reads "niet <kenmerk>" must be evaluated at the FIXPOINT, after every producer of that kenmerk
-        // has run. The DRL agenda gives no such guarantee: a negation-consumer eligible in the transient window
-        // fires under SOURCE RULE ORDER and its once-true write persists (the ConfluenceFuzzTest non-confluence).
-        // Sinking the consumer to salience -1 keeps the whole positive computation chain ahead of it.
+        // §9.2 negation-stratification, DERIVED from the declared kenmerk dependency graph (Stratificatie —
+        // the uchar WF-046 strata principle as a lowering): a negation-consumer sinks below every producer of
+        // the kenmerk it negates, and a consumer of a DERIVED negated kenmerk sinks below that producer's own
+        // stratum — the chain case the former one-level heuristic left to source order (the
+        // StratificatieKetenTest red case). Shared with ExecModelTranspiler: both routes read one derivation.
         Regel rule = new Regel(r.naam());
-        if (r.voorwaarde() != null && leestNegatieKenmerk(r.voorwaarde())) rule.salience(-1);
+        int stratSal = strat.salience(r);
+        if (stratSal != 0) rule.salience(stratSal);
         // §8.1.7 far-side "heeft een <rol>" lowers to an EXISTS-join — a separate when-clause that cannot live
         // inside the subject pattern's inline constraint, so condition lowering hands it back as an extra clause
         // (directly for a top-level membership, carried up through a pure-conjunction §13.4.14 alle/de compound).
