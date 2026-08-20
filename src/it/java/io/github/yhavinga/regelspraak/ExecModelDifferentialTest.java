@@ -9693,6 +9693,33 @@ class ExecModelDifferentialTest {
             o -> (o instanceof io.github.yhavinga.regelspraak.facts.Strandvondst s
                     ? "S:" + s.getVondstnummer().get(0).getWaarde()
                     : "W:" + ((io.github.yhavinga.regelspraak.facts.Wrakvondst) o).getVondstnummer().get(0).getWaarde())),
+
+        // §8.1.6 ever-uniqueness, COMPOUND key (reekscode scalar via gelijkWaarde, volgnummer temporal
+        // via rsOoitBotst, combined in one arity-2 source): the (4,3)-tuple collides across different
+        // moments; (9,3) shares only the volgnummer and stays unique. Guards the exec-model compound
+        // path differentially (the firing test alone proves only the DRL route).
+        new FoutFixture("uniciteit-unie: samengestelde sleutel, temporele component over momenten",
+            """
+            Objecttype de Strandvondst
+                de reekscode Numeriek (geheel getal);
+                het volgnummer Numeriek (geheel getal) voor elk jaar;
+            Objecttype de Wrakvondst
+                de reekscode Numeriek (geheel getal);
+                het volgnummer Numeriek (geheel getal) voor elk jaar;
+            Regel reeks uniek
+                geldig altijd
+                    De concatenatie van reekscode en volgnummer van alle Strandvondsten verenigd met de concatenatie van reekscode en volgnummer van alle Wrakvondsten moeten uniek zijn.
+            """,
+            () -> { io.github.yhavinga.regelspraak.facts.Strandvondst s1 = new io.github.yhavinga.regelspraak.facts.Strandvondst();
+                    s1.setReekscode(new BigDecimal("4")); s1.setVolgnummer(List.of(seg(2024, 1, 1, 2025, 1, 1, "3")));
+                    io.github.yhavinga.regelspraak.facts.Wrakvondst w1 = new io.github.yhavinga.regelspraak.facts.Wrakvondst();
+                    w1.setReekscode(new BigDecimal("4")); w1.setVolgnummer(List.of(seg(2026, 1, 1, 2027, 1, 1, "3")));
+                    io.github.yhavinga.regelspraak.facts.Wrakvondst w2 = new io.github.yhavinga.regelspraak.facts.Wrakvondst();
+                    w2.setReekscode(new BigDecimal("9")); w2.setVolgnummer(List.of(seg(2024, 1, 1, 2025, 1, 1, "3")));
+                    return List.of(s1, w1, w2); },
+            o -> (o instanceof io.github.yhavinga.regelspraak.facts.Strandvondst s
+                    ? "S:" + s.getReekscode()
+                    : "W:" + ((io.github.yhavinga.regelspraak.facts.Wrakvondst) o).getReekscode())),
     };
 
     // ---- Phase E fout: §9.7.6 Tabel 19 — an empty weight (naar rato) or a leeg/negatief maximum at ANY recipient is
