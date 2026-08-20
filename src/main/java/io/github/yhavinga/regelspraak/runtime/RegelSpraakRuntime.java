@@ -643,7 +643,15 @@ public final class RegelSpraakRuntime {
      *  5 and 5.00 collide, matching the scalar union's coercive equality. A null or empty timeline
      *  claims nothing (an empty key never collides). */
     public static java.util.Set<BigDecimal> rsOoitWaarden(Object tijdlijn) {
-        if (!(tijdlijn instanceof List<?> l) || l.isEmpty()) return java.util.Set.of();
+        if (tijdlijn == null) return java.util.Set.of();   // an absent timeline claims nothing (an empty key never collides)
+        if (!(tijdlijn instanceof List<?> l))
+            // fail fast: the fact model types every temporal attribute List<Segment>, so a non-List here
+            // means the generator or a caller broke that invariant — an empty claim-set would silently
+            // under-report collisions (the uchar executors fault on the same shape)
+            throw new IllegalStateException(
+                    "rsOoitWaarden: een temporele sleutel moet een List<Segment> zijn, kreeg "
+                    + tijdlijn.getClass().getName() + " — dit had onbereikbaar moeten zijn");
+        if (l.isEmpty()) return java.util.Set.of();
         var out = new java.util.HashSet<BigDecimal>();
         for (Object seg : l) {
             BigDecimal w = segWaarde(seg);
