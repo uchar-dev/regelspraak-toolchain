@@ -143,7 +143,7 @@ public final class Verbalisator {
             return operandProza(p.operand(), bean) + " " + kern;
         }
         // een nog niet gestructureerde conditievorm: eerlijk de brontekst tonen, geen gok.
-        return "aan de voorwaarde \"" + c.bron().trim() + "\" is voldaan";
+        return "aan de voorwaarde \"" + c.bron().snippet().trim() + "\" is voldaan";
     }
 
     /** Voor een "alle volgende voorwaarden"-regel die NIET vuurde: de EERSTE conjunct die (na evaluatie van zijn
@@ -166,7 +166,7 @@ public final class Verbalisator {
         return "de conclusie niet is bereikt (mogelijk een regel buiten deze berekening)";
     }
 
-    private static String samenvatting(Conditie c) { return c.bron() == null ? "?" : c.bron().trim(); }
+    private static String samenvatting(Conditie c) { return c.bron() == null ? "?" : c.bron().snippet().trim(); }
 
     // ---------------- read-only conditie-evaluatie ----------------
 
@@ -363,7 +363,7 @@ public final class Verbalisator {
     /** Een korte omschrijving van WAT een operand is, uit zijn brontekst (bv. "de maandloon nieuw van EOver"). */
     private static String omschrijf(Expr e) {
         if (e == null) return "de waarde";
-        String bron = e.bron();
+        String bron = e.bron().snippet();
         if (bron != null && !bron.isBlank()) return bron.trim();
         if (e instanceof Expr.AttribuutRef ref) return "de " + ref.attribuut();
         if (e instanceof Expr.ParameterRef pr) return "de " + pr.parameter().naam();

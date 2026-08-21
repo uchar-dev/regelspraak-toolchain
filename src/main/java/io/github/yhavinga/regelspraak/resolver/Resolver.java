@@ -73,7 +73,8 @@ public final class Resolver {
         // the SECOND the source. (--allow-markers is meaningless here but tolerated, already removed.)
         if (rest.size() < 2) { System.err.println("usage: Resolver --facts <outdir> <file.rgs>"); return 2; }
         java.nio.file.Path outdir = java.nio.file.Path.of(rest.get(0));
-        RegelSpraakModel mf = resolve(java.nio.file.Files.readString(java.nio.file.Path.of(rest.get(1))));
+        RegelSpraakModel mf = resolve(java.nio.file.Files.readString(java.nio.file.Path.of(rest.get(1))),
+                rest.get(1));
         // Check errors BEFORE touching disk: an unresolvable model writes NOTHING under outdir.
         if (!mf.isOk()) {
             mf.diagnostics.forEach(d -> System.out.println("  " + d));
@@ -131,7 +132,12 @@ public final class Resolver {
         StringBuilder bron = new StringBuilder();
         for (String f : rest.subList(1, rest.size()))
             bron.append(java.nio.file.Files.readString(java.nio.file.Path.of(f))).append('\n');
-        RegelSpraakModel m = resolve(bron.toString());
+        // a single source file threads its name into the Bron coordinates; a
+        // concatenated chain deliberately does not (per-file line offsets
+        // would lie about every file after the first)
+        RegelSpraakModel m = rest.size() == 2
+                ? resolve(bron.toString(), rest.get(1))
+                : resolve(bron.toString());
         // Check errors BEFORE touching disk: an unresolvable model writes NOTHING (a mirror of a broken model
         // would carry half-bound references and misleading diagnostics as if authoritative).
         if (!m.isOk()) {
