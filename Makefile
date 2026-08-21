@@ -59,6 +59,7 @@ help:
 	@echo "  make facts                           Generate the TOKA fact-model beans and javac them (out/facts/)"
 	@echo "  make graaf FILE=\"a.rgs …\" [OUT=… MMD=1]  Emit the dataflow regelgraaf (regels ↔ gegevens) as HTML (or bare Mermaid with MMD=1)"
 	@echo "  make ir FILE=\"a.rgs …\" [OUT=…]       Emit a faithful v0 JSON dump of the resolved model (the uchar mirror)"
+	@echo "  make uchar-conformance UCHAR_DIR=<pad>  Verify the emitter reproduces every uchar emitter golden at the SPEC_REV pin"
 	@echo "  make csv-beslistabel FILE=<csv> [OUT=<pad>]  Convert a CSV decision table to a §12 Beslistabel .rgs fragment"
 	@echo "  make drools-it                       (needs Maven+network) Compile & fire the DRL in Drools"
 	@echo "  make engine                          (needs Maven) Build + test the shippable engine consumer"
@@ -265,3 +266,10 @@ image:
 
 kind-smoke:
 	bash scripts/kind-smoke.sh
+
+# The uchar pin (SPEC_REV at the repo root): the emitter must reproduce
+# every uchar emitter golden byte-identically at that revision. Changes
+# flow spec-first: the delta lands in uchar, then the pin bump lands
+# here with this target green.
+uchar-conformance:
+	bash scripts/uchar-conformance.sh
