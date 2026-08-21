@@ -22,6 +22,7 @@ import org.antlr.v4.runtime.CommonTokenStream;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.RecognitionException;
 import org.antlr.v4.runtime.Recognizer;
+import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.TerminalNode;
 
@@ -49,9 +50,21 @@ final class RuleChecker {
      *  it makes {@link #subjectKop} also accept "de &lt;rolC&gt;" as denoting the (re-)subject, and REJECT the
      *  bezielde "hij"/bare reference — which in a feitcreatie names the anker, not the doel. null otherwise. */
     private String doelRol = null;
+    /** The {@code // Bron: …} statuutannotaties of the rule currently being resolved (the text after
+     *  {@code Bron:}, in source order), set at the start of {@link #regelVersies} and carried onto every
+     *  {@link ResolvedRegel} version it produces. Empty when the rule carried none. */
+    private List<String> huidigeBronAnnotaties = List.of();
 
-    RuleChecker(RegelSpraakModel model) {
+    /** The main parse's token stream, kept so the §Bron statuutannotaties on the HIDDEN channel
+     *  (the {@code // Bron: …} comments) can be gathered directly above each rule. Null when the
+     *  checker is driven without a stream (no annotations are then collected). */
+    private final CommonTokenStream tokens;
+
+    RuleChecker(RegelSpraakModel model) { this(model, null); }
+
+    RuleChecker(RegelSpraakModel model, CommonTokenStream tokens) {
         this.model = model;
+        this.tokens = tokens;
         this.bouwer = new ExpressieBouwer(model);
         this.bouwer.setSamengesteldeFilter(this::samengesteldeElementFilter);   // §13.4.13.4 compound subselectie
     }
@@ -174,6 +187,8 @@ final class RuleChecker {
      *  {@link RegelContext} — so a table row reuses the WHOLE rule pipeline (and both back-ends) unchanged. */
     private void regelVersies(RegelContext r) {
         String naam = DefinitionResolver.src(r.regelNaam());
+        // §Bron: the statuutannotaties directly above the rule header, carried onto every version's ResolvedRegel.
+        huidigeBronAnnotaties = bronAnnotaties(r);
         List<RegelVersieContext> versies = r.regelVersie();
         // §13.4.2.5 validity per version, computed up front so §4.2's non-overlap
         // invariant can be checked across the rule's versions. A version whose validity
@@ -1013,7 +1028,7 @@ final class RuleChecker {
         Expr doel = new Expr.AttribuutRef(kenmerk, subject, src(kt.onderwerpKeten()),
                 null, new Datatype.Booleaan(), bron(kt));
         Expr waarde = new Expr.Literal("waar", new Datatype.Booleaan(), Bron.synthetisch("waar"));
-        model.resolvedRegels.add(new ResolvedRegel(naam, ResolvedRegel.Soort.KENMERKTOEKENNING, doel, waarde, voorwaarde, geldigheid));
+        model.resolvedRegels.add(new ResolvedRegel(naam, ResolvedRegel.Soort.KENMERKTOEKENNING, doel, waarde, voorwaarde, geldigheid, huidigeBronAnnotaties));
     }
 
     /** §9.9/§13.4.12 startpuntbepaling: "Het startpunt van <tijdlijn> voor <onderwerp> wordt bepaald
@@ -1065,7 +1080,7 @@ final class RuleChecker {
             model.resolvedStartpunten.add(new io.github.yhavinga.regelspraak.ir.ResolvedStartpunt(tijdlijnNaam, subject.naam, lid));
         Expr doel = new Expr.AttribuutRef(lid, subject, src(sb.universeelOnderwerp()),
                 null, new Datatype.DatumInDagen(), bron(sb));
-        model.resolvedRegels.add(new ResolvedRegel(naam, ResolvedRegel.Soort.GELIJKSTELLING, doel, anker, voorwaarde, geldigheid));
+        model.resolvedRegels.add(new ResolvedRegel(naam, ResolvedRegel.Soort.GELIJKSTELLING, doel, anker, voorwaarde, geldigheid, huidigeBronAnnotaties));
     }
 
     /** The object type a rule is about — the object type of its assignment target. */
@@ -1091,7 +1106,7 @@ final class RuleChecker {
                             ExpressieContext waarde, int line, Conditie voorwaarde, Geldigheid geldigheid) {
         Expr doelExpr = bouwer.bouwAttribuut(doel);
         Expr waardeExpr = bouwer.bouw(waarde);
-        model.resolvedRegels.add(new ResolvedRegel(naam, soort, doelExpr, waardeExpr, voorwaarde, geldigheid));
+        model.resolvedRegels.add(new ResolvedRegel(naam, soort, doelExpr, waardeExpr, voorwaarde, geldigheid, huidigeBronAnnotaties));
         Datatype doelType = doelExpr.type(), waardeType = waardeExpr.type();
         // §13.3.4.2 membership runs BEFORE the Onbekend bail: an enum literal is deliberately typed
         // Onbekend (its domain is context-dependent), and the doel IS that context here.
@@ -2051,6 +2066,26 @@ final class RuleChecker {
 
     private static String src(ParserRuleContext c) { return DefinitionResolver.src(c); }
     private static io.github.yhavinga.regelspraak.ir.Bron bron(ParserRuleContext c) { return DefinitionResolver.bron(c); }
+
+    /** The {@code // Bron: <wetsartikel>} statuutannotaties written directly above {@code ctx} — the line
+     *  comments on the HIDDEN channel between the previous on-channel token and {@code ctx}'s start, each with
+     *  the {@code //} and the {@code Bron:} tag stripped (case-insensitive), in source order. Empty when there
+     *  is no stream, no such comment, or {@code ctx} does not belong to the main stream (the §12 beslistabel
+     *  desugar re-parses each synthetic regel in its own stream — a token index into a foreign stream must not
+     *  be read, and a desugared regel carries no annotations anyway). */
+    private List<String> bronAnnotaties(ParserRuleContext ctx) {
+        if (tokens == null || ctx == null || ctx.getStart() == null) return List.of();
+        int idx = ctx.getStart().getTokenIndex();
+        if (idx < 0 || idx >= tokens.size() || tokens.get(idx) != ctx.getStart()) return List.of();
+        List<Token> hidden = tokens.getHiddenTokensToLeft(idx);
+        if (hidden == null) return List.of();
+        List<String> uit = new ArrayList<>();
+        for (Token t : hidden) {
+            String c = t.getText().replaceFirst("^//+\\s*", "");   // strip the leading // and spaces
+            if (c.regionMatches(true, 0, "Bron:", 0, 5)) uit.add(c.substring(5).trim());
+        }
+        return uit;
+    }
 
     // ---- §5 condition type-checking (comparisons + predicates) ----
     private void voorwaarden(ParseTree t) {

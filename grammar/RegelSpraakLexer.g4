@@ -433,10 +433,14 @@ fragment LETTER : [\p{L}]        ; // §13.2.6 letter (Unicode, incl. accented)
 fragment DIGIT  : [0-9]          ; // §13.2.1 digit
 
 // ============================================================================
-// Skipped: whitespace (incl. newlines, see header note 1) and line comments.
+// Skipped: whitespace (incl. newlines, see header note 1). Line comments go to the
+// HIDDEN channel (not skipped) so the parser still ignores them, but the resolver can
+// gather the `// Bron: <wetsartikel>` statuutannotaties written directly above a rule
+// (BufferedTokenStream.getHiddenTokensToLeft) for uitleg to cite. Whitespace stays
+// skipped, so the only hidden tokens are comments.
 // ============================================================================
 WS           : [ \t\r\n]+ -> skip ;
-LINE_COMMENT : '//' ~[\r\n]* -> skip ;
+LINE_COMMENT : '//' ~[\r\n]* -> channel(HIDDEN) ;
 
 // ============================================================================
 // §5.4/§13.4.17.9 string interior (entered from STRING_START). A plain "…" is

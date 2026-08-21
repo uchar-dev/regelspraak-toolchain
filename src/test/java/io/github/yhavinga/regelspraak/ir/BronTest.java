@@ -45,4 +45,27 @@ class BronTest {
         // toString() levert de snippet (minimaliseert de diff op plekken die de bron als tekst gebruiken)
         assertEquals(bron.snippet(), bron.toString());
     }
+
+    @Test void bronAnnotatieOpvraagbaarVanafResolvedRegel() {
+        RegelSpraakModel m = Resolver.resolve(SRC, "Jutterswet.rgs");
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+
+        ResolvedRegel rr = m.resolvedRegels.get(0);
+        assertTrue(rr.bronAnnotaties().contains("art. 3 Jutterswet"),
+                () -> "verwachtte de // Bron:-annotatie boven de regel, kreeg: " + rr.bronAnnotaties());
+    }
+
+    @Test void geenBronAnnotatieLevertLegeLijst() {
+        // A rule with no // Bron: comment above it carries an empty (never null) annotatielijst.
+        String src = """
+            Objecttype de Som
+                het bedrag Numeriek (geheel getal);
+                de uitkomst Numeriek (geheel getal);
+            Regel bereken uitkomst
+                geldig altijd
+                    De uitkomst van een Som moet gesteld worden op het bedrag van een Som.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src, "Jutterswet.rgs");
+        assertTrue(m.resolvedRegels.get(0).bronAnnotaties().isEmpty(), "geen annotatie -> lege lijst");
+    }
 }

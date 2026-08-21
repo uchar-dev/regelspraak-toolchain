@@ -44,7 +44,7 @@ public final class Resolver {
         RegelSpraakModel model = new DefinitionResolver().build(doc);
         model.diagnostics.addAll(syntax);
 
-        new RuleChecker(model).check(doc);
+        new RuleChecker(model, tokens).check(doc);
         return model;
     }
 
