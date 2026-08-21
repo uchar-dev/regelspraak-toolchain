@@ -25,8 +25,9 @@ import java.util.List;
 public sealed interface Expr {
     /** The expression's result datatype (per the typeringen matrix). */
     Datatype type();
-    /** The original source slice this node was built from (whitespace-normalised). */
-    String bron();
+    /** The structured source anchor (file/line/column + whitespace-normalised snippet) this node
+     *  was built from. Its {@link Bron#toString()} is the snippet, so the v0 wire stays unchanged. */
+    Bron bron();
 
     /** Whether {@code e} is or contains a sub-expression matching {@code toets} — a generic IR-tree scan over
      *  every Expr-carrying component (arithmetic operands, functie argumenten + leegwaarde-fallback + its
@@ -53,12 +54,12 @@ public sealed interface Expr {
     }
 
     /** §13.2 literal: a number, text, boolean, date, or enumeration value. */
-    record Literal(String waarde, Datatype type, String bron) implements Expr {}
+    record Literal(String waarde, Datatype type, Bron bron) implements Expr {}
 
     /** §5.4/§13.4.17.9 "reeks van teksten en waarden": an interleaving of literal karakterreeks chunks and
      *  «expressie» parts, each coerced to Tekst and concatenated at runtime. A PLAIN "…" (no «…») stays an
      *  {@link Literal}; this node is built ONLY when at least one «expressie» part is present. */
-    record TekstReeks(List<Deel> delen, String bron) implements Expr {
+    record TekstReeks(List<Deel> delen, Bron bron) implements Expr {
         @Override public Datatype type() { return new Datatype.Tekst(); }
         /** One piece of a tekstenwaardereeks: a literal chunk or an embedded expression. */
         public sealed interface Deel {}
@@ -70,7 +71,7 @@ public sealed interface Expr {
 
     /** §13.4.16 arithmetic operators and §13.4.17.12 percentage-of. */
     enum BinOp { PLUS, MIN, VERMINDERD_MET, MAAL, GEDEELD_DOOR, GEDEELD_DOOR_ABS, TOT_DE_MACHT, PERCENTAGE_VAN }
-    record Binair(BinOp op, Expr links, Expr rechts, Datatype type, String bron) implements Expr {}
+    record Binair(BinOp op, Expr links, Expr rechts, Datatype type, Bron bron) implements Expr {}
 
     /** §13.4.17.10-.58 named functions and aggregations over their argument expressions. */
     enum FunctieKind {
@@ -101,7 +102,7 @@ public sealed interface Expr {
      *  dimension's declared label order (§13.3.7.5), and "over alle …" is every label. The
      *  transpiler folds the dimensioned attribute over exactly these labels (a fixed sum/min/max
      *  of {@code map.get(label)}), so no label arithmetic survives into the back-end. */
-    record DimensieSelectie(String dimensie, List<String> labels, String bron) {}
+    record DimensieSelectie(String dimensie, List<String> labels, Bron bron) {}
 
     /** {@code dimensieSelectie} (§13.4.17.51-.54), when non-null, restricts a SOM/MIN/MAX over a
      *  gedimensioneerd attribuut to the selected dimension labels — the only aggregation that
@@ -109,18 +110,18 @@ public sealed interface Expr {
      *  ordinary instance aggregation. */
     record Functie(FunctieKind kind, List<Expr> argumenten, Objecttype elementObjecttype,
                    Expr leegwaarde, Conditie filter, DimensieSelectie dimensieSelectie,
-                   Datatype type, String bron, Granulariteit granulariteit) implements Expr {
+                   Datatype type, Bron bron, Granulariteit granulariteit) implements Expr {
         /** {@code granulariteit} is the §13.4.17.57 aantal-dagen-in operator's stated bucket unit ("in <de maand|
          *  het jaar>"); null for every other functie. The transpiler requires it to MATCH the doel's tijdlijn
          *  (§4.21/§7.2), markering a mismatch rather than silently bucketing by the wrong unit. */
         public Functie(FunctieKind kind, List<Expr> argumenten, Objecttype elementObjecttype,
                        Expr leegwaarde, Conditie filter, DimensieSelectie dimensieSelectie,
-                       Datatype type, String bron) {
+                       Datatype type, Bron bron) {
             this(kind, argumenten, elementObjecttype, leegwaarde, filter, dimensieSelectie, type, bron, null);
         }
         /** Most call sites build an instance aggregation with no dimensieselectie and no granulariteit. */
         public Functie(FunctieKind kind, List<Expr> argumenten, Objecttype elementObjecttype,
-                       Expr leegwaarde, Conditie filter, Datatype type, String bron) {
+                       Expr leegwaarde, Conditie filter, Datatype type, Bron bron) {
             this(kind, argumenten, elementObjecttype, leegwaarde, filter, null, type, bron, null);
         }
     }
@@ -129,7 +130,7 @@ public sealed interface Expr {
      *  (§6.1.2: it is exactly the explicit afronding that lets a higher-precision result be assigned
      *  to a lower-precision attribute), keeping the base's unit and sign. */
     enum AfrondModus { NAAR_BENEDEN, NAAR_BOVEN, REKENKUNDIG, RICHTING_NUL, WEG_VAN_NUL }
-    record Afgerond(Expr basis, AfrondModus modus, int decimalen, String bron) implements Expr {
+    record Afgerond(Expr basis, AfrondModus modus, int decimalen, Bron bron) implements Expr {
         @Override public Datatype type() {
             Datatype b = basis.type();
             if (b instanceof Datatype.Numeriek n) return new Datatype.Numeriek(decimalen == 0, decimalen, n.teken(), n.eenheid());
@@ -139,7 +140,7 @@ public sealed interface Expr {
     }
 
     /** §13.4.17.27-.30 bounding wrapper (a minimum and/or maximum); type is the base's. */
-    record Begrensd(Expr basis, Expr minimum, Expr maximum, String bron) implements Expr {
+    record Begrensd(Expr basis, Expr minimum, Expr maximum, Bron bron) implements Expr {
         @Override public Datatype type() { return basis.type(); }
     }
 
@@ -157,7 +158,7 @@ public sealed interface Expr {
      * navigated type equals the subject's) from a plain own-attribute read (§13.3.9.2).
      */
     record AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
-                        String navigatieRol, Datatype type, String bron, boolean set,
+                        String navigatieRol, Datatype type, Bron bron, boolean set,
                         java.util.List<String> navigatiePad) implements Expr {
         /** {@code set} marks an operand that ranges over a SET (a §13.4.2 set quantifier — alle/al/geen van de/
          *  ten minste…/ten hoogste…/precies… — NOT the bare definite "de"), computed structurally from the
@@ -171,11 +172,11 @@ public sealed interface Expr {
          *  so every own-attribute fast path (keyed on navigatieRol == null) routes a chain to the navigated
          *  branches, whose choke points (naviResolve / navReader / navComparisonRole) are pad-aware. */
         public AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
-                            String navigatieRol, Datatype type, String bron, boolean set) {
+                            String navigatieRol, Datatype type, Bron bron, boolean set) {
             this(attribuut, objecttype, onderwerpBron, navigatieRol, type, bron, set, java.util.List.of());
         }
         public AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
-                            String navigatieRol, Datatype type, String bron) {
+                            String navigatieRol, Datatype type, Bron bron) {
             this(attribuut, objecttype, onderwerpBron, navigatieRol, type, bron, false, java.util.List.of());
         }
     }
@@ -185,21 +186,21 @@ public sealed interface Expr {
      *  single-dimension attribute). The transpiler lowers it to {@code <map-read>.get(label)}; the result
      *  type is the attribute's element datatype. A read must pin EVERY dimension (§3.6), so the labels list
      *  has one entry per dimension. */
-    record DimensieCel(AttribuutRef attribuut, List<String> labels, String bron) implements Expr {
+    record DimensieCel(AttribuutRef attribuut, List<String> labels, Bron bron) implements Expr {
         @Override public Datatype type() { return attribuut.type(); }
     }
 
     /** A resolved parameter reference (§13.3.8); the type is the parameter's. */
-    record ParameterRef(Parameter parameter, String bron) implements Expr {
+    record ParameterRef(Parameter parameter, Bron bron) implements Expr {
         @Override public Datatype type() { return parameter.datatype(); }
     }
 
     /** A local rule variable introduced by a §13.4.2.10 variabeledeel ("Daarbij geldt: …"). */
-    record VariabeleRef(String naam, Datatype type, String bron) implements Expr {}
+    record VariabeleRef(String naam, Datatype type, Bron bron) implements Expr {}
 
     /** A built-in reckoning constant or referent: Rekendatum, Rekenjaar, hij, de dag. */
-    record Constante(String naam, Datatype type, String bron) implements Expr {}
+    record Constante(String naam, Datatype type, Bron bron) implements Expr {}
 
     /** A reference or sub-expression the resolver could not bind to the model. */
-    record Onopgelost(Datatype type, String bron) implements Expr {}
+    record Onopgelost(Datatype type, Bron bron) implements Expr {}
 }

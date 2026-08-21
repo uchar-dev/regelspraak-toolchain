@@ -1,5 +1,6 @@
 package io.github.yhavinga.regelspraak.transpiler.kern;
 
+import io.github.yhavinga.regelspraak.ir.Bron;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.model.Datatype;
 import org.junit.jupiter.api.Test;
@@ -13,8 +14,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /** The single literal reader both back-ends share (single shared implementation) — what a literal MEANS lives here once. */
 class LiteralenTest {
 
-    private static Expr.Literal num(String w) { return new Expr.Literal(w, new Datatype.Numeriek(false, 0, null, null), w); }
-    private static Expr.Literal tekst(String w) { return new Expr.Literal(w, new Datatype.Tekst(), w); }
+    private static Expr.Literal num(String w) { return new Expr.Literal(w, new Datatype.Numeriek(false, 0, null, null), Bron.synthetisch(w)); }
+    private static Expr.Literal tekst(String w) { return new Expr.Literal(w, new Datatype.Tekst(), Bron.synthetisch(w)); }
 
     @Test void datums_en_datumtijden_parsen_met_milli_naar_nano_schaal() {
         assertEquals(LocalDate.of(2024, 12, 25), Literalen.parseDatum("dd. 25-12-2024"));

@@ -110,7 +110,7 @@ class IrTest {
         assertNull(som.dimensieSelectie(), "een scalair operand heeft geen oplosbare dimensieselectie");
         Conditie.Onopgelost f = assertInstanceOf(Conditie.Onopgelost.class, som.filter(),
                 () -> "de dimensieselectie moet als Onopgelost-marker vastliggen, niet stil verdwijnen");
-        assertTrue(f.bron().contains("over alle jaardimensies"), () -> "bron: " + f.bron());
+        assertTrue(f.bron().snippet().contains("over alle jaardimensies"), () -> "bron: " + f.bron());
         assertTrue(m.diagnostics.stream().anyMatch(d -> d.severity() == RegelSpraakModel.Severity.WARNING
                         && d.message().contains("dimensieselectie")),
                 () -> "verwachtte een dimensieselectie-WARNING: " + m.diagnostics);

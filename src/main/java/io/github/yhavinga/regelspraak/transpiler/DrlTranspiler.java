@@ -1,5 +1,6 @@
 package io.github.yhavinga.regelspraak.transpiler;
 
+import io.github.yhavinga.regelspraak.ir.Bron;
 import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
@@ -333,7 +334,7 @@ public final class DrlTranspiler {
                     + " (operand onresolveerbaar of geen getrouwe negatie); de regel controleert niets",
                     c.line());
             if (!model.diagnostics.contains(w)) model.diagnostics.add(w);
-            rule.clausule("// onopgelost consistentieregel: " + commentVeilig(c.bron())).clausule("eval(true)");
+            rule.clausule("// onopgelost consistentieregel: " + commentVeilig(c.bron().snippet())).clausule("eval(true)");
             out.append(rule.render());
             return;
         }
@@ -526,6 +527,9 @@ public final class DrlTranspiler {
         static Frag ok(String text) { return new Frag(text, false); }
         /** A value-side placeholder: {@code /* TODO wat: bron *​/ null}, an inert null term. */
         static Frag todo(String wat, String bron) { return new Frag(DrlTranspiler.todo(wat, bron), true); }
+        /** As {@link #todo(String, String)} but from a structured {@link Bron} — its snippet is the text
+         *  spliced into the placeholder, so the emitted DRL is byte-identical to the old String form. */
+        static Frag todo(String wat, Bron bron) { return todo(wat, bron == null ? null : bron.snippet()); }
         /** A fragment assembled from {@code delen}: its marker is the OR of theirs (any placeholder
          *  operand taints the whole, exactly as the old substring scan would have detected it). */
         static Frag from(String text, Frag... delen) {
@@ -1082,7 +1086,7 @@ public final class DrlTranspiler {
             constraint = constraint.isEmpty() ? leegGuard : leegGuard + ", " + constraint;
         }
         if (subject == null) {
-            rule.clausule("// onopgelost doel-objecttype: " + commentVeilig(r.doel().bron())).clausule("eval(true)");
+            rule.clausule("// onopgelost doel-objecttype: " + commentVeilig(r.doel().bron().snippet())).clausule("eval(true)");
         } else {
             // Freshness: property reactivity listens only to CONSTRAINED properties, so an assignment whose
             // pattern does not constrain what its VALUE reads goes stale — it computes once (possibly against
@@ -1206,7 +1210,7 @@ public final class DrlTranspiler {
                     + "    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( " + valueStr.text() + " )\n    }\n"
                     + "    }\n");
         } else {
-            rule.dan("    // onopgelost doel: " + commentVeilig(r.doel().bron()) + "\n");
+            rule.dan("    // onopgelost doel: " + commentVeilig(r.doel().bron().snippet()) + "\n");
         }
         markeerGevuurd(rule, r.naam());   // §8.1.9 prepend the RuleFired insert iff this rule's firing is referenced
         out.append(rule.render());
@@ -2891,7 +2895,7 @@ public final class DrlTranspiler {
         // becomes a visible no-op — never a silently-wrong count over EVERY instance (§5.8.1: a count
         // ranges over the subject's related instances). Consistent with the resolver's "unresolvable
         // -> marker" rule.
-        return Frag.todo("aggregatie-bereik", arg != null ? arg.onderwerpBron() : f.bron());
+        return Frag.todo("aggregatie-bereik", arg != null ? arg.onderwerpBron() : f.bron().snippet());
     }
 
     /** §5.8/§13.4.14 an AGGREGATION (count / SUM / TOTAAL / MIN / MAX) as one side of a condition comparison ("het aantal /
@@ -3047,6 +3051,10 @@ public final class DrlTranspiler {
         /** An unresolved constraint: the always-false {@code false /* TODO … *​/} placeholder, flagged. */
         static LoweredConditie marker(String wat, String bron) {
             return new LoweredConditie(onopgelosteConstraint(wat, bron), List.of(), true);
+        }
+        /** As {@link #marker(String, String)} but from a structured {@link Bron} (its snippet is spliced). */
+        static LoweredConditie marker(String wat, Bron bron) {
+            return marker(wat, bron == null ? null : bron.snippet());
         }
         boolean heeftExtra() { return !extra.isEmpty(); }
     }
@@ -3334,6 +3342,11 @@ public final class DrlTranspiler {
      *  whole DRL). Wrapped in a flagged {@link LoweredConditie#marker} so callers branch on the type. */
     private static String onopgelosteConstraint(String wat, String bron) {
         return "false /* TODO " + commentVeilig(wat + ": " + bron) + " */";
+    }
+
+    /** As {@link #onopgelosteConstraint(String, String)} but from a structured {@link Bron} (snippet spliced). */
+    private static String onopgelosteConstraint(String wat, Bron bron) {
+        return onopgelosteConstraint(wat, bron == null ? null : bron.snippet());
     }
 
     /** §8.1.7 far-side "heeft een &lt;rol&gt;" as a separate when-clause: the subject is satisfied when at least
@@ -3786,5 +3799,8 @@ public final class DrlTranspiler {
     }
 
     private static String todo(String wat, String bron) { return "/* TODO " + commentVeilig(wat + ": " + bron) + " */ null"; }
+
+    /** As {@link #todo(String, String)} but from a structured {@link Bron} (its snippet is spliced). */
+    private static String todo(String wat, Bron bron) { return todo(wat, bron == null ? null : bron.snippet()); }
 
 }

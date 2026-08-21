@@ -17,7 +17,16 @@ import org.antlr.v4.runtime.*;
 public final class Resolver {
 
     public static RegelSpraakModel resolve(String source) {
-        RegelSpraakLexer lexer = new RegelSpraakLexer(CharStreams.fromString(source));
+        // IntStream.UNKNOWN_SOURCE_NAME ("<unknown>") is exactly what CharStreams.fromString(source)
+        // already assigns, so this delegation is behaviour-preserving for the nameless callers.
+        return resolve(source, IntStream.UNKNOWN_SOURCE_NAME);
+    }
+
+    /** As {@link #resolve(String)}, but with the source file name threaded onto the char stream so every
+     *  {@link io.github.yhavinga.regelspraak.ir.Bron} anchors back to {@code bestandsnaam} (uitleg can then
+     *  cite the file/regel); otherwise identical. */
+    public static RegelSpraakModel resolve(String source, String bestandsnaam) {
+        RegelSpraakLexer lexer = new RegelSpraakLexer(CharStreams.fromString(source, bestandsnaam));
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         RegelSpraak parser = new RegelSpraak(tokens);
 

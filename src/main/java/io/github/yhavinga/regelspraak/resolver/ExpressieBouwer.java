@@ -1,5 +1,6 @@
 package io.github.yhavinga.regelspraak.resolver;
 
+import io.github.yhavinga.regelspraak.ir.Bron;
 import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.model.Datatype;
@@ -81,7 +82,7 @@ final class ExpressieBouwer {
     // ---------------- §13.4.16/.17 expressie ----------------
     Expr bouw(ExpressieContext e) {
         if (e == null) return onopgelost(e);
-        String bron = src(e);
+        Bron bron = bron(e);
         if (e instanceof PrimaireExprContext p) return bouwPrimair(p.primaireExpressie());
         if (e instanceof SomExprContext s) {
             Expr.BinOp op = s.PLUS() != null ? Expr.BinOp.PLUS
@@ -125,7 +126,7 @@ final class ExpressieBouwer {
 
     /** Arithmetic node whose result datatype is taken from the typeringen matrix
      *  (a type error there yields Onbekend, matching the checker's no-claim path). */
-    private Expr binair(Expr.BinOp op, ExpressieContext l, ExpressieContext r, String bron, int line) {
+    private Expr binair(Expr.BinOp op, ExpressieContext l, ExpressieContext r, Bron bron, int line) {
         return binairExpr(op, bouw(l), bouw(r), bron, line);
     }
 
@@ -135,7 +136,7 @@ final class ExpressieBouwer {
      *  before degrading the result to Onbekend — the comparison and begrenzing paths
      *  already do; the arithmetic path used to swallow it (p45). An Onbekend operand makes
      *  reken return ok (no claim), so no false positive on an unresolved sub-expression. */
-    private Expr binairExpr(Expr.BinOp op, Expr links, Expr rechts, String bron, int line) {
+    private Expr binairExpr(Expr.BinOp op, Expr links, Expr rechts, Bron bron, int line) {
         // §4.4 Tabel 11: a unitless LITERAL/constant left times a unit-bearing right ("2 maal de looptijd(mnd)") carries
         // the right's unit; an ATTRIBUTE left stays Onbekend (the TOKA unitless-Bedrag × km under-model tolerance, carded).
         boolean unitlessLinksLiteraal = op == Expr.BinOp.MAAL && links instanceof Expr.Literal
@@ -153,7 +154,7 @@ final class ExpressieBouwer {
         return new Expr.Binair(op, links, rechts, t, bron);
     }
 
-    private Expr afgerond(Expr basis, AfrondingContext a, String bron) {
+    private Expr afgerond(Expr basis, AfrondingContext a, Bron bron) {
         Expr.AfrondModus modus =
                 a.NAAR_BENEDEN() != null ? Expr.AfrondModus.NAAR_BENEDEN
               : a.NAAR_BOVEN()  != null ? Expr.AfrondModus.NAAR_BOVEN
@@ -186,12 +187,12 @@ final class ExpressieBouwer {
     // ---------------- §13.4.17 primaire expressie ----------------
     private Expr bouwPrimair(PrimaireExpressieContext p) {
         if (p == null) return onopgelost(p);
-        String bron = src(p);
+        Bron bron = bron(p);
         if (p.getalWaarde() != null) {
             GetalWaardeContext g = p.getalWaarde();
-            int dec = decimalenVanLiteral(bron);    // §6.1.2: the literal's real precision, not 0
+            int dec = decimalenVanLiteral(bron.snippet());    // §6.1.2: the literal's real precision, not 0
             boolean geheel = dec == 0;
-            if (g.PERCENT_SIGN() != null) return new Expr.Literal(bron, new Datatype.Percentage(geheel, dec), bron);
+            if (g.PERCENT_SIGN() != null) return new Expr.Literal(bron.snippet(), new Datatype.Percentage(geheel, dec), bron);
             if (g.eenheidExpressie() != null) {
                 // §13.2.17: the literal-with-unit surface admits a composite (rate) denominator
                 // ("120 EUR/jr"). Resolve it through the SAME composite-aware helper the attribute
@@ -199,9 +200,9 @@ final class ExpressieBouwer {
                 // Eenheid.samengesteld — otherwise a rate literal is typed by its numerator alone and
                 // both §4 unit checking and the exacte cross-unit restatement operate on the wrong unit.
                 Eenheid e = DefinitionResolver.eenheidVan(model, g.eenheidExpressie());
-                return new Expr.Literal(bron, new Datatype.Numeriek(geheel, dec, Datatype.Teken.ONBEPAALD, e), bron);
+                return new Expr.Literal(bron.snippet(), new Datatype.Numeriek(geheel, dec, Datatype.Teken.ONBEPAALD, e), bron);
             }
-            return new Expr.Literal(bron, new Datatype.Numeriek(geheel, dec, Datatype.Teken.ONBEPAALD, null), bron);
+            return new Expr.Literal(bron.snippet(), new Datatype.Numeriek(geheel, dec, Datatype.Teken.ONBEPAALD, null), bron);
         }
         if (p.tekstWaarde() != null) {
             // §5.4/§13.4.17.9: the lexer now splits a "…" into literal STRING_TEXT chunks and «expressie» escapes.
@@ -218,18 +219,18 @@ final class ExpressieBouwer {
                     delen.add(new Expr.TekstReeks.Letterlijk(deel.STRING_TEXT().getText()));
                 }
             }
-            if (!heeftExpressie) return new Expr.Literal(bron, new Datatype.Tekst(), bron);
+            if (!heeftExpressie) return new Expr.Literal(bron.snippet(), new Datatype.Tekst(), bron);
             return new Expr.TekstReeks(delen, bron);
         }
-        if (p.booleanWaarde() != null)  return new Expr.Literal(bron, new Datatype.Booleaan(), bron);
+        if (p.booleanWaarde() != null)  return new Expr.Literal(bron.snippet(), new Datatype.Booleaan(), bron);
         if (p.deDato() != null) {
             // §13.2.19/.21: a dedato WITH a time component (hh:mm:ss[.mmm]) is a Datum-tijd (millisecond
             // precision), not a Datum in dagen — typing it as a bare date drops the time and lowers a
             // LocalDate into a LocalDateTime target (a Drools type error / silent wrong value).
-            boolean metTijd = bron.matches(".*\\d{1,2}:\\d{2}:\\d{2}.*");
-            return new Expr.Literal(bron, metTijd ? new Datatype.DatumTijd() : new Datatype.DatumInDagen(), bron);
+            boolean metTijd = bron.snippet().matches(".*\\d{1,2}:\\d{2}:\\d{2}.*");
+            return new Expr.Literal(bron.snippet(), metTijd ? new Datatype.DatumTijd() : new Datatype.DatumInDagen(), bron);
         }
-        if (p.ENUM_LITERAL() != null)   return new Expr.Literal(bron, onbekend(), bron); // which Enumeratie is context-dependent
+        if (p.ENUM_LITERAL() != null)   return new Expr.Literal(bron.snippet(), onbekend(), bron); // which Enumeratie is context-dependent
         if (p.rekenConstante() != null) {
             boolean jaar = p.rekenConstante().REKENJAAR() != null;
             Datatype t = jaar ? new Datatype.Numeriek(true, 0, Datatype.Teken.ONBEPAALD, null) : new Datatype.DatumInDagen();
@@ -271,7 +272,7 @@ final class ExpressieBouwer {
 
     // ---------------- §13.4.17 functies / aggregaties ----------------
     private Expr bouwFunctie(FunctieAanroepContext f) {
-        String bron = src(f);
+        Bron bron = bron(f);
         Expr.FunctieKind kind = functieKind(f);
         List<Expr> argumenten = args(f);
         Objecttype elem = aggregatieElement(kind, argumenten);
@@ -286,7 +287,7 @@ final class ExpressieBouwer {
         // element falls back to a same-named declared parameter, where the parameter is the
         // concrete reading and the count reading is meaningless.
         if (kind == Expr.FunctieKind.AANTAL && elem == null) {
-            Expr ref = naamRef(bron, false, bron);
+            Expr ref = naamRef(bron.snippet(), false, bron);
             if (!(ref instanceof Expr.Onopgelost)) return ref;
         }
         meldAggregatie(kind, argumenten, f);
@@ -339,7 +340,7 @@ final class ExpressieBouwer {
         // would aggregate the whole set as if unrestricted. Capture its source as an Onopgelost filter so
         // the transpiler markers the aggregation (a visible no-op), and surface a WARNING. (Reuses the
         // aggregation-restriction marker path; an already-unresolved die-filter keeps its own marker.)
-        String dimBron = dimensieOfConditieBron(f);
+        Bron dimBron = dimensieOfConditieBron(f);
         if (dimBron != null) {
             // §7.1 a "gedurende de tijd dat <temporeel kenmerk>" restriction on a totaal over a single-period
             // temporal own-attribute resolves to a temporal Conditie.Kenmerk the transpiler clips the value
@@ -369,13 +370,13 @@ final class ExpressieBouwer {
                     : (adf.JAAR() != null ? RegelSpraakModel.Granulariteit.JAAR : null);
             if (adf.toplevelElementaireVoorwaarde() != null && !(filter instanceof Conditie.Kenmerk)) {
                 ToplevelElementaireVoorwaardeContext c = adf.toplevelElementaireVoorwaarde();
-                Conditie.Kenmerk k = temporeelKenmerkUitOperator(c.toplevelOperator(), null, src(adf));  // §8.3.1 toplevel = vragende only
+                Conditie.Kenmerk k = temporeelKenmerkUitOperator(c.toplevelOperator(), null, bron(adf));  // §8.3.1 toplevel = vragende only
                 if (k != null) filter = k;
             } else if (adf.toplevelSamengesteldeVoorwaarde() != null && !(filter instanceof Conditie.Samengesteld)) {
                 // §8.4.2 a COMPOUND "dat er aan alle / ten minste 1 van de volgende voorwaarden wordt voldaan: …" —
                 // the same temporal-kenmerk compound as a gedurende; the transpiler buckets the days the COMBINED
                 // condition (intersection for ALLE / union for ten-minste-1 of the bullets) holds.
-                Conditie samengesteld = gedurendeSamengesteld(adf.toplevelSamengesteldeVoorwaarde(), src(adf));
+                Conditie samengesteld = gedurendeSamengesteld(adf.toplevelSamengesteldeVoorwaarde(), bron(adf));
                 if (samengesteld != null) filter = samengesteld;
             }
         } else if (kind == Expr.FunctieKind.TIJDSEVENREDIG_DEEL && f instanceof TijdsevenredigFuncContext tvf) {
@@ -394,13 +395,13 @@ final class ExpressieBouwer {
     /** §13.4.17.51-.58: the raw source of an aggregation's dimensieselectie (som / min-max) or
      *  conditiebijexpressie (totaal / tijdsevenredig deel), or null when absent — used to mark the dropped
      *  temporal/dimensional restriction so the aggregation is not silently lowered as if unrestricted. */
-    private String dimensieOfConditieBron(FunctieAanroepContext f) {
+    private Bron dimensieOfConditieBron(FunctieAanroepContext f) {
         DimensieSelectieContext dim = f instanceof SomFuncContext s ? s.dimensieSelectie()
                 : f instanceof MinMaxFuncContext m ? m.dimensieSelectie() : null;
-        if (dim != null) return src(dim);
+        if (dim != null) return bron(dim);
         ConditieBijExpressieContext cnd = f instanceof TotaalFuncContext t ? t.conditieBijExpressie()
                 : f instanceof TijdsevenredigFuncContext tv ? tv.conditieBijExpressie() : null;
-        return cnd != null ? src(cnd) : null;
+        return cnd != null ? bron(cnd) : null;
     }
 
     /** §13.4.17.51-.54: resolve a SOM/MIN/MAX dimensieselectie to the concrete dimension and the ordered
@@ -431,11 +432,11 @@ final class ExpressieBouwer {
         // rebuilt clean (declared spelling + element datatype) in the argument list.
         RegelSpraakModel.Dimensie expliciet = null;
         if (dim.VANAF() != null && argumenten.get(0) instanceof Expr.Onopgelost on && huidigSubject != null
-                && on.bron() != null && on.bron().matches("(?is)(zijn|haar)\\s+.*")) {
-            int snee = on.bron().toLowerCase().lastIndexOf(" over de ");
+                && on.bron() != null && on.bron().snippet().matches("(?is)(zijn|haar)\\s+.*")) {
+            int snee = on.bron().snippet().toLowerCase().lastIndexOf(" over de ");
             if (snee >= 0) {
-                String kop = on.bron().substring(0, snee).replaceFirst("^(?is)(zijn|haar)\\s+", "");
-                String mv = on.bron().substring(snee + " over de ".length()).trim();
+                String kop = on.bron().snippet().substring(0, snee).replaceFirst("^(?is)(zijn|haar)\\s+", "");
+                String mv = on.bron().snippet().substring(snee + " over de ".length()).trim();
                 RegelSpraakModel.Dimensie dd = model.dimensieOpMeervoud(mv);
                 List<String> kopDims = dd == null ? List.of() : huidigSubject.dimensiesVan(kop);
                 if (dd != null && kopDims.size() == 1 && kopDims.get(0).equalsIgnoreCase(dd.naam())) {
@@ -478,7 +479,7 @@ final class ExpressieBouwer {
             return null;
         }
         if (labels == null || labels.isEmpty()) return null;
-        return new Expr.DimensieSelectie(d.naam(), labels, src(dim));
+        return new Expr.DimensieSelectie(d.naam(), labels, bron(dim));
     }
 
     /** The dimension an over-form names by its plural, but only when the operand attribute is actually
@@ -576,7 +577,7 @@ final class ExpressieBouwer {
             // §7.1 a NAVIGATED temporal kenmerk ("zijn reis een recht op X heeft") FIRST — it inspects the onderwerp,
             // so when the navigated type shares the subject's type (a self-relation) the navigation is not shadowed by
             // the subject's own same-named kenmerk; temporeelKenmerkUitOperator (own) only sees the operator's kaleNaam.
-            Conditie nav = gedurendeNavigatieKenmerk(c, src(cnd));
+            Conditie nav = gedurendeNavigatieKenmerk(c, bron(cnd));
             if (nav != null) return nav;
             // If the onderwerp IS a navigation that the navigated path could NOT structure (a to-many role, a negated
             // or non-temporal kenmerk), MARKER — never fall through to temporeelKenmerkUitOperator, which inspects only
@@ -584,12 +585,12 @@ final class ExpressieBouwer {
             // shadow, a silently-wrong clip).
             if (c.expressie() != null && bouw(c.expressie()) instanceof Expr.AttribuutRef a && a.navigatieRol() != null)
                 return null;
-            Conditie.Kenmerk k = temporeelKenmerkUitOperator(c.toplevelOperator(), null, src(cnd));  // §8.3.1 toplevel = vragende only
+            Conditie.Kenmerk k = temporeelKenmerkUitOperator(c.toplevelOperator(), null, bron(cnd));  // §8.3.1 toplevel = vragende only
             if (k != null) return k;
-            return gedurendeVergelijking(c, src(cnd));   // §7.1 a temporal-attribute COMPARISON condition (EUR71)
+            return gedurendeVergelijking(c, bron(cnd));   // §7.1 a temporal-attribute COMPARISON condition (EUR71)
         }
         if (cnd.toplevelSamengesteldeVoorwaarde() != null)
-            return gedurendeSamengesteld(cnd.toplevelSamengesteldeVoorwaarde(), src(cnd));
+            return gedurendeSamengesteld(cnd.toplevelSamengesteldeVoorwaarde(), bron(cnd));
         return null;
     }
 
@@ -598,7 +599,7 @@ final class ExpressieBouwer {
      *  {@link Conditie.Vergelijking} the transpiler clips the value timeline by (its boolean timeline). Built only
      *  when ONE operand is a single-period temporal attribute of the subject (the condition varies over time) and the
      *  form is a verb-split comparison; else null (the caller markers). The transpiler validates numeric type / units. */
-    private Conditie gedurendeVergelijking(ToplevelElementaireVoorwaardeContext c, String bron) {
+    private Conditie gedurendeVergelijking(ToplevelElementaireVoorwaardeContext c, Bron bron) {
         if (c.expressie() == null || c.toplevelOperator() == null
                 || c.toplevelOperator().vergelijkingsTekenGesplitst() == null || c.toplevelOperator().expressie() == null)
             return null;
@@ -621,7 +622,7 @@ final class ExpressieBouwer {
      *  navigated {@link Conditie.Kenmerk} the transpiler clips by the to-one role's kenmerk timeline. The onderwerp is
      *  a to-one role navigation; the kenmerk must be a SINGLE-PERIOD temporal kenmerk of the navigated type. A negated
      *  form, a to-many role, or a non-temporal kenmerk -> null (the caller markers). */
-    private Conditie gedurendeNavigatieKenmerk(ToplevelElementaireVoorwaardeContext c, String bron) {
+    private Conditie gedurendeNavigatieKenmerk(ToplevelElementaireVoorwaardeContext c, Bron bron) {
         ToplevelOperatorContext top = c.toplevelOperator();
         if (c.expressie() == null || top == null || top.kaleNaam() == null) return null;
         boolean membership = top.IS() != null || top.ZIJN() != null || top.HEEFT() != null || top.HEBBEN() != null;
@@ -641,7 +642,7 @@ final class ExpressieBouwer {
      *  single-period temporal {@link Conditie.Kenmerk} of the subject (negation + article-strip handled), or null
      *  when it is not one — a comparison, a non-temporal / multi-period / navigated kenmerk, or a role/possession.
      *  Shared by the single gedurende condition and each bullet of a compound one. */
-    private Conditie.Kenmerk temporeelKenmerkUitOperator(ToplevelOperatorContext top, NonToplevelOperatorContext non, String bron) {
+    private Conditie.Kenmerk temporeelKenmerkUitOperator(ToplevelOperatorContext top, NonToplevelOperatorContext non, Bron bron) {
         KaleNaamContext kn; boolean isVerb, heeftVerb;
         if (top != null) {
             kn = top.kaleNaam(); isVerb = top.IS() != null || top.ZIJN() != null;
@@ -687,7 +688,7 @@ final class ExpressieBouwer {
      *  OTHER kwantor (geen van de / ten hoogste / precies / ten minste &gt;1), a nested compound bullet, or a
      *  non-comparison non-temporal bullet returns null — the compound stays an Onopgelost marker, never a dropped
      *  predicate. */
-    private Conditie gedurendeSamengesteld(ToplevelSamengesteldeVoorwaardeContext sv, String bron) {
+    private Conditie gedurendeSamengesteld(ToplevelSamengesteldeVoorwaardeContext sv, Bron bron) {
         VoorwaardeKwantificatieContext q = sv.voorwaardeKwantificatie();
         if (q == null || sv.samengesteldeVoorwaardeOnderdeel() == null) return null;
         Conditie.Kwantor kwantor;
@@ -700,7 +701,7 @@ final class ExpressieBouwer {
         for (GenesteVoorwaardeContext g : sv.samengesteldeVoorwaardeOnderdeel().genesteVoorwaarde()) {
             if (g.elementaireVoorwaarde() == null) return null;         // a nested compound bullet -> marker
             ElementaireVoorwaardeContext ev = g.elementaireVoorwaarde();
-            Conditie.Kenmerk k = temporeelKenmerkUitOperator(ev.toplevelOperator(), ev.nonToplevelOperator(), src(ev));
+            Conditie.Kenmerk k = temporeelKenmerkUitOperator(ev.toplevelOperator(), ev.nonToplevelOperator(), bron(ev));
             if (k != null) { delen.add(k); temporeel++; continue; }
             // §8.4 a non-temporal member (a COMPARISON) lowers to a static value-side guard. In an ALLE compound it
             // AND-gates the clipped totaal; in a "ten minste 1" (OR) compound a TRUE static member instead WIDENS the
@@ -727,11 +728,11 @@ final class ExpressieBouwer {
         if (ev.toplevelOperator() != null && ev.toplevelOperator().vergelijkingsTekenGesplitst() != null
                 && ev.toplevelOperator().expressie() != null)
             v = new Conditie.Vergelijking(RuleChecker.naarOperator(RuleChecker.cmpOf(ev.toplevelOperator().vergelijkingsTekenGesplitst())),
-                    links, bouw(ev.toplevelOperator().expressie()), src(ev));
+                    links, bouw(ev.toplevelOperator().expressie()), bron(ev));
         else if (ev.nonToplevelOperator() != null && ev.nonToplevelOperator().vergelijkingsTeken() != null
                 && ev.nonToplevelOperator().expressie() != null)
             v = new Conditie.Vergelijking(RuleChecker.naarOperator(RuleChecker.cmpOf(ev.nonToplevelOperator().vergelijkingsTeken())),
-                    links, bouw(ev.nonToplevelOperator().expressie()), src(ev));
+                    links, bouw(ev.nonToplevelOperator().expressie()), bron(ev));
         if (v == null || temporeelAttribuutOperand(v.links()) || temporeelAttribuutOperand(v.rechts())) return null;
         return v;
     }
@@ -776,13 +777,13 @@ final class ExpressieBouwer {
             // against the ELEMENT (via the RuleChecker callback) into a Conditie.Samengesteld on the source pattern.
             if (p.samengesteldPredicaat() != null) {
                 Conditie c = samengesteldeFilter != null ? samengesteldeFilter.resolve(p.samengesteldPredicaat(), elem) : null;
-                return c != null ? c : new Conditie.Onopgelost(src(p));
+                return c != null ? c : new Conditie.Onopgelost(bron(p));
             }
             Conditie filter = elementKenmerkFilter(p, elem);
             // §5.6 getalpredicaat "die <op> <expr>" (e.g. "die kleiner zijn dan 18"): a comparison of the AGGREGATED
             // attribute (the LHS the operator folds) -> a Conditie.Vergelijking the accumulate source pattern constrains.
             if (filter == null) filter = elementVergelijking(p, elem, argumenten);
-            return filter != null ? filter : new Conditie.Onopgelost(src(p));
+            return filter != null ? filter : new Conditie.Onopgelost(bron(p));
         }
         // §5.8.1 union telling "het aantal X, Y en Z": the count is the UNION of the per-operand
         // sets — a disjunctively-filtered single accumulate. OR the per-operand kenmerk filters over
@@ -800,10 +801,10 @@ final class ExpressieBouwer {
                 // dropped and its filter OR-ed onto the wrong fact, so it leaves the whole union a marker.
                 PredicaatContext p = vindDie(op);
                 Conditie k = p != null && operandElement(op) == elem ? elementKenmerkFilter(p, elem) : null;
-                if (k == null) return new Conditie.Onopgelost(src(f));
+                if (k == null) return new Conditie.Onopgelost(bron(f));
                 delen.add(k);
             }
-            return new Conditie.Samengesteld(Conditie.Kwantor.TEN_MINSTE, 1, delen, src(f));
+            return new Conditie.Samengesteld(Conditie.Kwantor.TEN_MINSTE, 1, delen, bron(f));
         }
         return null;
     }
@@ -861,7 +862,7 @@ final class ExpressieBouwer {
         // §5.6: the written form may be the kenmerk's inflected/nominalized spelling
         // ("die een minderjarige zijn" against the declared "minderjarig") — bind it morphologically.
         String kenmerk = KenmerkMatcher.vind(elem, naamBron);
-        return kenmerk != null ? new Conditie.Kenmerk(kenmerk, src(p)) : null;
+        return kenmerk != null ? new Conditie.Kenmerk(kenmerk, bron(p)) : null;
     }
 
     /** §5.6/§13.4.13.5-.7 a getal/datum/tekst elementairpredicaat "die &lt;op&gt; &lt;expr&gt;" (the vragende-meervoud
@@ -892,7 +893,7 @@ final class ExpressieBouwer {
         // context-independent (a session global in both back-ends), so it does not mis-bind. Anything else stays an
         // honest, symmetric marker.
         if (!(rhs instanceof Expr.Literal) && !(rhs instanceof Expr.ParameterRef)) return null;
-        Expr lhs = new Expr.AttribuutRef(agg.attribuut(), elem, "", null, agg.type(), src(p));
+        Expr lhs = new Expr.AttribuutRef(agg.attribuut(), elem, "", null, agg.type(), bron(p));
         // §5.6 getal/datum/tekstpredicaat: enforce the typeringen comparison legality (as the normal voorwaarde path
         // does), so a type-mismatched filter (a Numeriek attribute vs a Tekst literal) is an ERROR, not silent bad DRL.
         Typering.Resultaat tr = Typering.vergelijk(cmp, lhs.type(), rhs.type());
@@ -901,7 +902,7 @@ final class ExpressieBouwer {
                     "subselectie-predicaat: " + tr.fout(), p.getStart().getLine()));
             return null;
         }
-        return new Conditie.Vergelijking(RuleChecker.naarOperator(cmp), lhs, rhs, src(p));
+        return new Conditie.Vergelijking(RuleChecker.naarOperator(cmp), lhs, rhs, bron(p));
     }
 
     /** §4.12-4.15: type-check the operand list of a value/date aggregation. min/max demand all
@@ -1247,7 +1248,7 @@ final class ExpressieBouwer {
      *    mention, which the single-subject rule IR does not carry — WARNING + honest marker, never a silent
      *    alias of one binding (which is what dropping the ordinal used to mean);
      *  - eerstgenoemde/laatstgenoemde/positie-1 over at most one binding: the bare resolution IS the answer. */
-    private Expr keurRangtelwoord(RangtelwoordContext r, String naam, ParserRuleContext ref, String bron) {
+    private Expr keurRangtelwoord(RangtelwoordContext r, String naam, ParserRuleContext ref, Bron bron) {
         if (r == null) return null;
         int positie = rangtelwoordPositie(r);
         int bindingen = telBindingen(ref, naam);
@@ -1277,7 +1278,7 @@ final class ExpressieBouwer {
     // ---------------- references ----------------
     /** `<attribuut> van <onderwerp>`: bind the attribute's datatype via the subject's object type. */
     Expr bouwAttribuut(AttribuutVanOnderwerpContext a) {
-        String bron = src(a);
+        Bron bron = bron(a);
         if (a != null && a.attribuutMetLidwoord() == null && a.rangtelwoord() != null && a.kaleNaam() != null) {
             // §13.4.2.9 the ordinal-ATTRIBUTE form "de <rangtelwoord> <attribuutnaam> van <onderwerp>". The
             // eerstgenoemde/laatstgenoemde/1st reading over a single mention is the bare attribute read; a
@@ -1321,7 +1322,7 @@ final class ExpressieBouwer {
 
     /** Build "&lt;attr&gt; van &lt;onderwerp&gt;" into an {@link Expr.AttribuutRef} — the shared core of
      *  {@link #bouwAttribuut} and {@link #onderwerpAlsWaarde}. */
-    private Expr attribuutRef(String attr, OnderwerpContext onderwerp, String bron) {
+    private Expr attribuutRef(String attr, OnderwerpContext onderwerp, Bron bron) {
         String onderwerpBron = onderwerp != null ? src(onderwerp) : "";
         // §13.4.1.3/§5.5.3 a rangtelwoord on the SUBJECT reference ("de bijdrage van de als tweede genoemde
         // passagier"): consume the ordinal — the bare resolution when it selects the rule's single binding,
@@ -1487,8 +1488,8 @@ final class ExpressieBouwer {
         if (o == null) return null;
         OnderwerpKetenContext k = o.onderwerpKeten();
         if (k != null && k.selector() != null && k.selector().kaleNaam() != null && k.onderwerp() != null)
-            return attribuutRef(src(k.selector().kaleNaam()), k.onderwerp(), src(o));   // "de <attr> van <subject>"
-        Expr poss = possessief(o, src(o));
+            return attribuutRef(src(k.selector().kaleNaam()), k.onderwerp(), bron(o));   // "de <attr> van <subject>"
+        Expr poss = possessief(o, bron(o));
         if (poss != null) return poss;                                                  // "zijn <attr>"
         // §5.5.3 a bare definite subject-own attribute referring to the rule subject ("de <attr>") — either the
         // onderwerpVerwijzing form (under an onderwerpKeten) or the kwantificatie+kaleNaam form (k == null). Only the
@@ -1498,7 +1499,7 @@ final class ExpressieBouwer {
                 : (o.kaleNaam() != null && !isSetOnderwerp(o) ? src(o.kaleNaam()) : null);
         if (bare != null && huidigSubject != null) {
             Datatype dt = huidigSubject.attribuut(bare);
-            if (dt != null) return new Expr.AttribuutRef(bare, huidigSubject, src(o), null, dt, src(o));
+            if (dt != null) return new Expr.AttribuutRef(bare, huidigSubject, src(o), null, dt, bron(o));
         }
         return null;
     }
@@ -1517,7 +1518,7 @@ final class ExpressieBouwer {
     /** A possessive "zijn <kaleNaam>" resolves to the named attribute OF the rule subject,
      *  when it is one (a "zijn <rol>" navigation is not an attribute and is left to the
      *  generic path). Returns null when it is not a subject-attribute possessive. */
-    private Expr possessief(OnderwerpContext o, String bron) {
+    private Expr possessief(OnderwerpContext o, Bron bron) {
         if (huidigSubject == null || o.onderwerpKeten() == null) return null;
         OnderwerpKetenContext k = o.onderwerpKeten();
         if (k.ZIJN() == null || k.kaleNaam() == null) return null;
@@ -1579,7 +1580,7 @@ final class ExpressieBouwer {
      *  needs every label and a composite-key model) read via the SUFFIX voorzetsel form (the prefix
      *  "&lt;label&gt; &lt;attribuut&gt;" form is deferred). The longest matching attribute wins, so a
      *  dimensioned name is not shadowed by a shorter scalar prefix of it. */
-    private Expr dimensieCel(String kaleNaam, Objecttype ot, String navRol, String onderwerpBron, String bron) {
+    private Expr dimensieCel(String kaleNaam, Objecttype ot, String navRol, String onderwerpBron, Bron bron) {
         if (ot == null || kaleNaam == null) return null;
         String beste = null; String besteLabel = null; RegelSpraakModel.Dimensie besteDim = null;
         for (var e : ot.attribuutDimensies.entrySet()) {
@@ -1609,7 +1610,7 @@ final class ExpressieBouwer {
 
     /** A bare name: a known parameter binds to a ParameterRef; a variabeleNaam that is
      *  not a parameter stays a (so-far untyped) VariabeleRef; anything else is unresolved. */
-    private Expr naamRef(String naam, boolean isVariabele, String bron) {
+    private Expr naamRef(String naam, boolean isVariabele, Bron bron) {
         // §11 inline the captured "Daarbij geldt:" definition FIRST: a local variable reference works WITH or WITHOUT
         // a leading article (the spec explicitly allows a lidwoord at a variable reference — "de drempel" arrives via
         // the onderwerp path with isVariabele=false; variabeleSleutel strips the lidwoord so both forms hit one key),
@@ -1713,7 +1714,8 @@ final class ExpressieBouwer {
     }
 
     private static String src(ParserRuleContext ctx) { return DefinitionResolver.src(ctx); }
+    private static io.github.yhavinga.regelspraak.ir.Bron bron(ParserRuleContext ctx) { return DefinitionResolver.bron(ctx); }
     private static Datatype onbekend() { return new Datatype.Onbekend("niet opgelost"); }
-    private Expr onopgelost(ParserRuleContext ctx) { return new Expr.Onopgelost(onbekend(), ctx == null ? "" : src(ctx)); }
-    private Expr onopgelost(String bron) { return new Expr.Onopgelost(onbekend(), bron); }
+    private Expr onopgelost(ParserRuleContext ctx) { return new Expr.Onopgelost(onbekend(), bron(ctx)); }
+    private Expr onopgelost(io.github.yhavinga.regelspraak.ir.Bron bron) { return new Expr.Onopgelost(onbekend(), bron); }
 }

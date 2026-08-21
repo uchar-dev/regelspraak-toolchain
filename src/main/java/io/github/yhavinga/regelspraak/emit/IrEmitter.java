@@ -317,7 +317,7 @@ public final class IrEmitter {
                 w.key("node").value("Literal");
                 w.key("waarde").value(l.waarde());
                 w.key("type"); datatype(l.type());
-                w.key("bron").value(l.bron());
+                w.key("bron").value(l.bron().snippet());
             }
             case Expr.TekstReeks t -> {
                 w.key("node").value("TekstReeks");
@@ -325,7 +325,7 @@ public final class IrEmitter {
                 for (Expr.TekstReeks.Deel d : t.delen()) tekstReeksDeel(d);
                 w.endArray();
                 w.key("type"); datatype(t.type());
-                w.key("bron").value(t.bron());
+                w.key("bron").value(t.bron().snippet());
             }
             case Expr.Binair b -> {
                 w.key("node").value("Binair");
@@ -333,7 +333,7 @@ public final class IrEmitter {
                 w.key("links"); expr(b.links());
                 w.key("rechts"); expr(b.rechts());
                 w.key("type"); datatype(b.type());
-                w.key("bron").value(b.bron());
+                w.key("bron").value(b.bron().snippet());
             }
             case Expr.Functie f -> {
                 w.key("node").value("Functie");
@@ -360,7 +360,7 @@ public final class IrEmitter {
                 huidigSubject = vorigSubject;
                 w.key("dimensieSelectie"); dimensieSelectie(f.dimensieSelectie());
                 w.key("type"); datatype(f.type());
-                w.key("bron").value(f.bron());
+                w.key("bron").value(f.bron().snippet());
                 w.key("granulariteit").value(f.granulariteit() == null ? null : f.granulariteit().name());
                 RegelSpraakModel.RolBindingRef rb = bronRolBinding(f);
                 if (rb != null) { w.key("bronRol"); rolBinding(rb); }
@@ -371,7 +371,7 @@ public final class IrEmitter {
                 w.key("modus").value(a.modus().name());
                 w.key("decimalen").value(a.decimalen());
                 w.key("type"); datatype(a.type());
-                w.key("bron").value(a.bron());
+                w.key("bron").value(a.bron().snippet());
             }
             case Expr.Begrensd b -> {
                 w.key("node").value("Begrensd");
@@ -379,7 +379,7 @@ public final class IrEmitter {
                 w.key("minimum"); expr(b.minimum());
                 w.key("maximum"); expr(b.maximum());
                 w.key("type"); datatype(b.type());
-                w.key("bron").value(b.bron());
+                w.key("bron").value(b.bron().snippet());
             }
             case Expr.AttribuutRef r -> {
                 w.key("node").value("AttribuutRef");
@@ -388,7 +388,7 @@ public final class IrEmitter {
                 w.key("onderwerpBron").value(r.onderwerpBron());
                 w.key("navigatieRol").value(r.navigatieRol());
                 w.key("type"); datatype(r.type());
-                w.key("bron").value(r.bron());
+                w.key("bron").value(r.bron().snippet());
                 w.key("set").value(r.set());
                 w.key("navigatiePad"); stringList(r.navigatiePad());
                 if (r != foldBron) {
@@ -405,30 +405,30 @@ public final class IrEmitter {
                 w.key("attribuut"); expr(c.attribuut());
                 w.key("labels"); stringList(c.labels());
                 w.key("type"); datatype(c.type());
-                w.key("bron").value(c.bron());
+                w.key("bron").value(c.bron().snippet());
             }
             case Expr.ParameterRef p -> {
                 w.key("node").value("ParameterRef");
                 w.key("parameter").value(p.parameter() == null ? null : p.parameter().naam());
                 w.key("type"); datatype(p.type());
-                w.key("bron").value(p.bron());
+                w.key("bron").value(p.bron().snippet());
             }
             case Expr.VariabeleRef v -> {
                 w.key("node").value("VariabeleRef");
                 w.key("naam").value(v.naam());
                 w.key("type"); datatype(v.type());
-                w.key("bron").value(v.bron());
+                w.key("bron").value(v.bron().snippet());
             }
             case Expr.Constante c -> {
                 w.key("node").value("Constante");
                 w.key("naam").value(c.naam());
                 w.key("type"); datatype(c.type());
-                w.key("bron").value(c.bron());
+                w.key("bron").value(c.bron().snippet());
             }
             case Expr.Onopgelost o -> {
                 w.key("node").value("Onopgelost");
                 w.key("type"); datatype(o.type());
-                w.key("bron").value(o.bron());
+                w.key("bron").value(o.bron().snippet());
             }
         }
         w.endObject();
@@ -455,7 +455,7 @@ public final class IrEmitter {
         w.key("node").value("DimensieSelectie");
         w.key("dimensie").value(ds.dimensie());
         w.key("labels"); stringList(ds.labels());
-        w.key("bron").value(ds.bron());
+        w.key("bron").value(ds.bron().snippet());
         w.endObject();
     }
 
@@ -471,7 +471,7 @@ public final class IrEmitter {
                 w.key("links"); expr(v.links());
                 w.key("rechts"); expr(v.rechts());
                 w.key("periode"); geheelPeriode(v.periode());
-                w.key("bron").value(v.bron());
+                w.key("bron").value(v.bron().snippet());
             }
             case Conditie.Predicaat p -> {
                 w.key("node").value("Predicaat");
@@ -481,7 +481,7 @@ public final class IrEmitter {
                 w.key("negatie").value(p.negatie());
                 w.key("cijfers").value(p.cijfers());
                 w.key("periode"); geheelPeriode(p.periode());
-                w.key("bron").value(p.bron());
+                w.key("bron").value(p.bron().snippet());
             }
             case Conditie.Kenmerk k -> {
                 w.key("node").value("Kenmerk");
@@ -490,7 +490,7 @@ public final class IrEmitter {
                 w.key("negatie").value(k.negatie());
                 w.key("eigenaar").value(naamVan(k.eigenaar()));
                 w.key("periode"); geheelPeriode(k.periode());
-                w.key("bron").value(k.bron());
+                w.key("bron").value(k.bron().snippet());
                 RegelSpraakModel.RolBindingRef nb = navigatieBinding(k);
                 if (nb != null) { w.key("navigatieBinding"); rolBinding(nb); }
             }
@@ -499,21 +499,21 @@ public final class IrEmitter {
                 w.key("rol").value(r.rol());
                 w.key("anderTeFiller").value(naamVan(r.anderTeFiller()));
                 w.key("negatie").value(r.negatie());
-                w.key("bron").value(r.bron());
+                w.key("bron").value(r.bron().snippet());
             }
             case Conditie.VerreRollidmaatschap r -> {
                 w.key("node").value("VerreRollidmaatschap");
                 w.key("filler").value(naamVan(r.filler()));
                 w.key("backref").value(r.backref());
                 w.key("negatie").value(r.negatie());
-                w.key("bron").value(r.bron());
+                w.key("bron").value(r.bron().snippet());
             }
             case Conditie.Periode p -> {
                 w.key("node").value("Periode");
                 w.key("vanaf"); expr(p.vanaf());
                 w.key("tot"); expr(p.tot());
                 w.key("totInclusief").value(p.totInclusief());
-                w.key("bron").value(p.bron());
+                w.key("bron").value(p.bron().snippet());
             }
             case Conditie.Samengesteld s -> {
                 w.key("node").value("Samengesteld");
@@ -522,17 +522,17 @@ public final class IrEmitter {
                 w.key("onderdelen").beginArray();
                 for (Conditie o : s.onderdelen()) conditie(o);
                 w.endArray();
-                w.key("bron").value(s.bron());
+                w.key("bron").value(s.bron().snippet());
             }
             case Conditie.Regelversie r -> {
                 w.key("node").value("Regelversie");
                 w.key("regel").value(r.regel());
                 w.key("inconsistent").value(r.inconsistent());
-                w.key("bron").value(r.bron());
+                w.key("bron").value(r.bron().snippet());
             }
             case Conditie.Onopgelost o -> {
                 w.key("node").value("Onopgelost");
-                w.key("bron").value(o.bron());
+                w.key("bron").value(o.bron().snippet());
             }
         }
         w.endObject();
@@ -626,7 +626,7 @@ public final class IrEmitter {
         w.key("naam").value(c.naam());
         w.key("subject").value(naamVan(c.subject()));
         w.key("assertie"); conditie(c.assertie());
-        w.key("bron").value(c.bron());
+        w.key("bron").value(c.bron().snippet());
         w.key("line").value(c.line());
         w.key("geldigheid"); geldigheid(c.geldigheid());
         w.endObject();
@@ -640,7 +640,7 @@ public final class IrEmitter {
         w.key("subject").value(naamVan(u.subject()));
         w.key("sleutels"); stringList(u.sleutels());
         w.key("scopeVeld").value(u.scopeVeld());
-        w.key("bron").value(u.bron());
+        w.key("bron").value(u.bron().snippet());
         w.key("geldigheid"); geldigheid(u.geldigheid());
         if (u.scopeRol() != null) { w.key("scopeRol"); rolBinding(u.scopeRol()); }
         w.endObject();
@@ -659,7 +659,7 @@ public final class IrEmitter {
             w.endObject();
         }
         w.endArray();
-        w.key("bron").value(u.bron());
+        w.key("bron").value(u.bron().snippet());
         w.key("geldigheid"); geldigheid(u.geldigheid());
         w.endObject();
     }
@@ -780,7 +780,7 @@ public final class IrEmitter {
         w.key("naam").value(g.naam());
         w.key("recursief").value(g.recursief());
         w.key("leden"); stringList(g.leden());
-        w.key("bron").value(g.bron());
+        w.key("bron").value(g.bron().snippet());
         w.key("line").value(g.line());
         w.endObject();
     }

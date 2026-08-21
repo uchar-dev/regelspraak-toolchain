@@ -7,7 +7,8 @@ import io.github.yhavinga.regelspraak.ir.Geldigheid;
 import io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
 import io.github.yhavinga.regelspraak.ir.ResolvedVerdeling;
-import io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie.Bron;
+import io.github.yhavinga.regelspraak.ir.Bron;
+import io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie;
 import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.*;
@@ -83,7 +84,7 @@ final class RuleChecker {
                 if (lid.regel() != null) leden.add(DefinitionResolver.src(lid.regel().regelNaam()));
                 else if (lid.beslistabel() != null) leden.add(DefinitionResolver.src(lid.beslistabel().beslistabelNaam()));
             String naam = DefinitionResolver.src(g.kaleNaam());
-            model.regelGroepen.add(new io.github.yhavinga.regelspraak.ir.ResolvedRegelGroep(naam, recursief, leden, naam, line));
+            model.regelGroepen.add(new io.github.yhavinga.regelspraak.ir.ResolvedRegelGroep(naam, recursief, leden, bron(g.kaleNaam()), line));
             if (!recursief) continue;
 
             // §9.10 fase-2: which members are objectcreatie rules (by bare name, the same key the IR uses).
@@ -464,10 +465,10 @@ final class RuleChecker {
         EnkelvoudigeConsistentieRegelContext e = cr.enkelvoudigeConsistentieRegel();
         if (e != null && e.expressie() != null && e.toplevelOperator() != null) {
             Expr lhs = bouwer.bouw(e.expressie());
-            Conditie assertie = uitToplevel(lhs, e.toplevelOperator(), src(e));
+            Conditie assertie = uitToplevel(lhs, e.toplevelOperator(), bron(e));
             Objecttype subject = lhs instanceof Expr.AttribuutRef a ? a.objecttype() : null;
             if (subject != null && transpileerbaar(assertie)) {
-                model.consistenties.add(new io.github.yhavinga.regelspraak.ir.ResolvedConsistentie(naam, subject, assertie, src(cr), cr.getStart().getLine(), geldigheid));
+                model.consistenties.add(new io.github.yhavinga.regelspraak.ir.ResolvedConsistentie(naam, subject, assertie, bron(cr), cr.getStart().getLine(), geldigheid));
                 return;
             }
         }
@@ -486,13 +487,13 @@ final class RuleChecker {
             crit = cr.toplevelSamengesteldCriterium().samengesteldCriteriumOnderdeel();
         }
         if (crit != null) {
-            Conditie assertie = bouwCriteria(kw, crit, src(cr));
+            Conditie assertie = bouwCriteria(kw, crit, bron(cr));
             Objecttype subject = subjectVanAssertie(assertie);
             // All criteria must be about the SAME subject: the rule lowers to one subject pattern, so a
             // criterion over a different object type would emit that type's attribute on the wrong fact
             // (an uncompilable property that sinks the whole DRL package). Mixed subjects -> WARNING.
             if (subject != null && transpileerbaar(assertie) && eenSubject(assertie, subject)) {
-                model.consistenties.add(new io.github.yhavinga.regelspraak.ir.ResolvedConsistentie(naam, subject, assertie, src(cr), cr.getStart().getLine(), geldigheid));
+                model.consistenties.add(new io.github.yhavinga.regelspraak.ir.ResolvedConsistentie(naam, subject, assertie, bron(cr), cr.getStart().getLine(), geldigheid));
                 return;
             }
         }
@@ -521,27 +522,27 @@ final class RuleChecker {
     private boolean uniciteit(String naam, UniciteitsControleContext u, Geldigheid geldigheid) {
         // §8.1.6 parent-scoped "de X van alle Y van <parent>": unique within each parent, not globally.
         if (u.vereniging().isEmpty() && u.alleAttribuutVanOnderwerp() != null) {
-            var scoped = parentScoped(naam, u.alleAttribuutVanOnderwerp(), src(u), geldigheid);
+            var scoped = parentScoped(naam, u.alleAttribuutVanOnderwerp(), bron(u), geldigheid);
             if (scoped != null) {
                 if (telTemporeel(scoped.subject(), scoped.sleutels()) > 1) return false;
                 model.uniciteiten.add(scoped); return true;
             }
         }
-        Bron eerste = bronVan(u.alleAttribuutVanOnderwerp(), u.uniciteitConcatenatie());
+        ResolvedUniciteitUnie.Bron eerste = bronVan(u.alleAttribuutVanOnderwerp(), u.uniciteitConcatenatie());
         if (eerste == null) return false;
         if (u.vereniging().isEmpty()) {                              // the common single-source form
             if (telTemporeel(eerste.type(), eerste.sleutels()) > 1) return false;
             model.uniciteiten.add(new io.github.yhavinga.regelspraak.ir.ResolvedUniciteit(
-                    naam, eerste.type(), eerste.sleutels(), null, src(u), geldigheid));
+                    naam, eerste.type(), eerste.sleutels(), null, bron(u), geldigheid));
             return true;
         }
         // §8.1.6 "verenigd met": uniqueness across the UNION of two or more sources' key spaces. Every
         // source must resolve and carry the SAME key arity (the values union positionally — "attributen
         // met hetzelfde datatype"); any unresolved/mismatched source leaves the whole rule a WARNING.
-        java.util.List<Bron> bronnen = new ArrayList<>();
+        java.util.List<ResolvedUniciteitUnie.Bron> bronnen = new ArrayList<>();
         bronnen.add(eerste);
         for (VerenigingContext v : u.vereniging()) {
-            Bron b = bronVan(v.alleAttribuutVanOnderwerp(), v.uniciteitConcatenatie());
+            ResolvedUniciteitUnie.Bron b = bronVan(v.alleAttribuutVanOnderwerp(), v.uniciteitConcatenatie());
             // §8.1.6: "een vereniging is de combinatie van twee attributen met HETZELFDE datatype". The
             // values join one space, so each source's key parts must match the first's in arity AND
             // datatype-kind; otherwise the union is ill-formed (Tekst vs Numeriek would cross-match
@@ -554,23 +555,23 @@ final class RuleChecker {
         // in the single form and per union source alike; a second would need the same-moment tuple
         // join, which no reading pins yet. More than one leaves the whole rule a WARNING, like an
         // arity mismatch, so BOTH back-ends stay identically silent on the undefined shape.
-        for (Bron b : bronnen) {
+        for (ResolvedUniciteitUnie.Bron b : bronnen) {
             if (telTemporeel(b.type(), b.sleutels()) > 1) return false;
         }
-        model.uniciteitUnies.add(new io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie(naam, bronnen, src(u), geldigheid));
+        model.uniciteitUnies.add(new io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie(naam, bronnen, bron(u), geldigheid));
         return true;
     }
 
     /** One uniqueness source — "de &lt;attribuut&gt; van alle &lt;Type&gt;" or a §5.7 concatenatie — resolved
      *  to its object type and key attribute(s), or null when it does not resolve (an unknown name, a
      *  parent-scoped navigation, a nested-"van" attribute). Exactly one of the two contexts is non-null. */
-    private Bron bronVan(AlleAttribuutVanOnderwerpContext a, UniciteitConcatenatieContext c) {
+    private ResolvedUniciteitUnie.Bron bronVan(AlleAttribuutVanOnderwerpContext a, UniciteitConcatenatieContext c) {
         if (a != null) {
             if (!a.onderwerpKeten().isEmpty()) return null;          // scoped within a parent: not lifted
             Objecttype type = MeervoudMatcher.vindObjecttype(model.objecttypen.values(), src(a.kaleNaam(1)));
             if (type == null) return null;
             String attr = MeervoudMatcher.vindAttribuut(type, src(a.kaleNaam(0)));  // "DE attr VAN ALLE": no absorbed article
-            return attr == null ? null : new Bron(type, java.util.List.of(attr));
+            return attr == null ? null : new ResolvedUniciteitUnie.Bron(type, java.util.List.of(attr));
         }
         if (c != null) {
             if (!c.onderwerpKeten().isEmpty()) return null;
@@ -586,7 +587,7 @@ final class RuleChecker {
                 if (attr == null) return null;
                 sleutels.add(attr);
             }
-            return new Bron(type, sleutels);
+            return new ResolvedUniciteitUnie.Bron(type, sleutels);
         }
         return null;
     }
@@ -596,7 +597,7 @@ final class RuleChecker {
      *  scope owner &lt;parent&gt; (so the count is restricted per-parent). Null when it is not the scoped
      *  shape — then the global single-source path applies — or when the scope does not resolve. */
     private io.github.yhavinga.regelspraak.ir.ResolvedUniciteit parentScoped(String naam, AlleAttribuutVanOnderwerpContext a,
-                                                                 String bron, Geldigheid g) {
+                                                                 Bron bron, Geldigheid g) {
         if (!a.onderwerpKeten().isEmpty()) return null;
         java.util.List<KaleNaamDeelContext> delen = a.kaleNaam(1).kaleNaamDeel();
         if (delen.size() != 2) return null;                          // element + exactly one parent navigation
@@ -624,7 +625,7 @@ final class RuleChecker {
     /** §8.1.6: two union sources may be combined only when their key parts share a datatype. Compared
      *  by datatype KIND positionally (Tekst vs Numeriek differ; a finer unit/precision check is carded).
      *  A non-matching pair is ill-formed — the caller leaves it a WARNING. */
-    private static boolean zelfdeDatatypes(Bron a, Bron b) {
+    private static boolean zelfdeDatatypes(ResolvedUniciteitUnie.Bron a, ResolvedUniciteitUnie.Bron b) {
         for (int i = 0; i < a.sleutels().size(); i++) {
             Datatype da = a.type().attribuut(a.sleutels().get(i));
             Datatype db = b.type().attribuut(b.sleutels().get(i));
@@ -1010,8 +1011,8 @@ final class RuleChecker {
         Objecttype subject = bouwer.objecttypeVanKeten(kt.onderwerpKeten());
         String kenmerk = src(kt.kaleNaam()).replaceFirst("^(?i)(de|het|een)\\s+", "");
         Expr doel = new Expr.AttribuutRef(kenmerk, subject, src(kt.onderwerpKeten()),
-                null, new Datatype.Booleaan(), src(kt));
-        Expr waarde = new Expr.Literal("waar", new Datatype.Booleaan(), "waar");
+                null, new Datatype.Booleaan(), bron(kt));
+        Expr waarde = new Expr.Literal("waar", new Datatype.Booleaan(), Bron.synthetisch("waar"));
         model.resolvedRegels.add(new ResolvedRegel(naam, ResolvedRegel.Soort.KENMERKTOEKENNING, doel, waarde, voorwaarde, geldigheid));
     }
 
@@ -1063,7 +1064,7 @@ final class RuleChecker {
         if (model.startpuntLid(subject, tijdlijnNaam) == null)
             model.resolvedStartpunten.add(new io.github.yhavinga.regelspraak.ir.ResolvedStartpunt(tijdlijnNaam, subject.naam, lid));
         Expr doel = new Expr.AttribuutRef(lid, subject, src(sb.universeelOnderwerp()),
-                null, new Datatype.DatumInDagen(), src(sb));
+                null, new Datatype.DatumInDagen(), bron(sb));
         model.resolvedRegels.add(new ResolvedRegel(naam, ResolvedRegel.Soort.GELIJKSTELLING, doel, anker, voorwaarde, geldigheid));
     }
 
@@ -1164,14 +1165,14 @@ final class RuleChecker {
             // §8.3.1: after 'indien'/'dat'/'gedurende de tijd dat' the grammar admits ONLY the verb-trailing
             // (vragende) toplevelOperator — the verb-leading register is reserved for samengestelde bullets.
             if (c.expressie() != null && c.toplevelOperator() != null)
-                return uitToplevel(bouwer.bouw(c.expressie()), c.toplevelOperator(), src(c));
+                return uitToplevel(bouwer.bouw(c.expressie()), c.toplevelOperator(), bron(c));
             // §8.1.9 / §13.4.15.18: "indien regelversie <X> is gevuurd|inconsistent" as the whole voorwaarde.
             if (c.consistentieVoorwaarde() != null) return bouwRegelversie(c.consistentieVoorwaarde());
         }
         // §13.4.13.1 / §8.4.3: a standalone periodevergelijking as the whole voorwaardendeel
         // ("… van dd. 1-1-2024 tot dd. 8-2-2025" directly after the resultaatdeel, no 'indien').
         if (v.periodevergelijkingEnkelvoudig() != null) return bouwPeriode(v.periodevergelijkingEnkelvoudig());
-        return new Conditie.Onopgelost(src(v));
+        return new Conditie.Onopgelost(bron(v));
     }
 
     /** §13.4.15.68 / §8.4.3: a periodevergelijkingEnkelvoudig (vanaf / van…tot / van…tot en met / tot /
@@ -1193,7 +1194,7 @@ final class RuleChecker {
                 model.diagnostics.add(new Diagnostic(Severity.ERROR,
                         "een periodevergelijking (§8.4.3) vereist datum-expressies als grenzen, niet "
                                 + grens.type().naam() + ": '" + grens.bron() + "'", p.getStart().getLine()));
-        return new Conditie.Periode(van, tot, p.TOT_EN_MET() != null, src(p));
+        return new Conditie.Periode(van, tot, p.TOT_EN_MET() != null, bron(p));
     }
 
     private Conditie bouwSamengesteld(VoorwaardeKwantificatieContext k,
@@ -1235,8 +1236,8 @@ final class RuleChecker {
         // herNestOnderdelen declined.
         if (herNest == null && (bulletsInconsistent(onderdeel)
                 || (kwantor != Conditie.Kwantor.ALLE && kwantor != Conditie.Kwantor.DE && ambiguusGenesteBullets(onderdelen))))
-            return new Conditie.Onopgelost(src(heel));
-        return new Conditie.Samengesteld(kwantor, drempel, onderdelen, src(heel));
+            return new Conditie.Onopgelost(bron(heel));
+        return new Conditie.Samengesteld(kwantor, drempel, onderdelen, bron(heel));
     }
 
     /** §13.4.14.4/.5 a counting quantifier's telwoord must be a positive whole number (>= 1): a 0 / negative / decimal /
@@ -1323,12 +1324,12 @@ final class RuleChecker {
                 Conditie.Kwantor kw = kwantorVan(c.voorwaardeKwantificatie());
                 int drempel = drempelVan(c.voorwaardeKwantificatie());
                 keurDrempel(kw, drempel, c.getStart().getLine());   // a degenerate inner telwoord must still be flagged
-                uit.add(new Conditie.Samengesteld(kw, drempel, bouwUitKnopen(k.kinderen()), src(c)));
+                uit.add(new Conditie.Samengesteld(kw, drempel, bouwUitKnopen(k.kinderen()), bron(c)));
             }
             else if (k.ctx().elementaireVoorwaarde() != null)
                 uit.add(bouwElementair(k.ctx().elementaireVoorwaarde()));
             else
-                uit.add(new Conditie.Onopgelost(src(k.ctx())));
+                uit.add(new Conditie.Onopgelost(bron(k.ctx())));
         }
         return uit;
     }
@@ -1398,7 +1399,7 @@ final class RuleChecker {
             if (sp.samengesteldeVoorwaardeOnderdeel() == null)
                 return new Conditie.Samengesteld(kwantorVanKwantificatie(sp.kwantificatie()),
                         sp.kwantificatie() == null ? 0 : telwoordWaarde(sp.kwantificatie().telwoord()),
-                        List.of(bouwElementair(sp.elementaireVoorwaarde())), src(sp));
+                        List.of(bouwElementair(sp.elementaireVoorwaarde())), bron(sp));
             // §13.4.14.6 re-nest a column-absorbed bullet list (the SAME depth-aware machinery as a voorwaarde compound)
             List<Conditie> herNest = herNestOnderdelen(sp.samengesteldeVoorwaardeOnderdeel());
             List<Conditie> onderdelen;
@@ -1421,9 +1422,9 @@ final class RuleChecker {
             if (kw != Conditie.Kwantor.ALLE && kw != Conditie.Kwantor.DE
                     && onderdelen.stream().anyMatch(c -> c instanceof Conditie.Samengesteld s
                             && s.onderdelen().stream().anyMatch(x -> x instanceof Conditie.Samengesteld)))
-                return new Conditie.Onopgelost(src(sp));
+                return new Conditie.Onopgelost(bron(sp));
             return new Conditie.Samengesteld(kw,
-                    sp.kwantificatie() == null ? 0 : telwoordWaarde(sp.kwantificatie().telwoord()), onderdelen, src(sp));
+                    sp.kwantificatie() == null ? 0 : telwoordWaarde(sp.kwantificatie().telwoord()), onderdelen, bron(sp));
         } finally {
             bouwer.setSubject(vorig);                   // RESTORE
         }
@@ -1452,7 +1453,7 @@ final class RuleChecker {
     }
 
     /** §13.4.8 samengestelde consistentie-criteria → a {@link Conditie.Samengesteld} over the criteria. */
-    private Conditie bouwCriteria(ConsistentieKwantificatieContext k, SamengesteldCriteriumOnderdeelContext onderdeel, String bron) {
+    private Conditie bouwCriteria(ConsistentieKwantificatieContext k, SamengesteldCriteriumOnderdeelContext onderdeel, Bron bron) {
         List<Conditie> onderdelen = new ArrayList<>();
         for (GenestCriteriumContext g : onderdeel.genestCriterium()) onderdelen.add(bouwCriterium(g));
         return new Conditie.Samengesteld(kwantorVanConsistentie(k), k == null ? 0 : telwoordWaarde(k.telwoord()), onderdelen, bron);
@@ -1461,10 +1462,10 @@ final class RuleChecker {
     private Conditie bouwCriterium(GenestCriteriumContext g) {
         if (g.samengesteldCriterium() != null) {
             SamengesteldCriteriumContext c = g.samengesteldCriterium();
-            return bouwCriteria(c.consistentieKwantificatie(), c.samengesteldCriteriumOnderdeel(), src(c));
+            return bouwCriteria(c.consistentieKwantificatie(), c.samengesteldCriteriumOnderdeel(), bron(c));
         }
         if (g.elementaireVoorwaarde() != null) return bouwElementair(g.elementaireVoorwaarde());
-        return new Conditie.Onopgelost(src(g));
+        return new Conditie.Onopgelost(bron(g));
     }
 
     /** §13.4.14.3 consistentie-kwantor; null (the single "het volgende criterium") is the trivial ALLE. */
@@ -1504,22 +1505,22 @@ final class RuleChecker {
             return bouwSamengesteld(c.voorwaardeKwantificatie(), c.samengesteldeVoorwaardeOnderdeel(), c);
         }
         if (g.elementaireVoorwaarde() != null) return bouwElementair(g.elementaireVoorwaarde());
-        return new Conditie.Onopgelost(src(g));
+        return new Conditie.Onopgelost(bron(g));
     }
 
     /** An §13.4.15 elementaire voorwaarde / consistentie-criterium ("&lt;expressie&gt; &lt;operator&gt;") to a
      *  {@link Conditie}; shared by the samengestelde voorwaarde and the samengestelde consistentieregel. */
     private Conditie bouwElementair(ElementaireVoorwaardeContext c) {
         if (c.expressie() != null && c.nonToplevelOperator() != null)
-            return uitNonToplevel(bouwer.bouw(c.expressie()), c.nonToplevelOperator(), src(c));
+            return uitNonToplevel(bouwer.bouw(c.expressie()), c.nonToplevelOperator(), bron(c));
         if (c.expressie() != null && c.toplevelOperator() != null)
-            return uitToplevel(bouwer.bouw(c.expressie()), c.toplevelOperator(), src(c));
+            return uitToplevel(bouwer.bouw(c.expressie()), c.toplevelOperator(), bron(c));
         // §13.4.15.69 / §8.4.3: the "het is de periode <periodevergelijkingEnkelvoudig>" bullet form.
         if (c.periodevergelijkingElementair() != null)
             return bouwPeriode(c.periodevergelijkingElementair().periodevergelijkingEnkelvoudig());
         // §8.1.9 / §13.4.15.66: the "regelversie <X> is gevuurd|inconsistent" regelpredicaat as a bullet.
         if (c.consistentieVoorwaarde() != null) return bouwRegelversie(c.consistentieVoorwaarde());
-        return new Conditie.Onopgelost(src(c));
+        return new Conditie.Onopgelost(bron(c));
     }
 
     /** §8.1.9 / §13.4.15.66/.18 regelpredicaat to a {@link Conditie.Regelversie}. The reference may point
@@ -1528,7 +1529,7 @@ final class RuleChecker {
      *  honest marker (never a silent never-matching exists). The parenthesised versie-aanduiding is parsed
      *  but only carried in bron (see Conditie.Regelversie). */
     private Conditie bouwRegelversie(ConsistentieVoorwaardeContext c) {
-        return new Conditie.Regelversie(src(c.vrijeNaam()), c.INCONSISTENT() != null, src(c));
+        return new Conditie.Regelversie(src(c.vrijeNaam()), c.INCONSISTENT() != null, bron(c));
     }
 
     /** §8.2 / §13.4.15.70: the optional "(niet) gedurende de/het gehele jaar|maand" whole-period qualifier that
@@ -1579,15 +1580,15 @@ final class RuleChecker {
      *  dangling negator, so it must marker rather than silently emit the inverted positive. */
     private static boolean absorbedNegator(Expr lhs) {
         return lhs instanceof Expr.AttribuutRef a && a.bron() != null
-                && a.bron().stripTrailing().toLowerCase().endsWith(" niet")
+                && a.bron().snippet().stripTrailing().toLowerCase().endsWith(" niet")
                 && !a.attribuut().toLowerCase().endsWith("niet");
     }
 
-    private Conditie uitToplevel(Expr lhs, ToplevelOperatorContext op, String bron) {
+    private Conditie uitToplevel(Expr lhs, ToplevelOperatorContext op, Bron bron) {
         return keurGeheelPeriode(uitToplevelKaal(lhs, op, bron), geheelPeriode(op.gehelePeriodevergelijking()), bron);
     }
 
-    private Conditie uitToplevelKaal(Expr lhs, ToplevelOperatorContext op, String bron) {
+    private Conditie uitToplevelKaal(Expr lhs, ToplevelOperatorContext op, Bron bron) {
         Conditie.GeheelPeriode periode = geheelPeriode(op.gehelePeriodevergelijking());   // §8.2 whole-period check
         // A dangling absorbed "niet" silently INVERTS a comparison / leeg-gevuld (the bare-attr resolution dropped the
         // negator) -> marker it. The kenmerkcheck DE-negates it (bindKenmerk) and elfproef/numeriek RECOVER it
@@ -1613,7 +1614,7 @@ final class RuleChecker {
         return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
     }
 
-    private Conditie uitNonToplevel(Expr lhs, NonToplevelOperatorContext op, String bron) {
+    private Conditie uitNonToplevel(Expr lhs, NonToplevelOperatorContext op, Bron bron) {
         return keurGeheelPeriode(uitNonToplevelKaal(lhs, op, bron), geheelPeriode(op.gehelePeriodevergelijking()), bron);
     }
 
@@ -1621,7 +1622,7 @@ final class RuleChecker {
      *  onderwerp is TIJDSAFHANKELIJK. A qualifier over a static onderwerp is a spec error — reject it (an ERROR +
      *  Onopgelost) rather than silently markering a rule that can never fire. {@code niet} is irrelevant here (a
      *  whole-period NEGATION of a static check is just as ill-defined). */
-    private Conditie keurGeheelPeriode(Conditie c, Conditie.GeheelPeriode periode, String bron) {
+    private Conditie keurGeheelPeriode(Conditie c, Conditie.GeheelPeriode periode, Bron bron) {
         if (periode == null || onderwerpIsTemporeel(c)) return c;
         model.diagnostics.add(new Diagnostic(Severity.ERROR,
             "de check op volledige periode (gedurende de/het gehele jaar/maand) kan alleen op een tijdsafhankelijk "
@@ -1662,7 +1663,7 @@ final class RuleChecker {
         return houder != null && houder.kenmerkGranulariteit.containsKey(k.kenmerk());
     }
 
-    private Conditie uitNonToplevelKaal(Expr lhs, NonToplevelOperatorContext op, String bron) {
+    private Conditie uitNonToplevelKaal(Expr lhs, NonToplevelOperatorContext op, Bron bron) {
         Conditie.GeheelPeriode periode = geheelPeriode(op.gehelePeriodevergelijking());   // §8.2 whole-period check
         // A dangling absorbed "niet" silently INVERTS a comparison / leeg-gevuld -> marker it. The kenmerkcheck
         // DE-negates it and elfproef/numeriek RECOVER it (elfOperand), so only those two operators are guarded here.
@@ -1708,7 +1709,7 @@ final class RuleChecker {
      *  bezittelijk kenmerk is NOT written with "een", so the EEN-form never binds it. A name that resolves to
      *  neither stays Onopgelost (an honest marker), never a silently-true gate. */
     private Conditie kenmerkPredicaat(Expr lhs, KaleNaamContext naamCtx, boolean metEen, boolean heeftWerkwoord,
-                                      Conditie.GeheelPeriode periode, String bron) {
+                                      Conditie.GeheelPeriode periode, Bron bron) {
         Conditie c = kenmerkPredicaatKaal(lhs, naamCtx, metEen, heeftWerkwoord, bron);
         if (periode == null || c == null) return c;
         // §8.2 "is/heeft gedurende het gehele jaar een <kenmerk>" attaches the whole-period qualifier ONLY to a
@@ -1722,7 +1723,7 @@ final class RuleChecker {
     /** Flip the negatie of a resolved kenmerk-/rolcheck (the §8.1.8.3 "is niet een &lt;k&gt;" negation). The positive
      *  binding has negatie=false; flipping it yields the "== false" membership. A form that did not structure into a
      *  kenmerk/rolcheck (null, or an Onopgelost) becomes an honest marker, never a silently-true gate. */
-    private static Conditie negeer(Conditie c, String bron) {
+    private static Conditie negeer(Conditie c, Bron bron) {
         if (c instanceof Conditie.Kenmerk k)
             return new Conditie.Kenmerk(k.kenmerk(), k.navigatie(), !k.negatie(), k.eigenaar(), k.periode(), k.bron());
         if (c instanceof Conditie.Rollidmaatschap r)
@@ -1751,7 +1752,7 @@ final class RuleChecker {
                 + "' bij dit soort kenmerk (§8.1.8): " + k.bron(), 0));
     }
 
-    private Conditie kenmerkPredicaatKaal(Expr lhs, KaleNaamContext naamCtx, boolean metEen, boolean heeftWerkwoord, String bron) {
+    private Conditie kenmerkPredicaatKaal(Expr lhs, KaleNaamContext naamCtx, boolean metEen, boolean heeftWerkwoord, Bron bron) {
         if (naamCtx == null) return null;
         // §8.1.5 dagsoortcontrole: "<datumexpressie> is een <dagsoort>" (e.g. "de datum van vertrek … is een
         // kerstdag") tests the date against that dagsoort's §9.8 definitie. A dagsoort is neither a kenmerk nor a
@@ -1787,7 +1788,7 @@ final class RuleChecker {
             // (b) "geen" absorbed as the operand's trailing word — a plain AttribuutRef (mirror absorbedNegator),
             //     guarded against an attribuut literally named "… geen". The kaleNaam is then the bare dagsoort.
             if (lhs instanceof Expr.AttribuutRef la && la.bron() != null
-                    && la.bron().stripTrailing().toLowerCase().endsWith(" geen") && !la.attribuut().toLowerCase().endsWith("geen")) {
+                    && la.bron().snippet().stripTrailing().toLowerCase().endsWith(" geen") && !la.attribuut().toLowerCase().endsWith("geen")) {
                 String dag = dagsoortNaam(naam0);
                 if (dag != null && datum) return new Conditie.Predicaat(Conditie.Predicaatsoort.DAGSOORT, la, dag, true, 0, null, bron);
                 if (dag != null && getypt) return dagsoortOperandFout(la, naamCtx, bron);   // Tabel 57 operand gate
@@ -1849,7 +1850,7 @@ final class RuleChecker {
      *  them (that mis-binding was the reason the EEN-form kenmerkcheck was deferred). Positive only — the "is
      *  geen" negation lexes into the kaleNaam with no "een" and reaches the non-EEN path (carded). Null when no
      *  ZELFSTANDIG kenmerk of {@code subject} bears the name, so the caller falls back to the §8.1.7 rolcheck. */
-    private Conditie zelfstandigKenmerk(Objecttype subject, String naam, String bron) {
+    private Conditie zelfstandigKenmerk(Objecttype subject, String naam, Bron bron) {
         String g = KenmerkMatcher.vind(subject, naam);
         return g != null && subject.kenmerkSoort(g) == Objecttype.KenmerkSoort.ZELFSTANDIG
                 ? new Conditie.Kenmerk(g, bron) : null;
@@ -1861,7 +1862,7 @@ final class RuleChecker {
      *  ("heeft een passagier") is no kenmerk and stays null for the caller's §8.1.7 far-side rolcheck. A
      *  bijvoeglijk/zelfstandig kenmerk uses "is", so the heeft EEN-form must not bind them. Null when no
      *  BEZITTELIJK kenmerk of {@code subject} bears the name. */
-    private Conditie bezittelijkKenmerk(Objecttype subject, String naam, String bron) {
+    private Conditie bezittelijkKenmerk(Objecttype subject, String naam, Bron bron) {
         String g = KenmerkMatcher.vind(subject, naam);
         return g != null && subject.kenmerkSoort(g) == Objecttype.KenmerkSoort.BEZITTELIJK
                 ? new Conditie.Kenmerk(g, bron) : null;
@@ -1871,14 +1872,14 @@ final class RuleChecker {
      *  Resolves to a {@link Conditie.Rollidmaatschap} carrying the OTHER end of the feittype (so the
      *  transpiler can null-test the subject's reference to it). Null when no role the subject fills bears
      *  that name (-> Onopgelost marker, never a wrong gate). */
-    private Conditie rolLidmaatschap(Objecttype subject, String naam, String bron) {
+    private Conditie rolLidmaatschap(Objecttype subject, String naam, Bron bron) {
         return rolLidmaatschap(subject, naam, bron, false);
     }
     /** As above, with {@code negatie} for the "is geen &lt;rol&gt;" form (the subject does NOT fill it). When the
      *  subject does not FILL the role (rolSiblingType null) but the role reaches a TO-MANY filler from it, this is
      *  the §8.1.7 FAR-side "&lt;subject&gt; heeft een &lt;rol&gt;": resolve to a {@link Conditie.VerreRollidmaatschap}
      *  carrying that filler and its back-reference field, which the transpiler lowers to an exists-join. */
-    private Conditie rolLidmaatschap(Objecttype subject, String naam, String bron, boolean negatie) {
+    private Conditie rolLidmaatschap(Objecttype subject, String naam, Bron bron, boolean negatie) {
         Objecttype ander = model.rolSiblingType(subject, naam);
         if (ander != null) return new Conditie.Rollidmaatschap(naam, ander, bron, negatie);
         Objecttype filler = model.rolDoeltypeNaarSubject(subject, naam);
@@ -1900,7 +1901,7 @@ final class RuleChecker {
      *  still binds positively. {@code navigatie} is the to-one navigation role (null for the subject's own).
      *  {@code heeftWerkwoord} is true when the predicate verb is hebben (§8.1.8: see the "geen" branch).
      *  Null when neither the whole name nor a de-negated form is a declared kenmerk of {@code type}. */
-    private static Conditie kenmerkConditie(Objecttype type, String kenmerk, String navigatie, boolean heeftWerkwoord, String bron) {
+    private static Conditie kenmerkConditie(Objecttype type, String kenmerk, String navigatie, boolean heeftWerkwoord, Bron bron) {
         // Match the written name VERBATIM first. A bijvoeglijk kenmerk may be declared WITH a leading article
         // as part of its name ("is de minimis kenmerk" -> stored "de minimis"): its grammar rule has no
         // separate bepaaldLidwoord? and naamWoordLower admits de/het, so the article is part of the stored
@@ -1919,7 +1920,7 @@ final class RuleChecker {
     /** Bind one candidate name to a declared kenmerk of {@code type}, honouring a leading "niet" or "geen"
      *  as NEGATION — but each only after the WHOLE name fails, so a kenmerk declared starting with niet/geen
      *  still binds positively (never silently inverted). Null when nothing binds. */
-    private static Conditie bindKenmerk(Objecttype type, String naam, String navigatie, boolean heeftWerkwoord, String bron) {
+    private static Conditie bindKenmerk(Objecttype type, String naam, String navigatie, boolean heeftWerkwoord, Bron bron) {
         String g = KenmerkMatcher.vind(type, naam);
         if (g != null) return new Conditie.Kenmerk(g, navigatie, false, bron);
         // §8.1.8.1 bijvoeglijk negation "is niet <k>" -> "== false" (verb-agnostic).
@@ -1948,7 +1949,7 @@ final class RuleChecker {
      *  the soort, exactly as the subject's own EEN-form ({@link #kenmerkPredicaat}): "is een &lt;k&gt;" binds a
      *  §8.1.8.3 ZELFSTANDIG kenmerk of the navigated type, "heeft een &lt;k&gt;" a §8.1.8.2 BEZITTELIJK one — neither
      *  binds under the other verb, and a navigated role membership via "een" stays out of scope (null). */
-    private Conditie navigatieKenmerk(Expr lhs, String staart, boolean heeftWerkwoord, boolean metEen, String bron) {
+    private Conditie navigatieKenmerk(Expr lhs, String staart, boolean heeftWerkwoord, boolean metEen, Bron bron) {
         if (!(lhs instanceof Expr.AttribuutRef a) || a.objecttype() == null) return null;
         Objecttype subject = a.objecttype();                                       // the onderwerp the navigation is from
         Objecttype doel = model.rolDoeltypeNaarSubject(subject, a.attribuut());
@@ -1981,7 +1982,7 @@ final class RuleChecker {
      *  (the leading words of a multi-word kenmerk, or a "niet") — empty for a clean navigation. Found as the
      *  operand text following the onderwerp's object-type name. */
     private static String navigatieStaart(Expr.AttribuutRef a) {
-        String b = a.bron() == null ? "" : a.bron();
+        String b = a.bron() == null ? "" : a.bron().snippet();
         // Anchor on the onderwerp TYPE name ("de <rol> van <Type> <kenmerkwoorden>"); for a POSSESSIVE
         // ("zijn <rol> <kenmerkwoorden>") there is no type name, so fall back to the ROLE name. Take the text
         // after the anchor's LAST whole-word occurrence (so a kenmerk word merely containing it does not
@@ -2008,7 +2009,7 @@ final class RuleChecker {
         // NOT latch onto the doel — reject it. Outside that mode "hij" denotes the single subject as before.
         if (lhs instanceof Expr.Constante c)
             return (doelRol == null && c.naam().equalsIgnoreCase("hij")) ? "" : null;
-        String b = lhs.bron() == null ? "" : stripArtikel(lhs.bron());
+        String b = lhs.bron() == null ? "" : stripArtikel(lhs.bron().snippet());
         if (b.equalsIgnoreCase(subject.naam)) return "";                              // "de Meting"
         if (b.regionMatches(true, 0, subject.naam + " ", 0, subject.naam.length() + 1)) // "de Meting bereikbaar per"
             return b.substring(subject.naam.length()).trim();
@@ -2049,6 +2050,7 @@ final class RuleChecker {
     }
 
     private static String src(ParserRuleContext c) { return DefinitionResolver.src(c); }
+    private static io.github.yhavinga.regelspraak.ir.Bron bron(ParserRuleContext c) { return DefinitionResolver.bron(c); }
 
     // ---- §5 condition type-checking (comparisons + predicates) ----
     private void voorwaarden(ParseTree t) {
@@ -2163,7 +2165,7 @@ final class RuleChecker {
     /** Tabel 57 (§5.15): the written name resolved to a DECLARED dagsoort but the operand is not datum-typed —
      *  the Typering DAGSOORT ERROR (this is its only live call site on the condition path), and the conditie
      *  stays an Onopgelost marker so neither back-end builds a dagsoort check over a non-date. */
-    private Conditie dagsoortOperandFout(Expr lhs, KaleNaamContext naamCtx, String bron) {
+    private Conditie dagsoortOperandFout(Expr lhs, KaleNaamContext naamCtx, Bron bron) {
         meldPredicaat(Typering.UnairePred.DAGSOORT, lhs.type(), naamCtx.getStart().getLine());
         return new Conditie.Onopgelost(bron);
     }

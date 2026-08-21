@@ -16,7 +16,8 @@ import java.util.List;
  * when the total count, summed over every source, of instances whose key equals the subject's exceeds
  * one.
  */
-public record ResolvedUniciteitUnie(String naam, List<Bron> bronnen, String bron, Geldigheid geldigheid) {
+public record ResolvedUniciteitUnie(String naam, List<Bron> bronnen,
+                                    io.github.yhavinga.regelspraak.ir.Bron bron, Geldigheid geldigheid) {
     /** One side of the union: an object type and the key attribute(s) whose values join the shared space. */
     public record Bron(Objecttype type, List<String> sleutels) {}
 }

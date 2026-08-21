@@ -20,8 +20,9 @@ import java.util.List;
  * text, keeping the IR explicit about its coverage.
  */
 public sealed interface Conditie {
-    /** The original source slice this condition was built from (whitespace-normalised). */
-    String bron();
+    /** The structured source anchor (file/line/column + whitespace-normalised snippet) this
+     *  condition was built from; {@link Bron#toString()} is the snippet (wire-preserving). */
+    Bron bron();
 
     /** §8.2 / §13.4.15.70 "gedurende de/het gehele &lt;periode&gt;" whole-period qualifier on a predicate over a
      *  tijdsafhankelijk onderwerp (§8.2 line 3437). The qualified predicate yields "waar" only if the underlying
@@ -37,8 +38,8 @@ public sealed interface Conditie {
         GELIJK, ONGELIJK,
         EERDER, EERDER_OF_GELIJK, LATER, LATER_OF_GELIJK
     }
-    record Vergelijking(Operator op, Expr links, Expr rechts, GeheelPeriode periode, String bron) implements Conditie {
-        public Vergelijking(Operator op, Expr links, Expr rechts, String bron) { this(op, links, rechts, null, bron); }
+    record Vergelijking(Operator op, Expr links, Expr rechts, GeheelPeriode periode, Bron bron) implements Conditie {
+        public Vergelijking(Operator op, Expr links, Expr rechts, Bron bron) { this(op, links, rechts, null, bron); }
     }
 
     /** §5.11-5.16 one-sided predicates. {@code dagsoort} names the §3.12 dagsoort for a
@@ -49,12 +50,12 @@ public sealed interface Conditie {
      *  {@code cijfers} is the §8.1.4 digit-count N of the NUMERIEK_MET_EXACT predicate ("numeriek met exact N
      *  cijfers" — the §13.4.15.84 &lt;geheelgetal&gt;); 0 for every other soort. */
     enum Predicaatsoort { LEEG, GEVULD, ELFPROEF, NUMERIEK_MET_EXACT, DAGSOORT }
-    record Predicaat(Predicaatsoort soort, Expr operand, String dagsoort, boolean negatie, int cijfers, GeheelPeriode periode, String bron) implements Conditie {
-        public Predicaat(Predicaatsoort soort, Expr operand, String dagsoort, GeheelPeriode periode, String bron) { this(soort, operand, dagsoort, false, 0, periode, bron); }
-        public Predicaat(Predicaatsoort soort, Expr operand, boolean negatie, GeheelPeriode periode, String bron) { this(soort, operand, null, negatie, 0, periode, bron); }
-        public Predicaat(Predicaatsoort soort, Expr operand, boolean negatie, int cijfers, GeheelPeriode periode, String bron) { this(soort, operand, null, negatie, cijfers, periode, bron); }
-        public Predicaat(Predicaatsoort soort, Expr operand, GeheelPeriode periode, String bron) { this(soort, operand, null, false, 0, periode, bron); }
-        public Predicaat(Predicaatsoort soort, Expr operand, String bron) { this(soort, operand, null, false, 0, null, bron); }
+    record Predicaat(Predicaatsoort soort, Expr operand, String dagsoort, boolean negatie, int cijfers, GeheelPeriode periode, Bron bron) implements Conditie {
+        public Predicaat(Predicaatsoort soort, Expr operand, String dagsoort, GeheelPeriode periode, Bron bron) { this(soort, operand, dagsoort, false, 0, periode, bron); }
+        public Predicaat(Predicaatsoort soort, Expr operand, boolean negatie, GeheelPeriode periode, Bron bron) { this(soort, operand, null, negatie, 0, periode, bron); }
+        public Predicaat(Predicaatsoort soort, Expr operand, boolean negatie, int cijfers, GeheelPeriode periode, Bron bron) { this(soort, operand, null, negatie, cijfers, periode, bron); }
+        public Predicaat(Predicaatsoort soort, Expr operand, GeheelPeriode periode, Bron bron) { this(soort, operand, null, false, 0, periode, bron); }
+        public Predicaat(Predicaatsoort soort, Expr operand, Bron bron) { this(soort, operand, null, false, 0, null, bron); }
     }
 
     /** §8.1.8 kenmerk-membership test ("de Meting is oud" / "hij heeft het recht …"): true when the
@@ -66,10 +67,10 @@ public sealed interface Conditie {
      *  constraint must attach to — a §13.4.7 feitcreatie hosts a doel-kenmerk on the {@code $doel} pattern,
      *  so the transpiler emits it only on that type and markers it elsewhere (never on the anker, even when
      *  the anker declares a same-named kenmerk). null leaves it unconstrained (the single-subject rule). */
-    record Kenmerk(String kenmerk, String navigatie, boolean negatie, Objecttype eigenaar, GeheelPeriode periode, String bron) implements Conditie {
-        public Kenmerk(String kenmerk, String navigatie, boolean negatie, Objecttype eigenaar, String bron) { this(kenmerk, navigatie, negatie, eigenaar, null, bron); }
-        public Kenmerk(String kenmerk, String navigatie, boolean negatie, String bron) { this(kenmerk, navigatie, negatie, null, null, bron); }
-        public Kenmerk(String kenmerk, String bron) { this(kenmerk, null, false, null, null, bron); }
+    record Kenmerk(String kenmerk, String navigatie, boolean negatie, Objecttype eigenaar, GeheelPeriode periode, Bron bron) implements Conditie {
+        public Kenmerk(String kenmerk, String navigatie, boolean negatie, Objecttype eigenaar, Bron bron) { this(kenmerk, navigatie, negatie, eigenaar, null, bron); }
+        public Kenmerk(String kenmerk, String navigatie, boolean negatie, Bron bron) { this(kenmerk, navigatie, negatie, null, null, bron); }
+        public Kenmerk(String kenmerk, Bron bron) { this(kenmerk, null, false, null, null, bron); }
     }
 
     /** §8.1.7 rolcheck ("hij is een passagier"): true when the subject FILLS the role {@code rol}.
@@ -79,9 +80,9 @@ public sealed interface Conditie {
      *  transpiler looks up the reference field. {@code negatie} marks the §8.1.7/§8.1.8.3 "is geen &lt;rol&gt;"
      *  negation — the subject does NOT fill the role — which lowers to the inverse null-test ({@code reis == null}).
      *  When the reference lives on the other side (the §8.1.7 "heeft" form) it is a {@link VerreRollidmaatschap}. */
-    record Rollidmaatschap(String rol, Objecttype anderTeFiller, String bron, boolean negatie) implements Conditie {
+    record Rollidmaatschap(String rol, Objecttype anderTeFiller, Bron bron, boolean negatie) implements Conditie {
         /** Positive rolcheck — the subject fills the role. */
-        Rollidmaatschap(String rol, Objecttype anderTeFiller, String bron) { this(rol, anderTeFiller, bron, false); }
+        Rollidmaatschap(String rol, Objecttype anderTeFiller, Bron bron) { this(rol, anderTeFiller, bron, false); }
     }
 
     /** §8.1.7 FAR-side rolcheck ("de vlucht heeft een passagier"): the subject sits on the "één" side, so the
@@ -90,7 +91,7 @@ public sealed interface Conditie {
      *  when-clause {@code exists <filler>( <backref> == $subject )}), NOT an in-pattern constraint — which is why
      *  it can only be peeled when it is a rule's TOP-LEVEL condition; nested in an AND/OR or a comparison it
      *  stays a marker. {@code negatie} is the "heeft geen" form ({@code not <filler>(...)}). */
-    record VerreRollidmaatschap(Objecttype filler, String backref, boolean negatie, String bron) implements Conditie {}
+    record VerreRollidmaatschap(Objecttype filler, String backref, boolean negatie, Bron bron) implements Conditie {}
 
     /** §8.4.3 / §13.4.15.68-.69 periodevergelijking as a CONDITION: the rule applies during the period
      *  bounded by the datum-expressies — "vanaf X" / "van X tot [en met] Y" / "tot [en met] X". Standalone it is
@@ -99,7 +100,7 @@ public sealed interface Conditie {
      *  {@code tot} EXCLUSIVE unless {@code totInclusief} (the "tot en met" form). Either bound may be null
      *  (the one-sided vanaf/tot forms); never both. The engine evaluates scalar rules as of the §4.2 Rekendatum,
      *  so the transpilers lower this to "rekendatum inside the period" (see docs/grammar-divergences.md). */
-    record Periode(Expr vanaf, Expr tot, boolean totInclusief, String bron) implements Conditie {}
+    record Periode(Expr vanaf, Expr tot, boolean totInclusief, Bron bron) implements Conditie {}
 
     /** Whether {@code c} is or contains a {@link Periode} — the §4.2 Rekendatum-global trigger, and the
      *  transpilers' symmetric marker/skip gate for the contexts that cannot host one (a counting quantifier's
@@ -144,7 +145,7 @@ public sealed interface Conditie {
      *  `drempel` is the threshold count N for the counting quantifiers (ten minste / ten
      *  hoogste / precies N, §13.4.14.4); 0 and unused for alle / geen / de. */
     enum Kwantor { DE, ALLE, GEEN, TEN_MINSTE, TEN_HOOGSTE, PRECIES }
-    record Samengesteld(Kwantor kwantor, int drempel, List<Conditie> onderdelen, String bron) implements Conditie {}
+    record Samengesteld(Kwantor kwantor, int drempel, List<Conditie> onderdelen, Bron bron) implements Conditie {}
 
     /** §8.1.9 / §13.4.15.66 regelpredicaat: "regelversie &lt;regel&gt; [(&lt;geldigheid&gt;)] is gevuurd |
      *  is inconsistent" — a control on the EXECUTION of the named rule, not on a subject. {@code regel} is
@@ -154,8 +155,8 @@ public sealed interface Conditie {
      *  consistentie/uniciteit/verdeling rule — an exists-join) from "is gevuurd" (whether the named rule's
      *  voorwaardendeel was satisfied — no observable runtime record, so both back-ends decline it
      *  symmetrically; see docs/grammar-divergences.md). */
-    record Regelversie(String regel, boolean inconsistent, String bron) implements Conditie {}
+    record Regelversie(String regel, boolean inconsistent, Bron bron) implements Conditie {}
 
     /** A condition form the resolver did not yet structure (membership/period tests). */
-    record Onopgelost(String bron) implements Conditie {}
+    record Onopgelost(Bron bron) implements Conditie {}
 }

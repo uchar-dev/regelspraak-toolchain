@@ -625,6 +625,14 @@ public final class DefinitionResolver {
         return t.replaceAll("\\s+", " ").trim();
     }
 
+    /** The structured source anchor of {@code ctx}: {@link #src} as the snippet, plus file/line/column
+     *  from the start token (the file being the char stream's source name, set at the front end). A null
+     *  ctx yields a synthetic empty anchor, mirroring {@link #src}'s null handling. */
+    static io.github.yhavinga.regelspraak.ir.Bron bron(ParserRuleContext ctx) {
+        return ctx == null ? io.github.yhavinga.regelspraak.ir.Bron.synthetisch("")
+                           : io.github.yhavinga.regelspraak.ir.Bron.van(ctx, src(ctx));
+    }
+
     private static String unquote(String s) {
         if (s.length() >= 2) return s.substring(1, s.length() - 1);
         return s;

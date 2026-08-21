@@ -26,5 +26,5 @@ import java.util.List;
  * @param bron      the source slice of the header (for diagnostics)
  * @param line      the 1-based source line of the header
  */
-public record ResolvedRegelGroep(String naam, boolean recursief, List<String> leden, String bron, int line) {
+public record ResolvedRegelGroep(String naam, boolean recursief, List<String> leden, Bron bron, int line) {
 }
