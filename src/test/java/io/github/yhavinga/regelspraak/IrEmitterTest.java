@@ -183,6 +183,49 @@ class IrEmitterTest {
                 () -> "een element-eigen filter-lezing mag GEEN navigatieBindingen dragen:\n" + c);
     }
 
+    @Test void unit_literal_lexeme_is_kaal_eenheid_in_type() {
+        // uchar WF-081 (IR-SPEC ch. 4.1): a numeric literal's waarde is the BARE number lexeme;
+        // the unit rides the literal's datatype ("eenheid"), exactly as attribute datatypes carry
+        // it. The source snippet ("5 €") stays in bron. The old form ("waarde":"5 €") is
+        // verifier-ill-formed and faults in both uchar executors.
+        String src = """
+            Eenheidsysteem Munt
+                de euro (mv: euros) EUR €
+            Objecttype de Vondst
+                de waarde Numeriek (geheel getal) met eenheid €;
+                het meldloon Numeriek (geheel getal) met eenheid €;
+            Regel meldloon
+                geldig altijd
+                    Het meldloon van een Vondst moet berekend worden als de waarde van de Vondst plus 5 €.
+            """;
+        String c = emitCompact(src);
+        // the emitter JSON-escapes non-ASCII, so the compacted € is the six-char escape \\u20ac
+        assertTrue(c.contains(
+                "{\"node\":\"Literal\",\"waarde\":\"5\",\"type\":{\"node\":\"Numeriek\",\"geheel\":true,"
+                + "\"decimalen\":0,\"teken\":\"ONBEPAALD\",\"eenheid\":{\"node\":\"Eenheid\",\"afkorting\":\"EUR\","
+                + "\"stelsel\":\"Munt\",\"canoniek\":\"EUR\",\"factorNaarCanoniek\":1,\"noemer\":null}},\"bron\":\"5\\u20ac\"}"),
+                () -> "de unit-literal moet een kaal lexeme dragen met de eenheid in het type:\n" + c);
+        assertFalse(c.contains("\"waarde\":\"5\\u20ac\""),
+                () -> "de eenheid mag niet in het literal-lexeme zitten:\n" + c);
+    }
+
+    @Test void percentage_literal_lexeme_is_kaal() {
+        // Same WF-081 fence for the '%' suffix: "21%" emits waarde "21", type Percentage
+        // (whose datatype already carries the %-eenheid).
+        String src = """
+            Objecttype de Vondst
+                het heffingspercentage Percentage (geheel getal) met eenheid %;
+            Regel heffingspercentage
+                geldig altijd
+                    Het heffingspercentage van een Vondst moet gesteld worden op 21%.
+            """;
+        String c = emitCompact(src);
+        assertTrue(c.contains("{\"node\":\"Literal\",\"waarde\":\"21\",\"type\":{\"node\":\"Percentage\""),
+                () -> "de percentage-literal moet een kaal lexeme dragen:\n" + c);
+        assertFalse(c.contains("\"waarde\":\"21%\""),
+                () -> "het %-teken mag niet in het literal-lexeme zitten:\n" + c);
+    }
+
     @Test void tijdsevenredig_deel_draagt_basistype_geen_sentinel() {
         // §7.3.2/§13.4.17.58: the pro-rata node carries its BASE's value type on the wire — the
         // uchar spec forbids the unknown-type sentinel inside a structured node (its WF-034), so

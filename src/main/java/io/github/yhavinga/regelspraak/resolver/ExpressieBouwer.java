@@ -192,7 +192,11 @@ final class ExpressieBouwer {
             GetalWaardeContext g = p.getalWaarde();
             int dec = decimalenVanLiteral(bron.snippet());    // §6.1.2: the literal's real precision, not 0
             boolean geheel = dec == 0;
-            if (g.PERCENT_SIGN() != null) return new Expr.Literal(bron.snippet(), new Datatype.Percentage(geheel, dec), bron);
+            // uchar WF-081 (IR-SPEC ch. 4.1): the literal's waarde is the BARE number lexeme —
+            // a '%' or unit suffix belongs in the datatype's eenheid, never in the value string.
+            // The NUMBER token is that lexeme; bron keeps the full source snippet ("5 €").
+            String lexeme = g.NUMBER().getText();
+            if (g.PERCENT_SIGN() != null) return new Expr.Literal(lexeme, new Datatype.Percentage(geheel, dec), bron);
             if (g.eenheidExpressie() != null) {
                 // §13.2.17: the literal-with-unit surface admits a composite (rate) denominator
                 // ("120 EUR/jr"). Resolve it through the SAME composite-aware helper the attribute
@@ -200,7 +204,7 @@ final class ExpressieBouwer {
                 // Eenheid.samengesteld — otherwise a rate literal is typed by its numerator alone and
                 // both §4 unit checking and the exacte cross-unit restatement operate on the wrong unit.
                 Eenheid e = DefinitionResolver.eenheidVan(model, g.eenheidExpressie());
-                return new Expr.Literal(bron.snippet(), new Datatype.Numeriek(geheel, dec, Datatype.Teken.ONBEPAALD, e), bron);
+                return new Expr.Literal(lexeme, new Datatype.Numeriek(geheel, dec, Datatype.Teken.ONBEPAALD, e), bron);
             }
             return new Expr.Literal(bron.snippet(), new Datatype.Numeriek(geheel, dec, Datatype.Teken.ONBEPAALD, null), bron);
         }
