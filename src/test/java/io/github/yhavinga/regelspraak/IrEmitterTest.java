@@ -254,4 +254,36 @@ class IrEmitterTest {
         assertFalse(ownType.contains("\"node\":\"Onbekend\""),
                 () -> "de pro-rata-node mag niet de onbekend-sentinel dragen:\n" + ownType);
     }
+
+    @Test void bron_annotaties_op_de_draad_heel_of_niet() {
+        // uchar WF-082 (IR-SPEC ch. 3.1): the // Bron: statuutannotaties above a rule ride the
+        // ResolvedRegel as the optional bronAnnotaties array (after geldigheid), in source order;
+        // a rule WITHOUT annotations leaves no trace, and a blank annotation is dropped (an
+        // empty or blank form is verifier-ill-formed — written whole or not at all).
+        String src = """
+            Objecttype de Jutter
+                de vondstteller Numeriek (geheel getal);
+                het drempeloverschot Numeriek (geheel getal);
+                het hardheidsoverschot Numeriek (geheel getal);
+                de jaarsom Numeriek (geheel getal);
+            // Bron: art. 3 Jutterswet
+            // Bron: art. 5 Jutterswet
+            Regel hardheidsoverschot
+                geldig altijd
+                    Het hardheidsoverschot van een Jutter moet berekend worden als de vondstteller van de Jutter min 6.
+            Regel jaarsom
+                geldig altijd
+                    De jaarsom van een Jutter moet berekend worden als het drempeloverschot van de Jutter plus het hardheidsoverschot van de Jutter.
+            //Bron:
+            Regel drempeloverschot
+                geldig altijd
+                    Het drempeloverschot van een Jutter moet berekend worden als de vondstteller van de Jutter min 12.
+            """;
+        String c = emitCompact(src);
+        // emitCompact strips ALL whitespace, also inside string values.
+        assertTrue(c.contains("\"bronAnnotaties\":[\"art.3Jutterswet\",\"art.5Jutterswet\"]}"),
+                () -> "beide annotaties moeten in bronvolgorde na geldigheid staan:\n" + c);
+        assertEquals(c.indexOf("bronAnnotaties"), c.lastIndexOf("bronAnnotaties"),
+                () -> "alleen de geannoteerde regel draagt het veld (geen spoor bij afwezigheid, blanco vervalt):\n" + c);
+    }
 }

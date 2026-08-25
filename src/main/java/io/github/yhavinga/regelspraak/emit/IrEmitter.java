@@ -559,6 +559,11 @@ public final class IrEmitter {
         w.key("waarde"); expr(r.waarde());
         w.key("voorwaarde"); conditie(r.voorwaarde());
         w.key("geldigheid"); geldigheid(r.geldigheid());
+        // uchar extension field (WF-082): the // Bron: statuutannotaties, written whole or
+        // not at all — a blank annotation carries no citation and is dropped, and a rule
+        // without annotations leaves no trace on the wire.
+        List<String> bronnen = r.bronAnnotaties().stream().filter(s -> !s.isEmpty()).toList();
+        if (!bronnen.isEmpty()) { w.key("bronAnnotaties"); stringList(bronnen); }
         w.endObject();
         huidigSubject = null;
     }
