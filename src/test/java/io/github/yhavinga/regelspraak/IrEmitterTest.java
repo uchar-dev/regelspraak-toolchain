@@ -226,6 +226,47 @@ class IrEmitterTest {
                 () -> "het %-teken mag niet in het literal-lexeme zitten:\n" + c);
     }
 
+    @Test void datum_literal_lexeme_is_iso_snippet_in_bron() {
+        // uchar WF-084 (IR-SPEC ch. 4.1): a date literal's waarde is the BARE ISO lexeme the uchar
+        // executors parse (yyyy-mm-dd), NOT the Dutch day-first source snippet ("31-01-2024"). The
+        // old form ("waarde":"31-01-2024") was silently misread as year 31 (0036-07-16) by both
+        // executors — a differential-blind wrong answer. The source snippet stays in bron.
+        String src = """
+            Objecttype de Vondst
+                de vondstdag Datum in dagen;
+                is verjaard kenmerk (bijvoeglijk);
+            Regel verjaard
+                geldig altijd
+                    Een Vondst is verjaard
+                    indien zijn vondstdag eerder is dan 31-01-2024.
+            """;
+        String c = emitCompact(src);
+        assertTrue(c.contains(
+                "{\"node\":\"Literal\",\"waarde\":\"2024-01-31\",\"type\":{\"node\":\"DatumInDagen\"},\"bron\":\"31-01-2024\"}"),
+                () -> "de datum-literal moet het kale ISO-lexeme dragen, de bron-snippet in bron:\n" + c);
+        assertFalse(c.contains("\"waarde\":\"31-01-2024\""),
+                () -> "de day-first bron-snippet mag niet in het literal-lexeme zitten:\n" + c);
+    }
+
+    @Test void datum_literal_dedato_prefix_wordt_iso_lexeme() {
+        // The §13.2.19 "dd. " de-dato prefix (and the day-first order) belong to the source snippet,
+        // never to the parsed lexeme: "dd. 31-01-2024" emits waarde "2024-01-31", bron unchanged.
+        String src = """
+            Objecttype de Vondst
+                de vondstdag Datum in dagen;
+                is verjaard kenmerk (bijvoeglijk);
+            Regel verjaard
+                geldig altijd
+                    Een Vondst is verjaard
+                    indien zijn vondstdag eerder is dan dd. 31-01-2024.
+            """;
+        String c = emitCompact(src);
+        assertTrue(c.contains("{\"node\":\"Literal\",\"waarde\":\"2024-01-31\",\"type\":{\"node\":\"DatumInDagen\"}"),
+                () -> "de de-dato-literal moet het kale ISO-lexeme dragen:\n" + c);
+        assertFalse(c.contains("\"waarde\":\"dd.31-01-2024\"") || c.contains("\"waarde\":\"31-01-2024\""),
+                () -> "de bron-snippet (prefix of day-first) mag niet in het literal-lexeme zitten:\n" + c);
+    }
+
     @Test void tijdsevenredig_deel_draagt_basistype_geen_sentinel() {
         // §7.3.2/§13.4.17.58: the pro-rata node carries its BASE's value type on the wire — the
         // uchar spec forbids the unknown-type sentinel inside a structured node (its WF-034), so

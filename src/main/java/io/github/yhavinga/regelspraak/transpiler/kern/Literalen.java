@@ -14,11 +14,21 @@ import java.math.BigDecimal;
 public final class Literalen {
     private Literalen() {}
 
+    private static final java.util.regex.Pattern ISO_DATUM = java.util.regex.Pattern.compile("(\\d{4})-(\\d{1,2})-(\\d{1,2})");
     private static final java.util.regex.Pattern DATUM = java.util.regex.Pattern.compile("(\\d{1,2})-(\\d{1,2})-(\\d{4})");
     private static final java.util.regex.Pattern TIJD  = java.util.regex.Pattern.compile("(\\d{1,2}):(\\d{2}):(\\d{2})(?:\\.(\\d{1,3}))?");
 
-    /** Parse a §13.2.19 date literal ("dd. d-m-yyyy ...") to a LocalDate — its d-m-yyyy core, or null when absent. */
+    /** Parse a date literal to a LocalDate. Accepts both the canonical uchar IR lexeme — the strict
+     *  ISO {@code yyyy-mm-dd} form (WF-084) the emitter now writes into {@code waarde} and the back-ends
+     *  read — and the §13.2.19 RegelSpraak source snippet ({@code "dd. d-m-yyyy"}, Dutch day-first) the
+     *  emitter canonicalises. The year's field position (four digits, leading in ISO, trailing in the
+     *  snippet) disambiguates, so this stays the one place a date's text is interpreted. null when absent. */
     public static java.time.LocalDate parseDatum(String waarde) {
+        java.util.regex.Matcher iso = ISO_DATUM.matcher(waarde);
+        if (iso.find()) {
+            try { return java.time.LocalDate.of(Integer.parseInt(iso.group(1)), Integer.parseInt(iso.group(2)), Integer.parseInt(iso.group(3))); }
+            catch (RuntimeException e) { return null; }
+        }
         java.util.regex.Matcher d = DATUM.matcher(waarde);
         if (!d.find()) return null;
         try { return java.time.LocalDate.of(Integer.parseInt(d.group(3)), Integer.parseInt(d.group(2)), Integer.parseInt(d.group(1))); }

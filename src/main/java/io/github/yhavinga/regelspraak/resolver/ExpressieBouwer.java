@@ -8,6 +8,7 @@ import io.github.yhavinga.regelspraak.model.Eenheid;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
+import io.github.yhavinga.regelspraak.transpiler.kern.Literalen;
 import io.github.yhavinga.regelspraak.transpiler.kern.Tijdrekening;
 import io.github.yhavinga.regelspraak.parser.RegelSpraak.*;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -232,7 +233,14 @@ final class ExpressieBouwer {
             // precision), not a Datum in dagen — typing it as a bare date drops the time and lowers a
             // LocalDate into a LocalDateTime target (a Drools type error / silent wrong value).
             boolean metTijd = bron.snippet().matches(".*\\d{1,2}:\\d{2}:\\d{2}.*");
-            return new Expr.Literal(bron.snippet(), metTijd ? new Datatype.DatumTijd() : new Datatype.DatumInDagen(), bron);
+            if (metTijd) return new Expr.Literal(bron.snippet(), new Datatype.DatumTijd(), bron);
+            // uchar WF-084 (IR-SPEC ch. 4.1): a date literal's waarde is the BARE ISO lexeme the
+            // executors parse (yyyy-mm-dd, fixed field widths) — NOT the Dutch day-first source
+            // snippet ("31-01-2024"), which both executors read as ISO and so silently misparse as
+            // year 31. The shared reader already holds the parsed date; bron keeps the full source
+            // snippet. Mirror of the numeric-literal fix above (bare lexeme in waarde, snippet in bron).
+            String iso = Literalen.parseDatum(bron.snippet()).toString();
+            return new Expr.Literal(iso, new Datatype.DatumInDagen(), bron);
         }
         if (p.ENUM_LITERAL() != null)   return new Expr.Literal(bron.snippet(), onbekend(), bron); // which Enumeratie is context-dependent
         if (p.rekenConstante() != null) {
