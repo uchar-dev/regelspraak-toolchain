@@ -3096,6 +3096,73 @@ class DrlTest {
         assertFalse(drl.contains("(leeg gewicht)"), () -> "een gelijke-delen tie heeft geen lege-gewicht Fout:\n" + drl);
     }
 
+    // §13.4.10 verdeling met een rule-voorwaarde ("indien …"): the whole lowered family — share, §9.7.5 rest,
+    // §9.7.6 (leeg gewicht) + (leeg of negatief maximum) — must gate on it. naar-rato + maximum + rest emits all four.
+    private static final String VERDELING_VOORWAARDE_SRC = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+                de restant Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+                de maximum Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel indien groot genoeg
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - naar rato van de gewicht,
+                    - met een maximum van de maximum,
+                    Als onverdeelde rest blijft de restant van een pot over
+                    indien de totaal van een pot groter is dan 100.
+            """;
+
+    private static final String VERDELING_REST_GEEN_VW_SRC = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+                de restant Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+                de gewicht Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - naar rato van de gewicht,
+                    Als onverdeelde rest blijft de restant van een pot over.
+            """;
+
+    @Test void verdeling_voorwaarde_gate_op_de_hele_gelowerde_familie() {
+        // §13.4.10: a verdeling voorwaarde gates the WHOLE lowered family — the share rule, the §9.7.5 onverdeelde-rest
+        // rule AND the §9.7.6 Fout companions each splice it into their bron pattern, so a false gate writes NOTHING
+        // (not a share, not a rest, not a Fout). Regression for the bug where v.voorwaarde() was silently dropped and
+        // the split ran unconditionally.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(VERDELING_VOORWAARDE_SRC));
+        assertFalse(drl.contains("onopgelost verdeling"), () -> "de verdeling mag geen no-op marker zijn:\n" + drl);
+        // one gate per lowered rule: share, onverdeelde rest, (leeg gewicht), (leeg of negatief maximum) = 4
+        assertEquals(4, drl.split("totaal > new java\\.math\\.BigDecimal\\(\"100\"\\)", -1).length - 1,
+                () -> "de voorwaarde moet in elke gelowerde regel (share, rest, 2 Fout-companions) staan:\n" + drl);
+        assertTrue(drl.contains("$src : Pot( totaal > new java.math.BigDecimal(\"100\") )"),
+                () -> "de share-regel mist de voorwaarde-gate:\n" + drl);
+        assertTrue(drl.contains("$src : Pot( totaal != null, totaal > new java.math.BigDecimal(\"100\") )"),
+                () -> "de onverdeelde-rest-regel mist de voorwaarde-gate:\n" + drl);
+    }
+
+    @Test void verdeling_onverdeelde_rest_vereist_ten_minste_een_ontvanger() {
+        // §9.7.5: the onverdeelde-rest rule fires only when a recipient actually exists — an "exists <Doel>(<filter>)"
+        // clause. Without it a verdeling with NO recipients sums 0 shares and writes restant = totaal; ref/clingo pin
+        // restant leeg. Regression for that no-recipient overwrite.
+        String drl = DrlTranspiler.transpile(Resolver.resolve(VERDELING_REST_GEEN_VW_SRC));
+        assertTrue(drl.contains("(onverdeelde rest)"), () -> "geen onverdeelde-rest regel:\n" + drl);
+        assertTrue(drl.contains("exists Deelnemer( pot == $src, gewicht != null )"),
+                () -> "de onverdeelde-rest-regel moet ten minste één ontvanger eisen (exists):\n" + drl);
+    }
+
     private static final String MINMAX_SET_SRC = """
         Domein Bedrag is van het type Numeriek (getal met 2 decimalen) met eenheid €
         Objecttype de Vlucht (mv: Vluchten)

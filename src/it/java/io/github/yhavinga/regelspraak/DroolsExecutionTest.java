@@ -3084,6 +3084,67 @@ class DroolsExecutionTest {
                 () -> "de onverdeelde rest moet zich naar 1 corrigeren, niet op 0 blijven staan, kreeg " + p.getRestant());
     }
 
+    @Test void verdeling_voorwaarde_gate_deelt_alleen_als_de_conditie_waar_is() {
+        // §13.4.10: a verdeling "indien <conditie>" gates the split. A pot below the threshold distributes NOTHING (its
+        // recipients stay leeg); a pot above it distributes exactly as an ungated verdeling would. Regression for the
+        // dropped-voorwaarde bug (the split ran unconditionally). Two pots in one session prove the per-source gate.
+        String src = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel indien groot genoeg
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld in gelijke delen indien de totaal van een pot groter is dan 100.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("Pot( totaal > new java.math.BigDecimal(\"100\") )"), () -> "voorwaarde-gate ontbreekt:\n" + drl);
+
+        KieSession sessie = build(drl).newKieSession();
+        Pot laag = new Pot(); laag.setTotaal(new BigDecimal("40"));       // gate false -> geen uitkering
+        Deelnemer l1 = new Deelnemer(); l1.setPot(laag);
+        Deelnemer l2 = new Deelnemer(); l2.setPot(laag);
+        Pot hoog = new Pot(); hoog.setTotaal(new BigDecimal("900"));      // gate true -> 900/3 = 300 elk
+        Deelnemer h1 = new Deelnemer(); h1.setPot(hoog);
+        Deelnemer h2 = new Deelnemer(); h2.setPot(hoog);
+        Deelnemer h3 = new Deelnemer(); h3.setPot(hoog);
+        for (Object o : new Object[]{laag, l1, l2, hoog, h1, h2, h3}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertNull(l1.getAandeel(), "gate false: geen aandeel");
+        assertNull(l2.getAandeel(), "gate false: geen aandeel");
+        for (Deelnemer d : new Deelnemer[]{h1, h2, h3})
+            assertEquals(0, new BigDecimal("300").compareTo(d.getAandeel()), () -> "gate true: 900/3 = 300, kreeg " + d.getAandeel());
+    }
+
+    @Test void verdeling_zonder_ontvangers_laat_de_onverdeelde_rest_leeg() {
+        // §9.7.5: a pot WITH recipients keeps total − Σshares as its rest; a pot with NO recipients distributes nothing,
+        // so its rest stays leeg — NOT restant = totaal (the pre-fix overwrite). ref/clingo pin it leeg (golden
+        // jutterswet-gelijkdeling). Two pots prove the per-source guard.
+        RegelSpraakModel m = Resolver.resolve(VERDELING_REST_SRC);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        KieSession sessie = build(drl).newKieSession();
+        Pot metOntvangers = new Pot(); metOntvangers.setTotaal(new BigDecimal("1001"));
+        Deelnemer d1 = new Deelnemer(); d1.setPot(metOntvangers); d1.setGewicht(new BigDecimal("3"));
+        Deelnemer d2 = new Deelnemer(); d2.setPot(metOntvangers); d2.setGewicht(new BigDecimal("2"));
+        Pot geenOntvangers = new Pot(); geenOntvangers.setTotaal(new BigDecimal("40"));   // GEEN deelnemers
+        for (Object o : new Object[]{metOntvangers, d1, d2, geenOntvangers}) sessie.insert(o);
+        sessie.fireAllRules();
+        sessie.dispose();
+
+        assertEquals(0, new BigDecimal("1").compareTo(metOntvangers.getRestant()),
+                () -> "rest met ontvangers = 1001-600-400 = 1, kreeg " + metOntvangers.getRestant());
+        assertNull(geenOntvangers.getRestant(), "een verdeling zonder ontvangers laat de rest leeg (geen restant = totaal)");
+    }
+
     static final String VERDELING_MAX_SRC = """
             Objecttype de Pot
                 de totaal Numeriek (geheel getal);

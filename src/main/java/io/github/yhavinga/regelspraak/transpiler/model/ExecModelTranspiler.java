@@ -4448,6 +4448,17 @@ public final class ExecModelTranspiler {
         if (writers > 1) return skipList("verdeling (>1 verdeling schrijft hetzelfde doel-attribuut — agenda-order-afhankelijke waarde, principiële skip): " + v.naam());
         Class<?> bronClass = factClass(bron), doelClass = factClass(doel);
         if (bronClass == null || doelClass == null) return skipList("verdeling (geen fact-class): " + v.naam());
+        // §13.4.10: the verdeling voorwaarde gates the WHOLE lowered family (shares, §9.7.5 rest, §9.7.6 Fout
+        // companions) — a false gate must write NOTHING. Each sub-rule applies it to its $src pattern (gateVoorwaarde);
+        // probe its exec-scope once here. A voorwaarde outside scope, or one that needs a hoisted join/aggregation
+        // (an in-pattern form has none), makes the whole verdeling an honest skip rather than distribute
+        // unconditionally (mirrors DrlTranspiler's no-op marker).
+        if (v.voorwaarde() != null) {
+            Variable probe = DSL.declarationOf(bronClass, "$src");
+            Gate g = voorwaarde(v.voorwaarde(), PatternDSL.pattern(probe), bron, probe);
+            if (g == null || !g.extra().isEmpty())
+                return skipList("verdeling (voorwaarde buiten exec-model scope): " + v.naam());
+        }
 
         List<Rule> rules = new ArrayList<>();
         rules.add(opVolgorde ? opVolgordeRegel(v, join, bronClass, doelClass)
@@ -4464,14 +4475,23 @@ public final class ExecModelTranspiler {
         if (tieNaarRato && incClass != null) {
             String w = v.ratoAttribuut();
             rules.add(existsFoutRegel(v.naam() + " (leeg gewicht)", v.naam(), bronClass, doelClass, join, incClass,
-                    d -> RegelSpraakRuntime.get(d, w) == null, v.geldigheid()));
+                    d -> RegelSpraakRuntime.get(d, w) == null, v));
         }
         if (v.maximumAttribuut() != null && incClass != null) {
             String mx = v.maximumAttribuut();
             rules.add(existsFoutRegel(v.naam() + " (leeg of negatief maximum)", v.naam(), bronClass, doelClass, join, incClass,
-                    d -> { Object m = RegelSpraakRuntime.get(d, mx); return m == null || ((BigDecimal) m).signum() < 0; }, v.geldigheid()));
+                    d -> { Object m = RegelSpraakRuntime.get(d, mx); return m == null || ((BigDecimal) m).signum() < 0; }, v));
         }
         return rules;
+    }
+
+    /** §13.4.10: gate a verdeling sub-rule's {@code $src} pattern on the verdeling voorwaarde so the whole lowered
+     *  family fires together (mirrors DrlTranspiler's splice of the voorwaarde into every bron pattern). {@link
+     *  #verdeling} has already checked the voorwaarde is in exec-scope with no hoisted CE, so the gate is non-null
+     *  with empty extra; an empty voorwaarde leaves the pattern unchanged. */
+    private PatternDSL.PatternDef gateVoorwaarde(PatternDSL.PatternDef srcPat, Variable srcVar, ResolvedVerdeling v) {
+        if (v.voorwaarde() == null) return srcPat;
+        return voorwaarde(v.voorwaarde(), srcPat, v.bronType(), srcVar).pattern();
     }
 
     /** §13.4.10 GELIJKE_DELEN / NAAR_RATO: one accumulate folds the recipients joined to {@code $src} (count, or the
@@ -4492,6 +4512,7 @@ public final class ExecModelTranspiler {
         Variable srcVar = DSL.declarationOf(bronClass, "$src");
         PatternDSL.PatternDef srcPat = PatternDSL.pattern(srcVar).watch(prop(bronAttr));
         srcPat = geldigGuard(srcPat, v.geldigheid());   // §4.2 window (Pot source; the rekendatum global is constant, no extra reactivity)
+        srcPat = gateVoorwaarde(srcPat, srcVar, v);     // §13.4.10 voorwaarde gate (whole family)
 
         // accumulate the recipients joined to $src: count (gelijke delen) or sum of the present weights (naar rato).
         Variable cVar = DSL.declarationOf(doelClass, "$c_" + (seq++));
@@ -4554,6 +4575,7 @@ public final class ExecModelTranspiler {
         Variable srcVar = DSL.declarationOf(bronClass, "$src");
         PatternDSL.PatternDef srcPat = PatternDSL.pattern(srcVar).watch(prop(bronAttr));
         srcPat = geldigGuard(srcPat, v.geldigheid());   // §4.2 window (Pot source; the rekendatum global is constant, no extra reactivity)
+        srcPat = gateVoorwaarde(srcPat, srcVar, v);     // §13.4.10 voorwaarde gate (whole family)
 
         // collect every recipient joined to $src into one index-stable list.
         Variable pVar = DSL.declarationOf(doelClass, "$p_" + (seq++));
@@ -4589,11 +4611,12 @@ public final class ExecModelTranspiler {
      *  flag" representation); this only surfaces the Fout. Mirrors the DRL "(leeg gewicht)"/"(leeg of negatief maximum)" rules. */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private Rule existsFoutRegel(String compNaam, String hostNaam, Class<?> bronClass, Class<?> doelClass, String join,
-                                 Class<?> incClass, Predicate1<Object> recipientFout, io.github.yhavinga.regelspraak.ir.Geldigheid geldigheid) {
+                                 Class<?> incClass, Predicate1<Object> recipientFout, ResolvedVerdeling v) {
         seq = 0;
         String fqcn = FACTS + ".Inconsistentie";
         Variable srcVar = DSL.declarationOf(bronClass, "$src");
-        PatternDSL.PatternDef srcPat = geldigGuard(PatternDSL.pattern(srcVar), geldigheid);   // §4.2 window
+        PatternDSL.PatternDef srcPat = geldigGuard(PatternDSL.pattern(srcVar), v.geldigheid());   // §4.2 window
+        srcPat = gateVoorwaarde(srcPat, srcVar, v);   // §13.4.10 voorwaarde gate (whole family)
         Variable dVar = DSL.declarationOf(doelClass, "$d_" + (seq++));
         PatternDSL.PatternDef dPat = PatternDSL.pattern(dVar)
                 .expr(nextId("fj"), (Variable) srcVar, (Predicate2) (d, s) -> RegelSpraakRuntime.get(d, join) == s)
@@ -4636,6 +4659,7 @@ public final class ExecModelTranspiler {
                 .expr(nextId("bnn"), (Predicate1) s -> RegelSpraakRuntime.get(s, bronAttr) != null)
                 .watch(prop(bronAttr));   // NOT prop(restAttr): the rest's own write must not re-wake it / the share rule
         srcPat = geldigGuard(srcPat, v.geldigheid());   // §4.2 window
+        srcPat = gateVoorwaarde(srcPat, srcVar, v);     // §13.4.10 voorwaarde gate (whole family)
         // not Doel( filter, doelAttr == null ) — no recipient is mid-assignment. The Deelnemer patterns stay
         // class-reactive (they MUST react to aandeel becoming set); they write no Deelnemer, so they cannot loop.
         Variable notVar = DSL.declarationOf(doelClass, "$u0_" + (seq++));
@@ -4656,8 +4680,13 @@ public final class ExecModelTranspiler {
             // only the no-op re-propagation is suppressed — the source pattern already watches bronAttr (not restAttr).
             werkBijReflectief(drools, s, restAttr, totaal.subtract(sum == null ? BigDecimal.ZERO : sum));
         };
+        // §9.7.5: require ≥1 recipient in the distribution set — a verdeling with NO recipients distributes nothing, so
+        // its rest stays leeg (ref/clingo pin it so); without this the accumulate Σ over the empty set is 0 and the rule
+        // would write restant = totaal. Mirrors the DRL "exists <Doel>(<filter>)" guard.
+        Variable exVar = DSL.declarationOf(doelClass, "$e_" + (seq++));
+        PatternDSL.PatternDef exPat = recipientFilterPattern(exVar, srcVar, join, vereisGewicht, gewAttr, doelAttr);
         return PatternDSL.rule(kop(v.naam() + " (onverdeelde rest)")).attribute(Rule.Attribute.NO_LOOP, true)
-                .build(srcPat, DSL.not(notPat), acc, DSL.on(srcVar, (Variable) sumVar).execute(body));
+                .build(srcPat, DSL.exists(exPat), DSL.not(notPat), acc, DSL.on(srcVar, (Variable) sumVar).execute(body));
     }
 
     private List<Rule> skipList(String reason) { overgeslagen.add(reason); return List.of(); }

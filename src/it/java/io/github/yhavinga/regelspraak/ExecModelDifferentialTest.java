@@ -3684,6 +3684,79 @@ class ExecModelDifferentialTest {
         assertNull(zonder.getUitkomst(), "een null-relatie leest leeg (§6.9), niet een NPE");
     }
 
+    @Test void verdeling_voorwaarde_gate_exec_model_deelt_alleen_bij_ware_conditie() {
+        // §13.4.10 exec-model mirror of the DRL voorwaarde-gate: a pot below the threshold distributes NOTHING, one
+        // above it distributes normally. Proves the exec-model back-end gates the whole verdeling family on v.voorwaarde().
+        String src = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel indien groot genoeg
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld in gelijke delen indien de totaal van een pot groter is dan 100.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> "de verdeling moet loweren: " + em.overgeslagen());
+        KieSession s = KieBaseBuilder.createKieBaseFromModel(em.model()).newKieSession();
+        Pot laag = new Pot(); laag.setTotaal(new BigDecimal("40"));
+        Deelnemer l1 = new Deelnemer(); l1.setPot(laag);
+        Pot hoog = new Pot(); hoog.setTotaal(new BigDecimal("900"));
+        Deelnemer h1 = new Deelnemer(); h1.setPot(hoog);
+        Deelnemer h2 = new Deelnemer(); h2.setPot(hoog);
+        Deelnemer h3 = new Deelnemer(); h3.setPot(hoog);
+        for (Object o : new Object[]{laag, l1, hoog, h1, h2, h3}) s.insert(o);
+        s.fireAllRules();
+        s.dispose();
+        assertNull(l1.getAandeel(), "gate false: geen aandeel (exec-model)");
+        for (Deelnemer d : new Deelnemer[]{h1, h2, h3})
+            assertEquals(0, new BigDecimal("300").compareTo(d.getAandeel()), () -> "gate true: 900/3 = 300 (exec-model), kreeg " + d.getAandeel());
+    }
+
+    @Test void verdeling_zonder_ontvangers_rest_leeg_exec_model() {
+        // §9.7.5 exec-model mirror: a pot WITH recipients keeps the rest; a pot with NO recipients leaves it leeg (not
+        // restant = totaal). Same shape ref/clingo pin (golden jutterswet-gelijkdeling); proves the exec-model rest rule
+        // requires ≥1 recipient.
+        String src = """
+            Objecttype de Pot
+                de totaal Numeriek (geheel getal);
+                de restant Numeriek (geheel getal);
+            Objecttype de Deelnemer
+                de aandeel Numeriek (geheel getal);
+            Feittype Pot over deelnemers
+                de pot Pot
+                de deelnemer Deelnemer
+            Eén pot wordt verdeeld over meerdere deelnemers
+            Regel verdeel gelijk met rest
+                geldig altijd
+                    De totaal van een pot wordt verdeeld over de aandeel van alle deelnemers van een pot, waarbij wordt verdeeld:
+                    - in gelijke delen,
+                    - afgerond op 0 decimalen naar beneden
+                    Als onverdeelde rest blijft de restant van een pot over.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> "de verdeling+rest moet loweren: " + em.overgeslagen());
+        KieSession s = KieBaseBuilder.createKieBaseFromModel(em.model()).newKieSession();
+        Pot metOntvangers = new Pot(); metOntvangers.setTotaal(new BigDecimal("1001"));
+        Deelnemer d1 = new Deelnemer(); d1.setPot(metOntvangers);
+        Deelnemer d2 = new Deelnemer(); d2.setPot(metOntvangers);
+        Pot geenOntvangers = new Pot(); geenOntvangers.setTotaal(new BigDecimal("40"));   // GEEN deelnemers
+        for (Object o : new Object[]{metOntvangers, d1, d2, geenOntvangers}) s.insert(o);
+        s.fireAllRules();
+        s.dispose();
+        assertEquals(0, new BigDecimal("1").compareTo(metOntvangers.getRestant()),
+                () -> "rest met ontvangers = 1001-500-500 = 1 (exec-model), kreeg " + metOntvangers.getRestant());
+        assertNull(geenOntvangers.getRestant(), "geen ontvangers -> rest leeg (exec-model)");
+    }
+
     // ---- Phase F fixtures: §7.1 "het totaal van" a temporal attribute (scalar timeline fold) ----
     /** A Segment(van, tot, waarde) — a null waarde marks a kenmerk's true-period; a string waarde is a value tijdvak. */
     private static Segment seg(int y1, int m1, int d1, int y2, int m2, int d2, String w) {

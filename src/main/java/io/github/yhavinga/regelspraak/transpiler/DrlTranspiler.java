@@ -664,6 +664,13 @@ public final class DrlTranspiler {
         return null;
     }
 
+    /** Splice a §13.4.10 verdeling voorwaarde into a bron pattern's constraint list: an empty voorwaarde leaves the
+     *  base constraint byte-identical (the pre-voorwaarde output), otherwise the two are comma-joined. */
+    private static String constraintMet(String basis, String voorwaarde) {
+        if (voorwaarde.isEmpty()) return basis;
+        return basis.isEmpty() ? voorwaarde : basis + ", " + voorwaarde;
+    }
+
     /** §13.4.10 verdeling. Two methods have a single forward-rule form: EQUAL SHARES binds the source,
      *  counts the recipients joined to it, and gives each total/count; NAAR RATO (proportional) instead
      *  SUMS each recipient's weight attribute and gives each total·weight/sum. Both fold the recipients in
@@ -705,12 +712,30 @@ public final class DrlTranspiler {
                 .render());
             return;
         }
+        // §13.4.10: the verdeling voorwaarde gates the WHOLE lowered family (the share rule, the §9.7.5 onverdeelde
+        // rest AND the §9.7.6 Fout companions) — a false gate must write NOTHING (not a share, not a rest). Lower it
+        // to an in-pattern bron constraint spliced into every rule's bron pattern. A voorwaarde that needs a hoisted
+        // join/aggregation has no in-pattern form here, so the whole verdeling is an honest no-op marker rather than
+        // distribute unconditionally (mirrors the exec-model skip).
+        Acc vwAcc = new Acc();
+        String vw = "";
+        if (v.voorwaarde() != null) {
+            Frag vwFrag = conditieInline(vwAcc, v.voorwaarde(), bron, true);
+            if (vwFrag.marker() || !vwAcc.clausules.isEmpty()) {
+                out.append(new Regel(v.naam())
+                    .clausule("// onopgelost verdeling (voorwaarde): " + commentVeilig(v.naam()))
+                    .clausule("eval(true)")
+                    .render());
+                return;
+            }
+            vw = vwFrag.text();
+        }
         String j = ident(join, false) + " == $src";
         // a §9.7.6 empty-weight Fout applies whenever a naar-rato split is present (top-level OR the op-volgorde tie)
         boolean tieNaarRato = rato || (opVolgorde && v.ratoAttribuut() != null);
         // emit the share rule; both builders return the recipient filter the onverdeelde-rest rule reuses
-        String doelFilter = opVolgorde ? opVolgordeRegel(v, bron, doel, j)
-                                       : gelijkOfRatoRegel(v, bron, doel, j, gelijk);
+        String doelFilter = opVolgorde ? opVolgordeRegel(v, bron, doel, j, vw)
+                                       : gelijkOfRatoRegel(v, bron, doel, j, gelijk, vw);
         if (v.restantAttribuut() != null) {
             // §9.7.5 onverdeelde rest: the verdeler keeps total − Σ(distributed shares). A SEPARATE rule that
             // modifies the SOURCE (not the recipients), so it cannot cancel the per-recipient activations. It
@@ -724,7 +749,8 @@ public final class DrlTranspiler {
             // modify does not re-trigger the share rule (property reactivity) and the recomputation is a fixpoint.
             String doelP = ident(doel.naam, true), doelN = ident(v.doelAttribuut(), false);
             out.append(new Regel(v.naam() + " (onverdeelde rest)")
-                .clausule("$src : " + ident(bron.naam, true) + "( " + ident(v.bronAttribuut(), false) + " != null )")
+                .clausule("$src : " + ident(bron.naam, true) + "( " + constraintMet(ident(v.bronAttribuut(), false) + " != null", vw) + " )")
+                .clausule("exists " + doelP + "( " + doelFilter + " )")
                 .clausule("not " + doelP + "( " + doelFilter + ", " + doelN + " == null )")
                 .clausule("accumulate( $u : " + doelP + "( " + doelFilter + ", " + doelN
                         + " != null ) ; $uit : sum($u." + getter(v.doelAttribuut()) + "()) )")
@@ -741,7 +767,7 @@ public final class DrlTranspiler {
             // uniciteitUnie does), so the idempotency guard keys off it.
             String wNaam = ident(v.ratoAttribuut(), false);
             out.append(new Regel(v.naam() + " (leeg gewicht)")
-                .clausule(SUBJECT + " : " + ident(bron.naam, true) + "(  )")
+                .clausule(SUBJECT + " : " + ident(bron.naam, true) + "( " + constraintMet("", vw) + " )")
                 .clausule("exists " + ident(doel.naam, true) + "( " + ident(join, false) + " == " + SUBJECT
                         + ", " + wNaam + " == null )")
                 .geldigheid(v.geldigheid())
@@ -757,7 +783,7 @@ public final class DrlTranspiler {
             // Inconsistentie} fout representation as elsewhere.
             String mNaam = ident(v.maximumAttribuut(), false);
             out.append(new Regel(v.naam() + " (leeg of negatief maximum)")
-                .clausule(SUBJECT + " : " + ident(bron.naam, true) + "(  )")
+                .clausule(SUBJECT + " : " + ident(bron.naam, true) + "( " + constraintMet("", vw) + " )")
                 .clausule("exists " + ident(doel.naam, true) + "( " + ident(join, false) + " == " + SUBJECT
                         + ", " + mNaam + " == null || " + mNaam + ".signum() < 0 )")
                 .geldigheid(v.geldigheid())
@@ -771,8 +797,8 @@ public final class DrlTranspiler {
      *  gets total/count or total·weight/Σweight, then the §9.7.3 cap (rsPlafond, naar-rato only) and the §9.7.4
      *  floor (rsAfronding). Returns the recipient filter the onverdeelde-rest rule reuses. */
     private String gelijkOfRatoRegel(io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v, Objecttype bron, Objecttype doel,
-                                     String j, boolean gelijk) {
-        Regel rule = new Regel(v.naam()).clausule("$src : " + ident(bron.naam, true) + "(  )");
+                                     String j, boolean gelijk, String voorwaarde) {
+        Regel rule = new Regel(v.naam()).clausule("$src : " + ident(bron.naam, true) + "( " + constraintMet("", voorwaarde) + " )");
         String aandeel;       // the per-recipient value set into the modify
         String doelFilter;    // the recipient pattern's constraints (reused by the onverdeelde-rest rule)
         if (gelijk) {
@@ -830,7 +856,7 @@ public final class DrlTranspiler {
      *  reflects the capped+floored shares (Tabel 18) — not a post-hoc clamp against the full plafond. {@code from}
      *  a Map binds it once (a Map is not a Collection, so it is not iterated). Returns the recipient filter (the
      *  bare join — every recipient is collected) for the onverdeelde-rest rule. */
-    private String opVolgordeRegel(io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v, Objecttype bron, Objecttype doel, String j) {
+    private String opVolgordeRegel(io.github.yhavinga.regelspraak.ir.ResolvedVerdeling v, Objecttype bron, Objecttype doel, String j, String voorwaarde) {
         fnImport("rsVerdeelOpVolgorde");
         String doelP = ident(doel.naam, true);
         StringBuilder acc = new StringBuilder("$facts : collectList($p), $groep : collectList($p."
@@ -846,7 +872,7 @@ public final class DrlTranspiler {
         }
         String dArg = v.afrondingDecimalen() != null ? "Integer.valueOf(" + v.afrondingDecimalen() + ")" : "null";
         out.append(new Regel(v.naam())
-            .clausule("$src : " + ident(bron.naam, true) + "(  )")
+            .clausule("$src : " + ident(bron.naam, true) + "( " + constraintMet("", voorwaarde) + " )")
             .clausule("accumulate( $p : " + doelP + "( " + j + " ) ; " + acc + " )")
             .clausule("$shares : java.util.Map() from rsVerdeelOpVolgorde( $src." + getter(v.bronAttribuut())
                     + "(), $facts, $groep, " + (v.afnemend() ? "false" : "true") + ", " + gewArg + ", " + maxArg
