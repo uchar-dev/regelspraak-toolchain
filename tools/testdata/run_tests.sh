@@ -5,7 +5,7 @@
 #      example as CSV, convert it back with the tool, splice the tool's Beslistabel
 #      block onto the ORIGINAL example's pre-table prefix (its comments + Objecttype
 #      declaration), and assert BYTE-EQUAL DRL against the original via the compiled
-#      Resolver --drl path. Byte-equal DRL proves the tool reproduces the table block
+#      RegelSpraakCli --drl path. Byte-equal DRL proves the tool reproduces the table block
 #      equivalently at the transpiler level. The CSV metadata `naam` matches the
 #      original beslistabelnaam so no name difference can leak into the DRL.
 #   V2 ERROR PATHS: pipe cell / wrong column count / missing header each exit 1 with

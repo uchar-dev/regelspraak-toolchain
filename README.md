@@ -19,7 +19,7 @@ and **[docs/](docs/)** for the architecture and runbooks.
   **executable-model** back-end (the shippable transport since commit `9ce4ed0`)
   and a **DRL-text** back-end (retained as the differential oracle + debug
   emitter).
-- **Generate the fact model** — `Resolver --facts` (or `make facts`) emits
+- **Generate the fact model** — `RegelSpraakCli --facts` (or `make facts`) emits
   exactly the beans a resolved model implies; `ContractValidator` fails fast on
   drift.
 - **Author-side scenariotoetsen** — a rule analyst writes rules *and* expected
@@ -112,7 +112,7 @@ Known limit: `// Bron:`-annotaties from `.rgs` sources are skipped by the lexer,
 so the uitleg cannot yet cite wetsartikelen; carrying comments on a hidden
 channel is the natural next step.
 
-**Regelgraaf — the model as a picture.** `Resolver --graaf out.html bron.rgs…`
+**Regelgraaf — the model as a picture.** `RegelSpraakCli --graaf out.html bron.rgs…`
 (or `make graaf FILE=…`) renders the producer/consumer graph of the resolved IR:
 rules, attributen and kenmerken as nodes, dataflow as edges, with two colours
 that matter — **inputs** (nothing produces them: exactly the request/koppelvlak

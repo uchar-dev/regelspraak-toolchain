@@ -101,6 +101,9 @@ public final class ScenarioResolver {
         // to the same DefinitionResolver.build + RuleChecker.check that Resolver.resolve calls. ANTLR's typed
         // accessors scan `children` dynamically, so re-parenting the children is enough — no change to those
         // classes, so Resolver.resolve stays byte-identical.
+        // NB post-inversion: RuleChecker and KenmerkMatcher are package-private in the VENDORED frontend;
+        // this class reaches them only via the split `resolver` package across the two source roots. A
+        // uchar-side refactor of either breaks this file at re-vendor time — see vendor/uchar-frontend/README.md.
         RegelSpraakDocumentContext prod = productieDocument(test);
         RegelSpraakModel model = new DefinitionResolver().build(prod);
         model.diagnostics.addAll(syntax);

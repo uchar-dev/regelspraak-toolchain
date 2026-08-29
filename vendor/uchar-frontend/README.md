@@ -44,3 +44,14 @@ The vendored `src/test/java` tree is part of the pinned snapshot (and is
 covered by the drift gate) but is **not** compiled by the toolchain: those are
 the frontend's own gate-10 tests in uchar. The vendored `Makefile` is the
 frontend's stand-alone jar-only build; the toolchain does not invoke it.
+
+## Load-bearing package-private entry points
+
+The toolchain-local `resolver/ScenarioResolver.java` deliberately lives in the
+same `resolver` package as the vendored frontend (a split package across the
+two source roots) and calls two **package-private** frontend classes:
+`RuleChecker` (`new RuleChecker(model).check(...)`) and
+`KenmerkMatcher.vind(...)`. A uchar-side refactor of these non-public classes
+is legitimate there but surfaces here only as a compile failure at the next
+re-vendor — loud, but not explained by the byte-drift gate. Treat them as
+consumed API when evolving the frontend.

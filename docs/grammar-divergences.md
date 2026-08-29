@@ -2376,7 +2376,7 @@ the emitted layout differs from a hand-aligned original yet parses and lowers id
 **Round-trip gate (byte-equal DRL).** A CSV render of the two §12 examples — `examples/beslistabel/spec12-woonregio-factor.rgs`
 (1 enum-OR condition column) and `.../spec12-belasting-reisduur-band.rgs` (2 EN-columns with `n.v.t.` open ends) —
 converts to a `Beslistabel` block that, spliced onto the original's pre-table prefix (comments + `Objecttype`
-declaration), produces **byte-identical DRL** via `Resolver --drl --allow-markers` (the CSV `naam` matches the
+declaration), produces **byte-identical DRL** via `RegelSpraakCli --drl --allow-markers` (the CSV `naam` matches the
 original beslistabelnaam so no name difference leaks). Fixtures and the runner live under `tools/testdata/`
 (`*.csv`, `*.expected.rgs`, `run_tests.sh`): V1 the DRL differential, V2 the three error paths (pipe cell / wrong
 column count / missing header — each exit 1 with row+column, nothing written), V3 the quoting/whitespace survival.

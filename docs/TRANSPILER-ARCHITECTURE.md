@@ -41,7 +41,7 @@ engine/ (module)     RegelSpraakEngine: resolve -> validate contract -> exec-mod
 Invariants the tests enforce:
 
 - **Fail-closed, never silent**: everything a back-end cannot lower is an honest compilable no-op
-  (MARKER) or an explicit SKIP, each with a deduplicated WARNING; `Resolver --drl` exits non-zero on any
+  (MARKER) or an explicit SKIP, each with a deduplicated WARNING; `RegelSpraakCli --drl` exits non-zero on any
   marker unless `--allow-markers`.
 - **Manifest parity**: the differential suite diffs the two back-ends' manifests per fixture; any
   legitimate divergence is enumerated in an explicit allowlist with a reason — no bare skip counts.

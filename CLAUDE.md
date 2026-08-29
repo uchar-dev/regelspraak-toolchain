@@ -99,8 +99,10 @@ See `docs/ANTLR-HOWTO.md` for the full workflow and the lexer/parser gotchas.
 
 ## From-scratch discipline (how it was built — and how to extend it)
 
-This is context now, not a task list. The grammar (`grammar/RegelSpraakLexer.g4`,
-`grammar/RegelSpraak.g4`) was grown incrementally against real input — the TOKA
+This is context now, not a task list. The grammar (now vendored, read-only:
+`vendor/uchar-frontend/frontends/regelspraak/grammar/*.g4` — a grammar change
+is a uchar spec-first change plus a SPEC_REV re-vendor, never a local edit)
+was grown incrementally against real input — the TOKA
 casus and the spec's worked examples — smoke-tested with `make grun`. The
 resolver walks the parse tree with the generated visitor, builds the resolved AST
 (the transpiler's IR), and enforces the typeringen matrix. The transpiler, engine,

@@ -22,8 +22,8 @@ jar — no Maven, no network. Re-fetch on a fresh clone with:
 
 RegelSpraak is split into a **lexer** grammar and a **parser** grammar:
 
-    grammar/RegelSpraakLexer.g4    // lexer grammar RegelSpraakLexer;   (the tokens)
-    grammar/RegelSpraak.g4         // parser grammar RegelSpraak;
+    vendor/uchar-frontend/frontends/regelspraak/grammar/RegelSpraakLexer.g4    // lexer grammar RegelSpraakLexer;   (the tokens)
+    vendor/uchar-frontend/frontends/regelspraak/grammar/RegelSpraak.g4         // parser grammar RegelSpraak;
                                    //   options { tokenVocab=RegelSpraakLexer; }
 
 **Generate the lexer first.** It writes `RegelSpraakLexer.tokens`; the parser
@@ -33,10 +33,10 @@ the order and passes `-lib` so the parser finds the fresh `.tokens`:
 
     java -jar lib/antlr-4.13.2-complete.jar -Dlanguage=Java -visitor -no-listener \
         -package io.github.yhavinga.regelspraak.parser -o gen/io/github/yhavinga/regelspraak/parser \
-        grammar/RegelSpraakLexer.g4
+        $(GRAMMAR_DIR)/RegelSpraakLexer.g4
     java -jar lib/antlr-4.13.2-complete.jar -Dlanguage=Java -visitor -no-listener \
         -package io.github.yhavinga.regelspraak.parser -lib gen/io/github/yhavinga/regelspraak/parser \
-        -o gen/io/github/yhavinga/regelspraak/parser grammar/RegelSpraak.g4
+        -o gen/io/github/yhavinga/regelspraak/parser $(GRAMMAR_DIR)/RegelSpraak.g4
 
 `-visitor -no-listener`: we walk the tree with a visitor (the resolver returns
 values bottom-up); we don't use the listener, so we don't generate it.

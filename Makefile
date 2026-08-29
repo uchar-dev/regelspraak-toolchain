@@ -159,7 +159,7 @@ verify-negatief-corpus: compile
 # Transpile a .rgs file to Drools (DRL): parse -> resolve -> emit DRL on stdout.
 # --allow-markers: this is an inspection tool, so show the DRL even when a construct
 # stays an honest marker (the dekking-WARNINGs still land on stderr). A bare
-# `Resolver --drl` without the flag exits 3 on any marker — the CI-facing contract.
+# `RegelSpraakCli --drl` without the flag exits 3 on any marker — the CI-facing contract.
 drl: resolver
 	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.cli.RegelSpraakCli --drl --allow-markers $(FILE)
 
@@ -178,7 +178,7 @@ csv-beslistabel:
 # (examples/toka-scenarios/manifest) lists: toka-01..16 plus the reconciliatie/model-extensie companions. That
 # set resolves WITHOUT errors; the toka-2x regel files carry the known §4.1 datum+datum casus-quirk (see
 # CasusTest / the --facts error contract) and add no fact-model structure, so the beans are fully determined by
-# the foundation. `Resolver --facts` is model-level: it writes NOTHING when the model has errors, so this target
+# the foundation. `RegelSpraakCli --facts` is model-level: it writes NOTHING when the model has errors, so this target
 # doubles as a resolve gate. The generated beans need no external classpath (java.* only), so plain javac proves them.
 TOKA_MODEL_FOUNDATION := \
 	$(wildcard examples/toka/toka-0[1-9]-*.rgs) \
