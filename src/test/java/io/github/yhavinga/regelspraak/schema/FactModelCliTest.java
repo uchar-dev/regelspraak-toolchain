@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * Pins gate G6: the {@code Resolver --facts} CLI path (exposed as {@link Resolver#factsNaarDisk}) generates a
+ * Pins gate G6: the {@code RegelSpraakCli --facts} CLI path (exposed as {@link io.github.yhavinga.regelspraak.cli.RegelSpraakCli#factsNaarDisk}) generates a
  * fact-model that (a) COMPILES as pure-JDK beans and (b) SATISFIES {@link ContractValidator} for the model it
  * came from — generate-then-validate closes the loop, so the generator and the validator can never drift. The
  * fixture is the TOKA model foundation (the manifest's companion model files: examples/toka/toka-01..16 plus
