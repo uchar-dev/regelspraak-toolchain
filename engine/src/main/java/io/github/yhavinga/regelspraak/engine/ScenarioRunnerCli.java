@@ -203,10 +203,13 @@ public final class ScenarioRunnerCli {
             }
         }
         System.out.println("-------------------------------------------------------------------");
-        System.out.println("golden TOKA: " + valueOk + "/30 PASS, marker-exit-3: " + (markerOk ? "yes" : "no")
+        // 29 exit-0-scenario's sinds besluit 16Y (2026-08-29): toka-45 verwacht exit 1 in het
+        // manifest — de eenheid-identiteit-typering legt de dimensionele inconsistentie van die
+        // casus bloot (zie de manifestnoot). Een verdwenen of extra manifestregel valt hier op.
+        System.out.println("golden TOKA: " + valueOk + "/29 PASS, marker-exit-3: " + (markerOk ? "yes" : "no")
                 + "  (+" + otherOk + " andere manifestregels ok, " + fail + " mismatch)");
-        if (valueOk == 30 && fail == 0 && markerOk) {
-            System.out.println("golden TOKA: 30/30 PASS, marker-exit-3: ok");
+        if (valueOk == 29 && fail == 0 && markerOk) {
+            System.out.println("golden TOKA: 29/29 PASS, marker-exit-3: ok");
             return 0;
         }
         System.out.println("GOLDEN FAALT");

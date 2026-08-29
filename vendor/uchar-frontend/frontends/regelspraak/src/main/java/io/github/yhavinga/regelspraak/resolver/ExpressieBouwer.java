@@ -138,16 +138,12 @@ final class ExpressieBouwer {
      *  already do; the arithmetic path used to swallow it (p45). An Onbekend operand makes
      *  reken return ok (no claim), so no false positive on an unresolved sub-expression. */
     private Expr binairExpr(Expr.BinOp op, Expr links, Expr rechts, Bron bron, int line) {
-        // §4.4 Tabel 11: a unitless LITERAL/constant left times a unit-bearing right ("2 maal de looptijd(mnd)") carries
-        // the right's unit; an ATTRIBUTE left stays Onbekend (the known unitless-attribute × unit under-model tolerance, carded).
-        boolean unitlessLinksLiteraal = op == Expr.BinOp.MAAL && links instanceof Expr.Literal
-                && links.type() != null && links.type().isNumeriek() && links.type().eenheidOf() == null;
         // §6.11: "datum plus 2 kerstdagen" — a declared dagsoort as duration unit is a valid date shift
         // (day-by-day through the §9.8 predicate); the matrix itself cannot know the declared dagsoorten.
         boolean dagsoortRechts = (op == Expr.BinOp.PLUS || op == Expr.BinOp.MIN)
                 && rechts.type() != null && rechts.type().eenheidOf() != null
                 && model.dagsoortVoorEenheid(rechts.type().eenheidOf().afkorting()) != null;
-        Typering.Resultaat res = Typering.reken(naarTyperingOp(op), links.type(), rechts.type(), unitlessLinksLiteraal, dagsoortRechts);
+        Typering.Resultaat res = Typering.reken(naarTyperingOp(op), links.type(), rechts.type(), dagsoortRechts);
         if (!res.ok())
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(
                     RegelSpraakModel.Severity.ERROR, res.fout(), line));

@@ -2446,21 +2446,20 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_CU_RATE_EXPECTED = { new BigDecimal("10"), Boolean.TRUE };
 
-    // ---- §8.1.1 the toka-45 "belasting op basis van afstand" shape in miniature: a condition whose LHS is an
-    //      arithmetic expression reading TWO distinct numeric Parameter-GLOBALS as a COMPOSITE (rate) product —
+    // ---- §8.1.1 the "belasting op basis van afstand" shape in miniature: a condition whose LHS is an
+    //      arithmetic expression reading TWO distinct numeric Parameter-GLOBALS —
     //      "het lage basistarief eerste schijf min (het lage tarief vermindering eerste schijf maal zijn afstand)"
-    //      (unitless-Bedrag × km, exactly TOKA's under-model) — compared >= 0, gating a gelijkstelling. The resolver
-    //      types the inner MAAL Onbekend[samengestelde eenheid] and the outer MIN Onbekend[operand], so the exec
-    //      voorwaarde branch's OLD isNumeriek() operand guard REJECTED it (a masked DRL-fires/exec-skips). The new
-    //      getalachtigVergelijkbaar guard admits a numeric-domain Onbekend arithmetic expr (scalarWaarde lowers it),
-    //      and the 2-global gset routes through nGlobalGate. basistarief 100 - 0.20*200 = 60 >= 0 -> fires -> 60. ----
+    //      — compared >= 0, gating a gelijkstelling; the 2-global gset routes through nGlobalGate.
+    //      Historical note: this fixture originally mirrored toka-45's unitless-Bedrag × km under-model, typed
+    //      Onbekend by the old resolver. Since besluit 16Y (2026-08-29) the vendored frontend types identity
+    //      products (unitless × km = km) and the min would fault the unit rule — the km was incidental scenery
+    //      here (raw BigDecimals throughout), so the fixture is unit-free; the dimensional refusal itself is
+    //      witnessed by TokaVuurTest and CasusTest. basistarief 100 - 0.20*200 = 60 >= 0 -> fires -> 60. ----
     static final String VW_MULTIGLOBAL_SRC = """
-        Eenheidsysteem Afstand
-            de kilometer km
         Parameter het lage basistarief eerste schijf : Numeriek (getal)
         Parameter het lage tarief vermindering eerste schijf : Numeriek (getal)
         Objecttype de Schijf (mv: Schijven)
-            de afstand Numeriek (geheel getal) met eenheid km;
+            de afstand Numeriek (geheel getal);
             de belasting Numeriek (getal);
         Regel belasting op basis van afstand
             geldig altijd

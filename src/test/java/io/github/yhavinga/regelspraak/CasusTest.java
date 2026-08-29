@@ -37,18 +37,27 @@ class CasusTest {
 
         RegelSpraakModel m = Resolver.resolve(bron);
         // §11 "Daarbij geldt:" variabelen now inline into the rule, so the casus' variable DEFINITIONS get
-        // type-checked (they were invisible while the references markered). This surfaces ONE genuine spec-internal
-        // inconsistency in the TOKA casus itself: "A is het uiterste boekingstijdstip … plus bevestigingsinterval"
-        // (toka-23) adds a Datum-tijd PARAMETER (bevestigingsinterval, modelled as "Datum en tijd in millisecondes"
-        // but used as a duration) to a Datum-tijd — which typeringen §4.1 Tabel 2 forbids (a datum-tijd plus needs a
-        // Numeriek tijdswaarde RHS). The resolver is CORRECT to flag it (the rule degrades to an honest marker); the
-        // casus, not the resolver, carries the quirk. Tolerate exactly this one known diagnostic; any OTHER error fails.
+        // type-checked (they were invisible while the references markered). This surfaces TWO genuine
+        // casus-internal inconsistencies — a reason-carrying, fails-when-stale list mirroring uchar's gate-11
+        // holdout list (decision 16Y, 2026-08-29): each must still error, and NO other error may appear.
+        //   toka-23: "A is het uiterste boekingstijdstip … plus bevestigingsinterval" adds a Datum-tijd
+        //            PARAMETER (a "Datum en tijd in millisecondes" used as a duration) to a Datum-tijd —
+        //            typeringen §4.1 Tabel 2 forbids it.
+        //   toka-45: "de belasting op basis van afstand" computes a unitless Bedrag MIN a km-typed product.
+        //            The eenheid-identiteit typing (vendored frontend, decision 16Y) types the product
+        //            (unitless × km = km), so the min fails the §4 unit rule — the casus is dimensionally
+        //            inconsistent as written; the old Onbekend degradation masked it.
+        var datumQuirk = (java.util.function.Predicate<String>) msg -> msg.contains("kreeg Datum-tijd en Datum-tijd");
+        var afstandQuirk = (java.util.function.Predicate<String>) msg ->
+                msg.contains("min:") && msg.contains("moeten beide er een hebben");
         var onverwacht = m.errors().stream()
-                .filter(d -> !d.message().contains("kreeg Datum-tijd en Datum-tijd"))
+                .filter(d -> !datumQuirk.test(d.message()) && !afstandQuirk.test(d.message()))
                 .toList();
         assertTrue(onverwacht.isEmpty(), () -> "false positives op de TOKA casus: " + onverwacht);
-        assertEquals(1, m.errors().size() - onverwacht.size(),
-                () -> "verwachtte precies de bekende §4.1 datum+datum casus-quirk (toka-23 bevestigingsinterval): " + m.errors());
+        assertTrue(m.errors().stream().anyMatch(d -> datumQuirk.test(d.message())),
+                () -> "verwachtte de bekende §4.1 datum+datum casus-quirk (toka-23 bevestigingsinterval): " + m.errors());
+        assertTrue(m.errors().stream().anyMatch(d -> afstandQuirk.test(d.message())),
+                () -> "verwachtte de dimensioneel-inconsistente afstand-quirk (toka-45, besluit 16Y): " + m.errors());
 
         // the casus' GegevensSpraak, faithfully modelled
         assertEquals(3, m.objecttypen.size(), "Natuurlijk persoon, Vlucht, Contingent treinmiles");

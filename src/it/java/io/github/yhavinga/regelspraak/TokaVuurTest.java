@@ -169,32 +169,21 @@ class TokaVuurTest {
         assertGetal(26, w.getal(f[0], "getRestantNaVerdeling"), "Tabel 18 onverdeelde rest");
     }
 
-    @Test void belastingketen_afstand_naar_te_betalen_belasting() throws Exception {
-        // toka-39 (belaste reis) -> toka-45 (belasting op basis van afstand, geldig vanaf 2018) ->
-        // toka-24 (te betalen belasting = afstand min korting, minimaal 0, floor), met toka-31 er
-        // NAAST (de initialisatie mag de berekening nooit overschrijven — de §9.6 leeg-guard).
-        // Parameters zijn door de spec niet vastgelegd; gekozen waarden, verwachting met de hand:
-        // X = 100.00, Y = 0.20 * 200 km = 40.00 -> belasting op basis van afstand = 60.00;
-        // te betalen = 60.00 - 10.00 korting = 50.00 (niet de initiele belasting 25.00).
-        Wereld w = wereld(regels("39", "45", "24", "31"));
-        w.sessie().setGlobal("rekendatum", LocalDate.of(2024, 1, 1));           // toka-45: geldig vanaf 2018
-        w.sessie().setGlobal("lageBasistariefEersteSchijf", new BigDecimal("100.00"));
-        w.sessie().setGlobal("lageTariefVerminderingEersteSchijf", new BigDecimal("0.20"));
-        w.sessie().setGlobal("bovengrensAfstandEersteSchijf", new BigDecimal(500));
-        w.sessie().setGlobal("kortingBijGebruikNietFossieleBrandstof", new BigDecimal("10.00"));
-        w.sessie().setGlobal("initieleBelasting", new BigDecimal("25.00"));
-
-        Object vlucht = w.nieuw("Vlucht");
-        w.zet(vlucht, "setBereikbaarPerTrein", Boolean.TRUE, Boolean.class);    // -> belaste reis
-        w.zet(vlucht, "setAfstandTotBestemming", 200);
-        Object p = w.nieuw("NatuurlijkPersoon");
-        w.zet(p, "setReis", vlucht, Class.forName(FactModelGenerator.PAKKET + ".Vlucht", true, w.cl()));
-        w.zet(p, "setPassagierVan25TotEnMet64Jaar", Boolean.TRUE, boolean.class); // band-kenmerk (geen 25-64-regel in de casus)
-        vuur(w, vlucht, p);
-
-        assertEquals(Boolean.TRUE, w.lees(vlucht, "isBelasteReis"), "toka-39 moet de reis belast maken");
-        assertGetal(60, w.getal(p, "getBelastingOpBasisVanAfstand"), "toka-45 (100 - 0.20*200)");
-        assertGetal(50, w.getal(p, "getTeBetalenBelasting"), "toka-24 (60 - 10, minimaal 0, floor) — de berekening wint van de initialisatie");
+    @Test void belastingketen_afstand_weigert_dimensioneel_inconsistent() {
+        // Sinds besluit 16Y (2026-08-29, uchar eenheid-identiteit-typering, gevendorde frontend):
+        // toka-45 rekent een unitloos Bedrag MIN (unitloos tarief x afstand-in-km). De typering
+        // maakt het product km, waarna de min de §4-eenheidsregel raakt — de casus is dimensioneel
+        // inconsistent zoals geschreven; de oude Onbekend-degradatie maskeerde dit en de oude
+        // vuurketen (39 -> 45 -> 24, met de hand 60 -> 50) is daarmee onspeelbaar. Deze test is de
+        // vuurzijde-getuige van de weigering: precies de min-fouten, niets anders, geen wereld.
+        // De §9.6-initialisatie-guard houdt zijn eigen getuige hieronder. Spiegelt de gate-11-
+        // holdout toka-45 en de CasusTest-quirklijst.
+        RegelSpraakModel m = Resolver.resolve(regels("39", "45", "24", "31"));
+        var minFout = (java.util.function.Predicate<String>) msg ->
+                msg.contains("min:") && msg.contains("moeten beide er een hebben");
+        assertFalse(m.errors().isEmpty(), "toka-45 hoort sinds 16Y te weigeren");
+        assertTrue(m.errors().stream().allMatch(d -> minFout.test(d.message())),
+                () -> "verwachtte uitsluitend de min-eenheidsfouten (toka-45): " + m.errors());
     }
 
     @Test void initialisatie_vult_wanneer_geen_berekening_geladen_is() throws Exception {

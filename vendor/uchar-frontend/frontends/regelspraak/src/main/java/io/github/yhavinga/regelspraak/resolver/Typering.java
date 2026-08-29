@@ -37,20 +37,10 @@ public final class Typering {
         return reken(op, l, r, false);
     }
 
-    /** {@code unitlessLinksLiteraal}: the LEFT operand is a unitless LITERAL/constant. Then §4.4 Tabel 11 ((none) ×
-     *  Eenheid1 -> Eenheid1) propagates the RIGHT operand's unit for MAAL ("2 maal de looptijd(mnd)" = a mnd value),
-     *  instead of the deliberate Onbekend degradation that tolerates an attribute × attribute unit under-model (a known
-     *  casus shape: a unitless-declared bedrag × km). Narrowing to a LITERAL avoids surfacing that casus inconsistency:
-     *  its unitless operand is an ATTRIBUTE, never a literal. Only MAAL — a unitless / unit GEDEELD is a 1/unit rate the Eenheid
-     *  model cannot represent (stays Onbekend). */
-    public static Resultaat reken(BinOp op, Datatype l, Datatype r, boolean unitlessLinksLiteraal) {
-        return reken(op, l, r, unitlessLinksLiteraal, false);
-    }
-
     /** {@code dagsoortEenheidRechts}: the right operand's eenheid names a DECLARED §3.12 dagsoort (the caller
      *  holds the model, this matrix does not) — §6.11 then admits {@code datum ± N <dagsoort>} as a valid
      *  day-by-day date shift alongside the Tabel 2/5 tijdseenheden. */
-    public static Resultaat reken(BinOp op, Datatype l, Datatype r, boolean unitlessLinksLiteraal, boolean dagsoortEenheidRechts) {
+    public static Resultaat reken(BinOp op, Datatype l, Datatype r, boolean dagsoortEenheidRechts) {
         if (l.isOnbekend() || r.isOnbekend()) return Resultaat.ok(new Datatype.Onbekend("operand"));
         return switch (op) {
             // §4.1 / §4.2: numeriek±numeriek (units convertible), OR datum ± a numerieke
@@ -70,33 +60,39 @@ public final class Typering {
             }
             // §4.3 verminderd met: numeriek only
             case VERMINDERD_MET -> numeriekBinair(l, r, "verminderd met");
-            // §4.4/4.5: Numeriek only (Tabel 11/14 list no Percentage row). A unitless * unit keeps the
-            // single unit; two units multiply/divide into a COMPOSITE, which the Eenheid model represents
-            // only as a numerator over one simple denominator (a rate "€/jr"). The representable combinations
-            // are synthesized; the rest (a two-numerator product like "€·m", a "1/jr") stay Onbekend ("no claim").
+            // §4.4/4.5: Numeriek only (Tabel 11/14 list no Percentage row). Units form a group whose IDENTITY is
+            // "geen eenheid" (the dimensionless "1"): 1 × E = E, so a unitless operand ABSORBS under multiplication
+            // and the product carries the other operand's unit (besluit 16Y). Two units multiply/divide into a
+            // composite the Eenheid model can spell (a rate "€/jr", an opaque product "€·m") or, when it cannot (a
+            // rate factor, a reciprocal), a LOUD error — a unit it cannot name is never a wire type (besluit 17c).
             case MAAL, GEDEELD_DOOR -> {
                 if (!l.isNumeriek() || !r.isNumeriek())
                     yield Resultaat.fout(naam(op) + " vereist numerieke operanden, kreeg " + l.naam() + " en " + r.naam());
-                // §4.4: a product gets the SUM of the operands' decimals ("X,X maal X,XX = X,XXX"),
+                // §4.4 Tabel 13: a product gets the SUM of the operands' decimals ("X,X maal X,XX = X,XXX"),
                 // not the max — so a 2dec × 2dec product is 4dec and §6.1.2 rightly demands an
                 // afronding before it lands in a narrower attribute. §4.5 gedeeld door is an exact
                 // fraction (no decimal precision of its own); maxDec under-reports it, but that errs
                 // safe (a false negative, never a false positive) and is carded separately.
                 int dec = op == BinOp.MAAL ? decimalenVan(l) + decimalenVan(r) : maxDec(l, r);
                 Eenheid el = l.eenheidOf(), er = r.eenheidOf();
-                if (el == null && er == null)
+                if (el == null && er == null)                                       // Tabel 11/14 rij 5: (none) ⋆ (none) -> (none)
                     yield Resultaat.ok(new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, null));
-                if (er == null)
+                if (er == null)                                                     // Tabel 11 rij 3 / Tabel 14 rij 3: E ⋆ (none) -> E
                     yield Resultaat.ok(new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, el));
-                if (el != null)   // both operands carry a unit -> synthesize the representable composite
-                    yield Resultaat.ok(samengesteldeEenheid(op, dec, el, er));
-                // el == null, er != null: a unitless × unit. §4.4 Tabel 11 says (none) × Eenheid1 -> Eenheid1, but
-                // propagating er for an ATTRIBUTE operand surfaces the known casus unit under-model (carded), so it is
-                // done ONLY for a unitless LITERAL left ("2 maal de looptijd(mnd)" = mnd). MAAL only — a unitless / unit
-                // GEDEELD is a 1/unit rate the Eenheid model cannot represent (Onbekend). Otherwise Onbekend ("no claim").
-                if (op == BinOp.MAAL && unitlessLinksLiteraal)
+                if (el != null)   // both operands carry a unit -> the representable composite, or a loud error
+                    yield samengesteldeEenheid(op, dec, el, er);
+                // el == null, er != null: a unitless left, a unit-bearing right.
+                if (op == BinOp.MAAL)
+                    // §4.4 Tabel 11 rij 4 + Tabel 13: (none) maal Eenheid1 -> Eenheid1, decimalen = som. Unconditional:
+                    // the dimensionless "1" absorbs (1 × E = E) whether the left is a LITERAL or an ATTRIBUTE — the old
+                    // literal/attribute split retires (besluit 16Y).
                     yield Resultaat.ok(new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, er));
-                yield Resultaat.ok(new Datatype.Onbekend("samengestelde eenheid"));
+                // §4.5 GEDEELD: Tabel 14 rij 4 says (none) gedeeld door Eenheid1 -> Eenheid1, but that cell is
+                // dimensionally UNSOUND — a unitless numerator over a unit denominator is a reciprocal 1/E (a rate the
+                // Eenheid model cannot spell), NOT E. Besluit 17b KNOWINGLY diverges from the arbiter here: a LOUD
+                // error, never a wire type.
+                yield Resultaat.fout("gedeeld door: een eenheidloze teller gedeeld door de eenheid '" + er.weergave()
+                        + "' geeft een omgekeerde eenheid (1/" + er.weergave() + ") die het Eenheid-model niet kan uitdrukken");
             }
             // §4.7 tot de macht: Numeriek without a unit on either side; result without a unit.
             case TOT_DE_MACHT -> {
@@ -322,30 +318,35 @@ public final class Typering {
     // -------- helpers --------
 
     /** §4.4/4.5 result datatype for a maal/gedeeld of two unit-bearing operands, in the cases the Eenheid
-     *  model can represent (a numerator over one simple denominator); the rest yield Onbekend ("no claim").
-     *  MAAL: a rate times its (convertible) denominator-unit cancels to the numerator ("€/jr maal jr = €");
-     *  two plain numerators ("€ maal m") are not representable. GEDEELD: two plain units divide to a rate
-     *  ("€ gedeeld door jr = €/jr"), or to a dimensionless number when the units are convertible ("€ gedeeld
-     *  door € = een getal"); a rate divisor (its result needs a second denominator or "1/jr") stays Onbekend. */
-    private static Datatype samengesteldeEenheid(BinOp op, int dec, Eenheid el, Eenheid er) {
+     *  model can represent (a numerator over one simple denominator, or an opaque product); the rest are a LOUD
+     *  error (besluit 17c: a unit the model cannot spell is never a wire type — it used to degrade to Onbekend).
+     *  MAAL: a rate times its (convertible) denominator-unit cancels to the numerator ("€/jr maal jr = €"); two
+     *  plain numerators are the opaque product "€ maal m = €·m"; a rate factor ("€·m/jr") is unspellable.
+     *  GEDEELD: two plain units divide to a rate ("€ gedeeld door jr = €/jr"), or to a dimensionless number when
+     *  the units are convertible ("€ gedeeld door € = een getal"); a rate divisor (a second denominator / "1/jr")
+     *  is unspellable. */
+    private static Resultaat samengesteldeEenheid(BinOp op, int dec, Eenheid el, Eenheid er) {
         if (op == BinOp.MAAL) {
             if (el.noemer() != null && er.noemer() == null && er.convertibleNaar(el.noemer()))
-                return new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, el.teller());
+                return Resultaat.ok(new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, el.teller()));
             if (er.noemer() != null && el.noemer() == null && el.convertibleNaar(er.noemer()))
-                return new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, er.teller());
-            // §4.4: two plain units multiply to a PRODUCT unit ("€ maal m = €·m"). An opaque composite (no
-            // canonical), so it is convertible only to an identical product — a €·m result assigned to a € target
-            // now flags a unit mismatch (it used to degrade to Onbekend and pass silently). A rate factor (a
-            // second denominator / "€·m/jr") is not representable, so it stays Onbekend.
+                return Resultaat.ok(new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, er.teller()));
+            // §4.4: two plain units multiply to a PRODUCT unit ("€ maal m = €·m") the model CAN spell — an opaque
+            // composite (no canonical, IR-SPEC ch. 2.5), convertible only to an identical product, so a €·m result
+            // assigned to a € target now flags a unit mismatch (it used to degrade to Onbekend and pass silently).
             if (el.noemer() == null && er.noemer() == null)
-                return new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, Eenheid.product(el, er));
-            return new Datatype.Onbekend("samengestelde eenheid");
+                return Resultaat.ok(new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, Eenheid.product(el, er)));
+            // a rate factor (a second denominator / "€·m/jr") is UNSPELLABLE — besluit 17c: a loud error, not Onbekend.
+            return Resultaat.fout("maal: de samengestelde eenheid van '" + el.weergave() + "' en '" + er.weergave()
+                    + "' (een producteenheid met een noemer) kan het Eenheid-model niet uitdrukken");
         }
         if (el.noemer() == null && er.noemer() == null)   // GEDEELD: only two plain units are representable
             return el.convertibleNaar(er)
-                    ? new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, null)                       // €/€ -> getal
-                    : new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, Eenheid.samengesteld(el, er)); // €/jr
-        return new Datatype.Onbekend("samengestelde eenheid");
+                    ? Resultaat.ok(new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, null))                        // €/€ -> getal
+                    : Resultaat.ok(new Datatype.Numeriek(false, dec, Datatype.Teken.ONBEPAALD, Eenheid.samengesteld(el, er))); // €/jr
+        // a rate divisor (its result needs a second denominator / "1/jr") is UNSPELLABLE — besluit 17c: a loud error.
+        return Resultaat.fout("gedeeld door: het quotiënt van '" + el.weergave() + "' en '" + er.weergave()
+                + "' (een eenheid met een omgekeerde noemer) kan het Eenheid-model niet uitdrukken");
     }
 
     /** Same datatype family for gelijk/ongelijk/toekenning. Numeriek and Percentage are

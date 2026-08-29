@@ -41,7 +41,7 @@ class TyperingTest {
         assertFalse(Typering.reken(BinOp.MIN, datum(), num("km", "afstand")).ok());
     }
     @Test void plus_datum_en_dagsoort_eenheid_ok() {         // §6.11: a declared dagsoort is a valid duration unit
-        var r = Typering.reken(BinOp.PLUS, datum(), num("kerstdagen", null), false, true);
+        var r = Typering.reken(BinOp.PLUS, datum(), num("kerstdagen", null), true);
         assertTrue(r.ok()); assertTrue(r.type().isDatum());
     }
 
@@ -222,19 +222,35 @@ class TyperingTest {
         assertNull(Typering.toekenning(productEm, productEm), "€·m toegekend aan €·m is correct");
     }
 
-    @Test void maal_unitloze_literal_neemt_de_rechter_eenheid_over() {   // §4.4 Tabel 11: (none) × Eenheid1 -> Eenheid1
-        // DEFAULT (an attribute/parameter left): a unitless × unit-on-the-right stays Onbekend — the deliberate
-        // unit-under-model tolerance (a unitless Bedrag attribute × km must not propagate km).
-        var attr = Typering.reken(BinOp.MAAL, num(), num("mnd", "Tijd"));
-        assertTrue(attr.ok() && attr.type().isOnbekend(),
-                () -> "een unitloze ATTRIBUUT × eenheid blijft Onbekend (under-model-tolerantie), kreeg: " + attr.type());
-        // a unitless LITERAL left ("2 maal de looptijd(mnd)") DOES propagate the right operand's unit.
-        var lit = Typering.reken(BinOp.MAAL, num(), num("mnd", "Tijd"), true);
-        assertTrue(lit.ok() && lit.type().eenheidOf() != null && lit.type().eenheidOf().afkorting().equals("mnd"),
-                () -> "een unitloze LITERAL × eenheid neemt de rechter-eenheid (mnd) over, kreeg: " + lit.type());
-        // GEDEELD with a unitless literal left is a 1/unit rate the Eenheid model cannot represent -> stays Onbekend.
-        var deel = Typering.reken(BinOp.GEDEELD_DOOR, num(), num("mnd", "Tijd"), true);
-        assertTrue(deel.ok() && deel.type().isOnbekend(),
-                () -> "een unitloze literal / eenheid (1/unit) blijft Onbekend, kreeg: " + deel.type());
+    @Test void maal_unitloze_operand_neemt_de_andere_eenheid_over() {   // §4.4 Tabel 11 rij 3/4 + Tabel 13
+        // De dimensieloze "1" absorbeert onder vermenigvuldiging (1 × E = E), UNCONDITIONEEL — literal én attribuut
+        // (de oude literal/attribuut-split is met besluit 16Y vervallen: was een unitloos ATTRIBUUT × eenheid -> Onbekend).
+        var rechts = Typering.reken(BinOp.MAAL, num(), num("mnd", "Tijd"));
+        assertTrue(rechts.ok() && rechts.type().eenheidOf() != null && "mnd".equals(rechts.type().eenheidOf().afkorting()),
+                () -> "een unitloze operand × eenheid neemt de eenheid (mnd) over, kreeg: " + rechts.type());
+        var links = Typering.reken(BinOp.MAAL, num("mnd", "Tijd"), num());   // andersom: E × (none) -> E (rij 3)
+        assertTrue(links.ok() && links.type().eenheidOf() != null && "mnd".equals(links.type().eenheidOf().afkorting()),
+                () -> "een eenheid × unitloze operand neemt de eenheid (mnd) over, kreeg: " + links.type());
+        // §4.5 GEDEELD: een unitloze teller / eenheid is een omgekeerde eenheid (1/mnd) die het Eenheid-model niet kan
+        // spellen -> besluit 17b: een LUIDE fout (bewuste divergentie van de dimensioneel onsound Tabel-14-rij-4-cel).
+        var deel = Typering.reken(BinOp.GEDEELD_DOOR, num(), num("mnd", "Tijd"));
+        assertFalse(deel.ok(), () -> "een unitloze teller / eenheid moet luid falen, kreeg: " + deel.type());
+        assertTrue(deel.fout().contains("omgekeerde eenheid"), deel::fout);
+    }
+
+    @Test void maal_onspelbare_ratefactor_is_een_luide_fout() {   // besluit 17c
+        // €/jr maal m: een tarief maal een niet-cancelende eenheid geeft een producteenheid MET een noemer (€·m/jr)
+        // die het Eenheid-model niet kan spellen -> luide fout (was Onbekend "samengestelde eenheid").
+        Eenheid m = new Eenheid("m", "Lengte");
+        var res = Typering.reken(BinOp.MAAL, numEenh(Eenheid.samengesteld(EUR, JR)), numEenh(m));
+        assertFalse(res.ok(), () -> "een onspelbare ratefactor-product moet luid falen, kreeg: " + res.type());
+        assertTrue(res.fout().contains("niet uitdrukken"), res::fout);
+    }
+
+    @Test void gedeeld_door_een_tarief_is_een_luide_fout() {   // besluit 17c
+        // € gedeeld door €/jr heeft een omgekeerde noemer (1/jr) -> onspelbaar -> luide fout (was Onbekend).
+        var res = Typering.reken(BinOp.GEDEELD_DOOR, numEenh(EUR), numEenh(Eenheid.samengesteld(EUR, JR)));
+        assertFalse(res.ok(), () -> "een gedeeld-door-tarief moet luid falen, kreeg: " + res.type());
+        assertTrue(res.fout().contains("niet uitdrukken"), res::fout);
     }
 }
