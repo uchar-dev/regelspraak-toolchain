@@ -1,0 +1,9 @@
+# Downloaded tool jars — re-fetch with `make antlr-jar` / `make junit-jar`
+lib/
+
+# ANTLR-generated sources and compiled classes
+gen/
+out/
+*.class
+*.tokens
+*.interp
