@@ -143,6 +143,19 @@
               <sources><source>${basedir}/gen</source></sources>
             </configuration>
           </execution>
+          <!-- The vendored uchar frontend (grammar + resolver/ir/model/emit/kern) is the ONLY
+               frontend the toolchain compiles since the dependency inversion (LADDER-EVOLUTIE §6).
+               Its Java source root is added here the same way uchar's backends/drools/pom.xml wires
+               the frontend as a foreign source root; the grammar under the same slice is generated
+               into gen/ by `make parser`. Byte-identity to the pin is guarded by scripts/uchar-conformance.sh. -->
+          <execution>
+            <id>add-vendored-frontend</id>
+            <phase>generate-sources</phase>
+            <goals><goal>add-source</goal></goals>
+            <configuration>
+              <sources><source>${basedir}/vendor/uchar-frontend/frontends/regelspraak/src/main/java</source></sources>
+            </configuration>
+          </execution>
           <!-- src/it/java holds the Drools execution test + its fact POJOs. It is a
                Maven-only test root (the jar-only `make test` scans only src/test/java,
                so it stays free of any Drools dependency). -->

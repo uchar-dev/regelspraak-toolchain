@@ -16,10 +16,10 @@ import io.github.yhavinga.regelspraak.runtime.RuleFired;
 import io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dagsoorten;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dekking;
-import io.github.yhavinga.regelspraak.transpiler.kern.Literalen;
+import io.github.yhavinga.regelspraak.kern.Literalen;
 import io.github.yhavinga.regelspraak.transpiler.kern.Namen;
 import io.github.yhavinga.regelspraak.transpiler.kern.Operatoren;
-import io.github.yhavinga.regelspraak.transpiler.kern.Tijdrekening;
+import io.github.yhavinga.regelspraak.kern.Tijdrekening;
 
 import org.drools.model.DSL;
 import org.drools.model.Global;
@@ -3021,7 +3021,7 @@ public final class ExecModelTranspiler {
             if (subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;      // temporal -> Phase F
             if (!subject.dimensiesVan(la.attribuut()).isEmpty()) return null;                 // §3.6 gedimensioneerd -> marker
             String attr = la.attribuut();
-            Boolean rhs = io.github.yhavinga.regelspraak.transpiler.kern.Literalen.waar(lit.waarde());
+            Boolean rhs = io.github.yhavinga.regelspraak.kern.Literalen.waar(lit.waarde());
             boolean gelijk = v.op() == Conditie.Operator.GELIJK;
             return s -> rhs.equals(RegelSpraakRuntime.get(s, attr)) == gelijk;   // prop may be null; rhs non-null
         }
@@ -3037,7 +3037,7 @@ public final class ExecModelTranspiler {
             String rol = navComparisonRole(la, subject);
             if (rol == null) return null;
             String attr = la.attribuut();
-            Boolean rhs = io.github.yhavinga.regelspraak.transpiler.kern.Literalen.waar(lit.waarde());
+            Boolean rhs = io.github.yhavinga.regelspraak.kern.Literalen.waar(lit.waarde());
             boolean gelijk = v.op() == Conditie.Operator.GELIJK;
             return s -> {
                 Object rel = RegelSpraakRuntime.get(s, rol);

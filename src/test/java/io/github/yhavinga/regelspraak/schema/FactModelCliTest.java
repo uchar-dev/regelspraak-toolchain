@@ -1,5 +1,6 @@
 package io.github.yhavinga.regelspraak.schema;
 
+import io.github.yhavinga.regelspraak.cli.RegelSpraakCli;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
 import org.junit.jupiter.api.Test;
@@ -69,7 +70,7 @@ class FactModelCliTest {
 
         // The CLI's own write path — generate the beans to disk exactly as `Resolver --facts` does.
         Path src = work.resolve("src");
-        int n = Resolver.factsNaarDisk(model, src);
+        int n = RegelSpraakCli.factsNaarDisk(model, src);
         assertEquals(model.objecttypen.size() + 2, n, "één bean per objecttype + Segment + Inconsistentie");
 
         // Compile the generated sources as pure-JDK beans (no external classpath) and load them.
@@ -117,12 +118,12 @@ class FactModelCliTest {
         // Drive the REAL CLI path (main is exactly `System.exit(factsModus(rest))`): the error discipline is
         // exit 1 with NOTHING written — the outdir must not even be created.
         Path outdir = work.resolve("uit");
-        int exit = Resolver.factsModus(List.of(outdir.toString(), bronBestand.toString()));
+        int exit = RegelSpraakCli.factsModus(List.of(outdir.toString(), bronBestand.toString()));
         assertEquals(1, exit, "resolver-fout moet exit 1 geven");
         assertFalse(Files.exists(outdir), "het foutpad mag niets onder de outdir aanmaken");
 
         // And the usage discipline: a missing argument is exit 2, equally write-free.
-        assertEquals(2, Resolver.factsModus(List.of(outdir.toString())), "ontbrekend bronbestand moet exit 2 geven");
+        assertEquals(2, RegelSpraakCli.factsModus(List.of(outdir.toString())), "ontbrekend bronbestand moet exit 2 geven");
         assertFalse(Files.exists(outdir));
     }
 

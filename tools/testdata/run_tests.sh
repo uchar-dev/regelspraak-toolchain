@@ -22,7 +22,7 @@ ROOT="$(pwd)"
 TOOL="python3 tools/csv_naar_beslistabel.py"
 TD="tools/testdata"
 JAR="$(ls lib/antlr-*-complete.jar 2>/dev/null | head -1)"
-DRL="java -cp $JAR:out io.github.yhavinga.regelspraak.resolver.Resolver --drl --allow-markers"
+DRL="java -cp $JAR:out io.github.yhavinga.regelspraak.cli.RegelSpraakCli --drl --allow-markers"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 

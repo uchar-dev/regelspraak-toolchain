@@ -11,9 +11,9 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dagsoorten;
 import io.github.yhavinga.regelspraak.transpiler.kern.Dekking;
-import io.github.yhavinga.regelspraak.transpiler.kern.Literalen;
+import io.github.yhavinga.regelspraak.kern.Literalen;
 import io.github.yhavinga.regelspraak.transpiler.kern.Operatoren;
-import io.github.yhavinga.regelspraak.transpiler.kern.Tijdrekening;
+import io.github.yhavinga.regelspraak.kern.Tijdrekening;
 
 import static io.github.yhavinga.regelspraak.transpiler.kern.Namen.commentVeilig;
 import static io.github.yhavinga.regelspraak.transpiler.kern.Namen.drlString;

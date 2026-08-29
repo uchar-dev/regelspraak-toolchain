@@ -3,6 +3,7 @@ package io.github.yhavinga.regelspraak.transpiler.kern;
 import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.ir.ResolvedDagsoort;
+import io.github.yhavinga.regelspraak.kern.Literalen;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime;
 

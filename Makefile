@@ -25,12 +25,19 @@ JUNIT_JAR     := $(LIB_DIR)/junit-platform-console-standalone-$(JUNIT_VERSION).j
 JUNIT_URL     := https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/$(JUNIT_VERSION)/junit-platform-console-standalone-$(JUNIT_VERSION).jar
 
 # Resolver (typed AST + typeringen enforcement) sources and tests.
+# Since the dependency inversion (LADDER-EVOLUTIE §6) the toolchain consumes uchar's frontend
+# (grammar + resolver/ir/model/emit/kern) from the byte-identical vendored slice, compiled as an
+# extra source root — the same wiring uchar's backends/drools/pom.xml uses. VENDOR_SRC below is
+# that root; the toolchain keeps only transpiler/runtime/schema/graaf/cli and the toolchain-local
+# scenariotoetsen harness (resolver/ScenarioResolver, ir/ResolvedScenario) under src/main/java.
+#
 # The executable-model back-end (transpiler/model/*) links against the Drools canonical
 # model (org.drools.model.*), a JVM dependency graph this jar-only build deliberately does
 # NOT carry — per CLAUDE.md it is a Maven artifact. So exclude it here; `mvn -B test` (with
 # the Drools deps) compiles and differential-tests it. The parser, resolver, IR and the DRL
 # *text* emitter all stay pure jar-only, so `make test` remains the offline parser/resolver gate.
-RESOLVER_SRC := $(shell find src/main/java -name '*.java' -not -path '*/transpiler/model/*' 2>/dev/null)
+VENDOR_SRC   := vendor/uchar-frontend/frontends/regelspraak/src/main/java
+RESOLVER_SRC := $(shell find src/main/java $(VENDOR_SRC) -name '*.java' -not -path '*/transpiler/model/*' 2>/dev/null)
 TEST_SRC     := $(shell find src/test/java -name '*.java' 2>/dev/null)
 
 # Java package for the generated parser, and the dirs that follow from it.
@@ -42,7 +49,9 @@ OUT_DIR  := out
 
 # Grammar sources — authored from scratch against the v2.3.0 spec (grammar/README.md).
 # The lexer MUST be generated before the parser (see the `parser` target).
-GRAMMAR_DIR := grammar
+# The grammar is now the vendored frontend's (LADDER-EVOLUTIE §6): the toolchain's own grammar/
+# copy was deleted at the inversion. Byte-identical to the pin; the drift gate guards it.
+GRAMMAR_DIR := vendor/uchar-frontend/frontends/regelspraak/grammar
 LEXER_G4  := $(GRAMMAR_DIR)/RegelSpraakLexer.g4
 PARSER_G4 := $(GRAMMAR_DIR)/RegelSpraak.g4
 
@@ -104,8 +113,8 @@ $(JUNIT_JAR):
 # neither -lib nor the javac glob below would find it. cd-ing first makes the
 # output land exactly at $(GEN_DIR), matching the package path.
 parser: $(ANTLR4_JAR)
-	@test -f $(LEXER_G4)  || { echo "missing $(LEXER_G4) — author it first (see grammar/README.md)";  exit 1; }
-	@test -f $(PARSER_G4) || { echo "missing $(PARSER_G4) — author it first (see grammar/README.md)"; exit 1; }
+	@test -f $(LEXER_G4)  || { echo "missing $(LEXER_G4) — vendor the frontend slice (see vendor/uchar-frontend/README.md)";  exit 1; }
+	@test -f $(PARSER_G4) || { echo "missing $(PARSER_G4) — vendor the frontend slice (see vendor/uchar-frontend/README.md)"; exit 1; }
 	mkdir -p $(GEN_DIR)
 	cd $(GRAMMAR_DIR) && $(ANTLR4) -Dlanguage=Java -visitor -no-listener -package $(PACKAGE) -o $(CURDIR)/$(GEN_DIR) $(notdir $(LEXER_G4))
 	cd $(GRAMMAR_DIR) && $(ANTLR4) -Dlanguage=Java -visitor -no-listener -package $(PACKAGE) -lib $(CURDIR)/$(GEN_DIR) -o $(CURDIR)/$(GEN_DIR) $(notdir $(PARSER_G4))
@@ -152,7 +161,7 @@ verify-negatief-corpus: compile
 # stays an honest marker (the dekking-WARNINGs still land on stderr). A bare
 # `Resolver --drl` without the flag exits 3 on any marker — the CI-facing contract.
 drl: resolver
-	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver --drl --allow-markers $(FILE)
+	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.cli.RegelSpraakCli --drl --allow-markers $(FILE)
 
 # Convert a CSV decision table into the canonical §12 Beslistabel markdown-pipe-table
 # .rgs fragment (docs/grammar-divergences.md §12 CSV-import note). Pure-python, no deps
@@ -181,7 +190,7 @@ facts: resolver
 	@rm -rf $(FACTS_DIR)
 	@mkdir -p $(FACTS_DIR)/src $(FACTS_DIR)/classes
 	@cat $(TOKA_MODEL_FOUNDATION) > $(FACTS_DIR)/toka-model.rgs
-	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver --facts $(FACTS_DIR)/src $(FACTS_DIR)/toka-model.rgs
+	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.cli.RegelSpraakCli --facts $(FACTS_DIR)/src $(FACTS_DIR)/toka-model.rgs
 	@javac -d $(FACTS_DIR)/classes $$(find $(FACTS_DIR)/src -name '*.java')
 	@echo "PASS: facts gegenereerd én gecompileerd naar $(FACTS_DIR)/classes"
 
@@ -194,7 +203,7 @@ facts: resolver
 # scope-completeness check, so the graph never diverges from that gate.
 GRAAF_OUT := $(if $(OUT),$(OUT),$(OUT_DIR)/regelgraaf.$(if $(MMD),mmd,html))
 graaf: resolver
-	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver $(if $(MMD),--graaf-mmd,--graaf) $(GRAAF_OUT) $(FILE)
+	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.cli.RegelSpraakCli $(if $(MMD),--graaf-mmd,--graaf) $(GRAAF_OUT) $(FILE)
 
 # Emit the v0 IR — a FAITHFUL JSON dump of the complete resolved in-memory model (objecttypen with every
 # side-map, domeinen, parameters, eenheidstelsels, feittypen, dimensies, tijdlijnen, the resolved rule/creatie/
