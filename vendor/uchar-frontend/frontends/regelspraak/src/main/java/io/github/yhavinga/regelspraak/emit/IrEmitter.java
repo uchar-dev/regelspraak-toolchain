@@ -1,8 +1,11 @@
 package io.github.yhavinga.regelspraak.emit;
 
 import io.github.yhavinga.regelspraak.ir.Conditie;
+import io.github.yhavinga.regelspraak.ir.DefaultLadder;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.ir.Geldigheid;
+import io.github.yhavinga.regelspraak.ir.Rung;
+import io.github.yhavinga.regelspraak.ir.SubLadder;
 import io.github.yhavinga.regelspraak.ir.ResolvedConsistentie;
 import io.github.yhavinga.regelspraak.ir.ResolvedDagsoort;
 import io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie;
@@ -160,6 +163,67 @@ public final class IrEmitter {
         for (Diagnostic d : m.diagnostics) diagnostic(d);
         w.endArray();
 
+        // §4 (LADDER-EVOLUTIE) the ladder extension: an OPTIONAL top-level list, emitted ONLY when the
+        // 'Uitzondering op' / 'Uitzonderingen ongeordend' forms produced ladders. A flat document produces
+        // none, so the key is absent there — the v0-mirror byte-identity of every flat golden holds.
+        if (!m.defaultLadders.isEmpty()) {
+            w.key("defaultLadders").beginArray();
+            for (DefaultLadder l : m.defaultLadders) defaultLadder(l);
+            w.endArray();
+        }
+
+        w.endObject();
+    }
+
+    // --- §4 default ladders (extension) ------------------------------------
+
+    private void defaultLadder(DefaultLadder l) {
+        // navigatieBindingen on a rung's own-attribute/characteristic reads resolve against the ladder subject.
+        Objecttype vorigSubject = huidigSubject;
+        huidigSubject = m == null ? null : m.objecttypen.get(l.onderwerp());
+        w.beginObject();
+        w.key("node").value("DefaultLadder");
+        w.key("naam").value(l.naam());
+        w.key("onderwerp").value(l.onderwerp());
+        w.key("kenmerk").value(l.kenmerk());                        // always emitted (null on an attribute ladder)
+        if (l.attribuut() != null) w.key("attribuut").value(l.attribuut());  // only on an attribute ladder (WF-050)
+        w.key("rungs").beginArray();
+        for (Rung r : l.rungs()) rung(r);
+        w.endArray();
+        if (l.ongeordend()) w.key("ongeordend").value(true);        // only on a declared-unordered group member
+        w.key("bron").value(l.bron());
+        w.key("geldigheid"); geldigheid(l.geldigheid());
+        w.endObject();
+        huidigSubject = vorigSubject;
+    }
+
+    private void rung(Rung r) {
+        w.beginObject();
+        w.key("node").value("Rung");
+        w.key("besluit");                                           // null on an attribute rung
+        if (r.besluit() == null) w.valueNull(); else w.value(r.besluit().booleanValue());
+        w.key("voorwaarde"); conditie(r.voorwaarde());              // null only on the initialisation rung
+        if (r.consequentie() != null) { w.key("consequentie"); expr(r.consequentie()); }  // attribute rungs only
+        if (r.initialisatie()) w.key("initialisatie").value(true);
+        if (r.excepties() != null) {
+            w.key("excepties").beginObject();
+            w.key("ongeordend").value(r.excepties().ongeordend());
+            w.key("leden").beginArray();
+            for (SubLadder s : r.excepties().leden()) subLadder(s);
+            w.endArray();
+            w.endObject();
+        }
+        w.key("bron").value(r.bron());
+        w.endObject();
+    }
+
+    private void subLadder(SubLadder s) {
+        w.beginObject();
+        w.key("node").value("SubLadder");
+        w.key("rungs").beginArray();
+        for (Rung r : s.rungs()) rung(r);
+        w.endArray();
+        w.key("bron").value(s.bron());
         w.endObject();
     }
 

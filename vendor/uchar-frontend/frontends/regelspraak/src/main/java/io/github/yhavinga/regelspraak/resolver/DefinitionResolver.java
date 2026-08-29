@@ -45,6 +45,12 @@ public final class DefinitionResolver {
         for (RegelContext r : alleRegels(doc)) {
             model.regels.add(new Regel(src(r.regelNaam()), "regel"));
         }
+        // §4 (LADDER-EVOLUTIE) the ordered 'Uitzondering op' exception blocks carry their own name too — a Regel
+        // stub in document position, so each ladder-producing rule appears in `regels` exactly as the flat rules
+        // and the group members do (their RESOLVED form lives in the ladder, not resolvedRegels).
+        for (UitzonderingRegelContext u : alleUitzonderingen(doc)) {
+            model.regels.add(new Regel(src(u.regelNaam()), "regel"));
+        }
         return model;
     }
 
@@ -55,11 +61,36 @@ public final class DefinitionResolver {
     static List<RegelContext> alleRegels(RegelSpraakDocumentContext doc) {
         List<RegelContext> uit = new ArrayList<>();
         for (ParseTree kind : doc.children == null ? List.<ParseTree>of() : doc.children) {
-            if (kind instanceof RegelContext r) uit.add(r);
-            else if (kind instanceof RegelGroepContext g)
+            if (kind instanceof RegelContext r) {
+                uit.add(r);
+            } else if (kind instanceof RegelGroepContext g) {
                 for (GroepLidContext lid : g.groepLid())
                     if (lid.regel() != null) uit.add(lid.regel());
+            } else if (kind instanceof UitzonderingGroepContext ug) {
+                // §4 (LADDER-EVOLUTIE) an unordered exception group's members are ordinary regels: they resolve
+                // through the WHOLE rule pipeline (type-checks included), and the ladder pass then LIFTS each into a
+                // sibling declared-unordered DefaultLadder (removing it from resolvedRegels — the ladder is the writer).
+                uit.addAll(ug.regel());
+            }
         }
+        return uit;
+    }
+
+    /** §4 (LADDER-EVOLUTIE) every ordered 'Uitzondering op &lt;basis&gt;: &lt;naam&gt;' block of the document, in
+     *  document order. Each resolves like a §13.4.2 regel (its regelNaam + regelVersie+ body) and is then lifted,
+     *  with its named base rule, into one {@link io.github.yhavinga.regelspraak.ir.DefaultLadder}. */
+    static List<UitzonderingRegelContext> alleUitzonderingen(RegelSpraakDocumentContext doc) {
+        List<UitzonderingRegelContext> uit = new ArrayList<>();
+        for (ParseTree kind : doc.children == null ? List.<ParseTree>of() : doc.children)
+            if (kind instanceof UitzonderingRegelContext u) uit.add(u);
+        return uit;
+    }
+
+    /** §4 (LADDER-EVOLUTIE) every unordered exception group of the document, in document order. */
+    static List<UitzonderingGroepContext> alleUitzonderingGroepen(RegelSpraakDocumentContext doc) {
+        List<UitzonderingGroepContext> uit = new ArrayList<>();
+        for (ParseTree kind : doc.children == null ? List.<ParseTree>of() : doc.children)
+            if (kind instanceof UitzonderingGroepContext g) uit.add(g);
         return uit;
     }
 

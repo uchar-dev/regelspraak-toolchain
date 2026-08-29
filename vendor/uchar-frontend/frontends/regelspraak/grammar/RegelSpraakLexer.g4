@@ -170,6 +170,15 @@ SCENARIO             : 'Scenario'             ; // scenario-kop
 SITUATIE             : 'Situatie'             ; // herbruikbare-situatie-kop
 CONSISTENT           : 'consistent'           ; // 'de gegevens zijn consistent' (INCONSISTENT bestaat al)
 
+// --- uchar DIALECT EXTENSION (LADDER-EVOLUTIE §4 / grammar/DIVERGENCES.md) ---
+// 'Uitzondering op' opens an ordered exception block that stacks above a named base rule; the
+// resolver lowers a base+exceptions family to one DefaultLadder. A WHOLE-PHRASE token, so it wins by
+// maximal munch ONLY when the complete 'Uitzondering op' is present; it precedes the single-word
+// UITZONDERINGEN below, which is never a prefix of it ('Uitzonderingen' has no space after
+// 'Uitzondering'), so the two never collide. Inert on official v2.3.0 documents (the phrase and the
+// keywords below occur nowhere in the flat corpus).
+UITZONDERING_OP : 'Uitzondering' WSP 'op' ; // ordered exception block header (LADDER-EVOLUTIE §4.2)
+
 // --- GegevensSpraak phrases ---
 EXTENSIE_VAN_OBJECTTYPE : 'Extensie' WSP 'van' WSP 'objecttype'         ; // §13.3.1.2
 DATUM_TIJD_MILLIS       : 'Datum' WSP 'en' WSP 'tijd' WSP 'in' WSP 'millisecondes'  ; // §13.3.3.6
@@ -244,6 +253,10 @@ TIJDLIJN       : 'Tijdlijn'       ;
 // REGELGROEP is a DOCUMENTED EXTENSION (v2.3.0 §9.10 is prose-only; see docs/grammar-divergences.md).
 // Listed BEFORE REGEL so maximal-munch prefers the longer 'Regelgroep' keyword over 'Regel' + a name word.
 REGELGROEP     : 'Regelgroep'     ;
+// UITZONDERINGEN opens the unordered §9.5 group form ('Uitzonderingen ongeordend:'); ONGEORDEND marks it
+// (uchar DIALECT EXTENSION, LADDER-EVOLUTIE §4). Listed among the keywords (before the ID tokens); neither
+// is a name word, so they never mis-split an ordinary name, and neither occurs in official v2.3.0 documents.
+UITZONDERINGEN : 'Uitzonderingen' ;
 REGEL          : 'Regel'          ;
 BESLISTABEL    : 'Beslistabel'    ;
 ENUMERATIE     : 'Enumeratie'     ;
@@ -274,6 +287,9 @@ VOLDOEN : 'voldoen' ;
 // RECURSIEF marks a §9.10 Regelgroep recursief (DOCUMENTED EXTENSION — see docs/grammar-divergences.md).
 // Lowercase, only ever read in the group header "is recursief"; not a name word, so it never mis-splits a name.
 RECURSIEF : 'recursief' ;
+// ONGEORDEND marks a §9.5 unordered exception group (uchar DIALECT EXTENSION, LADDER-EVOLUTIE §4). Lowercase,
+// only ever read in the group header 'Uitzonderingen ongeordend:'; not a name word, so it never mis-splits a name.
+ONGEORDEND : 'ongeordend' ;
 
 // --- comparison: state predicates / atomic operator words (see header note 3) ---
 GELIJK   : 'gelijk'   ;

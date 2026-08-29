@@ -1,7 +1,9 @@
 package io.github.yhavinga.regelspraak.resolver;
 
 import io.github.yhavinga.regelspraak.ir.Conditie;
+import io.github.yhavinga.regelspraak.ir.DefaultLadder;
 import io.github.yhavinga.regelspraak.ir.Expr;
+import io.github.yhavinga.regelspraak.ir.Rung;
 import io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie;
 import io.github.yhavinga.regelspraak.ir.Geldigheid;
 import io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie;
@@ -74,9 +76,13 @@ final class RuleChecker {
         // §9.10 Regelgroep (DOCUMENTED EXTENSION): a grouped rule resolves EXACTLY as an ungrouped one, so the
         // whole rule pipeline runs over the flattened list (top-level + group members, in document order).
         for (RegelContext r : DefinitionResolver.alleRegels(doc)) regelVersies(r);
+        // §4 (LADDER-EVOLUTIE) the ordered exception blocks resolve like regels too, so their bodies get the same
+        // type-checks; the group members were already resolved above (alleRegels includes them).
+        for (UitzonderingRegelContext u : DefinitionResolver.alleUitzonderingen(doc)) uitzonderingVersies(u);
         beslistabellen(doc);
         regelGroepen(doc);   // build the §9.10 group IR + the fase-2 recursief structural checks
         keurKringverwijzingen();
+        ladders(doc);        // §4 lift the base+exception families and unordered groups into DefaultLadder nodes
     }
 
     /** §9.10 build the {@link io.github.yhavinga.regelspraak.ir.ResolvedRegelGroep} carriers (member RULE NAMES + the
@@ -116,6 +122,210 @@ final class RuleChecker {
                             + "' heeft geen voorwaarde — terminatie is niet automatisch te garanderen "
                             + "(de engine begrenst het aantal activaties als vangnet; §9.10, gedocumenteerde extensie)", line));
         }
+    }
+
+    // ==============================================================================================
+    // §4 (LADDER-EVOLUTIE) ladder lowering — the uchar DIALECT EXTENSION 'Uitzondering op' /
+    // 'Uitzonderingen ongeordend'. Recognition only ever lowers the extension's OWN blocks; a flat
+    // rule family is NEVER folded into a ladder (LADDER-EVOLUTIE §4.2 rejects that — the source never
+    // encoded the priority). Both forms LIFT already-resolved ResolvedRegels out of resolvedRegels into
+    // DefaultLadder nodes: WF-050 forbids both a rule AND a ladder on one target, so the lifted rule's
+    // semantics now live in the ladder alone. See grammar/DIVERGENCES.md for the surface + lowering.
+    // ==============================================================================================
+
+    /** The (subject, kenmerk-vs-attribuut, target-name) a lifted rule writes. */
+    private record LadderDoel(Objecttype onderwerp, boolean kenmerk, String naam) {
+        boolean gelijk(LadderDoel a) {
+            return a != null && onderwerp == a.onderwerp && kenmerk == a.kenmerk && naam.equalsIgnoreCase(a.naam);
+        }
+    }
+
+    /** §4 lower the extension blocks into {@link DefaultLadder} nodes. Fails fast (a clear ERROR, and the block
+     *  stays un-lifted) on an unknown base, a target mismatch, an unsupported base kind, or a multi-version rule. */
+    private void ladders(RegelSpraakDocumentContext doc) {
+        ordeningsLadders(doc);
+        groepsLadders(doc);
+    }
+
+    /** The ordered form: each base rule with one-or-more 'Uitzondering op &lt;base&gt;' blocks becomes ONE ladder —
+     *  the exception rung(s) above the base rung, descending priority. Later-written blocks stack HIGHER
+     *  (LADDER-EVOLUTIE §4.2). The base rule and every exception leave resolvedRegels. */
+    private void ordeningsLadders(RegelSpraakDocumentContext doc) {
+        java.util.LinkedHashMap<String, List<UitzonderingRegelContext>> perBasis = new java.util.LinkedHashMap<>();
+        for (UitzonderingRegelContext u : DefinitionResolver.alleUitzonderingen(doc))
+            perBasis.computeIfAbsent(DefinitionResolver.src(u.uitzonderingBasisNaam()), k -> new ArrayList<>()).add(u);
+
+        for (var en : perBasis.entrySet()) {
+            String basisNaam = en.getKey();
+            List<UitzonderingRegelContext> excepties = en.getValue();
+            int line = excepties.get(0).getStart().getLine();
+
+            List<ResolvedRegel> basis = resolvedVan(basisNaam);
+            if (basis.isEmpty()) {
+                model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                        "Uitzondering op '" + basisNaam + "': geen basisregel met die naam gevonden — de basis moet "
+                        + "een gewone platte regel (kenmerktoekenning of gelijkstelling) zijn" + basisReden(basisNaam), line));
+                continue;
+            }
+            if (basis.size() > 1) { multiVersieFout("basisregel", basisNaam, line); continue; }
+            ResolvedRegel basisRegel = basis.get(0);
+            LadderDoel doel = doelVan(basisRegel);
+            if (doel == null || basisRegel.soort() == ResolvedRegel.Soort.INITIALISATIE) {
+                model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                        "Uitzondering op '" + basisNaam + "': de basisregel is geen kenmerktoekenning of gelijkstelling "
+                        + "(bv. een initialisatie) — daarover wordt geen ladder gebouwd (§4)", line));
+                continue;
+            }
+
+            List<Rung> excRungs = new ArrayList<>();
+            boolean fout = false;
+            for (UitzonderingRegelContext u : excepties) {
+                String exNaam = DefinitionResolver.src(u.regelNaam());
+                List<ResolvedRegel> ex = resolvedVan(exNaam);
+                if (ex.isEmpty()) {
+                    model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                            "Uitzondering op '" + basisNaam + "': de uitzondering '" + exNaam + "' leverde geen "
+                            + "kenmerktoekenning/gelijkstelling op (§4)", u.getStart().getLine()));
+                    fout = true; break;
+                }
+                if (ex.size() > 1) { multiVersieFout("uitzondering", exNaam, u.getStart().getLine()); fout = true; break; }
+                LadderDoel exDoel = doelVan(ex.get(0));
+                if (exDoel == null || ex.get(0).soort() == ResolvedRegel.Soort.INITIALISATIE) {
+                    model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                            "Uitzondering op '" + basisNaam + "': de uitzondering '" + exNaam + "' is geen "
+                            + "kenmerktoekenning of gelijkstelling (bv. een initialisatie) (§4)", u.getStart().getLine()));
+                    fout = true; break;
+                }
+                // Rung carries no per-rung geldigheid: mixed windows are unrepresentable on the ladder,
+                // so a diverging window must refuse — the same fence the multi-version case gets.
+                if (!ex.get(0).geldigheid().equals(basisRegel.geldigheid())) {
+                    model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                            "Uitzondering op '" + basisNaam + "': uitzondering '" + exNaam + "' draagt een ander "
+                            + "geldigheidsvenster dan de basisregel — de ladder draagt één venster; splits per venster "
+                            + "of maak de vensters gelijk (§4)", u.getStart().getLine()));
+                    fout = true; break;
+                }
+                if (!doel.gelijk(exDoel)) {
+                    model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                            "Uitzondering op '" + basisNaam + "': uitzondering '" + exNaam + "' schrijft een ander doel ("
+                            + doelTekst(exDoel) + ") dan de basisregel (" + doelTekst(doel) + ") — een uitzondering moet "
+                            + "hetzelfde onderwerp en kenmerk/attribuut betreffen (§4, WF-050)", u.getStart().getLine()));
+                    fout = true; break;
+                }
+                excRungs.add(rungVan(ex.get(0), doel.kenmerk()));
+            }
+            if (fout) continue;
+            java.util.Collections.reverse(excRungs);   // later-written Uitzondering-op stacks higher
+
+            List<Rung> rungs = new ArrayList<>(excRungs);
+            rungs.add(rungVan(basisRegel, doel.kenmerk()));
+            model.defaultLadders.add(ladderVan(basisNaam, doel, false, rungs, basisRegel.geldigheid()));
+
+            model.resolvedRegels.remove(basisRegel);
+            for (UitzonderingRegelContext u : excepties) {
+                String exNaam = DefinitionResolver.src(u.regelNaam());
+                model.resolvedRegels.removeIf(rr -> rr.naam().equals(exNaam));
+            }
+        }
+    }
+
+    /** The unordered group: each 'Uitzonderingen ongeordend:' block becomes SIBLING declared-unordered ladders
+     *  (one per member) over ONE shared target — the §9.5 surface. Every sibling carries {@code ongeordend}
+     *  (WF-050: two-or-more ladders on one target require it). All members leave resolvedRegels. */
+    private void groepsLadders(RegelSpraakDocumentContext doc) {
+        for (UitzonderingGroepContext g : DefinitionResolver.alleUitzonderingGroepen(doc)) {
+            int line = g.getStart().getLine();
+            List<ResolvedRegel> leden = new ArrayList<>();
+            LadderDoel gedeeld = null;
+            boolean fout = false;
+            for (RegelContext lid : g.regel()) {
+                String naam = DefinitionResolver.src(lid.regelNaam());
+                List<ResolvedRegel> rr = resolvedVan(naam);
+                if (rr.isEmpty()) {
+                    model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                            "Uitzonderingen ongeordend: groepslid '" + naam + "' leverde geen "
+                            + "kenmerktoekenning/gelijkstelling op (§4)", line));
+                    fout = true; break;
+                }
+                if (rr.size() > 1) { multiVersieFout("groepslid", naam, line); fout = true; break; }
+                LadderDoel d = doelVan(rr.get(0));
+                if (d == null || rr.get(0).soort() == ResolvedRegel.Soort.INITIALISATIE) {
+                    model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                            "Uitzonderingen ongeordend: groepslid '" + naam + "' is geen kenmerktoekenning of "
+                            + "gelijkstelling (§4)", line));
+                    fout = true; break;
+                }
+                if (gedeeld == null) gedeeld = d;
+                else if (!gedeeld.gelijk(d)) {
+                    model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                            "Uitzonderingen ongeordend: groepslid '" + naam + "' schrijft een ander doel ("
+                            + doelTekst(d) + ") dan een eerder lid (" + doelTekst(gedeeld) + ") — een ongeordende "
+                            + "groep betreft één gedeeld doel (§4, §9.5)", line));
+                    fout = true; break;
+                }
+                leden.add(rr.get(0));
+            }
+            if (fout || gedeeld == null) continue;
+            for (ResolvedRegel r : leden) {
+                model.defaultLadders.add(ladderVan(r.naam(), gedeeld, true,
+                        List.of(rungVan(r, gedeeld.kenmerk())), r.geldigheid()));
+                model.resolvedRegels.remove(r);
+            }
+        }
+    }
+
+    /** Assemble a {@link DefaultLadder} for target {@code doel}: kenmerk XOR attribuut per WF-050, no per-ladder
+     *  bron (a frontend ladder carries no statute annotation of its own), the base/member's geldigheid faithfully. */
+    private DefaultLadder ladderVan(String naam, LadderDoel doel, boolean ongeordend, List<Rung> rungs, Geldigheid g) {
+        return new DefaultLadder(naam, doel.onderwerp().naam,
+                doel.kenmerk() ? doel.naam() : null, doel.kenmerk() ? null : doel.naam(),
+                ongeordend, rungs, null, g);
+    }
+
+    /** One rung from a resolved flat rule: on a CHARACTERISTIC ladder a §9.2-monotone kenmerktoekenning always
+     *  decides {@code true} (RegelSpraak cannot withdraw a characteristic); on an ATTRIBUTE ladder the rung's
+     *  value is the rule's resolved value expression. The justification is the rule's condition. No rung bron. */
+    private Rung rungVan(ResolvedRegel r, boolean kenmerk) {
+        return kenmerk
+                ? new Rung(Boolean.TRUE, r.voorwaarde(), null, false, null, null)
+                : new Rung(null, r.voorwaarde(), r.waarde(), false, null, null);
+    }
+
+    /** The resolved versions of the rule named {@code naam} — matched exactly or by the "&lt;naam&gt; #k" version
+     *  suffix. Empty when no such rule resolved (it was a non-scalar construct, or the name is unknown). */
+    private List<ResolvedRegel> resolvedVan(String naam) {
+        List<ResolvedRegel> uit = new ArrayList<>();
+        for (ResolvedRegel r : model.resolvedRegels)
+            if (r.naam().equals(naam) || r.naam().startsWith(naam + " #")) uit.add(r);
+        return uit;
+    }
+
+    /** The (subject, kenmerk-vs-attribuut, target-name) a lifted rule writes, or null when its target is not a
+     *  plain attribute/characteristic reference (an objectcreatie/verdeling/consistentie never lands here). */
+    private LadderDoel doelVan(ResolvedRegel r) {
+        if (!(r.doel() instanceof Expr.AttribuutRef d) || d.objecttype() == null) return null;
+        return new LadderDoel(d.objecttype(), r.soort() == ResolvedRegel.Soort.KENMERKTOEKENNING, d.attribuut());
+    }
+
+    private static String doelTekst(LadderDoel d) {
+        return d == null ? "onbekend"
+                : d.onderwerp().naam + "." + d.naam() + (d.kenmerk() ? " (kenmerk)" : " (attribuut)");
+    }
+
+    /** A hint appended to the unknown-base ERROR when the name IS resolved, but as a construct a ladder cannot
+     *  be built over (a verdeling/consistentie/objectcreatie lives in its own model list, not resolvedRegels). */
+    private String basisReden(String naam) {
+        boolean anders = model.verdelingen.stream().anyMatch(v -> v.naam().equals(naam))
+                || model.consistenties.stream().anyMatch(c -> c.naam().equals(naam))
+                || model.objectCreaties.stream().anyMatch(o -> o.naam().equals(naam))
+                || model.uniciteiten.stream().anyMatch(u -> u.naam().equals(naam));
+        return anders ? " (regel '" + naam + "' is een verdeling/consistentie/objectcreatie/uniciteit, geen platte regel)" : "";
+    }
+
+    private void multiVersieFout(String rol, String naam, int line) {
+        model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                "Uitzondering op: de " + rol + " '" + naam + "' heeft meer dan één regelversie — meerdere versies op "
+                + "één ladder worden in deze kaart nog niet ondersteund (§4)", line));
     }
 
     /** A read-write dependency CYCLE between assignments (x = y+1; y = x+1) never reaches a fixpoint
@@ -186,16 +396,28 @@ final class RuleChecker {
      *  {@link BeslistabelDesugar} lowers to an ordinary regel and {@link #beslistabellen} re-parses to a
      *  {@link RegelContext} — so a table row reuses the WHOLE rule pipeline (and both back-ends) unchanged. */
     private void regelVersies(RegelContext r) {
-        String naam = DefinitionResolver.src(r.regelNaam());
+        regelVersies(DefinitionResolver.src(r.regelNaam()), r.regelVersie(), bronAnnotaties(r), r.getStart().getLine());
+    }
+
+    /** §4 (LADDER-EVOLUTIE) resolve an ordered 'Uitzondering op' block's body exactly as a §13.4.2 regel — its
+     *  own regelNaam + regelVersie+ run through the whole rule pipeline into resolvedRegels, so its condition,
+     *  value, geldigheid and type-checks are the standard ones. The ladder pass then LIFTS it (and the base rule)
+     *  into a {@link io.github.yhavinga.regelspraak.ir.DefaultLadder}, removing it from resolvedRegels. */
+    private void uitzonderingVersies(UitzonderingRegelContext u) {
+        regelVersies(DefinitionResolver.src(u.regelNaam()), u.regelVersie(), bronAnnotaties(u), u.getStart().getLine());
+    }
+
+    /** The shared §13.4.2 version pipeline, over a rule's NAME + versions (a top-level regel, a beslistabel row,
+     *  or a §4 exception block). Each §13.4.2.3 version becomes a distinct {@link ResolvedRegel}. */
+    private void regelVersies(String naam, List<RegelVersieContext> versies, List<String> bronAnn, int line) {
         // §Bron: the statuutannotaties directly above the rule header, carried onto every version's ResolvedRegel.
-        huidigeBronAnnotaties = bronAnnotaties(r);
-        List<RegelVersieContext> versies = r.regelVersie();
+        huidigeBronAnnotaties = bronAnn;
         // §13.4.2.5 validity per version, computed up front so §4.2's non-overlap
         // invariant can be checked across the rule's versions. A version whose validity
         // bound is malformed is null here (already diagnosed) and is not emitted.
         List<Geldigheid> gelden = new ArrayList<>();
         for (RegelVersieContext v : versies) gelden.add(geldigheidVan(v.versie()));
-        if (versies.size() > 1) meldOverlap(naam, gelden, r.getStart().getLine());
+        if (versies.size() > 1) meldOverlap(naam, gelden, line);
         for (int i = 0; i < versies.size(); i++) {
             Geldigheid geldigheid = gelden.get(i);
             if (geldigheid == null) continue; // malformed validity bound — already reported

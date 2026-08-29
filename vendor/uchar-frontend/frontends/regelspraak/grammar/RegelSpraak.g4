@@ -41,8 +41,27 @@ private static boolean isJaar(org.antlr.v4.runtime.Token t) {
 // Document
 // ====================================================================
 regelSpraakDocument
-    : ( definitie | regelGroep | regel | beslistabel )* EOF
+    : ( definitie | regelGroep | uitzonderingGroep | uitzonderingRegel | regel | beslistabel )* EOF
     ;
+
+// §4 uchar DIALECT EXTENSION — the ladder-producing forms (LADDER-EVOLUTIE §4.2; grammar/DIVERGENCES.md).
+// Purely ADDITIVE top-level alternatives beside regel/regelGroep/beslistabel, the inert-on-official-documents
+// posture regelGroep and scenariotoetsen already take (the header tokens occur nowhere in v2.3.0 source). The
+// resolver lowers them to DefaultLadder nodes; official documents parse EXACTLY as before.
+//
+// Ordered exception: 'Uitzondering op <basisregel>: <naam>' then a normal rule body (geldig-clause +
+// kenmerktoekenning/gelijkstelling + optional indien). Stacks above the named base rule; the resolver resolves
+// the base, enforces the SAME target, and builds one DefaultLadder (exception rung(s) above, base rung below).
+// The base name runs up to the ':' (it never contains one); the exception's own name is a regelNaam (up to
+// 'geldig'), so the body's regelVersie+ is reached exactly as a §13.4.2 regel is.
+uitzonderingRegel     : UITZONDERING_OP uitzonderingBasisNaam COLON regelNaam regelVersie+ ;
+uitzonderingBasisNaam : ~( COLON | GELDIG | GELDIG_CAP )+ ; // base-rule name, bounded by the ':'
+
+// Unordered group: 'Uitzonderingen ongeordend:' scopes CONSECUTIVE ordinary regels that write ONE shared
+// target (the §9.5 surface). The resolver builds sibling declared-unordered ladders (one per member); members
+// deciding differently on one target route to the §9.5 channel. Like regelGroep, the group ends at the first
+// construct that is not a regel, so it is inert on any non-extension document.
+uitzonderingGroep     : UITZONDERINGEN ONGEORDEND COLON regel+ ;
 
 // §9.10 Regelgroep — a DOCUMENTED EXTENSION, not a §13 production (v2.3.0 gives regelgroep no written
 // form; see docs/grammar-divergences.md '§9.10 recursie / regelgroep'). A `Regelgroep <naam>` header,
