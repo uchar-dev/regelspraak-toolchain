@@ -1,17 +1,29 @@
 #!/usr/bin/env bash
-# The uchar pin: this toolchain consumes the uchar spec repo at the
-# revision pinned in SPEC_REV (repo root, a full 40-hex commit SHA).
-# Conformance means the emitter reproduces every uchar emitter golden
-# (a bron.rgs beside its ir.json, found recursively) byte-identically —
-# byte-identity implies schema-validity and verifier-cleanliness,
-# because uchar's own gates pin those on the checked-in files at the
-# pinned (gated) revision; this script trusts, and does not re-run,
-# those gates. Pin convention: the uchar checkout may sit AHEAD of the
-# pin as long as the pin is an ancestor and the normative content
-# (corpus/golden, spec/schema, IR-SPEC, RUNTIME-SEMANTICS) has not
-# moved since — content drift demands a spec-first pin bump, backlog
-# prose does not. An empty golden set is a failure, never silently
-# green.
+# The uchar pin — the toolchain's SPEC_REV drift gate.
+#
+# Since the dependency inversion (LADDER-EVOLUTIE §6 / Q5) the toolchain
+# CONSUMES uchar's frontend as a byte-identical vendored slice under
+# vendor/uchar-frontend/, compiled as its only frontend. SPEC_REV (repo root, a
+# full 40-hex commit SHA) is the SINGLE pin. This gate proves two things at that
+# pin:
+#
+#   (A) DRIFT: every file under vendor/uchar-frontend/frontends/regelspraak/** is
+#       byte-identical to the pinned source blob (git -C <uchar> show
+#       $SPEC_REV:frontends/regelspraak/<p>) and the file set matches the pin
+#       exactly — no missing, no extra. The comparison is against the pinned
+#       COMMIT, never uchar's working tree. Without this a vendored copy is
+#       unverified against the pin.
+#   (B) EMIT: the (vendored) frontend reproduces every uchar emitter golden (a
+#       bron.rgs beside its ir.json, found recursively) byte-identically —
+#       byte-identity implies schema-validity and verifier-cleanliness because
+#       uchar's own gates pin those on the checked-in files at the gated
+#       revision; this script trusts, and does not re-run, those gates.
+#
+# Pin convention: the uchar checkout may sit AHEAD of the pin as long as the pin
+# is an ancestor and the NORMATIVE content (corpus/golden, spec/schema, IR-SPEC,
+# RUNTIME-SEMANTICS, AND frontends/regelspraak) has not moved since — content
+# drift demands a spec-first pin bump (re-vendor + re-pin together), backlog
+# prose does not. An empty golden set is a failure, never silently green.
 set -u
 cd "$(dirname "$0")/.."
 
@@ -30,7 +42,9 @@ esac
 HEAD_REV=$(git -C "$UCHAR_DIR" rev-parse HEAD) || fail "cannot resolve HEAD in $UCHAR_DIR"
 git -C "$UCHAR_DIR" rev-parse --verify --quiet "$SPEC_REV^{commit}" >/dev/null \
   || fail "pinned SPEC_REV $SPEC_REV is not a commit in $UCHAR_DIR"
-NORMATIVE="corpus/golden spec/schema spec/IR-SPEC.md spec/RUNTIME-SEMANTICS.md"
+# The frontend joins the normative set: after the inversion a frontend change must
+# not slip past the spec-first pin discipline (LADDER-EVOLUTIE §6.1).
+NORMATIVE="corpus/golden spec/schema spec/IR-SPEC.md spec/RUNTIME-SEMANTICS.md frontends/regelspraak"
 if [ "$HEAD_REV" != "$SPEC_REV" ]; then
   git -C "$UCHAR_DIR" merge-base --is-ancestor "$SPEC_REV" "$HEAD_REV" \
     || fail "uchar HEAD $HEAD_REV does not descend from the pinned SPEC_REV $SPEC_REV"
@@ -41,6 +55,37 @@ DIRTY=$(git -C "$UCHAR_DIR" status --porcelain -- $NORMATIVE)
 [ -z "$DIRTY" ] || fail "uchar working tree is dirty under the normative paths:
 $DIRTY"
 
+# ── (A) DRIFT: the vendored copy is byte-identical to the pinned source ─────────
+VENDOR_ROOT="vendor/uchar-frontend"
+SLICE="frontends/regelspraak"
+[ -d "$VENDOR_ROOT/$SLICE" ] || fail "the vendored frontend is missing at $VENDOR_ROOT/$SLICE"
+
+# The pinned file set (from the COMMIT, not the working tree) and the vendored set.
+PIN_LIST=$(git -C "$UCHAR_DIR" ls-tree -r --name-only "$SPEC_REV" -- "$SLICE") \
+  || fail "cannot list $SLICE at pin $SPEC_REV in $UCHAR_DIR"
+[ -n "$PIN_LIST" ] || fail "the pinned slice $SLICE is empty at $SPEC_REV (nothing to vendor)"
+VENDOR_LIST=$( (cd "$VENDOR_ROOT" && find "$SLICE" -type f) | sort )
+
+missing_set=$(comm -23 <(printf '%s\n' "$PIN_LIST" | sort) <(printf '%s\n' "$VENDOR_LIST"))
+extra_set=$(comm -13 <(printf '%s\n' "$PIN_LIST" | sort) <(printf '%s\n' "$VENDOR_LIST"))
+[ -z "$missing_set" ] || fail "vendored slice is MISSING files present at the pin:
+$missing_set"
+[ -z "$extra_set" ] || fail "vendored slice has EXTRA files absent from the pin:
+$extra_set"
+
+drift=0
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  if ! git -C "$UCHAR_DIR" show "$SPEC_REV:$f" | cmp -s - "$VENDOR_ROOT/$f"; then
+    echo "DRIFT: $f (vendored copy diverges from the pinned source)"
+    drift=$((drift+1))
+  fi
+done <<< "$PIN_LIST"
+[ $drift -eq 0 ] || fail "$drift vendored file(s) drift from the pinned source at $SPEC_REV — re-vendor from the pin"
+nfiles=$(printf '%s\n' "$PIN_LIST" | grep -c .)
+echo "uchar-conformance: vendored $SLICE byte-identical to pin $SPEC_REV ($nfiles files)"
+
+# ── (B) EMIT: the vendored frontend reproduces every emitter golden ────────────
 JAR=$(ls lib/antlr-*-complete.jar 2>/dev/null | head -1)
 [ -n "$JAR" ] || fail "no ANTLR jar under lib/"
 make resolver >/dev/null 2>&1 || fail "make resolver failed"
@@ -70,4 +115,4 @@ done < <(find "$UCHAR_DIR/corpus/golden" -name bron.rgs | sort)
 if [ $diffcount -gt 0 ] || [ $emitfail -gt 0 ] || [ $missing -gt 0 ]; then
   fail "$pass identical, $diffcount diverging, $emitfail emit failures, $missing missing goldens at pin $SPEC_REV"
 fi
-echo "uchar-conformance: PASS — $pass emitter goldens byte-identical at pin $SPEC_REV"
+echo "uchar-conformance: PASS — vendored slice byte-identical + $pass emitter goldens reproduced at pin $SPEC_REV"
