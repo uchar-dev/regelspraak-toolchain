@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The uchar pin — the toolchain's SPEC_REV drift gate.
 #
-# Since the dependency inversion (LADDER-EVOLUTIE §6 / Q5) the toolchain
+# Since the dependency inversion (PRIORITIZED-DEFAULTS-EVOLUTIE §6 / Q5) the toolchain
 # CONSUMES uchar's frontend as a byte-identical vendored slice under
 # vendor/uchar-frontend/, compiled as its only frontend. SPEC_REV (repo root, a
 # full 40-hex commit SHA) is the SINGLE pin. This gate proves two things at that
@@ -43,7 +43,7 @@ HEAD_REV=$(git -C "$UCHAR_DIR" rev-parse HEAD) || fail "cannot resolve HEAD in $
 git -C "$UCHAR_DIR" rev-parse --verify --quiet "$SPEC_REV^{commit}" >/dev/null \
   || fail "pinned SPEC_REV $SPEC_REV is not a commit in $UCHAR_DIR"
 # The frontend joins the normative set: after the inversion a frontend change must
-# not slip past the spec-first pin discipline (LADDER-EVOLUTIE §6.1).
+# not slip past the spec-first pin discipline (PRIORITIZED-DEFAULTS-EVOLUTIE §6.1).
 NORMATIVE="corpus/golden spec/schema spec/IR-SPEC.md spec/RUNTIME-SEMANTICS.md frontends/regelspraak"
 if [ "$HEAD_REV" != "$SPEC_REV" ]; then
   git -C "$UCHAR_DIR" merge-base --is-ancestor "$SPEC_REV" "$HEAD_REV" \

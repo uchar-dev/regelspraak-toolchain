@@ -53,11 +53,12 @@ public final class RegelSpraakModel {
      *  RULE NAMES (the bare written names); members otherwise resolve exactly as ungrouped rules. Both back-ends
      *  prefix ONLY the engine-visible rule-name header with "<groep>: " — every data key stays the bare name. */
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedRegelGroep> regelGroepen = new ArrayList<>();
-    /** §4 (LADDER-EVOLUTIE) the DefaultLadder nodes lowered from the uchar-dialect 'Uitzondering op' /
-     *  'Uitzonderingen ongeordend' extension — the ONLY path by which the RegelSpraak frontend produces
-     *  ladders (the flat v0-mirror rules never do). Empty for every document without the extension, so the
-     *  emitter omits the {@code defaultLadders} key there (the v0-mirror byte-identity of all flat goldens). */
-    public final List<io.github.yhavinga.regelspraak.ir.DefaultLadder> defaultLadders = new ArrayList<>();
+    /** §4 (PRIORITIZED-DEFAULTS-EVOLUTIE) the PrioritizedDefaults nodes lowered from the uchar-dialect
+     *  'Uitzondering op' / 'Uitzonderingen ongeordend' extension — the ONLY path by which the RegelSpraak
+     *  frontend produces defaults groups (the flat v0-mirror rules never do). Empty for every document without
+     *  the extension, so the emitter omits the {@code prioritizedDefaults} key there (the v0-mirror
+     *  byte-identity of all flat goldens). */
+    public final List<io.github.yhavinga.regelspraak.ir.PrioritizedDefaults> prioritizedDefaults = new ArrayList<>();
     public final List<Diagnostic> diagnostics = new ArrayList<>();
 
     /** §9.10 the group a rule belongs to, given an EMITTED rule name — which is the bare member name, optionally

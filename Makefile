@@ -25,7 +25,7 @@ JUNIT_JAR     := $(LIB_DIR)/junit-platform-console-standalone-$(JUNIT_VERSION).j
 JUNIT_URL     := https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/$(JUNIT_VERSION)/junit-platform-console-standalone-$(JUNIT_VERSION).jar
 
 # Resolver (typed AST + typeringen enforcement) sources and tests.
-# Since the dependency inversion (LADDER-EVOLUTIE §6) the toolchain consumes uchar's frontend
+# Since the dependency inversion (PRIORITIZED-DEFAULTS-EVOLUTIE §6) the toolchain consumes uchar's frontend
 # (grammar + resolver/ir/model/emit/kern) from the byte-identical vendored slice, compiled as an
 # extra source root — the same wiring uchar's backends/drools/pom.xml uses. VENDOR_SRC below is
 # that root; the toolchain keeps only transpiler/runtime/schema/graaf/cli and the toolchain-local
@@ -49,7 +49,7 @@ OUT_DIR  := out
 
 # Grammar sources — authored from scratch against the v2.3.0 spec (grammar/README.md).
 # The lexer MUST be generated before the parser (see the `parser` target).
-# The grammar is now the vendored frontend's (LADDER-EVOLUTIE §6): the toolchain's own grammar/
+# The grammar is now the vendored frontend's (PRIORITIZED-DEFAULTS-EVOLUTIE §6): the toolchain's own grammar/
 # copy was deleted at the inversion. Byte-identical to the pin; the drift gate guards it.
 GRAMMAR_DIR := vendor/uchar-frontend/frontends/regelspraak/grammar
 LEXER_G4  := $(GRAMMAR_DIR)/RegelSpraakLexer.g4

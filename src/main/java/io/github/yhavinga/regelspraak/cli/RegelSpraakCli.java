@@ -5,7 +5,7 @@ import io.github.yhavinga.regelspraak.resolver.Resolver;
 
 /**
  * Toolchain-side CLI wrapper around the vendored, {@code --ir}-only frontend
- * {@link Resolver}. Since the dependency inversion (LADDER-EVOLUTIE §6) the
+ * {@link Resolver}. Since the dependency inversion (PRIORITIZED-DEFAULTS-EVOLUTIE §6) the
  * frontend the toolchain consumes emits ONLY the v0 IR; this wrapper re-provides
  * the extra output modes the toolchain has always shipped — {@code --drl},
  * {@code --facts}, {@code --graaf}/{@code --graaf-mmd} — by reusing the vendored

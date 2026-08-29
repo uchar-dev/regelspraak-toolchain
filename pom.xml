@@ -144,7 +144,7 @@
             </configuration>
           </execution>
           <!-- The vendored uchar frontend (grammar + resolver/ir/model/emit/kern) is the ONLY
-               frontend the toolchain compiles since the dependency inversion (LADDER-EVOLUTIE §6).
+               frontend the toolchain compiles since the dependency inversion (PRIORITIZED-DEFAULTS-EVOLUTIE §6).
                Its Java source root is added here the same way uchar's backends/drools/pom.xml wires
                the frontend as a foreign source root; the grammar under the same slice is generated
                into gen/ by `make parser`. Byte-identity to the pin is guarded by scripts/uchar-conformance.sh. -->

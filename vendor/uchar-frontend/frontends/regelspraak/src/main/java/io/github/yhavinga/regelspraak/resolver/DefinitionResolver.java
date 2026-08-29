@@ -45,9 +45,10 @@ public final class DefinitionResolver {
         for (RegelContext r : alleRegels(doc)) {
             model.regels.add(new Regel(src(r.regelNaam()), "regel"));
         }
-        // §4 (LADDER-EVOLUTIE) the ordered 'Uitzondering op' exception blocks carry their own name too — a Regel
-        // stub in document position, so each ladder-producing rule appears in `regels` exactly as the flat rules
-        // and the group members do (their RESOLVED form lives in the ladder, not resolvedRegels).
+        // §4 (PRIORITIZED-DEFAULTS-EVOLUTIE) the ordered 'Uitzondering op' exception blocks carry their own name
+        // too — a Regel stub in document position, so each defaults-producing rule appears in `regels` exactly as
+        // the flat rules and the group members do (their RESOLVED form lives in the defaults group, not
+        // resolvedRegels).
         for (UitzonderingRegelContext u : alleUitzonderingen(doc)) {
             model.regels.add(new Regel(src(u.regelNaam()), "regel"));
         }
@@ -67,18 +68,20 @@ public final class DefinitionResolver {
                 for (GroepLidContext lid : g.groepLid())
                     if (lid.regel() != null) uit.add(lid.regel());
             } else if (kind instanceof UitzonderingGroepContext ug) {
-                // §4 (LADDER-EVOLUTIE) an unordered exception group's members are ordinary regels: they resolve
-                // through the WHOLE rule pipeline (type-checks included), and the ladder pass then LIFTS each into a
-                // sibling declared-unordered DefaultLadder (removing it from resolvedRegels — the ladder is the writer).
+                // §4 (PRIORITIZED-DEFAULTS-EVOLUTIE) an unordered exception group's members are ordinary regels: they
+                // resolve through the WHOLE rule pipeline (type-checks included), and the defaults pass then LIFTS each
+                // into sibling declared-unordered PrioritizedDefaults (removing it from resolvedRegels — the defaults
+                // group is the writer).
                 uit.addAll(ug.regel());
             }
         }
         return uit;
     }
 
-    /** §4 (LADDER-EVOLUTIE) every ordered 'Uitzondering op &lt;basis&gt;: &lt;naam&gt;' block of the document, in
-     *  document order. Each resolves like a §13.4.2 regel (its regelNaam + regelVersie+ body) and is then lifted,
-     *  with its named base rule, into one {@link io.github.yhavinga.regelspraak.ir.DefaultLadder}. */
+    /** §4 (PRIORITIZED-DEFAULTS-EVOLUTIE) every ordered 'Uitzondering op &lt;basis&gt;: &lt;naam&gt;' block of the
+     *  document, in document order. Each resolves like a §13.4.2 regel (its regelNaam + regelVersie+ body) and is
+     *  then lifted, with its named base rule, into one
+     *  {@link io.github.yhavinga.regelspraak.ir.PrioritizedDefaults}. */
     static List<UitzonderingRegelContext> alleUitzonderingen(RegelSpraakDocumentContext doc) {
         List<UitzonderingRegelContext> uit = new ArrayList<>();
         for (ParseTree kind : doc.children == null ? List.<ParseTree>of() : doc.children)
@@ -86,7 +89,7 @@ public final class DefinitionResolver {
         return uit;
     }
 
-    /** §4 (LADDER-EVOLUTIE) every unordered exception group of the document, in document order. */
+    /** §4 (PRIORITIZED-DEFAULTS-EVOLUTIE) every unordered exception group of the document, in document order. */
     static List<UitzonderingGroepContext> alleUitzonderingGroepen(RegelSpraakDocumentContext doc) {
         List<UitzonderingGroepContext> uit = new ArrayList<>();
         for (ParseTree kind : doc.children == null ? List.<ParseTree>of() : doc.children)

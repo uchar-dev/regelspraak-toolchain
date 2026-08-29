@@ -8,12 +8,13 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * §4 (LADDER-EVOLUTIE) the uchar-dialect ladder extension: the ordered {@code Uitzondering op} block and the
- * unordered {@code Uitzonderingen ongeordend} group lower to {@link RegelSpraakModel#defaultLadders}. These
+ * §4 (PRIORITIZED-DEFAULTS-EVOLUTIE) the uchar-dialect prioritized-defaults extension: the ordered
+ * {@code Uitzondering op} block and the unordered {@code Uitzonderingen ongeordend} group lower to
+ * {@link RegelSpraakModel#prioritizedDefaults}. These
  * tests pin BOTH the rood-eerst refusals (a malformed block fails loudly in the resolver) AND the happy-path
- * parse+resolve+emit wire shape, plus the additivity invariant (a flat document emits no ladder key).
+ * parse+resolve+emit wire shape, plus the additivity invariant (a flat document emits no defaults key).
  */
-class LadderExtensieTest {
+class DefaultsExtensieTest {
 
     /** The emitted v0 IR JSON with all whitespace removed — an exact compacted fragment pins the wire shape. */
     private static String emitCompact(RegelSpraakModel m) {
@@ -72,7 +73,7 @@ class LadderExtensieTest {
     }
 
     @Test void basis_is_initialisatie_weigert_luid() {
-        // A ladder is never built over an initialisation base (§4).
+        // A defaults group is never built over an initialisation base (§4).
         String src = """
             Objecttype de Jutter (mv: Jutters) (bezield)
                 is kustwacht kenmerk (bijvoeglijk);
@@ -94,7 +95,7 @@ class LadderExtensieTest {
     }
 
     @Test void uitzondering_is_initialisatie_weigert_luid() {
-        // The mirror of the base guard: an exception whose body is an initialisation would lower to a rung
+        // The mirror of the base guard: an exception whose body is an initialisation would lower to a default
         // the verifier rejects (WF-050) — the resolver must refuse it locally instead (lens catch 2026-08-29).
         String src = """
             Objecttype de Jutter (mv: Jutters) (bezield)
@@ -117,7 +118,7 @@ class LadderExtensieTest {
     }
 
     @Test void afwijkend_geldigheidsvenster_weigert_luid() {
-        // Rung carries no per-rung geldigheid: a diverging validity window on the exception is
+        // Default carries no per-default geldigheid: a diverging validity window on the exception is
         // unrepresentable and must refuse instead of silently riding the base window (lens catch 2026-08-29 —
         // the amendment-adds-an-exception-effective-later pattern the differential square can never see).
         String src = OBJ_ORDERED + """
@@ -165,7 +166,7 @@ class LadderExtensieTest {
 
     // -------------------------------------------------------------------- happy path
 
-    @Test void geordende_uitzondering_bouwt_een_ladder() {
+    @Test void geordende_uitzondering_bouwt_een_defaults_groep() {
         String src = OBJ_ORDERED + """
             Regel bergingsbevoegd bij quotum
                 geldig altijd
@@ -181,23 +182,23 @@ class LadderExtensieTest {
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
-        // one ladder, the base rule lifted OUT of resolvedRegels (WF-050 single-writer)
-        assertEquals(1, m.defaultLadders.size(), "verwachtte precies één ladder");
+        // one defaults group, the base rule lifted OUT of resolvedRegels (WF-050 single-writer)
+        assertEquals(1, m.prioritizedDefaults.size(), "verwachtte precies één defaults-groep");
         assertEquals(0, m.resolvedRegels.size(), "basis + uitzondering horen uit resolvedRegels te zijn gelicht");
-        var l = m.defaultLadders.get(0);
+        var l = m.prioritizedDefaults.get(0);
         assertEquals("Jutter", l.onderwerp());
         assertEquals("bergingsbevoegd", l.kenmerk());
         assertNull(l.attribuut());
         assertFalse(l.ongeordend());
-        assertEquals(2, l.rungs().size(), "verwachtte een uitzonderingssport boven een basissport");
-        // the exception rung (a Samengesteld voorwaarde) sits ABOVE the base rung (a bare Vergelijking)
-        assertInstanceOf(io.github.yhavinga.regelspraak.ir.Conditie.Samengesteld.class, l.rungs().get(0).voorwaarde());
-        assertInstanceOf(io.github.yhavinga.regelspraak.ir.Conditie.Vergelijking.class, l.rungs().get(1).voorwaarde());
-        assertEquals(Boolean.TRUE, l.rungs().get(0).besluit());
-        assertEquals(Boolean.TRUE, l.rungs().get(1).besluit());
+        assertEquals(2, l.defaults().size(), "verwachtte een uitzonderingsdefault boven een basisdefault");
+        // the exception default (a Samengesteld voorwaarde) sits ABOVE the base default (a bare Vergelijking)
+        assertInstanceOf(io.github.yhavinga.regelspraak.ir.Conditie.Samengesteld.class, l.defaults().get(0).voorwaarde());
+        assertInstanceOf(io.github.yhavinga.regelspraak.ir.Conditie.Vergelijking.class, l.defaults().get(1).voorwaarde());
+        assertEquals(Boolean.TRUE, l.defaults().get(0).besluit());
+        assertEquals(Boolean.TRUE, l.defaults().get(1).besluit());
     }
 
-    @Test void ongeordende_groep_bouwt_zusterladders() {
+    @Test void ongeordende_groep_bouwt_zusterdefaults() {
         String src = """
             Objecttype de Jutter (mv: Jutters) (bezield)
                 is kustwacht kenmerk (bijvoeglijk);
@@ -217,24 +218,24 @@ class LadderExtensieTest {
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
-        assertEquals(2, m.defaultLadders.size(), "verwachtte twee zusterladders");
+        assertEquals(2, m.prioritizedDefaults.size(), "verwachtte twee zuster-defaults-groepen");
         assertEquals(0, m.resolvedRegels.size(), "alle groepsleden horen uit resolvedRegels te zijn gelicht");
-        for (var l : m.defaultLadders) {
-            assertEquals("wachtgeld", l.attribuut(), "elke zusterladder schrijft het gedeelde attribuut");
+        for (var l : m.prioritizedDefaults) {
+            assertEquals("wachtgeld", l.attribuut(), "elke zuster-defaults-groep schrijft het gedeelde attribuut");
             assertNull(l.kenmerk());
-            assertTrue(l.ongeordend(), "elke zusterladder van de groep is declared-unordered (WF-050)");
-            assertEquals(1, l.rungs().size());
-            assertNull(l.rungs().get(0).besluit(), "een attribuutsport heeft geen besluit");
-            assertNotNull(l.rungs().get(0).consequentie(), "een attribuutsport draagt zijn waarde als consequentie");
+            assertTrue(l.ongeordend(), "elke zuster-defaults-groep van de groep is declared-unordered (WF-050)");
+            assertEquals(1, l.defaults().size());
+            assertNull(l.defaults().get(0).besluit(), "een attribuut-default heeft geen besluit");
+            assertNotNull(l.defaults().get(0).consequentie(), "een attribuut-default draagt zijn waarde als consequentie");
         }
         // the §9.5 conflict channel is only reachable via this form: distinct written values on one target
         String c = emitCompact(m);
         assertTrue(c.contains("\"waarde\":\"30\"") && c.contains("\"waarde\":\"45\""),
-                () -> "de twee ladderwaarden ontbreken:\n" + c);
+                () -> "de twee defaultswaarden ontbreken:\n" + c);
     }
 
-    @Test void plat_document_emitteert_geen_ladder_sleutel() {
-        // Additivity / v0-mirror: a document WITHOUT the extension emits no defaultLadders key at all.
+    @Test void plat_document_emitteert_geen_defaults_sleutel() {
+        // Additivity / v0-mirror: a document WITHOUT the extension emits no prioritizedDefaults key at all.
         String src = OBJ_ORDERED + """
             Regel bergingsbevoegd bij quotum
                 geldig altijd
@@ -243,8 +244,8 @@ class LadderExtensieTest {
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
-        assertEquals(0, m.defaultLadders.size());
-        assertFalse(emitCompact(m).contains("defaultLadders"),
-                "een plat document mag de defaultLadders-sleutel niet emitteren (v0-mirror byte-identiteit)");
+        assertEquals(0, m.prioritizedDefaults.size());
+        assertFalse(emitCompact(m).contains("prioritizedDefaults"),
+                "een plat document mag de prioritizedDefaults-sleutel niet emitteren (v0-mirror byte-identiteit)");
     }
 }

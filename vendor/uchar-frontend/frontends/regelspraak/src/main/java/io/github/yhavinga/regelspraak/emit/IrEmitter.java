@@ -1,11 +1,11 @@
 package io.github.yhavinga.regelspraak.emit;
 
 import io.github.yhavinga.regelspraak.ir.Conditie;
-import io.github.yhavinga.regelspraak.ir.DefaultLadder;
+import io.github.yhavinga.regelspraak.ir.Default;
+import io.github.yhavinga.regelspraak.ir.ExceptionGroup;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.ir.Geldigheid;
-import io.github.yhavinga.regelspraak.ir.Rung;
-import io.github.yhavinga.regelspraak.ir.SubLadder;
+import io.github.yhavinga.regelspraak.ir.PrioritizedDefaults;
 import io.github.yhavinga.regelspraak.ir.ResolvedConsistentie;
 import io.github.yhavinga.regelspraak.ir.ResolvedDagsoort;
 import io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie;
@@ -163,67 +163,69 @@ public final class IrEmitter {
         for (Diagnostic d : m.diagnostics) diagnostic(d);
         w.endArray();
 
-        // §4 (LADDER-EVOLUTIE) the ladder extension: an OPTIONAL top-level list, emitted ONLY when the
-        // 'Uitzondering op' / 'Uitzonderingen ongeordend' forms produced ladders. A flat document produces
-        // none, so the key is absent there — the v0-mirror byte-identity of every flat golden holds.
-        if (!m.defaultLadders.isEmpty()) {
-            w.key("defaultLadders").beginArray();
-            for (DefaultLadder l : m.defaultLadders) defaultLadder(l);
+        // §4 (PRIORITIZED-DEFAULTS-EVOLUTIE) the defaults extension: an OPTIONAL top-level list, emitted ONLY
+        // when the 'Uitzondering op' / 'Uitzonderingen ongeordend' forms produced defaults groups. A flat
+        // document produces none, so the key is absent there — the v0-mirror byte-identity of every flat
+        // golden holds.
+        if (!m.prioritizedDefaults.isEmpty()) {
+            w.key("prioritizedDefaults").beginArray();
+            for (PrioritizedDefaults p : m.prioritizedDefaults) prioritizedDefaults(p);
             w.endArray();
         }
 
         w.endObject();
     }
 
-    // --- §4 default ladders (extension) ------------------------------------
+    // --- §4 prioritized defaults (extension) -------------------------------
 
-    private void defaultLadder(DefaultLadder l) {
-        // navigatieBindingen on a rung's own-attribute/characteristic reads resolve against the ladder subject.
+    private void prioritizedDefaults(PrioritizedDefaults p) {
+        // navigatieBindingen on a default's own-attribute/characteristic reads resolve against the group subject.
         Objecttype vorigSubject = huidigSubject;
-        huidigSubject = m == null ? null : m.objecttypen.get(l.onderwerp());
+        huidigSubject = m == null ? null : m.objecttypen.get(p.onderwerp());
         w.beginObject();
-        w.key("node").value("DefaultLadder");
-        w.key("naam").value(l.naam());
-        w.key("onderwerp").value(l.onderwerp());
-        w.key("kenmerk").value(l.kenmerk());                        // always emitted (null on an attribute ladder)
-        if (l.attribuut() != null) w.key("attribuut").value(l.attribuut());  // only on an attribute ladder (WF-050)
-        w.key("rungs").beginArray();
-        for (Rung r : l.rungs()) rung(r);
+        w.key("node").value("PrioritizedDefaults");
+        w.key("naam").value(p.naam());
+        w.key("onderwerp").value(p.onderwerp());
+        w.key("kenmerk").value(p.kenmerk());                        // always emitted (null on attribute defaults)
+        if (p.attribuut() != null) w.key("attribuut").value(p.attribuut());  // only on attribute defaults (WF-050)
+        w.key("defaults").beginArray();
+        for (Default d : p.defaults()) dflt(d);
         w.endArray();
-        if (l.ongeordend()) w.key("ongeordend").value(true);        // only on a declared-unordered group member
-        w.key("bron").value(l.bron());
-        w.key("geldigheid"); geldigheid(l.geldigheid());
+        if (p.ongeordend()) w.key("ongeordend").value(true);        // only on a declared-unordered group member
+        w.key("bron").value(p.bron());
+        w.key("geldigheid"); geldigheid(p.geldigheid());
         w.endObject();
         huidigSubject = vorigSubject;
     }
 
-    private void rung(Rung r) {
+    // `default` is a Java keyword, so the emit method for a Default node is spelled dflt.
+    private void dflt(Default d) {
         w.beginObject();
-        w.key("node").value("Rung");
-        w.key("besluit");                                           // null on an attribute rung
-        if (r.besluit() == null) w.valueNull(); else w.value(r.besluit().booleanValue());
-        w.key("voorwaarde"); conditie(r.voorwaarde());              // null only on the initialisation rung
-        if (r.consequentie() != null) { w.key("consequentie"); expr(r.consequentie()); }  // attribute rungs only
-        if (r.initialisatie()) w.key("initialisatie").value(true);
-        if (r.excepties() != null) {
+        w.key("node").value("Default");
+        w.key("besluit");                                           // null on an attribute default
+        if (d.besluit() == null) w.valueNull(); else w.value(d.besluit().booleanValue());
+        w.key("voorwaarde"); conditie(d.voorwaarde());              // null only on the initialisation default
+        if (d.consequentie() != null) { w.key("consequentie"); expr(d.consequentie()); }  // attribute defaults only
+        if (d.initialisatie()) w.key("initialisatie").value(true);
+        if (d.excepties() != null) {
             w.key("excepties").beginObject();
-            w.key("ongeordend").value(r.excepties().ongeordend());
+            w.key("ongeordend").value(d.excepties().ongeordend());
             w.key("leden").beginArray();
-            for (SubLadder s : r.excepties().leden()) subLadder(s);
+            for (ExceptionGroup g : d.excepties().leden()) exceptionGroup(g);
             w.endArray();
             w.endObject();
         }
-        w.key("bron").value(r.bron());
+        w.key("bron").value(d.bron());
         w.endObject();
     }
 
-    private void subLadder(SubLadder s) {
+    private void exceptionGroup(ExceptionGroup g) {
         w.beginObject();
-        w.key("node").value("SubLadder");
-        w.key("rungs").beginArray();
-        for (Rung r : s.rungs()) rung(r);
+        w.key("node").value("ExceptionGroup");
+        w.key("defaults").beginArray();
+        for (Default d : g.defaults()) dflt(d);
         w.endArray();
-        w.key("bron").value(s.bron());
+        w.key("bron").value(g.bron());
         w.endObject();
     }
 

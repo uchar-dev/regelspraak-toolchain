@@ -1,9 +1,9 @@
 package io.github.yhavinga.regelspraak.resolver;
 
 import io.github.yhavinga.regelspraak.ir.Conditie;
-import io.github.yhavinga.regelspraak.ir.DefaultLadder;
+import io.github.yhavinga.regelspraak.ir.PrioritizedDefaults;
 import io.github.yhavinga.regelspraak.ir.Expr;
-import io.github.yhavinga.regelspraak.ir.Rung;
+import io.github.yhavinga.regelspraak.ir.Default;
 import io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie;
 import io.github.yhavinga.regelspraak.ir.Geldigheid;
 import io.github.yhavinga.regelspraak.ir.ResolvedObjectCreatie;
@@ -76,13 +76,13 @@ final class RuleChecker {
         // §9.10 Regelgroep (DOCUMENTED EXTENSION): a grouped rule resolves EXACTLY as an ungrouped one, so the
         // whole rule pipeline runs over the flattened list (top-level + group members, in document order).
         for (RegelContext r : DefinitionResolver.alleRegels(doc)) regelVersies(r);
-        // §4 (LADDER-EVOLUTIE) the ordered exception blocks resolve like regels too, so their bodies get the same
-        // type-checks; the group members were already resolved above (alleRegels includes them).
+        // §4 (PRIORITIZED-DEFAULTS-EVOLUTIE) the ordered exception blocks resolve like regels too, so their
+        // bodies get the same type-checks; the group members were already resolved above (alleRegels includes them).
         for (UitzonderingRegelContext u : DefinitionResolver.alleUitzonderingen(doc)) uitzonderingVersies(u);
         beslistabellen(doc);
         regelGroepen(doc);   // build the §9.10 group IR + the fase-2 recursief structural checks
         keurKringverwijzingen();
-        ladders(doc);        // §4 lift the base+exception families and unordered groups into DefaultLadder nodes
+        defaults(doc);        // §4 lift the base+exception families and unordered groups into PrioritizedDefaults nodes
     }
 
     /** §9.10 build the {@link io.github.yhavinga.regelspraak.ir.ResolvedRegelGroep} carriers (member RULE NAMES + the
@@ -125,32 +125,34 @@ final class RuleChecker {
     }
 
     // ==============================================================================================
-    // §4 (LADDER-EVOLUTIE) ladder lowering — the uchar DIALECT EXTENSION 'Uitzondering op' /
-    // 'Uitzonderingen ongeordend'. Recognition only ever lowers the extension's OWN blocks; a flat
-    // rule family is NEVER folded into a ladder (LADDER-EVOLUTIE §4.2 rejects that — the source never
-    // encoded the priority). Both forms LIFT already-resolved ResolvedRegels out of resolvedRegels into
-    // DefaultLadder nodes: WF-050 forbids both a rule AND a ladder on one target, so the lifted rule's
-    // semantics now live in the ladder alone. See grammar/DIVERGENCES.md for the surface + lowering.
+    // §4 (PRIORITIZED-DEFAULTS-EVOLUTIE) prioritized-defaults lowering — the uchar DIALECT EXTENSION
+    // 'Uitzondering op' / 'Uitzonderingen ongeordend'. Recognition only ever lowers the extension's OWN
+    // blocks; a flat rule family is NEVER folded into a defaults group (PRIORITIZED-DEFAULTS-EVOLUTIE §4.2
+    // rejects that — the source never encoded the priority). Both forms LIFT already-resolved ResolvedRegels
+    // out of resolvedRegels into PrioritizedDefaults nodes: WF-050 forbids both a rule AND a defaults group on
+    // one target, so the lifted rule's semantics now live in the defaults group alone. See
+    // grammar/DIVERGENCES.md for the surface + lowering.
     // ==============================================================================================
 
     /** The (subject, kenmerk-vs-attribuut, target-name) a lifted rule writes. */
-    private record LadderDoel(Objecttype onderwerp, boolean kenmerk, String naam) {
-        boolean gelijk(LadderDoel a) {
+    private record DefaultsDoel(Objecttype onderwerp, boolean kenmerk, String naam) {
+        boolean gelijk(DefaultsDoel a) {
             return a != null && onderwerp == a.onderwerp && kenmerk == a.kenmerk && naam.equalsIgnoreCase(a.naam);
         }
     }
 
-    /** §4 lower the extension blocks into {@link DefaultLadder} nodes. Fails fast (a clear ERROR, and the block
+    /** §4 lower the extension blocks into {@link PrioritizedDefaults} nodes. Fails fast (a clear ERROR, and the block
      *  stays un-lifted) on an unknown base, a target mismatch, an unsupported base kind, or a multi-version rule. */
-    private void ladders(RegelSpraakDocumentContext doc) {
-        ordeningsLadders(doc);
-        groepsLadders(doc);
+    private void defaults(RegelSpraakDocumentContext doc) {
+        ordeningsDefaults(doc);
+        groepsDefaults(doc);
     }
 
-    /** The ordered form: each base rule with one-or-more 'Uitzondering op &lt;base&gt;' blocks becomes ONE ladder —
-     *  the exception rung(s) above the base rung, descending priority. Later-written blocks stack HIGHER
-     *  (LADDER-EVOLUTIE §4.2). The base rule and every exception leave resolvedRegels. */
-    private void ordeningsLadders(RegelSpraakDocumentContext doc) {
+    /** The ordered form: each base rule with one-or-more 'Uitzondering op &lt;base&gt;' blocks becomes ONE
+     *  defaults group — the exception default(s) above the base default, descending priority. Later-written
+     *  blocks stack HIGHER (PRIORITIZED-DEFAULTS-EVOLUTIE §4.2). The base rule and every exception leave
+     *  resolvedRegels. */
+    private void ordeningsDefaults(RegelSpraakDocumentContext doc) {
         java.util.LinkedHashMap<String, List<UitzonderingRegelContext>> perBasis = new java.util.LinkedHashMap<>();
         for (UitzonderingRegelContext u : DefinitionResolver.alleUitzonderingen(doc))
             perBasis.computeIfAbsent(DefinitionResolver.src(u.uitzonderingBasisNaam()), k -> new ArrayList<>()).add(u);
@@ -169,15 +171,15 @@ final class RuleChecker {
             }
             if (basis.size() > 1) { multiVersieFout("basisregel", basisNaam, line); continue; }
             ResolvedRegel basisRegel = basis.get(0);
-            LadderDoel doel = doelVan(basisRegel);
+            DefaultsDoel doel = doelVan(basisRegel);
             if (doel == null || basisRegel.soort() == ResolvedRegel.Soort.INITIALISATIE) {
                 model.diagnostics.add(new Diagnostic(Severity.ERROR,
                         "Uitzondering op '" + basisNaam + "': de basisregel is geen kenmerktoekenning of gelijkstelling "
-                        + "(bv. een initialisatie) — daarover wordt geen ladder gebouwd (§4)", line));
+                        + "(bv. een initialisatie) — daarover wordt geen defaults-groep gebouwd (§4)", line));
                 continue;
             }
 
-            List<Rung> excRungs = new ArrayList<>();
+            List<Default> excDefaults = new ArrayList<>();
             boolean fout = false;
             for (UitzonderingRegelContext u : excepties) {
                 String exNaam = DefinitionResolver.src(u.regelNaam());
@@ -189,19 +191,19 @@ final class RuleChecker {
                     fout = true; break;
                 }
                 if (ex.size() > 1) { multiVersieFout("uitzondering", exNaam, u.getStart().getLine()); fout = true; break; }
-                LadderDoel exDoel = doelVan(ex.get(0));
+                DefaultsDoel exDoel = doelVan(ex.get(0));
                 if (exDoel == null || ex.get(0).soort() == ResolvedRegel.Soort.INITIALISATIE) {
                     model.diagnostics.add(new Diagnostic(Severity.ERROR,
                             "Uitzondering op '" + basisNaam + "': de uitzondering '" + exNaam + "' is geen "
                             + "kenmerktoekenning of gelijkstelling (bv. een initialisatie) (§4)", u.getStart().getLine()));
                     fout = true; break;
                 }
-                // Rung carries no per-rung geldigheid: mixed windows are unrepresentable on the ladder,
-                // so a diverging window must refuse — the same fence the multi-version case gets.
+                // Default carries no per-default geldigheid: mixed windows are unrepresentable on the defaults
+                // group, so a diverging window must refuse — the same fence the multi-version case gets.
                 if (!ex.get(0).geldigheid().equals(basisRegel.geldigheid())) {
                     model.diagnostics.add(new Diagnostic(Severity.ERROR,
                             "Uitzondering op '" + basisNaam + "': uitzondering '" + exNaam + "' draagt een ander "
-                            + "geldigheidsvenster dan de basisregel — de ladder draagt één venster; splits per venster "
+                            + "geldigheidsvenster dan de basisregel — de defaults-groep draagt één venster; splits per venster "
                             + "of maak de vensters gelijk (§4)", u.getStart().getLine()));
                     fout = true; break;
                 }
@@ -212,14 +214,14 @@ final class RuleChecker {
                             + "hetzelfde onderwerp en kenmerk/attribuut betreffen (§4, WF-050)", u.getStart().getLine()));
                     fout = true; break;
                 }
-                excRungs.add(rungVan(ex.get(0), doel.kenmerk()));
+                excDefaults.add(defaultVan(ex.get(0), doel.kenmerk()));
             }
             if (fout) continue;
-            java.util.Collections.reverse(excRungs);   // later-written Uitzondering-op stacks higher
+            java.util.Collections.reverse(excDefaults);   // later-written Uitzondering-op stacks higher
 
-            List<Rung> rungs = new ArrayList<>(excRungs);
-            rungs.add(rungVan(basisRegel, doel.kenmerk()));
-            model.defaultLadders.add(ladderVan(basisNaam, doel, false, rungs, basisRegel.geldigheid()));
+            List<Default> defaults = new ArrayList<>(excDefaults);
+            defaults.add(defaultVan(basisRegel, doel.kenmerk()));
+            model.prioritizedDefaults.add(defaultsVan(basisNaam, doel, false, defaults, basisRegel.geldigheid()));
 
             model.resolvedRegels.remove(basisRegel);
             for (UitzonderingRegelContext u : excepties) {
@@ -229,14 +231,15 @@ final class RuleChecker {
         }
     }
 
-    /** The unordered group: each 'Uitzonderingen ongeordend:' block becomes SIBLING declared-unordered ladders
-     *  (one per member) over ONE shared target — the §9.5 surface. Every sibling carries {@code ongeordend}
-     *  (WF-050: two-or-more ladders on one target require it). All members leave resolvedRegels. */
-    private void groepsLadders(RegelSpraakDocumentContext doc) {
+    /** The unordered group: each 'Uitzonderingen ongeordend:' block becomes SIBLING declared-unordered defaults
+     *  groups (one per member) over ONE shared target — the §9.5 surface. Every sibling carries
+     *  {@code ongeordend} (WF-050: two-or-more defaults groups on one target require it). All members leave
+     *  resolvedRegels. */
+    private void groepsDefaults(RegelSpraakDocumentContext doc) {
         for (UitzonderingGroepContext g : DefinitionResolver.alleUitzonderingGroepen(doc)) {
             int line = g.getStart().getLine();
             List<ResolvedRegel> leden = new ArrayList<>();
-            LadderDoel gedeeld = null;
+            DefaultsDoel gedeeld = null;
             boolean fout = false;
             for (RegelContext lid : g.regel()) {
                 String naam = DefinitionResolver.src(lid.regelNaam());
@@ -248,7 +251,7 @@ final class RuleChecker {
                     fout = true; break;
                 }
                 if (rr.size() > 1) { multiVersieFout("groepslid", naam, line); fout = true; break; }
-                LadderDoel d = doelVan(rr.get(0));
+                DefaultsDoel d = doelVan(rr.get(0));
                 if (d == null || rr.get(0).soort() == ResolvedRegel.Soort.INITIALISATIE) {
                     model.diagnostics.add(new Diagnostic(Severity.ERROR,
                             "Uitzonderingen ongeordend: groepslid '" + naam + "' is geen kenmerktoekenning of "
@@ -267,28 +270,30 @@ final class RuleChecker {
             }
             if (fout || gedeeld == null) continue;
             for (ResolvedRegel r : leden) {
-                model.defaultLadders.add(ladderVan(r.naam(), gedeeld, true,
-                        List.of(rungVan(r, gedeeld.kenmerk())), r.geldigheid()));
+                model.prioritizedDefaults.add(defaultsVan(r.naam(), gedeeld, true,
+                        List.of(defaultVan(r, gedeeld.kenmerk())), r.geldigheid()));
                 model.resolvedRegels.remove(r);
             }
         }
     }
 
-    /** Assemble a {@link DefaultLadder} for target {@code doel}: kenmerk XOR attribuut per WF-050, no per-ladder
-     *  bron (a frontend ladder carries no statute annotation of its own), the base/member's geldigheid faithfully. */
-    private DefaultLadder ladderVan(String naam, LadderDoel doel, boolean ongeordend, List<Rung> rungs, Geldigheid g) {
-        return new DefaultLadder(naam, doel.onderwerp().naam,
+    /** Assemble a {@link PrioritizedDefaults} group for target {@code doel}: kenmerk XOR attribuut per WF-050,
+     *  no per-group bron (a frontend defaults group carries no statute annotation of its own), the
+     *  base/member's geldigheid faithfully. */
+    private PrioritizedDefaults defaultsVan(String naam, DefaultsDoel doel, boolean ongeordend, List<Default> defaults, Geldigheid g) {
+        return new PrioritizedDefaults(naam, doel.onderwerp().naam,
                 doel.kenmerk() ? doel.naam() : null, doel.kenmerk() ? null : doel.naam(),
-                ongeordend, rungs, null, g);
+                ongeordend, defaults, null, g);
     }
 
-    /** One rung from a resolved flat rule: on a CHARACTERISTIC ladder a §9.2-monotone kenmerktoekenning always
-     *  decides {@code true} (RegelSpraak cannot withdraw a characteristic); on an ATTRIBUTE ladder the rung's
-     *  value is the rule's resolved value expression. The justification is the rule's condition. No rung bron. */
-    private Rung rungVan(ResolvedRegel r, boolean kenmerk) {
+    /** One default from a resolved flat rule: on characteristic defaults a §9.2-monotone kenmerktoekenning
+     *  always decides {@code true} (RegelSpraak cannot withdraw a characteristic); on attribute defaults the
+     *  default's value is the rule's resolved value expression. The justification is the rule's condition. No
+     *  per-default bron. */
+    private Default defaultVan(ResolvedRegel r, boolean kenmerk) {
         return kenmerk
-                ? new Rung(Boolean.TRUE, r.voorwaarde(), null, false, null, null)
-                : new Rung(null, r.voorwaarde(), r.waarde(), false, null, null);
+                ? new Default(Boolean.TRUE, r.voorwaarde(), null, false, null, null)
+                : new Default(null, r.voorwaarde(), r.waarde(), false, null, null);
     }
 
     /** The resolved versions of the rule named {@code naam} — matched exactly or by the "&lt;naam&gt; #k" version
@@ -302,18 +307,19 @@ final class RuleChecker {
 
     /** The (subject, kenmerk-vs-attribuut, target-name) a lifted rule writes, or null when its target is not a
      *  plain attribute/characteristic reference (an objectcreatie/verdeling/consistentie never lands here). */
-    private LadderDoel doelVan(ResolvedRegel r) {
+    private DefaultsDoel doelVan(ResolvedRegel r) {
         if (!(r.doel() instanceof Expr.AttribuutRef d) || d.objecttype() == null) return null;
-        return new LadderDoel(d.objecttype(), r.soort() == ResolvedRegel.Soort.KENMERKTOEKENNING, d.attribuut());
+        return new DefaultsDoel(d.objecttype(), r.soort() == ResolvedRegel.Soort.KENMERKTOEKENNING, d.attribuut());
     }
 
-    private static String doelTekst(LadderDoel d) {
+    private static String doelTekst(DefaultsDoel d) {
         return d == null ? "onbekend"
                 : d.onderwerp().naam + "." + d.naam() + (d.kenmerk() ? " (kenmerk)" : " (attribuut)");
     }
 
-    /** A hint appended to the unknown-base ERROR when the name IS resolved, but as a construct a ladder cannot
-     *  be built over (a verdeling/consistentie/objectcreatie lives in its own model list, not resolvedRegels). */
+    /** A hint appended to the unknown-base ERROR when the name IS resolved, but as a construct no defaults
+     *  group can be built over (a verdeling/consistentie/objectcreatie lives in its own model list, not
+     *  resolvedRegels). */
     private String basisReden(String naam) {
         boolean anders = model.verdelingen.stream().anyMatch(v -> v.naam().equals(naam))
                 || model.consistenties.stream().anyMatch(c -> c.naam().equals(naam))
@@ -325,7 +331,7 @@ final class RuleChecker {
     private void multiVersieFout(String rol, String naam, int line) {
         model.diagnostics.add(new Diagnostic(Severity.ERROR,
                 "Uitzondering op: de " + rol + " '" + naam + "' heeft meer dan één regelversie — meerdere versies op "
-                + "één ladder worden in deze kaart nog niet ondersteund (§4)", line));
+                + "één defaults-groep worden in deze kaart nog niet ondersteund (§4)", line));
     }
 
     /** A read-write dependency CYCLE between assignments (x = y+1; y = x+1) never reaches a fixpoint
@@ -399,10 +405,11 @@ final class RuleChecker {
         regelVersies(DefinitionResolver.src(r.regelNaam()), r.regelVersie(), bronAnnotaties(r), r.getStart().getLine());
     }
 
-    /** §4 (LADDER-EVOLUTIE) resolve an ordered 'Uitzondering op' block's body exactly as a §13.4.2 regel — its
+    /** §4 (PRIORITIZED-DEFAULTS-EVOLUTIE) resolve an ordered 'Uitzondering op' block's body exactly as a §13.4.2 regel — its
      *  own regelNaam + regelVersie+ run through the whole rule pipeline into resolvedRegels, so its condition,
-     *  value, geldigheid and type-checks are the standard ones. The ladder pass then LIFTS it (and the base rule)
-     *  into a {@link io.github.yhavinga.regelspraak.ir.DefaultLadder}, removing it from resolvedRegels. */
+     *  value, geldigheid and type-checks are the standard ones. The defaults pass then LIFTS it (and the base
+     *  rule) into a {@link io.github.yhavinga.regelspraak.ir.PrioritizedDefaults} group, removing it from
+     *  resolvedRegels. */
     private void uitzonderingVersies(UitzonderingRegelContext u) {
         regelVersies(DefinitionResolver.src(u.regelNaam()), u.regelVersie(), bronAnnotaties(u), u.getStart().getLine());
     }
