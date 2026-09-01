@@ -81,6 +81,10 @@ public final class DrlTranspiler {
     private final Dagsoorten dagsoorten;
 
     public DrlTranspiler(RegelSpraakModel model) {
+        // Before ANYTHING reads the model — stratification below already does: this back-end and every
+        // auxiliary Expr walk it drives predate the ch. 4.10 Let cluster and read a BinderRef as an opaque
+        // leaf. The single entry point both static factories funnel through, so no route escapes it.
+        io.github.yhavinga.regelspraak.transpiler.kern.LetInliner.normaliseer(model);
         this.model = model;
         this.dagsoorten = new Dagsoorten(model);
         this.strat = Stratificatie.bereken(model.resolvedRegels);

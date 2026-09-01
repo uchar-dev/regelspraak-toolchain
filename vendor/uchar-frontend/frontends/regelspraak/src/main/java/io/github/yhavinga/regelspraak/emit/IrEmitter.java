@@ -485,6 +485,22 @@ public final class IrEmitter {
                 w.key("type"); datatype(v.type());
                 w.key("bron").value(v.bron().snippet());
             }
+            // ch. 4.10 the Let cluster. Key ORDER is the schema's required order (node, type, binder,
+            // value, body, bron / node, name, type, bron) — gate 2 round-trips these bytes.
+            case Expr.Let l -> {
+                w.key("node").value("Let");
+                w.key("type"); datatype(l.type());
+                w.key("binder").value(l.binder());
+                w.key("value"); expr(l.value());
+                w.key("body"); expr(l.body());
+                w.key("bron").value(l.bron().snippet());
+            }
+            case Expr.BinderRef b -> {
+                w.key("node").value("BinderRef");
+                w.key("name").value(b.naam());     // the wire field is "name" (not "naam") — ch. 4.10
+                w.key("type"); datatype(b.type());
+                w.key("bron").value(b.bron().snippet());
+            }
             case Expr.Constante c -> {
                 w.key("node").value("Constante");
                 w.key("naam").value(c.naam());

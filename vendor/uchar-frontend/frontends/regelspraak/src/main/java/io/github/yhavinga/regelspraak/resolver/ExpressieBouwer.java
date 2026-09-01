@@ -39,8 +39,26 @@ final class ExpressieBouwer {
     // (and "hij") resolve against the rule subject. Set per rule by the checker.
     private Objecttype huidigSubject;
     // §11 the current rule's "Daarbij geldt:" variabelen, keyed by normalized name -> the resolved definition Expr,
-    // INLINED at each VariabeleRef site (naamRef). Per-rule; cleared and re-set by zetVariabelen each rule.
+    // INLINED at each read site (naamRef). Per-rule; cleared and re-set by zetVariabelen each rule. This is the
+    // form a VOORWAARDE read takes — see zetVariabelen for why the two forms coexist.
     private final Map<String, Expr> variabelen = new LinkedHashMap<>();
+    // §11 the SAME variabelen in BINDER form, in declaration order (§11.1 rule 1): the value a ch. 4.10 Let node
+    // carries, in which a read of an EARLIER variable is a BinderRef rather than that variable's inlined subtree.
+    private final Map<String, Variabele> binders = new LinkedHashMap<>();
+    // Which of the two forms naamRef hands back. false (the default) inlines — the VOORWAARDE route; true yields a
+    // BinderRef — the RESULTAAT route, under the Let chain omhulMetVariabelen builds. Scoped by bouwResultaat,
+    // and turned back OFF inside a structure-sensitive position by ingelijnd().
+    private boolean binderModus;
+    // The inlined definitions naamRef may substitute RIGHT NOW. It is `variabelen` itself everywhere a rule's own
+    // text is built (the voorwaarde and the resultaat see every declaration, as they did in v0), and a growing
+    // PREFIX while pass 2 rebuilds the definitions themselves — so a structure-sensitive position INSIDE a
+    // definition sees exactly what pass 1 saw there: earlier declarations only, a forward reference still unbound.
+    private Map<String, Expr> zichtbaar = variabelen;
+
+    /** One §13.4.2.10 declared variable in BINDER form: its lookup {@code sleutel}, the {@code naam} the Let binder
+     *  and every BinderRef carry (the written name minus a leading bepaald lidwoord), the resolved value, and the
+     *  declaration's source anchor. */
+    record Variabele(String sleutel, String naam, Expr waarde, Bron bron) {}
 
     ExpressieBouwer(RegelSpraakModel model) { this.model = model; }
 
@@ -56,21 +74,143 @@ final class ExpressieBouwer {
     private SamengesteldeFilterResolver samengesteldeFilter;
     void setSamengesteldeFilter(SamengesteldeFilterResolver r) { this.samengesteldeFilter = r; }
 
-    /** §11 capture the "Daarbij geldt: [lidwoord] X is &lt;expressie&gt;" variabelendeel of the current rule as a
-     *  per-rule map of resolved definitions, INLINED at each {@link Expr.VariabeleRef} site by {@link #naamRef}.
-     *  CLEARS first (so a previous rule's variables never leak — call it for EVERY rule, even one with no
-     *  variabeleDeel: a null ctx just clears), then resolves each definition IN DECLARATION ORDER (§11.1 rule 1):
-     *  an earlier variable is already in the map when a later one is built, so a later definition may reference an
-     *  earlier one; a forward/cyclic reference finds nothing and stays an Onbekend VariabeleRef (the transpiler
-     *  markers it). Subject-relative "zijn X" inside a definition resolves against the subject, so {@link #setSubject}
-     *  must be called BEFORE this. */
+    /**
+     * §11 capture the "Daarbij geldt: [lidwoord] X is &lt;expressie&gt;" variabelendeel of the current rule, in BOTH
+     * forms the wire needs. CLEARS first (so a previous rule's variables never leak — call it for EVERY rule, even
+     * one with no variabeleDeel: a null ctx just clears). Subject-relative "zijn X" inside a definition resolves
+     * against the subject, so {@link #setSubject} must be called BEFORE this.
+     *
+     * <p><b>Why two forms.</b> A rule's voorwaarde and its waarde are two SEPARATE wire fields
+     * ({@code ResolvedRegel.voorwaarde} is a {@link Conditie}, {@code .waarde} an {@link Expr}), and a ch. 4.10
+     * {@code Let} is an Expr node — so no Let can span them. A variable read in the RESULT part therefore becomes a
+     * {@link Expr.BinderRef} under the Let chain {@link #omhulMetVariabelen} builds (sharing survives: two reads,
+     * one Let); a variable read in the VOORWAARDE keeps the v0 route and is SUBSTITUTED at its use site. What that
+     * costs is SHARING: a variable read twice inside one condition is substituted twice and so evaluated twice,
+     * where one Let would evaluate it once (ch. 10.6 clause 1). No case observes the difference — the values agree
+     * — but they are not identical in theory: a definition whose evaluation deposits a §9.5 channel reason would
+     * deposit one PER READ. The leeg-barrier a Let would raise at the read place is no loss either way: it
+     * coincides with the §5 leeg-operand discipline the comparison already applies.
+     *
+     * <p><b>Pass 1</b> resolves each definition in declaration order (§11.1 rule 1) with earlier variables INLINED
+     * — byte-for-byte the v0 behaviour, and the map {@link #naamRef} reads on the voorwaarde route. <b>Pass 2</b>
+     * re-resolves the SAME sources with earlier variables as BinderRefs. Two passes rather than one plus a
+     * substitution rewrite: the second pass reuses the whole resolution machinery instead of duplicating it, and a
+     * forward/cyclic reference falls through identically in both because {@link #binders} fills incrementally.
+     */
     void zetVariabelen(VariabeleDeelContext ctx) {
         variabelen.clear();
+        binders.clear();
         if (ctx == null) return;
+        int voorInline = model.diagnostics.size();
         for (VariabeleOnderdeelContext vo : ctx.variabeleOnderdeel()) {
             if (vo.variabeleNaam() == null || vo.expressie() == null) continue;
             variabelen.put(variabeleSleutel(src(vo.variabeleNaam())), bouw(vo.expressie()));
         }
+        int naInline = model.diagnostics.size();
+        boolean vorige = binderModus;
+        Map<String, Expr> vorigZichtbaar = zichtbaar;
+        // Pass 2 sees the same growing PREFIX of inlined definitions pass 1 saw, so a structure-sensitive position
+        // inside definition i substitutes exactly the earlier definitions (never a forward one, which stays unbound
+        // in both passes) — the two passes then differ ONLY in what naamRef hands back, never in what it can see.
+        Map<String, Expr> prefix = new LinkedHashMap<>();
+        binderModus = true;
+        zichtbaar = prefix;
+        try {
+            for (VariabeleOnderdeelContext vo : ctx.variabeleOnderdeel()) {
+                if (vo.variabeleNaam() == null || vo.expressie() == null) continue;
+                String geschreven = src(vo.variabeleNaam());
+                String sleutel = variabeleSleutel(geschreven);
+                binders.put(sleutel, new Variabele(sleutel, binderNaam(geschreven), bouw(vo.expressie()), bron(vo)));
+                prefix.put(sleutel, variabelen.get(sleutel));
+            }
+        } finally {
+            binderModus = vorige;
+            zichtbaar = vorigZichtbaar;
+        }
+        // Pass 2 re-resolves the same source text, so a diagnostic it repeats VERBATIM is pass 1's own — report it
+        // once. A diagnostic pass 2 raises that pass 1 did not is a REAL difference (a BinderRef is opaque where
+        // the inlined subtree was transparent) and is KEPT, never swallowed.
+        List<RegelSpraakModel.Diagnostic> inlineMeldingen = new ArrayList<>(model.diagnostics.subList(voorInline, naInline));
+        for (int i = model.diagnostics.size() - 1; i >= naInline; i--)
+            if (inlineMeldingen.contains(model.diagnostics.get(i))) model.diagnostics.remove(i);
+    }
+
+    /**
+     * §11 wrap a rule's RESULT-part value in the Let chain its variabelendeel denotes: one ch. 4.10 {@link Expr.Let}
+     * per declared variable, nested in DECLARATION order (§11.1 rule 1 — the first-declared variable is the
+     * OUTERMOST Let, so a later definition's BinderRef to an earlier one is in scope), each carrying that variable's
+     * binder-form value and typed with its body (WF-076).
+     *
+     * <p><b>Full lowering, no dead Lets</b> (maintainer decision 5, as reconciled with the wire): a variable the
+     * result reads is ALWAYS a Let — at one read as much as at five, so nothing is inlined away and sharing is
+     * visible. A variable NO read reaches — the voorwaarde-only variable (substituted there instead) and the
+     * declared-but-unused one — gets none: under ch. 10.6 an unread binder evaluates nothing, so such a Let is a
+     * guaranteed no-op that would only pollute the wire. The test is TRANSITIVE by construction: the chain is built
+     * inside-out, so a variable read only by a LATER variable's value is still wrapped, because that later Let is
+     * already part of the body when this one is considered.
+     */
+    Expr omhulMetVariabelen(Expr body) {
+        if (body == null || binders.isEmpty()) return body;
+        List<Variabele> vs = new ArrayList<>(binders.values());
+        Expr uit = body;
+        for (int i = vs.size() - 1; i >= 0; i--) {
+            Variabele v = vs.get(i);
+            if (!leestBinder(uit, v.sleutel())) continue;
+            uit = new Expr.Let(v.naam(), v.waarde(), uit, uit.type(), v.bron());
+        }
+        return uit;
+    }
+
+    /** §11/§13.4.2 build a rule's RESULT-part value: the expressie resolved with every variable read as a
+     *  {@link Expr.BinderRef}, wrapped in {@link #omhulMetVariabelen}'s Let chain. A rule with no variabelendeel
+     *  gets back exactly what {@link #bouw} produces — the binder modus is inert without declared variables. */
+    Expr bouwResultaat(ExpressieContext e) {
+        boolean vorige = binderModus;
+        binderModus = true;
+        try {
+            return omhulMetVariabelen(bouw(e));
+        } finally {
+            binderModus = vorige;
+        }
+    }
+
+    /**
+     * §11/ch. 4.10 build {@code f} as a SHAPE-READING CONSTRUCT: one where the resolver decides on the SHAPE of the
+     * resolved subtree, not on its value. A variable read there is SUBSTITUTED (the v0 route), never handed back
+     * as a {@link Expr.BinderRef} — a BinderRef is an opaque leaf, so every {@code instanceof Expr.AttribuutRef} /
+     * {@code Literal} / {@code ParameterRef} test would fail and the construct would silently degrade to an
+     * Onopgelost marker (a wrong answer, not a lost optimisation). This is the THIRD lowering boundary, beside the
+     * voorwaarde-only variable and the never-read one; it is normative in {@code IR-SPEC.md} ch. 4.10.
+     *
+     * <p>The boundary is the WHOLE SUBTREE, not the shape-reading positions inside it: the scope stays off until
+     * the construct is built, so a pure VALUE position underneath — a §5.8.2 leegwaarde fallback, say — is
+     * substituted too, though it decides nothing about shape. One scope, no half-inlined subtree. The consequence
+     * is normative: inside an aggregation subtree the v0 inlining-coalesce still governs, so the ch. 10.6 tracked
+     * delta 1 (the leeg-barrier on the variabelendeel) speaks only about reads OUTSIDE such a subtree.
+     */
+    private <T> T ingelijnd(java.util.function.Supplier<T> f) {
+        boolean vorige = binderModus;
+        binderModus = false;
+        try { return f.get(); } finally { binderModus = vorige; }
+    }
+
+    /** The functie kinds that range over a SET or a TIMELINE and therefore read their operand's shape: the seven
+     *  instance/dimension aggregations, plus the two §7 temporal operators whose operand must be a single-period
+     *  temporal attribuut ({@code TIJDSEVENREDIG_DEEL}) or whose "dat …" condition clips one
+     *  ({@code AANTAL_DAGEN_IN}). {@link #ingelijnd} covers exactly these. */
+    private static boolean aggregeert(Expr.FunctieKind kind) {
+        return switch (kind) {
+            case AANTAL, SOM, TOTAAL, MINIMUM, MAXIMUM, EERSTE, LAATSTE,
+                 TIJDSEVENREDIG_DEEL, AANTAL_DAGEN_IN -> true;
+            default -> false;
+        };
+    }
+
+    /** Whether {@code e} reads the binder keyed {@code sleutel} anywhere — including inside a nested Let's value,
+     *  which {@link Expr#bevat} descends into. Variable names are unique per rule (both maps are keyed on the
+     *  normalized name), so no inner binder can shadow an outer one here. */
+    private static boolean leestBinder(Expr e, String sleutel) {
+        return Expr.bevat(e, x -> x instanceof Expr.BinderRef b && sleutel.equals(variabeleSleutel(b.naam())));
     }
 
     /** Normalize a variabele name to its lookup key: strip a leading bepaald lidwoord (§11 "Mogelijkheid van
@@ -78,6 +218,13 @@ final class ExpressieBouwer {
      *  map to the same variable. Mirrors {@link #naamRef}'s parameter-name strip. */
     private static String variabeleSleutel(String naam) {
         return naam.replaceFirst("^(?i)(de|het|een)\\s+", "").trim().toLowerCase().replaceAll("\\s+", " ");
+    }
+
+    /** The name a Let binder and its BinderRefs carry on the wire: the DECLARED spelling minus a leading bepaald
+     *  lidwoord (§11), case preserved — "het Lage tarief" binds "Lage tarief". Distinct from {@link
+     *  #variabeleSleutel}, which lowercases for lookup only; the wire keeps what the author wrote. */
+    private static String binderNaam(String naam) {
+        return naam.replaceFirst("^(?i)(de|het|een)\\s+", "").trim().replaceAll("\\s+", " ");
     }
 
     // ---------------- §13.4.16/.17 expressie ----------------
@@ -282,6 +429,13 @@ final class ExpressieBouwer {
     private Expr bouwFunctie(FunctieAanroepContext f) {
         Bron bron = bron(f);
         Expr.FunctieKind kind = functieKind(f);
+        // §11/ch. 4.10 an AGGREGATION is a structure-sensitive position through and through: its element type, its
+        // set-ness, its dimensieselectie, its "gedurende" clip and its "die …" subselectie are all read off the
+        // SHAPE of the resolved operand (and of the subselectie's right-hand side), never off a value. Resolve the
+        // whole construct with variable reads SUBSTITUTED — see {@link #ingelijnd}. A non-aggregating functie
+        // (wortel, absolute waarde, a date component, a tijdsduur) decides on TYPES only, which a BinderRef carries
+        // faithfully, so it keeps the sharing a Let gives it.
+        if (binderModus && aggregeert(kind)) return ingelijnd(() -> bouwFunctie(f));
         List<Expr> argumenten = args(f);
         Objecttype elem = aggregatieElement(kind, argumenten);
         // §13.4.17.47 telling vs a declared parameter whose name begins with "aantal": the spec
@@ -1619,13 +1773,21 @@ final class ExpressieBouwer {
     /** A bare name: a known parameter binds to a ParameterRef; a variabeleNaam that is
      *  not a parameter stays a (so-far untyped) VariabeleRef; anything else is unresolved. */
     private Expr naamRef(String naam, boolean isVariabele, Bron bron) {
-        // §11 inline the captured "Daarbij geldt:" definition FIRST: a local variable reference works WITH or WITHOUT
+        // §11 resolve the captured "Daarbij geldt:" definition FIRST: a local variable reference works WITH or WITHOUT
         // a leading article (the spec explicitly allows a lidwoord at a variable reference — "de drempel" arrives via
         // the onderwerp path with isVariabele=false; variabeleSleutel strips the lidwoord so both forms hit one key),
         // and it SHADOWS a same-named global parameter (a variable "geldt alleen binnen de regel"). A name with no
         // definition (or a forward/cyclic reference, not yet in the map) falls through to the parameter / VariabeleRef.
-        Expr inlined = variabelen.get(variabeleSleutel(naam));
-        if (inlined != null) return inlined;
+        String sleutel = variabeleSleutel(naam);
+        if (binderModus) {
+            // The RESULT route: a BinderRef under the Let chain, typed with the definition's own type — the type the
+            // inlined subtree would have carried, so every downstream typering claim is unchanged.
+            Variabele v = binders.get(sleutel);
+            if (v != null) return new Expr.BinderRef(v.naam(), v.waarde().type(), bron);
+        } else {
+            Expr inlined = zichtbaar.get(sleutel);
+            if (inlined != null) return inlined;
+        }
         String stripped = naam.replaceFirst("^(?i)(de|het|een)\\s+", "");
         Parameter p = model.parameters.get(stripped);
         if (p == null) p = model.parameters.get(naam);

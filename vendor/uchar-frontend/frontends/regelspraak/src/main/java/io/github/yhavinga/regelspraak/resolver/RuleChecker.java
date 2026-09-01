@@ -395,6 +395,12 @@ final class RuleChecker {
                 if (d instanceof Expr.TekstReeks.Ingevoegd i) verzamelEigenReads(i.expr(), subject, zelf, uit);
         } else if (e instanceof Expr.DimensieCel dc) {
             verzamelEigenReads(dc.attribuut(), subject, zelf, uit);
+        } else if (e instanceof Expr.Let l) {
+            // ch. 4.10: since the let-lowering card a rule value is a Let CHAIN, so both halves carry reads —
+            // a variabelendeel definition (the value) as much as the expression that reads it (the body).
+            // Stopping at the Let would drop every §11 variable's edge out of the cycle graph.
+            verzamelEigenReads(l.value(), subject, zelf, uit);
+            verzamelEigenReads(l.body(), subject, zelf, uit);
         }
     }
 
@@ -434,7 +440,7 @@ final class RuleChecker {
             // when a rule has several, give each a unique name.
             String versieNaam = versies.size() > 1 ? naam + " #" + (i + 1) : naam;
             bouwer.setSubject(subjectVan(rsr.resultaatDeel())); // so "zijn …" resolves against the rule subject
-            bouwer.zetVariabelen(rsr.variabeleDeel());          // §11 inline "Daarbij geldt:" vars into voorwaarde + resultaat (clears per rule)
+            bouwer.zetVariabelen(rsr.variabeleDeel());          // §11 capture "Daarbij geldt:" vars in BOTH forms (clears per rule)
             Conditie voorwaarde = rsr.voorwaardeDeel() != null ? bouwVoorwaarde(rsr.voorwaardeDeel()) : null;
             resultaat(naam, versieNaam, rsr.resultaatDeel(), rsr.voorwaardeDeel(), voorwaarde, geldigheid);
             voorwaarden(rsr);   // exhaustive condition type-check (§5), unchanged
@@ -1288,7 +1294,7 @@ final class RuleChecker {
                     + "' is geen objecttype of rol (regel '" + naam + "')", line));
             return;
         }
-        Expr anker = bouwer.bouw(sb.expressie());
+        Expr anker = bouwer.bouwResultaat(sb.expressie());   // §11: the anchor IS a rule's `waarde` slot (see registreer)
         if (!anker.type().isOnbekend() && !(anker.type() instanceof Datatype.DatumInDagen))
             model.diagnostics.add(new Diagnostic(Severity.ERROR,
                     "startpuntbepaling: de expressie moet datum in dagen zijn, niet "
@@ -1333,18 +1339,42 @@ final class RuleChecker {
     private void registreer(String naam, ResolvedRegel.Soort soort, AttribuutVanOnderwerpContext doel,
                             ExpressieContext waarde, int line, Conditie voorwaarde, Geldigheid geldigheid) {
         Expr doelExpr = bouwer.bouwAttribuut(doel);
-        Expr waardeExpr = bouwer.bouw(waarde);
+        // §11 the RESULT-part value: variable reads become BinderRefs under the variabelendeel's ch. 4.10 Let chain.
+        // This is the ONE slot the chain is BUILT for — a rule's `waarde` — and it reaches the wire in two shapes:
+        // as the ResolvedRegel's own value, and (when the §4 defaults pass lifts this rule) as a Default's
+        // `consequentie`, which {@link #defaultVan} copies straight from it. The other resultaatdeel kinds
+        // (verdeling amounts, objectcreatie toekenningen, feitcreatie, a consistentieregel's asserted expression)
+        // keep the v0 inline route: a consistentie assertion is a Conditie, which cannot host an Expr Let at all,
+        // and the remaining ones carry several independent value slots that no single chain spans. Documented as a
+        // scope limit rather than lowered half-way; no corpus or parity material exercises them.
+        Expr waardeExpr = bouwer.bouwResultaat(waarde);
         model.resolvedRegels.add(new ResolvedRegel(naam, soort, doelExpr, waardeExpr, voorwaarde, geldigheid, huidigeBronAnnotaties));
         Datatype doelType = doelExpr.type(), waardeType = waardeExpr.type();
+        // Both static checks below judge the value's SHAPE, so they see through the ch. 4.10 Let chain the
+        // variabelendeel lowering wraps around it: `Daarbij geldt: de keuze is -49` denotes the same literal
+        // the bare -49 does, and the lowering changed the wire, not what is statically decidable.
+        Expr statisch = afgepeld(waardeExpr);
         // §13.3.4.2 membership runs BEFORE the Onbekend bail: an enum literal is deliberately typed
         // Onbekend (its domain is context-dependent), and the doel IS that context here.
-        if (waardeExpr instanceof Expr.Literal lit)
+        if (statisch instanceof Expr.Literal lit)
             keurEnumLabel(doelType, Literalen.enumLabel(lit.waarde()), line);
-        keurTeken(doelType, waardeExpr, line);   // §3.3.1 Teken-beperking, static over a literal value
+        keurTeken(doelType, statisch, line);   // §3.3.1 Teken-beperking, static over a literal value
         if (doelType.isOnbekend() || waardeType.isOnbekend()) return; // not enough resolved to judge
         String fout = Typering.toekenning(doelType, waardeType);
         if (fout != null)
             model.diagnostics.add(new Diagnostic(Severity.ERROR, soort.name().toLowerCase() + ": " + fout, line));
+    }
+
+    /** The expression a ch. 4.10 {@code Let} chain ultimately DENOTES, for the shape-sensitive static checks:
+     *  peel the chain, then follow a body that is nothing but a read of one of its own binders. Under ch. 10.6
+     *  such a chain evaluates to exactly that expression, so `Daarbij geldt: de keuze is -49` must fail the
+     *  Teken-beperking precisely as the bare literal does. Following REMOVES the binding, which bounds the walk
+     *  (each binder is followed at most once) without relying on WF-076's value/body scoping. */
+    private static Expr afgepeld(Expr e) {
+        Map<String, Expr> gebonden = new LinkedHashMap<>();
+        while (e instanceof Expr.Let l) { gebonden.put(l.binder(), l.value()); e = l.body(); }
+        while (e instanceof Expr.BinderRef b && gebonden.containsKey(b.naam())) e = gebonden.remove(b.naam());
+        return e;
     }
 
     /** §3.3.1 / §13.3.3.7: the optional Teken-beperking (negatief / niet-negatief / positief) narrows the

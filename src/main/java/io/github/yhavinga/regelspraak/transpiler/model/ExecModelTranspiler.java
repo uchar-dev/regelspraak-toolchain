@@ -123,6 +123,9 @@ public final class ExecModelTranspiler {
 
     private ExecModelTranspiler(RegelSpraakModel m) { this(m, null); }
     private ExecModelTranspiler(RegelSpraakModel m, ClassLoader beanLoader) {
+        // Same reason, same place as DrlTranspiler's constructor: the ch. 4.10 Let cluster is normalised away
+        // before stratification (or anything else) reads the model. See LetInliner.
+        io.github.yhavinga.regelspraak.transpiler.kern.LetInliner.normaliseer(m);
         this.model = m;
         this.dagsoorten = new Dagsoorten(m);
         this.strat = io.github.yhavinga.regelspraak.transpiler.Stratificatie.bereken(m.resolvedRegels);
