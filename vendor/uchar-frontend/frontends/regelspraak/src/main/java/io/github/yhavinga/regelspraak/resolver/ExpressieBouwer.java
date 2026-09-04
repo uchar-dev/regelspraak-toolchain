@@ -1055,6 +1055,15 @@ final class ExpressieBouwer {
         // context-independent (a session global in both back-ends), so it does not mis-bind. Anything else stays an
         // honest, symmetric marker.
         if (!(rhs instanceof Expr.Literal) && !(rhs instanceof Expr.ParameterRef)) return null;
+        // WF-091 (reference-type identity, IR-SPEC ch. 4.1): the one VALUE-position reference whose type this builder
+        // copies from another node instead of looking the declaration up. It invents nothing: it COPIES the fold
+        // source, re-anchored on the element (onderwerpBron/bron reset, and set=false — the LHS reads ONE element,
+        // not the set), carrying that node's (objecttype, attribuut, type) triple verbatim — so it carries no deviation the
+        // source does not already have, and the verifier checks it at its own use site like any other reference.
+        // Deliberately NOT the aggregation's own type: §4.20 strips the noemer off "het totaal van <€/mnd>" (€), while
+        // the filter compares the unstripped per-element value (€/mnd). Re-looking the declaration up here would be
+        // LESS safe: it could let this term and the accumulate's fold source drift apart, and both back-ends need them
+        // to denote ONE read of ONE attribute.
         Expr lhs = new Expr.AttribuutRef(agg.attribuut(), elem, "", null, agg.type(), bron(p));
         // §5.6 getal/datum/tekstpredicaat: enforce the typeringen comparison legality (as the normal voorwaarde path
         // does), so a type-mismatched filter (a Numeriek attribute vs a Tekst literal) is an ERROR, not silent bad DRL.
