@@ -13,7 +13,7 @@ types.
 - **Source repository:** uchar (private).
 - **Source path:** `frontends/regelspraak/**` (the whole slice, tests and
   Makefile included).
-- **Source commit:** `904ecc30eb6ae3d6c3fc57b0aead6d7165f23fb3`
+- **Source commit:** `ff19a78be6f26643233e60373d2074f55194f85f`
   — this is exactly the value in `/SPEC_REV` at the repo root, the **single
   pin**. There is no second pin.
 
