@@ -5425,9 +5425,11 @@ class ExecModelDifferentialTest {
         }
     }
 
-    // ---- Phase 11 fixtures: §11/§13.4.2.10 "Daarbij geldt: X is <expressie>" local rule variables, INLINE-
-    //      substituted at each VariabeleRef site (voorwaarde + resultaat). Both back-ends consume the same inlined
-    //      IR, so this checks the substitution lowers + fires identically. ----
+    // ---- Phase 11 fixtures: §11/§13.4.2.10 "Daarbij geldt: X is <expressie>" local rule variables. Since the
+    //      Let-port both back-ends consume the SAME wire the frontend emits (uchar RUNTIME-SEMANTICS ch. 10.6): a
+    //      read in the RESULTAAT is a BinderRef under a call-by-need Let chain, a read in the VOORWAARDE is still
+    //      substituted (the wire's boundary a — a rule's condition and its value are separate fields, so no Let can
+    //      span them). This checks that BOTH routes lower + fire identically in the two back-ends. ----
     static final Fixture[] PHASE_11 = {
         // X used in the CONDITION: "minderjarig indien X < 18" with X = zijn leeftijd.
         single("§11 var in condition (X = zijn leeftijd, X < 18)",
@@ -5473,8 +5475,11 @@ class ExecModelDifferentialTest {
     };
 
     // The §11.1 rekenvolgorde example (B references the earlier A; the "A != 0" condition guards the b/A division).
-    // A pure differential can't catch an inline-substitution bug shared by both back-ends, so assert the absolute
+    // A pure differential can't catch a lowering bug shared by both back-ends, so assert the absolute
     // spec result too: prijs=5,basistarief=20 -> A=5, A!=0 -> B=20/5=4 -> plafond=4+1=5; prijs=0 -> A=0 -> no fire.
+    // Note the two routes meeting in one rule: the "A ongelijk aan 0" VOORWAARDE substitutes A, while the value
+    // "B plus 1" reads B — and B's own definition reads A — through the Let chain (ch. 10.6 clause 1: one Let, one
+    // evaluation, however many reads). The pinned values are unchanged by the Let-port.
     static final Fixture[] PHASE_11_ABS = {
         single("§11.1 B=basistarief/A, A=prijs, plafond=B+1 if A!=0 (5)",
             """
@@ -5511,9 +5516,10 @@ class ExecModelDifferentialTest {
 
     @Test void phase_11_daarbij_geldt_matches_drl_back_end()   { runDifferential("Phase 11", PHASE_11, 3); }
 
-    /** §11.1: assert the DRL oracle against the absolute spec value (an inline-substitution bug shared by both
-     *  back-ends would pass a pure differential), and that the model agrees. */
-    @Test void phase_11_inline_substitution_is_spec_correct() {
+    /** §11.1: assert the DRL oracle against the absolute spec value (a lowering bug shared by both back-ends
+     *  would pass a pure differential), and that the model agrees. Renamed at the Let-port — the variabelendeel is
+     *  no longer an inline substitution in the result part — but every pinned value below is untouched. */
+    @Test void phase_11_variabelendeel_is_spec_correct() {
         for (int i = 0; i < PHASE_11_ABS.length; i++) {
             Fixture f = PHASE_11_ABS[i];
             Object expected = PHASE_11_ABS_EXPECTED[i];
