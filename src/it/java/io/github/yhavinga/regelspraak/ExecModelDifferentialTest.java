@@ -5514,6 +5514,77 @@ class ExecModelDifferentialTest {
     };
     static final Object[] PHASE_11_ABS_EXPECTED = { new BigDecimal(5), null };
 
+    // The Let-port's own absolute pins (uchar RUNTIME-SEMANTICS ch. 10.6, tracked delta 1 / CONSTRUCTS row 24).
+    // These are the class where the v0 inlining and the v1 lowering DISAGREE, so a pure differential is not enough:
+    // both back-ends inlining would agree with each other and be wrong together. Hence absolute values.
+    //
+    //   1. THE BARRIER. "zijn prijs plus de toeslag", toeslag = zijn basistarief, with basistarief ABSENT. The
+    //      use site READS the binder, so the leeg-barrier (clause 2) empties the whole rule value and the target
+    //      stays leeg. The inlined form would have coalesced the absent operand to 0 (the ch. 1.2 `plus` row) and
+    //      written 30 — that is precisely the divergence this port removes.
+    //   2. THE CONTROL. Same rule, basistarief FILLED: with the variable present the lowered form computes
+    //      exactly what the inlined form did. Only case 1 separates them.
+    //   3. THE SHARING. One binder, two reads (clause 1: one Let, one evaluation) — the value is 2x21, not a
+    //      recomputation artefact.
+    static final Fixture[] PHASE_11_LET_ABS = {
+        single("ch. 10.6 barriere: gelezen binder met LEGE waarde laat het doel leeg",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+                het basistarief Numeriek (geheel getal);
+                het plafond Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet berekend worden als zijn prijs plus de toeslag.
+                    Daarbij geldt: de toeslag is zijn basistarief.
+            """,
+            () -> passagier(p -> p.setPrijs(new BigDecimal(30))),
+            Map.of(), Passagier::getPlafond),
+        single("ch. 10.6 controle: gevulde binder rekent zoals de ingelijnde vorm",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+                het basistarief Numeriek (geheel getal);
+                het plafond Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet berekend worden als zijn prijs plus de toeslag.
+                    Daarbij geldt: de toeslag is zijn basistarief.
+            """,
+            () -> passagier(p -> { p.setPrijs(new BigDecimal(30)); p.setBasistarief(new BigDecimal(12)); }),
+            Map.of(), Passagier::getPlafond),
+        single("ch. 10.6 deling: een binder die twee keer gelezen wordt",
+            """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+                het plafond Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet berekend worden als de vangst plus de vangst.
+                    Daarbij geldt: de vangst is zijn prijs.
+            """,
+            () -> passagier(p -> p.setPrijs(new BigDecimal(21))),
+            Map.of(), Passagier::getPlafond),
+    };
+    static final Object[] PHASE_11_LET_ABS_EXPECTED = { null, new BigDecimal(42), new BigDecimal(42) };
+
+    /** ch. 10.6: the leeg-barrier, its control and the sharing witness, pinned ABSOLUTELY in both back-ends.
+     *  Fixture 1 is the tracked v1 divergence from the v0 inlining — before the Let-port both back-ends wrote 30. */
+    @Test void ch_10_6_leeg_barriere_is_spec_correct() {
+        for (int i = 0; i < PHASE_11_LET_ABS.length; i++) {
+            Fixture f = PHASE_11_LET_ABS[i];
+            Object expected = PHASE_11_LET_ABS_EXPECTED[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(eq(expected), eq(viaDrl), () -> "DRL wijkt af van ch. 10.6 op '" + f.naam() + "'");
+            assertEquals(eq(expected), eq(viaModel), () -> "exec-model wijkt af van ch. 10.6 op '" + f.naam() + "'");
+        }
+    }
+
     @Test void phase_11_daarbij_geldt_matches_drl_back_end()   { runDifferential("Phase 11", PHASE_11, 3); }
 
     /** §11.1: assert the DRL oracle against the absolute spec value (a lowering bug shared by both back-ends
