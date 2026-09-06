@@ -123,9 +123,6 @@ public final class ExecModelTranspiler {
 
     private ExecModelTranspiler(RegelSpraakModel m) { this(m, null); }
     private ExecModelTranspiler(RegelSpraakModel m, ClassLoader beanLoader) {
-        // Same reason, same place as DrlTranspiler's constructor: the ch. 4.10 Let cluster is normalised away
-        // before stratification (or anything else) reads the model. See LetInliner.
-        io.github.yhavinga.regelspraak.transpiler.kern.LetInliner.normaliseer(m);
         this.model = m;
         this.dagsoorten = new Dagsoorten(m);
         this.strat = io.github.yhavinga.regelspraak.transpiler.Stratificatie.bereken(m.resolvedRegels);
@@ -3182,9 +3179,129 @@ public final class ExecModelTranspiler {
         }
     }
 
+    /**
+     * The binder ENVIRONMENT slot for {@code binder} inside the (name -&gt; value) map every {@link WaardeFn}
+     * already threads. Reusing that map is what keeps the binder environment PURELY FUNCTIONAL: a
+     * {@link Expr.Let} evaluation copies the incoming map, adds its own slot and hands the copy to the body, so
+     * no cell, field or thread-local is shared — a KieBase lambda may be fired by any number of sessions and
+     * threads at once.
+     *
+     * <p>The slot name carries a SPACE, which {@link Namen#ident} can never produce, so it cannot collide with a
+     * Parameter global (nor with the §5.3 {@code "rekendatum"} pseudo-slot). Lower-cased, so binder resolution is
+     * case-insensitive exactly as the frontend's own {@code variabeleSleutel} lookup is.
+     */
+    private static String binderSleutel(String binder) {
+        return "binder " + (binder == null ? "" : binder.toLowerCase(java.util.Locale.ROOT));
+    }
+
+    /**
+     * uchar {@code RUNTIME-SEMANTICS.md} ch. 10.6 clause 2's <b>leeg-barrier</b> as control flow: a read of a
+     * binder whose value is leeg ends the {@link Expr.Let} that bound it, wherever in the body that read sits.
+     * One INSTANCE is created per Let EVALUATION and a handler rethrows anything that is not its own instance, so
+     * a nested Let's barrier passes an enclosing handler by: the barrier belongs to the Let that bound the binder
+     * that was read, never to an enclosing one. Stackless — it is a signal, not a diagnosis.
+     */
+    private static final class Barriere extends RuntimeException {
+        Barriere() { super(null, null, false, false); }
+    }
+
+    /**
+     * uchar ch. 10.6 clause 1's <b>need</b>: what a binder slot carries under call-by-need. The value is evaluated
+     * at the FIRST {@link #lees()} and that one result serves every further read; a body that never reads the
+     * binder never evaluates the value at all (clause 3 — no leeg, no fault).
+     *
+     * <p><b>Why this mutable cell is session-safe.</b> It is created INSIDE the {@link WaardeFn} invocation that
+     * binds it and reaches only that invocation's own copy of the environment map, which is discarded when the
+     * call returns — never a field, never a capture of the KieBase lambda. The compiled lambdas stay stateless
+     * (they close over the two compiled fns and the slot name only).
+     */
+    private static final class Binderslot {
+        private final java.util.function.Supplier<Object> waardeFn;
+        private final Barriere barriere;
+        private boolean geforceerd;
+        private Object waarde;
+
+        Binderslot(java.util.function.Supplier<Object> waardeFn, Barriere barriere) {
+            this.waardeFn = waardeFn;
+            this.barriere = barriere;
+        }
+
+        /** The need, forced at most once; a leeg value raises the OWNING Let's barrier instead of answering null. */
+        Object lees() {
+            if (!geforceerd) {
+                waarde = waardeFn.get();
+                geforceerd = true;
+            }
+            if (waarde == null) throw barriere;
+            return waarde;
+        }
+    }
+
+    /**
+     * §11/§13.4.2.10 the variabelendeel as uchar's ch. 4.10 {@link Expr.Let}: lower it to the ordinary
+     * {@link WaardeFn}, so the whole existing value machinery (the leegwaarde tables, the §4 unit restatement, the
+     * Breuk-aware rs* helpers) applies to a Let body unchanged.
+     *
+     * <p><b>Globals hygiene.</b> A WaardeFn's globals set is what {@link #regel} binds on the consequence; a
+     * forgotten name would read null and answer a silent leeg. So the sets are UNIONED across value and body — and
+     * a Let REMOVES its own binder slot from what it reports, since it binds that slot itself. A binder slot that
+     * somehow escaped its Let therefore surfaces as an unregistered global and becomes a loud skip
+     * ({@link #waardeGlobal} returns null), never a null read. Under call-by-need the value's OWN globals stay in
+     * that union even though the value may never run: the thunk is built from the enclosing map, so every name it
+     * could read must still be bound on the consequence.
+     */
+    private WaardeFn letWaarde(Objecttype valueSubject, Expr.Let l) {
+        // ch. 10.6 / WF-076: the value is evaluated in the ENCLOSING scope — the binder is not visible in its own
+        // value — so it compiles against the untouched incoming map.
+        WaardeFn vf = scalarWaarde(valueSubject, l.value());
+        if (vf == null) return null;
+        WaardeFn bf = scalarWaarde(valueSubject, l.body());
+        if (bf == null) return null;
+        String sleutel = binderSleutel(l.binder());
+        BiFunction<Object, Map<String, BigDecimal>, Object> vfn = vf.fn(), bfn = bf.fn();
+        Set<String> g = new LinkedHashSet<>(vf.globals());
+        for (String n : bf.globals()) if (!n.equals(sleutel)) g.add(n);
+        return new WaardeFn((s, gm) -> {
+            // ch. 10.6 call-by-need: the slot carries the THUNK, not the value. The body ALWAYS runs (clause 3: an
+            // unread binder evaluates nothing, and the Let's outcome IS the body's); a read forces the need
+            // (clause 1, once) and a leeg need raises THIS Let's barrier (clause 2), caught here — and only here,
+            // since the token is this evaluation's own.
+            Barriere barriere = new Barriere();
+            Binderslot need = new Binderslot(() -> vfn.apply(s, gm), barriere);
+            Map<String, BigDecimal> omgeving = new LinkedHashMap<>(gm);
+            // no BigDecimal cast — the map is erased (see bindGlobal/vulGlobalMap); a binder value is whatever its
+            // own expression computed (a BigDecimal, an exact Breuk, a date, a label) and only this slot's reader
+            // touches it, through the cell.
+            @SuppressWarnings({"unchecked", "rawtypes"})
+            Map<String, Object> ruw = (Map) omgeving;
+            ruw.put(sleutel, need);
+            try {
+                return bfn.apply(s, omgeving);
+            } catch (Barriere raised) {
+                if (raised != barriere) throw raised;   // an enclosing Let's barrier, only passing through
+                return null;                            // the read emptied THIS Let
+            }
+        }, g);
+    }
+
     /** Scalar value: Literal | own-attr read | Parameter-global read | a {@code +} of those (rsNul leegwaarde).
      *  null -> skip. The global read pulls its value from the consequence-bound map (see {@link #regel}). */
     private WaardeFn scalarWaarde(Objecttype valueSubject, Expr e) {
+        // uchar ch. 4.10 the Let cluster, asked FIRST so no later arm can mistake a binder read for a leaf.
+        if (e instanceof Expr.Let l) return letWaarde(valueSubject, l);
+        if (e instanceof Expr.BinderRef br) {
+            // ch. 10.6 clause 1+2: the read FORCES the need (once) and, if that value is leeg, raises the owning
+            // Let's barrier rather than answering leeg — which is what keeps a bound binder never-leeg.
+            String sleutel = binderSleutel(br.naam());
+            return new WaardeFn((s, gm) -> {
+                Object slot = ((Map<?, ?>) gm).get(sleutel);
+                if (!(slot instanceof Binderslot need))
+                    // unreachable by the globals hygiene in letWaarde (an escaped binder slot is refused at build
+                    // time, loudly); fail fast rather than answer a silent leeg if it ever is reached.
+                    throw new IllegalStateException("Let-binder '" + sleutel + "' is niet gebonden bij het lezen");
+                return need.lees();
+            }, Set.of(sleutel));
+        }
         if (e instanceof Expr.Literal lit && lit.type().isNumeriek()) {
             // §13.2.5/§389: a non-terminating rational literal (1/3) becomes an EXACT Breuk so downstream +,-,×,÷
             // stay exact (9 maal 1/3 = 3); a terminating one (4/2, 3/2) stays a plain BigDecimal (fast path).
@@ -3574,6 +3691,11 @@ public final class ExecModelTranspiler {
         if (e instanceof Expr.Binair b) return containsAggregatie(b.links()) || containsAggregatie(b.rechts());
         if (e instanceof Expr.Afgerond a) return containsAggregatie(a.basis());
         if (e instanceof Expr.Begrensd g) return containsAggregatie(g.basis());
+        // uchar ch. 4.10: a §11 variabelendeel wraps the WHOLE result part, so an embedded aggregation sits under
+        // the Let chain. A walk that stopped at the binder would route such a value to the scalar path, where the
+        // aggregation cannot lower — an honest skip here, but a one-sided one: the DRL back-end hoists the
+        // accumulate through its own Let arm and would LOWER it, which manifestDiff reports as a divergence.
+        if (e instanceof Expr.Let l) return containsAggregatie(l.value()) || containsAggregatie(l.body());
         return false;
     }
 
@@ -3582,8 +3704,42 @@ public final class ExecModelTranspiler {
      *  scope (caller skips). Mirrors {@link #scalarWaarde}/{@link #scalarWrapper} for the scalar leaves, but threads
      *  aggregation result vars through the {@code aggResults[]} the consequence binds. A SOM (count+fallback two-var
      *  fold) inside arithmetic is not lowered here -> null (honest skip). */
+    @SuppressWarnings({"unchecked", "rawtypes"})
     private Eval lowerVal(Expr e, Objecttype subject, Variable sVar, Set<String> globalsOut,
                           List<RuleItemBuilder<?>> accItemsOut, List<Variable> accVarsOut) {
+        // uchar ch. 10.6 the Let cluster on the EMBEDDED-AGGREGATION value path: same call-by-need discipline as
+        // scalarWaarde's {@link #letWaarde}, riding the same (erased) globals map — the aggregation results travel
+        // in their own aggResults[] slice, which the environment copy leaves untouched.
+        if (e instanceof Expr.Let l) {
+            Eval vf = lowerVal(l.value(), subject, sVar, globalsOut, accItemsOut, accVarsOut);
+            if (vf == null) return null;
+            Eval bf = lowerVal(l.body(), subject, sVar, globalsOut, accItemsOut, accVarsOut);
+            if (bf == null) return null;
+            String sleutel = binderSleutel(l.binder());
+            return (s, g, a) -> {
+                Barriere barriere = new Barriere();
+                Binderslot need = new Binderslot(() -> vf.apply(s, g, a), barriere);
+                Map<String, BigDecimal> omgeving = new LinkedHashMap<>(g);
+                ((Map<String, Object>) (Map) omgeving).put(sleutel, need);
+                try {
+                    return bf.apply(s, omgeving, a);
+                } catch (Barriere raised) {
+                    if (raised != barriere) throw raised;   // an enclosing Let's barrier, only passing through
+                    return null;                            // the read emptied THIS Let
+                }
+            };
+        }
+        if (e instanceof Expr.BinderRef br) {
+            // The slot is bound by the enclosing Let at FIRE time, so — unlike a Parameter read — it registers no
+            // name in globalsOut; an unbound read fails loudly below rather than answering a silent leeg.
+            String sleutel = binderSleutel(br.naam());
+            return (s, g, a) -> {
+                Object slot = ((Map<?, ?>) g).get(sleutel);
+                if (!(slot instanceof Binderslot need))
+                    throw new IllegalStateException("Let-binder '" + sleutel + "' is niet gebonden bij het lezen");
+                return need.lees();
+            };
+        }
         if (e instanceof Expr.Literal lit && lit.type().isNumeriek()) {
             BigDecimal val = bd(lit);
             return val == null ? null : (s, g, a) -> val;
@@ -3832,6 +3988,10 @@ public final class ExecModelTranspiler {
         }
         if (e instanceof Expr.Afgerond af) return parityOnveilig(af.basis());
         if (e instanceof Expr.Functie f) return f.argumenten().stream().anyMatch(ExecModelTranspiler::parityOnveilig);
+        // uchar ch. 4.10: a §11 variabelendeel hides its children under the binding. The terminal `false` below means
+        // "safe, FIRE", so a walk that stopped at the binder would let the exec fire where DRL markers — exactly
+        // the back-end parity split this predicate exists to prevent.
+        if (e instanceof Expr.Let l) return parityOnveilig(l.value()) || parityOnveilig(l.body());
         return false;
     }
     /** The six numeric comparison operators the model lowers; EERDER/LATER (datum) are a later phase (caller skips). */
@@ -3858,6 +4018,8 @@ public final class ExecModelTranspiler {
         }
         if (e instanceof Expr.Begrensd bg) return kanBreukOpleveren(bg.basis()) || kanBreukOpleveren(bg.minimum()) || kanBreukOpleveren(bg.maximum());
         if (e instanceof Expr.Afgerond) return false;   // an afronding collapses any Breuk to a BigDecimal
+        // uchar ch. 4.10: a §11 variabelendeel hides its children under the binding — mirror DrlTranspiler.kanBreukOpleveren.
+        if (e instanceof Expr.Let l) return kanBreukOpleveren(l.value()) || kanBreukOpleveren(l.body());
         if (e instanceof Expr.Functie f) { for (Expr a : f.argumenten()) if (kanBreukOpleveren(a)) return true; return false; }
         if (e instanceof Expr.Literal lit && lit.type() != null && lit.type().isNumeriek()) {
             BigDecimal[] r = Rationaal.van(lit.waarde());
@@ -5024,7 +5186,14 @@ public final class ExecModelTranspiler {
         Class<?> incClass = inconsistentieClass();
         if (factClass == null || incClass == null) return List.of();
         Expr wortel = r.waarde();
-        while (wortel instanceof Expr.Binair b) wortel = b.links();
+        // uchar ch. 4.10: a §11 variabelendeel WRAPS the value, so the §7 startpunt anchor sits in the Let's
+        // body, not at the root. Stopping at the binder would halt the leftmost-spine walk instantly and drop the
+        // "leeg startpunt" companion.
+        while (true) {
+            if (wortel instanceof Expr.Binair b) { wortel = b.links(); continue; }
+            if (wortel instanceof Expr.Let l)    { wortel = l.body(); continue; }
+            break;
+        }
         java.util.function.Function<Object, Object> anker = companionOperand(wortel, subject);
         if (anker == null) return List.of();
         String naam = r.naam();
@@ -5100,6 +5269,9 @@ public final class ExecModelTranspiler {
             verzamelWortels(g.basis(), uit);
             verzamelWortels(g.minimum(), uit);   // mirror DRL verzamelWortels — a wortel inside a min/max bound
             verzamelWortels(g.maximum(), uit);
+        } else if (e instanceof Expr.Let l) {   // uchar ch. 4.10: a §11 variabelendeel hides its children under the binding — mirror DRL
+            verzamelWortels(l.value(), uit);
+            verzamelWortels(l.body(), uit);
         }
     }
 
@@ -5139,6 +5311,9 @@ public final class ExecModelTranspiler {
             verzamelDelingen(g.basis(), uit);
             verzamelDelingen(g.minimum(), uit);   // mirror DRL — a division inside a min/max bound
             verzamelDelingen(g.maximum(), uit);
+        } else if (e instanceof Expr.Let l) {   // uchar ch. 4.10: a §11 variabelendeel hides its children under the binding — mirror DRL
+            verzamelDelingen(l.value(), uit);
+            verzamelDelingen(l.body(), uit);
         }
     }
 
@@ -5226,6 +5401,9 @@ public final class ExecModelTranspiler {
                 if (d instanceof Expr.TekstReeks.Ingevoegd i) eigenReads(i.expr(), subject, uit);
         } else if (e instanceof Expr.DimensieCel dc) {
             eigenReads(dc.attribuut(), subject, uit);
+        } else if (e instanceof Expr.Let l) {   // uchar ch. 4.10: a §11 variabelendeel hides its children under the binding — an empty .watch computes once, against a still-leeg producer
+            eigenReads(l.value(), subject, uit);
+            eigenReads(l.body(), subject, uit);
         }
     }
 
@@ -5253,6 +5431,9 @@ public final class ExecModelTranspiler {
                 if (d instanceof Expr.TekstReeks.Ingevoegd i) navRefs(i.expr(), subject, uit);
         } else if (e instanceof Expr.DimensieCel dc) {
             navRefs(dc.attribuut(), subject, uit);
+        } else if (e instanceof Expr.Let l) {   // uchar ch. 4.10: a §11 variabelendeel hides its children under the binding — mirror DrlTranspiler.verzamelNavRefs
+            navRefs(l.value(), subject, uit);
+            navRefs(l.body(), subject, uit);
         }
     }
 }

@@ -23,7 +23,9 @@ import static io.github.yhavinga.regelspraak.transpiler.kern.Namen.ident;
 import static io.github.yhavinga.regelspraak.transpiler.kern.Namen.setter;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.function.Function;
@@ -81,10 +83,6 @@ public final class DrlTranspiler {
     private final Dagsoorten dagsoorten;
 
     public DrlTranspiler(RegelSpraakModel model) {
-        // Before ANYTHING reads the model — stratification below already does: this back-end and every
-        // auxiliary Expr walk it drives predate the ch. 4.10 Let cluster and read a BinderRef as an opaque
-        // leaf. The single entry point both static factories funnel through, so no route escapes it.
-        io.github.yhavinga.regelspraak.transpiler.kern.LetInliner.normaliseer(model);
         this.model = model;
         this.dagsoorten = new Dagsoorten(model);
         this.strat = Stratificatie.bereken(model.resolvedRegels);
@@ -285,6 +283,16 @@ public final class DrlTranspiler {
     private static final class Acc {
         final List<String> clausules = new ArrayList<>();
         int n;
+        /** uchar ch. 4.10/10.6 the §11 variabelendeel: the {@code then}-side local declarations a {@link Expr.Let}
+         *  chain lowers to, in binding order, and the binder-&gt;local map their reads resolve through. Both ride the
+         *  SAME explicitly-threaded context as {@link #clausules} — never a field — so one rule's bindings can
+         *  structurally never leak into the next. */
+        final List<String> letBindingen = new ArrayList<>();
+        final Map<String, String> binders = new LinkedHashMap<>();
+        /** Whether the CALLER hosts a {@code then}-side statement block and will splice {@link #letBindingen}. A
+         *  Let is a binding, and a binding needs a statement position: everywhere else (a {@code when} pattern
+         *  constraint, an accumulate CE, a companion guard) it is an honest MARKER, never a silent substitution. */
+        boolean letBindbaar;
     }
 
     /** §9.5 the consequence shared by the three inconsistency-flagging rules (consistentie, uniciteit,
@@ -1045,8 +1053,12 @@ public final class DrlTranspiler {
                 && !td.objecttype().attribuutTijdlijnAantal.containsKey(td.attribuut());
         // Translate the value first: any aggregation registers an accumulate pattern
         // for the "when" and yields the bound result variable used here in the "then".
+        // This is the ONE position that hosts a then-side statement block, so it is the one position a §11
+        // variabelendeel may bind in (see {@link #letWaarde}); everywhere else a Let stays an honest marker.
+        acc.letBindbaar = true;
         Frag valueStr = subject != null && !temporeelDoel && r.doel() instanceof Expr.AttribuutRef
                 ? waarde(acc, r.waarde(), subject) : null;
+        acc.letBindbaar = false;
         // §5.1.4 lower a temporal-doel timeline value BEFORE the acc.clausules flush (temporeleWaarde may register a
         // collectList accumulate for a §5.8.2 to-many sommatie, which must be emitted after $subject binds).
         String temporeelTl = null; boolean temporeelOngeankerd = false;
@@ -1236,7 +1248,12 @@ public final class DrlTranspiler {
             // expression is pure (rs* helpers are side-effect-free), so evaluating it twice is safe.
             // mvel PROPERTY access in the guard (not an explicit getter call): a boolean kenmerk exposes
             // is<X>(), and mvel's property navigation resolves either accessor form.
-            rule.dan("    if (!java.util.Objects.equals(" + SUBJECT + "." + ident(a.attribuut(), false) + ", " + valueStr.text() + ")) {\n"
+            // uchar ch. 10.6: a §11 variabelendeel lowered to Let locals prepends its declarations here, ONCE,
+            // ahead of the guard — a binder read twice is evaluated once (clause 1's sharing), and the guard and
+            // the setter below then share those locals instead of recomputing the whole subtree twice each.
+            String letBindingen = String.join("", acc.letBindingen);
+            rule.dan(letBindingen
+                    + "    if (!java.util.Objects.equals(" + SUBJECT + "." + ident(a.attribuut(), false) + ", " + valueStr.text() + ")) {\n"
                     + "    modify(" + SUBJECT + ") {\n        " + setter(a.attribuut()) + "( " + valueStr.text() + " )\n    }\n"
                     + "    }\n");
         } else {
@@ -1269,7 +1286,14 @@ public final class DrlTranspiler {
         if (voorwaardeMarker) return;
         if (!(r.doel() instanceof Expr.AttribuutRef d) || !model.isStartpuntLid(subject, d.attribuut())) return;
         Expr wortel = r.waarde();
-        while (wortel instanceof Expr.Binair b) wortel = b.links();
+        // uchar ch. 4.10: a §11 variabelendeel WRAPS the value, so the §7 startpunt anchor sits in the Let's
+        // body, not at the root. Stopping at the binder would halt the leftmost-spine walk instantly and drop the
+        // "leeg startpunt" companion.
+        while (true) {
+            if (wortel instanceof Expr.Binair b) { wortel = b.links(); continue; }
+            if (wortel instanceof Expr.Let l)    { wortel = l.body(); continue; }
+            break;
+        }
         OperandDeel anker = companionDeel(acc, wortel, subject);
         if (anker == null) return;
         String pattern = (voorwaarde.isEmpty() ? "" : voorwaarde + ", ") + anker.leeg();
@@ -1343,6 +1367,13 @@ public final class DrlTranspiler {
                 if (d instanceof Expr.TekstReeks.Ingevoegd i) verzamelEigenReads(i.expr(), subject, uit);
         } else if (e instanceof Expr.DimensieCel dc) {
             verzamelEigenReads(dc.attribuut(), subject, uit);
+        } else if (e instanceof Expr.Let l) {
+            // uchar ch. 4.10: a §11 variabelendeel hides its reads under the binding. A walk that stopped at the
+            // binder would emit an EMPTY @watch and the rule would compute once, against a still-leeg producer —
+            // the exact staleness this set exists to prevent. A BinderRef itself reads no bean property (it reads
+            // the then-side local), so it is a genuine leaf.
+            verzamelEigenReads(l.value(), subject, uit);
+            verzamelEigenReads(l.body(), subject, uit);
         }
     }
 
@@ -1375,6 +1406,9 @@ public final class DrlTranspiler {
             verzamelFilterKenmerkReads(bg.basis(), subject, uit);
             verzamelFilterKenmerkReads(bg.minimum(), subject, uit);
             verzamelFilterKenmerkReads(bg.maximum(), subject, uit);
+        } else if (e instanceof Expr.Let l) {   // uchar ch. 4.10 — see verzamelEigenReads
+            verzamelFilterKenmerkReads(l.value(), subject, uit);
+            verzamelFilterKenmerkReads(l.body(), subject, uit);
         }
     }
 
@@ -1445,6 +1479,9 @@ public final class DrlTranspiler {
                 if (d instanceof Expr.TekstReeks.Ingevoegd i) verzamelNavRefs(i.expr(), subject, uit);
         } else if (e instanceof Expr.DimensieCel dc) {
             verzamelNavRefs(dc.attribuut(), subject, uit);
+        } else if (e instanceof Expr.Let l) {   // uchar ch. 4.10 — see verzamelEigenReads
+            verzamelNavRefs(l.value(), subject, uit);
+            verzamelNavRefs(l.body(), subject, uit);
         }
     }
 
@@ -1461,6 +1498,12 @@ public final class DrlTranspiler {
             verzamelWortels(bg.basis(), uit);
             verzamelWortels(bg.minimum(), uit);
             verzamelWortels(bg.maximum(), uit);
+        } else if (e instanceof Expr.Let l) {
+            // uchar ch. 4.10: a §6.6 wortel hidden under a §11 variabelendeel must still raise its companion —
+            // a walk that stopped at the binder would silently drop the Inconsistentie. Byte-symmetric with
+            // ExecModelTranspiler.verzamelWortels, so both back-ends surface the SAME wortels.
+            verzamelWortels(l.value(), uit);
+            verzamelWortels(l.body(), uit);
         }
     }
 
@@ -1509,6 +1552,14 @@ public final class DrlTranspiler {
             verzamelDelingen(bg.basis(), uit);
             verzamelDelingen(bg.minimum(), uit);
             verzamelDelingen(bg.maximum(), uit);
+        } else if (e instanceof Expr.Let l) {
+            // uchar ch. 4.10: a §6.5 division hidden under a §11 variabelendeel — see verzamelWortels. Byte-
+            // symmetric with ExecModelTranspiler.verzamelDelingen. (Whether a companion is actually EMITTED is a
+            // separate question: companionDeel still needs both operands to be re-readable fact guards, and a
+            // BinderRef operand is not one — so such a division degrades to leeg without an Inconsistentie,
+            // symmetrically in both back-ends.)
+            verzamelDelingen(l.value(), uit);
+            verzamelDelingen(l.body(), uit);
         }
     }
 
@@ -1748,8 +1799,71 @@ public final class DrlTranspiler {
         return Frag.from(plusFn + "(" + links.text() + ", " + rechts.text() + ")", links, rechts);
     }
 
+    /** The binder lookup key: the declared spelling lower-cased, mirroring the frontend's own
+     *  {@code ExpressieBouwer.variabeleSleutel} normalisation, so binder resolution is case-insensitive on both
+     *  sides of the wire. */
+    private static String binderSleutel(String binder) {
+        return binder == null ? "" : binder.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /**
+     * uchar {@code RUNTIME-SEMANTICS.md} ch. 10.6 — the §11/§13.4.2.10 variabelendeel as a real binding on the
+     * {@code then} side, replacing the v0 substitution this back-end used to receive pre-inlined.
+     *
+     * <p><b>The shape.</b> Each {@link Expr.Let} contributes ONE typed mvel local declaration to
+     * {@link Acc#letBindingen} — the statement-block form {@code objectCreatie} already proves legal inside a
+     * {@code dialect "mvel"} consequence — and its body renders against that local. So a binder read twice is
+     * EVALUATED ONCE (ch. 10.6 clause 1's sharing), where the inlined v0 form recomputed the whole subtree per
+     * read. The value is lowered in the ENCLOSING scope: the binder is not visible in its own value (WF-076).
+     *
+     * <p><b>The leeg-barrier</b> (clause 2) is the {@code local == null ? null : body} guard: a read of a binder
+     * whose value is leeg makes the WHOLE Let leeg, rather than letting the surrounding {@code rsPlus}/{@code
+     * rsMaal} coalesce it to 0 as the substituted form did. That single guard IS the tracked v1 divergence
+     * (uchar {@code CONSTRUCTS.md} row 24) — it is why an absent operand behind a variabele now leaves the target
+     * unwritten instead of computing a spurious total. Nesting is by construction: the guards nest exactly as the
+     * Let chain does, so an inner Let empties itself and never an enclosing one.
+     *
+     * <p><b>Where this back-end is stricter than the exec-model one, and why it does not show.</b> The declaration
+     * is a statement, so it runs when the block runs — eagerly — where {@link ExecModelTranspiler}'s port forces a
+     * genuine call-by-need thunk (clause 3: an unread binder evaluates nothing). The two coincide on every wire
+     * this toolchain can receive: the frontend emits a Let ONLY for a variable some read reaches
+     * ({@code ExpressieBouwer.omhulMetVariabelen}), every RegelSpraak value position outside an aggregation
+     * subtree is strict, and a binder read INSIDE such a subtree is substituted by the frontend, not bound
+     * (boundary c). What remains is a value whose eager evaluation would be observable — and every leegwaarde
+     * helper the value can reach ({@code rsPlus}/{@code rsGedeeld}/{@code rsAfronding}/…) is total on null by the
+     * §6 leegwaarde discipline, so it yields leeg rather than faulting. The differential
+     * ({@code ExecModelDifferentialTest}) is what holds the two back-ends to the same answer.
+     */
+    private Frag letWaarde(Acc acc, Expr.Let l, Objecttype subject) {
+        if (!acc.letBindbaar)
+            return Frag.todo("variabelendeel (§11) buiten een then-statementblok", l.bron());
+        Frag v = waarde(acc, l.value(), subject);   // WF-076: the enclosing scope, binder not yet bound
+        if (v.marker()) return v;
+        String lokaal = "$let" + (acc.n++);
+        acc.letBindingen.add("    " + javaType(l.value().type()) + " " + lokaal + " = " + v.text() + ";\n");
+        String sleutel = binderSleutel(l.binder());
+        String vorig = acc.binders.put(sleutel, lokaal);
+        Frag b;
+        try {
+            b = waarde(acc, l.body(), subject);
+        } finally {
+            if (vorig == null) acc.binders.remove(sleutel); else acc.binders.put(sleutel, vorig);
+        }
+        return Frag.from("(" + lokaal + " == null ? null : " + b.text() + ")", v, b);
+    }
+
     // ---------------- value expression ("then" side: getters) ----------------
     private Frag waarde(Acc acc, Expr e, Objecttype subject) {
+        // uchar ch. 4.10 the Let cluster, asked FIRST so no later arm can mistake a binder read for a leaf.
+        if (e instanceof Expr.Let l)  return letWaarde(acc, l, subject);
+        if (e instanceof Expr.BinderRef br) {
+            String lokaal = acc.binders.get(binderSleutel(br.naam()));
+            // An UNBOUND read is a marker, never a guess: it means the binding sits somewhere this position
+            // cannot see (a when-side operand, an accumulate CE), and a substituted subtree there would silently
+            // restore the v0 coalesce this port exists to remove.
+            return lokaal != null ? Frag.ok(lokaal)
+                    : Frag.todo("ongebonden variabelelezing (§11 variabelendeel)", br.bron());
+        }
         if (e instanceof Expr.Literal lit)      return literal(lit);
         if (e instanceof Expr.TekstReeks tr)    return tekstReeks(acc, tr, x -> waarde(acc, x, subject));
         if (e instanceof Expr.ParameterRef p)   // §13.3.6 a TEMPORAL parameter is a List<Segment> global — only a
@@ -3046,6 +3160,10 @@ public final class DrlTranspiler {
             for (Expr a : fn.argumenten()) if (!aggRhsGlobalNamen(a, uit)) return false;
             return true;
         }
+        // uchar ch. 4.10: the frontend substitutes a variabele read in a VOORWAARDE (boundary a), so neither node
+        // should reach a condition-side RHS. If one ever does, decline — the terminal "true" below means "walked
+        // clean, zero globals", which would under-count a real multi-global RHS and silently drop the arm.
+        if (e instanceof Expr.Let || e instanceof Expr.BinderRef) return false;
         return true;
     }
 
@@ -3578,6 +3696,10 @@ public final class DrlTranspiler {
         }
         if (e instanceof Expr.Begrensd bg) return bevatBreukBron(bg.basis()) || bevatBreukBron(bg.minimum()) || bevatBreukBron(bg.maximum());
         if (e instanceof Expr.Afgerond) return false;   // an afronding collapses any Breuk to a BigDecimal
+        // uchar ch. 4.10: a §11 variabelendeel can hide the division on EITHER side of the binding, and a read of
+        // the binder puts that Breuk in the body. Reporting "no Breuk" here would keep the plain inline mvel
+        // compare and let a Breuk meet a BigDecimal at fire time.
+        if (e instanceof Expr.Let l) return bevatBreukBron(l.value()) || bevatBreukBron(l.body());
         if (e instanceof Expr.Functie f) { for (Expr a : f.argumenten()) if (bevatBreukBron(a)) return true; return false; }
         if (e instanceof Expr.Literal lit && lit.type() != null && lit.type().isNumeriek()) {
             java.math.BigDecimal[] r = Rationaal.van(lit.waarde());
@@ -3604,6 +3726,10 @@ public final class DrlTranspiler {
         // §6.9 "de absolute waarde van" preserves a Breuk (rsAbs returns Object); other builtins (date-component,
         // datum-met, aggregation) return a BigDecimal/date, so they need no collapse and stay unwrapped.
         if (e instanceof Expr.Functie f && f.kind() == Expr.FunctieKind.ABSOLUTE_WAARDE) return true;
+        // uchar ch. 4.10: keep the "when in doubt, wrap" conservatism across a binding — a Breuk reaches the result
+        // through the BODY reading a binder whose VALUE produced it, and a BinderRef is an opaque leaf. rsWaarde is
+        // an identity for a terminating BigDecimal, so over-wrapping is inert; under-wrapping stores a Breuk.
+        if (e instanceof Expr.Let l) return kanBreukOpleveren(l.value()) || kanBreukOpleveren(l.body());
         if (e instanceof Expr.Literal lit && lit.type().isNumeriek()) {
             java.math.BigDecimal[] r = Rationaal.van(lit.waarde());
             if (r == null) return false;

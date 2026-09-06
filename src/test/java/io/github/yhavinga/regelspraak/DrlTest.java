@@ -3964,10 +3964,16 @@ class DrlTest {
     }
 
     @Test void variabele_met_lidwoord_en_shadowing_van_parameter() {
-        // §11 (review): a local "Daarbij geldt:" variable inlines at a reference written WITH a leading article
+        // §11 (review): a local "Daarbij geldt:" variable RESOLVES at a reference written WITH a leading article
         // ("de drempel" — the spec explicitly allows a lidwoord at a variable reference), AND it SHADOWS a same-named
         // global parameter (a variable "geldt alleen binnen de regel"). Both arrive via the onderwerp path
         // (isVariabele=false), so naamRef must consult the variabelen map FIRST.
+        //
+        // The SHAPE changed at the Let-port (uchar RUNTIME-SEMANTICS §10.6): the variabele is no longer substituted
+        // at its use site but bound to a then-side local, so the assertions below pin the BINDING plus the read
+        // instead of the inlined subtree. The BEHAVIOUR under test is unchanged and still fully asserted: the local
+        // definition ("zijn prijs") is what the write ends up reading, and the same-named global parameter
+        // ("drempel") wins nowhere — neither in the setter nor in the binding itself.
         String src = """
             Parameter de drempel : Numeriek (geheel getal)
             Objecttype de Persoon (mv: Personen) (bezield)
@@ -3981,10 +3987,14 @@ class DrlTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "geaccepteerde invoer (geen resolver-fout): " + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        // "de drempel" inlines to the local definition (zijn prijs) — NOT the global parameter, NOT a TODO marker
-        assertTrue(drl.contains("setUitkomst( $subject.getPrijs() )"),
-                () -> "§11 lidwoord-referentie van een lokale variabele die een parameter shadowt moet inlinen naar getPrijs():\n" + drl);
+        // "de drempel" binds to the local definition (zijn prijs) — NOT the global parameter, NOT a TODO marker
+        assertTrue(drl.contains("$let0 = $subject.getPrijs();"),
+                () -> "§11 lidwoord-referentie van een lokale variabele die een parameter shadowt moet BINDEN aan getPrijs():\n" + drl);
+        assertTrue(drl.contains("setUitkomst( ($let0 == null ? null : $let0) )"),
+                () -> "§11 de schrijfactie moet de binder lezen (met de ch. 10.6 leeg-barriere), niet de parameter:\n" + drl);
+        // the global parameter wins NOWHERE: not in the setter, and not as the bound value either.
         assertFalse(drl.contains("setUitkomst( drempel )"), () -> "de globale parameter 'drempel' mag de lokale variabele niet winnen:\n" + drl);
+        assertFalse(drl.contains("$let0 = drempel;"), () -> "de binder mag niet aan de globale parameter 'drempel' gebonden worden:\n" + drl);
     }
 
     @Test void percentage_functie_zonder_procent_lowert_als_PV_door_100() {
