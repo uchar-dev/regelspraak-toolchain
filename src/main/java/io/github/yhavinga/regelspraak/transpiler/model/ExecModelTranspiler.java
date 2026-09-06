@@ -5069,10 +5069,57 @@ public final class ExecModelTranspiler {
      *  List leeg/vol would test the timeline's nullness, not per-moment leegte — DRL markers it too), so such a
      *  division/wortel raises no Inconsistentie in EITHER back-end. */
     private java.util.function.Function<Object, Object> companionOperand(Expr e, Objecttype subject) {
+        return companionOperand(e, subject, Map.of());
+    }
+
+    /** As above, but a ch. 4.10 BINDER READ resolves to its DEFINITION first (uchar §5.6 + ch. 10.6 clause 1: a
+     *  division by leeg / a negative radicand behind a §11 variabele is still a §9.5 channel producer, and the
+     *  companion re-reads the operands from the facts, where the definition names the very attribute the inlined
+     *  v0 form named). Mirrors DrlTranspiler.companionDeel and uchar backends/drools kwalificeertOperand. */
+    private java.util.function.Function<Object, Object> companionOperand(Expr e, Objecttype subject, Map<String, Expr> binders) {
+        if (e instanceof Expr.BinderRef br) {
+            Expr def = binders.get(binderSleutel(br.naam()));
+            return def == null ? null : companionOperand(def, subject, binders);
+        }
         if (!(e instanceof Expr.AttribuutRef a) || a.objecttype() == null) return null;
         if (a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;   // temporal -> no re-readable guard
         if (!a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;              // §3.6 gedimensioneerd (a Map) -> DRL markers it too
         return navReader(a, subject);   // own attribute or to-one navigated (null for to-many / absent / unresolvable)
+    }
+
+    /** Every ch. 4.10 binder's DEFINITION in a value tree, keyed by {@link #binderSleutel} minus its prefix — the
+     *  companion gate needs the ATTRIBUTE a binder stands for, since a fire-time need cell is not a re-readable
+     *  fact guard. Mirrors DrlTranspiler.binderDefinities. */
+    private static Map<String, Expr> binderDefinities(Expr e) {
+        Map<String, Expr> uit = new LinkedHashMap<>();
+        verzamelBinderDefinities(e, uit);
+        return uit;
+    }
+
+    private static void verzamelBinderDefinities(Expr e, Map<String, Expr> uit) {
+        if (e == null) return;
+        if (e instanceof Expr.Let l) {
+            uit.put(binderSleutel(l.binder()), l.value());
+            verzamelBinderDefinities(l.value(), uit);
+            verzamelBinderDefinities(l.body(), uit);
+            return;
+        }
+        if (e instanceof Expr.Binair b) { verzamelBinderDefinities(b.links(), uit); verzamelBinderDefinities(b.rechts(), uit); return; }
+        if (e instanceof Expr.Afgerond a) { verzamelBinderDefinities(a.basis(), uit); return; }
+        if (e instanceof Expr.Begrensd g) {
+            verzamelBinderDefinities(g.basis(), uit); verzamelBinderDefinities(g.minimum(), uit); verzamelBinderDefinities(g.maximum(), uit); return;
+        }
+        if (e instanceof Expr.Functie fn) {
+            for (Expr a : fn.argumenten()) verzamelBinderDefinities(a, uit);
+            verzamelBinderDefinities(fn.leegwaarde(), uit);
+            return;
+        }
+        if (e instanceof Expr.TekstReeks t) {
+            for (Expr.TekstReeks.Deel d : t.delen())
+                if (d instanceof Expr.TekstReeks.Ingevoegd i) verzamelBinderDefinities(i.expr(), uit);
+            return;
+        }
+        if (e instanceof Expr.DimensieCel c) verzamelBinderDefinities(c.attribuut(), uit);
     }
 
     /** §6.5 Tabel 12 "waarde gedeeld door leeg" companion: the value side already degrades the division to leeg
@@ -5094,9 +5141,10 @@ public final class ExecModelTranspiler {
         // indexes over the SAME filtered list in BOTH back-ends. Indexing over the raw `delingen` count diverged from
         // DRL when a rule mixes qualifying and non-qualifying divisions (e.g. a §11 division variable inlined next to a
         // parameter division): DRL named the lone qualifier "(deling door leeg)", the model "(deling door leeg 1)".
+        Map<String, Expr> binders = binderDefinities(r.waarde());
         List<Expr.Binair> kwalificeren = new ArrayList<>();
         for (Expr.Binair d : delingen)
-            if (companionOperand(d.links(), subject) != null && companionOperand(d.rechts(), subject) != null)
+            if (companionOperand(d.links(), subject, binders) != null && companionOperand(d.rechts(), subject, binders) != null)
                 kwalificeren.add(d);
         List<Rule> companions = new ArrayList<>();
         String naam = r.naam();
@@ -5104,8 +5152,8 @@ public final class ExecModelTranspiler {
             Expr.Binair d = kwalificeren.get(i);
             // null-safe readers for the dividend/divisor — own attribute or a to-one navigated read (a null relation
             // collapses to leeg, exactly as DRL's root-guarded "(reis != null && reis.x != null)" / "reis.x" forms).
-            java.util.function.Function<Object, Object> dividend = companionOperand(d.links(), subject);
-            java.util.function.Function<Object, Object> divisor = companionOperand(d.rechts(), subject);
+            java.util.function.Function<Object, Object> dividend = companionOperand(d.links(), subject, binders);
+            java.util.function.Function<Object, Object> divisor = companionOperand(d.rechts(), subject, binders);
             seq = 0;
             Variable sVar = DSL.declarationOf(factClass, "$subject");
             PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
@@ -5141,15 +5189,16 @@ public final class ExecModelTranspiler {
         verzamelWortels(r.waarde(), wortels);
         // Collect the QUALIFYING wortels (radicand a re-readable own OR to-one navigated attribute), so the
         // companion-name suffix indexes over the SAME filtered list as DRL's wortelNegatiefFout `guards`.
+        Map<String, Expr> binders = binderDefinities(r.waarde());
         List<Expr.Functie> kwalificeren = new ArrayList<>();
         for (Expr.Functie w : wortels)
-            if (w.argumenten().size() == 1 && companionOperand(w.argumenten().get(0), subject) != null)
+            if (w.argumenten().size() == 1 && companionOperand(w.argumenten().get(0), subject, binders) != null)
                 kwalificeren.add(w);
         List<Rule> companions = new ArrayList<>();
         String naam = r.naam();
         for (int i = 0; i < kwalificeren.size(); i++) {
             // null-safe reader for the radicand — own attribute or a to-one navigated read (null relation -> leeg).
-            java.util.function.Function<Object, Object> radicand = companionOperand(kwalificeren.get(i).argumenten().get(0), subject);
+            java.util.function.Function<Object, Object> radicand = companionOperand(kwalificeren.get(i).argumenten().get(0), subject, binders);
             seq = 0;
             Variable sVar = DSL.declarationOf(factClass, "$subject");
             PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
@@ -5194,7 +5243,7 @@ public final class ExecModelTranspiler {
             if (wortel instanceof Expr.Let l)    { wortel = l.body(); continue; }
             break;
         }
-        java.util.function.Function<Object, Object> anker = companionOperand(wortel, subject);
+        java.util.function.Function<Object, Object> anker = companionOperand(wortel, subject, binderDefinities(r.waarde()));
         if (anker == null) return List.of();
         String naam = r.naam();
         seq = 0;

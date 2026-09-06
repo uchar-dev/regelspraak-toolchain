@@ -579,7 +579,17 @@ public final class DrlTranspiler {
      *  insert-only rule can re-test. null for a literal / parameter / to-many / unresolvable operand (which
      *  still degrades to leeg on the value side but raises no Inconsistentie). An own attribute reuses the bare
      *  property form, so the companion is byte-identical to the original EIGEN-only emission. */
-    private OperandDeel companionDeel(Acc acc, Expr e, Objecttype subject) {
+    private OperandDeel companionDeel(Acc acc, Expr e, Objecttype subject, Map<String, Expr> binders) {
+        // uchar ch. 4.10 / §5.6: a §6.5 division or §6.6 wortel whose operand is a BINDER READ is still a §9.5
+        // channel producer — RUNTIME-SEMANTICS §5.6 names "division by empty (dividend filled)" and the negative
+        // radicand as reasons, and ch. 10.6 clause 1 requires a read binder's value to deposit its reason. The
+        // companion's guard RE-READS the operands from the facts, so a binder resolves to its DEFINITION here: the
+        // definition names the very attribute the inlined v0 form named, giving byte-identical guards. Mirrors
+        // uchar backends/drools ExecModelTranspiler.kwalificeertOperand.
+        if (e instanceof Expr.BinderRef br) {
+            Expr def = binders.get(binderSleutel(br.naam()));
+            return def == null ? null : companionDeel(acc, def, subject, binders);
+        }
         if (!(e instanceof Expr.AttribuutRef a)) return null;
         NaviSoort s = naviResolve(a, subject).soort();
         if (s != NaviSoort.EIGEN && s != NaviSoort.GENAVIGEERD) return null;
@@ -1294,7 +1304,7 @@ public final class DrlTranspiler {
             if (wortel instanceof Expr.Let l)    { wortel = l.body(); continue; }
             break;
         }
-        OperandDeel anker = companionDeel(acc, wortel, subject);
+        OperandDeel anker = companionDeel(acc, wortel, subject, binderDefinities(r.waarde()));
         if (anker == null) return;
         String pattern = (voorwaarde.isEmpty() ? "" : voorwaarde + ", ") + anker.leeg();
         Regel rule = new Regel(r.naam() + " (leeg startpunt)")
@@ -1319,10 +1329,11 @@ public final class DrlTranspiler {
         if (voorwaardeMarker) return;
         List<Expr.Functie> wortels = new ArrayList<>();
         verzamelWortels(r.waarde(), wortels);
+        Map<String, Expr> binders = binderDefinities(r.waarde());
         List<String> guards = new ArrayList<>();   // the "radicand < 0" guard per qualifying wortel
         for (Expr.Functie w : wortels)
             if (w.argumenten().size() == 1) {
-                OperandDeel rd = companionDeel(acc, w.argumenten().get(0), subject);
+                OperandDeel rd = companionDeel(acc, w.argumenten().get(0), subject, binders);
                 if (rd != null)
                     // a navigated radicand must guard its root before the "." dereference (mvel is not null-safe);
                     // an own attribute reads `basis < 0` directly (a null is false for "< 0", no NPE) — byte-identical.
@@ -1520,9 +1531,10 @@ public final class DrlTranspiler {
         if (voorwaardeMarker) return;          // the host rule is itself a no-op marker -> no division fires
         List<Expr.Binair> delingen = new ArrayList<>();
         verzamelDelingen(r.waarde(), delingen);
+        Map<String, Expr> binders = binderDefinities(r.waarde());
         List<String> patronen = new ArrayList<>();   // "dividend-vol, divisor-leeg" per qualifying division
         for (Expr.Binair d : delingen) {
-            OperandDeel dividend = companionDeel(acc, d.links(), subject), divisor = companionDeel(acc, d.rechts(), subject);
+            OperandDeel dividend = companionDeel(acc, d.links(), subject, binders), divisor = companionDeel(acc, d.rechts(), subject, binders);
             if (dividend != null && divisor != null) patronen.add(dividend.vol() + ", " + divisor.leeg());
         }
         for (int i = 0; i < patronen.size(); i++) {
@@ -1561,6 +1573,42 @@ public final class DrlTranspiler {
             verzamelDelingen(l.value(), uit);
             verzamelDelingen(l.body(), uit);
         }
+    }
+
+    /** Every ch. 4.10 binder's DEFINITION in a value tree, keyed by {@link #binderSleutel}. The frontend emits
+     *  one chain per rule whose names are unique (its own {@code binders} map is keyed the same way), so a flat map
+     *  is exact. Used by the §6.5/§6.6/§6.8 companion gate, which needs the ATTRIBUTE a binder stands for — a
+     *  then-side local is invisible to a when-side guard. */
+    private static Map<String, Expr> binderDefinities(Expr e) {
+        Map<String, Expr> uit = new LinkedHashMap<>();
+        verzamelBinderDefinities(e, uit);
+        return uit;
+    }
+
+    private static void verzamelBinderDefinities(Expr e, Map<String, Expr> uit) {
+        if (e == null) return;
+        if (e instanceof Expr.Let l) {
+            uit.put(binderSleutel(l.binder()), l.value());
+            verzamelBinderDefinities(l.value(), uit);
+            verzamelBinderDefinities(l.body(), uit);
+            return;
+        }
+        if (e instanceof Expr.Binair b) { verzamelBinderDefinities(b.links(), uit); verzamelBinderDefinities(b.rechts(), uit); return; }
+        if (e instanceof Expr.Afgerond a) { verzamelBinderDefinities(a.basis(), uit); return; }
+        if (e instanceof Expr.Begrensd g) {
+            verzamelBinderDefinities(g.basis(), uit); verzamelBinderDefinities(g.minimum(), uit); verzamelBinderDefinities(g.maximum(), uit); return;
+        }
+        if (e instanceof Expr.Functie fn) {
+            for (Expr a : fn.argumenten()) verzamelBinderDefinities(a, uit);
+            verzamelBinderDefinities(fn.leegwaarde(), uit);
+            return;
+        }
+        if (e instanceof Expr.TekstReeks t) {
+            for (Expr.TekstReeks.Deel d : t.delen())
+                if (d instanceof Expr.TekstReeks.Ingevoegd i) verzamelBinderDefinities(i.expr(), uit);
+            return;
+        }
+        if (e instanceof Expr.DimensieCel c) verzamelBinderDefinities(c.attribuut(), uit);
     }
 
     /** Sentinel from {@link #naviRol}: the reference is the subject's own attribute. */
@@ -1810,46 +1858,126 @@ public final class DrlTranspiler {
      * uchar {@code RUNTIME-SEMANTICS.md} ch. 10.6 — the §11/§13.4.2.10 variabelendeel as a real binding on the
      * {@code then} side, replacing the v0 substitution this back-end used to receive pre-inlined.
      *
-     * <p><b>The shape.</b> Each {@link Expr.Let} contributes ONE typed mvel local declaration to
-     * {@link Acc#letBindingen} — the statement-block form {@code objectCreatie} already proves legal inside a
-     * {@code dialect "mvel"} consequence — and its body renders against that local. So a binder read twice is
-     * EVALUATED ONCE (ch. 10.6 clause 1's sharing), where the inlined v0 form recomputed the whole subtree per
-     * read. The value is lowered in the ENCLOSING scope: the binder is not visible in its own value (WF-076).
+     * <p><b>The shape.</b> The whole {@link Expr.Let} CHAIN is lowered at once: each binder some read reaches
+     * becomes ONE typed mvel local declaration in {@link Acc#letBindingen} — the statement-block form
+     * {@code objectCreatie} already proves legal inside a {@code dialect "mvel"} consequence — and the body renders
+     * against those locals. So a binder read twice is EVALUATED ONCE (clause 1's sharing), where the inlined v0
+     * form recomputed the whole subtree per read. Each value is lowered with only the binders forced BEFORE it in
+     * scope, which is also what WF-076 requires (a binder is not visible in its own value).
      *
-     * <p><b>The leeg-barrier</b> (clause 2) is the {@code local == null ? null : body} guard: a read of a binder
-     * whose value is leeg makes the WHOLE Let leeg, rather than letting the surrounding {@code rsPlus}/{@code
-     * rsMaal} coalesce it to 0 as the substituted form did. That single guard IS the tracked v1 divergence
-     * (uchar {@code CONSTRUCTS.md} row 24) — it is why an absent operand behind a variabele now leaves the target
-     * unwritten instead of computing a spurious total. Nesting is by construction: the guards nest exactly as the
-     * Let chain does, so an inner Let empties itself and never an enclosing one.
+     * <p><b>Clause 3 — an unread binder evaluates nothing.</b> A binder no read reaches gets NO declaration and no
+     * guard at all: the Let's outcome is simply its body's. (The frontend already declines to emit such a Let, so
+     * this is a belt-and-braces agreement with {@link ExecModelTranspiler}, not a live path.)
      *
-     * <p><b>Where this back-end is stricter than the exec-model one, and why it does not show.</b> The declaration
-     * is a statement, so it runs when the block runs — eagerly — where {@link ExecModelTranspiler}'s port forces a
-     * genuine call-by-need thunk (clause 3: an unread binder evaluates nothing). The two coincide on every wire
-     * this toolchain can receive: the frontend emits a Let ONLY for a variable some read reaches
-     * ({@code ExpressieBouwer.omhulMetVariabelen}), every RegelSpraak value position outside an aggregation
-     * subtree is strict, and a binder read INSIDE such a subtree is substituted by the frontend, not bound
-     * (boundary c). What remains is a value whose eager evaluation would be observable — and every leegwaarde
-     * helper the value can reach ({@code rsPlus}/{@code rsGedeeld}/{@code rsAfronding}/…) is total on null by the
-     * §6 leegwaarde discipline, so it yields leeg rather than faulting. The differential
-     * ({@code ExecModelDifferentialTest}) is what holds the two back-ends to the same answer.
+     * <p><b>Clause 2 — the leeg-barrier, and why the declarations are ORDERED and CHAINED.</b> A statement block
+     * is eager, so the naive lowering (declare every binder up front, then guard) evaluates values the reader never
+     * reaches — observably wrong where such a value FAULTS rather than answering leeg. So the declarations are
+     * emitted in {@link #forceerVolgorde FORCE order} (the order call-by-need would actually force them: the body's
+     * reads left to right, each binder's own reads first) and every declaration after the first is itself guarded
+     * by its predecessor:
+     * <pre>
+     *   BigDecimal $let0 = &lt;value of the first-forced binder&gt;;
+     *   BigDecimal $let1 = ($let0 == null ? null : &lt;value of the next&gt;);
+     * </pre>
+     * so a barrier that has already fired stops the later value from being evaluated at all — exactly what the
+     * exec-model back-end's thunk does. The guard chain is TRANSITIVE (a null predecessor nulls every successor),
+     * which is why the body needs only ONE barrier guard, on the LAST forced binder: it is null precisely when any
+     * forced binder was leeg. The result is that the two back-ends agree on the fault, not merely on the value —
+     * a value whose evaluation faults faults in both iff a read actually reaches it. Pinned by
+     * {@code ExecModelDifferentialTest.ch_10_6_luie_leesvolgorde_*}.
+     *
+     * <p>Nesting is by construction: a binder's own reads are forced before it, so an inner barrier empties the
+     * chain it belongs to and never an enclosing one.
      */
     private Frag letWaarde(Acc acc, Expr.Let l, Objecttype subject) {
         if (!acc.letBindbaar)
             return Frag.todo("variabelendeel (§11) buiten een then-statementblok", l.bron());
-        Frag v = waarde(acc, l.value(), subject);   // WF-076: the enclosing scope, binder not yet bound
-        if (v.marker()) return v;
-        String lokaal = "$let" + (acc.n++);
-        acc.letBindingen.add("    " + javaType(l.value().type()) + " " + lokaal + " = " + v.text() + ";\n");
-        String sleutel = binderSleutel(l.binder());
-        String vorig = acc.binders.put(sleutel, lokaal);
+        // Peel the chain the frontend builds (one Let per declared variable, nested in declaration order).
+        Map<String, Expr> defs = new LinkedHashMap<>();
+        Map<String, Expr.Let> knopen = new LinkedHashMap<>();
+        Expr romp = l;
+        while (romp instanceof Expr.Let inner) {
+            defs.put(binderSleutel(inner.binder()), inner.value());
+            knopen.put(binderSleutel(inner.binder()), inner);
+            romp = inner.body();
+        }
+        List<String> volgorde = forceerVolgorde(romp, defs);
+
+        List<Frag> delen = new ArrayList<>();
+        Map<String, String> hersteld = new LinkedHashMap<>();
+        String vorige = null;
+        for (String sleutel : volgorde) {
+            Frag v = waarde(acc, defs.get(sleutel), subject);   // only earlier-forced binders are in scope
+            delen.add(v);
+            if (v.marker()) return v;
+            String lokaal = "$let" + (acc.n++);
+            String init = vorige == null ? v.text() : "(" + vorige + " == null ? null : " + v.text() + ")";
+            acc.letBindingen.add("    " + javaType(knopen.get(sleutel).value().type()) + " " + lokaal + " = " + init + ";\n");
+            hersteld.put(sleutel, acc.binders.put(sleutel, lokaal));
+            vorige = lokaal;
+        }
         Frag b;
         try {
-            b = waarde(acc, l.body(), subject);
+            b = waarde(acc, romp, subject);
         } finally {
-            if (vorig == null) acc.binders.remove(sleutel); else acc.binders.put(sleutel, vorig);
+            for (Map.Entry<String, String> e : hersteld.entrySet())
+                if (e.getValue() == null) acc.binders.remove(e.getKey()); else acc.binders.put(e.getKey(), e.getValue());
         }
-        return Frag.from("(" + lokaal + " == null ? null : " + b.text() + ")", v, b);
+        delen.add(b);
+        // ONE guard, on the last forced binder: the declaration chain above already made it null whenever any
+        // forced binder was leeg. An all-unread chain (clause 3) needs no guard at all.
+        String tekst = vorige == null ? b.text() : "(" + vorige + " == null ? null : " + b.text() + ")";
+        return Frag.from(tekst, delen.toArray(new Frag[0]));
+    }
+
+    /** The order call-by-need would FORCE the binders of one Let chain: walk the body's reads left to right and,
+     *  at each not-yet-forced binder, force that binder's OWN reads first (its value runs before it has a value).
+     *  A binder no read reaches is absent — clause 3. A cycle (which the frontend cannot produce, since a
+     *  definition only sees earlier ones) is left out rather than looped on; its reads then stay unbound and the
+     *  {@code BinderRef} arm markers, loudly. */
+    private static List<String> forceerVolgorde(Expr romp, Map<String, Expr> defs) {
+        java.util.LinkedHashSet<String> volgorde = new java.util.LinkedHashSet<>();
+        Set<String> bezig = new java.util.LinkedHashSet<>();
+        for (String r : leesVolgorde(romp)) forceer(r, defs, volgorde, bezig);
+        return new ArrayList<>(volgorde);
+    }
+
+    private static void forceer(String sleutel, Map<String, Expr> defs,
+                                java.util.LinkedHashSet<String> volgorde, Set<String> bezig) {
+        if (volgorde.contains(sleutel) || !defs.containsKey(sleutel) || !bezig.add(sleutel)) return;
+        for (String r : leesVolgorde(defs.get(sleutel))) forceer(r, defs, volgorde, bezig);
+        volgorde.add(sleutel);   // AFTER its own reads: forcing a value forces what that value reads
+    }
+
+    /** The binder reads of {@code e} in EVALUATION order — the same left-to-right order the emitted mvel term
+     *  evaluates its operands in ({@code rsPlus(links, rechts)}, {@code rsBegrens(basis, min, max)}, an argument
+     *  list), so "first in this list" really is "forced first at fire time". */
+    private static List<String> leesVolgorde(Expr e) {
+        List<String> uit = new ArrayList<>();
+        leesVolgorde(e, uit);
+        return uit;
+    }
+
+    private static void leesVolgorde(Expr e, List<String> uit) {
+        if (e == null) return;
+        if (e instanceof Expr.BinderRef b) { uit.add(binderSleutel(b.naam())); return; }
+        if (e instanceof Expr.Binair b) { leesVolgorde(b.links(), uit); leesVolgorde(b.rechts(), uit); return; }
+        if (e instanceof Expr.Afgerond a) { leesVolgorde(a.basis(), uit); return; }
+        if (e instanceof Expr.Begrensd g) {
+            leesVolgorde(g.basis(), uit); leesVolgorde(g.minimum(), uit); leesVolgorde(g.maximum(), uit); return;
+        }
+        if (e instanceof Expr.Functie f) {
+            for (Expr a : f.argumenten()) leesVolgorde(a, uit);
+            leesVolgorde(f.leegwaarde(), uit);
+            return;
+        }
+        if (e instanceof Expr.TekstReeks t) {
+            for (Expr.TekstReeks.Deel d : t.delen())
+                if (d instanceof Expr.TekstReeks.Ingevoegd i) leesVolgorde(i.expr(), uit);
+            return;
+        }
+        if (e instanceof Expr.DimensieCel c) { leesVolgorde(c.attribuut(), uit); return; }
+        if (e instanceof Expr.Let inner) { leesVolgorde(inner.value(), uit); leesVolgorde(inner.body(), uit); }
     }
 
     // ---------------- value expression ("then" side: getters) ----------------

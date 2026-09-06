@@ -5585,6 +5585,149 @@ class ExecModelDifferentialTest {
         }
     }
 
+    // ---- The Let-port fix round (uchar RUNTIME-SEMANTICS §5.6 + ch. 10.6). Two classes the first cut got wrong,
+    //      both pinned here ABSOLUTELY (a count, not merely back-end agreement — two back-ends can be wrong
+    //      together, and in the first cut they were). ----
+
+    /** One fired world: the target value plus the number of §9.5 Inconsistentie facts, or the fault it died on. */
+    private record LetUitkomst(Object waarde, long fouten, String fout) {
+        static LetUitkomst ok(Object w, long f) { return new LetUitkomst(w, f, null); }
+        @Override public String toString() { return fout != null ? "FOUT(" + fout + ")" : "waarde=" + waarde + " fouten=" + fouten; }
+    }
+
+    private LetUitkomst vuurLet(KieBase kb, Supplier<List<Object>> facts, Function<List<Object>, Object> uit) {
+        List<Object> fs = facts.get();
+        KieSession s = sessie(kb);
+        for (Object o : fs) s.insert(o);
+        try {
+            s.fireAllRules(10_000);
+        } catch (RuntimeException e) {
+            s.dispose();
+            return new LetUitkomst(null, -1, e.getClass().getSimpleName());
+        }
+        long fouten = s.getObjects().stream().filter(o -> o instanceof Inconsistentie).count();
+        Object w = uit.apply(fs);
+        s.dispose();
+        return LetUitkomst.ok(w, fouten);
+    }
+
+    /** Fire {@code src} through BOTH back-ends and require they agree with each other AND with {@code verwacht}. */
+    private void eisLet(String label, String src, Supplier<List<Object>> facts,
+                        Function<List<Object>, Object> uit, LetUitkomst verwacht) {
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> label + " resolver-fout: " + m.errors());
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(), () -> label + " exec sloeg over: " + em.overgeslagen());
+        LetUitkomst viaDrl = vuurLet(drlBase(m), facts, uit);
+        LetUitkomst viaModel = vuurLet(KieBaseBuilder.createKieBaseFromModel(em.model()), facts, uit);
+        assertEquals(verwacht.toString(), viaDrl.toString(), () -> "DRL wijkt af op '" + label + "'");
+        assertEquals(verwacht.toString(), viaModel.toString(), () -> "exec-model wijkt af op '" + label + "'");
+    }
+
+    private static Supplier<List<Object>> eenPassagier(Consumer<Passagier> setup) {
+        return () -> List.of(passagier(setup));
+    }
+    private static final Function<List<Object>, Object> PLAFOND = l -> ((Passagier) l.get(0)).getPlafond();
+
+    private static final String LET_KOP = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+                de bodem Numeriek (geheel getal);
+                het basistarief Numeriek (geheel getal);
+                het plafond Numeriek (geheel getal);
+            """;
+
+    /**
+     * uchar §5.6 + ch. 10.6 clause 1: a §9.5 CHANNEL REASON behind a §11 variabele must still be deposited. The
+     * first cut of the Let-port lost it — {@code companionDeel}/{@code companionOperand} rejected a {@code
+     * BinderRef} operand, so a division by a leeg binder and a negative radicand behind a binder raised NO
+     * Inconsistentie where the inlined v0 form raised one. Each shape is pinned here TOGETHER WITH its inlined
+     * oracle, so the two can never drift apart again: the count must be 1 in both forms and both back-ends.
+     */
+    @Test void ch_10_6_kanaalreden_achter_een_binder_blijft_staan() {
+        // §6.5 — the DIVISOR sits behind a binder; the divisor attribute is leeg, the dividend filled.
+        eisLet("§6.5 deling door een LEGE binder-deler", LET_KOP + """
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet berekend worden als zijn prijs gedeeld door de noemer.
+                    Daarbij geldt: de noemer is zijn bodem.
+            """, eenPassagier(p -> p.setPrijs(new BigDecimal(10))), PLAFOND, LetUitkomst.ok(null, 1));
+        eisLet("§6.5 orakel: dezelfde deling ingelijnd", LET_KOP + """
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet berekend worden als zijn prijs gedeeld door zijn bodem.
+            """, eenPassagier(p -> p.setPrijs(new BigDecimal(10))), PLAFOND, LetUitkomst.ok(null, 1));
+
+        // §6.6 — the RADICAND sits behind a binder and is negative.
+        eisLet("§6.6 wortel van een NEGATIEVE binder-radicand", LET_KOP + """
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet berekend worden als de wortel van de grond naar beneden afgerond op 0 decimalen.
+                    Daarbij geldt: de grond is zijn prijs.
+            """, eenPassagier(p -> p.setPrijs(new BigDecimal(-4))), PLAFOND, LetUitkomst.ok(null, 1));
+        eisLet("§6.6 orakel: dezelfde wortel ingelijnd", LET_KOP + """
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet berekend worden als de wortel van zijn prijs naar beneden afgerond op 0 decimalen.
+            """, eenPassagier(p -> p.setPrijs(new BigDecimal(-4))), PLAFOND, LetUitkomst.ok(null, 1));
+    }
+
+    /** uchar §6.8, the THIRD arm of the same companion gate: a leeg §9.9 startpunt anchor behind a binder. The
+     *  first cut dropped this companion too (measured on the emitted DRL: the inlined form kept its
+     *  "(leeg startpunt)" rule, the binder form emitted none). Pinned as a COUNT, and beside its inlined oracle. */
+    @Test void ch_10_6_leeg_startpunt_anker_achter_een_binder_blijft_gemeld() {
+        Supplier<List<Object>> twee = () -> List.of(
+                passagier(p -> { p.setLeeftijd(new BigDecimal(1)); p.setGeboortedatum(LocalDate.of(2024, 1, 15)); }),
+                passagier(p -> p.setLeeftijd(new BigDecimal(2))));   // leeg anker -> flagged
+        Function<List<Object>, Object> geenWaarde = l -> "n.v.t.";
+        eisLet("§6.8 leeg startpunt-anker achter een binder", STARTPUNT_HDR + """
+            Regel Startpunt contractperiode
+                geldig altijd
+                    Het startpunt van de contractperiode voor een Passagier wordt bepaald door de aanvang.
+                    Daarbij geldt: de aanvang is zijn geboortedatum.
+            """, twee, geenWaarde, LetUitkomst.ok("n.v.t.", 1));
+        eisLet("§6.8 orakel: hetzelfde anker ingelijnd", STARTPUNT_HDR + """
+            Regel Startpunt contractperiode
+                geldig altijd
+                    Het startpunt van de contractperiode voor een Passagier wordt bepaald door zijn geboortedatum.
+            """, twee, geenWaarde, LetUitkomst.ok("n.v.t.", 1));
+    }
+
+    /**
+     * ch. 10.6 clauses 2+3 — a binder value is forced only when a read REACHES it, in READ order. The first cut
+     * declared every binder up front, so a value the reader never reaches still ran; where such a value FAULTS
+     * (a division by zero — {@code rsGedeeld} is total on null but not on nul) the DRL back-end died while the
+     * exec-model back-end, which forces a genuine thunk, answered leeg.
+     *
+     * <p>The three cases together pin that the fix follows the READ order and not the DECLARATION order — which
+     * is exactly what separates 5d from 5f: the same two binders, the same data, only the body's read order
+     * reversed.
+     */
+    @Test void ch_10_6_luie_leesvolgorde_forceert_alleen_wat_gelezen_wordt() {
+        String risicoRegel = """
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet berekend worden als %s.
+                    Daarbij geldt: de grondslag is zijn basistarief. de risico is zijn prijs gedeeld door zijn bodem.
+            """;
+        // 5d: the FIRST read (grondslag) is leeg -> barrier; 'risico' is never forced, so its /0 never runs.
+        eisLet("ch. 10.6 luie leesvolgorde: barriere vóór een faulting value",
+            LET_KOP + risicoRegel.formatted("de grondslag plus de risico"),
+            eenPassagier(p -> { p.setPrijs(new BigDecimal(10)); p.setBodem(BigDecimal.ZERO); }),
+            PLAFOND, LetUitkomst.ok(null, 0));
+        // 5e: control — grondslag is FILLED, so the read reaches 'risico' and the /0 really happens. Both fault.
+        eisLet("ch. 10.6 controle: gevulde eerste binder laat de fault wél toe",
+            LET_KOP + risicoRegel.formatted("de grondslag plus de risico"),
+            eenPassagier(p -> { p.setPrijs(new BigDecimal(10)); p.setBodem(BigDecimal.ZERO); p.setBasistarief(new BigDecimal(5)); }),
+            PLAFOND, new LetUitkomst(null, -1, "ConsequenceException"));
+        // 5f: the SAME binders and data as 5d, read order REVERSED — now 'risico' is forced FIRST, so the fault
+        //     stands. Declaration order is unchanged, so this is what proves the lowering follows READ order.
+        eisLet("ch. 10.6 leesvolgorde omgedraaid: de eerst-gelezen binder faalt wél",
+            LET_KOP + risicoRegel.formatted("de risico plus de grondslag"),
+            eenPassagier(p -> { p.setPrijs(new BigDecimal(10)); p.setBodem(BigDecimal.ZERO); }),
+            PLAFOND, new LetUitkomst(null, -1, "ConsequenceException"));
+    }
+
     @Test void phase_11_daarbij_geldt_matches_drl_back_end()   { runDifferential("Phase 11", PHASE_11, 3); }
 
     /** §11.1: assert the DRL oracle against the absolute spec value (a lowering bug shared by both back-ends
