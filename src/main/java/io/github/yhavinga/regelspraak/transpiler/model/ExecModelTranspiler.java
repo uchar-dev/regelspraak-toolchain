@@ -5122,6 +5122,79 @@ public final class ExecModelTranspiler {
         if (e instanceof Expr.DimensieCel c) verzamelBinderDefinities(c.attribuut(), uit);
     }
 
+    /**
+     * The STATIC IMAGE of ch. 10.6's call-by-need order over one rule value: for each node the value's evaluation
+     * REACHES, the binders whose read precedes it. A node ABSENT from the map is never reached — it sits in the
+     * value of a binder no read forces (clause 3). Byte-mirror of DrlTranspiler.Spoor; see that class for why the
+     * image is EXACT for this toolchain (RegelSpraak has no branch expression, so the leeg-barrier is the only
+     * path-dependence a rule value can carry) and therefore coincides with the runtime path probe uchar's own
+     * Drools port needs for ITS branch-carrying wire.
+     */
+    private static java.util.IdentityHashMap<Expr, List<String>> padVan(Expr waarde) {
+        Map<String, Expr> defs = new LinkedHashMap<>();
+        Expr romp = waarde;
+        while (romp instanceof Expr.Let inner) { defs.put(binderSleutel(inner.binder()), inner.value()); romp = inner.body(); }
+        java.util.IdentityHashMap<Expr, List<String>> uit = new java.util.IdentityHashMap<>();
+        padLoop(romp, defs, new LinkedHashSet<>(), new ArrayList<>(), uit);
+        return uit;
+    }
+
+    private static void padLoop(Expr e, Map<String, Expr> defs, Set<String> geforceerd,
+                                List<String> gelezen, java.util.IdentityHashMap<Expr, List<String>> uit) {
+        if (e == null) return;
+        if (e instanceof Expr.BinderRef b) {
+            String k = binderSleutel(b.naam());
+            if (defs.containsKey(k) && geforceerd.add(k)) padLoop(defs.get(k), defs, geforceerd, gelezen, uit);
+            uit.put(e, List.copyOf(gelezen));
+            gelezen.add(k);
+            return;
+        }
+        if (e instanceof Expr.Binair b) { padLoop(b.links(), defs, geforceerd, gelezen, uit); padLoop(b.rechts(), defs, geforceerd, gelezen, uit); }
+        else if (e instanceof Expr.Afgerond a) padLoop(a.basis(), defs, geforceerd, gelezen, uit);
+        else if (e instanceof Expr.Begrensd g) {
+            padLoop(g.basis(), defs, geforceerd, gelezen, uit);
+            padLoop(g.minimum(), defs, geforceerd, gelezen, uit);
+            padLoop(g.maximum(), defs, geforceerd, gelezen, uit);
+        }
+        else if (e instanceof Expr.Functie fn) {
+            for (Expr a : fn.argumenten()) padLoop(a, defs, geforceerd, gelezen, uit);
+            padLoop(fn.leegwaarde(), defs, geforceerd, gelezen, uit);
+        }
+        else if (e instanceof Expr.TekstReeks t) {
+            for (Expr.TekstReeks.Deel d : t.delen())
+                if (d instanceof Expr.TekstReeks.Ingevoegd i) padLoop(i.expr(), defs, geforceerd, gelezen, uit);
+        }
+        else if (e instanceof Expr.DimensieCel c) padLoop(c.attribuut(), defs, geforceerd, gelezen, uit);
+        else if (e instanceof Expr.Let l) padLoop(l.body(), defs, geforceerd, gelezen, uit);
+        uit.put(e, List.copyOf(gelezen));
+    }
+
+    /** The ch. 10.6 BARRIER PRECONDITION readers of a §6.5/§6.6/§6.8 site — one null-check per binder read BEFORE
+     *  it, since the site runs only when each answered a value. Empty when no read precedes; NULL to DECLINE the
+     *  companion (the site is unreachable, or a preceding definition is not re-readable) — never fabricate.
+     *  Mirrors DrlTranspiler.barrierePrefix. */
+    private List<java.util.function.Function<Object, Object>> barriereLezers(
+            List<String> voor, Map<String, Expr> defs, Objecttype subject) {
+        if (voor == null) return null;
+        List<java.util.function.Function<Object, Object>> uit = new ArrayList<>();
+        for (String k : voor) {
+            Expr def = defs.get(k);
+            java.util.function.Function<Object, Object> lezer = def == null ? null : companionOperand(def, subject, defs);
+            if (lezer == null) return null;
+            uit.add(lezer);
+        }
+        return uit;
+    }
+
+    /** AND the barrier preconditions into a companion pattern. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private PatternDSL.PatternDef metBarriere(PatternDSL.PatternDef pattern,
+                                              List<java.util.function.Function<Object, Object>> lezers) {
+        for (java.util.function.Function<Object, Object> lezer : lezers)
+            pattern = pattern.expr(nextId("bar"), (Predicate1) s -> lezer.apply(s) != null);
+        return pattern;
+    }
+
     /** §6.5 Tabel 12 "waarde gedeeld door leeg" companion: the value side already degrades the division to leeg
      *  (rsGedeeld), so this surfaces the Fout via the §9.5 Inconsistentie channel — a SEPARATE insert-only rule per
      *  division that fires when the dividend is present and the divisor is empty (and the host voorwaarde holds).
@@ -5142,9 +5215,11 @@ public final class ExecModelTranspiler {
         // DRL when a rule mixes qualifying and non-qualifying divisions (e.g. a §11 division variable inlined next to a
         // parameter division): DRL named the lone qualifier "(deling door leeg)", the model "(deling door leeg 1)".
         Map<String, Expr> binders = binderDefinities(r.waarde());
+        java.util.IdentityHashMap<Expr, List<String>> pad = padVan(r.waarde());
         List<Expr.Binair> kwalificeren = new ArrayList<>();
         for (Expr.Binair d : delingen)
-            if (companionOperand(d.links(), subject, binders) != null && companionOperand(d.rechts(), subject, binders) != null)
+            if (companionOperand(d.links(), subject, binders) != null && companionOperand(d.rechts(), subject, binders) != null
+                    && barriereLezers(pad.get(d), binders, subject) != null)
                 kwalificeren.add(d);
         List<Rule> companions = new ArrayList<>();
         String naam = r.naam();
@@ -5166,6 +5241,7 @@ public final class ExecModelTranspiler {
             }
             pattern = geldigGuard(pattern, r.geldigheid());   // §4.2 the companion only flags inside the host's window
             // dividend present AND divisor empty (an empty LEFT short-circuits to 0 -> no fout, so guard the dividend too).
+            pattern = metBarriere(pattern, barriereLezers(pad.get(d), binders, subject));
             pattern = pattern.expr(nextId("dvd"), (Predicate1) s -> dividend.apply(s) != null)
                     .expr(nextId("dvs"), (Predicate1) s -> divisor.apply(s) == null);
             String compNaam = naam + " (deling door leeg" + (kwalificeren.size() > 1 ? " " + (i + 1) : "") + ")";
@@ -5190,9 +5266,11 @@ public final class ExecModelTranspiler {
         // Collect the QUALIFYING wortels (radicand a re-readable own OR to-one navigated attribute), so the
         // companion-name suffix indexes over the SAME filtered list as DRL's wortelNegatiefFout `guards`.
         Map<String, Expr> binders = binderDefinities(r.waarde());
+        java.util.IdentityHashMap<Expr, List<String>> pad = padVan(r.waarde());
         List<Expr.Functie> kwalificeren = new ArrayList<>();
         for (Expr.Functie w : wortels)
-            if (w.argumenten().size() == 1 && companionOperand(w.argumenten().get(0), subject, binders) != null)
+            if (w.argumenten().size() == 1 && companionOperand(w.argumenten().get(0), subject, binders) != null
+                    && barriereLezers(pad.get(w), binders, subject) != null)
                 kwalificeren.add(w);
         List<Rule> companions = new ArrayList<>();
         String naam = r.naam();
@@ -5210,6 +5288,7 @@ public final class ExecModelTranspiler {
                 gateExtra = gate.extra();                       // a §8.1.7 far-side membership exists/not -> thread it into the companion (mirror DRL lc.extra())
             }
             pattern = geldigGuard(pattern, r.geldigheid());   // §4.2 the companion only flags inside the host's window
+            pattern = metBarriere(pattern, barriereLezers(pad.get(kwalificeren.get(i)), binders, subject));
             // radicand < 0 (a null radicand is leeg, not negative -> no fout; signum guards null out).
             pattern = pattern.expr(nextId("rad"), (Predicate1) s -> {
                 Object v = radicand.apply(s);
@@ -5243,8 +5322,11 @@ public final class ExecModelTranspiler {
             if (wortel instanceof Expr.Let l)    { wortel = l.body(); continue; }
             break;
         }
-        java.util.function.Function<Object, Object> anker = companionOperand(wortel, subject, binderDefinities(r.waarde()));
-        if (anker == null) return List.of();
+        Map<String, Expr> ankerBinders = binderDefinities(r.waarde());
+        java.util.function.Function<Object, Object> anker = companionOperand(wortel, subject, ankerBinders);
+        List<java.util.function.Function<Object, Object>> ankerBarriere =
+                barriereLezers(padVan(r.waarde()).get(wortel), ankerBinders, subject);
+        if (anker == null || ankerBarriere == null) return List.of();
         String naam = r.naam();
         seq = 0;
         Variable sVar = DSL.declarationOf(factClass, "$subject");
@@ -5257,6 +5339,7 @@ public final class ExecModelTranspiler {
             gateExtra = gate.extra();
         }
         pattern = geldigGuard(pattern, r.geldigheid());     // §4.2 the companion only flags inside the host's window
+        pattern = metBarriere(pattern, ankerBarriere);
         pattern = pattern.expr(nextId("anker"), (Predicate1) s -> anker.apply(s) == null);
         return List.of(companionRule(naam + " (leeg startpunt)", naam, incClass, sVar, pattern, gateExtra));
     }

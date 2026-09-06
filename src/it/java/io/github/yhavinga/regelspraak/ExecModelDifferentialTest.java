@@ -5645,13 +5645,17 @@ class ExecModelDifferentialTest {
      * oracle, so the two can never drift apart again: the count must be 1 in both forms and both back-ends.
      */
     @Test void ch_10_6_kanaalreden_achter_een_binder_blijft_staan() {
-        // §6.5 — the DIVISOR sits behind a binder; the divisor attribute is leeg, the dividend filled.
-        eisLet("§6.5 deling door een LEGE binder-deler", LET_KOP + """
+        // §6.5 — the DIVISOR sits behind a binder whose value is leeg. The READ of that binder is evaluated
+        // BEFORE the division operator applies (it is the division's own right operand), so under ch. 10.6 the
+        // barrier fires FIRST and the division never runs: NO reason. (Fix round 1 of this card pinned 1 here —
+        // a FABRICATION, corrected against uchar's CompanionPadWitnessTest flank (b).) The inlined oracle below
+        // legitimately differs: without a binder there is no barrier, so the division really happens.
+        eisLet("§6.5 LEGE binder-deler: de barriere gaat vóór de deling", LET_KOP + """
             Regel R
                 geldig altijd
                     Het plafond van een Passagier moet berekend worden als zijn prijs gedeeld door de noemer.
                     Daarbij geldt: de noemer is zijn bodem.
-            """, eenPassagier(p -> p.setPrijs(new BigDecimal(10))), PLAFOND, LetUitkomst.ok(null, 1));
+            """, eenPassagier(p -> p.setPrijs(new BigDecimal(10))), PLAFOND, LetUitkomst.ok(null, 0));
         eisLet("§6.5 orakel: dezelfde deling ingelijnd", LET_KOP + """
             Regel R
                 geldig altijd
@@ -5670,6 +5674,64 @@ class ExecModelDifferentialTest {
                 geldig altijd
                     Het plafond van een Passagier moet berekend worden als de wortel van zijn prijs naar beneden afgerond op 0 decimalen.
             """, eenPassagier(p -> p.setPrijs(new BigDecimal(-4))), PLAFOND, LetUitkomst.ok(null, 1));
+    }
+
+    /**
+     * The ARBITER flanks, transcribed from uchar's own pinned witness
+     * ({@code backends/drools/.../CompanionPadWitnessTest} (b) and its mirror) whose values were produced by
+     * {@code ref/} — the normative executor — on the identical shape. A §9.5 companion must fire exactly when the
+     * site it guards is actually EVALUATED under ch. 10.6, never for a site the barrier cut off (FABRICAGE) and
+     * never silently for one that ran (MISSER). Both directions are pinned, each beside its twin, so an
+     * implementation that errs either way fails here.
+     *
+     * <p>The shape is "uit := Let d = deler in (d plus (inkomen ÷ tweede))" and its mirror with the operands of
+     * the plus swapped. {@code tweede} is always absent, so the division is always a §6.5 "deling door leeg" IF
+     * it runs; what differs is whether the read of {@code d} precedes it and whether that read raises the barrier.
+     */
+    @Test void ch_10_6_companion_volgt_het_pad_de_vier_arbiterflanken() {
+        String model = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+                de bodem Numeriek (geheel getal);
+                het basistarief Numeriek (geheel getal);
+                het plafond Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet berekend worden als %s.
+                    Daarbij geldt: de d is zijn basistarief.
+            """;
+        String lezingEerst = model.formatted("de d plus (zijn prijs gedeeld door zijn bodem)");
+        String delingEerst = model.formatted("(zijn prijs gedeeld door zijn bodem) plus de d");
+        // (b) the read comes FIRST and the binder is leeg: the barrier ends the Let before the division runs.
+        eisLet("(b) lezing eerst, binder LEEG -> geen deling, geen reden", lezingEerst,
+            eenPassagier(p -> p.setPrijs(new BigDecimal(10))), PLAFOND, LetUitkomst.ok(null, 0));
+        // (b-twin) the same shape with the binder FILLED: the read passes, the division runs and faults.
+        eisLet("(b-twin) lezing eerst, binder GEVULD -> de deling draait en faalt", lezingEerst,
+            eenPassagier(p -> { p.setPrijs(new BigDecimal(10)); p.setBasistarief(new BigDecimal(2)); }),
+            PLAFOND, LetUitkomst.ok(new BigDecimal(2), 1));
+        // (b-spiegel) the division is evaluated BEFORE the read, so its reason stands whatever the read then does.
+        eisLet("(b-spiegel) deling eerst, dan de barriere -> de reden staat", delingEerst,
+            eenPassagier(p -> p.setPrijs(new BigDecimal(10))), PLAFOND, LetUitkomst.ok(null, 1));
+        eisLet("(b-spiegel-twin) deling eerst, binder gevuld", delingEerst,
+            eenPassagier(p -> { p.setPrijs(new BigDecimal(10)); p.setBasistarief(new BigDecimal(2)); }),
+            PLAFOND, LetUitkomst.ok(new BigDecimal(2), 1));
+
+        // ch. 10.6 clause 3 — a division in the value of a binder NO read forces never runs; one in a value that
+        // IS read does. (uchar's flank (d).)
+        String value = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+                de bodem Numeriek (geheel getal);
+                het plafond Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet berekend worden als %s.
+                    Daarbij geldt: de q is zijn prijs gedeeld door zijn bodem.
+            """;
+        eisLet("(d) deling in een GELEZEN binder-value -> draait en meldt", value.formatted("de q plus 1"),
+            eenPassagier(p -> p.setPrijs(new BigDecimal(10))), PLAFOND, LetUitkomst.ok(null, 1));
+        eisLet("(d-twin) dezelfde deling in een ONGELEZEN binder-value -> draait niet", value.formatted("42"),
+            eenPassagier(p -> p.setPrijs(new BigDecimal(10))), PLAFOND, LetUitkomst.ok(new BigDecimal(42), 0));
     }
 
     /** uchar §6.8, the THIRD arm of the same companion gate: a leeg §9.9 startpunt anchor behind a binder. The
@@ -5720,6 +5782,28 @@ class ExecModelDifferentialTest {
             LET_KOP + risicoRegel.formatted("de grondslag plus de risico"),
             eenPassagier(p -> { p.setPrijs(new BigDecimal(10)); p.setBodem(BigDecimal.ZERO); p.setBasistarief(new BigDecimal(5)); }),
             PLAFOND, new LetUitkomst(null, -1, "ConsequenceException"));
+        // P5a: the fault sits LEFT of the read — it is evaluated BEFORE the barrier can fire, so it stands.
+        //      (Fix round 1 hoisted ONE guard around the whole body and swallowed it: DRL answered leeg where
+        //      exec faulted — a differential break as well as a spec violation.)
+        String linksRegel = """
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet berekend worden als %s.
+                    Daarbij geldt: de v is zijn basistarief.
+            """;
+        eisLet("P5a fault LINKS van de lezing, binder leeg -> de fault staat",
+            LET_KOP + linksRegel.formatted("(zijn prijs gedeeld door zijn bodem) plus de v"),
+            eenPassagier(p -> { p.setPrijs(new BigDecimal(10)); p.setBodem(BigDecimal.ZERO); }),
+            PLAFOND, new LetUitkomst(null, -1, "ConsequenceException"));
+        eisLet("P5b controle: dezelfde vorm met een GEVULDE binder",
+            LET_KOP + linksRegel.formatted("(zijn prijs gedeeld door zijn bodem) plus de v"),
+            eenPassagier(p -> { p.setPrijs(new BigDecimal(10)); p.setBodem(BigDecimal.ZERO); p.setBasistarief(new BigDecimal(5)); }),
+            PLAFOND, new LetUitkomst(null, -1, "ConsequenceException"));
+        // P5c: the same fault RIGHT of the read — the barrier fires first, so it never happens.
+        eisLet("P5c fault RECHTS van de lezing, binder leeg -> geen fault",
+            LET_KOP + linksRegel.formatted("de v plus (zijn prijs gedeeld door zijn bodem)"),
+            eenPassagier(p -> { p.setPrijs(new BigDecimal(10)); p.setBodem(BigDecimal.ZERO); }),
+            PLAFOND, LetUitkomst.ok(null, 0));
         // 5f: the SAME binders and data as 5d, read order REVERSED — now 'risico' is forced FIRST, so the fault
         //     stands. Declaration order is unchanged, so this is what proves the lowering follows READ order.
         eisLet("ch. 10.6 leesvolgorde omgedraaid: de eerst-gelezen binder faalt wél",

@@ -188,10 +188,12 @@ class UcharLetReplayTest {
                 case "consistent", "inconsistent" -> {
                     long fouten = feiten.stream()
                             .filter(f -> f.getClass().getSimpleName().equals("Inconsistentie")).count();
-                    if ("consistent".equals(kind))
-                        assertEquals(0L, fouten, () -> label + ": uchar pint consistent, kreeg " + fouten + " Inconsistentie(s)");
-                    else
-                        assertTrue(fouten > 0, () -> label + ": uchar pint inconsistent, kreeg er geen");
+                    // An EXACT count in BOTH directions. "at least one" would let a FABRICATED §9.5 reason —
+                    // a companion firing for a site the ch. 10.6 barrier cut off — pass unnoticed, which is
+                    // precisely the class the fix round of this card had to correct. uchar's case schema pins
+                    // exactly one Inconsistentie per inconsistent expectation.
+                    assertEquals("consistent".equals(kind) ? 0L : 1L, fouten,
+                            () -> label + ": uchar pint " + kind + ", kreeg " + fouten + " Inconsistentie(s)");
                     n++;
                 }
                 // Fail fast on a kind this harness does not implement: a silently ignored expectation would make
