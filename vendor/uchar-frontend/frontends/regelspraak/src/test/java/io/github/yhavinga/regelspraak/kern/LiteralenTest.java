@@ -26,6 +26,26 @@ class LiteralenTest {
         assertNull(Literalen.parseDatumTijd("dd. 25-12-2024"), "zonder tijddeel geen datumtijd");
     }
 
+    @Test void datumtijd_leest_het_canonieke_iso_lexeem_gelijk_aan_het_snippet() {
+        assertEquals(LocalDateTime.of(2024, 12, 25, 10, 30, 0, 500_000_000),
+                Literalen.parseDatumTijd("2024-12-25T10:30:00.500"), "IR-SPEC ch. 4.1, met fractie");
+        assertEquals(LocalDateTime.of(2024, 12, 25, 10, 30, 0),
+                Literalen.parseDatumTijd("2024-12-25T10:30:00"), "fractie is optioneel");
+        assertEquals(Literalen.parseDatumTijd("dd. 25-12-2024 10:30:00.500"),
+                Literalen.parseDatumTijd("2024-12-25T10:30:00.500"), "beide lexemen benoemen hetzelfde moment");
+    }
+
+    @Test void datumtijd_weigert_wat_buiten_beide_lexemen_valt() {
+        assertNull(Literalen.parseDatumTijd("2024-12-25T10:30"), "seconden verplicht");
+        assertNull(Literalen.parseDatumTijd("2024-12-25T10:30:00Z"), "geen zone-suffix");
+        assertNull(Literalen.parseDatumTijd("2024-12-25T10:30:00+01:00"), "geen offset");
+        assertNull(Literalen.parseDatumTijd("2024-12-25 10:30:00"), "T, geen spatie, in het canonieke lexeem");
+        assertNull(Literalen.parseDatumTijd("2024-1-25T9:30:00"), "canoniek heeft vaste veldbreedtes");
+        assertNull(Literalen.parseDatumTijd("2024-12-25T10:30:00.1"), "fractie exact drie cijfers");
+        assertNull(Literalen.parseDatumTijd("2024-12-25T10:30:00.1234"), "nooit stil afkappen");
+        assertNull(Literalen.parseDatumTijd("x 2024-12-25T10:30:00 y"), "het lexeem is de hele waarde");
+    }
+
     @Test void getal_leest_rationalen_exact_of_op_DECIMAL64() {
         assertEquals(new BigDecimal("0.5"), Literalen.getal(num("1/2")), "eindigend quotient EXACT");
         assertEquals(new BigDecimal("0.3333333333333333"), Literalen.getal(num("1/3")), "niet-eindigend op DECIMAL64");

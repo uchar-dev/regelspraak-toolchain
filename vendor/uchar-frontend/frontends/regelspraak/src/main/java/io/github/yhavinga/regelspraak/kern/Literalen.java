@@ -16,7 +16,15 @@ public final class Literalen {
 
     private static final java.util.regex.Pattern ISO_DATUM = java.util.regex.Pattern.compile("(\\d{4})-(\\d{1,2})-(\\d{1,2})");
     private static final java.util.regex.Pattern DATUM = java.util.regex.Pattern.compile("(\\d{1,2})-(\\d{1,2})-(\\d{4})");
-    private static final java.util.regex.Pattern TIJD  = java.util.regex.Pattern.compile("(\\d{1,2}):(\\d{2}):(\\d{2})(?:\\.(\\d{1,3}))?");
+
+    /* The two datum-tijd lexemes, each matched WHOLE (never {@code find()}): a substring match is how a
+     * reader ends up answering a document it did not understand — a trailing "Z" or "+01:00" dropped, a
+     * fourth fraction digit cut off, surrounding text ignored. Both arms number their groups alike from
+     * the month on (2=mm, 4=hh, 5=mm, 6=ss, 7=fff); only the year/day positions swap (ISO 1/3, snippet 3/1). */
+    private static final java.util.regex.Pattern ISO_DATUM_TIJD = java.util.regex.Pattern.compile(
+            "(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.(\\d{3}))?");
+    private static final java.util.regex.Pattern SNIPPET_DATUM_TIJD = java.util.regex.Pattern.compile(
+            "(?:dd\\. +)?(\\d{1,2})-(\\d{1,2})-(\\d{4}) +(\\d{2}):(\\d{2}):(\\d{2})(?:\\.(\\d{3}))?");
 
     /** Parse a date literal to a LocalDate. Accepts both the canonical uchar IR lexeme — the strict
      *  ISO {@code yyyy-mm-dd} form (WF-084) the emitter now writes into {@code waarde} and the back-ends
@@ -35,18 +43,42 @@ public final class Literalen {
         catch (RuntimeException e) { return null; }
     }
 
-    /** Parse a §13.2.21 datum-tijd literal ("dd-m-yyyy hh:mm:ss[.SSS]") to a LocalDateTime — the captured
-     *  millisecondes scale ×1e6 to nanoOfSecond. null when the date or time part is absent. */
+    /** Parse a datum-tijd literal to a LocalDateTime. Two lexemes carry, each read WHOLE: the canonical uchar IR
+     *  lexeme — ISO {@code yyyy-mm-ddThh:mm:ss[.SSS]}, fixed field widths, {@code T} (never a space), the seconds
+     *  field always written, NO zone suffix or offset, a fraction that is optional but exactly three digits
+     *  (IR-SPEC ch. 4.1) — and the §13.2.21 RegelSpraak source snippet ({@code "[dd. ]d-m-yyyy hh:mm:ss[.SSS]"},
+     *  day-first, the token's variable-width day/month kept so this reader is never stricter than the producer
+     *  that feeds it). Anything else is null.
+     *  <p>The fence is the point. This reader used to scan for a date and a time ANYWHERE in the value, so
+     *  "…T12:00:00Z", "…T12:00:00+01:00", "2024-01-31 12:00:00", one-digit fields and "…:00.1234" (truncated to
+     *  123 ms) were all silently accepted as some instant the writer had not written — a wrong answer with no
+     *  diagnostic. A null is never inert here: the exec-model branch drops the whole rule and the DRL branch
+     *  markers it, both naming the unreadable lexeme, which is a refusal a producer can act on.
+     *  The captured milliseconds scale ×1e6 to nanoOfSecond; an impossible field combination (month 13, 30
+     *  February, hour 24) is rejected by the calendar below. */
     public static java.time.LocalDateTime parseDatumTijd(String waarde) {
-        java.util.regex.Matcher d = DATUM.matcher(waarde);
-        if (!d.find()) return null;
-        java.util.regex.Matcher tm = TIJD.matcher(waarde);
-        if (!tm.find()) return null;
+        java.util.regex.Matcher m = ISO_DATUM_TIJD.matcher(waarde);
+        boolean iso = m.matches();
+        if (!iso) {
+            m = SNIPPET_DATUM_TIJD.matcher(waarde);
+            if (!m.matches()) return null;
+        }
         try {
-            int nanos = (tm.group(4) == null ? 0 : Integer.parseInt(tm.group(4))) * 1_000_000;
-            return java.time.LocalDateTime.of(Integer.parseInt(d.group(3)), Integer.parseInt(d.group(2)), Integer.parseInt(d.group(1)),
-                    Integer.parseInt(tm.group(1)), Integer.parseInt(tm.group(2)), Integer.parseInt(tm.group(3)), nanos);
+            int nanos = (m.group(7) == null ? 0 : Integer.parseInt(m.group(7))) * 1_000_000;
+            return java.time.LocalDateTime.of(
+                    Integer.parseInt(m.group(iso ? 1 : 3)), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(iso ? 3 : 1)),
+                    Integer.parseInt(m.group(4)), Integer.parseInt(m.group(5)), Integer.parseInt(m.group(6)), nanos);
         } catch (RuntimeException e) { return null; }
+    }
+
+    /** Whether {@code e} is a datum-tijd literal whose lexeme {@link #parseDatumTijd} cannot read. Both back-ends
+     *  ask this to say WHY they dropped a construct: an unreadable LEXEME is a document defect the producer can
+     *  fix, not a construct the back-end does not carry, and the generic "outside scope" reason hid the difference
+     *  (it once passed for a whole turn as "the back-end cannot do milliseconds"). One predicate, so the two
+     *  branches can never disagree about which lexemes are readable. */
+    public static boolean onleesbaarDatumTijdLexeem(Expr e) {
+        return e instanceof Expr.Literal l && l.type() instanceof io.github.yhavinga.regelspraak.model.Datatype.DatumTijd
+                && parseDatumTijd(l.waarde()) == null;
     }
 
     /** A NUMBER literal (incl. a §13.2.16 rationaal "1/3") as BigDecimal via the shared {@link Rationaal}
