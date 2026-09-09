@@ -5305,6 +5305,21 @@ public final class ExecModelTranspiler {
         if (e instanceof Expr.Literal lit) return lit.waarde() == null ? null : List.of();
         if (e instanceof Expr.BinderRef b) return volLezers(defs.get(binderSleutel(b.naam())), subject, defs, diepte + 1);
         if (e instanceof Expr.Binair b) {
+            // §6.2/Tabel 15 DATUM arithmetic is NOT a coalesce on both sides: only the DURATION counts as 0
+            // when empty, while a leeg DATUM PROPAGATES (rsDatumReken; ref arith.ml date_plus_duration). So a
+            // binder "de v is <datum> plus <duur>" CAN be leeg, its barrier CAN fire, and the §6.5 site behind it
+            // must then not run. Falling into the coalesce arm below claimed "never leeg" and fabricated exactly
+            // that companion. The result is leeg precisely when the DATUM operand is — exact, no disjunction.
+            // datumRekenWaarde also accepts the COMMUTED form ("duur plus datum"), so the datum side is whichever
+            // operand isDatum(), not necessarily the left one. VERMINDERD_MET cannot reach here (the resolver
+            // rejects the datum form), and datum-minus-datum is a different result shape, so both decline.
+            boolean lDat = b.links().type() != null && b.links().type().isDatum();
+            boolean rDat = b.rechts().type() != null && b.rechts().type().isDatum();
+            if (lDat || rDat) {
+                if (lDat && rDat) return null;
+                if (b.op() != Expr.BinOp.PLUS && b.op() != Expr.BinOp.MIN) return null;
+                return volLezers(lDat ? b.links() : b.rechts(), subject, defs, diepte + 1);
+            }
             switch (b.op()) {
                 case PLUS, MIN, MAAL, PERCENTAGE_VAN: return List.of();
                 case VERMINDERD_MET: return volLezers(b.links(), subject, defs, diepte + 1);

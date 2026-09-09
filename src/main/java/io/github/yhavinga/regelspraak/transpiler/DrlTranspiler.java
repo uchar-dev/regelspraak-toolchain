@@ -1792,6 +1792,21 @@ public final class DrlTranspiler {
         if (e instanceof Expr.Literal lit) return lit.waarde() == null ? null : List.of();   // gevuld by construction
         if (e instanceof Expr.BinderRef b) return volGuards(acc, defs.get(binderSleutel(b.naam())), subject, defs, diepte + 1);
         if (e instanceof Expr.Binair b) {
+            // §6.2/Tabel 15 DATUM arithmetic is NOT a coalesce on both sides: only the DURATION counts as 0
+            // when empty, while a leeg DATUM PROPAGATES (rsDatumReken; ref arith.ml date_plus_duration). So a
+            // binder "de v is <datum> plus <duur>" CAN be leeg, its barrier CAN fire, and the §6.5 site behind it
+            // must then not run. Falling into the coalesce arm below claimed "never leeg" and fabricated exactly
+            // that companion. The result is leeg precisely when the DATUM operand is — exact, no disjunction.
+            // datumRekenWaarde also accepts the COMMUTED form ("duur plus datum"), so the datum side is whichever
+            // operand isDatum(), not necessarily the left one. VERMINDERD_MET cannot reach here (the resolver
+            // rejects the datum form), and datum-minus-datum is a different result shape, so both decline.
+            boolean lDat = b.links().type() != null && b.links().type().isDatum();
+            boolean rDat = b.rechts().type() != null && b.rechts().type().isDatum();
+            if (lDat || rDat) {
+                if (lDat && rDat) return null;
+                if (b.op() != Expr.BinOp.PLUS && b.op() != Expr.BinOp.MIN) return null;
+                return volGuards(acc, lDat ? b.links() : b.rechts(), subject, defs, diepte + 1);
+            }
             switch (b.op()) {
                 // ch. 1.2: these coalesce an empty operand to 0, so the result is a number — NEVER leeg.
                 case PLUS, MIN, MAAL, PERCENTAGE_VAN: return List.of();
@@ -2193,9 +2208,12 @@ public final class DrlTranspiler {
      *   <li>{@code Let} — body first; the value is forced at the FIRST read and memoised. SAME (it is this walk's
      *       whole premise).</li>
      *   <li>{@code BinderRef} — forces the owning Let's value at the read site. SAME.</li>
-     *   <li>{@code DimensieCel} — ref evaluates NOTHING and faults outright. This walk descends into its base, a
-     *       deliberate over-approximation: it can only add binders to a precondition, never drop one, and a
-     *       document ref cannot evaluate is outside the conformance set anyway.</li>
+     *   <li>{@code DimensieCel} — ref evaluates NOTHING here: {@code eval.ml}'s bare wildcard arm faults on every
+     *       DimensieCel position. This walk descends into its base, which does NOT match that order; the
+     *       divergence is harmless for the single reason that a model containing one cannot be evaluated by the
+     *       arbiter at all, so no conformance outcome depends on it. (It is NOT harmless on the grounds that
+     *       descending only ADDS binders to a precondition: an added guard makes the companion more restrictive
+     *       and would itself be a missed companion.)</li>
      * </ul>
      * The remaining ref node forms (IfThenElse, Match, StructLiteral, FieldAccess, ListLiteral, Fold, MapList,
      * FilterList, Invoke, Lambda, Construct, TemporalRead) have no RegelSpraak surface and cannot appear on the

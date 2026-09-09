@@ -5769,6 +5769,60 @@ class ExecModelDifferentialTest {
     }
 
     /**
+     * §6.2/Tabel 15 — DATUM arithmetic is the ONE arithmetic shape that is not a coalesce on both sides: the
+     * DURATION counts as 0 when empty, but a leeg DATUM PROPAGATES ({@code rsDatumReken}; ref
+     * {@code arith.ml date_plus_duration}). So a binder defined as "&lt;datum&gt; plus &lt;duur&gt;" CAN be leeg,
+     * its ch. 10.6 barrier CAN fire, and the §6.5 site behind it must then NOT run.
+     *
+     * <p>Reading the coalesce arm without a type test claimed "never leeg" and fabricated exactly that companion —
+     * while the emitted value path, correctly, refused to run the division. The two halves of one rule contradicted
+     * each other. This flank pins both directions, and its inlined oracle is the control: WITHOUT the Let there is
+     * no barrier, so the division really runs and its reason really stands.
+     */
+    @Test void ch_10_6_datumrekenkunde_in_een_binderdefinitie_kan_leeg_zijn() {
+        String kop = """
+            Objecttype de Vlucht (mv: Vluchten)
+                de verwacht vertrek Datum in dagen;
+                de uitstelduur Numeriek (geheel getal) met eenheid mnd;
+                de vertrektijd Numeriek (geheel getal);
+                de vroegste vertrek Datum in dagen;
+            Regel R
+                geldig altijd
+                    De vroegste vertrek van een Vlucht moet berekend worden als de v plus (de uitstelduur van de Vlucht gedeeld door de vertrektijd van de Vlucht).
+                    Daarbij geldt: de v is %s.
+            """;
+        java.util.function.Function<List<Object>, Object> uit = l -> ((Vlucht) l.get(0)).getVroegsteVertrek();
+        // verwacht vertrek LEEG, uitstelduur gevuld, vertrektijd leeg -> the §6.5 site would qualify statically.
+        java.util.function.Supplier<List<Object>> leegDatum = () -> {
+            Vlucht v = new Vlucht();
+            v.setUitstelduur(new BigDecimal(3));
+            return List.of(v);
+        };
+        java.util.function.Supplier<List<Object>> gevuldDatum = () -> {
+            Vlucht v = new Vlucht();
+            v.setVerwachtVertrek(LocalDate.of(2024, 1, 15));
+            v.setUitstelduur(new BigDecimal(3));
+            return List.of(v);
+        };
+        // PLUS: the datum is leeg, so the binder is leeg, the barrier fires and the division never runs.
+        eisLet("datum plus duur, datum LEEG -> barriere, geen reden",
+            kop.formatted("de verwacht vertrek van de Vlucht plus de uitstelduur van de Vlucht"),
+            leegDatum, uit, LetUitkomst.ok(null, 0));
+        // control: the datum is gevuld, so the read passes, the division runs on a leeg divisor and deposits its
+        // reason. The rule value still WRITES — and that is the other half of Tabel 15: the division yields a leeg
+        // DURATION, which counts as 0, so the date is unchanged at 2024-01-15 + 3 mnd. Exactly the asymmetry that
+        // makes the datum overload a special case: leeg duration coalesces, leeg datum propagates.
+        eisLet("datum plus duur, datum GEVULD -> de deling draait",
+            kop.formatted("de verwacht vertrek van de Vlucht plus de uitstelduur van de Vlucht"),
+            gevuldDatum, uit, LetUitkomst.ok(LocalDate.of(2024, 4, 15), 1));
+        // MIN behaves identically (rsDatumReken with plus=false). VERMINDERD_MET cannot reach here at all — the
+        // resolver rejects the datum form — which is why only these two ops are carried.
+        eisLet("datum min duur, datum LEEG -> barriere, geen reden",
+            kop.formatted("de verwacht vertrek van de Vlucht min de uitstelduur van de Vlucht"),
+            leegDatum, uit, LetUitkomst.ok(null, 0));
+    }
+
+    /**
      * The barrier precondition must be EXPRESSIBLE for a composite binder definition, not only for a bare attribute
      * read. Refusing there dropped four real companions — a MISSER, and the b-spiegel flank is the standing proof
      * that missing is just as wrong as fabricating. Each definition below is a different shape of "this binder can
