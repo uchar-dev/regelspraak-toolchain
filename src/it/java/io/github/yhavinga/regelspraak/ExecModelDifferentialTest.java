@@ -5734,6 +5734,118 @@ class ExecModelDifferentialTest {
             eenPassagier(p -> p.setPrijs(new BigDecimal(10))), PLAFOND, LetUitkomst.ok(new BigDecimal(42), 0));
     }
 
+    /**
+     * ch. 10.6 order — a {@code Begrensd} evaluates basis, then MAXIMUM, then minimum, and the companion table must
+     * model THAT and not the wire order. Evidence: {@code ref/lib/eval.ml} binds the basis with an explicit
+     * {@code let} and then passes BOTH bounds as labelled arguments of ONE {@code Arith.clamp} application, which
+     * OCaml evaluates right to left. Walking minimum first FABRICATED one companion and MISSED its mirror — the two
+     * cases below are exactly that pair, so an implementation that reverts the order fails on both at once.
+     */
+    @Test void ch_10_6_begrensd_evalueert_maximum_voor_minimum() {
+        String grens = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+                de leeftijd Numeriek (geheel getal);
+                het basistarief Numeriek (geheel getal);
+                het plafond Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet berekend worden als %s.
+                    Daarbij geldt: de v is zijn basistarief.
+            """;
+        String wortel = "de wortel van zijn leeftijd rekenkundig afgerond op 0 decimalen";
+        java.util.function.Consumer<Passagier> leegBinder =
+                p -> { p.setPrijs(new BigDecimal(10)); p.setLeeftijd(new BigDecimal(-4)); };
+        // The read sits in the MINIMUM, so the MAXIMUM's wortel runs FIRST and deposits its reason; only then does
+        // the read raise the barrier and empty the Let.
+        eisLet("Begrensd: lezing in minimum, wortel in maximum -> de wortel draait nog",
+            grens.formatted("zijn prijs, met een minimum van de v en een maximum van " + wortel),
+            eenPassagier(leegBinder), PLAFOND, LetUitkomst.ok(null, 1));
+        // The mirror: the read sits in the MAXIMUM, so it runs FIRST, the barrier fires, and the minimum's wortel
+        // is never evaluated — no reason at all.
+        eisLet("Begrensd: wortel in minimum, lezing in maximum -> de wortel draait niet",
+            grens.formatted("zijn prijs, met een minimum van " + wortel + " en een maximum van de v"),
+            eenPassagier(leegBinder), PLAFOND, LetUitkomst.ok(null, 0));
+    }
+
+    /**
+     * The barrier precondition must be EXPRESSIBLE for a composite binder definition, not only for a bare attribute
+     * read. Refusing there dropped four real companions — a MISSER, and the b-spiegel flank is the standing proof
+     * that missing is just as wrong as fabricating. Each definition below is a different shape of "this binder can
+     * never be leeg, so the barrier never fires and the division really runs":
+     * a coalescing {@code plus} (ch. 1.2 makes it a number whatever the attribute holds), a literal, and a
+     * begrenzing whose leegte is its basis's. All three must report exactly as the bare-read control does.
+     */
+    @Test void ch_10_6_barriere_preconditie_draagt_samengestelde_definities() {
+        String weiger = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+                de bodem Numeriek (geheel getal);
+                het basistarief Numeriek (geheel getal);
+                het plafond Numeriek (geheel getal);
+            Regel R
+                geldig altijd
+                    Het plafond van een Passagier moet berekend worden als de d plus (zijn prijs gedeeld door zijn bodem).
+                    Daarbij geldt: de d is %s.
+            """;
+        java.util.function.Consumer<Passagier> gevuld =
+                p -> { p.setPrijs(new BigDecimal(10)); p.setBasistarief(new BigDecimal(2)); };
+        eisLet("preconditie-ijkpunt: definitie is een kale attribuutlezing",
+            weiger.formatted("zijn basistarief"), eenPassagier(gevuld), PLAFOND, LetUitkomst.ok(new BigDecimal(2), 1));
+        eisLet("preconditie: samengestelde definitie (plus coalesceert, dus nooit leeg)",
+            weiger.formatted("zijn basistarief plus 1"), eenPassagier(gevuld), PLAFOND, LetUitkomst.ok(new BigDecimal(3), 1));
+        eisLet("preconditie: literal-definitie (nooit leeg)",
+            weiger.formatted("2"), eenPassagier(gevuld), PLAFOND, LetUitkomst.ok(new BigDecimal(2), 1));
+        eisLet("preconditie: begrensde definitie (leeg precies als haar basis)",
+            weiger.formatted("zijn basistarief, met een minimum van 0"), eenPassagier(gevuld), PLAFOND,
+            LetUitkomst.ok(new BigDecimal(2), 1));
+    }
+
+    /**
+     * §11 a TEMPORAL doel with a variabelendeel must still LOWER. {@code temporeleWaarde} dispatches on the
+     * syntactic shape of its operand, so an opaque {@code BinderRef} degraded the whole construct to a marker (DRL)
+     * and a skip (exec) — silent coverage loss against main, which only ever saw pre-inlined trees. The remedy is
+     * uchar's own boundary (c) applied locally: substitute for the shape, carry the ch. 10.6 barrier as a pattern
+     * guard. This pins the COVERAGE (no marker, no skip) so the regression cannot return unnoticed.
+     */
+    @Test void ch_10_6_temporeel_doel_met_variabelendeel_lowert() {
+        String kop = """
+            Domein Bedrag is van het type Numeriek (geheel getal)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+                de inkomen per maand Bedrag voor elke maand;
+                de standaardbedrag Bedrag voor elke maand;
+            """;
+        String zonder = kop + """
+            Regel R
+                geldig altijd
+                    De standaardbedrag van een Passagier moet berekend worden als zijn belastingvermindering per maand plus zijn inkomen per maand.
+            """;
+        String met = kop + """
+            Regel R
+                geldig altijd
+                    De standaardbedrag van een Passagier moet berekend worden als de v plus zijn inkomen per maand.
+                    Daarbij geldt: de v is zijn belastingvermindering per maand.
+            """;
+        // the control: without a variabelendeel the temporal path lowers in both back-ends.
+        RegelSpraakModel ijk = Resolver.resolve(zonder);
+        assertTrue(ijk.errors().isEmpty(), () -> "resolver-fout (ijkpunt): " + ijk.errors());
+        assertFalse(DrlTranspiler.transpile(ijk).contains("TODO temporele toekenning"), "ijkpunt markert al");
+        assertTrue(ExecModelTranspiler.build(ijk).overgeslagen().isEmpty(), "ijkpunt slaat al over");
+
+        RegelSpraakModel m = Resolver.resolve(met);
+        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("TODO temporele toekenning"),
+                () -> "het temporele pad markert de Let weer weg (dekkingsverlies t.o.v. main):\n" + drl);
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertTrue(em.overgeslagen().isEmpty(),
+                () -> "exec laat de temporele regel vallen: " + em.overgeslagen());
+        // and the barrier is really carried: the rule only fires while the read variabele is gevuld.
+        assertTrue(drl.contains("belastingverminderingPerMaand != null"),
+                () -> "de ch. 10.6 barriere ontbreekt in het temporele patroon:\n" + drl);
+    }
+
     /** uchar §6.8, the THIRD arm of the same companion gate: a leeg §9.9 startpunt anchor behind a binder. The
      *  first cut dropped this companion too (measured on the emitted DRL: the inlined form kept its
      *  "(leeg startpunt)" rule, the binder form emitted none). Pinned as a COUNT, and beside its inlined oracle. */

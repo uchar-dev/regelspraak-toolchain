@@ -1075,12 +1075,18 @@ public final class DrlTranspiler {
         // §5.1.4 lower a temporal-doel timeline value BEFORE the acc.clausules flush (temporeleWaarde may register a
         // collectList accumulate for a §5.8.2 to-many sommatie, which must be emitted after $subject binds).
         String temporeelTl = null; boolean temporeelOngeankerd = false;
+        // §11 a temporal doel is a SHAPE-READING position: substitute the variabelendeel so the temporal lowering
+        // sees the shape it dispatches on, and carry the ch. 10.6 barrier as pattern guards instead. Null guards
+        // mean the barrier is not expressible -> keep the honest marker (temporeelWaardeExpr stays the Let, which
+        // temporeleWaarde declines) rather than write a value whose barrier we cannot honour.
+        List<String> temporeleBarriere = temporeelDoel ? temporeleBarriere(acc, r.waarde(), subject) : List.of();
+        Expr temporeelWaardeExpr = temporeelDoel && temporeleBarriere != null ? zonderBinders(r.waarde()) : r.waarde();
         if (temporeelDoel && r.doel() instanceof Expr.AttribuutRef td) {
             String ankerLid0 = model.startpuntAnkerLid(td.objecttype(), td.attribuut());
             temporeelOngeankerd = ankerLid0 == null && model.heeftVariabelStartpunt(td.objecttype(), td.attribuut());
             String anker0 = ankerLid0 == null ? null : SUBJECT + "." + getter(ankerLid0) + "()";
             temporeelTl = temporeelOngeankerd ? null
-                    : temporeleWaarde(acc, r.waarde(), subject, td.objecttype().attribuutGranulariteit.get(td.attribuut()), td.type(), anker0);
+                    : temporeleWaarde(acc, temporeelWaardeExpr, subject, td.objecttype().attribuutGranulariteit.get(td.attribuut()), td.type(), anker0);
         }
         // §8.4/§13.4.5 a TEMPORAL KENMERK doel (kenmerkGranulariteit — a List<Segment> TRUE-period timeline, not a
         // boolean) is written the timeline of its voorwaarde's TRUE-periods: "Een reis is duur gedurende de tijd dat
@@ -1170,7 +1176,14 @@ public final class DrlTranspiler {
             // doel: a temporal ATTRIBUTE producer (aantal-dagen-in / tijdsevenredig) already rides its own anchor/class
             // reactivity, and broadening its @watch would churn the pinned anchored-bucket DRL.
             if (!temporeelDoel && !temporeelKenmerkDoel) verzamelFilterKenmerkReads(r.waarde(), subject, watch);
-            rule.clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + constraint + " )"
+            // §11/ch. 10.6: the substituted temporal value keeps its barrier as a pattern guard — a rule whose
+            // variabele reads leeg does not fire, so the doel stays leeg exactly as the scalar barrier leaves it.
+            String patroon = constraint;
+            if (temporeleBarriere != null && !temporeleBarriere.isEmpty()) {
+                String bar = String.join(", ", temporeleBarriere);
+                patroon = patroon.isEmpty() ? bar : bar + ", " + patroon;
+            }
+            rule.clausule(SUBJECT + " : " + ident(subject.naam, true) + "( " + patroon + " )"
                     + (watch.isEmpty() ? "" : " @watch( " + String.join(", ", watch) + " )"));
             for (String e : lc.extra()) rule.clausule(e);   // the exists-join(s), after $subject is bound
             rule.clausules(acc.clausules)
@@ -1621,6 +1634,101 @@ public final class DrlTranspiler {
         if (e instanceof Expr.DimensieCel c) verzamelBinderDefinities(c.attribuut(), uit);
     }
 
+    /**
+     * §11 the SHAPE-READING remedy for a temporal doel: a rule value whose §13.4.2.10 variabelendeel is
+     * SUBSTITUTED away, so the §7/§8 temporal lowering can read the syntactic shape it decides on.
+     *
+     * <p><b>Why substitution here and a real binding everywhere else.</b> {@code temporeleWaarde} dispatches on
+     * the SHAPE of its operand — is this an {@code aantal dagen in}, a tijdsevenredig deel, a timeline read? — and
+     * an opaque {@link Expr.BinderRef} matches none of them, so the whole construct degrades to a marker. That is
+     * exactly the reasoning uchar's frontend applies at its THIRD lowering boundary ({@code IR-SPEC} ch. 4.10,
+     * boundary c: a read inside an aggregation subtree is substituted, not bound). The frontend does not extend
+     * that boundary to a temporal doel — the wire carries a Let there — so this back-end applies the same remedy
+     * locally, and pays the same price the frontend records for boundary (a): SHARING, never a value. A variable
+     * read twice is evaluated twice; ch. 10.6 clause 1's once-ness is unobservable here because no temporal
+     * operand deposits a §9.5 reason.
+     *
+     * <p><b>The barrier is NOT paid away.</b> Substitution alone would restore the v0 coalesce for temporal
+     * targets — precisely the divergence this card exists to remove. So the caller ALSO gets
+     * {@link #temporeleBarriere}: the non-leeg guards of every binder the body reads, which ride the subject
+     * pattern, so a rule whose variabele is leeg does not fire and the target stays leeg. Value-identical to the
+     * barrier the scalar path raises.
+     */
+    private static Expr zonderBinders(Expr waarde) {
+        Map<String, Expr> defs = new LinkedHashMap<>();
+        Expr romp = waarde;
+        while (romp instanceof Expr.Let inner) { defs.put(binderSleutel(inner.binder()), inner.value()); romp = inner.body(); }
+        return defs.isEmpty() ? waarde : vervang(romp, defs, 0);
+    }
+
+    private static Expr vervang(Expr e, Map<String, Expr> defs, int diepte) {
+        if (e == null || diepte > 16) return e;
+        if (e instanceof Expr.BinderRef b) {
+            Expr def = defs.get(binderSleutel(b.naam()));
+            return def == null ? e : vervang(def, defs, diepte + 1);
+        }
+        if (e instanceof Expr.Binair b) {
+            Expr l = vervang(b.links(), defs, diepte), r = vervang(b.rechts(), defs, diepte);
+            return l == b.links() && r == b.rechts() ? b : new Expr.Binair(b.op(), l, r, b.type(), b.bron());
+        }
+        if (e instanceof Expr.Afgerond a) {
+            Expr x = vervang(a.basis(), defs, diepte);
+            return x == a.basis() ? a : new Expr.Afgerond(x, a.modus(), a.decimalen(), a.bron());
+        }
+        if (e instanceof Expr.Begrensd g) {
+            Expr b = vervang(g.basis(), defs, diepte), mn = vervang(g.minimum(), defs, diepte), mx = vervang(g.maximum(), defs, diepte);
+            return b == g.basis() && mn == g.minimum() && mx == g.maximum() ? g : new Expr.Begrensd(b, mn, mx, g.bron());
+        }
+        if (e instanceof Expr.Functie fn) {
+            List<Expr> args = new ArrayList<>(fn.argumenten().size());
+            boolean gewijzigd = false;
+            for (Expr a : fn.argumenten()) { Expr x = vervang(a, defs, diepte); gewijzigd |= x != a; args.add(x); }
+            Expr leeg = vervang(fn.leegwaarde(), defs, diepte);
+            return !gewijzigd && leeg == fn.leegwaarde() ? fn
+                    : new Expr.Functie(fn.kind(), args, fn.elementObjecttype(), leeg, fn.filter(),
+                            fn.dimensieSelectie(), fn.type(), fn.bron(), fn.granulariteit());
+        }
+        if (e instanceof Expr.TekstReeks t) {
+            List<Expr.TekstReeks.Deel> delen = new ArrayList<>(t.delen().size());
+            boolean gewijzigd = false;
+            for (Expr.TekstReeks.Deel d : t.delen()) {
+                if (d instanceof Expr.TekstReeks.Ingevoegd i) {
+                    Expr x = vervang(i.expr(), defs, diepte);
+                    if (x != i.expr()) { gewijzigd = true; delen.add(new Expr.TekstReeks.Ingevoegd(x)); continue; }
+                }
+                delen.add(d);
+            }
+            return gewijzigd ? new Expr.TekstReeks(delen, t.bron()) : t;
+        }
+        return e;
+    }
+
+    /** The non-leeg guards of every binder a Let-chain value's body READS — the ch. 10.6 barrier for a doel whose
+     *  value had to be substituted ({@link #zonderBinders}). Empty when the value carries no Let or no read can
+     *  ever be leeg; null when a definition's status is not expressible, in which case the caller must keep its
+     *  honest marker rather than write a value whose barrier it cannot honour. */
+    private List<String> temporeleBarriere(Acc acc, Expr waarde, Objecttype subject) {
+        Map<String, Expr> defs = new LinkedHashMap<>();
+        Expr romp = waarde;
+        while (romp instanceof Expr.Let inner) { defs.put(binderSleutel(inner.binder()), inner.value()); romp = inner.body(); }
+        if (defs.isEmpty()) return List.of();
+        List<String> uit = new ArrayList<>();
+        for (String k : new java.util.LinkedHashSet<>(Spoor.van(romp, defs).gelezen)) {
+            Expr def = defs.get(k);
+            // The barrier asks "is this WHOLE value absent?", so a binder defined as a plain OWN attribute read
+            // yields its guard directly — TEMPORAL or dimensioned included. That is not the per-moment leegte
+            // companionDeel rightly refuses to approximate for a §6.5 site: here a null field IS the leeg value.
+            if (def instanceof Expr.AttribuutRef a && a.navigatieRol() == null && a.objecttype() == subject) {
+                uit.add(ident(a.attribuut(), false) + " != null");
+                continue;
+            }
+            List<String> g = volGuards(acc, def, subject, defs, 0);
+            if (g == null) return null;
+            uit.addAll(g);
+        }
+        return uit;
+    }
+
     /** The Let chain of a rule value peeled into its evaluation trace (see {@link Spoor}). */
     private static Spoor spoorVan(Expr waarde) {
         Map<String, Expr> defs = new LinkedHashMap<>();
@@ -1646,12 +1754,58 @@ public final class DrlTranspiler {
         if (p == null) return null;
         StringBuilder sb = new StringBuilder();
         for (String k : p.voor()) {
-            Expr def = defs.get(k);
-            OperandDeel d = def == null ? null : companionDeel(acc, def, subject, defs);
-            if (d == null) return null;
-            sb.append(d.vol()).append(", ");
+            List<String> g = volGuards(acc, defs.get(k), subject, defs, 0);
+            if (g == null) return null;
+            for (String x : g) sb.append(x).append(", ");
         }
         return sb.toString();
+    }
+
+    /**
+     * The static guard set that is true exactly when {@code e} evaluates NON-LEEG — the barrier status of a
+     * binder whose definition is {@code e}. An EMPTY list means "never leeg" (no guard needed at all), null means
+     * NOT EXPRESSIBLE.
+     *
+     * <p>The composition is read straight off the §5/§6 leegwaarde tables, which is what makes it exact rather
+     * than conservative:
+     * <ul>
+     *   <li>a bare read is leeg exactly when the attribute is — the one case that needs a guard;</li>
+     *   <li>{@code plus} / {@code min} / {@code maal} / {@code percentage van} COALESCE their empty operands
+     *       (ch. 1.2), so their result is always a number: never leeg, guard set EMPTY. This is why a definition
+     *       like "zijn basistarief plus 1" raises no barrier however empty the attribute is;</li>
+     *   <li>a numeric/boolean/date/text LITERAL is gevuld by construction;</li>
+     *   <li>{@code verminderd met} propagates a leeg LEFT (Tabel 12) and coalesces the right;</li>
+     *   <li>an afronding, a begrenzing and the absolute waarde are leeg exactly when their basis is;</li>
+     *   <li>a nested binder read delegates to ITS definition — transitively, which is what lets a chain of
+     *       variables carry the status through.</li>
+     * </ul>
+     *
+     * <p><b>The residual class that still refuses</b>, and why refusing there is not the earlier over-refusal: a
+     * division ({@code rsGedeeld} is gevuld for a leeg dividend but leeg for a leeg divisor, so its status is a
+     * DISJUNCTION over two operands rather than a conjunction — expressible in principle, declined here because no
+     * measured form needs it), a power, a tekstreeks, a dimensiecel, an aggregation or any other {@link
+     * Expr.Functie}, and a navigated read whose own {@code companionDeel} declines. A refusal costs the companion
+     * of the site BEHIND that binder only — never a companion whose own path is clear.
+     */
+    private List<String> volGuards(Acc acc, Expr e, Objecttype subject, Map<String, Expr> defs, int diepte) {
+        if (e == null || diepte > 8) return null;                       // depth clamp: a cyclic chain cannot loop here
+        if (e instanceof Expr.Literal lit) return lit.waarde() == null ? null : List.of();   // gevuld by construction
+        if (e instanceof Expr.BinderRef b) return volGuards(acc, defs.get(binderSleutel(b.naam())), subject, defs, diepte + 1);
+        if (e instanceof Expr.Binair b) {
+            switch (b.op()) {
+                // ch. 1.2: these coalesce an empty operand to 0, so the result is a number — NEVER leeg.
+                case PLUS, MIN, MAAL, PERCENTAGE_VAN: return List.of();
+                // Tabel 12: a leeg LEFT propagates; the right coalesces.
+                case VERMINDERD_MET: return volGuards(acc, b.links(), subject, defs, diepte + 1);
+                default: return null;                                   // division / power: see the residual class
+            }
+        }
+        if (e instanceof Expr.Afgerond a) return volGuards(acc, a.basis(), subject, defs, diepte + 1);
+        if (e instanceof Expr.Begrensd g) return volGuards(acc, g.basis(), subject, defs, diepte + 1);
+        if (e instanceof Expr.Functie fn && fn.kind() == Expr.FunctieKind.ABSOLUTE_WAARDE && fn.argumenten().size() == 1)
+            return volGuards(acc, fn.argumenten().get(0), subject, defs, diepte + 1);
+        OperandDeel d = companionDeel(acc, e, subject, defs);            // a re-readable own / to-one attribute read
+        return d == null ? null : List.of(d.vol());
     }
 
     /** Sentinel from {@link #naviRol}: the reference is the subject's own attribute. */
@@ -2020,6 +2174,34 @@ public final class DrlTranspiler {
      * statically — the toolchain's wire cannot express one, and this static image coincides with that probe on
      * every form the frontend can emit.
      *
+     * <p><b>The order table, swept against {@code ref/lib/eval.ml} per node type</b> (ref is the arbiter; OCaml
+     * evaluates a function application's arguments RIGHT to left, while {@code let}/{@code match} sequences are
+     * definite, so the two must be told apart):
+     * <ul>
+     *   <li>{@code Binair}, every op incl. date arithmetic — {@code let l = … in let r = … in} → links, rechts.
+     *       SAME as this walk.</li>
+     *   <li>{@code Begrensd} — basis via {@code let}, then both bounds as labelled args of one {@code Arith.clamp}
+     *       → basis, MAXIMUM, minimum. CORRECTED here (this walk ran minimum first).</li>
+     *   <li>{@code Afgerond} — one sub-expression, its basis. SAME.</li>
+     *   <li>{@code Functie}, general — {@code leegwaarde} is a strict {@code let} evaluated BEFORE any argument,
+     *       then the argumenten left to right. CORRECTED here (this walk ran the arguments first).</li>
+     *   <li>{@code Functie} TIJDSDUUR / ABSOLUTE_TIJDSDUUR — routed earlier in {@code eval_expr}; its two operands
+     *       are the positional args of one {@code Arith.tijdsduur} application → "tot" before "van", and its
+     *       leegwaarde is never evaluated. CORRECTED here.</li>
+     *   <li>{@code TekstReeks} — the delen left to right ({@code List.map}, an explicit let-chain in the stdlib).
+     *       SAME.</li>
+     *   <li>{@code Let} — body first; the value is forced at the FIRST read and memoised. SAME (it is this walk's
+     *       whole premise).</li>
+     *   <li>{@code BinderRef} — forces the owning Let's value at the read site. SAME.</li>
+     *   <li>{@code DimensieCel} — ref evaluates NOTHING and faults outright. This walk descends into its base, a
+     *       deliberate over-approximation: it can only add binders to a precondition, never drop one, and a
+     *       document ref cannot evaluate is outside the conformance set anyway.</li>
+     * </ul>
+     * The remaining ref node forms (IfThenElse, Match, StructLiteral, FieldAccess, ListLiteral, Fold, MapList,
+     * FilterList, Invoke, Lambda, Construct, TemporalRead) have no RegelSpraak surface and cannot appear on the
+     * wire this frontend emits, so they are deliberately absent from the table. Conditions are absent for the same
+     * structural reason: a Let cannot span the voorwaarde field (boundary a).
+     *
      * <p>{@link Pad#voor} is the ordered list of binders read strictly BEFORE this node's operator applies (a
      * node's own operands are walked first, so a read inside an operand counts as preceding it).
      * {@link Pad#inWaarde} marks a node reached only while FORCING some binder's value rather than in the body.
@@ -2059,8 +2241,26 @@ public final class DrlTranspiler {
             }
             if (e instanceof Expr.Binair b) { loop(b.links(), defs); loop(b.rechts(), defs); }
             else if (e instanceof Expr.Afgerond a) loop(a.basis(), defs);
-            else if (e instanceof Expr.Begrensd g) { loop(g.basis(), defs); loop(g.minimum(), defs); loop(g.maximum(), defs); }
-            else if (e instanceof Expr.Functie fn) { for (Expr a : fn.argumenten()) loop(a, defs); loop(fn.leegwaarde(), defs); }
+            // ref order (ref/lib/eval.ml Begrensd): the basis is bound by an explicit `let`, then BOTH bounds are
+            // labelled arguments of ONE `Arith.clamp` call — and OCaml evaluates a call's arguments RIGHT to LEFT,
+            // so MAXIMUM runs before minimum. Walking min first fabricated one companion and missed its mirror
+            // (lens flanks A1/A2). Because the hoist decision and the companion precondition BOTH read this walk,
+            // correcting it here is what makes the emitted DRL agree with ref, not merely this table.
+            else if (e instanceof Expr.Begrensd g) { loop(g.basis(), defs); loop(g.maximum(), defs); loop(g.minimum(), defs); }
+            // ref order (ref/lib/eval.ml eval_functie): the leegwaarde is a STRICT `let` evaluated BEFORE any
+            // argument and unconditionally for every kind that reaches the fall-through — then the argumenten
+            // left to right (List.map, which OCaml's stdlib sequences with an explicit let-chain). TIJDSDUUR is
+            // routed earlier in eval_expr and is the file's SECOND right-to-left site: its two operands are the
+            // positional arguments of one Arith.tijdsduur application, so "tot" runs before "van", and its
+            // leegwaarde is never evaluated at all.
+            else if (e instanceof Expr.Functie fn) {
+                if (fn.kind() == Expr.FunctieKind.TIJDSDUUR || fn.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR) {
+                    for (int i = fn.argumenten().size() - 1; i >= 0; i--) loop(fn.argumenten().get(i), defs);
+                } else {
+                    loop(fn.leegwaarde(), defs);
+                    for (Expr a : fn.argumenten()) loop(a, defs);
+                }
+            }
             else if (e instanceof Expr.TekstReeks t) {
                 for (Expr.TekstReeks.Deel d : t.delen())
                     if (d instanceof Expr.TekstReeks.Ingevoegd i) loop(i.expr(), defs);

@@ -408,8 +408,18 @@ public final class ExecModelTranspiler {
             final String ankerLid = startpuntAnker;
             java.util.function.Function<Object, Object> ankerReader =
                     ankerLid == null ? null : s -> RegelSpraakRuntime.get(s, ankerLid);
-            TemporeleWaarde tw = temporeleWaarde(r.waarde(), doel.objecttype(), doelGran, doel.type(), ankerReader);
+            // §11 a temporal doel is a SHAPE-READING position: temporeleWaarde dispatches on the syntactic shape
+            // of its operand, which an opaque BinderRef matches nowhere, so the §13.4.2.10 variabelendeel is
+            // SUBSTITUTED here and its ch. 10.6 barrier is carried as pattern predicates instead. Same remedy and
+            // same trade as uchar's frontend boundary (c) — sharing, never a value. Mirrors DrlTranspiler.
+            List<java.util.function.Function<Object, Object>> temporeleBarriere =
+                    temporeleBarriereLezers(r.waarde(), doel.objecttype());
+            Expr temporeelWaardeExpr = temporeleBarriere == null ? r.waarde() : zonderBinders(r.waarde());
+            TemporeleWaarde tw = temporeleWaarde(temporeelWaardeExpr, doel.objecttype(), doelGran, doel.type(), ankerReader);
             if (tw == null) return skip("regel (temporele toekenning buiten Phase-F scope): " + r.naam());
+            if (temporeleBarriere != null)
+                for (java.util.function.Function<Object, Object> lezer : temporeleBarriere)
+                    pattern = pattern.expr(nextId("tbar"), (Predicate1) x -> lezer.apply(x) != null);
             BiFunction<Object, Object, Object> twf = tw.fn();
             // IDEMPOTENT anchored write (mirror DRL): the §9.9 freshness expr above makes this pattern
             // class-reactive, and an unconditional update would ping-pong with a sibling anchored writer.
@@ -3459,10 +3469,15 @@ public final class ExecModelTranspiler {
             Set<String> g = new LinkedHashSet<>(baseF.globals());
             if (minF != null) g.addAll(minF.globals());
             if (maxF != null) g.addAll(maxF.globals());
-            return new WaardeFn((s, gm) -> RegelSpraakRuntime.rsBegrens(
-                    bfn.apply(s, gm),
-                    mnfn == null ? null : mnfn.apply(s, gm),
-                    mxfn == null ? null : mxfn.apply(s, gm)), g);
+            return new WaardeFn((s, gm) -> {
+                // ref order (ref/lib/eval.ml): basis, then MAXIMUM, then minimum — see padLoop's Begrensd arm.
+                // Java evaluates arguments left to right, so the bounds are forced into locals in ref order first;
+                // a bound that raises the ch. 10.6 barrier or faults must do so in ref's order, not the call's.
+                Object basis = bfn.apply(s, gm);
+                Object max = mxfn == null ? null : mxfn.apply(s, gm);
+                Object min = mnfn == null ? null : mnfn.apply(s, gm);
+                return RegelSpraakRuntime.rsBegrens(basis, min, max);
+            }, g);
         }
         if (e instanceof Expr.Binair b && arithmeticOp(b.op())) {
             // §6.2-6.5 binary arithmetic with the leegwaarde tables. Datum arithmetic (datum ± tijdsduur) lowers
@@ -5152,13 +5167,27 @@ public final class ExecModelTranspiler {
         if (e instanceof Expr.Binair b) { padLoop(b.links(), defs, geforceerd, gelezen, uit); padLoop(b.rechts(), defs, geforceerd, gelezen, uit); }
         else if (e instanceof Expr.Afgerond a) padLoop(a.basis(), defs, geforceerd, gelezen, uit);
         else if (e instanceof Expr.Begrensd g) {
+            // ch. 10.6 order, measured against ref (ref/lib/eval.ml Begrensd): the basis is bound by an explicit
+            // `let`, then BOTH bounds are labelled arguments of ONE `Arith.clamp` call — and OCaml evaluates a
+            // call's arguments RIGHT to LEFT, so MAXIMUM runs before minimum. Walking min first fabricated one
+            // companion and missed its mirror (lens flanks A1/A2).
             padLoop(g.basis(), defs, geforceerd, gelezen, uit);
-            padLoop(g.minimum(), defs, geforceerd, gelezen, uit);
             padLoop(g.maximum(), defs, geforceerd, gelezen, uit);
+            padLoop(g.minimum(), defs, geforceerd, gelezen, uit);
         }
+        // ref order (ref/lib/eval.ml eval_functie): the leegwaarde is a STRICT `let` evaluated BEFORE any
+        // argument and unconditionally for every kind that reaches the fall-through — then the argumenten
+        // left to right (List.map, which OCaml's stdlib sequences with an explicit let-chain). TIJDSDUUR is
+        // routed earlier in eval_expr and is the file's SECOND right-to-left site: its two operands are the
+        // positional arguments of one Arith.tijdsduur application, so "tot" runs before "van", and its
+        // leegwaarde is never evaluated at all.
         else if (e instanceof Expr.Functie fn) {
-            for (Expr a : fn.argumenten()) padLoop(a, defs, geforceerd, gelezen, uit);
-            padLoop(fn.leegwaarde(), defs, geforceerd, gelezen, uit);
+            if (fn.kind() == Expr.FunctieKind.TIJDSDUUR || fn.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR) {
+                for (int i = fn.argumenten().size() - 1; i >= 0; i--) padLoop(fn.argumenten().get(i), defs, geforceerd, gelezen, uit);
+            } else {
+                padLoop(fn.leegwaarde(), defs, geforceerd, gelezen, uit);
+                for (Expr a : fn.argumenten()) padLoop(a, defs, geforceerd, gelezen, uit);
+            }
         }
         else if (e instanceof Expr.TekstReeks t) {
             for (Expr.TekstReeks.Deel d : t.delen())
@@ -5167,6 +5196,88 @@ public final class ExecModelTranspiler {
         else if (e instanceof Expr.DimensieCel c) padLoop(c.attribuut(), defs, geforceerd, gelezen, uit);
         else if (e instanceof Expr.Let l) padLoop(l.body(), defs, geforceerd, gelezen, uit);
         uit.put(e, List.copyOf(gelezen));
+    }
+
+    /** §11 the shape-reading remedy for a temporal doel: the rule value with its variabelendeel substituted
+     *  away, so the §7/§8 temporal lowering sees the shape it dispatches on. Mirrors DrlTranspiler.zonderBinders —
+     *  see that javadoc for why substitution is right HERE and a real binding right everywhere else. */
+    private static Expr zonderBinders(Expr waarde) {
+        Map<String, Expr> defs = new LinkedHashMap<>();
+        Expr romp = waarde;
+        while (romp instanceof Expr.Let inner) { defs.put(binderSleutel(inner.binder()), inner.value()); romp = inner.body(); }
+        return defs.isEmpty() ? waarde : vervang(romp, defs, 0);
+    }
+
+    private static Expr vervang(Expr e, Map<String, Expr> defs, int diepte) {
+        if (e == null || diepte > 16) return e;
+        if (e instanceof Expr.BinderRef b) {
+            Expr def = defs.get(binderSleutel(b.naam()));
+            return def == null ? e : vervang(def, defs, diepte + 1);
+        }
+        if (e instanceof Expr.Binair b) {
+            Expr l = vervang(b.links(), defs, diepte), r = vervang(b.rechts(), defs, diepte);
+            return l == b.links() && r == b.rechts() ? b : new Expr.Binair(b.op(), l, r, b.type(), b.bron());
+        }
+        if (e instanceof Expr.Afgerond a) {
+            Expr x = vervang(a.basis(), defs, diepte);
+            return x == a.basis() ? a : new Expr.Afgerond(x, a.modus(), a.decimalen(), a.bron());
+        }
+        if (e instanceof Expr.Begrensd g) {
+            Expr b = vervang(g.basis(), defs, diepte), mn = vervang(g.minimum(), defs, diepte), mx = vervang(g.maximum(), defs, diepte);
+            return b == g.basis() && mn == g.minimum() && mx == g.maximum() ? g : new Expr.Begrensd(b, mn, mx, g.bron());
+        }
+        if (e instanceof Expr.Functie fn) {
+            List<Expr> args = new ArrayList<>(fn.argumenten().size());
+            boolean gewijzigd = false;
+            for (Expr a : fn.argumenten()) { Expr x = vervang(a, defs, diepte); gewijzigd |= x != a; args.add(x); }
+            Expr leeg = vervang(fn.leegwaarde(), defs, diepte);
+            return !gewijzigd && leeg == fn.leegwaarde() ? fn
+                    : new Expr.Functie(fn.kind(), args, fn.elementObjecttype(), leeg, fn.filter(),
+                            fn.dimensieSelectie(), fn.type(), fn.bron(), fn.granulariteit());
+        }
+        if (e instanceof Expr.TekstReeks t) {
+            List<Expr.TekstReeks.Deel> delen = new ArrayList<>(t.delen().size());
+            boolean gewijzigd = false;
+            for (Expr.TekstReeks.Deel d : t.delen()) {
+                if (d instanceof Expr.TekstReeks.Ingevoegd i) {
+                    Expr x = vervang(i.expr(), defs, diepte);
+                    if (x != i.expr()) { gewijzigd = true; delen.add(new Expr.TekstReeks.Ingevoegd(x)); continue; }
+                }
+                delen.add(d);
+            }
+            return gewijzigd ? new Expr.TekstReeks(delen, t.bron()) : t;
+        }
+        return e;
+    }
+
+    /** The non-leeg readers of every binder a Let-chain value's body READS — the ch. 10.6 barrier for a doel whose
+     *  value had to be substituted. Empty when there is no Let or no read can be leeg; null when a definition's
+     *  status is not expressible, in which case the caller keeps its honest skip. Mirrors
+     *  DrlTranspiler.temporeleBarriere. */
+    private List<java.util.function.Function<Object, Object>> temporeleBarriereLezers(Expr waarde, Objecttype subject) {
+        Map<String, Expr> defs = new LinkedHashMap<>();
+        Expr romp = waarde;
+        while (romp instanceof Expr.Let inner) { defs.put(binderSleutel(inner.binder()), inner.value()); romp = inner.body(); }
+        if (defs.isEmpty()) return List.of();
+        java.util.IdentityHashMap<Expr, List<String>> pad = new java.util.IdentityHashMap<>();
+        List<String> gelezen = new ArrayList<>();
+        padLoop(romp, defs, new LinkedHashSet<>(), gelezen, pad);
+        List<java.util.function.Function<Object, Object>> uit = new ArrayList<>();
+        for (String k : new LinkedHashSet<>(gelezen)) {
+            Expr def = defs.get(k);
+            // The barrier asks "is this WHOLE value absent?", so a binder defined as a plain OWN attribute read
+            // yields its guard directly — TEMPORAL or dimensioned included. That is not the per-moment leegte
+            // companionDeel rightly refuses to approximate for a §6.5 site: here a null field IS the leeg value.
+            if (def instanceof Expr.AttribuutRef a && a.navigatieRol() == null && a.objecttype() == subject) {
+                String attr = a.attribuut();
+                uit.add(s2 -> RegelSpraakRuntime.get(s2, attr));
+                continue;
+            }
+            List<java.util.function.Function<Object, Object>> g = volLezers(def, subject, defs, 0);
+            if (g == null) return null;
+            uit.addAll(g);
+        }
+        return uit;
     }
 
     /** The ch. 10.6 BARRIER PRECONDITION readers of a §6.5/§6.6/§6.8 site — one null-check per binder read BEFORE
@@ -5178,12 +5289,34 @@ public final class ExecModelTranspiler {
         if (voor == null) return null;
         List<java.util.function.Function<Object, Object>> uit = new ArrayList<>();
         for (String k : voor) {
-            Expr def = defs.get(k);
-            java.util.function.Function<Object, Object> lezer = def == null ? null : companionOperand(def, subject, defs);
-            if (lezer == null) return null;
-            uit.add(lezer);
+            List<java.util.function.Function<Object, Object>> g = volLezers(defs.get(k), subject, defs, 0);
+            if (g == null) return null;
+            uit.addAll(g);
         }
         return uit;
+    }
+
+    /** The readers whose non-nullness is exactly "this definition evaluates NON-LEEG" — an EMPTY list means
+     *  never leeg, null means not expressible. Byte-mirror of DrlTranspiler.volGuards; see that javadoc for the
+     *  §5/§6 leegwaarde-table reading and for the residual class that still refuses. */
+    private List<java.util.function.Function<Object, Object>> volLezers(Expr e, Objecttype subject,
+                                                                        Map<String, Expr> defs, int diepte) {
+        if (e == null || diepte > 8) return null;
+        if (e instanceof Expr.Literal lit) return lit.waarde() == null ? null : List.of();
+        if (e instanceof Expr.BinderRef b) return volLezers(defs.get(binderSleutel(b.naam())), subject, defs, diepte + 1);
+        if (e instanceof Expr.Binair b) {
+            switch (b.op()) {
+                case PLUS, MIN, MAAL, PERCENTAGE_VAN: return List.of();
+                case VERMINDERD_MET: return volLezers(b.links(), subject, defs, diepte + 1);
+                default: return null;
+            }
+        }
+        if (e instanceof Expr.Afgerond a) return volLezers(a.basis(), subject, defs, diepte + 1);
+        if (e instanceof Expr.Begrensd g) return volLezers(g.basis(), subject, defs, diepte + 1);
+        if (e instanceof Expr.Functie fn && fn.kind() == Expr.FunctieKind.ABSOLUTE_WAARDE && fn.argumenten().size() == 1)
+            return volLezers(fn.argumenten().get(0), subject, defs, diepte + 1);
+        java.util.function.Function<Object, Object> lezer = companionOperand(e, subject, defs);
+        return lezer == null ? null : List.of(lezer);
     }
 
     /** AND the barrier preconditions into a companion pattern. */
