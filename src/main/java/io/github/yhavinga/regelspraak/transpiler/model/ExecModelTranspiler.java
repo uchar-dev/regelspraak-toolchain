@@ -3470,12 +3470,13 @@ public final class ExecModelTranspiler {
             if (minF != null) g.addAll(minF.globals());
             if (maxF != null) g.addAll(maxF.globals());
             return new WaardeFn((s, gm) -> {
-                // ref order (ref/lib/eval.ml): basis, then MAXIMUM, then minimum — see padLoop's Begrensd arm.
-                // Java evaluates arguments left to right, so the bounds are forced into locals in ref order first;
-                // a bound that raises the ch. 10.6 barrier or faults must do so in ref's order, not the call's.
+                // ch. 5.11: basis, then MINIMUM, then maximum. This is the one Begrensd site where the order is
+                // RUNTIME and not bookkeeping — the bounds are forced into locals here rather than being arguments
+                // of the rsBegrens call, so a bound that raises the ch. 10.6 barrier or faults does so in THIS
+                // order. Written out because the sequence, not the call's argument list, is what decides it.
                 Object basis = bfn.apply(s, gm);
-                Object max = mxfn == null ? null : mxfn.apply(s, gm);
                 Object min = mnfn == null ? null : mnfn.apply(s, gm);
+                Object max = mxfn == null ? null : mxfn.apply(s, gm);
                 return RegelSpraakRuntime.rsBegrens(basis, min, max);
             }, g);
         }
@@ -5167,26 +5168,22 @@ public final class ExecModelTranspiler {
         if (e instanceof Expr.Binair b) { padLoop(b.links(), defs, geforceerd, gelezen, uit); padLoop(b.rechts(), defs, geforceerd, gelezen, uit); }
         else if (e instanceof Expr.Afgerond a) padLoop(a.basis(), defs, geforceerd, gelezen, uit);
         else if (e instanceof Expr.Begrensd g) {
-            // ch. 10.6 order, measured against ref (ref/lib/eval.ml Begrensd): the basis is bound by an explicit
-            // `let`, then BOTH bounds are labelled arguments of ONE `Arith.clamp` call — and OCaml evaluates a
-            // call's arguments RIGHT to LEFT, so MAXIMUM runs before minimum. Walking min first fabricated one
-            // companion and missed its mirror (lens flanks A1/A2).
+            // ch. 5.11: basis, then MINIMUM, then maximum — the schema's slot order. See DrlTranspiler.Spoor's
+            // order table for the row and for why the emitted term already ran in that order.
             padLoop(g.basis(), defs, geforceerd, gelezen, uit);
-            padLoop(g.maximum(), defs, geforceerd, gelezen, uit);
             padLoop(g.minimum(), defs, geforceerd, gelezen, uit);
+            padLoop(g.maximum(), defs, geforceerd, gelezen, uit);
         }
-        // ref order (ref/lib/eval.ml eval_functie): the leegwaarde is a STRICT `let` evaluated BEFORE any
-        // argument and unconditionally for every kind that reaches the fall-through — then the argumenten
-        // left to right (List.map, which OCaml's stdlib sequences with an explicit let-chain). TIJDSDUUR is
-        // routed earlier in eval_expr and is the file's SECOND right-to-left site: its two operands are the
-        // positional arguments of one Arith.tijdsduur application, so "tot" runs before "van", and its
-        // leegwaarde is never evaluated at all.
+        // ch. 5.11: an aggregation evaluates its contributors first, in wire order, and the leegwaarde AFTER them
+        // (the schema lists `argumenten` before `leegwaarde`). For the tijdsduur family the argument slot is a
+        // list — argument 0 is "van", argument 1 is "tot", in that order — and the leegwaarde is not an operand of
+        // that form at all.
         else if (e instanceof Expr.Functie fn) {
             if (fn.kind() == Expr.FunctieKind.TIJDSDUUR || fn.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR) {
-                for (int i = fn.argumenten().size() - 1; i >= 0; i--) padLoop(fn.argumenten().get(i), defs, geforceerd, gelezen, uit);
-            } else {
-                padLoop(fn.leegwaarde(), defs, geforceerd, gelezen, uit);
                 for (Expr a : fn.argumenten()) padLoop(a, defs, geforceerd, gelezen, uit);
+            } else {
+                for (Expr a : fn.argumenten()) padLoop(a, defs, geforceerd, gelezen, uit);
+                padLoop(fn.leegwaarde(), defs, geforceerd, gelezen, uit);
             }
         }
         else if (e instanceof Expr.TekstReeks t) {

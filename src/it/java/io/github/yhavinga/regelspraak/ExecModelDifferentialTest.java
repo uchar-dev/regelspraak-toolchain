@@ -5735,13 +5735,14 @@ class ExecModelDifferentialTest {
     }
 
     /**
-     * ch. 10.6 order — a {@code Begrensd} evaluates basis, then MAXIMUM, then minimum, and the companion table must
-     * model THAT and not the wire order. Evidence: {@code ref/lib/eval.ml} binds the basis with an explicit
-     * {@code let} and then passes BOTH bounds as labelled arguments of ONE {@code Arith.clamp} application, which
-     * OCaml evaluates right to left. Walking minimum first FABRICATED one companion and MISSED its mirror — the two
-     * cases below are exactly that pair, so an implementation that reverts the order fails on both at once.
+     * ch. 5.11 order — a {@code Begrensd} evaluates basis, then MINIMUM, then maximum, and both the companion
+     * table and the exec-model value path must run THAT order. The arbiter is {@code RUNTIME-SEMANTICS.md}
+     * ch. 5.11: operands run left to right in WIRE order, which for {@code Begrensd} is the schema's slot order
+     * (node, basis, minimum, maximum). The reference interpreter proves that rule — it sequences the walk
+     * explicitly — rather than being the rule; an argument order a host language happens to pick is not evidence.
+     * The two cases below are a mirror pair: an implementation that reverts to maximum-first fails on both at once.
      */
-    @Test void ch_10_6_begrensd_evalueert_maximum_voor_minimum() {
+    @Test void ch_5_11_begrensd_evalueert_minimum_voor_maximum() {
         String grens = """
             Objecttype de Passagier (mv: Passagiers) (bezield)
                 de prijs Numeriek (geheel getal);
@@ -5756,16 +5757,16 @@ class ExecModelDifferentialTest {
         String wortel = "de wortel van zijn leeftijd rekenkundig afgerond op 0 decimalen";
         java.util.function.Consumer<Passagier> leegBinder =
                 p -> { p.setPrijs(new BigDecimal(10)); p.setLeeftijd(new BigDecimal(-4)); };
-        // The read sits in the MINIMUM, so the MAXIMUM's wortel runs FIRST and deposits its reason; only then does
-        // the read raise the barrier and empty the Let.
-        eisLet("Begrensd: lezing in minimum, wortel in maximum -> de wortel draait nog",
+        // The read sits in the MINIMUM, so it runs FIRST, the barrier fires, and the maximum's wortel is never
+        // evaluated — no reason at all.
+        eisLet("Begrensd: lezing in minimum, wortel in maximum -> de wortel draait niet",
             grens.formatted("zijn prijs, met een minimum van de v en een maximum van " + wortel),
-            eenPassagier(leegBinder), PLAFOND, LetUitkomst.ok(null, 1));
-        // The mirror: the read sits in the MAXIMUM, so it runs FIRST, the barrier fires, and the minimum's wortel
-        // is never evaluated — no reason at all.
-        eisLet("Begrensd: wortel in minimum, lezing in maximum -> de wortel draait niet",
-            grens.formatted("zijn prijs, met een minimum van " + wortel + " en een maximum van de v"),
             eenPassagier(leegBinder), PLAFOND, LetUitkomst.ok(null, 0));
+        // The mirror: the read sits in the MAXIMUM, so the MINIMUM's wortel runs FIRST and deposits its reason;
+        // only then does the read raise the barrier and empty the Let.
+        eisLet("Begrensd: wortel in minimum, lezing in maximum -> de wortel draait nog",
+            grens.formatted("zijn prijs, met een minimum van " + wortel + " en een maximum van de v"),
+            eenPassagier(leegBinder), PLAFOND, LetUitkomst.ok(null, 1));
     }
 
     /**

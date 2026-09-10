@@ -2158,25 +2158,6 @@ public final class DrlTranspiler {
         return Frag.from(tekst, delen.toArray(new Frag[0]));
     }
 
-    /** The order call-by-need would FORCE the binders of one Let chain: walk the body's reads left to right and,
-     *  at each not-yet-forced binder, force that binder's OWN reads first (its value runs before it has a value).
-     *  A binder no read reaches is absent — clause 3. A cycle (which the frontend cannot produce, since a
-     *  definition only sees earlier ones) is left out rather than looped on; its reads then stay unbound and the
-     *  {@code BinderRef} arm markers, loudly. */
-    private static List<String> forceerVolgorde(Expr romp, Map<String, Expr> defs) {
-        java.util.LinkedHashSet<String> volgorde = new java.util.LinkedHashSet<>();
-        Set<String> bezig = new java.util.LinkedHashSet<>();
-        for (String r : leesVolgorde(romp)) forceer(r, defs, volgorde, bezig);
-        return new ArrayList<>(volgorde);
-    }
-
-    private static void forceer(String sleutel, Map<String, Expr> defs,
-                                java.util.LinkedHashSet<String> volgorde, Set<String> bezig) {
-        if (volgorde.contains(sleutel) || !defs.containsKey(sleutel) || !bezig.add(sleutel)) return;
-        for (String r : leesVolgorde(defs.get(sleutel))) forceer(r, defs, volgorde, bezig);
-        volgorde.add(sleutel);   // AFTER its own reads: forcing a value forces what that value reads
-    }
-
     /**
      * The STATIC IMAGE of ch. 10.6's call-by-need evaluation of one rule value: which binder reads precede each
      * node, and in which order the binders are forced. It is exact for this toolchain, and that is a property of
@@ -2189,36 +2170,46 @@ public final class DrlTranspiler {
      * statically — the toolchain's wire cannot express one, and this static image coincides with that probe on
      * every form the frontend can emit.
      *
-     * <p><b>The order table, swept against {@code ref/lib/eval.ml} per node type</b> (ref is the arbiter; OCaml
-     * evaluates a function application's arguments RIGHT to left, while {@code let}/{@code match} sequences are
-     * definite, so the two must be told apart):
+     * <p><b>The order table per node type.</b> The arbiter is {@code RUNTIME-SEMANTICS.md} ch. 5.11, which fixes
+     * ONE rule for the whole expression language: a node's operands are evaluated LEFT TO RIGHT IN WIRE ORDER —
+     * for a list-valued slot the list's own order, for named slots the order the schema gives them. The reference
+     * interpreter proves that rule; it is not itself the norm, so the argument order a host language happens to
+     * pick is never the evidence. Ch. 5.11's own sweep carries a verdict per node form; the rows below are the
+     * forms this frontend's wire can actually contain:
      * <ul>
-     *   <li>{@code Binair}, every op incl. date arithmetic — {@code let l = … in let r = … in} → links, rechts.
-     *       SAME as this walk.</li>
-     *   <li>{@code Begrensd} — basis via {@code let}, then both bounds as labelled args of one {@code Arith.clamp}
-     *       → basis, MAXIMUM, minimum. CORRECTED here (this walk ran minimum first).</li>
-     *   <li>{@code Afgerond} — one sub-expression, its basis. SAME.</li>
-     *   <li>{@code Functie}, general — {@code leegwaarde} is a strict {@code let} evaluated BEFORE any argument,
-     *       then the argumenten left to right. CORRECTED here (this walk ran the arguments first).</li>
-     *   <li>{@code Functie} TIJDSDUUR / ABSOLUTE_TIJDSDUUR — routed earlier in {@code eval_expr}; its two operands
-     *       are the positional args of one {@code Arith.tijdsduur} application → "tot" before "van", and its
-     *       leegwaarde is never evaluated. CORRECTED here.</li>
-     *   <li>{@code TekstReeks} — the delen left to right ({@code List.map}, an explicit let-chain in the stdlib).
-     *       SAME.</li>
-     *   <li>{@code Let} — body first; the value is forced at the FIRST read and memoised. SAME (it is this walk's
-     *       whole premise).</li>
+     *   <li>{@code Binair}, every op incl. date arithmetic — links, then rechts. SAME as this walk.</li>
+     *   <li>{@code Begrensd} — basis, then MINIMUM, then maximum (schema {@code $defs/Begrensd}: node, basis,
+     *       minimum, maximum); an absent bound evaluates nothing. CORRECTED here — this walk ran maximum first.
+     *       The EMITTED term was already in ch. 5.11 order ({@code rsBegrens(basis, min, max)}, whose arguments
+     *       Java and mvel evaluate left to right), so this correction moves the static bookkeeping only.</li>
+     *   <li>{@code Afgerond} — one sub-expression, its basis. SAME (ch. 5.11: invisible, one operand).</li>
+     *   <li>{@code Functie}, aggregations — the contributors in wire order, THEN the {@code leegwaarde} (schema
+     *       {@code $defs/Functie}: {@code argumenten} before {@code leegwaarde}). CORRECTED here — this walk ran
+     *       the leegwaarde first. Ch. 5.11 demands a second thing of the leegwaarde that this walk cannot give:
+     *       it is an operand, not a lazy alternative, so the EMITTED term must evaluate it whether or not its
+     *       value is used. The emitted terms are still lazy — see the ternaries in {@code dimensieAggregatie} and
+     *       in the SOM accumulate branch, and the transpile-time boolean in {@code tijdreeksSomAlleSet}. That is a
+     *       measured runtime divergence from ch. 5.11, not a bookkeeping one, and it is not fixed here.</li>
+     *   <li>{@code Functie} TIJDSDUUR / ABSOLUTE_TIJDSDUUR — the argument slot is a list: argument 0 is "van",
+     *       argument 1 is "tot", in that order; the leegwaarde is not an operand of this form. CORRECTED here —
+     *       this walk ran the arguments backwards. The emitted {@code rsTijdsduur(van, tot)} was already in
+     *       ch. 5.11 order.</li>
+     *   <li>{@code TekstReeks} — the inserted parts in part order. SAME.</li>
+     *   <li>{@code Let} — body first; the value is forced at the FIRST read and memoised, so it takes that read's
+     *       position in the enclosing order (ch. 5.11 calls this forced, and ch. 10.6 spells it out). SAME — it is
+     *       this walk's whole premise.</li>
      *   <li>{@code BinderRef} — forces the owning Let's value at the read site. SAME.</li>
-     *   <li>{@code DimensieCel} — ref evaluates NOTHING here: {@code eval.ml}'s bare wildcard arm faults on every
-     *       DimensieCel position. This walk descends into its base, which does NOT match that order; the
-     *       divergence is harmless for the single reason that a model containing one cannot be evaluated by the
-     *       arbiter at all, so no conformance outcome depends on it. (It is NOT harmless on the grounds that
-     *       descending only ADDS binders to a precondition: an added guard makes the companion more restrictive
-     *       and would itself be a missed companion.)</li>
+     *   <li>{@code DimensieCel} — one operand, so ch. 5.11's verdict is invisible: there is no order to get
+     *       wrong. This walk descends into its base, which is that one operand. (ref declines the form at
+     *       evaluation; under an engine-neutral norm that is a gap in the arbiter's coverage, not a different
+     *       order.)</li>
      * </ul>
-     * The remaining ref node forms (IfThenElse, Match, StructLiteral, FieldAccess, ListLiteral, Fold, MapList,
-     * FilterList, Invoke, Lambda, Construct, TemporalRead) have no RegelSpraak surface and cannot appear on the
-     * wire this frontend emits, so they are deliberately absent from the table. Conditions are absent for the same
-     * structural reason: a Let cannot span the voorwaarde field (boundary a).
+     * Ch. 5.11's remaining rows — {@code Vergelijking}, {@code Periode}, {@code ListLiteral},
+     * {@code StructLiteral}, {@code Invoke}, {@code Fold}, {@code MapList}, {@code FilterList}, {@code Match},
+     * {@code IfThenElse}, {@code Construct}, {@code Lambda}, {@code TemporalRead} — have no {@code Expr} form on
+     * the wire this frontend emits, or (Vergelijking, Periode) live on the condition side; either way this walk
+     * cannot reach them, so they are deliberately absent. Conditions are absent for a structural reason too: a Let
+     * cannot span the voorwaarde field (boundary a). {@code datum met} rides the {@code Functie} row above.
      *
      * <p>{@link Pad#voor} is the ordered list of binders read strictly BEFORE this node's operator applies (a
      * node's own operands are walked first, so a read inside an operand counts as preceding it).
@@ -2259,24 +2250,21 @@ public final class DrlTranspiler {
             }
             if (e instanceof Expr.Binair b) { loop(b.links(), defs); loop(b.rechts(), defs); }
             else if (e instanceof Expr.Afgerond a) loop(a.basis(), defs);
-            // ref order (ref/lib/eval.ml Begrensd): the basis is bound by an explicit `let`, then BOTH bounds are
-            // labelled arguments of ONE `Arith.clamp` call — and OCaml evaluates a call's arguments RIGHT to LEFT,
-            // so MAXIMUM runs before minimum. Walking min first fabricated one companion and missed its mirror
-            // (lens flanks A1/A2). Because the hoist decision and the companion precondition BOTH read this walk,
-            // correcting it here is what makes the emitted DRL agree with ref, not merely this table.
-            else if (e instanceof Expr.Begrensd g) { loop(g.basis(), defs); loop(g.maximum(), defs); loop(g.minimum(), defs); }
-            // ref order (ref/lib/eval.ml eval_functie): the leegwaarde is a STRICT `let` evaluated BEFORE any
-            // argument and unconditionally for every kind that reaches the fall-through — then the argumenten
-            // left to right (List.map, which OCaml's stdlib sequences with an explicit let-chain). TIJDSDUUR is
-            // routed earlier in eval_expr and is the file's SECOND right-to-left site: its two operands are the
-            // positional arguments of one Arith.tijdsduur application, so "tot" runs before "van", and its
-            // leegwaarde is never evaluated at all.
+            // ch. 5.11: basis, then MINIMUM, then maximum — the schema's slot order for Begrensd. The EMITTED term
+            // rsBegrens(basis, min, max) already ran in that order (Java evaluates arguments left to right), so
+            // what this line fixes is the STATIC bookkeeping alone: the hoist decision and the companion
+            // precondition both read this walk, and walking maximum first made them speak for the wrong operand.
+            else if (e instanceof Expr.Begrensd g) { loop(g.basis(), defs); loop(g.minimum(), defs); loop(g.maximum(), defs); }
+            // ch. 5.11: an aggregation evaluates its contributors first, in wire order, and the leegwaarde AFTER
+            // them (the schema lists `argumenten` before `leegwaarde`). For the tijdsduur family the argument slot
+            // is a list — argument 0 is "van", argument 1 is "tot", in that order — and the leegwaarde is not an
+            // operand of that form at all. Both emitted terms already ran in ch. 5.11 order.
             else if (e instanceof Expr.Functie fn) {
                 if (fn.kind() == Expr.FunctieKind.TIJDSDUUR || fn.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR) {
-                    for (int i = fn.argumenten().size() - 1; i >= 0; i--) loop(fn.argumenten().get(i), defs);
-                } else {
-                    loop(fn.leegwaarde(), defs);
                     for (Expr a : fn.argumenten()) loop(a, defs);
+                } else {
+                    for (Expr a : fn.argumenten()) loop(a, defs);
+                    loop(fn.leegwaarde(), defs);
                 }
             }
             else if (e instanceof Expr.TekstReeks t) {
@@ -2299,37 +2287,6 @@ public final class DrlTranspiler {
             return e instanceof Expr.Binair b
                     && (b.op() == Expr.BinOp.GEDEELD_DOOR || b.op() == Expr.BinOp.GEDEELD_DOOR_ABS);
         }
-    }
-
-    /** The binder reads of {@code e} in EVALUATION order — the same left-to-right order the emitted mvel term
-     *  evaluates its operands in ({@code rsPlus(links, rechts)}, {@code rsBegrens(basis, min, max)}, an argument
-     *  list), so "first in this list" really is "forced first at fire time". */
-    private static List<String> leesVolgorde(Expr e) {
-        List<String> uit = new ArrayList<>();
-        leesVolgorde(e, uit);
-        return uit;
-    }
-
-    private static void leesVolgorde(Expr e, List<String> uit) {
-        if (e == null) return;
-        if (e instanceof Expr.BinderRef b) { uit.add(binderSleutel(b.naam())); return; }
-        if (e instanceof Expr.Binair b) { leesVolgorde(b.links(), uit); leesVolgorde(b.rechts(), uit); return; }
-        if (e instanceof Expr.Afgerond a) { leesVolgorde(a.basis(), uit); return; }
-        if (e instanceof Expr.Begrensd g) {
-            leesVolgorde(g.basis(), uit); leesVolgorde(g.minimum(), uit); leesVolgorde(g.maximum(), uit); return;
-        }
-        if (e instanceof Expr.Functie f) {
-            for (Expr a : f.argumenten()) leesVolgorde(a, uit);
-            leesVolgorde(f.leegwaarde(), uit);
-            return;
-        }
-        if (e instanceof Expr.TekstReeks t) {
-            for (Expr.TekstReeks.Deel d : t.delen())
-                if (d instanceof Expr.TekstReeks.Ingevoegd i) leesVolgorde(i.expr(), uit);
-            return;
-        }
-        if (e instanceof Expr.DimensieCel c) { leesVolgorde(c.attribuut(), uit); return; }
-        if (e instanceof Expr.Let inner) { leesVolgorde(inner.value(), uit); leesVolgorde(inner.body(), uit); }
     }
 
     // ---------------- value expression ("then" side: getters) ----------------
