@@ -5780,6 +5780,58 @@ class ExecModelDifferentialTest {
         eisLet("Begrensd: wortel in minimum, lezing in maximum -> de wortel draait nog",
             grens.formatted("zijn prijs, met een minimum van " + wortel + " en een maximum van de v"),
             eenPassagier(leegBinder), PLAFOND, LetUitkomst.ok(null, 1));
+        // The pair above is settled by the STATIC walk: the wortel's reason is deposited by a companion rule whose
+        // precondition that walk builds. The exec-model value path ALSO sequences the two bounds at runtime (it
+        // forces them into locals before calling rsBegrens), and that sequence is NOT pinned here. Measured, not
+        // assumed: reverting only that runtime sequence leaves the whole suite green, and the shape that would
+        // catch it — a bound that THROWS rather than deposits — does not lower in the exec model at all ("regel
+        // (waarde buiten scope)"), so no differential witness for it can be written today. The sequence is
+        // ch.-5.11-conform by construction and by review; see the note on that site in ExecModelTranspiler.
+    }
+
+    /**
+     * ch. 5.11 order — a tijdsduur evaluates argument 0 ("van") before argument 1 ("tot"), the order the phrase
+     * names them in and the order the wire lists them in.
+     *
+     * <p>Making that observable takes a shape the row does not obviously admit: both operands are DATUM-typed, and
+     * the only order-visible effects this runtime carries are the ch. 10.6 barrier and a §6.5 throw, the latter
+     * numeric. The bridge is {@code datum met}, whose components ARE numeric — so a division can sit inside the
+     * "van" operand while a binder read sits in "tot". With the binder leeg, the emitted DRL settles it: under
+     * ch. 5.11 the division is hoisted ABOVE the barrier and runs; under the reverse order it is emitted BEHIND the
+     * barrier ({@code ($let0 == null ? null : rsGedeeld(…))}) and never runs. Measured both ways.
+     */
+    @Test void ch_5_11_tijdsduur_evalueert_van_voor_tot() {
+        String src = """
+            Eenheidsysteem Tijd
+                de maand            mnd
+                het jaar            jr       =    12 mnd
+            Objecttype de Vlucht (mv: Vluchten)
+                de verwacht vertrek Datum in dagen;
+                de totaalprijs Numeriek (geheel getal);
+                de uitstelduur Numeriek (geheel getal);
+                de reisduur Numeriek (geheel getal) met eenheid jr;
+            Regel R
+                geldig altijd
+                    De reisduur van een Vlucht moet gesteld worden op de tijdsduur van %s tot %s in hele jaren.
+                    Daarbij geldt: de v is de verwacht vertrek van een Vlucht.
+            """;
+        String deling = "de datum met jaar: de totaalprijs van een Vlucht gedeeld door de uitstelduur van een Vlucht, maand: 3 en dag: 15";
+        // the binder is LEEG (no verwacht vertrek) and the divisor is 0, so the division throws IF it is reached.
+        Supplier<List<Object>> leegBinder = () -> {
+            Vlucht v = new Vlucht();
+            v.setTotaalprijs(new BigDecimal(1));
+            v.setUitstelduur(BigDecimal.ZERO);
+            return List.of(v);
+        };
+        Function<List<Object>, Object> reisduur = l -> ((Vlucht) l.get(0)).getReisduur();
+        // "van" carries the division and runs FIRST, so it throws before the barrier in "tot" can suppress it.
+        eisLet("tijdsduur: deling in VAN, lezing in TOT -> de deling draait en faalt",
+            src.formatted(deling, "de v"), leegBinder, reisduur,
+            new LetUitkomst(null, -1, "ConsequenceException"));
+        // The mirror: the read is in "van" and runs first, the barrier fires, and the division in "tot" is never
+        // reached — the rule answers leeg instead of failing.
+        eisLet("tijdsduur: lezing in VAN, deling in TOT -> de deling draait niet",
+            src.formatted("de v", deling), leegBinder, reisduur, LetUitkomst.ok(null, 0));
     }
 
     /**
@@ -5787,12 +5839,15 @@ class ExecModelDifferentialTest {
      * lazy alternative: it runs every time the aggregation runs, whether or not the contributors leave its value to
      * be used, so its faults happen on documents where that value is discarded.
      *
-     * <p>The shape is uchar's {@code som-fallback-always-evaluated} red case: the contributor is filled, so the sum
-     * answers and the stand-in's value is thrown away — and the stand-in divides by zero. Under ch. 5.11 the
-     * document has no answer. Emitting the stand-in behind a count guard makes that division unreachable exactly
-     * there and the rule answers 6; that was the measured behaviour of both back-ends before this card, in the DRL
-     * text as well as in the exec model. The control below is the same rule with a harmless stand-in, which must
-     * still answer normally — the claim is unconditional EVALUATION, not an unconditional fault.
+     * <p>The situation is ADAPTED FROM uchar's {@code som-fallback-always-evaluated} red case; it is not that
+     * case's shape. That case sums a NAMED operand list ("de som van zijn deelvangst en zijn teller"), which this
+     * frontend does not lower at all, so the som here is over a navigated to-many set instead. What carries over is
+     * the situation: the contributor is filled, so the sum answers and the stand-in's value is thrown away — and
+     * the stand-in divides by zero. Under ch. 5.11 the document has no answer. Emitting the stand-in behind a count
+     * guard makes that division unreachable exactly there and the rule answers 6; that was the measured behaviour
+     * of both back-ends before this card, in the DRL text as well as in the exec model. The control below is the
+     * same rule with a harmless stand-in, which must still answer normally — the claim is unconditional
+     * EVALUATION, not an unconditional fault.
      */
     @Test void ch_5_11_som_leegwaarde_evalueert_ook_bij_gevulde_bijdragers() {
         String som = """

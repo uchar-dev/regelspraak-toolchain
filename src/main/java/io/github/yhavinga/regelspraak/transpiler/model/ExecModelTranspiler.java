@@ -490,7 +490,9 @@ public final class ExecModelTranspiler {
                 Block4<org.drools.model.Drools, Object, Object, Object> body = (drools, s, cnt, sum) -> {
                     // ch. 5.11: the stand-in is an OPERAND of the aggregation, so it is evaluated after the
                     // contributors and BEFORE the count selects — on filled documents too, where its value is
-                    // discarded but its faults and §9.5 deposits are not. Exec twin of the DRL rsSomLeeg call.
+                    // discarded but its FAULTS are not. Exec twin of the DRL rsSomLeeg call. (The clause's §9.5
+                    // deposit half is not delivered anywhere in this runtime: no companion is built inside an
+                    // aggregation operand at all — see foldLeeg's javadoc.)
                     BigDecimal leeg = fallback == null ? null : (BigDecimal) fallback.fn().apply(s, Map.of());
                     BigDecimal v0 = ((Number) cnt).longValue() == 0L ? leeg : RegelSpraakRuntime.toBd(sum);
                     Object v = herschaalWaarde(v0, fx.type(), doel.type());   // §4 EXACT restate the aggregate into the doel unit
@@ -921,7 +923,8 @@ public final class ExecModelTranspiler {
             final WaardeFn fb = agg.somFallback();
             if (global == null) {
                 Predicate3<Object, Object, Object> pred = (sum, cnt, subj) -> {   // (resultVar=sum, countVar=count, subjectVar)
-                    // ch. 5.11 the stand-in is an OPERAND: evaluated before the count selects, on filled documents too.
+                    // ch. 5.11 the stand-in is an OPERAND: evaluated before the count selects, on filled documents
+                    // too. Fault half only — see foldLeeg's javadoc for why no §9.5 deposit follows it here.
                     Object leeg = fb == null ? null : fb.fn().apply(subj, Map.of());
                     Object aggVal = ((Number) cnt).longValue() == 0L ? leeg : sum;
                     return neg != RegelSpraakRuntime.rsAggVergelijk(aggVal, RegelSpraakRuntime.toBd(rfn.apply(subj, Map.of())), opStr);
@@ -929,7 +932,7 @@ public final class ExecModelTranspiler {
                 resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) agg.countVar(), (Variable) subjectVar, (Predicate3) pred);
             } else {
                 Predicate4<Object, Object, Object, Object> pred = (sum, cnt, subj, gv) -> {   // + the bound global
-                    Object leeg = fb == null ? null : fb.fn().apply(subj, Map.of());   // ch. 5.11 operand, not a lazy alternative
+                    Object leeg = fb == null ? null : fb.fn().apply(subj, Map.of());   // ch. 5.11 operand (fault half; see foldLeeg)
                     Object aggVal = ((Number) cnt).longValue() == 0L ? leeg : sum;
                     return neg != RegelSpraakRuntime.rsAggVergelijk(aggVal, RegelSpraakRuntime.toBd(rfn.apply(subj, bindGlobal(globalNaam, gv))), opStr);
                 };
@@ -997,7 +1000,7 @@ public final class ExecModelTranspiler {
         if (agg.countVar() != null) {
             final WaardeFn fb = agg.somFallback();
             Predicate5<Object, Object, Object, Object, Object> pred = (sum, cnt, subj, o0, o1) -> {
-                Object leeg = fb == null ? null : fb.fn().apply(subj, Map.of());   // ch. 5.11 operand, not a lazy alternative
+                Object leeg = fb == null ? null : fb.fn().apply(subj, Map.of());   // ch. 5.11 operand (fault half; see foldLeeg)
                 Object aggVal = ((Number) cnt).longValue() == 0L ? leeg : sum;
                 return neg != RegelSpraakRuntime.rsAggVergelijk(aggVal,
                         RegelSpraakRuntime.toBd(rfn.apply(subj, gmap(List.of(n0, n1), unwrapGlobal(o0), unwrapGlobal(o1)))), opStr);
@@ -1066,8 +1069,16 @@ public final class ExecModelTranspiler {
      *  else the fold value. Mirrors the single-agg count-branch predicate.
      *
      *  <p>ch. 5.11: the stand-in is an OPERAND of the aggregation, not a lazy alternative — it is evaluated whether
-     *  or not the count ends up selecting it, so its faults and its §9.5 deposits happen on filled documents too.
-     *  Hence the local: the count SELECTS between two values that both already exist. */
+     *  or not the count ends up selecting it, so its FAULTS happen on filled documents too. Hence the local: the
+     *  count SELECTS between two values that both already exist.
+     *
+     *  <p>The fault half of the clause is all that is delivered, here and at the six sibling sites. Ch. 5.11 also
+     *  says the stand-in deposits its §9.5 reasons on those documents, and this runtime never builds a companion
+     *  deposit inside an aggregation operand: {@code verzamelDelingen}/{@code verzamelWortels} deliberately do not
+     *  descend into a {@code Functie}'s operands ("an aggregation divisor cannot be a plain re-readable guard"), so
+     *  the same division that gets a companion rule when it stands bare gets none inside a leegwaarde. Measured on
+     *  the emitted DRL. A pre-existing limit of the companion walk, not of the eager evaluation above — the deposit
+     *  half becomes reachable, and testable, only if those walks ever descend into aggregation operands. */
     private static Object foldLeeg(Object res, Object cnt, WaardeFn fb, Object subj) {
         Object leeg = fb == null ? null : fb.fn().apply(subj, Map.of());
         return ((Number) cnt).longValue() == 0L ? leeg : res;
@@ -3494,10 +3505,15 @@ public final class ExecModelTranspiler {
             if (minF != null) g.addAll(minF.globals());
             if (maxF != null) g.addAll(maxF.globals());
             return new WaardeFn((s, gm) -> {
-                // ch. 5.11: basis, then MINIMUM, then maximum. This is the one Begrensd site where the order is
-                // RUNTIME and not bookkeeping — the bounds are forced into locals here rather than being arguments
-                // of the rsBegrens call, so a bound that raises the ch. 10.6 barrier or faults does so in THIS
-                // order. Written out because the sequence, not the call's argument list, is what decides it.
+                // ch. 5.11: basis, then MINIMUM, then maximum. Here the bounds are forced into locals rather than
+                // passed as arguments of the rsBegrens call, so it is this SEQUENCE that decides their order, not
+                // an argument list.
+                // Unwitnessed, and measured to be so: reverting these two lines alone leaves the whole suite green.
+                // The shape that would catch it needs a bound whose evaluation THROWS, and such a Begrensd does not
+                // lower in this back-end at all ("regel (waarde buiten scope)"); a bound that DEPOSITS instead is
+                // caught by the static walk in padLoop, not here. So the line is ch.-5.11-conform by construction
+                // and by review, and no test would notice if it were swapped back — said plainly rather than
+                // implied by the correction.
                 Object basis = bfn.apply(s, gm);
                 Object min = mnfn == null ? null : mnfn.apply(s, gm);
                 Object max = mxfn == null ? null : mxfn.apply(s, gm);
@@ -3805,7 +3821,8 @@ public final class ExecModelTranspiler {
                 int idxSum = accVarsOut.size(); accVarsOut.add(agg.resultVar());
                 WaardeFn fallback = agg.somFallback();
                 return (s, g, a) -> {
-                    // ch. 5.11 the stand-in is an OPERAND: evaluated before the count selects, filled documents included.
+                    // ch. 5.11 the stand-in is an OPERAND: evaluated before the count selects, filled documents
+                    // included. Fault half only — see foldLeeg's javadoc for the missing §9.5 deposit half.
                     BigDecimal leeg = fallback == null ? null : (BigDecimal) fallback.fn().apply(s, Map.of());
                     return ((Number) a[idxCnt]).longValue() == 0L ? leeg : RegelSpraakRuntime.toBd(a[idxSum]);
                 };
@@ -5200,17 +5217,13 @@ public final class ExecModelTranspiler {
             padLoop(g.minimum(), defs, geforceerd, gelezen, uit);
             padLoop(g.maximum(), defs, geforceerd, gelezen, uit);
         }
-        // ch. 5.11: an aggregation evaluates its contributors first, in wire order, and the leegwaarde AFTER them
-        // (the schema lists `argumenten` before `leegwaarde`). For the tijdsduur family the argument slot is a
-        // list — argument 0 is "van", argument 1 is "tot", in that order — and the leegwaarde is not an operand of
-        // that form at all.
+        // ch. 5.11: the argumenten in wire order, and for an aggregation the leegwaarde AFTER them (the schema
+        // lists `argumenten` before `leegwaarde`). For the tijdsduur family the argument slot is a list — argument
+        // 0 is "van", argument 1 is "tot" — and the leegwaarde is not an operand of that form at all.
         else if (e instanceof Expr.Functie fn) {
-            if (fn.kind() == Expr.FunctieKind.TIJDSDUUR || fn.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR) {
-                for (Expr a : fn.argumenten()) padLoop(a, defs, geforceerd, gelezen, uit);
-            } else {
-                for (Expr a : fn.argumenten()) padLoop(a, defs, geforceerd, gelezen, uit);
+            for (Expr a : fn.argumenten()) padLoop(a, defs, geforceerd, gelezen, uit);
+            if (fn.kind() != Expr.FunctieKind.TIJDSDUUR && fn.kind() != Expr.FunctieKind.ABSOLUTE_TIJDSDUUR)
                 padLoop(fn.leegwaarde(), defs, geforceerd, gelezen, uit);
-            }
         }
         else if (e instanceof Expr.TekstReeks t) {
             for (Expr.TekstReeks.Deel d : t.delen())

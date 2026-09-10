@@ -2175,13 +2175,22 @@ public final class DrlTranspiler {
      * for a list-valued slot the list's own order, for named slots the order the schema gives them. The reference
      * interpreter proves that rule; it is not itself the norm, so the argument order a host language happens to
      * pick is never the evidence. Ch. 5.11's own sweep carries a verdict per node form; the rows below are the
-     * forms this frontend's wire can actually contain:
+     * forms this frontend's wire can actually contain. Each row says whether a test PINS it, because a corrected
+     * row nothing can falsify is a claim, not a result — measured by reverting each row alone and re-running the
+     * whole suite.
+     *
+     * <p>Where a row says the EMITTED term already ran in ch. 5.11 order, that rests on arguments being evaluated
+     * left to right. For the exec-model back-end, which is plain Java, the JLS guarantees it. For the DRL back-end
+     * it is mvel, whose argument order is settled practice but carries no comparable guarantee, and nothing in this
+     * build pins it. Named as the residual risk it is, rather than left as an assumption:
      * <ul>
      *   <li>{@code Binair}, every op incl. date arithmetic — links, then rechts. SAME as this walk.</li>
      *   <li>{@code Begrensd} — basis, then MINIMUM, then maximum (schema {@code $defs/Begrensd}: node, basis,
      *       minimum, maximum); an absent bound evaluates nothing. CORRECTED here — this walk ran maximum first.
      *       The EMITTED term was already in ch. 5.11 order ({@code rsBegrens(basis, min, max)}, whose arguments
-     *       Java and mvel evaluate left to right), so this correction moves the static bookkeeping only.</li>
+     *       Java and mvel evaluate left to right), so this correction moves the static bookkeeping only.
+     *       WITNESSED: {@code ch_5_11_begrensd_evalueert_minimum_voor_maximum} fails on both halves of its mirror
+     *       pair when this row is reverted.</li>
      *   <li>{@code Afgerond} — one sub-expression, its basis. SAME (ch. 5.11: invisible, one operand).</li>
      *   <li>{@code Functie}, aggregations — the contributors in wire order, THEN the {@code leegwaarde} (schema
      *       {@code $defs/Functie}: {@code argumenten} before {@code leegwaarde}). CORRECTED here — this walk ran
@@ -2189,11 +2198,21 @@ public final class DrlTranspiler {
      *       an operand, not a lazy alternative, so the EMITTED term must evaluate it whether or not its value is
      *       used. That is a RUNTIME property and it is carried by the emitters, not here — {@code rsSomLeeg} and
      *       {@code rsLeegwaarde} are calls rather than ternaries, and {@code tijdreeksSomAlleSet} passes the
-     *       stand-in's value rather than a flag.</li>
+     *       stand-in's value rather than a flag (those three ARE witnessed).
+     *       The ORDER half of this row is NOT falsifiable with the current runtime, and the reason is structural
+     *       rather than a missing test: an order is only visible when TWO operand positions each carry an effect,
+     *       and in every form this frontend lowers with a leegwaarde the {@code argumenten} position is a bare
+     *       {@code AttribuutRef} — the accumulate demands one — so it can raise no barrier and throw no fault. The
+     *       one aggregation whose arguments ARE arbitrary expressions, the listed MIN/MAX/EERSTE/LAATSTE fold,
+     *       carries no leegwaarde clause: the grammar rejects it. Reverting this row alone leaves the suite green,
+     *       measured.</li>
      *   <li>{@code Functie} TIJDSDUUR / ABSOLUTE_TIJDSDUUR — the argument slot is a list: argument 0 is "van",
      *       argument 1 is "tot", in that order; the leegwaarde is not an operand of this form. CORRECTED here —
      *       this walk ran the arguments backwards. The emitted {@code rsTijdsduur(van, tot)} was already in
-     *       ch. 5.11 order.</li>
+     *       ch. 5.11 order. WITNESSED: {@code ch_5_11_tijdsduur_evalueert_van_voor_tot}. Both operands are DATUM
+     *       positions, where neither of this runtime's two order-visible effects normally fits; the witness gets in
+     *       through {@code datum met}, whose components are numeric, so a division sits in "van" while a binder
+     *       read sits in "tot".</li>
      *   <li>{@code TekstReeks} — the inserted parts in part order. SAME.</li>
      *   <li>{@code Let} — body first; the value is forced at the FIRST read and memoised, so it takes that read's
      *       position in the enclosing order (ch. 5.11 calls this forced, and ch. 10.6 spells it out). SAME — it is
@@ -2251,21 +2270,18 @@ public final class DrlTranspiler {
             if (e instanceof Expr.Binair b) { loop(b.links(), defs); loop(b.rechts(), defs); }
             else if (e instanceof Expr.Afgerond a) loop(a.basis(), defs);
             // ch. 5.11: basis, then MINIMUM, then maximum — the schema's slot order for Begrensd. The EMITTED term
-            // rsBegrens(basis, min, max) already ran in that order (Java evaluates arguments left to right), so
-            // what this line fixes is the STATIC bookkeeping alone: the hoist decision and the companion
+            // rsBegrens(basis, min, max) already ran in that order (Java and mvel evaluate arguments left to
+            // right), so what this line fixes is the STATIC bookkeeping alone: the hoist decision and the companion
             // precondition both read this walk, and walking maximum first made them speak for the wrong operand.
             else if (e instanceof Expr.Begrensd g) { loop(g.basis(), defs); loop(g.minimum(), defs); loop(g.maximum(), defs); }
-            // ch. 5.11: an aggregation evaluates its contributors first, in wire order, and the leegwaarde AFTER
-            // them (the schema lists `argumenten` before `leegwaarde`). For the tijdsduur family the argument slot
-            // is a list — argument 0 is "van", argument 1 is "tot", in that order — and the leegwaarde is not an
-            // operand of that form at all. Both emitted terms already ran in ch. 5.11 order.
+            // ch. 5.11: the argumenten in wire order, and for an aggregation the leegwaarde AFTER them (the schema
+            // lists `argumenten` before `leegwaarde`). For the tijdsduur family the argument slot is a list —
+            // argument 0 is "van", argument 1 is "tot" — and the leegwaarde is not an operand of that form at all,
+            // which is the only thing its arm still has to say. Both emitted terms already ran in ch. 5.11 order.
             else if (e instanceof Expr.Functie fn) {
-                if (fn.kind() == Expr.FunctieKind.TIJDSDUUR || fn.kind() == Expr.FunctieKind.ABSOLUTE_TIJDSDUUR) {
-                    for (Expr a : fn.argumenten()) loop(a, defs);
-                } else {
-                    for (Expr a : fn.argumenten()) loop(a, defs);
+                for (Expr a : fn.argumenten()) loop(a, defs);
+                if (fn.kind() != Expr.FunctieKind.TIJDSDUUR && fn.kind() != Expr.FunctieKind.ABSOLUTE_TIJDSDUUR)
                     loop(fn.leegwaarde(), defs);
-                }
             }
             else if (e instanceof Expr.TekstReeks t) {
                 for (Expr.TekstReeks.Deel d : t.delen())
@@ -2985,7 +3001,7 @@ public final class DrlTranspiler {
         // §5.8.2 "of … als die er niet zijn": the stand-in's VALUE rides along, evaluated unconditionally as an
         // argument of the fold call (ch. 5.11) and after the contributors the accumulate above has bound. It used
         // to be flattened to a boolean here, which was two defects in one line: the stand-in never ran (so its
-        // faults and §9.5 deposits never happened) and whatever it said was DISCARDED — "of 7 als die er niet zijn"
+        // faults never happened) and whatever it said was DISCARDED — "of 7 als die er niet zijn"
         // folded an all-empty period to 0. An unlowerable stand-in markers the whole fold, as everywhere else.
         Frag lw = f.leegwaarde() != null ? waarde(acc, f.leegwaarde(), subject) : Frag.ok("null");
         if (lw.marker()) return null;
@@ -3427,11 +3443,14 @@ public final class DrlTranspiler {
         // unconditional 0, which the plain sum() over an empty accumulate already yields.
         // Needs a resolved join and a plain attribute argument; otherwise fall through.
         // ch. 5.11: the count SELECTS, it does not GUARD. rsSomLeeg is a call, so the stand-in is evaluated on
-        // every firing — after the contributors, which the accumulate has already folded — and its faults and its
-        // §9.5 deposits happen on documents whose contributors are filled and whose stand-in value is discarded.
-        // The ternary this replaces skipped it there. The term is emitted TWICE per rule (the idempotence guard and
-        // the setter), so the stand-in runs twice; a deposit is keyed by (rule × subject) and a fault is the same
-        // fault either way, so that repetition changes no outcome.
+        // every firing — after the contributors, which the accumulate has already folded — and its FAULTS happen on
+        // documents whose contributors are filled and whose stand-in value is discarded. The ternary this replaces
+        // skipped it there. The term is emitted TWICE per rule (the idempotence guard and the setter), so the
+        // stand-in runs twice; a fault is the same fault either way, so that repetition changes no outcome.
+        // Only the fault half of the clause is delivered. Ch. 5.11 also gives the stand-in §9.5 deposits, and this
+        // toolchain builds none inside an aggregation operand: verzamelDelingen does not descend into a Functie's
+        // operands (see its javadoc), so a division that gets a companion rule when bare gets none in a leegwaarde.
+        // Measured, and a limit of the companion walk rather than of this emission.
         if (f.kind() == Expr.FunctieKind.SOM
                 && arg instanceof Expr.AttribuutRef a && !scope.marker()) {
             String cnt = "$n" + n;

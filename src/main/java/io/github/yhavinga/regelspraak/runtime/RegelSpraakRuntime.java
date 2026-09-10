@@ -208,9 +208,19 @@ public final class RegelSpraakRuntime {
      *  <p>Its whole reason for existing is that it is a CALL and not a ternary. Ch. 5.11 makes the leegwaarde an
      *  ORDINARY OPERAND of the aggregation node — the last one, after the contributors — so it is evaluated every
      *  time the node is, whether or not its value ends up being the answer. A ternary skips it on a document with
-     *  filled contributors, and with it every fault and every §9.5 deposit the stand-in owes. Java and mvel evaluate
-     *  a call's arguments left to right, so passing the fold and the stand-in as arguments buys ch. 5.11's ORDER and
-     *  its UNCONDITIONALITY in one move.
+     *  filled contributors, and with it every fault the stand-in owes. Java and mvel evaluate a call's arguments
+     *  left to right, so passing the fold and the stand-in as arguments buys ch. 5.11's ORDER and its
+     *  UNCONDITIONALITY in one move. (mvel's left-to-right argument order is practice, not a JLS-grade guarantee,
+     *  and nothing in this build pins it; the exec-model back-end, which is plain Java, is where the guarantee is
+     *  hard. Stated as the residual risk it is.)
+     *
+     *  <p>What is delivered here is the FAULT half of ch. 5.11's unconditionality, and only that. The clause also
+     *  says the stand-in's §9.5 deposits happen on documents whose contributors are filled — and this runtime
+     *  builds NO companion deposit inside an aggregation operand at all: {@code verzamelDelingen} deliberately does
+     *  not descend into a {@code Functie}'s operands, so the same division that gets a companion rule when it
+     *  stands bare gets none inside a leegwaarde. Measured. That is a pre-existing limit of the companion walk, not
+     *  something this helper can repair; the deposit half becomes testable only if companion walks ever descend
+     *  into aggregation operands.
      *
      *  <p>Returns {@link BigDecimal} rather than Object because the DRL writes the answer straight into a
      *  {@code Numeriek} attribute and mvel resolves the setter in STRICT mode; an exact {@link Breuk} stand-in
