@@ -1,6 +1,10 @@
 package io.github.yhavinga.regelspraak;
 
 import io.github.yhavinga.regelspraak.emit.IrEmitter;
+import io.github.yhavinga.regelspraak.ir.Bron;
+import io.github.yhavinga.regelspraak.ir.Conditie;
+import io.github.yhavinga.regelspraak.ir.Expr;
+import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
 import org.junit.jupiter.api.Test;
@@ -326,5 +330,49 @@ class IrEmitterTest {
                 () -> "beide annotaties moeten in bronvolgorde na geldigheid staan:\n" + c);
         assertEquals(c.indexOf("bronAnnotaties"), c.lastIndexOf("bronAnnotaties"),
                 () -> "alleen de geannoteerde regel draagt het veld (geen spoor bij afwezigheid, blanco vervalt):\n" + c);
+    }
+
+    /**
+     * IR-SPEC ch. 4.10 — {@code IfThenElse} is NEVER EMITTER-PRODUCED, and this pins what that means for this
+     * class. No RegelSpraak construct lowers to the node, so the resolver builds none and no golden's re-emission
+     * can meet one; the sealed {@code Expr} union nevertheless forces an arm here, and that arm REFUSES rather
+     * than serialising. The reason is that an emit path nothing exercises could carry a wrong key order or a
+     * wrong field name — the wire spells them {@code condition}/{@code then}/{@code else} — and no gate would
+     * ever read those bytes: a loud refusal cannot be silently wrong, a dead serialiser can. Pinned as a TYPE
+     * and a reason, so the choice is checked instead of merely commented.
+     *
+     * <p>The node is grafted onto an otherwise resolver-built model, because the resolver itself will not
+     * produce one — which is the claim under test.
+     */
+    @Test void een_ifthenelse_wordt_geweigerd_want_de_emitter_produceert_hem_nooit() {
+        RegelSpraakModel m = Resolver.resolve("""
+            Objecttype de Jutter
+                de vondstteller Numeriek (geheel getal);
+                de jaarsom Numeriek (geheel getal);
+            Regel jaarsom
+                geldig altijd
+                    De jaarsom van een Jutter moet berekend worden als de vondstteller van de Jutter min 6.
+            """);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+        assertEquals(1, m.resolvedRegels.size());
+        // sanity: the resolver produced no such node by itself — "never emitter-produced" starts there.
+        ResolvedRegel origineel = m.resolvedRegels.get(0);
+        assertFalse(Expr.bevat(origineel.waarde(), x -> x instanceof Expr.IfThenElse),
+                "de resolver bouwt de vorm niet");
+
+        Expr keuze = new Expr.IfThenElse(
+                new Conditie.Vergelijking(Conditie.Operator.GROTER, origineel.waarde(),
+                        new Expr.Literal("0", origineel.waarde().type(), Bron.synthetisch("0")),
+                        Bron.synthetisch("groter dan 0")),
+                origineel.waarde(), origineel.waarde(), origineel.waarde().type(),
+                Bron.synthetisch("als … dan … anders …"));
+        m.resolvedRegels.set(0, new ResolvedRegel(origineel.naam(), origineel.soort(), origineel.doel(),
+                keuze, origineel.voorwaarde(), origineel.geldigheid()));
+
+        UnsupportedOperationException geweigerd =
+                assertThrows(UnsupportedOperationException.class, () -> IrEmitter.emit(m),
+                        "de emitter schrijft deze vorm niet; hij weigert haar");
+        assertTrue(geweigerd.getMessage().contains("never emitter-produced"),
+                () -> "de weigering noemt de reden: " + geweigerd.getMessage());
     }
 }

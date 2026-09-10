@@ -53,6 +53,12 @@ public sealed interface Expr {
             // STRUCTURAL question ("does this tree mention X?"). A scan that stopped at the binder would
             // under-report a Rekendatum/parameter read hidden in a Let value.
             case Let l         -> bevat(l.value(), toets) || bevat(l.body(), toets);
+            // Both branches are children, and so is every Expr operand of the guard: exactly one branch RUNS
+            // (ch. 10.2), but the question this scan answers is structural, and a scan that saw only the taken
+            // branch would have to know a runtime verdict it cannot have. The guard's operands are reached
+            // through the shared Conditie walk, the same way a Functie's filter is.
+            case IfThenElse k  -> bevat(k.dan(), toets) || bevat(k.anders(), toets)
+                                  || Conditie.bevatExpr(k.conditie(), toets);
             case Literal ignored      -> false;
             case AttribuutRef ignored -> false;
             case ParameterRef ignored -> false;
@@ -235,6 +241,22 @@ public sealed interface Expr {
     /** WF-064: a read of the nearest enclosing {@link Let} binder (or match-arm binder) of this name.
      *  A bound binder is never leeg — the read either yields a gevuld value or ends its owning Let. */
     record BinderRef(String naam, Datatype type, Bron bron) implements Expr {}
+
+    /**
+     * IR-SPEC ch. 4.10 / RUNTIME-SEMANTICS ch. 10.2: the value-level conditional. The guard is evaluated
+     * under the ordinary comparison discipline (its operands disciplined to bound-non-leeg reads by WF-077),
+     * then EXACTLY the chosen branch is evaluated — strict, no coalesce, the other branch not evaluated at
+     * all. Both branches agree on {@code type}, which is the node's. WF-069 restricts where it may stand.
+     *
+     * <p>Never emitter-produced: no RegelSpraak construct lowers to it, so {@link io.github.yhavinga.regelspraak.emit.IrEmitter}
+     * writes none and no {@code bron.rgs} golden carries one. It is here because the union is the shape
+     * every consumer walks: a wire form parsed into anything else is an opaque leaf to {@link #bevat} and
+     * to every hand-written tree walk built on it, which under-report in silence.
+     *
+     * <p>The wire spells its fields {@code condition} / {@code then} / {@code else}; two of those are Java
+     * keywords, so the record names them as the semantics does.
+     */
+    record IfThenElse(Conditie conditie, Expr dan, Expr anders, Datatype type, Bron bron) implements Expr {}
 
     /** A built-in reckoning constant or referent: Rekendatum, Rekenjaar, hij, de dag. */
     record Constante(String naam, Datatype type, Bron bron) implements Expr {}

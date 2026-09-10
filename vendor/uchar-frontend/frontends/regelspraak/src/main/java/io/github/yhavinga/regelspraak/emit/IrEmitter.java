@@ -507,6 +507,15 @@ public final class IrEmitter {
                 w.key("type"); datatype(c.type());
                 w.key("bron").value(c.bron().snippet());
             }
+            // ch. 4.10's third cluster node is NEVER EMITTER-PRODUCED: no RegelSpraak construct lowers to an
+            // IfThenElse, so the resolver builds none and this arm is unreachable from every emitter path.
+            // It exists because the union is sealed and exhaustive here — and it REFUSES rather than
+            // serialising: an emit path nothing exercises could carry a wrong key order or a wrong field name
+            // (the wire spells them condition/then/else) and no gate would ever read those bytes. A loud
+            // refusal cannot be silently wrong; a dead serialiser can.
+            case Expr.IfThenElse ignored -> throw new UnsupportedOperationException(
+                    "IfThenElse is never emitter-produced (IR-SPEC ch. 4.10): the resolver builds none, "
+                            + "so this emitter has no verified wire shape for it");
             case Expr.Onopgelost o -> {
                 w.key("node").value("Onopgelost");
                 w.key("type"); datatype(o.type());
