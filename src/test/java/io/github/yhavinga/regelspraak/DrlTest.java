@@ -1214,8 +1214,13 @@ class DrlTest {
 
     @Test void lege_sommatie_is_leegwaarde_tenzij_een_fallback_is_opgegeven() {
         // §5.8.2: an empty sommatie is a leegwaarde, NOT 0 — Drools sum() returns 0, so the
-        // non-empty contributors are counted and the result branches on that count. With
-        // "of 0 als die er niet zijn" the empty case takes the fallback instead.
+        // non-empty contributors are counted and the count SELECTS between the fold and the
+        // stand-in. With "of 0 als die er niet zijn" the empty case takes the fallback instead.
+        // ch. 5.11: the selection is a CALL (rsSomLeeg), never a ternary. The stand-in is an
+        // operand of the aggregation, so it must be evaluated on every firing — a ternary skips
+        // it whenever a contributor is filled, and with it every fault and §9.5 deposit it owes.
+        // The shape is asserted here because that is what makes the property visible in the DRL;
+        // the RUNTIME half is pinned by ExecModelDifferentialTest#ch_5_11_som_leegwaarde_… .
         String src = """
             Objecttype de Vlucht
                 de somMet Numeriek (geheel getal);
@@ -1237,9 +1242,63 @@ class DrlTest {
         // empty contributors counted; only non-null values summed
         assertTrue(drl.contains("$e1 : Passagier( reis == $subject, prijs != null )"), () -> "leeg-filter ontbreekt:\n" + drl);
         assertTrue(drl.contains("$n1 : count($e1)"), () -> "count-bewaking ontbreekt:\n" + drl);
-        // fallback present -> 0 on empty; absent -> leegwaarde (null)
-        assertTrue(drl.contains("setSomMet( ($n1 == 0 ? new java.math.BigDecimal(\"0\") : $acc1) )"), () -> "fallback-tak:\n" + drl);
-        assertTrue(drl.contains("setSomZonder( ($n1 == 0 ? null : $acc1) )"), () -> "leegwaarde-tak:\n" + drl);
+        // fallback present -> 0 on empty; absent -> leegwaarde (null). Both as ARGUMENTS of rsSomLeeg.
+        assertTrue(drl.contains("setSomMet( rsSomLeeg($n1, $acc1, new java.math.BigDecimal(\"0\")) )"), () -> "fallback-tak:\n" + drl);
+        assertTrue(drl.contains("setSomZonder( rsSomLeeg($n1, $acc1, null) )"), () -> "leegwaarde-tak:\n" + drl);
+        assertFalse(drl.contains("$n1 == 0 ?"), () -> "ch. 5.11: de leegwaarde mag niet achter een ternary staan:\n" + drl);
+    }
+
+    @Test void som_leegwaarde_wordt_onvoorwaardelijk_uitgestoten_ook_als_hij_kan_falen() {
+        // ch. 5.11 the stand-in is an OPERAND: a fault-capable "of … als die er niet zijn" is emitted as an
+        // argument, so it runs on every firing — including documents whose contributors are filled and whose
+        // stand-in value is therefore discarded. Emitting it inside a ternary would make its §6.5 division
+        // unreachable exactly there, which is the divergence this shape exists to prevent.
+        String src = """
+            Objecttype de Vangst
+                de vangstsom Numeriek (geheel getal);
+                de teller Numeriek (geheel getal);
+                de noemer Numeriek (geheel getal);
+            Objecttype de Deelvangst
+                de omvang Numeriek (geheel getal);
+            Feittype Vangst van deelvangsten
+                de vangst Vangst
+                de deelvangst Deelvangst
+            Eén vangst betreft meerdere deelvangsten
+            Regel vangstsom
+                geldig altijd
+                    De vangstsom van een vangst moet berekend worden als de som van de omvang van alle deelvangsten van de vangst of zijn teller gedeeld door zijn noemer als die er niet zijn.
+            """;
+        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        assertTrue(drl.contains("rsSomLeeg($n1, $acc1, rsGedeeld($subject.getTeller(), $subject.getNoemer()))"),
+                () -> "de faalbare leegwaarde moet een ARGUMENT zijn, niet een ternary-tak:\n" + drl);
+        assertFalse(drl.contains("$n1 == 0 ?"), () -> "ch. 5.11: geen luie leegwaarde:\n" + drl);
+    }
+
+    @Test void temporele_set_som_draagt_de_leegwaarde_als_waarde_niet_als_vlag() {
+        // The temporal set-som used to flatten the stand-in to a boolean ("is there a clause?"), which threw the
+        // clause's VALUE away: "of 7 als die er niet zijn" folded an all-empty period to 0. It rides as a value now.
+        String src = """
+            Domein Bedrag is van het type Numeriek (geheel getal)
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de belastingvermindering per maand Bedrag voor elke maand;
+            Objecttype de Vlucht (mv: Vluchten)
+                de totale bijdrage Bedrag voor elke maand;
+            Feittype reis van passagier
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis heeft meerdere passagiers
+            Regel R
+                geldig altijd
+                    De totale bijdrage van een Vlucht moet berekend worden als de som van de belastingvermindering per maand van alle passagiers van de Vlucht %s.
+            """;
+        String zeven = DrlTranspiler.transpile(Resolver.resolve(src.formatted("of 7 als die er niet zijn")));
+        assertTrue(zeven.contains("rsTijdSomAlle($tl1, new java.math.BigDecimal(\"7\"), Segment.class)"),
+                () -> "de leegwaarde 7 moet als WAARDE meegaan:\n" + zeven);
+        String nul = DrlTranspiler.transpile(Resolver.resolve(src.formatted("of 0 als die er niet zijn")));
+        assertTrue(nul.contains("rsTijdSomAlle($tl1, new java.math.BigDecimal(\"0\"), Segment.class)"), () -> "leegwaarde 0:\n" + nul);
+        assertNotEquals(zeven, nul, "7 en 0 mogen niet dezelfde DRL opleveren — dat was de weggooibug");
+        String geen = DrlTranspiler.transpile(Resolver.resolve(src.formatted("")));
+        assertTrue(geen.contains("rsTijdSomAlle($tl1, null, Segment.class)"), () -> "zonder clausule blijft leeg:\n" + geen);
     }
 
     @Test void drempelkwantoren_worden_booleaanse_telcombinaties() {

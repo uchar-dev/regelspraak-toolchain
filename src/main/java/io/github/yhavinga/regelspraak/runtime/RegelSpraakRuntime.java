@@ -202,6 +202,32 @@ public final class RegelSpraakRuntime {
         };
     }
 
+    /** ch. 5.11 — SELECT the count-bound aggregate's answer AFTER both candidates exist: count==0 answers the
+     *  leegwaarde (a SOM's "of … als die er niet zijn" stand-in, null for MIN/MAX), else the fold value.
+     *
+     *  <p>Its whole reason for existing is that it is a CALL and not a ternary. Ch. 5.11 makes the leegwaarde an
+     *  ORDINARY OPERAND of the aggregation node — the last one, after the contributors — so it is evaluated every
+     *  time the node is, whether or not its value ends up being the answer. A ternary skips it on a document with
+     *  filled contributors, and with it every fault and every §9.5 deposit the stand-in owes. Java and mvel evaluate
+     *  a call's arguments left to right, so passing the fold and the stand-in as arguments buys ch. 5.11's ORDER and
+     *  its UNCONDITIONALITY in one move.
+     *
+     *  <p>Returns {@link BigDecimal} rather than Object because the DRL writes the answer straight into a
+     *  {@code Numeriek} attribute and mvel resolves the setter in STRICT mode; an exact {@link Breuk} stand-in
+     *  collapses through {@link #toBd}, exactly as the setter would force anyway. Only a SOM reaches here — MIN/MAX
+     *  carries no §5.8.2 stand-in form. The single implementation; the DRL imports it (single-runtime principle). */
+    public static BigDecimal rsSomLeeg(Object cnt, Object som, Object leegwaarde) {
+        return toBd(((Number) cnt).longValue() == 0L ? leegwaarde : som);
+    }
+
+    /** ch. 5.11 — the null-discriminated twin of {@link #rsSomLeeg}, for a fold that reports its own emptiness as
+     *  null (the §5.8.5 dimensie fold): the leegwaarde answers when the fold is leeg. Same reason for being a call
+     *  rather than a ternary, and the same BigDecimal return for the same strict-mode reason — see
+     *  {@link #rsSomLeeg}. The single implementation; the DRL imports it. */
+    public static BigDecimal rsLeegwaarde(Object waarde, Object leegwaarde) {
+        return toBd(waarde == null ? leegwaarde : waarde);
+    }
+
     // ---- §6.x leegwaarde / arithmetic (ported from the DRL helper bodies as phases land) ----
     /** §6.2-6.4 Tabel: an empty (null) numeric operand counts as 0 in +/-. The single implementation; the DRL imports it (single-runtime principle). */
     public static BigDecimal rsNul(Object o) { return o == null ? BigDecimal.ZERO : toBd(o); }
@@ -1011,12 +1037,17 @@ public final class RegelSpraakRuntime {
      *  §5.1.4 "voor elke periode tussen twee knips" fold, but with the §5.8.2 (NOT §6.1.4 plus) leegwaarde rule:
      *  in a period, an operand that carries no value is SKIPPED (not treated as 0), and only when EVERY operand is
      *  leeg in that period is the result leeg — "een lege waarde plus een lege waarde is nog steeds een lege
-     *  waarde" (§5.8.2 line 2120). {@code fallbackNul}=true is the "of 0 als die er niet zijn" clause (§5.8.2 line
-     *  2128): an all-empty period then yields 0 instead of leeg. Adjacent equal-value (incl. equal-leeg) segments
-     *  are coalesced, so an unchanged value carries no knip. An empty operand LIST (no elements at all) yields an
-     *  empty timeline (the SOM over 0 contributors is leeg everywhere — or a single 0-span under fallbackNul is not
-     *  emitted, since there is no knip to bound it). The single implementation; the DRL imports it (single-runtime principle). */
-    public static List<Object> rsTijdSomAlle(List<? extends List<?>> reeksen, boolean fallbackNul, Class<?> segCls) {
+     *  waarde" (§5.8.2 line 2120). {@code leegwaarde} is the VALUE of the "of … als die er niet zijn" clause
+     *  (§5.8.2 line 2128), or null when the clause is absent: an all-empty period then yields that value instead of
+     *  leeg. It is a VALUE and not a flag on purpose — ch. 5.11 makes the stand-in an ordinary operand of the node,
+     *  so the caller evaluates it unconditionally and hands the result over; a boolean flag both dropped whatever
+     *  the clause actually said (every stand-in read as 0) and made its evaluation conditional. Adjacent
+     *  equal-value (incl. equal-leeg) segments are coalesced, so an unchanged value carries no knip. An empty
+     *  operand LIST (no elements at all) yields an empty timeline (the SOM over 0 contributors is leeg everywhere —
+     *  or a single leegwaarde-span is not emitted, since there is no knip to bound it). The single implementation;
+     *  the DRL imports it (single-runtime principle). */
+    public static List<Object> rsTijdSomAlle(List<? extends List<?>> reeksen, Object leegwaarde, Class<?> segCls) {
+        BigDecimal fallback = toBd(leegwaarde);
         TreeMap<LocalDate, Boolean> knipSet = new TreeMap<>();
         if (reeksen != null) for (List<?> r : reeksen) for (Object o : leeg(r)) {
             LocalDate v = segVan(o), t = segTot(o);
@@ -1032,7 +1063,7 @@ public final class RegelSpraakRuntime {
                     BigDecimal w = waardeOpDag(r, prev);
                     if (w != null) som = som == null ? w : som.add(w);
                 }
-                if (som == null && fallbackNul) som = BigDecimal.ZERO;
+                if (som == null) som = fallback;
                 if (!lopendeGezet) { lopendeVan = prev; lopendeWaarde = som; lopendeGezet = true; }
                 else if (!gelijkeWaarde(lopendeWaarde, som)) {
                     uit.add(newSegment(segCls, lopendeVan, prev, lopendeWaarde)); lopendeVan = prev; lopendeWaarde = som;

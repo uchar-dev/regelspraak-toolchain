@@ -2185,11 +2185,11 @@ public final class DrlTranspiler {
      *   <li>{@code Afgerond} — one sub-expression, its basis. SAME (ch. 5.11: invisible, one operand).</li>
      *   <li>{@code Functie}, aggregations — the contributors in wire order, THEN the {@code leegwaarde} (schema
      *       {@code $defs/Functie}: {@code argumenten} before {@code leegwaarde}). CORRECTED here — this walk ran
-     *       the leegwaarde first. Ch. 5.11 demands a second thing of the leegwaarde that this walk cannot give:
-     *       it is an operand, not a lazy alternative, so the EMITTED term must evaluate it whether or not its
-     *       value is used. The emitted terms are still lazy — see the ternaries in {@code dimensieAggregatie} and
-     *       in the SOM accumulate branch, and the transpile-time boolean in {@code tijdreeksSomAlleSet}. That is a
-     *       measured runtime divergence from ch. 5.11, not a bookkeeping one, and it is not fixed here.</li>
+     *       the leegwaarde first. Ch. 5.11 demands a second thing of the leegwaarde that no walk can give: it is
+     *       an operand, not a lazy alternative, so the EMITTED term must evaluate it whether or not its value is
+     *       used. That is a RUNTIME property and it is carried by the emitters, not here — {@code rsSomLeeg} and
+     *       {@code rsLeegwaarde} are calls rather than ternaries, and {@code tijdreeksSomAlleSet} passes the
+     *       stand-in's value rather than a flag.</li>
      *   <li>{@code Functie} TIJDSDUUR / ABSOLUTE_TIJDSDUUR — the argument slot is a list: argument 0 is "van",
      *       argument 1 is "tot", in that order; the leegwaarde is not an operand of this form. CORRECTED here —
      *       this walk ran the arguments backwards. The emitted {@code rsTijdsduur(van, tot)} was already in
@@ -2601,9 +2601,13 @@ public final class DrlTranspiler {
         // §5.8.2: an all-empty SOM is a leegwaarde — substitute the declared "of … als die er niet zijn"
         // fallback when present, else leave the helper's null (an empty sum, never a silent 0). MIN/MAX of
         // an empty set is likewise the helper's null (no §5.8.2 fallback form).
+        // ch. 5.11: the stand-in is an OPERAND — the fold runs, then the stand-in runs, and only then does the
+        // selection happen. rsLeegwaarde is a call, so both its arguments are evaluated (left to right); the
+        // ternary this replaces skipped the stand-in on every document with a filled fold, and evaluated the fold
+        // itself twice besides.
         if (f.kind() == Expr.FunctieKind.SOM && f.leegwaarde() != null) {
             Frag lw = waarde(acc, f.leegwaarde(), subject);   // a markered fallback must still propagate
-            return Frag.from("(" + call + " == null ? " + lw.text() + " : " + call + ")", lw);
+            return Frag.from(fnImport("rsLeegwaarde") + "(" + call + ", " + lw.text() + ")", lw);
         }
         return Frag.ok(call);
     }
@@ -2978,9 +2982,15 @@ public final class DrlTranspiler {
         String elemTijdlijn = schaalTijd(ev + "." + getter(a.attribuut()) + "()", a.type(), doelType);
         acc.clausules.add("accumulate( " + ev + " : " + ident(elem.naam, true) + "( " + filterScope + " ) ; "
                 + var + " : collectList( " + elemTijdlijn + " ) )");
-        boolean fallbackNul = f.leegwaarde() != null;                  // §5.8.2 "of 0 als die er niet zijn"
+        // §5.8.2 "of … als die er niet zijn": the stand-in's VALUE rides along, evaluated unconditionally as an
+        // argument of the fold call (ch. 5.11) and after the contributors the accumulate above has bound. It used
+        // to be flattened to a boolean here, which was two defects in one line: the stand-in never ran (so its
+        // faults and §9.5 deposits never happened) and whatever it said was DISCARDED — "of 7 als die er niet zijn"
+        // folded an all-empty period to 0. An unlowerable stand-in markers the whole fold, as everywhere else.
+        Frag lw = f.leegwaarde() != null ? waarde(acc, f.leegwaarde(), subject) : Frag.ok("null");
+        if (lw.marker()) return null;
         fnImport("rsTijdSomAlle");
-        return "rsTijdSomAlle(" + var + ", " + fallbackNul + ", Segment.class)";
+        return "rsTijdSomAlle(" + var + ", " + lw.text() + ", Segment.class)";
     }
 
     /** Whether a numeric temporal timeline in {@code van}'s unit can restate into {@code naar}'s (equal, or unit-convertible). */
@@ -3416,6 +3426,12 @@ public final class DrlTranspiler {
         // branch on it. TOTAAL ("totaal van") is excluded: §4.20 makes its empty result an
         // unconditional 0, which the plain sum() over an empty accumulate already yields.
         // Needs a resolved join and a plain attribute argument; otherwise fall through.
+        // ch. 5.11: the count SELECTS, it does not GUARD. rsSomLeeg is a call, so the stand-in is evaluated on
+        // every firing — after the contributors, which the accumulate has already folded — and its faults and its
+        // §9.5 deposits happen on documents whose contributors are filled and whose stand-in value is discarded.
+        // The ternary this replaces skipped it there. The term is emitted TWICE per rule (the idempotence guard and
+        // the setter), so the stand-in runs twice; a deposit is keyed by (rule × subject) and a fault is the same
+        // fault either way, so that repetition changes no outcome.
         if (f.kind() == Expr.FunctieKind.SOM
                 && arg instanceof Expr.AttribuutRef a && !scope.marker()) {
             String cnt = "$n" + n;
@@ -3423,7 +3439,7 @@ public final class DrlTranspiler {
                     + "( " + filterScope + ", " + ident(a.attribuut(), false) + " != null ) ; "
                     + cnt + " : count(" + ev + "), " + var + " : sum( " + elemWaarde.apply(a) + " ) )");
             Frag fallback = f.leegwaarde() != null ? waarde(acc, f.leegwaarde(), subject) : Frag.ok("null");
-            return Frag.from("(" + cnt + " == 0 ? " + fallback.text() + " : " + var + ")", fallback);
+            return Frag.from(fnImport("rsSomLeeg") + "(" + cnt + ", " + var + ", " + fallback.text() + ")", fallback);
         }
 
         String elementExpr = ev;

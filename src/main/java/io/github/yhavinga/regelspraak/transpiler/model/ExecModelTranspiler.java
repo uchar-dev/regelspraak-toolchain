@@ -393,9 +393,12 @@ public final class ExecModelTranspiler {
                     extra.add(sas.accItem());
                     final BiConsumer<Object, Object> setter = doelSetter;
                     final java.util.function.Function<Object, Object> getr = doelGetter;
-                    final boolean fbNul = sas.fallbackNul();
+                    final WaardeFn fbLeeg = sas.leegwaarde();
+                    // ch. 5.11: the stand-in is an operand — evaluated on every firing, after the contributors the
+                    // accumulate has gathered, and its VALUE (not a 0-flag) is what an all-empty period folds to.
                     RuleItemBuilder<?> cons = DSL.on(sVar, sas.tijdlijnenVar()).execute((Block3<org.drools.model.Drools, Object, Object>) (drools, s, tls) ->
-                            werkBij(drools, s, getr, setter, RegelSpraakRuntime.rsTijdSomAlle((List<? extends List<?>>) tls, fbNul, segmentClass())));
+                            werkBij(drools, s, getr, setter, RegelSpraakRuntime.rsTijdSomAlle((List<? extends List<?>>) tls,
+                                    fbLeeg == null ? null : fbLeeg.fn().apply(s, Map.of()), segmentClass())));
                     List<RuleItemBuilder<?>> items = new ArrayList<>();
                     items.add(pattern);
                     items.addAll(extra);
@@ -485,9 +488,11 @@ public final class ExecModelTranspiler {
                 Variable cntVar = agg.countVar(), sumVar = agg.resultVar();
                 WaardeFn fallback = agg.somFallback();
                 Block4<org.drools.model.Drools, Object, Object, Object> body = (drools, s, cnt, sum) -> {
-                    BigDecimal v0 = ((Number) cnt).longValue() == 0L
-                            ? (fallback == null ? null : (BigDecimal) fallback.fn().apply(s, Map.of()))
-                            : RegelSpraakRuntime.toBd(sum);
+                    // ch. 5.11: the stand-in is an OPERAND of the aggregation, so it is evaluated after the
+                    // contributors and BEFORE the count selects — on filled documents too, where its value is
+                    // discarded but its faults and §9.5 deposits are not. Exec twin of the DRL rsSomLeeg call.
+                    BigDecimal leeg = fallback == null ? null : (BigDecimal) fallback.fn().apply(s, Map.of());
+                    BigDecimal v0 = ((Number) cnt).longValue() == 0L ? leeg : RegelSpraakRuntime.toBd(sum);
                     Object v = herschaalWaarde(v0, fx.type(), doel.type());   // §4 EXACT restate the aggregate into the doel unit
                     werkBij(drools, s, doelGetter, doelSetter, v);
                 };
@@ -767,8 +772,10 @@ public final class ExecModelTranspiler {
     }
 
     /** A §5.8.2 to-many temporal sommatie: the collectList accumulate CE (binding the element {@code List<Segment>}
-     *  timelines into {@code tijdlijnenVar}) and the §5.8.2 "of 0 als die er niet zijn" flag. */
-    private record SomAlleSet(RuleItemBuilder<?> accItem, Variable tijdlijnenVar, boolean fallbackNul) {}
+     *  timelines into {@code tijdlijnenVar}) and the §5.8.2 "of … als die er niet zijn" stand-in — its VALUE
+     *  function, not a flag: ch. 5.11 makes the stand-in an operand, so it is evaluated and its result handed to
+     *  the fold. null when the clause is absent. */
+    private record SomAlleSet(RuleItemBuilder<?> accItem, Variable tijdlijnenVar, WaardeFn leegwaarde) {}
 
     /** §5.8.2/§5.1.4 "de som van &lt;temporeel attr&gt; van alle &lt;naar-veel-rol&gt;" into a TEMPORAL doel — a per-period
      *  sommatie over the navigated SET. Builds a {@code CollectListAccumulateFunction} accumulate binding a
@@ -819,7 +826,12 @@ public final class ExecModelTranspiler {
         Variable tlVar = DSL.declarationOf(List.class, "$stl_" + (seq++));        // collected List<List<Segment>> (accumulate result)
         PatternDSL.PatternDef src2 = src.bind(elemTlVar, (Function1) elemTijdlijn);
         RuleItemBuilder acc = DSL.accumulate(src2, DSL.accFunction(accFn("CollectListAccumulateFunction"), elemTlVar).as(tlVar));
-        return new SomAlleSet(acc, tlVar, f.leegwaarde() != null);
+        WaardeFn lw = null;
+        if (f.leegwaarde() != null) {
+            lw = scalarWaarde(null, f.leegwaarde());
+            if (lw == null || !lw.globals().isEmpty()) return null;   // unlowerable / global stand-in -> not this fold (mirror DRL marker)
+        }
+        return new SomAlleSet(acc, tlVar, lw);
     }
 
     /** §5.8/§13.4.14 an AGGREGATION (count / sum / totaal / min / max) as one side of a condition comparison ("het aantal
@@ -909,13 +921,16 @@ public final class ExecModelTranspiler {
             final WaardeFn fb = agg.somFallback();
             if (global == null) {
                 Predicate3<Object, Object, Object> pred = (sum, cnt, subj) -> {   // (resultVar=sum, countVar=count, subjectVar)
-                    Object aggVal = ((Number) cnt).longValue() == 0L ? (fb == null ? null : fb.fn().apply(subj, Map.of())) : sum;
+                    // ch. 5.11 the stand-in is an OPERAND: evaluated before the count selects, on filled documents too.
+                    Object leeg = fb == null ? null : fb.fn().apply(subj, Map.of());
+                    Object aggVal = ((Number) cnt).longValue() == 0L ? leeg : sum;
                     return neg != RegelSpraakRuntime.rsAggVergelijk(aggVal, RegelSpraakRuntime.toBd(rfn.apply(subj, Map.of())), opStr);
                 };
                 resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) agg.countVar(), (Variable) subjectVar, (Predicate3) pred);
             } else {
                 Predicate4<Object, Object, Object, Object> pred = (sum, cnt, subj, gv) -> {   // + the bound global
-                    Object aggVal = ((Number) cnt).longValue() == 0L ? (fb == null ? null : fb.fn().apply(subj, Map.of())) : sum;
+                    Object leeg = fb == null ? null : fb.fn().apply(subj, Map.of());   // ch. 5.11 operand, not a lazy alternative
+                    Object aggVal = ((Number) cnt).longValue() == 0L ? leeg : sum;
                     return neg != RegelSpraakRuntime.rsAggVergelijk(aggVal, RegelSpraakRuntime.toBd(rfn.apply(subj, bindGlobal(globalNaam, gv))), opStr);
                 };
                 resultPat = PatternDSL.pattern(agg.resultVar()).expr(nextId("aggcmp"), (Variable) agg.countVar(), (Variable) subjectVar, (Variable) global, (Predicate4) pred);
@@ -982,7 +997,8 @@ public final class ExecModelTranspiler {
         if (agg.countVar() != null) {
             final WaardeFn fb = agg.somFallback();
             Predicate5<Object, Object, Object, Object, Object> pred = (sum, cnt, subj, o0, o1) -> {
-                Object aggVal = ((Number) cnt).longValue() == 0L ? (fb == null ? null : fb.fn().apply(subj, Map.of())) : sum;
+                Object leeg = fb == null ? null : fb.fn().apply(subj, Map.of());   // ch. 5.11 operand, not a lazy alternative
+                Object aggVal = ((Number) cnt).longValue() == 0L ? leeg : sum;
                 return neg != RegelSpraakRuntime.rsAggVergelijk(aggVal,
                         RegelSpraakRuntime.toBd(rfn.apply(subj, gmap(List.of(n0, n1), unwrapGlobal(o0), unwrapGlobal(o1)))), opStr);
             };
@@ -1047,10 +1063,14 @@ public final class ExecModelTranspiler {
     }
 
     /** A count-bound aggregate's leeg-resolved value: count==0 -&gt; the leegwaarde (the SOM fallback, or null for MIN/MAX),
-     *  else the fold value. Mirrors the single-agg count-branch predicate. */
+     *  else the fold value. Mirrors the single-agg count-branch predicate.
+     *
+     *  <p>ch. 5.11: the stand-in is an OPERAND of the aggregation, not a lazy alternative — it is evaluated whether
+     *  or not the count ends up selecting it, so its faults and its §9.5 deposits happen on filled documents too.
+     *  Hence the local: the count SELECTS between two values that both already exist. */
     private static Object foldLeeg(Object res, Object cnt, WaardeFn fb, Object subj) {
-        if (((Number) cnt).longValue() == 0L) return fb == null ? null : fb.fn().apply(subj, Map.of());
-        return res;
+        Object leeg = fb == null ? null : fb.fn().apply(subj, Map.of());
+        return ((Number) cnt).longValue() == 0L ? leeg : res;
     }
 
     /** Does the comparison have an aggregation (count/sum/totaal/min/max) as either operand? Such a comparison is routed
@@ -1329,6 +1349,10 @@ public final class ExecModelTranspiler {
         java.util.function.Function<Object, Object> reader = navReader(a, subject);   // the dimensioned attribute's Map field
         if (reader == null) return null;
         final List<String> labels = new ArrayList<>(f.dimensieSelectie().labels());
+        // ch. 5.11's unconditional-stand-in clause has nothing to bite on HERE: this branch admits the stand-in
+        // only as a numeric LITERAL and folds it to a constant at build time. A literal cannot fault and cannot
+        // deposit a §9.5 fact, so whether it "runs" is unobservable — evaluating it eagerly would change nothing.
+        // Any other stand-in form returns null and the caller falls through to a path that DOES evaluate it.
         BigDecimal fallback = null;
         if (kind == Expr.FunctieKind.SOM && f.leegwaarde() != null) {
             if (!(f.leegwaarde() instanceof Expr.Literal lit) || !lit.type().isNumeriek()) return null;
@@ -3780,9 +3804,11 @@ public final class ExecModelTranspiler {
                 int idxCnt = accVarsOut.size(); accVarsOut.add(agg.countVar());
                 int idxSum = accVarsOut.size(); accVarsOut.add(agg.resultVar());
                 WaardeFn fallback = agg.somFallback();
-                return (s, g, a) -> ((Number) a[idxCnt]).longValue() == 0L
-                        ? (fallback == null ? null : (BigDecimal) fallback.fn().apply(s, Map.of()))
-                        : RegelSpraakRuntime.toBd(a[idxSum]);
+                return (s, g, a) -> {
+                    // ch. 5.11 the stand-in is an OPERAND: evaluated before the count selects, filled documents included.
+                    BigDecimal leeg = fallback == null ? null : (BigDecimal) fallback.fn().apply(s, Map.of());
+                    return ((Number) a[idxCnt]).longValue() == 0L ? leeg : RegelSpraakRuntime.toBd(a[idxSum]);
+                };
             }
             int idx = accVarsOut.size();
             accItemsOut.add(agg.accItem());

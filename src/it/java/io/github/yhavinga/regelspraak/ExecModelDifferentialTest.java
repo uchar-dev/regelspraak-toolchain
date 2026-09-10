@@ -3942,6 +3942,13 @@ class ExecModelDifferentialTest {
     static final String SOMALLE_NUL_SRC = SOMALLE_SRC.replace(
         "van alle passagiers van de Vlucht.",
         "van alle passagiers van de Vlucht of 0 als die er niet zijn.");
+    // "of 7 als die er niet zijn": the stand-in's VALUE decides the all-empty period, and 7 is not 0. This
+    // distinguishes carrying the clause's value from carrying a mere "is there a clause?" flag — the flag read
+    // every stand-in as 0, so this source and SOMALLE_NUL_SRC used to produce byte-identical DRL and identical
+    // timelines. Ch. 5.11 makes the stand-in an operand whose evaluated VALUE is the answer.
+    static final String SOMALLE_ZEVEN_SRC = SOMALLE_SRC.replace(
+        "van alle passagiers van de Vlucht.",
+        "van alle passagiers van de Vlucht of 7 als die er niet zijn.");
     // CROSS-UNIT: element €/mnd, doel €/jr — each element timeline restated ×12 (§4.1) BEFORE the per-period sum.
     static final String SOMALLE_CU_SRC =
         "Eenheidsysteem Valuta\n    de euro (mv: euros) EUR €\n" +
@@ -3978,6 +3985,11 @@ class ExecModelDifferentialTest {
         somAlleFix("§5.8.2/§4.1 SOM to-many cross-unit (€/mnd->€/jr ×12): (50+10)×12=720", SOMALLE_CU_SRC, v -> List.of(v,
             passOp(v, List.of(seg(2024, 1, 1, 2024, 2, 1, "50"))),
             passOp(v, List.of(seg(2024, 1, 1, 2024, 2, 1, "10"))))),
+        // "of 7 als die er niet zijn": the SAME gap as the row above folds to 7, not 0. The stand-in's value is
+        // carried, not a flag — flattening it to a boolean made this row read 0 and silently lost the 7.
+        somAlleFix("§5.8.2 SOM to-many 'of 7 als die er niet zijn' -> GAP is 7, niet 0", SOMALLE_ZEVEN_SRC, v -> List.of(v,
+            passOp(v, List.of(seg(2024, 1, 1, 2024, 2, 1, "40"))),
+            passOp(v, List.of(seg(2024, 3, 1, 2024, 4, 1, "20"))))),
     };
     static final Object[] PHASE_SOMALLE_EXPECTED = {
         java.util.List.of("2024-01-01|2024-02-01|50", "2024-02-01|2024-03-01|70", "2024-03-01|2024-04-01|10"),
@@ -3986,6 +3998,7 @@ class ExecModelDifferentialTest {
         java.util.List.of("2024-01-01|2024-02-01|40", "2024-02-01|2024-03-01|leeg", "2024-03-01|2024-04-01|20"),
         java.util.List.of("2024-01-01|2024-02-01|40", "2024-02-01|2024-03-01|0", "2024-03-01|2024-04-01|20"),
         java.util.List.of("2024-01-01|2024-02-01|720"),
+        java.util.List.of("2024-01-01|2024-02-01|40", "2024-02-01|2024-03-01|7", "2024-03-01|2024-04-01|20"),
     };
 
     // ---- §8.2 over a NAVIGATED to-many TEMPORAL attribute: a whole-period FORALL across the accumulated element
@@ -5767,6 +5780,56 @@ class ExecModelDifferentialTest {
         eisLet("Begrensd: wortel in minimum, lezing in maximum -> de wortel draait nog",
             grens.formatted("zijn prijs, met een minimum van " + wortel + " en een maximum van de v"),
             eenPassagier(leegBinder), PLAFOND, LetUitkomst.ok(null, 1));
+    }
+
+    /**
+     * ch. 5.11 — the som's {@code leegwaarde} is evaluated UNCONDITIONALLY. It is the node's last operand, not a
+     * lazy alternative: it runs every time the aggregation runs, whether or not the contributors leave its value to
+     * be used, so its faults happen on documents where that value is discarded.
+     *
+     * <p>The shape is uchar's {@code som-fallback-always-evaluated} red case: the contributor is filled, so the sum
+     * answers and the stand-in's value is thrown away — and the stand-in divides by zero. Under ch. 5.11 the
+     * document has no answer. Emitting the stand-in behind a count guard makes that division unreachable exactly
+     * there and the rule answers 6; that was the measured behaviour of both back-ends before this card, in the DRL
+     * text as well as in the exec model. The control below is the same rule with a harmless stand-in, which must
+     * still answer normally — the claim is unconditional EVALUATION, not an unconditional fault.
+     */
+    @Test void ch_5_11_som_leegwaarde_evalueert_ook_bij_gevulde_bijdragers() {
+        String som = """
+            Objecttype de Passagier (mv: Passagiers) (bezield)
+                de prijs Numeriek (geheel getal);
+            Objecttype de Vlucht (mv: Vluchten)
+                de somZonder Numeriek (geheel getal);
+                de totaalprijs Numeriek (geheel getal);
+                de uitstelduur Numeriek (geheel getal);
+            Feittype Vlucht van passagiers
+                de reis Vlucht
+                de passagier Passagier
+            Eén reis betreft meerdere passagiers
+            Regel R
+                geldig altijd
+                    De somZonder van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis of %s als die er niet zijn.
+            """;
+        // one FILLED contributor (prijs 6), and a subject carrying 1 and 0 for the stand-in to divide.
+        Supplier<List<Object>> gevuld = () -> {
+            Vlucht v = new Vlucht();
+            v.setTotaalprijs(new BigDecimal(1));
+            v.setUitstelduur(BigDecimal.ZERO);
+            Passagier p = new Passagier();
+            p.setReis(v);
+            p.setPrijs(new BigDecimal(6));
+            return List.of(v, p);
+        };
+        Function<List<Object>, Object> somZonder = l -> ((Vlucht) l.get(0)).getSomZonder();
+        // The stand-in FAULTS. Its value is never used — the sum is 6 — and it runs anyway, so the session aborts.
+        // (Drools wraps the ArithmeticException from Breuk's "deling door 0" in a ConsequenceException; what the
+        // pin asserts is that the rule FAILS here rather than answering 6.)
+        eisLet("som: faalbare leegwaarde bij GEVULDE bijdragers -> draait toch en faalt",
+            som.formatted("zijn totaalprijs gedeeld door zijn uitstelduur"),
+            gevuld, somZonder, new LetUitkomst(null, -1, "ConsequenceException"));
+        // Control: a harmless stand-in changes nothing — the contributors still decide the answer.
+        eisLet("som: onschadelijke leegwaarde bij gevulde bijdragers -> gewoon de som",
+            som.formatted("zijn totaalprijs"), gevuld, somZonder, LetUitkomst.ok(new BigDecimal(6), 0));
     }
 
     /**
