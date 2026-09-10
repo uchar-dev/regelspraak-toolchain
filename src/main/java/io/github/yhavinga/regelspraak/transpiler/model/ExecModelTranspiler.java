@@ -831,7 +831,15 @@ public final class ExecModelTranspiler {
         WaardeFn lw = null;
         if (f.leegwaarde() != null) {
             lw = scalarWaarde(null, f.leegwaarde());
-            if (lw == null || !lw.globals().isEmpty()) return null;   // unlowerable / global stand-in -> not this fold (mirror DRL marker)
+            // An unlowerable stand-in, or one reading a GLOBAL, is refused here. That is NOT a mirror of the DRL
+            // branch — measured, on a "of <parameter> als die er niet zijn" set-som: the DRL branch lowers the
+            // ParameterRef to a global and emits rsTijdSomAlle($tl1, basis, Segment.class), correctly and without
+            // a marker, while this branch skips the rule ("regel (temporele toekenning buiten Phase-F scope)").
+            // A deliberate back-end asymmetry, and the better of the two states available here: before the
+            // stand-in became a value it was a boolean flag, so this branch folded an all-empty period to 0 and
+            // silently threw the parameter away. Refusing a form beats answering it wrongly. Carrying it would
+            // mean binding the global into this consequence, which is its own change.
+            if (lw == null || !lw.globals().isEmpty()) return null;
         }
         return new SomAlleSet(acc, tlVar, lw);
     }
@@ -1073,11 +1081,12 @@ public final class ExecModelTranspiler {
      *  count SELECTS between two values that both already exist.
      *
      *  <p>The fault half of the clause is all that is delivered, here and at the six sibling sites. Ch. 5.11 also
-     *  says the stand-in deposits its §9.5 reasons on those documents, and this runtime never builds a companion
-     *  deposit inside an aggregation operand: {@code verzamelDelingen}/{@code verzamelWortels} deliberately do not
-     *  descend into a {@code Functie}'s operands ("an aggregation divisor cannot be a plain re-readable guard"), so
-     *  the same division that gets a companion rule when it stands bare gets none inside a leegwaarde. Measured on
-     *  the emitted DRL. A pre-existing limit of the companion walk, not of the eager evaluation above — the deposit
+     *  says the stand-in deposits its §9.5 reasons on those documents, and this runtime builds no companion
+     *  deposit inside a leegwaarde at all. Neither companion walk descends into one: {@code verzamelDelingen}
+     *  stops at a {@code Functie} entirely ("an aggregation divisor cannot be a plain re-readable guard"), and
+     *  {@code verzamelWortels} descends into a Functie's {@code argumenten} but never into its {@code leegwaarde}.
+     *  So the same division that gets a companion rule when it stands bare gets none inside a stand-in. Measured
+     *  on the emitted DRL: two Inconsistentie mentions bare, zero in a leegwaarde. A pre-existing limit of the companion walk, not of the eager evaluation above — the deposit
      *  half becomes reachable, and testable, only if those walks ever descend into aggregation operands. */
     private static Object foldLeeg(Object res, Object cnt, WaardeFn fb, Object subj) {
         Object leeg = fb == null ? null : fb.fn().apply(subj, Map.of());

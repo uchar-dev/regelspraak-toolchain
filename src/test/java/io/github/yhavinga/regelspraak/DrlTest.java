@@ -1218,7 +1218,9 @@ class DrlTest {
         // stand-in. With "of 0 als die er niet zijn" the empty case takes the fallback instead.
         // ch. 5.11: the selection is a CALL (rsSomLeeg), never a ternary. The stand-in is an
         // operand of the aggregation, so it must be evaluated on every firing — a ternary skips
-        // it whenever a contributor is filled, and with it every fault and §9.5 deposit it owes.
+        // it whenever a contributor is filled, and with it every fault it owes. (The FAULT half is
+        // all ch. 5.11 gets here; this runtime builds no §9.5 companion inside an aggregation
+        // operand at all — see ExecModelTranspiler.foldLeeg's javadoc for the measurement.)
         // The shape is asserted here because that is what makes the property visible in the DRL;
         // the RUNTIME half is pinned by ExecModelDifferentialTest#ch_5_11_som_leegwaarde_… .
         String src = """

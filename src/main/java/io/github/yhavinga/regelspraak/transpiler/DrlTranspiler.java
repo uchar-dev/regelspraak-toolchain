@@ -2198,7 +2198,12 @@ public final class DrlTranspiler {
      *       an operand, not a lazy alternative, so the EMITTED term must evaluate it whether or not its value is
      *       used. That is a RUNTIME property and it is carried by the emitters, not here — {@code rsSomLeeg} and
      *       {@code rsLeegwaarde} are calls rather than ternaries, and {@code tijdreeksSomAlleSet} passes the
-     *       stand-in's value rather than a flag (those three ARE witnessed).
+     *       stand-in's value rather than a flag. TWO of those three are witnessed ({@code rsSomLeeg} and the
+     *       tijdreeks stand-in); {@code rsLeegwaarde} is NOT — reverting it to the ternary leaves the suite green,
+     *       because no test reaches its emission site at all: the only dimensie-fold fixture carries no
+     *       "of … als die er niet zijn" clause. Ch. 5.11 marks that row the same way — for an aggregation over a
+     *       {@code dimensieSelectie} it says "the order is stated, not yet exercised" — so the call form here is
+     *       conformance by construction, with the arbiter's own coverage gap behind it.
      *       The ORDER half of this row is NOT falsifiable with the current runtime, and the reason is structural
      *       rather than a missing test: an order is only visible when TWO operand positions each carry an effect,
      *       and in every form this frontend lowers with a leegwaarde the {@code argumenten} position is a bare
@@ -2209,10 +2214,15 @@ public final class DrlTranspiler {
      *   <li>{@code Functie} TIJDSDUUR / ABSOLUTE_TIJDSDUUR — the argument slot is a list: argument 0 is "van",
      *       argument 1 is "tot", in that order; the leegwaarde is not an operand of this form. CORRECTED here —
      *       this walk ran the arguments backwards. The emitted {@code rsTijdsduur(van, tot)} was already in
-     *       ch. 5.11 order. WITNESSED: {@code ch_5_11_tijdsduur_evalueert_van_voor_tot}. Both operands are DATUM
-     *       positions, where neither of this runtime's two order-visible effects normally fits; the witness gets in
-     *       through {@code datum met}, whose components are numeric, so a division sits in "van" while a binder
-     *       read sits in "tot".</li>
+     *       ch. 5.11 order. WITNESSED for THIS walk: {@code ch_5_11_tijdsduur_evalueert_van_voor_tot}. Both
+     *       operands are DATUM positions, where neither of this runtime's two order-visible effects normally fits;
+     *       the witness gets in through {@code datum met}, whose components are numeric, so a division sits in
+     *       "van" while a binder read sits in "tot".
+     *       The MIRROR arm in {@code ExecModelTranspiler.padLoop} is not covered by it: reverting that arm ALONE
+     *       leaves the suite green, measured. The exec back-end gets van-before-tot from Java's own argument order
+     *       in the {@code rsTijdsduur} call, and its copy of this arm steers only companion preconditions — which,
+     *       for a tijdsduur, no shape reaches. Kept in step with this walk on purpose, not because a test says
+     *       so.</li>
      *   <li>{@code TekstReeks} — the inserted parts in part order. SAME.</li>
      *   <li>{@code Let} — body first; the value is forced at the FIRST read and memoised, so it takes that read's
      *       position in the enclosing order (ch. 5.11 calls this forced, and ch. 10.6 spells it out). SAME — it is
@@ -3003,6 +3013,13 @@ public final class DrlTranspiler {
         // to be flattened to a boolean here, which was two defects in one line: the stand-in never ran (so its
         // faults never happened) and whatever it said was DISCARDED — "of 7 als die er niet zijn"
         // folded an all-empty period to 0. An unlowerable stand-in markers the whole fold, as everywhere else.
+        // NOTE, latent and deliberately left: this marker-return fires AFTER the accumulate clause was appended to
+        // acc.clausules above, and it does not roll that append back — so a markered stand-in would leave an orphan
+        // clause in the LHS. Latent, not live: all three stand-in shapes reachable here lower (literal, own
+        // attribute, arithmetic over own attributes), and no reachable witness was found (measured 2026-09-10).
+        // Reordering the two — lower the stand-in first, append the accumulate after — is NOT done here on purpose:
+        // clause order in the LHS carries its own risk once a stand-in is itself an aggregation, and there is no
+        // test that would catch a regression in that order. A fix wants a witness first.
         Frag lw = f.leegwaarde() != null ? waarde(acc, f.leegwaarde(), subject) : Frag.ok("null");
         if (lw.marker()) return null;
         fnImport("rsTijdSomAlle");
