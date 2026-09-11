@@ -82,6 +82,10 @@ final class RuleChecker {
         beslistabellen(doc);
         regelGroepen(doc);   // build the §9.10 group IR + the fase-2 recursief structural checks
         keurKringverwijzingen();
+        // WF-096 runs BEFORE the defaults lift: that pass MOVES resolved rules out of resolvedRegels into
+        // PrioritizedDefaults nodes whose consequentie is a copy of the rule's waarde, so checking here
+        // covers the lifted rules too — and covers them once.
+        keurSetlezingen();
         defaults(doc);        // §4 lift the base+exception families and unordered groups into PrioritizedDefaults nodes
     }
 
@@ -404,6 +408,124 @@ final class RuleChecker {
         }
     }
 
+    // ==============================================================================================
+    // WF-096 (IR-SPEC ch. 4.3, maintainer decision 2026-09-09) — the set fence, producer side.
+    // ==============================================================================================
+
+    /** The instance-fold kinds: the six value folds plus AANTAL — exactly the pair WF-093 and WF-096
+     *  key on, so the frontend's exemption and the verifier's are the same boundary. */
+    private static final Set<Expr.FunctieKind> VOUWSOORTEN = Set.of(
+            Expr.FunctieKind.SOM, Expr.FunctieKind.TOTAAL, Expr.FunctieKind.MINIMUM,
+            Expr.FunctieKind.MAXIMUM, Expr.FunctieKind.EERSTE, Expr.FunctieKind.LAATSTE,
+            Expr.FunctieKind.AANTAL);
+
+    /** A §13.4.2 set quantifier ("alle &lt;mv&gt;", and every other quantor that is not the bare
+     *  definite "de") makes a reference a SET reading: it names the members' values, one per member —
+     *  a collection. Exactly one node consumes a collection, the instance fold that OWNS the source,
+     *  so WF-096 makes the shape ill-formed at every other READ position: as a whole rule value, as an
+     *  operand of a composite node, inside a condition, and as an operand of the listed value fold.
+     *
+     *  <p>Measured on this frontend (2026-09-11), all from the one sentence fragment "het gewicht van
+     *  alle vondsten van de Jutter": eight routes reached the wire with {@code diagnostics: []} — a
+     *  BEREKENING value, an operand of a {@code Binair}, a §13.4.4 GELIJKSTELLING value, a §13.4.9
+     *  INITIALISATIE value, a rule voorwaarde, a §13.4.8 consistentieregel, an objectcreatie
+     *  voorwaarde and a §13.4.6 objectcreatie-toekenning value — and the uchar verifier rejects all
+     *  eight under WF-096.
+     *
+     *  <p>A NALOOP over the built tree, not a test inside {@link ExpressieBouwer}: the reference is
+     *  built before the node that would consume it exists, so "is there a fold around this" is a
+     *  question only the enclosing tree can answer, and it is a local one there.
+     *
+     *  <p>WARNING, deliberately, and the level is the one knob here. The diagnostic reaches the WIRE
+     *  ({@link io.github.yhavinga.regelspraak.emit.IrEmitter} writes every diagnostic), so the emitted
+     *  document states that it is ill-formed and why — where it used to say {@code diagnostics: []}.
+     *  ERROR would be the fail-fast level and would stop the document reaching disk at all
+     *  ({@link Resolver#irModus} writes nothing when the model carries an error); it is deliberately
+     *  NOT taken here, because one committed test expectation —
+     *  {@code IrTest.referenties_lossen_op_via_feittype_rollen}, a third witness of the same producer
+     *  route — asserts that a rule value of exactly this shape resolves error-free, and moving that is
+     *  the maintainer's call. Raising the level is a one-token change at the {@link Severity} below.
+     *
+     *  <p>Scope: the READ. A rule's {@code doel} is a WRITE position, which WF-096's own scope note
+     *  does not reach (it is verifier-clean and all three executors ignore the field), so it is
+     *  deliberately not walked.
+     *  <p>The three VALUE slots of this repo's IR are all walked, and that is the whole list rather than
+     *  a sample: a {@link ResolvedRegel}'s waarde, a {@code ResolvedConsistentie}'s assertie, and a
+     *  §13.4.6 {@link ResolvedObjectCreatie.Toekenning}'s waarde — the last a generic expressie RHS and
+     *  a measured producer route of its own. {@link ResolvedVerdeling} and {@link ResolvedFeitCreatie}
+     *  hold no Expr at all (bare attribute/field NAMES plus a condition), so there is nothing to walk
+     *  there; every construct's CONDITION is covered one line after it is built, see the call in
+     *  {@link #regelVersies(String, java.util.List, java.util.List, int)}. */
+    private void keurSetlezingen() {
+        for (ResolvedRegel r : model.resolvedRegels) keurSetlezing(r.waarde(), false);
+        for (var c : model.consistenties) keurSetlezing(c.assertie());
+        for (var oc : model.objectCreaties)
+            for (var t : oc.toekenningen()) keurSetlezing(t.waarde(), false);
+    }
+
+    /** Walk {@code e} for WF-096 violations. {@code vouwbron} marks the ONE exempt position: the single
+     *  argument of a folding kind that carries an {@code elementObjecttype} — the source the fold
+     *  consumes. That is the boundary the verifier draws (arity, kind AND a resolved element type):
+     *  narrower here would refuse a legitimate fold source, wider would let the frontend emit a
+     *  document the verifier rejects. A {@link Expr.DimensieCel} wrapping the source is NOT that
+     *  position — the verifier's fold branch matches the bare reference — so the exemption stops at
+     *  the wrapper, exactly as it does there.
+     *
+     *  <p>The switch is EXHAUSTIVE over the sealed union — no {@code default} arm — for the reason
+     *  {@link Expr#bevat} states: the next node the union grows must be a compile error here rather
+     *  than a silent leaf that under-reports. */
+    private void keurSetlezing(Expr e, boolean vouwbron) {
+        if (e == null) return;
+        switch (e) {
+            case Expr.AttribuutRef a -> {
+                if (a.set() && !vouwbron)
+                    model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                            "setlezing buiten een vouwbron: '" + a.bron() + "' noemt de waarde van elk lid van de "
+                            + "verzameling — alleen toegestaan als bron van één vouw (som, totaal, minimum, maximum, "
+                            + "eerste, laatste, aantal); hier wordt één waarde verwacht (WF-096, IR-SPEC ch. 4.3)",
+                            a.bron().line()));
+            }
+            case Expr.Functie f -> {
+                boolean isVouwbron = f.elementObjecttype() != null && f.argumenten().size() == 1
+                        && VOUWSOORTEN.contains(f.kind());
+                for (Expr a : f.argumenten()) keurSetlezing(a, isVouwbron);
+                keurSetlezing(f.leegwaarde(), false);   // §5.8.2 fallback: an ordinary read, never a source
+                keurSetlezing(f.filter());
+            }
+            case Expr.Binair b -> { keurSetlezing(b.links(), false); keurSetlezing(b.rechts(), false); }
+            case Expr.Afgerond a -> keurSetlezing(a.basis(), false);
+            case Expr.Begrensd b -> {
+                keurSetlezing(b.basis(), false); keurSetlezing(b.minimum(), false); keurSetlezing(b.maximum(), false);
+            }
+            case Expr.TekstReeks t -> {
+                for (Expr.TekstReeks.Deel d : t.delen())
+                    if (d instanceof Expr.TekstReeks.Ingevoegd i) keurSetlezing(i.expr(), false);
+            }
+            case Expr.DimensieCel c -> keurSetlezing(c.attribuut(), false);
+            case Expr.Let l -> { keurSetlezing(l.value(), false); keurSetlezing(l.body(), false); }
+            case Expr.IfThenElse k -> {
+                keurSetlezing(k.dan(), false); keurSetlezing(k.anders(), false); keurSetlezing(k.conditie());
+            }
+            case Expr.Literal ignored -> { }
+            case Expr.ParameterRef ignored -> { }
+            case Expr.VariabeleRef ignored -> { }
+            case Expr.BinderRef ignored -> { }
+            case Expr.Constante ignored -> { }
+            case Expr.Onopgelost ignored -> { }
+        }
+    }
+
+    /** The condition half of the same walk, reaching exactly what {@link Conditie#bevatExpr} reaches:
+     *  comparison sides, the one-sided predicate operand, periode bounds, compound children. No
+     *  condition position is a fold source, so every operand is walked unexempted. */
+    private void keurSetlezing(Conditie c) {
+        if (c == null) return;
+        if (c instanceof Conditie.Vergelijking v) { keurSetlezing(v.links(), false); keurSetlezing(v.rechts(), false); }
+        else if (c instanceof Conditie.Predicaat p) keurSetlezing(p.operand(), false);
+        else if (c instanceof Conditie.Periode p) { keurSetlezing(p.vanaf(), false); keurSetlezing(p.tot(), false); }
+        else if (c instanceof Conditie.Samengesteld s) for (Conditie d : s.onderdelen()) keurSetlezing(d);
+    }
+
     /** Process one §13.4.2 regel's versions into the model. Reused for each §12 beslistabel row, which
      *  {@link BeslistabelDesugar} lowers to an ordinary regel and {@link #beslistabellen} re-parses to a
      *  {@link RegelContext} — so a table row reuses the WHOLE rule pipeline (and both back-ends) unchanged. */
@@ -442,6 +564,11 @@ final class RuleChecker {
             bouwer.setSubject(subjectVan(rsr.resultaatDeel())); // so "zijn …" resolves against the rule subject
             bouwer.zetVariabelen(rsr.variabeleDeel());          // §11 capture "Daarbij geldt:" vars in BOTH forms (clears per rule)
             Conditie voorwaarde = rsr.voorwaardeDeel() != null ? bouwVoorwaarde(rsr.voorwaardeDeel()) : null;
+            // WF-096 on the CONDITION, here rather than in the naloop: this is the one place every
+            // resultaatdeel kind's voorwaarde passes through, so one call covers the constructs that do
+            // not become a ResolvedRegel (verdeling, objectcreatie, feitcreatie, dagsoort, startpunt)
+            // as well as the ones that do. The naloop then walks the VALUES alone, so nothing is said twice.
+            keurSetlezing(voorwaarde);
             resultaat(naam, versieNaam, rsr.resultaatDeel(), rsr.voorwaardeDeel(), voorwaarde, geldigheid);
             voorwaarden(rsr);   // exhaustive condition type-check (§5), unchanged
         }
