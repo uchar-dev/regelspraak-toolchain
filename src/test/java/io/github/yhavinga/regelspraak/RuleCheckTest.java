@@ -731,15 +731,21 @@ class RuleCheckTest {
                 () -> "verwachtte een grens-fout, kreeg: " + m.errors());
     }
 
-    @Test void onoplosbare_referentie_geeft_geen_valse_fout() {
-        // a deep van-chain the checker cannot fully resolve must NOT be reported as an error
+    @Test void onoplosbare_referentie_geeft_de_setlezing_fout() {
+        // A deep van-chain the checker cannot fully resolve leaves the fold source without a
+        // resolved element type, which puts the set reading outside the WF-096 fold-source
+        // exemption. Since the WF-096 promotion (uchar pin acc5a4e) that is a real ERROR, not a
+        // false positive: the frontend refuses to write the ill-formed wire. Any OTHER error
+        // (a genuine false positive from the checker) stays a failure.
         String src = MODEL + """
             Regel onbekend
                 geldig altijd
                     De teller van een Ding moet gesteld worden op de som van de tellers van alle Dingen van de reis.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
-        assertTrue(m.errors().isEmpty(), () -> "geen valse positief verwacht, kreeg: " + m.errors());
+        assertEquals(1, m.errors().size(), () -> "verwacht alleen de setlezing-fout, kreeg: " + m.errors());
+        assertTrue(m.errors().get(0).message().contains("setlezing buiten een vouwbron"),
+                () -> "geen valse positief verwacht, kreeg: " + m.errors());
     }
 
     @Test void maximale_waarde_met_niet_numerieke_operand_wordt_gemeld() {

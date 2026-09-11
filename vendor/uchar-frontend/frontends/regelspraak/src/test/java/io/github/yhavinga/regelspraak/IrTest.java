@@ -348,7 +348,12 @@ class IrTest {
                     De prijs van een groep moet gesteld worden op de leeftijd van alle deelnemers.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
-        assertTrue(m.errors().isEmpty(), () -> "valse fout via rolnavigatie: " + m.errors());
+        // Since the WF-096 promotion (2026-09-11) this very sentence draws the setlezing ERROR:
+        // the rule value reads "de leeftijd van alle deelnemers" outside a fold. The role
+        // navigation this test pins must still resolve; any OTHER error stays a failure.
+        assertEquals(1, m.errors().size(), () -> "verwacht alleen de setlezing-fout: " + m.errors());
+        assertTrue(m.errors().get(0).message().contains("setlezing buiten een vouwbron"),
+                () -> "valse fout via rolnavigatie: " + m.errors());
 
         ResolvedRegel rr = m.resolvedRegels.get(0);
         Expr.AttribuutRef doel = assertInstanceOf(Expr.AttribuutRef.class, rr.doel());

@@ -479,7 +479,7 @@ final class RuleChecker {
         switch (e) {
             case Expr.AttribuutRef a -> {
                 if (a.set() && !vouwbron)
-                    model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                    model.diagnostics.add(new Diagnostic(Severity.ERROR,
                             "setlezing buiten een vouwbron: '" + a.bron() + "' noemt de waarde van elk lid van de "
                             + "verzameling — alleen toegestaan als bron van één vouw (som, totaal, minimum, maximum, "
                             + "eerste, laatste, aantal); hier wordt één waarde verwacht (WF-096, IR-SPEC ch. 4.3)",

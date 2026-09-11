@@ -195,16 +195,15 @@ class SetlezingZonderVouwTest {
                 """);
     }
 
-    @Test void de_diagnose_is_een_waarschuwing_en_geen_fout() {
-        // The one knob, pinned so that raising it is a deliberate, visible act. WARNING keeps the
-        // document on disk — it is the emitted IR that now states the defect (see the wire test
-        // below). ERROR is the fail-fast level: irModus writes nothing when the model carries an
-        // error, so the ill-formed document would not be produced at all. It is not taken here
-        // because IrTest.referenties_lossen_op_via_feittype_rollen asserts that a rule value of
-        // exactly this shape resolves error-free.
+    @Test void de_diagnose_is_een_fout() {
+        // The one knob, pinned so that moving it is a deliberate, visible act. ERROR is the
+        // fail-fast level (maintainer decision 2026-09-11, promoting the initial WARNING):
+        // irModus writes nothing when the model carries an error, so the ill-formed document is
+        // not produced at all — WF-096 wire is never written by this frontend. The emitter,
+        // called directly, still carries the diagnostic (see the wire test below).
         List<Diagnostic> ds = setlezingDiagnoses(REGELWAARDE);
         assertEquals(1, ds.size());
-        assertEquals(Severity.WARNING, ds.get(0).severity());
+        assertEquals(Severity.ERROR, ds.get(0).severity());
         // the line is the sentence's own, so a reader finds the setlezing by the number alone
         assertEquals("Het maatgevend gewicht van een Jutter moet berekend worden als het gewicht van alle vondsten van de Jutter.",
                 (MODEL + REGELWAARDE).lines().toList().get(ds.get(0).line() - 1).strip());
@@ -217,7 +216,7 @@ class SetlezingZonderVouwTest {
         RegelSpraakModel m = Resolver.resolve(MODEL + REGELWAARDE);
         String json = IrEmitter.emit(m);
         assertFalse(json.contains("\"diagnostics\": []"), "de emissie is nog diagnosticloos:\n" + json);
-        assertTrue(json.contains("\"severity\": \"WARNING\""), "geen severity op de wire:\n" + json);
+        assertTrue(json.contains("\"severity\": \"ERROR\""), "geen severity op de wire:\n" + json);
         assertTrue(json.contains("setlezing buiten een vouwbron"), "geen WF-096-melding op de wire:\n" + json);
     }
 }
