@@ -209,23 +209,29 @@ public final class RegelSpraakModel {
      * Returns null when nothing matches — the caller then makes no type claim.
      */
     public Objecttype resolveObjecttype(String naam) {
-        if (naam == null || naam.isBlank()) return null;
-        // The entity is the HEAD noun phrase, before any " van " navigation:
-        // in "deelnemers van de groep" the attribute owner is the deelnemer, while
-        // "van de groep" only scopes which one. So cut at the first 'van', then within
-        // the head try the whole phrase before its tail (a multi-word role like
-        // "groep met punten" binds before a leading qualifier is dropped).
-        String[] woorden = naam.trim().split("\\s+");
-        int eind = woorden.length;
-        for (int i = 0; i < woorden.length; i++) if (woorden[i].equalsIgnoreCase("van")) { eind = i; break; }
-        for (int start = 0; start < eind; start++) {
-            String kandidaat = String.join(" ", java.util.Arrays.copyOfRange(woorden, start, eind));
+        for (String kandidaat : naamKandidaten(naam)) {
             Objecttype direct = objecttypeOpNaam(kandidaat);
             if (direct != null) return direct;
             Objecttype viaRol = objecttypeViaRol(kandidaat);
             if (viaRol != null) return viaRol;
         }
         return null;
+    }
+
+    /** The names {@link #resolveObjecttype} tries for {@code naam}, in its order: the HEAD noun phrase
+     *  before any " van " navigation ("deelnemers van de groep" names the deelnemer; "van de groep" only
+     *  scopes which one), then that head with leading words dropped one at a time (a multi-word role like
+     *  "groep met punten" binds before its head noun does). Shared so a caller that must reconcile the
+     *  WRITTEN name with what the phrase bound tries exactly the forms the binding came from. */
+    public static List<String> naamKandidaten(String naam) {
+        if (naam == null || naam.isBlank()) return List.of();
+        String[] woorden = naam.trim().split("\\s+");
+        int eind = woorden.length;
+        for (int i = 0; i < woorden.length; i++) if (woorden[i].equalsIgnoreCase("van")) { eind = i; break; }
+        List<String> uit = new ArrayList<>();
+        for (int start = 0; start < eind; start++)
+            uit.add(String.join(" ", java.util.Arrays.copyOfRange(woorden, start, eind)));
+        return uit;
     }
 
     /** The object type DIRECTLY named {@code naam} (case-insensitively), or null — a name match
@@ -409,6 +415,23 @@ public final class RegelSpraakModel {
                     n++;
                 }
         return n == 1 && !wederkerig ? gevonden : null;
+    }
+
+    /**
+     * Whether {@code geschreven} NAMES the role {@code rb} binds — its declared singular, its declared
+     * plural, or (only when no plural is declared) the best-effort plural. The written-name side of a
+     * binding the by-PAIR search produced: {@link #verbindendeRolBinding} never reads the source, so a
+     * pair that is unique still says nothing about what the author wrote, and a binding whose role the
+     * sentence does not name is a guess about WHICH collection is folded, not a resolution of it.
+     * False for an unknown fact type or a role the fact type does not carry.
+     */
+    public boolean rolGenoemdAls(RolBindingRef rb, String geschreven) {
+        if (rb == null || geschreven == null) return false;
+        Feittype ft = feittypen.get(rb.feittype());
+        if (ft == null) return false;
+        for (Rol r : ft.rollen)
+            if (r.naam().equals(rb.rol())) return rolMatcht(r, geschreven);
+        return false;
     }
 
     /**
