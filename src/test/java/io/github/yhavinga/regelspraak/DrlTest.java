@@ -3831,7 +3831,10 @@ class DrlTest {
             """;
         String drl1 = DrlTranspiler.transpile(Resolver.resolve(sameType));
         assertFalse(drl1.contains("rsTijdTotaal"), () -> "een set-totaal mag niet als eigen tijdreeks vouwen:\n" + drl1);
-        assertTrue(drl1.contains("/* TODO aggregatie TOTAAL"), () -> "een set-totaal moet markeren:\n" + drl1);
+        // Since uchar pin d6c357c the vendored resolver REFUSES the far-role anchor ("van de reis" from a
+        // Passagier names another instance) with an Onopgelost value, so the marker is the generic
+        // expression TODO rather than the aggregation TODO — still a marker, never a fold.
+        assertTrue(drl1.contains("/* TODO expressie"), () -> "een set-totaal moet markeren:\n" + drl1);
 
         String diffType = """
             Domein Bedrag is van het type Numeriek (getal met 2 decimalen)
@@ -3879,8 +3882,48 @@ class DrlTest {
         String drl = DrlTranspiler.transpile(Resolver.resolve(src));
         assertFalse(drl.contains("rsTijdTotaal"),
                 () -> "een 'ten minste' set-totaal mag niet als eigen tijdreeks vouwen (structurele set-vlag):\n" + drl);
-        assertTrue(drl.contains("/* TODO aggregatie TOTAAL"),
+        // Same far-role-anchor refusal as above since uchar pin d6c357c: Onopgelost -> the generic
+        // expression TODO. The intent this test pins — never a fold over the subject's own series — holds.
+        assertTrue(drl.contains("/* TODO expressie"),
                 () -> "een niet-'alle' set-totaal moet ook markeren:\n" + drl);
+    }
+
+    @Test void bronpad_vouwbron_markeert_en_bindt_nooit_de_directe_relatie() {
+        // WF-102 (uchar pin d6c357c): a fold source may carry a multi-step range (bronPad, subject-outward
+        // role bindings). This transpiler lowers ONE join role per accumulate, so a bronPad fold must
+        // MARKER — without the gate the type-pair search would bind the DIRECT jutterbezit fact type and
+        // silently sum the wrong set (the misbinding uchar's own Drools backend refuses by name:
+        // Functie.bronPad). Role plurals are declared: the path resolution binds declared forms only.
+        String src = """
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                het totaalgewicht Numeriek (getal met 2 decimalen);
+            Objecttype de Boot (mv: Boten)
+                de naam Tekst;
+            Objecttype de Vondst (mv: Vondsten)
+                het gewicht (mv: gewichten) Numeriek (getal met 2 decimalen);
+            Feittype bemanning
+                de schipper Jutter
+                de gevoerde boot (mv: gevoerde boten) Boot
+            Eén schipper heeft meerdere gevoerde boten
+            Feittype berging
+                de bergende boot Boot
+                de geborgen vondst (mv: geborgen vondsten) Vondst
+            Eén bergende boot heeft meerdere geborgen vondsten
+            Feittype jutterbezit
+                de bezitter Jutter
+                de bezitting (mv: bezittingen) Vondst
+            Eén bezitter heeft meerdere bezittingen
+            Regel R
+                geldig altijd
+                    Het totaalgewicht van een Jutter moet berekend worden als het totaal van het gewicht van alle geborgen vondsten van alle gevoerde boten van de Jutter.
+            """;
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "het model moet schoon resolven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertFalse(drl.contains("sum("),
+                () -> "een bronPad-vouw mag nooit een eenstaps-accumulate worden:\n" + drl);
+        assertTrue(drl.contains("/* TODO aggregatie TOTAAL"),
+                () -> "een bronPad-vouw moet als aggregatie markeren:\n" + drl);
     }
 
     @Test void de_twee_nietsen_van_8_2_vallen_niet_tegen_elkaar_weg() {

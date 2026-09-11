@@ -675,6 +675,12 @@ public final class ExecModelTranspiler {
      *  multi-operand fold, or a non-literal SOM fallback) — never a silently-wrong aggregate over EVERY instance. */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private Agg aggregatie(Expr.Functie f, Objecttype subject, Variable subjectVar, boolean leegCount) {
+        // WF-102 (uchar pin d6c357c): a bronPad fold walks MULTIPLE relations; this lowering binds one
+        // join role, and verbindendeRol below would bind a coincidental direct fact type instead —
+        // a silently-wrong aggregate, exactly what the null-skip doctrine above forbids. Skip by form.
+        // The resolver carries the range on the operand (AttribuutRef.bereikPad).
+        if (!f.argumenten().isEmpty() && f.argumenten().get(0) instanceof Expr.AttribuutRef pa
+                && !pa.bereikPad().isEmpty()) return null;
         Objecttype elem = f.elementObjecttype();
         if (elem == null) return null;
         Class<?> elemClass = factClass(elem);

@@ -36,6 +36,14 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@code Onopgelost} marker this resolver already uses for a source it cannot bind — carrying the
  * aggregation's OWN result type, so the refused document stays WELL-FORMED and faults observably under
  * WF-044 in every executor (IR-SPEC ch. 2.4: the marker is legal wire content, the fence is behavioural).
+ *
+ * <p><b>Updated 2026-09-11, the wire half (WF-102).</b> The range is no longer one relation: a fold source
+ * may carry a {@code bronPad} of two or more steps, and the flat-union reading over it is normative
+ * (IR-SPEC ch. 4.3, RUNTIME-SEMANTICS ch. 3.4b). Shapes (1) and (2) above are therefore EXPRESSIBLE where
+ * the written chain RESOLVES, and this suite pins that instead of the refusal on exactly those documents —
+ * the card's A, B and F. The refusals are not gone: they hold for every chain that declines (an
+ * unresolvable step, an anchor that is not the subject, a walk that lands elsewhere), and each route keeps
+ * a witness. Shape (3) is untouched — it is a one-step form with no range to state.
  */
 class GenesteVouwbronTest {
 
@@ -194,6 +202,51 @@ class GenesteVouwbronTest {
                 Het laagste vondstgewicht van een Jutter moet berekend worden als het gewicht van alle geborgen vondsten van alle gevoerde boten van de Jutter.
         """;
 
+    /** A chain whose anchor names an object type that is NOT the rule subject — one step, so no path can
+     *  carry it, and the anchor rule refuses it exactly as before. Route (b)'s surviving witness. */
+    static final String VREEMD_ANKERREGEL = """
+
+        Regel laagste vondstgewicht
+            geldig altijd
+                Het laagste vondstgewicht van een Jutter moet berekend worden als de minimale waarde van het gewicht van alle geborgen vondsten van de Boot.
+        """;
+
+    /** MODEL_B plus a Jutter-to-Jutter relation, so a role anchor can be a FAR role: "de strandmaat" is a
+     *  role REACHABLE FROM the subject, hence another instance, which ch. 4.1a resolves as a hop. */
+    static final String ROLANKERMODEL = MODEL_B + """
+
+        Feittype vriendschap
+            de jutter Jutter
+            de strandmaat (mv: strandmaten) Jutter
+        Eén jutter heeft meerdere strandmaten
+        """;
+
+    static final String VERRE_ROLANKERREGEL = """
+
+        Regel laagste vondstgewicht
+            geldig altijd
+                Het laagste vondstgewicht van een Jutter moet berekend worden als de minimale waarde van het gewicht van alle aangemelde vondsten van de strandmaat.
+        """;
+
+    /** MODEL_B plus one more to-many relation, for the DEPTH witness: three written steps. */
+    static final String DIEPTEMODEL = MODEL_B + """
+
+        Objecttype de Kist (mv: Kisten)
+            het inhoudsgewicht Numeriek (getal met 2 decimalen) met eenheid kg;
+
+        Feittype inpakking
+            de verpakte vondst Vondst
+            de ingepakte kist (mv: ingepakte kisten) Kist
+        Eén verpakte vondst heeft meerdere ingepakte kisten
+        """;
+
+    static final String DRIESTAPSREGEL = """
+
+        Regel laagste vondstgewicht
+            geldig altijd
+                Het laagste vondstgewicht van een Jutter moet berekend worden als de minimale waarde van het inhoudsgewicht van alle ingepakte kisten van alle geborgen vondsten van alle gevoerde boten van de Jutter.
+        """;
+
     static final String NEST_MELDING =
             "geneste verzamelingsstap in een vouwbron: 'alle geborgen vondsten van alle gevoerde boten van de "
             + "Jutter' stapelt de verzameling 'alle gevoerde boten van de Jutter' onder een tweede verzameling, "
@@ -218,6 +271,7 @@ class GenesteVouwbronTest {
         return m.diagnostics.stream()
                 .filter(d -> d.message().startsWith("geneste verzamelingsstap in een vouwbron")
                         || d.message().startsWith("tussenstap in een vouwbron")
+                        || d.message().startsWith("rolanker in een vouwbron")
                         || d.message().startsWith("vouwbron bindt niet op de geschreven naam"))
                 .toList();
     }
@@ -230,22 +284,37 @@ class GenesteVouwbronTest {
 
     // ---------------- (a) the nested set step ----------------
 
-    /** Document A: no direct relation. It was already loud DOWNSTREAM (WF-048) but with a cause-missing
-     *  message; the frontend itself said nothing at all. */
+    /** Document A: no direct relation. UNTIL 2026-09-11 this was a refusal, because the wire could not
+     *  state the range; with WF-102 it states it, so the sentence resolves and the fold is emitted. */
     @Test
-    void geneste_ketenzin_zonder_directe_relatie_wordt_benoemd() {
-        List<Diagnostic> ds = vouwbronDiagnoses(MODEL_A + KETENREGEL);
-        assertEquals(1, ds.size(), () -> "verwacht één vouwbron-diagnose, kreeg " + ds);
-        assertEquals(NEST_MELDING, ds.get(0).message());
+    void geneste_ketenzin_zonder_directe_relatie_wordt_een_bronpad() {
+        assertEquals(List.of(), vouwbronDiagnoses(MODEL_A + KETENREGEL));
+        String json = ir(MODEL_A + KETENREGEL);
+        assertTrue(json.contains("\"kind\": \"MINIMUM\""), "de vouw hoort nu gewoon geëmitteerd te worden");
+        assertBronPad(json, "bemanning", "gevoerde boot", "berging", "geborgen vondst");
     }
 
-    /** Document B — the acute flank. With a direct Jutter–Vondst fact type this document was verifier-clean
-     *  and answered 5.00 where the sentence says 3.00, in all three executors at once. */
+    /** Document B — the acute flank. With a direct Jutter–Vondst fact type this document WAS verifier-clean
+     *  and answered 5.00 where the sentence says 3.00, in all three executors at once. The by-pair binding
+     *  must now be gone from the wire entirely: the path says which relations are walked, so there is
+     *  nothing left for a type search to guess. */
     @Test
-    void geneste_ketenzin_met_een_direct_feittype_wordt_ook_benoemd() {
-        List<Diagnostic> ds = vouwbronDiagnoses(MODEL_B + KETENREGEL);
-        assertEquals(1, ds.size(), () -> "verwacht één vouwbron-diagnose, kreeg " + ds);
-        assertEquals(NEST_MELDING, ds.get(0).message());
+    void geneste_ketenzin_met_een_direct_feittype_wordt_ook_een_bronpad() {
+        assertEquals(List.of(), vouwbronDiagnoses(MODEL_B + KETENREGEL));
+        String json = ir(MODEL_B + KETENREGEL);
+        assertBronPad(json, "bemanning", "gevoerde boot", "berging", "geborgen vondst");
+        assertFalse(json.contains("\"bronRol\""), "bronPad en bronRol sluiten elkaar uit (WF-102 (a))");
+        assertFalse(json.contains("\"rol\": \"aangemelde vondst\""),
+                "de wire mag geen rolbinding dragen die de zin niet schrijft");
+    }
+
+    /** The DEPTH decision, pinned: three written steps produce three bindings. A cap at two would refuse
+     *  this sentence, and the corpus anchor executes the same shape. */
+    @Test
+    void een_driestaps_keten_draagt_drie_stappen() {
+        assertEquals(List.of(), vouwbronDiagnoses(DIEPTEMODEL + DRIESTAPSREGEL));
+        assertBronPad(ir(DIEPTEMODEL + DRIESTAPSREGEL),
+                "bemanning", "gevoerde boot", "berging", "geborgen vondst", "inpakking", "ingepakte kist");
     }
 
     /** The nested set step is not always the FIRST step of the written chain: the greedy kaleNaam decides
@@ -258,14 +327,13 @@ class GenesteVouwbronTest {
                 () -> "de melding moet de geneste stap noemen: " + ds.get(0).message());
     }
 
-    /** The wire of document B: no fold, no bronRol, an honest marker instead. This is what turns the silent
-     *  5.00 into an observable failure in every executor. */
+    /** A chain that DECLINES still produces the marker, and the refusal machinery is therefore alive: the
+     *  mixed chain's middle step resolves to nothing, so no path can be stated and the old refusal stands. */
     @Test
-    void de_geneste_vouwbron_wordt_niet_gevouwen() {
-        String json = ir(MODEL_B + KETENREGEL);
+    void een_onoplosbare_keten_blijft_een_markering() {
+        String json = ir(MODEL_B + GEMENGDE_KETENREGEL);
+        assertFalse(json.contains("\"bronPad\""), "een onoplosbare keten mag geen half pad op de wire zetten");
         assertFalse(json.contains("\"bronRol\""), "een geneste keten mag geen bronRol op de wire zetten");
-        assertFalse(json.contains("\"rol\": \"aangemelde vondst\""),
-                "de wire mag geen rolbinding dragen die de zin niet schrijft");
         assertFalse(json.contains("\"kind\": \"MINIMUM\""), "de vouw mag niet geëmitteerd worden");
         assertTrue(json.contains("\"node\": \"Onopgelost\""), "de vouw moet een zichtbare markering worden");
     }
@@ -276,19 +344,29 @@ class GenesteVouwbronTest {
      *  "van de boot" disappeared exactly as a nested set step does — and the by-pair binding was RIGHT about
      *  the role name, so nothing else saw it: measured `diagnostics: []`, verifier PASS, and 5.00 where the
      *  sentence means 3.00. */
+    /** Document F, and the decision the acute flank left open: a to-ONE step is an ORDINARY step of the
+     *  range (RUNTIME-SEMANTICS ch. 3.4b — multiplicity is a declaration fact and does not enter the
+     *  reading), so the sentence is expressible and the path says so. The direct <em>jutterbezit</em>
+     *  relation, which the by-pair search used to bind here, must be absent from the wire. */
     @Test
-    void een_tussenstap_in_een_vouwbron_wordt_benoemd() {
-        List<Diagnostic> ds = vouwbronDiagnoses(FLANKMODEL + TUSSENSTAPREGEL);
-        assertEquals(1, ds.size(), () -> "verwacht één vouwbron-diagnose, kreeg " + ds);
-        assertEquals(TUSSENSTAP_MELDING, ds.get(0).message());
+    void een_toone_tussenstap_wordt_een_stap_op_het_pad() {
+        assertEquals(List.of(), vouwbronDiagnoses(FLANKMODEL + TUSSENSTAPREGEL));
+        String json = ir(FLANKMODEL + TUSSENSTAPREGEL);
+        assertTrue(json.contains("\"kind\": \"MINIMUM\""), "de vouw hoort nu gewoon geëmitteerd te worden");
+        assertBronPad(json, "bemanning", "boot", "bootvangst", "vondst");
+        assertFalse(json.contains("\"feittype\": \"jutterbezit\""),
+                "de type-paar-afleiding mag niet meer binden waar de zin een keten schrijft");
     }
 
+    /** Route (b) keeps its witness on the shape a path cannot rescue: ONE step whose anchor names an
+     *  object type that is not the rule subject. There is no chain to resolve, so the anchor rule refuses
+     *  it exactly as it did. */
     @Test
-    void de_tussenstap_vouwbron_wordt_niet_gevouwen() {
-        String json = ir(FLANKMODEL + TUSSENSTAPREGEL);
-        assertFalse(json.contains("\"bronRol\""), "een tussenstap mag geen bronRol op de wire zetten");
-        assertFalse(json.contains("\"kind\": \"MINIMUM\""), "de vouw mag niet geëmitteerd worden");
-        assertTrue(json.contains("\"node\": \"Onopgelost\""), "de vouw moet een zichtbare markering worden");
+    void een_anker_dat_het_onderwerp_niet_is_blijft_geweigerd() {
+        List<Diagnostic> ds = vouwbronDiagnoses(MODEL_B + VREEMD_ANKERREGEL);
+        assertEquals(1, ds.size(), () -> "verwacht één vouwbron-diagnose, kreeg " + ds);
+        assertTrue(ds.get(0).message().startsWith("tussenstap in een vouwbron"),
+                () -> "verwacht de ankerregel, kreeg " + ds.get(0).message());
     }
 
     /** Same model, same written element name, NO intermediate step: the fold binds and emits. This is what
@@ -301,13 +379,30 @@ class GenesteVouwbronTest {
         assertTrue(json.contains("\"feittype\": \"jutterbezit\""), "de directe relatie hoort op de wire");
     }
 
-    /** An anchor that names a ROLE ("van de aanmelder") resolves to no object type. Deliberately left alone:
-     *  whether a role anchor may stand for the subject is the wire question of the mother card. */
+    /** The role-anchor question the acute flank left to this card, DECIDED (2026-09-11) and decided by the
+     *  order ch. 4.1a already fixes rather than by a new test. "van de aanmelder" has ZERO far hits from the
+     *  subject and the subject type fills a role of that name, so it denotes the SUBJECT: the range starts
+     *  there, it is one step, and the wire spelling is the unchanged {@code bronRol}. The outcome is
+     *  byte-identical to before the decision, which is the point — the decision moves no document. */
     @Test
-    void een_rolnaam_als_anker_blijft_buiten_de_weigering() {
+    void een_zelfdenoterend_rolanker_blijft_een_eenstaps_binding() {
         assertEquals(List.of(), vouwbronDiagnoses(MODEL_B + ROLANKERREGEL));
-        assertTrue(ir(MODEL_B + ROLANKERREGEL).contains("\"rol\": \"aangemelde vondst\""),
-                "de bestaande binding blijft staan waar het anker een rolnaam is");
+        String json = ir(MODEL_B + ROLANKERREGEL);
+        assertTrue(json.contains("\"rol\": \"aangemelde vondst\""),
+                "een zelfdenoterend anker IS het onderwerp, dus de eenstaps-binding blijft staan");
+        assertFalse(json.contains("\"bronPad\""), "één relatie blijft één relatie: geen pad");
+    }
+
+    /** The other half of the same decision: a role REACHABLE FROM the subject denotes ANOTHER instance, so
+     *  it is a hop and not an anchor. With only one written step there is no path to put it on, and binding
+     *  the fold to the subject's own relation would fold the wrong set in silence — so it is refused. */
+    @Test
+    void een_verre_rol_als_anker_wordt_geweigerd() {
+        List<Diagnostic> ds = vouwbronDiagnoses(ROLANKERMODEL + VERRE_ROLANKERREGEL);
+        assertEquals(1, ds.size(), () -> "verwacht één vouwbron-diagnose, kreeg " + ds);
+        assertTrue(ds.get(0).message().startsWith("rolanker in een vouwbron"),
+                () -> "verwacht de rolanker-melding, kreeg " + ds.get(0).message());
+        assertTrue(ds.get(0).message().contains("strandmaat"), "de melding noemt de rol");
     }
 
     // ---------------- (c) the by-pair binding the written name contradicts ----------------
@@ -386,10 +481,11 @@ class GenesteVouwbronTest {
      *  at all. Either way no wrong answer survives — the marker is not a fold. */
     @Test
     void de_diagnose_is_een_waarschuwing_en_geen_fout() {
-        List<Diagnostic> ds = vouwbronDiagnoses(MODEL_B + KETENREGEL);
+        List<Diagnostic> ds = vouwbronDiagnoses(MODEL_B + GEMENGDE_KETENREGEL);
         assertEquals(1, ds.size());
         assertEquals(Severity.WARNING, ds.get(0).severity());
-        assertTrue(Resolver.resolve(MODEL_B + KETENREGEL).isOk(), "een WARNING mag de emissie niet blokkeren");
+        assertTrue(Resolver.resolve(MODEL_B + GEMENGDE_KETENREGEL).isOk(),
+                "een WARNING mag de emissie niet blokkeren");
     }
 
     /** The marker carries the aggregation's OWN result type, never the unknown sentinel. That is what keeps
@@ -398,8 +494,8 @@ class GenesteVouwbronTest {
      *  instead of as an ill-formed document. Measured on all three routes. */
     @Test
     void de_markering_draagt_het_eigen_resultaattype() {
-        for (String bron : List.of(MODEL_B + KETENREGEL, MODEL_B + BOTSENDE_EENSTAPSREGEL,
-                FLANKMODEL + TUSSENSTAPREGEL)) {
+        for (String bron : List.of(MODEL_B + GEMENGDE_KETENREGEL, MODEL_B + BOTSENDE_EENSTAPSREGEL,
+                MODEL_B + VREEMD_ANKERREGEL)) {
             String json = ir(bron);
             assertTrue(json.contains("\"node\": \"Onopgelost\""), "verwacht een markering");
             assertFalse(json.contains("\"node\": \"Onbekend\""),
@@ -411,9 +507,25 @@ class GenesteVouwbronTest {
     /** The emitter writes every diagnostic, so the document itself states what is wrong with it. */
     @Test
     void de_emissie_draagt_de_diagnose_op_de_wire() {
-        String json = ir(MODEL_B + KETENREGEL);
+        String json = ir(MODEL_B + GEMENGDE_KETENREGEL);
         assertTrue(json.contains("\"severity\": \"WARNING\""), "de diagnose hoort op de wire");
         assertTrue(json.contains("geneste verzamelingsstap in een vouwbron"),
                 "de wire moet de reden dragen, niet alleen een niveau");
+    }
+
+    /** The emitted {@code bronPad}, step by step and in order: the pairs are given subject-outwards, and
+     *  the assertion is on the ORDER because a range read backwards walks a different chain. */
+    private static void assertBronPad(String json, String... feittypeEnRol) {
+        assertTrue(json.contains("\"bronPad\""), () -> "verwacht een bronPad op de wire:\n" + json);
+        int vanaf = json.indexOf("\"bronPad\"");
+        for (int i = 0; i < feittypeEnRol.length; i += 2) {
+            String stap = "\"feittype\": \"" + feittypeEnRol[i] + "\"";
+            String rolnaam = feittypeEnRol[i + 1];
+            int hier = json.indexOf(stap, vanaf);
+            assertTrue(hier >= 0, () -> "verwacht stap " + stap + " in het pad:\n" + json);
+            int rol = json.indexOf("\"rol\": \"" + rolnaam + "\"", hier);
+            assertTrue(rol > hier, () -> "stap " + stap + " moet rol '" + rolnaam + "' binden");
+            vanaf = rol;
+        }
     }
 }

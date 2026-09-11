@@ -181,7 +181,9 @@ public sealed interface Expr {
      */
     record AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
                         String navigatieRol, Datatype type, Bron bron, boolean set,
-                        java.util.List<String> navigatiePad) implements Expr {
+                        java.util.List<String> navigatiePad,
+                        java.util.List<io.github.yhavinga.regelspraak.model.RegelSpraakModel.RolBindingRef> bereikPad)
+            implements Expr {
         /** {@code set} marks an operand that ranges over a SET (a §13.4.2 set quantifier — alle/al/geen van de/
          *  ten minste…/ten hoogste…/precies… — NOT the bare definite "de"), computed structurally from the
          *  onderwerp's quantifier rather than re-scanned from the onderwerp text. Lets the transpiler/resolver
@@ -192,7 +194,21 @@ public sealed interface Expr {
          *  navigation order — empty for the subject's own attribute and for a single-hop navigation (which stays
          *  the written {@code navigatieRol}). INVARIANT: a non-empty pad implies a non-null {@code navigatieRol},
          *  so every own-attribute fast path (keyed on navigatieRol == null) routes a chain to the navigated
-         *  branches, whose choke points (naviResolve / navReader / navComparisonRole) are pad-aware. */
+         *  branches, whose choke points (naviResolve / navReader / navComparisonRole) are pad-aware.
+         *
+         *  {@code bereikPad} is the resolved MULTI-STEP fold-source RANGE (IR-SPEC ch. 4.3 / WF-102, the
+         *  uchar wire's {@code bronPad} on the enclosing Functie): the symbolic role bindings from the rule
+         *  subject to the element type, subject-outwards, one per written set step. Empty for every source
+         *  whose range is ONE relation — that one stays the emitter's {@code bronRol} — and empty whenever
+         *  the written chain declines to resolve, which keeps the resolver's refusal intact instead of
+         *  half-binding. It sits on the operand because that is where the written chain is; the emitter
+         *  lifts it onto the fold, which is where the wire carries it. */
+        public AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
+                            String navigatieRol, Datatype type, Bron bron, boolean set,
+                            java.util.List<String> navigatiePad) {
+            this(attribuut, objecttype, onderwerpBron, navigatieRol, type, bron, set, navigatiePad,
+                    java.util.List.of());
+        }
         public AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
                             String navigatieRol, Datatype type, Bron bron, boolean set) {
             this(attribuut, objecttype, onderwerpBron, navigatieRol, type, bron, set, java.util.List.of());

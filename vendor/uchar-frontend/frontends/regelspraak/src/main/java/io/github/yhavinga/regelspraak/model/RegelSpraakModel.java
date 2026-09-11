@@ -494,6 +494,61 @@ public final class RegelSpraakModel {
         return n == 1 ? gevonden : null;
     }
 
+    /** One resolved STEP of a multi-step fold-source range (IR-SPEC ch. 4.3 / WF-102): the symbolic
+     *  wire binding — the fact type plus the role whose fillers form the reached set — together with the
+     *  object type that role reaches. The to-MANY-range sibling of {@link KetenHop}, which is a to-one
+     *  getter hop; a step here is neutral about multiplicity, because the flat-union reading is
+     *  (RUNTIME-SEMANTICS ch. 3.4b: a to-one step contributes its zero-or-one instance like any other). */
+    public record BereikHop(RolBindingRef binding, Objecttype doel) {}
+
+    /** Resolve ONE written step of a fold-source range from {@code houder}: the unique fact-type role
+     *  that {@code geschrevenElement} names, in a fact type that also relates {@code houder}. The written
+     *  name is authoritative (§13.4.1), and only a DECLARED name binds — singular or declared plural,
+     *  never the best-effort plural — which is exactly {@link #elementBinding}'s contract and exactly
+     *  WF-047's ("the plural does not bind"). Null on no match, on an ambiguous one, or on a reciprocal
+     *  fact type (whose single role cannot produce the two-role step shape); the caller then declines the
+     *  WHOLE path rather than binding part of it. */
+    public BereikHop bereikHop(Objecttype houder, String geschrevenElement) {
+        ElementBindingRef eb = elementBinding(houder, geschrevenElement);
+        if (eb == null) return null;
+        Feittype ft = feittypen.get(eb.feittype());
+        if (ft == null) return null;
+        for (Rol r : ft.rollen)
+            if (r.naam().equals(eb.elementRol())) {
+                Objecttype doel = objecttypeOpNaam(r.objecttypeNaam());
+                return doel == null ? null : new BereikHop(new RolBindingRef(eb.feittype(), r.naam()), doel);
+            }
+        return null;
+    }
+
+    /** How many roles named {@code geschrevenRol} are reachable FROM {@code subject} as a far role — the
+     *  count behind {@link #rolDoeltypeNaarSubject}, which collapses zero and several into null. The
+     *  ch. 4.1a resolution ORDER needs the count and not the winner: far-role resolution comes FIRST, and
+     *  a self-denoting reading applies only at ZERO far hits, so an AMBIGUOUS far match must not fall
+     *  through to it. */
+    public int rolTreffersNaarSubject(Objecttype subject, String geschrevenRol) {
+        if (subject == null || geschrevenRol == null) return 0;
+        int n = 0;
+        for (Feittype ft : feittypen.values())
+            for (Rol r : ft.rollen)
+                if (rolMatcht(r, geschrevenRol) && feittypeRelateert(ft, r, subject)
+                        && objecttypeOpNaam(r.objecttypeNaam()) != null) n++;
+        return n;
+    }
+
+    /** Whether {@code subject} ITSELF fills a role named {@code geschrevenRol} (ci, declared name or
+     *  declared plural, or the best-effort plural) — the WF-083 (b) self-denotation test, used at the
+     *  ANCHOR of a fold-source range: "alle vondsten van de aanmelder", read on the Jutter who IS the
+     *  aanmelder. Only meaningful AFTER {@link #rolTreffersNaarSubject} returns zero (ch. 4.1a: a far role
+     *  is a real hop, whatever its filler type happens to be). */
+    public boolean vultZelfDeRol(Objecttype subject, String geschrevenRol) {
+        if (subject == null || geschrevenRol == null) return false;
+        for (Feittype ft : feittypen.values())
+            for (Rol r : ft.rollen)
+                if (rolMatcht(r, geschrevenRol) && rolHeeftObjecttype(r, subject)) return true;
+        return false;
+    }
+
     /**
      * The written role name to record on a navigation reference: the {@code noun}
      * itself when it denotes a feittype role (and not an object type by that name),

@@ -3394,6 +3394,13 @@ public final class DrlTranspiler {
      * here; navigation joins fill it. Returns null for aggregations not yet mappable.
      */
     private Frag accumulate(Acc acc, Expr.Functie f, Objecttype subject, boolean leegCount) {
+        // WF-102 (uchar pin d6c357c): a multi-step fold-source range (bronPad) names the relations it
+        // walks; this accumulate lowers exactly ONE join role, and the type-pair fallback below would
+        // otherwise bind a coincidental direct fact type and sum the WRONG set. Marker, never a guess —
+        // the same refusal uchar's Drools backend makes by name (Functie.bronPad). The resolver
+        // carries the range on the operand (AttribuutRef.bereikPad); the emitter lifts it to the wire.
+        if (!f.argumenten().isEmpty() && f.argumenten().get(0) instanceof Expr.AttribuutRef pa
+                && !pa.bereikPad().isEmpty()) return null;
         // §4.11/§5.8.1 telling over a concatenation of expressies ("het aantal X, Y en Z"): the
         // count is the UNION of the per-operand sets. When the resolver could OR the per-operand
         // kenmerk filters (f.filter() is the disjunction), this lowers to ONE accumulate whose

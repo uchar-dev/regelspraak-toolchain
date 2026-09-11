@@ -594,6 +594,11 @@ final class ExpressieBouwer {
      * written name that IS the element object type's own name.
      */
     private Expr keurVouwbron(FunctieAanroepContext f, Expr.AttribuutRef bron, Datatype type) {
+        // WF-102 (2026-09-11): a range the resolver RESOLVED is carried on the wire, so there is nothing
+        // left to refuse. Routes (a) and (b) below exist because a stacked range had no wire form; where
+        // one is bound they would refuse an expressible sentence, and (c) has nothing to contradict — a
+        // bound path makes no by-pair guess. The refusals stay for every chain that declines to resolve.
+        if (bron.bereikPad() != null && !bron.bereikPad().isEmpty()) return null;
         OnderwerpContext o = vouwBronOnderwerp(f);
         if (o == null) return null;
         OnderwerpContext genest = genesteSetStap(o);
@@ -617,7 +622,24 @@ final class ExpressieBouwer {
         if (sp > 0)
             for (String kandidaat : RegelSpraakModel.naamKandidaten(geschreven.substring(sp + 5))) {
                 Objecttype anker = model.objecttypeOpNaam(kandidaat);
-                if (anker == null) continue;             // a role anchor: the wire question, left alone
+                if (anker == null) {
+                    // WF-102's anchor rule (2026-09-11): a role anchor is admissible only where it denotes
+                    // the SUBJECT, under ch. 4.1a's order. A far role — one reachable FROM the subject —
+                    // denotes another instance, so binding the fold to the subject's own relation would
+                    // fold the wrong set in silence; that is the shape refused here. A SELF-DENOTING name
+                    // (zero far hits, and the subject type fills a role of that name) is the subject, and
+                    // the chain simply starts there. A name that resolves to nothing at all keeps its
+                    // pre-existing silence: there is nothing to say about it.
+                    if (model.rolTreffersNaarSubject(huidigSubject, kandidaat) == 0) continue;
+                    model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
+                            "rolanker in een vouwbron: '" + src(o) + "' verankert de verzameling op de rol '"
+                                    + kandidaat + "', die vanaf " + huidigSubject.naam + " een ANDER exemplaar "
+                                    + "aanwijst — een vouwbron zonder bronPad noemt één relatie vanaf het "
+                                    + "regelonderwerp zelf (IR-SPEC ch. 4.3/WF-102), dus de stap naar dat "
+                                    + "exemplaar zou spoorloos wegvallen en de aggregatie blijft onopgelost "
+                                    + "(§13.4.1/§13.4.17)", f.getStart().getLine()));
+                    return new Expr.Onopgelost(type, bron(f));
+                }
                 if (anker == huidigSubject) break;       // the chain starts at the subject, as the wire needs
                 model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
                         "tussenstap in een vouwbron: '" + src(o) + "' bereikt de elementen via " + anker.naam
@@ -1776,7 +1798,68 @@ final class ExpressieBouwer {
             }
         }
         if (dt == null) dt = onbekend();
-        return new Expr.AttribuutRef(attr, ot, onderwerpBron, navRol, dt, bron, isSetOnderwerp(onderwerp), navigatiePad);
+        return new Expr.AttribuutRef(attr, ot, onderwerpBron, navRol, dt, bron, isSetOnderwerp(onderwerp),
+                navigatiePad, bereikPad(onderwerp, ot));
+    }
+
+    /**
+     * §5.8/§13.4.2 the MULTI-STEP fold-source range ("de &lt;attr&gt; van alle X van alle Y van &lt;onderwerp&gt;"),
+     * resolved into the symbolic bindings the uchar wire carries as {@code bronPad} (IR-SPEC ch. 4.3,
+     * WF-102). The written names are authoritative (§13.4.1: the written role IS the navigation), which is
+     * the whole point — the by-PAIR derivation that used to stand in here looks only at TYPES and will bind
+     * a coincidental direct subject-to-element relation, folding a different set from the one the sentence
+     * names.
+     *
+     * <p>Empty — leaving the caller's existing behaviour untouched — for every shape this does not decide:
+     * a single written step (whose range IS one relation, spelled {@code bronRol}), a non-set onderwerp, an
+     * anchor that denotes neither the subject's object type nor the subject itself, a step that resolves to
+     * no role or to several, a reciprocal fact type, and a walk that does not land on the element type the
+     * head noun already bound. Declining the WHOLE path rather than binding part of it is what keeps the
+     * two backends symmetric by construction: they consume the same path or none.
+     *
+     * <p>The ANCHOR (the innermost written segment) may name a ROLE instead of an object type, and the test
+     * is the one ch. 4.1a already fixes rather than a new one: far-role resolution FIRST — a role reachable
+     * FROM the subject is a hop whose filler is another instance, so it belongs on the path as a step and
+     * never as the anchor — and the self-denoting reading only at ZERO far hits, where the subject type
+     * itself fills a role of that name ("van de aanmelder", read on the Jutter who IS the aanmelder).
+     */
+    private java.util.List<RegelSpraakModel.RolBindingRef> bereikPad(OnderwerpContext onderwerp, Objecttype elem) {
+        if (onderwerp == null || elem == null || huidigSubject == null || !isSetOnderwerp(onderwerp))
+            return java.util.List.of();
+        // The written segments, outside-in. Two shapes produce them, and both are walked: a nested
+        // set onderwerp is its own parse node, while an inner TO-ONE step is swallowed by the greedy
+        // kaleNaam (§13.4.1, the same split the navigatiePad block above performs).
+        java.util.List<String> segmenten = new java.util.ArrayList<>();
+        for (OnderwerpContext rest = onderwerp; rest != null; rest = rest.onderwerp()) {
+            String kn = rest.kaleNaam() != null ? src(rest.kaleNaam()) : primaireNaam(rest);
+            if (kn == null) return java.util.List.of();
+            for (String deel : kn.split("\\s+van\\s+")) segmenten.add(stripArtikel(deel).trim());
+        }
+        // Two hops plus an anchor is the shortest thing this field exists for; anything shorter is the
+        // one-step range and keeps its own spelling.
+        if (segmenten.size() < 3) return java.util.List.of();
+        if (!ankertHetOnderwerp(segmenten.get(segmenten.size() - 1))) return java.util.List.of();
+        java.util.List<RegelSpraakModel.RolBindingRef> pad = new java.util.ArrayList<>();
+        Objecttype houder = huidigSubject;
+        for (int i = segmenten.size() - 2; i >= 0; i--) {
+            RegelSpraakModel.BereikHop hop = model.bereikHop(houder, segmenten.get(i));
+            if (hop == null) return java.util.List.of();
+            pad.add(hop.binding());
+            houder = hop.doel();
+        }
+        // The walk must land where the head noun already bound the element type: a mismatch means the head
+        // resolved against a different fact type than the walk did, and binding it anyway would fold a set
+        // the sentence does not name.
+        return houder == elem ? java.util.List.copyOf(pad) : java.util.List.of();
+    }
+
+    /** Whether the written anchor segment denotes the RULE SUBJECT — literally by object-type name, or
+     *  (ch. 4.1a's order: only at zero far hits) by a role the subject itself fills. */
+    private boolean ankertHetOnderwerp(String anker) {
+        for (String kandidaat : RegelSpraakModel.naamKandidaten(anker))
+            if (model.objecttypeOpNaam(kandidaat) == huidigSubject) return true;
+        return model.rolTreffersNaarSubject(huidigSubject, anker) == 0
+                && model.vultZelfDeRol(huidigSubject, anker);
     }
 
     /** The {@link Parameter} named {@code naam} (lidwoord-stripped) when it is Percentage-typed — the §13.4.17.12

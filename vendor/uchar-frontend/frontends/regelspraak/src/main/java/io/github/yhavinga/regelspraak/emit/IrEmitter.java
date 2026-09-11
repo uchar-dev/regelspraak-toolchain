@@ -428,8 +428,19 @@ public final class IrEmitter {
                 w.key("type"); datatype(f.type());
                 w.key("bron").value(f.bron().snippet());
                 w.key("granulariteit").value(f.granulariteit() == null ? null : f.granulariteit().name());
-                RegelSpraakModel.RolBindingRef rb = bronRolBinding(f);
-                if (rb != null) { w.key("bronRol"); rolBinding(rb); }
+                // IR-SPEC ch. 4.3 / WF-102: the range is ONE field with two spellings. A resolved
+                // multi-step range goes out as bronPad; the one-step range stays bronRol, and the two are
+                // mutually exclusive on the wire — so the path is written INSTEAD OF the binding, never
+                // beside it.
+                List<RegelSpraakModel.RolBindingRef> pad = bronPad(f);
+                if (!pad.isEmpty()) {
+                    w.key("bronPad").beginArray();
+                    for (RegelSpraakModel.RolBindingRef stap : pad) rolBinding(stap);
+                    w.endArray();
+                } else {
+                    RegelSpraakModel.RolBindingRef rb = bronRolBinding(f);
+                    if (rb != null) { w.key("bronRol"); rolBinding(rb); }
+                }
             }
             case Expr.Afgerond a -> {
                 w.key("node").value("Afgerond");
@@ -775,6 +786,20 @@ public final class IrEmitter {
         if (arg.type() instanceof Datatype.Onbekend) return m.elementRolBinding(huidigSubject, arg.attribuut());
         if (arg.set()) return m.verbindendeRolBinding(huidigSubject, f.elementObjecttype());
         return null;
+    }
+
+    /** The fold-source RANGE of an instance fold, when the resolver bound a multi-step one (the uchar
+     *  {@code bronPad} extension, IR-SPEC ch. 4.3 / WF-102). The resolution itself happens once, in the
+     *  resolver, off the WRITTEN chain; this only lifts it from the operand — where the written chain is —
+     *  onto the fold, where the wire carries it. Empty for every one-step range, which keeps its
+     *  {@code bronRol} spelling. Scoped exactly as {@link #bronRolBinding}: a single-argument member fold,
+     *  navigation-free. */
+    private List<RegelSpraakModel.RolBindingRef> bronPad(Expr.Functie f) {
+        if (f.elementObjecttype() == null || f.argumenten().size() != 1) return List.of();
+        if (!(f.argumenten().get(0) instanceof Expr.AttribuutRef arg)) return List.of();
+        if (!arg.set() || arg.navigatieRol() != null
+                || (arg.navigatiePad() != null && !arg.navigatiePad().isEmpty())) return List.of();
+        return arg.bereikPad() == null ? List.of() : arg.bereikPad();
     }
 
     private void rolBinding(RegelSpraakModel.RolBindingRef rb) {
