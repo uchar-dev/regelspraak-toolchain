@@ -564,8 +564,15 @@ public final class RegelSpraakModel {
         return null;
     }
 
+    /** Can {@code ot} fill role {@code r}? IR-SPEC ch. 2.6: the role's DECLARED filler type is an
+     *  UPPER bound, so every subtype of it fills the role — which is what lets a feittype declared
+     *  on a supertype carry subtype instances. Identity on a flat model, where every type is its
+     *  own only ancestor. The name comparison stays as the fall-back for a role naming a type the
+     *  model does not declare. */
     private boolean rolHeeftObjecttype(Rol r, Objecttype ot) {
-        return objecttypeOpNaam(r.objecttypeNaam()) == ot || r.objecttypeNaam().equalsIgnoreCase(ot.naam);
+        Objecttype filler = objecttypeOpNaam(r.objecttypeNaam());
+        if (filler != null && ot != null) return ot.isEen(filler);
+        return ot != null && r.objecttypeNaam().equalsIgnoreCase(ot.naam);
     }
 
     private static boolean rolMatcht(Rol r, String naam) {
@@ -663,7 +670,20 @@ public final class RegelSpraakModel {
          *  BIJVOEGLIJK kenmerk is written "is &lt;k&gt;", a BEZITTELIJK one "heeft het &lt;k&gt;", a
          *  ZELFSTANDIG one "is een &lt;k&gt;" (so only a ZELFSTANDIG kenmerk binds the EEN-form). */
         public final Map<String, KenmerkSoort> kenmerkSoorten = new LinkedHashMap<>();
+        /** IR-SPEC ch. 2.2: the single direct supertype, or null for a root type. Resolved after
+         *  every declaration is read, because the wire reference is order-free. The member maps
+         *  above stay OWN — the chain is walked by the accessors below, and a bean generator that
+         *  emits {@code extends} needs the own set, not the closed one. */
+        public Objecttype supertype;
         public Objecttype(String naam) { this.naam = naam; }
+
+        /** This type and every ancestor, nearest first. Cycle-safe by construction: WF-104 refuses
+         *  a cycle at the document, and every reader here must still terminate on one. */
+        public List<Objecttype> keten() {
+            List<Objecttype> uit = new ArrayList<>();
+            for (Objecttype t = this; t != null && !uit.contains(t); t = t.supertype) uit.add(t);
+            return uit;
+        }
 
         /** §3.5 kenmerk soort: bijvoeglijk ("is &lt;k&gt;"), bezittelijk ("heeft het &lt;k&gt;") or
          *  zelfstandig/noch-noch ("is een &lt;k&gt;"). An untagged declaration is zelfstandig. */
@@ -675,20 +695,24 @@ public final class RegelSpraakModel {
          *  "Datum-tijd") binds the same attribute. Null when this type declares no such
          *  attribute. */
         public Datatype attribuut(String naam) {
-            Datatype exact = attributen.get(naam);
-            if (exact != null) return exact;
-            for (var e : attributen.entrySet())
-                if (e.getKey().equalsIgnoreCase(naam)) return e.getValue();
+            for (Objecttype t : keten()) {      // upward only (ch. 2.2): the nearest declaration answers
+                Datatype exact = t.attributen.get(naam);
+                if (exact != null) return exact;
+                for (var e : t.attributen.entrySet())
+                    if (e.getKey().equalsIgnoreCase(naam)) return e.getValue();
+            }
             return null;
         }
 
         /** The §13.3.7 dimensions of attribute {@code naam} (case-insensitively), in declared order,
          *  or an empty list when the attribute is scalar or undeclared. */
         public List<String> dimensiesVan(String naam) {
-            List<String> exact = attribuutDimensies.get(naam);
-            if (exact != null) return exact;
-            for (var e : attribuutDimensies.entrySet())
-                if (e.getKey().equalsIgnoreCase(naam)) return e.getValue();
+            for (Objecttype t : keten()) {
+                List<String> exact = t.attribuutDimensies.get(naam);
+                if (exact != null) return exact;
+                for (var e : t.attribuutDimensies.entrySet())
+                    if (e.getKey().equalsIgnoreCase(naam)) return e.getValue();
+            }
             return List.of();
         }
 
@@ -696,16 +720,38 @@ public final class RegelSpraakModel {
          *  case-insensitively? Used to decide whether a navigation can emit a getter for it
          *  or must stay an honest marker. */
         public boolean heeftLid(String naam) {
-            return attribuut(naam) != null || kenmerken.stream().anyMatch(k -> k.equalsIgnoreCase(naam));
+            return attribuut(naam) != null
+                    || keten().stream().flatMap(t -> t.kenmerken.stream())
+                              .anyMatch(k -> k.equalsIgnoreCase(naam));
+        }
+
+        /** Is {@code ander} this type or one of its ancestors? The ⊑ of IR-SPEC ch. 2.2, which is
+         *  what every type-ranging position ranges over and what a role's declared filler type
+         *  bounds from above. */
+        public boolean isEen(Objecttype ander) {
+            return ander != null && keten().contains(ander);
         }
 
         /** The §3.5 soort of kenmerk {@code naam} (case-insensitively), or null when no such kenmerk is
          *  declared. An untagged kenmerk is {@link KenmerkSoort#ZELFSTANDIG}. */
         public KenmerkSoort kenmerkSoort(String naam) {
-            KenmerkSoort exact = kenmerkSoorten.get(naam);
-            if (exact != null) return exact;
-            for (var e : kenmerkSoorten.entrySet())
-                if (e.getKey().equalsIgnoreCase(naam)) return e.getValue();
+            for (Objecttype t : keten()) {
+                KenmerkSoort exact = t.kenmerkSoorten.get(naam);
+                if (exact != null) return exact;
+                for (var e : t.kenmerkSoorten.entrySet())
+                    if (e.getKey().equalsIgnoreCase(naam)) return e.getValue();
+            }
+            return null;
+        }
+
+        /** The type on this chain that DECLARES {@code naam} as an attribute or kenmerk — this type
+         *  itself when it declares it, null when nothing on the chain does. The ch. 7.2 conflict key
+         *  names it, so one target reports under one name however many subtypes inherit it. */
+        public Objecttype declarantVan(String naam) {
+            for (Objecttype t : keten())
+                if (t.attributen.keySet().stream().anyMatch(k -> k.equalsIgnoreCase(naam))
+                        || t.kenmerken.stream().anyMatch(k -> k.equalsIgnoreCase(naam)))
+                    return t;
             return null;
         }
     }
