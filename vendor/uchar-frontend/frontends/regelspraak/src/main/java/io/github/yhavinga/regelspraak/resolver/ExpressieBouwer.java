@@ -739,8 +739,11 @@ final class ExpressieBouwer {
                 RegelSpraakModel.Dimensie dd = model.dimensieOpMeervoud(mv);
                 List<String> kopDims = dd == null ? List.of() : huidigSubject.dimensiesVan(kop);
                 if (dd != null && kopDims.size() == 1 && kopDims.get(0).equalsIgnoreCase(dd.naam())) {
-                    String declared = huidigSubject.attributen.keySet().stream()
-                            .filter(n -> n.equalsIgnoreCase(kop)).findFirst().orElse(kop);
+                    // the declared spelling may sit on an ancestor: kopDims came from the chain-aware
+                    // dimensiesVan, so the own map alone would fall back to the WRITTEN form and put a
+                    // name on the wire that no declaration carries
+                    String eigen = huidigSubject.attribuutNaam(kop);
+                    String declared = eigen != null ? eigen : kop;
                     argumenten.set(0, new Expr.AttribuutRef(declared, huidigSubject, "zijn", null,
                             huidigSubject.attribuut(declared), on.bron(), false));
                     expliciet = dd;
@@ -848,8 +851,8 @@ final class ExpressieBouwer {
         // (totaal + tijdsevenredig), OR — for §7.3.2 tijdsevenredig only — a TEMPORAL PARAMETER (the spec's STANDAARD
         // BELASTINGVERMINDERING base, "kan jaarlijks wijzigen"), whose runtime value is itself a timeline (§5.1.2).
         boolean okOperand = operand instanceof Expr.AttribuutRef a && a.navigatieRol() == null && !a.set()
-                && a.objecttype() == huidigSubject && huidigSubject.attribuutGranulariteit.containsKey(a.attribuut())
-                && !huidigSubject.attribuutTijdlijnAantal.containsKey(a.attribuut());
+                && a.objecttype() == huidigSubject && huidigSubject.granulariteitVan(a.attribuut()) != null
+                && huidigSubject.tijdlijnAantalVan(a.attribuut()) == null;
         if (!okOperand && kind == Expr.FunctieKind.TIJDSEVENREDIG_DEEL
                 && operand instanceof Expr.ParameterRef p && p.parameter().granulariteit() != null)
             okOperand = true;
@@ -859,8 +862,8 @@ final class ExpressieBouwer {
         // against huidigSubject below; only the base reads through the navigation. (A to-many base markers in lowering.)
         if (!okOperand && kind == Expr.FunctieKind.TIJDSEVENREDIG_DEEL
                 && operand instanceof Expr.AttribuutRef a && a.navigatieRol() != null && !a.set()
-                && a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())
-                && !a.objecttype().attribuutTijdlijnAantal.containsKey(a.attribuut()))
+                && a.objecttype() != null && a.objecttype().granulariteitVan(a.attribuut()) != null
+                && a.objecttype().tijdlijnAantalVan(a.attribuut()) == null)
             okOperand = true;
         if (!okOperand) return null;
         ConditieBijExpressieContext cnd = f instanceof TotaalFuncContext t ? t.conditieBijExpressie()
@@ -912,8 +915,8 @@ final class ExpressieBouwer {
     /** A single-period temporal attribute of the rule subject (the operand a §7.1 gedurende comparison varies over). */
     private boolean isTemporeelSubjectAttr(Expr e) {
         return huidigSubject != null && e instanceof Expr.AttribuutRef a && a.navigatieRol() == null && !a.set()
-                && a.objecttype() == huidigSubject && huidigSubject.attribuutGranulariteit.containsKey(a.attribuut())
-                && !huidigSubject.attribuutTijdlijnAantal.containsKey(a.attribuut());
+                && a.objecttype() == huidigSubject && huidigSubject.granulariteitVan(a.attribuut()) != null
+                && huidigSubject.tijdlijnAantalVan(a.attribuut()) == null;
     }
 
     /** §7.1 structure a "gedurende de tijd dat &lt;zijn rol&gt; (een/het) &lt;temporeel kenmerk&gt; heeft/is"
@@ -932,7 +935,7 @@ final class ExpressieBouwer {
         if (doel == null || model.naarVeelRol(a.objecttype(), doel, a.navigatieRol())) return null;   // to-many -> marker
         String kenmerk = KenmerkMatcher.vind(doel, stripArtikel(src(top.kaleNaam())));
         if (kenmerk == null) return null;                                               // not a kenmerk of the navigated type
-        if (!doel.kenmerkGranulariteit.containsKey(kenmerk) || doel.kenmerkTijdlijnAantal.containsKey(kenmerk))
+        if (doel.kenmerkGranulariteitVan(kenmerk) == null || doel.kenmerkTijdlijnAantalVan(kenmerk) != null)
             return null;                                                                // must be a single-period temporal kenmerk
         return new Conditie.Kenmerk(kenmerk, a.navigatieRol(), false, bron);
     }
@@ -971,8 +974,8 @@ final class ExpressieBouwer {
             String zonderArtikel = geschreven.replaceFirst("^(?i)(de|het|een)\\s+", "").trim();
             if (!zonderArtikel.equals(geschreven)) kenmerk = KenmerkMatcher.vind(huidigSubject, zonderArtikel);
         }
-        if (kenmerk == null || !huidigSubject.kenmerkGranulariteit.containsKey(kenmerk)
-                || huidigSubject.kenmerkTijdlijnAantal.containsKey(kenmerk)) return null;
+        if (kenmerk == null || huidigSubject.kenmerkGranulariteitVan(kenmerk) == null
+                || huidigSubject.kenmerkTijdlijnAantalVan(kenmerk) != null) return null;
         return new Conditie.Kenmerk(kenmerk, null, negatie, bron);
     }
 
@@ -1042,7 +1045,7 @@ final class ExpressieBouwer {
      *  rather than leaking a List into a scalar guard term (which would break the DRL build). */
     private static boolean temporeelAttribuutOperand(Expr e) {
         if (e instanceof Expr.AttribuutRef a)
-            return a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut());
+            return a.objecttype() != null && a.objecttype().granulariteitVan(a.attribuut()) != null;
         if (e instanceof Expr.Binair b) return temporeelAttribuutOperand(b.links()) || temporeelAttribuutOperand(b.rechts());
         if (e instanceof Expr.Afgerond af) return temporeelAttribuutOperand(af.basis());
         if (e instanceof Expr.Begrensd bg) return temporeelAttribuutOperand(bg.basis())
@@ -1299,7 +1302,7 @@ final class ExpressieBouwer {
             Eenheid e = arg.type().eenheidOf();
             if (e == null || Tijdrekening.chronoUnit(e.noemer()) != null) continue;
             boolean temporeel = arg instanceof Expr.AttribuutRef a && a.objecttype() != null
-                    && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut());
+                    && a.objecttype().granulariteitVan(a.attribuut()) != null;
             if (!temporeel)
                 return "totaal van vereist een eenheid per tijdseenheid (§4.20 Tabel 30), kreeg '" + e.weergave() + "'";
         }
@@ -1431,7 +1434,7 @@ final class ExpressieBouwer {
      *  set — so that form DOES integrate over time and the §4.20 strip must keep applying to it. */
     private static boolean setLezing(List<Expr> args) {
         return args.size() == 1 && args.get(0) instanceof Expr.AttribuutRef a && a.set()
-                && !(a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut()));
+                && !(a.objecttype() != null && a.objecttype().granulariteitVan(a.attribuut()) != null);
     }
 
     private Datatype functieType(Expr.FunctieKind kind, List<Expr> args) {
@@ -1977,7 +1980,7 @@ final class ExpressieBouwer {
     private Expr dimensieCel(String kaleNaam, Objecttype ot, String navRol, String onderwerpBron, Bron bron) {
         if (ot == null || kaleNaam == null) return null;
         String beste = null; String besteLabel = null; RegelSpraakModel.Dimensie besteDim = null;
-        for (var e : ot.attribuutDimensies.entrySet()) {
+        for (var e : ot.gedimensioneerdeLeden().entrySet()) {   // own AND inherited (ch. 2.2)
             String attr = e.getKey();
             if (e.getValue().size() != 1) continue;                 // multi-dimension cell deferred
             RegelSpraakModel.Dimensie d = model.dimensieOpNaam(e.getValue().get(0));

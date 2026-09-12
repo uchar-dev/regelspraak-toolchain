@@ -20,6 +20,13 @@ class MeervoudMatcherTest {
         return ot;
     }
 
+    /** A subtype of {@code ouder} with its own attributes — the chain SUBTYPING §3.2 resolves along. */
+    private static Objecttype onder(Objecttype ouder, String... namen) {
+        Objecttype ot = metAttributen(namen);
+        ot.supertype = ouder;
+        return ot;
+    }
+
     @Test void regelmatige_meervouden() {
         assertTrue(MeervoudMatcher.meervoudsVormen("burgerservicenummer").contains("burgerservicenummers")); // -s
         assertTrue(MeervoudMatcher.meervoudsVormen("ploeg").contains("ploegen"));                            // -en
@@ -71,6 +78,38 @@ class MeervoudMatcherTest {
         Objecttype exact = metAttributen("wagens", "auto");   // a singular literally named like a plural still wins exactly
         exact.attribuutMeervoud.put("auto", "wagens");
         assertEquals("wagens", MeervoudMatcher.vindAttribuut(exact, "wagens"));
+    }
+
+    @Test void een_geerfd_attribuut_bindt_op_het_subtype() {
+        // SUBTYPING §3.2: resolution walks the chain UPWARD, so both the written singular and the written
+        // plural of an attribute the ANCESTOR declares bind on a subtype. This is the p18 shape — a
+        // verdeling writing "de bergingsaandelen van alle Hoofdbergers" against a "bergingsaandeel"
+        // declared on Berger — which used to leave the plural standing on the wire, where no declaration
+        // carries it and WF-034 rightly refuses it.
+        Objecttype ouder = metAttributen("bergingsaandeel");
+        ouder.attribuutMeervoud.put("bergingsaandeel", "bergingsaandelen");
+        Objecttype sub = onder(ouder, "rang");
+        assertEquals("bergingsaandeel", MeervoudMatcher.vindAttribuut(sub, "bergingsaandeel"));
+        // the "(mv: …)" sits at the DECLARANT, so it is read there and not on the type that inherits it
+        assertEquals("bergingsaandeel", MeervoudMatcher.vindAttribuut(sub, "bergingsaandelen"));
+        assertEquals("rang", MeervoudMatcher.vindAttribuut(sub, "rangen"));   // its own still binds too
+        assertNull(MeervoudMatcher.vindAttribuut(sub, "adres"));
+    }
+
+    @Test void dubbelzinnig_meervoud_over_de_keten_heen_bindt_niets() {
+        // The ambiguity guard is CHAIN-WIDE, exactly as resolution is: a written plural that is the plural
+        // of one attribute on the subtype AND of another on the ancestor binds NEITHER. Applying the guard
+        // per type instead would return the nearest one, making the answer depend on where the author
+        // happened to declare — the order-dependence this matcher exists to refuse.
+        Objecttype ouder = metAttributen("zoon");
+        ouder.attribuutMeervoud.put("zoon", "kinderen");
+        Objecttype sub = onder(ouder, "dochter");
+        sub.attribuutMeervoud.put("dochter", "kinderen");
+        assertNull(MeervoudMatcher.vindAttribuut(sub, "kinderen"));
+        // …while an exact singular anywhere on the chain still wins over any plural on it
+        Objecttype metPlural = onder(metAttributen("wagens"), "auto");
+        metPlural.attribuutMeervoud.put("auto", "wagens");
+        assertEquals("wagens", MeervoudMatcher.vindAttribuut(metPlural, "wagens"));
     }
 
     @Test void foute_meervouden_worden_niet_overgegenereerd() {

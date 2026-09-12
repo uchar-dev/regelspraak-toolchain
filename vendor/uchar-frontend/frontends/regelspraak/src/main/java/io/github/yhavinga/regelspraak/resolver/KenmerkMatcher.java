@@ -38,18 +38,25 @@ final class KenmerkMatcher {
 
     /** The declared kenmerk of {@code ot} that the written predicaat name {@code geschreven} denotes,
      *  or null when none does (an unknown name, an attribute, a role, or an ambiguous inflection) —
-     *  left to the marker path. */
+     *  left to the marker path.
+     *
+     *  <p>Both passes range over the whole SUPERTYPE CHAIN (IR-SPEC ch. 2.2 / SUBTYPING §3.2): a kenmerk
+     *  declared on an ancestor is a member of {@code ot}, so it must bind in every predicaat form, and
+     *  the §3.5 soort check that follows each call reads the same declarant. The ambiguity guard ranges
+     *  over the chain for the same reason it ranges over one type's declarations — an inflection that
+     *  fits a kenmerk here and another one hop up binds NEITHER, never the nearer one. */
     static String vind(Objecttype ot, String geschreven) {
         if (ot == null || geschreven == null) return null;
-        for (String k : ot.kenmerken)                         // base form — always preferred
-            if (k.equalsIgnoreCase(geschreven)) return k;
+        String basis = ot.kenmerkNaam(geschreven);            // base form — always preferred
+        if (basis != null) return basis;
         String enige = null;                                  // the single kenmerk this form inflects from
-        for (String k : ot.kenmerken)
-            for (String vorm : verbogenVormen(k))
-                if (vorm.equalsIgnoreCase(geschreven)) {
-                    if (enige != null && !enige.equalsIgnoreCase(k)) return null;  // ambiguous → marker
-                    enige = k;
-                }
+        for (Objecttype t : ot.keten())
+            for (String k : t.kenmerken)
+                for (String vorm : verbogenVormen(k))
+                    if (vorm.equalsIgnoreCase(geschreven)) {
+                        if (enige != null && !enige.equalsIgnoreCase(k)) return null;  // ambiguous → marker
+                        enige = k;
+                    }
         return enige;
     }
 

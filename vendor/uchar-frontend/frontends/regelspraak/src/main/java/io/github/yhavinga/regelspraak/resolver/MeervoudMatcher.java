@@ -28,23 +28,31 @@ final class MeervoudMatcher {
     /** The declared attribute of {@code ot} the written (possibly plural) name denotes, or null. The
      *  singular exact match is preferred; otherwise the written form must be the declared "(mv: …)" OR
      *  the synthesised regular plural of exactly ONE attribute — if it is the plural (declared or
-     *  synthesised) of more than one, it binds none (an honest marker, not an order-dependent guess). */
+     *  synthesised) of more than one, it binds none (an honest marker, not an order-dependent guess).
+     *
+     *  <p>Both passes range over the whole SUPERTYPE CHAIN (IR-SPEC ch. 2.2 / SUBTYPING §3.2), because
+     *  the effective member set is what a reference resolves against: an attribute declared on an
+     *  ancestor is as much a member of {@code ot} as its own. The declared "(mv: …)" is read AT THE
+     *  DECLARANT, where the author wrote it. And the ambiguity guard ranges over the chain too — a
+     *  written plural that fits one attribute here and another one hop up binds NEITHER; guarding per
+     *  type instead would return the nearest and make the answer depend on where the author declared. */
     static String vindAttribuut(Objecttype ot, String geschreven) {
         if (ot == null || geschreven == null) return null;
-        for (String attr : ot.attributen.keySet())
-            if (attr.equalsIgnoreCase(geschreven)) return attr;          // singular, exact — preferred
+        String exact = ot.attribuutNaam(geschreven);                     // singular, exact — preferred
+        if (exact != null) return exact;
         String enige = null;
-        for (String attr : ot.attributen.keySet()) {
-            String mv = ot.attribuutMeervoud.get(attr);                  // declared (mv: …), §3.3 — spec-sanctioned
-            boolean matcht = mv != null && mv.equalsIgnoreCase(geschreven);
-            if (!matcht)                                                 // else the synthesised regular plural
-                for (String vorm : meervoudsVormen(attr))
-                    if (vorm.equalsIgnoreCase(geschreven)) { matcht = true; break; }
-            if (matcht) {
-                if (enige != null && !enige.equalsIgnoreCase(attr)) return null;  // ambiguous → marker
-                enige = attr;
+        for (Objecttype t : ot.keten())
+            for (String attr : t.attributen.keySet()) {
+                String mv = t.attribuutMeervoud.get(attr);               // declared (mv: …), §3.3 — spec-sanctioned
+                boolean matcht = mv != null && mv.equalsIgnoreCase(geschreven);
+                if (!matcht)                                             // else the synthesised regular plural
+                    for (String vorm : meervoudsVormen(attr))
+                        if (vorm.equalsIgnoreCase(geschreven)) { matcht = true; break; }
+                if (matcht) {
+                    if (enige != null && !enige.equalsIgnoreCase(attr)) return null;  // ambiguous → marker
+                    enige = attr;
+                }
             }
-        }
         return enige;
     }
 

@@ -18,6 +18,13 @@ class KenmerkMatcherTest {
         return ot;
     }
 
+    /** A subtype of {@code ouder} with its own kenmerken — the chain SUBTYPING §3.2 resolves along. */
+    private static Objecttype onder(Objecttype ouder, String... kenmerken) {
+        Objecttype ot = met(kenmerken);
+        ot.supertype = ouder;
+        return ot;
+    }
+
     @Test void exacte_basisvorm_matcht() {
         assertEquals("minderjarig", KenmerkMatcher.vind(met("minderjarig"), "minderjarig"));
         assertEquals("minderjarig", KenmerkMatcher.vind(met("minderjarig"), "Minderjarig")); // hoofdletter-ongevoelig
@@ -86,5 +93,25 @@ class KenmerkMatcherTest {
         // each alone is unambiguous and still binds
         assertEquals("groot", KenmerkMatcher.vind(met("groot"), "grote"));
         assertEquals("laat", KenmerkMatcher.vind(met("laat"), "late"));
+    }
+
+    @Test void een_geerfd_kenmerk_bindt_op_het_subtype() {
+        // SUBTYPING §3.2: resolution walks the chain UPWARD, so a kenmerk the ANCESTOR declares binds in
+        // every predicaat form on a subtype — base form and §5.6 inflection alike. Reading only the own
+        // list left an inherited kenmerk binding in NO predicaat form at all, across all eight call sites.
+        Objecttype sub = onder(met("betwist"), "geborgen");
+        assertEquals("betwist", KenmerkMatcher.vind(sub, "betwist"));
+        assertEquals("betwist", KenmerkMatcher.vind(sub, "betwiste"));
+        assertEquals("geborgen", KenmerkMatcher.vind(sub, "geborgene"));   // its own still binds too
+        assertNull(KenmerkMatcher.vind(sub, "verlaten"));
+    }
+
+    @Test void ambigue_verbuiging_over_de_keten_heen_bindt_niets() {
+        // The ambiguity guard is CHAIN-WIDE: "grote" inflects from the ancestor's "groot" and the
+        // subtype's "grot" alike, so it binds NEITHER. Guarding per type would take the nearest and make
+        // the answer depend on where the author declared — the order-dependence the guard exists against.
+        Objecttype sub = onder(met("groot"), "grot");
+        assertNull(KenmerkMatcher.vind(sub, "grote"));
+        assertEquals("groot", KenmerkMatcher.vind(sub, "groot"));   // the base form binds wherever it sits
     }
 }

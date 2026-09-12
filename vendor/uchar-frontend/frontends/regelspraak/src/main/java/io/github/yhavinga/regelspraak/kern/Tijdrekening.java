@@ -50,7 +50,7 @@ public final class Tijdrekening {
         if (grens instanceof Expr.Literal) return true;
         return grens instanceof Expr.AttribuutRef a && a.navigatieRol() == null && !a.set()
                 && a.objecttype() != null && a.objecttype() == subject
-                && !subject.attribuutGranulariteit.containsKey(a.attribuut())
+                && subject.granulariteitVan(a.attribuut()) == null
                 && subject.dimensiesVan(a.attribuut()).isEmpty();
     }
 

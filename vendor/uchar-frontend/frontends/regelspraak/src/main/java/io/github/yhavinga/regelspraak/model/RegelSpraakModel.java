@@ -114,7 +114,16 @@ public final class RegelSpraakModel {
                 .findFirst().orElse(null);
     }
 
-    /** §3.8 whether a temporal attribute rides a NAMED tijdlijn declared "met variabel startpunt". */
+    /** §3.8 whether a temporal attribute rides a NAMED tijdlijn declared "met variabel startpunt".
+     *
+     *  <p>Reads the OWN declaration deliberately, and it is the one temporality lookup that does. The
+     *  §9.9 anchor family is not a member lookup but a protocol: a startpuntbepaling DECLARES a
+     *  synthetic attribute on a named subject, {@link #startpuntLid} and {@link #isStartpuntLid} key on
+     *  that subject's name, and {@link io.github.yhavinga.regelspraak.resolver.RuleChecker} reserves the
+     *  name and writes the attribute. Resolving one of the four through the chain while the others key
+     *  on the declared name would leave the anchor half-reachable. Closing the family is a change with
+     *  its own measurement (its consumers are all in the back-ends, where no corpus witness exercises a
+     *  subtype yet) — see the card note. */
     public boolean heeftVariabelStartpunt(Objecttype ot, String attribuut) {
         String tlNaam = ot.attribuutTijdlijnNaam.get(attribuut);
         Tijdlijn tl = tlNaam == null ? null : tijdlijnOpNaam(tlNaam);
@@ -125,7 +134,7 @@ public final class RegelSpraakModel {
      *  fixed/inline tijdlijn, or no startpuntbepaling resolved for the pair — the back-ends then marker). */
     public String startpuntAnkerLid(Objecttype ot, String attribuut) {
         if (!heeftVariabelStartpunt(ot, attribuut)) return null;
-        return startpuntLid(ot, ot.attribuutTijdlijnNaam.get(attribuut));
+        return startpuntLid(ot, ot.attribuutTijdlijnNaam.get(attribuut));   // own, with the family above
     }
 
     /** §9.9 whether {@code lid} is the synthetic startpunt-anchor attribute of {@code objecttype} — the
@@ -689,40 +698,98 @@ public final class RegelSpraakModel {
          *  zelfstandig/noch-noch ("is een &lt;k&gt;"). An untagged declaration is zelfstandig. */
         public enum KenmerkSoort { BIJVOEGLIJK, BEZITTELIJK, ZELFSTANDIG }
 
+        /** What {@code kaart} holds for member {@code naam} on the NEAREST type of this chain that has
+         *  an entry for it, matched case-INsensitively; null when nothing on the chain does. Every
+         *  member-keyed side map is read through this one walk, because reading any of them on the own
+         *  type alone answers "no such member" for an inherited one — and for the TEMPORAL maps that
+         *  answer is not a missing binding but a WRONG judgement (a timeline read as a scalar). */
+        private <V> V opKeten(java.util.function.Function<Objecttype, Map<String, V>> kaart, String naam) {
+            if (naam == null) return null;
+            for (Objecttype t : keten()) {      // upward only (ch. 2.2): the nearest declaration answers
+                Map<String, V> m = kaart.apply(t);
+                V exact = m.get(naam);
+                if (exact != null) return exact;
+                for (var e : m.entrySet())
+                    if (e.getKey().equalsIgnoreCase(naam)) return e.getValue();
+            }
+            return null;
+        }
+
         /** The declared datatype of attribute {@code naam}, matched case-INsensitively —
          *  object-type names already resolve this way (see {@link #objecttypeOpNaam}), so a
          *  reference that differs only in case (casus source writes both "datum-tijd" and
          *  "Datum-tijd") binds the same attribute. Null when this type declares no such
          *  attribute. */
         public Datatype attribuut(String naam) {
-            for (Objecttype t : keten()) {      // upward only (ch. 2.2): the nearest declaration answers
-                Datatype exact = t.attributen.get(naam);
-                if (exact != null) return exact;
-                for (var e : t.attributen.entrySet())
-                    if (e.getKey().equalsIgnoreCase(naam)) return e.getValue();
-            }
+            return opKeten(t -> t.attributen, naam);
+        }
+
+        /** The DECLARED spelling of attribute {@code naam} (which may differ from the written one only
+         *  in case), or null when the chain declares no such attribute. The IR carries declared names
+         *  only, so a writer that reconstructs a reference reads its spelling here. */
+        public String attribuutNaam(String naam) {
+            for (Objecttype t : keten())
+                for (String a : t.attributen.keySet())
+                    if (a.equalsIgnoreCase(naam)) return a;
+            return null;
+        }
+
+        /** The DECLARED spelling of kenmerk {@code naam}, or null when the chain declares no such
+         *  kenmerk — the kenmerk twin of {@link #attribuutNaam}. */
+        public String kenmerkNaam(String naam) {
+            for (Objecttype t : keten())
+                for (String k : t.kenmerken)
+                    if (k.equalsIgnoreCase(naam)) return k;
             return null;
         }
 
         /** The §13.3.7 dimensions of attribute {@code naam} (case-insensitively), in declared order,
          *  or an empty list when the attribute is scalar or undeclared. */
         public List<String> dimensiesVan(String naam) {
-            for (Objecttype t : keten()) {
-                List<String> exact = t.attribuutDimensies.get(naam);
-                if (exact != null) return exact;
-                for (var e : t.attribuutDimensies.entrySet())
-                    if (e.getKey().equalsIgnoreCase(naam)) return e.getValue();
-            }
-            return List.of();
+            List<String> dims = opKeten(t -> t.attribuutDimensies, naam);
+            return dims == null ? List.of() : dims;
+        }
+
+        /** Every gedimensioneerd attribute reachable from this type — its own and its ancestors' —
+         *  keyed by declared naam, nearest declaration first. A reader that must SEARCH the
+         *  dimensioned attributes (rather than ask about one name) iterates this instead of the own
+         *  map, so an inherited cell read resolves like a declared one. */
+        public Map<String, List<String>> gedimensioneerdeLeden() {
+            Map<String, List<String>> uit = new LinkedHashMap<>();
+            for (Objecttype t : keten()) t.attribuutDimensies.forEach(uit::putIfAbsent);
+            return uit;
+        }
+
+        /** §13.3.6 the tijdlijn granularity of attribute {@code naam}, or null when it is an ordinary
+         *  single-value attribute. */
+        public Granulariteit granulariteitVan(String naam) {
+            return opKeten(t -> t.attribuutGranulariteit, naam);
+        }
+
+        /** §13.3.6.7 the period COUNT of attribute {@code naam}'s multi-period tijdlijn, or null for a
+         *  single-period (count 1) one. */
+        public Integer tijdlijnAantalVan(String naam) {
+            return opKeten(t -> t.attribuutTijdlijnAantal, naam);
+        }
+
+        // NOTE: attribuutTijdlijnNaam has NO chain accessor on purpose — see heeftVariabelStartpunt.
+
+        /** §13.3.6 the tijdlijn granularity of kenmerk {@code naam} — the kenmerk twin of
+         *  {@link #granulariteitVan}; null for an ordinary boolean kenmerk. */
+        public Granulariteit kenmerkGranulariteitVan(String naam) {
+            return opKeten(t -> t.kenmerkGranulariteit, naam);
+        }
+
+        /** §13.3.6.7 the kenmerk twin of {@link #tijdlijnAantalVan}. */
+        public Integer kenmerkTijdlijnAantalVan(String naam) {
+            return opKeten(t -> t.kenmerkTijdlijnAantal, naam);
         }
 
         /** Does this type declare a member named {@code naam} (an attribute or a kenmerk),
          *  case-insensitively? Used to decide whether a navigation can emit a getter for it
          *  or must stay an honest marker. */
         public boolean heeftLid(String naam) {
-            return attribuut(naam) != null
-                    || keten().stream().flatMap(t -> t.kenmerken.stream())
-                              .anyMatch(k -> k.equalsIgnoreCase(naam));
+            return attribuut(naam) != null || kenmerkNaam(naam) != null;
         }
 
         /** Is {@code ander} this type or one of its ancestors? The ⊑ of IR-SPEC ch. 2.2, which is
@@ -735,13 +802,7 @@ public final class RegelSpraakModel {
         /** The §3.5 soort of kenmerk {@code naam} (case-insensitively), or null when no such kenmerk is
          *  declared. An untagged kenmerk is {@link KenmerkSoort#ZELFSTANDIG}. */
         public KenmerkSoort kenmerkSoort(String naam) {
-            for (Objecttype t : keten()) {
-                KenmerkSoort exact = t.kenmerkSoorten.get(naam);
-                if (exact != null) return exact;
-                for (var e : t.kenmerkSoorten.entrySet())
-                    if (e.getKey().equalsIgnoreCase(naam)) return e.getValue();
-            }
-            return null;
+            return opKeten(t -> t.kenmerkSoorten, naam);
         }
 
         /** The type on this chain that DECLARES {@code naam} as an attribute or kenmerk — this type

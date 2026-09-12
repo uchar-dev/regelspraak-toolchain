@@ -778,6 +778,9 @@ final class RuleChecker {
 
     /** A domain-typed attribute/parameter must reference a declared domain (§13.3.4). */
     private void domeinReferenties(RegelSpraakDocumentContext doc) {
+        // OWN declarations on purpose: this ITERATES rather than resolves. Its subject is the
+        // declaration itself, and a chain-closed view would report one inherited attribute once per
+        // descendant — the same duplicate the verifier's declaration-walking checks avoid.
         model.objecttypen.values().forEach(ot -> ot.attributen.forEach((naam, dt) -> meldOnbekendDomein(dt, naam)));
         model.parameters.values().forEach(p -> meldOnbekendDomein(p.datatype(), p.naam()));
     }
@@ -902,7 +905,7 @@ final class RuleChecker {
      *  or any name that does not resolve; the transpiler then never silently drops or mis-checks. */
     /** The count of temporal (attribuutGranulariteit) components in a uniqueness key list. */
     private static long telTemporeel(Objecttype type, java.util.List<String> sleutels) {
-        return sleutels.stream().filter(k -> type.attribuutGranulariteit.containsKey(k)).count();
+        return sleutels.stream().filter(k -> type.granulariteitVan(k) != null).count();
     }
 
     private boolean uniciteit(String naam, UniciteitsControleContext u, Geldigheid geldigheid) {
@@ -1211,7 +1214,10 @@ final class RuleChecker {
         Expr waarde = bouwer.bouw(waardeCtx);
         if (nieuwType == null || nieuwType.attribuut(naam) != null)
             return new ResolvedObjectCreatie.Toekenning(naam, waarde);
-        String kenmerk = nieuwType.kenmerken.stream().filter(k -> k.equalsIgnoreCase(naam)).findFirst().orElse(null);
+        // through the chain, exactly as the attribute branch above: an INHERITED kenmerk of the created
+        // type is as much a member of it as its own, and reading the own list alone made one sentence's
+        // two branches disagree about what the type has (a binding on the left, an ERROR on the right).
+        String kenmerk = nieuwType.kenmerkNaam(naam);
         if (kenmerk != null) {
             if (!(waarde instanceof Expr.Literal lit && lit.type() instanceof Datatype.Booleaan))
                 model.diagnostics.add(new Diagnostic(Severity.ERROR,
@@ -1438,6 +1444,9 @@ final class RuleChecker {
         String lid = "startpunt " + tijdlijnNaam;
         // the synthetic anchor name is reserved: an author-declared attribute of another type under this
         // exact name would otherwise silently merge with the anchor (a latent type-mismatched write).
+        // OWN, with the rest of the §9.9 anchor family (RegelSpraakModel.heeftVariabelStartpunt): the
+        // anchor is DECLARED on the named subject and every reader of it keys on that name, so reading
+        // this one guard through the chain while the others do not would only shift the seam.
         Datatype bestaand = subject.attributen.get(lid);
         if (bestaand != null && !(bestaand instanceof Datatype.DatumInDagen)) {
             model.diagnostics.add(new Diagnostic(Severity.ERROR,
@@ -2055,7 +2064,7 @@ final class RuleChecker {
      *  §8.2 (the transpiler markers what it cannot yet lower), never a spec error. */
     private static boolean exprTemporeel(Expr e) {
         if (e instanceof Expr.AttribuutRef a)
-            return a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut());
+            return a.objecttype() != null && a.objecttype().granulariteitVan(a.attribuut()) != null;
         if (e instanceof Expr.ParameterRef p)  return p.parameter().granulariteit() != null;
         if (e instanceof Expr.Binair b)         return exprTemporeel(b.links()) || exprTemporeel(b.rechts());
         if (e instanceof Expr.Afgerond af)      return exprTemporeel(af.basis());
@@ -2069,7 +2078,7 @@ final class RuleChecker {
         Objecttype subject = bouwer.subject();
         Objecttype houder = k.navigatie() == null ? subject
                 : (subject != null ? model.rolDoeltypeNaarSubject(subject, k.navigatie()) : null);
-        return houder != null && houder.kenmerkGranulariteit.containsKey(k.kenmerk());
+        return houder != null && houder.kenmerkGranulariteitVan(k.kenmerk()) != null;
     }
 
     private Conditie uitNonToplevelKaal(Expr lhs, NonToplevelOperatorContext op, Bron bron) {

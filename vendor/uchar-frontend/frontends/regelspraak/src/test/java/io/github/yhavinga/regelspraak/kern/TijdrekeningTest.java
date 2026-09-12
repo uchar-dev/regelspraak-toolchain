@@ -1,9 +1,14 @@
 package io.github.yhavinga.regelspraak.kern;
 
 import io.github.yhavinga.regelspraak.ir.Conditie.Operator;
+import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.Eenheid;
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Granulariteit;
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -39,5 +44,37 @@ class TijdrekeningTest {
         assertEquals(5, Tijdrekening.toets(Operator.ONGELIJK));
         assertNull(Tijdrekening.toets(Operator.EERDER), "een datum-ordening valt buiten rsGeheelPeriode");
         assertNull(Tijdrekening.toets(Operator.LATER_OF_GELIJK));
+    }
+
+    @Test void periodeGrensLowerbaar_leest_de_facetten_van_een_geerfd_attribuut_door_de_keten() {
+        // Both Drools branches share this helper, so a wrong answer here is a wrong answer in two
+        // executors at once. It must judge the FACETS of the bound attribute — a timeline or a
+        // dimensioned attribute is not a lowerable §8.4.3 bound — and those facets sit at the
+        // DECLARANT. Reading them on the subject's own maps calls an inherited timeline scalar and
+        // admits a bound the runtime cannot compute.
+        Objecttype ouder = new Objecttype("Jutter");
+        ouder.attributen.put("peildatum", new Datatype.DatumInDagen());
+        ouder.attributen.put("knipdatum", new Datatype.DatumInDagen());
+        ouder.attribuutGranulariteit.put("knipdatum", Granulariteit.MAAND);
+        ouder.attributen.put("seizoensdatum", new Datatype.DatumInDagen());
+        ouder.attribuutDimensies.put("seizoensdatum", List.of("seizoen"));
+        Objecttype sub = new Objecttype("Klipjutter");
+        sub.supertype = ouder;
+
+        assertTrue(Tijdrekening.periodeGrensLowerbaar(grens("peildatum", sub), sub),
+                "een geërfde scalaire datum is een gewone lowerbare grens");
+        assertFalse(Tijdrekening.periodeGrensLowerbaar(grens("knipdatum", sub), sub),
+                "een geërfd TIJDLIJN-attribuut is geen scalaire grens — het antwoord mag niet van de "
+                        + "declaratieplaats afhangen");
+        assertFalse(Tijdrekening.periodeGrensLowerbaar(grens("seizoensdatum", sub), sub),
+                "een geërfd GEDIMENSIONEERD attribuut evenmin");
+        // …en het vlakke equivalent geeft precies dezelfde drie antwoorden
+        assertTrue(Tijdrekening.periodeGrensLowerbaar(grens("peildatum", ouder), ouder));
+        assertFalse(Tijdrekening.periodeGrensLowerbaar(grens("knipdatum", ouder), ouder));
+        assertFalse(Tijdrekening.periodeGrensLowerbaar(grens("seizoensdatum", ouder), ouder));
+    }
+
+    private static Expr grens(String attribuut, Objecttype subject) {
+        return new Expr.AttribuutRef(attribuut, subject, "zijn", null, new Datatype.DatumInDagen(), null);
     }
 }
