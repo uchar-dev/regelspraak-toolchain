@@ -750,14 +750,33 @@ public final class RegelSpraakModel {
             return dims == null ? List.of() : dims;
         }
 
+        /** The chain-closed VIEW of member-keyed side map {@code kaart}: every entry this type or an
+         *  ancestor declares, nearest declaration first (a nearer entry wins — WF-105 refuses shadowing,
+         *  so the collision is unreachable and the rule only fixes the reading). The map-shaped twin of
+         *  {@link #opKeten}, for the two readers a one-name question does not serve: one that must
+         *  SEARCH the map, and one that hands the WHOLE map to a name contract OF ITS OWN — the Drools
+         *  back-end matches member names by ref's {@code norm} (lowercase-ASCII + collapsed whitespace),
+         *  which is neither wider nor narrower than the {@code equalsIgnoreCase} above, so routing those
+         *  sites through {@link #opKeten} would close the chain and open a name-matching divergence in
+         *  the same edit. Closing the chain is this method's whole job. */
+        public <V> Map<String, V> opKetenKaart(java.util.function.Function<Objecttype, Map<String, V>> kaart) {
+            Map<String, V> uit = new LinkedHashMap<>();
+            for (Objecttype t : keten()) kaart.apply(t).forEach(uit::putIfAbsent);
+            return uit;
+        }
+
+        /** Every declared attribute reachable from this type — its own and its ancestors' — keyed by
+         *  declared naam, nearest declaration first. The chain-closed member set of ch. 2.2. */
+        public Map<String, Datatype> attribuutLeden() {
+            return opKetenKaart(t -> t.attributen);
+        }
+
         /** Every gedimensioneerd attribute reachable from this type — its own and its ancestors' —
          *  keyed by declared naam, nearest declaration first. A reader that must SEARCH the
          *  dimensioned attributes (rather than ask about one name) iterates this instead of the own
          *  map, so an inherited cell read resolves like a declared one. */
         public Map<String, List<String>> gedimensioneerdeLeden() {
-            Map<String, List<String>> uit = new LinkedHashMap<>();
-            for (Objecttype t : keten()) t.attribuutDimensies.forEach(uit::putIfAbsent);
-            return uit;
+            return opKetenKaart(t -> t.attribuutDimensies);
         }
 
         /** §13.3.6 the tijdlijn granularity of attribute {@code naam}, or null when it is an ordinary
@@ -766,10 +785,24 @@ public final class RegelSpraakModel {
             return opKeten(t -> t.attribuutGranulariteit, naam);
         }
 
+        /** §13.3.6 every TEMPORAL attribute reachable from this type, keyed by declared naam —
+         *  {@link #granulariteitVan}'s map-shaped twin, for a reader that asks the whole facet map at
+         *  once. Reading the own map instead answers "not temporal" for an INHERITED timeline, which is
+         *  not a missing binding but a wrong judgement (a timeline lowered as a scalar). */
+        public Map<String, Granulariteit> granulariteitLeden() {
+            return opKetenKaart(t -> t.attribuutGranulariteit);
+        }
+
         /** §13.3.6.7 the period COUNT of attribute {@code naam}'s multi-period tijdlijn, or null for a
          *  single-period (count 1) one. */
         public Integer tijdlijnAantalVan(String naam) {
             return opKeten(t -> t.attribuutTijdlijnAantal, naam);
+        }
+
+        /** §13.3.6.7 the chain-closed period-count map — {@link #tijdlijnAantalVan}'s map-shaped twin,
+         *  for the multiplicity predicate both Drools branches share, which takes the whole map. */
+        public Map<String, Integer> tijdlijnAantalLeden() {
+            return opKetenKaart(t -> t.attribuutTijdlijnAantal);
         }
 
         // NOTE: attribuutTijdlijnNaam has NO chain accessor on purpose — see heeftVariabelStartpunt.
@@ -780,9 +813,19 @@ public final class RegelSpraakModel {
             return opKeten(t -> t.kenmerkGranulariteit, naam);
         }
 
+        /** §13.3.6 the kenmerk twin of {@link #granulariteitLeden}. */
+        public Map<String, Granulariteit> kenmerkGranulariteitLeden() {
+            return opKetenKaart(t -> t.kenmerkGranulariteit);
+        }
+
         /** §13.3.6.7 the kenmerk twin of {@link #tijdlijnAantalVan}. */
         public Integer kenmerkTijdlijnAantalVan(String naam) {
             return opKeten(t -> t.kenmerkTijdlijnAantal, naam);
+        }
+
+        /** §13.3.6.7 the kenmerk twin of {@link #tijdlijnAantalLeden}. */
+        public Map<String, Integer> kenmerkTijdlijnAantalLeden() {
+            return opKetenKaart(t -> t.kenmerkTijdlijnAantal);
         }
 
         /** Does this type declare a member named {@code naam} (an attribute or a kenmerk),
