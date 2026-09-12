@@ -307,9 +307,29 @@ lidwoord          : DE | HET | EEN ; // §13.2.9
 // ====================================================================
 // §13.3.1 Objecttypen
 // ====================================================================
-objectTypeDefinition // §13.3.1.1
-    : OBJECTTYPE bepaaldLidwoord? objectTypeNaam ( MV_START meervoudsvorm RPAREN )? BEZIELD?
+objectTypeDefinition // §13.3.1.1 (+ the uchar 'is een' dialect extension, see below)
+    : OBJECTTYPE bepaaldLidwoord? objectTypeNaam objectTypeSupertype*
+      ( MV_START meervoudsvorm RPAREN )? BEZIELD?
       objectTypeMember*
+    ;
+
+// uchar DIALECT EXTENSION (grammar/DIVERGENCES.md §5) — the single direct supertype:
+// "Objecttype het Wrakrecht is een Strandrecht (mv: Wrakrechten)". The clause sits between
+// the name and the mv-group, whose order relative to (bezield) the grammar already fixes.
+//
+// Deliberately NO new lexer token. A whole-phrase IS_EEN would fire wherever the phrase occurs
+// under maximal munch, and it occurs in ordinary RULE TEXT ("Een dag is een schouwdag"), so it
+// would change documents that have nothing to do with subtyping. IS_VAN_HET_TYPE is safe only
+// because its phrase occurs nowhere else. The existing IS and EEN tokens in sequence at the head
+// position carry the clause instead, where the surrounding context disambiguates: a kenmerk
+// declaration is IS lowerNaam …, and naamWoordLower excludes EEN, so no §13.3.2 member can be
+// read as this clause.
+//
+// The rule ADMITS the two shapes WF-106 forbids — a second clause on one head, and "is een A en
+// B" — so the resolver refuses them by name instead of leaving the author a bare syntax error.
+// Single parenthood is a language bound above the wire; the wire cannot express its violation.
+objectTypeSupertype
+    : IS onbepaaldLidwoord objectTypeNaam ( EN onbepaaldLidwoord? objectTypeNaam )*
     ;
 
 objectTypeExtensie // §13.3.1.2

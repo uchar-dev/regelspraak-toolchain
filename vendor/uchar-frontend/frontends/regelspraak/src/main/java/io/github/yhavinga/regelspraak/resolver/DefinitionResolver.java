@@ -42,6 +42,9 @@ public final class DefinitionResolver {
             if (d.dagsoortDefinition() != null) dagsoort(d.dagsoortDefinition());
             if (d.dimensieDefinition() != null) dimensie(d.dimensieDefinition());
         }
+        // the 'is een' clauses bind only now: resolution is document-wide and ORDER-FREE, so a
+        // forward reference is legal and only an undeclared name refuses (SUBTYPING §9.2)
+        bindSupertypen();
         for (RegelContext r : alleRegels(doc)) {
             model.regels.add(new Regel(src(r.regelNaam()), "regel"));
         }
@@ -119,7 +122,167 @@ public final class DefinitionResolver {
         Objecttype ot = model.objecttypen.computeIfAbsent(src(ctx.objectTypeNaam()), Objecttype::new);
         if (ctx.BEZIELD() != null) ot.bezield = true;
         if (ctx.meervoudsvorm() != null) ot.meervoud = src(ctx.meervoudsvorm()); // §13.2.29, for §8.1.6 plural refs
+        supertypeClausules(ot, ctx.objectTypeSupertype());
         for (ObjectTypeMemberContext m : ctx.objectTypeMember()) member(ot, m);
+    }
+
+    // ---------------- the uchar 'is een' dialect extension (IR-SPEC ch. 2.2) ----------------
+    /** The parent names an object type DECLARED, in declaration order, keyed by the type's own name;
+     *  plus the source line of its first clause. Held rather than bound: the reference is order-free,
+     *  so nothing can be resolved until every declaration has been read ({@link #bindSupertypen}). */
+    private final java.util.Map<String, List<String>> supertypeNamen = new java.util.LinkedHashMap<>();
+    private final java.util.Map<String, Integer> supertypeRegel = new java.util.LinkedHashMap<>();
+
+    /** The source line of each member DECLARATION, keyed by object type and lowercased member name — the
+     *  line WF-105 must cite, because the edit that resolves a shadow is at the redeclaration and not at
+     *  the {@code is een} clause. Filled for every member; only read for a type that has a supertype. */
+    private final java.util.Map<Objecttype, java.util.Map<String, Integer>> lidRegel = new java.util.IdentityHashMap<>();
+
+    private void onthoudLidRegel(Objecttype ot, ObjectTypeMemberContext m) {
+        if (m.koptekst() != null) return;
+        String naam = m.attribuutSpecificatie() != null ? naam(m.attribuutSpecificatie().lowerNaam())
+                                                        : kenmerkNaam(m.kenmerkSpecificatie());
+        lidRegel.computeIfAbsent(ot, k -> new java.util.LinkedHashMap<>())
+                .putIfAbsent(naam.toLowerCase(), m.getStart().getLine());
+    }
+
+    /** Record the 'is een &lt;Objecttypenaam&gt;' clause(s) of one head. Every name the head writes is
+     *  kept — including the ones WF-106 forbids — so the refusal can NAME them instead of reducing to
+     *  a syntax error. */
+    private void supertypeClausules(Objecttype ot, List<ObjectTypeSupertypeContext> clausules) {
+        if (clausules.isEmpty()) return;
+        List<String> ouders = supertypeNamen.computeIfAbsent(ot.naam, k -> new ArrayList<>());
+        for (ObjectTypeSupertypeContext c : clausules)
+            for (ObjectTypeNaamContext n : c.objectTypeNaam()) ouders.add(src(n));
+        supertypeRegel.putIfAbsent(ot.naam, clausules.get(0).getStart().getLine());
+    }
+
+    /** Bind every declared supertype reference and refuse the shapes the chain cannot carry — the
+     *  frontend's share of WF-103/104/105/106. It refuses BEFORE the verifier does because it has the
+     *  chain at hand, and WF-106 has nowhere else to be refused at all: a bare-string {@code supertype}
+     *  cannot WRITE a second parent, so that rule bounds the language above the wire (IR-SPEC ch. 2.2).
+     *  A refused reference stays UNBOUND — a half-built chain would make every later reader disagree
+     *  with the document. */
+    private void bindSupertypen() {
+        for (var e : supertypeNamen.entrySet()) {
+            Objecttype ot = model.objecttypen.get(e.getKey());
+            if (ot == null) continue;
+            int regel = supertypeRegel.getOrDefault(e.getKey(), 0);
+            // Distinct by name, ci: a head repeating ONE parent is redundant, not a second parent;
+            // two DIFFERENT names are the refusal, however they are spelled (two clauses, or "A en B").
+            List<String> ouders = new ArrayList<>();
+            for (String n : e.getValue())
+                if (ouders.stream().noneMatch(o -> o.equalsIgnoreCase(n))) ouders.add(n);
+            if (ouders.size() > 1) {
+                fout("objecttype '" + ot.naam + "' declareert meer dan één supertype ("
+                        + String.join(", ", ouders) + ") — WF-106: een objecttype declareert hoogstens één "
+                        + "direct supertype. De twee bekende gevallen met twee directe ouders "
+                        + "(RechtOpUitkeringWazo, RechtUitkeringZw) worden hier geweigerd en niet "
+                        + "platgeslagen: kies één ouder, of til het gedeelde deel naar een gemeenschappelijk "
+                        + "supertype", regel);
+                continue;
+            }
+            String naam = ouders.get(0);
+            if (naam.equalsIgnoreCase(ot.naam)) {
+                fout("objecttype '" + ot.naam + "' is zijn eigen supertype — WF-104: de supertypegraaf is "
+                        + "acyclisch, zelfverwijzing inbegrepen (een keten zonder wortel laat ledenresolutie "
+                        + "nergens stoppen)", regel);
+                continue;
+            }
+            Objecttype ouder = model.objecttypeOpNaam(naam);
+            if (ouder == null) {
+                String soort = soortVanNaam(naam);
+                fout("objecttype '" + ot.naam + "': supertype '" + naam + "' is "
+                        + (soort == null ? "nergens als objecttype gedeclareerd" : "een " + soort + ", geen objecttype")
+                        + " — WF-103: een supertype noemt een gedeclareerd objecttype, want een keten die daar "
+                        + "niet op eindigt lost geen enkel lid op", regel);
+                continue;
+            }
+            ot.supertype = ouder;
+        }
+        weigerSupertypeCycli();
+        weigerGeshadowdeLeden();
+    }
+
+    /** What the document DOES declare {@code naam} as, when it is not an object type — so the refusal can
+     *  say "een domein, geen objecttype" instead of sending the author hunting for a typo. Null when the
+     *  name is not declared at all. */
+    private String soortVanNaam(String naam) {
+        if (bevatNaam(model.domeinen.keySet(), naam)) return "domein";
+        if (bevatNaam(model.parameters.keySet(), naam)) return "parameter";
+        if (bevatNaam(model.feittypen.keySet(), naam)) return "feittype";
+        if (bevatNaam(model.dimensies.keySet(), naam)) return "dimensie";
+        if (bevatNaam(model.eenheidstelsels.keySet(), naam)) return "eenheidsysteem";
+        if (bevatNaam(model.dagsoorten, naam)) return "dagsoort";
+        return null;
+    }
+
+    private static boolean bevatNaam(java.util.Collection<String> namen, String naam) {
+        return namen.stream().anyMatch(n -> n.equalsIgnoreCase(naam));
+    }
+
+    /** WF-104 for cycles of two steps or more (the depth-1 self-edge is refused by name above, so it never
+     *  reaches here). Colour DFS with a named cycle path — the uchar verifier's own shape, because the
+     *  failure is the same: member resolution has no root to stop at. The back edge is CUT after it is
+     *  reported, so every later pass over the model terminates on a document the resolver has already
+     *  rejected. */
+    private void weigerSupertypeCycli() {
+        java.util.Map<Objecttype, Integer> kleur = new java.util.IdentityHashMap<>();
+        for (Objecttype ot : model.objecttypen.values()) zoekCyclus(ot, kleur, new ArrayList<>());
+    }
+
+    private void zoekCyclus(Objecttype t, java.util.Map<Objecttype, Integer> kleur, List<Objecttype> pad) {
+        Integer k = kleur.get(t);
+        if (k != null && k == 2) return;
+        if (k != null && k == 1) {                       // grey: a back edge onto the current path
+            List<String> namen = new ArrayList<>();
+            for (Objecttype x : pad.subList(pad.indexOf(t), pad.size())) namen.add(x.naam);
+            namen.add(t.naam);
+            Objecttype terug = pad.get(pad.size() - 1);
+            fout("objecttype '" + terug.naam + "': supertypecyclus " + String.join(" -> ", namen)
+                    + " — WF-104: de supertypegraaf is acyclisch (een type zou zijn eigen voorouder zijn, "
+                    + "dus ledenresolutie heeft geen wortel om bij te stoppen)",
+                    supertypeRegel.getOrDefault(terug.naam, 0));   // the clause that closes the cycle
+            terug.supertype = null;
+            return;
+        }
+        kleur.put(t, 1);
+        pad.add(t);
+        if (t.supertype != null) zoekCyclus(t.supertype, kleur, pad);
+        pad.remove(pad.size() - 1);
+        kleur.put(t, 2);
+    }
+
+    /** WF-105: no attribute or characteristic name is declared twice along one chain (ci) — WF-002's
+     *  per-kind uniqueness lifted from the declaration to the chain. One instance would otherwise carry two
+     *  declarations of one name, and which one a reader finds decides that name's datatype, dimensions and
+     *  timeline facet on every read of it. NOT refused, and deliberately: a SIBLING collision — two
+     *  incomparable subtypes declaring one name — no instance is of two incomparable types, so no read is
+     *  ambiguous. */
+    private void weigerGeshadowdeLeden() {
+        for (Objecttype ot : model.objecttypen.values()) {
+            if (ot.supertype == null) continue;
+            List<Objecttype> voorouders = ot.keten().subList(1, ot.keten().size());
+            for (String a : ot.attributen.keySet()) meldShadow(ot, voorouders, "attribuut", a, true);
+            for (String k : ot.kenmerken) meldShadow(ot, voorouders, "kenmerk", k, false);
+        }
+    }
+
+    private void meldShadow(Objecttype ot, List<Objecttype> voorouders, String soort, String naam, boolean attribuut) {
+        for (Objecttype v : voorouders) {
+            boolean botst = attribuut ? bevatNaam(v.attributen.keySet(), naam) : bevatNaam(v.kenmerken, naam);
+            if (!botst) continue;
+            fout("objecttype '" + ot.naam + "': " + soort + " '" + naam + "' is al gedeclareerd op '" + v.naam
+                    + "' hogerop in de keten — WF-105: een subtype herdeclareert geen geërfde naam (één "
+                    + "exemplaar zou twee declaraties van die naam dragen, en welke een lezer vindt bepaalt "
+                    + "datatype, dimensies en tijdlijnfacet van elke lezing ervan)",
+                    lidRegel.getOrDefault(ot, java.util.Map.of()).getOrDefault(naam.toLowerCase(), 0));
+            return;                                      // one report per member, at its nearest declarant
+        }
+    }
+
+    private void fout(String bericht, int regel) {
+        model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR, bericht, regel));
     }
 
     private void extensie(ObjectTypeExtensieContext ctx) {
@@ -129,6 +292,7 @@ public final class DefinitionResolver {
     }
 
     private void member(Objecttype ot, ObjectTypeMemberContext m) {
+        onthoudLidRegel(ot, m);
         if (m.attribuutSpecificatie() != null) {
             AttribuutSpecificatieContext a = m.attribuutSpecificatie();
             String naam = naam(a.lowerNaam());

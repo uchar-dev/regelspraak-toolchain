@@ -138,3 +138,137 @@ and the hand-written prioritized-defaults anchors.
 - An exception whose validity window differs from its base refuses loudly:
   the defaults group carries one window and a per-default window is
   unrepresentable — split per window or align the windows.
+- An UNCONDITIONAL base rule (no `indien`) lowers to a default carrying the
+  vacuously true justification — an `ALLE`-group over no parts, the same
+  "altijd" the hand-written prioritized-defaults anchors spell. WF-050
+  requires every non-initialisation default to carry a justification, and a
+  flat rule without a condition is the ch. 7.8 standing norm: as the lowest
+  default of a group it stands whenever nothing above it decides.
+
+---
+
+## §5 The subtype extension — `is een`
+
+Origin: `spec/proposals/SUBTYPING.md` §9.2, under the maintainer's mandate for
+object-type hierarchy (2026-09-10). The uchar IR carries `Objecttype.supertype`
+— one direct parent by declared name (`spec/IR-SPEC.md` ch. 2.2,
+`spec/RUNTIME-SEMANTICS.md` ch. 7.10). Official RegelSpraak v2.3.0 has **no**
+inheritance construct at all: a flat document can only repeat a supertype's
+members on every subtype, which is what the canonical data model this corpus
+mirrors does *not* do. This dialect extension adds the source channel for
+declaring the relation the IR already carries.
+
+### Surface syntax (additive; one optional element in an existing production)
+
+```
+Objecttype het Wrakrecht is een Strandrecht (mv: Wrakrechten)
+    de bergingsdiepte Numeriek (niet-negatief geheel getal);
+```
+
+The clause sits **after the object-type name and before the `mv:` group**. It
+does not touch the order of the existing head annotations, which the grammar
+already fixes (`mv:` before `(bezield)`), and both remain reachable behind it.
+
+**No new lexer token, deliberately.** A whole-phrase `IS_EEN : 'is' WSP 'een'`
+is not safe here and the `IS_VAN_HET_TYPE` precedent does not carry over.
+Lexing is not head-local: under maximal munch such a token fires wherever the
+phrase occurs, and the phrase already occurs in ordinary **rule text** ("Een dag
+is een schouwdag"), so it would change the IR of documents that have nothing to
+do with subtyping. `IS_VAN_HET_TYPE` is safe only because its phrase occurs
+nowhere else. The extension therefore sits at the **parser** level: the existing
+`IS` and `EEN` tokens in sequence at the head position, where the surrounding
+context disambiguates. A §13.3.2 kenmerk declaration is `IS lowerNaam …`, and
+`naamWoordLower` excludes `EEN`, so no member declaration can be read as this
+clause and no clause can be read as a member. The extension consequently
+reserves **no** name words: unlike `Uitzonderingen`/`ongeordend`, both its
+tokens already existed and their other uses are untouched.
+
+The article before the parent name is the language's own `onbepaaldLidwoord`,
+read exactly where the language reads one elsewhere; it is required, so a bare
+`is <Naam>` is not the head form and does not bind.
+
+### Lowering (resolver)
+
+`is een <Naam>` records a parent NAME; the binding happens once every
+declaration has been read, so resolution is **document-wide and order-free** —
+a forward reference is legal and only an undeclared name refuses. The bound
+parent lands in `Objecttype.supertype`, whose chain accessors (`keten`,
+`isEen`, `attribuut`, `heeftLid`, `kenmerkSoort`, `declarantVan`) the model
+already carried; the member maps stay OWN, so a subtype declares only what it
+adds.
+
+### Fail-fast refusals (resolver, loud diagnostics)
+
+The frontend refuses BEFORE the verifier does, because it has the chain at
+hand. Each refusal cites its rule:
+
+- **WF-106** — more than one direct supertype, in either spelling (two
+  `is een` clauses on one head, or `is een A en B`). The grammar deliberately
+  ADMITS both shapes so the refusal can name the parents instead of degenerating
+  into a syntax error, and the message names the two known
+  multiple-inheritance cases (`RechtOpUitkeringWazo`, `RechtUitkeringZw`) as
+  refused rather than flattened. This refusal is one of that rule's only two
+  witnesses anywhere: on the wire `supertype` is a bare string, so a second
+  parent cannot be WRITTEN, and WF-106 carries no verifier check and no
+  `corpus/negatief` case (`spec/IR-SPEC.md` ch. 2.2). A head repeating ONE
+  parent is redundant, not a second parent, and is not refused.
+- **WF-104** — self-reference (`X is een X`), and a cycle of two steps or
+  more, reported with its named path. The back edge is cut after it is
+  reported, so every later pass terminates on a document already rejected.
+- **WF-103** — a parent name nothing declares as an object type. When the
+  document declares that name as something else, the message says which kind
+  (a domein, a parameter, a feittype, a dimensie, an eenheidsysteem, a
+  dagsoort) rather than sending the author hunting for a typo.
+- **WF-105** — a member name declared twice along one chain (ci, per kind) is
+  refused, at the redeclaration's own line. What is **not** refused, and
+  deliberately, is the **sibling** collision — two incomparable subtypes of one
+  supertype each declaring the same name — since no instance is of two
+  incomparable types, so no read is ambiguous.
+
+A misspelled head form is a bare ANTLR "no viable alternative", which points
+the author at the wrong thing, so two common slips get a targeted message
+beside it (never instead of it): `is <Naam>` with the article dropped — an `IS`
+after the name is otherwise a §13.3.2 kenmerk declaration, but that continues
+with a `lowerNaam`, so a capitalised name can only be this — and the clause
+written behind the `mv:` group. Both are read off the token stream over the
+HEAD only, so the `is een` of ordinary rule text is never mistaken for either.
+
+Explicit **non-**refusal: a target carrying rules on two levels. That is the
+kernel's group inheritance (`RUNTIME-SEMANTICS.md` ch. 7.10), and the kernel
+witnesses are the semantic referee.
+
+### Emission
+
+`supertype` is emitted ONLY for a type that has one, directly after `naam`
+(the schema's property order). A root type emits no key, so the v0-mirror
+byte-identity of every flat golden holds.
+
+One emission consequence comes with the relation rather than with the syntax.
+A role's declared filler type is an **upper bound** (`IR-SPEC.md` ch. 2.6), so
+WF-048's uniqueness is computed over the **chain-closed** type-pair set: adding
+a subtype can make a pair that was uniquely connected doubly connected, and a
+fold that went out bindingless yesterday would be refused today. The emitter is
+ahead of it — where the by-pair search goes silent, the fold's `bronRol` falls
+back to the role the sentence WROTE, which still names exactly one.
+
+That fallback carries one tightening the other role searches do not need, and
+it is what makes it safe. The name candidates are formed by dropping leading
+words, so a truncated phrase can land on a same-named role in **another** fact
+type; the upper-bound filler test that is right everywhere else would wave that
+through, because the element type is a subtype of the other role's filler. The
+reached role must therefore declare **exactly** the element type — identity, not
+`⊑`. A phrase naming no role, naming more than one, or naming one whose filler
+is not the element type itself stays bindingless, and gets the loud WF-048
+refusal. Binding the wrong relation would instead be verifier-clean and
+silently fold the wrong set, which is by far the worse of the two.
+
+### Scope / limitations of this card
+
+- Only `Objecttype` carries the clause. `Extensie van objecttype` (§13.3.1.2)
+  re-opens a type to add members and is left alone: a second declaration site
+  for one relation would immediately reopen the second-parent question across
+  constructs.
+- Multiple inheritance is refused, not modelled (mandate decision 2).
+- The clause declares the relation only. Nothing about the defaults-stack
+  composition is authored from source; that is the kernel's, keyed on the
+  relation this extension writes.

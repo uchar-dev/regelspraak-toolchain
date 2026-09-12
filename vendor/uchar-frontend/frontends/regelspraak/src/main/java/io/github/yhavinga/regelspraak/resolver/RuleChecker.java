@@ -295,10 +295,19 @@ final class RuleChecker {
      *  default's value is the rule's resolved value expression. The justification is the rule's condition. No
      *  per-default bron. */
     private Default defaultVan(ResolvedRegel r, boolean kenmerk) {
+        Conditie rechtvaardiging = r.voorwaarde() != null ? r.voorwaarde() : ALTIJD;
         return kenmerk
-                ? new Default(Boolean.TRUE, r.voorwaarde(), null, false, null, null)
-                : new Default(null, r.voorwaarde(), r.waarde(), false, null, null);
+                ? new Default(Boolean.TRUE, rechtvaardiging, null, false, null, null)
+                : new Default(null, rechtvaardiging, r.waarde(), false, null, null);
     }
+
+    /** The vacuously true justification. WF-050 requires EVERY non-initialisation default to carry one,
+     *  so an UNCONDITIONAL base rule — a §13.4.2 rule with no {@code indien}, which is the ch. 7.8 standing
+     *  norm — lowers to an ALLE-group over no parts: "all of nothing holds" is true, and it is exactly how
+     *  the hand-written prioritized-defaults anchors spell "altijd". As the lowest default of a group such a
+     *  rule stands whenever nothing above it decides, which is what the flat rule meant on its own. */
+    private static final Conditie ALTIJD =
+            new Conditie.Samengesteld(Conditie.Kwantor.ALLE, 0, List.of(), Bron.synthetisch("altijd"));
 
     /** The resolved versions of the rule named {@code naam} — matched exactly or by the "&lt;naam&gt; #k" version
      *  suffix. Empty when no such rule resolved (it was a non-scalar construct, or the name is unknown). */
