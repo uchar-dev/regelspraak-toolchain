@@ -267,8 +267,8 @@ public final class ExecModelTranspiler {
         // attribuutTijdlijnAantal) whose WRITE producer semantics are under-specified. Skip it honestly BEFORE the
         // doelSetter — never fall to the scalar value path below, which would silently emit a scalar setter on a
         // List<Segment> field. Mirrors the DRL multi-period marker.
-        if (doel.objecttype().attribuutGranulariteit.get(doel.attribuut()) != null
-                && doel.objecttype().attribuutTijdlijnAantal.containsKey(doel.attribuut()))
+        if (doel.objecttype().granulariteitLeden().get(doel.attribuut()) != null
+                && doel.objecttype().tijdlijnAantalLeden().containsKey(doel.attribuut()))
             return skip("regel (meer-periodieke temporele doel — §13.3.6.7, geen producent): " + r.naam());
 
         String doelProp = doel.attribuut();
@@ -287,8 +287,8 @@ public final class ExecModelTranspiler {
         // to a finite timeline: an EMPTY voorwaarde is unbounded and a geldigheids-WINDOW needs a timeline×window clip
         // (§8.4 leaves that under-specified) — both stay a skip below. Mirrors the DRL back-end.
         boolean temporeelKenmerkDoel = r.soort() == ResolvedRegel.Soort.KENMERKTOEKENNING
-                && doel.objecttype().kenmerkGranulariteit.containsKey(doel.attribuut())
-                && !doel.objecttype().kenmerkTijdlijnAantal.containsKey(doel.attribuut());
+                && doel.objecttype().kenmerkGranulariteitLeden().containsKey(doel.attribuut())
+                && !doel.objecttype().kenmerkTijdlijnAantalLeden().containsKey(doel.attribuut());
         java.util.function.Function<Object, List<?>> kenmerkTl =
                 temporeelKenmerkDoel && r.voorwaarde() != null && r.geldigheid().altijd()
                         ? conditieTijdreeks(r.voorwaarde(), doel.objecttype()) : null;
@@ -299,8 +299,8 @@ public final class ExecModelTranspiler {
             // period, not all-or-nothing gate it on the rekendatum — that clip is not built yet, so skip
             // honestly (mirrors the DRL marker; a scalar doel lowers via the voorwaarde() Periode branch).
             if (Conditie.bevatPeriode(r.voorwaarde())
-                    && (doel.objecttype().attribuutGranulariteit.containsKey(doel.attribuut())
-                        || doel.objecttype().kenmerkGranulariteit.containsKey(doel.attribuut())))
+                    && (doel.objecttype().granulariteitLeden().containsKey(doel.attribuut())
+                        || doel.objecttype().kenmerkGranulariteitLeden().containsKey(doel.attribuut())))
                 return skip("regel (periodevergelijking op tijdsafhankelijk doel — §8.4.3 clip): " + r.naam());
             Gate gate = voorwaarde(r.voorwaarde(), pattern, doel.objecttype(), sVar);
             if (gate == null) return skip("regel (voorwaarde buiten Phase-B scope): " + r.naam());
@@ -339,8 +339,8 @@ public final class ExecModelTranspiler {
         RuleItemBuilder<?> consequence;
         // §5.1.4 a single-period TEMPORAL doel (a List<Segment> timeline attribute) is WRITTEN a timeline, not a
         // scalar: the value must be a §13.4.17.57/.58 timeline producer (aantal-dagen-in / tijdsevenredig deel).
-        RegelSpraakModel.Granulariteit doelGran = doel.objecttype().attribuutGranulariteit.get(doel.attribuut());
-        boolean temporalDoel = doelGran != null && !doel.objecttype().attribuutTijdlijnAantal.containsKey(doel.attribuut());
+        RegelSpraakModel.Granulariteit doelGran = doel.objecttype().granulariteitLeden().get(doel.attribuut());
+        boolean temporalDoel = doelGran != null && !doel.objecttype().tijdlijnAantalLeden().containsKey(doel.attribuut());
         // §8.4/§13.4.5 a temporal KENMERK doel (kenmerkGranulariteit — a List<Segment> true-period timeline) cannot
         // be written a scalar boolean: setX(true) on a List field throws at fire time. The DECIDABLE case writes the
         // voorwaarde's TRUE-period timeline (kenmerkTl, the SAME conditieTijdreeks lowering the §7.1 gedurende READ
@@ -690,7 +690,7 @@ public final class ExecModelTranspiler {
         if ((f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM) && f.argumenten().size() > 1) return null;
         if (count && f.argumenten().size() > 1 && f.filter() == null) return null;
         Expr.AttribuutRef arg = !f.argumenten().isEmpty() && f.argumenten().get(0) instanceof Expr.AttribuutRef a ? a : null;
-        boolean temporeel = arg != null && arg.objecttype() != null && arg.objecttype().attribuutGranulariteit.containsKey(arg.attribuut());
+        boolean temporeel = arg != null && arg.objecttype() != null && arg.objecttype().granulariteitLeden().containsKey(arg.attribuut());
         // §7.1 a SOM/TOTAAL over a temporal attribute of a set is a PER-ELEMENT timeline fold (rsTijdTotaal per element,
         // then sum); MIN/MAX over a temporal attribute is ambiguous -> skip (mirror the DRL marker). ("de som van het
         // totaal van X van alle" attaches the set to the inner totaal -> the outer SOM is element-less -> markers.)
@@ -720,7 +720,7 @@ public final class ExecModelTranspiler {
         final String attr = arg.attribuut();
         // §7.1 per-element timeline fold: a temporal element value is summed over time (rsTijdTotaal at the attribute's
         // granularity) to a scalar BEFORE the set fold, instead of the bare List<Segment> getter.
-        final String tijdGran = temporeel ? arg.objecttype().attribuutGranulariteit.get(attr).name() : null;
+        final String tijdGran = temporeel ? arg.objecttype().granulariteitLeden().get(attr).name() : null;
         final Function1<Object, Object> elemWaarde = temporeel
                 ? (e) -> RegelSpraakRuntime.rsTijdTotaal((List<?>) RegelSpraakRuntime.get(e, attr), tijdGran)
                 : (e) -> RegelSpraakRuntime.get(e, attr);
@@ -796,8 +796,8 @@ public final class ExecModelTranspiler {
             RegelSpraakModel.Granulariteit doelGran) {
         if (!(w instanceof Expr.Functie f) || f.kind() != Expr.FunctieKind.SOM || f.argumenten().size() != 1) return null;
         if (!(f.argumenten().get(0) instanceof Expr.AttribuutRef a) || !a.set() || a.objecttype() == null) return null;
-        RegelSpraakModel.Granulariteit eg = a.objecttype().attribuutGranulariteit.get(a.attribuut());
-        if (eg == null || a.objecttype().attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;   // non/multi-period -> not this fold
+        RegelSpraakModel.Granulariteit eg = a.objecttype().granulariteitLeden().get(a.attribuut());
+        if (eg == null || a.objecttype().tijdlijnAantalLeden().containsKey(a.attribuut())) return null;   // non/multi-period -> not this fold
         if (eg != doelGran) return null;   // §5.1.4 element tijdlijn must match the doel's (no set-fold gran promotion yet) — mirror DRL
         if (a.type() == null || !a.type().isNumeriek()) return null;
         Objecttype elem = f.elementObjecttype();
@@ -886,13 +886,13 @@ public final class ExecModelTranspiler {
                 && !(ander instanceof Expr.ParameterRef) && aggRhsGlobalCount(subject, ander) >= 2;
         if (!(ander instanceof Expr.Literal)
                 && !(ander instanceof Expr.AttribuutRef ar && ar.navigatieRol() == null && ar.objecttype() == subject
-                     && subject.attributen.containsKey(ar.attribuut()))
+                     && subject.attribuutLeden().containsKey(ar.attribuut()))
                 && !(ander instanceof Expr.ParameterRef pr && pr.parameter().granulariteit() == null
                      && (pr.parameter().datatype().isNumeriek() || pr.parameter().datatype().isPercentage()))
                 && !(ander instanceof Expr.AttribuutRef nav && nav.objecttype() != null
                      && (nav.navigatieRol() != null || nav.objecttype() != subject) && nav.objecttype().heeftLid(nav.attribuut())
                      && nav.type() != null && (nav.type().isNumeriek() || nav.type().isPercentage())
-                     && !nav.objecttype().attribuutGranulariteit.containsKey(nav.attribuut()))
+                     && !nav.objecttype().granulariteitLeden().containsKey(nav.attribuut()))
                 && !multiGlobalRhs) return null;
         Conditie.Operator op = linksAgg ? v.op() : Operatoren.omkeren(v.op());   // orient the aggregation on the LEFT (Operatoren.omkeren(ONGELIJK)=ONGELIJK, != symmetric)
         final String opStr = Operatoren.symbool(op);
@@ -1216,7 +1216,7 @@ public final class ExecModelTranspiler {
                 || la.navigatieRol() != null || !la.type().isGetalachtig() || !isNumeriekOp(v.op())   // §4.8 numeriek OR percentage
                 || !(v.rechts() instanceof Expr.ParameterRef pr)) return null;
         if (elem == null || !elem.heeftLid(la.attribuut())) return null;
-        if (elem.attribuutGranulariteit.containsKey(la.attribuut())) return null;   // temporal element attr -> skip
+        if (elem.granulariteitLeden().containsKey(la.attribuut())) return null;   // temporal element attr -> skip
         if (!elem.dimensiesVan(la.attribuut()).isEmpty()) return null;              // §3.6 gedimensioneerd -> skip
         Global<BigDecimal> g = globals.get(globalNaam(pr.parameter().naam()));
         if (g == null) return null;   // non-numeric / unregistered global -> skip (DRL needs the global declared too)
@@ -1240,9 +1240,9 @@ public final class ExecModelTranspiler {
         if (f.filter() instanceof Conditie.Onopgelost) return null;   // unstructured restriction -> skip (never an unconditioned total)
         if (!(f.argumenten().get(0) instanceof Expr.AttribuutRef a) || a.objecttype() == null) return null;
         if (a.set()) return null;     // "het totaal van <attr> van een SET" is an instance aggregation, not an own timeline
-        RegelSpraakModel.Granulariteit g = a.objecttype().attribuutGranulariteit.get(a.attribuut());
+        RegelSpraakModel.Granulariteit g = a.objecttype().granulariteitLeden().get(a.attribuut());
         if (g == null) return null;   // not temporal -> fall through to the instance accumulate
-        if (a.objecttype().attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;   // §13.3.6.7 multi-period -> skip
+        if (a.objecttype().tijdlijnAantalLeden().containsKey(a.attribuut())) return null;   // §13.3.6.7 multi-period -> skip
         java.util.function.Function<Object, Object> reader = navReader(a, subject);   // own or to-one navigated, root-guarded
         if (reader == null) return null;
         final String gran = g.name();
@@ -1254,7 +1254,7 @@ public final class ExecModelTranspiler {
         java.util.function.Predicate<Object> staticGuard = null;   // §8.4 mixed-static value-side gate
         boolean orWiden = false;                                   // ten-minste-1: a TRUE static member widens to the full span
         if (f.filter() instanceof Conditie.Kenmerk k && k.navigatie() == null
-                && subject != null && subject.kenmerkGranulariteit.containsKey(k.kenmerk())) {
+                && subject != null && subject.kenmerkGranulariteitLeden().containsKey(k.kenmerk())) {
             segCls = segmentClass();
             if (segCls == null) return null;
             kenmerk = k.kenmerk();
@@ -1265,8 +1265,8 @@ public final class ExecModelTranspiler {
             segCls = segmentClass();
             if (segCls == null) return null;
             Objecttype doel = model.rolDoeltypeNaarSubject(subject, kn.navigatie());
-            if (doel == null || kn.negatie() || !doel.kenmerkGranulariteit.containsKey(kn.kenmerk())
-                    || doel.kenmerkTijdlijnAantal.containsKey(kn.kenmerk())) return null;   // negated / to-many / non-temporal -> skip
+            if (doel == null || kn.negatie() || !doel.kenmerkGranulariteitLeden().containsKey(kn.kenmerk())
+                    || doel.kenmerkTijdlijnAantalLeden().containsKey(kn.kenmerk())) return null;   // negated / to-many / non-temporal -> skip
             navRol = kn.navigatie();
             kenmerk = kn.kenmerk();
         } else if (f.filter() instanceof Conditie.Vergelijking vc) {
@@ -1585,20 +1585,20 @@ public final class ExecModelTranspiler {
             RegelSpraakModel.Granulariteit baseGran = null; Datatype baseType = null; String baseGlobal = null;
             BiFunction<Object, Object, List<?>> baseReader = null;   // (subject, globalValue) -> the base List<Segment>
             if (base instanceof Expr.AttribuutRef ba && ba.navigatieRol() == null && !ba.set() && ba.objecttype() == subject
-                    && subject.attribuutGranulariteit.containsKey(ba.attribuut())
-                    && !subject.attribuutTijdlijnAantal.containsKey(ba.attribuut())) {
-                baseGran = subject.attribuutGranulariteit.get(ba.attribuut());
+                    && subject.granulariteitLeden().containsKey(ba.attribuut())
+                    && !subject.tijdlijnAantalLeden().containsKey(ba.attribuut())) {
+                baseGran = subject.granulariteitLeden().get(ba.attribuut());
                 baseType = ba.type();
                 String baseAttr = ba.attribuut();
                 baseReader = (s, gv) -> (List<?>) RegelSpraakRuntime.get(s, baseAttr);
             } else if (base instanceof Expr.AttribuutRef ba && ba.navigatieRol() != null && !ba.set()
-                    && ba.objecttype() != null && ba.objecttype().attribuutGranulariteit.containsKey(ba.attribuut())
-                    && !ba.objecttype().attribuutTijdlijnAantal.containsKey(ba.attribuut())) {
+                    && ba.objecttype() != null && ba.objecttype().granulariteitLeden().containsKey(ba.attribuut())
+                    && !ba.objecttype().tijdlijnAantalLeden().containsKey(ba.attribuut())) {
                 // §7.3.2 a TO-ONE NAVIGATED base ("de X van zijn reis"): read the partner's temporal attribute root-guarded
                 // (navReader: null relation -> leeg). The gedurende condition stays over the SUBJECT. Mirrors DRL.
                 java.util.function.Function<Object, Object> nav = navReader(ba, subject);
                 if (nav != null) {
-                    baseGran = ba.objecttype().attribuutGranulariteit.get(ba.attribuut());
+                    baseGran = ba.objecttype().granulariteitLeden().get(ba.attribuut());
                     baseType = ba.type();
                     baseReader = (s, gv) -> (List<?>) nav.apply(s);
                 }
@@ -1714,9 +1714,9 @@ public final class ExecModelTranspiler {
             ot = a.objecttype(); reader = nav;
         } else return null;
         // §5.1.4.2 mixed granularity: the operand must be COARSER-OR-EQUAL to the doel (DAG<...<JAAR ordinal). Mirrors DRL.
-        RegelSpraakModel.Granulariteit og = ot.attribuutGranulariteit.get(a.attribuut());
+        RegelSpraakModel.Granulariteit og = ot.granulariteitLeden().get(a.attribuut());
         if (og == null || og.ordinal() < gran.ordinal()) return null;
-        if (ot.attribuutTijdlijnAantal.containsKey(a.attribuut())) return null;   // multi-period -> out of scope
+        if (ot.tijdlijnAantalLeden().containsKey(a.attribuut())) return null;   // multi-period -> out of scope
         final java.util.function.Function<Object, Object> fr = reader;
         return schaalTijd(s -> (List<?>) fr.apply(s), a.type(), unitTarget);   // §4.1 restate into the sum unit (null -> marker)
     }
@@ -1783,7 +1783,7 @@ public final class ExecModelTranspiler {
                                                              Objecttype subject, Class<?> segCls) {
         if (leden.isEmpty()) return null;
         for (Conditie.Kenmerk k : leden)
-            if (k.navigatie() != null || subject == null || !subject.kenmerkGranulariteit.containsKey(k.kenmerk())) return null;
+            if (k.navigatie() != null || subject == null || !subject.kenmerkGranulariteitLeden().containsKey(k.kenmerk())) return null;
         if (kw == Conditie.Kwantor.ALLE) {
             return (sub, value) -> {
                 List<?> r = value;
@@ -1882,7 +1882,7 @@ public final class ExecModelTranspiler {
      *  out of scope. Mirrors DrlTranspiler.statischeVergelijkingGuard. */
     private java.util.function.Predicate<Object> statischeVergelijking(Conditie.Vergelijking v, Objecttype subject) {
         if (!(v.links() instanceof Expr.AttribuutRef la) || la.navigatieRol() != null) return null;
-        if (subject != null && subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;   // a temporal operand is no static member
+        if (subject != null && subject.granulariteitLeden().containsKey(la.attribuut())) return null;   // a temporal operand is no static member
         String lattr = la.attribuut();
         if (isNumeriekOp(v.op())) {
             Conditie.Operator op = v.op();
@@ -1894,7 +1894,7 @@ public final class ExecModelTranspiler {
                 return s -> vergelijk(scale(num(s, lattr), f[0]), rhsS, op);
             }
             if (v.rechts() instanceof Expr.AttribuutRef ra && ra.navigatieRol() == null) {
-                if (subject != null && subject.attribuutGranulariteit.containsKey(ra.attribuut())) return null;
+                if (subject != null && subject.granulariteitLeden().containsKey(ra.attribuut())) return null;
                 String rattr = ra.attribuut();
                 BigDecimal[] f = restatement(la.type(), ra.type());
                 return s -> vergelijk(scale(num(s, lattr), f[0]), scale(num(s, rattr), f[1]), op);
@@ -2063,8 +2063,8 @@ public final class ExecModelTranspiler {
      *  DrlTranspiler.temporeelKenmerkTijdreeks. */
     private java.util.function.Function<Object, List<?>> temporeelKenmerkTijdreeks(Conditie.Kenmerk k, Objecttype subject) {
         if (k.navigatie() != null || k.negatie() || subject == null
-                || !subject.kenmerkGranulariteit.containsKey(k.kenmerk())
-                || subject.kenmerkTijdlijnAantal.containsKey(k.kenmerk())) return null;
+                || !subject.kenmerkGranulariteitLeden().containsKey(k.kenmerk())
+                || subject.kenmerkTijdlijnAantalLeden().containsKey(k.kenmerk())) return null;
         String kenmerk = k.kenmerk();
         return s -> (List<?>) RegelSpraakRuntime.get(s, kenmerk);
     }
@@ -2076,8 +2076,8 @@ public final class ExecModelTranspiler {
     private java.util.function.Function<Object, List<?>> navigatieKenmerkTijdreeks(Conditie.Kenmerk k, Objecttype subject) {
         if (k.navigatie() == null || k.negatie() || subject == null) return null;
         Objecttype doel = model.rolDoeltypeNaarSubject(subject, k.navigatie());
-        if (doel == null || !doel.kenmerkGranulariteit.containsKey(k.kenmerk())
-                || doel.kenmerkTijdlijnAantal.containsKey(k.kenmerk())) return null;
+        if (doel == null || !doel.kenmerkGranulariteitLeden().containsKey(k.kenmerk())
+                || doel.kenmerkTijdlijnAantalLeden().containsKey(k.kenmerk())) return null;
         String rol = k.navigatie(), kenmerk = k.kenmerk();
         return s -> { Object rel = RegelSpraakRuntime.get(s, rol); return rel == null ? null : (List<?>) RegelSpraakRuntime.get(rel, kenmerk); };
     }
@@ -2107,7 +2107,7 @@ public final class ExecModelTranspiler {
 
     /** Whether an AttribuutRef reads a tijdsafhankelijk attribuut (its field is a List&lt;Segment&gt; timeline). */
     private static boolean isTemporeel82(Expr.AttribuutRef a) {
-        return a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut());
+        return a.objecttype() != null && a.objecttype().granulariteitLeden().containsKey(a.attribuut());
     }
 
     /** The §8.2 timeline reader for a temporal attribute — the subject's own List&lt;Segment&gt;, or a to-ONE
@@ -2276,8 +2276,8 @@ public final class ExecModelTranspiler {
     /** Whether {@code a} is a temporal (tijdlijn) attribute of its (set-element) objecttype — the set analogue of
      *  {@link #isTemporeel82}, admitting a to-many set element whose objecttype != subject; multi-period excluded. */
     private static boolean isTemporeelSet82(Expr.AttribuutRef a) {
-        return a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())
-                && !a.objecttype().attribuutTijdlijnAantal.containsKey(a.attribuut());
+        return a.objecttype() != null && a.objecttype().granulariteitLeden().containsKey(a.attribuut())
+                && !a.objecttype().tijdlijnAantalLeden().containsKey(a.attribuut());
     }
 
     /** A fact-only Predicate1 for "the §8.2 check holds" (the NIET prefix complements the rsGeheelPeriode result), or
@@ -2509,7 +2509,7 @@ public final class ExecModelTranspiler {
         if (c instanceof Conditie.Vergelijking v && (v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)
                 && v.links() instanceof Expr.AttribuutRef la && tekstachtig(la.type())
                 && v.rechts() instanceof Expr.ParameterRef pr && tekstachtig(pr.parameter().datatype())) {
-            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (la.objecttype() == null || la.objecttype().granulariteitLeden().containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 -> marker
             Global<String> g = tekstGlobals.get(globalNaam(pr.parameter().naam()));
             if (g == null) return null;
@@ -2532,7 +2532,7 @@ public final class ExecModelTranspiler {
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
                 && v.rechts() instanceof Expr.ParameterRef pr) {
             if (subject == null || !subject.heeftLid(la.attribuut())) return null;   // not the subject's own member (feitcreatie anker-first probe)
-            if (subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (subject.granulariteitLeden().containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!subject.dimensiesVan(la.attribuut()).isEmpty()) return null;   // §3.6 gedimensioneerd (a Map) -> marker
             if (!isNumeriekOp(v.op())) return null;   // EERDER/LATER (datum) -> Phase later
             Global<BigDecimal> g = globals.get(globalNaam(pr.parameter().naam()));
@@ -2548,7 +2548,7 @@ public final class ExecModelTranspiler {
         // navReader reads the navigated value null-safely. Mirrors DRL `reis!.x op global`.
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() != null
                 && la.type().isGetalachtig() && isNumeriekOp(v.op()) && v.rechts() instanceof Expr.ParameterRef pr) {   // §4.8 numeriek OR percentage
-            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (la.objecttype() == null || la.objecttype().granulariteitLeden().containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 gedimensioneerd -> marker
             String rol = navComparisonRole(la, subject);
             if (rol == null) return null;
@@ -2720,7 +2720,7 @@ public final class ExecModelTranspiler {
             if (k.eigenaar() != null && k.eigenaar() != subject) return null;   // a feitcreatie doel-kenmerk hosts elsewhere
             Objecttype kHouder = k.navigatie() == null ? subject
                     : (subject != null ? model.rolDoeltypeNaarSubject(subject, k.navigatie()) : null);
-            if (kHouder != null && kHouder.kenmerkGranulariteit.containsKey(k.kenmerk())) return null;  // temporal -> Phase F
+            if (kHouder != null && kHouder.kenmerkGranulariteitLeden().containsKey(k.kenmerk())) return null;  // temporal -> Phase F
             String kenmerk = k.kenmerk();
             boolean wanted = !k.negatie();
             if (k.navigatie() == null)
@@ -2736,7 +2736,7 @@ public final class ExecModelTranspiler {
                 && (p.soort() == Conditie.Predicaatsoort.LEEG || p.soort() == Conditie.Predicaatsoort.GEVULD)
                 && p.operand() instanceof Expr.AttribuutRef pa && pa.navigatieRol() == null) {
             if (subject == null || !subject.heeftLid(pa.attribuut())) return null;   // not the subject's own member (e.g. a feitcreatie anker-first probe of a doel condition)
-            if (subject.attribuutGranulariteit.containsKey(pa.attribuut())) return null;  // temporal -> Phase F
+            if (subject.granulariteitLeden().containsKey(pa.attribuut())) return null;  // temporal -> Phase F
             if (!subject.dimensiesVan(pa.attribuut()).isEmpty()) return null;   // §3.6 gedimensioneerd (a Map) -> marker
             String attr = pa.attribuut();
             boolean leeg = p.soort() == Conditie.Predicaatsoort.LEEG;
@@ -2749,7 +2749,7 @@ public final class ExecModelTranspiler {
         if (c instanceof Conditie.Predicaat p
                 && (p.soort() == Conditie.Predicaatsoort.LEEG || p.soort() == Conditie.Predicaatsoort.GEVULD)
                 && p.operand() instanceof Expr.AttribuutRef pa && pa.navigatieRol() != null) {
-            if (pa.objecttype() == null || pa.objecttype().attribuutGranulariteit.containsKey(pa.attribuut())) return null;  // temporal -> Phase F
+            if (pa.objecttype() == null || pa.objecttype().granulariteitLeden().containsKey(pa.attribuut())) return null;  // temporal -> Phase F
             if (!pa.objecttype().dimensiesVan(pa.attribuut()).isEmpty()) return null;   // §3.6 gedimensioneerd -> marker
             String rol = navComparisonRole(pa, subject);
             if (rol == null) return null;
@@ -2769,7 +2769,7 @@ public final class ExecModelTranspiler {
         if (c instanceof Conditie.Predicaat p
                 && (p.soort() == Conditie.Predicaatsoort.ELFPROEF || p.soort() == Conditie.Predicaatsoort.NUMERIEK_MET_EXACT)
                 && p.operand() instanceof Expr.AttribuutRef pa) {
-            if (pa.objecttype() != null && pa.objecttype().attribuutGranulariteit.containsKey(pa.attribuut())) return null;  // temporal -> Phase F
+            if (pa.objecttype() != null && pa.objecttype().granulariteitLeden().containsKey(pa.attribuut())) return null;  // temporal -> Phase F
             if (pa.objecttype() != null && !pa.objecttype().dimensiesVan(pa.attribuut()).isEmpty()) return null;            // §3.6 gedimensioneerd -> marker
             boolean elf = p.soort() == Conditie.Predicaatsoort.ELFPROEF;
             int n = p.cijfers();
@@ -2794,7 +2794,7 @@ public final class ExecModelTranspiler {
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null
                 && v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
             if (subject == null || !subject.heeftLid(la.attribuut())) return null;   // not the subject's own member (feitcreatie anker-first probe)
-            if (subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (subject.granulariteitLeden().containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!subject.dimensiesVan(la.attribuut()).isEmpty()) return null;   // §3.6 gedimensioneerd (a Map) -> marker
             if (!isNumeriekOp(v.op())) return null;   // EERDER/LATER (datum) -> Phase later
             BigDecimal rhs = bd(lit);
@@ -2812,7 +2812,7 @@ public final class ExecModelTranspiler {
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() != null
                 && la.type().isNumeriek() && isNumeriekOp(v.op())
                 && v.rechts() instanceof Expr.Literal lit && lit.type().isNumeriek()) {
-            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (la.objecttype() == null || la.objecttype().granulariteitLeden().containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 gedimensioneerd (Map) -> marker
             String rol = navComparisonRole(la, subject);
             if (rol == null) return null;
@@ -2837,10 +2837,10 @@ public final class ExecModelTranspiler {
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() != null
                 && la.type().isNumeriek() && isNumeriekOp(v.op())
                 && v.rechts() instanceof Expr.AttribuutRef ra && ra.navigatieRol() == null && ra.type().isNumeriek()) {
-            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (la.objecttype() == null || la.objecttype().granulariteitLeden().containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 -> marker
             if (subject == null || !subject.heeftLid(ra.attribuut())) return null;                                          // own RHS member
-            if (subject.attribuutGranulariteit.containsKey(ra.attribuut())) return null;                                    // temporal RHS -> Phase F
+            if (subject.granulariteitLeden().containsKey(ra.attribuut())) return null;                                    // temporal RHS -> Phase F
             if (!subject.dimensiesVan(ra.attribuut()).isEmpty()) return null;                                               // §3.6 RHS -> marker
             String rol = navComparisonRole(la, subject);
             if (rol == null) return null;
@@ -2861,8 +2861,8 @@ public final class ExecModelTranspiler {
                 && la.type().isNumeriek() && isNumeriekOp(v.op())
                 && v.rechts() instanceof Expr.AttribuutRef ra && ra.navigatieRol() == null && ra.type().isNumeriek()) {
             if (subject == null || !subject.heeftLid(la.attribuut()) || !subject.heeftLid(ra.attribuut())) return null;
-            if (subject.attribuutGranulariteit.containsKey(la.attribuut())
-                    || subject.attribuutGranulariteit.containsKey(ra.attribuut())) return null;          // temporal -> Phase F
+            if (subject.granulariteitLeden().containsKey(la.attribuut())
+                    || subject.granulariteitLeden().containsKey(ra.attribuut())) return null;          // temporal -> Phase F
             if (!subject.dimensiesVan(la.attribuut()).isEmpty() || !subject.dimensiesVan(ra.attribuut()).isEmpty()) return null;  // §3.6 -> marker
             String lattr = la.attribuut(), rattr = ra.attribuut();
             Conditie.Operator op = v.op();
@@ -3023,7 +3023,7 @@ public final class ExecModelTranspiler {
                 && v.rechts() instanceof Expr.Literal lit && tekstOfEnumLabel(lit) != null
                 && (v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)) {
             if (subject == null || !subject.heeftLid(la.attribuut())) return null;            // not the subject's own member
-            if (subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;      // temporal -> Phase F
+            if (subject.granulariteitLeden().containsKey(la.attribuut())) return null;      // temporal -> Phase F
             if (!subject.dimensiesVan(la.attribuut()).isEmpty()) return null;                 // §3.6 gedimensioneerd -> marker
             String attr = la.attribuut();
             String rhs = tekstOfEnumLabel(lit);   // the DRL strips the tekstwaarde "/enumeratiewaarde ' delimiters the same way
@@ -3037,7 +3037,7 @@ public final class ExecModelTranspiler {
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() != null
                 && v.rechts() instanceof Expr.Literal lit && tekstOfEnumLabel(lit) != null
                 && (v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)) {
-            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (la.objecttype() == null || la.objecttype().granulariteitLeden().containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 gedimensioneerd -> marker
             String rol = navComparisonRole(la, subject);
             if (rol == null) return null;
@@ -3063,8 +3063,8 @@ public final class ExecModelTranspiler {
                 && la.type() != null && !la.type().isNumeriek() && !la.type().isPercentage() && !la.type().isDatum()
                 && ra.type() != null && !ra.type().isNumeriek() && !ra.type().isPercentage() && !ra.type().isDatum()) {
             if (subject == null || !subject.heeftLid(la.attribuut()) || !subject.heeftLid(ra.attribuut())) return null;   // both must be own members
-            if (subject.attribuutGranulariteit.containsKey(la.attribuut())
-                    || subject.attribuutGranulariteit.containsKey(ra.attribuut())) return null;                          // temporal -> Phase F
+            if (subject.granulariteitLeden().containsKey(la.attribuut())
+                    || subject.granulariteitLeden().containsKey(ra.attribuut())) return null;                          // temporal -> Phase F
             if (!subject.dimensiesVan(la.attribuut()).isEmpty() || !subject.dimensiesVan(ra.attribuut()).isEmpty()) return null;   // §3.6 gedimensioneerd -> marker
             String lAttr = la.attribuut(), rAttr = ra.attribuut();
             boolean gelijk = v.op() == Conditie.Operator.GELIJK;
@@ -3078,7 +3078,7 @@ public final class ExecModelTranspiler {
                 && v.rechts() instanceof Expr.Literal lit && lit.type() instanceof io.github.yhavinga.regelspraak.model.Datatype.Booleaan
                 && (v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)) {
             if (subject == null || !subject.heeftLid(la.attribuut())) return null;            // not the subject's own member
-            if (subject.attribuutGranulariteit.containsKey(la.attribuut())) return null;      // temporal -> Phase F
+            if (subject.granulariteitLeden().containsKey(la.attribuut())) return null;      // temporal -> Phase F
             if (!subject.dimensiesVan(la.attribuut()).isEmpty()) return null;                 // §3.6 gedimensioneerd -> marker
             String attr = la.attribuut();
             Boolean rhs = io.github.yhavinga.regelspraak.kern.Literalen.waar(lit.waarde());
@@ -3092,7 +3092,7 @@ public final class ExecModelTranspiler {
         if (c instanceof Conditie.Vergelijking v && v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() != null
                 && v.rechts() instanceof Expr.Literal lit && lit.type() instanceof io.github.yhavinga.regelspraak.model.Datatype.Booleaan
                 && (v.op() == Conditie.Operator.GELIJK || v.op() == Conditie.Operator.ONGELIJK)) {
-            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> Phase F
+            if (la.objecttype() == null || la.objecttype().granulariteitLeden().containsKey(la.attribuut())) return null;  // temporal -> Phase F
             if (!la.objecttype().dimensiesVan(la.attribuut()).isEmpty()) return null;                                       // §3.6 gedimensioneerd -> marker
             String rol = navComparisonRole(la, subject);
             if (rol == null) return null;
@@ -3110,7 +3110,7 @@ public final class ExecModelTranspiler {
         // rsDagsoort_<Naam>.test(attr)`). §5.15: een leegwaarde is nooit een dagsoort -> an absent datum is ONWAAR.
         if (c instanceof Conditie.Predicaat p && p.soort() == Conditie.Predicaatsoort.DAGSOORT
                 && p.operand() instanceof Expr.AttribuutRef la && la.type().isDatum()) {
-            if (la.objecttype() == null || la.objecttype().attribuutGranulariteit.containsKey(la.attribuut())) return null;  // temporal -> skip
+            if (la.objecttype() == null || la.objecttype().granulariteitLeden().containsKey(la.attribuut())) return null;  // temporal -> skip
             java.util.function.Predicate<java.time.LocalDate> pred = dagsoortPredikaat(p.dagsoort());
             if (pred == null) return null;
             String attr = la.attribuut();
@@ -3433,7 +3433,7 @@ public final class ExecModelTranspiler {
             // "het totaal van" collapses a timeline to a scalar (handled in regel() before this path). Splicing the
             // List into a scalar setter would throw at fire time (setX(List) on a BigDecimal field); skip it instead
             // (DRL honestly markers the same read). Mirrors DrlTranspiler.isTemporeelAttribuut / lowerVal's guard.
-            if (a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;
+            if (a.objecttype() != null && a.objecttype().granulariteitLeden().containsKey(a.attribuut())) return null;
             // §3.6 a bare read of a gedimensioneerd attribuut (its field is a Map<label,value>) is under-specified —
             // a scalar slot needs a pinned label (a DimensieCel) or a dimensie-fold. Skip (DRL markers it likewise).
             if (a.objecttype() != null && !a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;
@@ -3456,7 +3456,7 @@ public final class ExecModelTranspiler {
             // DRL bug, like the §6.9 DimensieCel null-Map). navReader is null-safe (-> leeg), the CORRECT side: the
             // non-null read AGREES with DRL, the null-relation read is a model-is-better divergence (not differentially
             // testable — DRL crashes). Only reached on the VALUE path (valueSubject set); the condition path skips it.
-            if (a.objecttype() != null && a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;   // temporal -> Phase F
+            if (a.objecttype() != null && a.objecttype().granulariteitLeden().containsKey(a.attribuut())) return null;   // temporal -> Phase F
             if (a.objecttype() != null && !a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;             // §3.6 gedimensioneerd -> marker
             // §13.4.1 a MULTI-hop chain lowers ONLY on the consequence value path (ketenWaardePad, set around the
             // scalar THEN-waarde) — a chain in a CONDITION keeps the symmetric marker DRL emits (operand/attribuutOperand
@@ -3816,7 +3816,7 @@ public final class ExecModelTranspiler {
             return val == null ? null : (s, g, a) -> val;
         }
         if (e instanceof Expr.AttribuutRef ar && ar.navigatieRol() == null) {
-            if (subject != null && subject.attribuutGranulariteit.containsKey(ar.attribuut())) return null;   // temporal -> Phase F
+            if (subject != null && subject.granulariteitLeden().containsKey(ar.attribuut())) return null;   // temporal -> Phase F
             String attr = ar.attribuut();
             return (s, g, a) -> RegelSpraakRuntime.get(s, attr);
         }
@@ -4140,7 +4140,7 @@ public final class ExecModelTranspiler {
      *  Temporal (ordering EERDER/LATER, equality GELIJK Tabel 38 / ONGELIJK Tabel 44). */
     private java.util.function.Function<Object, Object> datumTemporeelLezer(Expr.AttribuutRef a, Objecttype subject) {
         if (a.type() == null || !a.type().isDatum()) return null;
-        if (a.objecttype() == null || a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;   // temporal -> Phase F
+        if (a.objecttype() == null || a.objecttype().granulariteitLeden().containsKey(a.attribuut())) return null;   // temporal -> Phase F
         if (!a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;                                        // §3.6 -> marker
         String attr = a.attribuut();
         if (a.navigatieRol() == null) {
@@ -4466,7 +4466,7 @@ public final class ExecModelTranspiler {
      *  null}, exactly what navReader collapses). null for a temporal / dimensioned / unresolvable / to-many operand. */
     private java.util.function.Function<Object, Object> consistentieReader(Expr.AttribuutRef a, Objecttype subject) {
         if (a.objecttype() == null) return null;
-        if (a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;   // temporal -> Phase F
+        if (a.objecttype().granulariteitLeden().containsKey(a.attribuut())) return null;   // temporal -> Phase F
         if (!a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;               // §3.6 gedimensioneerd -> later
         if (a.navigatieRol() == null) {
             if (subject == null || !subject.heeftLid(a.attribuut())) return null;
@@ -4515,7 +4515,7 @@ public final class ExecModelTranspiler {
         PatternDSL.PatternDef src = PatternDSL.pattern(oVar);
         for (int i = 0; i < u.sleutels().size(); i++) {
             String key = u.sleutels().get(i);
-            if (subject.attribuutGranulariteit.containsKey(key))
+            if (subject.granulariteitLeden().containsKey(key))
                 // ever-uniqueness (uchar RS ch. 5.9, both forms): the shared ever-value predicate
                 src = src.expr(nextId("kj"), (Variable) keyVars.get(i),
                         (Predicate2) (o, k) -> RegelSpraakRuntime.rsOoitBotst(RegelSpraakRuntime.get(o, key), k));
@@ -4586,7 +4586,7 @@ public final class ExecModelTranspiler {
                 PatternDSL.PatternDef src = PatternDSL.pattern(oVar);
                 for (int i = 0; i < arity; i++) {
                     String key = b.sleutels().get(i);
-                    if (b.type().attribuutGranulariteit.containsKey(key))
+                    if (b.type().granulariteitLeden().containsKey(key))
                         // ever-uniqueness (uchar RS ch. 5.9): a temporal key joins on the EVER-value
                         // intersection — the same shared-runtime predicate the DRL route calls
                         src = src.expr(nextId("ukj"), (Variable) keyVars.get(i),
@@ -5156,7 +5156,7 @@ public final class ExecModelTranspiler {
             return def == null ? null : companionOperand(def, subject, binders);
         }
         if (!(e instanceof Expr.AttribuutRef a) || a.objecttype() == null) return null;
-        if (a.objecttype().attribuutGranulariteit.containsKey(a.attribuut())) return null;   // temporal -> no re-readable guard
+        if (a.objecttype().granulariteitLeden().containsKey(a.attribuut())) return null;   // temporal -> no re-readable guard
         if (!a.objecttype().dimensiesVan(a.attribuut()).isEmpty()) return null;              // §3.6 gedimensioneerd (a Map) -> DRL markers it too
         return navReader(a, subject);   // own attribute or to-one navigated (null for to-many / absent / unresolvable)
     }
