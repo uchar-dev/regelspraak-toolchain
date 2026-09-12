@@ -54,6 +54,9 @@ public final class ContractValidator {
             // can be raised (consistenties, uniciteiten, or any division/wortel — checked coarsely: consistenties
             // and uniciteiten only; the fout companions of a division/wortel insert one too, but requiring the
             // class only when statically certain keeps the validator permissive for scalar-only models).
+            // The OWN maps, deliberately: this is a disjunction over EVERY objecttype in the model, so a
+            // declaring ancestor is visited on its own turn and chain-closing the read would only make
+            // each inherited timeline count once per descendant — the same answer, later.
             boolean temporeel = model.objecttypen.values().stream().anyMatch(ot ->
                     !ot.attribuutGranulariteit.isEmpty() || !ot.kenmerkGranulariteit.isEmpty());
             if (temporeel) eisSegment(cl, uit);

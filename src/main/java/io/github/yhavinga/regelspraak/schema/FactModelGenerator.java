@@ -20,7 +20,9 @@ import java.util.Map;
  * {@code List<Segment>} for a §13.3.6 tijdsafhankelijk attribute), an {@code is<X>}/{@code set<X>} boolean
  * pair per kenmerk (a temporal kenmerk is a {@code List<Segment>} true-period timeline), and — per §13.3.9
  * feittype — the to-one REFERENCE field on the MANY side, named after the ONE side's role. {@code Segment}
- * and {@code Inconsistentie} are emitted alongside.
+ * and {@code Inconsistentie} are emitted alongside. A subtype's bean {@code extends} its supertype's
+ * (IR-SPEC ch. 2.2), so inheritance is the JVM's own and a rule pattern on the supertype's class matches
+ * subtype facts without any per-type duplication.
  *
  * <p>The MEMBER DERIVATION ({@link #leden}) is shared with {@link ContractValidator}, so what this
  * generator emits and what the validator demands can never drift apart.
@@ -36,13 +38,35 @@ public final class FactModelGenerator {
     public record Lid(String eigenschap, String javaType, boolean isVorm) {}
 
     /** Every bean member the model implies for {@code ot} — the ONE derivation the generator renders and
-     *  the {@link ContractValidator} checks. */
+     *  the {@link ContractValidator} checks.
+     *
+     *  <p>IR-SPEC ch. 2.2: the members a subtype's bean declares ITSELF. The generated bean {@code extends}
+     *  its supertype's, so every inherited member is already a field there; emitting it again would hide the
+     *  parent's. The subtraction is by PROPERTY NAME, the same key the dedup in {@link #alleLeden} uses,
+     *  because the derived reference arms re-derive on a subtype the SAME role field the parent already
+     *  carries (a relation hung on the supertype). */
     public static List<Lid> leden(RegelSpraakModel model, Objecttype ot) {
+        List<Lid> alle = alleLeden(model, ot);
+        if (ot.supertype == null) return alle;
+        java.util.Set<String> geerfd = new java.util.HashSet<>();
+        for (Lid l : leden(model, ot.supertype)) geerfd.add(l.eigenschap());
+        List<Lid> uit = new ArrayList<>();
+        for (Lid l : alle) if (!geerfd.contains(l.eigenschap())) uit.add(l);
+        return uit;
+    }
+
+    private static List<Lid> alleLeden(RegelSpraakModel model, Objecttype ot) {
         List<Lid> uit = new ArrayList<>();
         java.util.Set<String> gezien = new java.util.HashSet<>();   // ONE bean property per name: an attribute,
         // kenmerk and to-one role may legally share a name (TOKA's 'bereikbaar per trein' is both a kenmerk
         // and a Boolean attribute); the bean can carry only one field, and the runtime property resolution
         // reads whichever getter exists — so the FIRST derivation (attribute > kenmerk > referentie) wins.
+        // The two loops below ITERATE the OWN declaration maps, deliberately, and are the reason this class
+        // reads no chain-closed facet map either: {@link #leden} subtracts what the supertype's bean already
+        // declares and the generated class `extends` it, so a chain-closed iteration would visit every
+        // inherited member once per descendant only to have the subtraction remove it again. The facet
+        // lookups INSIDE them are keyed by a name this very iteration produced, so the nearest declaration
+        // IS ot and the own map already answers for it.
         for (Map.Entry<String, Datatype> e : ot.attributen.entrySet()) {
             String naam = e.getKey();
             String type;
@@ -92,7 +116,9 @@ public final class FactModelGenerator {
             StringBuilder b = new StringBuilder();
             b.append("package ").append(PAKKET).append(";\n\n")
              .append("/** Generated fact bean for objecttype '").append(ot.naam).append("' (the explicit fact-model contract). */\n")
-             .append("public class ").append(klasse).append(" {\n");
+             .append("public class ").append(klasse)
+             .append(ot.supertype == null ? "" : " extends " + Namen.ident(ot.supertype.naam, true))   // ch. 2.2
+             .append(" {\n");
             List<Lid> leden = leden(model, ot);
             for (Lid l : leden)
                 b.append("    private ").append(l.javaType()).append(' ').append(l.eigenschap()).append(";\n");
