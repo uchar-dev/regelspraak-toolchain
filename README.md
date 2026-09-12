@@ -12,7 +12,10 @@ and **[docs/](docs/)** for the architecture and runbooks.
 
 ## What it does
 
-- **Parse** — an ANTLR 4.13.2 lexer + parser authored from the v2.3.0 spec.
+- **Parse** — an ANTLR 4.13.2 lexer + parser authored from the v2.3.0 spec;
+  since the dependency inversion it is consumed from uchar's frontend as the
+  byte-identical vendored slice under `vendor/uchar-frontend/`, pinned by
+  `SPEC_REV`.
 - **Resolve & typecheck** — a visitor builds a typed IR and enforces the
   typeringen matrix (datatypes, units, arity, name resolution).
 - **Transpile** — one semantic core, two thin Drools back-ends: an
@@ -39,8 +42,8 @@ and **[docs/](docs/)** for the architecture and runbooks.
 
 | Path | Role |
 |------|------|
-| `grammar/` | `RegelSpraakLexer.g4` + `RegelSpraak.g4` (lexer first), authored from the spec |
-| `src/` | the `regelspraak-parser` module — `resolver/` (typed IR builder + typeringen), `ir/` (the resolved AST both back-ends read), `model/` (the domain model: `Datatype`, `Eenheid`, `Parameterset`, `RegelSpraakModel`), `transpiler/` (shared `kern/` + both back-ends: `DrlTranspiler` and `model/ExecModelTranspiler`), `runtime/` (`RegelSpraakRuntime`, the one rs* implementation), `schema/` (fact-model generator + `ContractValidator`) |
+| `vendor/uchar-frontend/` | the byte-identical vendored slice of uchar's frontend at the `SPEC_REV` pin: `grammar/` (`RegelSpraakLexer.g4` + `RegelSpraak.g4`, lexer first), `resolver/` (typed IR builder + typeringen), `ir/` (the resolved AST both back-ends read), `model/` (the domain model), `emit/` and `kern/`. Refreshed on every pin bump — edit upstream in uchar, never here |
+| `src/` | the toolchain's own half of the `regelspraak-parser` module — `transpiler/` (shared `kern/` + both back-ends: `DrlTranspiler` and `model/ExecModelTranspiler`), `runtime/` (`RegelSpraakRuntime`, the one rs* implementation), `schema/` (fact-model generator + `ContractValidator`), `graaf/`, `cli/`, plus the toolchain-local scenariotoetsen harness (`resolver/ScenarioResolver`, `ir/ResolvedScenario`); the parser, resolver, IR and domain model come from the vendored slice above |
 | `engine/` | `regelspraak-engine` — fires the exec-model `Model` over facts; hosts the scenariotoetsen runner |
 | `service/` | `regelspraak-service` — zero-dependency JDK-`HttpServer` decision service (`BeslisserKern`, OpenAPI emitter) |
 | `service-quarkus/` | `regelspraak-service-quarkus` — opt-in Quarkus HTTP adapter over `BeslisserKern` (SmallRye health, config injection) |
