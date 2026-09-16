@@ -5375,8 +5375,16 @@ class DroolsExecutionTest {
                 geldig altijd
                     De uitkomst van een Vlucht moet berekend worden als de minimale waarde van de basiswaarde van de Vlucht en de leeftijd van de eerste passagier die een minderjarige is.
             """;
-        assertFalse(Resolver.resolve(fold).diagnostics.stream().anyMatch(d -> d.message().contains("die/dat")),
-                "een die op een min/max-operand mag niet als telling-filter gelezen worden");
+        // Since the diedat-filter pin (uchar d8fd48a) an UNCONSUMED §5.6 bijzin is a loud
+        // resolver ERROR instead of a silent drop: the fold no longer computes over the wrong,
+        // unfiltered set. The p20b property survives inside that refusal — the diagnosis is the
+        // extension-point refusal naming the bijzin, never a telling-filter reading that would
+        // have markered a working min/max.
+        RegelSpraakModel fm = Resolver.resolve(fold);
+        assertFalse(fm.errors().isEmpty(),
+                "een niet-geconsumeerde die-bijzin op een min/max-operand moet luid weigeren");
+        assertTrue(fm.errors().toString().contains("zou stil wegvallen"),
+                () -> "de weigering moet de §5.6-uitbreidingspuntdiagnose zijn, geen telling-lezing: " + fm.errors());
 
         String set = """
             Objecttype de Vlucht

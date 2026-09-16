@@ -31,7 +31,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p>The scope is exactly the §8.2-QUALIFIED condition with one set operand. The other measured WF-096
  * producer routes are unchanged, and {@link SetlezingZonderVouwTest} — untouched — is the proof; the
  * two routes most likely to be widened by accident (an unqualified voorwaarde, a counting quantor) are
- * pinned here as well, beside the three shapes that decline to lower on purpose.
+ * pinned here as well, beside the shapes that decline to lower on purpose — three when this file was
+ * written, four since the die/dat subselection joined them (see {@link KwantorvouwFilterTest}).
  */
 class KwantorvouwTest {
 
@@ -104,8 +105,10 @@ class KwantorvouwTest {
         // the quantified range is the MEMBER type, not the rule subject
         assertTrue(v.contains("\"elementObjecttype\":\"Vondst\""),
                 () -> "de vouw hoort over Vondst te kwantificeren:\n" + v);
-        // the die/dat subselectie is out of scope for this card; the node admits it, we produce none
-        assertTrue(v.contains("\"filter\":null"), () -> "deze kaart levert geen filter:\n" + v);
+        // this sentence writes NO die/dat subselectie, so the range field stays empty. (Since the
+        // diedat-filter card a written subselectie DOES reach the wire; KwantorvouwFilterTest pins that
+        // side, and this line is the regression pin for the unfiltered sentence.)
+        assertTrue(v.contains("\"filter\":null"), () -> "zonder geschreven deelselectie geen filter:\n" + v);
     }
 
     @Test void de_kwantorvouw_draagt_de_verbindende_rol_als_bereik() {

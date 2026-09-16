@@ -65,6 +65,16 @@ final class ExpressieBouwer {
     void setSubject(Objecttype subject) { this.huidigSubject = subject; }
     Objecttype subject() { return huidigSubject; }
 
+    /** §5.6: the die/dat subselecties this builder CONSUMED — by identity, over the whole document.
+     *  Consuming means the predicaat reached a resolution that accounts for it: a bound filter, or a
+     *  refusal that names it. Everything the parse produced and this set does not hold was DROPPED, and
+     *  {@link RuleChecker} makes that loud rather than letting the document answer about a set nobody
+     *  wrote. */
+    private final java.util.Set<PredicaatContext> verbruikt =
+            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+
+    java.util.Set<PredicaatContext> verbruikteDeelselecties() { return verbruikt; }
+
     /** §13.4.13.4 resolves a COMPOUND subselectie predicaat ("die aan alle volgende voorwaarden voldoen: …")
      *  against a given AGGREGATED ELEMENT type, producing a {@link Conditie.Samengesteld} whose bullets are bound
      *  to that element (not the rule subject). Implemented by {@link RuleChecker} (which owns the bullet machinery +
@@ -1075,6 +1085,7 @@ final class ExpressieBouwer {
         if (operanden.size() == 1) {
             PredicaatContext p = vindDie(operanden.get(0));
             if (p == null) return null;
+            verbruikt.add(p);
             // §13.4.13.4 the COMPOUND subselectie "die aan alle volgende voorwaarden voldoen: …" — resolve its bullets
             // against the ELEMENT (via the RuleChecker callback) into a Conditie.Samengesteld on the source pattern.
             if (p.samengesteldPredicaat() != null) {
@@ -1096,6 +1107,13 @@ final class ExpressieBouwer {
         // navigation, not the element — so it is excluded; only AANTAL unions.)
         if (f instanceof AantalFuncContext) {
             java.util.List<Conditie> delen = new ArrayList<>();
+            // account for EVERY operand's subselectie before the first one can bail out: the marker below
+            // refuses the whole union, so the later operands' subselecties are refused with it and must
+            // not read as silently dropped
+            for (ParseTree op : operanden) {
+                PredicaatContext p = vindDie(op);
+                if (p != null) verbruikt.add(p);
+            }
             for (ParseTree op : operanden) {
                 // Every operand must range over the SAME element (a single accumulate has one source
                 // pattern) AND resolve to a kenmerk filter of it. An operand over a DIFFERENT element
@@ -1109,6 +1127,59 @@ final class ExpressieBouwer {
             return new Conditie.Samengesteld(Conditie.Kwantor.TEN_MINSTE, 1, delen, bron(f));
         }
         return null;
+    }
+
+    /**
+     * §5.6 / IR-SPEC ch. 4.5: the "die/dat &lt;predicaat&gt;" subselectie over the range of a §8.2
+     * QUANTIFIER FOLD — the same field, the same reading and the same resolution as an aggregation's
+     * (see {@link #aggregatieFilter}), reached from {@link RuleChecker}'s lowering instead of from a
+     * functieaanroep. Returns null when the operand writes no subselectie at all, a resolved
+     * {@link Conditie} when it writes one this resolver binds, and {@link Conditie.Onopgelost} when it
+     * writes one it does not — the caller then DECLINES to lower, because a fold over the full range is
+     * exactly the silent wrong set the field exists to prevent.
+     *
+     * <p>{@code operand} is the parse subtree of the QUANTIFIED operand specifically, never the whole
+     * condition: the subselectie is written after the onderwerp ("… van alle vondsten van de Jutter die
+     * aangemeld zijn") but selects the quantified MEMBERS, so it must be looked for on the side the
+     * quantifier is on. A die on the other operand belongs to that operand's own navigation.
+     */
+    /** The outcome of resolving a §5.6 subselectie on the quantifier-fold position: exactly one of the
+     *  two is non-null. {@code reden} is the sentence the caller's refusal quotes, so the refusal names
+     *  the axis the subselectie was declined on rather than one generic text for every shape. */
+    record Deelselectie(Conditie filter, String reden) {}
+
+    Deelselectie deelselectie(ParseTree operand, Objecttype elem, Expr gekwantificeerd) {
+        if (elem == null || operand == null) return null;
+        PredicaatContext p = vindDie(operand);
+        if (p == null) return null;
+        verbruikt.add(p);
+        if (p.samengesteldPredicaat() != null) {
+            Conditie c = samengesteldeFilter != null ? samengesteldeFilter.resolve(p.samengesteldPredicaat(), elem) : null;
+            return c != null ? new Deelselectie(c, null)
+                    : new Deelselectie(null, "zij bindt geen samengestelde voorwaarde van " + elem.naam
+                            + " (§13.4.13.4, IR-SPEC ch. 4.5)");
+        }
+        Conditie filter = elementKenmerkFilter(p, elem);
+        if (filter != null) return new Deelselectie(filter, null);
+        // §5.6 getalpredicaat "die <op> <expr>" names no attribute of its own, so elementVergelijking
+        // re-anchors the FOLD's operand as its left side. On the quantifier-fold position that operand is
+        // TIJDSAFHANKELIJK by construction — §8.2 only qualifies a temporal onderwerp, and the qualifier is
+        // what admits the fold at all — and a timeline in a scalar slot has no reading (ch. 3.3). Every such
+        // filter therefore emits a document that falls over by name in all three executors, so admitting it
+        // here would be misleading: this is a FRONTEND boundary, not a wire one. The NODE carries the shape
+        // fine (a hand-written Kwantorvouw with a Vergelijking filter over a non-temporal member plays in
+        // ref, clingo and the Drools exec branch); it is this SENTENCE position that cannot produce it.
+        filter = elementVergelijking(p, elem, List.of(gekwantificeerd));
+        if (filter == null)
+            return new Deelselectie(null, "zij bindt geen kenmerk of getalpredicaat van " + elem.naam
+                    + " (§5.6, IR-SPEC ch. 4.5)");
+        if (gekwantificeerd instanceof Expr.AttribuutRef q && q.objecttype() != null
+                && q.objecttype().granulariteitVan(q.attribuut()) != null)
+            return new Deelselectie(null, "een getalpredicaat over het gekwantificeerde attribuut '"
+                    + q.attribuut() + "' heeft hier geen lezing: de §8.2-kwalificatie geldt alleen over een "
+                    + "TIJDSAFHANKELIJK onderwerp, en een tijdlijn in een scalaire sleuf heeft er geen "
+                    + "(ch. 3.3) — de knoop draagt de vorm wel, deze schrijfpositie kan hem niet leveren");
+        return new Deelselectie(filter, null);
     }
 
     /** The element type a count operand ("deelnemers van …") ranges over, or null when it is not an
