@@ -737,10 +737,13 @@ class RuleCheckTest {
         // exemption. Since the WF-096 promotion (uchar pin acc5a4e) that is a real ERROR, not a
         // false positive: the frontend refuses to write the ill-formed wire. Any OTHER error
         // (a genuine false positive from the checker) stays a failure.
+        // "alle Zaken" names no declared type, role or plural — since the typerange round
+        // (uchar pin a8eb629) "alle Dingen" resolves legitimately as the Ding population, so
+        // the fixture needs a name that stays unresolvable to keep testing this path.
         String src = MODEL + """
             Regel onbekend
                 geldig altijd
-                    De teller van een Ding moet gesteld worden op de som van de tellers van alle Dingen van de reis.
+                    De teller van een Ding moet gesteld worden op de som van de tellers van alle Zaken van de reis.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
         assertEquals(1, m.errors().size(), () -> "verwacht alleen de setlezing-fout, kreeg: " + m.errors());
