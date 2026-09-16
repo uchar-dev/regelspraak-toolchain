@@ -66,12 +66,16 @@ COPY docker/entrypoint.sh /app/entrypoint.sh
 # Bake the ordered TOKA source manifest at build time so the entrypoint feeds
 # DienstMain the bronbestanden in exactly TokaBron.bronBestanden() order: the
 # model foundation (toka-01..16) + the two companions, then the served rules
-# (toka-17..47) EXCLUDING toka-23 (its datum+datum is an exit-1 resolve error).
+# (toka-17..47) EXCLUDING the two files that do not resolve and therefore cannot be
+# served: toka-23 (datum+datum, §4.1 Tabel 2) and toka-45 (dimensionally inconsistent
+# under the eenheid-identiteit typing since besluit 16Y). Keep this filter in lock-step
+# with TokaBron.bronBestanden(): a non-resolving source makes BeslisserKern.bouw fail,
+# so the container would never bind its port and the HEALTHCHECK would never pass.
 RUN chmod +x /app/entrypoint.sh \
     && { ls /app/rules/toka/toka-0[1-9]-*.rgs /app/rules/toka/toka-1[0-6]-*.rgs | sort; \
          echo /app/rules/companions/casus-omissies.rgs; \
          echo /app/rules/companions/scenario-model-extensie.rgs; \
-         ls /app/rules/toka/toka-1[7-9]-*.rgs /app/rules/toka/toka-[2-9][0-9]-*.rgs | sort | grep -v 'toka-23-'; \
+         ls /app/rules/toka/toka-1[7-9]-*.rgs /app/rules/toka/toka-[2-9][0-9]-*.rgs | sort | grep -v -e 'toka-23-' -e 'toka-45-'; \
        } > /app/rules/toka-manifest.txt
 
 # Mounting a volume at /app/rules and overriding DESCRIPTOR + BRONNEN_MANIFEST
