@@ -183,7 +183,7 @@ public sealed interface Expr {
                         String navigatieRol, Datatype type, Bron bron, boolean set,
                         java.util.List<String> navigatiePad,
                         java.util.List<io.github.yhavinga.regelspraak.model.RegelSpraakModel.RolBindingRef> bereikPad,
-                        Conditie.Kwantor kwantor)
+                        Conditie.Kwantor kwantor, int drempel)
             implements Expr {
         /** {@code set} marks an operand that ranges over a SET (a §13.4.2 set quantifier — alle/al/geen van de/
          *  ten minste…/ten hoogste…/precies… — NOT the bare definite "de"), computed structurally from the
@@ -209,15 +209,28 @@ public sealed interface Expr {
          *  collapses them all to one bit: "alle", "geen van de" and every counting quantor are equally
          *  {@code set == true}, so a reader that took the flag for a forall would answer ALLE for a
          *  sentence that wrote "geen van de". Null for the bare definite "de" (a single object) and for
-         *  every reference built outside the onderwerp path. FRONTEND-INTERNAL: it is the resolver's
+         *  every reference built outside the onderwerp path. {@code drempel} is its written telwoord,
+         *  travelling beside it for the same reason: without it "ten minste 2 van de" and "ten minste 3
+         *  van de" would reach the resolver as one and the same sentence. 0 when the quantor carries no
+         *  count. FRONTEND-INTERNAL, both of them: they are the resolver's
          *  input for lowering a §8.2 quantified condition to {@link Conditie.Kwantorvouw}, which records
-         *  it on the wire — the reference node itself never carries it out, so no schema field
-         *  corresponds to this component. */
+         *  them on the wire — the reference node itself never carries them out, so no schema field
+         *  corresponds to these components. */
         public AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
                             String navigatieRol, Datatype type, Bron bron, boolean set,
                             java.util.List<String> navigatiePad,
                             java.util.List<io.github.yhavinga.regelspraak.model.RegelSpraakModel.RolBindingRef> bereikPad) {
             this(attribuut, objecttype, onderwerpBron, navigatieRol, type, bron, set, navigatiePad, bereikPad, null);
+        }
+        /** {@code drempel} defaults to 0: it is read only under a COUNTING {@code kwantor}, and every
+         *  reference built outside the onderwerp path carries none. */
+        public AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
+                            String navigatieRol, Datatype type, Bron bron, boolean set,
+                            java.util.List<String> navigatiePad,
+                            java.util.List<io.github.yhavinga.regelspraak.model.RegelSpraakModel.RolBindingRef> bereikPad,
+                            Conditie.Kwantor kwantor) {
+            this(attribuut, objecttype, onderwerpBron, navigatieRol, type, bron, set, navigatiePad, bereikPad,
+                    kwantor, 0);
         }
         public AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
                             String navigatieRol, Datatype type, Bron bron, boolean set,

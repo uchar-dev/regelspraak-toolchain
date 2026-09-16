@@ -630,11 +630,18 @@ public final class IrEmitter {
                 w.endArray();
                 w.key("bron").value(s.bron().snippet());
             }
-            // IR-SPEC ch. 4.5 / WF-108. Key ORDER is the schema's required order (node, kwantor,
-            // elementObjecttype, filter, toets, bron, then the range) — gate 2 round-trips these bytes.
+            // IR-SPEC ch. 4.5 / WF-108. Key ORDER is the schema's property order (node, kwantor, the
+            // counting drempel, elementObjecttype, filter, toets, bron, then the range) — gate 2
+            // round-trips these bytes.
             case Conditie.Kwantorvouw k -> {
                 w.key("node").value("Kwantorvouw");
                 w.key("kwantor").value(k.kwantor().name());
+                // WF-108 (e): the threshold is written EXACTLY under a counting quantifier and omitted
+                // under ALLE / GEEN — unlike Samengesteld, which always writes it and writes a 0 nobody
+                // reads. Emitting it here too would put a number on the wire the kwantor contradicts.
+                if (k.kwantor() == Conditie.Kwantor.TEN_MINSTE || k.kwantor() == Conditie.Kwantor.TEN_HOOGSTE
+                        || k.kwantor() == Conditie.Kwantor.PRECIES)
+                    w.key("drempel").value(k.drempel());
                 w.key("elementObjecttype").value(naamVan(k.elementObjecttype()));
                 // filter and toets are evaluated PER CONTRIBUTOR with the element as subject, exactly as
                 // Functie.filter is: an element-own read there is an own read, not a navigation from the

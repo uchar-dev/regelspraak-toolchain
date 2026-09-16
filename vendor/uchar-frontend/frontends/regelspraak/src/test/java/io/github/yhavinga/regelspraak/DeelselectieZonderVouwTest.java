@@ -24,8 +24,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * then agrees on the wrong answer. A warning would leave that document on disk.
  *
  * <p>This makes the stillness loud; it does not build the semantics. What a subselection MEANS on a
- * scalar navigation is a spec question — a named extension point with a loud refusal, exactly as the
- * counting quantors are on the quantifier fold (WF-108 (a)).
+ * scalar navigation is a spec question — a named extension point with a loud refusal, the posture the
+ * counting quantors held on the quantifier fold until they were built (2026-09-16, WF-108 (a)).
  */
 class DeelselectieZonderVouwTest {
 

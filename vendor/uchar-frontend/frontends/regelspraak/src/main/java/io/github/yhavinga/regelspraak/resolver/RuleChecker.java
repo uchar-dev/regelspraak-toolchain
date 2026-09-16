@@ -105,8 +105,9 @@ final class RuleChecker {
      * (non-fold) position — "indien de leeftijd van de Jutter DIE BEVOEGD IS groter is dan 5" — has no
      * wire form yet: the IR's {@code filter} field belongs to the two folds (IR-SPEC ch. 4.3, ch. 4.5),
      * and what a subselection means on a scalar navigation is a spec question, not a resolver one. It is
-     * a named extension point with a loud refusal, exactly as the counting quantors are on the
-     * quantifier fold.
+     * a named extension point with a loud refusal — the posture the counting quantors held on the
+     * quantifier fold until they were built (2026-09-16), and the reason they could be built at all:
+     * the refusal named the shape instead of guessing at it.
      */
     private void keurDeelselecties(RegelSpraakDocumentContext doc) {
         java.util.Set<PredicaatContext> verbruikt = bouwer.verbruikteDeelselecties();
@@ -1905,8 +1906,10 @@ final class RuleChecker {
         return Conditie.Kwantor.DE;
     }
 
-    /** A telwoord (§13.4.14.4): a written één/twee/drie/vier or a NUMBER, else 0 (no/unparseable count). */
-    private static int telwoordWaarde(TelwoordContext t) {
+    /** A telwoord (§13.4.14.4): a written één/twee/drie/vier or a NUMBER, else 0 (no/unparseable count).
+     *  Package-private so the onderwerp's own quantifier reads the SAME parse as the composite's
+     *  (ExpressieBouwer.geschrevenDrempel) — one telwoord reading, not two. */
+    static int telwoordWaarde(TelwoordContext t) {
         if (t == null) return 0;
         if (t.NUMBER() != null) try { return Integer.parseInt(t.NUMBER().getText()); } catch (NumberFormatException e) { return 0; }
         if (t.EEN_TELWOORD() != null)  return 1;
@@ -2116,10 +2119,15 @@ final class RuleChecker {
      * quantifier to give it a home. Widening is a spec question (which quantified form means what in a
      * value position), not a frontend one.
      *
-     * <p>Three shapes decline and keep the WF-096 error rather than lowering, each because lowering would
-     * be a guess: a COUNTING quantor (ten minste/ten hoogste/precies N — the wire admits ALLE and GEEN
-     * only, and reading "ten minste 2 van de" as a forall is the exact misreading this node exists to
-     * prevent, so it also draws a WARNING naming itself); a MULTI-STEP written range (the operand
+     * <p>All five §13.4.14 quantifiers over a set lower: ALLE and GEEN, and — since 2026-09-16 — the three
+     * COUNTING quantors, which carry the written telwoord as the fold's {@code drempel} (IR-SPEC ch. 4.5,
+     * WF-108 (e); the verdict counts the contributors the matrix holds of). A telwoord that is not a
+     * positive whole number declines and keeps the WF-096 error: "ten minste 0 van de" would read as a
+     * forall or as nothing at all depending on which arm saw it, and WF-041 refuses the wire form, so
+     * emitting it would only move the refusal downstream.
+     *
+     * <p>Two further shapes decline and keep the WF-096 error rather than lowering, each because lowering
+     * would be a guess: a MULTI-STEP written range (the operand
      * resolved a {@code bereikPad}), whose {@code bronPad} spelling is a separate card; and a range that
      * does not resolve at all — a quantifier bound to no relation is the silent-wrong-set failure WF-048
      * exists to prevent, and a loud refusal beats a fold over a set the sentence never named.
@@ -2137,11 +2145,15 @@ final class RuleChecker {
         if (zet == null) return c;
         Conditie.Kwantor q = zet.kwantor();
         if (q == null) return c;                             // bare "de": no set reading to quantify
-        if (q != Conditie.Kwantor.ALLE && q != Conditie.Kwantor.GEEN) {
+        boolean tellend = q == Conditie.Kwantor.TEN_MINSTE || q == Conditie.Kwantor.TEN_HOOGSTE
+                || q == Conditie.Kwantor.PRECIES;
+        int drempel = tellend ? zet.drempel() : 0;
+        if (tellend && drempel < 1) {
             model.diagnostics.add(new Diagnostic(Severity.WARNING,
-                "de tellende kwantor in '" + zet.bron() + "' wordt niet omgezet naar een kwantorvouw: de uchar-wire "
-                + "kent alleen ALLE en GEEN als kwantor over een verzameling instanties (IR-SPEC ch. 4.5, WF-108); "
-                + "de setlezing blijft daarmee buiten een vouwbron staan (WF-096)", zet.bron().line()));
+                "het telwoord van de kwantor in '" + zet.bron() + "' is geen positief geheel getal (>= 1), dus de "
+                + "vouw wordt NIET gelowerd: een drempel onder 1 stelt geen telling die iets kan voldoen en wordt "
+                + "op de wire geweigerd (WF-041, IR-SPEC ch. 4.5); de setlezing blijft daarmee buiten een vouwbron "
+                + "staan (WF-096)", zet.bron().line()));
             return c;
         }
         Objecttype elem = zet.objecttype();
@@ -2173,7 +2185,8 @@ final class RuleChecker {
         // element IS the subject there, which is also why no set reading is left for WF-096 to find.
         Expr.AttribuutRef eigen = new Expr.AttribuutRef(zet.attribuut(), elem, zet.onderwerpBron(), null,
                 zet.type(), zet.bron(), false, List.of(), List.of(), null);
-        return new Conditie.Kwantorvouw(q, elem, filter, metOperand(c, zet, eigen), bronRol, List.of(), bron);
+        return new Conditie.Kwantorvouw(q, drempel, elem, filter, metOperand(c, zet, eigen), bronRol,
+                List.of(), bron);
     }
 
     /** The §8.2 whole-period qualifier of {@code c}, for the two condition forms that carry Expr operands

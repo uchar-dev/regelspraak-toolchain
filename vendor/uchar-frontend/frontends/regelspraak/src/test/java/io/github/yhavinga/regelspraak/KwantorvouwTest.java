@@ -161,19 +161,53 @@ class KwantorvouwTest {
                 () -> "'geen van de' hoort de GEEN-kwantor te schrijven, niet ALLE:\n" + v);
     }
 
-    @Test void een_tellende_kwantor_wordt_niet_verlaagd_en_houdt_de_wf096_fout() {
-        // The wire admits ALLE and GEEN only (WF-108). Reading "ten minste 2 van de" as a forall is the
-        // exact misreading this node exists to prevent, so the counting quantors are refused BY NAME —
-        // the WF-096 ERROR stands and a WARNING says which quantifier was declined and why.
-        RegelSpraakModel m = resolveer(ZIN.formatted("ten minste 2 van de"));
+    /**
+     * <b>Deze rij is op 2026-09-16 omgedraaid</b> (kaart tellende-kwantoren). Tot dan waren de drie
+     * tellende kwantoren het benoemde uitbreidingspunt van WF-108 (a) en pinde zij precies de weigering:
+     * WF-096 bleef staan en een WARNING noemde de geweigerde kwantor. Zij zijn nu gebouwd, dus de
+     * aanname onder die rij is weg. De bewering die zij droeg — "ten minste 2 van de" mag NOOIT als
+     * forall op de wire belanden — staat er nog, en wordt nu sterker gemeten: niet dat er geen vouw komt,
+     * maar dat er een vouw komt die de GESCHREVEN kwantor en het GESCHREVEN telwoord draagt.
+     */
+    @Test void de_tellende_kwantoren_worden_de_telvouw_met_hun_eigen_telwoord() {
+        record Rij(String geschreven, String kwantor, int drempel) {}
+        for (Rij r : new Rij[]{new Rij("ten minste 2 van de", "TEN_MINSTE", 2),
+                               new Rij("ten hoogste 1 van de", "TEN_HOOGSTE", 1),
+                               new Rij("precies 3 van de", "PRECIES", 3)}) {
+            RegelSpraakModel m = resolveer(ZIN.formatted(r.geschreven()));
+            assertTrue(m.diagnostics.isEmpty(),
+                    () -> r.geschreven() + " — onverwachte diagnostiek: " + m.diagnostics);
+            String v = voorwaarde(m);
+            assertTrue(v.startsWith("\"voorwaarde\":{\"node\":\"Kwantorvouw\",\"kwantor\":\""
+                            + r.kwantor() + "\",\"drempel\":" + r.drempel() + ","),
+                    () -> r.geschreven() + " hoort de kwantor EN het telwoord te dragen:\n" + v);
+        }
+    }
+
+    /**
+     * De drempel staat er PRECIES onder een tellende kwantor (WF-108 (e)): onder ALLE en GEEN schrijft
+     * de emitter hem NIET, anders staat er een getal op de wire dat het kwantorveld tegenspreekt.
+     */
+    @Test void alle_en_geen_dragen_geen_drempel_op_de_wire() {
+        for (String kw : new String[]{"alle", "geen van de"})
+            assertFalse(voorwaarde(resolveer(ZIN.formatted(kw))).contains("\"drempel\""),
+                    kw + " leest geen drempel, dus de wire hoort er geen te dragen");
+    }
+
+    /**
+     * Een telwoord onder 1 wordt NIET gelowerd: WF-041 weigert zo'n drempel op de wire, dus emitteren zou
+     * de weigering alleen verplaatsen. De WF-096-fout blijft staan en een WARNING noemt het telwoord.
+     */
+    @Test void een_telwoord_onder_een_wordt_niet_verlaagd_en_houdt_de_wf096_fout() {
+        RegelSpraakModel m = resolveer(ZIN.formatted("ten minste 0 van de"));
         assertEquals(1, wf096(m).size(), () -> "de setlezing hoort te blijven staan: " + m.diagnostics);
         assertEquals(Severity.ERROR, wf096(m).get(0).severity());
-        List<Diagnostic> tellend = m.diagnostics.stream()
-                .filter(d -> d.message().contains("tellende kwantor")).toList();
-        assertEquals(1, tellend.size(), () -> "de geweigerde kwantor hoort benoemd te worden: " + m.diagnostics);
-        assertEquals(Severity.WARNING, tellend.get(0).severity());
+        List<Diagnostic> telwoord = m.diagnostics.stream()
+                .filter(d -> d.message().contains("telwoord van de kwantor")).toList();
+        assertEquals(1, telwoord.size(), () -> "de geweigerde drempel hoort benoemd te worden: " + m.diagnostics);
+        assertEquals(Severity.WARNING, telwoord.get(0).severity());
         assertFalse(emitCompact(m).contains("Kwantorvouw"),
-                "een tellende kwantor hoort niet als ALLE-vouw op de wire te belanden");
+                "een drempel onder 1 hoort niet op de wire te belanden");
     }
 
     @Test void een_ongekwalificeerde_setlezing_in_een_voorwaarde_houdt_de_wf096_fout() {

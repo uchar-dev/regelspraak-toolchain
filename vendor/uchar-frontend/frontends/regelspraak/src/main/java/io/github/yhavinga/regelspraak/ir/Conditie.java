@@ -159,21 +159,25 @@ public sealed interface Conditie {
      *  quantifies over PARTS of one subject; this one quantifies over INSTANCES and takes its range
      *  fields from the instance fold ({@link Expr.Functie}) unchanged.
      *
-     *  &lt;p&gt;{@code kwantor} is the WRITTEN quantor and only ALLE / GEEN are lowered — recording it is the
-     *  point of the node: {@code AttribuutRef.set} is true for "alle", "geen van de" and every counting
-     *  quantor alike, so a reading that took the set flag for a forall would answer ALLE for a sentence
-     *  that wrote "geen van de". {@code filter} is the die/dat subselection (which members are quantified
+     *  &lt;p&gt;{@code kwantor} is the WRITTEN quantor — recording it is the point of the node:
+     *  {@code AttribuutRef.set} is true for "alle", "geen van de" and every counting quantor alike, so a
+     *  reading that took the set flag for a forall would answer ALLE for a sentence that wrote "geen van
+     *  de". {@code drempel} is the counting quantifier's threshold N (ten minste / ten hoogste / precies
+     *  N) and 0 under ALLE / GEEN, where the wire omits the field altogether (WF-108 (e)).
+     *  {@code filter} is the die/dat subselection (which members are quantified
      *  over) and {@code toets} the quantified matrix (what each selected member must satisfy); both are
      *  evaluated PER CONTRIBUTOR with the element as subject, exactly as {@link Expr.Functie#filter} is.
      *  {@code bronRol} / {@code bronPad} are the range, spelled exactly as the fold's and mutually
      *  exclusive (IR-SPEC ch. 4.5, WF-108; RUNTIME-SEMANTICS ch. 3.9a). */
-    record Kwantorvouw(Kwantor kwantor, Objecttype elementObjecttype, Conditie filter, Conditie toets,
+    record Kwantorvouw(Kwantor kwantor, int drempel, Objecttype elementObjecttype, Conditie filter,
+                       Conditie toets,
                        io.github.yhavinga.regelspraak.model.RegelSpraakModel.RolBindingRef bronRol,
                        List<io.github.yhavinga.regelspraak.model.RegelSpraakModel.RolBindingRef> bronPad,
                        Bron bron) implements Conditie {
-        public Kwantorvouw(Kwantor kwantor, Objecttype elementObjecttype, Conditie filter, Conditie toets,
+        public Kwantorvouw(Kwantor kwantor, int drempel, Objecttype elementObjecttype, Conditie filter,
+                           Conditie toets,
                            io.github.yhavinga.regelspraak.model.RegelSpraakModel.RolBindingRef bronRol, Bron bron) {
-            this(kwantor, elementObjecttype, filter, toets, bronRol, List.of(), bron);
+            this(kwantor, drempel, elementObjecttype, filter, toets, bronRol, List.of(), bron);
         }
     }
 

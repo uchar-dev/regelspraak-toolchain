@@ -1877,7 +1877,8 @@ final class ExpressieBouwer {
         }
         if (dt == null) dt = onbekend();
         return new Expr.AttribuutRef(attr, ot, onderwerpBron, navRol, dt, bron, isSetOnderwerp(onderwerp),
-                navigatiePad, bereikPad(onderwerp, ot), geschrevenKwantor(onderwerp));
+                navigatiePad, bereikPad(onderwerp, ot), geschrevenKwantor(onderwerp),
+                geschrevenDrempel(onderwerp));
     }
 
     /**
@@ -1988,11 +1989,10 @@ final class ExpressieBouwer {
     }
 
     /** §13.4.14.5 the WRITTEN quantifier of {@code o}, as the IR's own {@link Conditie.Kwantor} vocabulary —
-     *  what {@link #isSetOnderwerp} throws away when it collapses every non-bare quantor to one bit. The
-     *  counting forms are MAPPED, not lowered: recording which one the sentence used is exactly what lets a
-     *  consumer (today: the §8.2 {@link Conditie.Kwantorvouw} lowering) refuse the ones it does not cover by
-     *  name, instead of reading them all as a forall. Null for the bare definite "de", which names one
-     *  object and no set at all. */
+     *  what {@link #isSetOnderwerp} throws away when it collapses every non-bare quantor to one bit.
+     *  Recording which one the sentence used is exactly what lets a consumer (today: the §8.2
+     *  {@link Conditie.Kwantorvouw} lowering) answer the quantifier that was WRITTEN, instead of reading
+     *  them all as a forall. Null for the bare definite "de", which names one object and no set at all. */
     private static Conditie.Kwantor geschrevenKwantor(OnderwerpContext o) {
         if (o == null || o.kwantificatie() == null) return null;
         KwantificatieContext q = o.kwantificatie();
@@ -2002,6 +2002,16 @@ final class ExpressieBouwer {
         if (q.TEN_HOOGSTE() != null)            return Conditie.Kwantor.TEN_HOOGSTE;
         if (q.PRECIES() != null)                return Conditie.Kwantor.PRECIES;
         return null;                            // bare "de"
+    }
+
+    /** §13.4.14.4 the telwoord N of a COUNTING quantifier on {@code o} ("ten minste 2 van de …"), 0 when the
+     *  written quantor carries none. It travels beside {@link #geschrevenKwantor} for the same reason that
+     *  one does: without it "ten minste 2 van de" and "ten minste 3 van de" reach a consumer as one and the
+     *  same sentence. An unparseable or absent telwoord stays 0 and is refused downstream (WF-041), never
+     *  silently read as 1. */
+    private static int geschrevenDrempel(OnderwerpContext o) {
+        if (o == null || o.kwantificatie() == null) return 0;
+        return RuleChecker.telwoordWaarde(o.kwantificatie().telwoord());
     }
 
     /** A possessive "zijn <kaleNaam>" resolves to the named attribute OF the rule subject,
