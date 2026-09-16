@@ -17,7 +17,7 @@ import java.util.Map;
  * shared and immutable, so this is thread-safe by construction.
  *
  * <p><b>Back-end</b>: the DRL back-end, exactly the {@link io.github.yhavinga.regelspraak.engine.ScenarioRunner} recipe.
- * That is the pinned path for gate G2 — the 30 golden scenariotoetsen reproduce over the DRL back-end
+ * That is the pinned path for gate G2 — the 29 golden scenariotoetsen reproduce over the DRL back-end
  * (ScenarioRunner.run L79-107 and its L88-93 comment: the exec-model back-end cannot bind its
  * LambdaMetafactory fact-accessors against a foreign child bean classloader, and it SKIPs / fails to compile
  * several golden scopes). The fire is bounded with the same 100_000 cap the engine's own session uses

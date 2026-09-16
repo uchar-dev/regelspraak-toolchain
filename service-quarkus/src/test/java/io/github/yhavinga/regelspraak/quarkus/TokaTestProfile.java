@@ -13,7 +13,7 @@ import java.util.Map;
 
 /**
  * The @QuarkusTest config profile that points {@code DESCRIPTOR} / {@code BRONNEN_MANIFEST} / {@code ALLOW_MARKERS}
- * at the TOKA fixtures, so the app boots the SAME 30-entrypoint TOKA service the service module tests use. The
+ * at the TOKA fixtures, so the app boots the SAME 29-entrypoint TOKA service the service module tests use. The
  * bron paths + descriptor are read straight off {@link TokaBron} (the service test-jar), and a small
  * {@code BRONNEN_MANIFEST} file is generated (one absolute {@code .rgs} path per line, in
  * {@code TokaBron.bronPerBestand()} order) so the {@link KernProducer}'s manifest reader has a real file to read —

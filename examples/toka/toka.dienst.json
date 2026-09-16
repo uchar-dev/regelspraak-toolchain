@@ -169,13 +169,6 @@
       "uitvoer": []
     },
     {
-      "naam": "belasting op basis van afstand",
-      "pad": "belasting-op-basis-van-afstand",
-      "scope": { "regelnamen": ["belasting op basis van afstand"] },
-      "invoer": ["Vlucht", "Natuurlijk persoon"],
-      "uitvoer": ["Natuurlijk persoon.belasting op basis van afstand"]
-    },
-    {
       "naam": "Woonregio factor 1",
       "pad": "woonregio-factor-1",
       "scope": { "regelnamen": ["Woonregio factor 1"] },

@@ -6,6 +6,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The regelnaam→bronbestand index over the real TOKA sources (decision 2b). */
@@ -30,7 +31,10 @@ class RegelBestandIndexTest {
         RegelBestandIndex index = RegelBestandIndex.bouw(TokaBron.bronPerBestand());
         assertTrue(index.bestandVoorRegel("bepaal leeftijd").contains("toka-17-"));
         assertTrue(index.bestandVoorRegel("Totaal te betalen belasting").contains("toka-20-"));
-        assertTrue(index.bestandVoorRegel("belasting op basis van afstand").contains("toka-45-"));
+        // toka-45 is NOT in the served set since besluit 16Y (see TokaBron), so its rule is not indexable:
+        // assert the absence rather than dropping the case, so a silent re-admission fails here.
+        assertNull(index.bestandVoorRegel("belasting op basis van afstand"),
+                "toka-45 hoort sinds besluit 16Y niet in de geserveerde bronset te zitten");
         // beslistabel rows: three distinct rules all declared by the ONE beslistabel file
         String f1 = index.bestandVoorRegel("Woonregio factor 1");
         String f3 = index.bestandVoorRegel("Woonregio factor 3");

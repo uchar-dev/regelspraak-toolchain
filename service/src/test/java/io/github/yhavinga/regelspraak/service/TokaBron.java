@@ -18,11 +18,21 @@ import java.util.stream.Stream;
 
 /**
  * Test fixture: the TOKA service source manifest — the model foundation (toka-01..16 + the reconciliatie
- * omissie + the scenario model-extensie) followed by the served rule files (toka-17..47), EXCLUDING toka-23
- * (its "A plus B" over two Datum-tijd operands is a resolve-time type error, §4.1 Tabel 2 — the exit-1 marker,
- * not a served rule). This is exactly the file set the pinned facts and the {@code toka.dienst.json} descriptor
- * are built over. Paths are resolved relative to the repo root ({@code ../examples} from the {@code service/}
- * module dir), or {@code examples} when run from the root.
+ * omissie + the scenario model-extensie) followed by the served rule files (toka-17..47), EXCLUDING the two
+ * casus-quirk files that do not resolve and therefore cannot be served:
+ *
+ * <ul>
+ *   <li>toka-23 — its "A plus B" over two Datum-tijd operands is a resolve-time type error, §4.1 Tabel 2;</li>
+ *   <li>toka-45 — since besluit 16Y (SPEC_REV re-pin e87964a, 2026-08-29) the eenheid-identiteit typing types
+ *       the unitless-Bedrag × km product as km, after which its {@code min} hits the §4 unit rule: the casus is
+ *       dimensionally inconsistent as written, and the Onbekend degradation that used to mask that is gone.
+ *       The same holdout is pinned in {@code examples/toka-scenarios/manifest} (exit-1 row), in CasusTest's
+ *       quirk list, in TokaVuurTest's refusal witness, and in uchar's gate-11 holdout.</li>
+ * </ul>
+ *
+ * Both are exit-1 markers, not served rules. This is exactly the file set the pinned facts and the
+ * {@code toka.dienst.json} descriptor are built over. Paths are resolved relative to the repo root
+ * ({@code ../examples} from the {@code service/} module dir), or {@code examples} when run from the root.
  */
 public final class TokaBron {
 
@@ -38,7 +48,7 @@ public final class TokaBron {
         throw new IllegalStateException("kan de repo-root (examples/toka) niet vinden vanaf " + here);
     }
 
-    /** The ordered service source files (foundation first, then the served rule files, no toka-23). */
+    /** The ordered service source files (foundation first, then the served rule files, no toka-23/toka-45). */
     static List<Path> bronBestanden() {
         List<Path> uit = new ArrayList<>();
         Path toka = REPO.resolve("examples/toka");
@@ -51,10 +61,11 @@ public final class TokaBron {
         }
         uit.add(REPO.resolve("examples/toka-reconciliatie/casus-omissies.rgs"));
         uit.add(REPO.resolve("examples/toka-scenarios/scenario-model-extensie.rgs"));
-        // served rule files toka-17..47 except toka-23
+        // served rule files toka-17..47 except the two quirk files that do not resolve (see the class javadoc)
         try (Stream<Path> st = Files.list(toka)) {
             st.filter(p -> p.getFileName().toString().matches("toka-(1[7-9]|[2-9][0-9])-.*\\.rgs"))
               .filter(p -> !p.getFileName().toString().startsWith("toka-23-"))
+              .filter(p -> !p.getFileName().toString().startsWith("toka-45-"))
               .sorted().forEach(uit::add);
         } catch (IOException e) { throw new UncheckedIOException(e); }
         return uit;

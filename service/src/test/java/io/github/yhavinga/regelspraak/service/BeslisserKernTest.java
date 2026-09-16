@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The core end-to-end: build the TOKA {@link BeslisserKern} over the real sources + descriptor via the DRL
  * back-end (the ScenarioRunner recipe), then round-trip a few golden scenarios' situaties by hand (the FULL
- * 30-scenario oracle is fase 5). The fact beans live on the CHILD bean classloader (BeanCompiler), so the
+ * 29-scenario oracle is fase 5). The fact beans live on the CHILD bean classloader (BeanCompiler), so the
  * strict (fail-fast) posture already succeeds — every golden scope LOWERS under DRL. The loader argument is the
  * parent of the bean classloader, not the fact source.
  */
@@ -32,15 +32,16 @@ class BeslisserKernTest {
 
     @Test
     void alle_golden_entrypoints_zijn_gebouwd() {
-        // 30 descriptor entrypoints = ALL 30 exit-0 golden scenariotoetsen, INCLUDING toka-29 "passagier met recht
+        // 29 descriptor entrypoints = ALL 29 exit-0 golden scenariotoetsen (30 until besluit 16Y dropped toka-45
+        // — see TokaBron), INCLUDING toka-29 "passagier met recht
         // op treinmiles". That golden is a §13.4.7 FEITCREATIE (a role-relationship rule): RegelSpraakModel#isValueWriter
         // keeps it out of every RESOLVED collection, so DrlTranspiler emits ZERO rule blocks AND ZERO dekking entries
         // for it — but the RAW model.regels list DOES carry its name, so it is nameable through the file-index/descriptor
         // path (exactly as ScenarioResolver scopes "toetst de regel X" against model.regels). Its empty DRL compiles to
         // an inert KieBase, it is NOT a marker (no dekking entry, nothing to lower), and it starts clean under strict
-        // mode. The 29 value-writing golden all LOWER under DRL; the pivot's point (toka-22/25, exec-uncompilable) is
+        // mode. The 28 value-writing golden all LOWER under DRL; the pivot's point (toka-22/25, exec-uncompilable) is
         // pinned by the two round-trip tests below.
-        assertEquals(30, KERN.entrypoints().size());
+        assertEquals(29, KERN.entrypoints().size());
     }
 
     @Test
@@ -176,7 +177,7 @@ class BeslisserKernTest {
     @Test
     void descriptor_dekt_elke_exit0_golden_scope() throws Exception {
         // Pin descriptor completeness against the golden set FOREVER: parse the manifest + each exit-0 scenario's
-        // "toetst de regel <naam>" line mechanically, and assert the 30-entrypoint TOKA descriptor scopes every
+        // "toetst de regel <naam>" line mechanically, and assert the 29-entrypoint TOKA descriptor scopes every
         // such name. This wires the descriptor to the golden manifest so a dropped/renamed scope fails here.
         java.nio.file.Path manifest = TokaBron.REPO.resolve("examples/toka-scenarios/manifest");
         java.util.List<String> golden = new java.util.ArrayList<>();       // exit-0 scoped rule names
@@ -191,10 +192,10 @@ class BeslisserKernTest {
                 if (s.startsWith("toetst de regel ")) golden.add(s.substring("toetst de regel ".length()).trim());
             }
         }
-        assertEquals(30, golden.size(), "verwacht 30 exit-0 golden scope-regels, kreeg " + golden);
+        assertEquals(29, golden.size(), "verwacht 29 exit-0 golden scope-regels, kreeg " + golden);
 
         DienstDescriptor d = DescriptorLoader.laad(TokaBron.descriptorJson(), TokaBron.model());
-        assertEquals(30, d.entrypoints().size(), "de TOKA-descriptor hoort 30 entrypoints te hebben");
+        assertEquals(29, d.entrypoints().size(), "de TOKA-descriptor hoort 29 entrypoints te hebben");
         java.util.Set<String> gescoopt = new java.util.LinkedHashSet<>();
         for (DienstDescriptor.Entrypoint ep : d.entrypoints())
             for (String n : ep.scope().regelnamenOfLeeg())

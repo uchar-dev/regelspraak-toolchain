@@ -1362,65 +1362,6 @@
         }
       }
     },
-    "/belasting-op-basis-van-afstand": {
-      "post": {
-        "operationId": "belastingOpBasisVanAfstand",
-        "summary": "belasting op basis van afstand",
-        "description": "Entrypoint 'belasting op basis van afstand'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.belasting op basis van afstand.",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Verzoek"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "beslissing berekend",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Antwoord"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Fout"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "onbekend pad",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Fout"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "interne fout (geen stacktrace gelekt)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Fout"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/woonregio-factor-1": {
       "post": {
         "operationId": "woonregioFactor1",

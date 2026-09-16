@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Q1 GOLDEN PARITY over the QUARKUS transport. The SAME "one truth, two transports" gate as
  * {@code GoldenOverHttpTest}, but the third transport is the Quarkus {@link BeslisResource} endpoint booted by
- * {@code @QuarkusTest}. For each of the 30 golden TOKA scenariotoetsen it:
+ * {@code @QuarkusTest}. For each of the 29 golden TOKA scenariotoetsen it:
  * <ol>
  *   <li>resolves the scenario (companions + scenario) → the typed {@link ResolvedScenario} IR (the single oracle);</li>
  *   <li>MECHANICALLY derives the request via {@link SituatieNaarVerzoek#bouw} (reused from the service test-jar —
@@ -49,7 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>POSTs to the Quarkus URL (RestAssured) and asserts EVERY verwachting with the SAME comparison
  *       {@code GoldenOverHttpTest.gelijk} uses.</li>
  * </ol>
- * The final assertion pins 30/30 reproduced over Quarkus.
+ * The final assertion pins 29/29 reproduced over Quarkus (30 until besluit 16Y — see TokaBron).
  */
 @QuarkusTest
 @TestProfile(TokaTestProfile.class)
@@ -80,7 +80,7 @@ class GoldenOverQuarkusTest {
     @TestFactory
     Stream<DynamicTest> golden_over_quarkus() throws IOException {
         List<Golden> golden = leesManifest();
-        assertEquals(30, golden.size(), "de manifest hoort precies 30 exit-0 golden scenariotoetsen te tellen");
+        assertEquals(29, golden.size(), "de manifest hoort precies 29 exit-0 golden scenariotoetsen te tellen");
 
         AtomicInteger geslaagd = new AtomicInteger();
         List<DynamicTest> tests = new ArrayList<>();
@@ -89,9 +89,9 @@ class GoldenOverQuarkusTest {
                 toetsScenario(g);
                 geslaagd.incrementAndGet();
             }));
-        tests.add(DynamicTest.dynamicTest("Q1: 30/30 golden over Quarkus", () ->
-                assertEquals(30, geslaagd.get(),
-                        "Q1 verlangt 30/30 golden reproducties over Quarkus; gereproduceerd: " + geslaagd.get())));
+        tests.add(DynamicTest.dynamicTest("Q1: 29/29 golden over Quarkus", () ->
+                assertEquals(29, geslaagd.get(),
+                        "Q1 verlangt 29/29 golden reproducties over Quarkus; gereproduceerd: " + geslaagd.get())));
         return tests.stream();
     }
 

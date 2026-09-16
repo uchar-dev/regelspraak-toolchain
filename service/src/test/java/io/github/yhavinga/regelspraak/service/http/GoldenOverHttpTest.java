@@ -40,7 +40,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Gate G2 — ONE TRUTH, TWO TRANSPORTS. For each of the 30 golden TOKA scenariotoetsen (the exit-0 lines of
+ * Gate G2 — ONE TRUTH, TWO TRANSPORTS. For each of the 29 golden TOKA scenariotoetsen (the exit-0 lines of
  * {@code examples/toka-scenarios/manifest}) this harness:
  *
  * <ol>
@@ -57,8 +57,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *       for CONSISTENT/INCONSISTENT).</li>
  * </ol>
  *
- * The 30 scenarios are dynamic tests (so one failure names its scenario) plus a final count assertion that the
- * harness saw exactly 30 golden scenarios and all reproduced — "G2: 30/30 golden over HTTP".
+ * The 29 scenarios are dynamic tests (so one failure names its scenario) plus a final count assertion that the
+ * harness saw exactly 29 golden scenarios and all reproduced — "G2: 29/29 golden over HTTP". (It was 30 until
+ * besluit 16Y turned toka-45's manifest row into an exit-1 refusal — see TokaBron.)
  */
 class GoldenOverHttpTest {
 
@@ -71,7 +72,7 @@ class GoldenOverHttpTest {
     @BeforeAll
     static void startDienst() throws IOException {
         // dienst.url override (chunk B, the third transport): when set — system property `dienst.url` or env
-        // DIENST_URL — the IDENTICAL 30 golden assertions run against an already-running service (e.g. the
+        // DIENST_URL — the IDENTICAL 29 golden assertions run against an already-running service (e.g. the
         // in-cluster pod) instead of an in-process DienstHttp. The descriptor is the same toka.dienst.json,
         // parsed standalone for scope→entrypoint ROUTING only; every expected value still comes from the
         // scenario fixtures, so nothing is duplicated or re-typed.
@@ -96,12 +97,12 @@ class GoldenOverHttpTest {
         dienst = null;
     }
 
-    // ---------------- the 30 golden scenarios ----------------
+    // ---------------- the 29 golden scenarios ----------------
 
     @TestFactory
     Stream<DynamicTest> golden_over_http() throws IOException {
         List<Golden> golden = leesManifest();
-        assertEquals(30, golden.size(), "de manifest hoort precies 30 exit-0 golden scenariotoetsen te tellen");
+        assertEquals(29, golden.size(), "de manifest hoort precies 29 exit-0 golden scenariotoetsen te tellen");
 
         AtomicInteger geslaagd = new AtomicInteger();
         List<DynamicTest> tests = new ArrayList<>();
@@ -110,10 +111,10 @@ class GoldenOverHttpTest {
                 toetsScenario(g);
                 geslaagd.incrementAndGet();
             }));
-        // final aggregating assertion: all 30 reproduced.
-        tests.add(DynamicTest.dynamicTest("G2: 30/30 golden over HTTP", () ->
-                assertEquals(30, geslaagd.get(),
-                        "G2 verlangt 30/30 golden reproducties over HTTP; gereproduceerd: " + geslaagd.get())));
+        // final aggregating assertion: all 29 reproduced.
+        tests.add(DynamicTest.dynamicTest("G2: 29/29 golden over HTTP", () ->
+                assertEquals(29, geslaagd.get(),
+                        "G2 verlangt 29/29 golden reproducties over HTTP; gereproduceerd: " + geslaagd.get())));
         return tests.stream();
     }
 

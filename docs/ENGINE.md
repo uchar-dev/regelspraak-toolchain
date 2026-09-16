@@ -108,7 +108,7 @@ parametersets.multiVintage=true` prints the reminder in the post-install NOTES. 
 declared/actual mismatch — run it pre-install against the sidecar you are about to bake or mount.
 
 The third transport: `GoldenOverHttpTest` accepts `-Ddienst.url=<base-url>` (or env `DIENST_URL`) and
-then runs the IDENTICAL 30 golden TOKA assertions against that already-running service instead of an
+then runs the IDENTICAL 29 golden TOKA assertions against that already-running service instead of an
 in-process one — scenario-runner == local HTTP == in-cluster HTTP, zero re-typed expected values:
 
 ```

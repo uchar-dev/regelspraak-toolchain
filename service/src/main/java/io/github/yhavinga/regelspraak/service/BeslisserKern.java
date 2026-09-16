@@ -57,7 +57,7 @@ import java.util.Map;
  * <p><b>Back-end</b>: the KieBase is built via the EXEC-model back-end over the child bean classloader
  * ({@link ExecModelTranspiler#build(RegelSpraakModel, ClassLoader)} +
  * {@link org.drools.modelcompiler.KieBaseBuilder#createKieBaseFromModel} under TCCL=beanLoader — a per-owner
- * Lookup links the child-loaded beans, so all 30 golden scopes fire under exec). {@link DrlTranspiler} is
+ * Lookup links the child-loaded beans, so all 29 golden scopes fire under exec). {@link DrlTranspiler} is
  * retained as the coverage/marker manifest AUTHORITY (markers, dekking — so {@code /info} stays byte-identical)
  * and the differential oracle; a startup GUARD refuses any entry point where the exec back-end skips an
  * in-scope rule the DRL back-end lowers (no mixed-truth transport). The generated beans live on the CHILD
