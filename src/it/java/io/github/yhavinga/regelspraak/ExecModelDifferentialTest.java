@@ -4093,6 +4093,39 @@ class ExecModelDifferentialTest {
         Boolean.TRUE, Boolean.FALSE,
     };
 
+    // ---- §5.8/§13.4.14 COUNT vs COUNT: BOTH sides of the condition comparison are aggregations, over two DIFFERENT
+    //      related sets ("het aantal passagiers van de Vlucht gelijk is aan het aantal bemanningsleden van de Vlucht").
+    //      Until uchar pin 481e11a the RIGHT fold's range did not bind (elementObjecttype null), so the second
+    //      accumulate could not be built and both back-ends refused the comparison; since that pin the populatienaam
+    //      binds, both sides lower, and the DRL emits two count-accumulates plus one rsAggVergelijk eval against the
+    //      exec's twin. The cell that carries the most is 0 vs 0: a count over an empty set is 0 and never leeg, so the
+    //      equality HOLDS there — the one answer a leegwaarde-shaped implementation would get wrong. ----
+    static final String AGG_CNT_CNT_SRC =
+        "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+        "Objecttype het Bemanningslid (mv: Bemanningsleden) (bezield)\n" +
+        "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n" +
+        "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n" +
+        "Feittype bemanning\n    de bemande vlucht Vlucht\n    het bemanningslid Bemanningslid\nEén bemande vlucht heeft meerdere bemanningsleden\n" +
+        "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien het aantal passagiers van de Vlucht gelijk is aan het aantal bemanningsleden van de Vlucht.\n";
+    static Fixture aggCntCntFix(String naam, int nPass, int nBeman) {
+        return new Fixture(naam, AGG_CNT_CNT_SRC,
+                () -> { List<Object> fs = new ArrayList<>(); Vlucht v = new Vlucht(); fs.add(v);
+                        for (int i = 0; i < nPass; i++) { Passagier p = new Passagier(); p.setReis(v); fs.add(p); }
+                        for (int i = 0; i < nBeman; i++) { Bemanningslid b = new Bemanningslid(); b.setBemandeVlucht(v); fs.add(b); }
+                        return fs; },
+                Map.of(), l -> ((Vlucht) l.get(0)).isVol());
+    }
+    static final Fixture[] PHASE_AGG_CNT_CNT = {
+        aggCntCntFix("§5.8 count == count: 2 passagiers, 2 bemanningsleden -> vol", 2, 2),
+        aggCntCntFix("§5.8 count == count: 2 passagiers, 1 bemanningslid -> NIET vol", 2, 1),
+        aggCntCntFix("§5.8 count == count: 1 passagier, 2 bemanningsleden -> NIET vol (andersom)", 1, 2),
+        aggCntCntFix("§5.8 count == count: 0 en 0 -> vol (een lege count is 0, niet leeg)", 0, 0),
+        aggCntCntFix("§5.8 count == count: 0 passagiers, 1 bemanningslid -> NIET vol", 0, 1),
+    };
+    static final Object[] PHASE_AGG_CNT_CNT_EXPECTED = {
+        Boolean.TRUE, Boolean.FALSE, Boolean.FALSE, Boolean.TRUE, Boolean.FALSE,
+    };
+
     // ---- §5.8 VALUE-FOLD aggregations (SUM / TOTAAL / MIN / MAX) as one side of a CONDITION comparison — the sibling of
     //      the count case: reuses the value-side accumulate lowering + an rsAggVergelijk eval / result-var constraint. The
     //      KEY absolute check (differential-masks-shared-bugs) is the empty-set leegwaarde: an empty SOM is LEEG (§5.8.2,
@@ -7566,36 +7599,59 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
-    /** §8.2 the genuinely-undefined TIMELINE-vs-TIMELINE whole-period comparison over a navigated to-many set stays a
-     *  SYMMETRIC marker in both back-ends (the DRL markers, the exec skips) — the reachable §8.2 win is the forall vs a
-     *  SCALAR grens (phase_GP_ALLE); a per-moment comparison of one element-set's timeline against ANOTHER's has no §8.2
-     *  fold and is deliberately NOT lowered. Also pins the non-scalar-grens set §8.2 (grens = an own attribute) as a
-     *  symmetric marker: the set eval rides after the collectList accumulate with no $subject-qualified field. */
+    /** §8.2 / IR-SPEC ch. 4.5 the two set shapes this toolchain deliberately does NOT lower — and since the
+     *  Kwantorvouw pin they fail at DIFFERENT layers, which is the point of this test:
+     *  <ul>
+     *    <li><b>tijdlijn-vs-tijdlijn</b> carries TWO set operands, so the resolver's Kwantorvouw promotion (which
+     *        quantifies exactly ONE) declines it and WF-096 refuses the document. Nothing reaches a back-end at
+     *        all — the strongest possible refusal, and the one this case keeps pinning.</li>
+     *    <li><b>niet-scalaire grens</b> carries ONE set operand, so it IS promoted and the document resolves
+     *        CLEAN. The refusal moved down into the back-ends, where both decline it BY NAME: the eval after the
+     *        collectList accumulate binds no {@code $subject}, so a grens that reads a subject field cannot ride
+     *        along. DRL markers with the form in the TODO and the rule never fires; exec skips with the same
+     *        reason. This is the original symmetric-marker contract, restored and sharpened.</li>
+     *  </ul>
+     *  Both halves were a single WF-096 pin between uchar pins 55ed96f and 0db8907; the promotion split them. */
     @Test void gehele_periode_over_verzameling_niet_lowerbaar_is_symmetrische_marker() {
         String hdr =
             "Domein Bedrag is van het type Numeriek (geheel getal)\n" +
             "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
             "    de belastingvermindering per maand Bedrag voor elke maand;\n" +
             "    de inkomen per maand Bedrag voor elke maand;\n" +
-            "Objecttype de Vlucht (mv: Vluchten)\n    is groot kenmerk (bijvoeglijk);\n    de drempel Numeriek (geheel getal);\n" +
+            // de grens is de vertrektijd en niet een verzonnen drempel: deze test VUURT nu, en dan moet het
+            // model de bean-contractcontrole van drlBase halen — een eigen scalair attribuut dat de beanpool
+            // al draagt doet dat, en is even goed een $subject-gekwalificeerde (dus niet-scalaire) grens.
+            "Objecttype de Vlucht (mv: Vluchten)\n    is groot kenmerk (bijvoeglijk);\n    de vertrektijd Numeriek (geheel getal);\n" +
             "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nEén reis heeft meerdere passagiers\n";
-        record Geval(String naam, String voorwaarde) {}
-        Geval[] gevallen = {
-            // timeline-vs-timeline: both sides are to-many temporal sets — no §8.2 fold defined -> marker/skip.
-            new Geval("tijdlijn-vs-tijdlijn", "de belastingvermindering per maand van alle passagiers van de Vlucht gedurende het gehele jaar groter is dan de inkomen per maand van alle passagiers van de Vlucht"),
-            // non-scalar grens (an OWN attribute of the subject): the set eval has no $subject-qualified field -> marker/skip.
-            new Geval("niet-scalaire grens (eigen attribuut)", "de belastingvermindering per maand van alle passagiers van de Vlucht gedurende het gehele jaar groter is dan de drempel van de Vlucht"),
-        };
-        for (Geval g : gevallen) {
-            String src = hdr + "Regel R\n    geldig altijd\n        Een Vlucht is groot indien " + g.voorwaarde() + ".\n";
-            RegelSpraakModel m = Resolver.resolve(src);
-            // Since the WF-096 promotion (uchar pin 55ed96f) the resolver refuses the set reading itself —
-            // stronger than the old symmetric marker/skip, which is unreachable for these genuinely
-            // undefined shapes now that no such document resolves.
-            assertFalse(m.errors().isEmpty(), () -> g.naam() + ": WF-096 moet de setlezing weigeren");
-            assertTrue(m.errors().toString().contains("setlezing buiten een vouwbron"),
-                    () -> g.naam() + ": de weigering moet WF-096's setlezingsdiagnose zijn: " + m.errors());
-        }
+        String regel = "Regel R\n    geldig altijd\n        Een Vlucht is groot indien %s.\n";
+
+        // (1) TWO set operands -> no Kwantorvouw promotion -> WF-096 refuses the document outright.
+        RegelSpraakModel tvt = Resolver.resolve(hdr + String.format(regel,
+                "de belastingvermindering per maand van alle passagiers van de Vlucht gedurende het gehele jaar"
+                + " groter is dan de inkomen per maand van alle passagiers van de Vlucht"));
+        assertFalse(tvt.errors().isEmpty(), "tijdlijn-vs-tijdlijn: WF-096 moet de setlezing weigeren");
+        assertTrue(tvt.errors().toString().contains("setlezing buiten een vouwbron"),
+                () -> "tijdlijn-vs-tijdlijn: de weigering moet WF-096's setlezingsdiagnose zijn: " + tvt.errors());
+
+        // (2) ONE set operand -> promoted to a Kwantorvouw -> resolves clean, then BOTH back-ends decline by name.
+        RegelSpraakModel m = Resolver.resolve(hdr + String.format(regel,
+                "de belastingvermindering per maand van alle passagiers van de Vlucht gedurende het gehele jaar"
+                + " groter is dan de vertrektijd van de Vlucht"));
+        assertTrue(m.errors().isEmpty(), () -> "niet-scalaire grens: moet nu schoon resolven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
+        assertTrue(drl.contains("/* TODO §8.2 kwantorvouw ALLE over Passagier (een niet-scalaire matrixgrens"),
+                () -> "de DRL-marker moet de VORM en de reden noemen, niet een generieke 'voorwaarde':\n" + drl);
+        ExecModelTranspiler em = ExecModelTranspiler.build(m);
+        assertFalse(em.overgeslagen().isEmpty(), "exec moet de kwantorvouw overslaan, symmetrisch met de DRL-marker");
+        assertTrue(em.overgeslagen().toString().contains("kwantorvouw ALLE over Passagier")
+                        && em.overgeslagen().toString().contains("niet-scalaire matrixgrens"),
+                () -> "de exec-reden moet dezelfde vorm en reden noemen: " + em.overgeslagen());
+        // a marker is only honest if the rule is INERT: the gemarkeerde regel mag niet vuren op een matrix die
+        // niemand gelezen heeft. Een passagier die de matrix ruim haalt maakt dat zichtbaar.
+        Vlucht v = new Vlucht();
+        KieSession s = sessie(drlBase(m));
+        s.insert(v); s.insert(passJaar(v, "500")); s.fireAllRules(); s.dispose();
+        assertFalse(v.isGroot(), "de gemarkeerde regel mag NIET vuren");
     }
 
     /** §5.8/§13.4.14 a COUNT aggregation as one side of a CONDITION comparison now FIRES in both back-ends — a result-
@@ -7802,31 +7858,59 @@ class ExecModelDifferentialTest {
             assertFalse(em.overgeslagen().isEmpty(), () -> "exec must SKIP the out-of-scope aggregation corner");
         }
     }
-    /** review wf_ee9d1919-c3c: a post-accumulate bail in aggregatieVoorwaarde (an unresolvable 2nd aggregation in
-     *  agg-vs-agg, or a to-many navigated RHS in a single-agg) must NOT leave an ORPHAN accumulate in the marker rule —
-     *  aggTerug rolls back the shared `accumulates` list. Both sources resolve cleanly, then MARKER with no dangling
-     *  accumulate (DRL) and SKIP (exec). */
+    /** review wf_ee9d1919-c3c, generalised: a marker that is decided AFTER an accumulate clause could have been
+     *  appended must NOT leave an ORPHAN accumulate behind in the marker rule (aggregatieVoorwaarde rolls its back
+     *  through aggTerug; the kwantorvouw arm appends only once every guard has passed). Each source resolves
+     *  cleanly, then MARKERs with no dangling accumulate (DRL) and SKIPs (exec).
+     *
+     *  <p>The original agg-vs-agg source — "het aantal passagiers … gelijk is aan het aantal bemanningsleden …" —
+     *  is GONE from this list, and deliberately so: until uchar pin 481e11a the right-hand fold's range did not
+     *  bind, which is what made it unlowerable; since that pin it binds and the comparison LOWERS. Its new
+     *  behaviour is pinned absolutely by {@code phase_AGG_CNT_CNT_count_vs_count_is_spec_correct}, so the capability
+     *  is measured rather than mourned. The §8.2 kwantorvouw source takes its place here and covers the same
+     *  property in the arm that has an accumulate to leak. */
     @Test void phase_AGG_no_orphan_accumulate_on_marker() {
-        String aggVsAgg =
-            "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
-            "Objecttype het Bemanningslid (mv: Bemanningsleden) (bezield)\n" +
-            "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n" +
-            "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nÉén reis heeft meerdere passagiers\n" +
-            "Feittype bemanning\n    de bemande vlucht Vlucht\n    het bemanningslid Bemanningslid\nÉén bemande vlucht heeft meerdere bemanningsleden\n" +
-            "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien het aantal passagiers van de Vlucht gelijk is aan het aantal bemanningsleden van de Vlucht.\n";
         String toManyNav =
             "Objecttype de Passagier (mv: Passagiers) (bezield)\n    de leeftijd Numeriek (geheel getal);\n" +
             "Objecttype de Vlucht (mv: Vluchten)\n    is vol kenmerk (bijvoeglijk);\n" +
             "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nÉén reis heeft meerdere passagiers\n" +
             "Regel Vol\n    geldig altijd\n        Een Vlucht is vol indien het aantal passagiers van de Vlucht groter is dan de leeftijd van zijn passagiers.\n";
-        for (String src : new String[]{aggVsAgg, toManyNav}) {
+        // IR-SPEC ch. 4.5: a kwantorvouw whose matrix grens reads a $subject field. The arm gets all the way to the
+        // join before that guard answers, so this is exactly the shape that could strand a collectList accumulate.
+        String kwantorvouw =
+            "Domein Bedrag is van het type Numeriek (geheel getal)\n" +
+            "Objecttype de Passagier (mv: Passagiers) (bezield)\n" +
+            "    de belastingvermindering per maand Bedrag voor elke maand;\n" +
+            "Objecttype de Vlucht (mv: Vluchten)\n    is groot kenmerk (bijvoeglijk);\n    de vertrektijd Numeriek (geheel getal);\n" +
+            "Feittype reis van passagier\n    de reis Vlucht\n    de passagier Passagier\nÉén reis heeft meerdere passagiers\n" +
+            "Regel R\n    geldig altijd\n        Een Vlucht is groot indien de belastingvermindering per maand van alle passagiers van de Vlucht gedurende het gehele jaar groter is dan de vertrektijd van de Vlucht.\n";
+        for (String src : new String[]{toManyNav, kwantorvouw}) {
             RegelSpraakModel m = Resolver.resolve(src);
             assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
             String drl = DrlTranspiler.transpile(m);
-            assertTrue(drl.contains("/* TODO"), "must MARKER the unlowerable aggregation comparison");
+            assertTrue(drl.contains("/* TODO"), "must MARKER the unlowerable comparison");
             assertFalse(drl.contains("accumulate("), "must NOT leak an orphan accumulate into the marker rule");
             ExecModelTranspiler em = ExecModelTranspiler.build(m);
-            assertFalse(em.overgeslagen().isEmpty(), "exec must SKIP the unlowerable aggregation comparison");
+            assertFalse(em.overgeslagen().isEmpty(), "exec must SKIP the unlowerable comparison");
+        }
+    }
+    /** §5.8/§13.4.14 COUNT vs COUNT over two DIFFERENT related sets now FIRES in both back-ends — two count
+     *  accumulates plus one rsAggVergelijk eval (DRL) against the exec's twin. It used to be the unlowerable corner
+     *  of {@code phase_AGG_no_orphan_accumulate_on_marker}, not because either transpiler lacked the capability but
+     *  because the RIGHT fold's range did not bind before uchar pin 481e11a ("de populatienaam bindt"); this test is
+     *  the capability, measured. Absolute + DRL==exec parity + no exec skip. The 0-vs-0 row is the load-bearing one:
+     *  a count over an empty set is 0, never leeg, so the equality holds and the rule fires. */
+    @Test void phase_AGG_CNT_CNT_count_vs_count_is_spec_correct() {
+        for (int i = 0; i < PHASE_AGG_CNT_CNT.length; i++) {
+            Fixture f = PHASE_AGG_CNT_CNT[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_AGG_CNT_CNT_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
     /** review wf_900d3055-a62 F2: an aggregation-in-condition vs a NAVIGATED RHS must be a SYMMETRIC marker — DRL markers
