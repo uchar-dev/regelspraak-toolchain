@@ -4031,6 +4031,33 @@ class ExecModelDifferentialTest {
         Boolean.TRUE, Boolean.FALSE, Boolean.FALSE, Boolean.TRUE, Boolean.FALSE,
     };
 
+    // ---- IR-SPEC ch. 4.5 the GEEN arm of the SAME quantifier fold ("… de belastingvermindering per maand van GEEN VAN
+    //      DE passagiers van de Vlucht gedurende het gehele jaar groter is dan 40"): WAAR iff NO contributor satisfies
+    //      the whole-period matrix. It is NOT the negation of the ALLE arm — on a mixed set both answer NIET groot —
+    //      so both back-ends fold it through its OWN runtime helper rsGeheelPeriodeGeen rather than complementing
+    //      rsGeheelPeriodeAlle. The source is the ALLE sentence with only the written quantifier swapped, so the two
+    //      row blocks really are duals; the empty set is vacuously WAAR for both quantifiers. ----
+    static final String GP_GEEN_SRC = GP_ALLE_SRC.replace("van alle passagiers", "van geen van de passagiers");
+    static Fixture gpGeenFix(String naam, java.util.function.Function<Vlucht, List<Object>> bouw) {
+        return new Fixture(naam, GP_GEEN_SRC, () -> bouw.apply(new Vlucht()), Map.of(), l -> ((Vlucht) l.get(0)).isGroot());
+    }
+    static final Fixture[] PHASE_GP_GEEN = {
+        gpGeenFix("§8.2 geen > 40: passagiers 50,60 heel jaar -> NIET groot (beide halen de matrix)",
+            v -> List.of(v, passJaar(v, "50"), passJaar(v, "60"))),
+        gpGeenFix("§8.2 geen > 40: gemengd 50 en 30 -> NIET groot (en ALLE is hier OOK onwaar: GEEN != !ALLE)",
+            v -> List.of(v, passJaar(v, "50"), passJaar(v, "30"))),
+        gpGeenFix("§8.2 geen > 40: 30 heel jaar plus een passagier met een GAT op 60 -> groot", v -> List.of(v,
+            passJaar(v, "30"),
+            passOp(v, List.of(seg(2024, 1, 1, 2024, 6, 1, "60"))))),   // 60 > 40, maar niet HET GEHELE jaar -> haalt de matrix niet
+        gpGeenFix("§8.2 geen > 40 over LEGE verzameling -> groot (vacuüm)", v -> List.of(v)),
+        gpGeenFix("§8.2 geen > 40: precies 40 (niet strikt groter) -> groot", v -> List.of(v, passJaar(v, "40"))),
+        gpGeenFix("§8.2 geen > 40: passagiers 30,20 heel jaar -> groot (niemand haalt de matrix)",
+            v -> List.of(v, passJaar(v, "30"), passJaar(v, "20"))),
+    };
+    static final Object[] PHASE_GP_GEEN_EXPECTED = {
+        Boolean.FALSE, Boolean.FALSE, Boolean.TRUE, Boolean.TRUE, Boolean.TRUE, Boolean.TRUE,
+    };
+
     // ---- §5.8/§13.4.14 a COUNT aggregation as one side of a CONDITION comparison ("Een Vlucht is vol indien het aantal
     //      passagiers van de Vlucht <op> N"): was a symmetric marker ("voorwaarde buiten Phase-B scope"). Now a result-
     //      constrained accumulate CE hoisted after the subject pattern — DRL `Number(intValue <op> N) from accumulate(
@@ -7508,18 +7535,35 @@ class ExecModelDifferentialTest {
      *  marker). Absolute firing (forall passes iff EVERY element's whole-year check holds; empty set = vacuously WAAR) +
      *  DRL==exec parity + no exec skip. The genuinely-undefined timeline-vs-timeline comparison stays a symmetric marker. */
     @Test void phase_GP_ALLE_wholeperiod_forall_over_to_many_is_spec_correct() {
-        // TEMPORARILY a refusal pin (maintainer decision 2026-09-16). The vendored resolver's WF-096
-        // promotion refuses this OFFICIAL §8.2 form (a forall over the member timelines) because the
-        // fold list carries no forall — capability the back-ends below still have. The maintainer chose
-        // to RECLAIM the form through a dedicated uchar card (an IR route for the whole-period
-        // quantification over a set); the five PHASE_GP_ALLE fixtures and PHASE_GP_ALLE_EXPECTED are
-        // that card's pins, kept verbatim. When the reclaim lands and the pin bumps, restore the
-        // original body: resolve clean -> no skip -> DRL==exec at the absolute expectations.
-        for (Fixture f : PHASE_GP_ALLE) {
+        for (int i = 0; i < PHASE_GP_ALLE.length; i++) {
+            Fixture f = PHASE_GP_ALLE[i];
             RegelSpraakModel m = Resolver.resolve(f.src());
-            assertFalse(m.errors().isEmpty(), () -> f.naam() + ": WF-096 weigert de §8.2-forall-vorm (tot de heroveringskaart)");
-            assertTrue(m.errors().toString().contains("setlezing buiten een vouwbron"),
-                    () -> f.naam() + ": de weigering moet WF-096's setlezingsdiagnose zijn: " + m.errors());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_GP_ALLE_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
+    /** IR-SPEC ch. 4.5 the GEEN arm of the quantifier fold — "de belastingvermindering per maand van GEEN VAN DE
+     *  passagiers van de Vlucht gedurende het gehele jaar groter is dan 40" — FIRES in both back-ends through the
+     *  rsGeheelPeriodeGeen fold (a collectList accumulate + a result-var eval, the ALLE arm's twin). Absolute firing
+     *  (WAAR iff NO contributor satisfies the whole-period matrix; empty set = vacuously WAAR) + DRL==exec parity +
+     *  no exec skip. Row 2 is the one that makes GEEN a separate helper rather than a negation: on a mixed set ALLE
+     *  is onwaar AND GEEN is onwaar, so a {@code !rsGeheelPeriodeAlle} lowering would read WAAR there. */
+    @Test void phase_GP_GEEN_wholeperiod_geen_over_to_many_is_spec_correct() {
+        for (int i = 0; i < PHASE_GP_GEEN.length; i++) {
+            Fixture f = PHASE_GP_GEEN[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_GP_GEEN_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
     /** §8.2 the genuinely-undefined TIMELINE-vs-TIMELINE whole-period comparison over a navigated to-many set stays a
