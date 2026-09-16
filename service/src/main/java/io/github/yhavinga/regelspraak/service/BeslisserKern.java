@@ -464,10 +464,17 @@ public final class BeslisserKern {
     private static List<Schending> scopeVolledigheid(DienstDescriptor.Entrypoint ep, RegelSpraakModel model,
             Map<ElementSleutel, java.util.Set<String>> producenten) {
         java.util.Set<String> scope = scopeBasisNamen(ep, model);
+        // The opt-out keys through the SAME element identity the consumption does ({@link
+        // ProducentConsument#elementVan}), so the declaration binds on the member's declarant: a caller that
+        // declares the element on the type that DECLARES it silences a consumption on any subtype, and one that
+        // names a subtype silences it too — the alternative is an escape hatch that exists but cannot be spelled.
         java.util.Set<ElementSleutel> invoerElementen = new java.util.LinkedHashSet<>();
         for (String sel : ep.invoerElementenOfLeeg()) {
             Uitvoerselector u = Uitvoerselector.ontleed(sel);
-            if (u != null) invoerElementen.add(ElementSleutel.van(u.objecttype(), u.lid(), u.kenmerk()));
+            if (u == null) continue;
+            RegelSpraakModel.Objecttype houder = DescriptorLoader.objecttype(model, u.objecttype());
+            invoerElementen.add(houder == null ? ElementSleutel.van(u.objecttype(), u.lid(), u.kenmerk())
+                    : ProducentConsument.elementVan(houder, u.lid(), u.kenmerk()));
         }
 
         List<Schending> uit = new ArrayList<>();

@@ -27,12 +27,56 @@ public final class ProducentConsument {
 
     /** The identity of a consumed/produced model element: the objecttype it lives on (canonical name, or ""
      *  when the resolver could not bind the owner), its kenmerk/attribuut naam, and whether it is a kenmerk
-     *  (§13.4.5 boolean property) rather than an ordinary attribuut. Case-folded on objecttype and naam. */
+     *  (§13.4.5 boolean property) rather than an ordinary attribuut. Case-folded on objecttype and naam.
+     *
+     *  <p><b>The objecttype is the member's DECLARING type</b> (IR-SPEC ch. 2.2), not the type the rule that
+     *  touched it happens to range over — see {@link #elementVan}. A member is declared once and inherited, so
+     *  a write on the supertype and a read on the subtype touch ONE element and must key alike. */
     public record ElementSleutel(String objecttype, String naam, boolean kenmerk) {
         public static ElementSleutel van(String objecttype, String naam, boolean kenmerk) {
             return new ElementSleutel(objecttype == null ? "" : objecttype.toLowerCase(Locale.ROOT),
                     naam == null ? "" : naam.trim().toLowerCase(Locale.ROOT), kenmerk);
         }
+    }
+
+    /**
+     * The element identity of member {@code naam} touched through {@code houder} — keyed by the type on
+     * {@code houder}'s chain that DECLARES it (IR-SPEC ch. 2.2), so producer and consumer meet on one key.
+     *
+     * <p>This is the whole ⊑-awareness of this analysis, and it sits HERE rather than in each reader because
+     * both readers ask the same question of the same index: the service's scope-completeness gate matches a
+     * consumed element against the producer index, and {@link RegelGraaf} decides INVOER / eind-output by the
+     * same membership. Keying on the rule's own subject type instead makes a producer on the supertype and a
+     * consumer on the subtype two different elements: the gate then concludes "no producer at all, so this is
+     * a genuine request input" and lets a scope through whose kenmerk silently evaluates false, and the graph
+     * draws the same member twice — once as INVOER nobody writes, once as an eind-output nobody reads. Both
+     * claims are false.
+     *
+     * <p>Both directions collapse onto the declarant, deliberately. Producer-on-supertype / consumer-on-subtype
+     * is the full-coverage case. Producer-on-subtype / consumer-on-supertype is PARTIAL coverage (that producer
+     * only serves subtype instances), and it still keys the same: the gate's question is whether a producer
+     * EXISTS that fell outside the scope, and a partial producer outside the scope is a producer outside the
+     * scope. Chain-awareness here can therefore only ever report MORE than the flat reading, never silence it.
+     *
+     * <p>The chain walk reads the OWN declaration maps per type on purpose — that is exactly the port's
+     * per-declaring-type iteration, because the question is WHICH type declares the member, and it is
+     * kind-aware (a kenmerk and an attribuut may legally share a name on different types of one chain, and
+     * the model's own {@code declarantVan} answers for both kinds at once). A member nothing on the chain
+     * declares keeps its holder, which is the reading from before this rule existed.
+     */
+    public static ElementSleutel elementVan(RegelSpraakModel.Objecttype houder, String naam, boolean kenmerk) {
+        if (houder == null) return ElementSleutel.van("", naam, kenmerk);
+        return ElementSleutel.van(declarant(houder, naam, kenmerk).naam, naam, kenmerk);
+    }
+
+    private static RegelSpraakModel.Objecttype declarant(RegelSpraakModel.Objecttype houder, String naam,
+                                                         boolean kenmerk) {
+        if (naam == null) return houder;
+        for (RegelSpraakModel.Objecttype t : houder.keten())
+            if (kenmerk ? t.kenmerken.stream().anyMatch(k -> k.equalsIgnoreCase(naam))
+                        : t.attributen.keySet().stream().anyMatch(a -> a.equalsIgnoreCase(naam)))
+                return t;
+        return houder;
     }
 
     /**
@@ -45,8 +89,7 @@ public final class ProducentConsument {
         for (ResolvedRegel r : model.resolvedRegels) {
             if (!(r.doel() instanceof Expr.AttribuutRef ref)) continue;
             boolean kenmerk = r.soort() == ResolvedRegel.Soort.KENMERKTOEKENNING;
-            String ot = ref.objecttype() == null ? "" : ref.objecttype().naam;
-            uit.computeIfAbsent(ElementSleutel.van(ot, ref.attribuut(), kenmerk),
+            uit.computeIfAbsent(elementVan(ref.objecttype(), ref.attribuut(), kenmerk),
                     k -> new LinkedHashSet<>()).add(basisNaam(r.naam()));
         }
         return uit;
@@ -57,8 +100,7 @@ public final class ProducentConsument {
      *  ({@code doel}) is excluded — a rule reading what it writes is not a cross-rule dependency. */
     public static Set<ElementSleutel> verbruikt(ResolvedRegel r) {
         Set<ElementSleutel> uit = new LinkedHashSet<>();
-        String subject = r.doel() instanceof Expr.AttribuutRef ref && ref.objecttype() != null
-                ? ref.objecttype().naam : "";
+        RegelSpraakModel.Objecttype subject = r.doel() instanceof Expr.AttribuutRef ref ? ref.objecttype() : null;
         verzamelConditie(r.voorwaarde(), subject, uit);
         verzamelExpr(r.waarde(), uit);
         return uit;
@@ -67,12 +109,13 @@ public final class ProducentConsument {
     /** Collect consumed kenmerken (from {@link Conditie.Kenmerk}) and operand attributen out of a condition tree.
      *  A subject-own kenmerk (no navigatie, no eigenaar) is attributed to {@code subject}; a kenmerk with a bound
      *  {@code eigenaar} to that owner; a navigated kenmerk stays owner-unknown ("") (matched producer-side by
-     *  naam only). */
-    private static void verzamelConditie(Conditie c, String subject, Set<ElementSleutel> uit) {
+     *  naam only). Each bound owner is resolved to the member's declarant by {@link #elementVan}. */
+    private static void verzamelConditie(Conditie c, RegelSpraakModel.Objecttype subject, Set<ElementSleutel> uit) {
         if (c == null) return;
         if (c instanceof Conditie.Kenmerk k) {
-            String ot = k.eigenaar() != null ? k.eigenaar().naam : (k.navigatie() == null ? subject : "");
-            uit.add(ElementSleutel.van(ot, k.kenmerk(), true));
+            RegelSpraakModel.Objecttype ot = k.eigenaar() != null ? k.eigenaar()
+                    : (k.navigatie() == null ? subject : null);
+            uit.add(elementVan(ot, k.kenmerk(), true));
         }
         if (c instanceof Conditie.Samengesteld s)
             for (Conditie d : s.onderdelen()) verzamelConditie(d, subject, uit);
@@ -82,9 +125,8 @@ public final class ProducentConsument {
         // is node-specific, so only it needs this. The children are evaluated with the ELEMENT as subject, hence
         // the element type rather than the rule's own subject.
         if (c instanceof Conditie.Kwantorvouw kv) {
-            String elem = kv.elementObjecttype() == null ? "" : kv.elementObjecttype().naam;
-            verzamelConditie(kv.filter(), elem, uit);
-            verzamelConditie(kv.toets(), elem, uit);
+            verzamelConditie(kv.filter(), kv.elementObjecttype(), uit);
+            verzamelConditie(kv.toets(), kv.elementObjecttype(), uit);
         }
         // operand attribuut-reads inside comparisons/predicates/periodes
         Conditie.bevatOperand(c, e -> { verzamelExpr(e, uit); return false; });
@@ -94,10 +136,8 @@ public final class ProducentConsument {
      *  via the generic IR scan. */
     private static void verzamelExpr(Expr e, Set<ElementSleutel> uit) {
         Expr.bevat(e, x -> {
-            if (x instanceof Expr.AttribuutRef ref) {
-                String ot = ref.objecttype() == null ? "" : ref.objecttype().naam;
-                uit.add(ElementSleutel.van(ot, ref.attribuut(), false));
-            }
+            if (x instanceof Expr.AttribuutRef ref)
+                uit.add(elementVan(ref.objecttype(), ref.attribuut(), false));
             return false;
         });
     }
