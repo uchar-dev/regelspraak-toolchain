@@ -7508,16 +7508,18 @@ class ExecModelDifferentialTest {
      *  marker). Absolute firing (forall passes iff EVERY element's whole-year check holds; empty set = vacuously WAAR) +
      *  DRL==exec parity + no exec skip. The genuinely-undefined timeline-vs-timeline comparison stays a symmetric marker. */
     @Test void phase_GP_ALLE_wholeperiod_forall_over_to_many_is_spec_correct() {
-        for (int i = 0; i < PHASE_GP_ALLE.length; i++) {
-            Fixture f = PHASE_GP_ALLE[i];
+        // TEMPORARILY a refusal pin (maintainer decision 2026-09-16). The vendored resolver's WF-096
+        // promotion refuses this OFFICIAL §8.2 form (a forall over the member timelines) because the
+        // fold list carries no forall — capability the back-ends below still have. The maintainer chose
+        // to RECLAIM the form through a dedicated uchar card (an IR route for the whole-period
+        // quantification over a set); the five PHASE_GP_ALLE fixtures and PHASE_GP_ALLE_EXPECTED are
+        // that card's pins, kept verbatim. When the reclaim lands and the pin bumps, restore the
+        // original body: resolve clean -> no skip -> DRL==exec at the absolute expectations.
+        for (Fixture f : PHASE_GP_ALLE) {
             RegelSpraakModel m = Resolver.resolve(f.src());
-            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
-            ExecModelTranspiler em = ExecModelTranspiler.build(m);
-            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
-            Object viaDrl = fire(drlBase(m), f);
-            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
-            assertEquals(PHASE_GP_ALLE_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
-            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+            assertFalse(m.errors().isEmpty(), () -> f.naam() + ": WF-096 weigert de §8.2-forall-vorm (tot de heroveringskaart)");
+            assertTrue(m.errors().toString().contains("setlezing buiten een vouwbron"),
+                    () -> f.naam() + ": de weigering moet WF-096's setlezingsdiagnose zijn: " + m.errors());
         }
     }
     /** §8.2 the genuinely-undefined TIMELINE-vs-TIMELINE whole-period comparison over a navigated to-many set stays a
@@ -7543,11 +7545,12 @@ class ExecModelDifferentialTest {
         for (Geval g : gevallen) {
             String src = hdr + "Regel R\n    geldig altijd\n        Een Vlucht is groot indien " + g.voorwaarde() + ".\n";
             RegelSpraakModel m = Resolver.resolve(src);
-            assertTrue(m.errors().isEmpty(), () -> g.naam() + " resolver-fout: " + m.errors());
-            String drl = DrlTranspiler.transpile(m);
-            assertTrue(drl.contains("/* TODO"), () -> g.naam() + ": DRL moet markeren (tijdlijn-vs-tijdlijn / niet-scalaire grens over §8.2-verzameling):\n" + drl);
-            ExecModelTranspiler em = ExecModelTranspiler.build(m);
-            assertFalse(em.overgeslagen().isEmpty(), () -> g.naam() + ": exec moet SKIPPEN, symmetrisch met de DRL-marker");
+            // Since the WF-096 promotion (uchar pin 55ed96f) the resolver refuses the set reading itself —
+            // stronger than the old symmetric marker/skip, which is unreachable for these genuinely
+            // undefined shapes now that no such document resolves.
+            assertFalse(m.errors().isEmpty(), () -> g.naam() + ": WF-096 moet de setlezing weigeren");
+            assertTrue(m.errors().toString().contains("setlezing buiten een vouwbron"),
+                    () -> g.naam() + ": de weigering moet WF-096's setlezingsdiagnose zijn: " + m.errors());
         }
     }
 
@@ -8214,24 +8217,15 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
-    /** §5.8 a bare SET operand ("de prijs van alle passagiers") inside arithmetic in a CONDITION must SKIP symmetrically
-     *  with DRL's marker, NOT lower to a scalar read that reads `prijs` off the subject Vlucht (no such getter) and CRASH
-     *  the whole session at fire time. The co-resident valid rule S MUST still fire in BOTH back-ends (no blast radius).
-     *  Regression lock for the scalarWaarde a.set() guard (review wf_0acdef2b high-sev asymmetric-crash finding). */
-    @Test void bare_set_operand_in_arithmetic_is_symmetric_marker_no_session_crash() {
+    /** §5.8 a bare SET operand ("de prijs van alle passagiers") inside arithmetic in a CONDITION. Since the vendored
+     *  resolver's WF-096 promotion (setlezing outside a fold source is an ERROR, uchar pin 55ed96f) the form no longer
+     *  reaches either back-end: the resolver refuses the document, which supersedes the old symmetric-marker contract
+     *  AND the crash-lock this test carried (review wf_0acdef2b) — an unresolvable document cannot crash a session. */
+    @Test void bare_set_operand_in_arithmetic_is_refused_by_the_resolver() {
         RegelSpraakModel m = Resolver.resolve(SET_IN_ARITH_SRC);
-        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
-        ExecModelTranspiler em = ExecModelTranspiler.build(m);
-        assertFalse(em.overgeslagen().isEmpty(), () -> "de exec moet de SET-in-rekenkunde voorwaarde overslaan, kreeg: " + em.overgeslagen());
-        assertTrue(DrlTranspiler.transpile(m).contains("/* TODO voorwaarde"),
-                () -> "DRL moet de SET-in-rekenkunde voorwaarde ook markeren (symmetrie):\n" + DrlTranspiler.transpile(m));
-        // firing must NOT crash, and the co-resident valid rule S must fire in BOTH back-ends (vertrektijd 50 > 0 -> vol).
-        for (KieBase kb : List.of(drlBase(m), KieBaseBuilder.createKieBaseFromModel(em.model()))) {
-            Vlucht v = new Vlucht(); v.setVertrektijd(new BigDecimal(50));
-            KieSession s = sessie(kb); s.insert(v); s.fireAllRules(); s.dispose();
-            assertEquals(Boolean.TRUE, v.isVol(), () -> "de co-residente geldige regel S moet vuren (geen sessie-crash door de SET-regel)");
-            assertFalse(Boolean.TRUE.equals(v.isLaat()), () -> "de SET-regel R mag NIET vuren (symmetrische marker)");
-        }
+        assertFalse(m.errors().isEmpty(), "WF-096 moet de kale setlezing in rekenkunde weigeren");
+        assertTrue(m.errors().toString().contains("setlezing buiten een vouwbron"),
+                () -> "de weigering moet WF-096's setlezingsdiagnose zijn: " + m.errors());
     }
     /** §5.3 / typeringen Tabel 38 a NON-numeriek (Tekst) GELIJK attr-vs-attr CONSISTENTIE now LOWERS in the exec (LIFT A):
      *  "de vertrek moet gelijk zijn aan de bestemming" reads the two Tekst attributes VALUE-equal (no toBd coercion, no
