@@ -57,14 +57,21 @@ final class MeervoudMatcher {
     }
 
     /** The declared object type the written (possibly plural) name denotes, or null — by exact name,
-     *  declared meervoudsvorm, or regular single-word plural (ambiguity-safe). */
+     *  declared meervoudsvorm, or regular single-word plural. Every pass is ambiguity-safe: singular
+     *  names are unique by declaration, but two types MAY declare the same {@code (mv: …)}, and a
+     *  first-hit bind there would be the silent mis-bind the resolver refuses everywhere else — so a
+     *  shared written form binds neither and stays an honest non-bind. */
     static Objecttype vindObjecttype(Collection<Objecttype> typen, String geschreven) {
         if (geschreven == null) return null;
         for (Objecttype ot : typen)
-            if (ot.naam.equalsIgnoreCase(geschreven)) return ot;         // singular name, exact
-        for (Objecttype ot : typen)
-            if (ot.meervoud != null && ot.meervoud.equalsIgnoreCase(geschreven)) return ot;  // declared plural
+            if (ot.naam.equalsIgnoreCase(geschreven)) return ot;         // singular name, exact & unique
         Objecttype enige = null;
+        for (Objecttype ot : typen)
+            if (ot.meervoud != null && ot.meervoud.equalsIgnoreCase(geschreven)) {
+                if (enige != null && enige != ot) return null;           // shared declared plural → no bind
+                enige = ot;
+            }
+        if (enige != null) return enige;
         for (Objecttype ot : typen)
             for (String mv : meervoudsVormen(ot.naam))
                 if (mv.equalsIgnoreCase(geschreven)) {
