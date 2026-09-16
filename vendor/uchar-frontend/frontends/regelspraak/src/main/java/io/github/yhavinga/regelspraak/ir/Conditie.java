@@ -108,6 +108,7 @@ public sealed interface Conditie {
     static boolean bevatPeriode(Conditie c) {
         if (c instanceof Periode) return true;
         if (c instanceof Samengesteld s) return s.onderdelen().stream().anyMatch(Conditie::bevatPeriode);
+        if (c instanceof Kwantorvouw k) return bevatPeriode(k.filter()) || bevatPeriode(k.toets());
         return false;
     }
 
@@ -120,6 +121,10 @@ public sealed interface Conditie {
         if (c == null) return;
         if (c instanceof Regelversie rv && !rv.inconsistent() && rv.regel() != null) uit.add(rv.regel());
         if (c instanceof Samengesteld s) s.onderdelen().forEach(d -> verzamelGevuurdReferenties(d, uit));
+        if (c instanceof Kwantorvouw k) {
+            verzamelGevuurdReferenties(k.filter(), uit);
+            verzamelGevuurdReferenties(k.toets(), uit);
+        }
     }
 
     /** Whether any operand {@link Expr} inside {@code c} matches {@code toets} — comparison sides, the
@@ -130,6 +135,7 @@ public sealed interface Conditie {
         if (c instanceof Predicaat p)     return Expr.bevat(p.operand(), toets);
         if (c instanceof Periode p)       return Expr.bevat(p.vanaf(), toets) || Expr.bevat(p.tot(), toets);
         if (c instanceof Samengesteld s)  return s.onderdelen().stream().anyMatch(d -> bevatExpr(d, toets));
+        if (c instanceof Kwantorvouw k)   return bevatExpr(k.filter(), toets) || bevatExpr(k.toets(), toets);
         return false;
     }
 
@@ -146,6 +152,30 @@ public sealed interface Conditie {
      *  hoogste / precies N, §13.4.14.4); 0 and unused for alle / geen / de. */
     enum Kwantor { DE, ALLE, GEEN, TEN_MINSTE, TEN_HOOGSTE, PRECIES }
     record Samengesteld(Kwantor kwantor, int drempel, List<Conditie> onderdelen, Bron bron) implements Conditie {}
+
+    /** §13.4.2/§8.2 QUANTIFIER FOLD — first-order quantification of a condition over the members of a
+     *  linked instance set ("… indien de &lt;attribuut&gt; van ALLE &lt;leden&gt; van de &lt;onderwerp&gt; gedurende het
+     *  gehele jaar groter is dan &lt;grens&gt;"). The first-order sibling of {@link Samengesteld}, which
+     *  quantifies over PARTS of one subject; this one quantifies over INSTANCES and takes its range
+     *  fields from the instance fold ({@link Expr.Functie}) unchanged.
+     *
+     *  &lt;p&gt;{@code kwantor} is the WRITTEN quantor and only ALLE / GEEN are lowered — recording it is the
+     *  point of the node: {@code AttribuutRef.set} is true for "alle", "geen van de" and every counting
+     *  quantor alike, so a reading that took the set flag for a forall would answer ALLE for a sentence
+     *  that wrote "geen van de". {@code filter} is the die/dat subselection (which members are quantified
+     *  over) and {@code toets} the quantified matrix (what each selected member must satisfy); both are
+     *  evaluated PER CONTRIBUTOR with the element as subject, exactly as {@link Expr.Functie#filter} is.
+     *  {@code bronRol} / {@code bronPad} are the range, spelled exactly as the fold's and mutually
+     *  exclusive (IR-SPEC ch. 4.5, WF-108; RUNTIME-SEMANTICS ch. 3.9a). */
+    record Kwantorvouw(Kwantor kwantor, Objecttype elementObjecttype, Conditie filter, Conditie toets,
+                       io.github.yhavinga.regelspraak.model.RegelSpraakModel.RolBindingRef bronRol,
+                       List<io.github.yhavinga.regelspraak.model.RegelSpraakModel.RolBindingRef> bronPad,
+                       Bron bron) implements Conditie {
+        public Kwantorvouw(Kwantor kwantor, Objecttype elementObjecttype, Conditie filter, Conditie toets,
+                           io.github.yhavinga.regelspraak.model.RegelSpraakModel.RolBindingRef bronRol, Bron bron) {
+            this(kwantor, elementObjecttype, filter, toets, bronRol, List.of(), bron);
+        }
+    }
 
     /** §8.1.9 / §13.4.15.66 regelpredicaat: "regelversie &lt;regel&gt; [(&lt;geldigheid&gt;)] is gevuurd |
      *  is inconsistent" — a control on the EXECUTION of the named rule, not on a subject. {@code regel} is

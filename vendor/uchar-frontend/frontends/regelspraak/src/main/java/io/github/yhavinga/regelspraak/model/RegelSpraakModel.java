@@ -480,6 +480,49 @@ public final class RegelSpraakModel {
         return eb == null ? null : new RolBindingRef(eb.feittype(), eb.elementRol());
     }
 
+    /**
+     * The ONE-STEP RANGE of a set reading over {@code elementType} written from {@code subject} — the
+     * binding the uchar wire carries as {@code bronRol} on an instance fold (IR-SPEC ch. 4.3) and on a
+     * §8.2 quantifier fold alike. One search, two callers: the emitter's fold arm and the resolver's
+     * §8.2 lowering must never classify one written range differently, so neither owns a copy of it.
+     *
+     * <p>By-PAIR first, then the WRITTEN name. IR-SPEC ch. 2.2: WF-048's uniqueness is computed over the
+     * CHAIN-CLOSED type pair, so a new subtype can make a pair that was uniquely connected doubly
+     * connected — and a range that went out bound yesterday would be refused today. The written name is
+     * authoritative (§13.4.1) and still names exactly one role, so the binding stays derivable and the
+     * document keeps working.
+     *
+     * <p>The reached role must declare EXACTLY {@code elementType} as its filler — identity, never the
+     * ⊑ of ch. 2.6. That is the difference between this search and every other one in this file, and it is
+     * load-bearing: {@link #naamKandidaten} forms candidates by dropping leading words, so a truncated
+     * phrase can land on a same-named role in ANOTHER fact type, and an upper-bound test would wave it
+     * through because the element type is a subtype of that role's filler. The range would then go out
+     * bound to a relation the sentence never named — verifier-clean and silently folding the wrong set,
+     * which is strictly worse than the loud WF-048 refusal a bindingless fold gets. A phrase that names no
+     * role, more than one, or one whose filler is not the element type itself stays bindingless (null),
+     * and a binding is never emitted as null.
+     */
+    public RolBindingRef vouwbronBinding(Objecttype subject, Objecttype elementType, String onderwerpBron) {
+        if (subject == null || elementType == null) return null;
+        RolBindingRef paar = verbindendeRolBinding(subject, elementType);
+        if (paar != null) return paar;
+        if (onderwerpBron == null) return null;
+        for (String kandidaat : naamKandidaten(onderwerpBron)) {
+            RolBindingRef b = elementRolBinding(subject, kandidaat);
+            if (b != null) return vultPrecies(b, elementType) ? b : null;
+        }
+        return null;
+    }
+
+    /** Whether the role {@code rb} binds declares {@code elementType} ITSELF as its filler. */
+    private boolean vultPrecies(RolBindingRef rb, Objecttype elementType) {
+        Feittype ft = feittypen.get(rb.feittype());
+        if (ft == null) return false;
+        for (Rol r : ft.rollen)
+            if (r.naam().equals(rb.rol())) return objecttypeOpNaam(r.objecttypeNaam()) == elementType;
+        return false;
+    }
+
     /** A symbolic navigation binding capturing BOTH ends of one element-name hop: the fact type,
      *  the role the {@code subject} fills (the near/back-reference side), and the ELEMENT role
      *  {@code geschrevenRol} names (the far side) — the {@link #verbindendeRolViaElementnaam} search

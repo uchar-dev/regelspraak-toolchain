@@ -1806,7 +1806,7 @@ final class ExpressieBouwer {
         }
         if (dt == null) dt = onbekend();
         return new Expr.AttribuutRef(attr, ot, onderwerpBron, navRol, dt, bron, isSetOnderwerp(onderwerp),
-                navigatiePad, bereikPad(onderwerp, ot));
+                navigatiePad, bereikPad(onderwerp, ot), geschrevenKwantor(onderwerp));
     }
 
     /**
@@ -1914,6 +1914,23 @@ final class ExpressieBouwer {
         if (o == null || o.kwantificatie() == null) return false;
         KwantificatieContext q = o.kwantificatie();
         return !(q.DE() != null && q.getChildCount() == 1);     // bare "de" = one object; every other quantor = a set
+    }
+
+    /** §13.4.14.5 the WRITTEN quantifier of {@code o}, as the IR's own {@link Conditie.Kwantor} vocabulary —
+     *  what {@link #isSetOnderwerp} throws away when it collapses every non-bare quantor to one bit. The
+     *  counting forms are MAPPED, not lowered: recording which one the sentence used is exactly what lets a
+     *  consumer (today: the §8.2 {@link Conditie.Kwantorvouw} lowering) refuse the ones it does not cover by
+     *  name, instead of reading them all as a forall. Null for the bare definite "de", which names one
+     *  object and no set at all. */
+    private static Conditie.Kwantor geschrevenKwantor(OnderwerpContext o) {
+        if (o == null || o.kwantificatie() == null) return null;
+        KwantificatieContext q = o.kwantificatie();
+        if (q.ALLE() != null || q.AL() != null) return Conditie.Kwantor.ALLE;
+        if (q.GEEN_VAN_DE() != null)            return Conditie.Kwantor.GEEN;
+        if (q.TEN_MINSTE() != null)             return Conditie.Kwantor.TEN_MINSTE;
+        if (q.TEN_HOOGSTE() != null)            return Conditie.Kwantor.TEN_HOOGSTE;
+        if (q.PRECIES() != null)                return Conditie.Kwantor.PRECIES;
+        return null;                            // bare "de"
     }
 
     /** A possessive "zijn <kaleNaam>" resolves to the named attribute OF the rule subject,

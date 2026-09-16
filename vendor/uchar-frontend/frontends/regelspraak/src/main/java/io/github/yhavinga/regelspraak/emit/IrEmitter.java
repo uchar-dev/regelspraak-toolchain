@@ -630,6 +630,32 @@ public final class IrEmitter {
                 w.endArray();
                 w.key("bron").value(s.bron().snippet());
             }
+            // IR-SPEC ch. 4.5 / WF-108. Key ORDER is the schema's required order (node, kwantor,
+            // elementObjecttype, filter, toets, bron, then the range) — gate 2 round-trips these bytes.
+            case Conditie.Kwantorvouw k -> {
+                w.key("node").value("Kwantorvouw");
+                w.key("kwantor").value(k.kwantor().name());
+                w.key("elementObjecttype").value(naamVan(k.elementObjecttype()));
+                // filter and toets are evaluated PER CONTRIBUTOR with the element as subject, exactly as
+                // Functie.filter is: an element-own read there is an own read, not a navigation from the
+                // outer subject, so emit both with the element as subject and they take the own-attribute
+                // branch and carry no spurious by-pair navigatieBindingen. Restore the outer subject after.
+                Objecttype vorigSubject = huidigSubject;
+                if (k.elementObjecttype() != null) huidigSubject = k.elementObjecttype();
+                w.key("filter"); conditie(k.filter());
+                w.key("toets"); conditie(k.toets());
+                huidigSubject = vorigSubject;
+                w.key("bron").value(k.bron().snippet());
+                // the range is ONE field with two spellings, mutually exclusive and omitted when absent —
+                // the same discipline the instance fold's bronPad/bronRol follow (WF-102, WF-108 (c))
+                if (k.bronPad() != null && !k.bronPad().isEmpty()) {
+                    w.key("bronPad").beginArray();
+                    for (RegelSpraakModel.RolBindingRef stap : k.bronPad()) rolBinding(stap);
+                    w.endArray();
+                } else if (k.bronRol() != null) {
+                    w.key("bronRol"); rolBinding(k.bronRol());
+                }
+            }
             case Conditie.Regelversie r -> {
                 w.key("node").value("Regelversie");
                 w.key("regel").value(r.regel());
@@ -788,45 +814,10 @@ public final class IrEmitter {
         // (Onbekend-typed name wart first, member fold second), so the two
         // sides can never classify one source differently
         if (arg.type() instanceof Datatype.Onbekend) return m.elementRolBinding(huidigSubject, arg.attribuut());
-        if (arg.set()) {
-            RegelSpraakModel.RolBindingRef paar = m.verbindendeRolBinding(huidigSubject, f.elementObjecttype());
-            return paar != null ? paar : geschrevenElementBinding(arg, f.elementObjecttype());
-        }
+        // the by-pair-then-written-name search itself lives in the model: the §8.2 quantifier fold's
+        // range is derived at RESOLVE time and must classify a written range exactly as this does
+        if (arg.set()) return m.vouwbronBinding(huidigSubject, f.elementObjecttype(), arg.onderwerpBron());
         return null;
-    }
-
-    /** The element-role binding a fold source's WRITTEN phrase names, used only where the by-pair search
-     *  came back ambiguous. IR-SPEC ch. 2.2: WF-048's uniqueness is computed over the CHAIN-CLOSED type
-     *  pair, so a new subtype can make a pair that was uniquely connected doubly connected — and a fold
-     *  that went out bindingless yesterday would be refused today. The written name is authoritative
-     *  (§13.4.1) and still names exactly one role, so the binding stays derivable and the document keeps
-     *  working. Same declared-name search the Onbekend branch above runs, read off the source phrase the
-     *  operand carries, under the same candidate forms the type binding was tried with.
-     *
-     *  <p>The reached role must declare EXACTLY {@code elementType} as its filler — identity, never the
-     *  ⊑ of ch. 2.6. That is the difference between this search and every other one in this file, and it is
-     *  load-bearing: the name candidates are formed by dropping leading words, so a truncated phrase can
-     *  land on a same-named role in ANOTHER fact type, and an upper-bound test would wave it through
-     *  because the element type is a subtype of that role's filler. The fold would then go out bound to a
-     *  relation the sentence never named — verifier-clean and silently folding the wrong set, which is
-     *  strictly worse than the loud WF-048 refusal a bindingless fold gets. A phrase that names no role,
-     *  more than one, or one whose filler is not the element type itself stays bindingless. */
-    private RegelSpraakModel.RolBindingRef geschrevenElementBinding(Expr.AttribuutRef arg, Objecttype elementType) {
-        if (arg.onderwerpBron() == null || elementType == null) return null;
-        for (String kandidaat : RegelSpraakModel.naamKandidaten(arg.onderwerpBron())) {
-            RegelSpraakModel.RolBindingRef b = m.elementRolBinding(huidigSubject, kandidaat);
-            if (b != null) return vultPrecies(b, elementType) ? b : null;
-        }
-        return null;
-    }
-
-    /** Whether the role {@code rb} binds declares {@code elementType} ITSELF as its filler. */
-    private boolean vultPrecies(RegelSpraakModel.RolBindingRef rb, Objecttype elementType) {
-        Feittype ft = m.feittypen.get(rb.feittype());
-        if (ft == null) return false;
-        for (Rol r : ft.rollen)
-            if (r.naam().equals(rb.rol())) return m.objecttypeOpNaam(r.objecttypeNaam()) == elementType;
-        return false;
     }
 
     /** The fold-source RANGE of an instance fold, when the resolver bound a multi-step one (the uchar

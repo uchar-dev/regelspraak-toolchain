@@ -182,7 +182,8 @@ public sealed interface Expr {
     record AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
                         String navigatieRol, Datatype type, Bron bron, boolean set,
                         java.util.List<String> navigatiePad,
-                        java.util.List<io.github.yhavinga.regelspraak.model.RegelSpraakModel.RolBindingRef> bereikPad)
+                        java.util.List<io.github.yhavinga.regelspraak.model.RegelSpraakModel.RolBindingRef> bereikPad,
+                        Conditie.Kwantor kwantor)
             implements Expr {
         /** {@code set} marks an operand that ranges over a SET (a §13.4.2 set quantifier — alle/al/geen van de/
          *  ten minste…/ten hoogste…/precies… — NOT the bare definite "de"), computed structurally from the
@@ -202,7 +203,22 @@ public sealed interface Expr {
          *  whose range is ONE relation — that one stays the emitter's {@code bronRol} — and empty whenever
          *  the written chain declines to resolve, which keeps the resolver's refusal intact instead of
          *  half-binding. It sits on the operand because that is where the written chain is; the emitter
-         *  lifts it onto the fold, which is where the wire carries it. */
+         *  lifts it onto the fold, which is where the wire carries it.
+         *
+         *  <p>{@code kwantor} is the WRITTEN §13.4.2 quantifier of the onderwerp, kept because {@code set}
+         *  collapses them all to one bit: "alle", "geen van de" and every counting quantor are equally
+         *  {@code set == true}, so a reader that took the flag for a forall would answer ALLE for a
+         *  sentence that wrote "geen van de". Null for the bare definite "de" (a single object) and for
+         *  every reference built outside the onderwerp path. FRONTEND-INTERNAL: it is the resolver's
+         *  input for lowering a §8.2 quantified condition to {@link Conditie.Kwantorvouw}, which records
+         *  it on the wire — the reference node itself never carries it out, so no schema field
+         *  corresponds to this component. */
+        public AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
+                            String navigatieRol, Datatype type, Bron bron, boolean set,
+                            java.util.List<String> navigatiePad,
+                            java.util.List<io.github.yhavinga.regelspraak.model.RegelSpraakModel.RolBindingRef> bereikPad) {
+            this(attribuut, objecttype, onderwerpBron, navigatieRol, type, bron, set, navigatiePad, bereikPad, null);
+        }
         public AttribuutRef(String attribuut, Objecttype objecttype, String onderwerpBron,
                             String navigatieRol, Datatype type, Bron bron, boolean set,
                             java.util.List<String> navigatiePad) {

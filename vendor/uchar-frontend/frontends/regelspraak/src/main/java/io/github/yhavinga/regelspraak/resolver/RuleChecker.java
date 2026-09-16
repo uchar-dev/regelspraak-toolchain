@@ -525,14 +525,19 @@ final class RuleChecker {
     }
 
     /** The condition half of the same walk, reaching exactly what {@link Conditie#bevatExpr} reaches:
-     *  comparison sides, the one-sided predicate operand, periode bounds, compound children. No
-     *  condition position is a fold source, so every operand is walked unexempted. */
+     *  comparison sides, the one-sided predicate operand, periode bounds, compound children, and both
+     *  halves of a §8.2 quantifier fold. No condition position is a fold source, so every operand is
+     *  walked unexempted — the {@link Conditie.Kwantorvouw} included, and deliberately so: the §8.2
+     *  lowering does not EXCUSE a set reading, it REMOVES it (the quantified operand comes out as an
+     *  element-own {@code set: false} read), so a surviving set reading under that node is a genuine
+     *  violation and is named like any other. */
     private void keurSetlezing(Conditie c) {
         if (c == null) return;
         if (c instanceof Conditie.Vergelijking v) { keurSetlezing(v.links(), false); keurSetlezing(v.rechts(), false); }
         else if (c instanceof Conditie.Predicaat p) keurSetlezing(p.operand(), false);
         else if (c instanceof Conditie.Periode p) { keurSetlezing(p.vanaf(), false); keurSetlezing(p.tot(), false); }
         else if (c instanceof Conditie.Samengesteld s) for (Conditie d : s.onderdelen()) keurSetlezing(d);
+        else if (c instanceof Conditie.Kwantorvouw k) { keurSetlezing(k.filter()); keurSetlezing(k.toets()); }
     }
 
     /** Process one §13.4.2 regel's versions into the model. Reused for each §12 beslistabel row, which
@@ -2003,7 +2008,9 @@ final class RuleChecker {
     }
 
     private Conditie uitToplevel(Expr lhs, ToplevelOperatorContext op, Bron bron) {
-        return keurGeheelPeriode(uitToplevelKaal(lhs, op, bron), geheelPeriode(op.gehelePeriodevergelijking()), bron);
+        return kwantorvouw(
+                keurGeheelPeriode(uitToplevelKaal(lhs, op, bron), geheelPeriode(op.gehelePeriodevergelijking()), bron),
+                bron);
     }
 
     private Conditie uitToplevelKaal(Expr lhs, ToplevelOperatorContext op, Bron bron) {
@@ -2033,7 +2040,9 @@ final class RuleChecker {
     }
 
     private Conditie uitNonToplevel(Expr lhs, NonToplevelOperatorContext op, Bron bron) {
-        return keurGeheelPeriode(uitNonToplevelKaal(lhs, op, bron), geheelPeriode(op.gehelePeriodevergelijking()), bron);
+        return kwantorvouw(
+                keurGeheelPeriode(uitNonToplevelKaal(lhs, op, bron), geheelPeriode(op.gehelePeriodevergelijking()), bron),
+                bron);
     }
 
     /** §8.2: the "gedurende de/het gehele &lt;periode&gt;" check is only defined when the predicate's
@@ -2046,6 +2055,97 @@ final class RuleChecker {
             "de check op volledige periode (gedurende de/het gehele jaar/maand) kan alleen op een tijdsafhankelijk "
             + "onderwerp worden toegepast (§8.2): " + bron, 0));
         return new Conditie.Onopgelost(bron);
+    }
+
+    /**
+     * §8.2 / IR-SPEC ch. 4.5: lower the official sentence shape "… indien de &lt;attribuut&gt; van ALLE
+     * &lt;leden&gt; van de &lt;Onderwerp&gt; gedurende het gehele jaar groter is dan &lt;grens&gt;" to a
+     * {@link Conditie.Kwantorvouw} — a first-order quantification over the members of a linked instance
+     * set. Without it the condition keeps a {@code set: true} operand in a slot that takes one value, and
+     * WF-096 refuses the whole document: the sentence is officially sanctioned RegelSpraak that this
+     * frontend could parse and resolve but never emit.
+     *
+     * <p>Scope is exactly the QUALIFIED condition, and deliberately no wider: a §8.2 whole-period
+     * qualifier plus exactly ONE set operand. Every other WF-096 producer route — a rule value, a
+     * composite operand, a gelijkstelling/initialisatie value, an UNqualified voorwaarde, a
+     * consistentieregel, an objectcreatie voorwaarde or toekenning — keeps raising WF-096 verbatim,
+     * because for those the set reading really is a collection in a one-value slot and there is no
+     * quantifier to give it a home. Widening is a spec question (which quantified form means what in a
+     * value position), not a frontend one.
+     *
+     * <p>Three shapes decline and keep the WF-096 error rather than lowering, each because lowering would
+     * be a guess: a COUNTING quantor (ten minste/ten hoogste/precies N — the wire admits ALLE and GEEN
+     * only, and reading "ten minste 2 van de" as a forall is the exact misreading this node exists to
+     * prevent, so it also draws a WARNING naming itself); a MULTI-STEP written range (the operand
+     * resolved a {@code bereikPad}), whose {@code bronPad} spelling is a separate card; and a range that
+     * does not resolve at all — a quantifier bound to no relation is the silent-wrong-set failure WF-048
+     * exists to prevent, and a loud refusal beats a fold over a set the sentence never named.
+     *
+     * <p>The {@code filter} (the die/dat subselection over the quantified range) is null here: the IR
+     * admits it, this card does not produce it.
+     */
+    private Conditie kwantorvouw(Conditie c, Bron bron) {
+        if (periodeVan(c) == null) return c;                 // only the §8.2-qualified condition
+        Expr.AttribuutRef zet = enigeSetOperand(c);
+        if (zet == null) return c;
+        Conditie.Kwantor q = zet.kwantor();
+        if (q == null) return c;                             // bare "de": no set reading to quantify
+        if (q != Conditie.Kwantor.ALLE && q != Conditie.Kwantor.GEEN) {
+            model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                "de tellende kwantor in '" + zet.bron() + "' wordt niet omgezet naar een kwantorvouw: de uchar-wire "
+                + "kent alleen ALLE en GEEN als kwantor over een verzameling instanties (IR-SPEC ch. 4.5, WF-108); "
+                + "de setlezing blijft daarmee buiten een vouwbron staan (WF-096)", zet.bron().line()));
+            return c;
+        }
+        Objecttype elem = zet.objecttype();
+        if (elem == null) return c;
+        // a written multi-step range resolves into bereikPad, which this lowering does not spell — decline
+        // the WHOLE thing rather than binding the first step, which would quantify over the wrong set
+        if (zet.bereikPad() != null && !zet.bereikPad().isEmpty()) return c;
+        RegelSpraakModel.RolBindingRef bronRol =
+                model.vouwbronBinding(bouwer.subject(), elem, zet.onderwerpBron());
+        if (bronRol == null) return c;                       // unresolvable range — never a silent misbinding
+        // The matrix: the SAME condition, with the quantified operand replaced by an own, element-subject
+        // read of the same attribute. The §8.2 qualifier stays ON it — per member, the whole-period test is
+        // what each contributor must satisfy. No navigation role/path/range and no quantor survive: the
+        // element IS the subject there, which is also why no set reading is left for WF-096 to find.
+        Expr.AttribuutRef eigen = new Expr.AttribuutRef(zet.attribuut(), elem, zet.onderwerpBron(), null,
+                zet.type(), zet.bron(), false, List.of(), List.of(), null);
+        return new Conditie.Kwantorvouw(q, elem, null, metOperand(c, zet, eigen), bronRol, List.of(), bron);
+    }
+
+    /** The §8.2 whole-period qualifier of {@code c}, for the two condition forms that carry Expr operands
+     *  (a {@link Conditie.Kenmerk} carries one too, but has no operand to quantify). Null otherwise. */
+    private static Conditie.GeheelPeriode periodeVan(Conditie c) {
+        if (c instanceof Conditie.Vergelijking v) return v.periode();
+        if (c instanceof Conditie.Predicaat p)    return p.periode();
+        return null;
+    }
+
+    /** The one operand of {@code c} that is a §13.4.2 SET reading, or null when there is none or more than
+     *  one — two quantified sets in one comparison are two ranges, and which one the sentence quantifies
+     *  over is not something this lowering may pick. */
+    private static Expr.AttribuutRef enigeSetOperand(Conditie c) {
+        Expr[] operanden = c instanceof Conditie.Vergelijking v ? new Expr[]{v.links(), v.rechts()}
+                : c instanceof Conditie.Predicaat p ? new Expr[]{p.operand()}
+                : new Expr[0];
+        Expr.AttribuutRef gevonden = null;
+        int n = 0;
+        for (Expr e : operanden)
+            if (e instanceof Expr.AttribuutRef a && a.set()) { gevonden = a; n++; }
+        return n == 1 ? gevonden : null;
+    }
+
+    /** {@code c} with the operand {@code oud} (matched by identity — it was just found there) replaced by
+     *  {@code nieuw}; every other field, the §8.2 qualifier included, unchanged. */
+    private static Conditie metOperand(Conditie c, Expr oud, Expr nieuw) {
+        if (c instanceof Conditie.Vergelijking v)
+            return new Conditie.Vergelijking(v.op(), v.links() == oud ? nieuw : v.links(),
+                    v.rechts() == oud ? nieuw : v.rechts(), v.periode(), v.bron());
+        if (c instanceof Conditie.Predicaat p)
+            return new Conditie.Predicaat(p.soort(), nieuw, p.dagsoort(), p.negatie(), p.cijfers(),
+                    p.periode(), p.bron());
+        return c;
     }
 
     /** Whether the onderwerp of a §8.2-qualified predicate is tijdsafhankelijk — a temporal attribuut on either side
