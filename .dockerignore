@@ -1,5 +1,5 @@
 # Keep the build context lean: the service image only needs what stage 1/2 build
-# from (Makefile, poms, grammar/tools/src, engine/service, examples, docker/). The
+# from (Makefile, poms, vendor/tools/src, engine/service, examples, docker/). The
 # ANTLR jar is re-fetched by `make parser` inside the build, so lib/ is excluded;
 # every generated/build tree is excluded so a dirty host checkout cannot leak in.
 .git

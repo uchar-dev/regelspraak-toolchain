@@ -18,8 +18,13 @@ RUN apt-get update \
 WORKDIR /build
 
 # Copy exactly what the three poms compile from (see .dockerignore for the inverse).
+# vendor/ replaced grammar/ at the dependency inversion (9f7b001): the grammar AND the
+# frontend sources both live in the vendored uchar slice now, and `make parser` plus the
+# root pom's add-vendored-frontend source root read them from there. The stale
+# `COPY grammar/ grammar/` pointed at a directory that no longer exists, so this stage
+# could not build at all.
 COPY Makefile pom.xml ./
-COPY grammar/ grammar/
+COPY vendor/ vendor/
 COPY tools/ tools/
 COPY src/ src/
 COPY engine/ engine/
