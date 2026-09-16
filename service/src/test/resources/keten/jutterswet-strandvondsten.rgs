@@ -1,0 +1,26 @@
+Objecttype de Strandvondst (mv: Strandvondsten)
+	de vondstwaarde Numeriek (niet-negatief geheel getal) met eenheid eur;
+	het bergloon Numeriek (niet-negatief getal met 2 decimalen) met eenheid eur;
+	de meldtermijn Numeriek (niet-negatief geheel getal) voor elke dag;
+	is aangemeld kenmerk (bijvoeglijk);
+	is meldplichtig kenmerk (bijvoeglijk);
+	is bergingsplichtig kenmerk (bijvoeglijk);
+	is verjaard kenmerk (bijvoeglijk) voor elke dag;
+
+Objecttype het Wrakstuk is een Strandvondst (mv: Wrakstukken)
+	de bergingsdiepte Numeriek (niet-negatief geheel getal) met eenheid m;
+
+Regel bergloon van een strandvondst
+	geldig altijd
+		Het bergloon van een Strandvondst moet berekend worden als zijn vondstwaarde maal 0,25
+		indien de Strandvondst aangemeld is.
+
+Regel meldplicht van een wrakstuk
+	geldig altijd
+		Een Wrakstuk is meldplichtig
+		indien zijn vondstwaarde groter is dan 100 eur.
+
+Regel bergingsplicht van een strandvondst
+	geldig altijd
+		Een Strandvondst is bergingsplichtig
+		indien zijn vondstwaarde groter is dan 500 eur.
