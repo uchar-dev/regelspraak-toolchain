@@ -192,7 +192,12 @@ public final class DescriptorLoader {
      *  reach it too. Used by the uitvoer selectors ({@link AntwoordBouwer}) and the invoer contract
      *  ({@link BeslisserKern}); on a model without subtypes the chain is one element long and this is exactly
      *  the old case-insensitive name equality. An unresolvable {@code naam} selects nothing (it is already a
-     *  descriptor-validation error). */
+     *  descriptor-validation error).
+     *
+     *  <p>{@link Objecttype#isEen} compares by {@code keten().contains}, i.e. by REFERENCE identity, so both
+     *  arguments must come from ONE resolved model instance. Every caller today passes the core's own
+     *  {@code this.model} and resolves {@code naam} against that same model here, so the condition holds by
+     *  construction; a future caller that resolves a second model would have to pass its own, not another's. */
     static boolean objectMatch(RegelSpraakModel model, Objecttype ot, String naam) {
         return ot != null && ot.isEen(objecttype(model, naam));
     }
