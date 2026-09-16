@@ -424,20 +424,19 @@ public final class VerzoekMapper {
     }
 
     /** Whether attribute {@code naam} on {@code ot} is a §13.3.6 tijdlijn (temporal, {@code List<Segment>}) —
-     *  resolved case-INSENSITIVELY (the tijdlijn maps are keyed by the declared spelling, but the request may
-     *  differ in case, exactly as {@link Objecttype#attribuut} tolerates). */
+     *  asked over the WHOLE chain (IR-SPEC ch. 2.2), not the own maps. An inherited timeline read as a scalar
+     *  is not a missing binding but a wrong judgement: the mapper would accept the value and
+     *  {@link RegelSpraakRuntime#set} would then push a {@code BigDecimal} into the {@code List<Segment>} field
+     *  the bean inherits — a ClassCastException inside the service instead of a violation naming the field.
+     *  The model's chain walk is case-INSENSITIVE, exactly as this scan was. */
     private static boolean isTemporeel(Objecttype ot, String naam) {
-        for (String k : ot.attribuutGranulariteit.keySet()) if (k.equalsIgnoreCase(naam)) return true;
-        for (String k : ot.attribuutTijdlijnAantal.keySet()) if (k.equalsIgnoreCase(naam)) return true;
-        return false;
+        return ot.granulariteitVan(naam) != null || ot.tijdlijnAantalVan(naam) != null;
     }
 
     /** The kenmerk analogue of {@link #isTemporeel} — a §13.3.6.7 tijdlijn kenmerk (a {@code List<Segment>}
-     *  field), which the service core does not support. */
+     *  field), which the service core does not support; chain-closed for the same reason. */
     private static boolean isTemporeelKenmerk(Objecttype ot, String naam) {
-        for (String k : ot.kenmerkGranulariteit.keySet()) if (k.equalsIgnoreCase(naam)) return true;
-        for (String k : ot.kenmerkTijdlijnAantal.keySet()) if (k.equalsIgnoreCase(naam)) return true;
-        return false;
+        return ot.kenmerkGranulariteitVan(naam) != null || ot.kenmerkTijdlijnAantalVan(naam) != null;
     }
 
     /** The parameter GLOBAL name the exec-model back-end registers — {@link Namen#ident}(naam,false), the

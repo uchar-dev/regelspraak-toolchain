@@ -144,7 +144,18 @@ public final class OpenApiEmitter {
     /** The component schema for one objecttype: an object with a property per SCALAR attribuut (dimensie/
      *  tijdlijn attributen and tijdlijn-kenmerken are rejected by the service, so none is emitted) and a boolean
      *  property per (non-temporal) kenmerk. The description records the eenheid-bearing attributen, the
-     *  kenmerken, and any rejected (dimensie/tijdlijn) member. */
+     *  kenmerken, and any rejected (dimensie/tijdlijn) member.
+     *
+     *  <p><b>IR-SPEC ch. 2.2: the member set is CHAIN-CLOSED</b> ({@link Objecttype#attribuutLeden} /
+     *  {@link DescriptorLoader#kenmerkLeden}), nearest declaration first. A request instance of a subtype
+     *  carries its inherited members exactly like its own ones — {@link VerzoekMapper} accepts them and
+     *  {@link AntwoordBouwer} reads them off the same bean — so a document built from the OWN maps would
+     *  describe a request shape the service does not have. The schema is FLAT rather than an OpenAPI
+     *  {@code allOf} composition over the supertype's component: the document's contract is "exactly the
+     *  request shape the mapper accepts", and the mapper has no composition either. This is the opposite
+     *  choice from {@link io.github.yhavinga.regelspraak.schema.FactModelGenerator}, which stays per
+     *  declaring type BECAUSE the generated bean {@code extends} its supertype's and would hide the
+     *  parent's field by redeclaring it; a JSON schema property set has no such mechanism. */
     private static ObjectNode objecttypeSchema(Objecttype ot, RegelSpraakModel model) {
         ObjectNode schema = NF.objectNode();
         schema.put("type", "object");
@@ -153,15 +164,15 @@ public final class OpenApiEmitter {
         List<String> afgewezen = new ArrayList<>();
         ObjectNode props = NF.objectNode();
 
-        // attributen (declared order)
-        for (var e : ot.attributen.entrySet()) {
+        // attributen (own first, then inherited — declared order within each)
+        for (var e : ot.attribuutLeden().entrySet()) {
             String naam = e.getKey();
             if (!ot.dimensiesVan(naam).isEmpty()) { afgewezen.add(naam + " (dimensie)"); continue; }
             if (temporeelAttribuut(ot, naam))      { afgewezen.add(naam + " (tijdlijn)"); continue; }
             props.set(naam, attribuutSchema(e.getValue()));
         }
-        // kenmerken (declared order) — boolean properties
-        for (String k : ot.kenmerken) {
+        // kenmerken (own first, then inherited) — boolean properties
+        for (String k : DescriptorLoader.kenmerkLeden(ot)) {
             if (temporeelKenmerk(ot, k)) { afgewezen.add(k + " (tijdlijn-kenmerk)"); continue; }
             ObjectNode kn = NF.objectNode();
             kn.put("type", "boolean");
@@ -221,12 +232,16 @@ public final class OpenApiEmitter {
 
     private static String componentNaam(Objecttype ot) { return Namen.ident(ot.naam, true); }
 
+    /** §13.3.6 whether attribuut {@code naam} rides a tijdlijn ANYWHERE on {@code ot}'s chain. Reading the own
+     *  maps would call an INHERITED timeline scalar and emit a plain property for it — a contract the service
+     *  then refuses at request time ({@link VerzoekMapper} NIET_ONDERSTEUND). */
     private static boolean temporeelAttribuut(Objecttype ot, String naam) {
-        return ot.attribuutGranulariteit.containsKey(naam) || ot.attribuutTijdlijnAantal.containsKey(naam);
+        return ot.granulariteitVan(naam) != null || ot.tijdlijnAantalVan(naam) != null;
     }
 
+    /** The kenmerk twin of {@link #temporeelAttribuut}, chain-closed for the same reason. */
     private static boolean temporeelKenmerk(Objecttype ot, String naam) {
-        return ot.kenmerkGranulariteit.containsKey(naam) || ot.kenmerkTijdlijnAantal.containsKey(naam);
+        return ot.kenmerkGranulariteitVan(naam) != null || ot.kenmerkTijdlijnAantalVan(naam) != null;
     }
 
     // ------------------------------------------------------------------ generic request/response/fout schemas

@@ -162,8 +162,28 @@ public final class DescriptorLoader {
         return null;
     }
 
+    /** IR-SPEC ch. 2.2: does {@code ot} OR an ancestor declare kenmerk {@code naam}? An inherited kenmerk is a
+     *  kenmerk of the subtype — a rule on the subtype assigns it, the generated bean carries its getter, and a
+     *  request may set it — so the own list alone answers "onbekend kenmerk" for a member that exists. The
+     *  model's own chain walk ({@link Objecttype#kenmerkNaam}) is the authority; it is case-insensitive exactly
+     *  as the old own-list scan was. */
     static boolean heeftKenmerk(Objecttype ot, String naam) {
-        return ot.kenmerken.stream().anyMatch(k -> k.equalsIgnoreCase(naam));
+        return ot != null && ot.kenmerkNaam(naam) != null;
+    }
+
+    /** The chain-closed kenmerk NAMES of {@code ot}, nearest declaration first — the list-shaped twin of
+     *  {@link #heeftKenmerk}, for the reader that must ENUMERATE the kenmerken rather than ask about one
+     *  ({@link OpenApiEmitter}). It lives here so service/ walks the kenmerk chain in exactly one place; the
+     *  attribuut side needs no twin because the model already ships {@link Objecttype#attribuutLeden} (the
+     *  kenmerken are a List, not a member-keyed map, so {@code opKetenKaart} does not cover them). A nearer
+     *  declaration wins and a name is listed once, matched case-insensitively like the lookups above. */
+    static List<String> kenmerkLeden(Objecttype ot) {
+        List<String> uit = new ArrayList<>();
+        if (ot == null) return uit;
+        for (Objecttype t : ot.keten())
+            for (String k : t.kenmerken)
+                if (uit.stream().noneMatch(g -> g.equalsIgnoreCase(k))) uit.add(k);
+        return uit;
     }
 
     /** Whether {@code ot}'s name equals {@code naam} (case-insensitive) — the objecttype identity a uitvoer
