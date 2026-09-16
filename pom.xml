@@ -50,6 +50,11 @@
     <antlr.version>4.13.2</antlr.version>
     <junit.version>5.10.2</junit.version>
     <drools.version>8.44.0.Final</drools.version>
+    <!-- Declared so the skip-pin executions below can read ${skipTests}: an UNDECLARED property would
+         reach exec-maven-plugin unresolved. `-DskipTests` overrides it to true, and then the two
+         skip-pin steps stand down with the tests they would have counted (`make engine` /
+         `make scenario-test` install the artifact that way). -->
+    <skipTests>false</skipTests>
   </properties>
 
   <dependencies>
@@ -125,6 +130,41 @@
             <configuration>
               <executable>make</executable>
               <arguments><argument>parser</argument></arguments>
+            </configuration>
+          </execution>
+          <!-- skip-pin (tools/check-skips.sh): een assumptie die niet houdt levert een overgeslagen test en
+               een groene poort die alleen "Skipped: 3" meldt — geen naam, geen reden. Deze twee stappen zetten
+               vlak voor de testrun een ijkpunt en tellen er direct na de surefire-rapporten op na: elke skip of
+               abort komt BIJ NAAM met reden in de poortuitvoer, en een ongepinde skip faalt de build. De
+               toegestane-skiplijst leeft in dat script. Het ijkpunt is er omdat `mvn test` zonder `clean`
+               rapporten van een vorige run laat staan: alleen verse rapporten tellen mee. -->
+          <execution>
+            <id>skip-pin-ijkpunt</id>
+            <phase>process-test-classes</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <skip>${skipTests}</skip>
+              <executable>bash</executable>
+              <arguments>
+                <argument>${basedir}/tools/check-skips.sh</argument>
+                <argument>--sentinel</argument>
+                <argument>${project.build.directory}/.skip-pin-ijkpunt</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>skip-pin</id>
+            <phase>test</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <skip>${skipTests}</skip>
+              <executable>bash</executable>
+              <arguments>
+                <argument>${basedir}/tools/check-skips.sh</argument>
+                <argument>root</argument>
+                <argument>${project.build.directory}/.skip-pin-ijkpunt</argument>
+                <argument>${project.build.directory}/surefire-reports</argument>
+              </arguments>
             </configuration>
           </execution>
         </executions>

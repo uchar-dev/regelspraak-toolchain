@@ -148,6 +148,15 @@ HEAD", never a number to chase down:
    parses-as-expected with a documented `[GAT]` where the grammar is knowingly
    too loose) — the negative counterpart to gate 7.
 
+**Skips are named, never silent.** Every JUnit-running gate (1, 2, 3, 6) ends with
+a `skip-pin` block from `tools/check-skips.sh`: each skipped or aborted test is
+printed BY NAME with the assumption message it gave, and checked against the
+allowed-skip list that lives in that script (gate + test + reason + date per
+entry). An unpinned skip or abort FAILS the gate by name — a "Skipped: 3" that
+nobody can read is exactly the silent green this repo forbids. A pinned skip that
+does NOT occur (the external spec is unpacked locally, `UCHAR_DIR` is set) is
+allowed, not required; a pin whose test no longer exists fails as stale.
+
 `make image` / `make kind-smoke` are host-only packaging gates (they need
 Docker); run them on the host before a release, not per change.
 

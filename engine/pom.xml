@@ -32,6 +32,8 @@
     <!-- Pinned to the SAME version as service/pom.xml (the version source of record for Jackson across the
          reactor); already in the local repo via the service module, so it resolves offline. -->
     <jackson.version>2.21.2</jackson.version>
+    <!-- Declared so the skip-pin executions below can read ${skipTests}; zie de root-pom. -->
+    <skipTests>false</skipTests>
   </properties>
 
   <dependencies>
@@ -89,6 +91,44 @@
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <version>3.2.5</version>
+      </plugin>
+      <!-- skip-pin: zie de root-pom. Deze module heeft vandaag GEEN toegestane skip, dus elke skip of
+           abort die hier opduikt faalt de poort bij naam in plaats van als "Skipped: 1" weg te vallen. -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.1.1</version>
+        <executions>
+          <execution>
+            <id>skip-pin-ijkpunt</id>
+            <phase>process-test-classes</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <skip>${skipTests}</skip>
+              <executable>bash</executable>
+              <arguments>
+                <argument>${basedir}/../tools/check-skips.sh</argument>
+                <argument>--sentinel</argument>
+                <argument>${project.build.directory}/.skip-pin-ijkpunt</argument>
+              </arguments>
+            </configuration>
+          </execution>
+          <execution>
+            <id>skip-pin</id>
+            <phase>test</phase>
+            <goals><goal>exec</goal></goals>
+            <configuration>
+              <skip>${skipTests}</skip>
+              <executable>bash</executable>
+              <arguments>
+                <argument>${basedir}/../tools/check-skips.sh</argument>
+                <argument>engine</argument>
+                <argument>${project.build.directory}/.skip-pin-ijkpunt</argument>
+                <argument>${project.build.directory}/surefire-reports</argument>
+              </arguments>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

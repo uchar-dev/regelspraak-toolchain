@@ -130,10 +130,20 @@ resolver: compile
 	javac -cp $(ANTLR4_JAR):$(OUT_DIR) -d $(OUT_DIR) $(RESOLVER_SRC)
 
 # Build + run the resolver's JUnit 5 tests via the standalone console launcher.
+# De console meldt een afgebroken test alleen als "1 tests aborted" in de samenvatting — zonder naam,
+# zonder reden, en de poort blijft groen. --reports-dir laat hem dezelfde legacy JUnit-XML schrijven die
+# surefire schrijft, zodat tools/check-skips.sh de abort bij naam in de poortuitvoer zet en aan de
+# toegestane-skiplijst toetst. De rapportmap gaat eerst leeg: dan kan geen rapport van een vorige run
+# meetellen, en het ijkpunt bewijst dat de gelezen rapporten van DEZE run zijn.
+JUNIT_REPORTS := $(OUT_DIR)/junit-reports
+SKIP_IJKPUNT  := $(OUT_DIR)/.skip-pin-ijkpunt
 test: resolver $(JUNIT_JAR)
 	javac -cp $(ANTLR4_JAR):$(JUNIT_JAR):$(OUT_DIR) -d $(OUT_DIR) $(TEST_SRC)
+	rm -rf $(JUNIT_REPORTS)
+	bash tools/check-skips.sh --sentinel $(SKIP_IJKPUNT)
 	java -jar $(JUNIT_JAR) execute --class-path $(ANTLR4_JAR):$(OUT_DIR) \
-		--scan-class-path --details=tree --disable-banner
+		--scan-class-path --details=tree --disable-banner --reports-dir=$(JUNIT_REPORTS)
+	bash tools/check-skips.sh jar $(SKIP_IJKPUNT) $(JUNIT_REPORTS)
 
 # Smoke-test the grammar with no application code, e.g.:
 #   make grun RULE=regelSpraakDocument FILE=examples/toka/toka-01-....rgs
