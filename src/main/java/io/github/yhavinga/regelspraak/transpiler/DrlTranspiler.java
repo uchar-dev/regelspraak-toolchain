@@ -146,6 +146,8 @@ public final class DrlTranspiler {
         for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteit u : model.uniciteiten) meet("uniciteit", u.naam(), () -> uniciteit(u));
         for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie u : model.uniciteitUnies) meet("uniciteit-unie", u.naam(), () -> uniciteitUnie(u));
         for (io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie f : model.feitCreaties) meet("feitcreatie", f.naam(), () -> feitCreatie(f));
+        for (io.github.yhavinga.regelspraak.ir.PrioritizedDefaults pd : model.prioritizedDefaults)
+            meet("defaults", defaultsNaam(pd), () -> defaultsMarker(pd));
         // Splice the deferred header blocks BACK TO FRONT so the earlier offset stays valid.
         // §8.4.3 periodevergelijking / §5.3 Rekendatum-als-waarde reference the rekendatum global from a rule
         // body; the flag is set EXACTLY where that text is emitted (never an undeclared-global build error, never
@@ -173,6 +175,42 @@ public final class DrlTranspiler {
             out.insert(naImports, imp.append('\n'));
         }
         return out.toString();
+    }
+
+    /** The manifest name of a §6.1 defaults group: the kind-discriminated target on its declaring subject. */
+    private static String defaultsNaam(io.github.yhavinga.regelspraak.ir.PrioritizedDefaults pd) {
+        return "defaults " + (pd.isKenmerk() ? "K:" : "A:") + pd.onderwerp() + "." + pd.doel();
+    }
+
+    /**
+     * §6.1 prioritized defaults — a LOUD, NAMED REFUSAL in this back-end, by decision of the overerving-port
+     * card, not an omission.
+     *
+     * <p>The frontend lifts an {@code Uitzondering op}-family out of {@code resolvedRegels} into
+     * {@link RegelSpraakModel#prioritizedDefaults}. A back-end that reads only {@code resolvedRegels}
+     * therefore emits NOTHING for the whole family — base rule included — and the model's target is never
+     * written at all. That is the worst of the three possible outcomes: not a wrong value, but a silently
+     * absent one.
+     *
+     * <p>The exec-model branch carries the full lowering (the effective stacks of the inheritance
+     * composition, the reduce-rule, the §9.5 conflict channel). This branch does not, and the reason is
+     * that the reduce-rule is a per-subject FOLD over a priority chain with leeg fall-through: expressible
+     * as a Java lambda over the subject, not as a DRL condition/consequence pair without re-inventing the
+     * chain walk in mvel. Since this branch exists as the differential ORACLE for the exec-model one, an
+     * independent second implementation of the same fold would defeat its purpose anyway — the two would
+     * agree because they were written from one reading, not because the reading is right.
+     *
+     * <p>So the refusal is stated where every other non-lowered form in this back-end states itself: a
+     * {@code /* TODO *&#47;} placeholder, which {@link #meet} classifies as a MARKER and reports with its
+     * reason in the coverage manifest, and which raises a deduplicated WARNING on the model. A consumer
+     * that needs defaults reads the manifest and routes to the exec-model back-end.
+     */
+    private void defaultsMarker(io.github.yhavinga.regelspraak.ir.PrioritizedDefaults pd) {
+        out.append("/* TODO §6.1 defaults-groep ").append(commentVeilig(defaultsNaam(pd)))
+           .append(": deze DRL-tekst-tak draagt geen defaults-lowering — de prioriteitsketen is een fold per"
+                 + " subject met leeg-doorval, en deze tak is de differentiële orakel van de exec-model-tak."
+                 + " Gebruik de exec-model-tak (ExecModelTranspiler) voor een model met Uitzondering-op-groepen."
+                 + " */\n\n");
     }
 
     /** Emit one construct and record its manifest verdict. Classification wraps the documented marker

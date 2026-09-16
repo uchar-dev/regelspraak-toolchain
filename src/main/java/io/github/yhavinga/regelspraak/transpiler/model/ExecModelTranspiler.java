@@ -1,7 +1,10 @@
 package io.github.yhavinga.regelspraak.transpiler.model;
 
 import io.github.yhavinga.regelspraak.ir.Conditie;
+import io.github.yhavinga.regelspraak.ir.Default;
+import io.github.yhavinga.regelspraak.ir.ExceptionGroup;
 import io.github.yhavinga.regelspraak.ir.Expr;
+import io.github.yhavinga.regelspraak.ir.PrioritizedDefaults;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
 import io.github.yhavinga.regelspraak.ir.ResolvedVerdeling;
 import io.github.yhavinga.regelspraak.model.Datatype;
@@ -253,6 +256,19 @@ public final class ExecModelTranspiler {
         }
         for (io.github.yhavinga.regelspraak.ir.ResolvedUniciteitUnie u : model.uniciteitUnies)  // §8.1.6 "verenigd met" (Phase H)
             for (Rule rule : meet("uniciteit-unie", u.naam(), () -> uniciteitUnie(u))) m.addRule(rule);
+        // §6.1 prioritized defaults: one reduce-rule per (effective stack, concrete subject type). The
+        // composition itself can refuse (a declared-unordered SET across a supertype boundary). That is a
+        // per-form NOT-CARRIED, not a crash: route it through the manifest like every other one, so the
+        // coverage report names it with its reason instead of aborting the build.
+        List<EffectieveStapel> stapels;
+        try {
+            stapels = defaultsGroepen();
+        } catch (DefaultsOnvertaalbaar e) {
+            stapels = List.of();
+            meet("defaults", "effectieve stapels", () -> skipList("defaults: " + e.getMessage()));
+        }
+        for (EffectieveStapel groep : stapels)
+            for (Rule rule : meet("defaults", defaultsConstructNaam(groep), () -> defaultsGroep(groep))) m.addRule(rule);
         return m;
     }
 
@@ -277,6 +293,19 @@ public final class ExecModelTranspiler {
         seq = 0;
         Variable sVar = DSL.declarationOf(factClass, "$subject");
         PatternDSL.PatternDef pattern = PatternDSL.pattern(sVar);
+        // On the concrete types where inheritance made this rule a defaults BASE, the composed stack writes the
+        // target and the rule must not — with native `extends` a pattern on the ancestor's class matches the
+        // descendant's facts, so without this the two would both write. The set is empty on every target whose
+        // chain declares no group, which is every rule in a flat model and every rule the DRL-text branch ever
+        // sees (that branch refuses a document carrying defaults at the door).
+        Set<Class<?>> geabsorbeerd = new LinkedHashSet<>();
+        if (r.soort() != ResolvedRegel.Soort.KENMERKTOEKENNING)
+            for (Objecttype t : geabsorbeerdOp(doel.objecttype(), doel.attribuut())) {
+                Class<?> c = factClass(t);
+                if (c != null) geabsorbeerd.add(c);
+            }
+        if (!geabsorbeerd.isEmpty())
+            pattern = pattern.expr(nextId("absorb"), (Predicate1) (o -> !geabsorbeerd.contains(o.getClass())));
         List<RuleItemBuilder<?>> extra = new ArrayList<>();
 
         // §8.4/§13.4.5 a TEMPORAL KENMERK doel (kenmerkGranulariteit — a List<Segment> TRUE-period timeline, not a
@@ -5703,6 +5732,666 @@ public final class ExecModelTranspiler {
      *  the SAME derivation — the single-runtime principle for the agenda. */
     private int stratificatieSalience(ResolvedRegel r) {
         return strat.salience(r);
+    }
+
+    // ================= §6.1 prioritized defaults — the "Uitzondering op"-groepen, incl. inheritance =========
+
+    /** One effective stack per (CONCRETE type, target) — the composition of the prioritised default calculus
+     *  a subtype inherits. A subtype's own declarations fold over its supertype's EFFECTIVE stack, highest
+     *  first: own exceptions, inherited exceptions, the base (the own one REPLACES the inherited one), and
+     *  below it the initialisation default, never replaced.
+     *
+     *  <p>Why per CONCRETE type and not per declaration: with native {@code extends} a pattern on the
+     *  supertype's class matches subtype facts, so a supertype group and a subtype group would BOTH reduce
+     *  over one Wrakrecht and write in turn — no fixpoint. The composition spends the extensional
+     *  quantification of the defaults subject once, here, and {@link #defaultsGroep} then binds its pattern to
+     *  exactly one class. In a model without a supertype edge this is the declared grouping, unchanged. */
+    private record EffectieveStapel(Objecttype eigenaar, List<PrioritizedDefaults> leden) {}
+
+    private List<EffectieveStapel> defaultsGroepen() {
+        List<EffectieveStapel> uit = new ArrayList<>();
+        for (Objecttype ot : model.objecttypen.values())
+            for (var e : effectieveStapels(ot).entrySet())
+                uit.add(new EffectieveStapel(ot, e.getValue()));
+        return uit;
+    }
+
+    /** The effective stacks of {@code type}, keyed by kind-discriminated target. */
+    private LinkedHashMap<String, List<PrioritizedDefaults>> effectieveStapels(Objecttype type) {
+        return effectieveStapels(type, ketenGroepSleutels(type));
+    }
+
+    /** {@code absorb} is the key set on which an ordinary rule counts as a base — a property of the stack's
+     *  OWNER, threaded down so the answer does not change with the recursion depth. */
+    private LinkedHashMap<String, List<PrioritizedDefaults>> effectieveStapels(Objecttype type, Set<String> absorb) {
+        LinkedHashMap<String, List<PrioritizedDefaults>> eigen = new LinkedHashMap<>();
+        for (PrioritizedDefaults l : prioritizedDefaults())
+            if (defaultsNorm(l.onderwerp()).equals(defaultsNorm(type.naam)))
+                eigen.computeIfAbsent(defaultsDoelSleutel(l), k -> new ArrayList<>()).add(l);
+        // a level that declares no group on an ABSORBED key contributes its ORDINARY RULE as that level's base
+        for (String k : absorb)
+            if (!eigen.containsKey(k)) {
+                PrioritizedDefaults m = regelLid(type, k);
+                if (m != null) eigen.put(k, List.of(m));
+            }
+        LinkedHashMap<String, List<PrioritizedDefaults>> geerfd =
+                type.supertype == null ? new LinkedHashMap<>() : effectieveStapels(type.supertype, absorb);
+        LinkedHashMap<String, List<PrioritizedDefaults>> uit = new LinkedHashMap<>(eigen);
+        geerfd.forEach((k, ouderLeden) -> {
+            List<PrioritizedDefaults> eigenLeden = eigen.get(k);
+            if (eigenLeden == null) { uit.put(k, ouderLeden); return; }
+            // ONE own group over an inherited declared-unordered SET is DEFINED — the inherited block stays
+            // internally unordered and moves as one, above the base and below the own exceptions. It is not
+            // lowered here, and the reason is a property of the wire rather than a gap in the design: that
+            // reading is a THREE-LAYER priority (own exceptions > the unordered inherited block > the own base)
+            // while a defaults group's members reconcile as EQUALS with no order between them. The own base's
+            // justification is unconditional, so wherever it sat it would decide whenever an inherited member
+            // decides, and "an inherited exception outranks the subtype's base" could not be told from "the
+            // base decides when nothing else does".
+            if (eigenLeden.size() == 1 && ouderLeden.size() > 1)
+                throw new DefaultsOnvertaalbaar("doel " + k + " op '" + type.naam + "' zet één eigen groep boven"
+                        + " een geërfde ongeordende verzameling van " + ouderLeden.size() + ": de lezing is een"
+                        + " drielaagse prioriteit en de leden van een groep verzoenen als gelijken");
+            // A declared-unordered set on the OWN level, over anything inherited: here the design itself is
+            // silent, so this one is genuinely undefined rather than merely un-lowered.
+            if (eigenLeden.size() != 1 || ouderLeden.size() != 1)
+                throw new DefaultsOnvertaalbaar("doel " + k + " op '" + type.naam + "' draagt " + eigenLeden.size()
+                        + " eigen en " + ouderLeden.size() + " geërfde groep(en): een vouw tussen een eigen"
+                        + " ongeordende verzameling en een geërfde stapel heeft geen gedefinieerde lezing");
+            uit.put(k, List.of(voegSamen(eigenLeden.get(0), ouderLeden.get(0))));
+        });
+        return uit;
+    }
+
+    /** The vacuously true justification an unconditional rule gets when it becomes a base — the same empty-ALLE
+     *  the frontend's own desugaring uses, so the two readings are one shape. */
+    private static final Conditie ALTIJD =
+            new Conditie.Samengesteld(Conditie.Kwantor.ALLE, 0, List.of(), null);
+
+    /** {@code level}'s own contribution to {@code key} when it declares no defaults group — its ordinary rules
+     *  read as a defaults chain, the computing rule as the base and the initialisation below it. Null when the
+     *  level writes the target with no ordinary rule either; two computing rules on one target are agenda order,
+     *  which prioritized defaults exist to replace, so those refuse. */
+    private PrioritizedDefaults regelLid(Objecttype level, String key) {
+        // EVERY ordinary writer on the target — the filter is on the target and nothing else. Skipping the forms
+        // the fold cannot carry would be a silent-answer bug rather than a narrowing: geabsorbeerdOp takes the
+        // rule out of the rule circuit per (type, attribute), so a rule the fold skipped would be silenced
+        // without ever becoming a base and its writer would vanish. Collect everything; refuse by name below.
+        List<ResolvedRegel> comps = new ArrayList<>(), inits = new ArrayList<>(), alle = new ArrayList<>();
+        for (ResolvedRegel r : model.resolvedRegels) {
+            if (!(r.doel() instanceof Expr.AttribuutRef d) || d.attribuut() == null) continue;
+            if (d.objecttype() != level || !("A:" + defaultsNorm(d.attribuut())).equals(key)) continue;
+            switch (r.soort()) {
+                case GELIJKSTELLING, BEREKENING -> { comps.add(r); alle.add(r); }
+                case INITIALISATIE -> { inits.add(r); alle.add(r); }
+                default -> { }
+            }
+        }
+        if (alle.isEmpty()) return null;
+        for (ResolvedRegel r : alle)
+            // NOT lowered, deliberately: a windowed base would put §4.2 version selection inside the stack, and
+            // defeasibility is kept apart from it on purpose.
+            if (r.geldigheid() != null && !r.geldigheid().altijd())
+                throw new DefaultsOnvertaalbaar("doel " + key + " op '" + level.naam + "' wordt geschreven door een"
+                        + " regel met een GELDIGHEIDSVENSTER naast een geërfde defaults-stapel: een venster in de"
+                        + " basis zou versieselectie in de stapel leggen, en de blokorde heeft daar geen lezing voor");
+        for (ResolvedRegel r : alle)
+            if (r.waarde() == null)
+                throw new DefaultsOnvertaalbaar("doel " + key + " op '" + level.naam + "' wordt geschreven door een"
+                        + " regel zonder waarde naast een geërfde defaults-stapel: een basis zonder consequentie"
+                        + " beslist niets en is niet te vouwen");
+        if (comps.size() > 1 || inits.size() > 1)
+            throw new DefaultsOnvertaalbaar("doel " + key + " op '" + level.naam + "' wordt geschreven door "
+                    + comps.size() + " rekenende en " + inits.size() + " initialisatie-regel(s) naast een geërfde"
+                    + " defaults-stapel: de betekenis van twee schrijvers op één doel is agenda-orde, en dat is nu"
+                    + " juist wat prioritized defaults vervangen");
+        List<Default> ds = new ArrayList<>();
+        String attr = null;
+        for (ResolvedRegel r : comps) {
+            attr = ((Expr.AttribuutRef) r.doel()).attribuut();
+            ds.add(new Default(null, r.voorwaarde() != null ? r.voorwaarde() : ALTIJD, r.waarde(), false, null, r.naam()));
+        }
+        for (ResolvedRegel r : inits) {
+            attr = ((Expr.AttribuutRef) r.doel()).attribuut();
+            ds.add(new Default(null, null, r.waarde(), true, null, r.naam()));
+        }
+        return new PrioritizedDefaults("regel als basis: " + attr + " van " + level.naam, level.naam,
+                null, attr, false, List.copyOf(ds), "een gewone regel is de basis van zijn laag", null);
+    }
+
+    /** The CONCRETE types on which an ordinary rule writing ({@code otype}, {@code attr}) has been folded into an
+     *  effective defaults stack as its base, and must therefore not fire as a rule as well. Empty unless the
+     *  type's own chain declares a defaults group on that target. */
+    private List<Objecttype> geabsorbeerdOp(Objecttype otype, String attr) {
+        String key = "A:" + defaultsNorm(attr);
+        // the rule's OWN level declaring a group on the target is not inheritance but the frontend's
+        // single-writer lift, refused at the document. The synthesis skips such a level, so the suppression must
+        // skip it too — otherwise the rule is silenced without ever becoming a base.
+        for (PrioritizedDefaults l : prioritizedDefaults())
+            if (model.objecttypeOpNaam(l.onderwerp()) == otype && defaultsDoelSleutel(l).equals(key))
+                return List.of();
+        List<Objecttype> uit = new ArrayList<>();
+        for (Objecttype t : model.objecttypen.values())
+            if (t.isEen(otype) && ketenGroepSleutels(t).contains(key)) uit.add(t);
+        return uit;
+    }
+
+    /** The target keys on which {@code t}'s own chain declares a defaults GROUP. */
+    private Set<String> ketenGroepSleutels(Objecttype t) {
+        Set<String> uit = new LinkedHashSet<>();
+        for (PrioritizedDefaults l : prioritizedDefaults()) {
+            Objecttype onderwerp = model.objecttypeOpNaam(l.onderwerp());
+            if (onderwerp != null && t.isEen(onderwerp)) uit.add(defaultsDoelSleutel(l));
+        }
+        return uit;
+    }
+
+    private List<PrioritizedDefaults> prioritizedDefaults() { return model.prioritizedDefaults; }
+
+    /** The block order, applied to one own member over one inherited member. */
+    private static PrioritizedDefaults voegSamen(PrioritizedDefaults eigen, PrioritizedDefaults geerfd) {
+        List<Default> uit = new ArrayList<>();
+        uit.addAll(uitzonderingen(eigen));
+        uit.addAll(uitzonderingen(geerfd));
+        Default basis = basisVan(eigen) != null ? basisVan(eigen) : basisVan(geerfd);
+        if (basis != null) uit.add(basis);
+        uit.addAll(initialisaties(geerfd));
+        uit.addAll(initialisaties(eigen));
+        return new PrioritizedDefaults(eigen.naam(), eigen.onderwerp(), eigen.kenmerk(), eigen.attribuut(),
+                eigen.ongeordend(), List.copyOf(uit), eigen.bron(), eigen.geldigheid());
+    }
+
+    /** The LOWEST ordinary default, and only when it decides something itself: a group-default delegates to its
+     *  exception groups and is not a base, and a declared-unordered member has no "lowest" at all, so its whole
+     *  block travels as one. */
+    private static Default basisVan(PrioritizedDefaults l) {
+        if (l.ongeordend()) return null;
+        Default laatste = null;
+        for (Default d : l.defaults()) if (!d.initialisatie()) laatste = d;
+        return laatste != null && laatste.heeftEigenInhoud() ? laatste : null;
+    }
+    private static List<Default> uitzonderingen(PrioritizedDefaults l) {
+        Default basis = basisVan(l);
+        List<Default> uit = new ArrayList<>();
+        for (Default d : l.defaults()) if (!d.initialisatie() && d != basis) uit.add(d);
+        return uit;
+    }
+    private static List<Default> initialisaties(PrioritizedDefaults l) {
+        List<Default> uit = new ArrayList<>();
+        for (Default d : l.defaults()) if (d.initialisatie()) uit.add(d);
+        return uit;
+    }
+
+    private static String defaultsDoelSleutel(PrioritizedDefaults l) {
+        return (l.isKenmerk() ? "K:" : "A:") + defaultsNorm(l.doel());
+    }
+    /** The manifest/rule identity of a defaults group — the kind-discriminated target form on its OWNER type, so
+     *  two types sharing one inherited target still name two rules. */
+    private static String defaultsConstructNaam(EffectieveStapel stapel) {
+        PrioritizedDefaults l0 = stapel.leden().get(0);
+        return "defaults " + (l0.isKenmerk() ? "K:" : "A:") + stapel.eigenaar().naam + "." + l0.doel();
+    }
+    /** Delegates to the SHARED name contract: a second copy of the fold here is how the doel/defaults keys and
+     *  every other name-keyed lookup would come to disagree the moment one of the two is corrected. */
+    private static String defaultsNorm(String s) { return Namen.norm(s); }
+
+    /** Lower one defaults group to its single reduce-rule: LHS the class-reactive subject pattern (the freshness
+     *  idiom), RHS the top-down walk over the defaults with leeg fall-through, recursion into the nested exception
+     *  groups, member reconciliation, and one idempotent write or one §9.5 {@code Inconsistentie}. Loud,
+     *  reason-carrying {@link #skipList} fences (the exec back-end's skip discipline, surfaced by {@link #meet} as
+     *  a SKIP): a temporal defaults target, a channel-depositing consequence (division), a
+     *  justification/consequence not reducible to the subject-local lambda machinery. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private List<Rule> defaultsGroep(EffectieveStapel stapel) {
+        List<PrioritizedDefaults> members = stapel.leden();
+        // The conflict path inserts one Inconsistentie and never un-writes a target, and the idempotency guard
+        // blocks re-insertion; that is only sound because defaultsSalience holds the reduce-rule strictly below
+        // every producer of every read of every default — a premature fire cannot happen. Keep that invariant in
+        // mind before weakening the salience derivation.
+        PrioritizedDefaults l0 = members.get(0);
+        // the stack's OWNER, not the declaring subject of its members: inheritance has already folded the
+        // supertype's declarations in, so this is the type whose instances the stack runs on
+        Objecttype onderwerp = stapel.eigenaar();
+        Class<?> factClass = factClass(onderwerp);
+        if (factClass == null) return skipList("defaults (geen fact-class " + onderwerp.naam + ")");
+
+        boolean isChar = l0.isKenmerk();
+        String doel = l0.doel();
+        // the conflict key names the type that DECLARES the target, never the concrete type: one target reports
+        // under one name however many subtypes inherit it
+        Objecttype declarant = onderwerp.declarantVan(doel);
+        String targetForm = (declarant != null ? declarant.naam : l0.onderwerp()) + "." + doel;
+
+        // fence: a characteristic target that NAME-SHARES an attribute — the bean carries a single field per name
+        // and the attribute wins (FactModelGenerator: attribuut > kenmerk > referentie), so the boolean kenmerk has
+        // no bean field to write and the two cannot be told apart on read-back. A pre-existing bean-model limit.
+        if (isChar && onderwerp.attribuut(doel) != null)
+            return skipList("defaults (kenmerktarget " + targetForm + " deelt zijn naam met een attribuut — de bean"
+                    + " draagt één veld per naam (attribuut wint), dus het boolean kenmerk kan niet worden geschreven"
+                    + " of onderscheiden; bean-model-limiet, geen defaults-divergentie)");
+        // fence: a temporal defaults target — temporal writes are not implemented.
+        if (!isChar && onderwerp.granulariteitLeden().containsKey(doel))
+            return skipList("defaults (temporeel defaults-target " + targetForm + " — temporele writes niet gedragen)");
+        // fence: a §3.6 gedimensioneerd (Map) target — out of the scalar-first scope.
+        if (!isChar && !onderwerp.dimensiesVan(doel).isEmpty())
+            return skipList("defaults (gedimensioneerd defaults-target " + targetForm + " — buiten scalar-first scope)");
+        // fence: a dated validity window — a per-member rekendatum gate is not built.
+        for (PrioritizedDefaults l : members)
+            if (l.geldigheid() != null && !l.geldigheid().altijd())
+                return skipList("defaults (gedateerde geldigheid op " + targetForm + " — defaults-vensters niet gedragen)");
+
+        // compile every member chain; a non-lowerable default throws DefaultsOnvertaalbaar (one loud fence for the group).
+        List<List<GecompileerdeDefault>> ledenDefaults = new ArrayList<>();
+        Set<String> globalNamen = new LinkedHashSet<>();
+        try {
+            for (PrioritizedDefaults l : members) {
+                List<GecompileerdeDefault> ds = compileDefaults(l.defaults(), onderwerp, isChar, doel);
+                verzamelDefaultsGlobals(ds, globalNamen);
+                ledenDefaults.add(ds);
+            }
+        } catch (DefaultsOnvertaalbaar e) {
+            return skipList("defaults (" + targetForm + "): " + e.getMessage());
+        }
+
+        java.util.function.Function<Object, Object> doelGetter = Accessors.getter(factClass, doel);
+        BiConsumer<Object, Object> doelSetter = Accessors.setter(factClass, doel);
+
+        seq = 0;
+        Variable sVar = DSL.declarationOf(factClass, "$subject");
+        // class-reactive: an opaque always-true expr keeps the pattern reactive to EVERY subject property change,
+        // so the reduce-rule re-fires when a producer writes any read of any default (the freshness idiom). The
+        // frontend keeps the target off the read set, so the group's own write never cycles it (NO_LOOP guards
+        // self-retrigger). A stack belongs to EXACTLY ONE type: with native `extends` a pattern on the supertype's
+        // class matches subtype facts too, and the subtype has a stack of its own — so the subject is pinned to
+        // the concrete class here, and only where the model actually has a hierarchy (a flat model keeps the
+        // always-true freshness expr byte for byte).
+        boolean heeftHierarchie = model.objecttypen.values().stream().anyMatch(t -> t.supertype != null);
+        PatternDSL.PatternDef pattern = heeftHierarchie
+                ? PatternDSL.pattern(sVar).expr(nextId("lfresh"), (Predicate1) (s -> s.getClass() == factClass))
+                : PatternDSL.pattern(sVar).expr(nextId("lfresh"), (Predicate1) (s -> true));
+
+        // resolve the globals the default consequences read.
+        List<String> gnames = new ArrayList<>(globalNamen);
+        List<Variable> vars = new ArrayList<>();
+        vars.add(sVar);
+        for (String gn : gnames) {
+            Global<?> g = waardeGlobal(gn);
+            if (g == null) return skipList("defaults (" + targetForm + "): consequentie leest niet-geregistreerde global " + gn);
+            vars.add((Variable) g);
+        }
+
+        boolean kanConflicteren = ledenDefaults.size() >= 2 || bevatMeervoudigeExcepties(ledenDefaults);
+        final String fqcn = FACTS + ".Inconsistentie";
+        final List<List<GecompileerdeDefault>> ledenDefaultsF = ledenDefaults;
+        final boolean isCharF = isChar;
+        final String targetFormF = targetForm;
+        final List<String> gnamesF = gnames;
+        final java.util.function.Function<Object, Object> getterF = doelGetter;
+        final BiConsumer<Object, Object> setterF = doelSetter;
+
+        RuleItemBuilder<?> consequence = consequenceOf(vars.toArray(new Variable[0]), (drools, args) -> {
+            Object s = args[0];
+            Map<String, BigDecimal> gm = new LinkedHashMap<>();
+            vulGlobalMap(gm, gnamesF, args, 1);
+            DefaultsRun run = new DefaultsRun(s, gm, getterF, isCharF, targetFormF);
+            List<Uitkomst> memberResults = new ArrayList<>();
+            for (List<GecompileerdeDefault> member : ledenDefaultsF) memberResults.add(run.decide(member, List.of()));
+            Uitkomst res = run.reconcile(memberResults, List.of());
+            switch (res.soort()) {
+                case Uitkomst.CONFLICT ->
+                    // over-determination: no write, one §9.5 fact — bare-keyed at the root, path-keyed for a
+                    // nested exception-group conflict.
+                    drools.insert(RegelSpraakRuntime.newInconsistentie(fqcn, res.conflictSleutel(), s));
+                case Uitkomst.DECIDED -> {
+                    Beslissing b = res.beslissing();
+                    if (isCharF) { if (b.charBesluit()) werkBij(drools, s, getterF, setterF, Boolean.TRUE); }
+                    else werkBij(drools, s, getterF, setterF, b.attrWaarde());
+                }
+                default -> { /* UNDECIDED: no write — the target keeps what the fact base holds */ }
+            }
+        });
+        if (consequence == null) return skipList("defaults (" + targetForm + "): te veel gebonden globals");
+
+        List<RuleItemBuilder<?>> items = new ArrayList<>();
+        items.add(pattern);
+        // §9.5 idempotency guard: a conflict-capable group inserts at most one Inconsistentie per subject — block a
+        // re-insert of the same (regel-family, subject). The family is targetForm (+/<path> for a nested conflict);
+        // only a conflict-capable group installs the guard, so a name-sharing non-conflicting group is never
+        // blocked by the other's conflict fact.
+        if (kanConflicteren) {
+            Class<?> incClass = inconsistentieClass();
+            if (incClass != null) {
+                Variable incVar = DSL.declarationOf(incClass, "$linc_" + (seq++));
+                final String tf = targetForm;
+                PatternDSL.PatternDef guard = PatternDSL.pattern(incVar)
+                        .expr(nextId("lig"), (Predicate1) i -> {
+                            Object rg = RegelSpraakRuntime.get(i, "regel");
+                            return rg instanceof String s2 && (s2.equals(tf) || s2.startsWith(tf + "/"));
+                        })
+                        .expr(nextId("lig"), (Variable) sVar, (Predicate2) (i, s) -> RegelSpraakRuntime.get(i, "subject") == s);
+                items.add(DSL.not(guard));
+            }
+        }
+        items.add(consequence);
+
+        // group-local salience: strictly below every PRODUCER of every default's justification/consequence read
+        // (recursed through the exception groups), so a monotone characteristic write cannot decide before its
+        // reads have settled. Derived locally from the group's reads.
+        int salience = defaultsSalience(members, onderwerp);
+        var bouwer = PatternDSL.rule(kop(defaultsConstructNaam(stapel))).attribute(Rule.Attribute.NO_LOOP, true);
+        if (salience != 0) bouwer = bouwer.attribute(Rule.Attribute.SALIENCE, salience);
+        return List.of(bouwer.build(items.toArray(new RuleItemBuilder[0])));
+    }
+
+    private List<GecompileerdeDefault> compileDefaults(List<Default> defaults, Objecttype onderwerp, boolean isChar, String doel) {
+        List<GecompileerdeDefault> uit = new ArrayList<>();
+        for (Default r : defaults) uit.add(compileDefault(r, onderwerp, isChar, doel));
+        return uit;
+    }
+
+    /** Compile one default to its build-time closures. A form the scalar-first back-end does not carry raises a
+     *  loud {@link DefaultsOnvertaalbaar} (caught in {@link #defaultsGroep} as the group's fence reason). */
+    private GecompileerdeDefault compileDefault(Default r, Objecttype onderwerp, boolean isChar, String doel) {
+        Predicate1<Object> just;
+        boolean init = r.initialisatie();
+        if (init) {
+            if (isChar) throw new DefaultsOnvertaalbaar("initialisatie-default op kenmerk-defaults");
+            just = null;   // justified via target-empty at fire time
+        } else if (r.voorwaarde() == null) {
+            if (r.heeftEigenInhoud()) throw new DefaultsOnvertaalbaar("beslissende default zonder justificatie");
+            just = null;   // a contentless group-default never evaluates justified
+        } else {
+            just = subjectConditie(r.voorwaarde(), onderwerp);
+            if (just == null)
+                throw new DefaultsOnvertaalbaar("niet-reduceerbare justificatie (far-side/aggregatie/global): " + defaultsReden(r));
+        }
+        Boolean besluit = isChar ? r.besluit() : null;
+        WaardeFn conseq = null;
+        if (!isChar && r.consequentie() != null) {
+            String foutplek = foutplekSoort(r.consequentie());
+            if (foutplek != null)
+                throw new DefaultsOnvertaalbaar("kanaal-deponerende consequentie (" + foutplek + ") op defaults-target: " + defaultsReden(r));
+            WaardeFn wf;
+            boolean prev = ketenWaardePad;
+            try { ketenWaardePad = true; wf = scalarWaarde(onderwerp, r.consequentie()); }
+            finally { ketenWaardePad = prev; }
+            if (wf == null)
+                throw new DefaultsOnvertaalbaar("niet-reduceerbare consequentie (far-side/aggregatie): " + defaultsReden(r));
+            // §4 EXACT restate into the target unit, like every other restatement site in this file
+            conseq = wf.herschaald(r.consequentie().type(), onderwerp.attribuut(doel));
+        }
+        List<List<GecompileerdeDefault>> exc = null;
+        if (r.excepties() != null) {
+            exc = new ArrayList<>();
+            for (ExceptionGroup sl : r.excepties().leden()) exc.add(compileDefaults(sl.defaults(), onderwerp, isChar, doel));
+        }
+        return new GecompileerdeDefault(just, init, besluit, conseq, exc, r.heeftEigenInhoud());
+    }
+    private static String defaultsReden(Default r) { return r.bron() == null ? "<default>" : r.bron(); }
+
+    /** A subject-local justification predicate ({@code subject -> boolean}): a compound recurses per its kwantor,
+     *  every leaf goes through the shared {@link #leafPredicate} (kenmerk / own-or-navigated comparison /
+     *  predicaat). null when ANY part is not reducible (a global-reading bullet, a deeper form leafPredicate
+     *  declines) — the caller then fences the whole defaults group. Generalises {@link #leafCompound} to arbitrary
+     *  nesting; an empty ALLE-compound is the vacuously true "altijd". */
+    private Predicate1<Object> subjectConditie(Conditie c, Objecttype subject) {
+        if (c == null) return null;
+        if (c instanceof Conditie.Samengesteld sam) {
+            List<Predicate1<Object>> kids = new ArrayList<>();
+            for (Conditie deel : sam.onderdelen()) {
+                Predicate1<Object> k = subjectConditie(deel, subject);
+                if (k == null) return null;
+                kids.add(k);
+            }
+            final Conditie.Kwantor kw = sam.kwantor();
+            final int n = sam.drempel();
+            final List<Predicate1<Object>> fk = kids;
+            return s -> {
+                int t = 0;
+                for (Predicate1<Object> p : fk) if (p.test(s)) t++;
+                return switch (kw) {
+                    case ALLE, DE -> t == fk.size();
+                    case GEEN -> t == 0; case TEN_MINSTE -> t >= n; case TEN_HOOGSTE -> t <= n; case PRECIES -> t == n;
+                };
+            };
+        }
+        return leafPredicate(c, subject);
+    }
+
+    /** The kind ({@code "deling"} / {@code "wortel"}) of the first §9.5 channel-depositing site in an expression —
+     *  a §6.5 deling-door-leeg or a §6.6 wortel-van-negatief raises the Fout on the channel — or null when there is
+     *  none: the speculative-deposit case the scalar-first port fences instead of building. A defaults consequence
+     *  lowers no companion rule (static or probe), so a site here would fault in SILENCE. */
+    private String foutplekSoort(Expr e) {
+        if (e == null) return null;
+        // the fence must see a site hidden inside a Let value/body or an IfThenElse branch — otherwise a
+        // Let-wrapped deling-door-leeg would deposit on the channel speculatively.
+        if (e instanceof Expr.Let l) {
+            String r = foutplekSoort(l.value());
+            return r != null ? r : foutplekSoort(l.body());
+        }
+        if (e instanceof Expr.IfThenElse ite) {
+            String r = foutplekSoort(ite.dan());
+            return r != null ? r : foutplekSoort(ite.anders());
+        }
+        if (e instanceof Expr.Binair b) {
+            if (b.op() == Expr.BinOp.GEDEELD_DOOR || b.op() == Expr.BinOp.GEDEELD_DOOR_ABS) return "deling";
+            String r = foutplekSoort(b.links());
+            return r != null ? r : foutplekSoort(b.rechts());
+        }
+        if (e instanceof Expr.Afgerond af) return foutplekSoort(af.basis());
+        if (e instanceof Expr.Begrensd bg) {
+            String r = foutplekSoort(bg.basis());
+            if (r == null) r = foutplekSoort(bg.minimum());
+            return r != null ? r : foutplekSoort(bg.maximum());
+        }
+        if (e instanceof Expr.Functie f) {
+            if (f.kind() == Expr.FunctieKind.WORTEL) return "wortel";
+            for (Expr a : f.argumenten()) { String r = foutplekSoort(a); if (r != null) return r; }
+            return foutplekSoort(f.leegwaarde());
+        }
+        if (e instanceof Expr.TekstReeks tr) {
+            for (Expr.TekstReeks.Deel d : tr.delen())
+                if (d instanceof Expr.TekstReeks.Ingevoegd i) { String r = foutplekSoort(i.expr()); if (r != null) return r; }
+            return null;
+        }
+        if (e instanceof Expr.DimensieCel dc) return foutplekSoort(dc.attribuut());
+        return null;
+    }
+
+    private static void verzamelDefaultsGlobals(List<GecompileerdeDefault> defaults, Set<String> out) {
+        for (GecompileerdeDefault r : defaults) {
+            if (r.consequentie() != null) out.addAll(r.consequentie().globals());
+            if (r.excepties() != null) for (List<GecompileerdeDefault> sub : r.excepties()) verzamelDefaultsGlobals(sub, out);
+        }
+    }
+
+    /** Whether the group can reach a conflict outcome — it has ≥2 members (a root declared-unordered group) or
+     *  carries anywhere a default whose excepties holds ≥2 exception groups (a nested group). */
+    private static boolean bevatMeervoudigeExcepties(List<List<GecompileerdeDefault>> leden) {
+        for (List<GecompileerdeDefault> m : leden) if (bevatMeervoudigeExceptiesR(m)) return true;
+        return false;
+    }
+    private static boolean bevatMeervoudigeExceptiesR(List<GecompileerdeDefault> defaults) {
+        for (GecompileerdeDefault r : defaults) {
+            if (r.excepties() != null) {
+                if (r.excepties().size() >= 2) return true;
+                for (List<GecompileerdeDefault> sub : r.excepties()) if (bevatMeervoudigeExceptiesR(sub)) return true;
+            }
+        }
+        return false;
+    }
+
+    /** Group-local salience: strictly below every producer of every read of every default. Collect the
+     *  kenmerk/attribute names the group reads (justifications + consequences, recursed through the exception
+     *  groups), find the resolved rules that WRITE them on this subject type, and sit one below the minimum of
+     *  their salience — so a monotone characteristic write decides only at the fixpoint of its reads. No producers
+     *  (input-only reads) -&gt; 0. */
+    private int defaultsSalience(List<PrioritizedDefaults> members, Objecttype onderwerp) {
+        Set<String> reads = new LinkedHashSet<>();
+        for (PrioritizedDefaults l : members) verzamelDefaultsLeesnamen(l.defaults(), reads);
+        int minProd = 0; boolean any = false;
+        for (ResolvedRegel r : model.resolvedRegels) {
+            if (!(r.doel() instanceof Expr.AttribuutRef d) || d.attribuut() == null) continue;
+            if (!reads.contains(d.attribuut())) continue;
+            // a producer declared on an ANCESTOR also writes this type's facts, so the stack must sit below it
+            // too — otherwise the reduce-rule can fire before its reads settle
+            if (d.objecttype() == null || !onderwerp.isEen(d.objecttype()) && !gelijkeType(d.objecttype(), onderwerp))
+                continue;
+            any = true;
+            minProd = Math.min(minProd, strat.salience(r));
+        }
+        return any ? minProd - 1 : 0;
+    }
+    private static boolean gelijkeType(Objecttype a, Objecttype b) {
+        return a == b || (a != null && b != null && a.naam != null && a.naam.equalsIgnoreCase(b.naam));
+    }
+    private void verzamelDefaultsLeesnamen(List<Default> defaults, Set<String> uit) {
+        for (Default r : defaults) {
+            conditieLeesnamen(r.voorwaarde(), uit);
+            exprLeesnamen(r.consequentie(), uit);
+            if (r.excepties() != null) for (ExceptionGroup sl : r.excepties().leden()) verzamelDefaultsLeesnamen(sl.defaults(), uit);
+        }
+    }
+    private void conditieLeesnamen(Conditie c, Set<String> uit) {
+        if (c == null) return;
+        if (c instanceof Conditie.Kenmerk k) { if (k.kenmerk() != null) uit.add(k.kenmerk()); }
+        else if (c instanceof Conditie.Samengesteld sam) { for (Conditie d : sam.onderdelen()) conditieLeesnamen(d, uit); }
+        else if (c instanceof Conditie.Vergelijking v) { exprLeesnamen(v.links(), uit); exprLeesnamen(v.rechts(), uit); }
+        else if (c instanceof Conditie.Predicaat p) { exprLeesnamen(p.operand(), uit); }
+        else if (c instanceof Conditie.Periode pd) { exprLeesnamen(pd.vanaf(), uit); exprLeesnamen(pd.tot(), uit); }
+    }
+    private void exprLeesnamen(Expr e, Set<String> uit) {
+        if (e == null) return;
+        // a Let-wrapped read is still a read — the group's salience must sit below its producer.
+        if (e instanceof Expr.Let l) { exprLeesnamen(l.value(), uit); exprLeesnamen(l.body(), uit); }
+        else if (e instanceof Expr.IfThenElse ite) { conditieLeesnamen(ite.conditie(), uit); exprLeesnamen(ite.dan(), uit); exprLeesnamen(ite.anders(), uit); }
+        else if (e instanceof Expr.AttribuutRef a) { if (a.attribuut() != null) uit.add(a.attribuut()); }
+        else if (e instanceof Expr.Binair b) { exprLeesnamen(b.links(), uit); exprLeesnamen(b.rechts(), uit); }
+        else if (e instanceof Expr.Afgerond af) { exprLeesnamen(af.basis(), uit); }
+        else if (e instanceof Expr.Begrensd bg) { exprLeesnamen(bg.basis(), uit); exprLeesnamen(bg.minimum(), uit); exprLeesnamen(bg.maximum(), uit); }
+        else if (e instanceof Expr.Functie f) { for (Expr a : f.argumenten()) exprLeesnamen(a, uit); }
+        else if (e instanceof Expr.DimensieCel dc) { exprLeesnamen(dc.attribuut(), uit); }
+        else if (e instanceof Expr.TekstReeks tr) {
+            for (Expr.TekstReeks.Deel d : tr.delen()) if (d instanceof Expr.TekstReeks.Ingevoegd i) exprLeesnamen(i.expr(), uit);
+        }
+    }
+
+    /** A single defaults decision: a characteristic besluit XOR an attribute value. */
+    private record Beslissing(boolean isChar, boolean charBesluit, Object attrWaarde) {}
+
+    /** A chain/reconcile result: UNDECIDED (fall-through), DECIDED (the winning decision), or CONFLICT (a
+     *  differing declared-unordered group, keyed by its default-index path). */
+    private record Uitkomst(int soort, Beslissing beslissing, String conflictSleutel) {
+        static final int UNDECIDED = 0, DECIDED = 1, CONFLICT = 2;
+        static Uitkomst undecided() { return new Uitkomst(UNDECIDED, null, null); }
+        static Uitkomst decided(Beslissing b) { return new Uitkomst(DECIDED, b, null); }
+        static Uitkomst conflict(String key) { return new Uitkomst(CONFLICT, null, key); }
+    }
+
+    /** A compiled default: the subject-local justification (null on the initialisation default — justified iff the
+     *  target is empty), the characteristic decision (or null), the attribute value fn (or null), and the nested
+     *  exception-group members (or null). {@code heeftEigenInhoud} separates a form-a default from a contentless
+     *  group-default. */
+    private record GecompileerdeDefault(Predicate1<Object> justificatie, boolean initialisatie, Boolean besluit,
+            WaardeFn consequentie, List<List<GecompileerdeDefault>> excepties, boolean heeftEigenInhoud) {}
+
+    /** A loud, reason-carrying fence raised while composing or compiling defaults the back-end does not carry. */
+    private static final class DefaultsOnvertaalbaar extends RuntimeException {
+        DefaultsOnvertaalbaar(String reden) { super(reden); }
+    }
+
+    /** One fire of a defaults group over one subject: the top-down walk over the defaults with leeg fall-through,
+     *  recursion into exception groups, and member reconciliation. A default's own decision evaluates its
+     *  consequence directly — the channel-depositing case is fenced at build time, not buffered here. */
+    private static final class DefaultsRun {
+        private final Object s;
+        private final Map<String, BigDecimal> gm;
+        private final java.util.function.Function<Object, Object> doelGetter;
+        private final boolean isChar;
+        private final String targetForm;
+        DefaultsRun(Object s, Map<String, BigDecimal> gm, java.util.function.Function<Object, Object> doelGetter,
+                    boolean isChar, String targetForm) {
+            this.s = s; this.gm = gm; this.doelGetter = doelGetter; this.isChar = isChar; this.targetForm = targetForm;
+        }
+
+        private boolean justified(GecompileerdeDefault r) {
+            if (r.initialisatie()) return doelGetter.apply(s) == null;   // justified iff the target is empty in the input
+            if (r.justificatie() == null) return false;
+            try { return r.justificatie().test(s); }              // Drools Predicate1.test declares a checked Exception
+            catch (RuntimeException e) { throw e; }
+            catch (Exception e) { throw new RuntimeException(e); }
+        }
+
+        /** A default's OWN decision, exception group aside — a Beslissing when it decides, null when it falls
+         *  through. */
+        private Beslissing ownDecision(GecompileerdeDefault r) {
+            if (isChar) {
+                if (r.besluit() == null) return null;   // a group-default has no own besluit
+                return justified(r) ? new Beslissing(true, r.besluit(), null) : null;
+            }
+            if (r.consequentie() == null || !justified(r)) return null;
+            Object v = collapseBreuk(r.consequentie().fn().apply(s, gm));
+            if (v == null) return null;   // a leeg consequence falls through
+            return new Beslissing(false, false, v);
+        }
+
+        Uitkomst decide(List<GecompileerdeDefault> defaults, List<Integer> path) {
+            for (int i = 0; i < defaults.size(); i++) {
+                GecompileerdeDefault r = defaults.get(i);
+                if (r.excepties() != null) {
+                    // the exception group goes first: reconcile it at this default's path; a settling exception
+                    // group (deciding OR conflicting) displaces every lower default.
+                    List<Integer> subPath = new ArrayList<>(path); subPath.add(i);
+                    List<Uitkomst> results = new ArrayList<>();
+                    for (List<GecompileerdeDefault> sub : r.excepties()) results.add(decide(sub, subPath));
+                    Uitkomst reconciled = reconcile(results, subPath);
+                    if (reconciled.soort() != Uitkomst.UNDECIDED) return reconciled;
+                    // an empty exception group falls back: a form-a default to its own decision, a group-default
+                    // to the next default.
+                    if (r.heeftEigenInhoud()) {
+                        Beslissing d = ownDecision(r);
+                        if (d != null) return Uitkomst.decided(d);
+                    }
+                } else {
+                    Beslissing d = ownDecision(r);
+                    if (d != null) return Uitkomst.decided(d);
+                }
+            }
+            return Uitkomst.undecided();
+        }
+
+        /** Reconcile a group's member results: a deeper conflict propagates unchanged; otherwise the deciding
+         *  members must agree — equal decisions are one decision, differing decisions are a conflict keyed at
+         *  {@code path}; members deciding nothing drop out. */
+        Uitkomst reconcile(List<Uitkomst> results, List<Integer> path) {
+            for (Uitkomst u : results) if (u.soort() == Uitkomst.CONFLICT) return u;
+            List<Beslissing> decided = new ArrayList<>();
+            for (Uitkomst u : results) if (u.soort() == Uitkomst.DECIDED) decided.add(u.beslissing());
+            if (decided.isEmpty()) return Uitkomst.undecided();
+            Beslissing d0 = decided.get(0);
+            for (int i = 1; i < decided.size(); i++)
+                if (!beslissingGelijk(d0, decided.get(i))) return Uitkomst.conflict(pathKey(path));
+            return Uitkomst.decided(d0);
+        }
+
+        private String pathKey(List<Integer> path) {
+            if (path.isEmpty()) return targetForm;
+            StringBuilder sb = new StringBuilder(targetForm);
+            for (int i : path) sb.append('/').append(i);
+            return sb.toString();
+        }
+
+        private static boolean beslissingGelijk(Beslissing a, Beslissing b) {
+            if (a.isChar() != b.isChar()) return false;
+            if (a.isChar()) return a.charBesluit() == b.charBesluit();
+            return waardeGelijk(a.attrWaarde(), b.attrWaarde());
+        }
+        private static boolean waardeGelijk(Object x, Object y) {
+            if (x == null) return y == null;
+            if (x instanceof BigDecimal bx && y instanceof BigDecimal by) return bx.compareTo(by) == 0;
+            return x.equals(y);
+        }
     }
 
     /** The subject's OWN declared attributes a value expression READS, as bean property names — the

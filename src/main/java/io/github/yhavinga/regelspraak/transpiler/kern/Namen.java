@@ -69,4 +69,27 @@ public final class Namen {
     public static String drlString(String s) {
         return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
+
+    /** The form in which two DECLARED names are the SAME name — lowercase-ASCII over collapsed whitespace. The
+     *  ch.-7 defaults keys group a declaration against a subject and a target by name, and two spellings of one
+     *  name must land in one group or a subtype's stack composes over nothing.
+     *
+     *  <p>Deliberately NARROWER than the obvious Java one-liner, because uchar's reference interpreter is the
+     *  arbiter of name equality and a wider rule is not a fix but a new divergence: the whitespace collapse splits
+     *  on SPACE and TAB only (a newline inside a name is a character, not a separator) and the case fold covers
+     *  A-Z only (so "COÖRDINAAT" and "coördinaat" are DIFFERENT names). {@code toLowerCase(Locale.ROOT)} plus
+     *  {@code \s+} folds both pairs together. */
+    public static String norm(String naam) {
+        if (naam == null) return "";
+        StringBuilder uit = new StringBuilder();
+        for (String woord : naam.split("[ \t]+")) {
+            if (woord.isEmpty()) continue;                       // a leading separator run yields ""
+            if (uit.length() > 0) uit.append(' ');
+            for (int i = 0; i < woord.length(); i++) {
+                char c = woord.charAt(i);
+                uit.append(c >= 'A' && c <= 'Z' ? (char) (c + 32) : c);
+            }
+        }
+        return uit.toString();
+    }
 }
