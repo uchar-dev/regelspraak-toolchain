@@ -175,6 +175,53 @@ class OvererfdeSubtypeSemantiekTest {
         assertEquals(0, c4.inconsistenties(), "case4 is een gewone schrijfactie, geen §9.5 conflict");
     }
 
+    /**
+     * The composed path the wrakrecht golden does NOT reach: the supertype carries the defaults group, the
+     * subtype carries only a BARE ordinary rule. That rule must become the base of the subtype's OWN level
+     * (replacing the inherited base) AND must not fire as a rule as well — with native {@code extends} a
+     * pattern on the ancestor's class matches the descendant's facts, so a rule that is both a base and a
+     * rule writes twice and never reaches a fixpoint.
+     */
+    @Test void de_kale_regel_van_een_laag_wordt_de_basis_van_die_laag_en_vuurt_niet_apart() throws Exception {
+        String bron = """
+            Objecttype het Grondrecht (mv: Grondrechten)
+                de grondslag Numeriek (niet-negatief getal met 2 decimalen);
+                de uitkering Numeriek (niet-negatief getal met 2 decimalen);
+                is betwist kenmerk (bijvoeglijk);
+            Objecttype het Duinrecht is een Grondrecht (mv: Duinrechten)
+            Regel uitkering van een grondrecht
+                geldig altijd
+                    De uitkering van een Grondrecht moet gesteld worden op zijn grondslag.
+            Uitzondering op uitkering van een grondrecht: uitkering van een betwist grondrecht
+                geldig altijd
+                    De uitkering van een Grondrecht moet gesteld worden op 99,00
+                    indien het Grondrecht betwist is.
+            Regel uitkering van een duinrecht
+                geldig altijd
+                    De uitkering van een Duinrecht moet gesteld worden op zijn grondslag maal 3.
+            """;
+        RegelSpraakModel m = Resolver.resolve(bron);
+        assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
+        // de frontend tilt de basis + uitzondering eruit; alleen de kale subtype-regel blijft staan
+        assertEquals(1, m.resolvedRegels.size(), () -> "" + m.resolvedRegels);
+        assertEquals(1, m.prioritizedDefaults.size());
+
+        Wereld w = nieuweWereld(m);
+        Object d1 = w.nieuw("Duinrecht");
+        d1.getClass().getMethod("setGrondslag", BigDecimal.class).invoke(d1, new BigDecimal("10.00"));
+        w.vuur(d1);
+        assertBedrag("30.00", w.getal(d1, "getUitkering"),
+                "de eigen kale regel is de basis van zijn laag en vervangt de geërfde basis");
+
+        Wereld w2 = nieuweWereld(m);
+        Object d2 = w2.nieuw("Duinrecht");
+        d2.getClass().getMethod("setGrondslag", BigDecimal.class).invoke(d2, new BigDecimal("10.00"));
+        d2.getClass().getMethod("setBetwist", boolean.class).invoke(d2, true);
+        w2.vuur(d2);
+        assertBedrag("99.00", w2.getal(d2, "getUitkering"),
+                "de geërfde uitzondering slaat de eigen basis");
+    }
+
     // ---------------------------------------------------------------- harnas
 
     private static RegelSpraakModel resolveer() {
@@ -183,9 +230,10 @@ class OvererfdeSubtypeSemantiekTest {
         return m;
     }
 
+    private static Wereld nieuweWereld() throws Exception { return nieuweWereld(resolveer()); }
+
     /** Resolve → beans genereren → in-memory compileren → exec-model bouwen onder TCCL=child → sessie. */
-    private static Wereld nieuweWereld() throws Exception {
-        RegelSpraakModel m = resolveer();
+    private static Wereld nieuweWereld(RegelSpraakModel m) throws Exception {
         ClassLoader cl = FactModelGeneratorTest.compileer(FactModelGenerator.genereer(m));
         ExecModelTranspiler em = ExecModelTranspiler.build(m, cl);
         assertTrue(em.overgeslagen().isEmpty(),

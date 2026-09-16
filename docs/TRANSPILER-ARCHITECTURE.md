@@ -23,7 +23,16 @@ transpiler/
   model/ExecModelTranspiler
                      thin executable-model back-end (the SHIPPABLE path): the same kern, the same runtime
                      helpers captured in lambdas, the same manifest. The value-path subject is a threaded
-                     parameter, never a field.
+                     parameter, never a field. The ONE branch that carries §6.1 prioritized defaults (an
+                     `Uitzondering op`-family, which the resolver lifts OUT of resolvedRegels): one
+                     reduce-rule per (effective stack, CONCRETE subject type), composed over the
+                     inheritance chain — own exceptions, inherited exceptions, the base (the own one
+                     replaces the inherited), the initialisation. An ordinary rule is the base of its own
+                     level and is then taken out of the rule circuit on exactly the classes where the
+                     stack writes its target. The DRL-text branch REFUSES this family by name (see
+                     DrlTranspiler.defaultsMarker): the chain is a per-subject fold with leeg
+                     fall-through, and that branch exists as this one's differential oracle, so a second
+                     implementation from one reading would prove nothing.
 runtime/             RegelSpraakRuntime — the ONE rs* implementation (leegwaarde discipline, §6 arithmetic,
                      tijdlijn algebra, verdeling, dagsoort walks) + the reflective fact bridge/Accessors.
                      Generated DRL therefore needs the regelspraak-parser artifact on its compiling
@@ -31,7 +40,13 @@ runtime/             RegelSpraakRuntime — the ONE rs* implementation (leegwaar
 schema/              the EXPLICIT fact-model contract:
   FactModelGenerator emits the bean sources a resolved model implies (attributes incl. Map-dimension and
                      List<Segment>-timeline fields, isX kenmerken, the to-one reference on the many side,
-                     Segment, Inconsistentie)
+                     Segment, Inconsistentie). A subtype's bean `extends` its supertype's and declares
+                     only its OWN members, so subsumption is the JVM's: a pattern on the ancestor class
+                     matches descendant facts and an aggregation ranges extensionally, with no per-type
+                     duplication. Every facet read in both back-ends therefore asks the model's
+                     CHAIN accessors (granulariteitLeden() and family), never the own declaration map —
+                     reading the own map answers "not temporal" for an INHERITED timeline, which is not a
+                     missing binding but a wrong judgement.
   ContractValidator  checks beans on a classpath against the SAME member derivation and returns ALL
                      violations; RegelSpraakEngine.compile() runs it first and fails fast with the full list.
 engine/ (module)     RegelSpraakEngine: resolve -> validate contract -> exec-model -> KieBase; exposes the
