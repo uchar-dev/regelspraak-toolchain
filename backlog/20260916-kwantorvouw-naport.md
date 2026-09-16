@@ -49,18 +49,38 @@ niet kent. De join gebruikt daarom de bestaande §8.2-verzamelingsvorm van de
 toolchain: `model.verbindendeRol(elem, subject)` levert het beanveld op het
 element dat naar het subject wijst. Ontbreekt die rol, dan weigert de arm
 luid ("geen verbindende rol tussen X en Y") in plaats van te raden. Gevolg,
-bewust: het zelfgetypeerde bereik dat uchar via `bronRol` terugvalt, valt
-hier buiten bereik; het `bronRol`-veld wordt nog niet gelezen.
+bewust: het `bronRol`-veld van de wire wordt hier niet gelezen, dus het
+zelfgetypeerde bereik waarvoor uchar daarop terugvalt, valt buiten deze arm.
+Dat is vandaag geen gemis dat je kunt tonen: de lens kreeg ook een
+meerduidige rol niet langs WF-096, dus er is geen document dat de
+terugvalroute nodig heeft én deze arm bereikt.
 
 Tweede bewuste afwijking van uchar: daar markeert de DRL-tekst-tak de knoop
 en weigert het document bij naam; hier moet die tak hem WEL lowerden, want
 acceptatie (a) eist DRL==exec op absolute waarden. Beide takken dragen de arm
 dus, met dezelfde weigeringsredenen op dezelfde plaatsen: 16 benoemde
-weigeringen in de DRL-tak, 19 in de exec-tak. Die drie extra zijn defensief
-en onbereikbaar via de resolver (geen fact-class voor het elementtype, een
-niet-geregistreerde global, een grens die meer dan één global leest); de
-DRL-tak handelt ze via `waarde()` en Drools' eigen compilatie af. Precies
-dezelfde asymmetrie draagt de bestaande §8.2-verzamelingsarm al.
+weigeringen in de DRL-tak, 19 in de exec-tak.
+
+Eerlijk over BEREIKBAARHEID, want een weigering die niemand kan raken is
+geen dekking. Via de huidige resolver zijn er vandaag DRIE bereikbaar, en
+die dragen alle drie een getuige in de suite: de niet-scalaire matrixgrens
+(`gehele_periode_over_verzameling_niet_lowerbaar_is_symmetrische_marker` en
+`phase_AGG_no_orphan_accumulate_on_marker`), de niet-numerieke
+heelperiodevergelijking — waaronder het Datum-geval, dat al op de
+`isNumeriek`-guard afketst en dus nooit bij de datumtak komt — en de matrix
+zonder §8.2-kwalificatie. De rest is defensief en onbereikbaar: `gp == null`
+langs een andere route, `toets == null`, `elem == null`, een tellende
+kwantor, een meerstaps bereik, een kenmerkmatrix, en de ontbrekende
+verbindende rol. De promotie in `RuleChecker.kwantorvouw` weigert die vormen
+namelijk al eerder, zodat ze de transpilers niet halen. Ze blijven staan
+omdat een arm die alleen zijn bereikbare gevallen kent, stil verkeerd gaat
+zodra een pin-bump er één bereikbaar maakt.
+
+De drie extra in de exec-tak (geen fact-class voor het elementtype, een
+niet-geregistreerde global, een grens die meer dan één global leest) zijn
+eveneens defensief; de DRL-tak handelt ze via `waarde()` en Drools' eigen
+compilatie af. Precies dezelfde asymmetrie draagt de bestaande
+§8.2-verzamelingsarm al.
 
 - `src/main/java/io/github/yhavinga/regelspraak/runtime/RegelSpraakRuntime.java`
   r. 1102-1116: `rsGeheelPeriodeGeen` overgeport uit de uchar-runtime; de
@@ -81,9 +101,23 @@ dezelfde asymmetrie draagt de bestaande §8.2-verzamelingsarm al.
 - `src/main/java/io/github/yhavinga/regelspraak/transpiler/Stratificatie.java`
   r. 154-162 en
   `src/main/java/io/github/yhavinga/regelspraak/graaf/ProducentConsument.java`
-  r. 79-88: filter en matrix zijn condities, dus hun kenmerklezingen tellen
-  mee voor stratum en producent/consument — met het ELEMENT als subject,
-  nooit het subject van de regel.
+  r. 79-88: filter en matrix zijn condities, dus hun kenmerklezingen horen
+  mee te tellen voor stratum en producent/consument — met het ELEMENT als
+  subject, nooit het subject van de regel.
+  **Deze twee hunks dragen vandaag geen gedrag, en dat staat hier omdat het
+  zo hoort te staan.** Ze zijn onbereikbaar om twee gemeten redenen: het
+  `filter` is altijd null (`RuleChecker.kwantorvouw` bouwt
+  `new Conditie.Kwantorvouw(q, elem, null, …)` — de IR laat het filter toe,
+  de resolver produceert het niet), en de matrix is altijd een
+  `Vergelijking` of `Predicaat`, dus een `Conditie.Kenmerk`-lezing binnen
+  filter of toets bestaat nog niet. Een mutant zonder beide hunks draait de
+  hele suite groen (gemeten door de lens op de stand van toen, 979 tests):
+  er is geen getuige mogelijk, niet alleen geen getuige geschreven.
+  Ze blijven staan als uitputtendheid vooruit — een walker over de
+  conditie-unie hoort elke knoop te kennen, de bron-tweeling in uchar
+  draagt ze ook, en weglaten schept precies het venstergat dat een latere
+  pin-bump stil zou openen (een genegeerde kenmerklezing in een matrix laat
+  de consument vuren vóór zijn producent).
 
 De NIET-prefix: de matrix is een gewone conditie per bijdrager, dus zijn
 "niet gedurende …" ontkent PER BIJDRAGER en niet het verdict. Een genegeerde
@@ -119,6 +153,36 @@ geraakte kalenderjaar niet over zijn VOLLE lengte voldoet.
 Gemeten uitkomst na het draaien: alle zes identiek aan de handberekening, in
 beide takken (`PHASE_GP_GEEN_EXPECTED` = FALSE, FALSE, TRUE, TRUE, TRUE, TRUE).
 
+### De handberekende NIET-cellen
+
+De NIET-omklapping was tot deze fixronde nergens gepind, terwijl zij een
+BESTAAND antwoord omkeert: de oude §8.2-verzamelingsarm leest
+"alle … niet gedurende" als ¬∀P (hij complementeert de hele forall, want daar
+zit de kwalificatie op de buitenste vergelijking), en deze arm leest hem als
+∀¬P = ¬∃P. Dat zijn verschillende functies, geen herformulering.
+
+Met P(c) = "de tijdlijn van bijdrager c is het hele jaar groter dan 40":
+
+`alle … NIET gedurende` → `alle = (ALLE) != (niet)` = onwaar → de GEEN-vouw
+over de POSITIEVE matrix, dus ∀c.¬P(c) = ¬∃c.P(c):
+
+1. 50 en 30 → P(50) waar → er IS een bijdrager die P haalt → **onwaar**.
+   BESLISSEND: de oude ¬∀-lezing geeft hier ¬(onwaar) = WAAR.
+2. 30 en 20 → P faalt bij beide → **waar**.
+3. lege verzameling → ∀ over niets → **waar** (vacuüm). BESLISSEND: de oude
+   ¬∀-lezing geeft hier ¬(waar) = ONWAAR.
+
+`geen … NIET gedurende` → `alle = (GEEN) != (niet)` = waar → de ALLE-vouw
+over de POSITIEVE matrix, dus ¬∃c.¬P(c) = ∀c.P(c):
+
+4. 50 en 30 → P(30) faalt → **onwaar**.
+5. 50 en 60 → P waar bij beide → **waar**.
+6. lege verzameling → **waar** (vacuüm).
+
+Gemeten uitkomst: alle zes identiek aan de handberekening, absoluut,
+DRL==exec, `overgeslagen()` leeg
+(`PHASE_GP_NIET_EXPECTED` = FALSE, TRUE, TRUE, FALSE, TRUE, TRUE).
+
 ### Tests
 
 - (a) `phase_GP_ALLE_wholeperiod_forall_over_to_many_is_spec_correct`
@@ -132,6 +196,11 @@ beide takken (`PHASE_GP_GEEN_EXPECTED` = FALSE, FALSE, TRUE, TRUE, TRUE, TRUE).
   zodat de twee blokken echt dualen zijn), `PHASE_GP_GEEN` en
   `PHASE_GP_GEEN_EXPECTED`. Toetst absoluut, DRL==exec, en `overgeslagen()`
   leeg — het patroon van `phase_SOMALLE` en `phase_TR`.
+- Nieuw en additief: `phase_GP_NIET_matrixnegatie_klapt_de_kwantor_om` met
+  `GP_NIET_ALLE_SRC`/`GP_NIET_GEEN_SRC` (dezelfde twee zinnen met alleen
+  `niet` ervoor), `PHASE_GP_NIET` en `PHASE_GP_NIET_EXPECTED` — zes cellen
+  over beide genegeerde kwadranten, waarvan twee de nieuwe lezing van de
+  oude scheiden.
 
 ### Twee gemandateerde bijstellingen van bestaande pins
 
@@ -219,16 +288,50 @@ DRL==exec, `overgeslagen()` leeg.
 
 ### Metingen
 
-- (c) `mvn -o -B test`: **979 tests, 0 failures, 0 errors, 3 skipped** —
-  BUILD SUCCESS. (Op HEAD waren het er 977 met 3 failures; deze kaart voegt
-  twee tests toe en maakt alle drie de rode groen.)
+- (c) `mvn -o -B test`: **980 tests, 0 failures, 0 errors, 3 skipped** —
+  BUILD SUCCESS. (Op basis 7bbd0ee waren het er 977 met 3 failures; deze
+  kaart voegt drie tests toe en maakt alle drie de rode groen.)
 - (d) `make test`: **exit 0** (expliciet geëchood, niet door een pipe). 553
   tests gevonden, 552 geslaagd, 1 aborted, 0 failed, 34 containers.
 - (e) `make uchar-conformance UCHAR_DIR=…`: **PASS**, exit 0 — gevendorde
   slice byte-identiek aan pin 0db8907 (58 bestanden), 47 emitter-goldens
   gereproduceerd. `git status --porcelain vendor SPEC_REV scripts` is leeg.
-- (f) Geen bestaande test gewijzigd behalve de restauratie (a) en de twee
-  hierboven gemandateerde, gemelde bijstellingen.
+- (f) Geen bestaande test gewijzigd behalve de gemelde restauratie (a) en de
+  twee hier gemandateerde, gemelde bijstellingen.
+
+### De overige poorten: de volledige stand, voor de beheerder
+
+Zelf gedraaid op deze branch, zodat de kaart niet alleen over zijn eigen
+drie commando's rapporteert:
+
+| poort | stand |
+|---|---|
+| `make facts` | PASS (5 klassen gegenereerd én gecompileerd) |
+| `make verify-negatief-corpus` | PASS — 52 snippets, 41 correct afgewezen, 1 gemarkeerd `[GAT]` |
+| `make engine` | 115 tests, 0 failures |
+| `make scenario-test` | 29/29 PASS + marker-exit-3 ok |
+| `make verify-corpus` | **exit 2** — 54 passed, 1 failed (of 55) |
+| `service` `mvn -o test` | **exit 1** — 84 tests, 1 failure, 17 errors |
+
+De laatste twee zijn ROOD en staan buiten deze kaart. Niet aangenomen maar
+gemeten: in een wegwerp-worktree op basis 7bbd0ee geven ze exact hetzelfde —
+`verify-corpus` daar ook exit 2 met 54/1, en de service-module daar ook 84
+tests met 1 failure en 17 errors, met een faalregel-diff die op het
+werkpad-regeltje na leeg is. Pre-existent dus, en staande toolchain-feiten
+die een eigen kaart verdienen.
+
+Eén klein verschil om te noteren: `CLAUDE.md` spreekt bij de
+scenario-poort van 30/30, de poort zelf meldt 29/29 + marker-exit-3. Ook dat
+is pre-existent en niet door deze kaart geraakt.
+
+### Flanknotitie, bewust NIET gefixt
+
+De OUDE §8.2-verzamelingsarm leest een tellende kwantor ("ten minste 2 van
+de …") in de DRL-tak nog als een forall. Onbereikbaar vandaag — de resolver
+weigert zo'n document met WF-096 en promoveert het niet naar een
+kwantorvouw, precies om deze misinterpretatie te voorkomen — maar de
+zusterarm draagt haar nog wel. Dat hoort bij een eventuele latere kaart over
+de tellende kwantoren, niet bij deze.
 
 ### Commits op de branch
 
@@ -236,5 +339,9 @@ DRL==exec, `overgeslagen()` leeg.
 - `5ef3a2e` de par. 8.2-forall staat weer end-to-end, en GEEN krijgt zes
   eigen cellen
 - `e6810c3` kaart met Result (de stand vóór het testmandaat)
-- `c3144a6` twee pins bijgesteld die hun aanname verloren bij een pin-bump
-  (de fixronde: beide bijstellingen plus dit bijgewerkte Result)
+- `b57228a` twee pins bijgesteld die hun aanname verloren bij een pin-bump
+- de lensronde (punten A t/m G) is de commit die dit Result draagt:
+  "de NIET-omklapping krijgt haar getuige en de inertie-assert zijn tanden"
+  — de branchkop. Bewust zonder hash: een commit kan zijn eigen hash niet
+  bevatten, en een genoteerde pre-amend-hash was hierboven al een keer
+  achterhaald.

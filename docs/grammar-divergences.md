@@ -940,10 +940,37 @@ totaal van`, `het tijdsevenredig deel per …`, `het aantal dagen in … dat`, a
 clip — arrive as an `Expr.Functie` / structured filter and are intercepted **upstream** (`tijdreeksAggregatie` /
 `temporeleWaarde` / `temporeelKenmerkTijdreeks`), which build the timeline getter directly and never descend the guarded
 leaf; a non-temporal attribute/kenmerk (own or navigated) still lowers normally. Corpus byte-identical (73/27 — the
-corpus temporal reads are all aggregations). **Deferred** (not yet lowered, an honest marker): the *true* §8.2 semantics
-— a whole-period predicate over a timeline (the comparison/check holding at every moment of each calendar year/month),
-which needs a temporal-boolean reduction helper over the `List<Segment>`, like the gedurende clip but yielding a scalar
-per period.
+corpus temporal reads are all aggregations).
+
+The *true* §8.2 semantics — the predicate holding at **every moment** of each calendar year/month the timeline touches
+— is no longer deferred. It reduces through `RegelSpraakRuntime.rsGeheelPeriode`, which buckets the `List<Segment>` by
+calendar period and passes a bucket only when the per-segment check covers its **whole** calendar length (a gap, or a
+contrary/leeg segment, leaves fewer satisfying days than the period has). Three layers sit on it, all of them shared
+byte-for-byte between the DRL-text and exec-model branches:
+
+- the **scalar** form — an own or to-one navigated temporal attribute/kenmerk — is one `rsGeheelPeriode(...)` term;
+- the **set** form ("de X van alle Y van de Z gedurende het gehele jaar &lt;op&gt; grens") is a `collectList` accumulate
+  over the element timelines plus an `rsGeheelPeriodeAlle` result-var eval — a forall across the accumulated set;
+- the **quantifier fold** (IR-SPEC ch. 4.5, `Conditie.Kwantorvouw`) is the resolver's structured spelling of that same
+  sentence and carries the written quantor, so `ALLE` and `GEEN VAN DE` are told apart instead of both reading as a
+  forall. `GEEN` folds through its **own** helper `rsGeheelPeriodeGeen` rather than a negation of the ALLE fold,
+  because the two genuinely differ: `!alle` means "some contributor fails the matrix", which is not "no contributor
+  satisfies it" — on a mixed set both quantifiers answer onwaar. An empty contributor set is vacuously WAAR for both.
+
+**Where the `niet` prefix binds** differs between the last two, and the difference is observable. In the set form the
+qualifier sits on the outer comparison, so `niet` complements the whole forall (¬∀P). In the quantifier fold the matrix
+is an ordinary condition evaluated **per contributor**, so `niet` negates per contributor (∀¬P = ¬∃P): the transpiler
+therefore FLIPS `ALLE` into `GEEN` and back rather than negating the verdict, and needs no third helper.
+
+Scope of the fold arm, in both branches: the matrix must be a §8.2 whole-period predicate over ONE single-period
+timeline member of the element type — a numeric comparison against a literal or a scalar parameter-global,
+`gevuld`/`leeg`, or a time-dependent kenmerk of the element. Everything else is a marker (DRL) and a skip (exec) that
+**names the form and the reason**, never a silent verdict: a matrix without the §8.2 qualifier, a non-numeric or
+timeline-vs-timeline matrix, a grens that reads a `$subject` field (the eval rides after the accumulate, which binds no
+subject), a counting quantor, a multi-step range. The contributor range is narrowed too: the join is derived with
+`model.verbindendeRol(element, subject)` — the field on the element that points back at the subject — and a pair that
+does not yield exactly one connecting role is refused by name rather than guessed, so the wire's `bronRol` fallback for
+a self-typed range is not read here.
 
 ### Elfproef predicate (§8.1.3) — lowered to a registered rsElfproef helper
 

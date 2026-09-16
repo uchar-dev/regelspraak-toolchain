@@ -4058,6 +4058,40 @@ class ExecModelDifferentialTest {
         Boolean.FALSE, Boolean.FALSE, Boolean.TRUE, Boolean.TRUE, Boolean.TRUE, Boolean.TRUE,
     };
 
+    // ---- IR-SPEC ch. 4.5 the NIET prefix on the MATRIX. "… van alle | geen van de passagiers van de Vlucht NIET
+    //      gedurende het gehele jaar groter is dan 40". The matrix is an ordinary condition evaluated PER CONTRIBUTOR,
+    //      so its §8.2 "niet gedurende" negates per contributor and not the quantifier's verdict — which means the fold
+    //      FLIPS: "alle … niet" is ∀c.¬P = ¬∃c.P (the GEEN fold over the POSITIVE matrix) and "geen … niet" is
+    //      ¬∃c.¬P = ∀c.P (the ALLE fold). This is where the quantifier fold DIFFERS from the older §8.2 set arm, which
+    //      complements the whole forall (¬∀P) because there the qualifier sits on the outer comparison — so two rows
+    //      below answer the OPPOSITE of what the old reading gives, and they are marked as such. ----
+    static final String GP_NIET_ALLE_SRC = GP_ALLE_SRC.replace("gedurende het gehele jaar", "niet gedurende het gehele jaar");
+    static final String GP_NIET_GEEN_SRC = GP_GEEN_SRC.replace("gedurende het gehele jaar", "niet gedurende het gehele jaar");
+    static Fixture gpNietFix(String naam, String src, java.util.function.Function<Vlucht, List<Object>> bouw) {
+        return new Fixture(naam, src, () -> bouw.apply(new Vlucht()), Map.of(), l -> ((Vlucht) l.get(0)).isGroot());
+    }
+    static final Fixture[] PHASE_GP_NIET = {
+        // "alle … NIET gedurende" = geen enkele bijdrager haalt de POSITIEVE matrix.
+        gpNietFix("§8.2 alle-NIET > 40: 50 en 30 -> NIET groot (50 haalt de positieve matrix wel)", GP_NIET_ALLE_SRC,
+            v -> List.of(v, passJaar(v, "50"), passJaar(v, "30"))),
+        gpNietFix("§8.2 alle-NIET > 40: 30 en 20 -> groot (niemand haalt de positieve matrix)", GP_NIET_ALLE_SRC,
+            v -> List.of(v, passJaar(v, "30"), passJaar(v, "20"))),
+        gpNietFix("§8.2 alle-NIET > 40 over LEGE verzameling -> groot (vacuüm)", GP_NIET_ALLE_SRC,
+            v -> List.of(v)),
+        // "geen … NIET gedurende" = ELKE bijdrager haalt de POSITIEVE matrix.
+        gpNietFix("§8.2 geen-NIET > 40: 50 en 30 -> NIET groot (30 haalt de positieve matrix niet)", GP_NIET_GEEN_SRC,
+            v -> List.of(v, passJaar(v, "50"), passJaar(v, "30"))),
+        gpNietFix("§8.2 geen-NIET > 40: 50 en 60 -> groot (beide halen de positieve matrix)", GP_NIET_GEEN_SRC,
+            v -> List.of(v, passJaar(v, "50"), passJaar(v, "60"))),
+        gpNietFix("§8.2 geen-NIET > 40 over LEGE verzameling -> groot (vacuüm)", GP_NIET_GEEN_SRC,
+            v -> List.of(v)),
+    };
+    static final Object[] PHASE_GP_NIET_EXPECTED = {
+        // rij 1 en rij 3 zijn de beslissende: de OUDE ¬∀-lezing antwoordt daar precies andersom (WAAR resp. ONWAAR).
+        Boolean.FALSE, Boolean.TRUE, Boolean.TRUE,
+        Boolean.FALSE, Boolean.TRUE, Boolean.TRUE,
+    };
+
     // ---- §5.8/§13.4.14 a COUNT aggregation as one side of a CONDITION comparison ("Een Vlucht is vol indien het aantal
     //      passagiers van de Vlucht <op> N"): was a symmetric marker ("voorwaarde buiten Phase-B scope"). Now a result-
     //      constrained accumulate CE hoisted after the subject pattern — DRL `Number(intValue <op> N) from accumulate(
@@ -7599,6 +7633,26 @@ class ExecModelDifferentialTest {
             assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
         }
     }
+    /** IR-SPEC ch. 4.5 the NIET prefix binds to the MATRIX, not to the verdict — the quadrant this card CHANGES. The
+     *  older §8.2 set arm reads "alle … niet gedurende" as ¬∀P (it complements the whole forall, because there the
+     *  qualifier sits on the outer comparison); the quantifier fold reads it as ∀¬P, which is ¬∃P — so it flips the
+     *  quantifier and calls the OTHER runtime helper instead of negating the answer. Rows 1 and 3 are the ones that
+     *  separate the two readings: on the mixed set the old reading answers WAAR where this one answers ONWAAR, and on
+     *  the EMPTY set the old reading answers ONWAAR where this one answers WAAR (a vacuous ∀ over ¬P). Absolute +
+     *  DRL==exec parity + no exec skip, the pattern of phase_GP_GEEN. */
+    @Test void phase_GP_NIET_matrixnegatie_klapt_de_kwantor_om() {
+        for (int i = 0; i < PHASE_GP_NIET.length; i++) {
+            Fixture f = PHASE_GP_NIET[i];
+            RegelSpraakModel m = Resolver.resolve(f.src());
+            assertTrue(m.errors().isEmpty(), () -> f.naam() + " resolver-fout: " + m.errors());
+            ExecModelTranspiler em = ExecModelTranspiler.build(m);
+            assertTrue(em.overgeslagen().isEmpty(), () -> f.naam() + " model overgeslagen: " + em.overgeslagen());
+            Object viaDrl = fire(drlBase(m), f);
+            Object viaModel = fire(KieBaseBuilder.createKieBaseFromModel(em.model()), f);
+            assertEquals(PHASE_GP_NIET_EXPECTED[i], eq(viaDrl), () -> "DRL (oracle) wrong vs spec on '" + f.naam() + "'");
+            assertEquals(eq(viaDrl), eq(viaModel), () -> "back-ends DIVERGE on '" + f.naam() + "'");
+        }
+    }
     /** §8.2 / IR-SPEC ch. 4.5 the two set shapes this toolchain deliberately does NOT lower — and since the
      *  Kwantorvouw pin they fail at DIFFERENT layers, which is the point of this test:
      *  <ul>
@@ -7646,9 +7700,12 @@ class ExecModelDifferentialTest {
         assertTrue(em.overgeslagen().toString().contains("kwantorvouw ALLE over Passagier")
                         && em.overgeslagen().toString().contains("niet-scalaire matrixgrens"),
                 () -> "de exec-reden moet dezelfde vorm en reden noemen: " + em.overgeslagen());
-        // a marker is only honest if the rule is INERT: the gemarkeerde regel mag niet vuren op een matrix die
-        // niemand gelezen heeft. Een passagier die de matrix ruim haalt maakt dat zichtbaar.
+        // A marker is only honest if the rule is INERT, and these facts make that assertion DISCRIMINATING: the grens
+        // is SET (40) and the one passenger clears it for the whole year (500), so a lowering that read the grens
+        // would FIRE here. Leaving vertrektijd leeg would not separate the two — segmentVoldoet answers false on a
+        // leeg grens, so the rule would stay silent whether it lowered or not and the assert would pass vacuously.
         Vlucht v = new Vlucht();
+        v.setVertrektijd(new BigDecimal("40"));
         KieSession s = sessie(drlBase(m));
         s.insert(v); s.insert(passJaar(v, "500")); s.fireAllRules(); s.dispose();
         assertFalse(v.isGroot(), "de gemarkeerde regel mag NIET vuren");
