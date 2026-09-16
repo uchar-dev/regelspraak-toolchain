@@ -186,9 +186,14 @@ public final class DescriptorLoader {
         return uit;
     }
 
-    /** Whether {@code ot}'s name equals {@code naam} (case-insensitive) — the objecttype identity a uitvoer
-     *  selector uses to pick the instances it applies to. */
-    static boolean objectMatch(Objecttype ot, String naam) {
-        return ot != null && naam != null && ot.naam.equalsIgnoreCase(naam);
+    /** Whether an instance of {@code ot} is selected by an objecttype named {@code naam} — the ⊑ of IR-SPEC
+     *  ch. 2.2, not name equality: a Wrakstuk IS a Strandvondst, so a rule declared on the supertype fires on
+     *  it (that is what the transpilers lower) and a descriptor written against the supertype must therefore
+     *  reach it too. Used by the uitvoer selectors ({@link AntwoordBouwer}) and the invoer contract
+     *  ({@link BeslisserKern}); on a model without subtypes the chain is one element long and this is exactly
+     *  the old case-insensitive name equality. An unresolvable {@code naam} selects nothing (it is already a
+     *  descriptor-validation error). */
+    static boolean objectMatch(RegelSpraakModel model, Objecttype ot, String naam) {
+        return ot != null && ot.isEen(objecttype(model, naam));
     }
 }

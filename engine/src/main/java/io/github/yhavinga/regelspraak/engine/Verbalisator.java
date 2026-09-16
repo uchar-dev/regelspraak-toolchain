@@ -73,7 +73,11 @@ public final class Verbalisator {
             for (ResolvedRegel r : model.resolvedRegels) {
                 if (r.soort() != ResolvedRegel.Soort.KENMERKTOEKENNING) continue;
                 if (!(r.doel() instanceof Expr.AttribuutRef ref) || ref.objecttype() == null) continue;
-                if (!ref.objecttype().naam.equalsIgnoreCase(ot.naam)) continue;
+                // IR-SPEC ch. 2.2: de regel geldt voor elk objecttype dat het doeltype IS (⊑), niet alleen voor
+                // het doeltype zelf — de gegenereerde bean erft native, dus een kenmerktoekenning op het
+                // supertype kent het kenmerk óók toe aan een subtype-instantie. Op naamgelijkheid vergelijken
+                // laat precies die toekenningen onverklaard: het kenmerk staat AAN en het verhaal zwijgt.
+                if (!ot.isEen(ref.objecttype())) continue;
                 String zin = verbaliseerToekenning(label, bean, ref, r);
                 if (zin != null) uit.add(zin);
             }

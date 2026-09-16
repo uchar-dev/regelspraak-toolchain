@@ -535,7 +535,7 @@ public final class BeslisserKern {
         // required instance can never fire meaningfully (the scoped rules quantify over instances of that
         // objecttype, so a missing invoer objecttype means the rule has nothing to fire against). Collected first,
         // then thrown together as one 400.
-        List<Schending> ontbrekend = ontbrekendeInvoer(ep, mr.typePerLabel());
+        List<Schending> ontbrekend = ontbrekendeInvoer(ep, mr.typePerLabel(), model);
         if (!ontbrekend.isEmpty())
             throw new DienstFout("verzoek valideert niet", ontbrekend);
         // fase 5, decision D: resolve the parameterset vintage against the one date authority (the request
@@ -605,21 +605,25 @@ public final class BeslisserKern {
 
     /**
      * The invoer contract check: for every objecttype the entrypoint declares in {@code invoer}, require at
-     * least ONE mapped instance of that objecttype in the request. A missing one yields a
+     * least ONE mapped instance that IS one of that objecttype in the request. A missing one yields a
      * {@link Schending.Soort#ONTBREKENDE_INSTANTIE} with veld {@code "instanties"} whose message names BOTH the
-     * objecttype AND the entrypoint. Objecttype identity is matched case-insensitively (the same tolerance the
-     * mapper and descriptor validation use), against the resolved {@link RegelSpraakModel.Objecttype} of every
-     * mapped instance.
+     * objecttype AND the entrypoint.
+     *
+     * <p>Membership is the ch. 2.2 ⊑ ({@link DescriptorLoader#objectMatch}), not name equality: the scoped
+     * rules quantify over a pattern on the declared objecttype, which the generated beans {@code extends}, so a
+     * subtype instance DOES make those rules fire — refusing it as "no instance of the invoer objecttype" would
+     * reject a request the engine can serve. Case-insensitive and, on a model without subtypes, identical to
+     * the previous name equality.
      */
     private static List<Schending> ontbrekendeInvoer(Entrypoint ep,
-            Map<String, RegelSpraakModel.Objecttype> typePerLabel) {
+            Map<String, RegelSpraakModel.Objecttype> typePerLabel, RegelSpraakModel model) {
         List<Schending> uit = new ArrayList<>();
         List<String> invoer = ep.descriptor().invoer();
         if (invoer == null) return uit;
         for (String vereist : invoer) {
             boolean aanwezig = false;
             for (RegelSpraakModel.Objecttype ot : typePerLabel.values())
-                if (ot != null && ot.naam.equalsIgnoreCase(vereist)) { aanwezig = true; break; }
+                if (DescriptorLoader.objectMatch(model, ot, vereist)) { aanwezig = true; break; }
             if (!aanwezig)
                 uit.add(Schending.van(Schending.Soort.ONTBREKENDE_INSTANTIE, "instanties",
                         "entrypoint '" + ep.descriptor().naam() + "' vereist minstens één instantie van objecttype '"

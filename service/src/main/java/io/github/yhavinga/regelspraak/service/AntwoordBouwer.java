@@ -19,7 +19,9 @@ import java.util.Map;
 /**
  * Builds the response JSON tree from a fired {@link Uitvoerder.Uitkomst}, an entry point's descriptor uitvoer
  * list, and the request's instance→objecttype map. Per uitvoer selector ({@code Objecttype.attribuut} /
- * {@code Objecttype:kenmerk}), it reads the value off every request instance of that objecttype and renders it:
+ * {@code Objecttype:kenmerk}), it reads the value off every request instance that IS one of that objecttype
+ * (IR-SPEC ch. 2.2 ⊑, see {@link DescriptorLoader#objectMatch} — a subtype instance is served by a selector
+ * written against its supertype, exactly as the supertype's rules fire on it) and renders it:
  * a {@link BigDecimal} as an EXACT JSON number (Jackson renders BigDecimal natively — never a double), a
  * {@code null}/leeg as JSON {@code null}, a kenmerk as a boolean, a date as an ISO string. It also emits the
  * {@code inconsistenties} array — the {@code regel} names of every {@code Inconsistentie} fact — because the
@@ -62,7 +64,7 @@ public final class AntwoordBouwer {
             for (String sel : uitvoer) {
                 Uitvoerselector u = Uitvoerselector.ontleed(sel);
                 if (u == null) continue;
-                if (!DescriptorLoader.objectMatch(ot, u.objecttype())) continue;
+                if (!DescriptorLoader.objectMatch(model, ot, u.objecttype())) continue;
                 Object waarde = RegelSpraakRuntime.get(bean, VerzoekMapper.prop(u.lid()));
                 if (u.kenmerk()) kenmerken.set(u.lid(), rendKenmerk(waarde));
                 else attributen.set(u.lid(), rend(waarde));
