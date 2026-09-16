@@ -236,7 +236,7 @@ omgerekend; een onverenigbare eenheid is een resolve-time ERROR (gate G4).
 - **G1** `ScenarioOrakelTest`: ≥ 40 triples uit de bestaande executiesuites
   reproduceren IDENTIEKE waarden via het scenariopad (Java-API == runner).
   Geleverd: 64 triples (engine-suite 88/88).
-- **G2** golden TOKA: 30/30 vurende manifestregels PASS via `make scenario-test`
+- **G2** golden TOKA: 29/29 vurende manifestregels PASS via `make scenario-test`
   (`examples/toka-scenarios/manifest`, één scenario per gelowerde manifestregel,
   scope = precies één regel). De exit-3 MARKER-lezing wordt geoefend door
   `scenario-marker-exit3.rgs` (een schoon markerende regel, exit 3). De TOKA-

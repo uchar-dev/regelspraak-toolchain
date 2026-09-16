@@ -132,10 +132,15 @@ HEAD", never a number to chase down:
    not by `make engine` — the consumer fires one back-end and has no oracle.
 4. `make scenario-test` — the golden TOKA analyst set via
    `examples/toka-scenarios/manifest` (single-JVM `--manifest` route);
-   30/30 PASS, marker-exit-3 present.
+   29/29 PASS, marker-exit-3 present. (30/30 until besluit 16Y — the
+   SPEC_REV re-pin of 2026-08-29 — turned toka-45 into an exit-1 refusal:
+   dimensionally inconsistent as written under the eenheid-identiteit
+   typing.)
 5. `make facts` — the TOKA fact-model beans generate *and* javac clean (doubles
    as a model-level resolve gate).
-6. The service modules stay green: `service` ≥ 146, `service-quarkus` ≥ 34.
+6. The service modules stay green: `service` ≥ 145, `service-quarkus` ≥ 33.
+   (146/34 until the same besluit-16Y holdout dropped one golden scenario,
+   hence one dynamic test, from each module.)
 7. `make verify-corpus` — every spec snippet under `corpusEntry` parses (no
    lexer errors, no `error` nodes), known defects excepted.
 7bis. `make verify-negatief-corpus` — every malformed snippet under
