@@ -155,7 +155,18 @@ allowed-skip list that lives in that script (gate + test + reason + date per
 entry). An unpinned skip or abort FAILS the gate by name — a "Skipped: 3" that
 nobody can read is exactly the silent green this repo forbids. A pinned skip that
 does NOT occur (the external spec is unpacked locally, `UCHAR_DIR` is set) is
-allowed, not required; a pin whose test no longer exists fails as stale.
+allowed, not required; a pin whose class ran but whose method is gone fails as
+stale.
+
+The same block closes the shrink a skip-list cannot see: a test class that
+produced NO test case at all (a `@BeforeAll` assumption aborts the container and
+surefire then writes `tests="0"` with zero `<testcase>` elements) fails by name,
+each report is held to its own `tests="N"` bookkeeping, and every gate carries an
+`EXPECTED_MIN` floor in `VLOEREN` (root 980, jar 553, engine 115, service 167,
+service-quarkus 33 — measured 2026-09-16). Floors are lower bounds: growth needs
+no bump, a deliberate removal lowers them in the same commit. Consequence, on
+purpose: a targeted `-Dtest=…` run falls through the floor — the gate IS the full
+run.
 
 `make image` / `make kind-smoke` are host-only packaging gates (they need
 Docker); run them on the host before a release, not per change.
