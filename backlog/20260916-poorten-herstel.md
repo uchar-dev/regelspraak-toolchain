@@ -44,6 +44,12 @@ elk van de drie krijgt een oorzaakmeting (welke bron, sinds welke commit
 Alle drie de punten gemeten vóór er iets wijzigde. Twee oorzaken, geen
 drie: punt 2 en punt 3 komen uit dezelfde herpin.
 
+Na de lens is deze ronde op zes punten gecorrigeerd: de toeschrijving
+bij punt 1 was fout en is vervangen door de meting die haar weersprak,
+de eerste fix opende een nieuwe stilte op het andere been, en het
+Dockerfile-recept droeg de oorspronkelijke oorzaak nog. De correcties
+staan hieronder verwerkt, niet los eronder geplakt.
+
 ### Oorzaakmeting
 
 **Punt 1 — `make verify-corpus`.** De falende "bron" is geen bron: het is
@@ -53,10 +59,24 @@ aanwezig is; zonder die specificatie laat bash het patroon ongemoeid in
 de woordenlijst staan, `Parse` struikelt over een bestand dat er nooit
 was, en de lus telt dat als één UNEXPECTED FAILURE — vandaar de lege
 diagnose achter `*.rgs ::` en het totaal van 55 waar er 54 fragmenten
-zijn. Triggercommit `b85dff3` (2026-07-20), de commit die de
-redistributiegrens trok: die schermde de extractiestap af met een
-`if -f`, maar liet de lus eromheen ongewijzigd. Oordeel: het HARNAS
-beweegt. Bron en verwachting zijn allebei in orde.
+zijn.
+
+**Geen triggercommit.** De eerste ronde schreef dit toe aan `b85dff3`
+(2026-07-20, de redistributiegrens); die toeschrijving is door meting
+weerlegd en hier gecorrigeerd. De poort zelf gedraaid op oudere punten:
+op `b85dff3~1` exit 1 met `54 passed, 1 failed (of 55)` en `*.rgs ::`,
+en op `a983f1e` (2026-06-17, de oudste commit die het script raakt)
+exit 1 met dezelfde telling en `*.rs ::` — de extensie van vóór de
+hernoeming. `git ls-tree` over `specification/` op `a983f1e`,
+`906b9c2`, `b85dff3~1` en `b85dff3` laat telkens uitsluitend
+`RegelSpraak-spec-for-ANTLR-v2.3.0.md` en `conversie-bevindingen.md`
+zien: de volledige specificatie is NOOIT getrackt geweest, en
+`examples/spec-main/` stond al op `b85dff3~1` in `.gitignore`. In elke
+schone checkout bestond die map dus nooit en was de poort altijd al
+rood. `b85dff3` voegde alleen het `if -f` rond de extractiestap toe en
+liet de lus eromheen ongemoeid — het maakte de fout niet, het ging er
+langs. Oordeel: een defect van het HARNAS vanaf de invoering van het
+script. Bron en verwachting zijn allebei in orde.
 
 **Punt 2 — `service/` `mvn -o test`.** Twee oorzaken, geen zeventien.
 
@@ -107,10 +127,36 @@ beweegt, met bronvermelding.
 ### Wijzigingen
 
 1. `tools/verify_corpus.sh` — `nullglob` rond de corpuslijst, zodat een
-   niet-bestaand pad verdwijnt in plaats van als fragment te tellen. Om
-   te voorkomen dat die stilte een echte leegte maskeert: expliciete
-   faal op een leeg corpus, en expliciete faal wanneer de specificatie
-   wél aanwezig is maar de extractie niets oplevert. Commit `f2cae8d`.
+   niet-bestaand pad verdwijnt in plaats van als fragment te tellen.
+   Commit `f2cae8d`.
+
+   **Die fix alleen was niet af, en de lens ving dat.** `nullglob` maakt
+   ELK been stil, ook het been dat niet optioneel is:
+   `examples/spec-antlr/` wordt geëxtraheerd uit het GETRACKTE
+   `specification/v2.3.0/RegelSpraak-spec-for-ANTLR-v2.3.0.md`, en die
+   extractie had geen `if -f` en geen leegtecontrole. Zelf nagemeten
+   door dat bestand tijdelijk weg te halen: op `f2cae8d` meldde de
+   poort STIL GROEN — exit 0, `47 passed, 0 failed (of 47)` — waar zeven
+   fragmenten onzichtbaar verdwenen. Commit `f82991d` geeft dat been
+   dezelfde behandeling en zet er een totaalvloer bovenop:
+   - ontbrekend getrackt specbestand → exit 2, "dat bestand is getrackt,
+     geen externe bron" (gemeten);
+   - extractie levert nul snippets (bestand leeggemaakt) → exit 2
+     (gemeten);
+   - `EXPECTED_MIN_SNIPPETS=54`, met datum en reden in het script → één
+     `examples/toka/`-fragment weggehaald geeft exit 2, "53 fragmenten
+     gevonden, vloer is 54" (gemeten).
+
+   De vloer staat bewust op 54 en niet hoger: dat is 47 getrackte
+   fragmenten onder `examples/toka/` plus 7 uit de getrackte
+   ANTLR-mapping, samen haalbaar in ELKE schone checkout.
+   `examples/spec-main/` telt er niet in mee — dat been hangt aan de
+   externe, niet-meegeleverde specificatie en zou de vloer voor iedereen
+   zonder die specificatie onhaalbaar maken. Dat onderscheid staat in
+   het script zelf. (De opdracht noemde 47 als vloerwaarde; de meting
+   wijst 54 aan — 47 is het `toka/`-been alleen, de 7 antlr-fragmenten
+   horen er nog bij en zijn net zo goed getrackt. De intentie
+   — haalbaar zonder de externe spec — is aangehouden.)
 2. `TokaBron` sluit het tweede quirkbestand uit, met reden en met
    verwijzing naar de drie harnassen die dezelfde holdout al aanhielden
    — precies zoals het eerste quirkbestand er al buiten stond.
@@ -123,19 +169,39 @@ beweegt, met bronvermelding.
    `BeslisserKern`/`Uitvoerder` gaan van 30 naar 29; de OpenAPI-golden
    verliest dat ene pad (59 regels, verder byte-identiek).
    `RegelBestandIndexTest` toetst de AFWEZIGHEID in plaats van de test
-   te schrappen, zodat een stille herintroductie alsnog faalt. Commit
-   `9024a1d`.
+   te schrappen, zodat een stille herintroductie alsnog faalt. Ook
+   `docs/ENGINE.md` landde hier. Commit `9024a1d`.
 3. `CLAUDE.md` poort 4 van 30/30 naar 29/29 met de reden en de datum
    erbij, en poort 6 van `service ≥ 146, service-quarkus ≥ 34` naar
    `≥ 145, ≥ 33` — dezelfde holdout kost elke module precies één
    dynamische golden-toets, en een vloer boven HEAD is een permanent
-   rode poort. `docs/SCENARIOTOETSEN.md` G2 en `docs/ENGINE.md` volgen.
-   Commit `c055f1a`.
+   rode poort. `docs/SCENARIOTOETSEN.md` G2 volgt. Commit `c055f1a`.
+4. **`docker/Dockerfile` bakte de oorzaak nog in.** Het `RUN`-recept dat
+   het bronmanifest schrijft filterde alleen `toka-23-`, dus het
+   gebakken manifest droeg het tweede quirkbestand nog — precies de
+   bronset die `BeslisserKern.bouw` laat omvallen. Statisch nagemeten
+   zoals de lens deed, door de bestandenlijst van het recept na te
+   bouwen en door `make ir` te halen: het oude recept levert 48
+   bestanden en exit 2 met drie eenheidsfouten, het nieuwe 47 bestanden
+   en exit 0 met nul. Het nieuwe recept is bovendien regel-voor-regel
+   identiek aan `TokaBron.bronBestanden()`. Filter nu
+   `grep -v -e 'toka-23-' -e 'toka-45-'`, met een commentaarregel die
+   het verband met `TokaBron` en het gevolg (geen poortbinding, dus
+   `HEALTHCHECK` faalt) benoemt. Pre-existent op de basis, maar het is
+   dezelfde oorzaak die deze kaart overal elders wegnam. Commit
+   `3fc0f01`.
+5. Drie achtergebleven 30-tellingen binnen dezelfde sweep:
+   `scripts/kind-smoke.sh` (de drie onvoorwaardelijke H2-echo's — poort
+   (f) staat `scripts/` toe nu de meting het dwingt),
+   `ScenarioRunnerCli`'s javadoc "all 30 exit-0 lines" (die naast code
+   stond die 29 zegt), en `TokaBron`'s javadoc "no toka-23" bij
+   `model()`. Commit `1c8f2ee`.
 
 Bestaande tests gewijzigd, met reden per geval: alle bovengenoemde
 30→29-pins (de descriptor telt één entrypoint minder) en
 `RegelBestandIndexTest` (van aanwezigheids- naar afwezigheidstoets).
-`vendor/`, `SPEC_REV` en `scripts/` zijn niet aangeraakt.
+`vendor/` en `SPEC_REV` zijn niet aangeraakt; `scripts/kind-smoke.sh`
+wel, met de reden hierboven.
 
 ### Poortenstand na afloop
 
@@ -146,7 +212,7 @@ Bestaande tests gewijzigd, met reden per geval: alle bovengenoemde
 | `service-quarkus/` `mvn -o -B test` | 33 tests, 0F/0E/0S | 0 |
 | `make scenario-test` | golden TOKA 29/29 PASS, marker-exit-3 ok | 0 |
 | `mvn -o -B test` (root) | 980 tests, 0F/0E, 3 skipped | 0 |
-| `make test` | 552 tests, 0 failed, 34 containers | 0 |
+| `make test` | 552 tests, 0 failed, 1 aborted, 34 containers | 0 |
 | `make engine` | 115 tests, 0F/0E | 0 |
 | `make facts` | PASS, 5 klassen gegenereerd + gecompileerd | 0 |
 | `make verify-negatief-corpus` | 52 snippets, 41 rejected, 11 as expected (1 `[GAT]`), 4 strict cross-checks | 0 |
@@ -154,19 +220,27 @@ Bestaande tests gewijzigd, met reden per geval: alle bovengenoemde
 
 ### Afwijkingen en open punten
 
-- De 3 skips in `mvn -o -B test` zijn pre-existent en
-  assumptie-bewaakt: twee op de afwezige externe specificatiefixtures
-  (`spec-main`), één op een niet-gezette `-Duchar.dir`/`UCHAR_DIR`. Ze
-  zijn geen stille groen in de zin van de poortenset, maar ze zijn ook
-  niet zichtbaar in de poortuitvoer. Buiten scope van deze kaart, hier
-  genoteerd.
+- Assumptie-bewaakte stiltes, alle pre-existent en alle van dezelfde
+  klasse: 3 skips in `mvn -o -B test` (twee op de afwezige externe
+  specificatiefixtures onder `spec-main`, één op een niet-gezette
+  `-Duchar.dir`/`UCHAR_DIR`) én 1 abort in `make test`
+  (`DrlTest.corpus_drl_bevat_geen_enkele_function_definitie`, "Assumption
+  failed: extracted corpus absent"). Vier toetsen die zichzelf
+  uitschakelen zonder dat de poortsamenvatting erover valt. Buiten scope
+  van deze kaart, hier genoteerd — het is dezelfde soort stilte die punt
+  1 en punt 2 van deze fixronde wél dichtzetten.
 - `service/` `mvn -o test` meet alleen juist ná de gedocumenteerde
   installatieketen. Niets aan de poort zelf gewijzigd; wie hem los
   draait op een oude lokale Maven-repository ziet nog steeds een
   `NoSuchMethodError` die niets met deze repo te maken heeft.
-- Het entrypoint uit de descriptor verdwijnt ook uit het gebakken
-  container-image (`DESCRIPTOR_SRC` wijst op hetzelfde bestand). Dat is
-  de bedoelde consequentie — de regel resolvet niet — maar `make image`
-  en `make kind-smoke` zijn hostpoorten en zijn hier niet gedraaid.
+- Het gebakken container-image: de eerste ronde noteerde hier het
+  verkeerde gevolg ("het entrypoint verdwijnt uit het image"). Het
+  werkelijke gevolg van het ongewijzigde Dockerfile-recept was dat het
+  image NIET OPKOMT — `BeslisserKern.bouw` valt om op de niet-resolvende
+  bronset, `DienstMain` bindt de poort pas ná het compileren van elke
+  gescoopte regel, dus de `HEALTHCHECK` haalt het nooit. Dat is met
+  wijziging 4 verholpen en statisch nagemeten. `make image` en
+  `make kind-smoke` zijn hostpoorten en zijn hier niet gedraaid; de
+  controle liep via het nagebouwde recept door `make ir`.
 - De kaart is niet naar `backlog/done/` verplaatst; dat is de landende
   hand van de beheerder.
