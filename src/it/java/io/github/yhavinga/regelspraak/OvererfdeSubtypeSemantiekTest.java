@@ -138,6 +138,7 @@ class OvererfdeSubtypeSemantiekTest {
         assertBedrag("5.00", c1.getal(w1, "getRegistratiekosten"), "case1 W1 registratiekosten — de kale regel van het supertype vuurt op het subtype");
         assertBedrag("30.00", c1.getal(k1, "getUitkeringstotaal"), "case1 uitkeringstotaal — de aggregatie telt extensioneel");
         assertBedrag("2", c1.getal(k1, "getRegistertal"), "case1 registertal");
+        assertEquals(0, c1.inconsistenties(), "case1 is consistent — geen §9.5-feit");
 
         // case 2 — beide betwist: de uitzondering van het supertype, ook op het subtype (het penguin-paar met case 1)
         Wereld c2 = nieuweWereld();
@@ -150,6 +151,7 @@ class OvererfdeSubtypeSemantiekTest {
         assertBedrag("5.00", c2.getal(w2, "getRegistratiekosten"), "case2 W1 registratiekosten");
         assertBedrag("198.00", c2.getal(k2, "getUitkeringstotaal"), "case2 uitkeringstotaal");
         assertBedrag("2", c2.getal(k2, "getRegistertal"), "case2 registertal");
+        assertEquals(0, c2.inconsistenties(), "case2 is consistent — geen §9.5-feit");
 
         // case 3 — eigen uitzondering boven eigen basis
         Wereld c3 = nieuweWereld();
@@ -160,6 +162,7 @@ class OvererfdeSubtypeSemantiekTest {
         assertBedrag("5.00", c3.getal(w3, "getRegistratiekosten"), "case3 W1 registratiekosten");
         assertBedrag("55.00", c3.getal(k3, "getUitkeringstotaal"), "case3 uitkeringstotaal");
         assertBedrag("1", c3.getal(k3, "getRegistertal"), "case3 registertal");
+        assertEquals(0, c3.inconsistenties(), "case3 is consistent — geen §9.5-feit");
 
         // case 4 — beide uitzonderingen toepasselijk: de definitie van het KIND wint (laaggrensvoorrang)
         Wereld c4 = nieuweWereld();
@@ -209,17 +212,21 @@ class OvererfdeSubtypeSemantiekTest {
         Wereld w = nieuweWereld(m);
         Object d1 = w.nieuw("Duinrecht");
         d1.getClass().getMethod("setGrondslag", BigDecimal.class).invoke(d1, new BigDecimal("10.00"));
-        w.vuur(d1);
+        int gevuurd = w.vuur(d1);
         assertBedrag("30.00", w.getal(d1, "getUitkering"),
                 "de eigen kale regel is de basis van zijn laag en vervangt de geërfde basis");
+        assertEquals(1, gevuurd,
+                "de geabsorbeerde regel mag niet ook los vuren: één firing, de defaults-run zelf");
 
         Wereld w2 = nieuweWereld(m);
         Object d2 = w2.nieuw("Duinrecht");
         d2.getClass().getMethod("setGrondslag", BigDecimal.class).invoke(d2, new BigDecimal("10.00"));
         d2.getClass().getMethod("setBetwist", boolean.class).invoke(d2, true);
-        w2.vuur(d2);
+        int gevuurd2 = w2.vuur(d2);
         assertBedrag("99.00", w2.getal(d2, "getUitkering"),
                 "de geërfde uitzondering slaat de eigen basis");
+        assertEquals(1, gevuurd2,
+                "ook op het uitzonderingspad precies één firing — geen dubbelschrijver");
     }
 
     // ---------------------------------------------------------------- harnas
@@ -275,7 +282,7 @@ class OvererfdeSubtypeSemantiekTest {
                 s.getClass().getMethod("setRegistrerendeKustgemeente", kt).invoke(s, k);
             return k;
         }
-        void vuur(Object... facts) {
+        int vuur(Object... facts) {
             ClassLoader vorige = Thread.currentThread().getContextClassLoader();
             Thread.currentThread().setContextClassLoader(cl);
             KieSession s = kieBase.newKieSession();
@@ -284,6 +291,7 @@ class OvererfdeSubtypeSemantiekTest {
                 int n = s.fireAllRules(10_000);
                 assertTrue(n < 10_000, "regel-loop: de fire-cap is bereikt");
                 laatsteObjecten = List.copyOf(s.getObjects());
+                return n;
             } finally {
                 s.dispose();
                 Thread.currentThread().setContextClassLoader(vorige);

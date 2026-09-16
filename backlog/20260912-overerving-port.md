@@ -158,13 +158,14 @@ Dit is strikt beter dan de oude toestand: daar verdween de hele familie
   drievoudig gepinde waarden letterlijk overgenomen. ✔
 - (c) `make test` 553 gevonden / 552 groen / 0 gefaald (1 aborted;
   identiek aan de basis). ✔
-- (d) `mvn -o -B test` 976 tests, 3 gefaald — alle drie PRE-EXISTING,
+- (d) `mvn -o -B test` 977 tests, 3 gefaald (basis: 974 + 3 nieuwe) — alle drie PRE-EXISTING,
   geverifieerd op basiscommit `6b10226` met dezelfde drie namen en
   dezelfde resolverfout (WF-096 setlezing, uit de gevendorde slice). ✔
-- (e) `make uchar-conformance` FAALT, en niet door deze branch: uchar
-  main is doorgeschoven van pin `60d021c` naar `55ed96f` en de gate eist
-  dat de normatieve inhoud niet bewoog. Identieke fout op basiscommit
-  `6b10226`. Deze branch raakt `vendor/`, `SPEC_REV` noch `scripts/`
+- (e) `make uchar-conformance`: op de branch-basis rood door pin-drift
+  (uchar main schoof `60d021c` -> `55ed96f`; identieke fout op
+  basiscommit `6b10226`), maar toolchain-main draagt de bump al
+  (`4035932`) en de lens simuleerde de rebase: GROEN op `55ed96f`,
+  57 bestanden byte-identiek, 45/45 goldens. Deze branch raakt `vendor/`, `SPEC_REV` noch `scripts/`
   (lege diff). De INHOUD van de gate is wél geverifieerd tegen de pin:
   57 gevendorde bestanden byte-identiek (0 drift, 0 missend, 0 extra) en
   45/45 emitter-goldens byte-identiek gereproduceerd. Een pin-bump is een
