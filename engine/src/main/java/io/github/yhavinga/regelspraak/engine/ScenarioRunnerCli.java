@@ -164,7 +164,7 @@ public final class ScenarioRunnerCli {
      * {@code make scenario-test} output stays comparable. The shared TOKA foundation's fact-beans are compiled ONCE
      * (the content-keyed {@link BeanCompiler} cache), so 31 lines reuse one bean bundle instead of recompiling it.
      *
-     * <p>Returns the OVERALL exit code: 0 when the golden set passes (all 30 exit-0 lines OK, no mismatch, the
+     * <p>Returns the OVERALL exit code: 0 when the golden set passes (all 29 exit-0 lines OK, no mismatch, the
      * exit-3 marker line present), else 1 — matching the Makefile's own pass/fail gate.
      */
     private static int draaiManifest(Path manifest, boolean trace, boolean uitleg) {

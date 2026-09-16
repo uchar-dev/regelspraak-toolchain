@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # HOST-side kind smoke: build the beslisservice image, load it into a kind cluster,
 # and drive the three gates against the LIVE in-cluster service:
-#   H2  cluster oracle  — the 30 golden TOKA scenariotoetsen over HTTP
+#   H2  cluster oracle  — the 29 golden TOKA scenariotoetsen over HTTP
 #   H3  fail-fast       — a marker-scoping descriptor crashes (exit 3) without
 #                         --allow-markers, and starts clean WITH it
 #   H4  rollout         — a rebuilt image with a changed parameter (volwassenleeftijd)
@@ -72,11 +72,11 @@ curl -fsS "http://127.0.0.1:$LOCAL_PORT/info" | (grep -o '"dekking"[^}]*}' || tr
 
 # ---- H2: cluster oracle -------------------------------------------------------
 echo "== H2 =="
-# The identical 30 golden assertions (GoldenOverHttpTest) against the IN-CLUSTER
+# The identical 29 golden assertions (GoldenOverHttpTest) against the IN-CLUSTER
 # service via -Ddienst.url. Offline (-o): deps are already in the local repo.
 mvn -o -B -f service/pom.xml test -Dtest=GoldenOverHttpTest \
     -Ddienst.url="http://127.0.0.1:$LOCAL_PORT"
-echo "H2 PASS: 30/30 golden over de in-cluster dienst"
+echo "H2 PASS: 29/29 golden over de in-cluster dienst"
 
 # ---- H3: fail-fast ------------------------------------------------------------
 echo "== H3 =="

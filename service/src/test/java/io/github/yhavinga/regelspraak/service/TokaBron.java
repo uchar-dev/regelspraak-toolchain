@@ -86,7 +86,7 @@ public final class TokaBron {
         catch (IOException e) { throw new UncheckedIOException(e); }
     }
 
-    /** The resolved model over the full served TOKA source (no toka-23). */
+    /** The resolved model over the full served TOKA source (no toka-23/toka-45). */
     static RegelSpraakModel model() {
         StringBuilder bron = new StringBuilder();
         for (String tekst : bronPerBestand().values()) bron.append(tekst).append('\n');
