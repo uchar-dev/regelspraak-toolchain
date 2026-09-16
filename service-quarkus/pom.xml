@@ -176,7 +176,22 @@
   </build>
 
   <profiles>
-    <!-- HOST-ONLY native build (deferred). Requires a GraalVM/Mandrel toolchain; NOT run in this sandbox.
+
+    <!-- `-Dmaven.test.skip=true` is de ZUSTERPROPERTY van `-DskipTests`: hij slaat surefire over
+         (en de testcompilatie erbij) ZONDER skipTests te zetten. Zonder deze activatie zouden de
+         skip-pin-stappen daarna een testrun natellen die niet heeft plaatsgevonden, en de build
+         falen op "geen enkel rapport is jonger dan het ijkpunt". docker/Dockerfile bouwt met
+         precies die vlag. De activatie kijkt naar de USER-property (-D of systeemproperty); een
+         maven.test.skip in een pom-properties-blok ziet Maven hier niet — dat is de bekende grens
+         van profielactivatie, en die vorm komt in dit project niet voor. -->
+    <profile>
+      <id>skip-pin-uit-bij-maven-test-skip</id>
+      <activation>
+        <property><name>maven.test.skip</name><value>true</value></property>
+      </activation>
+      <properties><skipTests>true</skipTests></properties>
+    </profile>
+      <!-- HOST-ONLY native build (deferred). Requires a GraalVM/Mandrel toolchain; NOT run in this sandbox.
          Build host-side with:  mvn -f service-quarkus/pom.xml -Pnative clean package  -->
     <profile>
       <id>native</id>
