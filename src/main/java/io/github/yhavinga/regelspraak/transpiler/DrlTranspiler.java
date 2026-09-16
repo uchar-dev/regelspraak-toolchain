@@ -3378,6 +3378,114 @@ public final class DrlTranspiler {
                 + bindVar + " : collectList( " + ev + "." + getter(a.attribuut()) + "() ) )";
     }
 
+    /** IR-SPEC ch. 4.5 / §8.2 the QUANTIFIER FOLD: first-order quantification of a whole-period matrix over the members
+     *  of a linked instance set ("… indien de &lt;attribuut&gt; van ALLE | GEEN VAN DE &lt;leden&gt; van de
+     *  &lt;onderwerp&gt; gedurende het gehele jaar &lt;op&gt; &lt;grens&gt;"). Lowered with the SAME two clauses as the
+     *  §8.2 set form {@link #geheelPeriodeAlleVoorwaarde} — a {@code collectList} accumulate over the contributor
+     *  timelines plus an {@code eval( rsGeheelPeriodeAlle|rsGeheelPeriodeGeen($tlN, …) == true )} — because the node is
+     *  the same quantification, spelled by the resolver instead of read off the operand's {@code set} flag. What differs
+     *  is where the pieces come from: the matrix is a condition written with the ELEMENT as subject, so its temporal
+     *  operand is an element-OWN read ({@code set} false, no navigation), and the die/dat {@code filter} selects the
+     *  contributors on the accumulate source exactly as {@link #tijdreeksSomAlleSet} applies {@code Functie.filter}.
+     *
+     *  <p><b>Where the NIET prefix binds.</b> The matrix is an ordinary condition evaluated PER CONTRIBUTOR, so its §8.2
+     *  "niet gedurende …" prefix negates per contributor — not the quantifier's verdict. That is the one place this arm
+     *  differs from {@link #geheelPeriodeAlleVoorwaarde}, which complements the whole forall because there the qualifier
+     *  sits on the outer comparison. A per-contributor negation needs no third runtime helper: ∀c.¬P = ¬∃c.P and
+     *  ¬∃c.¬P = ∀c.P, so a NIET matrix FLIPS ALLE into GEEN and back.
+     *
+     *  <p>An EMPTY contributor set is WAAR for both quantifiers, which both helpers give directly. Scope is the
+     *  heelperiode matrix and nothing else; every other shape is a marker that NAMES the form and the reason, so the
+     *  {@link #meet} classification reports which guard refused instead of "voorwaarde". Mirrors the exec
+     *  {@code kwantorvouwVoorwaarde}. */
+    private LoweredConditie kwantorvouwVoorwaarde(Acc acc, Conditie.Kwantorvouw kv, Objecttype subject) {
+        if (subject == null) return kvMarker(kv, "geen subjectpatroon om het bereik aan te hangen");
+        if (kv.kwantor() != Conditie.Kwantor.ALLE && kv.kwantor() != Conditie.Kwantor.GEEN)
+            return kvMarker(kv, "kwantor is geen v0-vorm (WF-108 (a)): alleen ALLE en GEEN worden gelowerd");
+        if (!kv.bronPad().isEmpty())
+            return kvMarker(kv, "een meerstaps bereik (WF-108 (c)); de accumulate-source draagt één join-rol");
+        Objecttype elem = kv.elementObjecttype();
+        if (elem == null) return kvMarker(kv, "onopgelost elementObjecttype");
+        if (kv.toets() == null) return kvMarker(kv, "een kwantorvouw zonder matrix (WF-108 (d))");
+        Conditie.GeheelPeriode gp = geheelPeriodeVan(kv.toets());
+        if (gp == null) return kvMarker(kv, "een matrix zonder §8.2 gehele-periodekwalificatie — deze tak lowert"
+                + " alleen de heelperiodevorm");
+        String gran = gp.jaar() ? "JAAR" : "MAAND";
+        String tlVeld; int toets; String grens = "null";
+        if (kv.toets() instanceof Conditie.Vergelijking v) {
+            Expr.AttribuutRef tijd; Expr ander; boolean linksTemp;
+            if (v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null && elementTijdlijnLid(elem, la.attribuut()))
+                { tijd = la; ander = v.rechts(); linksTemp = true; }
+            else if (v.rechts() instanceof Expr.AttribuutRef ra && ra.navigatieRol() == null && elementTijdlijnLid(elem, ra.attribuut()))
+                { tijd = ra; ander = v.links();  linksTemp = false; }
+            else return kvMarker(kv, "een matrixvergelijking zonder enkelperiodiek tijdlijnattribuut van het elementtype");
+            if (!(tijd.type().isNumeriek() || tijd.type().isPercentage()))
+                return kvMarker(kv, "een niet-numerieke heelperiodevergelijking in de matrix");
+            if (ander instanceof Expr.AttribuutRef ar && ar.navigatieRol() == null && elementTijdlijnLid(elem, ar.attribuut()))
+                return kvMarker(kv, "een tijdlijn-vs-tijdlijnvergelijking in de matrix");
+            io.github.yhavinga.regelspraak.model.Eenheid el = tijd.type().eenheidOf(), er = ander.type().eenheidOf();
+            boolean crossUnit = el != null && er != null && el.vereistOmrekening(er);
+            if (crossUnit && er.exacteHerschaalFactoren(el) == null)
+                return kvMarker(kv, "een matrixgrens in een eenheid zonder exacte herschaalfactoren");
+            Integer code = Tijdrekening.toets(linksTemp ? v.op() : Operatoren.omkeren(v.op()));   // REVERSE (operand swap), not negate
+            if (code == null) return kvMarker(kv, "een datumvergelijking als heelperiodematrix");
+            // The eval rides AFTER the collectList accumulate, on a clause that binds no $subject, so the grens must be
+            // subject-free: a LITERAL or a scalar Parameter-GLOBAL. The same restriction the §8.2 set arm carries, for
+            // the same structural reason.
+            if (!(ander instanceof Expr.Literal) && !(ander instanceof Expr.ParameterRef pr && pr.parameter().granulariteit() == null))
+                return kvMarker(kv, "een niet-scalaire matrixgrens (de eval na de accumulate bindt geen $subject)");
+            Frag g = waarde(acc, ander, subject);   // $subject-free value (literal / global) valid in a standalone eval
+            if (g.marker()) return kvMarker(kv, "een matrixgrens buiten de scalaire scope");
+            tlVeld = tijd.attribuut(); toets = code;
+            grens = crossUnit ? herschaalExact(g.text(), ander.type(), tijd.type()) : g.text();
+        } else if (kv.toets() instanceof Conditie.Predicaat p && p.operand() instanceof Expr.AttribuutRef pa
+                && pa.navigatieRol() == null && elementTijdlijnLid(elem, pa.attribuut())
+                && (p.soort() == Conditie.Predicaatsoort.GEVULD || p.soort() == Conditie.Predicaatsoort.LEEG)) {
+            tlVeld = pa.attribuut();
+            toets = p.soort() == Conditie.Predicaatsoort.GEVULD ? 6 : 8;   // §8.2 gevuld / leeg over every moment
+        } else if (kv.toets() instanceof Conditie.Kenmerk k && k.navigatie() == null && !k.negatie()
+                && k.kenmerk() != null && elem.kenmerkGranulariteitLeden().containsKey(k.kenmerk())
+                && !elem.kenmerkTijdlijnAantalLeden().containsKey(k.kenmerk())) {
+            tlVeld = k.kenmerk(); toets = 7;                                // §8.2 the kenmerk's TRUE-period timeline
+        } else {
+            return kvMarker(kv, "een matrixvorm buiten de §8.2 heelperiodeverzameling (vergelijking / gevuld / leeg /"
+                    + " tijdsafhankelijk kenmerk van het element)");
+        }
+        String rol = model.verbindendeRol(elem, subject);   // the role the SUBJECT plays: the join field on the element
+        if (rol == null) return kvMarker(kv, "geen verbindende rol tussen " + subject.naam + " en " + elem.naam);
+        int n = ++acc.n;
+        String ev = "$kve" + n, var = "$kvtl" + n;
+        String bereik = ident(rol, false) + " == " + SUBJECT;
+        if (kv.filter() != null) {
+            Frag fc = conditie(acc, kv.filter(), elem);     // the die/dat subselectie, with the ELEMENT as subject
+            if (fc.marker()) return kvMarker(kv, "een die/dat-subselectie die deze tak niet op de source kan binden");
+            bereik = bereik + ", " + fc.text();
+        }
+        acc.clausules.add("accumulate( " + ev + " : " + ident(elem.naam, true) + "( " + bereik + " ) ; "
+                + var + " : collectList( " + ev + "." + getter(tlVeld) + "() ) )");
+        // the NIET prefix is the MATRIX's, so it flips the quantifier rather than the verdict (see the javadoc).
+        boolean alle = (kv.kwantor() == Conditie.Kwantor.ALLE) != gp.niet();
+        String fn = fnImport(alle ? "rsGeheelPeriodeAlle" : "rsGeheelPeriodeGeen");
+        acc.clausules.add("eval( " + fn + "(" + var + ", \"" + gran + "\", " + toets + ", " + grens + ") == true )");
+        return new LoweredConditie("", java.util.List.of(), false);
+    }
+
+    /** A quantifier fold this branch declines: an always-false constraint whose TODO names the form (kwantor +
+     *  elementtype) and the guard that refused, so {@link #meet} reports the reason instead of a generic
+     *  "voorwaarde". There is no silent decline in this arm. */
+    private static LoweredConditie kvMarker(Conditie.Kwantorvouw kv, String reden) {
+        return LoweredConditie.marker("§8.2 kwantorvouw " + kv.kwantor() + " over "
+                + (kv.elementObjecttype() == null ? "<onopgelost elementtype>" : kv.elementObjecttype().naam)
+                + " (" + reden + ")", kv.bron());
+    }
+
+    /** Is {@code lid} a SINGLE-period tijdlijn member of the fold's element type? The matrix is evaluated per
+     *  contributor with the element as subject, so a navigated read is a further hop this arm does not walk;
+     *  multi-period (§13.3.6.7) is excluded, as everywhere in §8.2. */
+    private static boolean elementTijdlijnLid(Objecttype elem, String lid) {
+        return elem.granulariteitLeden().containsKey(lid) && !elem.tijdlijnAantalLeden().containsKey(lid);
+    }
+
     /** §7.1 clip a value timeline by ONE temporal-kenmerk membership: rsTijdKnip to its TRUE periods, or
      *  rsTijdKnipNiet to the complement for a §8.1.8.1/.2 negated membership ("gedurende de tijd dat hij GEEN …"). */
     private String kenmerkTijdKnip(String waarde, Conditie.Kenmerk k) {
@@ -3762,6 +3870,10 @@ public final class DrlTranspiler {
      *  tail), because there a both-empty "fout" must still FIRE the violation (Tabel 44), so the guard
      *  must NOT be added. */
     private LoweredConditie conditie(Acc acc, Conditie c, Objecttype subject, boolean alsVoorwaarde) {
+        // IR-SPEC ch. 4.5 the QUANTIFIER FOLD: a §8.2 whole-period matrix quantified over the members of a linked
+        // instance set. It carries no §8.2 qualifier of its OWN (the qualifier sits on the matrix), so it is routed
+        // here, before the geheelPeriodeVan test below would answer null and drop it into the scalar paths.
+        if (c instanceof Conditie.Kwantorvouw kv) return kwantorvouwVoorwaarde(acc, kv, subject);
         // §8.2 / §13.4.15.70 "gedurende de/het gehele jaar|maand": a whole-period check over a tijdsafhankelijk
         // onderwerp (a List<Segment> timeline). Lower to a boolean rsGeheelPeriode(...) term BEFORE the scalar paths
         // below (which would marker the temporal operand). A form §8.2 cannot lower stays an honest marker.

@@ -151,6 +151,15 @@ public final class Stratificatie {
         }
         if (c instanceof Conditie.Samengesteld sam)
             for (Conditie d : sam.onderdelen()) verzamelReads(d, subject, uit);
+        // IR-SPEC ch. 4.5: a quantifier fold's filter and matrix are conditions too, and a NEGATED kenmerk read
+        // inside one has to sink this rule's stratum exactly as a top-level one does — an unseen read would let the
+        // consumer fire in the transient window before its producer ran. Both children are evaluated with the
+        // ELEMENT as subject, so the recursion hands down the element type, never the rule's own subject:
+        // attributing an element kenmerk to the rule subject would key the read to the wrong type.
+        if (c instanceof Conditie.Kwantorvouw kv) {
+            verzamelReads(kv.filter(), kv.elementObjecttype(), uit);
+            verzamelReads(kv.toets(), kv.elementObjecttype(), uit);
+        }
     }
 
     private static String key(Objecttype ot, String kenmerk) {

@@ -2309,6 +2309,154 @@ public final class ExecModelTranspiler {
                 && !a.objecttype().tijdlijnAantalLeden().containsKey(a.attribuut());
     }
 
+    // ---------------- IR-SPEC ch. 4.5 the QUANTIFIER FOLD (mirrors DrlTranspiler.kwantorvouwVoorwaarde) ----------
+
+    /** Record WHY a quantifier fold did not lower and decline it. Unlike the other condition arms — which return a
+     *  bare null and let the caller attach the generic scope note — this one writes its reason into
+     *  {@link #overgeslagen} itself, naming the FORM, so a skipped rule says WHICH of the guards below refused
+     *  rather than only that one did. Every refusal in this arm goes through here; there is no silent decline. */
+    private Gate kvSkip(Conditie.Kwantorvouw kv, String reden) {
+        String snip = kv.bron() == null ? null : kv.bron().snippet();
+        overgeslagen.add("kwantorvouw " + kv.kwantor() + " over "
+                + (kv.elementObjecttype() == null ? "<onopgelost elementtype>" : kv.elementObjecttype().naam)
+                + " (" + reden + ")" + (snip == null || snip.isEmpty() ? "" : ": " + snip));
+        return null;
+    }
+
+    /** Is {@code lid} a SINGLE-period tijdlijn member of the fold's element type? The matrix is evaluated per
+     *  contributor with the element as subject, so a navigated read is a further hop this arm does not walk;
+     *  multi-period (§13.3.6.7) is excluded, as everywhere in §8.2. */
+    private static boolean elementTijdlijnLid(Objecttype elem, String lid) {
+        return elem.granulariteitLeden().containsKey(lid) && !elem.tijdlijnAantalLeden().containsKey(lid);
+    }
+
+    /** IR-SPEC ch. 4.5: lower a QUANTIFIER FOLD to a {@code collectList} accumulate over the contributor timelines
+     *  plus a result-var eval that folds them with {@link RegelSpraakRuntime#rsGeheelPeriodeAlle} /
+     *  {@link RegelSpraakRuntime#rsGeheelPeriodeGeen} — the same two clauses the §8.2 set form
+     *  {@link #geheelPeriodeAlleVoorwaarde} builds, because the node is that same quantification, spelled by the
+     *  resolver instead of read off the operand's {@code set} flag. What differs is where the pieces come from: the
+     *  matrix is a condition written with the ELEMENT as subject, so its temporal operand is an element-OWN read, and
+     *  the {@code filter} selects the contributors on the accumulate source through {@link #filterSource} — exactly
+     *  how {@code Expr.Functie.filter} is applied.
+     *
+     *  <p><b>Where the NIET prefix binds.</b> The matrix is an ordinary condition evaluated PER CONTRIBUTOR, so its
+     *  §8.2 "niet gedurende …" prefix negates per contributor — not the quantifier's verdict. That is the one place
+     *  this arm differs from {@link #geheelPeriodeAlleVoorwaarde}, which complements the whole forall because there
+     *  the qualifier sits on the outer comparison. A per-contributor negation needs no third runtime helper:
+     *  ∀c.¬P = ¬∃c.P and ¬∃c.¬P = ∀c.P, so a NIET matrix FLIPS ALLE into GEEN and back.
+     *
+     *  <p>An EMPTY contributor set is WAAR for both quantifiers, which both helpers give directly. Every shape
+     *  outside this scope goes to {@link #kvSkip} with its own reason — never a silently wrong verdict. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Gate kwantorvouwVoorwaarde(Conditie.Kwantorvouw kv, PatternDSL.PatternDef pattern,
+            Objecttype subject, Variable subjectVar) {
+        if (subject == null || subjectVar == null)
+            return kvSkip(kv, "geen subjectpatroon om het bereik aan te hangen");
+        if (kv.kwantor() != Conditie.Kwantor.ALLE && kv.kwantor() != Conditie.Kwantor.GEEN)
+            return kvSkip(kv, "kwantor is geen v0-vorm (WF-108 (a)): alleen ALLE en GEEN worden gelowerd");
+        if (!kv.bronPad().isEmpty())
+            return kvSkip(kv, "een meerstaps bereik (WF-108 (c)); de accumulate-source draagt één join-rol");
+        Objecttype elem = kv.elementObjecttype();
+        if (elem == null) return kvSkip(kv, "onopgelost elementObjecttype");
+        Class<?> elemClass = factClass(elem);
+        if (elemClass == null) return kvSkip(kv, "geen fact-class voor elementtype " + elem.naam);
+        if (kv.toets() == null) return kvSkip(kv, "een kwantorvouw zonder matrix (WF-108 (d))");
+
+        // ---- the MATRIX: a §8.2 whole-period predicate over ONE tijdlijn member of the contributor ----
+        Conditie.GeheelPeriode gp = geheelPeriodeVan(kv.toets());
+        if (gp == null) return kvSkip(kv, "een matrix zonder §8.2 gehele-periodekwalificatie — deze tak lowert"
+                + " alleen de heelperiodevorm");
+        String gran = gp.jaar() ? "JAAR" : "MAAND";
+        String tlVeld;          // the contributor field holding the List<Segment> the matrix reads
+        int toetsCode;          // the rsGeheelPeriode check encoding
+        WaardeFn grensFn = null;
+        if (kv.toets() instanceof Conditie.Vergelijking v) {
+            Expr.AttribuutRef tijd; Expr ander; boolean linksTemp;
+            if (v.links() instanceof Expr.AttribuutRef la && la.navigatieRol() == null && elementTijdlijnLid(elem, la.attribuut()))
+                { tijd = la; ander = v.rechts(); linksTemp = true; }
+            else if (v.rechts() instanceof Expr.AttribuutRef ra && ra.navigatieRol() == null && elementTijdlijnLid(elem, ra.attribuut()))
+                { tijd = ra; ander = v.links();  linksTemp = false; }
+            else return kvSkip(kv, "een matrixvergelijking zonder enkelperiodiek tijdlijnattribuut van het elementtype");
+            if (!(tijd.type().isNumeriek() || tijd.type().isPercentage()))
+                return kvSkip(kv, "een niet-numerieke heelperiodevergelijking in de matrix");
+            if (ander instanceof Expr.AttribuutRef ar && ar.navigatieRol() == null && elementTijdlijnLid(elem, ar.attribuut()))
+                return kvSkip(kv, "een tijdlijn-vs-tijdlijnvergelijking in de matrix");
+            Eenheid el = tijd.type().eenheidOf(), er = ander.type().eenheidOf();
+            boolean crossUnit = el != null && er != null && el.vereistOmrekening(er);
+            if (crossUnit && er.exacteHerschaalFactoren(el) == null)
+                return kvSkip(kv, "een matrixgrens in een eenheid zonder exacte herschaalfactoren");
+            Integer code = Tijdrekening.toets(linksTemp ? v.op() : Operatoren.omkeren(v.op()));   // REVERSE (operand swap), not negate
+            if (code == null) return kvSkip(kv, "een datumvergelijking als heelperiodematrix");
+            // The eval rides AFTER the collectList accumulate, on a pattern that binds no $subject — so the grens
+            // must be subject-free: a literal or a scalar Parameter-global. The same restriction the §8.2 set arm
+            // carries, for the same structural reason.
+            if (!(ander instanceof Expr.Literal) && !(ander instanceof Expr.ParameterRef pr && pr.parameter().granulariteit() == null))
+                return kvSkip(kv, "een niet-scalaire matrixgrens (de eval na de accumulate bindt geen $subject)");
+            WaardeFn g = scalarWaarde(null, ander);
+            if (g == null) return kvSkip(kv, "een matrixgrens buiten de scalaire scope");
+            if (crossUnit) g = g.herschaald(ander.type(), tijd.type());
+            tlVeld = tijd.attribuut(); toetsCode = code; grensFn = g;
+        } else if (kv.toets() instanceof Conditie.Predicaat p && p.operand() instanceof Expr.AttribuutRef pa
+                && pa.navigatieRol() == null && elementTijdlijnLid(elem, pa.attribuut())
+                && (p.soort() == Conditie.Predicaatsoort.GEVULD || p.soort() == Conditie.Predicaatsoort.LEEG)) {
+            tlVeld = pa.attribuut();
+            toetsCode = p.soort() == Conditie.Predicaatsoort.GEVULD ? 6 : 8;   // §8.2 gevuld / leeg over every moment
+        } else if (kv.toets() instanceof Conditie.Kenmerk k && k.navigatie() == null && !k.negatie()
+                && k.kenmerk() != null && elem.kenmerkGranulariteitLeden().containsKey(k.kenmerk())
+                && !elem.kenmerkTijdlijnAantalLeden().containsKey(k.kenmerk())) {
+            tlVeld = k.kenmerk(); toetsCode = 7;                                // §8.2 the kenmerk's TRUE-period timeline
+        } else {
+            return kvSkip(kv, "een matrixvorm buiten de §8.2 heelperiodeverzameling (vergelijking / gevuld / leeg /"
+                    + " tijdsafhankelijk kenmerk van het element)");
+        }
+
+        // ---- the CONTRIBUTORS: the element pattern joined on the role the SUBJECT plays (the §8.2 set arm's join) ----
+        String rol = model.verbindendeRol(elem, subject);
+        if (rol == null) return kvSkip(kv, "geen verbindende rol tussen " + subject.naam + " en " + elem.naam);
+        final String backref = rol, attr = tlVeld;
+        Variable elemVar = DSL.declarationOf(elemClass, "$kv_" + (seq++));
+        PatternDSL.PatternDef src = PatternDSL.pattern(elemVar).expr(nextId("kvjoin"), (Variable) subjectVar,
+                (Predicate2) (e, subj) -> RegelSpraakRuntime.get(e, backref) == subj);
+        // the filter selects WHICH contributors are quantified over, per contributor with the element as subject —
+        // the same field, the same reading and the same machinery as Functie.filter.
+        if (kv.filter() != null) {
+            src = filterSource(src, kv.filter(), elem);
+            if (src == null) return kvSkip(kv, "een die/dat-subselectie die deze tak niet op de source kan binden");
+        }
+
+        // ---- the FOLD: collect each contributor's timeline, then quantify over the collected list ----
+        Variable elemTlVar = DSL.declarationOf(List.class, "$kvtl_" + (seq++));   // per-contributor timeline
+        Variable tlVar = DSL.declarationOf(List.class, "$kvtls_" + (seq++));      // the collected List<List<Segment>>
+        PatternDSL.PatternDef src2 = src.bind(elemTlVar, (Function1) (e) -> RegelSpraakRuntime.get(e, attr));
+        RuleItemBuilder accItem = DSL.accumulate(src2, DSL.accFunction(accFn("CollectListAccumulateFunction"), elemTlVar).as(tlVar));
+        // the NIET prefix is the MATRIX's, so it flips the quantifier rather than the verdict (see the javadoc).
+        final boolean alle = (kv.kwantor() == Conditie.Kwantor.ALLE) != gp.niet();
+        final int fToets = toetsCode; final String fGran = gran; final WaardeFn gf = grensFn;
+        java.util.Set<String> gGlobals = gf == null ? java.util.Set.of() : gf.globals();
+        if (gGlobals.isEmpty()) {
+            Predicate1<Object> ev = tls -> {
+                BigDecimal grens = gf == null ? null : RegelSpraakRuntime.toBd(gf.fn().apply(null, java.util.Map.of()));
+                return alle ? RegelSpraakRuntime.rsGeheelPeriodeAlle((List<? extends List<?>>) tls, fGran, fToets, grens)
+                            : RegelSpraakRuntime.rsGeheelPeriodeGeen((List<? extends List<?>>) tls, fGran, fToets, grens);
+            };
+            PatternDSL.PatternDef check = PatternDSL.pattern(tlVar).expr(nextId("kv"), (Predicate1) ev);
+            return new Gate(pattern, List.of(accItem, check));
+        }
+        if (gGlobals.size() == 1) {
+            String gn = gGlobals.iterator().next();
+            Global<BigDecimal> gg = globals.get(gn);
+            if (gg == null) return kvSkip(kv, "een matrixgrens op de niet-geregistreerde global " + gn);
+            Predicate2<Object, Object> ev = (tls, gv) -> {
+                BigDecimal grens = RegelSpraakRuntime.toBd(gf.fn().apply(null, bindGlobal(gn, gv)));
+                return alle ? RegelSpraakRuntime.rsGeheelPeriodeAlle((List<? extends List<?>>) tls, fGran, fToets, grens)
+                            : RegelSpraakRuntime.rsGeheelPeriodeGeen((List<? extends List<?>>) tls, fGran, fToets, grens);
+            };
+            PatternDSL.PatternDef check = PatternDSL.pattern(tlVar).expr(nextId("kv"), (Variable) gg, (Predicate2) ev);
+            return new Gate(pattern, List.of(accItem, check));
+        }
+        return kvSkip(kv, "een matrixgrens die meer dan één parameter-global leest");
+    }
+
     /** A fact-only Predicate1 for "the §8.2 check holds" (the NIET prefix complements the rsGeheelPeriode result), or
      *  null when the grens reads a Parameter-global (the caller binds it as a pattern variable). */
     private Predicate1<Object> geheelPeriodeLeaf(Gp82 g) {
@@ -2332,6 +2480,10 @@ public final class ExecModelTranspiler {
      *  rolcheck, §8.1.8 own + to-one navigated kenmerkcheck, §8.1.2 LEEG/GEVULD, §8.1.1 comparison vs global/literal. */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private Gate voorwaarde(Conditie c, PatternDSL.PatternDef pattern, Objecttype subject, Variable subjectVar) {
+        // IR-SPEC ch. 4.5 the QUANTIFIER FOLD — the first-order sibling of Samengesteld: that one quantifies over
+        // PARTS of one subject, this one over the INSTANCES of a linked set. It carries no §8.2 qualifier of its own
+        // (the qualifier sits on the matrix), so it is routed here rather than through the geheelPeriodeVan test below.
+        if (c instanceof Conditie.Kwantorvouw kv) return kwantorvouwVoorwaarde(kv, pattern, subject, subjectVar);
         if (c instanceof Conditie.Samengesteld s) {
             // §13.4.14 ALLE / DE: AND its parts as successive in-pattern constraints; carry up far-side joins.
             if (s.kwantor() == Conditie.Kwantor.ALLE || s.kwantor() == Conditie.Kwantor.DE) {

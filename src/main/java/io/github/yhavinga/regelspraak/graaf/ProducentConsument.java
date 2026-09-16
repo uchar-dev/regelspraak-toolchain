@@ -76,6 +76,16 @@ public final class ProducentConsument {
         }
         if (c instanceof Conditie.Samengesteld s)
             for (Conditie d : s.onderdelen()) verzamelConditie(d, subject, uit);
+        // IR-SPEC ch. 4.5: a quantifier fold's filter and matrix are conditions, and their kenmerk reads are
+        // consumptions of this rule like any other. The generic bevatOperand scan below already reaches the
+        // ATTRIBUTE reads inside them (Conditie.bevatOperand recurses through the node); only the kenmerk arm above
+        // is node-specific, so only it needs this. The children are evaluated with the ELEMENT as subject, hence
+        // the element type rather than the rule's own subject.
+        if (c instanceof Conditie.Kwantorvouw kv) {
+            String elem = kv.elementObjecttype() == null ? "" : kv.elementObjecttype().naam;
+            verzamelConditie(kv.filter(), elem, uit);
+            verzamelConditie(kv.toets(), elem, uit);
+        }
         // operand attribuut-reads inside comparisons/predicates/periodes
         Conditie.bevatOperand(c, e -> { verzamelExpr(e, uit); return false; });
     }

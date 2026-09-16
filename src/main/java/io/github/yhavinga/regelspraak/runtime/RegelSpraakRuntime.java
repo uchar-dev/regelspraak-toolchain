@@ -1099,6 +1099,22 @@ public final class RegelSpraakRuntime {
         return true;
     }
 
+    /** §8.2 / IR-SPEC ch. 4.5, the GEEN arm of the quantifier fold: the verdict is WAAR iff NO contributor
+     *  satisfies the whole-period matrix — the exact dual of {@link #rsGeheelPeriodeAlle} over the same collected
+     *  {@code List<List<Segment>>}. An EMPTY contributor set is vacuously WAAR, the same rule both quantifiers
+     *  carry (nothing violates, and nothing satisfies).
+     *
+     *  <p>It is a SEPARATE helper rather than a negation of the ALLE fold because the two differ: {@code !alle}
+     *  is "some contributor fails the matrix", which is not "no contributor satisfies it". The caller's NIET
+     *  prefix does not need a third helper — a negated matrix turns ALLE into GEEN and GEEN into ALLE
+     *  (∀c.¬P = ¬∃c.P and ¬∃c.¬P = ∀c.P), so the transpiler flips the quantifier and picks the other fold.
+     *  The single implementation; both back-ends call it (the DRL imports it, the exec calls it directly). */
+    public static boolean rsGeheelPeriodeGeen(List<? extends List<?>> reeksen, String granulariteit, int toets, BigDecimal grens) {
+        if (reeksen == null) return true;
+        for (List<?> r : reeksen) if (rsGeheelPeriode(r, granulariteit, toets, grens)) return false;
+        return true;
+    }
+
     /** The value of the segment covering {@code dag} (van &le; dag &lt; tot), or null (leeg) when no segment covers it. */
     private static BigDecimal waardeOpDag(List<?> lijst, LocalDate dag) {
         for (Object o : leeg(lijst)) {
