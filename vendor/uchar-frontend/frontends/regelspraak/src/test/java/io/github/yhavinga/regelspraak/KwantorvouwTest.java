@@ -30,9 +30,11 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>The scope is exactly the §8.2-QUALIFIED condition with one set operand. The other measured WF-096
  * producer routes are unchanged, and {@link SetlezingZonderVouwTest} — untouched — is the proof; the
- * two routes most likely to be widened by accident (an unqualified voorwaarde, a counting quantor) are
- * pinned here as well, beside the shapes that decline to lower on purpose — three when this file was
- * written, four since the die/dat subselection joined them (see {@link KwantorvouwFilterTest}).
+ * unqualified voorwaarde, the route most likely to be widened by accident, is pinned here as well. The
+ * counting quantor was pinned here as a second such route until 2026-09-16, when it became a lowering
+ * of its own — its row below now measures the telvouw it produces. Beside those stand the shapes that
+ * decline to lower on purpose — three when this file was written, four since the die/dat subselection
+ * joined them (see {@link KwantorvouwFilterTest}).
  */
 class KwantorvouwTest {
 

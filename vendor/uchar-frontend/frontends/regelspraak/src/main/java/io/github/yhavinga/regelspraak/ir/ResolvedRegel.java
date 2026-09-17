@@ -7,9 +7,11 @@ import java.util.List;
  * target reference that receives the value of a resolved {@link Expr}. This is the
  * unit the Drools transpiler turns into a rule consequence ("then" side).
  *
- * Only the assignment-shaped resultaatdelen are captured here so far; the other
- * resultaatdeel kinds (kenmerktoekenning, objectcreatie, verdeling, …) and the
- * voorwaardendeel will join the IR as the resolver learns to bind them.
+ * Only the assignment-shaped resultaatdelen live in THIS record; the other resultaatdeel
+ * kinds have since gained nodes of their own — kenmerktoekenning as the {@link Soort#KENMERKTOEKENNING}
+ * arm here, objectcreatie as {@link ResolvedObjectCreatie}, verdeling as {@link ResolvedVerdeling},
+ * and likewise feitcreatie, startpunt, dagsoort, consistentie and uniciteit. The voorwaardendeel
+ * joined the IR as the {@code voorwaarde} component below.
  *
  * @param naam           the regel name (with a per-version suffix when the rule has more
  *                       than one §13.4.2.3 version, so each version is a distinct DRL rule)

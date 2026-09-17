@@ -702,7 +702,10 @@ public final class RegelSpraakModel {
          *  JAAR), keyed by its naam — absent for an ordinary single-value attribute. A temporal attribute
          *  holds one value per period of this granularity (§5.1); recording the declaration here is the
          *  IR-shape foundation for the Phase-7 value model that will lower the periods (knip-merge,
-         *  tijdsevenredig, gedurende). The startpunt is not yet captured. */
+         *  tijdsevenredig, gedurende). The VARIABLE startpunt has since been captured — a named
+         *  tijdlijn records it in {@link Tijdlijn#variabelStartpunt} and §9.9's startpuntbepaling
+         *  resolves its anchor ({@link #startpuntAnkerLid}); only the INLINE fixed startpunt
+         *  ("voor elke 5 maanden startend op …") is still dropped here. */
         public final Map<String, Granulariteit> attribuutGranulariteit = new LinkedHashMap<>();
         /** §13.3.6.7 the period COUNT of a MULTI-period tijdlijn ("voor elke 5 maanden" -&gt; 5), keyed by the
          *  attribute naam — absent (count 1) for a single-period "voor elke maand". Each tijdvak then spans

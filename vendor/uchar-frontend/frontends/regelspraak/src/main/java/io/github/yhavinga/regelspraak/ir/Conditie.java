@@ -15,9 +15,11 @@ import java.util.List;
  * model — the resolver maps the parse tokens onto these and runs the typeringen
  * checks while it builds them.
  *
- * Forms the resolver does not yet structure (kenmerk/objecttype membership tests,
- * period comparisons) become an {@link Onopgelost} node carrying their source
- * text, keeping the IR explicit about its coverage.
+ * The forms this doc once named as unstructured have since landed as nodes of their own:
+ * kenmerk membership as {@link Kenmerk}, objecttype/role membership as
+ * {@link Rollidmaatschap} and {@link VerreRollidmaatschap}, period comparisons as
+ * {@link Periode}. What the resolver still cannot structure becomes an {@link Onopgelost}
+ * node carrying its source text, keeping the IR explicit about its coverage.
  */
 public sealed interface Conditie {
     /** The structured source anchor (file/line/column + whitespace-normalised snippet) this
@@ -191,6 +193,8 @@ public sealed interface Conditie {
      *  symmetrically; see docs/grammar-divergences.md). */
     record Regelversie(String regel, boolean inconsistent, Bron bron) implements Conditie {}
 
-    /** A condition form the resolver did not yet structure (membership/period tests). */
+    /** A condition form the resolver cannot structure — a marker with a reason, never a type.
+     *  Membership and period tests have left this node for {@link Kenmerk},
+     *  {@link Rollidmaatschap}, {@link VerreRollidmaatschap} and {@link Periode}. */
     record Onopgelost(Bron bron) implements Conditie {}
 }

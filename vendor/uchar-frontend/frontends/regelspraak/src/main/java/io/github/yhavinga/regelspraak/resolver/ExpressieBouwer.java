@@ -29,9 +29,10 @@ import java.util.Map;
  * the resolver's "unknown ⇒ no claim" guarantee, are unchanged by the move to an
  * AST. What the AST adds is structure: arithmetic, aggregations and bounds are now
  * first-class nodes, and attribute/parameter references are bound, giving the
- * transpiler something to walk instead of a bare datatype. Aggregation result
- * typing is deliberately left at Onbekend for now (a separate, test-guarded step);
- * the structure is captured regardless.
+ * transpiler something to walk instead of a bare datatype. Aggregation result typing,
+ * once deliberately left at Onbekend, has since landed in {@code functieType} — SOM,
+ * TOTAAL (with the §4.20 rate strip), MIN/MAX, AANTAL and the date functions all carry a
+ * computed type; the kinds with no scalar meaning keep Onbekend on purpose.
  */
 final class ExpressieBouwer {
     private final RegelSpraakModel model;

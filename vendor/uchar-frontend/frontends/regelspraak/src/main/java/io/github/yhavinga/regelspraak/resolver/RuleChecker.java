@@ -42,7 +42,8 @@ import java.util.Set;
  * subject is a plain object type — and applies {@link Typering}. References it
  * cannot resolve yield {@link Datatype.Onbekend}, which {@link Typering} treats
  * as "no claim", so the checker never raises a false positive on a construct it
- * does not yet fully resolve (e.g. deep van-chains or aggregations). The result
+ * does not fully resolve. Deep van-chains and aggregations have since joined the
+ * resolved side (a navigatiePad on the reference, a typed {@link Expr.Functie}). The result
  * type rules are the spec's; the coverage is honest about its limits.
  */
 final class RuleChecker {
@@ -839,9 +840,9 @@ final class RuleChecker {
     }
 
     /** Resolve an assignment resultaatdeel into a {@link ResolvedRegel} (the transpiler IR)
-     *  and type-check the value against the target (§6 toekenning). The assignment kinds
-     *  carry the version's {@code geldigheid} and its per-version {@code versieNaam}; the
-     *  other resultaatdeel kinds keep the base {@code naam} and (for now) no validity guard. */
+     *  and type-check the value against the target (§6 toekenning). Every resultaatdeel kind
+     *  carries the version's {@code geldigheid} and its per-version {@code versieNaam} — the
+     *  other kinds gained both as they joined the IR, so no kind is left without a validity guard. */
     private void resultaat(String naam, String versieNaam, ResultaatDeelContext rd,
                            VoorwaardeDeelContext vd, Conditie voorwaarde, Geldigheid geldigheid) {
         if (rd == null) return;
@@ -896,7 +897,11 @@ final class RuleChecker {
      *  &lt;operator&gt;". The assertion is built with the same operator machinery as a
      *  voorwaarde (uitToplevel), so the operand types and operator legality are the
      *  §5 ones; the subject is the object type the asserted expression is about. Compound
-     *  criteria and uniciteit (different shapes) are not yet lifted — they keep a WARNING. */
+     *  criteria and uniciteit have since been lifted as well — the former into a
+     *  {@link Conditie.Samengesteld} assertion on the same
+     *  {@link io.github.yhavinga.regelspraak.ir.ResolvedConsistentie}, the latter into
+     *  {@link io.github.yhavinga.regelspraak.ir.ResolvedUniciteit} / {@link ResolvedUniciteitUnie};
+     *  what neither path can carry keeps a WARNING. */
     private void consistentie(String naam, ConsistentieRegelContext cr, Geldigheid geldigheid) {
         EnkelvoudigeConsistentieRegelContext e = cr.enkelvoudigeConsistentieRegel();
         if (e != null && e.expressie() != null && e.toplevelOperator() != null) {
@@ -934,8 +939,9 @@ final class RuleChecker {
             }
         }
         // A membership criterion ("moet een <kenmerk|rol> zijn"), elfproef /
-        // numeriek-met-exact, a cross-type "verenigd met" uniqueness, or a computed/unresolved
-        // subject: forms whose "inconsistent" we cannot yet express as a faithful violation rule.
+        // numeriek-met-exact, a compound under GEEN or a counting kwantor, or a computed/unresolved
+        // subject: forms whose "inconsistent" we cannot express as a faithful violation rule. (The
+        // cross-type "verenigd met" uniqueness left this list when ResolvedUniciteitUnie landed.)
         // Surface the gap as a WARNING rather than lift it into a silent inert rule (which would
         // both drop the check and lose the diagnostic the §13.4.7/.11/.12 path still gives).
         model.diagnostics.add(new Diagnostic(Severity.WARNING,
@@ -947,9 +953,12 @@ final class RuleChecker {
      *  or a §5.7 concatenatie "de concatenatie van &lt;attribuut&gt; en … van alle &lt;Type&gt; …". Resolves
      *  the object type (by name, declared meervoudsvorm, or regular plural) and the key attribute(s)
      *  over which the value — or the COMBINATION of values — must be unique, into a
-     *  {@link io.github.yhavinga.regelspraak.ir.ResolvedUniciteit}. Returns false — leaving the WARNING — for the
-     *  cross-type "verenigd met" union, a uniqueness scoped within a parent ("… van alle X van &lt;Y&gt;"),
-     *  or any name that does not resolve; the transpiler then never silently drops or mis-checks. */
+     *  {@link io.github.yhavinga.regelspraak.ir.ResolvedUniciteit}. The cross-type "verenigd met" union
+     *  and the parent-scoped form ("… van alle X van &lt;Y&gt;") have since been lifted too — the union into
+     *  a {@link ResolvedUniciteitUnie}, the scoped one into a ResolvedUniciteit carrying its scope role.
+     *  Returns false — leaving the WARNING — for a source that does not resolve, a union whose sources
+     *  disagree on key arity or datatype, and a key with more than one temporal component; the transpiler
+     *  then never silently drops or mis-checks. */
     /** The count of temporal (attribuutGranulariteit) components in a uniqueness key list. */
     private static long telTemporeel(Objecttype type, java.util.List<String> sleutels) {
         return sleutels.stream().filter(k -> type.granulariteitVan(k) != null).count();
@@ -1619,8 +1628,10 @@ final class RuleChecker {
 
     // ---- §13.4.13/.14/.15 condition IR (structure for the transpiler "when" side) ----
     // Built alongside (not instead of) the exhaustive type-check walk below, so it
-    // adds structure without changing any diagnostic. Forms not yet structured —
-    // kenmerk/objecttype membership tests, period comparisons — become Onopgelost.
+    // adds structure without changing any diagnostic. The kenmerk/objecttype membership
+    // tests and period comparisons this comment once listed as unstructured have since
+    // gained their own nodes (Conditie.Kenmerk, Rollidmaatschap/VerreRollidmaatschap,
+    // Periode); what is still unstructured becomes Onopgelost.
     private Conditie bouwVoorwaarde(VoorwaardeDeelContext v) {
         if (v.toplevelSamengesteldeVoorwaarde() != null) return bouwSamengesteld(
                 v.toplevelSamengesteldeVoorwaarde().voorwaardeKwantificatie(),

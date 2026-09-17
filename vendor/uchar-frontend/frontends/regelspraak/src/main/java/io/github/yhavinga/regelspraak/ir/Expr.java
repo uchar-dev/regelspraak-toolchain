@@ -15,12 +15,13 @@ import java.util.List;
  * matrix ({@link io.github.yhavinga.regelspraak.resolver.Typering}), and (b) the original
  * source slice, for diagnostics and traceability back to the regel text.
  *
- * References are bound to the model where the resolver can do so today —
- * attribute-of-subject against a known object type, and parameters. What it cannot
- * yet bind (deep van-chains, role navigation) becomes an {@link Onopgelost} node
- * carrying {@link Datatype.Onbekend}, so the IR is explicit about its resolution
- * coverage rather than guessing: a transpiler can see exactly what is and isn't
- * resolved. This mirrors the resolver's "unknown ⇒ no claim" discipline.
+ * References are bound to the model where the resolver can do so —
+ * attribute-of-subject against a known object type, and parameters. Role navigation and
+ * deep van-chains have since been bound too: {@link AttribuutRef} carries them as
+ * {@code navigatieRol} and {@code navigatiePad}. What still cannot be bound becomes an
+ * {@link Onopgelost} node carrying {@link Datatype.Onbekend}, so the IR is explicit about
+ * its resolution coverage rather than guessing: a transpiler can see exactly what is and
+ * isn't resolved. This mirrors the resolver's "unknown ⇒ no claim" discipline.
  */
 public sealed interface Expr {
     /** The expression's result datatype (per the typeringen matrix). */
@@ -114,10 +115,11 @@ public sealed interface Expr {
      *  `filter` is a §13.4.2 "die/dat &lt;predicaat&gt;" subselectie on the counted/aggregated
      *  element ("het aantal deelnemers van de groep die een kind zijn" — only the kind-deelnemers).
      *  It is resolved against the ELEMENT type, not the rule subject. Null when the operand
-     *  carries no such filter. A filter the resolver cannot yet structure (the kenmerk-membership
-     *  predicates these subselecties use are still {@link Conditie.Onopgelost}) is kept here as an
-     *  Onopgelost marker so the transpiler can see it must NOT lower the aggregation to a count
-     *  over every instance — it emits a visible marker instead of a silently-wrong total. */
+     *  carries no such filter. A kenmerk-membership predicate now resolves to a real
+     *  {@link Conditie.Kenmerk} against the element type; a filter the resolver still cannot
+     *  structure is kept here as an {@link Conditie.Onopgelost} marker so the transpiler can see it
+     *  must NOT lower the aggregation to a count over every instance — it emits a visible marker
+     *  instead of a silently-wrong total. */
     /** §13.4.17.51-.54 a resolved dimension selection on an aggregation: the dimension the
      *  aggregation ranges over and the CONCRETE ordered list of labels selected — the
      *  "vanaf &lt;a&gt; t/m &lt;b&gt;" interval and the "in {…}" set are already expanded against the
