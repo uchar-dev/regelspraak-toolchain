@@ -29,6 +29,14 @@ class IrEmitterTest {
         return IrEmitter.emit(m).replaceAll("\\s+", "");
     }
 
+    /** The emitted v0 IR JSON UNTOUCHED. Only a witness about whitespace INSIDE a value may use this
+     *  — {@link #emitCompact} would erase the very difference it asserts. */
+    private static String emitRaw(String src) {
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+        return IrEmitter.emit(m);
+    }
+
     @Test void navigatiebindingen_op_ketenlezing_subject_uitwaarts() {
         // "het bedrijfsniveau van het bedrijf van zijn afdeling": a §13.4.1 declared chain
         // Werknemer -[afdeling]-> Afdeling -[bedrijf]-> Bedrijf. One binding per hop, subject-
@@ -269,6 +277,78 @@ class IrEmitterTest {
                 () -> "de de-dato-literal moet het kale ISO-lexeme dragen:\n" + c);
         assertFalse(c.contains("\"waarde\":\"dd.31-01-2024\"") || c.contains("\"waarde\":\"31-01-2024\""),
                 () -> "de bron-snippet (prefix of day-first) mag niet in het literal-lexeme zitten:\n" + c);
+    }
+
+    /** A Tekst-attribuut plus one rule that assigns {@code lexeem} to it — the smallest model that
+     *  puts a text literal on the wire. The lexeme is inserted RAW, so a test can hand it a source
+     *  form the grammar rejects and assert on the diagnostics. */
+    private static String tekstBron(String lexeem) {
+        return """
+            Objecttype de Vondst
+                het etiket Tekst;
+            Regel etiket
+                geldig altijd
+                    Het etiket van een Vondst moet gesteld worden op %s.
+            """.formatted(lexeem);
+    }
+
+    @Test void tekst_literal_lexeme_is_de_geparste_waarde_snippet_in_bron() {
+        // uchar, maintainer decision 2026-09-18 (IR-SPEC ch. 4.1): a Tekst literal's waarde is the
+        // PARSED string — what stands BETWEEN the delimiters — not the source snippet with its own
+        // outer '"' still attached. The old form ("waarde":"\"Flevoland\"") gave v0 two lexeme
+        // families for one text value, and since all four consumers compare Tekst verbatim, an
+        // emitted golden only played when its case input carried the delimiters too. Third in the
+        // bare-lexeme row beside WF-081 (number) and WF-084 (date); bron keeps the source snippet.
+        String c = emitCompact(tekstBron("\"Flevoland\""));
+        assertTrue(c.contains(
+                "{\"node\":\"Literal\",\"waarde\":\"Flevoland\",\"type\":{\"node\":\"Tekst\"},\"bron\":\"\\\"Flevoland\\\"\"}"),
+                () -> "de tekst-literal moet de geparste waarde dragen, de bron-snippet in bron:\n" + c);
+        assertFalse(c.contains("\"waarde\":\"\\\"Flevoland\\\"\""),
+                () -> "de buitenste aanhalingstekens mogen niet in het literal-lexeme zitten:\n" + c);
+    }
+
+    @Test void tekst_literal_grammatica_kent_geen_escape_dus_nooit_een_ingebed_aanhalingsteken() {
+        // WHY the unquoting is total and lossless, measured at the grammar rather than assumed:
+        // tekstWaarde is STRING_START tekstReeksDeel* STRING_END and a literal chunk is STRING_TEXT
+        // ~["«»\r\n]+ (RegelSpraakLexer.g4). There is NO escape sequence, so a '"' always CLOSES the
+        // string and a chunk can never hold one. Dropping the delimiters therefore removes exactly
+        // the delimiters — it can never eat a character the author wrote, and it never unescapes.
+        // The consequence this pins: a wire value with an embedded double quote (merk "AA", which
+        // corpus/golden/jutterswet-keurmerk carries) is HAND-AUTHORED by construction — this emitter
+        // cannot write one. What both back-ends do with such a value stays verbatim; that flank is
+        // pinned by LiteralenTest.tekstOfEnumLabel_leest_tekst_verbatim and the Drools dual-branch
+        // witnesses, not here.
+        RegelSpraakModel m = Resolver.resolve(tekstBron("\"merk \"AA\"\""));
+        assertFalse(m.errors().isEmpty(),
+                "de grammatica kent geen escape: een tweede aanhalingsteken sluit de string en de rest is syntaxfout");
+        assertTrue(m.errors().toString().contains("syntaxfout"),
+                () -> "verwacht een syntaxfout, kreeg: " + m.errors());
+    }
+
+    @Test void tekst_literal_normaliseert_verder_niets() {
+        // "Outer delimiters off, nothing else" — taken from the STRING_TEXT tokens, not from
+        // bron.snippet() minus its first and last char. DefinitionResolver.src collapses every
+        // whitespace run to one space, so a snippet-derived value silently rewrote a double space;
+        // bron still shows that collapse, which is exactly why the two fields differ here. A
+        // backslash and a single quote are ordinary characters and stay as written; an empty string
+        // stays empty (zero STRING_TEXT chunks, not a two-character lexeme).
+        String raw = emitRaw(tekstBron("\"a  b\""));
+        assertTrue(raw.contains("\"waarde\": \"a  b\""),
+                () -> "de dubbele spatie binnen de delimiters hoort bij de waarde:\n" + raw);
+        assertTrue(raw.contains("\"bron\": \"\\\"a b\\\"\""),
+                () -> "bron blijft de (whitespace-gevouwen) bronsnippet:\n" + raw);
+
+        String backslash = emitCompact(tekstBron("\"pad\\naar\""));
+        assertTrue(backslash.contains("\"waarde\":\"pad\\\\naar\""),
+                () -> "een backslash is een gewoon teken, niet een escape-inleiding:\n" + backslash);
+
+        String enkel = emitRaw(tekstBron("\"het 'merk'\""));
+        assertTrue(enkel.contains("\"waarde\": \"het 'merk'\""),
+                () -> "enkele aanhalingstekens zijn gewone tekens in een Tekst-literal:\n" + enkel);
+
+        String leeg = emitCompact(tekstBron("\"\""));
+        assertTrue(leeg.contains("{\"node\":\"Literal\",\"waarde\":\"\",\"type\":{\"node\":\"Tekst\"},\"bron\":\"\\\"\\\"\"}"),
+                () -> "de lege tekst is leeg, niet twee aanhalingstekens:\n" + leeg);
     }
 
     @Test void tijdsevenredig_deel_draagt_basistype_geen_sentinel() {

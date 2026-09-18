@@ -286,6 +286,35 @@ public final class RegelSpraakModel {
     }
 
     /**
+     * Every role of {@code doelwit} that is reachable from {@code houder} AND uniquely addressable BY ITS
+     * OWN DECLARED NAME — the set {@link #verbindendeRol} collapses to null as soon as the type pair is
+     * connected by more than one feittype. One role per uniquely-resolving name, in wire order.
+     *
+     * <p>It is NOT a relaxation of {@link #verbindendeRol}: a member is admitted only when asking
+     * {@link #verbindendeRolViaNaam} for that role's own name answers that very role, so the set is exactly
+     * the roles a WRITTEN name can still select. A name two roles share resolves to nothing and neither of
+     * them joins the set — the ambiguity is refused per NAME instead of per PAIR. On a uniquely connected
+     * pair the two authorities coincide: the single candidate is the single name, so the set is exactly
+     * {@code [verbindendeRol(houder, doelwit)]}.
+     *
+     * <p>Cardinality is deliberately NOT filtered here: this answers "which roles are addressable", and
+     * whether a role's storage lives on this side is the caller's own {@link #naarVeelRol} question (the
+     * same split {@link #verbindendeRol}'s callers already make).
+     */
+    public List<String> verbindendeRollen(Objecttype houder, Objecttype doelwit) {
+        List<String> uit = new ArrayList<>();
+        if (houder == null || doelwit == null) return uit;
+        for (Feittype ft : feittypen.values())
+            for (Rol doel : ft.rollen)
+                if (rolHeeftObjecttype(doel, doelwit) && feittypeRelateert(ft, doel, houder)) {
+                    String r = verbindendeRolViaNaam(houder, doelwit, doel.naam());
+                    if (r != null && r.equalsIgnoreCase(doel.naam())
+                            && uit.stream().noneMatch(x -> x.equalsIgnoreCase(r))) uit.add(r);
+                }
+        return uit;
+    }
+
+    /**
      * Like {@link #verbindendeRol} but disambiguated by the role name the author
      * wrote: only a feittype role whose NAME matches {@code geschrevenRol} (singular,
      * declared plural, or a best-effort plural) and whose object type is

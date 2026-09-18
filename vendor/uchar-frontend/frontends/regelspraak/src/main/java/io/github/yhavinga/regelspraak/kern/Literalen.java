@@ -100,12 +100,22 @@ public final class Literalen {
         return null;
     }
 
-    /** The string label a Tekst literal or an enumeratiewaarde compares by (§13.3.3.4 / §13.2.14 — both are
-     *  VALUE equality on the label): a Tekst's double-quote DELIMITERS are stripped (the grammar's STRING_TEXT
-     *  cannot contain a quote, so only the delimiters can occur); an enumeratiewaarde via {@link #enumLabel}.
-     *  null for any other literal. */
+    /** The string a Tekst literal or an enumeratiewaarde compares by (§13.3.3.4 / §13.2.14 — both are VALUE
+     *  equality). A Tekst literal's {@code waarde} IS that string, returned VERBATIM: since the 2026-09-18 canonicalisation IR-SPEC ch. 4.1 puts the
+     *  PARSED string in that field (the emitter strips only the outer delimiters; a hand-authored value may
+     *  carry any text, embedded quotes included), which is precisely what the reference interpreter reads into its text
+     *  value and what a case input's {@code {"text": …}} carries. Any character removed here would compare one
+     *  side of an equality against a string no other executor ever sees, so the two lexeme families that reach
+     *  this reader both survive whole: a text with an EMBEDDED double quote ({@code merk "AA"}, which a
+     *  hand-authored wire may carry and the grammar's quote-free STRING_TEXT never produces), and a wire whose
+     *  value carries its own OUTER double quotes. A blanket {@code replace("\"","")} broke the first by dropping
+     *  the embedded quote and the second by dropping the delimiters the other side kept — opposite directions,
+     *  one cause. An enumeratiewaarde is the one form that still drops delimiters, via {@link #enumLabel}.
+     *  null for any other literal.
+     *  <p>What a back-end may do with this string is RENDER it: the DRL branch escapes it into DRL text
+     *  ({@code Namen.drlString}). Escaping is not interpretation — it leaves the value itself untouched. */
     public static String tekstOfEnumLabel(Expr.Literal lit) {
-        if (lit.type().isTekst()) return lit.waarde().replace("\"", "");
+        if (lit.type().isTekst()) return lit.waarde();
         return enumLabel(lit.waarde());
     }
 

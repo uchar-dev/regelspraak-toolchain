@@ -61,9 +61,28 @@ class LiteralenTest {
         assertNull(Literalen.enumLabel("geen enum"));
     }
 
-    @Test void tekstOfEnumLabel_dekt_tekst_en_enumeratiewaarde() {
-        assertEquals("Amsterdam", Literalen.tekstOfEnumLabel(tekst("\"Amsterdam\"")));
+    @Test void tekstOfEnumLabel_leest_tekst_verbatim() {
+        // IR-SPEC ch. 4.1: waarde IS the value. Ref reads it verbatim and a case input carries it verbatim, so
+        // whatever this reader removes is compared against a string no other executor ever sees.
+        assertEquals("Flevoland", Literalen.tekstOfEnumLabel(tekst("Flevoland")), "een rauw lexeem is zijn eigen waarde");
+        assertEquals("\"Flevoland\"", Literalen.tekstOfEnumLabel(tekst("\"Flevoland\"")),
+                "buitenste aanhalingstekens horen bij de waarde — Tekst heeft geen delimiters om te strippen");
+        assertEquals("merk \"AA\"", Literalen.tekstOfEnumLabel(tekst("merk \"AA\"")),
+                "een ingebed aanhalingsteken overleeft (de keurmerk-golden)");
+    }
+
+    @Test void tekstOfEnumLabel_normaliseert_niet_stilletjes() {
+        // The mutation witness of the pair above: a reader that strips quotes folds these two DIFFERENT wire values
+        // onto one string, and an equality then fires on a document that does not license it.
+        assertNotEquals(Literalen.tekstOfEnumLabel(tekst("Flevoland")),
+                Literalen.tekstOfEnumLabel(tekst("\"Flevoland\"")),
+                "rauw en quote-dragend zijn twee waarden, niet een");
+    }
+
+    @Test void tekstOfEnumLabel_stript_alleen_de_enumdelimiters() {
         assertEquals("eerste klas", Literalen.tekstOfEnumLabel(num("'eerste klas'")), "een enum rijdt op elk niet-Tekst type");
+        assertEquals("zg. \"digitale\" kaart", Literalen.tekstOfEnumLabel(num("'zg. \"digitale\" kaart'")),
+                "ook hier blijven ingebedde tekens staan");
         assertNull(Literalen.tekstOfEnumLabel(num("42")));
     }
 

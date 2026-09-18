@@ -364,10 +364,10 @@ final class ExpressieBouwer {
             return new Expr.Literal(bron.snippet(), new Datatype.Numeriek(geheel, dec, Datatype.Teken.ONBEPAALD, null), bron);
         }
         if (p.tekstWaarde() != null) {
-            // §5.4/§13.4.17.9: the lexer now splits a "…" into literal STRING_TEXT chunks and «expressie» escapes.
-            // A PLAIN string (no «…») builds the same Expr.Literal(Tekst) as before (byte-identical). An interpolated
-            // string ("…«expressie»…") builds an Expr.TekstReeks whose «…» parts are each a full, recursively-resolved
-            // expressie (any datatype, coerced to Tekst at evaluation, §5.4).
+            // §5.4/§13.4.17.9: the lexer splits a "…" into literal STRING_TEXT chunks and «expressie» escapes.
+            // A PLAIN string (no «…») builds an Expr.Literal(Tekst); an interpolated string ("…«expressie»…")
+            // builds an Expr.TekstReeks whose «…» parts are each a full, recursively-resolved expressie (any
+            // datatype, coerced to Tekst at evaluation, §5.4).
             java.util.List<Expr.TekstReeks.Deel> delen = new ArrayList<>();
             boolean heeftExpressie = false;
             for (var deel : p.tekstWaarde().tekstReeksDeel()) {
@@ -378,7 +378,27 @@ final class ExpressieBouwer {
                     delen.add(new Expr.TekstReeks.Letterlijk(deel.STRING_TEXT().getText()));
                 }
             }
-            if (!heeftExpressie) return new Expr.Literal(bron.snippet(), new Datatype.Tekst(), bron);
+            if (!heeftExpressie) {
+                // uchar, maintainer decision 2026-09-18: a Tekst literal's waarde is the PARSED string — the
+                // karakterreeks BETWEEN the delimiters — not the source snippet with its own outer '"' still on.
+                // Emitting the snippet gave v0 two lexeme families for one text value (a hand-authored wire's
+                // `vondst` beside an emitted `"vondst"`), and since all four consumers compare Tekst VERBATIM
+                // (Literalen.tekstOfEnumLabel) those two documents say the same thing and are not equal — an
+                // emitted golden then only played when its case input carried the delimiters too. Third in the
+                // row of bare-lexeme fixes beside WF-081 (number) and WF-084 (date): waarde is the lexeme the
+                // executors read, bron keeps the full source snippet.
+                // The unquoting rule, measured at the grammar rather than guessed: tekstWaarde is
+                // STRING_START tekstReeksDeel* STRING_END, and a literal chunk is STRING_TEXT `~["«»\r\n]+`
+                // (RegelSpraakLexer.g4). There is NO escape sequence, so a chunk can never hold a '"' and the
+                // delimiters are separate tokens — taking the chunks IS stripping the outer delimiters, total
+                // and lossless, with every embedded character kept verbatim and nothing unescaped. Taking the
+                // TOKENS rather than bron.snippet() minus its first and last char also keeps the interior's own
+                // whitespace: DefinitionResolver.src collapses every whitespace run to one space, which a
+                // snippet-derived value silently carried into the text ("a  b" became "a b").
+                StringBuilder tekst = new StringBuilder();
+                for (Expr.TekstReeks.Deel deel : delen) tekst.append(((Expr.TekstReeks.Letterlijk) deel).tekst());
+                return new Expr.Literal(tekst.toString(), new Datatype.Tekst(), bron);
+            }
             return new Expr.TekstReeks(delen, bron);
         }
         if (p.booleanWaarde() != null)  return new Expr.Literal(bron.snippet(), new Datatype.Booleaan(), bron);
