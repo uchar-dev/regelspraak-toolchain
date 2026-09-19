@@ -102,13 +102,13 @@ final class RuleChecker {
      * There is no reading of the emitted IR under which the omitted subselectie is harmless, so the
      * refusal has to block the emission.
      *
-     * <p>This makes the STILLNESS loud; it does not build the semantics. A subselectie on an ordinary
-     * (non-fold) position — "indien de leeftijd van de Jutter DIE BEVOEGD IS groter is dan 5" — has no
-     * wire form yet: the IR's {@code filter} field belongs to the two folds (IR-SPEC ch. 4.3, ch. 4.5),
-     * and what a subselection means on a scalar navigation is a spec question, not a resolver one. It is
-     * a named extension point with a loud refusal — the posture the counting quantors held on the
-     * quantifier fold until they were built (2026-09-16), and the reason they could be built at all:
-     * the refusal named the shape instead of guessing at it.
+     * <p>This is not an extension point. Measured against RegelSpraak v2.3.0 (card
+     * subselectie-gewone-positie, 2026-09-19): a subselectie is ALWAYS plural (§5.8), and the language
+     * admits exactly two consumers of a plural reading — an aggregation (§5.8) and a condition whose
+     * subject expression carries a quantifier (ch. 10). Both are folds, both already reach the wire
+     * (ch. 4.3 / ch. 4.5, {@code filter}). A subselection on an ordinary position has no reading in the
+     * source language at all, so this refusal is the DOCUMENTED END STATE and not a placeholder for a
+     * semantics to be built.
      */
     private void keurDeelselecties(RegelSpraakDocumentContext doc) {
         java.util.Set<PredicaatContext> verbruikt = bouwer.verbruikteDeelselecties();
@@ -119,9 +119,13 @@ final class RuleChecker {
             model.diagnostics.add(new Diagnostic(Severity.ERROR,
                 "de 'die/dat'-deelselectie '" + src(p) + "' wordt niet omgezet en zou stil wegvallen: een "
                 + "deelselectie kiest WELKE exemplaren de zin bedoelt, dus haar weglaten beantwoordt een "
-                + "andere vraag dan er staat. De uchar-wire draagt haar alleen op een vouwbereik "
-                + "(IR-SPEC ch. 4.3 en ch. 4.5, veld 'filter'); op deze positie is zij een benoemd "
-                + "uitbreidingspunt en wordt zij geweigerd in plaats van genegeerd (§5.6)",
+                + "andere vraag dan er staat. Een subselectie is in RegelSpraak v2.3.0 ALTIJD MEERVOUDIG "
+                + "(§5.8), en een meervoudige lezing kent daar precies twee verbruikers: een aggregatie "
+                + "(§5.8) of een voorwaarde met een kwantificatie vóór de onderwerpexpressie (hfst. 10). "
+                + "Op deze schrijfpositie staat geen van beide, dus de zin heeft in v2.3.0 geen lezing — "
+                + "deze weigering is de eindtoestand en geen uitbreidingspunt. Schrijf de selectie als "
+                + "vouwbereik (IR-SPEC ch. 4.3 of ch. 4.5, veld 'filter') of zet er een kwantificatie voor "
+                + "(§5.6)",
                 p.getStart().getLine()));
         }
     }
