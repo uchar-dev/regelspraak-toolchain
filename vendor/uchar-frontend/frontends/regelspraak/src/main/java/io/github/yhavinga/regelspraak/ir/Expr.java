@@ -308,6 +308,46 @@ public sealed interface Expr {
     /** A built-in reckoning constant or referent: Rekendatum, Rekenjaar, hij, de dag. */
     record Constante(String naam, Datatype type, Bron bron) implements Expr {}
 
-    /** A reference or sub-expression the resolver could not bind to the model. */
-    record Onopgelost(Datatype type, Bron bron) implements Expr {}
+    /** A reference or sub-expression the resolver could not bind to the model.
+     *
+     *  <p>{@code reden} is the Dutch sentence the frontend raises as a WARNING over this marker when it
+     *  SURVIVES into the finished model — see {@link Conditie.Onopgelost#reden()} for why the reason
+     *  travels on the node instead of being reported where the node is built, and why null means "the
+     *  producing route already speaks for itself". Never serialised: the v0 wire writes {@code node},
+     *  {@code type} and {@code bron}. */
+    record Onopgelost(Datatype type, Bron bron, String reden) implements Expr {}
+
+    /** Every {@link Onopgelost} inside {@code e}, in structural order, handed to {@code uit} as its
+     *  {@code (bron, reden)} pair — the {@link Expr} half of the survivor traversal
+     *  {@link Conditie#verzamelOnopgelost} drives. Walks every Expr-carrying component, and reaches a
+     *  functie's filter and an if-then-else's guard back through the {@link Conditie} half. Null-safe.
+     *  EXHAUSTIVE over the sealed union, for the reason {@link #bevat} states. */
+    static void verzamelOnopgelost(Expr e, java.util.function.BiConsumer<Bron, String> uit) {
+        if (e == null) return;
+        switch (e) {
+            case Onopgelost o -> uit.accept(o.bron(), o.reden());
+            case Binair b -> { verzamelOnopgelost(b.links(), uit); verzamelOnopgelost(b.rechts(), uit); }
+            case Functie f -> {
+                f.argumenten().forEach(x -> verzamelOnopgelost(x, uit));
+                verzamelOnopgelost(f.leegwaarde(), uit);
+                Conditie.verzamelOnopgelost(f.filter(), uit);
+            }
+            case Afgerond a -> verzamelOnopgelost(a.basis(), uit);
+            case Begrensd b -> { verzamelOnopgelost(b.basis(), uit); verzamelOnopgelost(b.minimum(), uit);
+                                 verzamelOnopgelost(b.maximum(), uit); }
+            case TekstReeks t -> t.delen().forEach(d -> {
+                if (d instanceof TekstReeks.Ingevoegd i) verzamelOnopgelost(i.expr(), uit);
+            });
+            case DimensieCel c -> verzamelOnopgelost(c.attribuut(), uit);
+            case Let l -> { verzamelOnopgelost(l.value(), uit); verzamelOnopgelost(l.body(), uit); }
+            case IfThenElse k -> { Conditie.verzamelOnopgelost(k.conditie(), uit);
+                                   verzamelOnopgelost(k.dan(), uit); verzamelOnopgelost(k.anders(), uit); }
+            case Literal ignored -> { }
+            case AttribuutRef ignored -> { }
+            case ParameterRef ignored -> { }
+            case VariabeleRef ignored -> { }
+            case BinderRef ignored -> { }
+            case Constante ignored -> { }
+        }
+    }
 }

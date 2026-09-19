@@ -195,6 +195,40 @@ public sealed interface Conditie {
 
     /** A condition form the resolver cannot structure — a marker with a reason, never a type.
      *  Membership and period tests have left this node for {@link Kenmerk},
-     *  {@link Rollidmaatschap}, {@link VerreRollidmaatschap} and {@link Periode}. */
-    record Onopgelost(Bron bron) implements Conditie {}
+     *  {@link Rollidmaatschap}, {@link VerreRollidmaatschap} and {@link Periode}.
+     *
+     *  <p>{@code reden} is that reason in so many words — the Dutch sentence the frontend raises as a
+     *  WARNING over every marker that SURVIVES into the finished model (maintainer decision 2026-09-19:
+     *  a marker keeps the document emittable, but the author is told what stayed unresolved and why).
+     *  It travels ON the node rather than being reported where the node is built, because a marker is
+     *  not final there: several routes re-read a markered condition and replace it. It is NEVER
+     *  serialised — the v0 wire writes {@code node} plus {@code bron} — so carrying it moves no byte.
+     *
+     *  <p>null means the producing route already raises its OWN diagnostic for this marker; the sweep
+     *  then stays quiet rather than saying it twice. */
+    record Onopgelost(Bron bron, String reden) implements Conditie {}
+
+    /** Every {@link Onopgelost} inside {@code c}, in structural order, handed to {@code uit} as its
+     *  {@code (bron, reden)} pair — the traversal the frontend's survivor report runs over the finished
+     *  model. Recurses through compound children, the fold's filter/matrix, and every operand
+     *  {@link Expr} (an aggregation's own filter is reached back through {@link Expr}). Null-safe.
+     *
+     *  <p>The switch is EXHAUSTIVE over the sealed union — no {@code default} arm — for the reason
+     *  {@link Expr#bevat} spells out: a missing arm under-reports in silence, which is precisely the
+     *  failure this traversal exists to end. */
+    static void verzamelOnopgelost(Conditie c, java.util.function.BiConsumer<Bron, String> uit) {
+        if (c == null) return;
+        switch (c) {
+            case Onopgelost o -> uit.accept(o.bron(), o.reden());
+            case Vergelijking v -> { Expr.verzamelOnopgelost(v.links(), uit); Expr.verzamelOnopgelost(v.rechts(), uit); }
+            case Predicaat p -> Expr.verzamelOnopgelost(p.operand(), uit);
+            case Periode p -> { Expr.verzamelOnopgelost(p.vanaf(), uit); Expr.verzamelOnopgelost(p.tot(), uit); }
+            case Samengesteld s -> s.onderdelen().forEach(d -> verzamelOnopgelost(d, uit));
+            case Kwantorvouw k -> { verzamelOnopgelost(k.filter(), uit); verzamelOnopgelost(k.toets(), uit); }
+            case Kenmerk ignored -> { }
+            case Rollidmaatschap ignored -> { }
+            case VerreRollidmaatschap ignored -> { }
+            case Regelversie ignored -> { }
+        }
+    }
 }

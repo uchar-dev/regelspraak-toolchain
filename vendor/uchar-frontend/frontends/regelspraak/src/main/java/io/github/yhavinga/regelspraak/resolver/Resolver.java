@@ -1,5 +1,7 @@
 package io.github.yhavinga.regelspraak.resolver;
 
+import io.github.yhavinga.regelspraak.ir.Conditie;
+import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Diagnostic;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Severity;
@@ -46,7 +48,62 @@ public final class Resolver {
         if (!syntax.isEmpty()) kopvormHints(tokens, model);
 
         new RuleChecker(model, tokens).check(doc);
+        meldOnopgelost(model);
         return model;
+    }
+
+    /**
+     * The marker discipline (maintainer decision 2026-09-19): every {@link Conditie.Onopgelost} /
+     * {@link Expr.Onopgelost} that SURVIVES into the finished model gets a WARNING beside it. A marker is
+     * the honest wire form and stays one — a WARNING leaves the document on disk — but the author is told
+     * what stayed unresolved and why, instead of finding a marker in the IR with nothing said about it.
+     *
+     * <p>Why here and not at each construction. A marker is not final where it is built: {@link
+     * RuleChecker} markers a condition its own caller then re-reads as a quantifier fold, a feitcreatie
+     * guard is re-resolved against the doel, and the §13.4.17.53 re-split rebuilds a markered aggregation
+     * operand in place. Diagnosing at the construction would report each of those as unresolved and be
+     * wrong about it. So the reason travels ON the node and the report is raised over what is still there
+     * when the model is finished — which is also exactly what the emitter writes.
+     *
+     * <p>A {@code reden} of null means the producing route already raises its own diagnostic (an ERROR
+     * that blocks the document, or a WARNING with a more specific text); repeating it here would be
+     * noise, so the sweep stays quiet. The roots are the model's IR-carrying collections, i.e. what
+     * {@code IrEmitter} serialises: a marker unreachable from those never reaches a consumer either.
+     */
+    private static void meldOnopgelost(RegelSpraakModel m) {
+        java.util.function.BiConsumer<io.github.yhavinga.regelspraak.ir.Bron, String> meld = (bron, reden) -> {
+            if (reden == null) return;
+            m.diagnostics.add(new Diagnostic(Severity.WARNING,
+                    "onopgelost: " + reden + " — '" + bron + "' blijft als marker op de wire staan",
+                    bron == null ? 0 : bron.line()));
+        };
+        for (var r : m.resolvedRegels) {
+            Expr.verzamelOnopgelost(r.doel(), meld);
+            Expr.verzamelOnopgelost(r.waarde(), meld);
+            Conditie.verzamelOnopgelost(r.voorwaarde(), meld);
+        }
+        for (var d : m.resolvedDagsoorten) Conditie.verzamelOnopgelost(d.voorwaarde(), meld);
+        for (var oc : m.objectCreaties) {
+            for (var t : oc.toekenningen()) Expr.verzamelOnopgelost(t.waarde(), meld);
+            Conditie.verzamelOnopgelost(oc.voorwaarde(), meld);
+        }
+        for (var v : m.verdelingen)  Conditie.verzamelOnopgelost(v.voorwaarde(), meld);
+        for (var c : m.consistenties) Conditie.verzamelOnopgelost(c.assertie(), meld);
+        for (var fc : m.feitCreaties) Conditie.verzamelOnopgelost(fc.voorwaarde(), meld);
+        for (var pd : m.prioritizedDefaults) meldDefaults(pd.defaults(), meld);
+    }
+
+    /** The §7 defaults tree: each default's guard and consequence, and recursively the defaults of its
+     *  exception groups — a marker nested in an exception is as much on the wire as a top-level one. */
+    private static void meldDefaults(java.util.List<io.github.yhavinga.regelspraak.ir.Default> defaults,
+                                     java.util.function.BiConsumer<io.github.yhavinga.regelspraak.ir.Bron, String> meld) {
+        if (defaults == null) return;
+        for (var d : defaults) {
+            Conditie.verzamelOnopgelost(d.voorwaarde(), meld);
+            Expr.verzamelOnopgelost(d.consequentie(), meld);
+            if (d.excepties() != null)
+                for (var groep : d.excepties().leden()) meldDefaults(groep.defaults(), meld);
+        }
     }
 
     /** Two mis-spellings of the uchar 'is een' head form that ANTLR can only report as "no viable
@@ -124,6 +181,10 @@ public final class Resolver {
             m.diagnostics.forEach(d -> System.out.println("  " + d));
             return 1;
         }
+        // A WARNING does NOT block the emission — that is the whole difference with an ERROR — but it must
+        // be SEEN: until 2026-09-19 a successful run printed nothing, so every marker-with-a-warning was
+        // invisible on the one path an author actually uses. stderr, so the stdout summary stays parseable.
+        m.diagnostics.stream().filter(d -> !d.isError()).forEach(d -> System.err.println("  " + d));
         java.nio.file.Files.writeString(out, io.github.yhavinga.regelspraak.emit.IrEmitter.emit(m),
                 java.nio.charset.StandardCharsets.UTF_8);
         System.out.printf("ir: objecttypen=%d feittypen=%d resolvedRegels=%d geschreven naar %s%n",

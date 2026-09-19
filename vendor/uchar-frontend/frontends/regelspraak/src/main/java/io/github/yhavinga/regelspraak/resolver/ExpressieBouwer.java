@@ -240,7 +240,8 @@ final class ExpressieBouwer {
 
     // ---------------- §13.4.16/.17 expressie ----------------
     Expr bouw(ExpressieContext e) {
-        if (e == null) return onopgelost(e);
+        if (e == null) return onopgelost(e,
+                "er is geen expressie om te bouwen — de ontleding leverde op deze plaats geen boom op");
         Bron bron = bron(e);
         if (e instanceof PrimaireExprContext p) return bouwPrimair(p.primaireExpressie());
         if (e instanceof SomExprContext s) {
@@ -280,7 +281,11 @@ final class ExpressieBouwer {
             if (mm[1] != null) meldBegrenzing(basis.type(), mm[1].type(), s);
             return new Expr.Begrensd(basis, mm[0], mm[1], bron);
         }
-        return onopgelost(e);
+        // GEEN GETUIGE: expressie heeft zeven gelabelde takken en alle zeven staan hierboven, dus geen
+        // enkele ontleding — ook geen herstelde — bereikt deze regel. Gemeten 2026-09-19.
+        return onopgelost(e,
+                "deze expressievorm wordt niet naar IR omgezet — zij is geen som, product, macht, percentage, "
+                + "afronding, begrenzing of primaire expressie (§13.4.16/.17)");
     }
 
     /** Arithmetic node whose result datatype is taken from the typeringen matrix
@@ -341,7 +346,11 @@ final class ExpressieBouwer {
 
     // ---------------- §13.4.17 primaire expressie ----------------
     private Expr bouwPrimair(PrimaireExpressieContext p) {
-        if (p == null) return onopgelost(p);
+        // GEEN GETUIGE: ANTLR kiest de primaireExpr-tak van `expressie` pas NA een geslaagde match, dus
+        // een PrimaireExprContext zonder kind is niet te produceren. De zusterwacht in bouw(e) is wel
+        // bereikbaar (zie StilleMarkerTest). Gemeten 2026-09-19.
+        if (p == null) return onopgelost(p,
+                "er is geen primaire expressie om te bouwen — de ontleding leverde op deze plaats geen boom op");
         Bron bron = bron(p);
         if (p.getalWaarde() != null) {
             GetalWaardeContext g = p.getalWaarde();
@@ -437,7 +446,9 @@ final class ExpressieBouwer {
             return poss != null ? poss : naamRef(src(p.onderwerp()), false, bron);
         }
         if (p.variabeleNaam() != null)  return naamRef(src(p.variabeleNaam()), true, bron);
-        return onopgelost(p);
+        return onopgelost(p,
+                "deze primaire expressie bindt geen literal, geen parameter, geen variabele, geen attribuut "
+                + "van een onderwerp en geen functieaanroep (§13.4.17)");
     }
 
     /** §13.2.2-.5: the decimal precision of a numeric literal's value — its minimal scale, since
@@ -509,7 +520,7 @@ final class ExpressieBouwer {
                     "'" + sa.attribuut() + "' is geen (meervoud van een) gedeclareerd attribuut van "
                             + sa.objecttype().naam + " — de aggregatie blijft onopgelost (§13.4.17)",
                     f.getStart().getLine()));
-            return onopgelost(f);
+            return onopgelost(f, null);   // the WARNING above is this marker's diagnosis
         }
         if (aggregatieKind && argumenten.size() == 1
                 && argumenten.get(0) instanceof Expr.AttribuutRef vb && vb.set()) {
@@ -552,7 +563,7 @@ final class ExpressieBouwer {
                         "een dimensieselectie / 'gedurende de tijd dat' op een aggregatie wordt nog niet omgezet; "
                                 + "de aggregatie blijft buiten beschouwing in plaats van de selectie te negeren "
                                 + "(§13.4.17.51-.58) — '" + dimBron + "'", f.getStart().getLine()));
-                if (!(filter instanceof Conditie.Onopgelost)) filter = new Conditie.Onopgelost(dimBron);
+                if (!(filter instanceof Conditie.Onopgelost)) filter = new Conditie.Onopgelost(dimBron, null);
             }
         }
         // §13.4.17.57 "het aantal dagen in <de maand|het jaar> dat <conditie>": the post-"dat" condition is a
@@ -595,7 +606,8 @@ final class ExpressieBouwer {
      * &lt;onderwerp&gt;") can bind a DIFFERENT collection than the sentence names. All three end in the honest
      * marker with a WARNING — the {@link Expr.Onopgelost} idiom this resolver already uses for a fold source
      * it cannot bind — never in a fold over a guessed relation. Returns the marker, or null when the source
-     * binds what it says.
+     * binds what it says. Each marker carries {@code reden = null}: the WARNING beside it IS its reason, and
+     * the survivor report must not say it twice.
      *
      * <p>The marker carries the aggregation's OWN result type, not the unknown sentinel: IR-SPEC ch. 2.4
      * defines Onopgelost as "a well-formed marker with a reason, not a type" and WF-044's fence is
@@ -640,7 +652,7 @@ final class ExpressieBouwer {
                             + "één relatie (IR-SPEC ch. 4.3: één elementObjecttype plus één bronRol) — de "
                             + "buitenste stap zou spoorloos wegvallen, dus de aggregatie blijft onopgelost "
                             + "(§13.4.17)", f.getStart().getLine()));
-            return new Expr.Onopgelost(type, bron(f));
+            return new Expr.Onopgelost(type, bron(f), null);
         }
         // The emitter derives a bronRol only for a navigation-free member fold over a resolved element type
         // (IrEmitter.bronRolBinding); outside that shape there is no by-pair guess to contradict.
@@ -669,7 +681,7 @@ final class ExpressieBouwer {
                                     + "regelonderwerp zelf (IR-SPEC ch. 4.3/WF-102), dus de stap naar dat "
                                     + "exemplaar zou spoorloos wegvallen en de aggregatie blijft onopgelost "
                                     + "(§13.4.1/§13.4.17)", f.getStart().getLine()));
-                    return new Expr.Onopgelost(type, bron(f));
+                    return new Expr.Onopgelost(type, bron(f), null);
                 }
                 if (anker == huidigSubject) break;       // the chain starts at the subject, as the wire needs
                 model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
@@ -678,7 +690,7 @@ final class ExpressieBouwer {
                                 + huidigSubject.naam + " (IR-SPEC ch. 4.3: één elementObjecttype plus één "
                                 + "bronRol) — de tussenstap zou spoorloos wegvallen, dus de aggregatie blijft "
                                 + "onopgelost (§13.4.1/§13.4.17)", f.getStart().getLine()));
-                return new Expr.Onopgelost(type, bron(f));
+                return new Expr.Onopgelost(type, bron(f), null);
             }
         // (c): the written element name, under every form the element type's own binding was tried with, so a
         // phrase that bound its type by dropping a leading qualifier is judged by that same form.
@@ -693,7 +705,7 @@ final class ExpressieBouwer {
                         + " verbindt is '" + paar.feittype() + "' met de rol '" + paar.rol() + "' — de "
                         + "type-paar-afleiding zou een andere verzameling vouwen dan de zin noemt, dus de "
                         + "aggregatie blijft onopgelost (§13.4.1/§13.4.17)", f.getStart().getLine()));
-        return new Expr.Onopgelost(type, bron(f));
+        return new Expr.Onopgelost(type, bron(f), null);
     }
 
     /** The set-quantified onderwerp of an aggregation's OWN operand — the fold source as written. Found by
@@ -1096,6 +1108,9 @@ final class ExpressieBouwer {
         return -1;
     }
 
+    /** Every marker this method returns carries {@code reden = null}: its single caller ({@link
+     *  #bouwFunctie}) tests the result for {@link Conditie.Onopgelost} and raises the WARNING, so the
+     *  survivor report would only repeat it. */
     private Conditie aggregatieFilter(FunctieAanroepContext f, Objecttype elem, List<Expr> argumenten) {
         if (elem == null) return null;
         java.util.List<ParseTree> operanden = new ArrayList<>();
@@ -1111,13 +1126,13 @@ final class ExpressieBouwer {
             // against the ELEMENT (via the RuleChecker callback) into a Conditie.Samengesteld on the source pattern.
             if (p.samengesteldPredicaat() != null) {
                 Conditie c = samengesteldeFilter != null ? samengesteldeFilter.resolve(p.samengesteldPredicaat(), elem) : null;
-                return c != null ? c : new Conditie.Onopgelost(bron(p));
+                return c != null ? c : new Conditie.Onopgelost(bron(p), null);
             }
             Conditie filter = elementKenmerkFilter(p, elem);
             // §5.6 getalpredicaat "die <op> <expr>" (e.g. "die kleiner zijn dan 18"): a comparison of the AGGREGATED
             // attribute (the LHS the operator folds) -> a Conditie.Vergelijking the accumulate source pattern constrains.
             if (filter == null) filter = elementVergelijking(p, elem, argumenten);
-            return filter != null ? filter : new Conditie.Onopgelost(bron(p));
+            return filter != null ? filter : new Conditie.Onopgelost(bron(p), null);
         }
         // §5.8.1 union telling "het aantal X, Y en Z": the count is the UNION of the per-operand
         // sets — a disjunctively-filtered single accumulate. OR the per-operand kenmerk filters over
@@ -1142,7 +1157,7 @@ final class ExpressieBouwer {
                 // dropped and its filter OR-ed onto the wrong fact, so it leaves the whole union a marker.
                 PredicaatContext p = vindDie(op);
                 Conditie k = p != null && operandElement(op) == elem ? elementKenmerkFilter(p, elem) : null;
-                if (k == null) return new Conditie.Onopgelost(bron(f));
+                if (k == null) return new Conditie.Onopgelost(bron(f), null);
                 delen.add(k);
             }
             return new Conditie.Samengesteld(Conditie.Kwantor.TEN_MINSTE, 1, delen, bron(f));
@@ -1706,7 +1721,7 @@ final class ExpressieBouwer {
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
                     "rangtelwoord: de regel noemt geen " + positie + " onderwerpen '" + naam + "' (§5.5.3)",
                     r.getStart().getLine()));
-            return onopgelost(bron);
+            return onopgelost(bron, null);   // the ERROR above is this marker's diagnosis
         }
         if (bindingen >= 2) {
             // §5.5.3 ¶1888 states ONLY that a rangtelwoord points out "de plaats van het bedoelde onderwerp in de
@@ -1720,7 +1735,7 @@ final class ExpressieBouwer {
                     + "'; §5.5.3 definieert geen bindings-/ordeningssemantiek voor zo'n verwijzing per vermelding — "
                     + "de verwijzing blijft een marker (wordt nog niet ondersteund)",
                     r.getStart().getLine()));
-            return onopgelost(bron);
+            return onopgelost(bron, null);   // the WARNING above is this marker's diagnosis
         }
         return null;
     }
@@ -1736,8 +1751,12 @@ final class ExpressieBouwer {
             Expr geblokkeerd = keurRangtelwoord(a.rangtelwoord(), src(a.kaleNaam()), a, bron);
             return geblokkeerd != null ? geblokkeerd : attribuutRef(src(a.kaleNaam()), a.onderwerp(), bron);
         }
+        // GEEN GETUIGE: de enige aanroeper geeft een gevulde context mee, `attribuutMetLidwoord` is
+        // `lidwoord? kaleNaam` (de naam is er dus altijd), en de rangtelwoord-vorm is hierboven al
+        // afgehandeld — er blijft geen invoer over die hier uitkomt. Gemeten 2026-09-19.
         if (a == null || a.attribuutMetLidwoord() == null || a.attribuutMetLidwoord().kaleNaam() == null)
-            return onopgelost(a);
+            return onopgelost(a,
+                    "de attribuutverwijzing noemt geen attribuutnaam met lidwoord (§13.4.2.9)");
         String attr = src(a.attribuutMetLidwoord().kaleNaam());
         // §13.4.17.12/§6.8 "het percentage P van V" WITHOUT the '%': our grammar requires '%' on percentageVanExpr to
         // disambiguate from a 'van' navigation (docs/grammar-divergences.md), so the no-'%' form parses HERE as a
@@ -2059,9 +2078,21 @@ final class ExpressieBouwer {
 
     /** The facts a QUANTIFIED MEMBER PHRASE carries, read off the parse tree: the written quantor, its
      *  telwoord, the element type it ranges over, and the written source (the {@code onderwerpBron} a
-     *  range binding is looked up by). */
+     *  range binding is looked up by).
+     *
+     *  <p>{@code reden}, when non-null, means the phrase IS a member phrase but the fold declines it, and
+     *  names the axis it declined on — the {@link Deelselectie} idiom, for the same reason: one generic
+     *  text for every shape tells the author nothing. The other fields are then empty. */
     record GekwantificeerdOnderwerp(Conditie.Kwantor kwantor, int drempel, Objecttype element,
-                                    String onderwerpBron) {}
+                                    String onderwerpBron, String reden) {
+        GekwantificeerdOnderwerp(Conditie.Kwantor kwantor, int drempel, Objecttype element, String onderwerpBron) {
+            this(kwantor, drempel, element, onderwerpBron, null);
+        }
+        /** A declined member phrase: the written source and the axis it was declined on. */
+        static GekwantificeerdOnderwerp geweigerd(String onderwerpBron, String reden) {
+            return new GekwantificeerdOnderwerp(null, 0, null, onderwerpBron, reden);
+        }
+    }
 
     /**
      * §13.4.2.9 / ch. 4.5: the quantified member phrase an expression consists OF — "alle wachten van
@@ -2073,11 +2104,18 @@ final class ExpressieBouwer {
      * to quantify. This is the parse-tree reading of the same facts, for the caller that folds over a
      * MEMBERSHIP matrix instead of a value one.
      *
-     * <p>Null for everything that is not exactly that shape: no quantifier or the bare definite "de"
-     * (one object, no set), a member phrase whose element type does not resolve — quantifying over an
-     * unresolved population is the silent-wrong-set failure a marker is preferable to — and a
-     * MULTI-STEP written range ("alle wachten van alle ploegen van de Haven"), whose {@code bronPad}
-     * spelling this lowering does not carry and whose first step is not the set the sentence names.
+     * <p>Null for everything that is not this shape AT ALL — the caller then has nothing to say about a
+     * fold, because the sentence writes none. A phrase that IS the shape but declines comes back
+     * {@link GekwantificeerdOnderwerp#geweigerd geweigerd}, naming its axis: the bare definite "de" over
+     * a DECLARED PLURAL (one object, no set, but written as a set), a member phrase whose element type
+     * does not resolve — quantifying over an unresolved population is the silent-wrong-set failure a
+     * marker is preferable to — and a MULTI-STEP written range ("alle wachten van alle ploegen van de
+     * Haven"), whose {@code bronPad} spelling this lowering does not carry and whose first step is not
+     * the set the sentence names.
+     *
+     * <p>The bare "de" declines QUIETLY (null, not geweigerd) unless the member name is a declared
+     * plural: "de reis van de passagier" is an ordinary to-one navigation, and telling its author that a
+     * quantifier fold declined would name a reading the sentence never had.
      */
     GekwantificeerdOnderwerp gekwantificeerdOnderwerp(ExpressieContext e) {
         PrimaireExpressieContext p = e instanceof PrimaireExprContext pe ? pe.primaireExpressie() : null;
@@ -2085,18 +2123,44 @@ final class ExpressieBouwer {
         if (a == null || a.attribuutMetLidwoord() == null || a.attribuutMetLidwoord().kaleNaam() == null
                 || a.onderwerp() == null) return null;
         Conditie.Kwantor q = geschrevenKwantor(a.kwantificatie());
-        if (q == null) return null;
         String leden = src(a.attribuutMetLidwoord().kaleNaam());
+        if (q == null)
+            return !isGedeclareerdMeervoud(leden) ? null : GekwantificeerdOnderwerp.geweigerd(src(a),
+                    "de zin leest als een kwantificatie over '" + leden + "' maar schrijft geen kwantor: "
+                    + "de kale 'de' noemt één object en geen verzameling (§13.4.14.5 kent alle | geen van de "
+                    + "| ten minste/ten hoogste/precies <telwoord> van de), dus er valt niets te vouwen");
         // exactly ONE written hop: a chain quantifies a set this lowering cannot spell (see above). The
         // greedy kaleNaam swallows an inner to-one step, so a written "van" on EITHER side of the hop —
         // in the member phrase or in the anchor — is what tells the two apart (the quantifier's own "van
         // de" is not part of either, which is why this is not counted over the whole phrase).
         if (isSetOnderwerp(a.onderwerp()) || heeftVanStap(leden) || heeftVanStap(src(a.onderwerp())))
-            return null;
+            return GekwantificeerdOnderwerp.geweigerd(src(a),
+                    "een meerstapsbereik: de zin stapelt nog een verzameling onder de gekwantificeerde, en een "
+                    + "kwantorvouw noemt precies één relatie vanaf het regelonderwerp (IR-SPEC ch. 4.5) — de "
+                    + "eerste stap vouwen zou een andere verzameling kwantificeren dan de zin noemt");
         Objecttype elem = model.resolveObjecttype(leden);
         if (elem == null) elem = typeViaMeervoud(leden);
-        return elem == null ? null
-                : new GekwantificeerdOnderwerp(q, geschrevenDrempel(a.kwantificatie()), elem, src(a));
+        return elem != null
+                ? new GekwantificeerdOnderwerp(q, geschrevenDrempel(a.kwantificatie()), elem, src(a))
+                : GekwantificeerdOnderwerp.geweigerd(src(a),
+                    "'" + leden + "' is geen gedeclareerd objecttype en geen gedeclareerd meervoud daarvan, dus "
+                    + "het bereik van de kwantor ligt niet vast — kwantificeren over een onbekende populatie "
+                    + "zou een andere verzameling toetsen dan de zin noemt");
+    }
+
+    /** Whether {@code naam} is a DECLARED plural — an objecttype's "(mv: …)" or a feittype role's. It is
+     *  what tells a bare "de &lt;leden&gt; van de &lt;X&gt;" written as a SET from an ordinary to-one
+     *  navigation ("de reis van de passagier"), so only the former hears that a quantifier fold declined.
+     *  Declared forms only: RegelSpraak defines no plural morphology (§3.1 footnote 2), and a synthesised
+     *  plural would put that message on sentences that never read as a quantification. */
+    private boolean isGedeclareerdMeervoud(String naam) {
+        if (naam == null) return false;
+        for (Objecttype ot : model.objecttypen.values())
+            if (ot.meervoud != null && ot.meervoud.equalsIgnoreCase(naam)) return true;
+        for (RegelSpraakModel.Feittype ft : model.feittypen.values())
+            for (RegelSpraakModel.Rol r : ft.rollen)
+                if (r.meervoud() != null && r.meervoud().equalsIgnoreCase(naam)) return true;
+        return false;
     }
 
     /** Whether a written name carries a " van " navigation step of its own. */
@@ -2220,7 +2284,9 @@ final class ExpressieBouwer {
         if (p == null) p = model.parameters.get(naam);
         if (p != null) return new Expr.ParameterRef(p, bron);
         if (isVariabele) return new Expr.VariabeleRef(naam, onbekend(), bron);
-        return onopgelost(bron);
+        return onopgelost(bron,
+                "de naam '" + naam + "' is geen gedeclareerde parameter, geen variabele uit een "
+                + "'Daarbij geldt:'-deel en geen attribuut van het onderwerp (§11/§13.3.8)");
     }
 
     /**
@@ -2344,6 +2410,9 @@ final class ExpressieBouwer {
     private static String src(ParserRuleContext ctx) { return DefinitionResolver.src(ctx); }
     private static io.github.yhavinga.regelspraak.ir.Bron bron(ParserRuleContext ctx) { return DefinitionResolver.bron(ctx); }
     private static Datatype onbekend() { return new Datatype.Onbekend("niet opgelost"); }
-    private Expr onopgelost(ParserRuleContext ctx) { return new Expr.Onopgelost(onbekend(), bron(ctx)); }
-    private Expr onopgelost(io.github.yhavinga.regelspraak.ir.Bron bron) { return new Expr.Onopgelost(onbekend(), bron); }
+    /** An unresolved expression marker carrying its {@code reden} — the Dutch sentence the frontend's
+     *  survivor report raises over it when it reaches the finished model. {@code null} where the calling
+     *  route already raises its own diagnostic (see {@link Expr.Onopgelost#reden()}). */
+    private Expr onopgelost(ParserRuleContext ctx, String reden) { return new Expr.Onopgelost(onbekend(), bron(ctx), reden); }
+    private Expr onopgelost(io.github.yhavinga.regelspraak.ir.Bron bron, String reden) { return new Expr.Onopgelost(onbekend(), bron, reden); }
 }

@@ -465,15 +465,36 @@ final class RuleChecker {
     }
 
     // ==============================================================================================
-    // WF-096 (IR-SPEC ch. 4.3, maintainer decision 2026-09-09) — the set fence, producer side.
+    // WF-096 (IR-SPEC ch. 4.3, maintainer decisions 2026-09-09 and — the KIND half — 2026-09-19)
+    // — the set fence, producer side.
     // ==============================================================================================
 
-    /** The instance-fold kinds: the six value folds plus AANTAL — exactly the pair WF-093 and WF-096
-     *  key on, so the frontend's exemption and the verifier's are the same boundary. */
+    /** The six VALUE folds — the kinds that read a value per contributor, and so the only kinds that
+     *  consume what a set reading hands them. This is WF-096's exemption exactly as the verifier draws
+     *  it in {@code set_source_exempt} (arity one AND a value-folding kind AND a resolved element
+     *  type), so the frontend's fence and the wire's are once more the same boundary.
+     *
+     *  <p><b>AANTAL left this set on 2026-09-19</b> (maintainer decision, `spec/IR-SPEC.md` ch. 4.3):
+     *  a count folds the CONTRIBUTORS themselves — `RUNTIME-SEMANTICS.md` ch. 3.4a says so in as many
+     *  words and ch. 3.4b restates it for the union — so a set reading under a count names a
+     *  collection the node does not read. Keeping it here was a LEAK, not a stale comment: measured
+     *  2026-09-19, a count over a set reading passed this naloop untouched and was emitted with
+     *  {@code diagnostics: []} although the verifier rejects it under WF-096 and nothing else
+     *  ({@link io.github.yhavinga.regelspraak.AantalSetbronTest}).
+     *
+     *  <p><b>One boundary, one consumer — measured before narrowing.</b> The verifier had to SPLIT its
+     *  hoisted exemption, because one boolean there fed two rules (WF-034's sentinel fence, which
+     *  still exempts the whole folding family, and WF-096's set fence, which no longer does). Here no
+     *  split is needed and that was checked rather than assumed: this set has exactly ONE reader, the
+     *  fold-source test in {@link #keurSetlezing}, and it is the frontend's only collection of fold
+     *  kinds at all — the count's own element derivation keys on {@code kind == AANTAL} directly
+     *  ({@code ExpressieBouwer.aggregatieElement}) and never consults this set. So the narrowing moves
+     *  the set fence and nothing else. The SENTINEL half has no counterpart here: the frontend writes
+     *  the row-1 wart from its own route and WF-093 governs it, which is why the bare count stays
+     *  clean under this narrowing and its witness says so. */
     private static final Set<Expr.FunctieKind> VOUWSOORTEN = Set.of(
             Expr.FunctieKind.SOM, Expr.FunctieKind.TOTAAL, Expr.FunctieKind.MINIMUM,
-            Expr.FunctieKind.MAXIMUM, Expr.FunctieKind.EERSTE, Expr.FunctieKind.LAATSTE,
-            Expr.FunctieKind.AANTAL);
+            Expr.FunctieKind.MAXIMUM, Expr.FunctieKind.EERSTE, Expr.FunctieKind.LAATSTE);
 
     /** A §13.4.2 set quantifier ("alle &lt;mv&gt;", and every other quantor that is not the bare
      *  definite "de") makes a reference a SET reading: it names the members' values, one per member —
@@ -520,7 +541,7 @@ final class RuleChecker {
     }
 
     /** Walk {@code e} for WF-096 violations. {@code vouwbron} marks the ONE exempt position: the single
-     *  argument of a folding kind that carries an {@code elementObjecttype} — the source the fold
+     *  argument of a VALUE-folding kind that carries an {@code elementObjecttype} — the source the fold
      *  consumes. That is the boundary the verifier draws (arity, kind AND a resolved element type):
      *  narrower here would refuse a legitimate fold source, wider would let the frontend emit a
      *  document the verifier rejects. A {@link Expr.DimensieCel} wrapping the source is NOT that
@@ -537,8 +558,10 @@ final class RuleChecker {
                 if (a.set() && !vouwbron)
                     model.diagnostics.add(new Diagnostic(Severity.ERROR,
                             "setlezing buiten een vouwbron: '" + a.bron() + "' noemt de waarde van elk lid van de "
-                            + "verzameling — alleen toegestaan als bron van één vouw (som, totaal, minimum, maximum, "
-                            + "eerste, laatste, aantal); hier wordt één waarde verwacht (WF-096, IR-SPEC ch. 4.3)",
+                            + "verzameling — alleen toegestaan als bron van één waardevouw (som, totaal, minimum, "
+                            + "maximum, eerste, laatste); een telling vouwt de leden zelf en leest geen waarde per "
+                            + "lid, dus onder 'aantal' ook niet (besluit 2026-09-19); hier wordt één waarde verwacht "
+                            + "(WF-096, IR-SPEC ch. 4.3)",
                             a.bron().line()));
             }
             case Expr.Functie f -> {
@@ -1659,7 +1682,9 @@ final class RuleChecker {
         // §13.4.13.1 / §8.4.3: a standalone periodevergelijking as the whole voorwaardendeel
         // ("… van dd. 1-1-2024 tot dd. 8-2-2025" directly after the resultaatdeel, no 'indien').
         if (v.periodevergelijkingEnkelvoudig() != null) return bouwPeriode(v.periodevergelijkingEnkelvoudig());
-        return new Conditie.Onopgelost(bron(v));
+        return new Conditie.Onopgelost(bron(v),
+                "het voorwaardendeel heeft geen van de §13.4.13-vormen — geen samengestelde voorwaarde, geen "
+                + "elementaire voorwaarde met operator, geen regelpredicaat en geen periodevergelijking");
     }
 
     /** §13.4.15.68 / §8.4.3: a periodevergelijkingEnkelvoudig (vanaf / van…tot / van…tot en met / tot /
@@ -1723,7 +1748,9 @@ final class RuleChecker {
         // herNestOnderdelen declined.
         if (herNest == null && (bulletsInconsistent(onderdeel)
                 || (kwantor != Conditie.Kwantor.ALLE && kwantor != Conditie.Kwantor.DE && ambiguusGenesteBullets(onderdelen))))
-            return new Conditie.Onopgelost(bron(heel));
+            return new Conditie.Onopgelost(bron(heel),
+                    "de bullets van de samengestelde voorwaarde staan op verschillende kolommen of dragen "
+                    + "verschillende tekens, dus welke bullet onder welke hoort ligt niet vast (§13.4.14.6)");
         return new Conditie.Samengesteld(kwantor, drempel, onderdelen, bron(heel));
     }
 
@@ -1816,7 +1843,13 @@ final class RuleChecker {
             else if (k.ctx().elementaireVoorwaarde() != null)
                 uit.add(bouwElementair(k.ctx().elementaireVoorwaarde()));
             else
-                uit.add(new Conditie.Onopgelost(bron(k.ctx())));
+                // GEEN GETUIGE: genesteVoorwaarde is `bullet (genesteSamengesteldeVoorwaarde |
+                // elementaireVoorwaarde) DOT?`, dus een knoop draagt er altijd één — en deze tak wordt
+                // pas bereikt NA een geslaagde kolom-hernesting, die een kapotte ontleding juist afwijst.
+                // De reden staat er voor het geval de grammatica een derde tak krijgt.
+                uit.add(new Conditie.Onopgelost(bron(k.ctx()),
+                        "deze bullet van de hernestte opsomming is geen geneste samengestelde voorwaarde en "
+                        + "geen elementaire voorwaarde (§13.4.14)"));
         }
         return uit;
     }
@@ -1909,7 +1942,11 @@ final class RuleChecker {
             if (kw != Conditie.Kwantor.ALLE && kw != Conditie.Kwantor.DE
                     && onderdelen.stream().anyMatch(c -> c instanceof Conditie.Samengesteld s
                             && s.onderdelen().stream().anyMatch(x -> x instanceof Conditie.Samengesteld)))
-                return new Conditie.Onopgelost(bron(sp));
+                return new Conditie.Onopgelost(bron(sp),
+                        "een tellende kwantor over een deelselectie waarvan een bullet zelf nog een diepere "
+                        + "samengestelde voorwaarde draagt: de inspringblinde bullet-grammatica kan zusterbullets "
+                        + "in die diepere laag getrokken hebben (§13.4.14.6), en dan telt de selectie een andere "
+                        + "verzameling dan de zin noemt");
             return new Conditie.Samengesteld(kw,
                     sp.kwantificatie() == null ? 0 : telwoordWaarde(sp.kwantificatie().telwoord()), onderdelen, bron(sp));
         } finally {
@@ -1954,7 +1991,11 @@ final class RuleChecker {
             return bouwCriteria(c.consistentieKwantificatie(), c.samengesteldCriteriumOnderdeel(), bron(c));
         }
         if (g.elementaireVoorwaarde() != null) return bouwElementair(g.elementaireVoorwaarde());
-        return new Conditie.Onopgelost(bron(g));
+        // GEEN GETUIGE: genestCriterium draagt altijd een van beide takken, en een consistentieregel met
+        // een kapot criterium strandt eerder — op de syntaxfout, met haar eigen ERROR. Gemeten 2026-09-19.
+        return new Conditie.Onopgelost(bron(g),
+                "dit geneste consistentiecriterium is geen samengesteld criterium en geen elementaire "
+                + "voorwaarde (§13.4.8)");
     }
 
     /** §13.4.14.3 consistentie-kwantor; null (the single "het volgende criterium") is the trivial ALLE. */
@@ -1994,7 +2035,9 @@ final class RuleChecker {
             return bouwSamengesteld(c.voorwaardeKwantificatie(), c.samengesteldeVoorwaardeOnderdeel(), c);
         }
         if (g.elementaireVoorwaarde() != null) return bouwElementair(g.elementaireVoorwaarde());
-        return new Conditie.Onopgelost(bron(g));
+        return new Conditie.Onopgelost(bron(g),
+                "deze bullet van de samengestelde voorwaarde is geen geneste samengestelde voorwaarde en "
+                + "geen elementaire voorwaarde (§13.4.14)");
     }
 
     /** An §13.4.15 elementaire voorwaarde / consistentie-criterium ("&lt;expressie&gt; &lt;operator&gt;") to a
@@ -2009,7 +2052,12 @@ final class RuleChecker {
             return bouwPeriode(c.periodevergelijkingElementair().periodevergelijkingEnkelvoudig());
         // §8.1.9 / §13.4.15.66: the "regelversie <X> is gevuurd|inconsistent" regelpredicaat as a bullet.
         if (c.consistentieVoorwaarde() != null) return bouwRegelversie(c.consistentieVoorwaarde());
-        return new Conditie.Onopgelost(bron(c));
+        // GEEN GETUIGE: elementaireVoorwaarde heeft precies drie takken en alle drie staan hierboven, dus
+        // een gevulde context bereikt deze regel niet; een kapotte bullet valt een niveau hoger uit
+        // (bouwGenest, dat wel een getuige heeft). Gemeten 2026-09-19.
+        return new Conditie.Onopgelost(bron(c),
+                "de elementaire voorwaarde heeft geen van de §13.4.15-vormen — geen expressie met operator, "
+                + "geen periodevergelijking en geen regelpredicaat");
     }
 
     /** §8.1.9 / §13.4.15.66/.18 regelpredicaat to a {@link Conditie.Regelversie}. The reference may point
@@ -2073,6 +2121,17 @@ final class RuleChecker {
                 && !a.attribuut().toLowerCase().endsWith("niet");
     }
 
+    /** The two reasons the verb-trailing and verb-leading registers share verbatim: the SAME refusal is
+     *  written twice because the grammar spells the operator twice, and one text per axis keeps the
+     *  author's two readings of one sentence identical. */
+    private static final String REDEN_GEABSORBEERDE_NIET =
+            "de gulzige ontleding trok de ontkenning 'niet' in het onderwerp; een vergelijking of een "
+            + "leeg-/gevuld-controle kan haar daar niet uit terughalen, en de positieve vorm emitteren zou "
+            + "de vraag omkeren (§8.1)";
+    private static final String REDEN_GEEN_KENMERK_GEEN_ROL =
+            "de geschreven naam bindt geen kenmerk en geen rol van het onderwerp (§8.1.7/§8.1.8), dus er is "
+            + "geen lidmaatschap om te toetsen";
+
     /** {@code lhsCtx} is the parse subtree the left operand was built from: the §5.6 die/dat
      *  subselectie lives there, and {@link #kwantorvouw} needs the tree, not the Expr. */
     private Conditie uitToplevel(Expr lhs, ExpressieContext lhsCtx, ToplevelOperatorContext op, Bron bron) {
@@ -2092,7 +2151,7 @@ final class RuleChecker {
         // negator) -> marker it. The kenmerkcheck DE-negates it (bindKenmerk) and elfproef/numeriek RECOVER it
         // (elfOperand), so only the comparison + leeg/gevuld operators are guarded here.
         if (absorbedNegator(lhs) && (op.vergelijkingsTekenGesplitst() != null || op.LEEG() != null || op.GEVULD() != null))
-            return new Conditie.Onopgelost(bron);
+            return new Conditie.Onopgelost(bron, REDEN_GEABSORBEERDE_NIET);
         if (op.vergelijkingsTekenGesplitst() != null && op.expressie() != null)
             return new Conditie.Vergelijking(naarOperator(cmpOf(op.vergelijkingsTekenGesplitst())),
                     lhs, bouwer.bouw(op.expressie()), periode, bron);
@@ -2109,7 +2168,10 @@ final class RuleChecker {
         }
         Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null,
                 op.HEEFT() != null || op.HEBBEN() != null, periode, bron); // EEN? kaleNaam (is|heeft): §8.1.8
-        return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
+        // else objecttype/navigation membership — the caller may still read the whole sentence as a
+        // quantifier fold (kwantorKenmerk), which is exactly why this marker carries its reason instead
+        // of raising it here: reported at construction it would flag every sentence that folds cleanly.
+        return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron, REDEN_GEEN_KENMERK_GEEN_ROL);
     }
 
     private Conditie uitNonToplevel(Expr lhs, ExpressieContext lhsCtx, NonToplevelOperatorContext op, Bron bron) {
@@ -2135,7 +2197,7 @@ final class RuleChecker {
         model.diagnostics.add(new Diagnostic(Severity.ERROR,
             "de check op volledige periode (gedurende de/het gehele jaar/maand) kan alleen op een tijdsafhankelijk "
             + "onderwerp worden toegepast (§8.2): " + bron, 0));
-        return new Conditie.Onopgelost(bron);
+        return new Conditie.Onopgelost(bron, null);   // the ERROR above is this marker's diagnosis
     }
 
     /**
@@ -2250,12 +2312,19 @@ final class RuleChecker {
      * out on top of those: a §8.2-QUALIFIED membership matrix (the caller gates on that — a whole-period
      * quantified kenmerkcheck has no worked semantics here and keeps its marker), and a §8.1.7 ROLCHECK
      * of the element, which is a different quantified question and binds nothing here.
+     *
+     * <p>Every one of those declines is LOUD (maintainer decision 2026-09-19). Four of them used to be
+     * silent — the bare "de", the §8.1.7 rolcheck of the element, a multi-step range and an unbindable
+     * one — beside three that always spoke, and a sentence that reads as a quantification is exactly the
+     * one whose author cannot see a marker coming. The marker itself is unchanged: the WARNING says which
+     * axis the fold declined on, and the document stays emittable.
      */
     private Conditie kwantorKenmerk(Expr lhs, ExpressieContext lhsCtx, KaleNaamContext naamCtx, boolean metEen,
                                     boolean heeftWerkwoord, Bron bron) {
         if (naamCtx == null || lhsCtx == null) return null;
         ExpressieBouwer.GekwantificeerdOnderwerp g = bouwer.gekwantificeerdOnderwerp(lhsCtx);
-        if (g == null) return null;
+        if (g == null) return null;                            // no member phrase written — nothing to say
+        if (g.reden() != null) { meldVouwWeigering(g.onderwerpBron(), g.reden(), bron); return null; }
         boolean tellend = g.kwantor() == Conditie.Kwantor.TEN_MINSTE
                 || g.kwantor() == Conditie.Kwantor.TEN_HOOGSTE || g.kwantor() == Conditie.Kwantor.PRECIES;
         int drempel = tellend ? g.drempel() : 0;
@@ -2268,10 +2337,24 @@ final class RuleChecker {
         }
         RegelSpraakModel.RolBindingRef bronRol =
                 model.vouwbronBinding(bouwer.subject(), g.element(), g.onderwerpBron());
-        if (bronRol == null) return null;                      // unresolvable range — never a silent misbinding
+        if (bronRol == null) {                                 // unresolvable range — never a silent misbinding
+            meldVouwWeigering(g.onderwerpBron(),
+                    "geen enkel feittype verbindt " + (bouwer.subject() == null ? "het regelonderwerp"
+                            : bouwer.subject().naam) + " met " + g.element().naam + ", dus het bereik van de "
+                    + "kwantor is niet te binden — een gegokte relatie zou een andere verzameling vouwen dan "
+                    + "de zin noemt (IR-SPEC ch. 4.5)", bron);
+            return null;
+        }
         Conditie toets = elementKenmerk(g.element(), naamCtx, metEen, heeftWerkwoord,
                 absorbedNegator(lhs), bron);
-        if (toets == null) return null;
+        if (toets == null) {
+            meldVouwWeigering(g.onderwerpBron(),
+                    "'" + stripArtikel(src(naamCtx)) + "' is geen kenmerk van " + g.element().naam
+                    + " — een §8.1.7-rolcontrole van het element is een andere gekwantificeerde vraag, en een "
+                    + "kenmerk van het regelonderwerp op het element lezen zou iets anders beantwoorden dan de "
+                    + "zin vraagt (§8.1.7/§8.1.8)", bron);
+            return null;
+        }
         ExpressieBouwer.Deelselectie ds = bouwer.deelselectie(lhsCtx, g.element(), null);
         if (ds != null && ds.filter() == null) {
             // The comparison route can stop at a WARNING here because the set reading it leaves standing
@@ -2288,6 +2371,16 @@ final class RuleChecker {
         }
         return new Conditie.Kwantorvouw(g.kwantor(), drempel, g.element(), ds == null ? null : ds.filter(),
                 toets, bronRol, List.of(), bron);
+    }
+
+    /** One decline of the membership fold, said out loud: which member phrase, on which axis, and what
+     *  the sentence gets instead. Raised only where the phrase IS a quantified member phrase — a sentence
+     *  that writes no quantifier gets no word about folds — and always a WARNING: the caller's marker is
+     *  the honest wire form and the document stays emittable. */
+    private void meldVouwWeigering(String onderwerpBron, String reden, Bron bron) {
+        model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                "de kwantorvouw over '" + onderwerpBron + "' wordt NIET gelowerd: " + reden
+                + "; de voorwaarde blijft daarom een marker", bron.line()));
     }
 
     /** The §8.1.8 kenmerkcheck of {@code elem} written as the predicate of a quantified onderwerp — the
@@ -2383,7 +2476,7 @@ final class RuleChecker {
         // A dangling absorbed "niet" silently INVERTS a comparison / leeg-gevuld -> marker it. The kenmerkcheck
         // DE-negates it and elfproef/numeriek RECOVER it (elfOperand), so only those two operators are guarded here.
         if (absorbedNegator(lhs) && (op.vergelijkingsTeken() != null || op.LEEG() != null || op.GEVULD() != null))
-            return new Conditie.Onopgelost(bron);
+            return new Conditie.Onopgelost(bron, REDEN_GEABSORBEERDE_NIET);
         if (op.vergelijkingsTeken() != null && op.expressie() != null)
             return new Conditie.Vergelijking(naarOperator(cmpOf(op.vergelijkingsTeken())),
                     lhs, bouwer.bouw(op.expressie()), periode, bron);
@@ -2412,7 +2505,9 @@ final class RuleChecker {
         }
         Conditie kenmerk = kenmerkPredicaat(lhs, op.kaleNaam(), op.EEN() != null,
                 op.HEEFT() != null || op.HEBBEN() != null, periode, bron); // (is|heeft) een? kaleNaam: §8.1.8
-        return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron); // else objecttype/navigation membership
+        // else objecttype/navigation membership — reason-carrying, not reported here: see the sister in
+        // uitToplevelKaal, whose caller may still fold this very marker into a Kwantorvouw.
+        return kenmerk != null ? kenmerk : new Conditie.Onopgelost(bron, REDEN_GEEN_KENMERK_GEEN_ROL);
     }
 
     /** §8.1.7/§8.1.8: "&lt;subject&gt; is/heeft (een)? &lt;naam&gt;" -> a {@link Conditie.Kenmerk} (the
@@ -2432,7 +2527,15 @@ final class RuleChecker {
         // §8.1.7 rolcheck) the qualifier has no defined meaning -> an honest marker, never silently dropped.
         return c instanceof Conditie.Kenmerk k
                 ? new Conditie.Kenmerk(k.kenmerk(), k.navigatie(), k.negatie(), k.eigenaar(), periode, k.bron())
-                : new Conditie.Onopgelost(bron);
+                // GEEN GETUIGE: deze marker haalt het model nooit. Hij ontstaat alleen met een §8.2-
+                // kwalificatie, en dan loopt hij altijd door keurGeheelPeriode, die een Onopgelost nooit
+                // tijdsafhankelijk acht en hem dus vervangt door haar eigen marker MET ERROR. De reden
+                // staat er omdat zij de weigering van DEZE route beschrijft; dat keurGeheelPeriode
+                // vervolgens harder ingrijpt is haar besluit, niet dat van deze plek. Gemeten 2026-09-19.
+                : new Conditie.Onopgelost(bron,
+                        "de controle 'gedurende de/het gehele <periode>' hoort bij een kenmerkcontrole over een "
+                        + "tijdsafhankelijk onderwerp; over deze lidmaatschapsvorm (een §8.1.7-rolcontrole) heeft "
+                        + "zij geen omschreven betekenis (§8.2)");
     }
 
     /** Flip the negatie of a resolved kenmerk-/rolcheck (the §8.1.8.3 "is niet een &lt;k&gt;" negation). The positive
@@ -2445,7 +2548,9 @@ final class RuleChecker {
             return new Conditie.Rollidmaatschap(r.rol(), r.anderTeFiller(), r.bron(), !r.negatie());
         if (c instanceof Conditie.VerreRollidmaatschap vr)
             return new Conditie.VerreRollidmaatschap(vr.filler(), vr.backref(), !vr.negatie(), vr.bron());
-        return new Conditie.Onopgelost(bron);
+        return new Conditie.Onopgelost(bron,
+                "de vorm 'is niet een <naam>' bond geen kenmerk en geen rol van het onderwerp (§8.1.8.3), dus "
+                + "er is niets om te ontkennen");
     }
 
     /** §8.1.8 / Tabel 16: the kenmerkcheck NEGATION verb is keyed to the kenmerk SOORT — a bijvoeglijk and a
@@ -2901,7 +3006,7 @@ final class RuleChecker {
      *  stays an Onopgelost marker so neither back-end builds a dagsoort check over a non-date. */
     private Conditie dagsoortOperandFout(Expr lhs, KaleNaamContext naamCtx, Bron bron) {
         meldPredicaat(Typering.UnairePred.DAGSOORT, lhs.type(), naamCtx.getStart().getLine());
-        return new Conditie.Onopgelost(bron);
+        return new Conditie.Onopgelost(bron, null);   // meldPredicaat's ERROR is this marker's diagnosis
     }
 
     static Typering.CmpOp cmpOf(VergelijkingsTekenContext c) {
