@@ -1169,6 +1169,22 @@ final class ExpressieBouwer {
      *  the axis the subselectie was declined on rather than one generic text for every shape. */
     record Deelselectie(Conditie filter, String reden) {}
 
+    /**
+     * Give a subselectie back to {@code keurDeelselecties}. {@link #deelselectie} books the predicate as
+     * CONSUMED before it knows whether the fold will take it, and on the COMPARISON route that is right:
+     * a declined fold leaves the set reading standing, so WF-096 raises the ERROR that blocks the
+     * document and the subselectie is refused WITH it. On the MEMBERSHIP route there is no set reading
+     * and hence no WF-096 — a declined fold leaves nothing but a marker — so the predicate has to go
+     * back on the refusal list or the sentence falls silent, which is the one outcome
+     * {@code keurDeelselecties} exists to prevent ("ERROR, not WARNING, and the difference is the
+     * point"). Measured regression, fixed 2026-09-19.
+     */
+    void geefDeelselectieTerug(ParseTree operand) {
+        if (operand == null) return;
+        PredicaatContext p = vindDie(operand);
+        if (p != null) verbruikt.remove(p);
+    }
+
     Deelselectie deelselectie(ParseTree operand, Objecttype elem, Expr gekwantificeerd) {
         if (elem == null || operand == null) return null;
         PredicaatContext p = vindDie(operand);
@@ -1183,23 +1199,25 @@ final class ExpressieBouwer {
         Conditie filter = elementKenmerkFilter(p, elem);
         if (filter != null) return new Deelselectie(filter, null);
         // §5.6 getalpredicaat "die <op> <expr>" names no attribute of its own, so elementVergelijking
-        // re-anchors the FOLD's operand as its left side. On the quantifier-fold position that operand is
-        // TIJDSAFHANKELIJK by construction — §8.2 only qualifies a temporal onderwerp, and the qualifier is
-        // what admits the fold at all — and a timeline in a scalar slot has no reading (ch. 3.3). Every such
-        // filter therefore emits a document that falls over by name in all three executors, so admitting it
-        // here would be misleading: this is a FRONTEND boundary, not a wire one. The NODE carries the shape
-        // fine (a hand-written Kwantorvouw with a Vergelijking filter over a non-temporal member plays in
-        // ref, clingo and the Drools exec branch); it is this SENTENCE position that cannot produce it.
-        filter = elementVergelijking(p, elem, List.of(gekwantificeerd));
+        // re-anchors the FOLD's operand as its left side. When that operand is TIJDSAFHANKELIJK the filter
+        // has no reading — a timeline in a scalar slot (ch. 3.3) — and it is refused below. That used to be
+        // the case BY CONSTRUCTION on this position, because the §8.2 qualifier was what admitted the fold
+        // at all and §8.2 only qualifies a temporal onderwerp; since the unqualified fold landed
+        // (2026-09-19) the matrix is an ordinary condition and the operand is usually scalar, so the filter
+        // binds here. The refusal was always keyed to the ATTRIBUTE's granularity rather than to the
+        // position, so it needed no change — only its reason had to stop claiming the position.
+        // A MEMBERSHIP fold (the kenmerkcheck over a quantified subject) quantifies no attribute at all,
+        // so there is no operand for a getalpredicaat to re-anchor on; it falls into the reason below.
+        filter = elementVergelijking(p, elem, gekwantificeerd == null ? List.of() : List.of(gekwantificeerd));
         if (filter == null)
             return new Deelselectie(null, "zij bindt geen kenmerk of getalpredicaat van " + elem.naam
                     + " (§5.6, IR-SPEC ch. 4.5)");
         if (gekwantificeerd instanceof Expr.AttribuutRef q && q.objecttype() != null
                 && q.objecttype().granulariteitVan(q.attribuut()) != null)
             return new Deelselectie(null, "een getalpredicaat over het gekwantificeerde attribuut '"
-                    + q.attribuut() + "' heeft hier geen lezing: de §8.2-kwalificatie geldt alleen over een "
-                    + "TIJDSAFHANKELIJK onderwerp, en een tijdlijn in een scalaire sleuf heeft er geen "
-                    + "(ch. 3.3) — de knoop draagt de vorm wel, deze schrijfpositie kan hem niet leveren");
+                    + q.attribuut() + "' heeft hier geen lezing: dat attribuut is TIJDSAFHANKELIJK, en een "
+                    + "tijdlijn in een scalaire sleuf heeft er geen (ch. 3.3) — de knoop draagt de vorm wel, "
+                    + "over een niet-temporeel attribuut levert deze schrijfpositie hem ook");
         return new Deelselectie(filter, null);
     }
 
@@ -2015,8 +2033,10 @@ final class ExpressieBouwer {
      *  {@link Conditie.Kwantorvouw} lowering) answer the quantifier that was WRITTEN, instead of reading
      *  them all as a forall. Null for the bare definite "de", which names one object and no set at all. */
     private static Conditie.Kwantor geschrevenKwantor(OnderwerpContext o) {
-        if (o == null || o.kwantificatie() == null) return null;
-        KwantificatieContext q = o.kwantificatie();
+        return o == null ? null : geschrevenKwantor(o.kwantificatie());
+    }
+    private static Conditie.Kwantor geschrevenKwantor(KwantificatieContext q) {
+        if (q == null) return null;
         if (q.ALLE() != null || q.AL() != null) return Conditie.Kwantor.ALLE;
         if (q.GEEN_VAN_DE() != null)            return Conditie.Kwantor.GEEN;
         if (q.TEN_MINSTE() != null)             return Conditie.Kwantor.TEN_MINSTE;
@@ -2031,8 +2051,57 @@ final class ExpressieBouwer {
      *  same sentence. An unparseable or absent telwoord stays 0 and is refused downstream (WF-041), never
      *  silently read as 1. */
     private static int geschrevenDrempel(OnderwerpContext o) {
-        if (o == null || o.kwantificatie() == null) return 0;
-        return RuleChecker.telwoordWaarde(o.kwantificatie().telwoord());
+        return o == null ? 0 : geschrevenDrempel(o.kwantificatie());
+    }
+    private static int geschrevenDrempel(KwantificatieContext q) {
+        return q == null ? 0 : RuleChecker.telwoordWaarde(q.telwoord());
+    }
+
+    /** The facts a QUANTIFIED MEMBER PHRASE carries, read off the parse tree: the written quantor, its
+     *  telwoord, the element type it ranges over, and the written source (the {@code onderwerpBron} a
+     *  range binding is looked up by). */
+    record GekwantificeerdOnderwerp(Conditie.Kwantor kwantor, int drempel, Objecttype element,
+                                    String onderwerpBron) {}
+
+    /**
+     * §13.4.2.9 / ch. 4.5: the quantified member phrase an expression consists OF — "alle wachten van
+     * de Schouwploeg" as the WHOLE left operand of a §8.1.8 kenmerkcheck. The §13.4.2.9
+     * {@code kwantificatie? attribuutMetLidwoord VAN onderwerpKeten} puts the quantifier on the
+     * attribuutVanOnderwerp ITSELF there, not on an inner onderwerp, so the phrase resolves as "the
+     * &lt;wachten&gt; of the Schouwploeg" — a reference whose {@code set} bit is false and whose
+     * {@code kwantor} is null, which is why the fold's {@link RuleChecker} operand scan finds nothing
+     * to quantify. This is the parse-tree reading of the same facts, for the caller that folds over a
+     * MEMBERSHIP matrix instead of a value one.
+     *
+     * <p>Null for everything that is not exactly that shape: no quantifier or the bare definite "de"
+     * (one object, no set), a member phrase whose element type does not resolve — quantifying over an
+     * unresolved population is the silent-wrong-set failure a marker is preferable to — and a
+     * MULTI-STEP written range ("alle wachten van alle ploegen van de Haven"), whose {@code bronPad}
+     * spelling this lowering does not carry and whose first step is not the set the sentence names.
+     */
+    GekwantificeerdOnderwerp gekwantificeerdOnderwerp(ExpressieContext e) {
+        PrimaireExpressieContext p = e instanceof PrimaireExprContext pe ? pe.primaireExpressie() : null;
+        AttribuutVanOnderwerpContext a = p == null ? null : p.attribuutVanOnderwerp();
+        if (a == null || a.attribuutMetLidwoord() == null || a.attribuutMetLidwoord().kaleNaam() == null
+                || a.onderwerp() == null) return null;
+        Conditie.Kwantor q = geschrevenKwantor(a.kwantificatie());
+        if (q == null) return null;
+        String leden = src(a.attribuutMetLidwoord().kaleNaam());
+        // exactly ONE written hop: a chain quantifies a set this lowering cannot spell (see above). The
+        // greedy kaleNaam swallows an inner to-one step, so a written "van" on EITHER side of the hop —
+        // in the member phrase or in the anchor — is what tells the two apart (the quantifier's own "van
+        // de" is not part of either, which is why this is not counted over the whole phrase).
+        if (isSetOnderwerp(a.onderwerp()) || heeftVanStap(leden) || heeftVanStap(src(a.onderwerp())))
+            return null;
+        Objecttype elem = model.resolveObjecttype(leden);
+        if (elem == null) elem = typeViaMeervoud(leden);
+        return elem == null ? null
+                : new GekwantificeerdOnderwerp(q, geschrevenDrempel(a.kwantificatie()), elem, src(a));
+    }
+
+    /** Whether a written name carries a " van " navigation step of its own. */
+    private static boolean heeftVanStap(String naam) {
+        return naam != null && naam.toLowerCase().matches(".*\\s+van\\s+.*");
     }
 
     /** A possessive "zijn <kaleNaam>" resolves to the named attribute OF the rule subject,

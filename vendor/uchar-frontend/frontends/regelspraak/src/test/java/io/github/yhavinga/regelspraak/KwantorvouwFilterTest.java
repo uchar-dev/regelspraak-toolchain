@@ -164,15 +164,16 @@ class KwantorvouwFilterTest {
                 "een ontkende deelselectie mag nooit als de BEVESTIGENDE vouw landen");
     }
 
-    @Test void een_getalpredicaat_deelselectie_valt_luid_op_deze_schrijfpositie() {
+    @Test void een_getalpredicaat_deelselectie_valt_luid_op_een_temporeel_attribuut() {
         // §5.6's getalpredicaat names no attribute of its own: the comparison is of the very attribute
-        // the fold ranges over. On the §8.2 position that attribute is TIJDSAFHANKELIJK by construction
-        // — the qualifier is only defined over a temporal onderwerp and is what admits the fold at all —
-        // and a timeline in a scalar slot has no reading (ch. 3.3). So every such filter would emit a
-        // document that falls over by name in all three executors, which makes ADMITTING it the
-        // misleading answer. The refusal is a FRONTEND boundary, not a wire one: the node carries the
-        // shape (a hand-written Kwantorvouw with a Vergelijking filter over a NON-temporal member plays
-        // in ref, clingo and the Drools exec branch); this sentence position cannot produce it.
+        // the fold ranges over. Here that attribute is TIJDSAFHANKELIJK, and a timeline in a scalar slot
+        // has no reading (ch. 3.3), so the filter would emit a document that falls over by name in all
+        // three executors — which makes ADMITTING it the misleading answer. On the §8.2 position the
+        // operand was temporal BY CONSTRUCTION (the qualifier is only defined over a temporal onderwerp
+        // and was what admitted the fold at all), so this row read as a refusal of the POSITION until
+        // the unqualified fold landed on 2026-09-19. The check was always keyed to the attribute's
+        // granularity, so nothing moved: over a NON-temporal attribute the same sentence binds
+        // (NietTemporeleVouwTest), and the node carried the shape all along.
         RegelSpraakModel m = resolveer("alle", " die groter zijn dan 3 kg");
         assertEquals(1, wf096(m).size(), () -> "de setlezing hoort te blijven staan: " + m.diagnostics);
         assertEquals(1, deelselectieWaarschuwing(m).size(),

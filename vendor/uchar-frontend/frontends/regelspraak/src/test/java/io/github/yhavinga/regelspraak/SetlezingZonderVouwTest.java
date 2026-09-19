@@ -23,6 +23,19 @@ import static org.junit.jupiter.api.Assertions.*;
  * voorwaarde, and inside a consistentieregel. Each is pinned below, together with the two
  * counter-proofs that keep the check off the FOLDED reading, which stays legitimate, and the
  * severity, which is the one knob the check has.
+ *
+ * <p><b>One of those five left the fence on 2026-09-19</b>: the VOORWAARDE. A condition has a
+ * quantifier to give the collection a home — the written "alle" lowers to a
+ * {@link io.github.yhavinga.regelspraak.ir.Conditie.Kwantorvouw} — so the set reading is not excused
+ * there but removed, and there is nothing left for WF-096 to name. The two condition rows below
+ * therefore measure the lowering; the counter-proofs that the fence still stands wherever the fold
+ * DECLINES (an unbindable range, a multi-step range, an unbound die/dat, a telwoord under 1) live with
+ * the lowering, in {@link KwantorvouwTest} and {@link KwantorvouwFilterTest}. The value positions are
+ * untouched: a rule value, a composite operand, a gelijkstelling/initialisatie value and an
+ * objectcreatie toekenning take one value and name no quantifier, and widening one of those is a spec
+ * question, not a frontend one. So is the §13.4.8 consistentieregel ASSERTION, whose row below still
+ * measures the ERROR — its carrier has no violation rule for a fold, so lowering there would trade the
+ * ERROR for a WARNING and drop the check from the wire.
  */
 class SetlezingZonderVouwTest {
 
@@ -120,16 +133,19 @@ class SetlezingZonderVouwTest {
                 """));
     }
 
-    @Test void setlezing_in_een_voorwaarde_wordt_benoemd() {
-        // WF-096 names the condition explicitly; measured verifier-FAIL at
-        // /resolvedRegels/0/voorwaarde/links before the check existed.
-        assertEquals(1, meldingen("""
+    @Test void setlezing_in_een_voorwaarde_krijgt_een_kwantor_als_thuis() {
+        // The one position that LEFT this fence, on 2026-09-19: a CONDITION has a quantifier to give the
+        // collection a home, so the written "alle" lowers to a Kwantorvouw and there is no set reading
+        // left to name (KwantorvouwTest / NietTemporeleVouwTest measure the node). Until then this row
+        // measured the same WF-096 ERROR as the value positions do.
+        assertEquals(List.of(), meldingen("""
                 Regel maatgevend gewicht
                     geldig altijd
                         Het maatgevend gewicht van een Jutter moet berekend worden als het drempelgewicht van de Jutter
                         indien het gewicht van alle vondsten van de Jutter gelijk is aan 5 kg.
-                """).size());
+                """));
     }
+
 
     @Test void setlezing_als_objectcreatie_toekenning_wordt_benoemd() {
         // The §13.4.6.3 waardetoekenning is a generic expressie RHS and the third (and last) VALUE slot
@@ -151,17 +167,19 @@ class SetlezingZonderVouwTest {
                 """);
     }
 
-    @Test void setlezing_in_de_voorwaarde_van_een_objectcreatie_wordt_benoemd() {
+    @Test void de_voorwaarde_van_een_objectcreatie_vouwt_mee() {
         // An objectcreatie never becomes a ResolvedRegel (measured: resolvedRegels 0, objectCreaties 1),
-        // so its voorwaarde is the witness that the condition check sits where EVERY resultaatdeel
+        // so its voorwaarde is the witness that the condition treatment sits where EVERY resultaatdeel
         // kind's voorwaarde passes through — not on the rule carrier alone. The same holds for a
-        // verdeling, a feitcreatie, a dagsoortdefinitie and a startpuntbepaling.
-        assertEquals(List.of(MELDING), meldingen("""
+        // verdeling, a feitcreatie, a dagsoortdefinitie and a startpuntbepaling. Until 2026-09-19 it
+        // witnessed the WF-096 ERROR there; it now witnesses the lowering there, which is the same
+        // claim about the same one place.
+        geenEnkeleDiagnose("""
                 Regel nieuwe vondst
                     geldig altijd
                         Een Jutter heeft een Vondst met het gewicht gelijk aan 3 kg
                         indien het gewicht van alle vondsten van de Jutter gelijk is aan 5 kg.
-                """));
+                """);
     }
 
     @Test void setlezing_in_een_consistentieregel_wordt_benoemd() {

@@ -28,13 +28,18 @@ import static org.junit.jupiter.api.Assertions.*;
  * reading is not excused but REMOVED — the quantified operand comes out as an element-own
  * {@code set: false} read, so WF-096 finds nothing left to name.
  *
- * <p>The scope is exactly the §8.2-QUALIFIED condition with one set operand. The other measured WF-096
- * producer routes are unchanged, and {@link SetlezingZonderVouwTest} — untouched — is the proof; the
- * unqualified voorwaarde, the route most likely to be widened by accident, is pinned here as well. The
- * counting quantor was pinned here as a second such route until 2026-09-16, when it became a lowering
- * of its own — its row below now measures the telvouw it produces. Beside those stand the shapes that
- * decline to lower on purpose — three when this file was written, four since the die/dat subselection
- * joined them (see {@link KwantorvouwFilterTest}).
+ * <p>The scope is one set operand in a CONDITION, qualified or not. The §8.2 qualifier was the opening
+ * test of this lowering until 2026-09-19: v2.3.0 writes the quantification (§13.4.2.9
+ * {@code kwantificatie?}, §13.4.17.5) and the whole-period check (§13.4.15.70
+ * {@code gehelePeriodevergelijking?}, optional in every §13.4.15.19-.48/.71-.100 operator) as
+ * INDEPENDENT productions, so the plain spelling is as much RegelSpraak as its qualified sibling and the
+ * gate put a frontend boundary where the language has none (maintainer reading 2026-09-17). The
+ * unqualified rows live in {@link NietTemporeleVouwTest}; this file keeps measuring the qualified one.
+ * The other measured WF-096 producer routes — every VALUE position — are unchanged, and
+ * {@link SetlezingZonderVouwTest} is the proof. The counting quantor was pinned here as a refusal until
+ * 2026-09-16, when it became a lowering of its own — its row below now measures the telvouw it
+ * produces. Beside those stand the shapes that decline to lower on purpose — three when this file was
+ * written, four since the die/dat subselection joined them (see {@link KwantorvouwFilterTest}).
  */
 class KwantorvouwTest {
 
@@ -212,23 +217,24 @@ class KwantorvouwTest {
                 "een drempel onder 1 hoort niet op de wire te belanden");
     }
 
-    @Test void een_ongekwalificeerde_setlezing_in_een_voorwaarde_houdt_de_wf096_fout() {
-        // The route this card deliberately does NOT touch: the same operand in the same slot, without
-        // the §8.2 qualifier. There is no quantifier there to give the collection a home, so it stays
-        // a collection in a one-value slot, and the fence holds verbatim.
+    @Test void een_ongekwalificeerde_setlezing_in_een_voorwaarde_wordt_ook_een_kwantorvouw() {
+        // Was the pin of the §8.2 gate ("de ongekwalificeerde setlezing hoort te blijven"); since the
+        // maintainer reading of 2026-09-17 it measures the opposite, because the gate was the frontend's
+        // and not the language's. The qualifier is the ONLY difference with the rows above, so the row
+        // belongs here as well: the same sentence, the same node, and the matrix simply carries no
+        // period. NietTemporeleVouwTest measures what that opens up.
         RegelSpraakModel m = resolveer("""
             Regel maatgevend gewicht
                 geldig altijd
                     Het maatgevend gewicht van een Jutter moet gesteld worden op 10 kg
                     indien het gewicht van alle vondsten van de Jutter gelijk is aan 5 kg.
             """);
-        assertEquals(1, wf096(m).size(), () -> "de ongekwalificeerde setlezing hoort te blijven: " + m.diagnostics);
-        assertEquals(Severity.ERROR, wf096(m).get(0).severity());
-        assertEquals("setlezing buiten een vouwbron: 'het gewicht van alle vondsten van de Jutter' noemt de waarde "
-                + "van elk lid van de verzameling — alleen toegestaan als bron van één vouw (som, totaal, "
-                + "minimum, maximum, eerste, laatste, aantal); hier wordt één waarde verwacht "
-                + "(WF-096, IR-SPEC ch. 4.3)",
-                wf096(m).get(0).message());
+        assertTrue(wf096(m).isEmpty(), () -> "de vouw hoort de setlezing weg te nemen: " + m.diagnostics);
+        String v = voorwaarde(m);
+        assertTrue(v.startsWith("\"voorwaarde\":{\"node\":\"Kwantorvouw\",\"kwantor\":\"ALLE\","),
+                () -> "de ongekwalificeerde zin hoort dezelfde vouw te worden:\n" + v);
+        assertTrue(v.contains("\"periode\":null"),
+                () -> "zonder §8.2-kwalificatie hoort de toets geen periode te dragen:\n" + v);
     }
 
     @Test void een_onbindbaar_bereik_wordt_niet_verlaagd_en_houdt_de_wf096_fout() {

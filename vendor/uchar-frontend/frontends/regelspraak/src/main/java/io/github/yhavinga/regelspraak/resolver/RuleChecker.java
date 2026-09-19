@@ -906,7 +906,14 @@ final class RuleChecker {
         EnkelvoudigeConsistentieRegelContext e = cr.enkelvoudigeConsistentieRegel();
         if (e != null && e.expressie() != null && e.toplevelOperator() != null) {
             Expr lhs = bouwer.bouw(e.expressie());
-            Conditie assertie = uitToplevel(lhs, e.expressie(), e.toplevelOperator(), bron(e));
+            // The voorwaarde's operator machinery MINUS the ch. 4.5 quantifier fold: a Kwantorvouw has no
+            // violation rule on this carrier (transpileerbaar declines it), so folding a quantified
+            // assertion here would trade WF-096's ERROR for the "nog niet omgezet" WARNING below and drop
+            // the check from the wire. The set reading keeps its fence until the §13.4.8 consistentieregel
+            // gets a quantified form of its own. (The BULLET criteria need no such guard: a samengestelde
+            // consistentieregel sets no rule subject, so the fold's range never binds.)
+            Conditie assertie = keurGeheelPeriode(uitToplevelKaal(lhs, e.toplevelOperator(), bron(e)),
+                    geheelPeriode(e.toplevelOperator().gehelePeriodevergelijking()), bron(e));
             Objecttype subject = lhs instanceof Expr.AttribuutRef a ? a.objecttype() : null;
             if (subject != null && transpileerbaar(assertie)) {
                 model.consistenties.add(new io.github.yhavinga.regelspraak.ir.ResolvedConsistentie(naam, subject, assertie, bron(cr), cr.getStart().getLine(), geldigheid));
@@ -2065,8 +2072,13 @@ final class RuleChecker {
     /** {@code lhsCtx} is the parse subtree the left operand was built from: the §5.6 die/dat
      *  subselectie lives there, and {@link #kwantorvouw} needs the tree, not the Expr. */
     private Conditie uitToplevel(Expr lhs, ExpressieContext lhsCtx, ToplevelOperatorContext op, Bron bron) {
-        return kwantorvouw(
-                keurGeheelPeriode(uitToplevelKaal(lhs, op, bron), geheelPeriode(op.gehelePeriodevergelijking()), bron),
+        Conditie kaal = uitToplevelKaal(lhs, op, bron);
+        if (kaal instanceof Conditie.Onopgelost && op.gehelePeriodevergelijking() == null) {
+            Conditie vouw = kwantorKenmerk(lhs, lhsCtx, op.kaleNaam(), op.EEN() != null,
+                    op.HEEFT() != null || op.HEBBEN() != null, bron);
+            if (vouw != null) return vouw;
+        }
+        return kwantorvouw(keurGeheelPeriode(kaal, geheelPeriode(op.gehelePeriodevergelijking()), bron),
                 lhsCtx, op.expressie(), bron);
     }
 
@@ -2097,8 +2109,16 @@ final class RuleChecker {
     }
 
     private Conditie uitNonToplevel(Expr lhs, ExpressieContext lhsCtx, NonToplevelOperatorContext op, Bron bron) {
-        return kwantorvouw(
-                keurGeheelPeriode(uitNonToplevelKaal(lhs, op, bron), geheelPeriode(op.gehelePeriodevergelijking()), bron),
+        Conditie kaal = uitNonToplevelKaal(lhs, op, bron);
+        // op.NIET() guards the §8.1.8.3 "is niet een <k>" branch above: it resolves the POSITIVE form and
+        // flips it, so a null binding there arrives as an Onopgelost whose negation is not in the parse
+        // tree any more. Re-binding it here would emit the POSITIVE membership — silently inverted.
+        if (kaal instanceof Conditie.Onopgelost && op.gehelePeriodevergelijking() == null && op.NIET() == null) {
+            Conditie vouw = kwantorKenmerk(lhs, lhsCtx, op.kaleNaam(), op.EEN() != null,
+                    op.HEEFT() != null || op.HEBBEN() != null, bron);
+            if (vouw != null) return vouw;
+        }
+        return kwantorvouw(keurGeheelPeriode(kaal, geheelPeriode(op.gehelePeriodevergelijking()), bron),
                 lhsCtx, op.expressie(), bron);
     }
 
@@ -2115,20 +2135,29 @@ final class RuleChecker {
     }
 
     /**
-     * §8.2 / IR-SPEC ch. 4.5: lower the official sentence shape "… indien de &lt;attribuut&gt; van ALLE
-     * &lt;leden&gt; van de &lt;Onderwerp&gt; gedurende het gehele jaar groter is dan &lt;grens&gt;" to a
+     * §13.4.2.9 + §13.4.15 / IR-SPEC ch. 4.5: lower the official sentence shape "… indien de
+     * &lt;attribuut&gt; van ALLE &lt;leden&gt; van de &lt;Onderwerp&gt; groter is dan &lt;grens&gt;" to a
      * {@link Conditie.Kwantorvouw} — a first-order quantification over the members of a linked instance
      * set. Without it the condition keeps a {@code set: true} operand in a slot that takes one value, and
      * WF-096 refuses the whole document: the sentence is officially sanctioned RegelSpraak that this
      * frontend could parse and resolve but never emit.
      *
-     * <p>Scope is exactly the QUALIFIED condition, and deliberately no wider: a §8.2 whole-period
-     * qualifier plus exactly ONE set operand. Every other WF-096 producer route — a rule value, a
-     * composite operand, a gelijkstelling/initialisatie value, an UNqualified voorwaarde, a
-     * consistentieregel, an objectcreatie voorwaarde or toekenning — keeps raising WF-096 verbatim,
-     * because for those the set reading really is a collection in a one-value slot and there is no
-     * quantifier to give it a home. Widening is a spec question (which quantified form means what in a
-     * value position), not a frontend one.
+     * <p>The §8.2 whole-period qualifier is OPTIONAL here, exactly as v2.3.0 writes it. Quantification
+     * (§13.4.2.9 {@code kwantificatie?}, §13.4.17.5) and the whole-period check (§13.4.15.70
+     * {@code gehelePeriodevergelijking?}, optional in every §13.4.15.19-.48/.71-.100 operator) are
+     * independent productions, so "alle X die Y groter zijn dan N" is as much RegelSpraak as its
+     * qualified sibling; until 2026-09-19 this lowering opened on a qualifier test and refused the plain
+     * spelling, which put a FRONTEND boundary where the language has none (maintainer reading
+     * 2026-09-17). The matrix is then an ordinary, non-temporal condition of the member
+     * (RUNTIME-SEMANTICS ch. 3.9a, whose formula is stated over an arbitrary {@code test}).
+     *
+     * <p>Scope is exactly ONE set operand in a CONDITION. Every other WF-096 producer route — a rule
+     * value, a composite operand, a gelijkstelling/initialisatie value, an objectcreatie toekenning —
+     * keeps raising WF-096 verbatim, because for those the set reading really is a collection in a
+     * one-value slot and there is no quantifier to give it a home. Widening to a value position is a spec
+     * question (which quantified form means what there), not a frontend one. The §13.4.8 consistentieregel
+     * ASSERTION is fenced too, and on its own carrier's terms rather than the wire's — see
+     * {@link #consistentie}.
      *
      * <p>All five §13.4.14 quantifiers over a set lower: ALLE and GEEN, and — since 2026-09-16 — the three
      * COUNTING quantors, which carry the written telwoord as the fold's {@code drempel} (IR-SPEC ch. 4.5,
@@ -2151,7 +2180,6 @@ final class RuleChecker {
      * wrongly. That is the one failure this node's {@code filter} field exists to prevent.
      */
     private Conditie kwantorvouw(Conditie c, ExpressieContext lhsCtx, ExpressieContext rhsCtx, Bron bron) {
-        if (periodeVan(c) == null) return c;                 // only the §8.2-qualified condition
         Expr.AttribuutRef zet = enigeSetOperand(c);
         if (zet == null) return c;
         Conditie.Kwantor q = zet.kwantor();
@@ -2198,6 +2226,85 @@ final class RuleChecker {
                 zet.type(), zet.bron(), false, List.of(), List.of(), null);
         return new Conditie.Kwantorvouw(q, drempel, elem, filter, metOperand(c, zet, eigen), bronRol,
                 List.of(), bron);
+    }
+
+    /**
+     * §13.4.15.44/.45 + ch. 4.5: the sibling of {@link #kwantorvouw} for a MEMBERSHIP matrix — "… indien
+     * ALLE wachten van de Schouwploeg gediplomeerd zijn". Here the quantified onderwerp IS the whole
+     * operand, so it names no attribute and arrives as no reference at all: {@link #enigeSetOperand}
+     * finds nothing, no WF-096 fires (there is no set READING on the wire to fence), and the condition
+     * stayed an {@link Conditie.Onopgelost} marker. The quantifier is nevertheless written and the matrix
+     * is an ordinary kenmerkcheck of the member, so the fold has everything it needs — it just has to read
+     * the onderwerp off the parse tree and bind the kenmerk against the ELEMENT type instead of the rule
+     * subject (which is why {@link #kenmerkPredicaat} could not bind it: "gediplomeerd" is no kenmerk of
+     * the Schouwploeg).
+     *
+     * <p>Every decline of {@link #kwantorvouw} holds verbatim, for the same reasons: a counting telwoord
+     * under 1 (WF-041), a multi-step written range (declined in {@code gekwantificeerdOnderwerp}), an
+     * unresolvable range, and a die/dat subselectie that does not bind. Each returns null, which leaves
+     * the caller's honest marker standing. Two shapes stay
+     * out on top of those: a §8.2-QUALIFIED membership matrix (the caller gates on that — a whole-period
+     * quantified kenmerkcheck has no worked semantics here and keeps its marker), and a §8.1.7 ROLCHECK
+     * of the element, which is a different quantified question and binds nothing here.
+     */
+    private Conditie kwantorKenmerk(Expr lhs, ExpressieContext lhsCtx, KaleNaamContext naamCtx, boolean metEen,
+                                    boolean heeftWerkwoord, Bron bron) {
+        if (naamCtx == null || lhsCtx == null) return null;
+        ExpressieBouwer.GekwantificeerdOnderwerp g = bouwer.gekwantificeerdOnderwerp(lhsCtx);
+        if (g == null) return null;
+        boolean tellend = g.kwantor() == Conditie.Kwantor.TEN_MINSTE
+                || g.kwantor() == Conditie.Kwantor.TEN_HOOGSTE || g.kwantor() == Conditie.Kwantor.PRECIES;
+        int drempel = tellend ? g.drempel() : 0;
+        if (tellend && drempel < 1) {
+            model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                "het telwoord van de kwantor in '" + g.onderwerpBron() + "' is geen positief geheel getal "
+                + "(>= 1), dus de vouw wordt NIET gelowerd: een drempel onder 1 stelt geen telling die iets "
+                + "kan voldoen en wordt op de wire geweigerd (WF-041, IR-SPEC ch. 4.5)", bron.line()));
+            return null;
+        }
+        RegelSpraakModel.RolBindingRef bronRol =
+                model.vouwbronBinding(bouwer.subject(), g.element(), g.onderwerpBron());
+        if (bronRol == null) return null;                      // unresolvable range — never a silent misbinding
+        Conditie toets = elementKenmerk(g.element(), naamCtx, metEen, heeftWerkwoord,
+                absorbedNegator(lhs), bron);
+        if (toets == null) return null;
+        ExpressieBouwer.Deelselectie ds = bouwer.deelselectie(lhsCtx, g.element(), null);
+        if (ds != null && ds.filter() == null) {
+            // The comparison route can stop at a WARNING here because the set reading it leaves standing
+            // raises the WF-096 ERROR that blocks the document. This route has no set reading, so the
+            // subselectie goes back on keurDeelselecties' refusal list and the ERROR comes from there —
+            // the WARNING beside it names the axis the binding failed on, which that ERROR cannot.
+            bouwer.geefDeelselectieTerug(lhsCtx);
+            model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                "de 'die/dat'-deelselectie in '" + g.onderwerpBron() + "' wordt niet omgezet naar een "
+                + "kwantorvouw-filter: " + ds.reden() + "; de vouw wordt daarom NIET gelowerd — een vouw "
+                + "over het volle bereik zou een andere verzameling kwantificeren dan de zin noemt",
+                bron.line()));
+            return null;
+        }
+        return new Conditie.Kwantorvouw(g.kwantor(), drempel, g.element(), ds == null ? null : ds.filter(),
+                toets, bronRol, List.of(), bron);
+    }
+
+    /** The §8.1.8 kenmerkcheck of {@code elem} written as the predicate of a quantified onderwerp — the
+     *  matrix of {@link #kwantorKenmerk}. Reuses the subject-anchored binders with the ELEMENT as the
+     *  holder, so the §8.1.8.1/.2/.3 "niet"/"geen" de-negation, the EEN-form soort split and the Tabel-16
+     *  verb lint all apply unchanged. Null when the name is no kenmerk of the element (a §8.1.7 rolcheck
+     *  among them), which keeps the caller's marker rather than inventing a membership.
+     *
+     *  <p>{@code geabsorbeerd} is a §8.1.8.1 "niet" the greedy onderwerp parse pulled INTO the member
+     *  phrase ("geen van de wachten van de Schouwploeg NIET gediplomeerd is" leaves the anchor's kaleNaam
+     *  reading "Schouwploeg niet" and the operator's the bare kenmerk). It is put back where it was
+     *  written — in front of the kenmerk name — so the ordinary verbatim-first de-negation handles it and
+     *  a kenmerk literally named "niet …" still binds positively. */
+    private Conditie elementKenmerk(Objecttype elem, KaleNaamContext naamCtx, boolean metEen,
+                                    boolean heeftWerkwoord, boolean geabsorbeerd, Bron bron) {
+        String naam = (geabsorbeerd ? "niet " : "") + stripArtikel(src(naamCtx));
+        if (metEen)
+            return heeftWerkwoord ? bezittelijkKenmerk(elem, naam, bron) : zelfstandigKenmerk(elem, naam, bron);
+        Conditie kc = kenmerkConditie(elem, naam, null, heeftWerkwoord, bron);
+        if (kc != null) keurNegatieSoort(elem, kc, heeftWerkwoord);
+        return kc;
     }
 
     /** The §8.2 whole-period qualifier of {@code c}, for the two condition forms that carry Expr operands
