@@ -697,15 +697,25 @@ public final class RegelSpraakModel {
         return new Eenheid(norm, null); // unknown system; normalised so plural/singular still unify
     }
 
-    /** Singular form of a built-in time unit (the lexer's nine units), else unchanged. */
+    /** Singular form of a built-in time unit (the lexer's nine units), else the spelling trimmed and
+     *  lower-cased. That fall-through used to hand back the ORIGINAL string, which made the whole
+     *  time-unit table case-sensitive for everything except the nine {@code -en} plurals — those are the
+     *  only spellings the switch below REPLACES, and the replacement happened to be lowercase. Measured
+     *  2026-09-20: {@code chronoUnit} answered WEEKS for {@code weken} and {@code WEKEN} but null for
+     *  {@code WK}, {@code Wk}, {@code ' wk '} and {@code Sec}, so a verifier-clean document with the unit
+     *  spelled {@code WK} split the executors 3-against-2 — the verifier, {@code ref} and the ASP backend
+     *  reckoned in weeks (they trim and lower-case before the lookup) while both Drools branches refused
+     *  the rule as an unknown time unit. RUNTIME-SEMANTICS ch. 3.8 calls the recognition
+     *  case-insensitive, so the defect was here and not in the readers. */
     public static String normaliseerTijdseenheid(String s) {
-        return switch (s == null ? "" : s.toLowerCase()) {
+        String sel = s == null ? "" : s.trim().toLowerCase();
+        return switch (sel) {
             case "jaren" -> "jaar";           case "maanden" -> "maand";
             case "dagen" -> "dag";            case "weken" -> "week";
             case "kwartalen" -> "kwartaal";   case "uren" -> "uur";
             case "minuten" -> "minuut";       case "seconden" -> "seconde";
             case "milliseconden" -> "milliseconde";
-            default -> s;
+            default -> sel;
         };
     }
 

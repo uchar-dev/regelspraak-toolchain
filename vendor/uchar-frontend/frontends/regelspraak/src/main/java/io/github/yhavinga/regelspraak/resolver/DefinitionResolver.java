@@ -1,5 +1,6 @@
 package io.github.yhavinga.regelspraak.resolver;
 
+import io.github.yhavinga.regelspraak.kern.Tijdrekening;
 import io.github.yhavinga.regelspraak.model.*;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.*;
 import io.github.yhavinga.regelspraak.parser.RegelSpraak;
@@ -789,24 +790,40 @@ public final class DefinitionResolver {
      *  and (when declared) the meervoud — a §6 duration unit "5 werkdagen" arrives as the plural eenheidsafkorting. */
     private void dagsoort(DagsoortDefinitionContext d) {
         String enkel = naam(d.lowerNaam());
+        // A day kind NAMED after a calendar spelling is refused outright (WF-017 over /dagsoorten), and the
+        // refusal has to be an ERROR rather than the WARNING-and-drop the plural gets below: dropping the
+        // NAME would leave the §9.8 dagsoortdefinitie pointing at a day kind `dagsoorten` no longer declares,
+        // which the verifier refuses in its own right. An ERROR blocks the emission entirely — the same
+        // answer the grammar already gives for the unit names that are keywords.
+        if (Tijdrekening.isKalenderSpelling(enkel.trim().toLowerCase())) {
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
+                    "dagsoort '" + enkel + "' heet naar een kalendereenheid uit de tijdseenheidtabel en kan "
+                    + "geen dagsoort zijn", d.getStart().getLine()));
+            return;
+        }
+        int regel = d.getStart().getLine();
         model.dagsoorten.add(enkel);
-        registreerDagsoortEenheid(enkel, enkel);
+        registreerDagsoortEenheid(enkel, enkel, regel);
         // §3.12 a duration unit is naturally the PLURAL ("5 werkdagen"); register the declared meervoud, or — when
         // none is declared — the derived "-en" plural ("werkdag" -> "werkdagen"), so the unit still resolves.
-        if (d.meervoudsvorm() != null) registreerDagsoortEenheid(src(d.meervoudsvorm()).trim(), enkel);
-        else registreerDagsoortEenheid(enkel + "en", enkel);
+        if (d.meervoudsvorm() != null) registreerDagsoortEenheid(src(d.meervoudsvorm()).trim(), enkel, regel);
+        else registreerDagsoortEenheid(enkel + "en", enkel, regel);
     }
 
-    /** A dagsoort unit spelling that collides with a built-in tijdseenheid (dag/week/maand/…) is NOT registered — it
-     *  must not shadow the calendar arithmetic of {@code datum ± N dagen}; warn instead. */
-    private static final java.util.Set<String> INGEBOUWDE_EENHEDEN = java.util.Set.of(
-            "dag", "dagen", "week", "weken", "maand", "maanden", "kwartaal", "kwartalen", "jaar", "jaren",
-            "uur", "uren", "minuut", "minuten", "seconde", "seconden", "milliseconde", "milliseconden");
-    private void registreerDagsoortEenheid(String spelling, String dagsoort) {
+    /** A dagsoort unit spelling that collides with a spelling of the NORMATIVE calendar table
+     *  (uchar's RUNTIME-SEMANTICS ch. 3.8 — thirty spellings, abbreviations and second plurals included) is
+     *  NOT registered: it must not shadow the calendar arithmetic of {@code datum ± N dagen}; warn instead.
+     *  The comparison goes through {@link Tijdrekening} rather than a list of its own, so this guard and the
+     *  arithmetic that reads a unit spelling can never come to know different tables — which is what they
+     *  did until 2026-09-20, when this list held the eighteen singulars and plurals and let the twelve
+     *  remaining spellings through into an IR that WF-017 refuses.
+     *  {@code regel} is the declaration's own line: the warning used to be raised at a hard-coded 0, which
+     *  points an author at nothing in a document with many day kinds. */
+    private void registreerDagsoortEenheid(String spelling, String dagsoort, int regel) {
         String k = spelling.trim().toLowerCase();
-        if (INGEBOUWDE_EENHEDEN.contains(k)) {
+        if (Tijdrekening.isKalenderSpelling(k)) {
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
-                    "dagsoort-eenheid '" + spelling + "' valt samen met een ingebouwde tijdseenheid en wordt niet als dagsoort-eenheid geregistreerd", 0));
+                    "dagsoort-eenheid '" + spelling + "' valt samen met een ingebouwde tijdseenheid en wordt niet als dagsoort-eenheid geregistreerd", regel));
             return;
         }
         model.dagsoortPerEenheid.putIfAbsent(k, dagsoort);

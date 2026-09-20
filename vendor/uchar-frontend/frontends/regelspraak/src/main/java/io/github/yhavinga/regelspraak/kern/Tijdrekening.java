@@ -26,8 +26,26 @@ public final class Tijdrekening {
 
     /** As {@link #chronoUnit(Datatype)}, keyed directly on an {@link Eenheid} ({@code null}-safe). */
     public static String chronoUnit(Eenheid e) {
-        if (e == null) return null;
-        return switch (RegelSpraakModel.normaliseerTijdseenheid(e.afkorting())) {
+        return e == null ? null : chronoUnitVanSpelling(e.afkorting());
+    }
+
+    /** Whether {@code spelling} stands in the NORMATIVE calendar table (uchar's RUNTIME-SEMANTICS ch. 3.8,
+     *  thirty spellings over nine units). That table is what decides which of the two readings a duration
+     *  unit has — "a spelling outside the table is a declared day kind" — so the day-kind registration guard
+     *  must compare against exactly it and against no list of its own, or the producer admits a spelling the
+     *  IR then refuses (WF-017). Trims and lower-cases nothing: the caller passes the identity-normalised
+     *  spelling, as the registry lookup does. */
+    public static boolean isKalenderSpelling(String spelling) {
+        return chronoUnitVanSpelling(spelling) != null;
+    }
+
+    /** The table keyed directly on a SPELLING — the shared body of the two entries above. A null spelling is
+     *  no unit at all and answers null, as the interpreter's own table does: an {@code Eenheid} on this wire
+     *  may carry a null afkorting, and the plural reducer hands a null straight back through its default arm,
+     *  so without this guard the switch below would throw on a document the IR admits. */
+    private static String chronoUnitVanSpelling(String spelling) {
+        if (spelling == null) return null;
+        return switch (RegelSpraakModel.normaliseerTijdseenheid(spelling)) {
             case "jaar", "jr"             -> "YEARS";
             case "maand", "mnd"           -> "MONTHS";
             case "week", "wk"             -> "WEEKS";
@@ -39,6 +57,29 @@ public final class Tijdrekening {
             case "kwartaal", "kwartalen", "kw" -> "KWARTAAL";         // §3.7 declares the kwartaal afkorting "kw"
             default -> null;   // the -en reducer leaves unchanged; dagsoort / custom -> marker
         };
+    }
+
+    /** The §6.10/§6.11 duration unit read as a DAY KIND: the dagsoort {@code e}'s spelling names, or null when
+     *  it names none — and null, too, whenever the spelling stands in the calendar table, WHATEVER the day-kind
+     *  registry says about it.
+     *
+     *  <p>That order is the point of this method, and it is normative: RUNTIME-SEMANTICS ch. 3.8 recognises a
+     *  duration's unit by spelling through the table and settles the remainder with "a spelling outside the
+     *  table is a declared day kind" — outside, so the table goes first. The verifier (WF-035, WF-038), the
+     *  reference interpreter and the ASP backend have always read it that way; both Drools branches asked the
+     *  registry first, at all four of their day-kind positions, until 2026-09-20. On a document that registered
+     *  a calendar spelling as a day-kind unit the executors therefore SPLIT — three read calendar arithmetic
+     *  where these two read a day-kind walk — and that document was verifier-clean at the time. Measured on
+     *  {@code jutterswet-bergingsklok} with its unit spelled {@code wk} and {@code wk} registered beside it:
+     *  {@code ref} answered 2026-03-31 / 2026-02-17 / 5 / 5 where both branches here answered the day-kind
+     *  2026-04-15 / 2026-02-01 / 3 / 3. WF-017 refuses such a document since the same day, so the wire no
+     *  longer carries the contradiction; this method is why an executor could not act on it either way.
+     *
+     *  <p>The four callers keep their own fall-through to {@link #chronoUnit}: a spelling that is neither a day
+     *  kind nor a table entry is still an honest marker/skip there. */
+    public static String dagsoortVoorEenheid(RegelSpraakModel model, Eenheid e) {
+        if (e == null || chronoUnit(e) != null) return null;
+        return model.dagsoortVoorEenheid(e.afkorting());
     }
 
     /** §8.4.3: whether a periodevergelijking bound can be lowered — a §13.2.19 Datum-in-dagen LITERAL or the

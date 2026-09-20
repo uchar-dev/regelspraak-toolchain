@@ -96,9 +96,15 @@ public sealed interface Expr {
     enum BinOp { PLUS, MIN, VERMINDERD_MET, MAAL, GEDEELD_DOOR, GEDEELD_DOOR_ABS, TOT_DE_MACHT, PERCENTAGE_VAN }
     record Binair(BinOp op, Expr links, Expr rechts, Datatype type, Bron bron) implements Expr {}
 
-    /** §13.4.17.10-.58 named functions and aggregations over their argument expressions. */
+    /** §13.4.17.10-.58 named functions and aggregations over their argument expressions.
+     *
+     *  <p>{@code AANTAL_GEVULDE} is the one member with NO source-language spelling: the filled-value
+     *  count (IR-SPEC ch. 4.3, RUNTIME-SEMANTICS ch. 3.4c) is a uchar dialect kind, written first on
+     *  the wire and read here by the Drools backend, which compiles this record. The RegelSpraak
+     *  parser emits it from nothing and no grammar rule produces it — the dialect spelling is a
+     *  separate, later card — so this constant widens what can be READ, never what is written. */
     enum FunctieKind {
-        SOM, TOTAAL, AANTAL, MINIMUM, MAXIMUM, EERSTE, LAATSTE, WORTEL, ABSOLUTE_WAARDE,
+        SOM, TOTAAL, AANTAL, MINIMUM, MAXIMUM, EERSTE, LAATSTE, AANTAL_GEVULDE, WORTEL, ABSOLUTE_WAARDE,
         CONCATENATIE, TIJDSDUUR, ABSOLUTE_TIJDSDUUR, EERSTE_PAASDAG, TIJDSEVENREDIG_DEEL,
         AANTAL_DAGEN_IN, JAAR_UIT, MAAND_UIT, DAG_UIT, UUR_UIT, MINUUT_UIT, SECONDE_UIT, MILLISECONDE_UIT,
         DATUM_MET, DATUMTIJD_MET

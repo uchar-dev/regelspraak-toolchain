@@ -4,6 +4,7 @@ import io.github.yhavinga.regelspraak.ir.Conditie.Operator;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.Eenheid;
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Granulariteit;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,58 @@ class TijdrekeningTest {
         assertEquals("KWARTAAL", Tijdrekening.chronoUnit(met("kw"))); // §3.7 the declared kwartaal afkorting
         assertNull(Tijdrekening.chronoUnit(met("werkdagen")), "een dagsoort/onbekende eenheid -> null (marker)");
         assertNull(Tijdrekening.chronoUnit(new Datatype.Numeriek(true, 0, null, null)), "geen eenheid -> null");
+    }
+
+    @Test void isKalenderSpelling_kent_precies_de_dertig_spellingen_van_de_tabel() {
+        // The day-kind registration guard (DefinitionResolver) and WF-017 both compare against THIS, so the
+        // set has to be the normative table of RUNTIME-SEMANTICS ch. 3.8 exactly: nine units, thirty
+        // spellings — the singular, the abbreviation and the plural for each, plus THREE extras that make
+        // the count come out at thirty rather than twenty-seven: the second carries a second abbreviation
+        // (`s` beside `sec`), and the second and the millisecond each carry a second plural in -s.
+        // Pinned as a whole rather than sampled, because both a missing and a surplus spelling is a
+        // producer that disagrees with the wire rule.
+        List<String> tabel = List.of(
+                "jaar", "jr", "jaren", "maand", "mnd", "maanden", "kwartaal", "kw", "kwartalen",
+                "week", "wk", "weken", "dag", "dg", "dagen", "uur", "u", "uren",
+                "minuut", "min", "minuten", "seconde", "sec", "s", "seconden", "secondes",
+                "milliseconde", "ms", "milliseconden", "millisecondes");
+        assertEquals(30, tabel.size());
+        for (String s : tabel) assertTrue(Tijdrekening.isKalenderSpelling(s), s + " staat in de tabel");
+        // and nothing beside it: a day-kind spelling, a near miss, the empty spelling, none
+        for (String s : List.of("werkdag", "werkdagen", "schouwdagen", "wkn", "seconds", "kwartaaltje", ""))
+            assertFalse(Tijdrekening.isKalenderSpelling(s), s + " staat er niet in");
+        assertFalse(Tijdrekening.isKalenderSpelling(null));
+    }
+
+    @Test void de_tabel_wordt_hoofdletterongevoelig_en_getrimd_gelezen() {
+        // ch. 3.8 says "recognised by SPELLING, case-insensitive", and the interpreter reads it that way
+        // (lower-case after a trim). Until 2026-09-20 only the nine -en plurals survived a capital here:
+        // they are the ones the plural reducer REPLACES, and the replacement happened to be lowercase,
+        // while every other spelling fell through the reducer's default arm in its original case. Measured
+        // then: WEKEN -> WEEKS but WK, Wk, ' wk ' and Sec -> null, and a verifier-clean document with the
+        // unit spelled WK split the executors — ref reckoned in weeks, both Drools branches refused the
+        // rule as an unknown time unit.
+        for (String s : List.of("WK", "Wk", " wk ", "\tSec\n", "S", "JR", "Secondes", "MILLISECONDES"))
+            assertTrue(Tijdrekening.isKalenderSpelling(s), "'" + s + "' is dezelfde spelling als zijn kleine letter");
+        assertEquals("WEEKS", Tijdrekening.chronoUnit(met(" WK ")));
+        assertEquals("SECONDS", Tijdrekening.chronoUnit(met("Sec")));
+        assertEquals("KWARTAAL", Tijdrekening.chronoUnit(met("KWARTALEN")));
+    }
+
+    @Test void een_eenheid_zonder_afkorting_is_geen_tijdseenheid_en_geen_dagsoort() {
+        // The wire admits an Eenheid whose afkorting is null (the interpreter reads it as "no unit"), and
+        // the plural reducer hands a null straight back through its default arm — so both readers below
+        // would throw on a document the IR admits. They answer null instead, which is the same verdict
+        // ref gives.
+        Eenheid zonder = new Eenheid(null, "Tijd");
+        assertNull(Tijdrekening.chronoUnit(zonder));
+        assertNull(Tijdrekening.chronoUnit(new Datatype.Numeriek(true, 0, null, zonder)));
+        RegelSpraakModel model = new RegelSpraakModel();
+        model.dagsoortPerEenheid.put("werkdagen", "werkdag");
+        assertNull(Tijdrekening.dagsoortVoorEenheid(model, zonder));
+        assertNull(Tijdrekening.dagsoortVoorEenheid(model, null));
+        // and the reader still finds a real day kind beside it
+        assertEquals("werkdag", Tijdrekening.dagsoortVoorEenheid(model, new Eenheid("werkdagen", null)));
     }
 
     @Test void toets_codeert_de_zes_vergelijkingen_en_weigert_datum_ordening() {
