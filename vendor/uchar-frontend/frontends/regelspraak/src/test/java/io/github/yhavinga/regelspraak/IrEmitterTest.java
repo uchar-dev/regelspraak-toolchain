@@ -351,6 +351,141 @@ class IrEmitterTest {
                 () -> "de lege tekst is leeg, niet twee aanhalingstekens:\n" + leeg);
     }
 
+    /** A domain plus a Vondst whose {@code oordeel} is of that domain and whose {@code etiket} is Tekst,
+     *  with {@code regels} appended — the smallest model that puts an enumeratiewaarde on the wire in
+     *  each of the positions that can (and cannot) supply a domain. */
+    private static String enumBron(String regels) {
+        return """
+            Domein Keurklasse is van het type Enumeratie
+                'gaaf'
+                'beschadigd'
+            Objecttype de Vondst
+                de staat Keurklasse;
+                het oordeel Keurklasse;
+                het etiket Tekst;
+                is veilbaar kenmerk (bijvoeglijk);
+            %s
+            """.formatted(regels);
+    }
+
+    /** The one enumeratiewaarde shape the wire admits: the BARE label (WF-039 crosses it byte-exactly
+     *  against the declared domain) typed with the domain the position names (WF-034 (r) refuses the
+     *  unknown sentinel), the delimited source lexeme in bron. */
+    private static final String GAAF_GETYPEERD =
+            "{\"node\":\"Literal\",\"waarde\":\"gaaf\","
+            + "\"type\":{\"node\":\"Enumeratie\",\"domein\":\"Keurklasse\",\"waarden\":[\"gaaf\",\"beschadigd\"]},"
+            + "\"bron\":\"'gaaf'\"}";
+
+    @Test void enum_literal_krijgt_zijn_domein_van_het_schrijfdoel() {
+        // uchar V8 (spec/proposals/V1-WIREMIGRATIE.md, maintainer decision 2026-09-19): an
+        // enumeratiewaarde reaches the wire as the bare label typed with its domain. The old form
+        // ("waarde":"'gaaf'", type the unknown sentinel) is doubly ill-formed — WF-039 crosses the
+        // label byte-exactly against the declared value list and WF-034 (r) refuses the sentinel —
+        // so the frontend could not emit the construct at all and no bron.rgs golden carried one.
+        // Derivation rule, first half: the domain comes from the WRITE TARGET, i.e. the declared
+        // datatype of the attribute being assigned (§13.3.4.2 / WF-023's keuzetype clause).
+        String c = emitCompact(enumBron("""
+            Regel oordeel
+                geldig altijd
+                    Het oordeel van een Vondst moet gesteld worden op 'gaaf'.
+            """));
+        assertTrue(c.contains(GAAF_GETYPEERD),
+                () -> "het schrijfdoel moet het domein van de enumeratiewaarde leveren:\n" + c);
+        assertFalse(c.contains("\"waarde\":\"'gaaf'\""),
+                () -> "de delimiters mogen niet in het literal-lexeme zitten:\n" + c);
+    }
+
+    @Test void enum_literal_krijgt_zijn_domein_van_de_andere_vergelijkingszijde() {
+        // Derivation rule, second half: in a comparison the domain comes from the OTHER side — the
+        // same context §13.3.4.2's membership check already reads (RuleChecker.meldVergelijk crosses
+        // the label against the sibling's domain). Both directions, since the rule is symmetric:
+        // the marker is promoted whether it stands left or right of the operator.
+        String rechts = emitCompact(enumBron("""
+            Regel veilbaarheid
+                geldig altijd
+                    Een Vondst is veilbaar indien zijn staat gelijk is aan 'gaaf'.
+            """));
+        assertTrue(rechts.contains(GAAF_GETYPEERD),
+                () -> "de linkerzijde moet het domein van de rechter enumeratiewaarde leveren:\n" + rechts);
+
+        String links = emitCompact(enumBron("""
+            Regel veilbaarheid
+                geldig altijd
+                    Een Vondst is veilbaar indien 'gaaf' gelijk is aan zijn staat.
+            """));
+        assertTrue(links.contains(GAAF_GETYPEERD),
+                () -> "de rechterzijde moet het domein van de linker enumeratiewaarde leveren:\n" + links);
+    }
+
+    @Test void enum_literal_door_de_letketen_van_een_variabelendeel() {
+        // §11/ch. 4.10: a value written through the variabelendeel denotes exactly what the bare literal
+        // denotes (ch. 10.6), so it must reach the wire in the same shape — and the whole chain must, not
+        // just its value: Let and BinderRef are typed FROM the value, so an unpromoted chain would carry
+        // the unknown sentinel at THREE positions WF-034 (r) refuses instead of one. This is also what
+        // keeps the variabelendeel diagnostically transparent (VariabeledeelLoweringTest pins that the
+        // §13.3.4.2 membership check says the same thing through the chain as beside it).
+        String c = emitCompact(enumBron("""
+            Regel oordeel
+                geldig altijd
+                    Het oordeel van een Vondst moet gesteld worden op de tint.
+                    Daarbij geldt:
+                        de tint is 'gaaf'.
+            """));
+        String enumType = "{\"node\":\"Enumeratie\",\"domein\":\"Keurklasse\",\"waarden\":[\"gaaf\",\"beschadigd\"]}";
+        assertTrue(c.contains("\"node\":\"Let\",\"type\":" + enumType + ",\"binder\":\"tint\",\"value\":"
+                        + GAAF_GETYPEERD + ",\"body\":{\"node\":\"BinderRef\",\"name\":\"tint\",\"type\":" + enumType),
+                () -> "de hele letketen moet het domein van het schrijfdoel dragen:\n" + c);
+    }
+
+    @Test void enum_literal_zonder_domeincontext_blijft_een_luide_marker() {
+        // The fail-fast half of the rule: where NEITHER a write target nor a comparison sibling names
+        // an Enumeratie, the frontend has no domain to derive and emits the honest marker rather than
+        // guessing one. A Tekst target is exactly such a position. The marker is loud — Resolver's
+        // marker discipline (2026-09-19) raises a WARNING beside every Onopgelost that survives into
+        // the finished model — and it carries the delimited source lexeme, so the author sees which
+        // one stayed unresolved. A guessed domain would be worse than a marker: it would put a label
+        // on the wire under a domain nobody declared for this position.
+        RegelSpraakModel m = Resolver.resolve(enumBron("""
+            Regel etiket
+                geldig altijd
+                    Het etiket van een Vondst moet gesteld worden op 'gaaf'.
+            """));
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+        String c = IrEmitter.emit(m).replaceAll("\\s+", "");
+        assertTrue(c.contains("{\"node\":\"Onopgelost\",\"type\":{\"node\":\"Onbekend\","
+                        + "\"reden\":\"nietopgelost\"},\"bron\":\"'gaaf'\"}"),
+                () -> "een enumeratiewaarde zonder domeincontext hoort een marker te zijn:\n" + c);
+        assertTrue(m.diagnostics.stream().anyMatch(d -> !d.isError()
+                        && d.toString().contains("een enumeratiewaarde ontleent haar domein aan de context")),
+                () -> "de marker moet luid zijn (WARNING met reden): " + m.diagnostics);
+    }
+
+    @Test void enum_literal_label_komt_uit_de_tokentekst_niet_uit_de_gevouwen_snippet() {
+        // WHERE the label is read, measured at the grammar: ENUM_LITERAL is ONE lexer token
+        // ('\'' ~['\r\n]* '\'', RegelSpraakLexer.g4), so the token text IS the whole source slice and
+        // the delimiters are its first and last character — stripping them is total and lossless.
+        // DefinitionResolver.src, which every other bron goes through, folds each whitespace run to a
+        // single space; the DECLARATION does not (enumeratie() takes the token text), so a folded
+        // label would not equal the declared value and WF-039 would refuse a document the frontend
+        // itself wrote. Reading the token keeps wire and declaration byte-identical.
+        String raw = emitRaw("""
+            Domein Kleur is van het type Enumeratie
+                'licht  blauw'
+                'rood'
+            Objecttype de Jutter
+                de kleur Kleur;
+            Regel kleur
+                geldig altijd
+                    De kleur van een Jutter moet gesteld worden op 'licht  blauw'.
+            """);
+        assertTrue(raw.contains("\"waarde\": \"licht  blauw\""),
+                () -> "het label moet dezelfde witruimte-run houden als de declaratie:\n" + raw);
+        assertTrue(raw.contains("\"bron\": \"'licht  blauw'\""),
+                () -> "bron is de tokentekst, niet de gevouwen snippet:\n" + raw);
+        assertFalse(raw.contains("licht blauw"),
+                () -> "geen enkele positie mag de gevouwen vorm dragen — declaratie en label zouden uiteenlopen:\n" + raw);
+    }
+
     @Test void tijdsevenredig_deel_draagt_basistype_geen_sentinel() {
         // §7.3.2/§13.4.17.58: the pro-rata node carries its BASE's value type on the wire — the
         // uchar spec forbids the unknown-type sentinel inside a structured node (its WF-034), so

@@ -110,8 +110,18 @@ public final class Literalen {
      *  hand-authored wire may carry and the grammar's quote-free STRING_TEXT never produces), and a wire whose
      *  value carries its own OUTER double quotes. A blanket {@code replace("\"","")} broke the first by dropping
      *  the embedded quote and the second by dropping the delimiters the other side kept — opposite directions,
-     *  one cause. An enumeratiewaarde is the one form that still drops delimiters, via {@link #enumLabel}.
-     *  null for any other literal.
+     *  one cause. null for any other literal.
+     *  <p><b>The enumeratiewaarde arm is STALE and refuses more than it should</b> (measured 2026-09-20, card
+     *  `20260919-v8-enum-emitter`). It routes through {@link #enumLabel}, which DEMANDS the {@code '…'}
+     *  delimiters — the shape IR-SPEC ch. 4.1 used to describe as the wire form. That sentence was wrong and
+     *  is corrected: on this wire an enumeration literal's value is the BARE label, which WF-039 crosses
+     *  byte-exactly against the declared domain. So on every conforming document this arm returns null, and
+     *  the Drools transpiler arms that guard on {@code tekstOfEnumLabel(lit) != null} — the two condition
+     *  arms, the navigated one and the VALUE arm — refuse every enumeration equality and every enumeration
+     *  write. That is why `jutterswet-keurstaat` and `jutterswet-vondstklasse` sit pinned as EXCLUDE in both
+     *  channel lists of gate 12. The remedy is here, not at the call sites: return an
+     *  {@code Enumeratie}-typed literal's value VERBATIM, exactly as the Tekst arm does. Held for card
+     *  `drools-enumlabel-lezer`, because it shifts gate-12's played counts and those move serially.
      *  <p>What a back-end may do with this string is RENDER it: the DRL branch escapes it into DRL text
      *  ({@code Namen.drlString}). Escaping is not interpretation — it leaves the value itself untouched. */
     public static String tekstOfEnumLabel(Expr.Literal lit) {

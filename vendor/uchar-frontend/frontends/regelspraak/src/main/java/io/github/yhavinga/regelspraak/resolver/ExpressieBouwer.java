@@ -425,7 +425,7 @@ final class ExpressieBouwer {
             String iso = Literalen.parseDatum(bron.snippet()).toString();
             return new Expr.Literal(iso, new Datatype.DatumInDagen(), bron);
         }
-        if (p.ENUM_LITERAL() != null)   return new Expr.Literal(bron.snippet(), onbekend(), bron); // which Enumeratie is context-dependent
+        if (p.ENUM_LITERAL() != null)   return enumWaarde(p, p.ENUM_LITERAL().getText());
         if (p.rekenConstante() != null) {
             boolean jaar = p.rekenConstante().REKENJAAR() != null;
             Datatype t = jaar ? new Datatype.Numeriek(true, 0, Datatype.Teken.ONBEPAALD, null) : new Datatype.DatumInDagen();
@@ -952,7 +952,7 @@ final class ExpressieBouwer {
         Expr rhs = bouw(c.toplevelOperator().expressie());
         if (!isTemporeelSubjectAttr(lhs) && !isTemporeelSubjectAttr(rhs)) return null;   // a static single condition is no gedurende
         Conditie.Operator op = RuleChecker.naarOperator(RuleChecker.cmpOf(c.toplevelOperator().vergelijkingsTekenGesplitst()));
-        return new Conditie.Vergelijking(op, lhs, rhs, null, bron);
+        return vergelijking(op, lhs, rhs, null, bron);
     }
 
     /** A single-period temporal attribute of the rule subject (the operand a §7.1 gedurende comparison varies over). */
@@ -1072,11 +1072,11 @@ final class ExpressieBouwer {
         Conditie.Vergelijking v = null;
         if (ev.toplevelOperator() != null && ev.toplevelOperator().vergelijkingsTekenGesplitst() != null
                 && ev.toplevelOperator().expressie() != null)
-            v = new Conditie.Vergelijking(RuleChecker.naarOperator(RuleChecker.cmpOf(ev.toplevelOperator().vergelijkingsTekenGesplitst())),
+            v = vergelijking(RuleChecker.naarOperator(RuleChecker.cmpOf(ev.toplevelOperator().vergelijkingsTekenGesplitst())),
                     links, bouw(ev.toplevelOperator().expressie()), bron(ev));
         else if (ev.nonToplevelOperator() != null && ev.nonToplevelOperator().vergelijkingsTeken() != null
                 && ev.nonToplevelOperator().expressie() != null)
-            v = new Conditie.Vergelijking(RuleChecker.naarOperator(RuleChecker.cmpOf(ev.nonToplevelOperator().vergelijkingsTeken())),
+            v = vergelijking(RuleChecker.naarOperator(RuleChecker.cmpOf(ev.nonToplevelOperator().vergelijkingsTeken())),
                     links, bouw(ev.nonToplevelOperator().expressie()), bron(ev));
         if (v == null || temporeelAttribuutOperand(v.links()) || temporeelAttribuutOperand(v.rechts())) return null;
         return v;
@@ -1338,7 +1338,7 @@ final class ExpressieBouwer {
                     "subselectie-predicaat: " + tr.fout(), p.getStart().getLine()));
             return null;
         }
-        return new Conditie.Vergelijking(RuleChecker.naarOperator(cmp), lhs, rhs, bron(p));
+        return vergelijking(RuleChecker.naarOperator(cmp), lhs, rhs, bron(p));
     }
 
     /** §4.12-4.15: type-check the operand list of a value/date aggregation. min/max demand all
@@ -2405,6 +2405,102 @@ final class ExpressieBouwer {
             case TOT_DE_MACHT -> Typering.BinOp.TOT_DE_MACHT;
             case PERCENTAGE_VAN -> Typering.BinOp.MAAL; // not reached: handled inline
         };
+    }
+
+    // ---------------- §13.2.14 enumeratiewaarde: the domain comes from the POSITION ----------------
+
+    /** The reason an enumeratiewaarde marker carries until a position types it. One constant, because
+     *  {@link #enumTegenContext} recognises the marker by it. */
+    static final String REDEN_ENUM_ZONDER_DOMEIN =
+            "een enumeratiewaarde ontleent haar domein aan de context (§13.3.4.2), en deze plaats wijst er "
+            + "geen aan — geen schrijfdoel en geen vergelijkingszijde met een Enumeratie-datatype";
+
+    /** §13.2.14 an enumeratiewaarde, built as a MARKER that the positions below promote to a typed
+     *  {@link Expr.Literal}. Marker-first is the fail-fast half of uchar's V8 decision (2026-09-19): the
+     *  literal names a LABEL and not a domain, and which domain applies is a property of where it stands,
+     *  so a builder that types it here would have to guess one. What the wire admits is only the promoted
+     *  form — WF-039 crosses the BARE label byte-exactly against the declared value list and WF-034 (r)
+     *  refuses the unknown sentinel — so an unpromoted marker is the honest form of "no domain derivable",
+     *  and {@code Resolver}'s marker discipline raises a WARNING over every one that survives.
+     *
+     *  <p>{@code lexeem} is the ENUM_LITERAL TOKEN text, and the bron snippet is that token rather than
+     *  {@link DefinitionResolver#src}: an ENUM_LITERAL is one lexer token, so the token IS the whole source
+     *  slice, while src() folds every whitespace run to a single space. The DECLARATION keeps the token text
+     *  ({@code DefinitionResolver.enumeratie}), so a folded label would not equal a declared value carrying a
+     *  whitespace run — before this, such a value could not be written at all: the membership check read the
+     *  folded snippet and refused a correct document. The bron is also where {@link #enumTegenContext} reads
+     *  the label back from, which is why the marker must carry the unfolded token. */
+    private Expr enumWaarde(ParserRuleContext ctx, String lexeem) {
+        return onopgelost(Bron.van(ctx, lexeem), REDEN_ENUM_ZONDER_DOMEIN);
+    }
+
+    /** Promote an enumeratiewaarde marker to the domain {@code context} names, or hand back {@code kandidaat}
+     *  untouched. The two contexts that name one are the two the §13.3.4.2 membership check already reads: a
+     *  WRITE TARGET's declared datatype (a rule's doel, an objectcreatie member) and the OTHER side of a
+     *  comparison. The label is the source lexeme minus its delimiters, via the shared reader — total and
+     *  lossless, since the grammar makes the delimiters the token's first and last character.
+     *
+     *  <p>The domain is taken from the context even when the label is NOT one of its values: that case is an
+     *  ERROR the membership check raises, and an unresolvable model writes no IR at all, so the ill-formed
+     *  wire is never reached. Typing it anyway keeps the label visible to that check, which is what reports
+     *  the author's actual mistake.
+     *
+     *  <p>It descends through the ch. 4.10 Let chain a variabelendeel builds, because such a chain DENOTES its
+     *  value (ch. 10.6): {@code Daarbij geldt: de tint is 'gaaf'} writes exactly what the bare literal writes
+     *  and must reach the wire in the same shape. Rebuilding the chain is not cosmetic — the Let and its
+     *  BinderRef are typed FROM the value, so an unpromoted chain carries the unknown sentinel at three
+     *  positions WF-034 (r) refuses instead of one. The descent follows the shape {@code RuleChecker.afgepeld}
+     *  follows, and stops where that one still resolves: a body that reads an OUTER binder past an inner Let
+     *  stays a marker, loud and honest, rather than being half-promoted. */
+    static Expr enumTegenContext(Expr kandidaat, Datatype context) {
+        if (!(context instanceof Datatype.Enumeratie)) return kandidaat;
+        if (kandidaat instanceof Expr.Onopgelost o && REDEN_ENUM_ZONDER_DOMEIN.equals(o.reden()))
+            return new Expr.Literal(Literalen.enumLabel(o.bron().snippet()), context, o.bron());
+        if (kandidaat instanceof Expr.Let l) {
+            if (l.body() instanceof Expr.BinderRef b && b.naam().equals(l.binder())) {
+                Expr waarde = enumTegenContext(l.value(), context);
+                if (waarde == l.value()) return kandidaat;
+                return new Expr.Let(l.binder(), waarde,
+                        new Expr.BinderRef(b.naam(), context, b.bron()), context, l.bron());
+            }
+            Expr body = enumTegenContext(l.body(), context);
+            if (body == l.body()) return kandidaat;
+            return new Expr.Let(l.binder(), l.value(), body, body.type(), l.bron());
+        }
+        return kandidaat;
+    }
+
+    /** The label of a value that IS an enumeratiewaarde — the bare label of a promoted literal, or the lexeme
+     *  of a marker no position promoted. Both arms carry: the §13.3.4.2 membership check must report an
+     *  undeclared label wherever it stands, also in a shape {@link #enumTegenContext} leaves alone. null for
+     *  anything else, which that check reads as "no claim". */
+    static String enumLabelVanWaarde(Expr e) {
+        if (e instanceof Expr.Literal l && l.type() instanceof Datatype.Enumeratie) return l.waarde();
+        if (e instanceof Expr.Onopgelost o && REDEN_ENUM_ZONDER_DOMEIN.equals(o.reden()))
+            return Literalen.enumLabel(o.bron().snippet());
+        return null;
+    }
+
+    /** A comparison, with each operand offered the other's datatype as its enumeratiewaarde context. Every
+     *  {@link Conditie.Vergelijking} the frontend builds goes through here, so the rule holds of comparisons
+     *  as such rather than of the handful of shapes a card happened to exercise.
+     *
+     *  <p>One caller reaches it only for operands that are already narrowed: {@link #elementVergelijking}
+     *  (the §5.6 die/dat subselectie on an aggregation operand) refuses any right-hand side that is neither
+     *  a Literal nor a ParameterRef BEFORE building the comparison, so an enumeratiewaarde marker never
+     *  arrives here and the whole predicaat is refused instead — an Onopgelost conditie or a reason-carrying
+     *  deelselectie, never a silently untyped comparison. That is the pre-existing narrowing of that
+     *  position, not a hole this rule opened: the position folds an AGGREGATED attribute, and no aggregation
+     *  ranges over an Enumeratie, so a well-typed enum comparison cannot stand there in the first place. */
+    static Conditie.Vergelijking vergelijking(Conditie.Operator op, Expr links, Expr rechts,
+                                              Conditie.GeheelPeriode periode, Bron bron) {
+        Expr l = enumTegenContext(links, rechts == null ? null : rechts.type());
+        Expr r = enumTegenContext(rechts, links == null ? null : links.type());
+        return new Conditie.Vergelijking(op, l, r, periode, bron);
+    }
+
+    static Conditie.Vergelijking vergelijking(Conditie.Operator op, Expr links, Expr rechts, Bron bron) {
+        return vergelijking(op, links, rechts, null, bron);
     }
 
     private static String src(ParserRuleContext ctx) { return DefinitionResolver.src(ctx); }

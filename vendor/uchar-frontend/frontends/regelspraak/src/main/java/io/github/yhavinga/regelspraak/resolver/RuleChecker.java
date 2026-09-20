@@ -1277,11 +1277,19 @@ final class RuleChecker {
         // its rounded decimal count, and toekenning itself no-ops on an Onbekend value). A kenmerk-init was
         // already §13.4.6.4-checked in maakToekenning; an unresolved created type carries no claim: skip.
         if (nieuwType != null)
-            for (ResolvedObjectCreatie.Toekenning t : toek) {
+            for (int i = 0; i < toek.size(); i++) {
+                ResolvedObjectCreatie.Toekenning t = toek.get(i);
                 Datatype doelType = nieuwType.attribuut(t.attribuut());
                 if (doelType == null) continue;
-                if (t.waarde() instanceof Expr.Literal lit)   // §13.3.4.2 enum-label membership, like registreer
-                    keurEnumLabel(doelType, Literalen.enumLabel(lit.waarde()), oc.getStart().getLine());
+                // §13.2.14: a member init is a WRITE TARGET too (WF-023 names all three), so the created
+                // type's declared datatype is this enumeratiewaarde's domain — promoted in place, like registreer.
+                Expr gepromoveerd = ExpressieBouwer.enumTegenContext(t.waarde(), doelType);
+                if (gepromoveerd != t.waarde()) {
+                    t = new ResolvedObjectCreatie.Toekenning(t.attribuut(), gepromoveerd, t.kenmerk());
+                    toek.set(i, t);
+                }
+                // §13.3.4.2 enum-label membership, like registreer
+                keurEnumLabel(doelType, ExpressieBouwer.enumLabelVanWaarde(t.waarde()), oc.getStart().getLine());
                 keurTeken(doelType, t.waarde(), oc.getStart().getLine());   // §3.3.1 Teken-beperking, like registreer
                 String fout = Typering.toekenning(doelType, t.waarde().type());
                 if (fout != null)
@@ -1582,17 +1590,25 @@ final class RuleChecker {
         // keep the v0 inline route: a consistentie assertion is a Conditie, which cannot host an Expr Let at all,
         // and the remaining ones carry several independent value slots that no single chain spans. Documented as a
         // scope limit rather than lowered half-way; no corpus or parity material exercises them.
-        Expr waardeExpr = bouwer.bouwResultaat(waarde);
+        // §13.2.14: the doel is the WRITE-TARGET context an enumeratiewaarde takes its domain from — the
+        // same context the membership check below reads. Promoting BEFORE the ResolvedRegel is built is
+        // what puts the typed literal on the wire (ExpressieBouwer.enumTegenContext).
+        Expr waardeExpr = ExpressieBouwer.enumTegenContext(bouwer.bouwResultaat(waarde), doelExpr.type());
         model.resolvedRegels.add(new ResolvedRegel(naam, soort, doelExpr, waardeExpr, voorwaarde, geldigheid, huidigeBronAnnotaties));
         Datatype doelType = doelExpr.type(), waardeType = waardeExpr.type();
         // Both static checks below judge the value's SHAPE, so they see through the ch. 4.10 Let chain the
         // variabelendeel lowering wraps around it: `Daarbij geldt: de keuze is -49` denotes the same literal
         // the bare -49 does, and the lowering changed the wire, not what is statically decidable.
         Expr statisch = afgepeld(waardeExpr);
-        // §13.3.4.2 membership runs BEFORE the Onbekend bail: an enum literal is deliberately typed
-        // Onbekend (its domain is context-dependent), and the doel IS that context here.
-        if (statisch instanceof Expr.Literal lit)
-            keurEnumLabel(doelType, Literalen.enumLabel(lit.waarde()), line);
+        // §13.3.4.2 membership runs BEFORE the Onbekend bail: an enumeratiewaarde carries no domain of its
+        // own (it is the doel that supplies one), so the value's type says nothing about whether the label
+        // is declared. The label is read through the shared helper because the promotion above reaches a
+        // Let chain only as far as the chain's own body leads it: the DIRECT chain is promoted (`Daarbij
+        // geldt: de tint is 'gaaf'` writes a fully typed Let), but a NESTED one whose body reads an outer
+        // binder past an inner Let is not — afgepeld resolves that shape through its bindings map where
+        // enumTegenContext, which walks the body, cannot. Measured: a rule reading `de tweede`, defined as
+        // `de tint`, defined as the literal, keeps the marker AND still reports an undeclared label here.
+        keurEnumLabel(doelType, ExpressieBouwer.enumLabelVanWaarde(statisch), line);
         keurTeken(doelType, statisch, line);   // §3.3.1 Teken-beperking, static over a literal value
         if (doelType.isOnbekend() || waardeType.isOnbekend()) return; // not enough resolved to judge
         String fout = Typering.toekenning(doelType, waardeType);
@@ -2153,7 +2169,7 @@ final class RuleChecker {
         if (absorbedNegator(lhs) && (op.vergelijkingsTekenGesplitst() != null || op.LEEG() != null || op.GEVULD() != null))
             return new Conditie.Onopgelost(bron, REDEN_GEABSORBEERDE_NIET);
         if (op.vergelijkingsTekenGesplitst() != null && op.expressie() != null)
-            return new Conditie.Vergelijking(naarOperator(cmpOf(op.vergelijkingsTekenGesplitst())),
+            return ExpressieBouwer.vergelijking(naarOperator(cmpOf(op.vergelijkingsTekenGesplitst())),
                     lhs, bouwer.bouw(op.expressie()), periode, bron);
         if (op.LEEG() != null)   return new Conditie.Predicaat(Conditie.Predicaatsoort.LEEG, lhs, periode, bron);
         if (op.GEVULD() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.GEVULD, lhs, periode, bron);
@@ -2478,7 +2494,7 @@ final class RuleChecker {
         if (absorbedNegator(lhs) && (op.vergelijkingsTeken() != null || op.LEEG() != null || op.GEVULD() != null))
             return new Conditie.Onopgelost(bron, REDEN_GEABSORBEERDE_NIET);
         if (op.vergelijkingsTeken() != null && op.expressie() != null)
-            return new Conditie.Vergelijking(naarOperator(cmpOf(op.vergelijkingsTeken())),
+            return ExpressieBouwer.vergelijking(naarOperator(cmpOf(op.vergelijkingsTeken())),
                     lhs, bouwer.bouw(op.expressie()), periode, bron);
         if (op.LEEG() != null)   return new Conditie.Predicaat(Conditie.Predicaatsoort.LEEG, lhs, periode, bron);
         if (op.GEVULD() != null) return new Conditie.Predicaat(Conditie.Predicaatsoort.GEVULD, lhs, periode, bron);
