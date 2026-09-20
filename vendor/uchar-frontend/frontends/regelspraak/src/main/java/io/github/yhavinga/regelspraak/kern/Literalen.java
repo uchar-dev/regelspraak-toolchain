@@ -111,21 +111,24 @@ public final class Literalen {
      *  value carries its own OUTER double quotes. A blanket {@code replace("\"","")} broke the first by dropping
      *  the embedded quote and the second by dropping the delimiters the other side kept — opposite directions,
      *  one cause. null for any other literal.
-     *  <p><b>The enumeratiewaarde arm is STALE and refuses more than it should</b> (measured 2026-09-20, card
-     *  `20260919-v8-enum-emitter`). It routes through {@link #enumLabel}, which DEMANDS the {@code '…'}
-     *  delimiters — the shape IR-SPEC ch. 4.1 used to describe as the wire form. That sentence was wrong and
-     *  is corrected: on this wire an enumeration literal's value is the BARE label, which WF-039 crosses
-     *  byte-exactly against the declared domain. So on every conforming document this arm returns null, and
-     *  the Drools transpiler arms that guard on {@code tekstOfEnumLabel(lit) != null} — the two condition
-     *  arms, the navigated one and the VALUE arm — refuse every enumeration equality and every enumeration
-     *  write. That is why `jutterswet-keurstaat` and `jutterswet-vondstklasse` sit pinned as EXCLUDE in both
-     *  channel lists of gate 12. The remedy is here, not at the call sites: return an
-     *  {@code Enumeratie}-typed literal's value VERBATIM, exactly as the Tekst arm does. Held for card
-     *  `drools-enumlabel-lezer`, because it shifts gate-12's played counts and those move serially.
+     *  <p>An {@code Enumeratie}-typed literal's value is likewise returned VERBATIM (card
+     *  `drools-enumlabel-lezer`, 2026-09-20), for the same reason the Tekst arm is: on this wire an
+     *  enumeration literal's value IS the bare label, which WF-039 crosses byte-exactly against the declared
+     *  domain, so there are no delimiters left to strip. Until this arm existed the enumeration case routed
+     *  through {@link #enumLabel}, which DEMANDS the {@code '…'} pair that IR-SPEC ch. 4.1 used to describe
+     *  as the wire form — a sentence about a FRONTEND reader, corrected 2026-09-19. On a conforming document
+     *  that reader answered null, so every Drools transpiler arm guarding on
+     *  {@code tekstOfEnumLabel(lit) != null} — the own-attribute and navigated condition arms, the assertie
+     *  arm and the VALUE arm — refused every enumeration equality AND every enumeration write.
+     *  <p>The {@link #enumLabel} fallback below stays for the other datatypes: a NON-enumeration literal that
+     *  carries a single-quoted lexeme is a shape no emitter writes and no corpus document holds, but reading
+     *  it is what this reader did before an enumeration literal could be typed at all, and narrowing it here
+     *  would be a second change in the same line with no witness of its own.
      *  <p>What a back-end may do with this string is RENDER it: the DRL branch escapes it into DRL text
      *  ({@code Namen.drlString}). Escaping is not interpretation — it leaves the value itself untouched. */
     public static String tekstOfEnumLabel(Expr.Literal lit) {
         if (lit.type().isTekst()) return lit.waarde();
+        if (lit.type() instanceof io.github.yhavinga.regelspraak.model.Datatype.Enumeratie) return lit.waarde();
         return enumLabel(lit.waarde());
     }
 

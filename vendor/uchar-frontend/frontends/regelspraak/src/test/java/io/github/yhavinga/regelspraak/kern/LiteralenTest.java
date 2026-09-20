@@ -86,6 +86,26 @@ class LiteralenTest {
         assertNull(Literalen.tekstOfEnumLabel(num("42")));
     }
 
+    @Test void tekstOfEnumLabel_leest_een_enumeratiegetypeerde_literal_verbatim() {
+        // WF-039 kruist deze waarde byte-exact tegen het gedeclareerde domein, dus de wire-vorm IS het kale
+        // label — de delimiters zijn er al af als de emitter klaar is. De enum-arm hierboven door enumLabel
+        // laten lopen gaf op elk conform document null, en dat is hoe beide Drools-takken ertoe kwamen elke
+        // enumgelijkheid en elke enumtoekenning te weigeren (kaart drools-enumlabel-lezer, 2026-09-20).
+        assertEquals("wrakgoed", Literalen.tekstOfEnumLabel(enumLit("wrakgoed", "drijfgoed", "wrakgoed")));
+        assertEquals("licht blauw", Literalen.tekstOfEnumLabel(enumLit("licht blauw", "licht blauw")),
+                "een label met een spatie is één label");
+        // En verbatim betekent verbatim: een gedelimiteerde waarde op een Enumeratie-type is ill-formed op de
+        // wire (WF-039 weigert haar), dus deze lezer repareert haar niet alsnog stilletjes tot een label dat
+        // de verifier nooit gezien heeft.
+        assertEquals("'wrakgoed'", Literalen.tekstOfEnumLabel(enumLit("'wrakgoed'", "wrakgoed")),
+                "de lezer verzint geen label bij een waarde die de verifier al afkeurt");
+    }
+
+    private static Expr.Literal enumLit(String w, String... waarden) {
+        return new Expr.Literal(w, new Datatype.Enumeratie("Vondstklasse", java.util.List.of(waarden)),
+                Bron.synthetisch("'" + w + "'"));
+    }
+
     @Test void waar_leest_de_boolean_literalen() {
         assertTrue(Literalen.waar("waar"));
         assertFalse(Literalen.waar("onwaar"));
