@@ -279,6 +279,55 @@ class IrEmitterTest {
                 () -> "de bron-snippet (prefix of day-first) mag niet in het literal-lexeme zitten:\n" + c);
     }
 
+    @Test void datumtijd_literal_lexeme_is_iso_snippet_in_bron() {
+        // uchar WF-095 (IR-SPEC ch. 4.1, narrowed 2026-09-22): a datum-tijd literal's waarde is the
+        // canonical ISO lexeme yyyy-mm-ddThh:mm:ss.fff, the day-first source snippet stays in bron —
+        // the same split the date branch makes. The snippet in waarde is refused by the verifier,
+        // so this is what keeps the emitter's own output on the wire. The "dd. " prefix belongs to
+        // the snippet too.
+        String src = """
+            Objecttype de Aanmelding
+                de meldstip Datum en tijd in millisecondes;
+                is tijdig kenmerk (bijvoeglijk);
+            Regel tijdig
+                geldig altijd
+                    Een Aanmelding is tijdig
+                    indien zijn meldstip eerder is dan %s.
+            """;
+        // emitRaw, not emitCompact: the snippet's own space is part of what bron must keep.
+        String c = emitRaw(src.formatted("15-03-2026 12:00:00.000"));
+        java.util.regex.Pattern literal = java.util.regex.Pattern.compile(
+                "\\{\\s*\"node\"\\s*:\\s*\"Literal\",\\s*\"waarde\"\\s*:\\s*\"([^\"]*)\",\\s*"
+                + "\"type\"\\s*:\\s*\\{\\s*\"node\"\\s*:\\s*\"DatumTijd\"\\s*\\},\\s*\"bron\"\\s*:\\s*\"([^\"]*)\"");
+        java.util.regex.Matcher m = literal.matcher(c);
+        assertTrue(m.find(), () -> "geen DatumTijd-literal in de emissie:\n" + c);
+        assertEquals("2026-03-15T12:00:00.000", m.group(1), "waarde draagt het ISO-lexeme");
+        assertEquals("15-03-2026 12:00:00.000", m.group(2), "bron draagt de bron-snippet, spatie inbegrepen");
+        String d = emitRaw(src.formatted("dd. 5-3-2026 09:07:05.004"));
+        java.util.regex.Matcher md = literal.matcher(d);
+        assertTrue(md.find(), () -> "geen DatumTijd-literal in de emissie:\n" + d);
+        assertEquals("2026-03-05T09:07:05.004", md.group(1),
+                "de-dato-prefix en eencijferige dag/maand horen bij de snippet, niet bij het lexeme");
+        assertEquals("dd. 5-3-2026 09:07:05.004", md.group(2));
+    }
+
+    @Test void datumtijd_literal_buiten_de_kalender_is_een_fout() {
+        // The DATE token admits 30-02-2026 12:00:00.000; there is no ISO lexeme for it, so the emitter
+        // reports an ERROR (which stops emission) instead of writing a lexeme WF-095 would refuse.
+        RegelSpraakModel m = Resolver.resolve("""
+            Objecttype de Aanmelding
+                de meldstip Datum en tijd in millisecondes;
+                is tijdig kenmerk (bijvoeglijk);
+            Regel tijdig
+                geldig altijd
+                    Een Aanmelding is tijdig
+                    indien zijn meldstip eerder is dan 30-02-2026 12:00:00.000.
+            """);
+        assertEquals(1, m.errors().size(), () -> "verwacht precies een fout, kreeg: " + m.errors());
+        assertTrue(m.errors().toString().contains("datum-tijd-literal '30-02-2026 12:00:00.000'"),
+                () -> "de fout noemt het lexeme niet: " + m.errors());
+    }
+
     /** A Tekst-attribuut plus one rule that assigns {@code lexeem} to it — the smallest model that
      *  puts a text literal on the wire. The lexeme is inserted RAW, so a test can hand it a source
      *  form the grammar rejects and assert on the diagnostics. */

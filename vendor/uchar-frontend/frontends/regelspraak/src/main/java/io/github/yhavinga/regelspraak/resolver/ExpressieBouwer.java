@@ -418,7 +418,24 @@ final class ExpressieBouwer {
             // precision), not a Datum in dagen — typing it as a bare date drops the time and lowers a
             // LocalDate into a LocalDateTime target (a Drools type error / silent wrong value).
             boolean metTijd = bron.snippet().matches(".*\\d{1,2}:\\d{2}:\\d{2}.*");
-            if (metTijd) return new Expr.Literal(bron.snippet(), new Datatype.DatumTijd(), bron);
+            if (metTijd) {
+                // uchar WF-095 (IR-SPEC ch. 4.1, narrowed 2026-09-22): waarde is the canonical ISO
+                // lexeme yyyy-mm-ddThh:mm:ss.fff, bron keeps the day-first snippet — the date branch's
+                // split. The DATE token always writes the three millisecond digits, so .SSS loses nothing.
+                // A calendar-impossible token (30 February, hour 24) is an ERROR, which stops emission,
+                // so the snippet returned beside it never reaches a wire. The literal is built more than
+                // once per model, hence the contains-guard against a repeated report.
+                java.time.LocalDateTime t = Literalen.parseDatumTijd(bron.snippet());
+                if (t == null) {
+                    RegelSpraakModel.Diagnostic fout = new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
+                            "datum-tijd-literal '" + bron.snippet() + "' is geen geldige datum-tijd (§13.2.21)",
+                            p.getStart().getLine());
+                    if (!model.diagnostics.contains(fout)) model.diagnostics.add(fout);
+                    return new Expr.Literal(bron.snippet(), new Datatype.DatumTijd(), bron);
+                }
+                String iso = t.format(java.time.format.DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss.SSS"));
+                return new Expr.Literal(iso, new Datatype.DatumTijd(), bron);
+            }
             // uchar WF-084 (IR-SPEC ch. 4.1): a date literal's waarde is the BARE ISO lexeme the
             // executors parse (yyyy-mm-dd, fixed field widths) — NOT the Dutch day-first source
             // snippet ("31-01-2024"), which both executors read as ISO and so silently misparse as
