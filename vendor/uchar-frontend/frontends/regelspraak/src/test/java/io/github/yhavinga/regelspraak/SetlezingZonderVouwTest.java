@@ -73,9 +73,9 @@ class SetlezingZonderVouwTest {
     static final String MELDING =
             "setlezing buiten een vouwbron: 'het gewicht van alle vondsten van de Jutter' noemt de waarde "
             + "van elk lid van de verzameling — alleen toegestaan als bron van één waardevouw (som, "
-            + "totaal, minimum, maximum, eerste, laatste); een telling vouwt de leden zelf en leest "
-            + "geen waarde per lid, dus onder 'aantal' ook niet (besluit 2026-09-19); hier wordt één "
-            + "waarde verwacht (WF-096, IR-SPEC ch. 4.3)";
+            + "totaal, minimum, maximum, eerste, laatste, aantal gevulde waarden); een instantietelling "
+            + "vouwt de leden zelf en leest geen waarde per lid, dus onder 'aantal' ook niet (besluit "
+            + "2026-09-19); hier wordt één waarde verwacht (WF-096, IR-SPEC ch. 4.3)";
 
     private static List<Diagnostic> setlezingDiagnoses(String regels) {
         RegelSpraakModel m = Resolver.resolve(MODEL + regels);

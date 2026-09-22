@@ -79,6 +79,11 @@ WORTEL_VAN             : 'de' WSP 'wortel' WSP 'van'             ; // §13.4.17.
 SOM_VAN                : 'de' WSP 'som' WSP 'van'                ; // §13.4.17.47
 TOTAAL_VAN             : 'het' WSP 'totaal' WSP 'van'            ; // §13.4.17.56
 AANTAL_DAGEN_IN        : 'het' WSP 'aantal' WSP 'dagen' WSP 'in'       ; // §13.4.17.57
+// uchar DIALECT EXTENSION (grammar/DIVERGENCES.md §6): the filled-value count.
+// A WHOLE-PHRASE token on purpose — it reserves no name word of its own, so
+// 'gevulde' and 'waarden' keep lexing as LOWER_ID everywhere else and only this
+// exact five-word sequence changes meaning.
+AANTAL_GEVULDE_WAARDEN_VAN : 'het' WSP 'aantal' WSP 'gevulde' WSP 'waarden' WSP 'van' ;
 EERSTE_PAASDAG_VAN     : 'de' WSP 'eerste' WSP 'paasdag' WSP 'van'     ; // §13.4.17.37
 EERSTE_VAN             : 'de' WSP 'eerste' WSP 'van'             ; // §13.4.17.39 / .49
 LAATSTE_VAN            : 'de' WSP 'laatste' WSP 'van'            ; // §13.4.17.40 / .49
@@ -89,7 +94,9 @@ TIJDSEVENREDIG_DEEL_PER: 'het' WSP 'tijdsevenredig' WSP 'deel' WSP 'per'; // §1
 // 'aantal' is its own word (the telling aggregation 'het aantal' is composed in
 // the parser as HET AANTAL_WORD), so the article stays separable from an
 // attribute name that merely begins with "aantal" (e.g. "het aantal punten").
-// The longer 'het aantal dagen in' phrase is still matched first.
+// The longer 'het aantal dagen in' and 'het aantal gevulde waarden van' phrases
+// are still matched first — maximal munch takes the longest, and the dialect
+// phrase's inertness on official documents is MEASURED, see DIVERGENCES.md §6.
 
 // --- bounding / rounding / arithmetic phrases ---
 MET_EEN_MINIMUM_VAN : 'met' WSP 'een' WSP 'minimum' WSP 'van' ; // §13.4.17.29

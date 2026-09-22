@@ -3540,6 +3540,13 @@ public final class DrlTranspiler {
      * here; navigation joins fill it. Returns null for aggregations not yet mappable.
      */
     private Frag accumulate(Acc acc, Expr.Functie f, Objecttype subject, boolean leegCount) {
+        // §5.7 / WF-110 (uchar IR-SPEC ch. 4.3, semantics RUNTIME-SEMANTICS ch. 3.4d): the count over an
+        // INSTANCE-SET UNION — the concatenation of onderwerpexpressies. Read first and returning: the
+        // union is a whole source of its own and carries neither elementObjecttype nor the one-step
+        // join role every derivation below reads.
+        if (f.kind() == Expr.FunctieKind.AANTAL && f.argumenten().size() == 1
+                && f.argumenten().get(0) instanceof Expr.InstanceSetUnion unie)
+            return unieAccumulate(acc, unie, subject);
         // WF-102 (uchar pin d6c357c): a multi-step fold-source range (bronPad) names the relations it
         // walks; this accumulate lowers exactly ONE join role, and the type-pair fallback below would
         // otherwise bind a coincidental direct fact type and sum the WRONG set. Marker, never a guess —
@@ -3664,6 +3671,67 @@ public final class DrlTranspiler {
         if (f.kind() == Expr.FunctieKind.MINIMUM || f.kind() == Expr.FunctieKind.MAXIMUM)
             return Frag.ok(fnImport("toBd") + "(" + var + ")");
         return Frag.ok(var);
+    }
+
+    /** §5.7 / WF-110 — the instance count over a UNION of selections (uchar IR-SPEC ch. 4.3, semantics
+     *  RUNTIME-SEMANTICS ch. 3.4d). ONE accumulate over ONE element pattern whose constraint is the
+     *  DISJUNCTION of the selections, each selection being its own join AND its own die/dat filter:
+     *
+     *  <pre>accumulate( $e1 : Passagier( (reis == $subject &amp;&amp; jong == true) || (reis == $subject &amp;&amp; oud == true) )
+     *              ; $acc1 : count($e1) )</pre>
+     *
+     *  <p><b>One pattern is what deduplicates.</b> A source pattern matches an element once whatever
+     *  makes it match, so an instance several selections all select contributes ONE tuple and the count
+     *  answers the UNION rather than the sum of the parts. That is the operation's definition, and
+     *  neither obvious alternative has the property: a DRL {@code or} between patterns binding one
+     *  variable matches once per satisfied branch, and two accumulates added together double-count the
+     *  shared element. Same shape, same argument and same numbers as uchar's own Drools backend.
+     *
+     *  <p>A selection WITHOUT a die/dat is carried rather than markered: the wire holds the selections
+     *  themselves, so an absent filter is the ordinary case and not an unrepresentable one. That is a
+     *  deliberate conformance move — this transpiler used to marker the shape because it lowered a
+     *  concatenation by OR-ing the operands' filter TERMS and had no term to OR for an unfiltered
+     *  operand, which is a property of that mechanism and not of the operation.
+     *
+     *  <p>null -&gt; marker, never a silently wrong count. */
+    private Frag unieAccumulate(Acc acc, Expr.InstanceSetUnion u, Objecttype subject) {
+        if (u.takken().isEmpty() || subject == null) return null;
+        Objecttype elem = u.takken().get(0).elementType();
+        if (elem == null) return null;
+        // WF-110 (d), re-asked here: one accumulate has ONE source pattern and therefore one element
+        // class. The wire already refuses two populations; this arm is the executor's second line.
+        for (Expr.InstanceSetUnion.Tak t : u.takken()) if (t.elementType() != elem) return null;
+        java.util.List<String> delen = new ArrayList<>();
+        for (Expr.InstanceSetUnion.Tak t : u.takken()) {
+            String backref = unieBackref(t.bronRol());
+            if (backref == null) return null;
+            String join = ident(backref, false) + " == " + SUBJECT;
+            if (t.filter() == null) { delen.add("(" + join + ")"); continue; }
+            Frag fc = conditie(acc, t.filter(), elem);
+            if (fc.marker()) return null;
+            delen.add("(" + join + " && " + fc.text() + ")");
+        }
+        int n = ++acc.n;
+        String ev = "$e" + n, var = "$acc" + n;
+        acc.clausules.add("accumulate( " + ev + " : " + ident(elem.naam, true)
+                + "( " + String.join(" || ", delen) + " ) ; " + var + " : count(" + ev + ") )");
+        return Frag.ok(var);
+    }
+
+    /** The SUBJECT-side role of one union selection: the other role of the fact type its wire binding
+     *  names. The binding names the ELEMENT role (that is what a selection ranges over), and the join
+     *  this transpiler emits is read ON the element — {@code <backref> == $subject} — so the two are
+     *  opposite ends of one fact type. Derived from the binding ALONE and never from the type pair:
+     *  every selection of one union shares one pair (WF-110 (d)), so a by-pair search would hand them
+     *  all the same range and the union would restate one of them. Null on an unknown fact type, a
+     *  reciprocal one (whose single role has no opposite) or a shape that is not the two-role form. */
+    private String unieBackref(RegelSpraakModel.RolBindingRef binding) {
+        if (binding == null) return null;
+        RegelSpraakModel.Feittype ft = model.feittypen.get(binding.feittype());
+        if (ft == null || ft.wederkerig || ft.rollen.size() != 2) return null;
+        for (RegelSpraakModel.Rol r : ft.rollen)
+            if (!r.naam().equals(binding.rol())) return r.naam();
+        return null;
     }
 
     /** The element scope: the join binding the element to the subject ("the passagiers

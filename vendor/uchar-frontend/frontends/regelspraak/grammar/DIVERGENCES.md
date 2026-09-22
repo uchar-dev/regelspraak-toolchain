@@ -272,3 +272,288 @@ silently fold the wrong set, which is by far the worse of the two.
 - The clause declares the relation only. Nothing about the defaults-stack
   composition is authored from source; that is the kernel's, keyed on the
   relation this extension writes.
+
+---
+
+## §6 The filled-value-count extension — `het aantal gevulde waarden van`
+
+Origin: `spec/IR-SPEC.md` ch. 4.3 and `spec/RUNTIME-SEMANTICS.md` ch. 3.4c
+(maintainer decision G9, 2026-09-19). The uchar IR carries an aggregation kind
+`AANTAL_GEVULDE`: over one set source it counts the contributors whose value is
+not leeg, so `{5, 7, leeg}` answers **2** where the instance count answers 3.
+The kind was written on the wire first and answered by all four executors
+before any frontend could author it; this extension is its producer route.
+
+**Official RegelSpraak v2.3.0 has no spelling for the operation at all.**
+§5.8's `<getalaggregatiefunctie>` is a closed alternation of four phrases (the
+count, the maximum, the minimum, the sum), with two more for dates; there is no
+fifth number form and no place to write one. `gevuld` exists in the language
+only as a PREDICATE — §8.1.2, typing §5.11, a boolean test on one subject
+expression — and never as an aggregation. So a flat document can neither write
+this fold nor mean it.
+
+### Surface syntax (additive; one new alternative of `functieAanroep`)
+
+```
+Het aantal gewogen vondsten van een Jutter moet berekend worden als
+    het aantal gevulde waarden van het gewicht van alle vondsten van de Jutter.
+```
+
+New token: `AANTAL_GEVULDE_WAARDEN_VAN`, a whole-phrase token
+(`'het aantal gevulde waarden van'`). The operand is a `primaireExpressie`, for
+the same precedence reason the §13.4.17.47 telling gives: a trailing
+`plus`/`maal` binds OUTSIDE the count, which is what an author means. The
+alternative carries **no facet slot** — no `leegwaardeAlternatief`, no
+`dimensieSelectie`, no `conditieBijExpressie` — because all three are ill-formed
+on this kind (WF-037's "sum only" and "sum/min/max only", and decision G7). A
+facet that cannot be written needs no refusal.
+
+**The extension reserves no name word.** Unlike `Uitzonderingen`/`ongeordend`
+(§4), a whole-phrase token takes only the whole phrase: `gevulde` and `waarden`
+keep lexing as `LOWER_ID` everywhere else, and an attribute or role whose name
+merely begins with "gevulde" is untouched. Only the exact five-word sequence
+changes meaning — and under maximal munch it takes precedence over
+`HET AANTAL_WORD`, which is the risk this section measures.
+
+### Inertness — measured, not assumed
+
+The `is een` extension (§5) could argue inertness from the shape of the
+construct; this one cannot, because the phrase *extends* an existing one. A
+document naming a role or attribute "gevulde waarden …" would have its count
+sentence re-read. So the claim is a measurement, taken 2026-09-20 over **876
+flat RegelSpraak documents** in seven collections: the 64 emitter goldens of
+this corpus, the 47 official-casus documents of the repository's temporary
+parity zone, 176 documents of the reference toolchain's own corpus, 513
+documents of an operational ruleset collection, and 76 more across three
+further rule collections found on a second pass — plus the six markdown
+documents of the v2.3.0 specification set (the main specification, the typing
+document, the syntax-diagram document, the ANTLR-targeted draft, the casus
+document and its conversion notes).
+
+- **The phrase occurs nowhere.** Zero occurrences of `aantal gevulde` in any of
+  the 876 documents, and zero in the six specification documents.
+- **The word `gevulde` occurs twice in 876 documents**, both inside `//` line
+  comments in the operational collection, where the lexer cannot reach it. The
+  single specification hit is the substring inside "ingevulde" in a prose figure
+  caption, not a RegelSpraak name.
+- **Every document emits byte-identically before and after.** Each of the 876
+  was run through the frontend built at the commit before this extension and at
+  the commit after it, and the emitted IR plus the diagnostics compared. Zero
+  reinterpretations. Two TEXT changes appear and are accounted for, neither of
+  them a reading: WF-096's message lists the admissible kinds and that list grew
+  by one name, and the ANTLR "expecting {…}" set in a syntax-error message names
+  the new token. Normalising exactly those two leaves no residual difference in
+  any document.
+- **The seventh collection was found by a second reader, not by the first.**
+  Three of the seven were missed on the first pass, and the sentence that
+  claimed the sweep was exhaustive was therefore too strong. It is recorded here
+  because the lesson outlives the number: a coverage claim over "everything
+  reachable" is one a second reader has to re-count, and that re-count found
+  three. The re-count agreed — 76 of 76 identical, no diagnostic differences —
+  so the conclusion widened rather than moved.
+
+**What the measurement does not claim.** It cannot exclude that some unmeasured
+document names a role or an attribute with the exact phrase. What bounds that
+case is the grammar itself, and both of its failure modes are LOUD:
+
+- a colliding **role or count sentence** — the phrase consumes its `van`, so
+  what follows must be the fold's operand, and there the remainder is a to-ONE
+  reading rather than a set reading, which the WF-037 refusal below rejects at
+  ERROR level;
+- a colliding **attribute name** never reaches a rule at all: the phrase is a
+  token, so a member declaration containing it breaks on its own declaration
+  line with a syntax error ("extraneous input 'het aantal gevulde waarden
+  van'"), and the document does not resolve.
+
+The shift is loud in both, never a different answer. That pair — measured
+absence plus a bounded failure — is the whole argument, and both halves carry a
+fixture (`AantalGevuldeDialectTest`).
+
+### Lowering (resolver)
+
+The phrase builds an ordinary `Expr.Functie` with `kind = AANTAL_GEVULDE` and
+one argument, reusing the value folds' machinery rather than adding any:
+
+- the element type is the argument's own object type (`aggregatieElement`), the
+  VALUE-fold derivation — not the count's, whose element word is a role name;
+- the range is the shared one: a single written step goes out as `bronRol`, and
+  a resolved multi-step range as `bronPad` (WF-102), which is ch. 3.4b's flat
+  union and the reason the kind exists at that width;
+- the `die/dat` subselectie rides the shared `aggregatieFilter` path;
+- the result type is a whole, unitless, non-negative number whatever the folded
+  attribute measures (ch. 3.4c). The source's unit is deliberately NOT inherited;
+  a cardinality has none.
+- `meldAggregatie` carries an explicit no-check arm for the kind. Decision G8
+  makes the test typeless — presence is asked of a text, a date, an enumeration
+  value and a boolean alike — so a numeric-operand check here would undo the
+  decision in silence.
+
+`RuleChecker.VOUWSOORTEN` grows with the kind in the same movement, because
+WF-096 admits a set reading on a value fold's source alone and a filled count
+is a count in its RESULT but a value fold in its READING. That set and the
+verifier's `set_source_exempt` are one boundary in two languages;
+`VouwsoortenGrensTest` now READS the verifier's own kind list and the line that
+keys on it, so the two cannot drift again in either direction.
+
+### Fail-fast refusals (resolver, loud diagnostics)
+
+- **WF-037** — a source that is not a set reading. The kind reads a value per
+  contributor, so a to-one source ("… van het gewicht van de Vondst") would ask
+  for the filled count of one own value, which is 0 or 1 and a form no author
+  writes. ERROR, so the document never reaches disk; every other kind admits a
+  non-set source for a reason of its own (the §7.1 timeline fold, the row-1
+  count wart), which is why the fence is drawn per kind.
+- The refusals the value folds already carry reach the new kind unchanged,
+  because it joined the shared aggregation predicate: a source naming no
+  declared member of the element type markers with a WARNING, and the three
+  fold-source refusals (a nested set step, an intermediate to-one anchor, a
+  by-pair binding the written name contradicts) keep refusing here too.
+
+### Emission
+
+Nothing about emission is new: the kind reaches the wire through the same
+`Functie` writer as the other seven, with the same `bronRol`/`bronPad`
+exclusivity. A document that does not write the phrase emits exactly what it
+emitted before, which is the measurement above stated as a property.
+
+### Scope / limitations of this card
+
+- Only the ONE-operand form exists. There is no listed variant ("het aantal
+  gevulde waarden van A, B en C"), because the wire has none: WF-037 pins the
+  arity at exactly one.
+- **The token matches lowercase `het` only**, as `AANTAL_DAGEN_IN` and
+  `TOTAAL_VAN` do, so a sentence-initial "Het aantal gevulde waarden van …"
+  falls back to the pre-extension reading — the instance count swallows the
+  words as its element name and markers with a WARNING. Measured 2026-09-20:
+  that document still reaches disk, exactly as it did before the extension. It
+  is no regression (the base behaviour is unchanged) and no aggregation phrase
+  in this grammar is written sentence-initially, but it is a real asymmetry with
+  the lowercase form and is recorded rather than discovered.
+- The temporal set source stays refused downstream, not here. A filled count
+  over a timeline attribute has no moment at which to ask, and the two OCaml
+  executors refuse it by name (`corpus/rood/aantalgevulde-temporele-setbron`);
+  the frontend admits the sentence, as it does for the other folds.
+- The catala and flogic frontends do not get the kind. Each carries its own
+  refusal list, and a wire kind they never write costs them nothing.
+
+---
+
+## §13.4.17.47 The count's operand list — an ACCEPTING superset, fenced in the resolver
+
+Unlike the three sections above this is **not** a dialect extension and it is
+**not** inert: it is a production that accepts more than v2.3.0 spells, and it
+was found by a wire decision rather than designed. It is recorded here because
+the register is where a divergence has to be findable, whether it was chosen or
+inherited.
+
+`functieAanroep`'s `aantalFunc` alternative reads
+
+```
+HET AANTAL_WORD primaireExpressie ( COMMA primaireExpressie )* ( EN primaireExpressie )?
+```
+
+while §13.4.17.46's EBNF gives `<getalaggregatiefunctie>` one `<expressie>`
+operand and §5.8.1 ranges the count over **instances**; the typing document
+(§4.11) adds that a count takes onderwerpexpressies only, so leegwaarden do not
+apply to it. There is a listed spelling in the source language — "de eerste van
+A en B" (§5.8.3) — but it belongs to the ordering folds, and the count has
+none. The `( COMMA … )* ( EN … )?` tail is therefore this frontend's own
+widening, carried over from the neighbouring `minMaxFunc` and
+`eersteLaatsteFunc` alternatives that legitimately have it.
+
+**Two divergences live at this rule, and only one of them was registered.** The
+`primaireExpressie` operand (instead of the symmetric `expressie`) is a
+deliberate, narrowing reconstruction — a trailing `maal`/`plus` binds OUTSIDE
+the count, which §4.11 requires — and it is noted at the rule. The operand LIST
+is the widening, and until 2026-09-20 it was noted nowhere.
+
+**What it cost, measured 2026-09-20.** `ExpressieBouwer.args` builds every child
+as its own argument, so the list reached the wire as an `AANTAL` with two or
+more `argumenten`. Three sentences emitted unblocked — the `en` spelling and the
+`comma` spelling with `diagnostics: []`, the element-binding spelling ("het
+aantal vondsten van de Jutter en kavels van de Jutter") with a WARNING that does
+not stop emission — and the uchar verifier rejects all three: under WF-037 since
+that day's count-arity decision (`spec/IR-SPEC.md` ch. 4.3), the third under
+WF-034 as well. One executor answered such a document and three refused it,
+which is the class `spec/PLAN.md` §6 calls a spec fault.
+
+**The fence stands in the resolver, not in the grammar** — `ExpressieBouwer`'s
+`tellingAriteitFout`, an ERROR, so `Resolver.irModus` writes nothing and the
+ill-formed document never reaches disk. Witness:
+`AantalOpgesomdTest` (both spellings, the element-binding route, the
+off-disk property, and the two forms that must stay clean).
+
+Why not simply delete the tail:
+
+- It is a **parse** change, not a diagnostic change. `( EN primaireExpressie )?`
+  decides how a trailing conjunction binds inside a larger sentence; removing it
+  re-associates those sentences instead of refusing them, and 64 byte-identical
+  emitter goldens sit downstream of every parse.
+- Mirror-then-diverge: the widening is a fact about this grammar, and a fact
+  that is deleted stops being registered. Fenced and written down, it stays
+  readable; deleted, the next reader rediscovers it from scratch.
+- The refusal is the same either way. What differs is only whether the author
+  gets a named refusal citing the rule, or a syntax error.
+
+This is the same posture `AantalSetbronTest` records one decision earlier: when
+the wire narrows, the frontend's fence moves and its grammar does not.
+
+### Half of it stopped being a divergence (2026-09-20, the unie-telling card)
+
+**The tail is a widening of the EBNF and it always was. What was wrong was the
+reading of what it widened INTO.** §13.4.17.46 gives the count one `<expressie>`
+operand, and the register above concluded from that — and from §5.8.1 ranging
+the count over instances — that a count has no articulated operand list at all.
+That is true of an operand list of VALUES and false of the sentence: §5.7 spells
+a **concatenation of subject expressions** — the instance sets the selections
+yield, joined into one new set — and the typing document's own §4.11 says of the
+count operator that a concatenation of expressions may be used with it,
+unbounded in number, subject expressions only.
+The previous card cited §4.11 for the half that excludes the value reading and
+did not read the half that admits the concatenation.
+
+So the grammar's `( COMMA primaireExpressie )* ( EN primaireExpressie )?` is now
+**two things at once**, and the resolver is where they part:
+
+- operands that are **rolselecties** ("aangemelde vondsten van de Jutter die
+  gemerkt zijn") are the §5.7 concatenation. `ExpressieBouwer.bouwInstantieUnie`
+  builds ONE `Expr.InstanceSetUnion` from them — a selection per operand, each
+  with its own population, its own one-step relation and its own die/dat
+  subselection — and the count carries it as its SINGLE argument. The wire form
+  is `InstanceSetUnion` (uchar `IR-SPEC.md` ch. 4.3, WF-110). At this half the
+  production is no longer a divergence: it spells what the source language
+  spells.
+- operands that are **waardelezingen** ("de gewogen vangst van de Jutter") stay
+  the widening, and `tellingAriteitFout` keeps refusing them word for word.
+
+The refusal's message gained a TAIL rather than a rewrite, because its head
+would now mislead on its own: it says the source language spells no listed form,
+which is true of the list and false of the sentence. The tail names the §5.7
+route and says why it did not open here — the operands are not rolselecties, or
+`bouwInstantieUnie` refused them for a reason of its own. Three such
+reasons, each an ERROR that keeps the document off disk:
+
+- **two populations** ("het aantal aangemelde vondsten van de Jutter en
+  duinkavels van de Jutter"): one count answers a cardinality over ONE declared
+  type (WF-110 (d)). The v0 toolchain refuses the same sentence on a mechanism
+  ground of its own — one Drools accumulate has one source pattern — so the
+  boundary agrees and the reason does not.
+- **an underivable relation** for a selection (WF-110 (e)): a union names each
+  selection's relation, never derives one, because every selection of one union
+  shares one type pair.
+- **a die/dat that is not a characteristic of the element**: a dropped filter
+  would count too many AND the union would absorb the error, since an unfiltered
+  selection is a superset of every filtered one over the same relation.
+
+Where uchar deliberately carries what the toolchain markers: a **selection
+without a subselection beside a filtered one**. Its marker there is the same
+mechanism fact — it lowers a concatenation by OR-ing the operands' filter terms
+and has no term to OR for an unfiltered operand — and our wire carries the
+selections themselves, so `filter: null` is the ordinary case.
+
+Witness: `AantalUnieTest` (the two-relation union, the two-characteristic union,
+the unfiltered selection, the comma spelling, the wire shape, the three named
+refusals, and the two counter-proofs). Measured red-first on the pre-card
+frontend (5b42e5b9): both of this card's golden sources — `jutterswet-vondstunie`
+and `jutterswet-keurunie` — were refused with the WF-037 arity ERROR and wrote
+nothing.

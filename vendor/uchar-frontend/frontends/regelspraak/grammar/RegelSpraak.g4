@@ -933,7 +933,21 @@ functieAanroep
     // never an arithmetic one (whereas §5.8.2 lets a sum's operand BE arithmetic). So ONLY aantal
     // takes a higher-precedence primaireExpressie: a trailing 'maal'/'plus' binds OUTSIDE the
     // count. Deliberate divergence from the symmetric EBNF — see docs/grammar-divergences.md.
+    // The operand LIST is a SECOND divergence, and since 2026-09-20 only HALF of it is one. §5.7
+    // spells a CONCATENATION of onderwerpexpressies and typeringen §4.11 admits it under this very
+    // operator, so a list of ROLSELECTIES is the source language's own form: ExpressieBouwer
+    // .bouwInstantieUnie lowers it to one InstanceSetUnion (uchar WF-110), the count's single
+    // argument. A list of WAARDElezingen has no such form and stays the widening, refused by
+    // ExpressieBouwer.tellingAriteitFout (WF-037), an ERROR — deleting the tail would re-associate
+    // trailing conjunctions rather than refuse them. Both halves in DIVERGENCES.md '§13.4.17.47'.
     | HET AANTAL_WORD primaireExpressie ( COMMA primaireExpressie )* ( EN primaireExpressie )?    # aantalFunc
+    // uchar DIALECT EXTENSION (grammar/DIVERGENCES.md §6, decision G9 2026-09-19): the FILLED-value
+    // count, which the source language spells nowhere. Exactly ONE operand and no facet slot — no
+    // leegwaardeAlternatief (a count has no empty to fall back from), no dimensieSelectie and no
+    // conditieBijExpressie (both ill-formed on this kind), so those refusals need no resolver arm.
+    // primaireExpressie for the same precedence reason the telling above gives: a trailing
+    // 'maal'/'plus' binds OUTSIDE the count.
+    | AANTAL_GEVULDE_WAARDEN_VAN primaireExpressie                                                # aantalGevuldeFunc
     | TOTAAL_VAN expressie conditieBijExpressie? leegwaardeAlternatief?                            # totaalFunc      // §13.4.17.56
     | ( MAXIMALE_WAARDE_VAN | MINIMALE_WAARDE_VAN ) expressie ( COMMA expressie )* ( EN expressie )? dimensieSelectie? # minMaxFunc // §13.4.17.15/.16/.47
     | ( EERSTE_VAN | LAATSTE_VAN ) expressie ( COMMA expressie )* ( EN expressie )?                 # eersteLaatsteFunc // §13.4.17.39/.40/.49

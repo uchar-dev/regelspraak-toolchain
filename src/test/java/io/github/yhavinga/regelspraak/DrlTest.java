@@ -1444,6 +1444,15 @@ class DrlTest {
         // §4.11/§5.8.1: "het aantal X, Y en Z" (a concatenation) must PARSE, and when every operand
         // resolves to a kenmerk filter the union count lowers to ONE accumulate whose source ORs the
         // filters (p29 part 4) — NOT a silent count of only the first operand.
+        //
+        // CONFORMANCE (uchar-pin ef62d06c, kaart unie-telling): de vendored resolver bouwt deze zin
+        // sinds WF-110 niet meer als een operandenlijst maar als ÉÉN InstanceSetUnion onder de
+        // telling — een selectie per operand, elk met haar eigen populatie, relatie en deelselectie.
+        // De verwachting hieronder is ONGEWIJZIGD en dat is de kern van de bijstelling: de
+        // DrlTranspiler kent de knoop nu en lowert haar naar precies de vorm die deze test altijd al
+        // eiste, één accumulate met een disjunctieve constraint. De OR staat alleen niet meer tussen
+        // losse filtertermen maar tussen (join && filter)-paren, want elke selectie draagt haar eigen
+        // bereik.
         String src = """
             Objecttype de Vlucht
                 het aantal Numeriek (geheel getal);
@@ -1765,9 +1774,20 @@ class DrlTest {
                 () -> "de cross-unit global moet null-veilig op de accumulate-bron herschaald worden:\n" + drl);
     }
 
-    @Test void telling_concatenatie_met_onoplosbare_operand_blijft_marker() {
-        // A union with an operand that has NO resolvable kenmerk filter (here a bare set) cannot be
-        // lowered faithfully — it stays an honest marker, never a count of only the first operand.
+    @Test void telling_concatenatie_met_kale_operand_wordt_ook_een_union_accumulate() {
+        // WAS: telling_concatenatie_met_onoplosbare_operand_blijft_marker — "een operand zonder
+        // oplosbaar kenmerkfilter (hier een kale set) kan niet getrouw geloweerd worden".
+        //
+        // CONFORMANCE-BIJSTELLING (uchar-pin ef62d06c, kaart unie-telling). Die marker was een
+        // eigenschap van het MECHANISME, niet van de operatie: deze transpiler lowerde een
+        // concatenatie door de filterTERMEN van de operanden te OR-en, en een operand zónder filter
+        // levert geen term op. De uchar-wire draagt sinds WF-110 de SELECTIES zelf, dus een selectie
+        // zonder deelselectie is daar de gewone vorm — `filter: null` — en alle vier de uitvoerders
+        // dragen haar (uchar RUNTIME-SEMANTICS ch. 3.4d; golden jutterswet-keurunie, regel 2). Deze
+        // transpiler volgt die norm nu: de kale selectie wordt haar eigen join-disjunct zonder
+        // filterconjunct, en de unie slokt de gefilterde selectie op — precies wat de semantiek zegt
+        // (een kale selectie is een superset van elke gefilterde over hetzelfde bereik).
+        // De verwachting kantelt daarom van "marker" naar "accumulate, geen marker".
         String src = """
             Objecttype de Vlucht
                 het aantal Numeriek (geheel getal);
@@ -1784,15 +1804,35 @@ class DrlTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "de concatenatie-telling moet parseren: " + m.errors());
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("/* TODO aggregatie AANTAL"), () -> "een onoplosbare union moet een marker zijn:\n" + drl);
-        assertFalse(drl.contains("accumulate("), () -> "een onoplosbare union mag niet stil tellen:\n" + drl);
+        assertTrue(drl.contains("accumulate(") && drl.contains("jong == true"),
+                () -> "de kale selectie naast een gefilterde hoort gedragen te worden:\n" + drl);
+        assertFalse(drl.contains("/* TODO aggregatie AANTAL"),
+                () -> "deze vorm is sinds de unie-kaart geen marker meer:\n" + drl);
     }
 
-    @Test void union_over_verschillende_elementtypes_blijft_marker() {
-        // p29(4) review (HIGH): a single accumulate has one source pattern, so operands ranging over
-        // DIFFERENT element types cannot be unioned — even when they share a kenmerk name. Resolving
-        // every operand against operand-0's element would silently drop the foreign set and OR its
-        // filter onto the wrong fact. Such a union must stay a marker, never a wrong count.
+    @Test void union_over_verschillende_elementtypes_wordt_benoemd_geweigerd() {
+        // WAS: union_over_verschillende_elementtypes_blijft_marker — "moet parseren" plus een marker.
+        //
+        // CONFORMANCE-BIJSTELLING (uchar-pin ef62d06c, kaart unie-telling). De grond blijft precies
+        // dezelfde als in de oude review: één accumulate heeft ÉÉN bronpatroon, dus selecties over
+        // verschillende elementtypes kunnen niet geünificeerd worden zonder de vreemde verzameling
+        // stil te laten vallen. Wat verschuift is WAAR die grond wordt uitgesproken: uchar normeert
+        // hem op de WIRE (WF-110 (d)) en voegt er een eigen reden aan toe — een telling antwoordt een
+        // aantal over ÉÉN gedeclareerde populatie, en of twee selecties dan een instantie kunnen
+        // delen is een vraag over de subtypelattice die de deduplicatie zou moeten beantwoorden. De
+        // vendored resolver weigert de zin daarom BENOEMD, met een ERROR die het document van de
+        // schijf houdt; er valt geen DRL meer te markeren. "Parseren" doet de zin nog steeds — de
+        // weigering zit in de resolutie, niet in de grammatica.
+        //
+        // GEMETEN AFWIJKING van de kaartverwachting, en de reden dat de fixture één woord wijzigt:
+        // "het bemanningslid" krijgt hier nu een gedeclareerd meervoud. Zonder dat lost het
+        // ONREGELMATIGE meervoud "bemanningsleden" nergens op — §3.1 voetnoot 2 laat meervoudsvorming
+        // buiten de taal, en de best-effort vorm synthetiseert "bemanningsliden" — zodat de resolver
+        // al eerder strandt op "niet elke operand is een rolselectie" en de test haar eigen onderwerp
+        // niet meer raakt. Dat is een bestaande frontend-grens, niet iets wat deze kaart introduceert:
+        // gemeten faalt ook een ENKELVOUDIGE telling over "bemanningsleden van de vlucht" erop. Met
+        // het meervoud gedeclareerd lossen beide selecties op en spreekt de test weer over ongelijke
+        // elementtypes, wat haar naam belooft.
         String src = """
             Objecttype de Vlucht
                 het aantal Numeriek (geheel getal);
@@ -1806,17 +1846,21 @@ class DrlTest {
             Eén reis betreft meerdere passagiers
             Feittype Vlucht met bemanning
                 de vlucht Vlucht
-                het bemanningslid Bemanning
+                het bemanningslid (mv: bemanningsleden) Bemanning
             Eén vlucht betreft meerdere bemanningsleden
             Regel r
                 geldig altijd
                     Het aantal van een Vlucht moet berekend worden als het aantal passagiers van de reis die een jong zijn, bemanningsleden van de reis die een jong zijn.
             """;
         RegelSpraakModel m = Resolver.resolve(src);
-        assertTrue(m.errors().isEmpty(), () -> "moet parseren: " + m.errors());
+        assertEquals(1, m.errors().size(), () -> "verwacht één benoemde weigering, kreeg: " + m.errors());
+        String melding = m.errors().get(0).message();
+        assertTrue(melding.contains("WF-110 (d)"), () -> "de weigering citeert de regel niet: " + melding);
+        assertTrue(melding.contains("verschillende populaties")
+                        && melding.contains("'Passagier'") && melding.contains("'Bemanning'"),
+                () -> "de weigering noemt de twee populaties niet: " + melding);
+        // en er valt niets te markeren: de telling bereikt de transpiler niet als unie
         String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("/* TODO aggregatie AANTAL"),
-                () -> "een union over verschillende elementtypes moet een marker zijn:\n" + drl);
         assertFalse(drl.contains("accumulate("), () -> "een type-mismatch union mag niet stil tellen:\n" + drl);
     }
 

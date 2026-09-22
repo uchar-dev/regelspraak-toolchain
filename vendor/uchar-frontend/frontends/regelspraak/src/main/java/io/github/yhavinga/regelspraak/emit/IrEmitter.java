@@ -531,6 +531,31 @@ public final class IrEmitter {
             case Expr.IfThenElse ignored -> throw new UnsupportedOperationException(
                     "IfThenElse is never emitter-produced (IR-SPEC ch. 4.10): the resolver builds none, "
                             + "so this emitter has no verified wire shape for it");
+            // the §5.7 concatenation as an instance set (IR-SPEC ch. 4.3, WF-110). No "type" key:
+            // the node denotes INSTANCES and carries no datatype, which is why the verifier's type
+            // prologue exempts it the way it exempts a Lambda. Each selection's filter is emitted
+            // with the SELECTION's element type as the subject, exactly as a Functie's filter is
+            // emitted under its elementObjecttype — the condition evaluates per contributor.
+            case Expr.InstanceSetUnion u -> {
+                w.key("node").value("InstanceSetUnion");
+                w.key("branches").beginArray();
+                for (Expr.InstanceSetUnion.Tak t : u.takken()) {
+                    w.beginObject();
+                    w.key("node").value("InstanceSetBranch");
+                    w.key("elementType").value(naamVan(t.elementType()));
+                    w.key("sourceRole");
+                    if (t.bronRol() == null) w.valueNull(); else rolBinding(t.bronRol());
+                    w.key("filter");
+                    Objecttype vorigSubject = huidigSubject;
+                    if (t.elementType() != null) huidigSubject = t.elementType();
+                    conditie(t.filter());
+                    huidigSubject = vorigSubject;
+                    w.key("bron").value(t.bron().snippet());
+                    w.endObject();
+                }
+                w.endArray();
+                w.key("bron").value(u.bron().snippet());
+            }
             case Expr.Onopgelost o -> {
                 w.key("node").value("Onopgelost");
                 w.key("type"); datatype(o.type());

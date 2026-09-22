@@ -1,6 +1,7 @@
 package io.github.yhavinga.regelspraak.ir;
 
 import io.github.yhavinga.regelspraak.model.Datatype;
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Granulariteit;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
@@ -60,6 +61,11 @@ public sealed interface Expr {
             // through the shared Conditie walk, the same way a Functie's filter is.
             case IfThenElse k  -> bevat(k.dan(), toets) || bevat(k.anders(), toets)
                                   || Conditie.bevatExpr(k.conditie(), toets);
+            // A union's own fields are SYMBOLIC — a type name and a role binding — so the only child
+            // expressions live in the selections' filters, reached through the shared Conditie walk
+            // exactly as a Functie's filter is.
+            case InstanceSetUnion u -> u.takken().stream()
+                                        .anyMatch(t -> Conditie.bevatExpr(t.filter(), toets));
             case Literal ignored      -> false;
             case AttribuutRef ignored -> false;
             case ParameterRef ignored -> false;
@@ -100,9 +106,10 @@ public sealed interface Expr {
      *
      *  <p>{@code AANTAL_GEVULDE} is the one member with NO source-language spelling: the filled-value
      *  count (IR-SPEC ch. 4.3, RUNTIME-SEMANTICS ch. 3.4c) is a uchar dialect kind, written first on
-     *  the wire and read here by the Drools backend, which compiles this record. The RegelSpraak
-     *  parser emits it from nothing and no grammar rule produces it — the dialect spelling is a
-     *  separate, later card — so this constant widens what can be READ, never what is written. */
+     *  the wire and read here by the Drools backend, which compiles this record. Since 2026-09-20 it
+     *  also has a PRODUCER route, and that route is a dialect extension of this frontend's grammar
+     *  rather than a v2.3.0 form: "het aantal gevulde waarden van &lt;setlezing&gt;", measured inert on
+     *  official documents in {@code grammar/DIVERGENCES.md} §6. */
     enum FunctieKind {
         SOM, TOTAAL, AANTAL, MINIMUM, MAXIMUM, EERSTE, LAATSTE, AANTAL_GEVULDE, WORTEL, ABSOLUTE_WAARDE,
         CONCATENATIE, TIJDSDUUR, ABSOLUTE_TIJDSDUUR, EERSTE_PAASDAG, TIJDSEVENREDIG_DEEL,
@@ -154,6 +161,36 @@ public sealed interface Expr {
                        Expr leegwaarde, Conditie filter, Datatype type, Bron bron) {
             this(kind, argumenten, elementObjecttype, leegwaarde, filter, null, type, bron, null);
         }
+    }
+
+    /** The §5.7 CONCATENATION of subject expressions as the source of an instance count — the wire's
+     *  {@code InstanceSetUnion} (uchar IR-SPEC ch. 4.3, WF-110; semantics RUNTIME-SEMANTICS ch. 3.4d,
+     *  maintainer decision 2026-09-20). "het aantal &lt;rolselectie&gt; en &lt;rolselectie&gt;" joins the
+     *  instance sets the selections yield into ONE set: the members are the union of the selections'
+     *  contributors, deduplicated on instance identity, so an instance two selections both select is
+     *  counted once.
+     *
+     *  <p>It is the SINGLE argument of a {@link FunctieKind#AANTAL} functie and stands nowhere else;
+     *  the count above it then names no source of its own. It carries no {@link #type()} — it denotes
+     *  instances, not a value — which is why {@code type()} answers null here and the wire writes no
+     *  {@code type} key at all.
+     *
+     *  <p>This is the reading the multi-operand VALUE count does NOT have: that form stays refused
+     *  (WF-037, {@code ExpressieBouwer.tellingAriteitFout}), and the two are distinguishable on the
+     *  wire because this one has exactly ONE argument. */
+    record InstanceSetUnion(List<Tak> takken, Bron bron) implements Expr {
+        @Override public Datatype type() { return null; }
+
+        /** One selection: the population it ranges over, the one-step relation it walks from the
+         *  count's subject, and its own die/dat subselection — evaluated PER CONTRIBUTOR with the
+         *  element as the condition's subject, exactly as a fold's filter is. {@code filter} may be
+         *  null: an UNFILTERED selection beside a filtered one is an ordinary case here, where the v0
+         *  toolchain leaves it unlowered because its own lowering ORs the operands' filter terms and
+         *  has no term to OR for one without a filter. There is deliberately no path spelling: a
+         *  selection carries a one-step relation, and the multi-step range under a count stays where
+         *  WF-096 and WF-102 met it. */
+        public record Tak(Objecttype elementType, RegelSpraakModel.RolBindingRef bronRol,
+                          Conditie filter, Bron bron) {}
     }
 
     /** §13.4.17.25/.26 rounding wrapper. Rounding to N decimals sets the result's precision to N
@@ -348,6 +385,8 @@ public sealed interface Expr {
             case Let l -> { verzamelOnopgelost(l.value(), uit); verzamelOnopgelost(l.body(), uit); }
             case IfThenElse k -> { Conditie.verzamelOnopgelost(k.conditie(), uit);
                                    verzamelOnopgelost(k.dan(), uit); verzamelOnopgelost(k.anders(), uit); }
+            case InstanceSetUnion u -> u.takken()
+                    .forEach(t -> Conditie.verzamelOnopgelost(t.filter(), uit));
             case Literal ignored -> { }
             case AttribuutRef ignored -> { }
             case ParameterRef ignored -> { }

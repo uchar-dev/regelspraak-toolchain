@@ -469,10 +469,20 @@ final class RuleChecker {
     // — the set fence, producer side.
     // ==============================================================================================
 
-    /** The six VALUE folds — the kinds that read a value per contributor, and so the only kinds that
+    /** The seven VALUE folds — the kinds that read a value per contributor, and so the only kinds that
      *  consume what a set reading hands them. This is WF-096's exemption exactly as the verifier draws
      *  it in {@code set_source_exempt} (arity one AND a value-folding kind AND a resolved element
      *  type), so the frontend's fence and the wire's are once more the same boundary.
+     *
+     *  <p><b>AANTAL_GEVULDE joined this set on 2026-09-20</b> (decision G9's card). The verifier's
+     *  {@code value_fold_name} grew the kind on 2026-09-20 with the wire itself, and this set did not
+     *  follow for two cards — the two fences ran six against seven while no frontend could write the
+     *  kind, so nothing measured the gap. It is the same class of leak the AANTAL narrowing below was,
+     *  from the other side, which is why {@code VouwsoortenGrensTest} now READS the verifier's own
+     *  list instead of trusting a comment that says the two agree.
+     *  The kind belongs here for WF-096's own reason: a filled count is a count in its RESULT but a
+     *  VALUE fold in its READING — it asks each contributor's value whether it is there
+     *  (`RUNTIME-SEMANTICS.md` ch. 3.4c), which is exactly what a set reading hands it.
      *
      *  <p><b>AANTAL left this set on 2026-09-19</b> (maintainer decision, `spec/IR-SPEC.md` ch. 4.3):
      *  a count folds the CONTRIBUTORS themselves — `RUNTIME-SEMANTICS.md` ch. 3.4a says so in as many
@@ -492,9 +502,10 @@ final class RuleChecker {
      *  the set fence and nothing else. The SENTINEL half has no counterpart here: the frontend writes
      *  the row-1 wart from its own route and WF-093 governs it, which is why the bare count stays
      *  clean under this narrowing and its witness says so. */
-    private static final Set<Expr.FunctieKind> VOUWSOORTEN = Set.of(
+    static final Set<Expr.FunctieKind> VOUWSOORTEN = Set.of(
             Expr.FunctieKind.SOM, Expr.FunctieKind.TOTAAL, Expr.FunctieKind.MINIMUM,
-            Expr.FunctieKind.MAXIMUM, Expr.FunctieKind.EERSTE, Expr.FunctieKind.LAATSTE);
+            Expr.FunctieKind.MAXIMUM, Expr.FunctieKind.EERSTE, Expr.FunctieKind.LAATSTE,
+            Expr.FunctieKind.AANTAL_GEVULDE);
 
     /** A §13.4.2 set quantifier ("alle &lt;mv&gt;", and every other quantor that is not the bare
      *  definite "de") makes a reference a SET reading: it names the members' values, one per member —
@@ -559,9 +570,9 @@ final class RuleChecker {
                     model.diagnostics.add(new Diagnostic(Severity.ERROR,
                             "setlezing buiten een vouwbron: '" + a.bron() + "' noemt de waarde van elk lid van de "
                             + "verzameling — alleen toegestaan als bron van één waardevouw (som, totaal, minimum, "
-                            + "maximum, eerste, laatste); een telling vouwt de leden zelf en leest geen waarde per "
-                            + "lid, dus onder 'aantal' ook niet (besluit 2026-09-19); hier wordt één waarde verwacht "
-                            + "(WF-096, IR-SPEC ch. 4.3)",
+                            + "maximum, eerste, laatste, aantal gevulde waarden); een instantietelling vouwt de leden "
+                            + "zelf en leest geen waarde per lid, dus onder 'aantal' ook niet (besluit 2026-09-19); "
+                            + "hier wordt één waarde verwacht (WF-096, IR-SPEC ch. 4.3)",
                             a.bron().line()));
             }
             case Expr.Functie f -> {
@@ -585,6 +596,9 @@ final class RuleChecker {
             case Expr.IfThenElse k -> {
                 keurSetlezing(k.dan(), false); keurSetlezing(k.anders(), false); keurSetlezing(k.conditie());
             }
+            // the §5.7 union's own fields are symbolic (a type, a role binding), so the only place a
+            // setlezing could hide is a selection's filter — reached like every other conditie
+            case Expr.InstanceSetUnion u -> u.takken().forEach(t -> keurSetlezing(t.filter()));
             case Expr.Literal ignored -> { }
             case Expr.ParameterRef ignored -> { }
             case Expr.VariabeleRef ignored -> { }

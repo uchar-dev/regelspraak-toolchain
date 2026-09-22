@@ -205,13 +205,13 @@ final class ExpressieBouwer {
         try { return f.get(); } finally { binderModus = vorige; }
     }
 
-    /** The functie kinds that range over a SET or a TIMELINE and therefore read their operand's shape: the seven
+    /** The functie kinds that range over a SET or a TIMELINE and therefore read their operand's shape: the eight
      *  instance/dimension aggregations, plus the two §7 temporal operators whose operand must be a single-period
      *  temporal attribuut ({@code TIJDSEVENREDIG_DEEL}) or whose "dat …" condition clips one
      *  ({@code AANTAL_DAGEN_IN}). {@link #ingelijnd} covers exactly these. */
     private static boolean aggregeert(Expr.FunctieKind kind) {
         return switch (kind) {
-            case AANTAL, SOM, TOTAAL, MINIMUM, MAXIMUM, EERSTE, LAATSTE,
+            case AANTAL, SOM, TOTAAL, MINIMUM, MAXIMUM, EERSTE, LAATSTE, AANTAL_GEVULDE,
                  TIJDSEVENREDIG_DEEL, AANTAL_DAGEN_IN -> true;
             default -> false;
         };
@@ -496,6 +496,16 @@ final class ExpressieBouwer {
             Expr ref = naamRef(bron.snippet(), false, bron);
             if (!(ref instanceof Expr.Onopgelost)) return ref;
         }
+        // §5.7 the CONCATENATION of subject expressions under a count (IR-SPEC ch. 4.3, WF-110;
+        // maintainer decision 2026-09-20). Tried BEFORE meldAggregatie, because a concatenation that
+        // resolves is not the listed WAARDE-telling that arm refuses: it counts INSTANCES and reaches
+        // the wire as an InstanceSetUnion — ONE argument — so WF-037's arity arm never sees it.
+        if (f instanceof AantalFuncContext && argumenten.size() >= 2) {
+            Expr unie = bouwInstantieUnie(f);
+            if (unie != null)
+                return new Expr.Functie(Expr.FunctieKind.AANTAL, java.util.List.of(unie), null, null,
+                        null, functieType(Expr.FunctieKind.AANTAL, argumenten), bron);
+        }
         meldAggregatie(kind, argumenten, f);
         Datatype type = f instanceof TijdsduurFuncContext t ? tijdsduurType(t) : functieType(kind, argumenten);
         Expr leegwaarde = leegwaardeVan(f);
@@ -512,9 +522,27 @@ final class ExpressieBouwer {
         // a fire-time reflection abort). The plural-binding in attribuutRef already mapped a written plural
         // onto its declared singular, so only a genuinely unknown member reaches this.
         boolean aggregatieKind = switch (kind) {
-            case AANTAL, SOM, TOTAAL, MINIMUM, MAXIMUM, EERSTE, LAATSTE -> true;
+            case AANTAL, SOM, TOTAAL, MINIMUM, MAXIMUM, EERSTE, LAATSTE, AANTAL_GEVULDE -> true;
             default -> false;
         };
+        // WF-037's filled-count shape (IR-SPEC ch. 4.3): the single argument MUST be a SET reading.
+        // Refused HERE, at the operator, because every other kind admits a non-set source for a reason
+        // of its own — the §7.1 timeline fold, the row-1 count wart — so the wire fence is per kind and
+        // the frontend must draw the same one or it emits a document the verifier rejects. ERROR, so
+        // irModus writes nothing: the dialect phrase is new, no committed expectation depends on the
+        // laxer reading, and a silent marker would leave the author with a fold over nothing.
+        if (kind == Expr.FunctieKind.AANTAL_GEVULDE
+                && !(argumenten.size() == 1
+                     && argumenten.get(0) instanceof Expr.AttribuutRef zb && zb.set())) {
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
+                    "het aantal gevulde waarden van vereist een setlezing als bron: deze vouw leest een WAARDE "
+                            + "per bijdrager, dus haar bron noemt de leden ('… van alle <meervoud> van …') — '"
+                            + bron.snippet() + "' noemt er geen, en het gevulde aantal van één eigen waarde is "
+                            + "0 of 1 (WF-037, IR-SPEC ch. 4.3)", f.getStart().getLine()));
+            // the aggregation's OWN type, not the unknown sentinel: a refused fold must still leave a
+            // well-formed marker (IR-SPEC ch. 2.4), exactly as keurVouwbron's three refusals do
+            return new Expr.Onopgelost(type, bron, null);   // the ERROR above is this marker's diagnosis
+        }
         if (aggregatieKind && argumenten.size() == 1
                 && argumenten.get(0) instanceof Expr.AttribuutRef sa && sa.set()
                 && sa.objecttype() != null && !sa.objecttype().heeftLid(sa.attribuut())) {
@@ -1143,7 +1171,29 @@ final class ExpressieBouwer {
         // a different element) leaves the whole union Onopgelost -> a marker, never a wrong count.
         // (A min/max value-fold reaches here too with >1 operand, but its die is on a sub-operand
         // navigation, not the element — so it is excluded; only AANTAL unions.)
+        //
+        // NOT the §5.7 route any more, and dead for every concatenation that RESOLVES (2026-09-20,
+        // card unie-telling). A resolving concatenation becomes an InstanceSetUnion in bouwFunctie,
+        // which runs BEFORE this method, so what still reaches this branch is a concatenation
+        // bouwInstantieUnie REFUSED. The OR-filter form it builds is deliberately not a second
+        // spelling of the union (IR-SPEC ch. 4.3); what it can still reach never reaches disk.
+        //
+        // The branch is not DELETED, and that was measured rather than assumed (fixronde
+        // 2026-09-22): removing it shifts the marker-reason census MarkerRedenPinTest pins (3 -> 2)
+        // and costs the `verbruikt` bookkeeping its consumption of the operands' subselecties,
+        // which then report themselves as silently dropped — three diagnoses where the ERROR had
+        // said it once. What DID move is the noise: it used to raise a "die/dat wordt nog niet
+        // omgezet" WARNING on a refused concatenation that carried no die/dat at all. The guard
+        // below asks the question only when an operand really writes one, so the WARNING is now
+        // true wherever it fires and silent where it has nothing to report; a sentence WITH an
+        // unresolvable subselectie keeps both its ERROR and its WARNING (measured, both probes).
         if (f instanceof AantalFuncContext) {
+            // No operand writes a subselectie at all: there is nothing to OR and nothing to report, so
+            // this branch has no business producing a marker whose only effect is a WARNING about a
+            // die/dat the sentence does not carry. Null is "no filter", which is exactly true here.
+            boolean heeftDie = false;
+            for (ParseTree op : operanden) if (vindDie(op) != null) heeftDie = true;
+            if (!heeftDie) return null;
             java.util.List<Conditie> delen = new ArrayList<>();
             // account for EVERY operand's subselectie before the first one can bail out: the marker below
             // refuses the whole union, so the later operands' subselecties are refused with it and must
@@ -1246,6 +1296,105 @@ final class ExpressieBouwer {
                 && pe.attribuutVanOnderwerp().attribuutMetLidwoord() != null
                 && pe.attribuutVanOnderwerp().attribuutMetLidwoord().kaleNaam() != null)
             return aantalElement(src(pe.attribuutVanOnderwerp().attribuutMetLidwoord().kaleNaam()));
+        return null;
+    }
+
+    /** Why the §5.7 union route did not open for the count being built — appended to
+     *  {@link #tellingAriteitFout}'s refusal, so one sentence says both what the wire refuses (an
+     *  operand list under a count) and why the form that WOULD have carried this sentence does not
+     *  apply. Set by {@link #bouwInstantieUnie} on every null return and read immediately after, the
+     *  {@code aggregatieReden} contract the Drools backend uses on the same kind of question. */
+    private String unieWeigering;
+
+    /** §5.7/§4.11 build the CONCATENATION of subject expressions under "het aantal" as an
+     *  {@link Expr.InstanceSetUnion} — one selection per operand, each with its own population, its
+     *  own one-step relation and its own die/dat subselection. Null when the route does not open,
+     *  with {@link #unieWeigering} carrying the reason unless the operands are not subject
+     *  expressions at all (there the arity refusal already says everything, in the words it has said
+     *  since 2026-09-20).
+     *
+     *  <p>What it does NOT build: a union over two POPULATIONS (WF-110 (d)), a selection whose
+     *  relation is not uniquely derivable (WF-110 (e) — a union names each selection's relation and
+     *  never derives one from the type pair, because every selection here shares one pair), and a
+     *  selection whose "die/dat" does not resolve to a characteristic of the element. That last one
+     *  is a refusal rather than a dropped filter: a silently unfiltered selection counts the wrong
+     *  number, and the union ABSORBS it (an unfiltered selection is a superset of every filtered
+     *  one over the same relation), so the error would be invisible in the answer. */
+    private Expr bouwInstantieUnie(FunctieAanroepContext f) {
+        unieWeigering = null;
+        java.util.List<ParseTree> operanden = new ArrayList<>();
+        for (int i = 0; i < f.getChildCount(); i++) {
+            ParseTree ch = f.getChild(i);
+            if (ch instanceof ExpressieContext || ch instanceof PrimaireExpressieContext) operanden.add(ch);
+        }
+        if (operanden.size() < 2) return null;
+        Objecttype gedeeld = null;
+        java.util.List<Expr.InstanceSetUnion.Tak> takken = new ArrayList<>();
+        java.util.List<PredicaatContext> gezien = new ArrayList<>();
+        for (int i = 0; i < operanden.size(); i++) {
+            ParseTree op = operanden.get(i);
+            Objecttype el = operandElement(op);
+            if (el == null) return null;          // a VALUE operand: the arity refusal owns this sentence
+            if (gedeeld == null) gedeeld = el;
+            else if (gedeeld != el) {
+                unieWeigering = "de selecties tellen over verschillende populaties ('" + gedeeld.naam
+                        + "' en '" + el.naam + "'); één telling antwoordt een aantal over ÉÉN gedeclareerd"
+                        + " type, en of twee selecties dan een instantie kunnen delen is een vraag over de"
+                        + " subtypelattice die de deduplicatie zou moeten beantwoorden (WF-110 (d))";
+                return null;
+            }
+            String woord = geschrevenElementWoord(op);
+            RegelSpraakModel.RolBindingRef rb =
+                    huidigSubject == null || woord == null ? null : model.elementRolBinding(huidigSubject, woord);
+            // The written name did not bind. That is not yet a refusal: elementRolBinding answers the
+            // BY-NAME question and answers it narrowly on purpose — only a declared singular or a
+            // declared (mv:) plural binds, never a guessed one — and the §13.3.9.1 cardinality sentence
+            // ("Eén vinder meldt meerdere vondsten") writes a plural the model does NOT register as the
+            // role's declared one. Measured 2026-09-22: it sets `meervoudig` and drops the spelling, and
+            // registering it instead would both move a golden's bytes and destroy the WF-034 witness
+            // `jutterswet-kaveltelling`, whose whole point is that such a plural does not bind.
+            //
+            // So fall back to the TYPE PAIR — the unique fact-type role reaching the element from the
+            // subject — which is exactly the derivation the ONE-selection count has always leaned on
+            // (WF-048's model, and what every executor runs for a bindingless fold). WF-110 (e) is
+            // unmoved by this: it forbids the WIRE from omitting the relation, so that a consumer never
+            // derives one; how the PRODUCER arrives at the relation it writes is the producer's own
+            // business, and it writes the result out explicitly either way.
+            if (rb == null && huidigSubject != null) rb = model.verbindendeRolBinding(huidigSubject, el);
+            if (rb == null) {
+                unieWeigering = "de relatie van selectie " + (i + 1) + " ('" + woord + "') is niet"
+                        + " eenduidig af te leiden; elke selectie van een unie noemt haar eigen relatie,"
+                        + " want ze delen alle één typenpaar en een afgeleide reikwijdte zou ze"
+                        + " ononderscheidbaar maken (WF-110 (e))";
+                return null;
+            }
+            PredicaatContext p = vindDie(op);
+            Conditie filter = null;
+            if (p != null) {
+                filter = elementKenmerkFilter(p, el);
+                if (filter == null) {
+                    unieWeigering = "de 'die/dat'-subselectie van selectie " + (i + 1) + " ('" + src(p)
+                            + "') lost niet op naar een kenmerk van '" + el.naam + "'; een stilzwijgend"
+                            + " weggelaten filter zou een te groot aantal tellen en de unie zou dat"
+                            + " opslokken (§5.6)";
+                    return null;
+                }
+                gezien.add(p);
+            }
+            takken.add(new Expr.InstanceSetUnion.Tak(el, rb, filter, bron((ParserRuleContext) op)));
+        }
+        verbruikt.addAll(gezien);   // only once the whole union stands: a refused union hands its die back
+        return new Expr.InstanceSetUnion(java.util.List.copyOf(takken), bron(f));
+    }
+
+    /** The written element word of a count operand ("aangemelde vondsten" in "aangemelde vondsten van
+     *  de Jutter") — the name {@link RegelSpraakModel#elementRolBinding} resolves the selection's
+     *  relation from, and the same word {@link #operandElement} resolves its population from. */
+    private String geschrevenElementWoord(ParseTree op) {
+        if (op instanceof PrimaireExpressieContext pe && pe.attribuutVanOnderwerp() != null
+                && pe.attribuutVanOnderwerp().attribuutMetLidwoord() != null
+                && pe.attribuutVanOnderwerp().attribuutMetLidwoord().kaleNaam() != null)
+            return src(pe.attribuutVanOnderwerp().attribuutMetLidwoord().kaleNaam());
         return null;
     }
 
@@ -1385,11 +1534,81 @@ final class ExpressieBouwer {
             // §4.16/§4.17 typeringen: the two operands of a (absolute) tijdsduur must BOTH be datum AND have the
             // SAME tijd-precisie.
             case TIJDSDUUR, ABSOLUTE_TIJDSDUUR -> tijdsduurPrecisieFout(kind, typen);
+            // WF-038's scope sentence, spelled out rather than left to the default arm: the filled
+            // count is NOT a numeric fold. Its test is presence, so every operand type counts
+            // (decision G8, RUNTIME-SEMANTICS ch. 3.4c) — a getalAggregatie check here would
+            // silently undo that by refusing a tekst/datum/enumeratie/booleaan source.
+            case AANTAL_GEVULDE -> null;
+            // WF-037's count-arity arm (IR-SPEC ch. 4.3, maintainer decision 2026-09-20). The one arm
+            // in this switch about SHAPE rather than operand TYPES, and it sits here because this is
+            // the per-kind aggregation diagnosis and the arity is known at the node. It sits beside
+            // the filled count's arm above and never reaches it: that kind carries its own arity law
+            // (exactly ONE argument, WF-037's other new arm), so the two counts are fenced apart.
+            case AANTAL -> tellingAriteitFout(argumenten, f);
             default -> null;
         };
         if (fout != null)
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(
                     RegelSpraakModel.Severity.ERROR, fout, f.getStart().getLine()));
+    }
+
+    /** WF-037's count-arity arm (IR-SPEC ch. 4.3, maintainer decision 2026-09-20): a count folds
+     *  INSTANCES and has no LISTED form, so two or more operands are ill-formed on the wire.
+     *
+     *  <p><b>This fence closes a LEAK of this frontend's own making.</b> The source language spells no
+     *  operand list for a count — §5.8.1 ranges it over instances and the typing document (§4.11)
+     *  excludes the value reading — but {@code functieAanroep}'s {@code aantalFunc} alternative reads
+     *  {@code primaireExpressie ( COMMA primaireExpressie )* ( EN primaireExpressie )?}, a registered
+     *  divergence ({@code grammar/DIVERGENCES.md}), and {@code args} builds every child as its own
+     *  argument. Measured 2026-09-20: three sentences reached the wire unblocked — the {@code en} and
+     *  {@code comma} spellings with {@code diagnostics: []} and the element-binding spelling with a
+     *  non-blocking WARNING — all rejected by the verifier
+     *  ({@link io.github.yhavinga.regelspraak.AantalOpgesomdTest}).
+     *
+     *  <p>ERROR and not WARNING, deliberately: {@link Resolver#irModus} writes nothing when the model
+     *  carries an error, so the fail-fast is what keeps the ill-formed document off disk. That is the
+     *  level {@code AantalSetbronTest} pins for the set fence one decision earlier, and unlike there
+     *  no committed expectation asserts this shape resolves clean — measured, no rgs golden and no
+     *  other test carries a listed count.
+     *
+     *  <p>It reads the KIND and the operand COUNT and never {@code elementObjecttype}: a count that
+     *  binds an element AND carries an operand list is the same listed form with a second claim on one
+     *  node, and the wire rule draws its boundary in exactly that place. Below two operands it is
+     *  silent, which is the wire rule's boundary too: one operand is v0's own instance count and zero
+     *  is a fold without a source, a form under no decision yet. */
+    private String tellingAriteitFout(List<Expr> argumenten, FunctieAanroepContext f) {
+        if (argumenten.size() < 2) return null;
+        return "opgesomde telling: '" + bron(f).snippet() + "' noemt " + argumenten.size()
+                + " operanden — een telling vouwt de INSTANTIES waar zij over gaat en heeft geen "
+                + "opgesomde vorm; de brontaal spelt er geen (§5.8.1 telt over onderwerpexpressies, "
+                + "typeringen §4.11 sluit de waardelezing uit), dus er is geen operandenlijst om te "
+                + "lezen. De enige lezing die een lijst een telling overlaat is 'tel de gevulde "
+                + "operanden', en die betekenis draagt AANTAL_GEVULDE over een setbron — een eigen "
+                + "soort op de wire (besluit 2026-09-20) (WF-037, IR-SPEC ch. 4.3)"
+                + unieStaart(f);
+    }
+
+    /** The §5.7 half of the refusal above, appended so ONE diagnostic says both halves. The head
+     *  refuses the operand LIST and says the source language spells none; since 2026-09-20 that is
+     *  true of the list and false of the SENTENCE — §5.7 spells a concatenation of subject
+     *  expressions and typeringen §4.11 admits it under this very operator — so the head would
+     *  mislead on its own. The tail therefore OPENS by naming the apparent contradiction ("wat de
+     *  kop over de LIJST zegt is waar; over de ZIN niet"), because a reader who meets "spelt er
+     *  geen" and "spelt wél" in one sentence with nothing between them reads a bug, not a
+     *  distinction. The concatenation has a wire form of its own (an InstanceSetUnion under
+     *  the count, WF-110), and this tail says why that route did not open here: because the operands
+     *  are not subject expressions at all, or because {@link #bouwInstantieUnie} refused them for a
+     *  reason of its own. */
+    private String unieStaart(FunctieAanroepContext f) {
+        if (!(f instanceof AantalFuncContext)) return "";
+        String staart = ". Wat de kop over de LIJST zegt is waar; over de ZIN niet — de brontaal spelt "
+                + "wél een CONCATENATIE van ONDERWERPexpressies (§5.7, typeringen §4.11), en die telt "
+                + "instanties in plaats van waarden, dus zij is geen operandenlijst maar een lijst "
+                + "SELECTIES: zij bereikt de wire sinds 2026-09-20 als één InstanceSetUnion onder de "
+                + "telling (WF-110). Die route opent hier niet — ";
+        return staart + (unieWeigering != null ? unieWeigering
+                : "niet elke operand is een rolselectie; een concatenatie onder 'het aantal' bestaat "
+                        + "uit ONDERWERPexpressies en uit niets anders (typeringen §4.11)");
     }
 
     /** §4.19 Tabel 29 (eerste paasdag van): the single operand is "een numerieke expressie zonder eenheid ... altijd een
@@ -1494,7 +1713,10 @@ final class ExpressieBouwer {
     private Objecttype aggregatieElement(Expr.FunctieKind kind, List<Expr> args) {
         if (args.isEmpty() || !(args.get(0) instanceof Expr.AttribuutRef a)) return null;
         return switch (kind) {
-            case SOM, TOTAAL, MINIMUM, MAXIMUM, EERSTE, LAATSTE -> a.objecttype();
+            // AANTAL_GEVULDE rides the VALUE-fold derivation, not the count's: its argument is an
+            // ATTRIBUTE read over a set, so the element type is the attribute's owner — the very
+            // asymmetry RuleChecker's VOUWSOORTEN note names (a count's element word is a ROLE)
+            case SOM, TOTAAL, MINIMUM, MAXIMUM, EERSTE, LAATSTE, AANTAL_GEVULDE -> a.objecttype();
             case AANTAL -> aantalElement(a.attribuut());
             default -> null;
         };
@@ -1598,7 +1820,9 @@ final class ExpressieBouwer {
             // precision is carded); the first operand's precision would be order-dependent.
             case MINIMUM, MAXIMUM -> args.size() <= 1 || !(eerste instanceof Datatype.Numeriek n) ? eerste
                     : new Datatype.Numeriek(alleGeheel(args), minDecimalen(args), n.teken(), n.eenheid());
-            case AANTAL -> new Datatype.Numeriek(true, 0, Datatype.Teken.NIET_NEGATIEF, null); // a count
+            // both counts: a cardinality is a whole, UNITLESS number whatever the folded attribute
+            // measures (RUNTIME-SEMANTICS ch. 3.4c) — the source's kg never reaches the result
+            case AANTAL, AANTAL_GEVULDE -> new Datatype.Numeriek(true, 0, Datatype.Teken.NIET_NEGATIEF, null);
             // §5.7/§13.4.17.2: a concatenatie is a MULTI-VALUED set (§5.8.1 "altijd meervoudig"), NOT a scalar
             // Tekst — it carries the common type of its operands and is only meaningful once an aggregation
             // (het aantal / de som / de min-max / de eerste-laatste) consumes it (§5.8). This "de concatenatie
@@ -1635,6 +1859,7 @@ final class ExpressieBouwer {
     private Expr.FunctieKind functieKind(FunctieAanroepContext f) {
         if (f instanceof SomFuncContext)        return Expr.FunctieKind.SOM;
         if (f instanceof AantalFuncContext)     return Expr.FunctieKind.AANTAL;
+        if (f instanceof AantalGevuldeFuncContext) return Expr.FunctieKind.AANTAL_GEVULDE;
         if (f instanceof TotaalFuncContext)     return Expr.FunctieKind.TOTAAL;
         if (f instanceof WortelFuncContext)     return Expr.FunctieKind.WORTEL;
         if (f instanceof AbsWaardeFuncContext)  return Expr.FunctieKind.ABSOLUTE_WAARDE;

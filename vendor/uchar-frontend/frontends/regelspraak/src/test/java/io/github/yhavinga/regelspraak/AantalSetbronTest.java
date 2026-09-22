@@ -27,7 +27,8 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p><b>Why the route needs a name collision, and why that is the honest witness.</b> For a count the
  * element type is derived from the argument's WRITTEN WORD ({@code ExpressieBouwer.aantalElement}),
- * not from the argument's object type as it is for the six value folds. So a set reading only reaches
+ * not from the argument's object type as it is for the value folds (seven of them since 2026-09-20,
+ * when the filled count joined). So a set reading only reaches
  * the exemption when that word also names a type or a role — here the fact type's role to Vondst is
  * itself called "gewicht", which the repository's own namespace decision (CONSTRUCTS row 4,
  * 2026-09-10: role names and member names are separate namespaces) makes a well-formed model. Without
@@ -87,9 +88,9 @@ class AantalSetbronTest {
     static final String MELDING =
             "setlezing buiten een vouwbron: 'gewichten van alle gewichten van de Jutter' noemt de waarde "
             + "van elk lid van de verzameling — alleen toegestaan als bron van één waardevouw (som, "
-            + "totaal, minimum, maximum, eerste, laatste); een telling vouwt de leden zelf en leest "
-            + "geen waarde per lid, dus onder 'aantal' ook niet (besluit 2026-09-19); hier wordt één "
-            + "waarde verwacht (WF-096, IR-SPEC ch. 4.3)";
+            + "totaal, minimum, maximum, eerste, laatste, aantal gevulde waarden); een instantietelling "
+            + "vouwt de leden zelf en leest geen waarde per lid, dus onder 'aantal' ook niet (besluit "
+            + "2026-09-19); hier wordt één waarde verwacht (WF-096, IR-SPEC ch. 4.3)";
 
     private static List<Diagnostic> wf096(String regels) {
         RegelSpraakModel m = Resolver.resolve(MODEL + regels);

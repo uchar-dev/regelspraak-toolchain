@@ -48,7 +48,8 @@ class MarkerRedenPinTest {
      *  {@code bestand}, with the reason that route needs no survivor report. */
     private record Plek(String bestand, String methode, int aantal, String waarom) {}
 
-    /** The thirteen sanctioned null-constructions, measured 2026-09-19. Growth is NOT free here (unlike
+    /** The fourteen sanctioned null-constructions, measured 2026-09-19, grown by one 2026-09-20. Growth
+     *  is NOT free here (unlike
      *  a gate floor): a null is a promise that something else speaks, so every new one is listed with
      *  the diagnostic that keeps that promise. */
     private static final List<Plek> GESANCTIONEERD = List.of(
@@ -56,9 +57,11 @@ class MarkerRedenPinTest {
                     "de §8.2-ERROR die de regel erboven opwerpt IS de diagnose van deze marker"),
             new Plek("RuleChecker.java", "dagsoortOperandFout", 1,
                     "meldPredicaat werpt de Tabel-57-ERROR op; die is de diagnose van deze marker"),
-            new Plek("ExpressieBouwer.java", "bouwFunctie", 2,
-                    "beide markers staan direct onder hun eigen WARNING — de aggregatie over een "
-                    + "ongedeclareerd lid, en de niet-omgezette dimensieselectie / 'gedurende de tijd dat'"),
+            new Plek("ExpressieBouwer.java", "bouwFunctie", 3,
+                    "alle drie de markers staan direct onder hun eigen melding — de aggregatie over een "
+                    + "ongedeclareerd lid, de niet-omgezette dimensieselectie / 'gedurende de tijd dat', "
+                    + "en (2026-09-20) de WF-037-ERROR op een niet-set bron onder 'het aantal gevulde "
+                    + "waarden van'"),
             new Plek("ExpressieBouwer.java", "keurVouwbron", 4,
                     "elk van de vier vouwbron-weigeringen zet haar eigen WARNING neer vlak voor de marker"),
             new Plek("ExpressieBouwer.java", "aggregatieFilter", 3,
