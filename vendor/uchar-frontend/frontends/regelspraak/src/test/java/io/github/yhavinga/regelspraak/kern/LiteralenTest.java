@@ -17,25 +17,41 @@ class LiteralenTest {
     private static Expr.Literal num(String w) { return new Expr.Literal(w, new Datatype.Numeriek(false, 0, null, null), Bron.synthetisch(w)); }
     private static Expr.Literal tekst(String w) { return new Expr.Literal(w, new Datatype.Tekst(), Bron.synthetisch(w)); }
 
-    @Test void datums_en_datumtijden_parsen_met_milli_naar_nano_schaal() {
-        assertEquals(LocalDate.of(2024, 12, 25), Literalen.parseDatum("dd. 25-12-2024"));
-        assertEquals(LocalDate.of(2024, 9, 8), Literalen.parseDatum("dd. 8-9-2024"), "enkelcijferige dag/maand");
+    /* Until 2026-09-23 these pins read the day-first source snippet through this reader ("dd. 25-12-2024",
+     * "dd. 8-9-2024", "dd. 25-12-2024 10:30:00.500") and held the snippet and the ISO lexeme to the same
+     * moment. The reader is the WIRE reader the back-ends share: the emitter writes ISO into waarde (WF-084,
+     * WF-095 since card p5-datumtijd-lexeem), and the frontend reads its own source snippet with its own
+     * reader in ExpressieBouwer, which the emitter tests pin. So the snippet pins turned into refusals
+     * (cards datumtijd-lezers-versmalling, datum-lexeem-hele-match). */
+    @Test void datums_en_datumtijden_parsen_het_iso_lexeem_met_milli_naar_nano_schaal() {
+        assertEquals(LocalDate.of(2024, 12, 25), Literalen.parseDatum("2024-12-25"));
+        assertEquals(LocalDate.of(2024, 9, 8), Literalen.parseDatum("2024-09-08"));
         assertNull(Literalen.parseDatum("geen datum"));
-        assertEquals(LocalDateTime.of(2024, 12, 25, 10, 30, 0, 500_000_000),
-                Literalen.parseDatumTijd("dd. 25-12-2024 10:30:00.500"));
-        assertNull(Literalen.parseDatumTijd("dd. 25-12-2024"), "zonder tijddeel geen datumtijd");
-    }
-
-    @Test void datumtijd_leest_het_canonieke_iso_lexeem_gelijk_aan_het_snippet() {
         assertEquals(LocalDateTime.of(2024, 12, 25, 10, 30, 0, 500_000_000),
                 Literalen.parseDatumTijd("2024-12-25T10:30:00.500"), "IR-SPEC ch. 4.1, met fractie");
         assertEquals(LocalDateTime.of(2024, 12, 25, 10, 30, 0),
                 Literalen.parseDatumTijd("2024-12-25T10:30:00"), "fractie is optioneel");
-        assertEquals(Literalen.parseDatumTijd("dd. 25-12-2024 10:30:00.500"),
-                Literalen.parseDatumTijd("2024-12-25T10:30:00.500"), "beide lexemen benoemen hetzelfde moment");
+        assertNull(Literalen.parseDatumTijd("2024-12-25"), "zonder tijddeel geen datumtijd");
     }
 
-    @Test void datumtijd_weigert_wat_buiten_beide_lexemen_valt() {
+    @Test void het_bronsnippet_is_geen_wire_lexeem() {
+        assertNull(Literalen.parseDatum("dd. 25-12-2024"), "dag-eerst met dd.-voorvoegsel");
+        assertNull(Literalen.parseDatum("25-12-2024"), "dag-eerst zonder voorvoegsel (WF-084 weigert het)");
+        assertNull(Literalen.parseDatum("dd. 8-9-2024"), "enkelcijferige dag/maand");
+        assertNull(Literalen.parseDatumTijd("dd. 25-12-2024 10:30:00.500"), "datumtijd-snippet met voorvoegsel");
+        assertNull(Literalen.parseDatumTijd("25-12-2024 10:30:00.500"), "datumtijd-snippet zonder voorvoegsel");
+        assertNull(Literalen.parseDatum("dd. 2024-12-25"), "het dd.-voorvoegsel voor een ISO-datum is geen lexeem");
+        assertNull(Literalen.parseDatumTijd("dd. 2024-12-25T10:30:00.500"), "idem voor een ISO-datumtijd");
+    }
+
+    @Test void datum_matcht_het_hele_lexeem() {
+        assertNull(Literalen.parseDatum("2024-01-2026"), "werd met find() stil 2024-01-20");
+        assertNull(Literalen.parseDatum("x 2024-01-31 y"), "het lexeem is de hele waarde");
+        assertNull(Literalen.parseDatum("2024-1-31"), "vaste veldbreedtes");
+        assertNull(Literalen.parseDatum("2024-02-30"), "de kalender beslist");
+    }
+
+    @Test void datumtijd_weigert_wat_buiten_het_lexeem_valt() {
         assertNull(Literalen.parseDatumTijd("2024-12-25T10:30"), "seconden verplicht");
         assertNull(Literalen.parseDatumTijd("2024-12-25T10:30:00Z"), "geen zone-suffix");
         assertNull(Literalen.parseDatumTijd("2024-12-25T10:30:00+01:00"), "geen offset");

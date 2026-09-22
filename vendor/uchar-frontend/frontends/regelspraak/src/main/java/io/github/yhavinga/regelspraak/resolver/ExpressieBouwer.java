@@ -425,7 +425,7 @@ final class ExpressieBouwer {
                 // A calendar-impossible token (30 February, hour 24) is an ERROR, which stops emission,
                 // so the snippet returned beside it never reaches a wire. The literal is built more than
                 // once per model, hence the contains-guard against a repeated report.
-                java.time.LocalDateTime t = Literalen.parseDatumTijd(bron.snippet());
+                java.time.LocalDateTime t = bronDatumTijd(bron.snippet());
                 if (t == null) {
                     RegelSpraakModel.Diagnostic fout = new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
                             "datum-tijd-literal '" + bron.snippet() + "' is geen geldige datum-tijd (§13.2.21)",
@@ -443,11 +443,9 @@ final class ExpressieBouwer {
             // snippet. Mirror of the numeric-literal fix above (bare lexeme in waarde, snippet in bron).
             // A calendar-impossible token (30 February) is refused exactly as the datum-tijd branch
             // above refuses it: an ERROR stops emission, so the snippet never reaches a wire.
-            // The whole-lexeme test comes first because the token takes DIGIT+ for day and month
-            // and the shared reader searches: it read 2024-01-2026 as 2024-01-20 and 123-01-2026
-            // as 23-01-2026. The reader itself is shared with the back-ends and stays as it is.
-            java.time.LocalDate d = bron.snippet().matches("(?:dd\\. +)?\\d{1,2}-\\d{1,2}-\\d{4}")
-                    ? Literalen.parseDatum(bron.snippet()) : null;
+            // The source reader matches the whole snippet because the token takes DIGIT+ for day and
+            // month: a searching reader read 2024-01-2026 as 2024-01-20 and 123-01-2026 as 23-01-2026.
+            java.time.LocalDate d = bronDatum(bron.snippet());
             if (d == null) {
                 RegelSpraakModel.Diagnostic fout = new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
                         "datum-literal '" + bron.snippet() + "' is geen geldige datum (§13.2.19)",
@@ -481,6 +479,38 @@ final class ExpressieBouwer {
         return onopgelost(p,
                 "deze primaire expressie bindt geen literal, geen parameter, geen variabele, geen attribuut "
                 + "van een onderwerp en geen functieaanroep (§13.4.17)");
+    }
+
+    /* The RegelSpraak SOURCE readers: the §13.2.19/.21 DATE token as the author wrote it, day-first, the
+     * variable-width day and month the token admits cut to one or two digits, matched whole. They live here
+     * and not in kern.Literalen because Literalen is the WIRE reader the back-ends link, and the wire carries
+     * the ISO lexeme alone (WF-084, WF-095); until 2026-09-23 the two were one reader, so every back-end also
+     * read the snippet that no conforming document carries (card datumtijd-lezers-versmalling). The Drools
+     * backend's build excludes this package, so no back-end can reach these. */
+    private static final java.util.regex.Pattern BRON_DATUM = java.util.regex.Pattern.compile(
+            "(?:dd\\. +)?(\\d{1,2})-(\\d{1,2})-(\\d{4})");
+    private static final java.util.regex.Pattern BRON_DATUM_TIJD = java.util.regex.Pattern.compile(
+            "(?:dd\\. +)?(\\d{1,2})-(\\d{1,2})-(\\d{4}) +(\\d{2}):(\\d{2}):(\\d{2})(?:\\.(\\d{3}))?");
+
+    /** The day-first date snippet ({@code [dd. ]d-m-yyyy}) as a LocalDate; null when it is not one. */
+    private static java.time.LocalDate bronDatum(String snippet) {
+        java.util.regex.Matcher m = BRON_DATUM.matcher(snippet);
+        if (!m.matches()) return null;
+        try { return java.time.LocalDate.of(Integer.parseInt(m.group(3)), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(1))); }
+        catch (java.time.DateTimeException e) { return null; }
+    }
+
+    /** The day-first datum-tijd snippet ({@code [dd. ]d-m-yyyy hh:mm:ss[.SSS]}) as a LocalDateTime, the
+     *  milliseconds scaled to nanoOfSecond; null when it is not one. */
+    private static java.time.LocalDateTime bronDatumTijd(String snippet) {
+        java.util.regex.Matcher m = BRON_DATUM_TIJD.matcher(snippet);
+        if (!m.matches()) return null;
+        try {
+            int nanos = (m.group(7) == null ? 0 : Integer.parseInt(m.group(7))) * 1_000_000;
+            return java.time.LocalDateTime.of(
+                    Integer.parseInt(m.group(3)), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(1)),
+                    Integer.parseInt(m.group(4)), Integer.parseInt(m.group(5)), Integer.parseInt(m.group(6)), nanos);
+        } catch (java.time.DateTimeException e) { return null; }
     }
 
     /** §13.2.2-.5: the decimal precision of a numeric literal's value — its minimal scale, since

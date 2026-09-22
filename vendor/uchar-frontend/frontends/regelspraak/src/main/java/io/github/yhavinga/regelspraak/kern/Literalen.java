@@ -7,48 +7,41 @@ import java.math.BigDecimal;
 
 /**
  * The single literal-to-typed-value reader both back-ends share (grown from the §9.8 dagsoort
- * compiler outward). A RegelSpraak literal reaches the transpilers as its source text plus a
+ * compiler outward). A literal reaches the transpilers as its wire lexeme ({@code waarde}) plus a
  * resolved {@link io.github.yhavinga.regelspraak.model.Datatype}; the conversions here are the one place that
- * text is interpreted, so the two back-ends can never drift on what a literal MEANS.
+ * lexeme is interpreted, so the two back-ends can never drift on what a literal MEANS. The dates read the
+ * WIRE lexeme only — the frontend reads the RegelSpraak source snippet with a reader of its own.
  */
 public final class Literalen {
     private Literalen() {}
 
-    private static final java.util.regex.Pattern ISO_DATUM = java.util.regex.Pattern.compile("(\\d{4})-(\\d{1,2})-(\\d{1,2})");
-    private static final java.util.regex.Pattern DATUM = java.util.regex.Pattern.compile("(\\d{1,2})-(\\d{1,2})-(\\d{4})");
-
-    /* The two datum-tijd lexemes, each matched WHOLE (never {@code find()}): a substring match is how a
-     * reader ends up answering a document it did not understand — a trailing "Z" or "+01:00" dropped, a
-     * fourth fraction digit cut off, surrounding text ignored. Both arms number their groups alike from
-     * the month on (2=mm, 4=hh, 5=mm, 6=ss, 7=fff); only the year/day positions swap (ISO 1/3, snippet 3/1). */
+    /* Both lexemes are matched WHOLE (never {@code find()}): a substring match is how a reader ends up
+     * answering a document it did not understand — a trailing "Z" or "+01:00" dropped, a fourth fraction
+     * digit cut off, surrounding text ignored, 2024-01-2026 read as 2024-01-20. */
+    private static final java.util.regex.Pattern ISO_DATUM = java.util.regex.Pattern.compile("(\\d{4})-(\\d{2})-(\\d{2})");
     private static final java.util.regex.Pattern ISO_DATUM_TIJD = java.util.regex.Pattern.compile(
             "(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.(\\d{3}))?");
-    private static final java.util.regex.Pattern SNIPPET_DATUM_TIJD = java.util.regex.Pattern.compile(
-            "(?:dd\\. +)?(\\d{1,2})-(\\d{1,2})-(\\d{4}) +(\\d{2}):(\\d{2}):(\\d{2})(?:\\.(\\d{3}))?");
 
-    /** Parse a date literal to a LocalDate. Accepts both the canonical uchar IR lexeme — the strict
-     *  ISO {@code yyyy-mm-dd} form (WF-084) the emitter now writes into {@code waarde} and the back-ends
-     *  read — and the §13.2.19 RegelSpraak source snippet ({@code "dd. d-m-yyyy"}, Dutch day-first) the
-     *  emitter canonicalises. The year's field position (four digits, leading in ISO, trailing in the
-     *  snippet) disambiguates, so this stays the one place a date's text is interpreted. null when absent. */
+    /** Parse a date literal's lexeme to a LocalDate: the strict ISO {@code yyyy-mm-dd} form of WF-084 — fixed
+     *  field widths, matched whole, calendar-valid — and nothing else. null for any other value, which both
+     *  branches report through {@link #onleesbaarDatumLexeem}.
+     *  <p>This reader used to SEARCH for {@code \d{4}-\d{1,2}-\d{1,2}} and fall back to a day-first
+     *  {@code d-m-yyyy} arm, so {@code 2024-01-2026} was silently 2024-01-20 on both branches, and the source
+     *  snippet {@code 31-01-2024} that WF-084 refuses was read as well (cards {@code datum-lexeem-hele-match},
+     *  {@code datumtijd-lezers-versmalling}, 2026-09-23). */
     public static java.time.LocalDate parseDatum(String waarde) {
         java.util.regex.Matcher iso = ISO_DATUM.matcher(waarde);
-        if (iso.find()) {
-            try { return java.time.LocalDate.of(Integer.parseInt(iso.group(1)), Integer.parseInt(iso.group(2)), Integer.parseInt(iso.group(3))); }
-            catch (RuntimeException e) { return null; }
-        }
-        java.util.regex.Matcher d = DATUM.matcher(waarde);
-        if (!d.find()) return null;
-        try { return java.time.LocalDate.of(Integer.parseInt(d.group(3)), Integer.parseInt(d.group(2)), Integer.parseInt(d.group(1))); }
-        catch (RuntimeException e) { return null; }
+        if (!iso.matches()) return null;
+        try { return java.time.LocalDate.of(Integer.parseInt(iso.group(1)), Integer.parseInt(iso.group(2)), Integer.parseInt(iso.group(3))); }
+        catch (java.time.DateTimeException e) { return null; }
     }
 
-    /** Parse a datum-tijd literal to a LocalDateTime. Two lexemes carry, each read WHOLE: the canonical uchar IR
+    /** Parse a datum-tijd literal to a LocalDateTime. One lexeme carries, read WHOLE: the canonical uchar IR
      *  lexeme — ISO {@code yyyy-mm-ddThh:mm:ss[.SSS]}, fixed field widths, {@code T} (never a space), the seconds
      *  field always written, NO zone suffix or offset, a fraction that is optional but exactly three digits
-     *  (IR-SPEC ch. 4.1) — and the §13.2.21 RegelSpraak source snippet ({@code "[dd. ]d-m-yyyy hh:mm:ss[.SSS]"},
-     *  day-first, the token's variable-width day/month kept so this reader is never stricter than the producer
-     *  that feeds it). Anything else is null.
+     *  (IR-SPEC ch. 4.1, WF-095). Anything else is null — since 2026-09-23 the §13.2.21 RegelSpraak source
+     *  snippet ({@code "[dd. ]d-m-yyyy hh:mm:ss[.SSS]"}) too, which this reader read as a second lexeme while
+     *  the emitter still wrote it into {@code waarde} (card {@code datumtijd-lezers-versmalling}).
      *  <p>The fence is the point. This reader used to scan for a date and a time ANYWHERE in the value, so
      *  "…T12:00:00Z", "…T12:00:00+01:00", "2024-01-31 12:00:00", one-digit fields and "…:00.1234" (truncated to
      *  123 ms) were all silently accepted as some instant the writer had not written — a wrong answer with no
@@ -58,17 +51,13 @@ public final class Literalen {
      *  February, hour 24) is rejected by the calendar below. */
     public static java.time.LocalDateTime parseDatumTijd(String waarde) {
         java.util.regex.Matcher m = ISO_DATUM_TIJD.matcher(waarde);
-        boolean iso = m.matches();
-        if (!iso) {
-            m = SNIPPET_DATUM_TIJD.matcher(waarde);
-            if (!m.matches()) return null;
-        }
+        if (!m.matches()) return null;
         try {
             int nanos = (m.group(7) == null ? 0 : Integer.parseInt(m.group(7))) * 1_000_000;
             return java.time.LocalDateTime.of(
-                    Integer.parseInt(m.group(iso ? 1 : 3)), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(iso ? 3 : 1)),
+                    Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(3)),
                     Integer.parseInt(m.group(4)), Integer.parseInt(m.group(5)), Integer.parseInt(m.group(6)), nanos);
-        } catch (RuntimeException e) { return null; }
+        } catch (java.time.DateTimeException e) { return null; }
     }
 
     /** Whether {@code e} is a datum-tijd literal whose lexeme {@link #parseDatumTijd} cannot read. Both back-ends
@@ -79,6 +68,14 @@ public final class Literalen {
     public static boolean onleesbaarDatumTijdLexeem(Expr e) {
         return e instanceof Expr.Literal l && l.type() instanceof io.github.yhavinga.regelspraak.model.Datatype.DatumTijd
                 && parseDatumTijd(l.waarde()) == null;
+    }
+
+    /** The day-precision sibling of {@link #onleesbaarDatumTijdLexeem}: a date literal whose lexeme
+     *  {@link #parseDatum} cannot read. Without it a refused date lexeme was filed under the generic
+     *  "outside scope" reason on one branch and "voorwaarde" on the other, while the cause is a document defect. */
+    public static boolean onleesbaarDatumLexeem(Expr e) {
+        return e instanceof Expr.Literal l && l.type() instanceof io.github.yhavinga.regelspraak.model.Datatype.DatumInDagen
+                && parseDatum(l.waarde()) == null;
     }
 
     /** A NUMBER literal (incl. a §13.2.16 rationaal "1/3") as BigDecimal via the shared {@link Rationaal}
