@@ -175,6 +175,8 @@ public final class Resolver {
         RegelSpraakModel m = rest.size() == 2
                 ? resolve(bron.toString(), rest.get(1))
                 : resolve(bron.toString());
+        // what the model resolves but the wire cannot carry is an ERROR at this boundary (IrEmitter.wireWeigeringen)
+        m.diagnostics.addAll(io.github.yhavinga.regelspraak.emit.IrEmitter.wireWeigeringen(m));
         // Check errors BEFORE touching disk: an unresolvable model writes NOTHING (a mirror of a broken model
         // would carry half-bound references and misleading diagnostics as if authoritative).
         if (!m.isOk()) {

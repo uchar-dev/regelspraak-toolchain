@@ -49,6 +49,16 @@ public final class RegelSpraakModel {
     /** Resolved §9.9/§13.4.12 startpuntbepalingen — the anchor member per (objecttype, variable tijdlijn);
      *  the anchor WRITE itself is an ordinary entry in {@link #resolvedRegels}. */
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedStartpunt> resolvedStartpunten = new ArrayList<>();
+    /** §13.3.6.3–.7 the FIXED startpunten that deviate from the calendar period, in source order. The model
+     *  resolves them (granularity and count are right), but the v0 wire has no field for the start point
+     *  and every executor lays an anchorless tijdlijn on the calendar grid — so the emission boundary
+     *  refuses a model that carries one ({@code IrEmitter.wireWeigeringen}). Three start points are not
+     *  recorded, because omitting them loses nothing: day 1 of the month and of month 1 (they coincide with the month and year
+     *  buckets) and day 1 of months 1, 4, 7 and 10 (the calendar quarter the anchorless quarter tijdlijn
+     *  already means; no quarter bucket exists). Not emitted itself. */
+    public final List<VastStartpunt> vasteStartpunten = new ArrayList<>();
+    /** One off-calendar fixed start point: the production's section, the source clause, its line. */
+    public record VastStartpunt(String sectie, String bron, int line) {}
     /** §9.10 Regelgroepen — a DOCUMENTED EXTENSION (see docs/grammar-divergences.md). Each carries its member
      *  RULE NAMES (the bare written names); members otherwise resolve exactly as ungrouped rules. Both back-ends
      *  prefix ONLY the engine-visible rule-name header with "<groep>: " — every data key stays the bare name. */
@@ -743,8 +753,9 @@ public final class RegelSpraakModel {
          *  IR-shape foundation for the Phase-7 value model that will lower the periods (knip-merge,
          *  tijdsevenredig, gedurende). The VARIABLE startpunt has since been captured — a named
          *  tijdlijn records it in {@link Tijdlijn#variabelStartpunt} and §9.9's startpuntbepaling
-         *  resolves its anchor ({@link #startpuntAnkerLid}); only the INLINE fixed startpunt
-         *  ("voor elke 5 maanden startend op …") is still dropped here. */
+         *  resolves its anchor ({@link #startpuntAnkerLid}). A FIXED startpunt ("voor elke 5 maanden
+         *  startend op …") has no place here or on the wire: off the calendar it is recorded in
+         *  {@link RegelSpraakModel#vasteStartpunten} and refused at emission. */
         public final Map<String, Granulariteit> attribuutGranulariteit = new LinkedHashMap<>();
         /** §13.3.6.7 the period COUNT of a MULTI-period tijdlijn ("voor elke 5 maanden" -&gt; 5), keyed by the
          *  attribute naam — absent (count 1) for a single-period "voor elke maand". Each tijdvak then spans

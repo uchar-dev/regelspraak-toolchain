@@ -54,8 +54,23 @@ import java.util.Map;
  */
 public final class IrEmitter {
 
+    /** What the model carries that the v0 wire has no field for, as ERROR diagnostics — today only the
+     *  off-calendar fixed startpunt (§13.3.6.3–.7, {@link RegelSpraakModel#vasteStartpunten}). The model
+     *  resolves it correctly; dropping it here would lay the tijdlijn on the calendar grid the author did
+     *  not declare. {@code Resolver --ir} adds these to the diagnostics so it writes nothing, and
+     *  {@link #emit} refuses the same models, so no emission route loses the start point in silence. */
+    public static List<Diagnostic> wireWeigeringen(RegelSpraakModel m) {
+        return m.vasteStartpunten.stream().map(v -> new Diagnostic(RegelSpraakModel.Severity.ERROR,
+                "tijdlijn: het vaste startpunt '" + v.bron() + "' (" + v.sectie() + ") wijkt af van de "
+                        + "kalenderperiode en de v0-wire heeft er geen veld voor — de zin wordt geweigerd in "
+                        + "plaats van het startpunt stil te laten vallen", v.line())).toList();
+    }
+
     /** Serialise the resolved model to the v0 IR JSON text (two-space indented, trailing newline). */
     public static String emit(RegelSpraakModel m) {
+        List<Diagnostic> weigeringen = wireWeigeringen(m);
+        if (!weigeringen.isEmpty())
+            throw new IllegalStateException("de v0-wire kan dit model niet dragen: " + weigeringen);
         IrEmitter e = new IrEmitter();
         e.model(m);
         e.w.sb.append('\n');
