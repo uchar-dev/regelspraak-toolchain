@@ -328,6 +328,111 @@ class IrEmitterTest {
                 () -> "de fout noemt het lexeme niet: " + m.errors());
     }
 
+    /** A model whose one rule compares a Datum-in-dagen attribute with the literal {@code lexeem}. */
+    private static RegelSpraakModel datumLiteralModel(String lexeem) {
+        return Resolver.resolve("""
+            Objecttype de Aanmelding
+                de meldatum Datum in dagen;
+                is tijdig kenmerk (bijvoeglijk);
+            Regel tijdig
+                geldig altijd
+                    Een Aanmelding is tijdig
+                    indien zijn meldatum eerder is dan %s.
+            """.formatted(lexeem));
+    }
+
+    @Test void datum_literal_buiten_de_kalender_is_een_fout() {
+        // The bare-date sister of the datum-tijd test above: the DATE token admits 30-02-2026 too,
+        // and the shared reader answers null. That null once reached .toString() unguarded, so the
+        // frontend died on a NullPointerException instead of naming the lexeme.
+        RegelSpraakModel m = datumLiteralModel("30-02-2026");
+        assertEquals(java.util.List.of("datum-literal '30-02-2026' is geen geldige datum (§13.2.19)"),
+                m.errors().stream().map(RegelSpraakModel.Diagnostic::message).toList());
+    }
+
+    @Test void datum_literal_met_meercijferige_dag_is_een_fout() {
+        // The DATE token takes DIGIT+ for day and month, and the shared reader searches with find():
+        // 2024-01-2026 matched its ISO arm as 2024-01-20 and 123-01-2026 its day-first arm as
+        // 23-01-2026, both silently. The frontend now demands the whole lexeme be a d-m-jjjj date.
+        for (String lexeem : new String[] {"2024-01-2026", "123-01-2026", "1-123-2026"}) {
+            RegelSpraakModel m = datumLiteralModel(lexeem);
+            assertEquals(java.util.List.of("datum-literal '" + lexeem + "' is geen geldige datum (§13.2.19)"),
+                    m.errors().stream().map(RegelSpraakModel.Diagnostic::message).toList(), lexeem);
+        }
+        assertTrue(datumLiteralModel("dd. 1-2-2026").errors().isEmpty(), "het dd.-voorvoegsel blijft gelezen");
+    }
+
+    /** A model whose one rule carries the validity {@code geldig}. */
+    private static RegelSpraakModel geldigheidModel(String geldig) {
+        return Resolver.resolve("""
+            Objecttype de Vondst
+                de waarde Numeriek (geheel getal);
+            Regel waarde
+                geldig %s
+                    De waarde van een Vondst moet gesteld worden op 1.
+            """.formatted(geldig));
+    }
+
+    private static String tijdcomponentFout(String grens) {
+        return "versiegeldigheidsgrens '" + grens + "' draagt een tijdcomponent; de geldigheid is datumgranulair "
+                + "(verwacht een datum dd-mm-jjjj of een jaartal van vier cijfers)";
+    }
+
+    private static String grensFout(String grens) {
+        return "ongeldige versiegeldigheidsgrens '" + grens
+                + "' (verwacht een datum dd-mm-jjjj of een jaartal van vier cijfers)";
+    }
+
+    @Test void versiegeldigheid_met_tijdcomponent_is_een_fout() {
+        // The validity window is day-granular (Geldigheid holds LocalDates), so a bound written
+        // with a time of day has no carrier. It used to be read by a find() that stopped after
+        // the date and emitted "vanaf": "2026-01-01" with the 10:00 silently gone.
+        String[][] gevallen = {{"vanaf 01-01-2026 10:00:00.000", "01-01-2026 10:00:00.000"},
+                               {"t/m 31-12-2026 23:59:59.999", "31-12-2026 23:59:59.999"},
+                               {"vanaf 2025 t/m 31-12-2026 10:00:00.000", "31-12-2026 10:00:00.000"}};
+        for (String[] g : gevallen) {
+            assertEquals(java.util.List.of(tijdcomponentFout(g[1])),
+                    geldigheidModel(g[0]).errors().stream().map(RegelSpraakModel.Diagnostic::message).toList(), g[0]);
+        }
+    }
+
+    @Test void versiegeldigheid_met_onmogelijke_datum_en_tijd_meldt_beide() {
+        // Both defects are reported at once: reporting only the time component would send the
+        // author round a second time to learn the date itself does not exist.
+        assertEquals(java.util.List.of(grensFout("30-02-2026 10:00:00.000"), tijdcomponentFout("30-02-2026 10:00:00.000")),
+                geldigheidModel("vanaf 30-02-2026 10:00:00.000").errors().stream()
+                        .map(RegelSpraakModel.Diagnostic::message).toList());
+    }
+
+    @Test void versiegeldigheid_met_meercijferige_dag_is_een_fout() {
+        // The bound reader searched for d-m-jjjj with find(), so 2024-01-2026 was read as
+        // 24-01-2026 and emitted "vanaf": "2026-01-24" without a word. The whole lexeme counts now.
+        for (String grens : new String[] {"2024-01-2026", "123-01-2026"}) {
+            assertEquals(java.util.List.of(grensFout(grens)),
+                    geldigheidModel("vanaf " + grens).errors().stream().map(RegelSpraakModel.Diagnostic::message).toList(),
+                    grens);
+        }
+        assertTrue(geldigheidModel("vanaf dd. 1-1-2026").errors().isEmpty(), "het dd.-voorvoegsel blijft gelezen");
+    }
+
+    @Test void beslistabel_met_tijdcomponent_in_geldigheid_meldt_eenmaal() {
+        // A beslistabel desugars to one regel per data row, each re-parsed with the header's
+        // validity, so the bound is checked once per row. The author wrote it once.
+        RegelSpraakModel m = Resolver.resolve("""
+            Objecttype de Vondst
+                de waarde Numeriek (geheel getal);
+                het gewicht Numeriek (geheel getal);
+            Beslistabel Vondstwaarde
+                geldig vanaf 01-01-2026 10:00:00.000
+            | | de waarde van een Vondst moet gesteld worden op | indien zijn gewicht groter is dan |
+            |---|---|---|
+            | 1 | 1 | 5 |
+            | 2 | 2 | 10 |
+            """);
+        assertEquals(java.util.List.of(tijdcomponentFout("01-01-2026 10:00:00.000")),
+                m.errors().stream().map(RegelSpraakModel.Diagnostic::message).toList());
+    }
+
     /** A Tekst-attribuut plus one rule that assigns {@code lexeem} to it — the smallest model that
      *  puts a text literal on the wire. The lexeme is inserted RAW, so a test can hand it a source
      *  form the grammar rejects and assert on the diagnostics. */

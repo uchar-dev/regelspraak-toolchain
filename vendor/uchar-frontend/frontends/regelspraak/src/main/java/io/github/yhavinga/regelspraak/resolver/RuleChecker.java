@@ -833,23 +833,43 @@ final class RuleChecker {
     }
 
     /** Resolve a validity bound, or report an ERROR and return null when it is neither a
-     *  valid calendar date (dd-mm-jjjj) nor a four-digit year (§13.2.24). */
+     *  valid calendar date (dd-mm-jjjj) nor a four-digit year (§13.2.24), or when it carries a
+     *  time of day. Both defects are reported together, so fixing one never uncovers the other.
+     *  A beslistabel re-parses its header validity once per data row; the contains-guard keeps
+     *  that to the one report the author's one bound deserves. */
     private LocalDate grensOfMeld(DatumOfJaarContext d, boolean onder, int line) {
         LocalDate b = grens(d, onder);
         if (b == null)
-            model.diagnostics.add(new Diagnostic(Severity.ERROR,
+            meldEenmaal(new Diagnostic(Severity.ERROR,
                     "ongeldige versiegeldigheidsgrens '" + (d != null ? src(d) : "")
                             + "' (verwacht een datum dd-mm-jjjj of een jaartal van vier cijfers)", line));
-        return b;
+        // The DATE token admits a time of day, but Geldigheid holds LocalDates: there is no
+        // carrier for it, and reading only the date part used to drop the time silently.
+        boolean tijd = d != null && d.DATE() != null && d.DATE().getText().contains(":");
+        if (tijd)
+            meldEenmaal(new Diagnostic(Severity.ERROR,
+                    "versiegeldigheidsgrens '" + src(d) + "' draagt een tijdcomponent; de geldigheid "
+                            + "is datumgranulair (verwacht een datum dd-mm-jjjj of een jaartal van vier cijfers)", line));
+        return tijd ? null : b;
     }
 
-    /** A datumOfJaar to a concrete date, or null when it is not a real calendar date or a
+    private void meldEenmaal(Diagnostic fout) {
+        if (!model.diagnostics.contains(fout)) model.diagnostics.add(fout);
+    }
+
+    /* The whole DATE token, never a find(): the token takes DIGIT+ for day and month, and a search
+     * read 2024-01-2026 as 24-01-2026. The optional time part is matched so the date part of a
+     * time-bearing bound can still be judged; grensOfMeld refuses the time itself. */
+    private static final java.util.regex.Pattern GRENS_DATUM = java.util.regex.Pattern.compile(
+            "(?:dd\\. +)?(\\d{1,2})-(\\d{1,2})-(\\d{4})(?: +\\d{2}:\\d{2}:\\d{2}\\.\\d{3})?");
+
+    /** The date part of a datumOfJaar, or null when it is not a real calendar date or a
      *  four-digit year. Never throws — an out-of-range day/month/year yields null. */
     private static LocalDate grens(DatumOfJaarContext d, boolean onder) {
         if (d == null) return null;
         if (d.DATE() != null) {
-            java.util.regex.Matcher m = java.util.regex.Pattern.compile("(\\d{1,2})-(\\d{1,2})-(\\d{4})").matcher(d.DATE().getText());
-            if (!m.find()) return null;
+            java.util.regex.Matcher m = GRENS_DATUM.matcher(d.DATE().getText());
+            if (!m.matches()) return null;
             try {
                 return LocalDate.of(Integer.parseInt(m.group(3)), Integer.parseInt(m.group(2)), Integer.parseInt(m.group(1)));
             } catch (java.time.DateTimeException e) { return null; }
