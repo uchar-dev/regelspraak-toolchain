@@ -566,6 +566,12 @@ final class ExpressieBouwer {
                 return new Expr.Functie(Expr.FunctieKind.AANTAL, java.util.List.of(unie), null, null,
                         null, functieType(Expr.FunctieKind.AANTAL, argumenten), bron);
         }
+        // WF-037's count-source arm (maintainer decision 2026-09-23). Placed after the parameter
+        // fallback and the union above, the two routes by which a count without an element type is
+        // legitimate; what is left counts its operand rather than a population.
+        if (kind == Expr.FunctieKind.AANTAL && elem == null && argumenten.size() < 2)
+            model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.ERROR,
+                    tellingBronFout(argumenten, f), f.getStart().getLine()));
         meldAggregatie(kind, argumenten, f);
         Datatype type = f instanceof TijdsduurFuncContext t ? tijdsduurType(t) : functieType(kind, argumenten);
         Expr leegwaarde = leegwaardeVan(f);
@@ -1634,8 +1640,8 @@ final class ExpressieBouwer {
      *  <p>It reads the KIND and the operand COUNT and never {@code elementObjecttype}: a count that
      *  binds an element AND carries an operand list is the same listed form with a second claim on one
      *  node, and the wire rule draws its boundary in exactly that place. Below two operands it is
-     *  silent, which is the wire rule's boundary too: one operand is v0's own instance count and zero
-     *  is a fold without a source, a form under no decision yet. */
+     *  silent, which is the wire rule's boundary too: one operand without an element type is
+     *  {@link #tellingBronFout}'s. */
     private String tellingAriteitFout(List<Expr> argumenten, FunctieAanroepContext f) {
         if (argumenten.size() < 2) return null;
         return "opgesomde telling: '" + bron(f).snippet() + "' noemt " + argumenten.size()
@@ -1669,6 +1675,31 @@ final class ExpressieBouwer {
         return staart + (unieWeigering != null ? unieWeigering
                 : "niet elke operand is een rolselectie; een concatenatie onder 'het aantal' bestaat "
                         + "uit ONDERWERPexpressies en uit niets anders (typeringen §4.11)");
+    }
+
+    /** WF-037's count-source arm (IR-SPEC ch. 4.3, maintainer decision 2026-09-23): a count MUST
+     *  carry an element type, unless its one argument is an instance-set union.
+     *
+     *  <p><b>A live route, measured 2026-09-23 before this arm.</b> {@code aantalFunc} takes any
+     *  {@code primaireExpressie}, and when the operand names no role or object type
+     *  {@link #aggregatieElement} yields null and, unless the whole phrase is a declared parameter,
+     *  the node was emitted anyway: "het aantal gewogen vangst van de Jutter" (an own attribute),
+     *  "het aantal 3", "het aantal (3 plus 4)", "het aantal drempel" (a parameter), "het aantal
+     *  Vondsten" — each an AANTAL with {@code elementObjecttype: null}, all with
+     *  {@code diagnostics: []}. The verifier now rejects that shape, and {@code ref} used to answer
+     *  it with the operand counted, not a population ({@link io.github.yhavinga.regelspraak
+     *  .AantalZonderBronTest}).
+     *
+     *  <p>ERROR for the same reason as the arity arm: {@link Resolver#irModus} then writes nothing.
+     *  The grammar is untouched; the source language's count takes a subject expression, and the
+     *  refusal belongs where the element is derived, not in the parse. */
+    private String tellingBronFout(List<Expr> argumenten, FunctieAanroepContext f) {
+        String operand = argumenten.isEmpty() ? "geen operand" : "'" + bron(f).snippet() + "'";
+        return "telling zonder bron: " + operand + " noemt geen instanties om te tellen — een "
+                + "telling vouwt de INSTANTIES van een onderwerpexpressie (§5.8.1, typeringen §4.11) "
+                + "en draagt daarom een elementtype; zonder elementtype telt zij haar OPERAND en niet "
+                + "een populatie. Een eigen waarde, een getal, een parameter of een lijst is geen "
+                + "bron (WF-037, IR-SPEC ch. 4.3, besluit 2026-09-23)";
     }
 
     /** §4.19 Tabel 29 (eerste paasdag van): the single operand is "een numerieke expressie zonder eenheid ... altijd een

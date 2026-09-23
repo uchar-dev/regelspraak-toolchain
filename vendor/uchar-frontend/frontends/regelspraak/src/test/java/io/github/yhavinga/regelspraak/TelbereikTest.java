@@ -176,19 +176,22 @@ class TelbereikTest {
     // ---------------- the boundaries of the lookup ----------------
 
     /** The population lookup is ambiguity-safe: two declared types sharing one plural bind NEITHER, so the
-     *  fold loses its element type and the verifier refuses it (WF-034) instead of a type being picked. */
+     *  fold loses its element type instead of a type being picked. Since 2026-09-23 a count without an
+     *  element type is refused HERE as well as on the wire (WF-037's count-source arm), so the document
+     *  no longer reaches the verifier; the model still shows that no type was bound. */
     @Test
     void een_gedeeld_typemeervoud_bindt_geen_van_beide() {
-        String c = ir(GEDEELD_MEERVOUD_MODEL + TYPEMEERVOUD_REGEL);
+        String c = irMetBronloosFout(GEDEELD_MEERVOUD_MODEL + TYPEMEERVOUD_REGEL);
         assertTrue(c.contains("\"elementObjecttype\": null"),
                 () -> "een gedeeld meervoud mag geen van beide types binden:\n" + c);
     }
 
     /** And it invents nothing: a word that names neither a declared type nor a role leaves the fold
-     *  without an element type, which is the WF-034 refusal the population lookup must not paper over. */
+     *  without an element type — refused by WF-034 on the wire and, since 2026-09-23, by the
+     *  count-source ERROR here, which the population lookup must not paper over either. */
     @Test
     void een_woord_dat_niets_benoemt_levert_geen_elementtype() {
-        String c = ir(MODEL + VREEMDE_REGEL);
+        String c = irMetBronloosFout(MODEL + VREEMDE_REGEL);
         assertTrue(c.contains("\"elementObjecttype\": null"),
                 () -> "een onbekend elementwoord mag geen type binden:\n" + c);
     }
@@ -239,6 +242,16 @@ class TelbereikTest {
     private static String ir(String bron) {
         RegelSpraakModel m = Resolver.resolve(bron);
         assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+        return IrEmitter.emit(m);
+    }
+
+    /** A count that binds no element type: exactly one ERROR, the count-source refusal, and the model
+     *  emitted anyway so the caller can read what was (not) bound. */
+    private static String irMetBronloosFout(String bron) {
+        RegelSpraakModel m = Resolver.resolve(bron);
+        assertEquals(1, m.errors().size(), () -> "verwacht één fout, kreeg: " + m.errors());
+        assertTrue(m.errors().get(0).message().startsWith("telling zonder bron"),
+                () -> "verwacht de bronloze-tellingfout, kreeg: " + m.errors());
         return IrEmitter.emit(m);
     }
 }
