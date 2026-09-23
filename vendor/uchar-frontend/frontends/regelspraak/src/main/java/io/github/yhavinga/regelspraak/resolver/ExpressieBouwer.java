@@ -1694,12 +1694,40 @@ final class ExpressieBouwer {
      *  The grammar is untouched; the source language's count takes a subject expression, and the
      *  refusal belongs where the element is derived, not in the parse. */
     private String tellingBronFout(List<Expr> argumenten, FunctieAanroepContext f) {
+        String botsing = aantalAttribuutBotsing(argumenten, f);
+        if (botsing != null) return botsing;
         String operand = argumenten.isEmpty() ? "geen operand" : "'" + bron(f).snippet() + "'";
         return "telling zonder bron: " + operand + " noemt geen instanties om te tellen — een "
                 + "telling vouwt de INSTANTIES van een onderwerpexpressie (§5.8.1, typeringen §4.11) "
                 + "en draagt daarom een elementtype; zonder elementtype telt zij haar OPERAND en niet "
                 + "een populatie. Een eigen waarde, een getal, een parameter of een lijst is geen "
                 + "bron (WF-037, IR-SPEC ch. 4.3, besluit 2026-09-23)";
+    }
+
+    /** The source-less count whose words also spell a DECLARED attribute: "het aantal gewogen posten
+     *  van de Jutter" with "aantal gewogen posten" declared on Jutter. §13.4.17.3 derives the sentence
+     *  as a getalaggregatie and as an attribuutvanonderwerp alike, with no tie-break; {@code
+     *  functieAanroep} precedes {@code attribuutVanOnderwerp} in {@code primaireExpressie}, so the
+     *  parse is the count. It is NOT reinterpreted as the attribute here, unlike the parameter
+     *  fallback in {@link #bouwFunctie}: the article-less spelling (§13.3.2.6 makes the article
+     *  optional) already reads the attribute, and no source measured reads such an attribute under
+     *  "het aantal" — a second reading would widen the language rather than resolve it. The refusal
+     *  therefore names the collision and that spelling, instead of the generic sentence that leaves
+     *  the author guessing why a declared name is refused. Null when there is no such attribute. */
+    private String aantalAttribuutBotsing(List<Expr> argumenten, FunctieAanroepContext f) {
+        if (!(f instanceof AantalFuncContext af) || argumenten.size() != 1
+                || !(argumenten.get(0) instanceof Expr.AttribuutRef a) || a.objecttype() == null) return null;
+        String naam = "aantal " + a.attribuut();
+        if (a.objecttype().attribuut(naam) == null) return null;
+        String operand = src(af.primaireExpressie(0));
+        return "telling zonder bron, of een attribuut: '" + bron(f).snippet() + "' leest als telling van '"
+                + operand + "', en '" + a.attribuut() + "' noemt geen rol om "
+                + "te tellen — maar '" + naam + "' is een gedeclareerd attribuut van " + a.objecttype().naam
+                + ". De brontaal leidt de zin op beide manieren af (§13.4.17.3: getalaggregatie of "
+                + "attribuutvanonderwerp) en de grammatica kiest de telling, die zonder instantiebron niet "
+                + "welgevormd is (WF-037, IR-SPEC ch. 4.3, typeringen §4.11). Bedoel je het attribuut, "
+                + "schrijf dan 'aantal " + operand + "' — zonder lidwoord, dat bij een "
+                + "attribuutverwijzing optioneel is (§13.3.2.6)";
     }
 
     /** §4.19 Tabel 29 (eerste paasdag van): the single operand is "een numerieke expressie zonder eenheid ... altijd een
