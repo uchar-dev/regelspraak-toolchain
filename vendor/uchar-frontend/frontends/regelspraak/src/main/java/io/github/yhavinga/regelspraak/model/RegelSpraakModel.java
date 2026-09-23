@@ -59,7 +59,7 @@ public final class RegelSpraakModel {
     public final List<VastStartpunt> vasteStartpunten = new ArrayList<>();
     /** One off-calendar fixed start point: the production's section, the source clause, its line. */
     public record VastStartpunt(String sectie, String bron, int line) {}
-    /** §9.10 Regelgroepen — a DOCUMENTED EXTENSION (see docs/grammar-divergences.md). Each carries its member
+    /** §9.10 Regelgroepen — a DOCUMENTED EXTENSION (see grammar/DIVERGENCES.md). Each carries its member
      *  RULE NAMES (the bare written names); members otherwise resolve exactly as ungrouped rules. Both back-ends
      *  prefix ONLY the engine-visible rule-name header with "<groep>: " — every data key stays the bare name. */
     public final List<io.github.yhavinga.regelspraak.ir.ResolvedRegelGroep> regelGroepen = new ArrayList<>();
@@ -681,7 +681,7 @@ public final class RegelSpraakModel {
      *  defines no plural morphology — §3.1 footnote 2 states derivation is ALEF-specific,
      *  OUTSIDE the language — so this must never defeat a declared form, and callers that
      *  disambiguate by name (see {@link #verbindendeRolViaNaam}) try the exact forms
-     *  first. (See docs/grammar-divergences.md.) */
+     *  first. (See grammar/DIVERGENCES.md.) */
     private static boolean rolMatchtBestEffort(Rol r, String naam) {
         if (r.meervoud() != null) return false;
         if (naam.equalsIgnoreCase(r.naam() + "s") || naam.equalsIgnoreCase(r.naam() + "en")) return true;

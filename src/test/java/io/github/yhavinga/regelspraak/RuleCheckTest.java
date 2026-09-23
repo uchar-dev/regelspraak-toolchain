@@ -2249,19 +2249,20 @@ class RuleCheckTest {
                 () -> "een numerieke periodegrens had gemeld moeten worden, kreeg: " + m.errors());
     }
 
-    @Test void periodevergelijking_met_parametergrens_blijft_eerlijke_marker() {
-        // §8.4.3 a parameter-bound period ("vanaf de PEILDATUM") is beyond the lowered bound shapes (literal /
-        // own attribute — Tijdrekening.periodeGrensLowerbaar): it must resolve cleanly but stay an HONEST marker
-        // in the DRL (and a symmetric exec-skip), never a silently-dropped window.
+    @Test void periodevergelijking_met_parametergrens_is_een_wf111_fout() {
+        // §8.4.3 a parameter-bound period ("vanaf de PEILDATUM") lies outside WF-111's two bound shapes (a date
+        // literal / an own, time-independent datum-in-dagen attribute of the subject). Until uchar 7d97353e
+        // (card frontend-typemeervoud-telling, fourth part) the frontend wrote such a bound to disk silently and
+        // only the verifier refused it, so this test pinned an honest DRL marker. The frontend now fences the
+        // bound itself with an ERROR naming the shape, so no document (and no DRL) is produced for it.
         String src = "Parameter de PEILDATUM : Datum in dagen\n"
             + "Objecttype de Passagier\n    de prijs Numeriek (geheel getal);\n"
             + "Regel R\n    geldig altijd\n        De prijs van een Passagier moet gesteld worden op 50\n"
             + "        vanaf de PEILDATUM.\n";
         RegelSpraakModel m = Resolver.resolve(src);
-        assertTrue(m.errors().isEmpty(), () -> "moet resolven: " + m.errors());
-        String drl = DrlTranspiler.transpile(m);
-        assertTrue(drl.contains("/* TODO") && drl.contains("periodevergelijking-grens"),
-                () -> "een parameter-grens moet een eerlijke marker blijven:\n" + drl);
+        assertFalse(m.errors().isEmpty(), "een parametergrens moet een WF-111-fout geven");
+        assertTrue(m.errors().stream().anyMatch(e -> e.message().contains("de parameter 'PEILDATUM'") && e.message().contains("WF-111")),
+                () -> "de fout moet de parameter en WF-111 noemen: " + m.errors());
     }
 
     @Test void dagsoortdefinitie_zonder_voorwaarde_en_duplicaat_geven_een_waarschuwing() {

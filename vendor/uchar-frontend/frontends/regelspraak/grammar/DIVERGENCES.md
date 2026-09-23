@@ -13,6 +13,23 @@ layer: the extension's opening tokens occur **nowhere** in the flat v2.3.0
 corpus, so an official document parses byte-for-byte as before and emits an IR
 with no extension keys.
 
+**Pointers this register does not answer yet.** The frontend came over from the
+source toolchain with its comments, and those comments pointed at that
+toolchain's own register, a file that does not exist in this repository. Since
+the fix round of 2026-09-23 the 24 in the grammar and the main sources point
+here (two in existing tests still name the old file), but the text they cited
+stayed behind. This register does not carry the sections
+`'§9.10 recursie / regelgroep'`, `'§Scenariotoetsen'`, `'negated membership'`
+and `"concatenatie as a standalone value"`, nor the untitled topics at the other
+sites: the percentage forms and the percentage sign, the unit checks of the
+aggregations, the begrenzing bound, the period lowering, the "is gevuurd"
+predicate, the mixed date precision, the best-effort role plural, and the
+`Regelgroep` extension itself beyond the introduction above. At each site the
+comment states its own rationale, and a card that touches such a construct
+writes its section here. Two pointers land on text: the count's operand list
+(§13.4.17.47 below) and the interaction of `Regelgroep` with the defaults
+extension (§4).
+
 ---
 
 ## §4 The prioritized-defaults extension — `Uitzondering op` / `Uitzonderingen ongeordend`
@@ -102,6 +119,71 @@ prioritized-defaults anchors).
   assignment is monotone `waar`, a genuine §9.5 conflict is only expressible on
   an **attribute** target.
 
+### `// Bron:` annotations of lifted rules
+
+A lifted rule leaves `resolvedRegels`, and with it the `bronAnnotaties` list
+that carries its `// Bron:` annotation on a flat rule. Until 2026-09-23 the
+lowering also set `bron: null` on every defaults group and every default, so
+each annotation on an extension block vanished. Measured on the frontend before
+the change (the M6 document of `spec/proposals/DIALECT-DEFAULTS-NIET-EN-NESTING.md`
+§9.2: an annotated base and its annotated exception): neither annotation text
+occurred anywhere in the IR, with `diagnostics: []` and a verifier PASS. The
+placement since, with no new wire field (card `frontend-bron-annotatie-in-defaults`):
+
+- a lifted rule's annotation lands in the `Default.bron` of the default it
+  becomes: the exception's on the exception default, the base's on the base
+  default, an unordered member's on its sibling group's single default;
+- the group's `PrioritizedDefaults.bron` carries the annotation of the rule the
+  group is named after: the base of an ordered family, the member itself for an
+  unordered sibling. The base's text therefore stands twice, on the group and
+  on the lowest default. The hand-written defaults anchors decided this: in
+  every one of them each default, the lowest included, carries its own
+  provenance beside the group's (`anchor/ww-herleving-inkomen`: the group
+  "art. 15 tot en met 21: …", its base default "art. 15: …"). Writing the base's
+  text on the group alone would give the base default a shape no anchor has,
+  and it would lose the per-default citation the statute trace hangs on. The
+  anchors' group-level citation is an umbrella the frontend cannot write
+  without inventing text ("art. 3 en 5"), so the group takes the text of the
+  block it is named after;
+- several annotations on one block are joined with `"; "` in source order, and a
+  blank one is dropped, as the emitter drops it from `bronAnnotaties`. The join
+  loses a distinction and cannot be undone: one annotation that itself contains
+  `"; "` reads exactly like two, and the wire already carries such a text (the
+  group citation of the golden `jutterswet-samenloop`), so a reader cannot
+  recover the list from a joined `bron`. Recorded, not repaired: `Default.bron`
+  and `PrioritizedDefaults.bron` are single strings, and keeping the list would
+  take a new wire field (option (b) of the proposal's §9.2, not taken). Where
+  the separate annotations matter, write one per block;
+- an unannotated block keeps `bron: null`: the three extension goldens carry no
+  annotation and re-emit byte-identically;
+- the `Regel` stub a lifted rule leaves in `regels` is unchanged — `node`,
+  `naam`, `soort`, and no `bron`, which the schema does not admit there;
+- nesting: when exception-on-exception lands, a nested block's annotation
+  lands on its own default inside the `ExceptionGroup`. Every lifted rule
+  becomes a default in one place (`RuleChecker.defaultVan`), so the nested
+  lowering inherits the placement; what `ExceptionGroup.bron` itself carries is
+  that card's decision;
+- an annotation written above the `Uitzonderingen ongeordend:` header belongs
+  to no rule — an annotation belongs to the rule directly below it, and the
+  header is none — so it reaches no default and no group. It used to vanish
+  without a word; it now draws a WARNING that names it, instead of being hung
+  on a member the author did not choose. The same WARNING, citing §9.10,
+  covers an annotation above a `Regelgroep` header (fix round, 2026-09-23).
+  The group's own `bron` field is no place for it: on a `ResolvedRegelGroep`
+  that field is the v0 source snippet of the group's name. A `Beslistabel`
+  header is the one header whose annotation does reach the wire, because the
+  table is rules: the annotation lands in the `bronAnnotaties` of every rule the
+  table desugars to, the multi-version precedent of IR-SPEC ch. 3.1 (one comment
+  block above a shared header, stamped per flattened entry). Until the same fix
+  round it vanished, since each row is re-parsed in a stream of its own where no
+  comment stands above it. An annotation above
+  a definition (an `Objecttype`, `Feittype`, `Domein`, `Parameter`, …) draws no
+  warning: it documents the declaration, which has no wire slot for it, and it
+  is common practice — 351 of the 736 annotations in the measured operational
+  ruleset collection stand above a definition.
+
+Witness: `DefaultsBronAnnotatieTest`, `BronAnnotatiePlaatsTest`.
+
 ### Fail-fast refusals (resolver, loud diagnostics)
 
 - an `Uitzondering op` naming a base rule that does not exist;
@@ -111,7 +193,78 @@ prioritized-defaults anchors).
 - a base rule that is not a plain kenmerktoekenning/gelijkstelling (an
   initialisatie, or a verdeling/consistentie/objectcreatie/uniciteit);
 - a base rule or exception with more than one `geldig`-versie (not carried by
-  this first card).
+  this first card);
+- an extension block within the scope of a `Regelgroep`, or over a base rule
+  that is a group member (next subsection);
+- a second writer on a group's target (WF-050, fix round 3): a plain rule
+  beside a defaults group — another rule on the base's target, or the other
+  rows of a decision table when one row is the base — or a second group on the
+  target unless every group there is declared unordered (two ordered
+  families, a family beside an unordered block). Each reached disk silently
+  for the verifier to refuse; the ERROR names both writers. Keyed on the
+  declared object type, as WF-050 is, so a supertype's and a subtype's stacks
+  stay two targets. Two unordered blocks on one target stay admitted.
+
+### Interaction with `Regelgroep` (§9.10) — refused
+
+Maintainer decision 2026-09-23, option (a) of the card
+`frontend-regelgroep-sluit-bij-uitzondering`. A `Regelgroep` scopes the
+consecutive rules and decision tables behind its header and exists only to
+mark recursion (§9.10, prose-only in v2.3.0). `groepLid` takes no extension
+block, so until that day a group **ended silently** at the first extension
+block. Measured on the frontend before the refusal (the M5 document of
+`spec/proposals/DIALECT-DEFAULTS-NIET-EN-NESTING.md` §9.1): a group over a
+base rule, its `Uitzondering op` and a third rule emitted `leden` holding the
+base alone with `diagnostics: []`; the exception and the rule behind it fell
+outside the group without a word, and because the lowering lifted the base
+into a defaults group, the verifier then refused the document under WF-033 —
+on the group rather than on the block, and without the cause.
+
+The dialect does not admit the combination. Option (b) — a defaults group as
+a group member — would need WF-033 to accept one and a statement of what a
+defaults group inside a recursive group means: a spec question with three
+executors behind it, recorded and not taken. The refusal is one ERROR at the
+block's own head, citing §9.10 and this section, with two arms:
+
+- **positional** — the block stands directly after a group's last member,
+  where the group would read on if the block were a rule. The arm keys on
+  "neither a definition nor a group" rather than on the two heads by name,
+  so a head a later card adds (`Afwijking van`) is refused there by
+  construction instead of reopening the silent end;
+- **membership** — the block's base rule is a group member, wherever the
+  block stands. A definition that ends the group does not help: the lift
+  would still take the member out of the rule forms, and the group would
+  name nothing (WF-033). A decision table in the group stands for the rules
+  of its rows ("Bergingspremie 1", …), which is what a block names as its
+  base; the table's own name names no rule. The group's own `leden` list
+  those rows too: until the same fix round it carried the table's name, and
+  the verifier refused every group holding a table under WF-033. A row is
+  named after the table and its number, so rows without a number, or with the
+  same one, share a name; that table is refused by name (WF-020, WF-021 at the
+  verifier), and the group lists each name once (fix round 3). The arm speaks only where the
+  lift would happen: a base that resolves to no plain rule — a table's own
+  name, an object creation — gets the lowering's "no base rule" refusal,
+  which names the construct (fix round 2, 2026-09-23); for a table it names
+  the rows and says why none of them alone can be a base (fix round 3). A later head that
+  names a base of its own has to join this arm by name.
+
+A block for which both hold gets one diagnostic naming both reasons, and a
+refused block stays un-lifted together with its whole base family, as the
+other refusals leave it. The way out the message names is one that holds
+wherever the author follows it: before the document's FIRST group header,
+which no group's scope reaches, or behind a definition that ends the group.
+"Before the header of this group" was named until fix round 2 and did not
+hold — with two groups back to back it lands behind the other group's last
+member. A header without any member is a syntax error of its own and draws
+no placement message. What stays clean, and is pinned as clean: a block
+before the group's header, and a block behind a definition that ends the
+group, each over a base outside the group. Two placements that were
+verifier-clean before are refused since — an `Uitzondering op` directly after
+a group whose members do not include its base, and an `Uitzonderingen
+ongeordend` block directly after a group — because at that position the rules
+behind the block would fall outside the group in silence. No `.rgs` source in
+the repository — golden, rood or parity zone — carries a `Regelgroep` at all,
+so nothing in the corpus moves. Witness: `RegelgroepUitzonderingTest`.
 
 ### Emission (v0-mirror invariant)
 
@@ -438,6 +591,99 @@ emitted before, which is the measurement above stated as a property.
 
 ---
 
+## §8.4.3 A time window's bounds — narrowed to the wire's two shapes
+
+Not a dialect extension and not inert: a narrowing of what v2.3.0 spells.
+§13.4.15.68 gives a periodevergelijking ("vanaf …", "van … tot …", "tot en met
+…") any date expression as a bound, and the frontend used to build every one of
+them into a window. WF-111 (`spec/IR-SPEC.md` ch. 4.6, maintainer decision
+2026-09-23) admits two shapes on the wire — a date literal, or an own scalar
+date attribute of the subject — both of day precision; the general date
+expression is an OPEN wire decision (`spec/RUNTIME-SEMANTICS.md` ch. 3.12).
+Measured before the fence (2026-09-23): a parameter, a navigated read, a
+datum-tijd attribute, a computed date ("zijn peildatum plus 1 dg"), a
+time-dependent attribute, a datum-tijd literal and an attribute of another
+object type each reached disk with `diagnostics: []`, and the verifier refused
+every one. `RuleChecker.periodeGrensFout` refuses them now with an ERROR that
+names the shape, so the document never reaches disk. No source in any zone
+writes a window with such a bound, so nothing moves.
+
+**"Own" is written on the subject, and compared by identity.** WF-111's text
+admits an attribute "on an object type the subject satisfies" (`S ⊑ O`). This
+frontend writes an own read — an inherited attribute included — with the
+subject as its object type: "zijn peildatum" in a rule on a subtype is an
+`AttribuutRef` on that subtype. A read that names any other type, a supertype of
+the subject included ("de peildatum van de Jutter" in a rule on a subtype of
+Jutter), goes out as a navigation — with by-pair bindings when a fact type
+relates the two types, which the verifier refuses as navigated (WF-111), or
+without any, which it refuses under WF-053 as an off-subject read no fact type
+carries. So the fence compares by identity, as the Drools gate
+`Tijdrekening.periodeGrensLowerbaar` does; with `⊑` it would pass the
+supertype-named read on to a verifier that refuses it. The message for that
+case says how to read the subject's own date instead. Witness:
+`PeriodegrensTest`.
+
+**The window's position — WF-112** (fix round 2, 2026-09-23). v2.3.0 lets a
+"het is de periode …" bullet stand in any compound condition (§13.4.15.69),
+under any quantifier. The wire does not: a window gates the RULE, so under
+'geen van de' or a counting quantifier ('ten minste', 'ten hoogste',
+'precies') its verdict would be complemented or counted, and no reading is
+specified for that. Measured before the fence: the bullet under each of those
+four quantifiers, and under a 'geen van de' sub-compound of an 'alle' compound,
+reached disk with `diagnostics: []`, and the verifier refused every one.
+`RuleChecker.keurVensterposities` now walks every condition the emitter writes —
+the reach of the verifier's own walk, conditions nested in expressions included
+— and refuses each composite or quantifier fold of that kind that holds a
+window, with an ERROR naming the quantifier. Under 'alle', or as the rule's own
+voorwaardendeel, the window stays admitted. No source in any zone writes the
+refused form. Witness: `VensterKwantorTest`.
+
+**A window bullet written last in a compound subselection** (same fix round).
+The grammar ends such a subselection at the bullet's words "het is de periode",
+reads them as a characteristic of that name (a marker), and takes the bound as
+the RULE's voorwaardendeel: a window on the whole rule, which is a different
+document from the one written, while the warnings name only the marker. The
+same bullet written earlier in the list is read as a window inside the filter.
+The frontend refuses the split with an ERROR at the rule; the grammar is not
+changed. Witness: `RegeldoelTest`.
+
+---
+
+## §13.4.4 A rule target is written on the subject — narrowed
+
+§13.4.4 gives a gelijkstelling an `<attribuutvanonderwerp>` target, whose
+onderwerpketen may run through roles ("De vakpremie van het strandvak van een
+Jutter …"). This frontend builds a target on the rule's universal subject only,
+and such a sentence used to come out as an attribute named "vakpremie van het
+strandvak" on Jutter — the name swallowed the navigation — reaching disk with
+`diagnostics: []` for the verifier to refuse under WF-022 and WF-034. An
+undeclared attribute target did the same, and so did a characteristic whose
+subject is a navigation, which resolves to no object type at all. Since fix
+round 2 (2026-09-23) each is an ERROR naming the form
+(`RuleChecker.keurRegeldoelen`). An undeclared characteristic on a resolved
+subject is not fenced here: that is the ground of the dialect card for negated
+decisions ("is niet X"). No source in any zone writes the refused forms. A
+refused target inside an extension block speaks alone: the defaults lowering
+skips its family, whose checks would otherwise judge a target the author did
+not write and add a second refusal ("is geen kenmerktoekenning of
+gelijkstelling", "schrijft een ander doel") beside the true one (fix round 3).
+Witness: `RegeldoelTest`.
+
+**A cell of a dimensioned attribute as the target** (fix round 3). The wire has
+no cell assignment: a rule's target is an attribute reference, which WF-022
+demands, and the dimension-cell node is a read (IR-SPEC ch. 4.3). "De premie
+van een Jutter in voorjaar moet gesteld worden op 10" put the label into the
+subject text and wrote the WHOLE attribute — verifier PASS on a different
+document than the one written. It is refused now with the cell named
+(attribute, dimension, label), and so is "De premie in voorjaar van een Jutter
+…", which was refused before as an undeclared attribute without naming the
+dimension. A whole-attribute write of a dimensioned attribute, with no label at
+all, stays unfenced: the verifier admits it, `ref` and clingo write the value as
+a scalar, and the Drools exec branch fails at fire time — a norm question for
+the verifier line, recorded in the card. Witness: `DimensieDoelTest`.
+
+---
+
 ## §13.4.17.47 The count's operand list — an ACCEPTING superset, fenced in the resolver
 
 Unlike the three sections above this is **not** a dialect extension and it is
@@ -557,3 +803,42 @@ refusals, and the two counter-proofs). Measured red-first on the pre-card
 frontend (5b42e5b9): both of this card's golden sources — `jutterswet-vondstunie`
 and `jutterswet-keurunie` — were refused with the WF-037 arity ERROR and wrote
 nothing.
+
+### A type as the operand: no count over all instances (2026-09-23)
+
+`aantalFunc` takes any `primaireExpressie`, so "het aantal Vondsten" — an
+object type's plural with nothing it is counted from — parses as a count. The
+card `frontend-typemeervoud-telling` asked whether the source language knows a
+count over ALL instances of a type, and measured that it does not:
+
+- the count takes a plural subject expression (§5.8.1; typeringen §4.11 admits
+  subject expressions only), and §5.8 enumerates the plural ones — a
+  concatenation (§5.7), a selection whose object or role selector is plural
+  (§5.5.2, §5.5.5), a subselection (§5.6) — each hanging on a subject the rule
+  binds per instance (§5.5.3);
+- an object type stands in an onderwerpketen only in the singular, behind an
+  article: as the universal subject the rule is applied to per instance, or as
+  a reference back to it (§5.5.1, §5.5.3, §13.4.1). Its plural has no place
+  there;
+- the only document-wide range over a type, "van alle <objecttype>", is the
+  uniqueness check's own subject expression (§8.1.6, its syntax in §9.5),
+  admitted in a single criterion of a consistency rule and nowhere as an
+  aggregation operand;
+- the reference toolchain has no lowering for the sentence either — its
+  resolver leaves it a marker and emits nothing without an explicit override —
+  and no count in the official casus of the repository's temporary parity zone
+  counts a type: its two count sentences count a role.
+
+So the form stays refused, and nothing reaches the wire. The refusal is older
+than the card (WF-037's source-less-count arm), but its sentence said that the
+operand "names no instances to count", which is untrue for an author who named
+a population. The sentence now states the norm and the way out — count through
+a role from the rule's subject, naming that role when exactly one reaches the
+type from it and it is plural (a to-one role counts 0 or 1, never a
+population) — for every spelling that reaches it: bare, with an article or "alle", the
+type's own name, the plural in lower case, in parentheses. Only an operand that
+resolved to nothing declared qualifies, so a parameter or a "Daarbij geldt"
+variable that shares a type's name keeps the generic sentence. A subselection
+over a bare type ("het aantal Vondsten die gewogen zijn") parses another way
+and is refused by the subselection fence of §5.6 with its own sentence.
+Witness: `TypemeervoudTellingTest`.

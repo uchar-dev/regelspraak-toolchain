@@ -57,6 +57,19 @@ final class RuleChecker {
      *  {@code Bron:}, in source order), set at the start of {@link #regelVersies} and carried onto every
      *  {@link ResolvedRegel} version it produces. Empty when the rule carried none. */
     private List<String> huidigeBronAnnotaties = List.of();
+    /** The names of the rules each §12 decision table desugared to, one per row, recorded by
+     *  {@link #beslistabellen}. A table has no rule form of its own — its rows are the rules — so a reader that
+     *  asks which rules a table stands for asks here. */
+    private final Map<BeslistabelContext, List<String>> rijRegels = new java.util.IdentityHashMap<>();
+    /** The rules whose target {@link #keurRegeldoelen} refused. The defaults lowering skips their families: its
+     *  own checks would judge a target the author did not write (a navigation swallowed into a name) and add a
+     *  second, misleading refusal beside the true one. */
+    private final java.util.Set<ResolvedRegel> geweigerdeDoelen =
+            java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+    /** Where each defaults group was written — the block's head line and the head's own words — so a refusal
+     *  about the group can stand at the block that made it. */
+    private final Map<PrioritizedDefaults, Herkomst> pdHerkomst = new java.util.IdentityHashMap<>();
+    private record Herkomst(int line, String kop) {}
 
     /** The main parse's token stream, kept so the §Bron statuutannotaties on the HIDDEN channel
      *  (the {@code // Bron: …} comments) can be gathered directly above each rule. Null when the
@@ -88,7 +101,9 @@ final class RuleChecker {
         // covers the lifted rules too — and covers them once.
         keurSetlezingen();
         keurDeelselecties(doc);
+        keurRegeldoelen();    // WF-022, before the lift: the lowering reads these targets as they are
         defaults(doc);        // §4 lift the base+exception families and unordered groups into PrioritizedDefaults nodes
+        keurVensterposities(); // WF-112, over the conditions as emitted — after the lift, so defaults are covered
     }
 
     /**
@@ -138,7 +153,7 @@ final class RuleChecker {
 
     /** §9.10 build the {@link io.github.yhavinga.regelspraak.ir.ResolvedRegelGroep} carriers (member RULE NAMES + the
      *  {@code recursief} marker) and run the fase-2 structural checks — a DOCUMENTED EXTENSION (see
-     *  docs/grammar-divergences.md '§9.10 recursie / regelgroep'). Members were already resolved as ungrouped
+     *  grammar/DIVERGENCES.md '§9.10 recursie / regelgroep'). Members were already resolved as ungrouped
      *  rules above (their {@link ResolvedRegel}/objectcreatie/… entries keep the bare written name); this only
      *  records the grouping and validates the recursief marker. Fase-2 checks:
      *  (a) a recursief group with NO objectcreatie member -> ERROR (nothing can advance the chain);
@@ -149,10 +164,13 @@ final class RuleChecker {
         for (RegelGroepContext g : doc.regelGroep()) {
             boolean recursief = g.RECURSIEF() != null;
             int line = g.getStart().getLine();
+            kopAnnotatie(g, "Regelgroep '" + DefinitionResolver.src(g.kaleNaam()) + "'", "§9.10", line);
             List<String> leden = new ArrayList<>();
+            // Members are RULE names (IR-SPEC ch. 3.9, WF-033). A decision table is no rule form: it stands for the
+            // rules of its rows, so those are what the group lists — the table's own name resolves to nothing.
             for (GroepLidContext lid : g.groepLid())
                 if (lid.regel() != null) leden.add(DefinitionResolver.src(lid.regel().regelNaam()));
-                else if (lid.beslistabel() != null) leden.add(DefinitionResolver.src(lid.beslistabel().beslistabelNaam()));
+                else if (lid.beslistabel() != null) leden.addAll(rijRegels.getOrDefault(lid.beslistabel(), List.of()));
             String naam = DefinitionResolver.src(g.kaleNaam());
             model.regelGroepen.add(new io.github.yhavinga.regelspraak.ir.ResolvedRegelGroep(naam, recursief, leden, bron(g.kaleNaam()), line));
             if (!recursief) continue;
@@ -193,17 +211,347 @@ final class RuleChecker {
     }
 
     /** §4 lower the extension blocks into {@link PrioritizedDefaults} nodes. Fails fast (a clear ERROR, and the block
-     *  stays un-lifted) on an unknown base, a target mismatch, an unsupported base kind, or a multi-version rule. */
+     *  stays un-lifted) on a block within a Regelgroep's scope, an unknown base, a target mismatch, an unsupported
+     *  base kind, or a multi-version rule. */
     private void defaults(RegelSpraakDocumentContext doc) {
-        ordeningsDefaults(doc);
-        groepsDefaults(doc);
+        java.util.Set<ParserRuleContext> geweigerd = regelgroepReikwijdte(doc);
+        ordeningsDefaults(doc, geweigerd);
+        groepsDefaults(doc, geweigerd);
+        keurEnigeSchrijver();
+    }
+
+    /** WF-050's single writer, producer side (fix round 3, 2026-09-23): a target with a defaults group has no
+     *  other writer — no plain rule beside the group, and no second group unless every group on the target is
+     *  declared unordered. The lowering built each group from its own block and never looked beside it, so an
+     *  'Uitzondering op' with another plain rule on its target, an exception on one row of a decision table (the
+     *  other rows write on), two ordered families on one target, a family beside an unordered block, and an
+     *  unordered block beside a plain rule all reached disk silently for the verifier to refuse. Keyed on the
+     *  DECLARED object type, as WF-050 is: a supertype's and a subtype's stacks are two keys (the inheritance
+     *  obligation of IR-SPEC ch. 6.1). One ERROR per target and clause, naming both writers; a rule whose target
+     *  is refused already is not counted again. */
+    private void keurEnigeSchrijver() {
+        Map<String, List<PrioritizedDefaults>> perDoel = new LinkedHashMap<>();
+        for (PrioritizedDefaults pd : model.prioritizedDefaults)
+            perDoel.computeIfAbsent(doelSleutel(pd.onderwerp(), pd.isKenmerk(), pd.doel()), k -> new ArrayList<>()).add(pd);
+        for (var e : perDoel.entrySet()) {
+            List<PrioritizedDefaults> groepen = e.getValue();
+            String doelTekst = groepen.get(0).onderwerp() + "." + groepen.get(0).doel();
+            String groepsnamen = opsomming(groepen.stream().map(PrioritizedDefaults::naam).toList());
+            List<String> anderen = new ArrayList<>();
+            for (ResolvedRegel r : model.resolvedRegels) {
+                if (geweigerdeDoelen.contains(r)) continue;
+                DefaultsDoel d = doelVan(r);
+                if (d != null && e.getKey().equals(doelSleutel(d.onderwerp().naam, d.kenmerk(), d.naam())))
+                    anderen.add("'" + r.naam() + "'" + tabelVanRij(r.naam()));
+            }
+            if (!anderen.isEmpty()) {
+                Herkomst h = pdHerkomst.getOrDefault(groepen.get(0), new Herkomst(0, "defaults-groep"));
+                model.diagnostics.add(new Diagnostic(Severity.ERROR, h.kop() + ": het doel " + doelTekst
+                        + " heeft naast de defaults-groep " + groepsnamen + " nog "
+                        + (anderen.size() == 1 ? "een schrijver: regel " : "schrijvers: regels ")
+                        + String.join(", ", anderen) + " — een doel met een defaults-groep verdraagt geen andere "
+                        + "schrijver, want een gewone regel ernaast zou de besluiten van de groep stil tenietdoen "
+                        + "(WF-050). Neem de regel op in de groep, of geef hem een ander doel", h.line()));
+            }
+            if (groepen.size() > 1 && !groepen.stream().allMatch(PrioritizedDefaults::ongeordend)) {
+                Herkomst h = pdHerkomst.getOrDefault(groepen.get(groepen.size() - 1), new Herkomst(0, "defaults-groep"));
+                model.diagnostics.add(new Diagnostic(Severity.ERROR, h.kop() + ": het doel " + doelTekst
+                        + " heeft meer dan één defaults-groep (" + groepsnamen + ") en niet elke groep is "
+                        + "ongeordend — meerdere groepen op één doel mogen alleen als elk ongeordend is, want "
+                        + "voorrang is expliciet of expliciet afwezig (WF-050). Zet de uitzonderingen onder één "
+                        + "basisregel, of schrijf de leden samen in een ongeordend blok", h.line()));
+            }
+        }
+    }
+
+    private static String doelSleutel(String onderwerp, boolean kenmerk, String naam) {
+        return onderwerp + "|" + (kenmerk ? "kenmerk" : "attribuut") + "|" + naam.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /** " (een rij van beslistabel 'T')" when {@code regel} is a row of decision table T, else "". */
+    private String tabelVanRij(String regel) {
+        for (var e : rijRegels.entrySet())
+            if (e.getValue().contains(regel)) return " (een rij van beslistabel '" + src(e.getKey().beslistabelNaam()) + "')";
+        return "";
+    }
+
+    /** §9.10 × §4 (maintainer decision 2026-09-23): an extension block within the scope of a Regelgroep is
+     *  refused, at the block's own head. The group exists only to mark recursion (§9.10), and {@code groepLid}
+     *  takes rules and decision tables only — so before this refusal a group ENDED SILENTLY at the first
+     *  extension block, every rule behind the block fell outside it without a word, and when the block's base was
+     *  a member the lift left the group naming no rule form, which the verifier then refused under WF-033 on the
+     *  group instead of on the block. Two arms, one ERROR per block naming every reason that holds:
+     *  <ul>
+     *  <li>POSITIONAL — the block stands directly after a group's last member, where the group would still read
+     *      on if the block were a rule. Keyed on "neither a definition nor a group" rather than on the extension
+     *      heads by name, so a head a later card adds is refused here by construction instead of reopening the
+     *      silent end;</li>
+     *  <li>MEMBERSHIP — the block's base rule is a group member, wherever the block stands. A later head that
+     *      names a base of its own has to join this arm by name.</li>
+     *  </ul>
+     *  A refused block stays un-lifted together with its whole base family, as every other refusal of this pass
+     *  leaves it. */
+    private java.util.Set<ParserRuleContext> regelgroepReikwijdte(RegelSpraakDocumentContext doc) {
+        // Keyed on RULE names: a decision-table member stands for the rules of its rows, which is what a block
+        // names as its base ("Bergingspremie 1"); the table's own name names no rule at all.
+        Map<String, Lidmaatschap> groepVanLid = new LinkedHashMap<>();
+        for (RegelGroepContext g : doc.regelGroep())
+            for (GroepLidContext lid : g.groepLid()) {
+                if (lid.regel() != null)
+                    groepVanLid.putIfAbsent(src(lid.regel().regelNaam()), new Lidmaatschap(src(g.kaleNaam()), null));
+                else if (lid.beslistabel() != null)
+                    for (String rij : rijRegels.getOrDefault(lid.beslistabel(), List.of()))
+                        groepVanLid.putIfAbsent(rij, new Lidmaatschap(src(g.kaleNaam()),
+                                src(lid.beslistabel().beslistabelNaam())));
+            }
+        java.util.Set<ParserRuleContext> geweigerd =
+                java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        // The way out names the FIRST group header: nothing before it is in any group's scope, whereas "before
+        // the header of the group at hand" can itself sit behind another group's last member.
+        String eersteGroep = doc.regelGroep().isEmpty() ? null : src(doc.regelGroep().get(0).kaleNaam());
+        ParseTree vorige = null;
+        for (ParseTree kind : doc.children == null ? List.<ParseTree>of() : doc.children) {
+            if (kind instanceof ParserRuleContext blok && !(kind instanceof DefinitieContext)
+                    && !(kind instanceof RegelGroepContext) && !(kind instanceof RegelContext)
+                    && !(kind instanceof BeslistabelContext)) {
+                List<String> redenen = new ArrayList<>();
+                // A header with no member is already a syntax error, and has no last member to stand behind.
+                if (vorige instanceof RegelGroepContext g && !g.groepLid().isEmpty())
+                    redenen.add("het staat direct na het laatste lid van regelgroep '" + src(g.kaleNaam())
+                            + "', waar de groep stil eindigt, zodat het blok en elke regel erna buiten de groep "
+                            + "zouden vallen");
+                if (kind instanceof UitzonderingRegelContext u) {
+                    String basis = src(u.uitzonderingBasisNaam());
+                    Lidmaatschap l = groepVanLid.get(basis);
+                    // Only where the lift would happen: a base that resolves to no rule gets the ordinary "no base
+                    // rule" refusal of the lowering, which is the true one there.
+                    if (l != null && !resolvedVan(basis).isEmpty()) {
+                        redenen.add("zijn basisregel '" + basis + "' is "
+                                + (l.tabel() == null ? "lid" : "een rij van beslistabel '" + l.tabel() + "', lid")
+                                + " van regelgroep '" + l.groep() + "', en het liften naar een defaults-groep zou dat "
+                                + "lid uit de regelvormen halen, zodat de groep naar niets meer verwijst (WF-033)");
+                    }
+                }
+                if (!redenen.isEmpty()) {
+                    geweigerd.add(blok);
+                    model.diagnostics.add(new Diagnostic(Severity.ERROR, blokKop(blok) + ": een uitzonderingsblok "
+                            + "is in het dialect niet toegestaan binnen de reikwijdte van een regelgroep, noch met "
+                            + "een groepslid als basisregel — "
+                            + String.join("; ", redenen) + ". Een regelgroep bestaat alleen om recursie te "
+                            + "markeren (§9.10) en omvat alleen regels en beslistabellen; een defaults-blok "
+                            + "(dialect §4) hoort er niet in. Plaats het blok"
+                            + (kind instanceof UitzonderingRegelContext ? " en zijn basisregel" : "")
+                            + " buiten elke regelgroep: vóór de eerste regelgroepkop van het document ('Regelgroep "
+                            + eersteGroep + "'), of achter een definitie die de groep afsluit",
+                            blok.getStart().getLine()));
+                }
+            }
+            vorige = kind;
+        }
+        return geweigerd;
+    }
+
+    /** A rule's place in a Regelgroep: the group, and the decision table it is a row of (null for a plain
+     *  rule member). */
+    private record Lidmaatschap(String groep, String tabel) {}
+
+    /** WF-022, producer side (fix round 2, 2026-09-23): a rule writes a declared attribute or characteristic of
+     *  its OWN universal subject. The frontend builds a target on the subject only, so a sentence that names
+     *  another instance's attribute — "De vakpremie van het strandvak van een Jutter moet …" — came out as an
+     *  attribute named 'vakpremie van het strandvak' on Jutter: the name swallowed the navigation, the type
+     *  stayed unknown, and the document reached disk with {@code diagnostics: []} for the verifier to refuse
+     *  under WF-022 and WF-034. The same for an undeclared attribute, and for a characteristic whose subject is a
+     *  navigation, which resolves to no object type at all. Each is an ERROR now, naming the form. An undeclared
+     *  characteristic on a resolved subject is left to the dialect card for negated decisions ("is niet X"),
+     *  whose ground that is. */
+    private void keurRegeldoelen() {
+        for (ResolvedRegel r : model.resolvedRegels) {
+            if (!(r.doel() instanceof Expr.AttribuutRef a)) continue;
+            int line = a.bron() == null ? 0 : a.bron().line();
+            String geschreven = a.bron() == null ? a.attribuut() : a.bron().snippet();
+            String fout = null;
+            if (a.objecttype() == null)
+                fout = "het onderwerp '" + a.onderwerpBron() + "' lost niet op tot een objecttype: een regel schrijft "
+                        + "een attribuut of kenmerk van zijn eigen universele onderwerp ('een <Objecttype>'), en een "
+                        + "navigatie naar een ander exemplaar bouwt deze frontend niet als regeldoel";
+            else if (r.soort() != ResolvedRegel.Soort.KENMERKTOEKENNING && a.objecttype().attribuut(a.attribuut()) == null
+                    && celAlsNaam(a.objecttype(), a.attribuut()) != null)
+                fout = "'" + a.attribuut() + "' is een " + celAlsNaam(a.objecttype(), a.attribuut()) + CEL_GEEN_DOEL;
+            else if (r.soort() != ResolvedRegel.Soort.KENMERKTOEKENNING && a.objecttype().attribuut(a.attribuut()) != null
+                    && celNaOnderwerp(a.objecttype(), a.attribuut(), a.onderwerpBron()) != null)
+                fout = "het doel is een " + celNaOnderwerp(a.objecttype(), a.attribuut(), a.onderwerpBron())
+                        + CEL_GEEN_DOEL + "; zonder dit hek schreef de zin het hele attribuut";
+            else if (r.soort() != ResolvedRegel.Soort.KENMERKTOEKENNING && a.objecttype().attribuut(a.attribuut()) == null)
+                fout = a.attribuut().matches("(?i).*\\svan\\s.*")
+                        ? "het doel is een genavigeerde lezing: '" + a.attribuut() + "' is geen attribuut van "
+                                + a.objecttype().naam + " — de naam slokte de navigatie op. Een regel schrijft een "
+                                + "attribuut van zijn eigen universele onderwerp; schrijf de regel op het objecttype dat "
+                                + "het attribuut draagt ('De <attribuut> van een <Objecttype> …')"
+                        : "'" + a.attribuut() + "' is geen gedeclareerd attribuut van " + a.objecttype().naam;
+            if (fout != null) {
+                geweigerdeDoelen.add(r);
+                model.diagnostics.add(new Diagnostic(Severity.ERROR, "regeldoel '" + geschreven + "': " + fout
+                        + " (WF-022, IR-SPEC ch. 3.1)", line));
+            }
+        }
+    }
+
+    /** The wire has no cell assignment: a rule's target is an attribute reference (WF-022 refuses any other node
+     *  there), and the dimension-cell node is a READ (IR-SPEC ch. 4.3). */
+    private static final String CEL_GEEN_DOEL = " — een regel kent op de wire een attribuut toe en geen cel (het doel "
+            + "is een attribuutverwijzing; de dimensiecel bestaat alleen als lezing)";
+
+    /** "cel van het gedimensioneerde attribuut 'premie' (dimensie seizoen, label 'voorjaar')" when {@code naam} is
+     *  a dimensioned attribute of {@code ot} with its preposition and one of its labels written behind it as one
+     *  name ("premie in voorjaar"), else null. Single-dimension attributes, the suffix form — the shape
+     *  {@code ExpressieBouwer.dimensieCel} reads. */
+    private String celAlsNaam(Objecttype ot, String naam) {
+        for (var e : ot.gedimensioneerdeLeden().entrySet()) {
+            if (e.getValue().size() != 1) continue;
+            RegelSpraakModel.Dimensie d = model.dimensieOpNaam(e.getValue().get(0));
+            if (d == null || d.voorzetsel() == null) continue;
+            for (String label : d.waarden())
+                if ((e.getKey() + " " + d.voorzetsel() + " " + label).equalsIgnoreCase(naam.trim()))
+                    return celTekst(e.getKey(), d, label);
+        }
+        return null;
+    }
+
+    /** The same cell written after the SUBJECT ("De premie van een Jutter in voorjaar"): the parse left the
+     *  attribute bare and put the preposition and label into the subject text. Null when it is not. */
+    private String celNaOnderwerp(Objecttype ot, String attribuut, String onderwerpTekst) {
+        if (onderwerpTekst == null) return null;
+        for (String dn : ot.dimensiesVan(attribuut)) {
+            RegelSpraakModel.Dimensie d = model.dimensieOpNaam(dn);
+            if (d == null || d.voorzetsel() == null) continue;
+            for (String label : d.waarden())
+                if (onderwerpTekst.toLowerCase(java.util.Locale.ROOT).endsWith(
+                        (" " + d.voorzetsel() + " " + label).toLowerCase(java.util.Locale.ROOT)))
+                    return celTekst(ot.attribuutNaam(attribuut), d, label);
+        }
+        return null;
+    }
+
+    private static String celTekst(String attribuut, RegelSpraakModel.Dimensie d, String label) {
+        return "cel van het gedimensioneerde attribuut '" + attribuut + "' (dimensie " + d.naam() + ", label '"
+                + label + "')";
+    }
+
+    /** WF-112 (maintainer decision 2026-09-23), producer side: a time window never sits under 'geen van de' or
+     *  a counting quantifier — as a member of such a composite at any depth, or in the filter or test of such a
+     *  quantifier fold. The window gates the RULE (RUNTIME-SEMANTICS ch. 3.10); a quantifier that complements or
+     *  counts its verdict reads it as something no clause specifies. Before this fence each such document was
+     *  written without a word and refused by the verifier. The walk mirrors the verifier's: every condition the
+     *  emitter writes (the roots {@code Resolver.meldOnopgelost} sweeps), into the conditions nested in
+     *  expressions, with {@link Conditie#bevatPeriode} as the window test — the reach of its
+     *  {@code cond_has_window}. One ERROR per offending composite or fold, so {@link Resolver#irModus} writes
+     *  nothing. */
+    private void keurVensterposities() {
+        for (ResolvedRegel r : model.resolvedRegels) {
+            vensterPositie(r.voorwaarde()); vensterPositieIn(r.doel()); vensterPositieIn(r.waarde());
+        }
+        for (var d : model.resolvedDagsoorten) vensterPositie(d.voorwaarde());
+        for (var oc : model.objectCreaties) {
+            vensterPositie(oc.voorwaarde());
+            for (var t : oc.toekenningen()) vensterPositieIn(t.waarde());
+        }
+        for (var v : model.verdelingen) vensterPositie(v.voorwaarde());
+        for (var c : model.consistenties) vensterPositie(c.assertie());
+        for (var fc : model.feitCreaties) vensterPositie(fc.voorwaarde());
+        for (var pd : model.prioritizedDefaults) vensterPositieDefaults(pd.defaults());
+    }
+
+    private void vensterPositieDefaults(List<Default> defaults) {
+        if (defaults == null) return;
+        for (Default d : defaults) {
+            vensterPositie(d.voorwaarde());
+            vensterPositieIn(d.consequentie());
+            if (d.excepties() != null)
+                for (var groep : d.excepties().leden()) vensterPositieDefaults(groep.defaults());
+        }
+    }
+
+    private void vensterPositie(Conditie c) {
+        if (c == null) return;
+        switch (c) {
+            case Conditie.Samengesteld s -> {
+                if (teltOfOntkent(s.kwantor()) && s.onderdelen().stream().anyMatch(Conditie::bevatPeriode))
+                    vensterFout(s.kwantor(), s.drempel(), s.bron(), "als lid van een samengestelde voorwaarde");
+                s.onderdelen().forEach(this::vensterPositie);
+            }
+            case Conditie.Kwantorvouw k -> {
+                if (teltOfOntkent(k.kwantor()) && (Conditie.bevatPeriode(k.filter()) || Conditie.bevatPeriode(k.toets())))
+                    vensterFout(k.kwantor(), k.drempel(), k.bron(), "in het filter of de toets van een kwantorvouw");
+                vensterPositie(k.filter());
+                vensterPositie(k.toets());
+            }
+            case Conditie.Vergelijking v -> { vensterPositieIn(v.links()); vensterPositieIn(v.rechts()); }
+            case Conditie.Predicaat p -> vensterPositieIn(p.operand());
+            case Conditie.Periode p -> { vensterPositieIn(p.vanaf()); vensterPositieIn(p.tot()); }
+            default -> { }
+        }
+    }
+
+    private void vensterPositieIn(Expr e) {
+        if (e == null) return;
+        switch (e) {
+            case Expr.Binair b -> { vensterPositieIn(b.links()); vensterPositieIn(b.rechts()); }
+            case Expr.Functie f -> {
+                f.argumenten().forEach(this::vensterPositieIn);
+                vensterPositieIn(f.leegwaarde());
+                vensterPositie(f.filter());
+            }
+            case Expr.Afgerond a -> vensterPositieIn(a.basis());
+            case Expr.Begrensd b -> {
+                vensterPositieIn(b.basis()); vensterPositieIn(b.minimum()); vensterPositieIn(b.maximum());
+            }
+            case Expr.TekstReeks t -> t.delen().forEach(d -> {
+                if (d instanceof Expr.TekstReeks.Ingevoegd i) vensterPositieIn(i.expr());
+            });
+            case Expr.DimensieCel dc -> vensterPositieIn(dc.attribuut());
+            case Expr.Let l -> { vensterPositieIn(l.value()); vensterPositieIn(l.body()); }
+            case Expr.IfThenElse k -> {
+                vensterPositie(k.conditie()); vensterPositieIn(k.dan()); vensterPositieIn(k.anders());
+            }
+            case Expr.InstanceSetUnion u -> u.takken().forEach(t -> vensterPositie(t.filter()));
+            default -> { }
+        }
+    }
+
+    /** 'geen van de' and the three counting quantifiers: the ones that complement or count a verdict. */
+    private static boolean teltOfOntkent(Conditie.Kwantor k) {
+        return k == Conditie.Kwantor.GEEN || k == Conditie.Kwantor.TEN_MINSTE
+                || k == Conditie.Kwantor.TEN_HOOGSTE || k == Conditie.Kwantor.PRECIES;
+    }
+
+    private void vensterFout(Conditie.Kwantor k, int drempel, Bron bron, String plaats) {
+        String woorden = switch (k) {
+            case GEEN -> "geen van de";
+            case TEN_MINSTE -> "ten minste " + drempel;
+            case TEN_HOOGSTE -> "ten hoogste " + drempel;
+            case PRECIES -> "precies " + drempel;
+            default -> k.name().toLowerCase();
+        };
+        model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                "periodevergelijking onder '" + woorden + "' (" + plaats + "): een venster (§8.4.3) maakt de REGEL "
+                + "tijdsafhankelijk, en onder 'geen van de' of een tellende kwantor wordt zijn oordeel ontkend of "
+                + "geteld — daar is geen lezing voor (WF-112, IR-SPEC ch. 4.6). Zet het venster buiten die "
+                + "kwantor: als eigen voorwaardendeel, of als lid onder 'alle'",
+                bron == null ? 0 : bron.line()));
+    }
+
+    /** The head a refusal names an extension block by, in the spelling the other §4 refusals use. */
+    private static String blokKop(ParserRuleContext blok) {
+        if (blok instanceof UitzonderingRegelContext u) return "Uitzondering op '" + src(u.uitzonderingBasisNaam()) + "'";
+        if (blok instanceof UitzonderingGroepContext) return "Uitzonderingen ongeordend";
+        return blok.getStart().getText();
     }
 
     /** The ordered form: each base rule with one-or-more 'Uitzondering op &lt;base&gt;' blocks becomes ONE
      *  defaults group — the exception default(s) above the base default, descending priority. Later-written
      *  blocks stack HIGHER (PRIORITIZED-DEFAULTS-EVOLUTIE §4.2). The base rule and every exception leave
      *  resolvedRegels. */
-    private void ordeningsDefaults(RegelSpraakDocumentContext doc) {
+    private void ordeningsDefaults(RegelSpraakDocumentContext doc, java.util.Set<ParserRuleContext> geweigerd) {
         java.util.LinkedHashMap<String, List<UitzonderingRegelContext>> perBasis = new java.util.LinkedHashMap<>();
         for (UitzonderingRegelContext u : DefinitionResolver.alleUitzonderingen(doc))
             perBasis.computeIfAbsent(DefinitionResolver.src(u.uitzonderingBasisNaam()), k -> new ArrayList<>()).add(u);
@@ -211,6 +559,7 @@ final class RuleChecker {
         for (var en : perBasis.entrySet()) {
             String basisNaam = en.getKey();
             List<UitzonderingRegelContext> excepties = en.getValue();
+            if (excepties.stream().anyMatch(geweigerd::contains)) continue;   // refused at its head already
             int line = excepties.get(0).getStart().getLine();
 
             List<ResolvedRegel> basis = resolvedVan(basisNaam);
@@ -222,6 +571,7 @@ final class RuleChecker {
             }
             if (basis.size() > 1) { multiVersieFout("basisregel", basisNaam, line); continue; }
             ResolvedRegel basisRegel = basis.get(0);
+            if (geweigerdeDoelen.contains(basisRegel)) continue;   // its target is refused already, and by name
             DefaultsDoel doel = doelVan(basisRegel);
             if (doel == null || basisRegel.soort() == ResolvedRegel.Soort.INITIALISATIE) {
                 model.diagnostics.add(new Diagnostic(Severity.ERROR,
@@ -242,6 +592,7 @@ final class RuleChecker {
                     fout = true; break;
                 }
                 if (ex.size() > 1) { multiVersieFout("uitzondering", exNaam, u.getStart().getLine()); fout = true; break; }
+                if (geweigerdeDoelen.contains(ex.get(0))) { fout = true; break; }   // refused already, by name
                 DefaultsDoel exDoel = doelVan(ex.get(0));
                 if (exDoel == null || ex.get(0).soort() == ResolvedRegel.Soort.INITIALISATIE) {
                     model.diagnostics.add(new Diagnostic(Severity.ERROR,
@@ -272,7 +623,10 @@ final class RuleChecker {
 
             List<Default> defaults = new ArrayList<>(excDefaults);
             defaults.add(defaultVan(basisRegel, doel.kenmerk()));
-            model.prioritizedDefaults.add(defaultsVan(basisNaam, doel, false, defaults, basisRegel.geldigheid()));
+            PrioritizedDefaults groep = defaultsVan(basisNaam, doel, false, defaults, basisRegel.geldigheid(),
+                    annotatieTekst(basisRegel.bronAnnotaties()));
+            model.prioritizedDefaults.add(groep);
+            pdHerkomst.put(groep, new Herkomst(line, "Uitzondering op '" + basisNaam + "'"));
 
             model.resolvedRegels.remove(basisRegel);
             for (UitzonderingRegelContext u : excepties) {
@@ -286,9 +640,11 @@ final class RuleChecker {
      *  groups (one per member) over ONE shared target — the §9.5 surface. Every sibling carries
      *  {@code ongeordend} (WF-050: two-or-more defaults groups on one target require it). All members leave
      *  resolvedRegels. */
-    private void groepsDefaults(RegelSpraakDocumentContext doc) {
+    private void groepsDefaults(RegelSpraakDocumentContext doc, java.util.Set<ParserRuleContext> geweigerd) {
         for (UitzonderingGroepContext g : DefinitionResolver.alleUitzonderingGroepen(doc)) {
+            if (geweigerd.contains(g)) continue;   // refused at its head already
             int line = g.getStart().getLine();
+            kopAnnotatie(g, "Uitzonderingen ongeordend", "dialect §4", line);
             List<ResolvedRegel> leden = new ArrayList<>();
             DefaultsDoel gedeeld = null;
             boolean fout = false;
@@ -302,6 +658,7 @@ final class RuleChecker {
                     fout = true; break;
                 }
                 if (rr.size() > 1) { multiVersieFout("groepslid", naam, line); fout = true; break; }
+                if (geweigerdeDoelen.contains(rr.get(0))) { fout = true; break; }   // refused already, by name
                 DefaultsDoel d = doelVan(rr.get(0));
                 if (d == null || rr.get(0).soort() == ResolvedRegel.Soort.INITIALISATIE) {
                     model.diagnostics.add(new Diagnostic(Severity.ERROR,
@@ -321,31 +678,63 @@ final class RuleChecker {
             }
             if (fout || gedeeld == null) continue;
             for (ResolvedRegel r : leden) {
-                model.prioritizedDefaults.add(defaultsVan(r.naam(), gedeeld, true,
-                        List.of(defaultVan(r, gedeeld.kenmerk())), r.geldigheid()));
+                PrioritizedDefaults zuster = defaultsVan(r.naam(), gedeeld, true,
+                        List.of(defaultVan(r, gedeeld.kenmerk())), r.geldigheid(), annotatieTekst(r.bronAnnotaties()));
+                model.prioritizedDefaults.add(zuster);
+                pdHerkomst.put(zuster, new Herkomst(line, "Uitzonderingen ongeordend"));
                 model.resolvedRegels.remove(r);
             }
         }
     }
 
     /** Assemble a {@link PrioritizedDefaults} group for target {@code doel}: kenmerk XOR attribuut per WF-050,
-     *  no per-group bron (a frontend defaults group carries no statute annotation of its own), the
-     *  base/member's geldigheid faithfully. */
-    private PrioritizedDefaults defaultsVan(String naam, DefaultsDoel doel, boolean ongeordend, List<Default> defaults, Geldigheid g) {
+     *  the base/member's geldigheid faithfully, and as {@code bron} the statute annotation of the rule the group
+     *  is named after — the base of an ordered family, the member itself for an unordered sibling. */
+    private PrioritizedDefaults defaultsVan(String naam, DefaultsDoel doel, boolean ongeordend, List<Default> defaults,
+                                            Geldigheid g, String bron) {
         return new PrioritizedDefaults(naam, doel.onderwerp().naam,
                 doel.kenmerk() ? doel.naam() : null, doel.kenmerk() ? null : doel.naam(),
-                ongeordend, defaults, null, g);
+                ongeordend, defaults, bron, g);
     }
 
     /** One default from a resolved flat rule: on characteristic defaults a §9.2-monotone kenmerktoekenning
      *  always decides {@code true} (RegelSpraak cannot withdraw a characteristic); on attribute defaults the
-     *  default's value is the rule's resolved value expression. The justification is the rule's condition. No
-     *  per-default bron. */
+     *  default's value is the rule's resolved value expression. The justification is the rule's condition.
+     *  The rule's {@code // Bron:} annotation becomes the default's {@code bron}: lifting takes the rule out of
+     *  resolvedRegels, and its {@code bronAnnotaties} with it, so this is the one place the citation can
+     *  survive — and since every lifted rule becomes a default HERE, a nested exception inherits the placement
+     *  by construction. */
     private Default defaultVan(ResolvedRegel r, boolean kenmerk) {
         Conditie rechtvaardiging = r.voorwaarde() != null ? r.voorwaarde() : ALTIJD;
+        String bron = annotatieTekst(r.bronAnnotaties());
         return kenmerk
-                ? new Default(Boolean.TRUE, rechtvaardiging, null, false, null, null)
-                : new Default(null, rechtvaardiging, r.waarde(), false, null, null);
+                ? new Default(Boolean.TRUE, rechtvaardiging, null, false, null, bron)
+                : new Default(null, rechtvaardiging, r.waarde(), false, null, bron);
+    }
+
+    /** The annotations of one block as the single string a {@code bron} field holds: the non-blank entries in
+     *  source order joined with "; ", or null when there are none — so an unannotated block keeps the
+     *  {@code bron: null} every defaults golden without annotations carries. A blank entry is dropped as the
+     *  emitter drops it from {@code bronAnnotaties}: it cites nothing. */
+    private static String annotatieTekst(List<String> annotaties) {
+        List<String> gevuld = annotaties.stream().map(String::trim).filter(s -> !s.isEmpty()).toList();
+        return gevuld.isEmpty() ? null : String.join("; ", gevuld);
+    }
+
+    /** A {@code // Bron:} annotation written above a block HEADER — 'Uitzonderingen ongeordend:' or 'Regelgroep
+     *  &lt;naam&gt;' — belongs to no rule: an annotation travels with the rule directly below it, and a header is
+     *  none, so it reaches no default, no group and no rule. It used to vanish without a word; the WARNING says
+     *  where the citation has to go. Not an ERROR: the document is sound, only the citation is lost. These two
+     *  headers warn because they open rules, which is where an author expects the citation to reach; an
+     *  annotation above a definition documents the declaration and has no wire slot to miss. The group's own
+     *  {@code bron} is no place for it either: on a Regelgroep that field is the v0 snippet of its name. */
+    private void kopAnnotatie(ParserRuleContext kop, String kopNaam, String verwijzing, int line) {
+        String tekst = annotatieTekst(bronAnnotaties(kop));
+        if (tekst == null) return;
+        model.diagnostics.add(new Diagnostic(Severity.WARNING,
+                kopNaam + ": de // Bron:-annotatie '" + tekst + "' boven de kop hoort bij geen regel — "
+                + "een annotatie hoort bij de regel direct eronder, en de kop is geen regel — en komt daarom niet op "
+                + "de wire. Zet haar boven het lid of de leden waarvoor zij geldt (" + verwijzing + ")", line));
     }
 
     /** The vacuously true justification. WF-050 requires EVERY non-initialisation default to carry one,
@@ -385,7 +774,22 @@ final class RuleChecker {
                 || model.consistenties.stream().anyMatch(c -> c.naam().equals(naam))
                 || model.objectCreaties.stream().anyMatch(o -> o.naam().equals(naam))
                 || model.uniciteiten.stream().anyMatch(u -> u.naam().equals(naam));
-        return anders ? " (regel '" + naam + "' is een verdeling/consistentie/objectcreatie/uniciteit, geen platte regel)" : "";
+        if (anders) return " (regel '" + naam + "' is een verdeling/consistentie/objectcreatie/uniciteit, geen platte regel)";
+        // A decision table has no rule of its own name: its rules are its rows, and they all write the table's
+        // one target, so none of them alone can be the base of a group that must be that target's only writer.
+        for (var e : rijRegels.entrySet())
+            if (src(e.getKey().beslistabelNaam()).equals(naam) && !e.getValue().isEmpty())
+                return " ('" + naam + "' is een beslistabel, geen regel: haar regels zijn de rijen "
+                        + opsomming(e.getValue()) + ", die samen hetzelfde doel schrijven — een defaults-groep heeft "
+                        + "één basisregel en geen andere schrijver op haar doel (WF-050))";
+        return "";
+    }
+
+    /** "'a'", "'a' en 'b'", "'a', 'b' en 'c'": names as a Dutch list. */
+    private static String opsomming(List<String> namen) {
+        List<String> q = namen.stream().map(n -> "'" + n + "'").toList();
+        return q.size() == 1 ? q.get(0)
+                : String.join(", ", q.subList(0, q.size() - 1)) + " en " + q.get(q.size() - 1);
     }
 
     private void multiVersieFout(String rol, String naam, int line) {
@@ -686,6 +1090,8 @@ final class RuleChecker {
                 List<String> cellen = splitRij(rij.getText());
                 if (!isScheidingsRij(cellen)) grid.add(cellen);
             }
+            List<String> rijen = new ArrayList<>();
+            rijRegels.put(b, rijen);
             if (grid.size() < 2) { // need a header row + ≥1 data row to produce anything
                 model.diagnostics.add(new Diagnostic(Severity.WARNING,
                         "beslistabel '" + naam + "' heeft geen tabelinhoud (alleen een kop) — wordt niet naar IR/DRL omgezet",
@@ -700,10 +1106,28 @@ final class RuleChecker {
             // surfaced as a WARNING — never silently dropped.
             java.util.function.Consumer<String> waarschuw = msg -> model.diagnostics.add(
                     new Diagnostic(Severity.WARNING, "beslistabel '" + naam + "': " + msg, line));
+            // The table's // Bron: annotations go onto EVERY rule it desugars to — the multi-version precedent of
+            // IR-SPEC ch. 3.1 (one comment block above a shared header, stamped per flattened entry). Each row is
+            // re-parsed in a stream of its own, where no comment stands above it, so the annotations are read here,
+            // off the table in the main stream, or they are lost.
+            List<String> tabelAnnotaties = bronAnnotaties(b);
+            List<String> dubbel = new ArrayList<>();
             for (String regelSrc : BeslistabelDesugar.desugar(naam, geldig, headers, data, waarschuw)) {
                 RegelContext rc = parseRegel(regelSrc, line);
-                if (rc != null) regelVersies(rc);
+                if (rc == null) continue;
+                String rijNaam = DefinitionResolver.src(rc.regelNaam());
+                if (rijen.contains(rijNaam)) { if (!dubbel.contains(rijNaam)) dubbel.add(rijNaam); }
+                else rijen.add(rijNaam);
+                regelVersies(rijNaam, rc.regelVersie(), tabelAnnotaties, rc.getStart().getLine());
             }
+            // A row's rule is named after the table and the row's number (its first cell), so rows without a
+            // number, or with the same one, share a name — two rules the verifier refuses as one (WF-020, WF-021).
+            if (!dubbel.isEmpty())
+                model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                        "beslistabel '" + naam + "': rijen krijgen dezelfde regelnaam (" + opsomming(dubbel) + ") — een "
+                        + "rij heet naar de tabel en haar nummer in de eerste cel, dus rijen zonder nummer of met hetzelfde "
+                        + "nummer worden regels met één naam, die de wire niet kan onderscheiden (WF-020, WF-021). "
+                        + "Geef elke rij een eigen nummer", line));
         }
     }
 
@@ -1668,7 +2092,7 @@ final class RuleChecker {
      *  which demands an explicit afronding), so enforcement is RESOLVER-STATIC over the statically-decidable
      *  surface — a LITERAL assigned/initialised into a sign-restricted Numeriek doel — exactly the
      *  enum-domein posture (Tabel 61 rij 7). A computed value's sign is undecidable here and stays
-     *  unchecked (documented in docs/grammar-divergences.md). Percentage carries no Teken in the model. */
+     *  unchecked (documented in grammar/DIVERGENCES.md). Percentage carries no Teken in the model. */
     private void keurTeken(Datatype doelType, Expr waarde, int line) {
         if (!(doelType instanceof Datatype.Numeriek n) || n.teken() == Datatype.Teken.ONBEPAALD) return;
         if (!(waarde instanceof Expr.Literal lit) || lit.type() == null || !lit.type().isNumeriek()) return;
@@ -1731,10 +2155,42 @@ final class RuleChecker {
         }
         // §13.4.13.1 / §8.4.3: a standalone periodevergelijking as the whole voorwaardendeel
         // ("… van dd. 1-1-2024 tot dd. 8-2-2025" directly after the resultaatdeel, no 'indien').
-        if (v.periodevergelijkingEnkelvoudig() != null) return bouwPeriode(v.periodevergelijkingEnkelvoudig());
+        if (v.periodevergelijkingEnkelvoudig() != null) {
+            if (volgtOpPeriodebullet(v.periodevergelijkingEnkelvoudig()))
+                model.diagnostics.add(new Diagnostic(Severity.ERROR,
+                        "periodevergelijking '" + src(v.periodevergelijkingEnkelvoudig()) + "' volgt op een laatste "
+                        + "bullet 'het is de periode' van een samengestelde deelselectie: de parser leest die bullet als "
+                        + "een kenmerk 'het is de periode' en haar grens als een venster op de hele regel — een ander "
+                        + "document dan er staat (§8.4.3). Schrijf het venster als voorwaardendeel van de regel ('… "
+                        + src(v.periodevergelijkingEnkelvoudig()) + "' achter het resultaatdeel: vóór die grens vuurt "
+                        + "de regel niet), of zet de periodebullet niet als laatste in de deelselectie (dan leest de "
+                        + "parser haar als lid van het filter)",
+                        v.getStart().getLine()));
+            return bouwPeriode(v.periodevergelijkingEnkelvoudig());
+        }
         return new Conditie.Onopgelost(bron(v),
                 "het voorwaardendeel heeft geen van de §13.4.13-vormen — geen samengestelde voorwaarde, geen "
                 + "elementaire voorwaarde met operator, geen regelpredicaat en geen periodevergelijking");
+    }
+
+    /** Whether the on-channel tokens right before {@code p} spell "het is de periode": the split measured in fix
+     *  round 2 (2026-09-23). A window bullet written as the LAST bullet of a compound subselection ends that
+     *  subselection at its words "het is de periode" (read as a characteristic of that name) and hands the bound
+     *  to the rule as its voorwaardendeel. Nothing else puts those four words directly before a rule-level
+     *  periodevergelijking. False without the main stream (a desugared table row lives in a stream of its own). */
+    private boolean volgtOpPeriodebullet(ParserRuleContext p) {
+        if (tokens == null || p.getStart() == null) return false;
+        int idx = p.getStart().getTokenIndex();
+        if (idx < 0 || idx >= tokens.size() || tokens.get(idx) != p.getStart()) return false;
+        int[] verwacht = {RegelSpraakLexer.PERIODE, RegelSpraakLexer.DE, RegelSpraakLexer.IS, RegelSpraakLexer.HET};
+        int k = 0;
+        for (int j = idx - 1; j >= 0 && k < verwacht.length; j--) {
+            Token t = tokens.get(j);
+            if (t.getChannel() != Token.DEFAULT_CHANNEL) continue;
+            if (t.getType() != verwacht[k]) return false;
+            k++;
+        }
+        return k == verwacht.length;
     }
 
     /** §13.4.15.68 / §8.4.3: a periodevergelijkingEnkelvoudig (vanaf / van…tot / van…tot en met / tot /
@@ -1756,7 +2212,64 @@ final class RuleChecker {
                 model.diagnostics.add(new Diagnostic(Severity.ERROR,
                         "een periodevergelijking (§8.4.3) vereist datum-expressies als grenzen, niet "
                                 + grens.type().naam() + ": '" + grens.bron() + "'", p.getStart().getLine()));
+        for (String fout : new String[]{periodeGrensFout(van, "vanaf"), periodeGrensFout(tot, "tot")})
+            if (fout != null) model.diagnostics.add(new Diagnostic(Severity.ERROR, fout, p.getStart().getLine()));
         return new Conditie.Periode(van, tot, p.TOT_EN_MET() != null, bron(p));
+    }
+
+    /** WF-111 (maintainer decision 2026-09-23), producer side: a window bound is a date literal or an own
+     *  scalar date attribute of the subject, both of day precision. §13.4.15.68 admits any date expression and
+     *  this method is where the frontend narrows it to the wire's two shapes; before it, every other bound
+     *  reached disk silently and the verifier refused the document. ERROR, so {@link Resolver#irModus} writes
+     *  nothing.
+     *
+     *  <p>"Own" is compared by IDENTITY with the subject, not by the ⊑ the rule's text allows, and on purpose:
+     *  this frontend writes an own read — an inherited attribute included — with the subject as its object type,
+     *  and emits a read naming any other type, a supertype of the subject included, as a navigation (by-pair
+     *  bindings) or as an off-subject read without one. The verifier refuses both (WF-111 as navigated, or
+     *  WF-053), so identity is what gives its verdict on this frontend's output. A marker bound is left to the
+     *  marker sweep, and a non-date bound to the WF-042 message above. Null when the bound is admissible. */
+    private String periodeGrensFout(Expr grens, String kant) {
+        if (grens == null || grens instanceof Expr.Onopgelost) return null;
+        if (grens.type() != null && !grens.type().isOnbekend() && !grens.type().isDatum()) return null;
+        Objecttype subject = bouwer.subject();
+        String reden;
+        if (grens instanceof Expr.Literal) {
+            if (!(grens.type() instanceof Datatype.DatumTijd)) return null;
+            reden = "een datum-tijd, en een venster is een reeks kalenderdagen: geen clausule leest een tijdstip "
+                    + "als grens";
+        } else if (grens instanceof Expr.AttribuutRef a) {
+            if (a.navigatieRol() != null || !a.navigatiePad().isEmpty() || a.set())
+                reden = "een genavigeerde of verzamelende lezing van '" + a.attribuut() + "'";
+            else if (subject == null)
+                reden = "het attribuut '" + a.attribuut() + "' op een plaats zonder onderwerp dat het bezit";
+            else if (a.objecttype() != subject && a.objecttype() != null && subject.isEen(a.objecttype()))
+                reden = "het attribuut '" + a.attribuut() + "' van '" + a.objecttype().naam + "', een supertype van "
+                        + "het onderwerp '" + subject.naam + "': deze frontend leest die naam als een ander exemplaar, "
+                        + "langs een feittype bereikt, en een venstergrens navigeert nooit. Lees de datum van het "
+                        + "onderwerp zelf ('zijn " + a.attribuut() + "' of met de naam " + subject.naam + ")";
+            else if (a.objecttype() != subject && a.objecttype() != null && a.objecttype().isEen(subject))
+                reden = "het attribuut '" + a.attribuut() + "' van '" + a.objecttype().naam + "', een subtype van het "
+                        + "onderwerp '" + subject.naam + "': niet elk onderwerp is een " + a.objecttype().naam;
+            else if (a.objecttype() != subject)
+                reden = "een lezing van '" + a.attribuut() + "' op '"
+                        + (a.objecttype() == null ? "?" : a.objecttype().naam) + "', een ander objecttype dan het "
+                        + "onderwerp '" + subject.naam + "': een navigatie, en een venstergrens navigeert nooit";
+            else if (subject.granulariteitVan(a.attribuut()) != null)
+                reden = "het tijdsafhankelijke attribuut '" + a.attribuut() + "'";
+            else if (a.type() instanceof Datatype.DatumTijd)
+                reden = "het datum-tijd-attribuut '" + a.attribuut() + "', en een venster is een reeks kalenderdagen: "
+                        + "geen clausule leest een tijdstip als grens";
+            else return null;
+        } else if (grens instanceof Expr.ParameterRef pr) {
+            reden = "de parameter '" + pr.parameter().naam() + "'";
+        } else {
+            reden = "een berekende datumexpressie";
+        }
+        return "periodevergelijking (§8.4.3): de " + kant + "-grens '" + grens.bron() + "' is " + reden
+                + " — een venstergrens is een datumliteraal of een eigen, niet-tijdsafhankelijk "
+                + "datum-in-dagen-attribuut van het onderwerp; de algemene datumexpressie die §13.4.15.68 toelaat "
+                + "is een open wirebeslissing (WF-111, IR-SPEC ch. 4.6)";
     }
 
     private Conditie bouwSamengesteld(VoorwaardeKwantificatieContext k,

@@ -363,7 +363,7 @@ public final class Typering {
      *  strictness, not a table fact: Tabel 36/61 rij 4 list only "Datum-tijd" with no precision split,
      *  but a mixed toekenning generates a type-broken setter (a LocalDateTime into a LocalDate property)
      *  and a mixed gelijk compares values that can never be equal — both silently-dead outcomes. The
-     *  language's own conversion forms are the escape hatch (documented in grammar-divergences). The
+     *  language's own conversion forms are the escape hatch (documented in grammar/DIVERGENCES.md). The
      *  precision test is the same getClass() equality tijdsduur/eerste/laatste already use. */
     private static String datumPrecisieFout(Datatype a, Datatype b, String wat) {
         if (a.isDatum() && b.isDatum() && !a.getClass().equals(b.getClass()))

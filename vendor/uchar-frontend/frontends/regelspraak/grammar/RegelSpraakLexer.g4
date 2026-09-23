@@ -153,7 +153,7 @@ TEN_MINSTE            : 'ten' WSP 'minste' | 'tenminste' ; // §13.4.14 quantifi
 TEN_HOOGSTE           : 'ten' WSP 'hoogste'           ; // §13.4.14 quantifier
 
 // --- scenariotoetsen (DOCUMENTED EXTENSION — see docs/SCENARIOTOETSEN.md and the
-//     '§Scenariotoetsen' section of docs/grammar-divergences.md). v2.3.0 has NO test
+//     '§Scenariotoetsen' section of grammar/DIVERGENCES.md). v2.3.0 has NO test
 //     chapter; these forms are reachable ONLY via the `testDocument` start rule and are
 //     inert on production input. Each surface form is a WHOLE-PHRASE token (WSP-joined),
 //     so it wins by maximal munch ONLY when the complete phrase is present — none of the
@@ -161,7 +161,7 @@ TEN_HOOGSTE           : 'ten' WSP 'hoogste'           ; // §13.4.14 quantifier
 //     Longest / most-specific phrases first, all before the ID tokens.
 //     Deliberately NO token for 'is geen'/'heeft geen': `geen` must keep lexing as a
 //     plain LOWER_ID inside a kaleNaam so the DOCUMENTED production condition path
-//     `<subject> is/heeft geen <kenmerk/rol>` (grammar-divergences 'negated membership')
+//     `<subject> is/heeft geen <kenmerk/rol>` (grammar/DIVERGENCES.md 'negated membership')
 //     is untouched; the verwachting reuses `IS/HEEFT kaleNaam` with the `geen`-prefix
 //     absorbed and the resolver strips it (mirrors that production path exactly).
 TOETST_DE_REGELGROEP : 'toetst' WSP 'de' WSP 'regelgroep' ; // scope: één regelgroep
@@ -257,7 +257,7 @@ PARAMETER      : 'Parameter'      ;
 FEITTYPE       : 'Feittype'       ;
 DAGSOORT       : 'Dagsoort'       ;
 TIJDLIJN       : 'Tijdlijn'       ;
-// REGELGROEP is a DOCUMENTED EXTENSION (v2.3.0 §9.10 is prose-only; see docs/grammar-divergences.md).
+// REGELGROEP is a DOCUMENTED EXTENSION (v2.3.0 §9.10 is prose-only; see grammar/DIVERGENCES.md).
 // Listed BEFORE REGEL so maximal-munch prefers the longer 'Regelgroep' keyword over 'Regel' + a name word.
 REGELGROEP     : 'Regelgroep'     ;
 // UITZONDERINGEN opens the unordered §9.5 group form ('Uitzonderingen ongeordend:'); ONGEORDEND marks it
@@ -291,7 +291,7 @@ ZIJN    : 'zijn'    ;
 IS      : 'is'      ;
 VOLDOET : 'voldoet' ;
 VOLDOEN : 'voldoen' ;
-// RECURSIEF marks a §9.10 Regelgroep recursief (DOCUMENTED EXTENSION — see docs/grammar-divergences.md).
+// RECURSIEF marks a §9.10 Regelgroep recursief (DOCUMENTED EXTENSION — see grammar/DIVERGENCES.md).
 // Lowercase, only ever read in the group header "is recursief"; not a name word, so it never mis-splits a name.
 RECURSIEF : 'recursief' ;
 // ONGEORDEND marks a §9.5 declared-unordered default group (uchar DIALECT EXTENSION, PRIORITIZED-DEFAULTS-EVOLUTIE §4). Lowercase,

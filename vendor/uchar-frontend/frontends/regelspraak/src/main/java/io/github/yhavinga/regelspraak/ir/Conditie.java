@@ -101,7 +101,7 @@ public sealed interface Conditie {
      *  is the §13.4.15.69 "het is de periode …" bullet. §5.1.3 bound semantics: {@code vanaf} is INCLUSIVE,
      *  {@code tot} EXCLUSIVE unless {@code totInclusief} (the "tot en met" form). Either bound may be null
      *  (the one-sided vanaf/tot forms); never both. The engine evaluates scalar rules as of the §4.2 Rekendatum,
-     *  so the transpilers lower this to "rekendatum inside the period" (see docs/grammar-divergences.md). */
+     *  so the transpilers lower this to "rekendatum inside the period" (see grammar/DIVERGENCES.md). */
     record Periode(Expr vanaf, Expr tot, boolean totInclusief, Bron bron) implements Conditie {}
 
     /** Whether {@code c} is or contains a {@link Periode} — the §4.2 Rekendatum-global trigger, and the
@@ -190,7 +190,7 @@ public sealed interface Conditie {
      *  {@code inconsistent} distinguishes "is inconsistent" (reads the §9.5 Inconsistentie flag facts of a
      *  consistentie/uniciteit/verdeling rule — an exists-join) from "is gevuurd" (whether the named rule's
      *  voorwaardendeel was satisfied — no observable runtime record, so both back-ends decline it
-     *  symmetrically; see docs/grammar-divergences.md). */
+     *  symmetrically; see grammar/DIVERGENCES.md). */
     record Regelversie(String regel, boolean inconsistent, Bron bron) implements Conditie {}
 
     /** A condition form the resolver cannot structure — a marker with a reason, never a type.

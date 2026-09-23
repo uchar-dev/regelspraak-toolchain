@@ -60,7 +60,7 @@ public final class DefinitionResolver {
     }
 
     /** Every §13.4.2 regel of the document — the top-level ones AND the members of a §9.10 {@link RegelGroepContext}
-     *  (a DOCUMENTED EXTENSION; see docs/grammar-divergences.md). A grouped rule resolves EXACTLY as an ungrouped
+     *  (a DOCUMENTED EXTENSION; see grammar/DIVERGENCES.md). A grouped rule resolves EXACTLY as an ungrouped
      *  one — the group is namespacing only — so the whole rule pipeline walks this flattened list. Order is
      *  preserved (a group's members appear where the group's header sits). */
     static List<RegelContext> alleRegels(RegelSpraakDocumentContext doc) {

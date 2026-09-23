@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * A resolved §9.10 Regelgroep — a DOCUMENTED EXTENSION, not a §13 construct (v2.3.0 gives regelgroep no
- * written form; see docs/grammar-divergences.md '§9.10 recursie / regelgroep'). The group is a namespacing
+ * written form; see grammar/DIVERGENCES.md '§9.10 recursie / regelgroep'). The group is a namespacing
  * unit over its member rules: each member resolves EXACTLY as an ungrouped rule (its own
  * {@link ResolvedRegel} / consistentie / … entry, keyed on the BARE written name), and the group only records
  * <em>which</em> rule names belong to it (in written order) plus the {@code recursief} marker.

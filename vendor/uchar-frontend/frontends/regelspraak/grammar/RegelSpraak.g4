@@ -66,14 +66,17 @@ uitzonderingBasisNaam : ~( COLON | GELDIG | GELDIG_CAP )+ ; // base-rule name, b
 uitzonderingGroep     : UITZONDERINGEN ONGEORDEND COLON regel+ ;
 
 // §9.10 Regelgroep — a DOCUMENTED EXTENSION, not a §13 production (v2.3.0 gives regelgroep no written
-// form; see docs/grammar-divergences.md '§9.10 recursie / regelgroep'). A `Regelgroep <naam>` header,
+// form; see grammar/DIVERGENCES.md '§9.10 recursie / regelgroep'). A `Regelgroep <naam>` header,
 // optionally `is recursief`, scopes the CONSECUTIVE rule constructs (regel / beslistabel — the latter
 // desugars to regels; a consistentieRegel is already a regel's resultaatdeel) that follow it. The group
 // ends at the first construct that is NOT a rule (an Objecttype / Parameter / Feittype / another
 // Regelgroep), because `groepLid` only matches the rule alternatives — the extension is inert on any
 // non-extension document. The name is a `kaleNaam` (it stops at `is` and at the `Regel` keyword, so it
 // never swallows the marker or the first member). REGELGROEP is listed before `regel` in the document
-// alternation so a leading 'Regelgroep' opens a group, not a bare rule.
+// alternation so a leading 'Regelgroep' opens a group, not a bare rule. An extension block (`Uitzondering
+// op`, `Uitzonderingen ongeordend`) is no member either, and the resolver REFUSES one that stands directly
+// after a group's last member or whose base rule is a member (grammar/DIVERGENCES.md §4, "Interaction with
+// Regelgroep"): the group exists only to mark recursion, and without the refusal it ended there in silence.
 regelGroep : REGELGROEP kaleNaam ( IS RECURSIEF )? groepLid+ ;
 groepLid   : regel | beslistabel ;
 
@@ -82,7 +85,7 @@ groepLid   : regel | beslistabel ;
 // test chapter). Reachable ONLY via `testDocument`; `regelSpraakDocument` and
 // `corpusEntry` above stay byte-for-byte unchanged, so production parsing and the
 // corpus verifier are isolated (gate G6). Binding contract: docs/SCENARIOTOETSEN.md;
-// token/collision analysis: the '§Scenariotoetsen' section of grammar-divergences.md.
+// token/collision analysis: the '§Scenariotoetsen' section of grammar/DIVERGENCES.md.
 // Alternatives are #-labelled so the resolver can visit each form directly.
 // ====================================================================
 testDocument
@@ -189,7 +192,7 @@ situatieWaarde
 // alternatives: `geen` lexes as a plain LOWER_ID and rides inside the trailing
 // `kaleNaam`, so `verwachtKenmerk`/`verwachtKenmerkHeeft` already MATCH them and the
 // resolver strips the `geen` prefix to read the negation — exactly the production
-// `<subject> is/heeft geen <kenmerk>` condition path (grammar-divergences 'negated
+// `<subject> is/heeft geen <kenmerk>` condition path (grammar/DIVERGENCES.md 'negated
 // membership'). The optional lidwoord (een|de|het) covers `is een/de/het <kenmerk>`.
 verwachting
     : bullet bepaaldLidwoord verwachtingNaam VAN UPPER_ID IS LEEG                 DOT? # verwachtAttribuutLeeg     // … is leeg (listed first: LEEG is not a situatieWaarde)
@@ -206,7 +209,7 @@ verwachting
 // label sometimes swallowed the label, mismatching the outer 'VAN UPPER_ID IS'). The bounded
 // form below extends a 'van'-segment ONLY when it is LOWER_ID-led (an attribute-name segment
 // is always a lowercase word: 'van afstand', 'van bestemming'), so a 'van <UPPER_ID>' label
-// is never absorbed. Deterministic; see docs/grammar-divergences.md '§Scenariotoetsen'.
+// is never absorbed. Deterministic; see grammar/DIVERGENCES.md '§Scenariotoetsen'.
 verwachtingNaam : begrensdeNaam ;
 // A name that may contain internal ' van <lowercase segment>' but never a trailing
 // ' van <UPPER_ID>' — the UPPER_ID label/right-hand side is left for the enclosing rule.
@@ -932,7 +935,7 @@ functieAanroep
     // <expressie> operand, but a count ranges only over onderwerpexpressies (typeringen §4.11),
     // never an arithmetic one (whereas §5.8.2 lets a sum's operand BE arithmetic). So ONLY aantal
     // takes a higher-precedence primaireExpressie: a trailing 'maal'/'plus' binds OUTSIDE the
-    // count. Deliberate divergence from the symmetric EBNF — see docs/grammar-divergences.md.
+    // count. Deliberate divergence from the symmetric EBNF — see grammar/DIVERGENCES.md §13.4.17.47.
     // The operand LIST is a SECOND divergence, and since 2026-09-20 only HALF of it is one. §5.7
     // spells a CONCATENATION of onderwerpexpressies and typeringen §4.11 admits it under this very
     // operator, so a list of ROLSELECTIES is the source language's own form: ExpressieBouwer
@@ -981,7 +984,7 @@ begrenzing // §13.4.17.28
 // trailing <afronding> on a begrensde expressie ("… met een minimum van 0 € naar beneden
 // afgerond op 0 decimalen") must round the WHOLE bounded result, not the bound, and a
 // full-expressie bound would greedily absorb the afronding. Bounded divergence (see
-// docs/grammar-divergences.md): a bare arithmetic/percentage bound ("maximum van de basis
+// grammar/DIVERGENCES.md): a bare arithmetic/percentage bound ("maximum van de basis
 // maal 2") then mis-binds — write it parenthesised ("maximum van (de basis maal 2)"). Every
 // spec bound is a literal or attribute ref. (Same precedence reasoning as the telling.)
 begrenzingMinimum : MET_EEN_MINIMUM_VAN primaireExpressie ;

@@ -8099,22 +8099,20 @@ class ExecModelDifferentialTest {
     // DRL-fires/exec-skips divergence): a periode-bullet under a COUNTING quantifier (the exec fact-only fold
     // cannot bind the rekendatum global), and a periodevergelijking on a TIJDSAFHANKELIJK doel (it should CLIP
     // the timeline, not gate it on the rekendatum).
-    @Test void phase_PERIODE_counting_quantor_declines_symmetrically() {
+    @Test void phase_PERIODE_counting_quantor_is_een_wf112_fout() {
+        // A window under a counting quantifier is WF-112 on the wire. Until uchar 7d97353e (card frontend-trio)
+        // the frontend wrote it to disk silently, so this test pinned that both transpiler branches declined it
+        // symmetrically; the frontend now fences it itself with an ERROR naming the quantifier, and no document
+        // (hence no DRL and no exec model) is produced for it.
         String src = PERIODE_COMPOUND_OT + "Regel R\n    geldig altijd\n"
                 + "        De prijs van een Passagier moet gesteld worden op 50\n"
                 + "        gedurende de tijd dat er aan ten minste 1 van de volgende voorwaarden wordt voldaan:\n"
                 + "        • hij student is\n"
                 + "        • het is de periode van dd. 1-1-2024 tot dd. 8-2-2025.\n";
         RegelSpraakModel m = Resolver.resolve(src);
-        assertTrue(m.errors().isEmpty(), () -> "resolver-fout: " + m.errors());
-        String drl = DrlTranspiler.build(m).drl();
-        assertTrue(drl.contains("tellende kwantor"), () -> "verwacht DRL-marker voor de tellende kwantor:\n" + drl);
-        ExecModelTranspiler em = ExecModelTranspiler.build(m);
-        assertFalse(em.overgeslagen().isEmpty(), "verwacht een exec-skip voor de tellende kwantor");
-        // the fully-markered rule references no global, so (lazy splice) the DRL declares none — fire bare.
-        Fixture f = single("counting+periode declines", src, () -> passagier(p -> p.setStudent(true)),
-                Map.of(), Passagier::getPrijs);
-        assertEquals(eq(null), eq(fire(drlBase(m), f)), "de DRL-marker mag nooit vuren");
+        assertFalse(m.errors().isEmpty(), "een venster onder een tellende kwantor moet een WF-112-fout geven");
+        assertTrue(m.errors().stream().anyMatch(e -> e.message().contains("ten minste 1") && e.message().contains("WF-112")),
+                () -> "de fout moet de kwantor en WF-112 noemen: " + m.errors());
     }
     @Test void phase_PERIODE_temporal_doel_declines_symmetrically() {
         String src = "Objecttype de Passagier (mv: Passagiers) (bezield)\n"

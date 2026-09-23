@@ -1572,7 +1572,7 @@ final class ExpressieBouwer {
             // explicit Percentage row + prose exactly where it admits one (§5.1/§5.3 comparison tables) and
             // explicitly excludes Percentage where it means to (§6.7 maal) — Tabel 21 does neither. The
             // "gespecialiseerd numeriek datatype" sentence (§3.3.5) does not override the tables (see
-            // grammar-divergences). A Percentage som-operand is now a type error, no longer silently summed.
+            // grammar/DIVERGENCES.md). A Percentage som-operand is now a type error, no longer silently summed.
             case SOM -> Typering.getalAggregatie("som van", typen);
             // §4.6 Tabel 16 (wortel van) / §4.9 Tabel 20 (absolute waarde van): the single operand must be Numeriek.
             // WORTEL always types Numeriek regardless of its radicand, so "de wortel van <tekst>" produced a Numeriek
@@ -1589,7 +1589,7 @@ final class ExpressieBouwer {
             // eenheid per tijdseenheid" — the NUMERIEK part via getalAggregatie (like MIN/MAX), the rate part
             // via totaalOperandFout: a unit-BEARING operand must carry a tijdseenheid denominator; a UNITLESS
             // operand is admitted, because the spec's own §7.1 worked example totals a unitless Bedrag (the
-            // temporality lives in the timeline, not the unit) — see grammar-divergences.
+            // temporality lives in the timeline, not the unit) — see grammar/DIVERGENCES.md.
             case TOTAAL -> totaalOperandFout(argumenten);
             case EERSTE  -> Typering.datumAggregatie("eerste van", typen);
             case LAATSTE -> Typering.datumAggregatie("laatste van", typen);
@@ -1696,12 +1696,63 @@ final class ExpressieBouwer {
     private String tellingBronFout(List<Expr> argumenten, FunctieAanroepContext f) {
         String botsing = aantalAttribuutBotsing(argumenten, f);
         if (botsing != null) return botsing;
+        String overType = tellingOverObjecttype(argumenten, f);
+        if (overType != null) return overType;
         String operand = argumenten.isEmpty() ? "geen operand" : "'" + bron(f).snippet() + "'";
         return "telling zonder bron: " + operand + " noemt geen instanties om te tellen — een "
                 + "telling vouwt de INSTANTIES van een onderwerpexpressie (§5.8.1, typeringen §4.11) "
                 + "en draagt daarom een elementtype; zonder elementtype telt zij haar OPERAND en niet "
                 + "een populatie. Een eigen waarde, een getal, een parameter of een lijst is geen "
                 + "bron (WF-037, IR-SPEC ch. 4.3, besluit 2026-09-23)";
+    }
+
+    /** "het aantal Vondsten": a count whose one operand names an OBJECT TYPE — by name or plural, bare, with an
+     *  article or with "alle" — and nothing it is counted from. The card frontend-typemeervoud-telling
+     *  (2026-09-23) answered the norm question NO: RegelSpraak v2.3.0 has no count over all instances of a type.
+     *  The count takes a plural subject expression (§5.8.1, typeringen §4.11), and §5.8 names the plural ones —
+     *  a concatenation, a selection whose object or role is plural, a subselection — each hanging on a subject
+     *  the rule binds per instance (§5.5.3); an object type stands in an onderwerpketen only in the singular,
+     *  as a universal subject or a reference back to one (§5.5.1, §13.4.1). The one document-wide range, "van alle
+     *  &lt;objecttype&gt;", is the uniqueness check's own subject expression (§8.1.6) and no aggregation operand.
+     *
+     *  <p>The refusal predates this sentence; what the sentence replaces is the generic one, which told an
+     *  author who named a population that the operand "names no instances". Only an operand that resolved to
+     *  NOTHING declared qualifies — a bare name kept as a {@link Expr.VariabeleRef}, or an unresolved one — so
+     *  a parameter, a "Daarbij geldt" variable or an attribute that shares a type's name is never re-read. The
+     *  way out is named from the rule's subject when exactly one role reaches the type from it
+     *  ({@link RegelSpraakModel#verbindendeRolBinding}) and that role is plural; otherwise the sentence gives
+     *  the general spelling.
+     *  Null when the operand names no type. */
+    private String tellingOverObjecttype(List<Expr> argumenten, FunctieAanroepContext f) {
+        if (!(f instanceof AantalFuncContext af) || argumenten.size() != 1) return null;
+        if (!(argumenten.get(0) instanceof Expr.VariabeleRef || argumenten.get(0) instanceof Expr.Onopgelost)) return null;
+        String operand = src(af.primaireExpressie(0)).replaceAll("^\\((.*)\\)$", "$1").trim();
+        String kern = operand.replaceFirst("(?i)^(de|het|een|alle)\\s+", "");
+        Objecttype type = MeervoudMatcher.vindObjecttype(model.objecttypen.values(), kern);
+        if (type == null) return null;
+        String uitweg = "";
+        RegelSpraakModel.RolBindingRef paar = model.verbindendeRolBinding(huidigSubject, type);
+        RegelSpraakModel.Feittype ft = paar == null ? null : model.feittypen.get(paar.feittype());
+        if (ft != null) {
+            // Only a PLURAL role is a way out: the sentence says a count needs one, and counting a to-one role
+            // ("het aantal aanmelders" of a Vondst, which has one) answers 0 or 1, never a population.
+            for (RegelSpraakModel.Rol r : ft.rollen)
+                if (r.naam().equals(paar.rol()) && r.meervoudig())
+                    uitweg = " — vanaf " + huidigSubject.naam + " is dat de rol '"
+                            + (r.meervoud() != null ? r.meervoud() : r.naam()) + "' (feittype " + ft.naam + ")";
+        }
+        return "telling zonder bron, over een objecttype: '" + bron(f).snippet() + "' noemt het objecttype "
+                + type.naam + " zonder onderwerp waarvandaan het geteld wordt, en zou zo alle instanties van "
+                + type.naam + " in het document tellen — die telling kent de brontaal niet. RegelSpraak v2.3.0 "
+                + "telt de instanties van een meervoudige onderwerpexpressie (§5.8.1, typeringen §4.11); "
+                + "meervoudig is alleen een concatenatie, een selectie met een meervoudig object of een "
+                + "meervoudige rol, of een subselectie (§5.8), en elk daarvan hangt aan een onderwerp dat de "
+                + "regel per instantie bindt (§5.5.3). Een objecttype staat in een onderwerpketen alleen "
+                + "enkelvoudig: als universeel onderwerp of als verwijzing daarnaar (§5.5.1, §13.4.1). De "
+                + "enige documentbrede reikwijdte, 'van alle "
+                + "<objecttype>', hoort bij de uniciteitscontrole (§8.1.6) en is geen aggregatie. Tel via een "
+                + "rol vanaf het onderwerp ('het aantal <rol> van <onderwerp>', §5.5.5)" + uitweg
+                + " (WF-037, IR-SPEC ch. 4.3)";
     }
 
     /** The source-less count whose words also spell a DECLARED attribute: "het aantal gewogen posten
@@ -1759,7 +1810,7 @@ final class ExpressieBouwer {
      *  on a NON-temporal operand is the Tabel-30 fout, while a temporal attribute's per-tijdseenheid
      *  dimension lives in its TIMELINE declaration ("voor elke maand"), not its unit: the spec's own §7.1
      *  worked example totals a timeline-declared Bedrag, so a plain-unit temporal operand must not be
-     *  rejected (see grammar-divergences). A unitless operand is likewise admitted; Onbekend makes no claim. */
+     *  rejected (see grammar/DIVERGENCES.md). A unitless operand is likewise admitted; Onbekend makes no claim. */
     private static String totaalOperandFout(List<Expr> argumenten) {
         String f = Typering.getalAggregatie("totaal van", argumenten.stream().map(Expr::type).toList());
         if (f != null) return f;
@@ -1950,7 +2001,7 @@ final class ExpressieBouwer {
             // in each aggregation's operand list). As a STANDALONE value it has no scalar meaning, so both back-
             // ends marker it symmetrically; typing it Tekst fabricated a spurious "Tekst→Numeriek" mismatch that
             // MASKED that honest marker. Leave it onbekend (the not-lowered-kind convention) — see
-            // docs/grammar-divergences.md "concatenatie as a standalone value".
+            // grammar/DIVERGENCES.md "concatenatie as a standalone value".
             case CONCATENATIE -> onbekend();
             // §13.4.17.13: a square root is non-negative; its precision comes from the MANDATORY afronding that
             // wraps it (a sqrt is generally irrational), and its unit would be the operand's unit's root —
@@ -2105,7 +2156,7 @@ final class ExpressieBouwer {
                     "de attribuutverwijzing noemt geen attribuutnaam met lidwoord (§13.4.2.9)");
         String attr = src(a.attribuutMetLidwoord().kaleNaam());
         // §13.4.17.12/§6.8 "het percentage P van V" WITHOUT the '%': our grammar requires '%' on percentageVanExpr to
-        // disambiguate from a 'van' navigation (docs/grammar-divergences.md), so the no-'%' form parses HERE as a
+        // disambiguate from a 'van' navigation (grammar/DIVERGENCES.md), so the no-'%' form parses HERE as a
         // navigation. But when the leftmost name P is a Percentage-typed PARAMETER (never a real attribuut of any
         // objecttype), this IS the percentage function, not a navigation — reinterpret it as PERCENTAGE_VAN(P, V) with
         // V the onderwerp built as a value (V·P/100, §4.8 Tabel 19; leeg telt als 0). A name that is no Percentage
