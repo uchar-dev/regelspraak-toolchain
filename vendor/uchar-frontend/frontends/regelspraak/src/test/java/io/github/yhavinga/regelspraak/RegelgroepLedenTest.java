@@ -13,7 +13,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * rule form). A decision table is no rule form — it desugars to one rule per row — so a group that holds one lists
  * the rules of its rows. Measured on the frontend before this fix (a8ab1639): the table's own name went out as
  * the member, silently, and the verifier refused every such document ({@code WF-033 FAIL /regelGroepen/0: group
- * member 'Bergingspremie' does not resolve to a rule form}), with or without anything else in it.
+ * member 'Bergingspremie' does not resolve to a rule form}), with or without anything else in it. That path is the
+ * pre-M1 spelling of the measurement; since M1 (2026-09-23) the verifier names the position /rules/regelGroepen/0.
  */
 class RegelgroepLedenTest {
 

@@ -6,7 +6,7 @@ import io.github.yhavinga.regelspraak.resolver.Resolver;
 /**
  * Toolchain-side CLI wrapper around the vendored, {@code --ir}-only frontend
  * {@link Resolver}. Since the dependency inversion (PRIORITIZED-DEFAULTS-EVOLUTIE §6) the
- * frontend the toolchain consumes emits ONLY the v0 IR; this wrapper re-provides
+ * frontend the toolchain consumes emits ONLY the IR (uchar-ir-v1); this wrapper re-provides
  * the extra output modes the toolchain has always shipped — {@code --drl},
  * {@code --facts}, {@code --graaf}/{@code --graaf-mmd} — by reusing the vendored
  * parse/resolve pipeline ({@link Resolver#resolve}) and driving the toolchain's
@@ -102,7 +102,7 @@ public final class RegelSpraakCli {
      *  regelgraaf (dataflow regels &harr; gegevens) as a self-contained HTML page (embedded Mermaid via CDN) or
      *  as bare Mermaid text (offline-usable). Also model-level; mutually exclusive with --drl and --facts.
      *  With --ir &lt;out.json&gt; over one-or-more source files, delegate to the vendored frontend's {@link
-     *  Resolver#irModus} to emit the FAITHFUL v0 JSON dump. Mutually exclusive with the other modes. */
+     *  Resolver#irModus} to emit the FAITHFUL {@code uchar-ir-v1} JSON dump. Mutually exclusive with the other modes. */
     public static void main(String[] args) throws java.io.IOException {
         var rest = new java.util.ArrayList<>(java.util.List.of(args));
         boolean drl = rest.remove("--drl");

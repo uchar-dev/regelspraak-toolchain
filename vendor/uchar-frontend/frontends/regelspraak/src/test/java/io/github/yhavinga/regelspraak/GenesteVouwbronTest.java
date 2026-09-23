@@ -264,7 +264,8 @@ class GenesteVouwbronTest {
             "vouwbron bindt niet op de geschreven naam: de zin noemt 'geborgen vondsten', maar het enige "
             + "feittype dat Jutter met Vondst verbindt is 'vondstaanmelding' met de rol 'aangemelde vondst' — "
             + "de type-paar-afleiding zou een andere verzameling vouwen dan de zin noemt, dus de aggregatie "
-            + "blijft onopgelost (§13.4.1/§13.4.17)";
+            + "blijft onopgelost (§13.4.1/§13.4.17) — 'de minimale waarde van het gewicht van alle geborgen "
+            + "vondsten van de Jutter'";
 
     private static List<Diagnostic> vouwbronDiagnoses(String bron) {
         RegelSpraakModel m = Resolver.resolve(bron);

@@ -41,7 +41,7 @@ help:
 	@echo "  make parser                Generate the Java lexer+parser (lexer first, then parser)"
 	@echo "  make compile               Compile the generated parser + the frontend sources"
 	@echo "  make test                  Run the JUnit 5 suite via the standalone console launcher"
-	@echo "  make ir FILE=\"a.rgs …\" [OUT=…]  Emit the v0 IR JSON for one-or-more .rgs files"
+	@echo "  make ir FILE=\"a.rgs …\" [OUT=…]  Emit the IR JSON (uchar-ir-v1) for one-or-more .rgs files"
 	@echo "  make clean                 Remove generated sources (gen/) and classes (out/)"
 	@echo "  make clean-jar             Remove the downloaded jars (lib/)"
 
@@ -84,8 +84,9 @@ test: compile $(JUNIT_JAR)
 	java -jar $(JUNIT_JAR) execute --class-path $(ANTLR4_JAR):$(OUT_DIR) \
 		--scan-class-path --details=tree --disable-banner
 
-# Emit the v0 IR — a FAITHFUL JSON dump of the complete resolved model with the
-# Dutch v0 field names exactly as the Java records name them. Over one-or-more
+# Emit the IR (uchar-ir-v1) — a FAITHFUL JSON dump of the complete resolved model:
+# the M1 container, and elsewhere the Dutch v0 field names exactly as the Java
+# records name them. Over one-or-more
 # .rgs files (concatenated in listed order). An unresolvable model writes
 # NOTHING and exits 1.
 IR_OUT := $(if $(OUT),$(OUT),$(OUT_DIR)/ir.json)

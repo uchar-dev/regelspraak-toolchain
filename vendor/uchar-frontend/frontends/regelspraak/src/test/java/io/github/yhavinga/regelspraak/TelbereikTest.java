@@ -246,12 +246,12 @@ class TelbereikTest {
     }
 
     /** A count that binds no element type: exactly one ERROR, the count-source refusal, and the model
-     *  emitted anyway so the caller can read what was (not) bound. */
+     *  emitted anyway with that ERROR set aside ({@link Emissie}), so the caller can read what was (not) bound. */
     private static String irMetBronloosFout(String bron) {
         RegelSpraakModel m = Resolver.resolve(bron);
         assertEquals(1, m.errors().size(), () -> "verwacht één fout, kreeg: " + m.errors());
         assertTrue(m.errors().get(0).message().startsWith("telling zonder bron"),
                 () -> "verwacht de bronloze-tellingfout, kreeg: " + m.errors());
-        return IrEmitter.emit(m);
+        return Emissie.zonderFouten(m);
     }
 }

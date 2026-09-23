@@ -46,13 +46,13 @@ class MarkerRedenPinTest {
 
     /** One sanctioned family of {@code reden == null} constructions: all of them in {@code methode} of
      *  {@code bestand}, with the reason that route needs no survivor report. */
-    private record Plek(String bestand, String methode, int aantal, String waarom) {}
+    record Plek(String bestand, String methode, int aantal, String waarom) {}
 
     /** The fourteen sanctioned null-constructions, measured 2026-09-19, grown by one 2026-09-20. Growth
      *  is NOT free here (unlike
      *  a gate floor): a null is a promise that something else speaks, so every new one is listed with
      *  the diagnostic that keeps that promise. */
-    private static final List<Plek> GESANCTIONEERD = List.of(
+    static final List<Plek> GESANCTIONEERD = List.of(
             new Plek("RuleChecker.java", "keurGeheelPeriode", 1,
                     "de §8.2-ERROR die de regel erboven opwerpt IS de diagnose van deze marker"),
             new Plek("RuleChecker.java", "dagsoortOperandFout", 1,

@@ -160,11 +160,13 @@ class AantalOpgesomdTest {
     @Test void de_ill_gevormde_telling_bereikt_de_wire_niet() {
         // The leak, stated as the property that closes it: an ERROR stops irModus writing at all, so
         // the document the verifier rejects under WF-037 is never produced. Before this arm the same
-        // source emitted with `diagnostics: []`.
+        // source emitted with `diagnostics: []`. Since WF-113 (a) the emitter refuses the model by
+        // itself as well, so no emission route reaches the wire with it.
         RegelSpraakModel m = Resolver.resolve(MODEL + EN_SPELLING);
-        assertFalse(m.errors().isEmpty(), "de opgesomde telling levert geen fout op");
-        String json = IrEmitter.emit(m);
-        assertTrue(json.contains("geen opgesomde vorm"), "geen WF-037-melding op de wire:\n" + json);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("geen opgesomde vorm")),
+                () -> "de opgesomde telling levert geen WF-037-fout op: " + m.diagnostics);
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m));
+        assertTrue(e.getMessage().contains("geen opgesomde vorm"), e::getMessage);
     }
 
     @Test void de_gewone_telling_blijft_schoon() {

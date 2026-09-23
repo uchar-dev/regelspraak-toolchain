@@ -1,5 +1,6 @@
 package io.github.yhavinga.regelspraak.emit;
 
+import io.github.yhavinga.regelspraak.ir.Bron;
 import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Default;
 import io.github.yhavinga.regelspraak.ir.ExceptionGroup;
@@ -23,9 +24,9 @@ import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Diagnostic;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Dimensie;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Eenheidstelsel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Feittype;
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Granulariteit;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Objecttype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Parameter;
-import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Regel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Rol;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Tijdlijn;
 
@@ -34,11 +35,21 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The v0 "mirror" emitter: a faithful, engine-neutral JSON dump of the complete resolved
- * {@link RegelSpraakModel} — every declaration side-map, every resolved IR list, and the
- * diagnostics — with the Dutch v0 field names EXACTLY as the Java records name them. No
- * renaming, no cleanup, no filtering: it is the uchar-programme mirror artifact (mirror
- * first, diverge later), warts included.
+ * The mirror emitter: a faithful, engine-neutral JSON dump of the complete resolved
+ * {@link RegelSpraakModel} — every declaration, every resolved IR list, and the diagnostics.
+ * It writes {@code uchar-ir-v1} in its M1 shape: the container is the v1 one
+ * ({@code {format, model, rules, diagnostics}}, the declarations as lists, an object type's
+ * members as {@code Attribute}/{@code Characteristic} nodes, a domain as a {@code Domain}
+ * wrapper), and every other node keeps the Dutch v0 field names EXACTLY as the Java records
+ * name them until its own migration step. No filtering: it is the uchar-programme mirror
+ * artifact (mirror first, diverge later), warts included. For the M1 containers and nodes (the
+ * root, {@code model}, {@code rules}, {@code ObjectType}, {@code Attribute}, {@code Characteristic},
+ * {@code TimelineFacet}, {@code Domain}) the key order is the {@code properties} order of the schema
+ * ({@code spec/schema/uchar-ir-v1.schema.json}), so a re-emission is byte-identical to a migrated
+ * document. A node carried over from v0 keeps the order this emitter has always written it in, which
+ * is not always the schema's — {@code PrioritizedDefaults} writes {@code defaults} before
+ * {@code ongeordend} (golden {@code jutterswet-wachtgeld}, pinned by gate 10) — until its own M step,
+ * as {@code spec/schema/README.md} records.
  *
  * <p>Completeness is compiler-enforced where it can be: the {@link Datatype}, {@link Expr}
  * and {@link Conditie} sealed hierarchies are walked with EXHAUSTIVE switches (no default
@@ -54,7 +65,7 @@ import java.util.Map;
  */
 public final class IrEmitter {
 
-    /** What the model carries that the v0 wire has no field for, as ERROR diagnostics — today only the
+    /** What the model carries that the wire has no field for, as ERROR diagnostics — today only the
      *  off-calendar fixed startpunt (§13.3.6.3–.7, {@link RegelSpraakModel#vasteStartpunten}). The model
      *  resolves it correctly; dropping it here would lay the tijdlijn on the calendar grid the author did
      *  not declare. {@code Resolver --ir} adds these to the diagnostics so it writes nothing, and
@@ -62,15 +73,24 @@ public final class IrEmitter {
     public static List<Diagnostic> wireWeigeringen(RegelSpraakModel m) {
         return m.vasteStartpunten.stream().map(v -> new Diagnostic(RegelSpraakModel.Severity.ERROR,
                 "tijdlijn: het vaste startpunt '" + v.bron() + "' (" + v.sectie() + ") wijkt af van de "
-                        + "kalenderperiode en de v0-wire heeft er geen veld voor — de zin wordt geweigerd in "
+                        + "kalenderperiode en de wire heeft er geen veld voor — de zin wordt geweigerd in "
                         + "plaats van het startpunt stil te laten vallen", v.line())).toList();
     }
 
-    /** Serialise the resolved model to the v0 IR JSON text (two-space indented, trailing newline). */
+    /** Serialise the resolved model to the IR JSON text (two-space indented, trailing newline). */
     public static String emit(RegelSpraakModel m) {
         List<Diagnostic> weigeringen = wireWeigeringen(m);
         if (!weigeringen.isEmpty())
-            throw new IllegalStateException("de v0-wire kan dit model niet dragen: " + weigeringen);
+            throw new IllegalStateException("de wire kan dit model niet dragen: " + weigeringen);
+        // WF-113 (a): an ERROR means the producer refused the document, so a model that carries one has no
+        // document to write; checked here and not only in irModus, so no emission route bypasses it. The
+        // message and line clauses are the verifier's too: a document carrying either would be refused there.
+        List<Diagnostic> nietWire = m.diagnostics.stream()
+                .filter(d -> d.severity() != RegelSpraakModel.Severity.WARNING
+                        || d.message() == null || d.message().isBlank() || d.line() < 0).toList();
+        if (!nietWire.isEmpty())
+            throw new IllegalStateException("IrEmitter: WF-113 (a) — de wire draagt alleen een WARNING met een "
+                    + "melding die niet leeg of blanco is en een regel ≥ 0; dit model draagt " + nietWire);
         IrEmitter e = new IrEmitter();
         e.model(m);
         e.w.sb.append('\n');
@@ -97,42 +117,44 @@ public final class IrEmitter {
     private void model(RegelSpraakModel m) {
         this.m = m;
         w.beginObject();
-        w.key("formaat").value("regelspraak-ir-v0");
+        w.key("format").value("uchar-ir-v1");
 
-        w.key("objecttypen").beginObject();
-        for (var en : m.objecttypen.entrySet()) { w.key(en.getKey()); objecttype(en.getValue()); }
-        w.endObject();
+        w.key("model").beginObject();
 
-        w.key("domeinen").beginObject();
-        for (var en : m.domeinen.entrySet()) { w.key(en.getKey()); datatype(en.getValue()); }
-        w.endObject();
+        w.key("objectTypes").beginArray();
+        for (var en : m.objecttypen.entrySet()) objectType(en.getKey(), en.getValue());
+        w.endArray();
 
-        w.key("parameters").beginObject();
-        for (var en : m.parameters.entrySet()) { w.key(en.getKey()); parameter(en.getValue()); }
-        w.endObject();
+        w.key("factTypes").beginArray();
+        for (var en : m.feittypen.entrySet()) { eenNaam("feittype", en.getKey(), en.getValue().naam); feittype(en.getValue()); }
+        w.endArray();
 
-        w.key("eenheidstelsels").beginObject();
-        for (var en : m.eenheidstelsels.entrySet()) { w.key(en.getKey()); eenheidstelsel(en.getValue()); }
-        w.endObject();
+        w.key("parameters").beginArray();
+        for (var en : m.parameters.entrySet()) { eenNaam("parameter", en.getKey(), en.getValue().naam()); parameter(en.getValue()); }
+        w.endArray();
 
-        w.key("feittypen").beginObject();
-        for (var en : m.feittypen.entrySet()) { w.key(en.getKey()); feittype(en.getValue()); }
-        w.endObject();
+        w.key("domains").beginArray();
+        for (var en : m.domeinen.entrySet()) domain(en.getKey(), en.getValue());
+        w.endArray();
 
-        w.key("dimensies").beginObject();
-        for (var en : m.dimensies.entrySet()) { w.key(en.getKey()); dimensie(en.getValue()); }
-        w.endObject();
+        w.key("unitSystems").beginArray();
+        for (var en : m.eenheidstelsels.entrySet()) { eenNaam("eenheidstelsel", en.getKey(), en.getValue().naam); eenheidstelsel(en.getValue()); }
+        w.endArray();
 
-        w.key("tijdlijnen").beginArray();
+        w.key("dimensions").beginArray();
+        for (var en : m.dimensies.entrySet()) { eenNaam("dimensie", en.getKey(), en.getValue().naam()); dimensie(en.getValue()); }
+        w.endArray();
+
+        w.key("timelines").beginArray();
         for (Tijdlijn t : m.tijdlijnen) tijdlijn(t);
         w.endArray();
 
-        w.key("dagsoorten"); stringList(m.dagsoorten);
+        w.key("dayKinds"); stringList(m.dagsoorten);
         w.key("dagsoortPerEenheid"); stringMap(m.dagsoortPerEenheid);
 
-        w.key("regels").beginArray();
-        for (Regel r : m.regels) regel(r);
-        w.endArray();
+        w.endObject();
+
+        w.key("rules").beginObject();
 
         w.key("resolvedRegels").beginArray();
         for (ResolvedRegel r : m.resolvedRegels) resolvedRegel(r);
@@ -174,14 +196,9 @@ public final class IrEmitter {
         for (ResolvedRegelGroep g : m.regelGroepen) regelGroep(g);
         w.endArray();
 
-        w.key("diagnostics").beginArray();
-        for (Diagnostic d : m.diagnostics) diagnostic(d);
-        w.endArray();
-
-        // §4 (PRIORITIZED-DEFAULTS-EVOLUTIE) the defaults extension: an OPTIONAL top-level list, emitted ONLY
-        // when the 'Uitzondering op' / 'Uitzonderingen ongeordend' forms produced defaults groups. A flat
-        // document produces none, so the key is absent there — the v0-mirror byte-identity of every flat
-        // golden holds.
+        // §4 (PRIORITIZED-DEFAULTS-EVOLUTIE) the defaults extension: an OPTIONAL list, emitted ONLY when the
+        // 'Uitzondering op' / 'Uitzonderingen ongeordend' forms produced defaults groups. A flat document
+        // produces none, so the key is absent there — the mirror byte-identity of every flat golden holds.
         if (!m.prioritizedDefaults.isEmpty()) {
             w.key("prioritizedDefaults").beginArray();
             for (PrioritizedDefaults p : m.prioritizedDefaults) prioritizedDefaults(p);
@@ -189,6 +206,20 @@ public final class IrEmitter {
         }
 
         w.endObject();
+
+        w.key("diagnostics").beginArray();
+        for (Diagnostic d : m.diagnostics) diagnostic(d);
+        w.endArray();
+
+        w.endObject();
+    }
+
+    /** A declaration list writes its name once, on the node: a map key that disagrees with the node's own
+     *  name would lose one of the two spellings without a rule for choosing (delta B2), so it is refused. */
+    private static void eenNaam(String soort, String sleutel, String naam) {
+        if (!sleutel.equals(naam))
+            throw new IllegalStateException("IrEmitter: " + soort + " '" + sleutel + "' draagt de eigen naam '"
+                    + naam + "'; de lijstvorm heeft voor beide maar één plek");
     }
 
     // --- §4 prioritized defaults (extension) -------------------------------
@@ -246,30 +277,106 @@ public final class IrEmitter {
 
     // --- declaration side --------------------------------------------------
 
-    private void objecttype(Objecttype ot) {
+    /** IR-SPEC ch. 2.2: the model keeps its eight member-keyed side-maps; the wire carries each member's facets
+     *  on the member's own node. A side-map entry the member nodes cannot carry — a key naming no member, a count
+     *  or timeline name without a granularity, a null value — is a frontend defect, refused rather than dropped. */
+    private void objectType(String sleutel, Objecttype ot) {
+        eenNaam("objecttype", sleutel, ot.naam);
+        zijkaartenPassen(ot);
         w.beginObject();
-        w.key("node").value("Objecttype");
-        w.key("naam").value(ot.naam);
-        // IR-SPEC ch. 2.2: an extension field under the § Method's discipline — optional, never null,
-        // written WHOLE or not at all, so a root type emits no key and every flat golden keeps its
-        // v0-mirror byte-identity. The position mirrors the schema's property order (right after naam).
+        w.key("node").value("ObjectType");
+        w.key("name").value(ot.naam);
+        // an extension field under the § Method's discipline — optional, never null, written WHOLE or not at
+        // all, so a root type emits no key
         if (ot.supertype != null) w.key("supertype").value(ot.supertype.naam);
-        w.key("attributen").beginObject();
-        for (var en : ot.attributen.entrySet()) { w.key(en.getKey()); datatype(en.getValue()); }
+        w.key("animate").value(ot.bezield);
+        if (ot.meervoud != null) w.key("plural").value(ot.meervoud);
+        w.key("attributes").beginArray();
+        for (var en : ot.attributen.entrySet()) {
+            String a = en.getKey();
+            w.beginObject();
+            w.key("node").value("Attribute");
+            w.key("name").value(a);
+            w.key("datatype"); datatype(en.getValue());
+            String meervoud = ot.attribuutMeervoud.get(a);
+            if (meervoud != null) w.key("plural").value(meervoud);
+            List<String> dimensies = ot.attribuutDimensies.get(a);
+            if (dimensies != null && !dimensies.isEmpty()) { w.key("dimensions"); stringList(dimensies); }
+            if (ot.attribuutGranulariteit.containsKey(a))
+                timelineFacet(ot.attribuutGranulariteit.get(a), ot.attribuutTijdlijnAantal.get(a),
+                        ot.attribuutTijdlijnNaam.get(a));
+            w.endObject();
+        }
+        w.endArray();
+        w.key("characteristics").beginArray();
+        for (String k : ot.kenmerken) {
+            w.beginObject();
+            w.key("node").value("Characteristic");
+            w.key("name").value(k);
+            // ch. 2.2: an untagged characteristic is nominal
+            Objecttype.KenmerkSoort soort = ot.kenmerkSoorten.get(k);
+            w.key("kind").value(soort == null ? Objecttype.KenmerkSoort.ZELFSTANDIG.name() : soort.name());
+            if (ot.kenmerkGranulariteit.containsKey(k))
+                timelineFacet(ot.kenmerkGranulariteit.get(k), ot.kenmerkTijdlijnAantal.get(k), null);
+            w.endObject();
+        }
+        w.endArray();
         w.endObject();
-        w.key("attribuutMeervoud"); stringMap(ot.attribuutMeervoud);
-        w.key("attribuutDimensies").beginObject();
-        for (var en : ot.attribuutDimensies.entrySet()) { w.key(en.getKey()); stringList(en.getValue()); }
+    }
+
+    /** A facet exists exactly when the member has a granularity; a member without a count is single-period. */
+    private void timelineFacet(Granulariteit granulariteit, Integer aantal, String tijdlijnNaam) {
+        w.key("timeline").beginObject();
+        w.key("node").value("TimelineFacet");
+        w.key("granularity").value(granulariteit.name());
+        w.key("count").value(aantal == null ? 1 : aantal);
+        if (tijdlijnNaam != null) w.key("timelineName").value(tijdlijnNaam);
         w.endObject();
-        w.key("attribuutGranulariteit"); enumMap(ot.attribuutGranulariteit);
-        w.key("attribuutTijdlijnAantal"); intMap(ot.attribuutTijdlijnAantal);
-        w.key("attribuutTijdlijnNaam"); stringMap(ot.attribuutTijdlijnNaam);
-        w.key("kenmerken"); stringList(ot.kenmerken);
-        w.key("kenmerkSoorten"); enumMap(ot.kenmerkSoorten);
-        w.key("kenmerkGranulariteit"); enumMap(ot.kenmerkGranulariteit);
-        w.key("kenmerkTijdlijnAantal"); intMap(ot.kenmerkTijdlijnAantal);
-        w.key("bezield").value(ot.bezield);
-        w.key("meervoud").value(ot.meervoud);
+    }
+
+    private static void zijkaartenPassen(Objecttype ot) {
+        java.util.Set<String> attributen = ot.attributen.keySet();
+        java.util.Set<String> kenmerken = new java.util.HashSet<>(ot.kenmerken);
+        zijkaartPast(ot, "attribuutMeervoud", ot.attribuutMeervoud, attributen, false);
+        zijkaartPast(ot, "attribuutDimensies", ot.attribuutDimensies, attributen, true);
+        zijkaartPast(ot, "attribuutGranulariteit", ot.attribuutGranulariteit, attributen, true);
+        zijkaartPast(ot, "attribuutTijdlijnAantal", ot.attribuutTijdlijnAantal, ot.attribuutGranulariteit.keySet(), true);
+        zijkaartPast(ot, "attribuutTijdlijnNaam", ot.attribuutTijdlijnNaam, ot.attribuutGranulariteit.keySet(), true);
+        zijkaartPast(ot, "kenmerkSoorten", ot.kenmerkSoorten, kenmerken, false);
+        zijkaartPast(ot, "kenmerkGranulariteit", ot.kenmerkGranulariteit, kenmerken, true);
+        zijkaartPast(ot, "kenmerkTijdlijnAantal", ot.kenmerkTijdlijnAantal, ot.kenmerkGranulariteit.keySet(), true);
+    }
+
+    private static void zijkaartPast(Objecttype ot, String kaart, Map<String, ?> zijkaart,
+                                     java.util.Set<String> dragers, boolean geenNull) {
+        for (var en : zijkaart.entrySet()) {
+            if (!dragers.contains(en.getKey()))
+                throw new IllegalStateException("IrEmitter: " + ot.naam + "." + kaart + " heeft een sleutel '"
+                        + en.getKey() + "' zonder lid (of zonder granulariteit) om hem te dragen");
+            if (geenNull && en.getValue() == null)
+                throw new IllegalStateException("IrEmitter: " + ot.naam + "." + kaart + "['" + en.getKey()
+                        + "'] is null");
+        }
+    }
+
+    /** IR-SPEC ch. 2.3: the wrapper carries the name, so the datatype at this declaration position carries no
+     *  self-name; at every reference position {@code domein} stays (it is the domain reference there). */
+    private void domain(String naam, Datatype dt) {
+        if (dt == null)
+            throw new IllegalStateException("IrEmitter: domein '" + naam + "' heeft geen datatype");
+        w.beginObject();
+        w.key("node").value("Domain");
+        w.key("name").value(naam);
+        w.key("datatype");
+        if (dt instanceof Datatype.Enumeratie e) {
+            eenNaam("domein", naam, e.domein());
+            w.beginObject();
+            w.key("node").value("Enumeratie");
+            w.key("waarden"); stringList(e.waarden());
+            w.endObject();
+        } else {
+            datatype(dt);
+        }
         w.endObject();
     }
 
@@ -345,14 +452,6 @@ public final class IrEmitter {
         w.key("variabelStartpunt").value(t.variabelStartpunt());
         w.key("granulariteit").value(t.granulariteit() == null ? null : t.granulariteit().name());
         w.key("aantal").value(t.aantal());
-        w.endObject();
-    }
-
-    private void regel(Regel r) {
-        w.beginObject();
-        w.key("node").value("Regel");
-        w.key("naam").value(r.naam());
-        w.key("soort").value(r.soort());
         w.endObject();
     }
 
@@ -574,7 +673,7 @@ public final class IrEmitter {
             case Expr.Onopgelost o -> {
                 w.key("node").value("Onopgelost");
                 w.key("type"); datatype(o.type());
-                w.key("bron").value(o.bron().snippet());
+                w.key("bron").value(markerBron(o.bron()));
             }
         }
         w.endObject();
@@ -711,10 +810,22 @@ public final class IrEmitter {
             }
             case Conditie.Onopgelost o -> {
                 w.key("node").value("Onopgelost");
-                w.key("bron").value(o.bron().snippet());
+                w.key("bron").value(markerBron(o.bron()));
             }
         }
         w.endObject();
+    }
+
+    /** WF-113 (b): a marker is accounted for by a WARNING that quotes its bron verbatim. A null bron is quoted by
+     *  no message and an empty or blank one by every message, so neither accounts for anything and the verifier
+     *  refuses the document; the frontend can build one, since {@code DefinitionResolver.bron} gives an empty
+     *  snippet for a missing context or an empty match. */
+    private static String markerBron(Bron b) {
+        String s = b == null ? null : b.snippet();
+        if (s == null || s.isBlank())
+            throw new IllegalStateException("IrEmitter: WF-113 (b) — een Onopgelost-marker zonder bron ('" + s
+                    + "') kan door geen WARNING verantwoord worden");
+        return s;
     }
 
     private void geheelPeriode(Conditie.GeheelPeriode gp) {
@@ -1016,18 +1127,6 @@ public final class IrEmitter {
     private void stringMap(Map<String, String> map) {
         w.beginObject();
         for (var en : map.entrySet()) w.key(en.getKey()).value(en.getValue());
-        w.endObject();
-    }
-
-    private void intMap(Map<String, Integer> map) {
-        w.beginObject();
-        for (var en : map.entrySet()) w.key(en.getKey()).value(en.getValue() == null ? null : en.getValue());
-        w.endObject();
-    }
-
-    private <E extends Enum<E>> void enumMap(Map<String, E> map) {
-        w.beginObject();
-        for (var en : map.entrySet()) w.key(en.getKey()).value(en.getValue() == null ? null : en.getValue().name());
         w.endObject();
     }
 

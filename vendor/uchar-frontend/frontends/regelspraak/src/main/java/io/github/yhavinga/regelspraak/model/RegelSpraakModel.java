@@ -758,7 +758,8 @@ public final class RegelSpraakModel {
          *  {@link RegelSpraakModel#vasteStartpunten} and refused at emission. */
         public final Map<String, Granulariteit> attribuutGranulariteit = new LinkedHashMap<>();
         /** §13.3.6.7 the period COUNT of a MULTI-period tijdlijn ("voor elke 5 maanden" -&gt; 5), keyed by the
-         *  attribute naam — absent (count 1) for a single-period "voor elke maand". Each tijdvak then spans
+         *  attribute naam — absent (count 1) for a single-period "voor elke maand" as the resolver records it; a
+         *  model the Drools IR loader builds carries every facet's count, 1 included. Each tijdvak then spans
          *  {@code aantal} units of {@link #attribuutGranulariteit}, so a temporal fold must divide by it. */
         public final Map<String, Integer> attribuutTijdlijnAantal = new LinkedHashMap<>();
         /** §13.3.6.9 the NAMED tijdlijn an attribute rides ("voor elke &lt;tijdlijnnaam&gt;"), keyed by the
@@ -889,8 +890,9 @@ public final class RegelSpraakModel {
             return opKetenKaart(t -> t.attribuutGranulariteit);
         }
 
-        /** §13.3.6.7 the period COUNT of attribute {@code naam}'s multi-period tijdlijn, or null for a
-         *  single-period (count 1) one. */
+        /** §13.3.6.7 the period COUNT of attribute {@code naam}'s multi-period tijdlijn, or null where the model
+         *  records none — the resolver records none for a single-period (count 1) one; see
+         *  {@link #attribuutTijdlijnAantal}. */
         public Integer tijdlijnAantalVan(String naam) {
             return opKeten(t -> t.attribuutTijdlijnAantal, naam);
         }

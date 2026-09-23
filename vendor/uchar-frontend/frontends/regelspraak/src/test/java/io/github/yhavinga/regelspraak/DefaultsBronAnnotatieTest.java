@@ -153,11 +153,11 @@ class DefaultsBronAnnotatieTest {
         g.defaults().forEach(d -> assertNull(d.bron()));
     }
 
-    @Test void de_regelstub_blijft_zonder_bron() {
-        // The Regel stub each lifted rule leaves in `regels` carries node, naam and soort only (the schema admits
-        // no more); the annotation reaches the wire through the defaults, never through the stub.
+    @Test void de_regelstub_staat_niet_op_de_wire() {
+        // The Regel stubs left the wire at M1 (delta B3), so the annotation reaches the wire through the defaults
+        // only; the model still keeps its stubs, the emitter no longer writes them.
         String c = IrEmitter.emit(Resolver.resolve(M6)).replaceAll("\\s+", "");
-        assertTrue(c.contains("{\"node\":\"Regel\",\"naam\":\"bergingsbevoegdbijquotum\",\"soort\":\"regel\"}"), c);
-        assertTrue(c.contains("{\"node\":\"Regel\",\"naam\":\"bergingsbevoegdbijnoodweer\",\"soort\":\"regel\"}"), c);
+        assertFalse(c.contains("\"node\":\"Regel\""), c);
+        assertFalse(c.contains("\"regels\":"), c);
     }
 }

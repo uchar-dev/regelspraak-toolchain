@@ -116,11 +116,13 @@ class AantalSetbronTest {
     @Test void de_ill_gevormde_telling_bereikt_de_wire_niet() {
         // The leak, stated as the property that closes it: an ERROR stops irModus writing at all, so
         // the document the verifier rejects under WF-096 is never produced. Before the narrowing this
-        // same source emitted with `diagnostics: []`.
+        // same source emitted with `diagnostics: []`. Since WF-113 (a) the emitter refuses the model
+        // by itself as well, so no emission route reaches the wire with it.
         RegelSpraakModel m = Resolver.resolve(MODEL + TELLING);
-        assertFalse(m.errors().isEmpty(), "de telling met setbron levert geen fout meer op");
-        String json = IrEmitter.emit(m);
-        assertTrue(json.contains("setlezing buiten een vouwbron"), "geen WF-096-melding op de wire:\n" + json);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("setlezing buiten een vouwbron")),
+                () -> "de telling met setbron levert geen WF-096-fout meer op: " + m.diagnostics);
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m));
+        assertTrue(e.getMessage().contains("setlezing buiten een vouwbron"), e::getMessage);
     }
 
     @Test void de_waardevouw_over_dezelfde_setbron_blijft_schoon() {

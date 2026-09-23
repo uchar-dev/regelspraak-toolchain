@@ -384,8 +384,9 @@ class AantalUnieTest {
         RegelSpraakModel m = Resolver.resolve(MODEL + ONGELIJKE_ELEMENTTYPES);
         assertFalse(m.isOk(), "de geweigerde unie levert geen fout op");
         // the DIAGNOSTIC names the node — it says which route did not open — so the test asks after
-        // the node's own wire spelling, not after the word
-        assertFalse(IrEmitter.emit(m).contains("\"node\": \"InstanceSetUnion\""),
+        // the node's own wire spelling, not after the word; the ERROR is set aside for that reading
+        // ({@link Emissie}), since the emitter refuses the model itself (WF-113 (a))
+        assertFalse(Emissie.zonderFouten(m).contains("\"node\": \"InstanceSetUnion\""),
                 "een geweigerde unie hoort geen knoop op de wire achter te laten");
     }
 }

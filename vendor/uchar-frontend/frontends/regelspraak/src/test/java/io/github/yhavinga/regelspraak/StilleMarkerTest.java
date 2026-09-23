@@ -79,6 +79,8 @@ class StilleMarkerTest {
                 () -> "verwachtte een WARNING met '" + fragment + "', kreeg: " + m.diagnostics);
         assertTrue(m.diagnostics.stream().noneMatch(Diagnostic::isError),
                 () -> "een marker blokkeert de emissie niet — geen ERROR verwacht: " + m.diagnostics);
+        // WF-113 (b) on the written document itself: every route in this class goes through here
+        Verslag.verantwoord(IrEmitter.emit(m));
     }
 
     // ---------------- the condition routes ----------------

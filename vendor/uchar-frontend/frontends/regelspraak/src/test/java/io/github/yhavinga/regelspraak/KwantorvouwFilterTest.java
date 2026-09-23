@@ -1,6 +1,5 @@
 package io.github.yhavinga.regelspraak;
 
-import io.github.yhavinga.regelspraak.emit.IrEmitter;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Diagnostic;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Severity;
@@ -69,8 +68,9 @@ class KwantorvouwFilterTest {
         return Resolver.resolve(MODEL + ZIN.formatted(kwantor, deelselectie));
     }
 
+    /** Sets the model's ERRORs aside ({@link Emissie}): several rows read the node a REFUSED sentence built. */
     private static String emitCompact(RegelSpraakModel m) {
-        return IrEmitter.emit(m).replaceAll("\\s+", "");
+        return Emissie.zonderFouten(m).replaceAll("\\s+", "");
     }
 
     /** The emitted voorwaarde of the single rule, compacted. */

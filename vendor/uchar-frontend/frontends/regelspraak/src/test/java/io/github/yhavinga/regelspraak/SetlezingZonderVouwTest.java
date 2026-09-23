@@ -151,7 +151,9 @@ class SetlezingZonderVouwTest {
     @Test void setlezing_als_objectcreatie_toekenning_wordt_benoemd() {
         // The §13.4.6.3 waardetoekenning is a generic expressie RHS and the third (and last) VALUE slot
         // this IR has — a live producer route of its own: before the check the verifier reported
-        // WF-096 FAIL /objectCreaties/0/toekenningen/0/waarde as the document's ONLY defect.
+        // WF-096 FAIL /objectCreaties/0/toekenningen/0/waarde as the document's ONLY defect (measured
+        // 2026-09-11, before M1; the verifier names that position /rules/objectCreaties/0/toekenningen/0/waarde
+        // since).
         assertEquals(List.of(MELDING), meldingen("""
                 Regel nieuw rapport
                     geldig altijd
@@ -219,7 +221,7 @@ class SetlezingZonderVouwTest {
         // fail-fast level (maintainer decision 2026-09-11, promoting the initial WARNING):
         // irModus writes nothing when the model carries an error, so the ill-formed document is
         // not produced at all — WF-096 wire is never written by this frontend. The emitter,
-        // called directly, still carries the diagnostic (see the wire test below).
+        // called directly, refuses the model as well (WF-113 (a), the test below).
         List<Diagnostic> ds = setlezingDiagnoses(REGELWAARDE);
         assertEquals(1, ds.size());
         assertEquals(Severity.ERROR, ds.get(0).severity());
@@ -228,14 +230,16 @@ class SetlezingZonderVouwTest {
                 (MODEL + REGELWAARDE).lines().toList().get(ds.get(0).line() - 1).strip());
     }
 
-    @Test void de_emissie_draagt_de_diagnose_op_de_wire() {
-        // The defect the card names is a document that says NOTHING about itself: the frontend emitted
-        // this node with `diagnostics: []`. The emitter writes every diagnostic, so the wire now carries
-        // the WF-096 sentence — where a consumer reads it, beside the shape it describes.
+    @Test void de_emitter_weigert_het_model_met_de_fout() {
+        // The defect the card names was a document that said NOTHING about itself: the frontend emitted
+        // this node with `diagnostics: []`. Since WF-113 (a) (2026-09-23) the wire carries only WARNINGs,
+        // because an ERROR means the producer writes no document; the emitter therefore refuses this model
+        // by itself, and the refusal names the WF-096 sentence.
         RegelSpraakModel m = Resolver.resolve(MODEL + REGELWAARDE);
-        String json = IrEmitter.emit(m);
-        assertFalse(json.contains("\"diagnostics\": []"), "de emissie is nog diagnosticloos:\n" + json);
-        assertTrue(json.contains("\"severity\": \"ERROR\""), "geen severity op de wire:\n" + json);
-        assertTrue(json.contains("setlezing buiten een vouwbron"), "geen WF-096-melding op de wire:\n" + json);
+        assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("setlezing buiten een vouwbron")),
+                () -> "de WF-096-fout ontbreekt in het model: " + m.diagnostics);
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m));
+        assertTrue(e.getMessage().contains("WF-113 (a)"), e::getMessage);
+        assertTrue(e.getMessage().contains("setlezing buiten een vouwbron"), e::getMessage);
     }
 }

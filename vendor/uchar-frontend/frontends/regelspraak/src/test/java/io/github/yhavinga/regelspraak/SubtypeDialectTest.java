@@ -261,7 +261,7 @@ class SubtypeDialectTest {
         RegelSpraakModel m = Resolver.resolve(KETEN);
         assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
         String c = emitCompact(m);
-        assertTrue(c.contains("\"naam\":\"Wrakrecht\",\"supertype\":\"Strandrecht\","),
+        assertTrue(c.contains("\"name\":\"Wrakrecht\",\"supertype\":\"Strandrecht\","),
                 () -> "supertype hoort direct na naam op de wire te staan (schema-sleutelvolgorde):\n" + c);
     }
 

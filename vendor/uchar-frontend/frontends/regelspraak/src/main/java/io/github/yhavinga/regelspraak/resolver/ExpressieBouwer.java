@@ -614,7 +614,8 @@ final class ExpressieBouwer {
                 && sa.objecttype() != null && !sa.objecttype().heeftLid(sa.attribuut())) {
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
                     "'" + sa.attribuut() + "' is geen (meervoud van een) gedeclareerd attribuut van "
-                            + sa.objecttype().naam + " — de aggregatie blijft onopgelost (§13.4.17)",
+                            + sa.objecttype().naam + " — de aggregatie blijft onopgelost (§13.4.17) — '"
+                            + bron(f) + "'",
                     f.getStart().getLine()));
             return onopgelost(f, null);   // the WARNING above is this marker's diagnosis
         }
@@ -747,7 +748,7 @@ final class ExpressieBouwer {
                             + src(genest) + "' onder een tweede verzameling, en een vouwbron draagt precies "
                             + "één relatie (IR-SPEC ch. 4.3: één elementObjecttype plus één bronRol) — de "
                             + "buitenste stap zou spoorloos wegvallen, dus de aggregatie blijft onopgelost "
-                            + "(§13.4.17)", f.getStart().getLine()));
+                            + "(§13.4.17) — '" + bron(f) + "'", f.getStart().getLine()));
             return new Expr.Onopgelost(type, bron(f), null);
         }
         // The emitter derives a bronRol only for a navigation-free member fold over a resolved element type
@@ -776,7 +777,7 @@ final class ExpressieBouwer {
                                     + "aanwijst — een vouwbron zonder bronPad noemt één relatie vanaf het "
                                     + "regelonderwerp zelf (IR-SPEC ch. 4.3/WF-102), dus de stap naar dat "
                                     + "exemplaar zou spoorloos wegvallen en de aggregatie blijft onopgelost "
-                                    + "(§13.4.1/§13.4.17)", f.getStart().getLine()));
+                                    + "(§13.4.1/§13.4.17) — '" + bron(f) + "'", f.getStart().getLine()));
                     return new Expr.Onopgelost(type, bron(f), null);
                 }
                 if (anker == huidigSubject) break;       // the chain starts at the subject, as the wire needs
@@ -785,7 +786,7 @@ final class ExpressieBouwer {
                                 + ", maar een vouwbron draagt precies één relatie vanaf het regelonderwerp "
                                 + huidigSubject.naam + " (IR-SPEC ch. 4.3: één elementObjecttype plus één "
                                 + "bronRol) — de tussenstap zou spoorloos wegvallen, dus de aggregatie blijft "
-                                + "onopgelost (§13.4.1/§13.4.17)", f.getStart().getLine()));
+                                + "onopgelost (§13.4.1/§13.4.17) — '" + bron(f) + "'", f.getStart().getLine()));
                 return new Expr.Onopgelost(type, bron(f), null);
             }
         // (c): the written element name, under every form the element type's own binding was tried with, so a
@@ -800,7 +801,8 @@ final class ExpressieBouwer {
                         + "feittype dat " + huidigSubject.naam + " met " + bron.objecttype().naam
                         + " verbindt is '" + paar.feittype() + "' met de rol '" + paar.rol() + "' — de "
                         + "type-paar-afleiding zou een andere verzameling vouwen dan de zin noemt, dus de "
-                        + "aggregatie blijft onopgelost (§13.4.1/§13.4.17)", f.getStart().getLine()));
+                        + "aggregatie blijft onopgelost (§13.4.1/§13.4.17) — '" + bron(f) + "'",
+                f.getStart().getLine()));
         return new Expr.Onopgelost(type, bron(f), null);
     }
 
@@ -2130,7 +2132,7 @@ final class ExpressieBouwer {
             model.diagnostics.add(new RegelSpraakModel.Diagnostic(RegelSpraakModel.Severity.WARNING,
                     "rangtelwoord: de regel bindt " + bindingen + " onderwerpen '" + naam
                     + "'; §5.5.3 definieert geen bindings-/ordeningssemantiek voor zo'n verwijzing per vermelding — "
-                    + "de verwijzing blijft een marker (wordt nog niet ondersteund)",
+                    + "de verwijzing blijft een marker (wordt nog niet ondersteund) — '" + bron + "'",
                     r.getStart().getLine()));
             return onopgelost(bron, null);   // the WARNING above is this marker's diagnosis
         }

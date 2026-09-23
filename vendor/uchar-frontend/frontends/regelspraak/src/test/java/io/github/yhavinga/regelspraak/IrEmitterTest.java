@@ -6,8 +6,12 @@ import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Diagnostic;
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Severity;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -591,6 +595,40 @@ class IrEmitterTest {
                 () -> "de hele letketen moet het domein van het schrijfdoel dragen:\n" + c);
     }
 
+    @Test void het_domein_draagt_zijn_naam_op_de_wrapper_en_de_referentie_houdt_hem() {
+        // M1 (delta B2, IR-SPEC ch. 2.3): the Domain wrapper writes the name once, so the Enumeratie at the
+        // declaration position carries no domein; at a reference position domein is the domain reference
+        // and stays.
+        String c = emitCompact(enumBron(""));
+        assertTrue(c.contains("\"domains\":[{\"node\":\"Domain\",\"name\":\"Keurklasse\","
+                        + "\"datatype\":{\"node\":\"Enumeratie\",\"waarden\":[\"gaaf\",\"beschadigd\"]}}]"),
+                () -> "de declaratiepositie hoort geen zelfnaam te dragen:\n" + c);
+        assertTrue(c.contains("{\"node\":\"Attribute\",\"name\":\"staat\",\"datatype\":{\"node\":\"Enumeratie\","
+                        + "\"domein\":\"Keurklasse\","),
+                () -> "de referentiepositie houdt haar domeinverwijzing:\n" + c);
+    }
+
+    @Test void een_ongelabeld_kenmerk_is_zelfstandig_en_een_zijkaart_zonder_lid_wordt_geweigerd() {
+        // The model keeps its member-keyed side-maps; the wire carries the facets on the member nodes, so
+        // what those nodes cannot carry is refused instead of dropped.
+        RegelSpraakModel m = Resolver.resolve(enumBron(""));
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+        var vondst = m.objecttypen.get("Vondst");
+        vondst.kenmerkSoorten.remove("veilbaar");
+        String c = IrEmitter.emit(m).replaceAll("\\s+", "");
+        assertTrue(c.contains("{\"node\":\"Characteristic\",\"name\":\"veilbaar\",\"kind\":\"ZELFSTANDIG\"}"),
+                () -> "een kenmerk zonder soort is zelfstandig (ch. 2.2):\n" + c);
+
+        vondst.attribuutMeervoud.put("gewicht", "gewichten");
+        IllegalStateException wees = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m));
+        assertTrue(wees.getMessage().contains("Vondst.attribuutMeervoud"), wees::getMessage);
+        vondst.attribuutMeervoud.remove("gewicht");
+
+        vondst.attribuutTijdlijnAantal.put("staat", 2);
+        IllegalStateException zonderRaster = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m));
+        assertTrue(zonderRaster.getMessage().contains("Vondst.attribuutTijdlijnAantal"), zonderRaster::getMessage);
+    }
+
     @Test void enum_literal_zonder_domeincontext_blijft_een_luide_marker() {
         // The fail-fast half of the rule: where NEITHER a write target nor a comparison sibling names
         // an Enumeratie, the frontend has no domain to derive and emits the honest marker rather than
@@ -743,5 +781,70 @@ class IrEmitterTest {
                         "de emitter schrijft deze vorm niet; hij weigert haar");
         assertTrue(geweigerd.getMessage().contains("never emitter-produced"),
                 () -> "de weigering noemt de reden: " + geweigerd.getMessage());
+    }
+
+    /** WF-113 (a) at the producer boundary: the wire carries a diagnostic only as a WARNING whose message is
+     *  neither empty nor blank and whose line is at least 0, and the verifier refuses every other shape. The
+     *  resolver writes none of the twisted diagnostics below, so each is grafted onto a resolver-built model;
+     *  that the emitter refuses them by itself is the claim. Until 2026-09-23 nothing pinned INFO or a null
+     *  severity (a guard narrowed to ERROR kept the suite green), and a blank message or line -1 was written. */
+    @Test void wf113a_de_emitter_schrijft_alleen_wat_de_verifier_als_diagnose_aanneemt() {
+        String bron = """
+            Objecttype de Jutter
+                de vondstteller Numeriek (geheel getal);
+            """;
+        RegelSpraakModel goed = Resolver.resolve(bron);
+        assertTrue(goed.diagnostics.isEmpty(), () -> "onverwachte diagnoses: " + goed.diagnostics);
+        goed.diagnostics.add(new Diagnostic(Severity.WARNING, "een melding", 0));
+        String c = IrEmitter.emit(goed).replaceAll("\\s+", "");
+        assertTrue(c.contains("\"diagnostics\":[{\"node\":\"Diagnostic\",\"severity\":\"WARNING\","
+                        + "\"message\":\"eenmelding\",\"line\":0}]"),
+                () -> "een WARNING met een melding op regel 0 hoort geschreven te worden:\n" + c);
+
+        for (Diagnostic d : List.of(
+                new Diagnostic(Severity.INFO, "een melding", 1),
+                new Diagnostic(null, "een melding", 1),
+                new Diagnostic(Severity.WARNING, "", 1),
+                new Diagnostic(Severity.WARNING, "   ", 1),
+                new Diagnostic(Severity.WARNING, null, 1),
+                new Diagnostic(Severity.WARNING, "een melding", -1))) {
+            RegelSpraakModel m = Resolver.resolve(bron);
+            m.diagnostics.add(d);
+            IllegalStateException e = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m),
+                    () -> "de emitter schreef " + d);
+            assertTrue(e.getMessage().contains("WF-113 (a)"), e::getMessage);
+        }
+    }
+
+    /** WF-113 (b) at the producer boundary: a marker is accounted for by a WARNING that quotes its {@code bron}
+     *  verbatim, so a marker whose bron is null or blank can be accounted for by nothing and the verifier refuses
+     *  the document. The frontend can build one ({@code DefinitionResolver.bron} gives an empty snippet for a
+     *  missing context or an empty match); the emitter refuses to write it, at either marker node, with a WARNING
+     *  on the model that a literal reading of an empty bron would count as its account. */
+    @Test void wf113b_de_emitter_schrijft_geen_marker_zonder_bron() {
+        for (Bron bron : new Bron[] { Bron.synthetisch(""), Bron.synthetisch("   "), Bron.synthetisch(null), null }) {
+            for (boolean conditie : new boolean[] { false, true }) {
+                RegelSpraakModel m = Resolver.resolve("""
+                    Objecttype de Jutter
+                        de vondstteller Numeriek (geheel getal);
+                        de jaarsom Numeriek (geheel getal);
+                    Regel jaarsom
+                        geldig altijd
+                            De jaarsom van een Jutter moet berekend worden als de vondstteller van de Jutter min 6.
+                    """);
+                assertTrue(m.diagnostics.isEmpty(), () -> "onverwachte diagnoses: " + m.diagnostics);
+                ResolvedRegel r = m.resolvedRegels.get(0);
+                m.resolvedRegels.set(0, conditie
+                        ? new ResolvedRegel(r.naam(), r.soort(), r.doel(), r.waarde(),
+                                new Conditie.Onopgelost(bron, "test"), r.geldigheid())
+                        : new ResolvedRegel(r.naam(), r.soort(), r.doel(),
+                                new Expr.Onopgelost(r.waarde().type(), bron, "test"), r.voorwaarde(), r.geldigheid()));
+                m.diagnostics.add(new Diagnostic(Severity.WARNING, "een melding", 1));
+                IllegalStateException e = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m),
+                        () -> "de emitter schreef een " + (conditie ? "conditie" : "expressie") + "marker met bron "
+                                + (bron == null ? null : "'" + bron.snippet() + "'"));
+                assertTrue(e.getMessage().contains("WF-113 (b)"), e::getMessage);
+            }
+        }
     }
 }

@@ -21,7 +21,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * quotum"]} with {@code diagnostics: []}: the exception and the rule after it fell outside the group without a
  * word, and because the lowering lifts the base into a defaults group, the verifier then refused the document
  * with {@code WF-033 FAIL /regelGroepen/0: group member 'bergingsbevoegd bij quotum' does not resolve to a rule
- * form} — the author got the fault on the wrong line and without its cause.
+ * form} — the author got the fault on the wrong line and without its cause. (The pre-M1 path; since M1,
+ * 2026-09-23, the verifier names the position /rules/regelGroepen/0.)
  *
  * <p><b>Two arms, each measured.</b> The POSITIONAL arm refuses a block standing directly after a group's last
  * member: that is where the group would still read on if the block were a rule, and where it ends in silence.

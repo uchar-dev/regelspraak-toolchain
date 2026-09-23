@@ -1,6 +1,5 @@
 package io.github.yhavinga.regelspraak;
 
-import io.github.yhavinga.regelspraak.emit.IrEmitter;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Diagnostic;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Severity;
@@ -75,8 +74,9 @@ class KwantorvouwTest {
         return Resolver.resolve(MODEL + regels);
     }
 
+    /** Sets the model's ERRORs aside ({@link Emissie}): several rows read the node a REFUSED sentence built. */
     private static String emitCompact(RegelSpraakModel m) {
-        return IrEmitter.emit(m).replaceAll("\\s+", "");
+        return Emissie.zonderFouten(m).replaceAll("\\s+", "");
     }
 
     /** The WF-096 refusal itself, matched on its own sentence rather than on the rule id: the
