@@ -34,9 +34,11 @@ testDocument : ( definitie | regelGroep | uitzonderingGroep | uitzonderingRegel 
 De niet-scenariodelen zijn sinds uchar `e5c728b9` die van `regelSpraakDocument`,
 de defaults-blokken van het uchar-dialect (`Uitzondering op …`, `Uitzonderingen
 ongeordend:`) inbegrepen. De resolverlaag draagt die blokken nog niet:
-`ScenarioResolver` neemt ze niet op in het model en meldt dat niet, dus een
-regelset met defaults is nog niet met scenario's te toetsen (uchar-kaart
-`regelspraak-java-defaults-in-scenario-en-werkbank`).
+`ScenarioResolver` neemt ze niet op in het model, dus een regelset met
+defaults is nog niet met scenario's te toetsen (uchar-kaart
+`regelspraak-java-defaults-in-scenario-en-werkbank`). Tot die kaart geeft de
+scenarioroute voor elk zo'n blok een benoemde ERROR op de regel van het blok,
+zodat geen scenario draait op een model waarin het blok ontbreekt.
 
 ### Herbruikbare situatie (het testinitialisatie-analoog)
 

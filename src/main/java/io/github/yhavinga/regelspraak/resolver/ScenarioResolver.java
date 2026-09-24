@@ -96,17 +96,19 @@ public final class ScenarioResolver {
 
         TestDocumentContext test = parser.testDocument();
 
-        // Reuse the production pipeline UNCHANGED: build a synthetic regelSpraakDocument holding exactly the
-        // non-scenario children (definitie / regelGroep / regel / beslistabel), in document order, and hand it
+        // Reuse the production pipeline UNCHANGED: build a synthetic regelSpraakDocument holding the non-scenario
+        // children this route carries (definitie / regelGroep / regel / beslistabel), in document order, and hand it
         // to the same DefinitionResolver.build + RuleChecker.check that Resolver.resolve calls. ANTLR's typed
         // accessors scan `children` dynamically, so re-parenting the children is enough — no change to those
         // classes, so Resolver.resolve stays byte-identical.
         // NB post-inversion: RuleChecker and KenmerkMatcher are package-private in the VENDORED frontend;
         // this class reaches them only via the split `resolver` package across the two source roots. A
         // uchar-side refactor of either breaks this file at re-vendor time — see vendor/uchar-frontend/README.md.
-        RegelSpraakDocumentContext prod = productieDocument(test);
+        List<Diagnostic> weigeringen = new ArrayList<>();
+        RegelSpraakDocumentContext prod = productieDocument(test, weigeringen);
         RegelSpraakModel model = new DefinitionResolver().build(prod);
         model.diagnostics.addAll(syntax);
+        model.diagnostics.addAll(weigeringen);
         new RuleChecker(model).check(prod);
 
         ScenarioResolver r = new ScenarioResolver(model, extern);
@@ -114,16 +116,37 @@ public final class ScenarioResolver {
         return new ScenarioBundel(model, scenarios);
     }
 
-    /** A synthetic {@code regelSpraakDocument} carrying the non-scenario children of {@code test}, in order. */
-    private static RegelSpraakDocumentContext productieDocument(TestDocumentContext test) {
+    /** A synthetic {@code regelSpraakDocument} carrying the non-scenario children of {@code test} this route
+     *  carries, in order. Every other non-scenario block is a named ERROR in {@code weigeringen}: since uchar
+     *  e5c728b9 {@code testDocument} also parses the uchar-dialect defaults blocks, and a block left out without
+     *  a word lets a scenario run on a model that lacks it (uchar card
+     *  regelspraak-java-defaults-in-scenario-en-werkbank carries the defaults into this route). Terminal children
+     *  (EOF, the parser's error nodes) are skipped: the syntax listener already reports a malformed block. */
+    private static RegelSpraakDocumentContext productieDocument(TestDocumentContext test, List<Diagnostic> weigeringen) {
         RegelSpraakDocumentContext prod = new RegelSpraakDocumentContext(null, 0);
         if (test.children != null)
             for (ParseTree kind : test.children)
                 if (kind instanceof DefinitieContext || kind instanceof RegelGroepContext
                         || kind instanceof RegelContext || kind instanceof BeslistabelContext) {
                     prod.addAnyChild(kind);
+                } else if (kind instanceof ParserRuleContext blok
+                        && !(blok instanceof SituatieDefinitieContext) && !(blok instanceof ScenarioContext)) {
+                    weigeringen.add(new Diagnostic(Severity.ERROR, "scenario: het blok '" + kopregel(blok)
+                            + "' staat in het testdocument, maar de scenarioroute neemt het niet mee in het model, dus een"
+                            + " scenario zou draaien op een model zonder dit blok; de defaults-blokken ('Uitzondering op',"
+                            + " 'Uitzonderingen ongeordend') neemt zij pas mee na de uchar-kaart"
+                            + " regelspraak-java-defaults-in-scenario-en-werkbank", blok.getStart().getLine()));
                 }
         return prod;
+    }
+
+    /** The block's first source line as written, whitespace collapsed: the header an author finds it by. */
+    private static String kopregel(ParserRuleContext blok) {
+        Token a = blok.getStart(), z = blok.getStop();
+        int eind = z == null || z.getStopIndex() < a.getStartIndex() ? a.getStopIndex() : z.getStopIndex();
+        String t = a.getInputStream().getText(org.antlr.v4.runtime.misc.Interval.of(a.getStartIndex(), eind));
+        int nl = t.indexOf('\n');
+        return (nl < 0 ? t : t.substring(0, nl)).replaceAll("\\s+", " ").trim();
     }
 
     // ---------------- scenario resolution ----------------

@@ -2,7 +2,9 @@ package io.github.yhavinga.regelspraak;
 
 import io.github.yhavinga.regelspraak.ir.ResolvedScenario;
 import io.github.yhavinga.regelspraak.ir.ResolvedScenario.*;
+import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Diagnostic;
+import io.github.yhavinga.regelspraak.resolver.Resolver;
 import io.github.yhavinga.regelspraak.resolver.ScenarioResolver;
 import io.github.yhavinga.regelspraak.resolver.ScenarioResolver.ScenarioBundel;
 import org.junit.jupiter.api.Test;
@@ -203,6 +205,63 @@ class ScenarioTypeGateTest {
         String sc = "Scenario x\ntoetst de regelgroep g\nMet als verwacht resultaat:\n- de gegevens zijn consistent\n";
         ScenarioBundel b = resolve(sc);
         assertFoutOpLijn(b, bron(sc), "Scenario x", "geen enkele situatiebron");
+    }
+
+    @Test void defaults_blok_is_een_benoemde_error_tot_de_defaults_kaart() {
+        // Sinds uchar e5c728b9 parseert testDocument de defaults-blokken van het uchar-dialect, maar de scenarioroute
+        // neemt ze niet mee in het model. Tot dd798ba draaide dit scenario daardoor zonder melding op een model zonder
+        // die blokken (0 fouten, geen prioritizedDefaults). Elk blok is nu een benoemde ERROR op zijn eigen regel, tot
+        // de uchar-kaart regelspraak-java-defaults-in-scenario-en-werkbank de defaults in de scenarioroute brengt.
+        String regels = """
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                is bergingsbevoegd kenmerk (bijvoeglijk);
+                is noodweer verklaard kenmerk (bijvoeglijk);
+                het aantal geborgen wrakken Numeriek (niet-negatief geheel getal);
+                is kustwacht kenmerk (bijvoeglijk);
+                is havenmeester kenmerk (bijvoeglijk);
+                het wachtgeld Numeriek (geheel getal);
+            Regel bergingsbevoegd bij quotum
+                geldig altijd
+                    Een Jutter is bergingsbevoegd
+                    indien zijn aantal geborgen wrakken groter of gelijk is aan 20.
+            Uitzondering op bergingsbevoegd bij quotum: bergingsbevoegd bij noodweer
+                geldig altijd
+                    Een Jutter is bergingsbevoegd
+                    indien hij aan alle volgende voorwaarden voldoet:
+                    - hij is noodweer verklaard
+                    - zijn aantal geborgen wrakken is groter of gelijk aan 8.
+            Uitzonderingen ongeordend:
+            Regel wachtgeld voor kustwachters
+                geldig altijd
+                    Het wachtgeld van een Jutter moet gesteld worden op 30
+                    indien hij kustwacht is.
+            Regel wachtgeld voor havenmeesters
+                geldig altijd
+                    Het wachtgeld van een Jutter moet gesteld worden op 45
+                    indien hij havenmeester is.
+            """;
+        RegelSpraakModel productie = Resolver.resolve(regels);
+        assertTrue(productie.errors().isEmpty(), () -> "de productieroute moet de regels foutloos resolven: " + productie.errors());
+        assertFalse(productie.prioritizedDefaults.isEmpty(), "de productieroute draagt de defaults-blokken");
+
+        String src = regels + """
+            Situatie twintig wrakken:
+            een Jutter J
+            - het aantal geborgen wrakken is 20
+            Scenario quotum
+            toetst de regel bergingsbevoegd bij quotum
+            gebaseerd op de situatie twintig wrakken
+            Met als verwacht resultaat:
+            - J is bergingsbevoegd
+            """;
+        ScenarioBundel b = ScenarioResolver.resolve(src);
+        assertEquals(2, b.model().errors().size(), () -> "precies één ERROR per defaults-blok verwacht: " + b.model().errors());
+        assertFoutOpLijn(b, src, "Uitzondering op bergingsbevoegd bij quotum",
+                "het blok 'Uitzondering op bergingsbevoegd bij quotum: bergingsbevoegd bij noodweer'");
+        assertFoutOpLijn(b, src, "Uitzonderingen ongeordend:", "het blok 'Uitzonderingen ongeordend:'");
+        assertTrue(b.model().errors().stream()
+                        .allMatch(d -> d.message().contains("regelspraak-java-defaults-in-scenario-en-werkbank")),
+                () -> "elke weigering noemt de kaart: " + b.model().errors());
     }
 
     // ==================================================================
