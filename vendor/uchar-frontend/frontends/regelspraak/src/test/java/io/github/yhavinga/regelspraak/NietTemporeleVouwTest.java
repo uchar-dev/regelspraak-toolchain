@@ -139,15 +139,15 @@ class NietTemporeleVouwTest {
                 () -> "er is geen periode geschreven, dus hoort er geen in de emissie te staan:\n" + v);
     }
 
-    /** Everything else is the qualified sentence's own lowering, unchanged: the element-own read, the
-     *  emptied set bit and the range spelled as the instance fold spells it. */
+    /** Everything else is the qualified sentence's own lowering, unchanged: the element-own read, no fold
+     *  left in the matrix, and the range spelled as the instance fold spells it. */
     @Test void de_gekwantificeerde_operand_komt_terug_als_eigen_lezing_van_het_element() {
         String v = voorwaarde(resolveer(VERGELIJKING.formatted("alle")));
         assertTrue(v.contains("\"links\":{\"node\":\"AttribuutRef\",\"attribuut\":\"dienstjaren\","
                         + "\"objecttype\":\"Strandwacht\""),
                 () -> "de toets hoort het attribuut op het ELEMENTtype te lezen:\n" + v);
-        assertFalse(v.contains("\"set\":true"),
-                () -> "na de verlaging hoort er geen setlezing meer in de boom te staan:\n" + v);
+        assertFalse(v.substring(v.indexOf("\"toets\":"), v.lastIndexOf("\"bronRol\":")).contains("\"bronRol\""),
+                () -> "na de verlaging hoort er geen vouw over gekoppelde instanties meer in de toets te staan:\n" + v);
         assertTrue(v.contains("\"bronRol\":{\"node\":\"RolBinding\",\"feittype\":\"schouwindeling\","
                         + "\"rol\":\"wacht\"}"),
                 () -> "de vouw hoort het verbindende feittype+rol als bereik te dragen:\n" + v);
@@ -197,8 +197,8 @@ class NietTemporeleVouwTest {
      * The second shape the goldens needed, and a route of its own. "alle wachten van de Schouwploeg"
      * parses as §13.4.2.9 {@code kwantificatie? attribuutMetLidwoord VAN onderwerpKeten}, so the
      * quantifier sits on the attribuutVanOnderwerp itself and the operand resolves as "the wachten of
-     * the Schouwploeg" — a reference with {@code set: false} and no quantor. There was therefore no set
-     * reading for WF-096 to fence and no operand for the fold to find: the sentence resolved to an
+     * the Schouwploeg" — a reference that is no set reading and carries no quantor. There was therefore
+     * no set reading for WF-096 to fence and no operand for the fold to find: the sentence resolved to an
      * {@code Onopgelost} marker, silently emitted.
      */
     @Test void de_kenmerkvorm_wordt_een_vouw_over_een_kenmerk_van_het_element() {
@@ -209,8 +209,9 @@ class NietTemporeleVouwTest {
                         + "\"elementObjecttype\":\"Strandwacht\",\"filter\":null,"),
                 () -> "de kenmerkvorm hoort een vouw over Strandwacht te worden:\n" + v);
         assertTrue(v.contains("\"toets\":{\"node\":\"Kenmerk\",\"kenmerk\":\"gediplomeerd\","
-                        + "\"navigatie\":null,\"negatie\":false"),
+                        + "\"negatie\":false,"),
                 () -> "de matrix hoort de kenmerkcheck van het ELEMENT te zijn:\n" + v);
+        assertFalse(v.contains("\"navigatieBinding\""), () -> "de kenmerkcheck van het element navigeert niet:\n" + v);
         assertFalse(v.contains("Onopgelost"), () -> "er hoort geen marker meer te staan:\n" + v);
         assertTrue(v.contains("\"bronRol\":{\"node\":\"RolBinding\",\"feittype\":\"schouwindeling\","
                         + "\"rol\":\"wacht\"}"),
@@ -230,7 +231,7 @@ class NietTemporeleVouwTest {
         String v = voorwaarde(m);
         assertTrue(v.contains("\"kwantor\":\"GEEN\""), () -> "de geschreven kwantor hoort GEEN te zijn:\n" + v);
         assertTrue(v.contains("\"toets\":{\"node\":\"Kenmerk\",\"kenmerk\":\"gediplomeerd\","
-                        + "\"navigatie\":null,\"negatie\":true"),
+                        + "\"negatie\":true,"),
                 () -> "de geabsorbeerde 'niet' hoort de matrix te ontkennen:\n" + v);
     }
 
@@ -300,7 +301,7 @@ class NietTemporeleVouwTest {
     /**
      * A die/dat that does not bind against the element must BLOCK the document, and this row is the one
      * that says so out loud. On the comparison route a declined fold leaves the set reading standing and
-     * WF-096 raises the blocking ERROR; this route has no set reading, so the only thing between the
+     * the set fence raises the blocking ERROR; this route has no set reading, so the only thing between the
      * sentence and a silent wrong set is {@code keurDeelselecties}, whose whole point is that it is an
      * ERROR and not a WARNING. The fold therefore hands the subselectie BACK when it declines —
      * measured regression during this card: for one commit the sentence produced a document with a

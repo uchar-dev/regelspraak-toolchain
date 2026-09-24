@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * every executor then answers consistently and wrongly.
  *
  * <p>So the rule this file holds is: the subselection reaches the wire, or the document does not. A
- * shape this lowering cannot bind keeps the WF-096 ERROR and draws a WARNING naming itself — never a
+ * shape this lowering cannot bind keeps the set fence's ERROR and draws a WARNING naming itself — never a
  * fold over the FULL range. That is the same discipline the counting quantor and the unbindable range
  * already carry in {@link KwantorvouwTest}.
  *
@@ -81,8 +81,8 @@ class KwantorvouwFilterTest {
         return c.substring(van);
     }
 
-    /** The WF-096 refusal, matched on its own sentence (the declining WARNINGs cite WF-096 too). */
-    private static List<Diagnostic> wf096(RegelSpraakModel m) {
+    /** The set fence's refusal, matched on its own sentence (the declining WARNINGs cite the fence's rule too). */
+    private static List<Diagnostic> setlezingfouten(RegelSpraakModel m) {
         return m.diagnostics.stream()
                 .filter(d -> d.message().startsWith("setlezing buiten een vouwbron")).toList();
     }
@@ -120,9 +120,10 @@ class KwantorvouwFilterTest {
         // subject is the Vondst, the same trap the toets avoids.
         String v = voorwaarde(resolveer("alle", " die aangemeld zijn"));
         int i = v.indexOf("\"filter\":");
-        String f = v.substring(i, Math.min(v.length(), i + 220));
-        assertTrue(f.contains("\"navigatie\":null"), () -> "het filter navigeert niet:\n" + f);
-        assertTrue(f.contains("\"negatie\":false"), () -> "een bevestigende deelselectie:\n" + f);
+        String f = v.substring(i, v.indexOf("\"toets\":", i));
+        assertTrue(f.contains("\"filter\":{\"node\":\"Kenmerk\",\"kenmerk\":\"aangemeld\",\"negatie\":false,"),
+                () -> "een bevestigende deelselectie:\n" + f);
+        assertFalse(f.contains("\"navigatieBinding\""), () -> "het filter navigeert niet:\n" + f);
     }
 
     @Test void een_deelselectie_over_een_kenmerk_van_het_ONDERWERP_bindt_niet() {
@@ -130,8 +131,8 @@ class KwantorvouwFilterTest {
         // not of the Vondst, so there is nothing to select on — and the lowering must say so rather
         // than reach for the subject's kenmerk (which would quantify over a set nobody wrote).
         RegelSpraakModel m = resolveer("alle", " die bevoegd zijn");
-        assertEquals(1, wf096(m).size(), () -> "de setlezing hoort te blijven staan: " + m.diagnostics);
-        assertEquals(Severity.ERROR, wf096(m).get(0).severity());
+        assertEquals(1, setlezingfouten(m).size(), () -> "de setlezing hoort te blijven staan: " + m.diagnostics);
+        assertEquals(Severity.ERROR, setlezingfouten(m).get(0).severity());
         assertEquals(1, deelselectieWaarschuwing(m).size(),
                 () -> "de geweigerde deelselectie hoort benoemd te worden: " + m.diagnostics);
         assertEquals(Severity.WARNING, deelselectieWaarschuwing(m).get(0).severity());
@@ -144,7 +145,7 @@ class KwantorvouwFilterTest {
         // §13.4.13.5-.8 class the instance fold's filter also declines. The loud refusal is the
         // point: silently dropping it folds over every vondst.
         RegelSpraakModel m = resolveer("alle", " die een kind hebben");
-        assertEquals(1, wf096(m).size(), () -> "de setlezing hoort te blijven staan: " + m.diagnostics);
+        assertEquals(1, setlezingfouten(m).size(), () -> "de setlezing hoort te blijven staan: " + m.diagnostics);
         assertEquals(1, deelselectieWaarschuwing(m).size(),
                 () -> "de geweigerde deelselectie hoort benoemd te worden: " + m.diagnostics);
         assertFalse(emitCompact(m).contains("Kwantorvouw"),
@@ -157,7 +158,7 @@ class KwantorvouwFilterTest {
         // matters is the direction of the failure: refusing costs a sentence, silently binding the
         // AFFIRMATIVE kenmerk would quantify over exactly the complement of what was written.
         RegelSpraakModel m = resolveer("alle", " die niet aangemeld zijn");
-        assertEquals(1, wf096(m).size(), () -> "de setlezing hoort te blijven staan: " + m.diagnostics);
+        assertEquals(1, setlezingfouten(m).size(), () -> "de setlezing hoort te blijven staan: " + m.diagnostics);
         assertEquals(1, deelselectieWaarschuwing(m).size(),
                 () -> "de geweigerde deelselectie hoort benoemd te worden: " + m.diagnostics);
         assertFalse(emitCompact(m).contains("Kwantorvouw"),
@@ -175,7 +176,7 @@ class KwantorvouwFilterTest {
         // granularity, so nothing moved: over a NON-temporal attribute the same sentence binds
         // (NietTemporeleVouwTest), and the node carried the shape all along.
         RegelSpraakModel m = resolveer("alle", " die groter zijn dan 3 kg");
-        assertEquals(1, wf096(m).size(), () -> "de setlezing hoort te blijven staan: " + m.diagnostics);
+        assertEquals(1, setlezingfouten(m).size(), () -> "de setlezing hoort te blijven staan: " + m.diagnostics);
         assertEquals(1, deelselectieWaarschuwing(m).size(),
                 () -> "de geweigerde deelselectie hoort benoemd te worden: " + m.diagnostics);
         assertTrue(deelselectieWaarschuwing(m).get(0).message().contains("gekwantificeerde attribuut 'gewicht'"),

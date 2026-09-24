@@ -1307,6 +1307,12 @@ class DrlTest {
         // §13.4.14.4: the threshold quantifiers count satisfied criteria. Drools constraints
         // take only booleans, so this is the OR of k-subsets (minstens): at-least-N directly,
         // at-most-N as !at-least-(N+1), exactly-N as their conjunction. No ternary arithmetic.
+        // Until uchar e5c728b9 the third kenmerk was named 'uniek'. 'uniek' lexes as the UNIEK keyword of the
+        // uniciteitscontrole and is no name word, so its declaration and the sentence 'Een Persoon is uniek' were
+        // syntax errors (measured at uchar 69436907), and this test passed because ANTLR's error recovery made
+        // preciesEen write an undeclared kenmerk. The second kenmerkToekenning alternative of uchar e5c728b9
+        // ('is niet een X') turns that recovery into a marker (measured with that grammar change alone). The
+        // fixture now declares a legal name and has to resolve without errors.
         String src = """
             Objecttype de Persoon
                 de a Numeriek (geheel getal);
@@ -1314,7 +1320,7 @@ class DrlTest {
                 de c Numeriek (geheel getal);
                 is gekozen kenmerk (bijvoeglijk);
                 is afgewezen kenmerk (bijvoeglijk);
-                is uniek kenmerk (bijvoeglijk);
+                is enkelvoudig kenmerk (bijvoeglijk);
             Regel minstens
                 geldig altijd
                     Een Persoon is gekozen
@@ -1330,12 +1336,14 @@ class DrlTest {
                     - de b van een Persoon is groter dan 0.
             Regel preciesEen
                 geldig altijd
-                    Een Persoon is uniek
+                    Een Persoon is enkelvoudig
                     indien hij aan precies 1 van de volgende voorwaarden voldoet:
                     - de a van een Persoon is groter dan 0
                     - de b van een Persoon is groter dan 0.
             """;
-        String drl = DrlTranspiler.transpile(Resolver.resolve(src));
+        RegelSpraakModel m = Resolver.resolve(src);
+        assertTrue(m.errors().isEmpty(), () -> "de fixture moet foutloos resolven: " + m.errors());
+        String drl = DrlTranspiler.transpile(m);
         assertFalse(drl.contains("? 1 : 0"), () -> "geen ternaire telkunst in een constraint:\n" + drl);
         // ten minste 2 of 3 -> OR of the three pairs (a&&b) || (a&&c) || (b&&c)
         assertTrue(drl.contains(") && (b > ") && drl.contains(") || ("), () -> "minstens-combinaties:\n" + drl);

@@ -96,17 +96,18 @@ two whole-phrase/keyword tokens never collide under maximal munch.
 
 Both forms LIFT already-resolved rules out of `resolvedRegels` into
 `prioritizedDefaults`: WF-050 forbids both a rule and a defaults group on one
-target, so the lifted rule's semantics live in the defaults group alone. Each
-lifted rule keeps a `Regel` stub in `regels` (mirroring the hand-written
-prioritized-defaults anchors).
+target, so the lifted rule's semantics live in the defaults group alone. The
+model keeps a `Regel` stub for each lifted rule, but since M1 of the v1 wire
+(delta B3) the emitter writes no `regels` list, so on the wire a lifted rule
+exists only as its default.
 
 - **Ordered:** the base rule and its `Uitzondering op` blocks become ONE
   `PrioritizedDefaults` group. Defaults descend in priority — the exception
   default(s) above, the base default below. With multiple exceptions on one base,
   the **later-written** block stacks **higher** (PRIORITIZED-DEFAULTS-EVOLUTIE
-  §4.2). A characteristic base yields a
-  `besluit`-carrying default (a RegelSpraak kenmerk assignment is monotone `waar`,
-  §9.2 — the frontend never emits `besluit: false`); an attribute base yields a
+  §4.2). A characteristic rule yields a
+  `besluit`-carrying default — `true`, or `false` where its sentence negates the
+  characteristic (form 1, below); an attribute base yields a
   `consequentie`-carrying default. The base rule's geldigheid is carried onto the
   defaults group.
 - **Unordered:** each `Uitzonderingen ongeordend` block becomes SIBLING
@@ -115,9 +116,145 @@ prioritized-defaults anchors).
   (WF-050: two-or-more defaults groups on one target require the marking on every
   one).
   Members deciding differently on one target route to the §9.5 Inconsistentie
-  channel; deciding the same reconciles idempotently. Because a kenmerk
-  assignment is monotone `waar`, a genuine §9.5 conflict is only expressible on
-  an **attribute** target.
+  channel; deciding the same reconciles idempotently. On an attribute target the
+  members differ in value; on a characteristic target a negated member (form 1,
+  below) beside a positive one gives the conflict when both apply — no write and
+  one §9.5 fact. Until form 1 a kenmerk assignment could only decide `waar`, and
+  the conflict was expressible on an attribute target alone.
+
+### Form 1 — a negated decision in a rule that becomes a default
+
+Origin: maintainer decisions 1–3 of 2026-09-23
+(`spec/proposals/DIALECT-DEFAULTS-NIET-EN-NESTING.md` §4 and §10). RegelSpraak
+v2.3.0 §9.2 has no negative attribution: a characteristic that no rule attributes
+is false (§3.5), so in a flat document a negative attribution adds nothing, and
+beside a positive one it is a conflict with no rule to decide it. Inside a
+defaults group neither holds: the group is the target's only writer, its
+priority is total, and a `false` decision writes nothing (RUNTIME-SEMANTICS
+ch. 7.1; ch. 5.3's monotone writes hold). The dialect admits the negation there
+and nowhere else.
+
+| Kind (declaration) | Positive result | Negated result |
+|---|---|---|
+| bijvoeglijk — `is uitgesloten kenmerk (bijvoeglijk);` | `Een Jutter is uitgesloten` | `Een Jutter is niet uitgesloten` |
+| bezittelijk — `het recht op de penning kenmerk (bezittelijk);` | `Een Jutter heeft recht op de penning` | `Een Jutter heeft geen recht op de penning` |
+| zelfstandig — `de vaste ingezetene kenmerk;` | `Een Jutter is een vaste ingezetene` | `Een Jutter is geen vaste ingezetene`, `Een Jutter is niet een vaste ingezetene` |
+
+These are the negations a condition already accepts (§8.1.8, Tabel 16), and the
+resolver reads them the way it reads a condition: the WHOLE written name first,
+so a declared characteristic whose name begins with `niet` or `geen` binds
+itself; only when the whole name binds nothing is a leading `niet` or `geen`
+read as the negation and the rest bound. A verb that does not fit the kind
+(`is geen` on a bezittelijk characteristic) gets the condition side's Tabel 16
+WARNING, at the line of the sentence; the lowering is the same. That lint checks
+the verb against the kind and not the negation word, on both sides: `heeft niet
+X` on a bezittelijk characteristic and `is geen X` on a bijvoeglijk one pass
+without a message, in a result as in a condition. `is niet een` binds a
+zelfstandig characteristic only, as it does in a condition; on another kind the
+sentence is refused and the message gives the kind's own spelling (`is niet X`,
+`heeft geen X`), since a result cannot stay an unresolved marker the way a
+condition can. After `een` no negation is read at all: a condition binds the
+name behind `een` whole (the EEN-form), so `is een niet X` and `heeft een geen
+X` negate nothing there, and a result refuses them, with the spelling of X's
+kind. A positive name keeps its written spelling, as before: the lookup only
+decides whether the name is negated.
+
+**Grammar.** `is niet X`, `is geen X` and `heeft geen X` parsed already: `NIET`
+is a name word and `geen` lexes as an ordinary word, so both stand inside the
+`kaleNaam`. `is niet een X` did not (`EEN` is no name word; the syntax error was
+"extraneous input 'een'"). `kenmerkToekenning` has one more alternative,
+`onderwerpKeten IS NIET EEN kaleNaam`, the result counterpart of the condition's
+`NIET EEN` branch. `Regel` and the extension blocks share the production, so
+whether a negation is admitted is decided in the resolver.
+
+**Where it is admitted** (decision 2): in every rule that becomes a default — the
+body of an `Uitzondering op`, a member of `Uitzonderingen ongeordend`, and the
+base of an `Uitzondering op` chain. A negated base is the lowest default and
+decides `onwaar`. In a flat model that changes no outcome, since under the
+closed world an unattributed characteristic is false anyway; what the base buys
+there is that the author can write a statute that opens with the negation
+("geen recht heeft …, tenzij …") and hang the exceptions on a named base, as
+Catala's `definition x equals false` does. Under inheritance it does change
+outcomes (RUNTIME-SEMANTICS ch. 7.10): on a subtype, its base replaces the base
+of an ancestor's defaults group on the same characteristic, so a positive
+inherited base stops applying to the subtype's instances; on a supertype, the
+group's `onwaar` exceptions stay above a subtype's own base and block it where
+they apply. A plain kenmerk rule is no base — ch. 7.10 folds attribute writers
+only — so a negated subtype base does not switch off an ancestor's plain
+kenmerk rule, which keeps writing on the subtype's instances. All three
+measured 2026-09-24 in ref, clingo and the Drools exec branch.
+
+**Lowering.** A negated sentence becomes a default with `besluit: false` on the
+target of its group; the rest is the lowering above. Between reading and
+lowering the resolver carries the negation as the value `onwaar` on the
+resolved kenmerktoekenning. WF-022 refuses that value on a flat rule, so a
+plain rule that still carries it after the lift is refused (below), and the
+value never reaches the wire.
+
+**What a `false` decision says.** Where it is the highest deciding default of
+its group, the rule set does not attribute the characteristic. It does not say
+the characteristic is false: a characteristic the case input sets stays set
+(RegelSpraak §3.5: input or attribution), and without input the closed world
+makes it false anyway.
+
+**Refusals and the warning** (witness: `NietInUitzonderingTest`):
+
+- a negated kenmerktoekenning in a plain `Regel` — no exception, no member of
+  an unordered block, no base of a chain — is an ERROR that cites §9.2, §3.5,
+  WF-022 and this section ("een gewone regel kan een kenmerk niet ontkennen
+  …").
+  Measured on the frontend before this card: the sentence went to disk as an
+  undeclared characteristic `niet uitgesloten` with `diagnostics: []`, for the
+  verifier to refuse under WF-022; in an `Uitzondering op` it drew "schrijft een
+  ander doel (Jutter.niet uitgesloten (kenmerk))". A plain negated rule on a
+  target that also has a defaults group gets this ERROR alone, without WF-050's
+  second-writer ERROR beside it. A rule written in an extension block that was
+  refused for another reason stays un-lifted and is judged by that refusal;
+- a negation whose rest names no characteristic of the subject (`is niet
+  vervallen` with `vervallen` undeclared, and no characteristic `niet vervallen`
+  either) is an ERROR naming the rest ("… ontkent geen kenmerk van Jutter —
+  'vervallen' is geen kenmerk van Jutter …"); when the rest is a declared
+  ATTRIBUTE the message says so, and for a Boolean attribute it points to `moet
+  gesteld worden op onwaar`.
+  The lowering then skips the block's family instead of adding a
+  target-mismatch ERROR. A POSITIVE result on an undeclared characteristic is
+  still not refused here: it reaches the verifier's WF-022;
+- `is niet een X` on an X that is bijvoeglijk or bezittelijk is an ERROR ("de
+  vorm 'is niet een' ontkent een zelfstandig kenmerk (Tabel 16) …");
+- a negation written after `een` (`is een niet X`, `heeft een geen X`) is an
+  ERROR ("… ontkent niets — achter 'een' leest de frontend de naam als geheel
+  …") that gives the spelling of X's kind;
+- there is no negated gelijkstelling: an attribute has no polarity. `moet
+  gesteld worden op onwaar` on a Boolean attribute stays a value — a
+  `consequentie`, never a `besluit` — and `niet` written into an attribute name
+  is no negation (the undeclared-attribute refusal of WF-022);
+- on a characteristic target where every default of every group decides
+  `onwaar`, the groups never attribute the characteristic. That is well-formed
+  and draws no ERROR; the RuleChecker gives one WARNING per target ("… kent het
+  nooit toe …", with several groups "kennen"), which the emitter writes into
+  `diagnostics` (WF-113 (a)). Per target, not per group: an unordered block
+  spreads its target over sibling groups, and a target with a negated sibling
+  beside a positive one derives through the positive one. The warning is left
+  out where the characteristic has another writer in the subject's inheritance
+  line: a defaults group there composes with these groups and the all-`onwaar`
+  group then changes outcomes (above); a plain kenmerk rule there keeps writing
+  beside the groups, and the warning's hint, a missing `waar` exception, would
+  point away from it. It is left out beside a plain rule on the same target
+  too, which draws WF-050's ERROR instead;
+- the refusals above stand at the decision table's own line when the rule is
+  a table row (a row is re-parsed in a stream of its own) and name the table;
+  a rule with several versions draws one ERROR, not one per version.
+
+**Which documents change.** Only a document with a result sentence whose name,
+after an article, begins with `niet` or `geen` and does not bind as a whole, or
+with `is niet een` — the forms §9.2 keeps out of official RegelSpraak. Before
+this card no such document reached a valid IR: it drew the target-mismatch ERROR
+or a syntax error, or it was emitted with a characteristic named `niet …` or
+`geen …` that its object type does not declare, which the verifier refuses
+(WF-022 on a flat rule, the defaults-target check on a group). The 71 `bron.rgs`
+goldens that existed before this card re-emit byte-identically
+(gate 10). The golden `jutterswet-schorsing` (Jutterswet art. 3 and 4bis) is the
+first whose source carries a negated exception.
 
 ### `// Bron:` annotations of lifted rules
 
@@ -156,8 +293,9 @@ placement since, with no new wire field (card `frontend-bron-annotatie-in-defaul
   the separate annotations matter, write one per block;
 - an unannotated block keeps `bron: null`: the three extension goldens carry no
   annotation and re-emit byte-identically;
-- the `Regel` stub a lifted rule leaves in `regels` is unchanged — `node`,
-  `naam`, `soort`, and no `bron`, which the schema does not admit there;
+- the `Regel` stubs carry no annotation either: since M1 of the v1 wire (delta
+  B3) the emitter writes no `regels` list, so a lifted rule's annotation reaches
+  the wire through its default alone;
 - nesting: when exception-on-exception lands, a nested block's annotation
   lands on its own default inside the `ExceptionGroup`. Every lifted rule
   becomes a default in one place (`RuleChecker.defaultVan`), so the nested
@@ -192,6 +330,9 @@ Witness: `DefaultsBronAnnotatieTest`, `BronAnnotatiePlaatsTest`.
   attribuut)`;
 - a base rule that is not a plain kenmerktoekenning/gelijkstelling (an
   initialisatie, or a verdeling/consistentie/objectcreatie/uniciteit);
+- a negated kenmerktoekenning in a plain `Regel`, a negation whose rest names
+  no declared characteristic, `is niet een` on a characteristic that is not
+  zelfstandig, and a negation written after `een` (form 1, above);
 - a base rule or exception with more than one `geldig`-versie (not carried by
   this first card);
 - an extension block within the scope of a `Regelgroep`, or over a base rule
@@ -203,7 +344,11 @@ Witness: `DefaultsBronAnnotatieTest`, `BronAnnotatiePlaatsTest`.
   families, a family beside an unordered block). Each reached disk silently
   for the verifier to refuse; the ERROR names both writers. Keyed on the
   declared object type, as WF-050 is, so a supertype's and a subtype's stacks
-  stay two targets. Two unordered blocks on one target stay admitted.
+  stay two targets. Two unordered blocks on one target stay admitted. A rule
+  written in an extension block whose family or block the lowering refused is
+  not counted as a second writer (2026-09-23, card
+  `dialect-niet-in-uitzondering`): its block's own ERROR stands, and "neem de
+  regel op in de groep" would name a block the rule already stands in.
 
 ### Interaction with `Regelgroep` (§9.10) — refused
 
@@ -276,9 +421,10 @@ and the hand-written prioritized-defaults anchors.
 
 ### Scope / limitations of the first card
 
-- Only the kenmerk form is exercised for the ordered shape (an attribute-target
-  ordered exception is expressible by the same machinery but not needed for
-  the first goldens).
+- The first card exercised the ordered shape on a characteristic only. Since
+  then `jutterswet-wrakrecht` exercises it on an attribute target, on a
+  supertype and its subtype, and `jutterswet-schorsing` with a negated
+  exception (form 1, above).
 - Exception-on-exception (nested `Default.excepties`) is not authored from source
   in this card; the wire form supports it and the hand anchors witness it.
 - Multi-version base/exception rules are refused (single-version only).

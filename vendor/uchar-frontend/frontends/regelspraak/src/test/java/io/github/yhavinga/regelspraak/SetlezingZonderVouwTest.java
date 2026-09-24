@@ -12,10 +12,10 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * WF-096 (`spec/IR-SPEC.md` ch. 4.3, maintainer decision 2026-09-09): an {@code AttribuutRef} with
- * {@code set: true} is admissible ONLY as the source of a single-argument instance fold. A §13.4.2
- * set quantifier ("alle &lt;mv&gt;") with no fold around it therefore names a collection in a slot
- * that takes one value, and the document is ill-formed on the wire.
+ * The set fence (`spec/IR-SPEC.md` ch. 4.3; WF-096 until L2, maintainer decision 2026-09-09): a set reading
+ * is admissible ONLY as the source of a single-argument instance fold. A §13.4.2 set quantifier ("alle
+ * &lt;mv&gt;") with no fold around it therefore names a collection in a slot that takes one value, and the
+ * document is ill-formed on the wire — since L2 as a read over a to-many step (WF-053).
  *
  * <p>Until this suite the frontend emitted exactly that node with {@code diagnostics: []} — measured
  * on five routes, all from the one sentence fragment "het gewicht van alle vondsten van de Jutter":
@@ -27,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * <p><b>One of those five left the fence on 2026-09-19</b>: the VOORWAARDE. A condition has a
  * quantifier to give the collection a home — the written "alle" lowers to a
  * {@link io.github.yhavinga.regelspraak.ir.Conditie.Kwantorvouw} — so the set reading is not excused
- * there but removed, and there is nothing left for WF-096 to name. The two condition rows below
+ * there but removed, and there is nothing left for the fence to name. The two condition rows below
  * therefore measure the lowering; the counter-proofs that the fence still stands wherever the fold
  * DECLINES (an unbindable range, a multi-step range, an unbound die/dat, a telwoord under 1) live with
  * the lowering, in {@link KwantorvouwTest} and {@link KwantorvouwFilterTest}. The value positions are
@@ -69,17 +69,18 @@ class SetlezingZonderVouwTest {
         Eén rapporteur heeft één rapport
         """;
 
-    /** The literal message the check raises on the two card witnesses (both read the same fragment). */
+    /** The literal message the check raises on the two card witnesses (both read the same fragment). Since L2 it
+     *  cites the rule the emitted wire would fail at this position, WF-053's to-many clause; until L2 it cited
+     *  WF-096. */
     static final String MELDING =
             "setlezing buiten een vouwbron: 'het gewicht van alle vondsten van de Jutter' noemt de waarde "
             + "van elk lid van de verzameling — alleen toegestaan als bron van één waardevouw (som, "
-            + "totaal, minimum, maximum, eerste, laatste, aantal gevulde waarden); een instantietelling "
-            + "vouwt de leden zelf en leest geen waarde per lid, dus onder 'aantal' ook niet (besluit "
-            + "2026-09-19); hier wordt één waarde verwacht (WF-096, IR-SPEC ch. 4.3)";
+            + "totaal, minimum, maximum, eerste, laatste, aantal gevulde waarden); hier wordt één waarde "
+            + "verwacht, en een meervoudige stap in een lezing vraagt een aggregatie (WF-053, IR-SPEC ch. 4.1a)";
 
     private static List<Diagnostic> setlezingDiagnoses(String regels) {
         RegelSpraakModel m = Resolver.resolve(MODEL + regels);
-        return m.diagnostics.stream().filter(d -> d.message().contains("WF-096")).toList();
+        return m.diagnostics.stream().filter(d -> d.message().startsWith("setlezing buiten een vouwbron")).toList();
     }
 
     private static List<String> meldingen(String regels) {
@@ -196,7 +197,7 @@ class SetlezingZonderVouwTest {
     }
 
     @Test void de_som_van_een_setlezing_blijft_een_geldige_vouwbron() {
-        // The counter-proof: WF-096 fences the POSITION, not the set reading. Under a fold the same
+        // The counter-proof: the fence guards the POSITION, not the set reading. Under a fold the same
         // node is the source the fold consumes, and it stays verifier-clean.
         geenEnkeleDiagnose("""
                 Regel maatgevend gewicht
@@ -207,7 +208,7 @@ class SetlezingZonderVouwTest {
 
     @Test void de_eerste_van_een_setlezing_blijft_een_geldige_vouwbron() {
         // The second counter-proof, on the fold kind the executors disagree about. That divergence sits
-        // INSIDE WF-096's exemption and is a separate, still-open question; here the form only has to
+        // INSIDE the fence's exemption and is a separate, still-open question; here the form only has to
         // keep passing the frontend unchanged.
         geenEnkeleDiagnose("""
                 Regel peildatum
@@ -220,7 +221,7 @@ class SetlezingZonderVouwTest {
         // The one knob, pinned so that moving it is a deliberate, visible act. ERROR is the
         // fail-fast level (maintainer decision 2026-09-11, promoting the initial WARNING):
         // irModus writes nothing when the model carries an error, so the ill-formed document is
-        // not produced at all — WF-096 wire is never written by this frontend. The emitter,
+        // not produced at all — that wire is never written by this frontend. The emitter,
         // called directly, refuses the model as well (WF-113 (a), the test below).
         List<Diagnostic> ds = setlezingDiagnoses(REGELWAARDE);
         assertEquals(1, ds.size());
@@ -234,10 +235,10 @@ class SetlezingZonderVouwTest {
         // The defect the card names was a document that said NOTHING about itself: the frontend emitted
         // this node with `diagnostics: []`. Since WF-113 (a) (2026-09-23) the wire carries only WARNINGs,
         // because an ERROR means the producer writes no document; the emitter therefore refuses this model
-        // by itself, and the refusal names the WF-096 sentence.
+        // by itself, and the refusal names the fence's sentence.
         RegelSpraakModel m = Resolver.resolve(MODEL + REGELWAARDE);
         assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("setlezing buiten een vouwbron")),
-                () -> "de WF-096-fout ontbreekt in het model: " + m.diagnostics);
+                () -> "de setlezing-fout ontbreekt in het model: " + m.diagnostics);
         IllegalStateException e = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m));
         assertTrue(e.getMessage().contains("WF-113 (a)"), e::getMessage);
         assertTrue(e.getMessage().contains("setlezing buiten een vouwbron"), e::getMessage);

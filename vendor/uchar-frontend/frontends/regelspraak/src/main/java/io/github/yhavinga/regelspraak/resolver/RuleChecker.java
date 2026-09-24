@@ -96,7 +96,7 @@ final class RuleChecker {
         beslistabellen(doc);
         regelGroepen(doc);   // build the §9.10 group IR + the fase-2 recursief structural checks
         keurKringverwijzingen();
-        // WF-096 runs BEFORE the defaults lift: that pass MOVES resolved rules out of resolvedRegels into
+        // The set fence runs BEFORE the defaults lift: that pass MOVES resolved rules out of resolvedRegels into
         // PrioritizedDefaults nodes whose consequentie is a copy of the rule's waarde, so checking here
         // covers the lifted rules too — and covers them once.
         keurSetlezingen();
@@ -217,7 +217,134 @@ final class RuleChecker {
         java.util.Set<ParserRuleContext> geweigerd = regelgroepReikwijdte(doc);
         ordeningsDefaults(doc, geweigerd);
         groepsDefaults(doc, geweigerd);
-        keurEnigeSchrijver();
+        java.util.Set<String> blokNamen = blokRegelnamen(doc);
+        keurVlakkeOntkenningen(blokNamen);   // before the single-writer check: a refused negation is no second writer
+        keurEnigeSchrijver(blokNamen);
+        keurNooitAfleidend();
+    }
+
+    /** The names of the rules written in an extension block: each 'Uitzondering op' block's own name and its base's,
+     *  and each member of an 'Uitzonderingen ongeordend' block. Such a rule that is still in resolvedRegels after the
+     *  lift belongs to a family or block the lowering refused, with an ERROR of its own. */
+    private static java.util.Set<String> blokRegelnamen(RegelSpraakDocumentContext doc) {
+        java.util.Set<String> namen = new java.util.HashSet<>();
+        for (UitzonderingRegelContext u : DefinitionResolver.alleUitzonderingen(doc)) {
+            namen.add(src(u.uitzonderingBasisNaam()));
+            namen.add(src(u.regelNaam()));
+        }
+        for (UitzonderingGroepContext g : DefinitionResolver.alleUitzonderingGroepen(doc))
+            for (RegelContext lid : g.regel()) namen.add(src(lid.regelNaam()));
+        return namen;
+    }
+
+    /** {@code regel} without the " #k" suffix a multi-version rule's versions carry. */
+    private static String zonderVersie(String regel) {
+        return regel.replaceFirst(" #\\d+$", "");
+    }
+
+    /** Dialect §4, form 1 (maintainer decision 2, 2026-09-23): a negated kenmerktoekenning stands only in a rule that
+     *  becomes a default — the body of an 'Uitzondering op', a member of 'Uitzonderingen ongeordend', or the base of
+     *  an 'Uitzondering op' chain. What still carries the negation after the lift is a plain Regel, and there it has
+     *  no reading: without a priority it is either inert under the closed world (§9.2: an unattributed
+     *  characteristic is false) or, beside a positive rule, a conflict nothing decides. Before this check it went to
+     *  disk as a characteristic named "niet …" with no diagnostic, for the verifier to refuse under WF-022. A rule
+     *  written in an extension block that stayed un-lifted was refused by that block's own check, which speaks
+     *  alone. One ERROR per rule, not per version. */
+    private void keurVlakkeOntkenningen(java.util.Set<String> blokNamen) {
+        java.util.Set<String> gemeld = new java.util.HashSet<>();
+        for (ResolvedRegel r : model.resolvedRegels) {
+            if (!ontkend(r) || geweigerdeDoelen.contains(r) || blokNamen.contains(zonderVersie(r.naam()))) continue;
+            geweigerdeDoelen.add(r);
+            if (!gemeld.add(zonderVersie(r.naam()))) continue;
+            Expr.AttribuutRef doel = (Expr.AttribuutRef) r.doel();
+            int tabel = tabelregel(r.naam());
+            model.diagnostics.add(new Diagnostic(Severity.ERROR, "regel '" + zonderVersie(r.naam()) + "'"
+                    + tabelVanRij(r.naam()) + ": een gewone regel kan een kenmerk niet ontkennen (§9.2) — zonder "
+                    + "toekenning is '" + doel.attribuut() + "' al onwaar (§3.5), en een gewone regel kent een kenmerk "
+                    + "op de wire alleen 'waar' toe (WF-022). Een ontkenning ('is niet', 'heeft geen', 'is geen', 'is niet een') "
+                    + "staat alleen in een regel die een default wordt: het lichaam van een 'Uitzondering op', een lid van "
+                    + "'Uitzonderingen ongeordend', of de basisregel van een 'Uitzondering op'-keten (dialect §4)",
+                    tabel >= 0 ? tabel : doel.bron() == null ? 0 : doel.bron().line()));
+        }
+    }
+
+    /** The line of the decision table whose row {@code regel} is, or -1 when it is no row. A row is re-parsed in a
+     *  stream of its own, so the line numbers inside it count from that stream and not from the document. */
+    private int tabelregel(String regel) {
+        for (var e : rijRegels.entrySet())
+            if (e.getValue().contains(zonderVersie(regel))) return e.getKey().getStart().getLine();
+        return -1;
+    }
+
+    /** Dialect §4, form 1 (maintainer decision 2, 2026-09-23): a characteristic target on which every default of
+     *  every defaults group decides 'onwaar' is never attributed by those groups — a false decision writes nothing.
+     *  That is well-formed (it means "never", and the wire admits it), so it is no error; in a flat model such a
+     *  group does nothing that leaving it out would not do as well, so the RuleChecker warns. Once per target, not
+     *  per group: an unordered block spreads one target over sibling groups, and a sibling deciding 'onwaar' beside
+     *  one deciding 'waar' leaves the target derivable.
+     *
+     *  <p>No warning where the characteristic has another writer in the subject's inheritance line, a strict
+     *  ancestor or descendant. A defaults group there composes with these groups into one effective stack per type
+     *  (ch. 7.10), and then the all-'onwaar' group changes outcomes: on a subtype its base replaces the inherited
+     *  base, on a supertype its exceptions stay above a subtype's own base. Measured 2026-09-24 in ref, clingo and
+     *  the Drools exec branch, both directions: a subtype instance the other group gives the characteristic loses
+     *  it. A plain kenmerk rule there is folded into no stack (the fold takes attribute writers only), so it keeps
+     *  writing on the subtype's instances and the groups stay inert beside it — measured the same day, same outcome
+     *  with and without the group. The warning is left out there as well, because its hint, a missing 'waar'
+     *  exception, would point away from the rule that does the writing. No warning either beside a live plain rule
+     *  on the same type: {@link #keurEnigeSchrijver} refuses that rule (WF-050), and a warning beside its ERROR
+     *  adds nothing. */
+    private void keurNooitAfleidend() {
+        Map<String, List<PrioritizedDefaults>> perDoel = new LinkedHashMap<>();
+        for (PrioritizedDefaults pd : model.prioritizedDefaults)
+            if (pd.isKenmerk())
+                perDoel.computeIfAbsent(doelSleutel(pd.onderwerp(), true, pd.doel()), k -> new ArrayList<>()).add(pd);
+        for (List<PrioritizedDefaults> groepen : perDoel.values()) {
+            if (groepen.stream().anyMatch(pd -> beslistWaar(pd.defaults()))) continue;
+            PrioritizedDefaults eerste = groepen.get(0);
+            if (andereKenmerkschrijver(model.objecttypeOpNaam(eerste.onderwerp()), eerste.doel())) continue;
+            boolean meer = groepen.size() > 1;
+            Herkomst h = pdHerkomst.getOrDefault(eerste, new Herkomst(0, "defaults-groep"));
+            model.diagnostics.add(new Diagnostic(Severity.WARNING, h.kop() + ": "
+                    + (meer ? "de defaults-groepen " : "de defaults-groep ")
+                    + opsomming(groepen.stream().map(PrioritizedDefaults::naam).toList()) + " op het kenmerk "
+                    + eerste.onderwerp() + "." + eerste.doel() + (meer ? " kennen" : " kent") + " het nooit toe — "
+                    + "elke default beslist 'onwaar', en een besluit 'onwaar' schrijft niets. Dat is welgevormd, maar "
+                    + "zo " + (meer ? "doen de groepen" : "doet de groep") + " niets wat het weglaten van "
+                    + (meer ? "de groepen" : "de groep") + " niet ook doet; ga na of er een uitzondering ontbreekt die "
+                    + "'waar' beslist (dialect §4)", h.line()));
+        }
+    }
+
+    /** Whether characteristic {@code kenmerk} has a writer that composes with the defaults groups on {@code type}:
+     *  a live plain rule on {@code type} itself (WF-050's second writer), or a defaults group or a live plain rule on
+     *  a strict ancestor or descendant of {@code type} (ch. 7.10). A sibling subtype composes with nothing here. */
+    private boolean andereKenmerkschrijver(Objecttype type, String kenmerk) {
+        if (type == null) return false;
+        for (PrioritizedDefaults pd : model.prioritizedDefaults)
+            if (pd.isKenmerk() && pd.doel().equalsIgnoreCase(kenmerk)
+                    && inErflijn(type, model.objecttypeOpNaam(pd.onderwerp()))) return true;
+        for (ResolvedRegel r : model.resolvedRegels)
+            if (!geweigerdeDoelen.contains(r) && doelVan(r) instanceof DefaultsDoel d && d.kenmerk()
+                    && d.naam().equalsIgnoreCase(kenmerk) && (d.onderwerp() == type || inErflijn(type, d.onderwerp())))
+                return true;
+        return false;
+    }
+
+    /** Whether {@code ander} is a strict ancestor or a strict descendant of {@code type}. */
+    private static boolean inErflijn(Objecttype type, Objecttype ander) {
+        return ander != null && ander != type && (type.isEen(ander) || ander.isEen(type));
+    }
+
+    /** Whether some default in {@code defaults}, nested exception groups included, decides 'waar'. */
+    private static boolean beslistWaar(List<Default> defaults) {
+        if (defaults == null) return false;
+        for (Default d : defaults) {
+            if (Boolean.TRUE.equals(d.besluit())) return true;
+            if (d.excepties() != null)
+                for (var groep : d.excepties().leden()) if (beslistWaar(groep.defaults())) return true;
+        }
+        return false;
     }
 
     /** WF-050's single writer, producer side (fix round 3, 2026-09-23): a target with a defaults group has no
@@ -228,8 +355,10 @@ final class RuleChecker {
      *  unordered block beside a plain rule all reached disk silently for the verifier to refuse. Keyed on the
      *  DECLARED object type, as WF-050 is: a supertype's and a subtype's stacks are two keys (the inheritance
      *  obligation of IR-SPEC ch. 6.1). One ERROR per target and clause, naming both writers; a rule whose target
-     *  is refused already is not counted again. */
-    private void keurEnigeSchrijver() {
+     *  is refused already is not counted again, and neither is a rule written in an extension block: it is still in
+     *  resolvedRegels only because the lowering refused its family or block, with an ERROR of its own, and "neem de
+     *  regel op in de groep" would send the author to a block the rule already stands in. */
+    private void keurEnigeSchrijver(java.util.Set<String> blokNamen) {
         Map<String, List<PrioritizedDefaults>> perDoel = new LinkedHashMap<>();
         for (PrioritizedDefaults pd : model.prioritizedDefaults)
             perDoel.computeIfAbsent(doelSleutel(pd.onderwerp(), pd.isKenmerk(), pd.doel()), k -> new ArrayList<>()).add(pd);
@@ -239,7 +368,7 @@ final class RuleChecker {
             String groepsnamen = opsomming(groepen.stream().map(PrioritizedDefaults::naam).toList());
             List<String> anderen = new ArrayList<>();
             for (ResolvedRegel r : model.resolvedRegels) {
-                if (geweigerdeDoelen.contains(r)) continue;
+                if (geweigerdeDoelen.contains(r) || blokNamen.contains(zonderVersie(r.naam()))) continue;
                 DefaultsDoel d = doelVan(r);
                 if (d != null && e.getKey().equals(doelSleutel(d.onderwerp().naam, d.kenmerk(), d.naam())))
                     anderen.add("'" + r.naam() + "'" + tabelVanRij(r.naam()));
@@ -362,8 +491,9 @@ final class RuleChecker {
      *  stayed unknown, and the document reached disk with {@code diagnostics: []} for the verifier to refuse
      *  under WF-022 and WF-034. The same for an undeclared attribute, and for a characteristic whose subject is a
      *  navigation, which resolves to no object type at all. Each is an ERROR now, naming the form. An undeclared
-     *  characteristic on a resolved subject is left to the dialect card for negated decisions ("is niet X"),
-     *  whose ground that is. */
+     *  characteristic on a resolved subject is not judged here: a negated one ("is niet X" with X undeclared) is
+     *  refused where the name is read ({@link #kenmerk}, dialect §4), and a positive one still reaches the
+     *  verifier's WF-022 — no card has taken that one yet. */
     private void keurRegeldoelen() {
         for (ResolvedRegel r : model.resolvedRegels) {
             if (!(r.doel() instanceof Expr.AttribuutRef a)) continue;
@@ -697,9 +827,10 @@ final class RuleChecker {
                 ongeordend, defaults, bron, g);
     }
 
-    /** One default from a resolved flat rule: on characteristic defaults a §9.2-monotone kenmerktoekenning
-     *  always decides {@code true} (RegelSpraak cannot withdraw a characteristic); on attribute defaults the
-     *  default's value is the rule's resolved value expression. The justification is the rule's condition.
+    /** One default from a resolved flat rule: on characteristic defaults a kenmerktoekenning decides {@code true},
+     *  and a negated one (dialect §4, form 1: {@link #ONTKEND}) decides {@code false} — which writes nothing, so
+     *  §9.2's monotone writes and ch. 5.3 hold; on attribute defaults the default's value is the rule's resolved
+     *  value expression. The justification is the rule's condition.
      *  The rule's {@code // Bron:} annotation becomes the default's {@code bron}: lifting takes the rule out of
      *  resolvedRegels, and its {@code bronAnnotaties} with it, so this is the one place the citation can
      *  survive — and since every lifted rule becomes a default HERE, a nested exception inherits the placement
@@ -708,7 +839,7 @@ final class RuleChecker {
         Conditie rechtvaardiging = r.voorwaarde() != null ? r.voorwaarde() : ALTIJD;
         String bron = annotatieTekst(r.bronAnnotaties());
         return kenmerk
-                ? new Default(Boolean.TRUE, rechtvaardiging, null, false, null, bron)
+                ? new Default(!ontkend(r), rechtvaardiging, null, false, null, bron)
                 : new Default(null, rechtvaardiging, r.waarde(), false, null, bron);
     }
 
@@ -869,14 +1000,18 @@ final class RuleChecker {
     }
 
     // ==============================================================================================
-    // WF-096 (IR-SPEC ch. 4.3, maintainer decisions 2026-09-09 and — the KIND half — 2026-09-19)
-    // — the set fence, producer side.
+    // The set fence (IR-SPEC ch. 4.3), producer side. Until L2 of the v1 wire migration it was WF-096 on the
+    // wire (maintainer decisions 2026-09-09 and — the KIND half — 2026-09-19). Since L2 the wire has no set
+    // flag, and a set reading the fence let through would reach it as a read over a to-many step (WF-053) or,
+    // as the source of a count, as a count over member values (WF-093 (b)). The frontend keeps the reading in
+    // memory and refuses it here.
     // ==============================================================================================
 
     /** The seven VALUE folds — the kinds that read a value per contributor, and so the only kinds that
-     *  consume what a set reading hands them. This is WF-096's exemption exactly as the verifier draws
-     *  it in {@code set_source_exempt} (arity one AND a value-folding kind AND a resolved element
-     *  type), so the frontend's fence and the wire's are once more the same boundary.
+     *  consume what a set reading hands them. This is the exemption the verifier drew in
+     *  {@code set_source_exempt} under WF-096 until L2 and draws in {@code source_reading} since (arity one
+     *  AND a value-folding kind AND a resolved element type), so the frontend's fence and the wire's are the
+     *  same boundary.
      *
      *  <p><b>AANTAL_GEVULDE joined this set on 2026-09-20</b> (decision G9's card). The verifier's
      *  {@code value_fold_name} grew the kind on 2026-09-20 with the wire itself, and this set did not
@@ -884,7 +1019,7 @@ final class RuleChecker {
      *  kind, so nothing measured the gap. It is the same class of leak the AANTAL narrowing below was,
      *  from the other side, which is why {@code VouwsoortenGrensTest} now READS the verifier's own
      *  list instead of trusting a comment that says the two agree.
-     *  The kind belongs here for WF-096's own reason: a filled count is a count in its RESULT but a
+     *  The kind belongs here for the fence's own reason: a filled count is a count in its RESULT but a
      *  VALUE fold in its READING — it asks each contributor's value whether it is there
      *  (`RUNTIME-SEMANTICS.md` ch. 3.4c), which is exactly what a set reading hands it.
      *
@@ -893,12 +1028,12 @@ final class RuleChecker {
      *  words and ch. 3.4b restates it for the union — so a set reading under a count names a
      *  collection the node does not read. Keeping it here was a LEAK, not a stale comment: measured
      *  2026-09-19, a count over a set reading passed this naloop untouched and was emitted with
-     *  {@code diagnostics: []} although the verifier rejects it under WF-096 and nothing else
+     *  {@code diagnostics: []} although the verifier rejected it under WF-096 and nothing else
      *  ({@link io.github.yhavinga.regelspraak.AantalSetbronTest}).
      *
      *  <p><b>One boundary, one consumer — measured before narrowing.</b> The verifier had to SPLIT its
-     *  hoisted exemption, because one boolean there fed two rules (WF-034's sentinel fence, which
-     *  still exempts the whole folding family, and WF-096's set fence, which no longer does). Here no
+     *  hoisted exemption then, because one boolean there fed two rules (WF-034's sentinel fence, which
+     *  exempted the whole folding family, and WF-096's set fence, which no longer did; both left with L2). Here no
      *  split is needed and that was checked rather than assumed: this set has exactly ONE reader, the
      *  fold-source test in {@link #keurSetlezing}, and it is the frontend's only collection of fold
      *  kinds at all — the count's own element derivation keys on {@code kind == AANTAL} directly
@@ -914,14 +1049,15 @@ final class RuleChecker {
     /** A §13.4.2 set quantifier ("alle &lt;mv&gt;", and every other quantor that is not the bare
      *  definite "de") makes a reference a SET reading: it names the members' values, one per member —
      *  a collection. Exactly one node consumes a collection, the instance fold that OWNS the source,
-     *  so WF-096 makes the shape ill-formed at every other READ position: as a whole rule value, as an
-     *  operand of a composite node, inside a condition, and as an operand of the listed value fold.
+     *  so the shape is ill-formed at every other READ position: as a whole rule value, as an operand of a
+     *  composite node, inside a condition, and as an operand of the listed value fold (WF-096 until L2; since
+     *  then WF-053 at such a position, and WF-093 (b) at a count's source).
      *
      *  <p>Measured on this frontend (2026-09-11), all from the one sentence fragment "het gewicht van
      *  alle vondsten van de Jutter": eight routes reached the wire with {@code diagnostics: []} — a
      *  BEREKENING value, an operand of a {@code Binair}, a §13.4.4 GELIJKSTELLING value, a §13.4.9
      *  INITIALISATIE value, a rule voorwaarde, a §13.4.8 consistentieregel, an objectcreatie
-     *  voorwaarde and a §13.4.6 objectcreatie-toekenning value — and the uchar verifier rejects all
+     *  voorwaarde and a §13.4.6 objectcreatie-toekenning value — and the uchar verifier rejected all
      *  eight under WF-096.
      *
      *  <p>A NALOOP over the built tree, not a test inside {@link ExpressieBouwer}: the reference is
@@ -938,9 +1074,9 @@ final class RuleChecker {
      *  route — asserts that a rule value of exactly this shape resolves error-free, and moving that is
      *  the maintainer's call. Raising the level is a one-token change at the {@link Severity} below.
      *
-     *  <p>Scope: the READ. A rule's {@code doel} is a WRITE position, which WF-096's own scope note
-     *  does not reach (it is verifier-clean and all three executors ignore the field), so it is
-     *  deliberately not walked.
+     *  <p>Scope: the READ. A rule's {@code doel} is a WRITE position, outside the fence (under WF-096 it was
+     *  verifier-clean and all three executors ignored the field; since L2 the wire carries no set flag at all),
+     *  so it is deliberately not walked.
      *  <p>The three VALUE slots of this repo's IR are all walked, and that is the whole list rather than
      *  a sample: a {@link ResolvedRegel}'s waarde, a {@code ResolvedConsistentie}'s assertie, and a
      *  §13.4.6 {@link ResolvedObjectCreatie.Toekenning}'s waarde — the last a generic expressie RHS and
@@ -955,7 +1091,8 @@ final class RuleChecker {
             for (var t : oc.toekenningen()) keurSetlezing(t.waarde(), false);
     }
 
-    /** Walk {@code e} for WF-096 violations. {@code vouwbron} marks the ONE exempt position: the single
+    /** Walk {@code e} for set readings outside the fence's exempt position. {@code vouwbron} marks the ONE exempt
+     *  position: the single
      *  argument of a VALUE-folding kind that carries an {@code elementObjecttype} — the source the fold
      *  consumes. That is the boundary the verifier draws (arity, kind AND a resolved element type):
      *  narrower here would refuse a legitimate fold source, wider would let the frontend emit a
@@ -967,6 +1104,14 @@ final class RuleChecker {
      *  {@link Expr#bevat} states: the next node the union grows must be a compile error here rather
      *  than a silent leaf that under-reports. */
     private void keurSetlezing(Expr e, boolean vouwbron) {
+        keurSetlezing(e, vouwbron, false);
+    }
+
+    /** {@code telbron} marks the single argument of an {@code AANTAL} over an element type: a set reading there
+     *  is refused under the count's own rule, WF-093 (b); at every other non-exempt position it is a read over a
+     *  to-many step, WF-053's. The message names the rule the emitted document would fail, so a reader who runs
+     *  the verifier finds the same id there. */
+    private void keurSetlezing(Expr e, boolean vouwbron, boolean telbron) {
         if (e == null) return;
         switch (e) {
             case Expr.AttribuutRef a -> {
@@ -974,15 +1119,20 @@ final class RuleChecker {
                     model.diagnostics.add(new Diagnostic(Severity.ERROR,
                             "setlezing buiten een vouwbron: '" + a.bron() + "' noemt de waarde van elk lid van de "
                             + "verzameling — alleen toegestaan als bron van één waardevouw (som, totaal, minimum, "
-                            + "maximum, eerste, laatste, aantal gevulde waarden); een instantietelling vouwt de leden "
-                            + "zelf en leest geen waarde per lid, dus onder 'aantal' ook niet (besluit 2026-09-19); "
-                            + "hier wordt één waarde verwacht (WF-096, IR-SPEC ch. 4.3)",
+                            + "maximum, eerste, laatste, aantal gevulde waarden); "
+                            + (telbron
+                                    ? "een instantietelling vouwt de leden zelf en leest geen waarde per lid, dus als "
+                                      + "bron van 'aantal' ook niet (WF-093 (b), IR-SPEC ch. 4.3)"
+                                    : "hier wordt één waarde verwacht, en een meervoudige stap in een lezing "
+                                      + "vraagt een aggregatie (WF-053, IR-SPEC ch. 4.1a)"),
                             a.bron().line()));
             }
             case Expr.Functie f -> {
                 boolean isVouwbron = f.elementObjecttype() != null && f.argumenten().size() == 1
                         && VOUWSOORTEN.contains(f.kind());
-                for (Expr a : f.argumenten()) keurSetlezing(a, isVouwbron);
+                boolean isTelbron = f.elementObjecttype() != null && f.argumenten().size() == 1
+                        && f.kind() == Expr.FunctieKind.AANTAL;
+                for (Expr a : f.argumenten()) keurSetlezing(a, isVouwbron, isTelbron);
                 keurSetlezing(f.leegwaarde(), false);   // §5.8.2 fallback: an ordinary read, never a source
                 keurSetlezing(f.filter());
             }
@@ -1066,7 +1216,7 @@ final class RuleChecker {
             bouwer.setSubject(subjectVan(rsr.resultaatDeel())); // so "zijn …" resolves against the rule subject
             bouwer.zetVariabelen(rsr.variabeleDeel());          // §11 capture "Daarbij geldt:" vars in BOTH forms (clears per rule)
             Conditie voorwaarde = rsr.voorwaardeDeel() != null ? bouwVoorwaarde(rsr.voorwaardeDeel()) : null;
-            // WF-096 on the CONDITION, here rather than in the naloop: this is the one place every
+            // The set fence on the CONDITION, here rather than in the naloop: this is the one place every
             // resultaatdeel kind's voorwaarde passes through, so one call covers the constructs that do
             // not become a ResolvedRegel (verdeling, objectcreatie, feitcreatie, dagsoort, startpunt)
             // as well as the ones that do. The naloop then walks the VALUES alone, so nothing is said twice.
@@ -1393,7 +1543,7 @@ final class RuleChecker {
             Expr lhs = bouwer.bouw(e.expressie());
             // The voorwaarde's operator machinery MINUS the ch. 4.5 quantifier fold: a Kwantorvouw has no
             // violation rule on this carrier (transpileerbaar declines it), so folding a quantified
-            // assertion here would trade WF-096's ERROR for the "nog niet omgezet" WARNING below and drop
+            // assertion here would trade the set fence's ERROR for the "nog niet omgezet" WARNING below and drop
             // the check from the wire. The set reading keeps its fence until the §13.4.8 consistentieregel
             // gets a quantified form of its own. (The BULLET criteria need no such guard: a samengestelde
             // consistentieregel sets no rule subject, so the fold's range never binds.)
@@ -1953,14 +2103,131 @@ final class RuleChecker {
     }
 
     /** §13.4.5 kenmerktoekenning: the subject acquires a kenmerk (a boolean property).
-     *  Modelled as setting that boolean attribute to true. */
+     *  Modelled as setting that boolean attribute to true.
+     *
+     *  <p>Dialect §4, form 1 (maintainer decisions 1–3, 2026-09-23): a negated decision — 'is niet X', 'heeft geen
+     *  X', 'is geen X', 'is niet een X' — is read the way the condition side reads a kenmerkcheck
+     *  ({@link #kenmerkConditie}): the WHOLE written name first, so a declared characteristic whose name begins with
+     *  niet/geen binds itself; only a name that binds nothing is read as niet/geen plus the rest. A negated rule
+     *  writes the de-negated characteristic with {@link #ONTKEND} as its value. The defaults lowering turns that into
+     *  besluit false ({@link #defaultVan}); a plain rule that still carries it after the lift is refused
+     *  ({@link #keurVlakkeOntkenningen}), so the marker never reaches the wire. Refused here: a negation whose rest
+     *  names no characteristic of the subject; 'is niet een X' on an X that is not zelfstandig — the condition side
+     *  binds only a zelfstandig kenmerk under that form (Tabel 16); and a niet/geen written after 'een', which the
+     *  condition side reads as part of the name and not as a negation. A positive name keeps its written spelling
+     *  (the lookup decides only whether the name is negated), as before, so no document without a negation
+     *  changes. */
     private void kenmerk(String naam, KenmerkToekenningContext kt, Conditie voorwaarde, Geldigheid geldigheid) {
         Objecttype subject = bouwer.objecttypeVanKeten(kt.onderwerpKeten());
-        String kenmerk = src(kt.kaleNaam()).replaceFirst("^(?i)(de|het|een)\\s+", "");
+        String geschreven = src(kt.kaleNaam());
+        String kenmerk = geschreven.replaceFirst("^(?i)(de|het|een)\\s+", "");
+        int tabel = tabelregel(naam);
+        int lijn = tabel >= 0 ? tabel : kt.getStart().getLine();   // a table row's lines count in its own stream
+        boolean ontkend = false;
+        String zonderKenmerk = null;   // the refusal of a negation that names no declared characteristic
+        if (kt.NIET() != null) {
+            // 'is niet een X': the grammar carries the negation, so X itself must bind. An unresolved subject is
+            // refused by keurRegeldoelen, and the negation stays recorded for whatever reads the rule before that.
+            ontkend = true;
+            String g = subject == null ? null : KenmerkMatcher.vind(subject, geschreven);
+            if (g == null && subject != null) g = KenmerkMatcher.vind(subject, kenmerk);
+            Objecttype.KenmerkSoort soort = g == null ? null : subject.kenmerkSoort(g);
+            if (g != null && soort != null && soort != Objecttype.KenmerkSoort.ZELFSTANDIG) {
+                kenmerk = g;
+                zonderKenmerk = "regel '" + naam + "'" + tabelVanRij(naam) + ": 'is niet een " + g + "' — de vorm "
+                        + "'is niet een' ontkent een zelfstandig kenmerk (Tabel 16), en '" + g + "' is "
+                        + soort.name().toLowerCase(java.util.Locale.ROOT) + "; schrijf "
+                        + ontkenningsspelling(soort, g) + " (dialect §4)";
+            } else if (g != null) kenmerk = g;
+            else if (subject != null)
+                zonderKenmerk = ontkenningZonderKenmerk(naam, subject, "niet een " + kenmerk, kenmerk, false);
+        } else if (subject != null && kt.EEN() != null) {
+            // 'is een …' / 'heeft een …': after 'een' the condition side binds the name whole and reads no negation
+            // there (the EEN-form, §8.1.8.3), and a result reads it the same way. A niet/geen after 'een' that leaves
+            // the name binding nothing is refused, with the spelling that does negate.
+            if (KenmerkMatcher.vind(subject, geschreven) == null && KenmerkMatcher.vind(subject, kenmerk) == null
+                    && kenmerk.matches("(?i)(niet|geen)\\s+\\S.*"))
+                zonderKenmerk = ontkenningNaEen(naam, subject, kt.HEEFT() != null ? "heeft" : "is", kenmerk);
+        } else if (subject != null) {
+            boolean heeft = kt.HEEFT() != null;
+            Conditie c = kenmerkConditie(subject, geschreven, null, heeft, bron(kt));
+            if (c instanceof Conditie.Kenmerk k && k.negatie()) {
+                kenmerk = k.kenmerk();
+                ontkend = true;
+                keurNegatieSoort(subject, k, heeft, lijn);
+            } else if (c == null && kenmerk.matches("(?i)(niet|geen)\\s+\\S.*"))
+                zonderKenmerk = ontkenningZonderKenmerk(naam, subject, kenmerk,
+                        kenmerk.replaceFirst("^(?i)(niet|geen)\\s+", ""), true);
+        }
         Expr doel = new Expr.AttribuutRef(kenmerk, subject, src(kt.onderwerpKeten()),
                 null, new Datatype.Booleaan(), bron(kt));
-        Expr waarde = new Expr.Literal("waar", new Datatype.Booleaan(), Bron.synthetisch("waar"));
-        model.resolvedRegels.add(new ResolvedRegel(naam, ResolvedRegel.Soort.KENMERKTOEKENNING, doel, waarde, voorwaarde, geldigheid, huidigeBronAnnotaties));
+        Expr waarde = ontkend ? ONTKEND : new Expr.Literal("waar", new Datatype.Booleaan(), Bron.synthetisch("waar"));
+        ResolvedRegel r = new ResolvedRegel(naam, ResolvedRegel.Soort.KENMERKTOEKENNING, doel, waarde, voorwaarde,
+                geldigheid, huidigeBronAnnotaties);
+        model.resolvedRegels.add(r);
+        if (zonderKenmerk != null) {
+            // Kept in resolvedRegels and marked refused, so the defaults lowering skips its family instead of
+            // adding "schrijft een ander doel" about a target the author never meant.
+            geweigerdeDoelen.add(r);
+            model.diagnostics.add(new Diagnostic(Severity.ERROR, zonderKenmerk, lijn));
+        }
+    }
+
+    /** The value a negated kenmerktoekenning carries between its resolution and the defaults lowering (dialect §4,
+     *  form 1). WF-022 admits only the constant true on a characteristic target, so a rule carrying this value never
+     *  reaches the wire: the lowering turns it into besluit false, and {@link #keurVlakkeOntkenningen} refuses a plain
+     *  rule that still carries it. */
+    private static final Expr ONTKEND = new Expr.Literal("onwaar", new Datatype.Booleaan(), Bron.synthetisch("onwaar"));
+
+    /** Whether {@code r} is a negated kenmerktoekenning — the {@link #ONTKEND} value, matched on content so a copy
+     *  of the rule record keeps it. A positive kenmerktoekenning always carries the synthetic "waar". */
+    private static boolean ontkend(ResolvedRegel r) {
+        return r.soort() == ResolvedRegel.Soort.KENMERKTOEKENNING && r.waarde() instanceof Expr.Literal l
+                && "onwaar".equals(l.waarde());
+    }
+
+    /** The refusal of a negation whose rest names no characteristic of the subject (dialect §4, form 1). The author
+     *  wrote a negation, so the message names the rest; with {@code heelNaamOok} the whole name was tried first and
+     *  binds nothing either — the verbatim-first reading the condition side has. A rest that names an ATTRIBUTE gets
+     *  the pointer to the gelijkstelling: an attribute has no polarity, its false is a value. */
+    private String ontkenningZonderKenmerk(String regel, Objecttype subject, String geschreven, String rest,
+                                           boolean heelNaamOok) {
+        Datatype attribuut = subject.attribuut(rest);
+        String waarom = attribuut instanceof Datatype.Booleaan
+                ? "'" + rest + "' is een attribuut van " + subject.naam + " en geen kenmerk, en een attribuut heeft geen "
+                        + "polariteit: dit Boolean-attribuut krijgt onwaar als waarde, te schrijven als 'moet gesteld "
+                        + "worden op onwaar'"
+                : attribuut != null
+                ? "'" + rest + "' is een attribuut van " + subject.naam + " en geen kenmerk, en alleen een kenmerk "
+                        + "wordt toegekend of ontkend"
+                : "'" + rest + "' is geen kenmerk van " + subject.naam
+                        + (heelNaamOok ? ", en '" + geschreven + "' evenmin" : "") + ". Declareer het kenmerk bij "
+                        + subject.naam + ", of schrijf de naam zoals hij gedeclareerd is";
+        return "regel '" + regel + "'" + tabelVanRij(regel) + ": '" + geschreven + "' ontkent geen kenmerk van "
+                + subject.naam + " — " + waarom + " (§3.5, dialect §4)";
+    }
+
+    /** The refusal of a negation written AFTER 'een' ("is een niet X", "heeft een geen X"). The condition side
+     *  reads the name after 'een' whole (§8.1.8.3), so there the words are an unbound name and no negation, and a
+     *  result reads them the same way. The message gives the spelling that negates X, by X's kind where X is a
+     *  characteristic of the subject. */
+    private String ontkenningNaEen(String regel, Objecttype subject, String werkwoord, String naam) {
+        String rest = naam.replaceFirst("^(?i)(niet|geen)\\s+", "");
+        String g = KenmerkMatcher.vind(subject, rest);
+        Objecttype.KenmerkSoort soort = g == null ? null : subject.kenmerkSoort(g);
+        return "regel '" + regel + "'" + tabelVanRij(regel) + ": '" + werkwoord + " een " + naam + "' ontkent niets — "
+                + "achter 'een' leest de frontend de naam als geheel, zoals een voorwaarde dat doet, en '" + naam
+                + "' is geen kenmerk van " + subject.naam + ". Een ontkenning staat niet achter 'een'"
+                + (soort != null ? "; schrijf " + ontkenningsspelling(soort, g) : "") + " (§8.1.8, dialect §4)";
+    }
+
+    /** The negated spelling Tabel 16 gives a characteristic of this kind (§8.1.8). */
+    private static String ontkenningsspelling(Objecttype.KenmerkSoort soort, String kenmerk) {
+        return switch (soort) {
+            case BIJVOEGLIJK -> "'is niet " + kenmerk + "'";
+            case BEZITTELIJK -> "'heeft geen " + kenmerk + "'";
+            case ZELFSTANDIG -> "'is geen " + kenmerk + "' of 'is niet een " + kenmerk + "'";
+        };
     }
 
     /** §9.9/§13.4.12 startpuntbepaling: "Het startpunt van <tijdlijn> voor <onderwerp> wordt bepaald
@@ -2767,8 +3034,8 @@ final class RuleChecker {
      * §13.4.2.9 + §13.4.15 / IR-SPEC ch. 4.5: lower the official sentence shape "… indien de
      * &lt;attribuut&gt; van ALLE &lt;leden&gt; van de &lt;Onderwerp&gt; groter is dan &lt;grens&gt;" to a
      * {@link Conditie.Kwantorvouw} — a first-order quantification over the members of a linked instance
-     * set. Without it the condition keeps a {@code set: true} operand in a slot that takes one value, and
-     * WF-096 refuses the whole document: the sentence is officially sanctioned RegelSpraak that this
+     * set. Without it the condition keeps a set operand in a slot that takes one value, and the set
+     * fence refuses the whole document: the sentence is officially sanctioned RegelSpraak that this
      * frontend could parse and resolve but never emit.
      *
      * <p>The §8.2 whole-period qualifier is OPTIONAL here, exactly as v2.3.0 writes it. Quantification
@@ -2780,9 +3047,9 @@ final class RuleChecker {
      * 2026-09-17). The matrix is then an ordinary, non-temporal condition of the member
      * (RUNTIME-SEMANTICS ch. 3.9a, whose formula is stated over an arbitrary {@code test}).
      *
-     * <p>Scope is exactly ONE set operand in a CONDITION. Every other WF-096 producer route — a rule
+     * <p>Scope is exactly ONE set operand in a CONDITION. Every other producer route of the fence — a rule
      * value, a composite operand, a gelijkstelling/initialisatie value, an objectcreatie toekenning —
-     * keeps raising WF-096 verbatim, because for those the set reading really is a collection in a
+     * keeps raising its ERROR verbatim, because for those the set reading really is a collection in a
      * one-value slot and there is no quantifier to give it a home. Widening to a value position is a spec
      * question (which quantified form means what there), not a frontend one. The §13.4.8 consistentieregel
      * ASSERTION is fenced too, and on its own carrier's terms rather than the wire's — see
@@ -2791,18 +3058,19 @@ final class RuleChecker {
      * <p>All five §13.4.14 quantifiers over a set lower: ALLE and GEEN, and — since 2026-09-16 — the three
      * COUNTING quantors, which carry the written telwoord as the fold's {@code drempel} (IR-SPEC ch. 4.5,
      * WF-108 (e); the verdict counts the contributors the matrix holds of). A telwoord that is not a
-     * positive whole number declines and keeps the WF-096 error: "ten minste 0 van de" would read as a
+     * positive whole number declines and keeps the fence's error: "ten minste 0 van de" would read as a
      * forall or as nothing at all depending on which arm saw it, and WF-041 refuses the wire form, so
      * emitting it would only move the refusal downstream.
      *
-     * <p>Two further shapes decline and keep the WF-096 error rather than lowering, each because lowering
+     * <p>Two further shapes decline and keep the fence's error rather than lowering, each because lowering
      * would be a guess: a MULTI-STEP written range (the operand
      * resolved a {@code bereikPad}), whose {@code bronPad} spelling is a separate card; and a range that
-     * does not resolve at all — a quantifier bound to no relation is the silent-wrong-set failure WF-048
-     * exists to prevent, and a loud refusal beats a fold over a set the sentence never named.
+     * does not resolve at all — a quantifier bound to no relation is the silent-wrong-set failure a required
+     * range prevents (WF-048 until L2; since L2 the quantifier fold carries its range by schema), and a loud
+     * refusal beats a fold over a set the sentence never named.
      *
      * <p>A FOURTH shape declines for the same reason the other three do, and it is the §5.6 die/dat
-     * SUBSELECTION: a subselectie this resolver cannot bind against the element type leaves the WF-096
+     * SUBSELECTION: a subselectie this resolver cannot bind against the element type leaves the fence's
      * ERROR standing and draws a WARNING naming itself. Dropping it would be worse than refusing —
      * "alle vondsten DIE AANGEMELD ZIJN" would land as a fold over every vondst, a verifier-clean wire
      * form carrying a set the sentence never named, which every executor then answers consistently and
@@ -2821,7 +3089,7 @@ final class RuleChecker {
                 "het telwoord van de kwantor in '" + zet.bron() + "' is geen positief geheel getal (>= 1), dus de "
                 + "vouw wordt NIET gelowerd: een drempel onder 1 stelt geen telling die iets kan voldoen en wordt "
                 + "op de wire geweigerd (WF-041, IR-SPEC ch. 4.5); de setlezing blijft daarmee buiten een vouwbron "
-                + "staan (WF-096)", zet.bron().line()));
+                + "staan (WF-053)", zet.bron().line()));
             return c;
         }
         Objecttype elem = zet.objecttype();
@@ -2843,14 +3111,14 @@ final class RuleChecker {
                 "de 'die/dat'-deelselectie in '" + zet.bron() + "' wordt niet omgezet naar een "
                 + "kwantorvouw-filter: " + ds.reden() + "; de vouw wordt daarom NIET gelowerd — een vouw "
                 + "over het volle bereik zou een andere verzameling kwantificeren dan de zin noemt, dus de "
-                + "setlezing blijft buiten een vouwbron staan (WF-096)", zet.bron().line()));
+                + "setlezing blijft buiten een vouwbron staan (WF-053)", zet.bron().line()));
             return c;
         }
         Conditie filter = ds == null ? null : ds.filter();
         // The matrix: the SAME condition, with the quantified operand replaced by an own, element-subject
         // read of the same attribute. The §8.2 qualifier stays ON it — per member, the whole-period test is
         // what each contributor must satisfy. No navigation role/path/range and no quantor survive: the
-        // element IS the subject there, which is also why no set reading is left for WF-096 to find.
+        // element IS the subject there, which is also why no set reading is left for the fence to find.
         Expr.AttribuutRef eigen = new Expr.AttribuutRef(zet.attribuut(), elem, zet.onderwerpBron(), null,
                 zet.type(), zet.bron(), false, List.of(), List.of(), null);
         return new Conditie.Kwantorvouw(q, drempel, elem, filter, metOperand(c, zet, eigen), bronRol,
@@ -2861,7 +3129,7 @@ final class RuleChecker {
      * §13.4.15.44/.45 + ch. 4.5: the sibling of {@link #kwantorvouw} for a MEMBERSHIP matrix — "… indien
      * ALLE wachten van de Schouwploeg gediplomeerd zijn". Here the quantified onderwerp IS the whole
      * operand, so it names no attribute and arrives as no reference at all: {@link #enigeSetOperand}
-     * finds nothing, no WF-096 fires (there is no set READING on the wire to fence), and the condition
+     * finds nothing, the fence does not fire (there is no set READING to fence), and the condition
      * stayed an {@link Conditie.Onopgelost} marker. The quantifier is nevertheless written and the matrix
      * is an ordinary kenmerkcheck of the member, so the fold has everything it needs — it just has to read
      * the onderwerp off the parse tree and bind the kenmerk against the ELEMENT type instead of the rule
@@ -2921,7 +3189,7 @@ final class RuleChecker {
         ExpressieBouwer.Deelselectie ds = bouwer.deelselectie(lhsCtx, g.element(), null);
         if (ds != null && ds.filter() == null) {
             // The comparison route can stop at a WARNING here because the set reading it leaves standing
-            // raises the WF-096 ERROR that blocks the document. This route has no set reading, so the
+            // raises the fence's ERROR that blocks the document. This route has no set reading, so the
             // subselectie goes back on keurDeelselecties' refusal list and the ERROR comes from there —
             // the WARNING beside it names the axis the binding failed on, which that ERROR cannot.
             bouwer.geefDeelselectieTerug(lhsCtx);
@@ -3124,6 +3392,13 @@ final class RuleChecker {
      *  Surface it as a WARNING — a writing-form lint, never a wrong gate (the lowering is unchanged). Only a de-negated
      *  kenmerk (negatie=true) is checked; the positive form's verb-keying is the EEN-form split's job. */
     private void keurNegatieSoort(Objecttype houder, Conditie kc, boolean heeftWerkwoord) {
+        keurNegatieSoort(houder, kc, heeftWerkwoord, 0);
+    }
+
+    /** As above, at {@code line}. A negated RESULT (dialect §4) passes its sentence's line, so its warning stands at
+     *  the rule on the wire; the condition-side callers keep the 0 they always passed, so the diagnostics of
+     *  documents without a negated result do not move. */
+    private void keurNegatieSoort(Objecttype houder, Conditie kc, boolean heeftWerkwoord, int line) {
         if (houder == null || !(kc instanceof Conditie.Kenmerk k) || !k.negatie()) return;
         Objecttype.KenmerkSoort soort = houder.kenmerkSoort(k.kenmerk());
         if (soort == null) return;
@@ -3132,7 +3407,7 @@ final class RuleChecker {
             model.diagnostics.add(new Diagnostic(Severity.WARNING,
                 "het " + soort.name().toLowerCase() + " kenmerk '" + k.kenmerk() + "' wordt ontkend met het werkwoord '"
                 + (heeftWerkwoord ? "heeft" : "is") + "', maar Tabel 16 vereist '" + (bezit ? "heeft" : "is")
-                + "' bij dit soort kenmerk (§8.1.8): " + k.bron(), 0));
+                + "' bij dit soort kenmerk (§8.1.8): " + k.bron(), line));
     }
 
     private Conditie kenmerkPredicaatKaal(Expr lhs, KaleNaamContext naamCtx, boolean metEen, boolean heeftWerkwoord, Bron bron) {

@@ -1,6 +1,7 @@
 package io.github.yhavinga.regelspraak;
 
 import io.github.yhavinga.regelspraak.emit.IrEmitter;
+import io.github.yhavinga.regelspraak.ir.Expr;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.resolver.Resolver;
 import org.junit.jupiter.api.Test;
@@ -9,8 +10,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * The COUNT's element word and the range that follows from it — "het aantal &lt;X&gt; van &lt;onderwerp&gt;",
- * the v0 row-1 wart, whose source the emitter derives through {@code elementRolBinding} on the WRITTEN
- * name (IrEmitter.bronRolBinding, the arm keyed on the unknown sentinel).
+ * the count source that names a role, whose range the emitter derives in IrEmitter.vouwbereik: by the
+ * WRITTEN name first, then by the TYPE PAIR.
  *
  * <p>Two things meet here and this suite pins both.
  *
@@ -20,22 +21,16 @@ import static org.junit.jupiter.api.Assertions.*;
  *     nothing: the fold went out with {@code elementObjecttype: null} and the uchar verifier refused the
  *     document under WF-034. The population-plural lookup (ExpressieBouwer.aantalElement, the
  *     {@code typeViaMeervoud} fallback) closed that.
- * <li><b>No role is called that, so the fold goes out BINDINGLESS.</b> That is not a defect: a
- *     {@code bronRol} whose role name the sentence does not write is a guess about WHICH collection is
- *     counted, and the wire has a second, honest spelling for the case where the sentence names no
- *     relation — no field at all, the source derived by every consumer from the TYPE PAIR (IR-SPEC
- *     ch. 4.3). WF-048 is what keeps that derivation sound: it is well-formed only while exactly one
- *     fact type relates the two types.
+ * <li><b>No role is called that, so the range comes from the type pair.</b> Since L2 of the v1 wire
+ *     migration every fold over linked instances carries its range (IR-SPEC ch. 4.3), and no reader derives
+ *     one. Where the written name binds no role, the emitter takes the one fact type that relates the
+ *     subject to the element type, and because the source under AANTAL names the role it counts (WF-047) it
+ *     writes that role's declared name in the source's {@code attribuut}; the written spelling stays in
+ *     {@code bron}. Where the pair is not unique — two fact types, or none — there is no range to write and
+ *     the model is refused: the frontend never guesses a relation, and a fold without one has no spelling.
  * </ol>
  *
- * <p>The ambiguous flank therefore lands on the verifier and not here: with a second fact type between
- * the same pair the frontend still binds nothing — it never guesses, which is the behaviour pinned below
- * — and the document fails <b>WF-034 and WF-048 at once</b>, one at the source argument
- * ({@code 'Munten' is neither a member of 'Jutter' nor a declared role, and the type pair
- * 'Jutter'/'Munt' does not derive a unique connecting role (2 candidates)}) and one at the fold
- * ({@code bindingless instance fold: 2 fact types relate 'Jutter' to 'Munt'}). That verdict is a corpus
- * artifact, {@code corpus/negatief/wf048-telling-meerduidig}, emitted from exactly the source below; the
- * accepting twin is {@code corpus/golden/jutterswet-muntpeiling}, which plays the same sentence through
+ * <p>The accepting case is {@code corpus/golden/jutterswet-muntpeiling}, which plays the same sentence through
  * ref, clingo and Drools.
  */
 class TelbereikTest {
@@ -133,17 +128,23 @@ class TelbereikTest {
                 () -> "het geschreven meervoud moet het objecttype binden:\n" + c);
     }
 
-    /** And it goes out BINDINGLESS: no role carries that name, and a binding the sentence does not write
-     *  would claim a relation it never named. The type pair is what the consumers derive from. */
+    /** And its range comes from the TYPE PAIR: no role carries the written name, and the one fact type
+     *  between Jutter and Munt is the relation counted over. The source then names that role by its
+     *  declared name; the written "Munten" stays in {@code bron}. */
     @Test
-    void een_telling_op_een_typemeervoud_zet_geen_bronrol_op_de_wire() {
+    void een_telling_op_een_typemeervoud_draagt_het_bereik_van_het_typenpaar() {
         String c = ir(MODEL + TYPEMEERVOUD_REGEL);
-        assertFalse(c.contains("\"bronRol\""),
-                () -> "de wire mag geen rolbinding dragen die de zin niet schrijft:\n" + c);
+        assertTrue(c.contains("\"bronRol\""), () -> "een vouw over gekoppelde instanties draagt haar bereik:\n" + c);
+        assertTrue(c.contains("\"feittype\": \"muntvondst\""), () -> "het enige verbindende feittype:\n" + c);
+        assertTrue(c.contains("\"rol\": \"gevonden munt\""), () -> "de binding noemt de gedeclareerde rol:\n" + c);
+        assertTrue(c.contains("\"attribuut\": \"gevonden munt\""),
+                () -> "de telbron noemt de gebonden rol bij haar gedeclareerde naam:\n" + c);
+        assertTrue(c.contains("\"bron\": \"Munten van de Jutter\""),
+                () -> "de geschreven spelling blijft in de bron:\n" + c);
         assertFalse(c.contains("\"bronPad\""),
                 () -> "een eenstaps bereik is nooit een pad:\n" + c);
         assertFalse(c.contains("\"node\": \"Onopgelost\""),
-                () -> "de telling is opgelost, alleen bindingloos:\n" + c);
+                () -> "de telling is opgelost:\n" + c);
     }
 
     /** Counter-proof on the same model: written as the role the fact type DECLARES, the same count binds
@@ -159,18 +160,18 @@ class TelbereikTest {
 
     // ---------------- the ambiguous flank ----------------
 
-    /** Two fact types between the same pair. The frontend does not guess one: it binds nothing, exactly as
-     *  on the unique model, and the document goes to the verifier to be refused (WF-034 + WF-048). A
-     *  {@code bronRol} appearing here would be the silent wrong answer this arm exists to avoid. */
+    /** Two fact types between the same pair. The frontend does not guess one: there is no range to write,
+     *  so the model is refused. A {@code bronRol} here would be the silent wrong answer this arm exists to
+     *  avoid, and a fold without one would be read as a fold over something else. */
     @Test
     void de_meerduidige_telling_gokt_geen_relatie() {
-        String c = ir(MEERDUIDIG_MODEL + TYPEMEERVOUD_REGEL);
-        assertTrue(c.contains("\"elementObjecttype\": \"Munt\""),
-                () -> "het elementtype blijft gebonden; de meerduidigheid zit in de RELATIE:\n" + c);
-        assertFalse(c.contains("\"bronRol\""),
-                () -> "bij twee verbindende feittypen mag er geen gegokte binding op de wire staan:\n" + c);
-        assertFalse(c.contains("\"rol\": \"gevonden munt\"") || c.contains("\"rol\": \"bewaarde munt\""),
-                () -> "geen van beide relaties mag stilletjes gekozen worden:\n" + c);
+        RegelSpraakModel m = Resolver.resolve(MEERDUIDIG_MODEL + TYPEMEERVOUD_REGEL);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+        assertTrue(m.resolvedRegels.get(0).waarde() instanceof Expr.Functie f
+                        && f.elementObjecttype() != null && f.elementObjecttype().naam.equals("Munt"),
+                () -> "het elementtype blijft gebonden; de meerduidigheid zit in de RELATIE");
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m));
+        assertTrue(e.getMessage().contains("geen unieke relatie van Jutter naar Munt"), e::getMessage);
     }
 
     // ---------------- the boundaries of the lookup ----------------
@@ -214,27 +215,20 @@ class TelbereikTest {
                 () -> "de binding noemt de gedeclareerde rol:\n" + c);
     }
 
-    /** The ZERO-candidate flank of the same fallback. Two fact types make the type pair ambiguous; NONE
-     *  makes it empty, and the frontend's answer is identical in both — the element type binds, no
-     *  relation is invented, the fold goes out bindingless — so the difference is the verifier's to
-     *  state and it states it: {@code WF-034 … the type pair 'Jutter'/'Munt' does not derive a unique
-     *  connecting role (0 candidates)} beside {@code WF-048 … bindingless instance fold: no fact type
-     *  relates 'Jutter' to 'Munt'}. Measured 2026-09-16 on exactly this source. It stays a JUnit
-     *  witness rather than a second negatief case: the refusing ARM is the one
-     *  {@code corpus/negatief/wf048-telling-meerduidig} already declares, and a second document would
-     *  pin the same two clauses over a different candidate count, whereas what has no witness at all
-     *  is the FRONTEND's half — that an unconnected pair produces a resolved, bindingless fold and not
-     *  a marker or a silence. */
+    /** The ZERO-candidate flank of the same derivation. Two fact types make the type pair ambiguous; NONE
+     *  makes it empty, and the frontend's answer is identical in both: the element type binds, no relation
+     *  is invented, and the model is refused. What this witness holds is the frontend's half — that an
+     *  unconnected pair produces a resolved fold (not a marker, not a silence) and then no document. */
     @Test
-    void een_onverbonden_typepaar_levert_dezelfde_bindingloze_vouw() {
-        String c = ir(ONVERBONDEN_MODEL + TYPEMEERVOUD_REGEL);
-        assertTrue(c.contains("\"kind\": \"AANTAL\""), () -> "de telling hoort geëmitteerd te worden:\n" + c);
-        assertTrue(c.contains("\"elementObjecttype\": \"Munt\""),
-                () -> "het elementtype bindt ook zonder verbindend feittype:\n" + c);
-        assertFalse(c.contains("\"bronRol\""),
-                () -> "er is geen relatie, dus er mag er ook geen geëmitteerd worden:\n" + c);
-        assertFalse(c.contains("\"node\": \"Onopgelost\""),
-                () -> "de telling is opgelost; de weigering is de verifier's:\n" + c);
+    void een_onverbonden_typepaar_levert_dezelfde_weigering() {
+        RegelSpraakModel m = Resolver.resolve(ONVERBONDEN_MODEL + TYPEMEERVOUD_REGEL);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+        assertTrue(m.resolvedRegels.get(0).waarde() instanceof Expr.Functie f
+                        && f.kind() == Expr.FunctieKind.AANTAL
+                        && f.elementObjecttype() != null && f.elementObjecttype().naam.equals("Munt"),
+                () -> "het elementtype bindt ook zonder verbindend feittype, en de telling is opgelost");
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m));
+        assertTrue(e.getMessage().contains("geen unieke relatie van Jutter naar Munt"), e::getMessage);
     }
 
     /** The raw emission, keys spelled as the wire spells them — whitespace is NOT stripped, because

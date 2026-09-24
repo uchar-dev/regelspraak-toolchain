@@ -715,9 +715,9 @@ final class ExpressieBouwer {
      * with ONE relation: one {@code elementObjecttype} plus one {@code bronRol} (IR-SPEC ch. 4.3). A
      * two-step written range is not expressible on it, and the emitter's derivation ranges from the RULE
      * SUBJECT to the innermost element type — so the outer step disappears without a trace and the fold
-     * runs over the wrong set. Where no relation joins subject and element that is caught downstream
-     * (WF-048); where one happens to exist it is verifier-CLEAN and silently wrong, which is the shape
-     * this refusal exists for.
+     * runs over the wrong set. Where no relation joins subject and element that was caught downstream
+     * (WF-048, until L2; since then the emitter refuses a fold it cannot bind); where one happens to exist it
+     * is verifier-CLEAN and silently wrong, which is the shape this refusal exists for.
      *
      * <p>(b) An intermediate TO-ONE step ("… van alle X van de Y van de Z"), the same loss along a third
      * route: the fold source names one relation FROM THE RULE SUBJECT, so an anchor that is not the subject
@@ -1307,9 +1307,9 @@ final class ExpressieBouwer {
     /**
      * Give a subselectie back to {@code keurDeelselecties}. {@link #deelselectie} books the predicate as
      * CONSUMED before it knows whether the fold will take it, and on the COMPARISON route that is right:
-     * a declined fold leaves the set reading standing, so WF-096 raises the ERROR that blocks the
+     * a declined fold leaves the set reading standing, so the set fence raises the ERROR that blocks the
      * document and the subselectie is refused WITH it. On the MEMBERSHIP route there is no set reading
-     * and hence no WF-096 — a declined fold leaves nothing but a marker — so the predicate has to go
+     * and hence no fence ERROR — a declined fold leaves nothing but a marker — so the predicate has to go
      * back on the refusal list or the sentence falls silent, which is the one outcome
      * {@code keurDeelselecties} exists to prevent ("ERROR, not WARNING, and the difference is the
      * point"). Measured regression, fixed 2026-09-19.
@@ -1424,7 +1424,7 @@ final class ExpressieBouwer {
             //
             // So fall back to the TYPE PAIR — the unique fact-type role reaching the element from the
             // subject — which is exactly the derivation the ONE-selection count has always leaned on
-            // (WF-048's model, and what every executor runs for a bindingless fold). WF-110 (e) is
+            // (WF-048's model until L2, when executors still derived a bindingless fold's range). WF-110 (e) is
             // unmoved by this: it forbids the WIRE from omitting the relation, so that a consumer never
             // derives one; how the PRODUCER arrives at the relation it writes is the producer's own
             // business, and it writes the result out explicitly either way.

@@ -11,7 +11,7 @@ import java.util.List;
  * is empty in the input facts (ch. 7.3). A default carrying {@link #excepties} is a nested exception group
  * (ch. 7.9): a group-default (no own besluit/consequentie — its exception groups are its decision) or a form-a
  * default (own content too — the exception groups decide first, its own decision the fall-back when
- * they decide nothing). An extension node the v0 emitter never produces.
+ * they decide nothing).
  *
  * @param besluit       the characteristic decision (true/false), or null on an attribute default
  * @param voorwaarde    the justification, or null on the initialisation default

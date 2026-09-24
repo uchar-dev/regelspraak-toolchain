@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * that sentence's home: first-order quantification over the members of a linked instance set, with the
  * range spelled exactly as the instance fold spells it. The resolver now LOWERS to it, and the set
  * reading is not excused but REMOVED — the quantified operand comes out as an element-own
- * {@code set: false} read, so WF-096 finds nothing left to name.
+ * {@code set: false} read, so the set fence finds nothing left to name.
  *
  * <p>The scope is one set operand in a CONDITION, qualified or not. The §8.2 qualifier was the opening
  * test of this lowering until 2026-09-19: v2.3.0 writes the quantification (§13.4.2.9
@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * INDEPENDENT productions, so the plain spelling is as much RegelSpraak as its qualified sibling and the
  * gate put a frontend boundary where the language has none (maintainer reading 2026-09-17). The
  * unqualified rows live in {@link NietTemporeleVouwTest}; this file keeps measuring the qualified one.
- * The other measured WF-096 producer routes — every VALUE position — are unchanged, and
+ * The other measured producer routes of the set fence — every VALUE position — are unchanged, and
  * {@link SetlezingZonderVouwTest} is the proof. The counting quantor was pinned here as a refusal until
  * 2026-09-16, when it became a lowering of its own — its row below now measures the telvouw it
  * produces. Beside those stand the shapes that decline to lower on purpose — three when this file was
@@ -79,10 +79,10 @@ class KwantorvouwTest {
         return Emissie.zonderFouten(m).replaceAll("\\s+", "");
     }
 
-    /** The WF-096 refusal itself, matched on its own sentence rather than on the rule id: the
-     *  counting-quantor WARNING cites WF-096 too — saying which fence it leaves standing is the point of
+    /** The set fence's refusal itself, matched on its own sentence rather than on the rule id: the
+     *  counting-quantor WARNING cites WF-053 too — saying which fence it leaves standing is the point of
      *  it — so an id filter would count two different diagnostics as one kind. */
-    private static List<Diagnostic> wf096(RegelSpraakModel m) {
+    private static List<Diagnostic> setlezingfouten(RegelSpraakModel m) {
         return m.diagnostics.stream()
                 .filter(d -> d.message().startsWith("setlezing buiten een vouwbron")).toList();
     }
@@ -97,7 +97,7 @@ class KwantorvouwTest {
 
     @Test void de_alle_zin_lost_op_zonder_enige_diagnose() {
         // The whole point of the card: a sanctioned sentence that produced an ERROR now produces a
-        // document. Zero diagnostics, not "no WF-096" — a lowering that traded one complaint for
+        // document. Zero diagnostics, not "no setlezing error" — a lowering that traded one complaint for
         // another would have reclaimed nothing.
         RegelSpraakModel m = resolveer(ZIN.formatted("alle"));
         assertTrue(m.diagnostics.isEmpty(), () -> "onverwachte diagnostiek: " + m.diagnostics);
@@ -119,9 +119,9 @@ class KwantorvouwTest {
     }
 
     @Test void de_kwantorvouw_draagt_de_verbindende_rol_als_bereik() {
-        // WF-048's concern, on this node: a quantifier bound to no relation quantifies over a set the
-        // sentence never named. The range is the connecting role, spelled exactly as the instance
-        // fold's bronRol — one search in the model serves both, so the two can never disagree.
+        // The required range, on this node (WF-048's concern until L2): a quantifier bound to no relation
+        // quantifies over a set the sentence never named. The range is the connecting role, spelled exactly as the
+        // instance fold's bronRol — one search in the model serves both, so the two can never disagree.
         String v = voorwaarde(resolveer(ZIN.formatted("alle")));
         assertTrue(v.contains("\"bronRol\":{\"node\":\"RolBinding\",\"feittype\":\"vondstaanmelding\",\"rol\":\"vondst\"}"),
                 () -> "de vouw hoort het verbindende feittype+rol als bereik te dragen:\n" + v);
@@ -132,16 +132,17 @@ class KwantorvouwTest {
 
     @Test void de_toets_is_een_eigen_lezing_van_het_element_met_de_periode() {
         // The matrix is evaluated PER CONTRIBUTOR with the element as subject, so the quantified operand
-        // comes back as an OWN read of the element type — set false, no navigation. The §8.2 qualifier
-        // stays on it: per member, "gedurende het gehele jaar" is what that member must satisfy.
+        // comes back as an OWN read of the element type — no binding, so no navigation and no range. The
+        // §8.2 qualifier stays on it: per member, "gedurende het gehele jaar" is what that member must satisfy.
         String v = voorwaarde(resolveer(ZIN.formatted("alle")));
         assertTrue(v.contains("\"toets\":{\"node\":\"Vergelijking\",\"op\":\"GROTER\","
                         + "\"links\":{\"node\":\"AttribuutRef\",\"attribuut\":\"gewicht\",\"objecttype\":\"Vondst\""),
                 () -> "de toets hoort het attribuut op het ELEMENTtype te lezen:\n" + v);
-        assertTrue(v.contains("\"set\":false"),
-                () -> "de gekwantificeerde operand hoort als enkelvoudige lezing terug te komen:\n" + v);
-        assertFalse(v.contains("\"set\":true"),
-                () -> "na de verlaging hoort er geen setlezing meer in de boom te staan:\n" + v);
+        assertTrue(java.util.regex.Pattern.compile("\"links\":\\{\"node\":\"AttribuutRef\",\"attribuut\":\"gewicht\","
+                        + "\"objecttype\":\"Vondst\",\"bron\":\"[^\"]*\"\\}").matcher(v).find(),
+                () -> "de gekwantificeerde operand hoort als eigen lezing terug te komen, zonder binding:\n" + v);
+        assertFalse(v.substring(v.indexOf("\"toets\":"), v.lastIndexOf("\"bronRol\":")).contains("\"bronRol\""),
+                () -> "na de verlaging hoort er geen vouw over gekoppelde instanties meer in de toets te staan:\n" + v);
         assertTrue(v.contains("\"periode\":{\"node\":\"GeheelPeriode\",\"jaar\":true,\"niet\":false}"),
                 () -> "de §8.2-kwalificatie hoort op de toets te blijven staan:\n" + v);
     }
@@ -155,7 +156,8 @@ class KwantorvouwTest {
         assertFalse(v.contains("\"navigatieBindingen\""),
                 () -> "de toets wordt met het ELEMENT als subject geëmitteerd en hoort dus geen "
                         + "navigatiebindingen te dragen:\n" + v);
-        assertTrue(v.contains("\"navigatieRol\":null"), () -> "de eigen lezing navigeert niet:\n" + v);
+        assertTrue(v.contains("\"attribuut\":\"gewicht\",\"objecttype\":\"Vondst\""),
+                () -> "de eigen lezing noemt het elementtype, het onderwerp van de toets:\n" + v);
     }
 
     @Test void de_geen_van_de_schrijfwijze_wordt_de_geen_kwantor() {
@@ -203,12 +205,12 @@ class KwantorvouwTest {
 
     /**
      * Een telwoord onder 1 wordt NIET gelowerd: WF-041 weigert zo'n drempel op de wire, dus emitteren zou
-     * de weigering alleen verplaatsen. De WF-096-fout blijft staan en een WARNING noemt het telwoord.
+     * de weigering alleen verplaatsen. De setlezing-fout blijft staan en een WARNING noemt het telwoord.
      */
-    @Test void een_telwoord_onder_een_wordt_niet_verlaagd_en_houdt_de_wf096_fout() {
+    @Test void een_telwoord_onder_een_wordt_niet_verlaagd_en_houdt_de_setlezingfout() {
         RegelSpraakModel m = resolveer(ZIN.formatted("ten minste 0 van de"));
-        assertEquals(1, wf096(m).size(), () -> "de setlezing hoort te blijven staan: " + m.diagnostics);
-        assertEquals(Severity.ERROR, wf096(m).get(0).severity());
+        assertEquals(1, setlezingfouten(m).size(), () -> "de setlezing hoort te blijven staan: " + m.diagnostics);
+        assertEquals(Severity.ERROR, setlezingfouten(m).get(0).severity());
         List<Diagnostic> telwoord = m.diagnostics.stream()
                 .filter(d -> d.message().contains("telwoord van de kwantor")).toList();
         assertEquals(1, telwoord.size(), () -> "de geweigerde drempel hoort benoemd te worden: " + m.diagnostics);
@@ -229,7 +231,7 @@ class KwantorvouwTest {
                     Het maatgevend gewicht van een Jutter moet gesteld worden op 10 kg
                     indien het gewicht van alle vondsten van de Jutter gelijk is aan 5 kg.
             """);
-        assertTrue(wf096(m).isEmpty(), () -> "de vouw hoort de setlezing weg te nemen: " + m.diagnostics);
+        assertTrue(setlezingfouten(m).isEmpty(), () -> "de vouw hoort de setlezing weg te nemen: " + m.diagnostics);
         String v = voorwaarde(m);
         assertTrue(v.startsWith("\"voorwaarde\":{\"node\":\"Kwantorvouw\",\"kwantor\":\"ALLE\","),
                 () -> "de ongekwalificeerde zin hoort dezelfde vouw te worden:\n" + v);
@@ -237,7 +239,7 @@ class KwantorvouwTest {
                 () -> "zonder §8.2-kwalificatie hoort de toets geen periode te dragen:\n" + v);
     }
 
-    @Test void een_onbindbaar_bereik_wordt_niet_verlaagd_en_houdt_de_wf096_fout() {
+    @Test void een_onbindbaar_bereik_wordt_niet_verlaagd_en_houdt_de_setlezingfout() {
         // Fail fast over a silent misbinding: with no feittype connecting Jutter and Vondst the range
         // does not resolve, and a Kwantorvouw without a range quantifies over nothing the sentence
         // named. The §8.2 qualifier itself is fine here (the attribute is temporal), so the ONLY
@@ -252,16 +254,21 @@ class KwantorvouwTest {
             Objecttype de Vondst (mv: Vondsten)
                 het gewicht (mv: gewichten) Numeriek (getal met 2 decimalen) met eenheid kg voor elke maand;
             """ + ZIN.formatted("alle"));
-        assertEquals(1, wf096(m).size(), () -> "een onbindbaar bereik hoort de weigering te houden: " + m.diagnostics);
+        assertEquals(1, setlezingfouten(m).size(),
+                () -> "een onbindbaar bereik hoort de weigering te houden: " + m.diagnostics);
         assertEquals(1, m.diagnostics.size(), () -> "en verder niets te melden: " + m.diagnostics);
-        assertFalse(emitCompact(m).contains("Kwantorvouw"),
+        // not lowered, so the set reading stays where it was written; without a binding it has no spelling
+        // either, and the emitter writes no document at all rather than a read of the Jutter's own gewicht
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> emitCompact(m),
                 "een vouw zonder bereik hoort niet op de wire te belanden");
+        assertTrue(e.getMessage().contains("het gewicht van alle vondsten van de Jutter"), e::getMessage);
     }
 
     @Test void de_geschreven_kwantor_blijft_frontend_intern() {
         // Step 1 of the lowering hangs the written quantifier on the AttribuutRef so ALLE and GEEN are
         // distinguishable downstream. It is resolver input only: the reference node has no such wire
-        // field, and a legitimate fold (a set read that KEEPS set: true) must not start writing one.
+        // field, and a legitimate fold (a set read, which the wire spells as a fold with a range) must
+        // not start writing one.
         RegelSpraakModel m = resolveer("""
             Regel maatgevend gewicht
                 geldig altijd
@@ -269,7 +276,8 @@ class KwantorvouwTest {
             """);
         assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
         String c = emitCompact(m);
-        assertTrue(c.contains("\"set\":true"), () -> "de vouwbron hoort haar setlezing te houden:\n" + c);
+        assertTrue(c.contains("\"bronRol\":{\"node\":\"RolBinding\",\"feittype\":\"vondstaanmelding\",\"rol\":\"vondst\"}"),
+                () -> "de vouw hoort haar setlezing te houden, als bereik:\n" + c);
         assertFalse(c.contains("\"kwantor\""),
                 () -> "de geschreven kwantor is frontend-intern en hoort niet op de wire te staan:\n" + c);
     }

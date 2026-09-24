@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * §5.6: a "die/dat" SUBSELECTION the resolution does not consume is refused, not ignored.
  *
  * <p>The sister of {@link SetlezingZonderVouwTest}, and the same shape of argument. A set reading
- * outside a fold source has no one-value meaning, so WF-096 refuses it; a SUBSELECTION outside a fold
+ * outside a fold source has no one-value meaning, so the set fence refuses it; a SUBSELECTION outside a fold
  * RANGE has no wire form — {@code filter} belongs to the instance fold (IR-SPEC ch. 4.3) and to the
  * quantifier fold (ch. 4.5) and nowhere else — so it is refused here.
  *

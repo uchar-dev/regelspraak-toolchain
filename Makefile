@@ -218,11 +218,13 @@ graaf: resolver
 # Emit the IR (uchar-ir-v1) — a FAITHFUL JSON dump of the complete resolved in-memory model (objecttypen with
 # every side-map, domeinen, parameters, eenheidstelsels, feittypen, dimensies, tijdlijnen, the resolved rule/
 # creatie/verdeling/consistentie/uniciteit/feitcreatie/startpunt/regelgroep lists, and diagnostics): the M1
-# container, and elsewhere the Dutch v0 field names EXACTLY as the Java records name them. This is the
-# uchar-programme "mirror" artifact — mirror first, diverge later; no filtering, and outside the M1 container no
-# renaming and no cleanup. Over one-or-more .rgs files (concatenated in
-# listed order, so a model chain is FILE="a.rgs b.rgs …"). Model-level and jar-only (no Drools): an unresolvable
-# model writes NOTHING and exits 1 (the same disk discipline as --facts/--graaf). OUT overrides the default.
+# container, the L2 reference layer (a reference carries only its symbolic form: its role bindings, no copy of
+# its type, one RoleMembership node per role check), and elsewhere the Dutch v0 field names EXACTLY as the Java
+# records name them. This is the uchar-programme "mirror" artifact — mirror first, diverge later; no filtering,
+# and outside the M1 container and the reference layer no renaming and no cleanup. Over one-or-more .rgs files
+# (concatenated in listed order, so a model chain is FILE="a.rgs b.rgs …"). Model-level and jar-only (no Drools):
+# an unresolvable model writes NOTHING and exits 1 (the same disk discipline as --facts/--graaf). OUT overrides
+# the default.
 IR_OUT := $(if $(OUT),$(OUT),$(OUT_DIR)/ir.json)
 ir: resolver
 	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver --ir $(IR_OUT) $(FILE)

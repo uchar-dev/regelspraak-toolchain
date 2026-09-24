@@ -4,7 +4,10 @@ import io.github.yhavinga.regelspraak.emit.IrEmitter;
 import io.github.yhavinga.regelspraak.ir.Bron;
 import io.github.yhavinga.regelspraak.ir.Conditie;
 import io.github.yhavinga.regelspraak.ir.Expr;
+import io.github.yhavinga.regelspraak.ir.ResolvedFeitCreatie;
 import io.github.yhavinga.regelspraak.ir.ResolvedRegel;
+import io.github.yhavinga.regelspraak.ir.ResolvedUniciteit;
+import io.github.yhavinga.regelspraak.model.Datatype;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Diagnostic;
 import io.github.yhavinga.regelspraak.model.RegelSpraakModel.Severity;
@@ -16,11 +19,11 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * The v0 IR emitter also writes the symbolic extension fields the uchar wire admits — the
- * navigation/scope/creation role bindings — each derived from the declared names and emitted
- * only where uniquely derivable. These tests exercise the EMITTED JSON (not just the resolved
- * records): the four families plus the fold-source discipline, so a regression in the wire shape
- * is caught here. Assertions compare against whitespace-collapsed JSON so they are robust to
+ * The emitter writes the symbolic form of every reference the uchar wire carries — the
+ * navigation/scope/creation role bindings — each derived from the declared names, and refuses a model
+ * where a position that needs one has no unique binding. These tests exercise the EMITTED JSON (not just
+ * the resolved records): the four families plus the fold-source discipline, so a regression in the wire
+ * shape is caught here. Assertions compare against whitespace-collapsed JSON so they are robust to
  * indentation while still pinning the exact field/value sequence.
  */
 class IrEmitterTest {
@@ -116,7 +119,8 @@ class IrEmitterTest {
 
     @Test void feitcreatie_symbolisch_blok_is_heel_of_niet() {
         // A §13.4.7 feitcreatie with one tussenstap: the whole symbolic block (created fact type,
-        // both ends, the final join) plus a RolBinding on the intermediate hop.
+        // both ends, the final join) plus a RolBinding on the intermediate hop — and nothing beside
+        // them, since IR-SPEC ch. 3.4 leaves the storage fields to the backend's own role→field mapping.
         String src = """
             Objecttype het Bedrijf
             Objecttype de Afdeling
@@ -138,10 +142,11 @@ class IrEmitterTest {
                     Een sponsorproject van een Bedrijf is een project van de afdeling van het bedrijf.
             """;
         String c = emitCompact(src);
-        assertTrue(c.contains(
-                "\"viaOuderVeld\":false,"
-                + "\"rolBinding\":{\"node\":\"RolBinding\",\"feittype\":\"onderdeel\",\"rol\":\"afdeling\"}"),
-                () -> "tussenstap-rolBinding ontbreekt:\n" + c);
+        assertTrue(c.contains("\"tussenstappen\":[{\"node\":\"Tussenstap\","
+                + "\"rolBinding\":{\"node\":\"RolBinding\",\"feittype\":\"onderdeel\",\"rol\":\"afdeling\"}}],"),
+                () -> "tussenstap-rolBinding ontbreekt, of staat naast bonenvelden:\n" + c);
+        assertTrue(c.contains("\"anker\":\"Bedrijf\",\"doel\":\"Project\",\"tussenstappen\":"),
+                () -> "de feitcreatie draagt geen bonenvelden naast anker en doel:\n" + c);
         assertTrue(c.contains(
                 "\"feittype\":\"sponsoring\",\"ankerRol\":\"sponsorbedrijf\",\"doelRol\":\"sponsorproject\","
                 + "\"joinRol\":{\"node\":\"RolBinding\",\"feittype\":\"uitvoering\",\"rol\":\"project\"}"),
@@ -578,9 +583,10 @@ class IrEmitterTest {
     @Test void enum_literal_door_de_letketen_van_een_variabelendeel() {
         // §11/ch. 4.10: a value written through the variabelendeel denotes exactly what the bare literal
         // denotes (ch. 10.6), so it must reach the wire in the same shape — and the whole chain must, not
-        // just its value: Let and BinderRef are typed FROM the value, so an unpromoted chain would carry
-        // the unknown sentinel at THREE positions WF-034 (r) refuses instead of one. This is also what
-        // keeps the variabelendeel diagnostically transparent (VariabeledeelLoweringTest pins that the
+        // just its value: the Let is typed FROM the value, so an unpromoted chain would leave an unknown
+        // type at two positions the wire has no spelling for, and the emitter would refuse the model. The
+        // binder read carries no type of its own; its binding is its declaration. This is also what keeps
+        // the variabelendeel diagnostically transparent (VariabeledeelLoweringTest pins that the
         // §13.3.4.2 membership check says the same thing through the chain as beside it).
         String c = emitCompact(enumBron("""
             Regel oordeel
@@ -591,7 +597,7 @@ class IrEmitterTest {
             """));
         String enumType = "{\"node\":\"Enumeratie\",\"domein\":\"Keurklasse\",\"waarden\":[\"gaaf\",\"beschadigd\"]}";
         assertTrue(c.contains("\"node\":\"Let\",\"type\":" + enumType + ",\"binder\":\"tint\",\"value\":"
-                        + GAAF_GETYPEERD + ",\"body\":{\"node\":\"BinderRef\",\"name\":\"tint\",\"type\":" + enumType),
+                        + GAAF_GETYPEERD + ",\"body\":{\"node\":\"BinderRef\",\"name\":\"tint\",\"bron\":"),
                 () -> "de hele letketen moet het domein van het schrijfdoel dragen:\n" + c);
     }
 
@@ -644,8 +650,8 @@ class IrEmitterTest {
             """));
         assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
         String c = IrEmitter.emit(m).replaceAll("\\s+", "");
-        assertTrue(c.contains("{\"node\":\"Onopgelost\",\"type\":{\"node\":\"Onbekend\","
-                        + "\"reden\":\"nietopgelost\"},\"bron\":\"'gaaf'\"}"),
+        // IR-SPEC ch. 4.4: a marker whose type is unknown carries no type at all
+        assertTrue(c.contains("{\"node\":\"Onopgelost\",\"bron\":\"'gaaf'\"}"),
                 () -> "een enumeratiewaarde zonder domeincontext hoort een marker te zijn:\n" + c);
         assertTrue(m.diagnostics.stream().anyMatch(d -> !d.isError()
                         && d.toString().contains("een enumeratiewaarde ontleent haar domein aan de context")),
@@ -679,9 +685,8 @@ class IrEmitterTest {
     }
 
     @Test void tijdsevenredig_deel_draagt_basistype_geen_sentinel() {
-        // §7.3.2/§13.4.17.58: the pro-rata node carries its BASE's value type on the wire — the
-        // uchar spec forbids the unknown-type sentinel inside a structured node (its WF-034), so
-        // an onbekend-typed TIJDSEVENREDIG_DEEL cannot enter its corpus.
+        // §7.3.2/§13.4.17.58: the pro-rata node carries its BASE's value type on the wire; a derived
+        // position the frontend cannot type would be written null, which is not what this node is.
         String src = """
             Objecttype de Bakenmeester (mv: Bakenmeesters) (bezield)
                 het onderhoudstarief Numeriek (getal met 2 decimalen) voor elk jaar;
@@ -703,8 +708,8 @@ class IrEmitterTest {
         String ownType = c.substring(from, to);
         assertTrue(ownType.contains("\"type\":{\"node\":\"Numeriek\"") && ownType.contains("\"decimalen\":2"),
                 () -> "de pro-rata-node draagt het basistype (Numeriek, 2 decimalen) niet zelf:\n" + ownType);
-        assertFalse(ownType.contains("\"node\":\"Onbekend\""),
-                () -> "de pro-rata-node mag niet de onbekend-sentinel dragen:\n" + ownType);
+        assertFalse(ownType.contains("\"type\":null"),
+                () -> "de pro-rata-node mag geen ontypeerbaar resultaat dragen:\n" + ownType);
     }
 
     @Test void bron_annotaties_op_de_draad_heel_of_niet() {
@@ -847,4 +852,224 @@ class IrEmitterTest {
             }
         }
     }
+
+    // ---------------- L2: the reference layer carries its symbolic form only ----------------
+
+    @Test void een_rolcheck_gaat_aan_beide_zijden_als_rolemembership_de_wire_op() {
+        // IR-SPEC ch. 4.5: one node for the role check, whichever end of the fact type holds the reference —
+        // the fact type and the role the SUBJECT plays in it, by declared name, in the schema's key order.
+        // The near side ("hij is een wachtjutter": the Jutter plays wachtjutter) and the far side ("hij heeft
+        // een wachtjutter": the Wachtpost plays toegewezen wachtpost) differ only in that role.
+        String c = emitCompact("""
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                is wachtdoend kenmerk (bijvoeglijk);
+            Objecttype de Wachtpost (mv: Wachtposten)
+                is bemand kenmerk (bijvoeglijk);
+            Feittype wachtindeling
+                de wachtjutter (mv: wachtjutters) Jutter
+                de toegewezen wachtpost Wachtpost
+            Eén toegewezen wachtpost telt meerdere wachtjutters
+            Regel wachtdoend
+                geldig altijd
+                    Een Jutter is wachtdoend indien hij een wachtjutter is.
+            Regel bemand
+                geldig altijd
+                    Een Wachtpost is bemand indien hij een wachtjutter heeft.
+            """);
+        assertTrue(c.contains("\"voorwaarde\":{\"node\":\"RoleMembership\",\"factType\":\"wachtindeling\","
+                        + "\"role\":\"wachtjutter\",\"negated\":false,\"bron\":\"hijeenwachtjutteris\"}"),
+                () -> "de rolcheck aan de nabije zijde:\n" + c);
+        assertTrue(c.contains("\"voorwaarde\":{\"node\":\"RoleMembership\",\"factType\":\"wachtindeling\","
+                        + "\"role\":\"toegewezenwachtpost\",\"negated\":false,\"bron\":\"hijeenwachtjutterheeft\"}"),
+                () -> "de rolcheck aan de verre zijde noemt de rol die het onderwerp speelt:\n" + c);
+    }
+
+    @Test void een_rolcheck_die_de_andere_zijde_vernauwt_draagt_het_type_van_die_zijde() {
+        // U12 of the L2 card: a check whose other end names a STRICT subtype of that role's declared filler
+        // ("heeft een Strandjutter", where wachtjutter is declared on Jutter) narrows the link it asks for, and
+        // the wire says so in counterpartType; naming the declared filler itself narrows nothing and the field
+        // stays absent. The frontend resolves a written role to its declared filler, so the narrowing is set on
+        // the resolved record here, as the hand-written golden jutterswet-postbezetting carries it.
+        RegelSpraakModel m = Resolver.resolve("""
+            Objecttype de Jutter (mv: Jutters) (bezield)
+            Objecttype de Strandjutter is een Jutter (mv: Strandjutters) (bezield)
+            Objecttype de Wachtpost (mv: Wachtposten)
+                is bemand kenmerk (bijvoeglijk);
+            Feittype wachtindeling
+                de wachtjutter (mv: wachtjutters) Jutter
+                de toegewezen wachtpost Wachtpost
+            Eén toegewezen wachtpost telt meerdere wachtjutters
+            Regel bemand
+                geldig altijd
+                    Een Wachtpost is bemand indien hij een wachtjutter heeft.
+            """);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+        ResolvedRegel r = m.resolvedRegels.get(0);
+        assertTrue(r.voorwaarde() instanceof Conditie.VerreRollidmaatschap v && v.filler().naam.equals("Jutter"),
+                () -> "de resolver hoort de verre rolcheck te bouwen: " + r.voorwaarde());
+        String zonder = IrEmitter.emit(m).replaceAll("\\s+", "");
+        assertTrue(zonder.contains("\"role\":\"toegewezenwachtpost\",\"negated\":false,"),
+                () -> "de gedeclareerde vuller vernauwt niets:\n" + zonder);
+        Conditie.VerreRollidmaatschap v = (Conditie.VerreRollidmaatschap) r.voorwaarde();
+        m.resolvedRegels.set(0, new ResolvedRegel(r.naam(), r.soort(), r.doel(), r.waarde(),
+                new Conditie.VerreRollidmaatschap(m.objecttypen.get("Strandjutter"), v.backref(), v.negatie(), v.bron()),
+                r.geldigheid()));
+        String met = IrEmitter.emit(m).replaceAll("\\s+", "");
+        assertTrue(met.contains("{\"node\":\"RoleMembership\",\"factType\":\"wachtindeling\","
+                        + "\"role\":\"toegewezenwachtpost\",\"counterpartType\":\"Strandjutter\",\"negated\":false,"),
+                () -> "een strikt subtype van de gedeclareerde vuller vernauwt de link:\n" + met);
+    }
+
+    @Test void een_lezing_die_navigeert_zonder_unieke_binding_wordt_geweigerd() {
+        // IR-SPEC ch. 4.1a: a read without bindings is the subject's own, so a read the resolver took to another
+        // type but whose relation it cannot name has no spelling — written without its binding, it would read
+        // the subject's own attribute. The pair is made ambiguous by a second fact type added after resolution,
+        // so the read itself is the resolver's.
+        RegelSpraakModel m = Resolver.resolve(WERKNEMER_AFDELING + """
+            Regel rang
+                geldig altijd
+                    De rang van een Werknemer moet berekend worden als het niveau van zijn afdeling.
+            """);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+        assertTrue(IrEmitter.emit(m).replaceAll("\\s+", "").contains(
+                "\"navigatieBindingen\":[{\"node\":\"RolBinding\",\"feittype\":\"aanstelling\",\"rol\":\"afdeling\"}]"),
+                "de ongemoeide lezing draagt haar binding");
+        tweedeAfdelingsrol(m);
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m));
+        assertTrue(e.getMessage().contains("het niveau van zijn afdeling") && e.getMessage().contains("navigeert"),
+                e::getMessage);
+    }
+
+    @Test void een_kenmerkcheck_die_navigeert_zonder_unieke_binding_wordt_geweigerd() {
+        // IR-SPEC ch. 4.5: the binding IS the hop; without it the check would test the subject's own kenmerk.
+        RegelSpraakModel m = Resolver.resolve(WERKNEMER_AFDELING + """
+            Regel rang
+                geldig altijd
+                    De rang van een Werknemer moet gesteld worden op 1 indien zijn afdeling actief is.
+            """);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+        assertTrue(IrEmitter.emit(m).replaceAll("\\s+", "").contains(
+                "\"navigatieBinding\":{\"node\":\"RolBinding\",\"feittype\":\"aanstelling\",\"rol\":\"afdeling\"}"),
+                "de ongemoeide kenmerkcheck draagt haar binding");
+        tweedeAfdelingsrol(m);
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m));
+        assertTrue(e.getMessage().contains("kenmerkcheck"), e::getMessage);
+    }
+
+    @Test void een_feitcreatie_zonder_heel_symbolisch_blok_wordt_geweigerd() {
+        // IR-SPEC ch. 3.4: the creation IS its symbolic block, so a creation missing any binding has no spelling.
+        RegelSpraakModel m = Resolver.resolve(FEITCREATIE);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+        ResolvedFeitCreatie fc = m.feitCreaties.get(0);
+        m.feitCreaties.set(0, new ResolvedFeitCreatie(fc.naam(), fc.anker(), fc.doel(), fc.zetVeld(), fc.joinVeld(),
+                fc.tussenstappen(), fc.voorwaarde(), fc.geldigheid(), fc.feittype(), fc.ankerRol(), fc.doelRol(), null));
+        IllegalStateException zonderJoin = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m));
+        assertTrue(zonderJoin.getMessage().contains("niet heel symbolisch gebonden"), zonderJoin::getMessage);
+
+        ResolvedFeitCreatie.Tussenstap t = fc.tussenstappen().get(0);
+        m.feitCreaties.set(0, new ResolvedFeitCreatie(fc.naam(), fc.anker(), fc.doel(), fc.zetVeld(), fc.joinVeld(),
+                List.of(new ResolvedFeitCreatie.Tussenstap(t.type(), t.veld(), t.viaOuderVeld())),
+                fc.voorwaarde(), fc.geldigheid(), fc.feittype(), fc.ankerRol(), fc.doelRol(), fc.joinRol()));
+        IllegalStateException zonderStap = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m));
+        assertTrue(zonderStap.getMessage().contains("niet heel symbolisch gebonden"), zonderStap::getMessage);
+    }
+
+    @Test void een_begrensde_uniciteit_zonder_rol_wordt_geweigerd() {
+        // IR-SPEC ch. 3.6: the binding IS the scoping; written without it the uniqueness would hold across
+        // every instance instead of within each afdeling.
+        RegelSpraakModel m = Resolver.resolve(WERKNEMER_AFDELING + """
+            Regel uniek
+                geldig altijd
+                    De rang van alle Werknemer van de afdeling moeten uniek zijn.
+            """);
+        assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
+        ResolvedUniciteit u = m.uniciteiten.get(0);
+        assertNotNull(u.scopeRol(), "de ongemoeide uniciteit is gebonden");
+        m.uniciteiten.set(0, new ResolvedUniciteit(u.naam(), u.subject(), u.sleutels(), u.scopeVeld(), u.bron(),
+                u.geldigheid()));
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m));
+        assertTrue(e.getMessage().contains("geen unieke rol"), e::getMessage);
+    }
+
+    @Test void een_onbekend_type_is_null_op_een_afgeleide_positie_en_heeft_elders_geen_spelling() {
+        // uchar-ir-v1 has no datatype for "unknown". A DERIVED position the frontend cannot type (a datum plus a
+        // datum, reported and not refused) is written null; a marker leaves its type out; any other position —
+        // a literal, a declaration, a payload — would carry a type the wire cannot spell, and is refused.
+        RegelSpraakModel m = Resolver.resolve("""
+            Objecttype de Jutter
+                de vondstteller Numeriek (geheel getal);
+                de jaarsom Numeriek (geheel getal);
+            Regel jaarsom
+                geldig altijd
+                    De jaarsom van een Jutter moet berekend worden als de vondstteller van de Jutter min 6.
+            """);
+        assertTrue(m.diagnostics.isEmpty(), () -> "onverwachte diagnoses: " + m.diagnostics);
+        ResolvedRegel r = m.resolvedRegels.get(0);
+        Expr.Binair b = (Expr.Binair) r.waarde();
+        Datatype onbekend = new Datatype.Onbekend("test");
+        m.resolvedRegels.set(0, new ResolvedRegel(r.naam(), r.soort(), r.doel(),
+                new Expr.Binair(b.op(), b.links(), b.rechts(), onbekend, b.bron()), r.voorwaarde(), r.geldigheid()));
+        String c = IrEmitter.emit(m).replaceAll("\\s+", "");
+        assertTrue(c.contains("\"type\":null,\"bron\":\"devondsttellervandeJutter"),
+                () -> "een afgeleide positie zonder type schrijft null:\n" + c);
+        assertFalse(c.contains("Onbekend"), () -> "het onbekende type heeft geen spelling:\n" + c);
+
+        Expr.Literal zes = (Expr.Literal) b.rechts();
+        m.resolvedRegels.set(0, new ResolvedRegel(r.naam(), r.soort(), r.doel(),
+                new Expr.Binair(b.op(), b.links(), new Expr.Literal(zes.waarde(), onbekend, zes.bron()), b.type(), b.bron()),
+                r.voorwaarde(), r.geldigheid()));
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m));
+        assertTrue(e.getMessage().contains("onbekend datatype"), e::getMessage);
+
+        m.resolvedRegels.set(0, new ResolvedRegel(r.naam(), r.soort(), r.doel(),
+                new Expr.Onopgelost(onbekend, b.bron(), "test"), r.voorwaarde(), r.geldigheid()));
+        m.diagnostics.add(new Diagnostic(Severity.WARNING, "onopgelost: " + b.bron().snippet(), 1));
+        String marker = IrEmitter.emit(m).replaceAll("\\s+", "");
+        assertTrue(marker.contains("{\"node\":\"Onopgelost\",\"bron\":\"devondsttellervandeJuttermin6\"}"),
+                () -> "een marker van onbekend type draagt geen type:\n" + marker);
+    }
+
+    /** The Werknemer–Afdeling model the L2 refusal witnesses share: one fact type between the pair, and a
+     *  kenmerk and a numeric attribute on the far end. */
+    private static final String WERKNEMER_AFDELING = """
+            Objecttype de Werknemer
+                de rang Numeriek (geheel getal);
+            Objecttype de Afdeling
+                het niveau Numeriek (geheel getal);
+                is actief kenmerk (bijvoeglijk);
+            Feittype aanstelling
+                de werknemer Werknemer
+                de afdeling Afdeling
+            Eén afdeling telt meerdere werknemers
+            """;
+
+    /** A second fact type in which a Werknemer reaches an Afdeling through a role also called afdeling: the
+     *  by-name and the by-pair search both stop being unique. */
+    private static void tweedeAfdelingsrol(RegelSpraakModel m) {
+        RegelSpraakModel.Feittype ft = new RegelSpraakModel.Feittype("detachering");
+        ft.rollen.add(new RegelSpraakModel.Rol("gedetacheerde", "Werknemer", null, false));
+        ft.rollen.add(new RegelSpraakModel.Rol("afdeling", "Afdeling", null, false));
+        m.feittypen.put(ft.naam, ft);
+    }
+
+    private static final String FEITCREATIE = """
+            Objecttype het Bedrijf
+            Objecttype de Afdeling
+            Objecttype het Project
+            Feittype onderdeel
+                de afdeling Afdeling
+                het bedrijf Bedrijf
+            Eén bedrijf telt meerdere afdelingen
+            Feittype uitvoering
+                de afdeling Afdeling
+                het project (mv: projecten) Project
+            Eén afdeling telt meerdere projecten
+            Feittype sponsoring
+                het sponsorbedrijf Bedrijf
+                het sponsorproject (mv: sponsorprojecten) Project
+            Eén sponsorbedrijf telt meerdere sponsorprojecten
+            Regel sponsoring
+                geldig altijd
+                    Een sponsorproject van een Bedrijf is een project van de afdeling van het bedrijf.
+            """;
 }

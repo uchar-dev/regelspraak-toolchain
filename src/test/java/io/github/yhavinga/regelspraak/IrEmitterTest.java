@@ -8,11 +8,11 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * The v0 IR emitter also writes the symbolic extension fields the uchar wire admits — the
- * navigation/scope/creation role bindings — each derived from the declared names and emitted
- * only where uniquely derivable. These tests exercise the EMITTED JSON (not just the resolved
- * records): the four families plus the fold-source discipline, so a regression in the wire shape
- * is caught here. Assertions compare against whitespace-collapsed JSON so they are robust to
+ * The emitter writes the symbolic form of every reference the uchar wire carries — the
+ * navigation/scope/creation role bindings — each derived from the declared names, and refuses a model
+ * where a position that needs one has no unique binding. These tests exercise the EMITTED JSON (not just
+ * the resolved records): the four families plus the fold-source discipline, so a regression in the wire
+ * shape is caught here. Assertions compare against whitespace-collapsed JSON so they are robust to
  * indentation while still pinning the exact field/value sequence.
  */
 class IrEmitterTest {
@@ -100,7 +100,8 @@ class IrEmitterTest {
 
     @Test void feitcreatie_symbolisch_blok_is_heel_of_niet() {
         // A §13.4.7 feitcreatie with one tussenstap: the whole symbolic block (created fact type,
-        // both ends, the final join) plus a RolBinding on the intermediate hop.
+        // both ends, the final join) plus a RolBinding on the intermediate hop — and nothing beside
+        // them, since IR-SPEC ch. 3.4 leaves the storage fields to the backend's own role→field mapping.
         String src = """
             Objecttype het Bedrijf
             Objecttype de Afdeling
@@ -122,10 +123,11 @@ class IrEmitterTest {
                     Een sponsorproject van een Bedrijf is een project van de afdeling van het bedrijf.
             """;
         String c = emitCompact(src);
-        assertTrue(c.contains(
-                "\"viaOuderVeld\":false,"
-                + "\"rolBinding\":{\"node\":\"RolBinding\",\"feittype\":\"onderdeel\",\"rol\":\"afdeling\"}"),
-                () -> "tussenstap-rolBinding ontbreekt:\n" + c);
+        assertTrue(c.contains("\"tussenstappen\":[{\"node\":\"Tussenstap\","
+                + "\"rolBinding\":{\"node\":\"RolBinding\",\"feittype\":\"onderdeel\",\"rol\":\"afdeling\"}}],"),
+                () -> "tussenstap-rolBinding ontbreekt, of staat naast bonenvelden:\n" + c);
+        assertTrue(c.contains("\"anker\":\"Bedrijf\",\"doel\":\"Project\",\"tussenstappen\":"),
+                () -> "de feitcreatie draagt geen bonenvelden naast anker en doel:\n" + c);
         assertTrue(c.contains(
                 "\"feittype\":\"sponsoring\",\"ankerRol\":\"sponsorbedrijf\",\"doelRol\":\"sponsorproject\","
                 + "\"joinRol\":{\"node\":\"RolBinding\",\"feittype\":\"uitvoering\",\"rol\":\"project\"}"),
@@ -268,9 +270,8 @@ class IrEmitterTest {
     }
 
     @Test void tijdsevenredig_deel_draagt_basistype_geen_sentinel() {
-        // §7.3.2/§13.4.17.58: the pro-rata node carries its BASE's value type on the wire — the
-        // uchar spec forbids the unknown-type sentinel inside a structured node (its WF-034), so
-        // an onbekend-typed TIJDSEVENREDIG_DEEL cannot enter its corpus.
+        // §7.3.2/§13.4.17.58: the pro-rata node carries its BASE's value type on the wire; a derived
+        // position the frontend cannot type would be written null, which is not what this node is.
         String src = """
             Objecttype de Bakenmeester (mv: Bakenmeesters) (bezield)
                 het onderhoudstarief Numeriek (getal met 2 decimalen) voor elk jaar;
@@ -292,8 +293,8 @@ class IrEmitterTest {
         String ownType = c.substring(from, to);
         assertTrue(ownType.contains("\"type\":{\"node\":\"Numeriek\"") && ownType.contains("\"decimalen\":2"),
                 () -> "de pro-rata-node draagt het basistype (Numeriek, 2 decimalen) niet zelf:\n" + ownType);
-        assertFalse(ownType.contains("\"node\":\"Onbekend\""),
-                () -> "de pro-rata-node mag niet de onbekend-sentinel dragen:\n" + ownType);
+        assertFalse(ownType.contains("\"type\":null"),
+                () -> "de pro-rata-node mag geen ontypeerbaar resultaat dragen:\n" + ownType);
     }
 
     @Test void bron_annotaties_op_de_draad_heel_of_niet() {

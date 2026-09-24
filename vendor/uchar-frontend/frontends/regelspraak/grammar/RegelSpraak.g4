@@ -87,9 +87,12 @@ groepLid   : regel | beslistabel ;
 // corpus verifier are isolated (gate G6). Binding contract: docs/SCENARIOTOETSEN.md;
 // token/collision analysis: the '§Scenariotoetsen' section of grammar/DIVERGENCES.md.
 // Alternatives are #-labelled so the resolver can visit each form directly.
+// The document parts are regelSpraakDocument's, the §4 extension blocks included (grammar/DIVERGENCES.md §4), so a
+// scenario can stand beside the defaults it tests; before that, a test document with a defaults block did not parse.
 // ====================================================================
 testDocument
-    : ( definitie | regelGroep | regel | beslistabel | situatieDefinitie | scenario )* EOF
+    : ( definitie | regelGroep | uitzonderingGroep | uitzonderingRegel | regel | beslistabel
+      | situatieDefinitie | scenario )* EOF
     ;
 
 // A herbruikbare situatie: `Situatie <naam>:` header, then a situatieblok. The name
@@ -671,7 +674,16 @@ gelijkstelling
 initialisatie : attribuutVanOnderwerp WORDT_GEINITIALISEERD_OP expressie ;
 // §13.4.5 Kenmerktoekenning — kaleNaam excludes lidwoorden, so "heeft het <rol> …"
 // (objectcreatie) does NOT match here and falls through to objectCreatie.
-kenmerkToekenning : onderwerpKeten ( IS | HEEFT ) EEN? kaleNaam ;
+// Dialect §4 form 1 (grammar/DIVERGENCES.md §4): a negated decision in a rule that becomes a default. 'is niet X',
+// 'is geen X' and 'heeft geen X' need no alternative — NIET is a name word and 'geen' lexes as LOWER_ID, so both
+// ride in the kaleNaam, where the resolver reads them verbatim-first as the condition side does. 'is niet een X'
+// does: EEN is no name word. The second alternative is that one sentence, the result twin of the condition's
+// NIET EEN branch; no document parsed it before, so it is inert on every existing one. Whether a negation is
+// admitted at all is the resolver's decision, since a plain Regel shares this production.
+kenmerkToekenning
+    : onderwerpKeten ( IS | HEEFT ) EEN? kaleNaam
+    | onderwerpKeten IS NIET EEN kaleNaam
+    ;
 // §13.4.6 ObjectCreatie. The subject's article belongs to its onderwerpketen
 // (universeelonderwerp), so no leading EEN here. The 'met' that introduces the
 // waardetoekenningen is absorbed into the preceding kaleNaam (MET is a name word);

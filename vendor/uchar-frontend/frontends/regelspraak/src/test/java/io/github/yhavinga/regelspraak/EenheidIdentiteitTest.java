@@ -36,9 +36,10 @@ class EenheidIdentiteitTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "onverwachte fouten: " + m.errors());
         String c = IrEmitter.emit(m).replaceAll("\\s+", "");
-        // the whole rule has no count function, so any Onbekend on the wire would be the old degradation.
-        assertFalse(c.contains("\"node\":\"Onbekend\""),
-                () -> "het product mag niet meer degraderen naar Onbekend(\"samengestelde eenheid\"):\n" + c);
+        // a derived result the frontend cannot type goes onto the wire as null, so a null type here would be
+        // the old degradation
+        assertFalse(c.contains("\"type\":null"),
+                () -> "het product mag niet meer degraderen naar een ontypeerbaar resultaat:\n" + c);
         // the MAAL product carries its own type Numeriek with the EUR unit (2 = 0 + 2 decimalen, Tabel 13).
         // NOTE emitCompact strips ALL whitespace, also inside the bron string value.
         assertTrue(c.contains("\"op\":\"MAAL\","), () -> "het MAAL-product ontbreekt:\n" + c);

@@ -13,16 +13,17 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * WF-096's KIND half (`spec/IR-SPEC.md` ch. 4.3, maintainer decision 2026-09-19): a set reading is
- * admissible as the source of a single-argument VALUE fold and nowhere else. A count folds the
+ * The set fence's KIND half (`spec/IR-SPEC.md` ch. 4.3; WF-096 until L2, maintainer decision 2026-09-19): a set
+ * reading is admissible as the source of a single-argument VALUE fold and nowhere else. A count folds the
  * CONTRIBUTORS themselves — `RUNTIME-SEMANTICS.md` ch. 3.4a says so in as many words, ch. 3.4b
  * restates it for the union — so under {@code AANTAL} a set reading names a collection the node does
- * not consume, and the wire refuses the form.
+ * not consume, and the wire refuses the form: since L2 as a count over a member of the element type
+ * (WF-093 (b)).
  *
  * <p><b>This suite exists because the frontend's own fence was WIDER than the wire's, and the gap was
  * a LEAK rather than a stale comment.</b> {@code RuleChecker.VOUWSOORTEN} kept {@code AANTAL} among
  * the exempt kinds, so a count whose single argument is a set reading passed the naloop untouched and
- * was emitted with {@code diagnostics: []} — a document the verifier rejects under WF-096. The
+ * was emitted with {@code diagnostics: []} — a document the verifier rejected under WF-096. The
  * sentence below is that route, measured 2026-09-19 before the narrowing landed.
  *
  * <p><b>Why the route needs a name collision, and why that is the honest witness.</b> For a count the
@@ -84,22 +85,23 @@ class AantalSetbronTest {
         """;
 
     /** The literal message the narrowed check raises. Pinned whole: the list of admissible kinds IS
-     *  the boundary, so a kind silently rejoining it would otherwise pass unnoticed. */
+     *  the boundary, so a kind silently rejoining it would otherwise pass unnoticed. Since L2 it cites the
+     *  count's own rule, WF-093 (b); until L2 it cited WF-096. */
     static final String MELDING =
             "setlezing buiten een vouwbron: 'gewichten van alle gewichten van de Jutter' noemt de waarde "
             + "van elk lid van de verzameling — alleen toegestaan als bron van één waardevouw (som, "
             + "totaal, minimum, maximum, eerste, laatste, aantal gevulde waarden); een instantietelling "
-            + "vouwt de leden zelf en leest geen waarde per lid, dus onder 'aantal' ook niet (besluit "
-            + "2026-09-19); hier wordt één waarde verwacht (WF-096, IR-SPEC ch. 4.3)";
+            + "vouwt de leden zelf en leest geen waarde per lid, dus als bron van 'aantal' ook niet "
+            + "(WF-093 (b), IR-SPEC ch. 4.3)";
 
-    private static List<Diagnostic> wf096(String regels) {
+    private static List<Diagnostic> setlezingen(String regels) {
         RegelSpraakModel m = Resolver.resolve(MODEL + regels);
-        return m.diagnostics.stream().filter(d -> d.message().contains("WF-096")).toList();
+        return m.diagnostics.stream().filter(d -> d.message().startsWith("setlezing buiten een vouwbron")).toList();
     }
 
     @Test void de_telling_over_een_setlezing_wordt_geweigerd() {
-        List<Diagnostic> ds = wf096(TELLING);
-        assertEquals(1, ds.size(), () -> "verwacht één WF-096-melding, kreeg: " + ds);
+        List<Diagnostic> ds = setlezingen(TELLING);
+        assertEquals(1, ds.size(), () -> "verwacht één setlezing-melding, kreeg: " + ds);
         assertEquals(MELDING, ds.get(0).message());
         assertEquals(Severity.ERROR, ds.get(0).severity());
     }
@@ -107,7 +109,7 @@ class AantalSetbronTest {
     @Test void de_weigering_valt_op_de_zin_zelf() {
         // the line is the sentence's own, so a reader finds the setlezing by the number alone —
         // the same contract SetlezingZonderVouwTest pins for the POSITION half
-        Diagnostic d = wf096(TELLING).get(0);
+        Diagnostic d = setlezingen(TELLING).get(0);
         assertEquals("Het aantal aangemelde vondsten van een Jutter moet berekend worden als het aantal "
                         + "gewichten van alle gewichten van de Jutter.",
                 (MODEL + TELLING).lines().toList().get(d.line() - 1).strip());
@@ -115,19 +117,19 @@ class AantalSetbronTest {
 
     @Test void de_ill_gevormde_telling_bereikt_de_wire_niet() {
         // The leak, stated as the property that closes it: an ERROR stops irModus writing at all, so
-        // the document the verifier rejects under WF-096 is never produced. Before the narrowing this
-        // same source emitted with `diagnostics: []`. Since WF-113 (a) the emitter refuses the model
-        // by itself as well, so no emission route reaches the wire with it.
+        // the document the verifier rejects (WF-093 (b) since L2, WF-096 before) is never produced.
+        // Before the narrowing this same source emitted with `diagnostics: []`. Since WF-113 (a) the emitter
+        // refuses the model by itself as well, so no emission route reaches the wire with it.
         RegelSpraakModel m = Resolver.resolve(MODEL + TELLING);
         assertTrue(m.errors().stream().anyMatch(d -> d.message().contains("setlezing buiten een vouwbron")),
-                () -> "de telling met setbron levert geen WF-096-fout meer op: " + m.diagnostics);
+                () -> "de telling met setbron levert geen setlezing-fout meer op: " + m.diagnostics);
         IllegalStateException e = assertThrows(IllegalStateException.class, () -> IrEmitter.emit(m));
         assertTrue(e.getMessage().contains("setlezing buiten een vouwbron"), e::getMessage);
     }
 
     @Test void de_waardevouw_over_dezelfde_setbron_blijft_schoon() {
         // The narrowing removes ONE kind from the exemption and must leave the other six where they
-        // were: the same set source under a SOM is the legitimate fold source WF-096 protects.
+        // were: the same set source under a SOM is the legitimate fold source the fence exempts.
         RegelSpraakModel m = Resolver.resolve(MODEL + SOM);
         assertTrue(m.diagnostics.isEmpty(), () -> "onverwachte diagnostiek op de waardevouw: " + m.diagnostics);
         Expr.Functie f = (Expr.Functie) m.resolvedRegels.get(0).waarde();

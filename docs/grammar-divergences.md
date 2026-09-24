@@ -2258,7 +2258,8 @@ the collision analysis that freed each token, and the isolation guarantee. Seman
 re-derived from the spec's own worked examples + the TOKA casus (the prior-repo ban stands; no prior code consulted).
 
 - **Own start rule, never presented as §13 (isolation gate G6).** The extension lives ONLY behind
-  `testDocument : ( definitie | regelGroep | regel | beslistabel | situatieDefinitie | scenario )* EOF ;`.
+  `testDocument : ( definitie | regelGroep | uitzonderingGroep | uitzonderingRegel | regel | beslistabel | situatieDefinitie | scenario )* EOF ;`
+  — since uchar `e5c728b9` its non-scenario parts are exactly `regelSpraakDocument`'s, the §4 defaults blocks included.
   The production start rule `regelSpraakDocument` and the corpus harness `corpusEntry` are BYTE-FOR-BYTE
   unchanged, so production parsing and `make verify-corpus` are untouched: the corpus stays **192-0-1**, the
   CorpusVuurTest partitions stay **59/54/79/9**, and `ScenarioParseTest` proves a scenario block is REJECTED under

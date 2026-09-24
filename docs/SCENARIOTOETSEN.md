@@ -27,9 +27,16 @@ hoofdletter-geleide namen voor objecttypen.)
 Twee nieuwe constructies, alleen bereikbaar via `testDocument`:
 
 ```
-testDocument : ( definitie | regelGroep | regel | beslistabel
+testDocument : ( definitie | regelGroep | uitzonderingGroep | uitzonderingRegel | regel | beslistabel
                | situatieDefinitie | scenario )* EOF ;
 ```
+
+De niet-scenariodelen zijn sinds uchar `e5c728b9` die van `regelSpraakDocument`,
+de defaults-blokken van het uchar-dialect (`Uitzondering op …`, `Uitzonderingen
+ongeordend:`) inbegrepen. De resolverlaag draagt die blokken nog niet:
+`ScenarioResolver` neemt ze niet op in het model en meldt dat niet, dus een
+regelset met defaults is nog niet met scenario's te toetsen (uchar-kaart
+`regelspraak-java-defaults-in-scenario-en-werkbank`).
 
 ### Herbruikbare situatie (het testinitialisatie-analoog)
 

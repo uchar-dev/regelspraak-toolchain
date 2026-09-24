@@ -187,8 +187,7 @@ public sealed interface Expr {
          *  null: an UNFILTERED selection beside a filtered one is an ordinary case here, where the v0
          *  toolchain leaves it unlowered because its own lowering ORs the operands' filter terms and
          *  has no term to OR for one without a filter. There is deliberately no path spelling: a
-         *  selection carries a one-step relation, and the multi-step range under a count stays where
-         *  WF-096 and WF-102 met it. */
+         *  selection carries a one-step relation, and a count's range is one step (WF-102 (c)). */
         public record Tak(Objecttype elementType, RegelSpraakModel.RolBindingRef bronRol,
                           Conditie filter, Bron bron) {}
     }

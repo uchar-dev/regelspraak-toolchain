@@ -9,8 +9,11 @@ import java.util.List;
  * decides wins (attribute defaults fall through on a leeg consequence; the initialisation default, lowest, is
  * justified iff the target is empty in the input). Multiple defaults groups on ONE target are admissible only
  * as a declared-{@link #ongeordend} group (ch. 7.2), whose differing simultaneous decisions route to the §9.5
- * channel. An extension node the v0 emitter never produces; the RegelSpraak resolver never builds it — it
- * is carried by the Catala frontend and hand-authored anchors, and consumed here by the Drools loader.
+ * channel. The RegelSpraak resolver builds it from the dialect's own blocks only — {@code Uitzondering op} and
+ * {@code Uitzonderingen ongeordend} ({@code grammar/DIVERGENCES.md} §4; a flat rule family is never folded into
+ * one) — with a {@code false} decision where the block's sentence negates the characteristic
+ * ({@code is niet X}, {@code heeft geen X}); the Catala frontend and the hand-authored anchors carry the same
+ * node.
  *
  * @param naam       the defaults-group name, or null
  * @param onderwerp  the subject objecttype NAME (resolved by the consumer against its model)

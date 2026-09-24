@@ -102,10 +102,10 @@ class AantalGevuldeDialectTest {
                 .eenheid().afkorting(), "de BRON hoort de eenheid wel te dragen");
     }
 
-    @Test void de_setlezing_onder_de_telling_is_geen_wf096_overtreding() {
+    @Test void de_setlezing_onder_de_telling_is_geen_setlezingfout() {
         // The coupling with RuleChecker.VOUWSOORTEN, stated as a property: the source is a SET
-        // reading, and WF-096 admits one on a value fold's source alone. Were the kind missing from
-        // that set, this very sentence would raise the WF-096 ERROR and never reach disk — which is
+        // reading, and the set fence admits one on a value fold's source alone. Were the kind missing from
+        // that set, this very sentence would raise the fence's ERROR and never reach disk — which is
         // the divergence VouwsoortenGrensTest exists to catch.
         RegelSpraakModel m = resolve("""
 
@@ -113,7 +113,7 @@ class AantalGevuldeDialectTest {
                 geldig altijd
                     Het aantal gewogen vondsten van een Jutter moet berekend worden als het aantal gevulde waarden van het gewicht van alle vondsten van de Jutter.
             """);
-        assertTrue(m.diagnostics.stream().noneMatch(d -> d.message().contains("WF-096")),
+        assertTrue(m.diagnostics.stream().noneMatch(d -> d.message().startsWith("setlezing buiten een vouwbron")),
                 () -> "de vouwbron wordt als setlezing buiten een vouw gelezen: " + m.diagnostics);
         assertTrue(IrEmitter.emit(m).contains("\"kind\": \"AANTAL_GEVULDE\""), "de soort bereikt de wire niet");
     }
