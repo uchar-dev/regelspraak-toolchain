@@ -11,46 +11,52 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
  * CLI for the {@link ScenarioRunner}. Usage:
  *
  * <pre>{@code
- *   dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli [--trace] <file.rgs> [<file.rgs> ...]
- *   dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli [--trace] --manifest <manifest>
+ *   dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli [--trace] [--uitleg] <file.rgs> [<file.rgs> ...]
+ *   dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli [--trace] --manifest <manifest> [--uitsluitingen <lijst>]
  * }</pre>
  *
  * Multiple files are CONCATENATED in argument order (objectmodel + rules + scenario file). Per scenario one line
  * PASS/FAIL/MARKER; a FAIL prints per expectation its position in the scenario with verwacht/werkelijk, the trace
- * and the coverage lines; {@code --trace} prints the trace even for a PASS. Exit codes: {@code 1} as soon as a
- * scenario FAILS (or the source does not resolve — with the diagnostics); else {@code 3} as soon as a scenario is a
- * MARKER (uchar does not carry its document); else {@code 0}. With no files: exit {@code 2}.
+ * and the coverage lines; {@code --trace} prints the trace even for a PASS; {@code --uitleg} prints under each
+ * played scenario the explanation of its outcome ({@link ScenarioRunner#runMetUitleg}), or why there is none. Exit
+ * codes: {@code 1} as soon as a scenario FAILS (or the source does not resolve — with the diagnostics); else
+ * {@code 3} as soon as a scenario is a MARKER (uchar does not carry its document); else {@code 0}. With no files:
+ * exit {@code 2}.
  *
- * <p>Two options of the former runner are refused by name: {@code --uitleg} (uchar's replay reports verdicts and
- * firings, not the fired facts a verhaal is built from) and {@code --parametersets} (uchar's scenario layer requires
- * every parameter a carried rule reads in the situation).
+ * <p>{@code --manifest} runs every line of a manifest ({@code <verwachte-exit> <scenario.rgs> <companion.rgs...>})
+ * and exits {@code 0} when no line mismatches, else {@code 1}. {@code --uitsluitingen} names the scenarios uchar's
+ * scenario resolver refuses, one per line as {@code <scenario-pad>|<fragment van uchars weigering>|<reden>}: such a
+ * line must be refused with that fragment, and a listed scenario uchar accepts, or one the manifest does not carry,
+ * is a mismatch, so the list cannot outlive its reason.
+ *
+ * <p>One option of the former runner is refused by name: {@code --parametersets}. uchar's scenario resolver refuses
+ * a scenario whose carried rules read a parameter its situation does not set, so the case files of such a scenario
+ * are never written and a parameter set has no case file to go into.
  */
 public final class ScenarioRunnerCli {
     private ScenarioRunnerCli() {}
 
     public static void main(String[] args) {
-        boolean trace = false;
-        Path manifest = null;
+        boolean trace = false, uitleg = false;
+        Path manifest = null, uitsluitingen = null;
         List<Path> files = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
             if (a.equals("--trace")) trace = true;
-            else if (a.equals("--uitleg")) {
-                System.err.println("--uitleg: de scenarioroute loopt via uchars replay, die per scenario uitslagen en "
-                        + "vuringen teruggeeft maar niet de gevuurde feiten waaruit een uitleg gebouwd wordt");
-                System.exit(2);
-                return;
-            }
+            else if (a.equals("--uitleg")) uitleg = true;
             else if (a.equals("--parametersets")) {
-                System.err.println("--parametersets: uchars scenariolaag eist dat elke parameter die een gedragen regel "
-                        + "leest een waarde in de situatie heeft; externe parametersets bereiken een scenario niet");
+                System.err.println("--parametersets: uchars scenarioresolver weigert een scenario waarvan een gedragen "
+                        + "regel een parameter leest die de situatie niet zet, dus de casebestanden waarin een "
+                        + "parameterset zou moeten komen worden nooit geschreven");
                 System.exit(2);
                 return;
             }
@@ -58,6 +64,10 @@ public final class ScenarioRunnerCli {
                 if (manifest != null) { System.err.println("--manifest mag maar één keer"); System.exit(2); return; }
                 if (i + 1 >= args.length) { System.err.println("--manifest verwacht een pad naar het manifest-bestand"); System.exit(2); return; }
                 manifest = Path.of(args[++i]);
+            }
+            else if (a.equals("--uitsluitingen")) {
+                if (i + 1 >= args.length) { System.err.println("--uitsluitingen verwacht een pad naar de lijst"); System.exit(2); return; }
+                uitsluitingen = Path.of(args[++i]);
             }
             else if (a.startsWith("--")) { System.err.println("onbekende optie: " + a); System.exit(2); return; }
             else files.add(Path.of(a));
@@ -68,9 +78,11 @@ public final class ScenarioRunnerCli {
         // regel dezelfde OK/MISMATCH-uitvoer als de shell-loop, zodat `make scenario-test` vergelijkbaar blijft.
         if (manifest != null) {
             if (!files.isEmpty()) { System.err.println("--manifest neemt zelf de scenario's uit het manifest; geef geen losse .rgs-paden mee"); System.exit(2); return; }
-            System.exit(draaiManifest(manifest, trace));
+            if (uitleg) { System.err.println("--uitleg geldt voor losse .rgs-bestanden, niet voor --manifest"); System.exit(2); return; }
+            System.exit(draaiManifest(manifest, uitsluitingen, trace));
             return;
         }
+        if (uitsluitingen != null) { System.err.println("--uitsluitingen hoort bij --manifest"); System.exit(2); return; }
 
         if (files.isEmpty()) {
             System.err.println("geen .rgs-bestand opgegeven: geef één of meer .rgs-paden, of --manifest <pad>");
@@ -89,9 +101,11 @@ public final class ScenarioRunnerCli {
             return;
         }
 
-        List<ScenarioResultaat> resultaten;
+        List<ScenarioRunner.Uitgelegd> resultaten;
         try {
-            resultaten = ScenarioRunner.run(bron);
+            var bundel = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(bron);
+            resultaten = uitleg ? ScenarioRunner.runMetUitleg(bundel)
+                    : ScenarioRunner.run(bundel).stream().map(r -> new ScenarioRunner.Uitgelegd(r, List.of(), null)).toList();
         } catch (ScenarioRunner.ResolveFout f) {
             System.err.println("de bron resolvet niet — " + f.diagnostiek().size() + " diagnose(s):");
             for (String d : f.diagnostiek()) System.err.println("  " + d);
@@ -99,15 +113,24 @@ public final class ScenarioRunnerCli {
             return;
         }
 
-        System.exit(rapporteerEnCode(resultaten, trace));
+        int code = rapporteerEnCode(resultaten.stream().map(ScenarioRunner.Uitgelegd::resultaat).toList(), trace,
+                uitleg ? resultaten : null);
+        System.exit(code);
     }
 
     /** Print each result (FAIL detail / MARKER / optional trace) and return the run's exit code: 1 if any FAIL, else
      *  3 if any MARKER, else 0 — the single-file CLI's exit contract, extracted so {@code --manifest} reuses it. A
      *  FAIL without a failed expectation (no fixpoint, or a case the replay could not play) prints its diagnose. */
     private static int rapporteerEnCode(List<ScenarioResultaat> resultaten, boolean trace) {
+        return rapporteerEnCode(resultaten, trace, null);
+    }
+
+    /** As above; with {@code uitleg} (the same scenarios, explained) each played scenario's explanation follows. */
+    private static int rapporteerEnCode(List<ScenarioResultaat> resultaten, boolean trace,
+                                        List<ScenarioRunner.Uitgelegd> uitleg) {
         boolean enigeFail = false, enigeMarker = false;
-        for (ScenarioResultaat r : resultaten) {
+        for (int n = 0; n < resultaten.size(); n++) {
+            ScenarioResultaat r = resultaten.get(n);
             System.out.println(r.status() + "  " + r.naam());
             if (r.status() == Status.FAIL) {
                 enigeFail = true;
@@ -127,69 +150,136 @@ public final class ScenarioRunnerCli {
                 drukDekking(r);
             }
             if (trace && r.status() != Status.FAIL) drukTrace(r);
+            if (uitleg != null && r.status() != Status.MARKER) drukUitleg(uitleg.get(n));
         }
         return enigeFail ? 1 : enigeMarker ? 3 : 0;
     }
 
+    private static void drukUitleg(ScenarioRunner.Uitgelegd u) {
+        if (u.uitlegFout() != null) {
+            System.out.println("    geen uitleg: " + u.uitlegFout());
+            return;
+        }
+        System.out.println("    uitleg:" + (u.uitleg().isEmpty() ? " (geen kenmerktoekenning om te verantwoorden)" : ""));
+        for (String zin : u.uitleg()) System.out.println("      " + zin);
+    }
+
+    /** A scenario uchar's scenario resolver refuses: its refusal must carry {@code fragment}. */
+    private record Uitsluiting(String fragment, String reden) {}
+
     /**
-     * Run EVERY manifest line in this one JVM, replacing the Makefile shell loop that forked one JVM per line. Each line is {@code <verwachte-exit> <scenario.rgs> <companion.rgs...>}; the
-     * sources are concatenated in the SAME order the shell loop passed them ({@code scenario} then companions), run
-     * through {@link ScenarioRunner#run(String)}, and reduced to a per-line exit code with the SAME semantics as a
-     * single-file invocation (1 FAIL/resolve-fout, 3 MARKER, else 0). Per line it prints the SAME
-     * {@code OK (exit N)} / {@code MISMATCH …} line the shell loop did, plus the golden summary + verdict, so
-     * {@code make scenario-test} output stays comparable. uchar's bean compiler caches on the bean sources, so the
-     * lines that share the TOKA foundation's fact model compile its beans once.
-     *
-     * <p>Returns the OVERALL exit code: 0 when the golden set passes (all 29 exit-0 lines OK, no mismatch, the
-     * exit-3 marker line present), else 1 — matching the Makefile's own pass/fail gate.
+     * Run every manifest line in this one JVM. Each line is {@code <verwachte-exit> <scenario.rgs> <companion.rgs...>};
+     * the sources are concatenated in that order, as the single-file CLI concatenates its arguments, and reduced to
+     * that CLI's exit code (1 FAIL or resolve error, 3 MARKER, else 0). A line is OK when that code is the expected
+     * one; a scenario named in {@code uitsluitingenPad} is OK when the resolver refuses it with the listed fragment.
+     * Prints one line per manifest line and a summary, and returns 0 when no line mismatches and every exclusion
+     * was met, 1 otherwise, and 1 for a manifest without lines.
      */
-    private static int draaiManifest(Path manifest, boolean trace) {
+    private static int draaiManifest(Path manifest, Path uitsluitingenPad, boolean trace) {
         List<String> regels;
+        Map<String, Uitsluiting> uitsluitingen;
         try {
             regels = Files.readAllLines(manifest);
+            uitsluitingen = leesUitsluitingen(uitsluitingenPad);
         } catch (IOException e) {
-            System.err.println("kon het manifest niet lezen: " + e.getMessage());
+            System.err.println("kon het manifest of de uitsluitingen niet lezen: " + e.getMessage());
+            return 2;
+        } catch (IllegalArgumentException e) {
+            System.err.println(e.getMessage());
             return 2;
         }
-        Path basis = manifest.toAbsolutePath().getParent();
-        // basis is the manifest dir; the manifest lists paths relative to the REPO ROOT (examples/…), so resolve
-        // each path against the CWD (where the Makefile invokes java) exactly as the shell loop did — a bare
-        // Path.of(token) is CWD-relative, identical to the shell's `$scenario`/`$companions`.
-        if (basis == null) basis = Path.of("");
-        int valueOk = 0, otherOk = 0, fail = 0;
-        boolean markerOk = false;
+        // the manifest lists paths relative to the directory the CLI runs in (the repository root for make)
+        int ok = 0, uitgesloten = 0, mismatch = 0, gelezen = 0;
+        java.util.Set<String> gezien = new java.util.HashSet<>();
         for (String regel : regels) {
             String r = regel.strip();
             if (r.isEmpty() || r.startsWith("#")) continue;
+            gelezen++;
             String[] velden = r.split("\\s+");
             int verwacht;
             try { verwacht = Integer.parseInt(velden[0]); }
             catch (NumberFormatException nfe) { System.err.println("manifestregel zonder geldige verwachte exitcode: " + r); return 2; }
+            if (velden.length < 2) { System.err.println("manifestregel zonder scenario: " + r); return 2; }
             List<Path> paden = new ArrayList<>();
             for (int i = 1; i < velden.length; i++) paden.add(Path.of(velden[i]));
-            String naam = paden.isEmpty() ? "?" : paden.get(0).getFileName().toString();
+            String naam = paden.get(0).getFileName().toString();
+            Uitsluiting u = uitsluitingen.get(velden[1]);
+            if (u != null) {
+                gezien.add(velden[1]);
+                String weigering = weigering(paden);
+                if (weigering != null && weigering.contains(u.fragment())) {
+                    System.out.println("  UITGESLOTEN  " + naam + "  (" + u.reden() + ")");
+                    uitgesloten++;
+                } else {
+                    System.out.println("  MISMATCH (uitgesloten, maar uchar weigert het niet met '" + u.fragment() + "'"
+                            + (weigering == null ? ": het resolvet" : ": " + weigering) + ")  " + naam);
+                    mismatch++;
+                }
+                continue;
+            }
             int got = draaiRegel(paden, trace);
             if (got == verwacht) {
                 System.out.println("  OK (exit " + got + ")  " + naam);
-                if (verwacht == 0) valueOk++; else otherOk++;
-                if (verwacht == 3) markerOk = true;
+                ok++;
             } else {
                 System.out.println("  MISMATCH (verwacht exit " + verwacht + ", kreeg " + got + ")  " + naam);
-                fail++;
+                mismatch++;
             }
         }
+        for (String pad : uitsluitingen.keySet())
+            if (!gezien.contains(pad)) {
+                System.out.println("  MISMATCH (uitgesloten, maar het manifest draagt het niet)  " + pad);
+                mismatch++;
+            }
         System.out.println("-------------------------------------------------------------------");
-        // 29 exit-0-scenario's sinds besluit 16Y (2026-08-29): toka-45 verwacht exit 1 in het
-        // manifest — de eenheid-identiteit-typering legt de dimensionele inconsistentie van die
-        // casus bloot (zie de manifestnoot). Een verdwenen of extra manifestregel valt hier op.
-        System.out.println("golden TOKA: " + valueOk + "/29 PASS, marker-exit-3: " + (markerOk ? "yes" : "no")
-                + "  (+" + otherOk + " andere manifestregels ok, " + fail + " mismatch)");
-        if (valueOk == 29 && fail == 0 && markerOk) {
-            System.out.println("golden TOKA: 29/29 PASS, marker-exit-3: ok");
-            return 0;
+        System.out.println("manifest: " + gelezen + " regels, " + ok + " ok, " + uitgesloten + " uitgesloten, "
+                + mismatch + " mismatch");
+        if (gelezen == 0) {
+            System.out.println("MANIFEST FAALT: het manifest telt geen regels");
+            return 1;
         }
-        System.out.println("GOLDEN FAALT");
-        return 1;
+        if (mismatch > 0) {
+            System.out.println("MANIFEST FAALT");
+            return 1;
+        }
+        return 0;
+    }
+
+    /** The exclusions of {@code pad} by scenario path, or none without a list. */
+    private static Map<String, Uitsluiting> leesUitsluitingen(Path pad) throws IOException {
+        Map<String, Uitsluiting> uit = new LinkedHashMap<>();
+        if (pad == null) return uit;
+        for (String regel : Files.readAllLines(pad)) {
+            String r = regel.strip();
+            if (r.isEmpty() || r.startsWith("#")) continue;
+            String[] velden = r.split("\\|", 3);
+            if (velden.length != 3 || velden[1].isBlank() || velden[2].isBlank())
+                throw new IllegalArgumentException("uitsluiting zonder '<scenario>|<fragment>|<reden>': " + r);
+            if (uit.put(velden[0].strip(), new Uitsluiting(velden[1].strip(), velden[2].strip())) != null)
+                throw new IllegalArgumentException("scenario twee keer uitgesloten: " + velden[0].strip());
+        }
+        return uit;
+    }
+
+    /** The resolver's refusal of the concatenated {@code paden}, its diagnostics on one line; null when it resolves. */
+    private static String weigering(List<Path> paden) {
+        String bron;
+        try {
+            bron = leesBron(paden);
+        } catch (UncheckedIOException e) {
+            return "kon een bestand niet lezen: " + e.getCause().getMessage();
+        }
+        var bundel = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(bron);
+        if (bundel.isOk()) return null;
+        List<String> d = new ArrayList<>();
+        for (var fout : bundel.model().errors()) d.add(fout.message());
+        return String.join("; ", d);
+    }
+
+    private static String leesBron(List<Path> paden) {
+        return paden.stream()
+                .map(p -> { try { return Files.readString(p); } catch (IOException e) { throw new UncheckedIOException(e); } })
+                .collect(Collectors.joining("\n"));
     }
 
     /** Run ONE manifest line's concatenated sources and return its exit code (1 FAIL/resolve-fout, 3 MARKER, else

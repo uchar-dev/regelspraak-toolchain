@@ -52,6 +52,41 @@ class ScenarioRunnerTest {
         assertEquals(Status.PASS, r.status(), () -> "verwacht PASS: " + r.diagnose() + " / " + r.verwachtingen());
     }
 
+    /** The explanation of a played scenario: its own session fires what uchar's replay reported, and the verbaliser
+     *  justifies the characteristic with the operand values the condition read. The rule with a parameter shows that
+     *  the session carries the situation's parameters as globals. */
+    @Test void uitleg_van_een_gespeeld_scenario() {
+        List<ScenarioRunner.Uitgelegd> u = ScenarioRunner.runMetUitleg(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve("""
+            Objecttype de Vlucht (mv: Vluchten)
+                de afstand tot bestemming Numeriek (positief geheel getal) met eenheid km;
+                de heffing Numeriek (getal met 2 decimalen) met eenheid EUR;
+                is belast kenmerk (bijvoeglijk);
+            Parameter het tarief per km : Numeriek (getal met 2 decimalen) met eenheid EUR/km;
+            Regel heffingsregel
+            geldig altijd
+            De heffing van een Vlucht moet berekend worden als de afstand tot bestemming van de Vlucht maal het tarief per km.
+            Regel belastregel
+            geldig altijd
+            Een Vlucht is belast indien de afstand tot bestemming van de Vlucht groter is dan 100 km.
+            Situatie basis:
+            een Vlucht V1
+            - de afstand tot bestemming is 200 km
+            de parameter het tarief per km is 0,30 EUR/km
+            Scenario heffing en belast
+            toetst de regels heffingsregel en belastregel
+            gebaseerd op de situatie basis
+            Met als verwacht resultaat:
+            - de heffing van V1 is 60,00 EUR
+            - V1 is een belast
+            """));
+        assertEquals(1, u.size());
+        assertEquals(Status.PASS, u.get(0).resultaat().status(), () -> u.get(0).resultaat().diagnose());
+        assertNull(u.get(0).uitlegFout(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).uitlegFout());
+        assertEquals(1, u.get(0).uitleg().size(), u.get(0).uitleg()::toString);
+        String zin = u.get(0).uitleg().get(0);
+        assertTrue(zin.startsWith("V1 is belast, omdat") && zin.contains("200"), zin);
+    }
+
     /** A leeg expectation: a rule whose guard does not match leaves the doel unset → the attribuut reads leeg. */
     @Test void leeg_verwachting() {
         ScenarioResultaat r = één("""

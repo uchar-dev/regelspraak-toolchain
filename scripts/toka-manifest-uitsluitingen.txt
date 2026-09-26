@@ -1,0 +1,7 @@
+# De gouden TOKA-scenario's die uchars scenarioresolver weigert (uchar d67f5da1), voor
+# `make scenario-test`: <scenario-pad>|<fragment van uchars weigering>|<reden>.
+# Een scenario hier moet door uchar geweigerd worden met dat fragment; neemt uchar het aan,
+# of draagt het manifest het niet meer, dan faalt de manifestrun op deze regel.
+examples/toka-scenarios/scenario-toka-29-passagier-met-recht.rgs|uit de scope bestaat niet in het document|de scope noemt een feitcreatie waarvan uchars frontend in de bronset van dit scenario geen vorm maakt (een waarschuwing: het referentieveld van de tussenstap is niet af te leiden)
+examples/toka-scenarios/scenario-toka-43-startpunt-vertrek.rgs|een scope in een document met een startpuntbepaling wordt geweigerd|uchars scenariolaag weigert elke scope in een document met een startpuntbepaling
+examples/toka-scenarios/scenario-toka-44-startpunt-min-reserveringstermijn.rgs|een scope in een document met een startpuntbepaling wordt geweigerd|uchars scenariolaag weigert elke scope in een document met een startpuntbepaling

@@ -1,6 +1,10 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import dev.uchar.regelspraak.cases.CaseRunner;
+import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.emit.CaseEmitter;
 import dev.uchar.regelspraak.emit.IrEmitter;
 import dev.uchar.regelspraak.engine.ScenarioResultaat;
@@ -10,6 +14,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundel;
+import dev.uchar.regelspraak.transpiler.kern.Namen;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -28,9 +33,22 @@ import java.util.stream.Stream;
  * backend's {@link CaseRunner#rapport} replays those case files through the same build a consumer gets and reports
  * each one. This class writes the lowering to a scratch directory, hands it to the report and names each report
  * after its scenario. It compares nothing itself: a verdict here is uchar's replay verdict.
+ *
+ * <p>{@link #runMetUitleg} adds to each report the explanation of its outcome in words. uchar's report carries the
+ * verdicts and the firings but not the fired facts (an explanation is presentation, its record says), so each played
+ * scenario is played once more, in a session of its own on the same build ({@link CaseSessie}), and the
+ * {@link Verbalisator} explains that session's facts. The explanation is given only when that session fired what
+ * uchar's replay reported and reads the values uchar read; otherwise it is withheld with the difference.
  */
 public final class ScenarioRunner {
     private ScenarioRunner() {}
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    /** A scenario's report with the explanation of its outcome: {@code uitleg} one sentence per characteristic an
+     *  attribution rule decided, and {@code uitlegFout} why there is none when a played scenario has none (null
+     *  otherwise; a MARKER scenario has no explanation and no reason beside its own diagnose). */
+    public record Uitgelegd(ScenarioResultaat resultaat, List<String> uitleg, String uitlegFout) {}
 
     /** Resolve {@code bron} under the scenario frontend and run every scenario in it. A resolve error throws
      *  {@link ResolveFout} carrying the diagnostics (the CLI turns that into exit 1). */
@@ -43,6 +61,17 @@ public final class ScenarioRunner {
      *  of its emitter, and every refusal of its backend, the replay's own (a form the loader or the exec-model branch
      *  does not carry) and a document its loader calls malformed. */
     public static List<ScenarioResultaat> run(ScenarioBundel bundel) {
+        List<ScenarioResultaat> uit = new ArrayList<>();
+        for (Uitgelegd u : speel(bundel, false)) uit.add(u.resultaat());
+        return uit;
+    }
+
+    /** {@link #run(ScenarioBundel)} with the explanation of each played scenario's outcome. */
+    public static List<Uitgelegd> runMetUitleg(ScenarioBundel bundel) {
+        return speel(bundel, true);
+    }
+
+    private static List<Uitgelegd> speel(ScenarioBundel bundel, boolean metUitleg) {
         if (!bundel.isOk()) throw new ResolveFout(diagnostiek(bundel));
         List<ResolvedScenario> scenarios = bundel.scenarios();
         if (scenarios.isEmpty()) return List.of();
@@ -85,11 +114,19 @@ public final class ScenarioRunner {
             if (rapport.size() != scenarios.size())
                 throw new IllegalStateException("het rapport telt " + rapport.size() + " case(s) voor "
                         + scenarios.size() + " scenario('s): een gelagerde case hoort nooit een red-path case te zijn");
-            List<ScenarioResultaat> uit = new ArrayList<>();
+            // the build the explanation plays on: the document the replay played, through the same facade. When the
+            // replay played no case (the facade refused the document, every report is MARKER) there is nothing to
+            // explain and no build to make.
+            boolean gespeeld = rapport.stream().anyMatch(r -> r.status() != ScenarioResultaat.Status.MARKER);
+            DroolsBackend.Build build = metUitleg && gespeeld ? DroolsBackend.build(JSON.readTree(document),
+                    DroolsBackend.Branch.EXEC_MODEL) : null;
+            List<Uitgelegd> uit = new ArrayList<>();
             for (int i = 0; i < scenarios.size(); i++) {
                 ScenarioResultaat r = rapport.get(i);
-                uit.add(new ScenarioResultaat(scenarios.get(i).naam(), r.status(), r.verwachtingen(), r.trace(),
-                        r.dekking(), r.diagnose()));
+                ScenarioResultaat benoemd = new ScenarioResultaat(scenarios.get(i).naam(), r.status(),
+                        r.verwachtingen(), r.trace(), r.dekking(), r.diagnose());
+                uit.add(metUitleg ? uitleg(build, benoemd, JSON.readTree(Files.readString(cases.get(i))))
+                        : new Uitgelegd(benoemd, List.of(), null));
             }
             return uit;
         } catch (IOException e) {
@@ -100,12 +137,57 @@ public final class ScenarioRunner {
     }
 
     /** Every scenario as MARKER with {@code reden}: the document is accepted by the frontend and not run. */
-    private static List<ScenarioResultaat> markers(List<ResolvedScenario> scenarios, String reden) {
-        List<ScenarioResultaat> uit = new ArrayList<>();
+    private static List<Uitgelegd> markers(List<ResolvedScenario> scenarios, String reden) {
+        List<Uitgelegd> uit = new ArrayList<>();
         for (ResolvedScenario s : scenarios)
-            uit.add(new ScenarioResultaat(s.naam(), ScenarioResultaat.Status.MARKER, List.of(),
-                    new ScenarioResultaat.Trace(List.of()), List.of(), reden));
+            uit.add(new Uitgelegd(new ScenarioResultaat(s.naam(), ScenarioResultaat.Status.MARKER, List.of(),
+                    new ScenarioResultaat.Trace(List.of()), List.of(), reden), List.of(), null));
         return uit;
+    }
+
+    /** The explanation of report {@code r}, whose case is {@code c}: the case played in a session of its own on
+     *  {@code build}, checked against what uchar's replay reported, then verbalised. */
+    private static Uitgelegd uitleg(DroolsBackend.Build build, ScenarioResultaat r, JsonNode c) {
+        if (r.status() == ScenarioResultaat.Status.MARKER) return new Uitgelegd(r, List.of(), null);
+        if (r.verwachtingen().isEmpty() && r.status() == ScenarioResultaat.Status.FAIL)
+            return new Uitgelegd(r, List.of(), "uchars replay speelde de case niet uit: " + r.diagnose());
+        CaseSessie.Uitkomst sessie;
+        try {
+            sessie = CaseSessie.speel(build, c);
+        } catch (CaseSessie.NietSpeelbaar e) {
+            return new Uitgelegd(r, List.of(), "de uitleg speelt deze case niet: " + e.getMessage());
+        }
+        if (!sessie.vuringen().equals(r.trace().vuringen()))
+            return new Uitgelegd(r, List.of(), "de sessie van de uitleg vuurde " + sessie.vuringen()
+                    + ", uchars replay " + r.trace().vuringen());
+        String verschil = waardeVerschil(sessie, r, c);
+        if (verschil != null) return new Uitgelegd(r, List.of(), verschil);
+        return new Uitgelegd(r, new Verbalisator(build.model(), sessie.globals())
+                .verbaliseer(sessie.beans(), sessie.typePerLabel()), null);
+    }
+
+    /** The first attribute or characteristic expectation whose value in the explanation's session differs from the
+     *  value uchar's replay read, rendered as the replay renders it; null when none differs. */
+    private static String waardeVerschil(CaseSessie.Uitkomst sessie, ScenarioResultaat r, JsonNode c) {
+        for (ScenarioResultaat.VerwachtingResultaat v : r.verwachtingen()) {
+            JsonNode e = c.get("expected").get(v.positie() - 1);
+            String kind = e.get("kind").asText();
+            Object bean = e.hasNonNull("label") ? sessie.beans().get(e.get("label").asText()) : null;
+            String eigen = switch (kind) {
+                case "attributeValue", "attributeEmpty" -> {
+                    Object w = bean == null ? null : CaseSessie.lees(bean, Namen.getter(e.get("attribute").asText()));
+                    yield w == null ? "leeg" : w.toString();
+                }
+                case "characteristicPresent", "characteristicAbsent" -> bean != null
+                        && Boolean.TRUE.equals(CaseSessie.lees(bean, Namen.getter(e.get("characteristic").asText())))
+                        ? "aanwezig" : "afwezig";
+                default -> null;
+            };
+            if (eigen != null && !eigen.equals(v.werkelijk()))
+                return "de sessie van de uitleg las bij verwachting " + v.positie() + " (" + v.bron() + ") "
+                        + eigen + ", uchars replay " + v.werkelijk();
+        }
+        return null;
     }
 
     private static void verwijder(Path map) {

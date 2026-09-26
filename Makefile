@@ -98,12 +98,15 @@ ir: classpath
 
 # Run the scenariotoetsen CLI over one or more .rgs files, concatenated in order; PASS/FAIL/MARKER per scenario.
 #   make scenario-test FILES="model.rgs regels.rgs scenario.rgs"
-# Options ride FILES too, e.g. FILES="--trace a.rgs". Exit: 1 on any FAIL/resolve-error, 3 on a MARKER, else 0.
-# Without FILES it runs the golden TOKA set of examples/toka-scenarios/manifest in one JVM.
+# Options ride FILES too, e.g. FILES="--trace a.rgs" or FILES="--uitleg a.rgs". Exit: 1 on any FAIL/resolve-error,
+# 3 on a MARKER, else 0. Without FILES it runs the golden TOKA set of examples/toka-scenarios/manifest in one JVM:
+# exit 0 when no line mismatches; the scenarios uchar's scenario resolver refuses are listed with their reason in
+# scripts/toka-manifest-uitsluitingen.txt and must stay refused.
 scenario-test: classpath
 ifeq ($(strip $(FILES)),)
 	@echo "Golden TOKA-set — examples/toka-scenarios/manifest"
-	@java -cp "$(TOOLCHAIN_CP)" dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli --manifest examples/toka-scenarios/manifest 2>/dev/null
+	@java -cp "$(TOOLCHAIN_CP)" dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli --manifest examples/toka-scenarios/manifest \
+		--uitsluitingen scripts/toka-manifest-uitsluitingen.txt 2>/dev/null
 else
 	java -cp "$(TOOLCHAIN_CP)" dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli $(FILES)
 endif
