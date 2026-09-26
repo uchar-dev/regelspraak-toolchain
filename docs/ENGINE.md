@@ -24,9 +24,9 @@ The facts are instances of the generated beans (`nieuw`, `beanLoader()`), in uch
 `dev.uchar.regelspraak.facts`: the KieBase is built against those classes, so an object of a same-named class from
 another class loader never matches a rule. `newSession(peildatum)` sets the `rekendatum` global;
 `newSession(peildatum, parametersets)` also selects each parameter's vintage on that one date. `compile` throws
-`RegelSpraakCompileException` for resolver errors and for a model uchar refuses. `RegelSpraakCli --facts <outdir>`
-(or `make facts` for the TOKA casus) writes the beans a model implies as source, for a consumer that wants to see
-them.
+`RegelSpraakCompileException` for resolver errors and for a model uchar refuses. `bin/regelspraak facts <uitmap>
+<bron.rgs...>` (or `make facts` for the TOKA casus) writes the beans a model implies as source, for a consumer that
+wants to see them.
 
 ## Building
 
@@ -51,8 +51,7 @@ came from, which a document without its source does not have, so a scope that do
 start.
 
 ```
-java -cp … dev.uchar.regelspraak.toolchain.service.http.DienstMain <descriptor.dienst.json> <bron.rgs…> | <document.json> \
-    [--allow-markers] [--host H] [--poort N]
+bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [--allow-markers] [--host H] [--poort N]
 ```
 
 - `POST /<pad>` per entry point; `?uitleg=true` adds the verbaliser's sentences to the answer. The inline `rollen`
@@ -90,7 +89,7 @@ declared/actual mismatch.
 
 ## Deploying (container + Helm + kind) — host only
 
-`make image`, `docker/`, `helm/beslisservice/` and `make kind-smoke` package the service. The Dockerfile still
-builds the layout from before the submodule (it copies `vendor/` and chains `mvn install` over the old modules);
-until it follows the reactor, `make image` fails. The container contract (`docker/entrypoint.sh`): env
-`DESCRIPTOR`, `BRONNEN_MANIFEST` (file listing the `.rgs` sources in order), `POORT`, `ALLOW_MARKERS`.
+`make image`, `docker/`, `helm/beslisservice/` and `make kind-smoke` package the service (README, "The
+container"). The image is built from the reactor and starts `bin/regelspraak serve` (`docker/entrypoint.sh`); its
+contract is the environment: `DESCRIPTOR`, `BRONNEN_MANIFEST` (a file listing the `.rgs` sources in order), `POORT`,
+`ALLOW_MARKERS`.

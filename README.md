@@ -37,7 +37,7 @@ and the ANTLR tool among them; after that every build runs offline.
 | `uchar/backends/drools` | uchar's Drools backend, built with uchar's own pom; its test suite runs with every build |
 | `uchar-frontend/` | uchar's RegelSpraak frontend compiled from `uchar/frontends/regelspraak`: the parser generated from uchar's grammar, the resolver and the emitters |
 | `toolchain/` | the CLI (`RegelSpraakCli`), the engine facade (`RegelSpraakEngine`), the scenario runner and its CLI, the verbaliser and the parameterset loader |
-| `service/` | the decision service on the JDK `HttpServer` (`BeslisserKern`, `DienstMain`, OpenAPI emitter, dev-only playground) |
+| `service/` | the decision service on the JDK `HttpServer` (`BeslisserKern`, `DienstMain`, OpenAPI emitter, dev-only playground); its build also bundles the distribution into the one jar `bin/regelspraak` runs from |
 | `service-quarkus/` | the Quarkus adapter over the same service core |
 
 Own code lives in `dev.uchar.regelspraak.toolchain.*` and uses only uchar's public API; every KieBase is built by
@@ -72,8 +72,8 @@ make check-dienst-replay  # every golden uchar's gate 12 plays, replayed through
 make scenario-test        # the golden TOKA scenario manifest
 ```
 
-The two service gates start the JDK service themselves (`DienstMain` on the classpath the reactor builds, on a free
-port of 127.0.0.1, removed when done) and turn every uchar case file into a request; the answer must give each
+The two service gates start the JDK service themselves (`bin/regelspraak serve` on the jar the reactor builds, on a
+free port of 127.0.0.1, removed when done) and turn every uchar case file into a request; the answer must give each
 pinned expectation, compared as uchar's replay compares it (`scripts/dienst_replay.py`). They need `java`, `mvn` and
 `python3`.
 
@@ -91,19 +91,46 @@ pinned expectation, compared as uchar's replay compares it (`scripts/dienst_repl
   scenario resolver refuses are listed in `scripts/toka-manifest-uitsluitingen.txt` with a fragment of that refusal,
   and a listed scenario uchar accepts fails the run.
 
-## Everyday use
+## Everyday use: `bin/regelspraak`
+
+`bin/regelspraak <opdracht>` is the one entry for a user, a script or another repository: it takes no class name
+and no build path. Several sources are read as one model, concatenated in the order given, and paths are relative
+to the directory the command is given in.
+
+| Command | What it does |
+|---------|--------------|
+| `check <bron.rgs...>` | parse and resolve: the model summary and the diagnostics (in a chain of files as `file:line`), exit 1 on an error; then the build on uchar's exec-model branch, exit 3 when uchar does not carry the model |
+| `ir <uit.json> <bron.rgs...>` | the `uchar-ir-v1` document of the model (uchar's emitter) |
+| `cases <map> <bron.rgs...>` | the scenarios of a test document lowered to uchar case files in `<map>`, beside the IR document they run against (`<map>/ir.json`): the layout of uchar's corpus |
+| `scenario [--trace] [--uitleg] <bron.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL, 3 on a MARKER |
+| `scenario --manifest <manifest> [--uitsluitingen <lijst>]` | every line `<verwachte-exit> <scenario.rgs> <companion.rgs...>` of a manifest, in one JVM; exit 0 when no line mismatches |
+| `serve <descriptor.dienst.json> <bron.rgs...> \| <document.json> [--allow-markers] [--host H] [--poort N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes |
+| `drl <bron.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal |
+| `graaf [--mmd] <uit> <bron.rgs...>` | uchar's rule graph as an HTML page, or as Mermaid text |
+| `facts <uitmap> <bron.rgs...>` | the fact beans uchar's generator writes for the model |
+
+Exit 2 is a wrong invocation. Every command runs from one jar the reactor builds. In a checkout `bin/regelspraak`
+first rebuilds that jar when it is missing or older than one of its sources (the poms, the own main sources, uchar's
+frontend and backend), with Maven offline and without tests, and says so on stderr; the first build on a machine
+needs the network once (see Building). `JAVA_OPTS` reach the JVM; `REGELSPRAAK_JAR` names a prebuilt jar, which is
+never rebuilt (the container sets it).
+
+The make targets of the same name call `bin/regelspraak` and nothing else, with `FILE` the sources:
 
 ```
-make drl FILE=model.rgs                       # the DRL text of uchar's DRL-text branch
-make ir FILE="model.rgs regels.rgs"           # the uchar-ir-v1 document
-make graaf FILE="model.rgs regels.rgs"        # the rule graph as HTML (MMD=1 for Mermaid)
-make facts                                    # the fact beans of the TOKA model foundation
-make scenario-test FILES="model.rgs scenario.rgs"   # PASS / FAIL / MARKER per scenario
-make scenario-test                            # the golden TOKA scenario set
+make check FILE="model.rgs regels.rgs"
+make ir FILE="model.rgs regels.rgs"             # out/ir.json (OUT= overrides)
+make cases FILE="model.rgs scenario.rgs"        # out/cases/ (OUT= overrides)
+make scenario FILE="--uitleg model.rgs scenario.rgs"
+make serve FILE="d.dienst.json model.rgs regels.rgs" POORT=8080
+make drl FILE=model.rgs
+make graaf FILE="model.rgs regels.rgs"          # out/regelgraaf.html (MMD=1 for Mermaid, OUT= overrides)
+make facts                                      # the TOKA model foundation (FILE= another model), javac'd
+make scenario-test                              # the golden TOKA scenario set
 ```
 
 A scenario document runs through uchar's scenario layer: uchar resolves it, lowers the scenarios to case files,
-and uchar's replay reports each one. With `--uitleg` (`FILES="--uitleg a.rgs"`) each played scenario also gets the
+and uchar's replay reports each one. With `--uitleg` (`FILE="--uitleg a.rgs"`) each played scenario also gets the
 explanation of its outcome: it is played once more, in a session of its own on the same build, and the verbaliser
 explains that session's facts; the explanation is withheld, with the difference, when that session did not fire
 what uchar's replay reported. uchar's scenario resolver refuses three of the 29 golden TOKA scenarios (listed with
@@ -111,6 +138,32 @@ their reasons in `scripts/toka-manifest-uitsluitingen.txt`).
 
 The decision service serves a descriptor over `.rgs` sources or over one `uchar-ir-v1` document; `docs/ENGINE.md`
 describes its routes, its MARKER answer and the dev-only playground.
+
+## The container
+
+`make image` builds the decision-service image (`beslisservice:dev`; `TAG=` and `DESCRIPTOR_SRC=` override, the
+latter a descriptor under `docker/` or `examples/`) from `docker/Dockerfile`, with the repository root as build
+context and the submodule checked out. `.dockerignore`
+admits only the reactor (the root pom, the own modules and, of `uchar/`, the RegelSpraak frontend and the Drools
+backend), `bin/regelspraak`, `docker/` and `examples/`, and never a `.git`: neither the repository's directory nor
+the file the submodule carries. The build stage runs one `mvn -B -ntp -DskipTests package -pl service -am` on the
+root pom and fetches the plugins and dependencies inside the container; the runtime stage is a JDK (uchar compiles the
+fact beans and the executable model in memory) with the jar and `bin/regelspraak`. The container starts
+`bin/regelspraak serve`, configured by the environment:
+
+| Variable | Meaning |
+|----------|---------|
+| `DESCRIPTOR` | the `.dienst.json` (default: the baked TOKA descriptor) |
+| `BRONNEN_MANIFEST` | a file with the sources, one absolute path per line, in model order (default: the baked TOKA set) |
+| `POORT` | the port, 8080 |
+| `ALLOW_MARKERS` | `true` starts with entry points uchar does not carry, each request to one gets 503; otherwise such an entry point stops the start with exit 3 |
+
+Mounting a rule set at `/app/rules` and setting `DESCRIPTOR` and `BRONNEN_MANIFEST` serves it from the same image.
+`helm/beslisservice` deploys the image. `make kind-smoke` builds it, loads it into the kind cluster `regelspraak`
+(created when absent; `CLUSTER=` names another, and an existing cluster that does not answer stops the run) and
+checks the running service: the golden TOKA scenarios over HTTP, the marker's exit 3 and its 503 with
+`allowMarkers`, and a rollout that changes a parameter and with it the decision. `bash scripts/kind-smoke.sh
+--teardown` deletes the cluster afterwards. Both targets need Docker and run on the host.
 
 ## Known losses
 
