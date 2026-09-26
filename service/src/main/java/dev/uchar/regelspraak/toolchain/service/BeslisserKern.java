@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.emit.CaseEmitter;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
+import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.toolchain.engine.ParametersetLader;
 import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
 import dev.uchar.regelspraak.toolchain.engine.Verbalisator;
@@ -100,7 +101,8 @@ public final class BeslisserKern {
 
     // ---------------- startup ----------------
 
-    /** Build the core from a descriptor file and the service's {@code .rgs} source files (in order). The
+    /** Build the core from a descriptor file and the service's {@code .rgs} source files (in order), or from one
+     *  {@code uchar-ir-v1} document (a {@code .json} file, the only source then; see {@link #bouwVanDocument}). The
      *  {@code loader} is the parent for the bean classloader; the generated beans are served from a child
      *  loader created here, not looked up on {@code loader}.
      *
@@ -110,6 +112,11 @@ public final class BeslisserKern {
      *  with a {@link DienstFout} naming the bouw-pad (never a silent skip). */
     public static BeslisserKern bouw(Path descriptorBestand, List<Path> bronBestanden, KernConfig config,
                                      ClassLoader loader) throws IOException {
+        boolean document = bronBestanden.stream().anyMatch(BeslisserKern::isDocument);
+        if (document && bronBestanden.size() != 1)
+            throw new DienstFout("dienst start niet: een uchar-ir-v1-document is de enige bron van een dienst",
+                    List.of(Schending.van(Schending.Soort.MALFORMED, "bronnen",
+                            "de bronnen mengen een .json-document met andere bestanden: " + bronBestanden)));
         Map<String, String> tekst = new LinkedHashMap<>();
         for (Path p : bronBestanden) tekst.put(p.toString(), Files.readString(p));
         String json = Files.readString(descriptorBestand);
@@ -127,7 +134,13 @@ public final class BeslisserKern {
                         "kon parametersets-bestand '" + sidecar + "' niet lezen: " + e.getMessage())));
             }
         }
+        if (document)
+            return bouwVanDocument(json, tekst.values().iterator().next(), config, loader, parametersetsJson);
         return bouw(json, tekst, config, loader, parametersetsJson);
+    }
+
+    private static boolean isDocument(Path bron) {
+        return bron.getFileName().toString().endsWith(".json");
     }
 
     /** Peek the {@code parametersets} file-name field out of a descriptor JSON WITHOUT a full validated bind
@@ -167,13 +180,7 @@ public final class BeslisserKern {
                     "resolve-fout: " + d.message()));
 
         // 2. descriptor validation against the shared model (collect all)
-        DienstDescriptor descriptor;
-        try {
-            descriptor = DescriptorLoader.MAPPER.readValue(descriptorJson, DienstDescriptor.class);
-        } catch (IOException e) {
-            throw new DienstFout("descriptor is geen geldige JSON", List.of(
-                    Schending.van(Schending.Soort.MALFORMED, "", e.getMessage())));
-        }
+        DienstDescriptor descriptor = leesDescriptor(descriptorJson);
         // only validate the descriptor against a well-formed model — a resolve failure already dominates
         VormIndex vormen = VormIndex.van(model, model.prioritizedDefaults);
         if (startFouten.isEmpty()) startFouten.addAll(DescriptorLoader.valideer(descriptor, model, vormen));
@@ -225,6 +232,85 @@ public final class BeslisserKern {
         List<String> waarschuwingen = periodeWaarschuwingen(model, sets);
 
         return new BeslisserKern(descriptor, model, perPad, sets, waarschuwingen);
+    }
+
+    /**
+     * Build the core from a {@code uchar-ir-v1} document instead of RegelSpraak sources — a document another frontend
+     * wrote, or uchar's emitter. uchar's loader reads the model from it (the descriptor is validated against that, and
+     * requests are mapped with it), and uchar's facade builds it on the exec-model branch, as uchar's gate 12 builds
+     * every golden. The document is served whole: a scope drops forms by rebuilding the model it came from, which a
+     * document without its source does not have, so an entry point whose scope does not carry every form of the
+     * document is a startup error. A document the loader refuses, or one the facade does not carry, is uchar not
+     * carrying the service (all entry points are markers); the loader's refusal leaves no model to validate
+     * against, so that one refuses the start even with markers allowed.
+     */
+    public static BeslisserKern bouwVanDocument(String descriptorJson, String documentJson, KernConfig config,
+                                                ClassLoader loader, String parametersetsJson) {
+        com.fasterxml.jackson.databind.JsonNode document;
+        try {
+            document = DescriptorLoader.MAPPER.readTree(documentJson);
+        } catch (IOException e) {
+            throw new DienstFout("dienst start niet: het document is geen JSON", List.of(
+                    Schending.van(Schending.Soort.MALFORMED, "bron", e.getMessage())));
+        }
+        IrLoader.Loaded geladen;
+        try {
+            geladen = IrLoader.loadAll(document);
+        } catch (IrLoader.Refusal | IrLoader.Documentfout e) {
+            throw new DienstFout("dienst start niet: uchar draagt het document niet", List.of(
+                    Schending.van(Schending.Soort.MARKER, "bron", (e instanceof IrLoader.Refusal ? "loader: "
+                            : "document: ") + e.getMessage())));
+        }
+        RegelSpraakModel model = geladen.model();
+        DienstDescriptor descriptor = leesDescriptor(descriptorJson);
+        VormIndex vormen = VormIndex.van(model, geladen.prioritizedDefaults());
+        List<Schending> startFouten = DescriptorLoader.valideer(descriptor, model, vormen);
+        if (!startFouten.isEmpty())
+            throw new DienstFout("dienst start niet: descriptor/model-validatie faalt", startFouten);
+
+        // one build: every entry point serves the whole document
+        DroolsBackend.Build build = null;
+        UcharBouw.NietGedragen weigering = null;
+        try {
+            build = UcharBouw.bouw(document, DroolsBackend.Branch.EXEC_MODEL);
+        } catch (UcharBouw.NietGedragen ng) {
+            weigering = ng;
+        }
+        Map<String, Entrypoint> perPad = new LinkedHashMap<>();
+        List<Schending> markerFouten = new ArrayList<>();
+        List<Schending> scopeFouten = new ArrayList<>();
+        for (DienstDescriptor.Entrypoint ep : descriptor.entrypoints()) {
+            List<String> ontbreekt = new ArrayList<>(vormen.alle());
+            ontbreekt.removeAll(vormen.scope(ep.scope()).vormen());
+            if (!ontbreekt.isEmpty()) {
+                scopeFouten.add(Schending.van(Schending.Soort.MALFORMED, "entrypoint:" + ep.pad(),
+                        "een uchar-ir-v1-document wordt heel gediend, maar de scope van entrypoint '" + ep.naam()
+                                + "' draagt niet: " + ontbreekt));
+                continue;
+            }
+            Map<String, Object> defaults = defaultGlobals(descriptor, model);
+            if (weigering != null) {
+                marker(ep, weigering.construct(), weigering.getMessage(), defaults, config, perPad, markerFouten);
+                continue;
+            }
+            perPad.put(ep.pad(), new Entrypoint(ep, build.kieBase(), List.of(), defaults, build.dagsoortGlobalen(),
+                    build.dekking(), build.beanLoader(), null));
+        }
+        if (!scopeFouten.isEmpty())
+            throw new DienstFout("dienst start niet: een scope draagt niet het hele document", scopeFouten);
+        if (!markerFouten.isEmpty())
+            throw new DienstFout("dienst start niet: uchar draagt een entrypoint niet", markerFouten);
+        List<Parameterset> sets = laadParametersets(descriptor, parametersetsJson, model);
+        return new BeslisserKern(descriptor, model, perPad, sets, periodeWaarschuwingen(model, sets));
+    }
+
+    private static DienstDescriptor leesDescriptor(String descriptorJson) {
+        try {
+            return DescriptorLoader.MAPPER.readValue(descriptorJson, DienstDescriptor.class);
+        } catch (IOException e) {
+            throw new DienstFout("descriptor is geen geldige JSON", List.of(
+                    Schending.van(Schending.Soort.MALFORMED, "", e.getMessage())));
+        }
     }
 
     /** Record that uchar does not carry entry point {@code ep}: {@code construct} is the construct uchar's refusal

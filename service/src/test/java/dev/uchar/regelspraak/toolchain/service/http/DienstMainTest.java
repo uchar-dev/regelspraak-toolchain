@@ -102,6 +102,12 @@ class DienstMainTest {
         DienstMain.Args a = DienstMain.parseArgs(new String[]{"d.json", "x.rgs"});
         assertEquals(8080, a.poort());
         assertTrue(!a.allowMarkers());
+        assertEquals("0.0.0.0", a.host());
+        // a local caller on a free port binds the loopback address: a port free on every interface can still be
+        // bound on 127.0.0.1 alone by another process, which would then answer
+        DienstMain.Args lokaal = DienstMain.parseArgs(new String[]{"d.json", "ir.json", "--host", "127.0.0.1", "--poort", "0"});
+        assertEquals("127.0.0.1", lokaal.host());
+        assertEquals(0, lokaal.poort());
     }
 
     @Test
