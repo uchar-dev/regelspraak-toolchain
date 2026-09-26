@@ -304,3 +304,22 @@ UWV-regelsets zijn niet gedraaid.
 7. De vloeren toolchain (110, gemeten 113) en service-quarkus (33, gemeten 39) zijn niet verhoogd.
 8. `bin/regelspraak check` drukt, zoals de CLI al deed, per opgeloste regel een samenvattingsregel af; over een grote
    regelset is dat veel uitvoer vóór de diagnoses.
+
+## Keuring (2026-09-26, hoofdsessie)
+
+Gekeurd op `2d60cbc` in de worktree en geland met een fast-forward. Gemeten:
+de greps op de oude pakketnaam, op `UCHAR_READ_TOKEN` en op `workflows/`
+leeg; geen `.github/`; geen tripwirewoorden in de diff; commitboodschappen
+binnen 72 tekens; `make gates CLUSTER=regelspraak-keur TAG=keur` groen in
+3m03s: pin; reactor 840/113/180/39 tests; tweelingen 18 cases; replay 188
+goldens, 494 cases (pin 188); manifest 32 regels, 29 ok, 3 uitgesloten, 0
+mismatch; image; kind-smoke H2–H4. Buiten de May-touch-lijst en aanvaard:
+`RegelSpraakCli` leest een reeks bestanden (de werkbank geeft er veel aan
+`check`), `docs/ENGINE.md` bijgewerkt.
+
+Open punten: 1 (`CLAUDE.md` van deze repo noemt `make gates`) in de landing
+gedaan; 2 (het stilstaande kind-cluster `regelspraak`) aan de maintainer;
+3 (geen slot op `bin/regelspraak` bij twee gelijktijdige aanroepen met een
+verouderde jar) blijft staan; 4 (het `pkill`-patroon op een klassenaam in
+het verzamel-Makefile van de werkbank) hoort bij het omhangen van de
+werkbank.

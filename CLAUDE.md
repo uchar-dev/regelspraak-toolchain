@@ -37,7 +37,7 @@ The reactor needs no `mvn install`. The first build on a machine needs the netwo
 (`mvn -B -DskipTests package`), for the plugins and dependencies the local Maven repository lacks, the
 antlr4-maven-plugin among them; after that, build offline.
 
-Green means `make poorten` passes: check-pin, `mvn -B -o verify`, the two service gates and the golden TOKA
+Green means `make gates` passes (`make poorten` is its first five steps): check-pin, `mvn -B -o verify`, the two service gates and the golden TOKA
 manifest (README, "The gates"). Each own module ends its tests with the skip-pin step (`tools/check-skips.sh`):
 every skipped or aborted test is printed by name and fails the build unless it is pinned with a reason, a test
 class that produced no test case fails, and each module is held to a floor (`VLOEREN` in the script). Floors are
