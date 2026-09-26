@@ -22,7 +22,8 @@ import java.util.Map;
  * {@code DienstHttp.infoBody()} serves (that method is package-private in the service module, so it cannot be
  * called across the module boundary; the shape is mirrored here instead and pinned by
  * {@code InfoParityTest} against the reference). Shape: {@code dienst} identity, one {@code entrypoints[]} entry
- * per entry point carrying its {@code pad} + per-regel {@code dekking} verdicts + {@code markers}, the global
+ * per entry point carrying its {@code pad}, {@code uitvoerbaar} (and uchar's {@code weigering} when not), its
+ * {@code dekking} verdicts per form and its {@code markers}, the global
  * {@code overgeslagen} marker list, the descriptor {@code parameters} defaults verbatim, the loaded
  * {@code parametersets}, and the {@code periodeWaarschuwingen}.
  */
@@ -49,6 +50,8 @@ final class InfoBouwer {
             ObjectNode eNode = entrypoints.addObject();
             eNode.put("naam", ep.descriptor().naam());
             eNode.put("pad", ep.descriptor().pad());
+            eNode.put("uitvoerbaar", ep.uitvoerbaar());
+            if (!ep.uitvoerbaar()) eNode.put("weigering", ep.weigering());
 
             ArrayNode dekking = eNode.putArray("dekking");
             for (Dekking d : ep.dekking()) {

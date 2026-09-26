@@ -52,14 +52,20 @@ public final class DescriptorLoader {
         return d;
     }
 
-    /** Collect every descriptor→model mismatch (no throwing) — the validation core, reused by tests. */
+    /** Collect every descriptor→model mismatch (no throwing) — the validation core, reused by tests. The rule
+     *  names of a scope are checked against the forms of {@code model} with its own defaults groups. */
     public static List<Schending> valideer(DienstDescriptor d, RegelSpraakModel model) {
+        return valideer(d, model, VormIndex.van(model, model.prioritizedDefaults));
+    }
+
+    /** As {@link #valideer(DienstDescriptor, RegelSpraakModel)}, with the forms a scope may name given: a rule name
+     *  must carry a form of {@code vormen} or be a rule the source declares. */
+    public static List<Schending> valideer(DienstDescriptor d, RegelSpraakModel model, VormIndex vormen) {
         List<Schending> uit = new ArrayList<>();
         if (d == null) { uit.add(Schending.van(Schending.Soort.MALFORMED, "", "leeg descriptor")); return uit; }
         if (d.dienst() == null || d.dienst().naam() == null || d.dienst().naam().isBlank())
             uit.add(Schending.van(Schending.Soort.MALFORMED, "dienst.naam", "dienst.naam ontbreekt"));
 
-        Set<String> regelnamen = RegelBestandIndex.regelnamen(model);
         Set<String> groepnamen = new java.util.LinkedHashSet<>();
         for (var g : model.regelGroepen) groepnamen.add(g.naam());
 
@@ -87,7 +93,7 @@ public final class DescriptorLoader {
             } else {
                 List<String> rn = ep.scope().regelnamenOfLeeg();
                 for (int j = 0; j < rn.size(); j++)
-                    if (!regelnamen.contains(RegelBestandIndex.basisNaam(rn.get(j))))
+                    if (!vormen.bestaat(rn.get(j)))
                         uit.add(Schending.van(Schending.Soort.ONBEKENDE_VERWIJZING,
                                 pad + ".scope.regelnamen[" + j + "]", "onbekende regel '" + rn.get(j) + "'"));
                 List<String> rg = ep.scope().regelgroepenOfLeeg();

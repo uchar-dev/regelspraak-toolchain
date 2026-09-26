@@ -20,11 +20,12 @@ import java.util.List;
  *
  * <h2>Startup / exit discipline (the exit-3 MARKER discipline at the service boundary)</h2>
  * <ul>
- *   <li>A {@link DienstFout} carrying ONLY {@link Schending.Soort#MARKER} schendingen (a rule in an entry point's
- *       source that uchar's exec-model branch does not lower, without {@code --allow-markers}) → each printed as
- *       {@code MARKER: …} naming the rule and the entry point, and exit <b>3</b>.</li>
- *   <li>Any OTHER startup failure (unknown regel/objecttype, un-resolvable source, a form uchar does not carry,
- *       bad descriptor) → print the schendingen and exit <b>1</b>.</li>
+ *   <li>A {@link DienstFout} carrying ONLY {@link Schending.Soort#MARKER} schendingen (an entry point uchar does
+ *       not carry — a refusal of its emitter, loader or backend, a construct the exec-model branch does not lower
+ *       among them, or a scoped rule that carries no form — without {@code --allow-markers}) → each printed as
+ *       {@code MARKER: …} with uchar's sentence, and exit <b>3</b>.</li>
+ *   <li>Any OTHER startup failure (unknown regel/objecttype, un-resolvable source, incomplete scope, bad
+ *       descriptor) → print the schendingen and exit <b>1</b>.</li>
  *   <li>Success → print one serving line per entry point ({@code POST /<pad>}) plus {@code GET /info}, then
  *       block. With {@code --allow-markers} the same descriptor starts, {@code /info} lists the markers, and a
  *       request to an entry point with a marker is refused with 503: uchar built no KieBase for it.</li>
@@ -122,7 +123,7 @@ public final class DienstMain {
         System.out.println("dienst '" + naam(kern) + "' luistert op poort " + poort + ":");
         for (BeslisserKern.Entrypoint ep : kern.entrypoints().values())
             System.out.println("  POST /" + ep.descriptor().pad() + "   (" + ep.descriptor().naam() + ")"
-                    + (ep.uitvoerbaar() ? "" : "   niet uitvoerbaar, marker: " + ep.markers()));
+                    + (ep.uitvoerbaar() ? "" : "   niet uitvoerbaar: " + ep.weigering()));
         System.out.println("  GET  /info");
     }
 

@@ -27,7 +27,7 @@ import dev.uchar.regelspraak.toolchain.service.Schending;
  * <ul>
  *   <li>{@code POST /<pad>} → {@link BeslisserKern#verwerk} → {@code 200} JSON; {@link DienstFout} → {@code 400}
  *       {@code {"fout":…,"schendingen":[{"veld":…,"fout":…}]}}; {@link BeslisserKern.OnbekendPad} → {@code 404};
- *       {@link BeslisserKern.NietUitvoerbaar} → {@code 503}.</li>
+ *       {@link BeslisserKern.NietUitvoerbaar} → {@code 503} with the MARKER answer.</li>
  *   <li>{@code GET /info} → the SAME manifest {@code DienstHttp} serves (via {@link InfoBouwer}).</li>
  * </ul>
  *
@@ -77,7 +77,7 @@ public class BeslisResource {
         } catch (BeslisserKern.OnbekendPad onbekend) {
             return response(404, foutBody(onbekend.getMessage(), null));
         } catch (BeslisserKern.NietUitvoerbaar niet) {
-            return response(503, foutBody(niet.getMessage(), null));
+            return response(503, markerBody(niet));
         } catch (DienstFout dienstFout) {
             return response(400, verzoekFoutBody(dienstFout));
         }
@@ -98,6 +98,17 @@ public class BeslisResource {
         ObjectNode n = NF.objectNode();
         n.put("fout", boodschap);
         if (veld != null) n.put("veld", veld);
+        return n;
+    }
+
+    /** Mirror of {@code DienstHttp.markerBody}. */
+    private static ObjectNode markerBody(BeslisserKern.NietUitvoerbaar niet) {
+        ObjectNode n = NF.objectNode();
+        n.put("status", "MARKER");
+        n.put("fout", niet.getMessage());
+        n.put("reden", niet.reden());
+        var markers = n.putArray("markers");
+        for (String m : niet.markers()) markers.add(m);
         return n;
     }
 

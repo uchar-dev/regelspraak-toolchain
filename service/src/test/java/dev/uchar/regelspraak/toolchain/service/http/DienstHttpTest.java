@@ -46,7 +46,7 @@ class DienstHttpTest {
 
     // ---- fixtures ----
 
-    /** The full TOKA kern over the DRL back-end (strict; every golden scope lowers). */
+    /** The full TOKA kern, strict: uchar carries every golden scope. */
     private static BeslisserKern tokaKern() {
         return BeslisserKern.bouw(TokaBron.descriptorJson(), TokaBron.bronPerBestand(),
                 KernConfig.strikt(), Thread.currentThread().getContextClassLoader());
@@ -74,6 +74,27 @@ class DienstHttpTest {
         return BeslisserKern.bouw(MARKER_DESCRIPTOR, bron, KernConfig.metMarkers(),
                 Thread.currentThread().getContextClassLoader());
     }
+
+    /** Two layers of exclusion in the exception dialect: the base rule and its exception form one defaults group. */
+    private static final String UITSLUITING_BRON = """
+        Objecttype de Jutter (mv: Jutters) (bezield)
+            is vergunning geweigerd kenmerk (bijvoeglijk);
+            is weigering herroepen kenmerk (bijvoeglijk);
+            is uitgesloten kenmerk (bijvoeglijk);
+            is penninggerechtigd kenmerk (bijvoeglijk);
+        Regel uitsluiting van het penningrecht
+            geldig altijd
+                Een Jutter is uitgesloten
+                indien hij vergunning geweigerd is.
+        Uitzondering op uitsluiting van het penningrecht: herroepen weigering
+            geldig altijd
+                Een Jutter is niet uitgesloten
+                indien hij weigering herroepen is.
+        Regel penninggerechtigd tenzij uitgesloten
+            geldig altijd
+                Een Jutter is penninggerechtigd
+                indien hij niet uitgesloten is.
+        """;
 
     /** A self-contained VINTAGE service (fase 5): a two-vintage parameterset (volwassenleeftijd 18 in 2025 / 21
      *  from 2026) driving a rule, built over the String-form with an in-memory parametersets sidecar. */
@@ -255,6 +276,8 @@ class DienstHttpTest {
         assertTrue(ep.get("dekking").isArray(), resp.body());
         assertTrue(ep.get("markers").isArray(), resp.body());
         assertTrue(ep.get("markers").isEmpty(), "bepaal-leeftijd lowert: " + ep.get("markers"));
+        assertTrue(ep.get("uitvoerbaar").asBoolean(), ep.toString());
+        assertFalse(ep.has("weigering"), ep.toString());
         boolean heeftLowered = false;
         for (JsonNode d : ep.get("dekking")) {
             assertTrue(d.has("soort") && d.has("naam") && d.has("verdict"), d.toString());
@@ -264,14 +287,76 @@ class DienstHttpTest {
     }
 
     @Test
-    void info_feitcreatie_toont_lege_dekking() throws Exception {
+    void info_feitcreatie_toont_haar_verdict() throws Exception {
+        // The entry point's document carries the feitcreatie form of the full model, and the exec-model branch lowers
+        // it. Until the scope was taken per form, the entry point was built from the foundation plus the toka-29 file
+        // alone, where uchar's frontend makes no form of it, and /info showed an empty dekking for a build without
+        // the rule.
         serveer(tokaKern());
         JsonNode info = boom(get("/info").body());
         JsonNode ep = entrypointMet(info, "passagier-met-recht-op-treinmiles");
         assertNotNull(ep, info.toString());
-        assertTrue(ep.get("dekking").isArray(), ep.toString());
-        assertTrue(ep.get("dekking").isEmpty(), "een feitcreatie heeft geen dekking-entry: " + ep.get("dekking"));
+        assertTrue(ep.get("uitvoerbaar").asBoolean(), ep.toString());
+        assertEquals(1, ep.get("dekking").size(), ep.toString());
+        assertEquals("feitcreatie", ep.get("dekking").get(0).get("soort").asText(), ep.toString());
+        assertEquals("LOWERED", ep.get("dekking").get(0).get("verdict").asText(), ep.toString());
         assertTrue(ep.get("markers").isEmpty(), ep.toString());
+    }
+
+    @Test
+    void een_scope_zonder_vorm_is_een_marker_met_uchars_reden() throws Exception {
+        // an exception rule goes up in the defaults group of its base rule and has no form of its own: an entry point
+        // that scopes it alone would carry nothing, so it is a marker and a request gets the MARKER answer
+        Map<String, String> bron = new LinkedHashMap<>();
+        bron.put("uitsluiting.rgs", UITSLUITING_BRON);
+        String descriptor = """
+            { "dienst": {"naam":"uitsluiting","versie":"1"},
+              "entrypoints": [ { "naam":"herroeping","pad":"herroeping",
+                "scope": {"regelnamen": ["herroepen weigering"]},
+                "invoer": ["Jutter"], "uitvoer": ["Jutter:uitgesloten"] } ],
+              "parameters": {} }""";
+        serveer(BeslisserKern.bouw(descriptor, bron, KernConfig.metMarkers(),
+                Thread.currentThread().getContextClassLoader()));
+        JsonNode ep = entrypointMet(boom(get("/info").body()), "herroeping");
+        assertNotNull(ep);
+        assertFalse(ep.get("uitvoerbaar").asBoolean(), ep.toString());
+        assertTrue(ep.get("weigering").asText().contains("geen vorm"), ep.toString());
+        HttpResponse<String> resp = post("/herroeping", """
+            { "instanties": [ { "type": "Jutter", "id": "M" } ] }""");
+        assertEquals(503, resp.statusCode(), resp.body());
+        assertEquals("MARKER", boom(resp.body()).get("status").asText(), resp.body());
+    }
+
+    @Test
+    void info_dekking_toont_de_defaultsgroep_van_de_scope() throws Exception {
+        // a defaults group is a form: an entry point that scopes it shows its verdict in the dekking
+        Map<String, String> bron = new LinkedHashMap<>();
+        bron.put("uitsluiting.rgs", UITSLUITING_BRON);
+        String descriptor = """
+            { "dienst": {"naam":"uitsluiting","versie":"1"},
+              "entrypoints": [ { "naam":"penningrecht","pad":"penningrecht",
+                "scope": {"regelnamen": ["uitsluiting van het penningrecht", "penninggerechtigd tenzij uitgesloten"]},
+                "invoer": ["Jutter"], "uitvoer": ["Jutter:uitgesloten", "Jutter:penninggerechtigd"] } ],
+              "parameters": {} }""";
+        serveer(BeslisserKern.bouw(descriptor, bron, KernConfig.strikt(),
+                Thread.currentThread().getContextClassLoader()));
+        JsonNode ep = entrypointMet(boom(get("/info").body()), "penningrecht");
+        assertNotNull(ep);
+        java.util.Set<String> soorten = new java.util.TreeSet<>();
+        for (JsonNode d : ep.get("dekking")) {
+            soorten.add(d.get("soort").asText());
+            assertEquals("LOWERED", d.get("verdict").asText(), d.toString());
+        }
+        assertEquals(java.util.Set.of("regel", "defaults"), soorten, ep.get("dekking").toString());
+
+        // and it fires: a refusal that is withdrawn leaves the Jutter penninggerechtigd
+        HttpResponse<String> resp = post("/penningrecht", """
+            { "instanties": [ { "type": "Jutter", "id": "M",
+                "kenmerken": { "vergunning geweigerd": true, "weigering herroepen": true } } ] }""");
+        assertEquals(200, resp.statusCode(), resp.body());
+        JsonNode kenmerken = boom(resp.body()).get("instanties").get(0).get("kenmerken");
+        assertFalse(kenmerken.get("uitgesloten").asBoolean(), resp.body());
+        assertTrue(kenmerken.get("penninggerechtigd").asBoolean(), resp.body());
     }
 
     @Test
@@ -299,8 +384,10 @@ class DienstHttpTest {
             { "instanties": [ { "type": "Vlucht", "id": "V1" } ] }""");
         assertEquals(503, resp.statusCode(), resp.body());
         JsonNode fout = boom(resp.body());
+        assertEquals("MARKER", fout.get("status").asText(), resp.body());
         assertTrue(fout.get("fout").asText().contains("niet uitvoerbaar"), resp.body());
-        assertTrue(fout.get("fout").asText().contains("transpiler"), "de reden is uchars weigering: " + resp.body());
+        assertTrue(fout.get("reden").asText().contains("transpiler"), "de reden is uchars weigering: " + resp.body());
+        assertTrue(contains(fout.get("markers"), "heffing markert"), resp.body());
     }
 
     // ---------------- negative HTTP ----------------

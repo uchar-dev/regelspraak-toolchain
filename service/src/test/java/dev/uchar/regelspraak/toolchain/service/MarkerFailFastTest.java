@@ -63,6 +63,47 @@ class MarkerFailFastTest {
         assertTrue(ep.markers().contains("heffing markert"), ep.markers().toString());
     }
 
+    /** A refusal of uchar's backend that names no construct: a reciprocal self-relation whose role shares its
+     *  name with a declared attribute, which the bean model cannot hold. Until uchar carried the build this was a
+     *  startup error even with markers allowed; it is uchar not carrying the entry point, like a marker. */
+    private static final String NAAMDELING_BRON = """
+        Objecttype de Jutter (mv: Jutters) (bezield)
+            het strandtegoed Numeriek (geheel getal);
+            de strandmaat Numeriek (geheel getal);
+            de maatdeling Numeriek (geheel getal);
+
+        Wederkerig feittype strandmaatschap
+            de strandmaat (mv: strandmaten) Jutter
+        Eén strandmaat heeft één strandmaat
+
+        Regel maatdeling van een jutter
+            geldig altijd
+                De maatdeling van een Jutter moet berekend worden als het strandtegoed van de Jutter plus 1.
+        """;
+
+    private static final String NAAMDELING_DESCRIPTOR = """
+        { "dienst": {"naam":"naamdeling","versie":"1"},
+          "entrypoints": [ { "naam":"maatdeling","pad":"maatdeling",
+            "scope": {"regelnamen": ["maatdeling van een jutter"]},
+            "invoer": ["Jutter"], "uitvoer": ["Jutter.maatdeling"] } ],
+          "parameters": {} }""";
+
+    @Test
+    void een_weigering_zonder_constructnaam_is_ook_een_marker() {
+        Map<String, String> bron = Map.of("naamdeling.rgs", NAAMDELING_BRON);
+        DienstFout f = assertThrows(DienstFout.class, () -> BeslisserKern.bouw(NAAMDELING_DESCRIPTOR, bron,
+                KernConfig.strikt(), Thread.currentThread().getContextClassLoader()));
+        assertTrue(f.schendingen().stream().allMatch(s -> s.soort() == Schending.Soort.MARKER), f.getMessage());
+        assertTrue(f.getMessage().contains("name-sharing bean limit"), "uchars zin: " + f.getMessage());
+
+        BeslisserKern kern = BeslisserKern.bouw(NAAMDELING_DESCRIPTOR, bron, KernConfig.metMarkers(),
+                Thread.currentThread().getContextClassLoader());
+        BeslisserKern.Entrypoint ep = kern.entrypoint("maatdeling");
+        assertFalse(ep.uitvoerbaar());
+        assertTrue(ep.markers().isEmpty(), "uchars weigering noemt geen construct: " + ep.markers());
+        assertTrue(ep.weigering().contains("name-sharing bean limit"), ep.weigering());
+    }
+
     @Test
     void een_gelowerde_regel_start_ook_strikt() {
         // 'bepaal leeftijd' lowers cleanly under DRL -> no marker -> strict start succeeds.

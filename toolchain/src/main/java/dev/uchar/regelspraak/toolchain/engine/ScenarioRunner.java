@@ -5,6 +5,7 @@ import dev.uchar.regelspraak.emit.CaseEmitter;
 import dev.uchar.regelspraak.emit.IrEmitter;
 import dev.uchar.regelspraak.engine.ScenarioResultaat;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
+import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
@@ -38,7 +39,9 @@ public final class ScenarioRunner {
     }
 
     /** Run every scenario in an already-resolved bundle, one report per scenario in document order, each named after
-     *  its scenario. A document uchar does not carry reports every scenario as MARKER with uchar's reason. */
+     *  its scenario. A document uchar does not carry reports every scenario as MARKER with uchar's reason: a refusal
+     *  of its emitter, and every refusal of its backend, the replay's own (a form the loader or the exec-model branch
+     *  does not carry) and a document its loader calls malformed. */
     public static List<ScenarioResultaat> run(ScenarioBundel bundel) {
         if (!bundel.isOk()) throw new ResolveFout(diagnostiek(bundel));
         List<ResolvedScenario> scenarios = bundel.scenarios();
@@ -71,7 +74,14 @@ public final class ScenarioRunner {
                 Files.writeString(c, CaseEmitter.emit(scenarios.get(i)), StandardCharsets.UTF_8);
                 cases.add(c);
             }
-            List<ScenarioResultaat> rapport = CaseRunner.rapport(ir, cases);
+            List<ScenarioResultaat> rapport;
+            try {
+                rapport = CaseRunner.rapport(ir, cases);
+            } catch (IrLoader.Documentfout e) {
+                // the replay reports a refusal of its loader and backend as MARKER itself, but lets a malformed
+                // document escape; uchar's emitter wrote it, so uchar does not carry this document either
+                return markers(scenarios, "document: " + e.getMessage());
+            }
             if (rapport.size() != scenarios.size())
                 throw new IllegalStateException("het rapport telt " + rapport.size() + " case(s) voor "
                         + scenarios.size() + " scenario('s): een gelagerde case hoort nooit een red-path case te zijn");

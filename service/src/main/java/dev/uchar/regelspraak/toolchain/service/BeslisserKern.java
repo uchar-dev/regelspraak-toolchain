@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.emit.CaseEmitter;
+import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.toolchain.engine.ParametersetLader;
 import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
 import dev.uchar.regelspraak.toolchain.engine.Verbalisator;
@@ -36,19 +38,19 @@ import java.util.Map;
  *       descriptor is validated against it (unknown regel / regelgroep / objecttype / attribuut / kenmerk /
  *       parameter = a startup error naming the value, ALL collected first). A file set whose union does not
  *       resolve refuses startup with the resolver diagnostics.</li>
- *   <li><b>Build the regelnaam→bronbestand index</b> ({@link RegelBestandIndex}), so an entry point is built
- *       over PRELUDE (the rule-less files) + only its scoped rule files — one {@link KieBase} per entry point, so
- *       upstream rules cannot overwrite request-given intermediate inputs.</li>
- *   <li><b>Build each entry point through uchar</b> ({@link UcharBouw}): its source is resolved, emitted as a
- *       {@code uchar-ir-v1} document and built by uchar's backend on the exec-model branch, which generates the
- *       fact beans into a class loader of the entry point's own, checks the bean contract, and lowers every
- *       construct with every side table the loader returns. A refusal is a startup error naming the entry
- *       point.</li>
- *   <li><b>Fail-fast on markers</b> — a construct the exec-model branch does not lower refuses the build of the
- *       entry point whose source carries it. With {@link KernConfig#allowMarkers()} false the startup refuses
- *       naming the construct; with true it starts, lists the construct under the entry point's markers, and
- *       refuses every request to that entry point ({@link NietUitvoerbaar}), since uchar hands out no KieBase
- *       that lacks a construct.</li>
+ *   <li><b>Build each entry point from the forms of its scope</b> ({@link VormIndex}): the forms its rule names
+ *       and rule groups carry are kept, the others dropped ({@link CaseEmitter#metScope}, the lowering uchar's
+ *       scenario layer uses), and that model is emitted as a {@code uchar-ir-v1} document and built by uchar's
+ *       backend on the exec-model branch ({@link UcharBouw}) — one {@link KieBase} per entry point, so upstream
+ *       rules cannot overwrite request-given intermediate inputs, and a form outside the scope does not decide
+ *       whether the entry point runs. The build generates the fact beans into a class loader of the entry point's
+ *       own, checks the bean contract, and lowers every form with every side table the loader returns.</li>
+ *   <li><b>Fail-fast on what uchar does not carry</b> — every refusal on the way (emitter, loader, document,
+ *       backend: a construct the exec-model branch does not lower among them), and a scoped rule name that carries
+ *       no form in uchar's model, makes the entry point a marker. With {@link KernConfig#allowMarkers()} false the
+ *       startup refuses naming it; with true it starts, lists it under the entry point's markers with uchar's
+ *       sentence, and refuses every request to that entry point ({@link NietUitvoerbaar}), since an answer
+ *       without the construct would be an answer to another rule set.</li>
  * </ol>
  *
  * <p>The generated beans live on the entry point's class loader, so every fact {@code Class.forName}/read/write
@@ -78,16 +80,16 @@ public final class BeslisserKern {
 
     /** One compiled entry point: its descriptor entry, its scoped {@link KieBase}, its marker list, the
      *  descriptor parameter defaults resolved to globals, the §9.8 dagsoort predicates the session must carry as
-     *  globals (empty on the exec-model branch, which wires them into its rules), the in-scope {@link Dekking}
-     *  manifest, the class loader of its generated fact beans, and when uchar refused its build, the refusal.
+     *  globals (empty on the exec-model branch, which wires them into its rules), the {@link Dekking} manifest of
+     *  its build, the class loader of its generated fact beans, and when uchar refused its build, the refusal.
      *
-     *  <p>{@code dekking} carries the verdict of every lowered construct whose base name is in this entry point's
-     *  scope ({@link #dekkingInScope}); {@code /info} reports it verbatim. A §13.4.7 feitcreatie scope has NO
-     *  dekking entry at all, so this list is legitimately empty there and /info shows the empty list as-is.
+     *  <p>{@code dekking} is the exec-model branch's manifest of the entry point's document, one verdict per form,
+     *  the defaults groups included; the document carries only the forms of the scope, so the manifest is the
+     *  scope's. {@code /info} reports it verbatim.
      *
-     *  <p>An entry point with a marker, started with {@link KernConfig#allowMarkers()}, has no KieBase and no bean
-     *  class loader: {@code markers} names the construct, {@code weigering} carries uchar's sentence, and a request
-     *  to it is refused with {@link NietUitvoerbaar}. */
+     *  <p>An entry point uchar does not carry, started with {@link KernConfig#allowMarkers()}, has no KieBase and no
+     *  bean class loader: {@code markers} names the construct when uchar's refusal names one, {@code weigering}
+     *  carries uchar's sentence, and a request to it is refused with {@link NietUitvoerbaar}. */
     public record Entrypoint(DienstDescriptor.Entrypoint descriptor, KieBase kieBase,
                              List<String> markers, Map<String, Object> defaultGlobals,
                              Map<String, java.util.function.Predicate<java.time.LocalDate>> dagsoortGlobalen,
@@ -173,66 +175,49 @@ public final class BeslisserKern {
                     Schending.van(Schending.Soort.MALFORMED, "", e.getMessage())));
         }
         // only validate the descriptor against a well-formed model — a resolve failure already dominates
-        if (startFouten.isEmpty()) startFouten.addAll(DescriptorLoader.valideer(descriptor, model));
+        VormIndex vormen = VormIndex.van(model, model.prioritizedDefaults);
+        if (startFouten.isEmpty()) startFouten.addAll(DescriptorLoader.valideer(descriptor, model, vormen));
         if (!startFouten.isEmpty())
             throw new DienstFout("dienst start niet: descriptor/model-validatie faalt", startFouten);
 
-        // 3. rule -> file index; prelude = files declaring no rules
-        RegelBestandIndex index = RegelBestandIndex.bouw(bronPerBestand);
-
-        // 4. per entry point: resolve prelude + scoped rule files and build them through uchar, which generates
-        //    the beans, checks their contract and lowers every construct. HARD failures (a scope file missing, a
-        //    scope source that does not resolve, a form uchar does not carry) are startup errors REGARDLESS of
-        //    allowMarkers — that flag only tolerates honest markers; it must never mask a broken entrypoint.
+        // 3. per entry point: the document of the forms its scope carries, built through uchar. What uchar does not
+        //    carry — a refusal on the way, or a scoped rule that carries no form — is a marker of that entry point;
+        //    allowMarkers only decides whether the service then starts without it.
         Map<String, Entrypoint> perPad = new LinkedHashMap<>();
         List<Schending> markerFouten = new ArrayList<>();
-        List<Schending> hardeFouten = new ArrayList<>();
         List<Schending> scopeFouten = new ArrayList<>();
         // the producer index is model-wide (every form that WRITES a kenmerk/attribuut), computed once.
         Map<ElementSleutel, java.util.Set<String>> producenten =
                 ProducentConsument.producentIndex(model, model.prioritizedDefaults);
         for (DienstDescriptor.Entrypoint ep : descriptor.entrypoints()) {
+            VormIndex.Keuze keuze = vormen.scope(ep.scope());
             if (!ep.scopeControleUit())
-                scopeFouten.addAll(scopeVolledigheid(ep, model, producenten));
-            List<String> bestanden = scopeBestanden(ep, index, model, hardeFouten);
-            String bron = concat(bronPerBestand, index.preludeBestanden(), bestanden);
-            RegelSpraakModel scopeModel = Resolver.resolve(bron);
-            if (!scopeModel.errors().isEmpty()) {
-                for (var d : scopeModel.errors())
-                    hardeFouten.add(Schending.van(Schending.Soort.MALFORMED, "entrypoint:" + ep.pad(),
-                            "scope-bron van '" + ep.naam() + "' resolvet niet: regel " + d.line() + " " + d.message()));
+                scopeFouten.addAll(scopeVolledigheid(ep, model, producenten, keuze));
+            Map<String, Object> defaults = defaultGlobals(descriptor, model);
+            if (!keuze.zonderVorm().isEmpty()) {
+                String naam = keuze.zonderVorm().get(0);
+                List<String> uchar = vormen.waarschuwingenOver(naam);
+                marker(ep, naam, "de regel '" + naam + "' uit de scope levert in uchars model geen vorm op"
+                        + (uchar.isEmpty() ? "" : "; uchar: " + String.join("; ", uchar)),
+                        defaults, config, perPad, markerFouten);
                 continue;
             }
-            Map<String, Object> defaults = defaultGlobals(descriptor, model);
             DroolsBackend.Build build;
             try {
-                build = UcharBouw.bouw(scopeModel, DroolsBackend.Branch.EXEC_MODEL);
+                build = UcharBouw.bouw(CaseEmitter.metScope(model, new ResolvedScenario.Scope(keuze.vormen())),
+                        DroolsBackend.Branch.EXEC_MODEL);
             } catch (UcharBouw.NietGedragen ng) {
-                if (ng.construct() == null) {
-                    hardeFouten.add(Schending.van(Schending.Soort.MALFORMED, "entrypoint:" + ep.pad(),
-                            "entrypoint '" + ep.naam() + "' is niet uitvoerbaar in uchar: " + ng.getMessage()));
-                    continue;
-                }
-                // A marker: the construct is not lowered, and uchar builds no KieBase without it.
-                if (!config.allowMarkers())
-                    markerFouten.add(Schending.van(Schending.Soort.MARKER, "entrypoint:" + ep.pad(),
-                            "regel '" + ng.construct() + "' in de bron van entrypoint '" + ep.naam()
-                                    + "' is een marker (niet-gelowerd): " + ng.getMessage()));
-                else
-                    perPad.put(ep.pad(), new Entrypoint(ep, null, List.of(ng.construct()), defaults, Map.of(),
-                            List.of(), null, ng.getMessage()));
+                marker(ep, ng.construct(), ng.getMessage(), defaults, config, perPad, markerFouten);
                 continue;
             }
             perPad.put(ep.pad(), new Entrypoint(ep, build.kieBase(), List.of(), defaults,
-                    build.dagsoortGlobalen(), dekkingInScope(ep, build.dekking(), model), build.beanLoader(), null));
+                    build.dagsoortGlobalen(), build.dekking(), build.beanLoader(), null));
         }
-        if (!hardeFouten.isEmpty())
-            throw new DienstFout("dienst start niet: entrypoint(s) niet bouwbaar", hardeFouten);
         if (!scopeFouten.isEmpty())
             throw new DienstFout("dienst start niet: onvolledige regel-scope (buiten-scope kenmerk-producent)",
                     scopeFouten);
-        if (!markerFouten.isEmpty() && !config.allowMarkers())
-            throw new DienstFout("dienst start niet: marker-regels in scope", markerFouten);
+        if (!markerFouten.isEmpty())
+            throw new DienstFout("dienst start niet: uchar draagt een entrypoint niet", markerFouten);
 
         // 6. parametersets (fase 5, decision B). Load + validate the sidecar against the model, apply the
         //    default×set conflict rule, then compute the regel×parameter period-coverage WARNINGs.
@@ -240,6 +225,23 @@ public final class BeslisserKern {
         List<String> waarschuwingen = periodeWaarschuwingen(model, sets);
 
         return new BeslisserKern(descriptor, model, perPad, sets, waarschuwingen);
+    }
+
+    /** Record that uchar does not carry entry point {@code ep}: {@code construct} is the construct uchar's refusal
+     *  names (null when it names none) and {@code reden} uchar's sentence. Strict, it is a startup violation; with
+     *  markers allowed, the entry point is registered without a KieBase and every request to it is refused. */
+    private static void marker(DienstDescriptor.Entrypoint ep, String construct, String reden,
+                               Map<String, Object> defaults, KernConfig config, Map<String, Entrypoint> perPad,
+                               List<Schending> markerFouten) {
+        if (config.allowMarkers()) {
+            perPad.put(ep.pad(), new Entrypoint(ep, null, construct == null ? List.of() : List.of(construct),
+                    defaults, Map.of(), List.of(), null, reden));
+            return;
+        }
+        markerFouten.add(Schending.van(Schending.Soort.MARKER, "entrypoint:" + ep.pad(), construct == null
+                ? "entrypoint '" + ep.naam() + "' wordt niet gedragen door uchar: " + reden
+                : "regel '" + construct + "' in de scope van entrypoint '" + ep.naam()
+                        + "' is een marker (niet gedragen): " + reden));
     }
 
     /**
@@ -306,53 +308,6 @@ public final class BeslisserKern {
         return uit;
     }
 
-    /** The rule FILES an entry point's scope needs, from its scoped rule names (via the index). */
-    private static List<String> scopeBestanden(DienstDescriptor.Entrypoint ep, RegelBestandIndex index,
-                                               RegelSpraakModel model, List<Schending> fouten) {
-        List<String> namen = new ArrayList<>(ep.scope().regelnamenOfLeeg());
-        for (String groep : ep.scope().regelgroepenOfLeeg())
-            for (var g : model.regelGroepen) if (g.naam().equals(groep)) namen.addAll(g.leden());
-        List<String> bestanden = new ArrayList<>();
-        for (String n : namen) {
-            String f = index.bestandVoorRegel(n);
-            if (f == null)
-                fouten.add(Schending.van(Schending.Soort.ONBEKENDE_VERWIJZING, "entrypoint:" + ep.pad(),
-                        "geen bronbestand declareert regel '" + n + "'"));
-            else if (!bestanden.contains(f)) bestanden.add(f);
-        }
-        return bestanden;
-    }
-
-    private static String concat(Map<String, String> bron, List<String> prelude, List<String> ruleBestanden) {
-        StringBuilder b = new StringBuilder();
-        for (String p : prelude) b.append(bron.get(p)).append('\n');
-        for (String r : ruleBestanden) if (!prelude.contains(r)) b.append(bron.get(r)).append('\n');
-        return b.toString();
-    }
-
-    /** The set of in-scope base-names for an entry point: its scoped rule names plus every member of its scoped
-     *  regelgroepen, {@link #basisNaam}-normalised. Shared by the marker/lowered scope filters. */
-    private static java.util.Set<String> scopeBasisNamen(DienstDescriptor.Entrypoint ep, RegelSpraakModel model) {
-        java.util.Set<String> scope = new java.util.LinkedHashSet<>();
-        for (String n : ep.scope().regelnamenOfLeeg()) scope.add(basisNaam(n));
-        for (String groep : ep.scope().regelgroepenOfLeeg())
-            for (var g : model.regelGroepen) if (g.naam().equals(groep))
-                for (String lid : g.leden()) scope.add(basisNaam(lid));
-        return scope;
-    }
-
-    /** The {@link Dekking} manifest of an entry point's build restricted to its scope: the verdict of every
-     *  construct whose base name is in the scope ({@link #scopeBasisNamen}). A feitcreatie scope yields ZERO
-     *  dekking entries and therefore an empty manifest here — reported as-is. */
-    private static List<Dekking> dekkingInScope(DienstDescriptor.Entrypoint ep, List<Dekking> dekking,
-                                                RegelSpraakModel model) {
-        java.util.Set<String> scope = scopeBasisNamen(ep, model);
-        List<Dekking> uit = new ArrayList<>();
-        for (Dekking d : dekking)
-            if (scope.contains(basisNaam(d.naam()))) uit.add(d);
-        return uit;
-    }
-
     // ---------------- scope-completeness validation ----------------
 
     // The producer/consumer analysis — the producer index, the consumed-element walk, and the ElementSleutel
@@ -370,8 +325,10 @@ public final class BeslisserKern {
      * request inputs, not violations.
      */
     private static List<Schending> scopeVolledigheid(DienstDescriptor.Entrypoint ep, RegelSpraakModel model,
-            Map<ElementSleutel, java.util.Set<String>> producenten) {
-        java.util.Set<String> scope = scopeBasisNamen(ep, model);
+            Map<ElementSleutel, java.util.Set<String>> producenten, VormIndex.Keuze keuze) {
+        // the base names the producer index keys its writers on, of the forms the scope carries
+        java.util.Set<String> scope = new java.util.LinkedHashSet<>();
+        for (String v : keuze.vormen()) scope.add(ProducentConsument.basisNaam(v));
         // The opt-out keys through the SAME element identity the consumption does ({@link
         // ProducentConsument#elementVan}), so the declaration binds on the member's declarant: a caller that
         // declares the element on the type that DECLARES it silences a consumption on any subtype, and one that
@@ -390,7 +347,7 @@ public final class BeslisserKern {
         // a resolver's model: a navigated kenmerk check reads the kenmerk of the type its role reaches
         ProducentConsument.Navigatie navigatie = ProducentConsument.bronNavigatie(model);
         for (var r : model.resolvedRegels) {
-            if (!scope.contains(basisNaam(r.naam()))) continue;
+            if (!scope.contains(ProducentConsument.basisNaam(r.naam()))) continue;
             for (ElementSleutel consumed : ProducentConsument.verbruikt(r, navigatie)) {
                 java.util.Set<String> writers = producenten.get(consumed);
                 if (writers == null || writers.isEmpty()) continue;          // a genuine request input
@@ -398,7 +355,7 @@ public final class BeslisserKern {
                 if (invoerElementen.contains(consumed)) continue;            // element-level caller input: opt-out
                 if (!gemeld.add(consumed)) continue;
                 uit.add(Schending.van(Schending.Soort.SCOPE_ONVOLLEDIG, "entrypoint:" + ep.pad(),
-                        "regel '" + basisNaam(r.naam()) + "' in entrypoint '" + ep.naam() + "' leest "
+                        "regel '" + ProducentConsument.basisNaam(r.naam()) + "' in entrypoint '" + ep.naam() + "' leest "
                                 + (consumed.kenmerk() ? "kenmerk" : "attribuut") + " '" + consumed.naam() + "'"
                                 + (consumed.objecttype().isEmpty() ? "" : " van '" + consumed.objecttype() + "'")
                                 + ", maar de enige producent(en) " + writers + " vallen buiten de scope"
@@ -570,25 +527,18 @@ public final class BeslisserKern {
         public OnbekendPad(String pad) { super("onbekend pad: '" + pad + "'"); }
     }
 
-    /** Thrown when a request targets an entry point that started with a marker ({@link KernConfig#allowMarkers()}):
-     *  uchar built no KieBase for it, so no answer it could give is complete. */
+    /** Thrown when a request targets an entry point uchar does not carry, started with
+     *  {@link KernConfig#allowMarkers()}: uchar built no KieBase for it, so no answer it could give is complete.
+     *  {@link #reden()} is uchar's sentence, {@link #markers()} the construct it names, if any. */
     public static final class NietUitvoerbaar extends RuntimeException {
+        private final transient Entrypoint ep;
+
         public NietUitvoerbaar(Entrypoint ep) {
             super("entrypoint '" + ep.descriptor().naam() + "' is niet uitvoerbaar: " + ep.weigering());
+            this.ep = ep;
         }
-    }
 
-    /** Strip a §9.10 "<groep>: " prefix and a §13.4.2.3 " #k" version suffix (and a beslistabel " (n)"
-     *  multi-conclusie suffix) off an emitted rule name — the base name the index, the scope, and the
-     *  transpiler dekking all agree on. Mirrors ScenarioRunner.basisNaam + RegelBestandIndex.basisNaam. */
-    static String basisNaam(String naam) {
-        if (naam == null) return "";
-        String n = naam;
-        int hash = n.indexOf(" #");
-        if (hash > 0) n = n.substring(0, hash);
-        int colon = n.indexOf(": ");
-        if (colon > 0) n = n.substring(colon + 2);
-        n = n.replaceFirst("\\s*\\(\\d+\\)\\s*$", "");
-        return n.trim();
+        public String reden() { return ep.weigering(); }
+        public List<String> markers() { return ep.markers(); }
     }
 }

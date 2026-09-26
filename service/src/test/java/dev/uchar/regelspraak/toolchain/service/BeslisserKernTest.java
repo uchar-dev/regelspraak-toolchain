@@ -25,7 +25,7 @@ class BeslisserKernTest {
 
     @BeforeAll
     static void bouw() {
-        // Every golden scope LOWERS under the DRL back-end, so strict startup succeeds and no marker is exposed.
+        // uchar carries every golden scope, so strict startup succeeds and no marker is exposed.
         KERN = BeslisserKern.bouw(TokaBron.descriptorJson(), TokaBron.bronPerBestand(),
                 KernConfig.strikt(), Thread.currentThread().getContextClassLoader());
     }
@@ -33,15 +33,9 @@ class BeslisserKernTest {
     @Test
     void alle_golden_entrypoints_zijn_gebouwd() {
         // 29 descriptor entrypoints = ALL 29 exit-0 golden scenariotoetsen (30 until besluit 16Y dropped toka-45
-        // — see TokaBron), INCLUDING toka-29 "passagier met recht
-        // op treinmiles". That golden is a §13.4.7 FEITCREATIE (a role-relationship rule): RegelSpraakModel#isValueWriter
-        // keeps it out of every RESOLVED collection, so DrlTranspiler emits ZERO rule blocks AND ZERO dekking entries
-        // for it — but the RAW model.regels list DOES carry its name, so it is nameable through the file-index/descriptor
-        // path (exactly as ScenarioResolver scopes "toetst de regel X" against model.regels). Its empty DRL compiles to
-        // an inert KieBase, it is NOT a marker (no dekking entry, nothing to lower), and it starts clean under strict
-        // mode. The 28 value-writing golden all LOWER under DRL; the pivot's point (toka-22/25, exec-uncompilable) is
-        // pinned by the two round-trip tests below.
+        // — see TokaBron), INCLUDING toka-29 (see its round trip below); every one runs.
         assertEquals(29, KERN.entrypoints().size());
+        assertEquals(29, KERN.entrypoints().values().stream().filter(BeslisserKern.Entrypoint::uitvoerbaar).count());
     }
 
     @Test
@@ -150,18 +144,17 @@ class BeslisserKernTest {
 
     @Test
     void toka29_passagier_met_recht_op_treinmiles_round_trip() {
-        // toka-29 is a §13.4.7 FEITCREATIE. It writes no scalar/kenmerk, so DrlTranspiler emits ZERO rules and ZERO
-        // dekking entries: the entrypoint compiles to an inert KieBase, is NOT a marker, and the request fires
-        // nothing. The golden scenario-toka-29 therefore passes as a VACUOUS consistency check — no Inconsistentie
-        // is produced, so "de gegevens zijn consistent". We reproduce that over the core's transport: build the
-        // request from the situatie basis-29 shape (Vlucht V1 + Contingent treinmiles C1 + Natuurlijk persoon P1
-        // with rol reis V1) and assert an EMPTY inconsistenties array. We do not assert a fired-activation count:
-        // the executor does not expose one, and "nothing fires" is already witnessed by the empty inconsistenties
-        // (a consistency violation would have appeared there).
+        // toka-29 is a §13.4.7 FEITCREATIE. The entry point's document carries the form uchar's frontend made of it
+        // in the full model, and the exec-model branch lowers it: one LOWERED feitcreatie verdict. Until the scope
+        // was taken per form, the entry point re-resolved the foundation plus the toka-29 file alone, where the
+        // frontend makes no form of it (a warning: the reference field of the intermediate step is not derivable);
+        // the build then held no rule at all and a request was answered as if the rule had run.
         BeslisserKern.Entrypoint ep = KERN.entrypoint("passagier-met-recht-op-treinmiles");
         assertNotNull(ep, "de feitcreatie-entrypoint hoort gebouwd te zijn");
-        assertTrue(ep.markers().isEmpty(),
-                "een feitcreatie (geen dekking-entry) is geen marker: " + ep.markers());
+        assertTrue(ep.uitvoerbaar() && ep.markers().isEmpty(), ep.toString());
+        assertEquals(1, ep.dekking().size(), ep.dekking().toString());
+        assertEquals("feitcreatie", ep.dekking().get(0).soort(), ep.dekking().toString());
+        assertTrue(ep.dekking().get(0).lowered(), ep.dekking().toString());
 
         String verzoek = """
             { "instanties": [
@@ -170,8 +163,16 @@ class BeslisserKernTest {
                 { "type": "Natuurlijk persoon", "id": "P1", "rollen": { "reis": "V1" } } ] }""";
         ObjectNode antwoord = KERN.verwerk("passagier-met-recht-op-treinmiles", parse(verzoek));
         assertTrue(antwoord.get("inconsistenties").isArray(), "antwoord: " + antwoord);
-        assertTrue(antwoord.get("inconsistenties").isEmpty(),
-                "een vacuöze consistentietoets levert een lege inconsistenties-array: " + antwoord);
+        assertTrue(antwoord.get("inconsistenties").isEmpty(), "antwoord: " + antwoord);
+    }
+
+    @Test
+    void dekking_is_de_manifest_van_het_document_van_de_scope() {
+        // the document carries only the scoped forms, so the exec-model manifest is the scope's: one LOWERED verdict
+        // for the one rule toka-17 scopes
+        BeslisserKern.Entrypoint ep = KERN.entrypoint("bepaal-leeftijd");
+        assertEquals(1, ep.dekking().size(), ep.dekking().toString());
+        assertTrue(ep.dekking().get(0).lowered(), ep.dekking().toString());
     }
 
     @Test
@@ -199,10 +200,10 @@ class BeslisserKernTest {
         java.util.Set<String> gescoopt = new java.util.LinkedHashSet<>();
         for (DienstDescriptor.Entrypoint ep : d.entrypoints())
             for (String n : ep.scope().regelnamenOfLeeg())
-                gescoopt.add(RegelBestandIndex.basisNaam(n));
+                gescoopt.add(dev.uchar.regelspraak.emit.CaseEmitter.norm(n));
 
         for (String naam : golden)
-            assertTrue(gescoopt.contains(RegelBestandIndex.basisNaam(naam)),
+            assertTrue(gescoopt.contains(dev.uchar.regelspraak.emit.CaseEmitter.norm(naam)),
                     "geen enkel descriptor-entrypoint scoopt de golden regel '" + naam + "' — gescoopt: " + gescoopt);
     }
 

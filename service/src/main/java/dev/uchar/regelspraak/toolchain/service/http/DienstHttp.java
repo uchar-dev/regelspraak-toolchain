@@ -47,8 +47,10 @@ import java.util.concurrent.TimeoutException;
  *       number is ever a double), handed to {@link BeslisserKern#verwerk}, and the response tree is written back
  *       with {@code 200} and {@code Content-Type: application/json; charset=UTF-8}.</li>
  *   <li>{@code GET /info}: the service manifest — dienst identity, one entry per entry point carrying its path,
- *       its per-regel {@code dekking} verdicts and its {@code markers}, the list of ALL {@code overgeslagen}
- *       (marker) rule names across the service, and the descriptor {@code parameters} defaults verbatim.</li>
+ *       whether it is {@code uitvoerbaar}, its {@code dekking} (the exec-model branch's verdict per form of its
+ *       document, the defaults groups included), its {@code markers} and, when uchar does not carry it, uchar's
+ *       sentence as {@code weigering}; the list of ALL {@code overgeslagen} (marker) names across the service, and
+ *       the descriptor {@code parameters} defaults verbatim.</li>
  * </ul>
  *
  * <h2>Errors — always a JSON body, NEVER a leaked stacktrace</h2>
@@ -57,8 +59,9 @@ import java.util.concurrent.TimeoutException;
  *       [{"veld": <pad>, "fout": <detail>}, ...]}} — every schending names its {@code veld}.</li>
  *   <li>malformed / empty request body JSON → {@code 400} {@code {"fout": "...", "veld": "body"}}.</li>
  *   <li>{@link BeslisserKern.OnbekendPad} → {@code 404} naming the pad.</li>
- *   <li>{@link BeslisserKern.NietUitvoerbaar} → {@code 503} naming the entry point and uchar's refusal: an entry
- *       point started with a marker has no KieBase.</li>
+ *   <li>{@link BeslisserKern.NietUitvoerbaar} → {@code 503}, the MARKER answer: {@code {"status": "MARKER",
+ *       "fout": …, "reden": <uchar's sentence>, "markers": […]}}. An entry point uchar does not carry has no
+ *       KieBase, and an answer without the construct would be an answer to another rule set.</li>
  *   <li>wrong method on a known path → {@code 405} naming the method.</li>
  *   <li>ANY other exception → {@code 500} {@code {"fout": "interne fout"}} — never a stacktrace or an exception
  *       message in the body; the stack is logged to {@code stderr} server-side.</li>
@@ -188,7 +191,7 @@ public final class DienstHttp {
         } catch (BeslisserKern.OnbekendPad onbekend) {
             stuur(ex, 404, foutBody(onbekend.getMessage(), null));
         } catch (BeslisserKern.NietUitvoerbaar niet) {
-            stuur(ex, 503, foutBody(niet.getMessage(), null));
+            stuur(ex, 503, markerBody(niet));
         } catch (DienstFout dienstFout) {
             stuur(ex, 400, verzoekFoutBody(dienstFout));
         } catch (Exception intern) {
@@ -334,6 +337,8 @@ public final class DienstHttp {
             ObjectNode eNode = entrypoints.addObject();
             eNode.put("naam", ep.descriptor().naam());
             eNode.put("pad", ep.descriptor().pad());
+            eNode.put("uitvoerbaar", ep.uitvoerbaar());
+            if (!ep.uitvoerbaar()) eNode.put("weigering", ep.weigering());
 
             ArrayNode dekking = eNode.putArray("dekking");
             for (Dekking d : ep.dekking()) {
@@ -404,6 +409,18 @@ public final class DienstHttp {
         ObjectNode n = NF.objectNode();
         n.put("fout", boodschap);
         if (veld != null) n.put("veld", veld);
+        return n;
+    }
+
+    /** The MARKER answer to a request at an entry point uchar does not carry: {@code {"status": "MARKER", "fout":
+     *  <boodschap>, "reden": <uchar's sentence>, "markers": [<construct>...]}}. */
+    static ObjectNode markerBody(BeslisserKern.NietUitvoerbaar niet) {
+        ObjectNode n = NF.objectNode();
+        n.put("status", "MARKER");
+        n.put("fout", niet.getMessage());
+        n.put("reden", niet.reden());
+        ArrayNode markers = n.putArray("markers");
+        for (String m : niet.markers()) markers.add(m);
         return n;
     }
 
