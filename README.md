@@ -62,15 +62,24 @@ counts of the twins); such a count is set deliberately, with its reason in the s
 
 ## The gates
 
-Green means `make poorten` passes. It runs, in this order:
+`make gates` is the check before every landing. It runs the whole sequence on this machine, in this order, and stops
+at the first red step, with one summary line per step and a closing line; the full output of each step lands in
+`out/gates/`:
 
 ```
-make check-pin            # the submodule is initialised, clean, on the recorded commit; the versions are uchar's
+scripts/check-pin.sh      # the submodule is initialised, clean, on the recorded commit; the versions are uchar's
 mvn -B -o verify          # the reactor; each own module holds its test count to a floor (tools/check-skips.sh)
 make check-tweelingen     # the three dialect twins, over HTTP, with the expectations of all 18 of their cases
 make check-dienst-replay  # every golden uchar's gate 12 plays, replayed through the service
 make scenario-test        # the golden TOKA scenario manifest
+make image                # the service image ("The container")
+make kind-smoke           # that image in kind: the golden scenarios over HTTP, the marker, a rollout
 ```
+
+It needs, beside the checked-out submodule and the Maven repository of a first build: Java 21, Maven, python3,
+Docker, kind, kubectl and helm. The first five steps are `make poorten`, which needs no Docker: green there means
+the distribution builds and answers as uchar does. No hosted CI runs the gates; `TAG=`, `DESCRIPTOR_SRC=` and
+`CLUSTER=` pass on to the image and the kind smoke.
 
 The two service gates start the JDK service themselves (`bin/regelspraak serve` on the jar the reactor builds, on a
 free port of 127.0.0.1, removed when done) and turn every uchar case file into a request; the answer must give each

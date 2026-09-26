@@ -5,8 +5,8 @@
 # jar it runs from when a source is newer.
 
 .DEFAULT_GOAL := help
-.PHONY: help check-pin verify check-tweelingen check-dienst-replay poorten classpath check ir cases scenario serve drl \
-        graaf facts scenario-test csv-beslistabel clean image kind-smoke
+.PHONY: help check-pin verify check-tweelingen check-dienst-replay poorten gates classpath check ir cases scenario serve \
+        drl graaf facts scenario-test csv-beslistabel clean image kind-smoke
 
 MVN         ?= mvn
 OUT_DIR     := out
@@ -19,6 +19,8 @@ help:
 	@echo "  make check-tweelingen                 The three dialect twins fire over HTTP with all their case expectations"
 	@echo "  make check-dienst-replay              Every golden uchar's gate 12 plays, replayed through the service"
 	@echo "  make poorten                          verify, both service gates and the golden TOKA manifest"
+	@echo "  make gates                           The check before every landing: poorten, image and kind-smoke in"
+	@echo "                                       order, one line per step, stopping at the first red step (host only)"
 	@echo "  make scenario-test                   The golden TOKA scenario manifest (a step of poorten)"
 	@echo ""
 	@echo "  The commands of bin/regelspraak (bin/regelspraak help), with FILE the sources in model order:"
@@ -59,6 +61,11 @@ check-dienst-replay:
 # gates and the golden TOKA manifest.
 poorten: verify check-tweelingen check-dienst-replay
 	$(MAKE) --no-print-directory scenario-test
+
+# The check before every landing: the steps of poorten, then the image and the kind smoke, in that order, one summary
+# line per step, stopping at the first red one (scripts/gates.sh; the full output lands in out/gates/).
+gates:
+	@bash scripts/gates.sh
 
 # Build the toolchain module and what it needs from uchar, without tests, and record its runtime classpath
 # (tools/testdata/run_tests.sh runs on it).
