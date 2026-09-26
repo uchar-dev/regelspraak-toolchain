@@ -1,0 +1,3 @@
+[submodule "uchar"]
+	path = uchar
+	url = ../uchar.git

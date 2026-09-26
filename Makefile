@@ -8,7 +8,7 @@
 # the Drools transpiler grow into real JVM code (see CLAUDE.md / docs/ANTLR-HOWTO.md).
 
 .DEFAULT_GOAL := help
-.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus verify-negatief-corpus drl facts graaf ir drools-it engine grun gui tokens clean clean-jar image kind-smoke csv-beslistabel
+.PHONY: help antlr-jar junit-jar parser compile resolver test verify-corpus verify-negatief-corpus drl facts graaf ir drools-it engine grun gui tokens clean clean-jar image kind-smoke csv-beslistabel check-pin
 
 ANTLR4_VERSION := 4.13.2
 ANTLR4_URL     := https://www.antlr.org/download/antlr-$(ANTLR4_VERSION)-complete.jar
@@ -69,6 +69,7 @@ help:
 	@echo "  make graaf FILE=\"a.rgs …\" [OUT=… MMD=1]  Emit the dataflow regelgraaf (regels ↔ gegevens) as HTML (or bare Mermaid with MMD=1)"
 	@echo "  make ir FILE=\"a.rgs …\" [OUT=…]       Emit a faithful uchar-ir-v1 JSON dump of the resolved model (the uchar mirror)"
 	@echo "  make uchar-conformance UCHAR_DIR=<pad>  Verify the emitter reproduces every uchar emitter golden at the SPEC_REV pin"
+	@echo "  make check-pin                       Verify the uchar submodule is initialised, clean, and version-aligned"
 	@echo "  make csv-beslistabel FILE=<csv> [OUT=<pad>]  Convert a CSV decision table to a §12 Beslistabel .rgs fragment"
 	@echo "  make drools-it                       (needs Maven+network) Compile & fire the DRL in Drools"
 	@echo "  make engine                          (needs Maven) Build + test the shippable engine consumer"
@@ -295,3 +296,8 @@ kind-smoke:
 # here with this target green.
 uchar-conformance:
 	bash scripts/uchar-conformance.sh
+
+# The pin is the commit the uchar submodule is checked out at: this target fails when the
+# submodule is missing, moved or dirty, or when the parent pom's versions drift from uchar's.
+check-pin:
+	bash scripts/check-pin.sh
