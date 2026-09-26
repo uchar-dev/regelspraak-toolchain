@@ -4,6 +4,7 @@ import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.graaf.ProducentConsument;
 import dev.uchar.regelspraak.graaf.RegelGraaf;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
@@ -15,6 +16,32 @@ import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
  * fact beans uchar's generator writes, and uchar's rule graph.
  */
 public final class RegelSpraakCli {
+
+    /** Source files read as one model: each file's text followed by a newline, in the order given, as uchar's --ir
+     *  mode reads a chain. With more than one file a diagnostic's line is a line of the concatenation, which no file
+     *  has, so {@link #melding} names the file and the line in that file instead. */
+    record Keten(String bron, java.util.List<String> bestanden, java.util.List<Integer> eersteRegels) {
+        static Keten lees(java.util.List<String> paden) throws java.io.IOException {
+            StringBuilder bron = new StringBuilder();
+            var eersteRegels = new java.util.ArrayList<Integer>();
+            int regel = 1;
+            for (String pad : paden) {
+                String tekst = java.nio.file.Files.readString(java.nio.file.Path.of(pad)) + '\n';
+                eersteRegels.add(regel);
+                bron.append(tekst);
+                regel += (int) tekst.chars().filter(c -> c == '\n').count();
+            }
+            return new Keten(bron.toString(), java.util.List.copyOf(paden), java.util.List.copyOf(eersteRegels));
+        }
+
+        String melding(Diagnostic d) {
+            if (bestanden.size() == 1 || d.line() <= 0) return d.toString();
+            int i = eersteRegels.size() - 1;
+            while (i > 0 && eersteRegels.get(i) > d.line()) i--;
+            return d.severity() + " (" + bestanden.get(i) + ":" + (d.line() - eersteRegels.get(i) + 1) + "): "
+                    + d.message();
+        }
+    }
 
     /** Generate the fact-model beans a resolved model implies and write them to {@code outdir}, one file per
      *  class under {@code <outdir>/dev/uchar/regelspraak/facts/<Name>.java} (UTF-8, dirs created), then return the
@@ -32,19 +59,21 @@ public final class RegelSpraakCli {
         return bronnen.size();
     }
 
-    /** The --facts mode body: {@code rest} = [outdir, file.rgs] after flag removal. Returns the process
+    /** The --facts mode body: {@code rest} = [outdir, file.rgs...] after flag removal. Returns the process
      *  exit code (0 = beans geschreven, 1 = resolver-fouten, 2 = usage) instead of exiting, so the error
      *  discipline — an unresolvable model writes NOTHING under outdir — is testable as the REAL CLI path. */
     public static int factsModus(java.util.List<String> rest) throws java.io.IOException {
-        // --facts <outdir> <file.rgs>: after --facts is consumed, the FIRST remaining arg is the outdir,
-        // the SECOND the source.
-        if (rest.size() < 2) { System.err.println("usage: RegelSpraakCli --facts <outdir> <file.rgs>"); return 2; }
+        // --facts <outdir> <file.rgs...>: after --facts is consumed, the FIRST remaining arg is the outdir,
+        // the rest the source files of the model chain.
+        if (rest.size() < 2) { System.err.println("usage: RegelSpraakCli --facts <outdir> <file.rgs...>"); return 2; }
         java.nio.file.Path outdir = java.nio.file.Path.of(rest.get(0));
-        RegelSpraakModel mf = Resolver.resolve(java.nio.file.Files.readString(java.nio.file.Path.of(rest.get(1))),
-                rest.get(1));
+        Keten keten = Keten.lees(rest.subList(1, rest.size()));
+        // one file threads its name into the model, as uchar's --ir mode does; a chain has no one name
+        RegelSpraakModel mf = rest.size() == 2 ? Resolver.resolve(keten.bron(), rest.get(1))
+                : Resolver.resolve(keten.bron());
         // Check errors BEFORE touching disk: an unresolvable model writes NOTHING under outdir.
         if (!mf.isOk()) {
-            mf.diagnostics.forEach(d -> System.out.println("  " + d));
+            mf.diagnostics.forEach(d -> System.out.println("  " + keten.melding(d)));
             return 1;
         }
         int n = factsNaarDisk(mf, outdir);
@@ -67,14 +96,12 @@ public final class RegelSpraakCli {
             return 2;
         }
         java.nio.file.Path out = java.nio.file.Path.of(rest.get(0));
-        StringBuilder bron = new StringBuilder();
-        for (String f : rest.subList(1, rest.size()))
-            bron.append(java.nio.file.Files.readString(java.nio.file.Path.of(f))).append('\n');
-        RegelSpraakModel m = Resolver.resolve(bron.toString());
+        Keten keten = Keten.lees(rest.subList(1, rest.size()));
+        RegelSpraakModel m = Resolver.resolve(keten.bron());
         // Check errors BEFORE touching disk: an unresolvable model writes NOTHING (a graph over a broken model
         // would show half-bound edges).
         if (!m.isOk()) {
-            m.diagnostics.forEach(d -> System.out.println("  " + d));
+            m.diagnostics.forEach(d -> System.out.println("  " + keten.melding(d)));
             return 1;
         }
         var graaf = RegelGraaf.bouw(m, m.prioritizedDefaults, ProducentConsument.bronNavigatie(m));
@@ -88,9 +115,10 @@ public final class RegelSpraakCli {
         return 0;
     }
 
-    /** CLI: resolve a .rgs file, print a model summary and any diagnostics, then build it on uchar's exec-model
-     *  branch; exit 1 on a resolver error, 3 when uchar does not carry the model (a construct the branch does not
-     *  lower among them: accepted input with inert output must never look like success), else 0.
+    /** CLI: resolve one or more .rgs files as one model (concatenated in order), print a model summary and any
+     *  diagnostics, then build it on uchar's exec-model branch; exit 1 on a resolver error, 3 when uchar does not
+     *  carry the model (a construct the branch does not lower among them: accepted input with inert output must never
+     *  look like success), else 0.
      *  With --drl, print the DRL text of uchar's DRL-text branch instead of the summary, or exit 3 with uchar's
      *  refusal; that branch builds no document with a construct it does not lower, so there is no DRL with markers.
      *  With --facts &lt;outdir&gt;, generate the implied fact-model beans (§13.3) into &lt;outdir&gt;
@@ -119,9 +147,10 @@ public final class RegelSpraakCli {
         if (graaf || graafMmd) System.exit(graafModus(rest, graaf));
         if (facts) System.exit(factsModus(rest));
         if (rest.isEmpty()) { System.err.println("usage: RegelSpraakCli [--drl | --facts <outdir> | --graaf <out.html> | --graaf-mmd <out.mmd> | --ir <out.json>] <file.rgs...>"); System.exit(2); }
-        RegelSpraakModel m = Resolver.resolve(java.nio.file.Files.readString(java.nio.file.Path.of(rest.get(0))));
+        Keten keten = Keten.lees(rest);
+        RegelSpraakModel m = Resolver.resolve(keten.bron());
         if (drl) {
-            m.diagnostics.forEach(d -> System.err.println("  " + d));
+            m.diagnostics.forEach(d -> System.err.println("  " + keten.melding(d)));
             if (!m.isOk()) System.exit(1);
             try {
                 System.out.print(UcharBouw.bouw(m, DroolsBackend.Branch.DRL_TEXT).drlTranspiler().drl());
@@ -139,7 +168,7 @@ public final class RegelSpraakCli {
                     r.waarde().type() == null ? "(geen type)" : r.waarde().type().naam());
             if (r.voorwaarde() != null) System.out.println("      indien " + r.voorwaarde().bron());
         });
-        m.diagnostics.forEach(d -> System.out.println("  " + d));
+        m.diagnostics.forEach(d -> System.out.println("  " + keten.melding(d)));
         if (!m.isOk()) System.exit(1);
         // "does my model resolve AND run?" — the build on the exec-model branch the engine and the service fire
         try {
