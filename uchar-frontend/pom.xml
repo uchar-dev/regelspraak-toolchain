@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>dev.uchar.regelspraak.toolchain</groupId>
+    <artifactId>regelspraak-toolchain</artifactId>
+    <version>0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>uchar-frontend</artifactId>
+  <name>uchar RegelSpraak frontend (from the submodule)</name>
+
+  <!--
+    uchar's RegelSpraak frontend compiled from the submodule's source tree, with no copy in this
+    repository: the parser generated from uchar's grammar, the resolver and the emitters. The shared
+    IR record types (model/ir/kern) are excluded here because uchar's backend jar already compiles
+    them from the same tree, so every uchar source file is compiled exactly once in this build.
+
+    The ANTLR invocation follows uchar/frontends/regelspraak/Makefile (the parser target): visitor on,
+    listener off, package dev.uchar.regelspraak.parser. The plugin orders the lexer before the parser
+    from the parser's tokenVocab option.
+  -->
+
+  <properties>
+    <uchar.frontend>${project.basedir}/../uchar/frontends/regelspraak</uchar.frontend>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>dev.uchar.backends</groupId>
+      <artifactId>uchar-drools-backend</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.antlr</groupId>
+      <artifactId>antlr4-runtime</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.antlr</groupId>
+        <artifactId>antlr4-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals><goal>antlr4</goal></goals>
+          </execution>
+        </executions>
+        <configuration>
+          <sourceDirectory>${uchar.frontend}/grammar</sourceDirectory>
+          <libDirectory>${uchar.frontend}/grammar</libDirectory>
+          <visitor>true</visitor>
+          <listener>false</listener>
+          <arguments>
+            <argument>-package</argument>
+            <argument>dev.uchar.regelspraak.parser</argument>
+          </arguments>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>uchar-frontend-sources</id>
+            <phase>generate-sources</phase>
+            <goals><goal>add-source</goal></goals>
+            <configuration>
+              <sources><source>${uchar.frontend}/src/main/java</source></sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <excludes>
+            <exclude>**/regelspraak/model/**</exclude>
+            <exclude>**/regelspraak/ir/**</exclude>
+            <exclude>**/regelspraak/kern/**</exclude>
+          </excludes>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

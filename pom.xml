@@ -4,13 +4,12 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.github.yhavinga.regelspraak</groupId>
-  <artifactId>regelspraak-parser</artifactId>
-  <version>2.3.0-SNAPSHOT</version>
-  <packaging>jar</packaging>
-  <name>RegelSpraak v2.3.0 parser + resolver</name>
-  <description>An ANTLR 4 parser, semantic resolver, typed IR, and RegelSpraak-to-Drools transpiler implementing the RegelSpraak v2.3.0 specification.</description>
-  <url>https://github.com/yhavinga/regelspraak-java</url>
+  <groupId>dev.uchar.regelspraak.toolchain</groupId>
+  <artifactId>regelspraak-toolchain</artifactId>
+  <version>0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>RegelSpraak toolchain (distribution on uchar)</name>
+  <description>CLI, decision service and scenario runner for RegelSpraak, built from uchar (git submodule uchar/): uchar's RegelSpraak frontend and its Drools backend.</description>
   <licenses>
     <license>
       <name>Apache License, Version 2.0</name>
@@ -18,232 +17,117 @@
       <distribution>repo</distribution>
     </license>
   </licenses>
-  <developers>
-    <developer>
-      <id>yhavinga</id>
-      <name>Yeb Havinga</name>
-      <email>yhavinga@gmail.com</email>
-    </developer>
-  </developers>
   <scm>
-    <connection>scm:git:https://github.com/yhavinga/regelspraak-java.git</connection>
-    <developerConnection>scm:git:git@github.com:yhavinga/regelspraak-java.git</developerConnection>
-    <url>https://github.com/yhavinga/regelspraak-java</url>
+    <connection>scm:git:git@github.com:uchar-dev/regelspraak-toolchain.git</connection>
+    <developerConnection>scm:git:git@github.com:uchar-dev/regelspraak-toolchain.git</developerConnection>
+    <url>https://github.com/uchar-dev/regelspraak-toolchain</url>
   </scm>
 
   <!--
-    Front-end (ANTLR parser + semantic resolver) for the RegelSpraak -> Drools
-    transpiler. The jar-only Makefile is the day-to-day build (no network needed
-    beyond fetching the ANTLR + JUnit jars into lib/); this POM is the bridge to
-    the Quarkus/Maven engine this feeds, per CLAUDE.md.
+    The aggregator and parent of the distribution. This repository carries no parser, loader,
+    transpiler or runtime of its own: it builds them from the uchar submodule.
 
-    The grammars live in grammar/ (the spec-mandated location), so rather than
-    relocate them under src/main/antlr4, the build keeps the Makefile generating
-    the parser into gen/ and adds that as an extra source root — the option
-    CLAUDE.md calls out. `mvn test` therefore needs `make` + a JDK on PATH and
-    network access to Maven Central for the dependencies below.
+      uchar/backends/drools  uchar's own pom, unchanged: its versions, its tests run with this build.
+                             It is not a child of this parent, so the dependencyManagement below
+                             does not reach it.
+      uchar-frontend         uchar's RegelSpraak frontend (grammar, resolver, emitter) compiled from
+                             the submodule's source tree.
+
+    The versions below pin what the own modules link against. They must equal uchar's
+    (scripts/check-pin.sh compares them): a different Jackson, ANTLR runtime or Drools would run
+    uchar's code on versions uchar never tested it with.
   -->
+
+  <modules>
+    <module>uchar/backends/drools</module>
+    <module>uchar-frontend</module>
+  </modules>
 
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- = ANTLR4_VERSION in uchar/frontends/regelspraak/Makefile -->
     <antlr.version>4.13.2</antlr.version>
-    <junit.version>5.10.2</junit.version>
+    <!-- = drools.version, jackson.version and the junit-jupiter version in uchar/backends/drools/pom.xml -->
     <drools.version>8.44.0.Final</drools.version>
-    <!-- Declared so the skip-pin executions below can read ${skipTests}: an UNDECLARED property would
-         reach exec-maven-plugin unresolved. `-DskipTests` overrides it to true, and then the two
-         skip-pin steps stand down with the tests they would have counted (`make engine` /
-         `make scenario-test` install the artifact that way). -->
-    <skipTests>false</skipTests>
+    <jackson.version>2.21.2</jackson.version>
+    <junit.version>5.11.4</junit.version>
+    <uchar.backend.version>0-SNAPSHOT</uchar.backend.version>
   </properties>
 
-  <dependencies>
-    <dependency>
-      <groupId>org.antlr</groupId>
-      <artifactId>antlr4-runtime</artifactId>
-      <version>${antlr.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter</artifactId>
-      <version>${junit.version}</version>
-      <scope>test</scope>
-    </dependency>
-
-    <!-- The EXECUTABLE-MODEL back-end (ExecModelTranspiler) BUILDS org.drools.model.Model objects, so it
-         needs the canonical-model DSL at COMPILE scope (the DSL + Model/Rule/Global/PatternDSL interfaces).
-         This is the deliberate coupling of the model back-end to Drools; the legacy DRL-string transpiler
-         needs no Drools dep (it emits text). Compiling/firing the Model (KieBaseBuilder.createKieBaseFromModel)
-         needs drools-model-compiler + engine, which stay test-scoped (transitive via drools-engine below). -->
-    <dependency>
-      <groupId>org.drools</groupId>
-      <artifactId>drools-canonical-model</artifactId>
-      <version>${drools.version}</version>
-    </dependency>
-
-    <!-- The executable model references the built-in accumulate-function impls
-         (org.drools.core.base.accumulators.{Count,BigDecimalSum,Min,Max,CollectList}AccumulateFunction) only
-         through ExecModelTranspiler.accFn(simpleName) = Class.forName(...), resolved at MODEL-BUILD time from the
-         RUNTIME classpath — NOT a compile-time .class literal. So src/main compiles against drools-canonical-model
-         ALONE; drools-core is a RUNTIME concern of whoever FIRES the Model (the consumer engine module pulls it via
-         drools-engine). Here it is TEST-scoped so the differential test can fire the Model in-process. -->
-    <dependency>
-      <groupId>org.drools</groupId>
-      <artifactId>drools-core</artifactId>
-      <version>${drools.version}</version>
-      <scope>test</scope>
-    </dependency>
-
-    <!-- Drools is needed only to COMPILE AND RUN the generated DRL in the
-         integration test (the transpiler itself emits text); hence test scope.
-         drools-engine pulls core + compiler (KieHelper); drools-mvel supplies the
-         mvel dialect the generated rules use. -->
-    <dependency>
-      <groupId>org.drools</groupId>
-      <artifactId>drools-engine</artifactId>
-      <version>${drools.version}</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.drools</groupId>
-      <artifactId>drools-mvel</artifactId>
-      <version>${drools.version}</version>
-      <scope>test</scope>
-    </dependency>
-  </dependencies>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>dev.uchar.backends</groupId>
+        <artifactId>uchar-drools-backend</artifactId>
+        <version>${uchar.backend.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>dev.uchar.regelspraak.toolchain</groupId>
+        <artifactId>uchar-frontend</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.antlr</groupId>
+        <artifactId>antlr4-runtime</artifactId>
+        <version>${antlr.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.drools</groupId>
+        <artifactId>drools-engine</artifactId>
+        <version>${drools.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.drools</groupId>
+        <artifactId>drools-mvel</artifactId>
+        <version>${drools.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>${jackson.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.junit</groupId>
+        <artifactId>junit-bom</artifactId>
+        <version>${junit.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <build>
-    <sourceDirectory>src/main/java</sourceDirectory>
-    <testSourceDirectory>src/test/java</testSourceDirectory>
-    <plugins>
-      <!-- Generate lexer+parser from grammar/ via the Makefile (lexer-first, with
-           -package io.github.yhavinga.regelspraak.parser), exactly as the jar-only build does. -->
-      <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>exec-maven-plugin</artifactId>
-        <version>3.1.1</version>
-        <executions>
-          <execution>
-            <id>generate-parser</id>
-            <phase>generate-sources</phase>
-            <goals><goal>exec</goal></goals>
-            <configuration>
-              <executable>make</executable>
-              <arguments><argument>parser</argument></arguments>
-            </configuration>
-          </execution>
-          <!-- skip-pin (tools/check-skips.sh): een assumptie die niet houdt levert een overgeslagen test en
-               een groene poort die alleen "Skipped: 3" meldt — geen naam, geen reden. Deze twee stappen zetten
-               vlak voor de testrun een ijkpunt en tellen er direct na de surefire-rapporten op na: elke skip of
-               abort komt BIJ NAAM met reden in de poortuitvoer, en een ongepinde skip faalt de build. De
-               toegestane-skiplijst leeft in dat script. Het ijkpunt is er omdat `mvn test` zonder `clean`
-               rapporten van een vorige run laat staan: alleen verse rapporten tellen mee. -->
-          <execution>
-            <id>skip-pin-ijkpunt</id>
-            <phase>process-test-classes</phase>
-            <goals><goal>exec</goal></goals>
-            <configuration>
-              <skip>${skipTests}</skip>
-              <executable>bash</executable>
-              <arguments>
-                <argument>${basedir}/tools/check-skips.sh</argument>
-                <argument>--sentinel</argument>
-                <argument>${project.build.directory}/.skip-pin-ijkpunt</argument>
-              </arguments>
-            </configuration>
-          </execution>
-          <execution>
-            <id>skip-pin</id>
-            <phase>test</phase>
-            <goals><goal>exec</goal></goals>
-            <configuration>
-              <skip>${skipTests}</skip>
-              <executable>bash</executable>
-              <arguments>
-                <argument>${basedir}/tools/check-skips.sh</argument>
-                <argument>root</argument>
-                <argument>${project.build.directory}/.skip-pin-ijkpunt</argument>
-                <argument>${project.build.directory}/surefire-reports</argument>
-              </arguments>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-      <!-- Compile the ANTLR-generated sources in gen/ alongside src/main/java. -->
-      <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>build-helper-maven-plugin</artifactId>
-        <version>3.5.0</version>
-        <executions>
-          <execution>
-            <id>add-generated-parser</id>
-            <phase>generate-sources</phase>
-            <goals><goal>add-source</goal></goals>
-            <configuration>
-              <sources><source>${basedir}/gen</source></sources>
-            </configuration>
-          </execution>
-          <!-- The vendored uchar frontend (grammar + resolver/ir/model/emit/kern) is the ONLY
-               frontend the toolchain compiles since the dependency inversion (PRIORITIZED-DEFAULTS-EVOLUTIE §6).
-               Its Java source root is added here the same way uchar's backends/drools/pom.xml wires
-               the frontend as a foreign source root; the grammar under the same slice is generated
-               into gen/ by `make parser`. Byte-identity to the pin is guarded by scripts/uchar-conformance.sh. -->
-          <execution>
-            <id>add-vendored-frontend</id>
-            <phase>generate-sources</phase>
-            <goals><goal>add-source</goal></goals>
-            <configuration>
-              <sources><source>${basedir}/vendor/uchar-frontend/frontends/regelspraak/src/main/java</source></sources>
-            </configuration>
-          </execution>
-          <!-- src/it/java holds the Drools execution test + its fact POJOs. It is a
-               Maven-only test root (the jar-only `make test` scans only src/test/java,
-               so it stays free of any Drools dependency). -->
-          <execution>
-            <id>add-drools-it</id>
-            <phase>generate-test-sources</phase>
-            <goals><goal>add-test-source</goal></goals>
-            <configuration>
-              <sources><source>${basedir}/src/it/java</source></sources>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.2.5</version>
-        <configuration>
-          <!-- Drools' in-JVM DRL (KieHelper) build accumulates classloader/knowledge state across the many DRL
-               builds a full run makes (ExecModelDifferentialTest ~135 drlBase() + DroolsExecutionTest ~190 +
-               DrlTest KieHelper builds). Under one shared forked JVM that accumulation occasionally mis-resolves a
-               VALID generated DRL — "Only a type can be imported. …facts.Passagier resolves to a package", a mangled
-               duplicated helper name, or a NoClassDefFound — turning a gate red on a correct build (every implicated
-               test passes IN ISOLATION). Run each test CLASS in a FRESH JVM so one class's builds cannot poison
-               another's, and give the forked JVM a generous heap (the outer MAVEN_OPTS -Xmx does NOT reach the fork)
-               to remove the memory-pressure trigger. See backlog/new/20260627-drools-kiebuilder-suite-flakiness.md. -->
-          <forkCount>1</forkCount>
-          <reuseForks>false</reuseForks>
-          <argLine>-Xmx1536m</argLine>
-        </configuration>
-      </plugin>
-    </plugins>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.13.0</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.5.2</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>3.4.1</version>
+        </plugin>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>build-helper-maven-plugin</artifactId>
+          <version>3.5.0</version>
+        </plugin>
+        <plugin>
+          <groupId>org.antlr</groupId>
+          <artifactId>antlr4-maven-plugin</artifactId>
+          <version>${antlr.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
   </build>
-
-  <profiles>
-    <!-- `-Dmaven.test.skip=true` is de ZUSTERPROPERTY van `-DskipTests`: hij slaat surefire over
-         (en de testcompilatie erbij) ZONDER skipTests te zetten. Zonder deze activatie zouden de
-         skip-pin-stappen daarna een testrun natellen die niet heeft plaatsgevonden, en de build
-         falen op "geen enkel rapport is jonger dan het ijkpunt". docker/Dockerfile bouwt met
-         precies die vlag. De activatie kijkt naar de USER-property (-D of systeemproperty); een
-         maven.test.skip in een pom-properties-blok ziet Maven hier niet — dat is de bekende grens
-         van profielactivatie, en die vorm komt in dit project niet voor. -->
-    <profile>
-      <id>skip-pin-uit-bij-maven-test-skip</id>
-      <activation>
-        <property><name>maven.test.skip</name><value>true</value></property>
-      </activation>
-      <properties><skipTests>true</skipTests></properties>
-    </profile>
-  </profiles>
 </project>
