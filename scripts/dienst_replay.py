@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Replay van uchar-goldens door de JDK-dienst van deze distributie.
 
-Per golden: de dienst start op een vrije poort (DienstMain ... --poort 0) over de RegelSpraak-bron van de golden
-(bron.rgs) of, zonder bron, over het uchar-ir-v1-document zelf (ir.json); elk casebestand wordt een verzoek, het
-antwoord wordt vergeleken met de gepinde verwachtingen, zoals uchars replay (CaseRunner) vergelijkt: getallen op
+Per golden: de dienst start op een vrije poort (bin/regelspraak serve ... --poort 0) over de RegelSpraak-bron van de
+golden (bron.rgs) of, zonder bron, over het uchar-ir-v1-document zelf (ir.json); elk casebestand wordt een verzoek,
+het antwoord wordt vergeleken met de gepinde verwachtingen, zoals uchars replay (CaseRunner) vergelijkt: getallen op
 waarde, een enumeratie op genormaliseerde naam, een inconsistentie op regel en onderwerp. De descriptor maakt dit
 script zelf, of neemt hem aan (--descriptor): één entrypoint 'replay' dat alle vormen van het document draagt en
 elk attribuut en kenmerk teruggeeft dat een verwachting leest.
@@ -29,7 +29,7 @@ import time
 import urllib.error
 import urllib.request
 
-DIENST = "dev.uchar.regelspraak.toolchain.service.http.DienstMain"
+REGELSPRAAK = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "bin", "regelspraak")
 OPSTARTTIJD = 120  # seconden; een dienst die dan nog geen poort noemt, is een FAIL
 VORMLIJSTEN = ("rules", "objectCreations", "allocations", "consistencies", "uniquenesses", "factCreations",
                "prioritizedDefaults")
@@ -228,12 +228,12 @@ class Dienst:
     niet opkomt. Het kindproces schrijft zijn uitvoer in een eigen bestandsbeschrijving; dit script leest het bestand
     via een andere, zodat lezen de schrijfpositie van het kind niet verzet."""
 
-    def __init__(self, classpath, descriptor_pad, bron_pad, werkmap):
+    def __init__(self, descriptor_pad, bron_pad, werkmap):
         self.uit_pad = os.path.join(werkmap, "dienst.out")
         self.fout_pad = os.path.join(werkmap, "dienst.err")
         self.uit = open(self.uit_pad, "w")
         self.fout = open(self.fout_pad, "w")
-        self.proces = subprocess.Popen(["java", "-cp", classpath, DIENST, descriptor_pad, bron_pad,
+        self.proces = subprocess.Popen([REGELSPRAAK, "serve", descriptor_pad, bron_pad,
                                         "--host", "127.0.0.1", "--poort", "0"],
                                        stdout=self.uit, stderr=self.fout, text=True)
         self.poort = None
@@ -287,7 +287,7 @@ def lees_json(tekst):
     return json.loads(tekst, parse_float=decimal.Decimal, parse_int=decimal.Decimal)
 
 
-def speel(golden, map_, classpath, descriptor_pad=None):
+def speel(golden, map_, descriptor_pad=None):
     """De uitkomstregel van één golden."""
     try:
         document = json.load(open(os.path.join(map_, "ir.json")))
@@ -310,7 +310,7 @@ def speel(golden, map_, classpath, descriptor_pad=None):
                 pad = "/replay"
             else:
                 pad = "/" + json.load(open(descriptor_pad))["entrypoints"][0]["pad"]
-            with Dienst(classpath, descriptor_pad, bron, werkmap) as dienst:
+            with Dienst(descriptor_pad, bron, werkmap) as dienst:
                 for naam, v, c in verzoeken:
                     status, tekst = dienst.vraag("POST", pad, v)
                     if status == 400:
@@ -334,7 +334,6 @@ def speel(golden, map_, classpath, descriptor_pad=None):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--classpath", required=True)
     ap.add_argument("--corpus", required=True, help="de map met de goldens (uchar/corpus/golden)")
     ap.add_argument("--werkers", type=int, default=4)
     ap.add_argument("--descriptor", action="append", default=[], help="<golden>=<pad>: een eigen descriptor")
@@ -342,7 +341,7 @@ def main():
     a = ap.parse_args()
     eigen = dict(d.split("=", 1) for d in a.descriptor)
     with concurrent.futures.ThreadPoolExecutor(max_workers=a.werkers) as pool:
-        taken = [pool.submit(speel, g, os.path.join(a.corpus, g), a.classpath, eigen.get(g)) for g in a.goldens]
+        taken = [pool.submit(speel, g, os.path.join(a.corpus, g), eigen.get(g)) for g in a.goldens]
         for t in taken:
             golden, status, detail = t.result()
             print(f"{golden}\t{status}\t{' '.join(detail.split())}", flush=True)

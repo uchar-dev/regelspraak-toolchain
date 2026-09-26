@@ -3,11 +3,11 @@
 #
 # De set is die van uchars gate 12 (uchar/scripts/check-drools.sh): elke golden met een casebestand die niet in
 # EXPECTED_CHANNEL staat, EXPECTED_PLAYED stuks. Die goldens spelen in uchar door dezelfde facade die de dienst
-# gebruikt; hier gaan ze door de dienst zelf: per golden start de JDK-dienst (DienstMain uit service/, op de
-# classpath die de reactor maakt, op een vrije poort) over de bron.rgs van de golden, of zonder bron over het
-# uchar-ir-v1-document, met één entrypoint dat alle vormen draagt; elk casebestand wordt een verzoek en het
-# antwoord moet elke gepinde verwachting geven (scripts/dienst_replay.py). Zo toont de poort dat verzoekmapping,
-# vuren en antwoord van de dienst zeggen wat uchars replay zegt.
+# gebruikt; hier gaan ze door de dienst zelf: per golden start de JDK-dienst (bin/regelspraak serve, uit de jar die
+# de reactor maakt, op een vrije poort) over de bron.rgs van de golden, of zonder bron over het uchar-ir-v1-document,
+# met één entrypoint dat alle vormen draagt; elk casebestand wordt een verzoek en het antwoord moet elke gepinde
+# verwachting geven (scripts/dienst_replay.py). Zo toont de poort dat verzoekmapping, vuren en antwoord van de dienst
+# zeggen wat uchars replay zegt.
 #
 # Kanalen, zoals gate 12 ze telt:
 #   PLAYED   de standaard: elke golden die hier niet staat, moet spelen;
@@ -95,14 +95,13 @@ done < <(find uchar/corpus/golden -name ir.json | sort)
   || fail "${#set_goldens[@]} goldens afgeleid, uchars gate 12 speelt er $uchar_played: de afleiding volgt $DROOLS niet meer"
 
 # --- de dienst ---------------------------------------------------------------------------------------------
+# De jar van bin/regelspraak, vers gebouwd vóór de diensten tegelijk starten, zodat geen van hen hem zelf bouwt.
 log=$(mktemp); trap 'rm -f "$log"' EXIT
-mvn -B -o -q -DskipTests package dependency:build-classpath -Dmdep.includeScope=runtime \
-    -Dmdep.outputFile="$PWD/service/target/runtime-classpath.txt" -pl service -am >"$log" 2>&1 \
+mvn -B -o -q -DskipTests package -pl service -am >"$log" 2>&1 \
   || { tail -20 "$log" >&2; fail "de dienst bouwt niet"; }
-CP="$PWD/service/target/classes:$(cat service/target/runtime-classpath.txt)"
 
 begin=$(date +%s)
-uitvoer=$(python3 scripts/dienst_replay.py --classpath "$CP" --corpus uchar/corpus/golden \
+uitvoer=$(python3 scripts/dienst_replay.py --corpus uchar/corpus/golden \
     --werkers "${REPLAY_WERKERS:-4}" "${set_goldens[@]}") || fail "de replay-driver faalde"
 duur=$(( $(date +%s) - begin ))
 

@@ -4,9 +4,9 @@
 # ww-herleving-inkomen-rgs, jutterswet-uitsluiting-rgs en jutterswet-nestkenmerk-rgs zijn RegelSpraak-tweelingen
 # van hand geschreven uchar-goldens in het uitzonderingsdialect: hun basisregels met uitzonderingen worden
 # defaultsgroepen (uchars IR-SPEC ch. 7), een vorm die een build zonder de zijtafels van uchars lader stil weglaat.
-# Deze poort start per tweeling de JDK-dienst (DienstMain uit service/, op de classpath die de reactor maakt, op een
-# vrije poort) over de bron.rgs van de golden met een handgeschreven descriptor (scripts/tweelingen/), zoals een
-# gebruiker de dienst inzet: benoemde entrypoints, een scope die de regels en de defaultsgroep bij naam noemt. Elk
+# Deze poort start per tweeling de JDK-dienst (bin/regelspraak serve, uit de jar die de reactor maakt, op een vrije
+# poort) over de bron.rgs van de golden met een handgeschreven descriptor (scripts/tweelingen/), zoals een gebruiker
+# de dienst inzet: benoemde entrypoints, een scope die de regels en de defaultsgroep bij naam noemt. Elk
 # casebestand wordt een verzoek; het antwoord moet elke gepinde verwachting geven (scripts/dienst_replay.py, dat de
 # dienst ook opruimt). Uitkomst per tweeling: PLAYED met het aantal cases, anders faalt de poort.
 #
@@ -30,12 +30,10 @@ EXPECTED_CASES=18   # 2026-09-26: 10 + 4 + 4, de som van de pins hierboven
 
 [ ${#TWEELINGEN[@]} -gt 0 ] || fail "geen tweeling om te spelen (een lege set is een faal)"
 
-# De dienst en zijn runtime-classpath, vers gebouwd: de classpath wijst naar de jars van de reactor.
+# De jar van bin/regelspraak, vers gebouwd vóór de diensten tegelijk starten, zodat geen van hen hem zelf bouwt.
 log=$(mktemp); trap 'rm -f "$log"' EXIT
-mvn -B -o -q -DskipTests package dependency:build-classpath -Dmdep.includeScope=runtime \
-    -Dmdep.outputFile="$PWD/service/target/runtime-classpath.txt" -pl service -am >"$log" 2>&1 \
+mvn -B -o -q -DskipTests package -pl service -am >"$log" 2>&1 \
   || { tail -20 "$log" >&2; fail "de dienst bouwt niet"; }
-CP="$PWD/service/target/classes:$(cat service/target/runtime-classpath.txt)"
 
 goldens=(); descriptors=()
 for t in "${TWEELINGEN[@]}"; do
@@ -44,7 +42,7 @@ for t in "${TWEELINGEN[@]}"; do
   goldens+=("$g"); descriptors+=(--descriptor "$g=scripts/tweelingen/$g.dienst.json")
 done
 
-uitvoer=$(python3 scripts/dienst_replay.py --classpath "$CP" --corpus uchar/corpus/golden --werkers 3 \
+uitvoer=$(python3 scripts/dienst_replay.py --corpus uchar/corpus/golden --werkers 3 \
     "${descriptors[@]}" "${goldens[@]}") || fail "de replay-driver faalde"
 echo "$uitvoer" | sed 's/^/  /'
 
