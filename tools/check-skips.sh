@@ -66,10 +66,6 @@ cd "$(dirname "$0")/.."
 # datum is de dag waarop de pin is gezet. Voeg hier alleen BEWUST iets toe.
 # ---------------------------------------------------------------------------
 TOEGESTANE_SKIPS=(
-"root|io.github.yhavinga.regelspraak.CorpusVuurTest#differential_firing_walk_over_de_corpus|de normatieve v2.3.0-specificatie is extern (© Belastingdienst, niet meegeleverd) en lokaal niet uitgepakt, dus de eruit geëxtraheerde corpusmap examples/spec-main (gitignored) bestaat niet|2026-09-16"
-"root|io.github.yhavinga.regelspraak.DrlTest#corpus_drl_bevat_geen_enkele_function_definitie|de normatieve v2.3.0-specificatie is extern (© Belastingdienst, niet meegeleverd) en lokaal niet uitgepakt, dus de eruit geëxtraheerde corpusmap examples/spec-main (gitignored) bestaat niet|2026-09-16"
-"root|io.github.yhavinga.regelspraak.UcharLetReplayTest#let_dragende_uchar_goldens_replayen_met_de_uchar_pins|de replay wil een uchar-checkout: zonder -Duchar.dir=<pad> (of UCHAR_DIR) is er geen goldenverzameling om tegen te draaien|2026-09-16"
-"jar|io.github.yhavinga.regelspraak.DrlTest#corpus_drl_bevat_geen_enkele_function_definitie|de normatieve v2.3.0-specificatie is extern (© Belastingdienst, niet meegeleverd) en lokaal niet uitgepakt, dus de eruit geëxtraheerde corpusmap examples/spec-main (gitignored) bestaat niet|2026-09-16"
 )
 
 # ---------------------------------------------------------------------------
@@ -86,8 +82,6 @@ TOEGESTANE_SKIPS=(
 # de poort — het make-doel en de pom-binding zijn de poort, niet de losse mvn.
 # ---------------------------------------------------------------------------
 VLOEREN=(
-"root|980|de volledige root-suite, src/test plus src/it, gemeten op de kaartcommit|2026-09-16"
-"jar|553|de jar-only resolversuite via de junit-console, gemeten op de kaartcommit|2026-09-16"
 "engine|115|de exec-model-engineconsument, gemeten op de kaartcommit|2026-09-16"
 "service|167|de beslisdienst (JDK-adapter), gemeten op de kaartcommit|2026-09-16"
 "service-quarkus|33|de Quarkus-adapter, gemeten op de kaartcommit|2026-09-16"

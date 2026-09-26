@@ -12,10 +12,6 @@ and **[docs/](docs/)** for the architecture and runbooks.
 
 ## What it does
 
-- **Parse** — an ANTLR 4.13.2 lexer + parser authored from the v2.3.0 spec;
-  since the dependency inversion it is consumed from uchar's frontend as the
-  byte-identical vendored slice under `vendor/uchar-frontend/`, pinned by
-  `SPEC_REV`.
 - **Resolve & typecheck** — a visitor builds a typed IR and enforces the
   typeringen matrix (datatypes, units, arity, name resolution).
 - **Transpile** — one semantic core, two thin Drools back-ends: an
@@ -26,8 +22,7 @@ and **[docs/](docs/)** for the architecture and runbooks.
   exactly the beans a resolved model implies; `ContractValidator` fails fast on
   drift.
 - **Author-side scenariotoetsen** — a rule analyst writes rules *and* expected
-  outcomes in one `.rgs` surface and gets machine-checkable PASS/FAIL per scenario
-  (contract: `docs/SCENARIOTOETSEN.md`).
+  outcomes in one `.rgs` surface and gets machine-checkable PASS/FAIL per scenario.
 - **Explain** — `--uitleg` (CLI) / `?uitleg=true` (service) attaches a plain-NL
   uitleg-verhaal: one sentence per assigned/withheld kenmerk, justified with the
   evaluated operandwaarden read from the IR.
@@ -42,20 +37,18 @@ and **[docs/](docs/)** for the architecture and runbooks.
 
 | Path | Role |
 |------|------|
-| `vendor/uchar-frontend/` | the byte-identical vendored slice of uchar's frontend at the `SPEC_REV` pin: `grammar/` (`RegelSpraakLexer.g4` + `RegelSpraak.g4`, lexer first), `resolver/` (typed IR builder + typeringen), `ir/` (the resolved AST both back-ends read), `model/` (the domain model), `emit/` and `kern/`. Refreshed on every pin bump — edit upstream in uchar, never here |
-| `src/` | the toolchain's own half of the `regelspraak-parser` module — `transpiler/` (shared `kern/` + both back-ends: `DrlTranspiler` and `model/ExecModelTranspiler`), `runtime/` (`RegelSpraakRuntime`, the one rs* implementation), `schema/` (fact-model generator + `ContractValidator`), `graaf/`, `cli/`, plus the toolchain-local scenariotoetsen harness (`resolver/ScenarioResolver`, `ir/ResolvedScenario`); the parser, resolver, IR and domain model come from the vendored slice above |
 | `engine/` | `regelspraak-engine` — fires the exec-model `Model` over facts; hosts the scenariotoetsen runner |
 | `service/` | `regelspraak-service` — zero-dependency JDK-`HttpServer` decision service (`BeslisserKern`, OpenAPI emitter) |
 | `service-quarkus/` | `regelspraak-service-quarkus` — opt-in Quarkus HTTP adapter over `BeslisserKern` (SmallRye health, config injection) |
 | `examples/` | `toka/` (the TOKA casus, `toka-01..47` + `toka.dienst.json`), `beslistabel/` (§12 decision tables), `toka-reconciliatie/` (casus-omissie companions), `toka-scenarios/` (the golden scenariotoetsen + their `manifest`) |
 | `specification/` | derived spec notes (ANTLR mapping + conversion findings); the normative v2.3.0 spec is external (© Belastingdienst) — see `specification/v2.3.0/README.md` |
-| `docs/` | `ENGINE.md` (engine + deploy runbook), `TRANSPILER-ARCHITECTURE.md` (core + two back-ends), `SCENARIOTOETSEN.md` (the analyst-toets contract), `grammar-divergences.md` (spec reconciliations), `ANTLR-HOWTO.md` (grammar workflow) |
+| `docs/` | `ENGINE.md` (engine + deploy runbook), `TRANSPILER-ARCHITECTURE.md` (core + two back-ends), `grammar-divergences.md` (spec reconciliations), `ANTLR-HOWTO.md` (grammar workflow) |
 | `docker/` | the **beslisservice** production image (`Dockerfile`, built via `make image`) — see `docker/README.md` |
 | `helm/` | `beslisservice/` Helm chart (dev/prod value overlays) |
 | `htmldocs/` | the static toolchain docs page, published to the shared VM via `make docs-deploy` — ownership split with the sibling repos in `htmldocs/README.md` |
 | `deployment/` | `transpiler-docs/deploy-transpiler-docs.sh` (rsync of `htmldocs/transpiler/` to the VM; dry-run supported) |
 | `scripts/` | `kind-smoke.sh` (in-cluster smoke gates), `peildatum-vintage-check.sh` (advisory) |
-| `tools/` | `Parse.java` (grammar smoke harness), corpus extraction, CSV→Beslistabel converter |
+| `tools/` | CSV→Beslistabel converter |
 | `Makefile` | the build entry point (`make help`) |
 
 **The root `pom.xml` is NOT an aggregator.** It builds only `regelspraak-parser`;
@@ -71,13 +64,10 @@ with `make help`.
     make scenario-test                                          # the golden TOKA set (--manifest, one JVM)
 
 Author rules and their expected outcomes in one surface, no Java. Add `--uitleg`
-to the CLI for the plain-NL uitleg-verhaal per scenario. See
-`docs/SCENARIOTOETSEN.md`.
+to the CLI for the plain-NL uitleg-verhaal per scenario.
 
 **Developer** — build, test, embed:
 
-    make test                    # jar-only parser/resolver JUnit gate (offline, no Maven)
-    mvn -o clean verify          # full differential suite (needs Drools deps)
     make engine                  # build + test the shippable engine consumer
 
 Embed the engine via `RegelSpraakEngine.compile(source)` → `newSession()` →

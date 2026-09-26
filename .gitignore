@@ -1,12 +1,5 @@
-# ANTLR tool jar — re-fetch with `make antlr-jar`
-lib/
-
-# ANTLR-generated sources and compiled classes
-gen/
 out/
 *.class
-*.tokens
-*.interp
 
 # Maven (added later, when the JVM app code lands)
 target/
@@ -23,10 +16,6 @@ specification/*/_work/
 
 # Personal, uncommitted Claude Code overrides
 .claude/settings.local.json
-
-# Regenerable spec-example extractions (use tools/extract_corpus.py)
-examples/spec-main/
-examples/spec-antlr/
 
 # Local/internal working notes — never commit
 /alef-comparison/
