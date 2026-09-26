@@ -1,0 +1,13 @@
+{
+  "dienst": { "naam": "Jutterswet vrijstelling", "versie": "tweeling" },
+  "entrypoints": [
+    {
+      "naam": "vrijstelling",
+      "pad": "vrijstelling",
+      "scope": { "regelnamen": ["vrijstelling van een jutter"] },
+      "invoer": ["Jutter"],
+      "uitvoer": ["Jutter:vrijgesteld"]
+    }
+  ],
+  "parameters": {}
+}

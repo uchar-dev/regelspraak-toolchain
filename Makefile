@@ -4,7 +4,8 @@
 # CLI targets build the toolchain module offline, record its runtime classpath, and run the CLI on it.
 
 .DEFAULT_GOAL := help
-.PHONY: help check-pin verify classpath drl facts graaf ir scenario-test csv-beslistabel clean image kind-smoke
+.PHONY: help check-pin verify check-tweelingen check-dienst-replay poorten classpath drl facts graaf ir scenario-test \
+        csv-beslistabel clean image kind-smoke
 
 MVN      ?= mvn
 OUT_DIR  := out
@@ -14,6 +15,9 @@ TOOLCHAIN_CP = toolchain/target/classes:$$(cat $(CP_FILE))
 help:
 	@echo "  make check-pin                       Verify the uchar submodule is initialised, clean, and version-aligned"
 	@echo "  make verify                          check-pin, then mvn -B -o verify over the whole reactor"
+	@echo "  make check-tweelingen                 The three dialect twins fire over HTTP with all their case expectations"
+	@echo "  make check-dienst-replay              Every golden uchar's gate 12 plays, replayed through the service"
+	@echo "  make poorten                          verify, both service gates and the golden TOKA manifest"
 	@echo "  make drl  FILE=<input>               The DRL text of uchar's DRL-text branch on stdout (exit 3 if uchar refuses)"
 	@echo "  make facts                           Generate the TOKA fact-model beans and javac them (out/facts/)"
 	@echo "  make graaf FILE=\"a.rgs …\" [OUT=… MMD=1]  Emit the dataflow regelgraaf (regels ↔ gegevens) as HTML (or bare Mermaid with MMD=1)"
@@ -36,6 +40,18 @@ check-pin:
 # The whole reactor offline: uchar's backend suite, the toolchain core, the service and the Quarkus adapter.
 verify: check-pin
 	$(MVN) -B -o verify
+
+# The service gates: each starts the JDK service itself (on a free port) and replays uchar case files over HTTP.
+check-tweelingen:
+	bash scripts/check-tweelingen.sh
+
+check-dienst-replay:
+	bash scripts/check-dienst-replay.sh
+
+# Everything that calls this distribution green: the pin, the reactor with its per-module floors, the two service
+# gates and the golden TOKA manifest.
+poorten: verify check-tweelingen check-dienst-replay
+	$(MAKE) --no-print-directory scenario-test
 
 # Build the toolchain module and what it needs from uchar, without tests, and record its runtime classpath.
 classpath:
