@@ -41,21 +41,44 @@ a type error and a construct uchar does not lower both surface as `RegelSpraakCo
 ## The decision service
 
 `service/` (`DienstMain`, the JDK `HttpServer`) and `service-quarkus/` (the Quarkus adapter) serve a JSON
-descriptor over the same core (`BeslisserKern`). Per entry point the core resolves the rule-less prelude files plus
-the entry point's scoped rule files and builds them through uchar, so each entry point has its own KieBase and its
-own bean class loader.
+descriptor over the same core (`BeslisserKern`). Its source is a set of `.rgs` files, resolved together into one
+model, or one `uchar-ir-v1` document (a `.json` file) that uchar's loader reads. Per entry point the core keeps the
+forms its scope names — the rules, decision-table rows, defaults groups and other forms of its rule names and rule
+groups (`VormIndex`, then `CaseEmitter.metScope`, the lowering of uchar's scenario layer) — and builds that document
+through uchar, so each entry point has its own KieBase and bean class loader and a form outside its scope does not
+decide whether it runs. A `uchar-ir-v1` document is served whole: a scope drops forms by rebuilding the model it
+came from, which a document without its source does not have, so a scope that does not carry every form refuses the
+start.
 
 ```
-java -cp … dev.uchar.regelspraak.toolchain.service.http.DienstMain <descriptor.dienst.json> <bron.rgs…> \
-    [--allow-markers] [--poort N]
+java -cp … dev.uchar.regelspraak.toolchain.service.http.DienstMain <descriptor.dienst.json> <bron.rgs…> | <document.json> \
+    [--allow-markers] [--host H] [--poort N]
 ```
 
-- `POST /<pad>` per entry point; `?uitleg=true` adds the verbaliser's sentences to the answer.
-- `GET /info`: the entry points with their coverage (`dekking`) and markers, the parameter defaults, the loaded
-  parameter sets and the period-coverage warnings.
-- A construct uchar's exec-model branch does not lower refuses startup (exit 3). With `--allow-markers`
-  (`ALLOW_MARKERS=true` for Quarkus) the service starts, lists the construct under the entry point's markers,
-  and answers every request to that entry point with 503.
+- `POST /<pad>` per entry point; `?uitleg=true` adds the verbaliser's sentences to the answer. The inline `rollen`
+  of a request are written as uchar's replay writes a case's `roles` (`RolSchrijver`: by the role's written name,
+  the far field of a one-to-one relation too, a to-many role through the far end); an enumeration value names a
+  declared value as uchar compares declared names (case and spacing aside), and keeps its own spelling.
+- The answer lists per instance the selected attributes and characteristics, `inconsistenties` (the rule names of
+  the failed consistency checks) and `inconsistentieDetails` (the same, each with its `onderwerp`: the request id
+  of the instance the check is about). A 400 names per violation its `veld`, its `soort` and its message; `soort`
+  `NIET_ONDERSTEUND` marks a request form the service does not carry (a timeline value, a characteristic with
+  periods, a dimensioned attribute).
+- `GET /info`: per entry point whether it is `uitvoerbaar`, its `dekking` (the exec-model branch's verdict per form
+  of its document, defaults groups included), its markers and, when uchar does not carry it, uchar's sentence as
+  `weigering`; the parameter defaults, the loaded parameter sets and the period-coverage warnings.
+- What uchar does not carry — a refusal of its emitter, loader or backend (a construct the exec-model branch does
+  not lower among them), or a scoped rule name that yields no form in uchar's model — makes the entry point a
+  marker. Strict, the service refuses to start (exit 3, `MARKER: …` with uchar's sentence). With `--allow-markers`
+  (`ALLOW_MARKERS=true` for Quarkus) it starts, and every request to that entry point gets 503 with
+  `{"status": "MARKER", "fout": …, "reden": <uchar's sentence>, "markers": […]}`: an answer without the construct
+  would be an answer to another rule set.
+- `PLAYGROUND=true` binds the dev-only workbench (`GET /playground`, `POST /playground/analyse`). A source with a
+  parse or resolver error gets its diagnostics and nothing else. A clean source gets the `uchar-ir-v1` document,
+  the exec-model verdict (`uitvoerbaar` with the `dekking`, or uchar's `weigering`), the DRL of the DRL-text branch
+  as a view (not the verdict), uchar's rule graph as Mermaid (`graaf`) and as `graafJson`
+  (`{nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}`), and per scenario uchar's report with its `trace`
+  and `uitleg`.
 
 **peildatum-contract (multi-vintage deploys).** When the descriptor names a parameterset sidecar whose values
 carry more than one vintage, the service selects each parameter's vintage against ONE date authority: the request

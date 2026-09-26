@@ -36,15 +36,20 @@ The reactor needs no `mvn install`. The first build on a machine needs the netwo
 (`mvn -B -DskipTests package`), for the plugins and dependencies the local Maven repository lacks, the
 antlr4-maven-plugin among them; after that, build offline.
 
-Green means both commands pass. Each own module ends its tests with the skip-pin step (`tools/check-skips.sh`):
+Green means `make poorten` passes: check-pin, `mvn -B -o verify`, the two service gates and the golden TOKA
+manifest (README, "The gates"). Each own module ends its tests with the skip-pin step (`tools/check-skips.sh`):
 every skipped or aborted test is printed by name and fails the build unless it is pinned with a reason, a test
 class that produced no test case fails, and each module is held to a floor (`VLOEREN` in the script). Floors are
 lower bounds: growth needs no bump; a deliberate removal lowers the floor in the same commit.
 
-Further checks, run when their area changes: `make scenario-test` (the golden TOKA scenario manifest; the scenarios
-uchar's scenario resolver refuses are named with their reason in `GoldenOverHttpTest`) and
-`bash tools/testdata/run_tests.sh` after `make classpath` (the CSV → Beslistabel converter). `make image` and
-`make kind-smoke` need Docker and run on the host only.
+The service gates (`scripts/check-tweelingen.sh`, `scripts/check-dienst-replay.sh`) start the JDK service
+themselves and replay uchar's case files over HTTP; the replay takes its set from uchar's gate 12 and pins the
+number that plays (an equality) beside a reason-carrying list of the goldens that do not, which fails when stale.
+`make scenario-test` runs the golden TOKA manifest; the scenarios uchar's scenario resolver refuses are listed with
+a fragment of the refusal in `scripts/toka-manifest-uitsluitingen.txt`.
+
+Further checks, run when their area changes: `bash tools/testdata/run_tests.sh` after `make classpath` (the CSV →
+Beslistabel converter). `make image` and `make kind-smoke` need Docker and run on the host only.
 
 ## Working
 
