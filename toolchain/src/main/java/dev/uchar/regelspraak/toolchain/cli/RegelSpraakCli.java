@@ -37,7 +37,7 @@ public final class RegelSpraakCli {
      *  discipline — an unresolvable model writes NOTHING under outdir — is testable as the REAL CLI path. */
     public static int factsModus(java.util.List<String> rest) throws java.io.IOException {
         // --facts <outdir> <file.rgs>: after --facts is consumed, the FIRST remaining arg is the outdir,
-        // the SECOND the source. (--allow-markers is meaningless here but tolerated, already removed.)
+        // the SECOND the source.
         if (rest.size() < 2) { System.err.println("usage: RegelSpraakCli --facts <outdir> <file.rgs>"); return 2; }
         java.nio.file.Path outdir = java.nio.file.Path.of(rest.get(0));
         RegelSpraakModel mf = Resolver.resolve(java.nio.file.Files.readString(java.nio.file.Path.of(rest.get(1))),

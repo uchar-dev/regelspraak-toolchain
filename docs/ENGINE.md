@@ -1,126 +1,72 @@
-# Shipping the RegelSpraak → Drools executable-model engine
+# The engine facade and the decision service
 
-The executable-model back-end (`ExecModelTranspiler`) is the **shippable** path: it turns a resolved
-RegelSpraak v2.3.0 model into an `org.drools.model.Model` (programmatic rules, pure-Java lambdas),
-which a Drools runtime fires directly — no DRL text, no MVEL interpreter. (`DrlTranspiler` is retained
-only as the differential-test oracle + a debug emitter.)
-
-Shipping is split into **two modules** along the build-vs-fire boundary, so the transpiler stays lean
-and engine-free while the consumer carries the runtime.
-
-## The two-module split
-
-| Module | Role | Drools dependency (scope) |
-|--------|------|---------------------------|
-| `regelspraak-parser` (repo root `pom.xml`) | parser + resolver + **builds** the `Model` | `drools-canonical-model` — **compile**; `drools-core`/`drools-engine`/`drools-mvel` — **test** (differential only) |
-| `regelspraak-engine` (`engine/pom.xml`) | **fires** the `Model` over facts | `regelspraak-parser` + `drools-engine` — **compile/runtime** |
-
-`drools-canonical-model` is a pure-Java authoring API with **zero** compile-time engine dependencies, so
-the transpiler module compiles against it alone (`mvn dependency:tree` shows it as the only compile-scope
-Drools artifact). The built-in accumulate functions (`org.drools.core.base.accumulators.*`, drools-core)
-are referenced via `ExecModelTranspiler.accFn(name) = Class.forName(...)`, resolved at **model-build time**
-from the runtime classpath — so they impose no compile-time `drools-core` coupling. (That FQN is
-drools-core-internal and version-pinned to Drools 8.44; it relocates to `org.drools.base.accumulators` on
-later Drools. It is centralized behind one constant with a fail-fast guard.)
-
-`drools-engine` is the single aggregator that, at 8.44, transitively brings everything the consumer needs
-to `createKieBaseFromModel(model).newKieSession()`: `drools-core`, `drools-model-compiler`,
-`drools-kiesession`, and the wiring modules. **Do not add `drools-mvel`** — it is the deprecated MVEL-
-interpreter path; the executable model evaluates constraints as compiled Java lambdas.
+Everything here fires through uchar: a RegelSpraak source is resolved by uchar's frontend, emitted as a
+`uchar-ir-v1` document, and built by uchar's Drools backend on its exec-model branch
+(`DroolsBackend.build(document, branch)`, called from `UcharBouw`). That build generates the fact beans from the
+model, compiles them into a class loader of their own, checks the bean contract and lowers every construct with
+every side table the loader returns. It refuses a model with a construct the branch does not lower, so no KieBase
+here lacks a rule without saying so.
 
 ## Using the engine
 
 ```java
-RegelSpraakEngine engine = RegelSpraakEngine.compile(regelSpraakSource);   // resolve → exec-model → KieBase
+RegelSpraakEngine engine = RegelSpraakEngine.compile(regelSpraakSource);   // resolve → emit → uchar's build
+Object persoon = engine.nieuw("Persoon");                                  // a generated fact bean
+RegelSpraakRuntime.set(persoon, "leeftijd", new BigDecimal(16));
 try (RegelSpraakEngine.Session s = engine.newSession()) {
     s.insert(persoon)
      .setGlobal("volwassenleeftijd", new BigDecimal(18))
      .fire();                                  // rules mutate persoon in place
 }
-Collection<Inconsistentie> fouten = /* a fresh session */ s.facts(Inconsistentie.class);
 ```
 
-The fact classes the Model references must be on the classpath in package `dev.uchar.regelspraak.facts`
-(Pascal-case class, `getX`/`setX` per attribute, `isX`/`setX` per kenmerk, plus `Segment`/`Inconsistentie`
-carriers). You do **not** hand-write them: `RegelSpraakCli --facts <outdir>` (or `make facts` for the TOKA casus)
-**generates** exactly the beans a resolved model implies into that package, and `RegelSpraakEngine.compile`
-runs `ContractValidator` at build time to enforce the same contract — a missing or mistyped member fails fast
-with the full list of violations rather than a reflective abort mid-fire. Generate the beans once from the rule
-source, keep them on the engine's classpath, and let the validator guarantee they still match after any rule change.
-
-## The DRL oracle's classpath contract
-
-Since the single-runtime refactor the generated DRL text contains **no `function` bodies**: every helper arrives as
-`import function dev.uchar.regelspraak.runtime.RegelSpraakRuntime.<naam>;`, so **the `regelspraak-parser`
-artifact must be on the classpath that compiles the DRL** (the test suites already satisfy this — the
-runtime lives in the same artifact as the transpiler). The one rs* implementation is
-`RegelSpraakRuntime`; the DRL and exec back-ends now call the same bodies, so the differential suite
-compares wiring, not re-implementations.
-
-A §9.8 dagsoortdefinitie no longer becomes a generated DRL function either: the shared
-`kern.Dagsoorten` compiler produces a `Predicate<LocalDate>` that the DRL declares as a
-`global java.util.function.Predicate rsDagsoort_<Naam>;`. A session over such DRL must supply those
-globals from `DrlTranspiler.build(model).dagsoortGlobalen()` — exactly like the parameter globals.
-(The exec model bakes the same predicates into its lambdas; its sessions need nothing extra.)
+The facts are instances of the generated beans (`nieuw`, `beanLoader()`), in uchar's package
+`dev.uchar.regelspraak.facts`: the KieBase is built against those classes, so an object of a same-named class from
+another class loader never matches a rule. `newSession(peildatum)` sets the `rekendatum` global;
+`newSession(peildatum, parametersets)` also selects each parameter's vintage on that one date. `compile` throws
+`RegelSpraakCompileException` for resolver errors and for a model uchar refuses. `RegelSpraakCli --facts <outdir>`
+(or `make facts` for the TOKA casus) writes the beans a model implies as source, for a consumer that wants to see
+them.
 
 ## Building
 
 ```
-make engine          # mvn install (transpiler, canonical-model only) + mvn -f engine/pom.xml test
+make verify          # check-pin, then mvn -B -o verify over the whole reactor
+mvn -B -o verify -pl toolchain -am      # only the toolchain core and what it needs from uchar
 ```
 
-`RegelSpraakEngineTest` is the end-to-end proof: a rule compiles, fires over real facts, and mutates them;
-a type error surfaces as `RegelSpraakCompileException`.
+`RegelSpraakEngineTest` is the end-to-end proof: a rule compiles, fires over generated beans, and mutates them;
+a type error and a construct uchar does not lower both surface as `RegelSpraakCompileException`.
 
-## Deploying the beslisservice (container + Helm + kind) — HOST only
+## The decision service
 
-The decision service (`service/`, `DienstMain`) ships as a container image with a Helm chart;
-everything below needs Docker, so it runs on the host.
+`service/` (`DienstMain`, the JDK `HttpServer`) and `service-quarkus/` (the Quarkus adapter) serve a JSON
+descriptor over the same core (`BeslisserKern`). Per entry point the core resolves the rule-less prelude files plus
+the entry point's scoped rule files and builds them through uchar, so each entry point has its own KieBase and its
+own bean class loader.
 
 ```
-make image  [TAG=dev] [DESCRIPTOR_SRC=examples/toka/toka.dienst.json]
-                     # multi-stage build (docker/Dockerfile): stage 1 chains
-                     # mvn install parser → engine → service (no aggregator pom, so no -pl/-am),
-                     # stage 2 = JRE 21 + service.jar + the baked TOKA rule set & descriptor.
-docker run --rm -p 8080:8080 beslisservice:dev          # POST /<pad> per entrypoint, GET /info
-make kind-smoke      # scripts/kind-smoke.sh: kind cluster (create/reuse) → kind load →
-                     # helm install → H2 golden oracle → H3 fail-fast pins → H4 rollout pin
+java -cp … dev.uchar.regelspraak.toolchain.service.http.DienstMain <descriptor.dienst.json> <bron.rgs…> \
+    [--allow-markers] [--poort N]
 ```
 
-Container contract (see `docker/entrypoint.sh`): env `DESCRIPTOR`, `BRONNEN_MANIFEST` (file
-listing the `.rgs` sources in order), `POORT`, `ALLOW_MARKERS`. Defaults serve the baked TOKA demo; mount
-a volume at `/app/rules` and override the two paths to serve any other rule set from the same image.
-The image also bakes `/app/rules/marker/` — a self-contained marker-scoping fixture for the fail-fast gate.
-
-Helm chart `helm/beslisservice/` (values-dev/values-prod overlays): all probes hit `/info`.
-**Listening == rules compiled** — `DienstMain` compiles every scoped rule *before* binding the port, so
-a Ready pod has a fully built KieBase; the startupProbe grants that compilation up to ~10 minutes. A
-descriptor scoping a MARKER rule without `allowMarkers=true` exits 3 → CrashLoopBackOff *by design*.
+- `POST /<pad>` per entry point; `?uitleg=true` adds the verbaliser's sentences to the answer.
+- `GET /info`: the entry points with their coverage (`dekking`) and markers, the parameter defaults, the loaded
+  parameter sets and the period-coverage warnings.
+- A construct uchar's exec-model branch does not lower refuses startup (exit 3). With `--allow-markers`
+  (`ALLOW_MARKERS=true` for Quarkus) the service starts, lists the construct under the entry point's markers,
+  and answers every request to that entry point with 503.
 
 **peildatum-contract (multi-vintage deploys).** When the descriptor names a parameterset sidecar whose values
-carry more than one vintage (validity-versioned parameters — e.g. a rate that changes every 1 January), the
-service selects each parameter's vintage against ONE date authority: the request `peildatum`, which *is* the
-rekendatum global. The runtime already enforces this — a request without `peildatum` gets `400 "peildatum
-verplicht"`, a peildatum/rekendatum clash gets 400, and `/info` lists the loaded validity ranges plus
-`periodeWaarschuwingen`. To make the contract visible at deploy time, declare it: `--set
-parametersets.multiVintage=true` prints the reminder in the post-install NOTES. The advisory
-`scripts/peildatum-vintage-check.sh <parametersets.json> <true|false>` WARNs (never blocks) on a
-declared/actual mismatch — run it pre-install against the sidecar you are about to bake or mount.
+carry more than one vintage, the service selects each parameter's vintage against ONE date authority: the request
+`peildatum`, which *is* the rekendatum global. A request without `peildatum` gets `400 "peildatum verplicht"`, a
+peildatum/rekendatum clash gets 400, and `/info` lists the loaded validity ranges plus `periodeWaarschuwingen`. The
+advisory `scripts/peildatum-vintage-check.sh <parametersets.json> <true|false>` WARNs (never blocks) on a
+declared/actual mismatch.
 
-The third transport: `GoldenOverHttpTest` accepts `-Ddienst.url=<base-url>` (or env `DIENST_URL`) and
-then runs the IDENTICAL 29 golden TOKA assertions against that already-running service instead of an
-in-process one — scenario-runner == local HTTP == in-cluster HTTP, zero re-typed expected values:
+## Deploying (container + Helm + kind) — host only
 
-```
-kubectl port-forward svc/beslisservice 18080:8080 &
-mvn -o -f service/pom.xml test -Dtest=GoldenOverHttpTest -Ddienst.url=http://127.0.0.1:18080
-```
-
-## Wiring into Quarkus
-
-A Quarkus application consumes the model in exactly this shape:
-
-- depend on `regelspraak-parser` + `drools-engine` (or `drools-quarkus-*` for a native build — the
-  `RegelSpraakEngine` facade is unchanged);
-- hold a `RegelSpraakEngine` as an `@ApplicationScoped` bean, compiled once at startup from the rule source;
-- open a `Session` per request (insert request facts, fire, read results), then `close()` it.
+`make image`, `docker/`, `helm/beslisservice/` and `make kind-smoke` package the service. The Dockerfile still
+builds the layout from before the submodule (it copies `vendor/` and chains `mvn install` over the old modules);
+until it follows the reactor, `make image` fails. The container contract (`docker/entrypoint.sh`): env
+`DESCRIPTOR`, `BRONNEN_MANIFEST` (file listing the `.rgs` sources in order), `POORT`, `ALLOW_MARKERS`.

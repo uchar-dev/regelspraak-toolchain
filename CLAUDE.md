@@ -1,203 +1,53 @@
-# CLAUDE.md — RegelSpraak-java
+# CLAUDE.md — regelspraak-toolchain
 
-## Mission
+## What this repository is
 
-Build, **from scratch**, a new **RegelSpraak v2.3.0** toolchain in **Java** — an
-ANTLR 4 parser + semantic resolver, a typed IR, a RegelSpraak → Drools
-transpiler, a firing engine, and a decision service on top.
+A distribution of RegelSpraak tooling — CLI, engine facade, scenario runner, decision service (JDK and Quarkus),
+Docker and Helm — built on **uchar**, which it carries as the git submodule `uchar/`. It succeeds the deprecated
+`yhavinga/regelspraak-java`. It has **no semantics of its own**: parser, resolver, emitter, loader, transpilers,
+runtime, fact-model generator, rule graph and scenario layer are uchar's. A question about what RegelSpraak means
+(a construct, a verdict, a refusal, a missing form) is a card in uchar, never a change here. `README.md` is the
+map; `docs/ENGINE.md` describes the engine and the service.
 
-**The mission is achieved.** Parser, resolver, typed IR, both Drools back-ends
-(exec-model + DRL oracle), the fact-model generator, the analyst scenariotoetsen,
-and the HTTP decision service (JDK + Quarkus adapters, container/Helm/kind) have
-all landed. The repo is now in **maintenance/extension mode**: new work extends
-or hardens a shipped chain, it does not bootstrap it. Read `README.md` for the
-map and `docs/` for the architecture.
+## Rules
 
-This is a deliberate reboot. A prior parser/resolver exists (TypeScript,
-ANTLR-based) but was built quickly with weaker tooling and carries accumulated
-bugs. We did **not** refactor it — every construct was re-derived directly from
-the specification, with the specification as the single source of truth. That
-discipline still governs every extension.
+- **Never edit `uchar/`.** A change to uchar is made in uchar, lands there, and arrives here as a pin bump: the
+  submodule moved to a newer commit of uchar's main, `git add uchar`.
+- **Own code in `dev.uchar.regelspraak.toolchain.*` only**, reading uchar's public API. Never a class in a uchar
+  package, and never one in uchar's generated namespaces (`dev.uchar.regelspraak.facts`, `…generated`).
+- **One way to a KieBase:** `DroolsBackend.build(document, branch)` over the document uchar's emitter writes
+  (`UcharBouw`). The transpilers take the loader's side tables beside the model, and only that build passes all
+  of them; a transpiler call of our own could drop one and still produce a KieBase.
+- **Fail fast.** A refusal of uchar is reported with uchar's sentence; nothing is skipped, caught and dropped, or
+  answered as if a construct did not exist.
+- **The parity zone** — `examples/toka*` and `specification/` — is © Belastingdienst material: never edited,
+  never quoted anywhere (in code comments, commits, cards or reports only paths and counts). The repository stays
+  private while the zone exists.
 
-## The specification is the oracle
+## Build and gates
 
-Correctness means **adherence to the RegelSpraak v2.3.0 specification**, not
-value-for-value parity with any prior engine or parser. When in doubt, the spec
-decides.
+```
+git submodule update --init --recursive
+make check-pin        # scripts/check-pin.sh: submodule initialised, clean, on the recorded commit; versions = uchar's
+mvn -B -o verify      # the reactor: uchar's backend suite, then toolchain, service, service-quarkus
+```
 
-The normative specification — the main spec, the Chapter 13 syntax diagrams, the
-typeringen (datatype matrix), and the TOKA casus — is © Belastingdienst (Dutch
-Tax & Customs Administration), all rights reserved, and is **not** redistributed
-in this repo. Obtain it from the official source (Wendbare Wetuitvoering Pleio
-community); see `specification/v2.3.0/README.md`. This repo keeps only two
-project-authored, derived notes under `specification/v2.3.0/`:
+The reactor needs no `mvn install`. The first build on a machine needs the network once
+(`mvn -B -DskipTests package`), for the plugins and dependencies the local Maven repository lacks, the
+antlr4-maven-plugin among them; after that, build offline.
 
-| File | Role |
-|------|------|
-| `RegelSpraak-spec-for-ANTLR-v2.3.0.md` | The EBNF mapped onto ANTLR lexer/parser rules. **Start here** for grammar authoring; cross-check against the spec's Chapter 13 syntax diagrams. |
-| `conversie-bevindingen.md` | Notes on PDF→Markdown conversion fidelity (where a transcription may diverge). Consult before trusting a surprising detail. |
+Green means both commands pass. Each own module ends its tests with the skip-pin step (`tools/check-skips.sh`):
+every skipped or aborted test is printed by name and fails the build unless it is pinned with a reason, a test
+class that produced no test case fails, and each module is held to a floor (`VLOEREN` in the script). Floors are
+lower bounds: growth needs no bump; a deliberate removal lowers the floor in the same commit.
 
-## Hard constraint: do not consult the prior parser
+Further checks, run when their area changes: `make scenario-test` (the golden TOKA scenario manifest; the scenarios
+uchar's scenario resolver refuses are named with their reason in `GoldenOverHttpTest`) and
+`bash tools/testdata/run_tests.sh` after `make classpath` (the CSV → Beslistabel converter). `make image` and
+`make kind-smoke` need Docker and run on the host only.
 
-**Ignore the existing RegelSpraak parser entirely.** Do not read, fetch, copy,
-mirror, or be guided by:
+## Working
 
-- any prior implementation of this parser (an earlier TypeScript/ANTLR version exists and is maintained separately);
-- any sibling checkout of that prior work on this machine.
-
-That code is the thing being rebooted; mirroring it would replicate its bugs and
-defeat the purpose. Derive everything from the specification in this repo. (Web
-search for general ANTLR/Java knowledge is fine — just not that prior work.)
-
-## Tooling & build
-
-- **ANTLR 4.13.2** — the latest 4.x; **not** ANTLR 5. The complete jar lives in
-  `lib/` and bundles the tool, the Java runtime, and the TestRig harness, so the
-  grammar bootstrap needs only a JDK + this jar (no Maven, no network).
-- **Java**: JDK 21+ (the dev machine runs JDK 26). The Java target is chosen so
-  the parser/resolver can eventually compile straight into the Quarkus/Drools
-  engine it feeds.
-- **Makefile** is the entry point — `make help` lists targets. The grammar
-  bootstrap loop (still the way to iterate on a grammar change):
-  ```
-  make parser                                   # regenerate Java sources (lexer first)
-  make compile                                  # javac the generated parser
-  make grun RULE=<startRule> FILE=<snippet>     # print the parse tree
-  ```
-  The Maven-backed targets (`make test` for the jar-only resolver suite,
-  `mvn -o clean verify`, `make engine`, `make scenario-test`, `make image`,
-  `make kind-smoke`) build the rest of the chain — see the gate-set below.
-- The root `pom.xml` is **not** an aggregator: `engine/`, `service/`, and
-  `service-quarkus/` are separate builds, chained by explicit `mvn install`.
-- `lib/` is git-ignored; `make antlr-jar` re-fetches the jar on a fresh clone.
-
-See `docs/ANTLR-HOWTO.md` for the full workflow and the lexer/parser gotchas.
-
-## ANTLR authoring gotchas (summary)
-
-1. **Generate the lexer first.** It emits `RegelSpraakLexer.tokens`, which the
-   parser imports via `options { tokenVocab=RegelSpraakLexer; }`. Skipping this
-   yields "token not defined" errors. (`make parser` enforces the order.)
-2. **Longest multi-word keywords first.** RegelSpraak is natural-language Dutch
-   with many multi-word terminals (e.g. `'gedurende de tijd dat'`,
-   `'de datum met jaar:'`). Define longer phrases before shorter ones that share
-   a prefix, and **all** keyword tokens **before** the generic `IDENTIFIER` rule,
-   or maximal-munch will mis-tokenize.
-3. **Lexer rules UPPERCASE, parser rules lowercase.** Parser rules map to the
-   EBNF non-terminals of Chapter 13.
-4. **Semantics are post-parse.** Type checking, name resolution, unit
-   compatibility, and arity live in the **resolver** (a tree visitor), not the
-   grammar. The parser only fixes syntactic structure.
-5. **Anchor the entry rule in `EOF`.** Without it ANTLR parses a valid prefix and
-   ignores the rest, so a malformed file silently "passes" — the top rule must
-   consume the whole token stream.
-6. **Express precedence with ANTLR4 left recursion.** Order the alternatives of a
-   single left-recursive `expressie` rule low-to-high precedence and let ANTLR
-   rewrite the recursion, rather than hand-rolling a cascade of rules.
-7. **Treat generation warnings as errors.** An ambiguity or nondeterminism warning
-   is a grammar defect; a parse that works on top of it is luck.
-
-## From-scratch discipline (how it was built — and how to extend it)
-
-This is context now, not a task list. The grammar (now vendored, read-only:
-`vendor/uchar-frontend/frontends/regelspraak/grammar/*.g4` — a grammar change
-is a uchar spec-first change plus a SPEC_REV re-vendor, never a local edit)
-was grown incrementally against real input — the TOKA
-casus and the spec's worked examples — smoke-tested with `make grun`. The
-resolver walks the parse tree with the generated visitor, builds the resolved AST
-(the transpiler's IR), and enforces the typeringen matrix. The transpiler, engine,
-and service were layered on top; the Maven/Quarkus build the old plan deferred now
-exists (root `pom.xml` + `engine/`, `service/`, `service-quarkus/`).
-
-The same discipline governs any extension: derive every RegelSpraak construct
-from the v2.3.0 spec, extend a rule against a failing example, and keep the whole
-gate-set green (below). Documented, spec-honest divergences go in
-`docs/grammar-divergences.md`; the analyst-toets extension is contracted in
-`docs/SCENARIOTOETSEN.md`.
-
-## Working autonomously
-
-This project is built to run hands-off. The green-condition is verifiable, so let
-the verifier drive. The chain is shipped; new work extends or hardens it and must
-leave the **whole** gate-set green — a green subset is not green.
-
-**The standing gate-set (the definition of green)** — floors are "≥ the value at
-HEAD", never a number to chase down:
-1. `make test` — the jar-only parser/resolver JUnit suite (offline, no Maven).
-2. `mvn -o clean verify` — the full differential suite incl. `src/it/java`
-   (DRL fired in Drools, DRL≡exec-model, plus the `ConfluenceFuzzTest`); ≥ 937 green.
-3. `make engine` — the exec-model engine consumer; ≥ 115 green. Note: an
-   exec-model semantics mutation (e.g. a kenmerk-default or negation-salience
-   flip) is caught ONLY by the gate-2 differential (DRL≡exec over `src/it/java`),
-   not by `make engine` — the consumer fires one back-end and has no oracle.
-4. `make scenario-test` — the golden TOKA analyst set via
-   `examples/toka-scenarios/manifest` (single-JVM `--manifest` route);
-   29/29 PASS, marker-exit-3 present. (30/30 until besluit 16Y — the
-   SPEC_REV re-pin of 2026-08-29 — turned toka-45 into an exit-1 refusal:
-   dimensionally inconsistent as written under the eenheid-identiteit
-   typing.)
-5. `make facts` — the TOKA fact-model beans generate *and* javac clean (doubles
-   as a model-level resolve gate).
-6. The service modules stay green: `service` ≥ 145, `service-quarkus` ≥ 33.
-   (146/34 until the same besluit-16Y holdout dropped one golden scenario,
-   hence one dynamic test, from each module.)
-7. `make verify-corpus` — every spec snippet under `corpusEntry` parses (no
-   lexer errors, no `error` nodes), known defects excepted.
-7bis. `make verify-negatief-corpus` — every malformed snippet under
-   `tools/negatief-corpus/` matches its manifest verdict (correctly rejected, or
-   parses-as-expected with a documented `[GAT]` where the grammar is knowingly
-   too loose) — the negative counterpart to gate 7.
-
-**Skips are named, never silent.** Every JUnit-running gate (1, 2, 3, 6) ends with
-a `skip-pin` block from `tools/check-skips.sh`: each skipped or aborted test is
-printed BY NAME with the assumption message it gave, and checked against the
-allowed-skip list that lives in that script (gate + test + reason + date per
-entry). An unpinned skip or abort FAILS the gate by name — a "Skipped: 3" that
-nobody can read is exactly the silent green this repo forbids. A pinned skip that
-does NOT occur (the external spec is unpacked locally, `UCHAR_DIR` is set) is
-allowed, not required; a pin whose class ran but whose method is gone fails as
-stale.
-
-The same block closes the shrink a skip-list cannot see: a test class that
-produced NO test case at all (a `@BeforeAll` assumption aborts the container and
-surefire then writes `tests="0"` with zero `<testcase>` elements) fails by name,
-each report is held to its own `tests="N"` bookkeeping, and every gate carries an
-`EXPECTED_MIN` floor in `VLOEREN` (root 980, jar 553, engine 115, service 167,
-service-quarkus 33 — measured 2026-09-16). Floors are lower bounds: growth needs
-no bump, a deliberate removal lowers them in the same commit. Consequence, on
-purpose: a targeted `-Dtest=…` run falls through the floor — the gate IS the full
-run.
-
-`make image` / `make kind-smoke` are host-only packaging gates (they need
-Docker); run them on the host before a release, not per change.
-
-**The loop:** new work enters as a backlog card (`backlog/` is git-ignored local
-planning). Per card: derive the construct from the v2.3.0 spec → extend against a
-failing example → run the affected gate red-then-green → re-run the full gate-set
-→ commit. Documented, spec-honest divergences go in `docs/grammar-divergences.md`.
-
-**Subagents** (`.claude/agents/`):
-- `spec-cartographer` — read-only; maps a §13 section to tokens/rules/examples.
-  Fan out over sections in parallel.
-- `grammar-adversary` — builds and runs the grammar against spec inputs to find
-  mis-parses. Run before declaring a grammar change done.
-- `resolver-typechecker` — checks resolver code against the typeringen matrix.
-
-**Commands** (`.claude/commands/`): `/grammar-section <§>` does one §13 section
-end-to-end; `/verify-corpus` builds and parses the whole example corpus and
-reports.
-
-When a turn claims a gate is green, *show* the `make` / `mvn` output rather than
-asserting it — a reader (or a `/goal` evaluator) cannot run commands and reads
-only the transcript.
-
-**Permissions:** `.claude/settings.json` sets `defaultMode: bypassPermissions` —
-it runs without prompts. **Only run this repo inside a sandbox / VM.** `rm -rf /`,
-`rm -rf ~`, and `sudo` are still blocked as circuit-breakers. To dial back,
-change `defaultMode` to `acceptEdits`.
-
-A sandbox launcher is maintained in a separate repository: its
-`run-sandbox.sh` builds a container (JDK 21, make, git, ANTLR jar) and mounts this
-repo at `/work`. If you are a coding agent running inside that container, just
-build in `/work` — there is no Docker in there, so the host-only packaging gates
-(`make image`, `make kind-smoke`) cannot run from inside it.
+- Work enters as a card in `backlog/`: `new/` → `doing/` → `done/`, with the result recorded in the card.
+- Commit messages in Dutch: short, the why, wrapped at 72 columns.
+- Infrastructure names in English, the domain vocabulary in Dutch (`BeslisserKern`, `Verbalisator`).
