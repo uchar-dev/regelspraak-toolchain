@@ -46,3 +46,16 @@ Restpunt 1 van die kaart is het uitgangspunt van U2: `docker/Dockerfile` en
 `scripts/kind-smoke.sh` draait `mvn -f service/pom.xml`; `make image` en
 `make kind-smoke` falen tot deze kaart. `NOTICE` is bij de landing al
 hernoemd.
+
+## Erbij na de landing van `dienst-gedrag-en-poorten` (hoofdsessie, 2026-09-26)
+
+Restpunt 8 van die kaart: de poorten (`make poorten`: `check-tweelingen`,
+`check-dienst-replay`) hebben `python3` nodig naast `java` en `mvn`, dus de
+CI-runner ook; `DienstMain` kent nu `--host` en een `.json`-bron (een
+`uchar-ir-v1`-document), en `bin/regelspraak serve` geeft die door; de
+Quarkus-adapter spiegelt het 503-MARKER-antwoord en de `soort` in een 400
+met de hand, zonder pariteitstest voor foutlichamen — voeg die toe als hij
+binnen de kaart past (`InfoParityTest` als voorbeeld), anders als benoemd
+restpunt. CI op GitHub start op dit moment geen jobs (een accountprobleem
+bij GitHub, door de maintainer op te lossen): toets de workflow lokaal, stap
+voor stap in de volgorde van de workflow; de eerste echte run volgt later.

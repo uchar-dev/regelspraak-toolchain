@@ -237,3 +237,25 @@ manifestpoort). Blijven staan: 1 (Docker/kind, kaart `ingangen-en-deploy`), 4 (g
 8. **Kaart `ingangen-en-deploy`**: de poorten vragen `python3` naast `java` en `mvn` (voor CI); `DienstMain` kent nu
    `--host` en een `.json`-bron; de Quarkus-adapter spiegelt het 503-MARKER-antwoord en de `soort` in een 400 met de
    hand, zonder pariteitstest voor foutlichamen (`InfoParityTest` dekt alleen `/info`).
+
+## Keuring (2026-09-26, hoofdsessie)
+
+Gekeurd op `c6ebdb7` in de worktree en geland met een fast-forward. Gemeten:
+`scripts/check-pin.sh` groen; de greps op de oude pakketnaam en op
+`dev.uchar.regelspraak` buiten `uchar/` leeg; `mvn -B -o verify` groen
+(uchar-backend 840, toolchain 110, service 180, service-quarkus 33 tests,
+geen skips); `make poorten` groen: de tweelingen 18 cases (10/4/4) via HTTP,
+de replay 188 van de 215 goldens van gate 12 gespeeld (494 cases) met 27
+uitsluitingen bij naam en 0 afwijkingen, het manifest 32 regels, 29 ok, 3
+uitgesloten met uchars weigeringszin, 0 mismatch.
+
+Triage van de restpunten: 1, 2, 6 en 7 (een publieke API in uchar voor de
+case-invoer inclusief tijdlijnen, een scope op de wire, de vormenlijst van
+een scope) en 5 (normvraag: een scope in een document met een
+startpuntbepaling — de dienst houdt de bepaling en bouwt de vormen van de
+scope; standaardantwoord: zo hoort het, uchars scenariolaag moet de
+bepalingen op documentniveau meedragen en alleen de regellaag selecteren)
+zijn open punten voor uchar, vast te leggen in uchars PLAN §9 bij de
+volgende registerronde en geen kaart nu (maintainer, 2026-09-26: eerst de
+verhuizing); 3 en 4 zijn presentatiewerk in deze repo, na te gaan bij het
+omhangen van de werkbank; 8 naar de kaart `ingangen-en-deploy`.
