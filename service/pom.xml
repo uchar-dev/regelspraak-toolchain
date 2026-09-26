@@ -53,6 +53,45 @@
           </execution>
         </executions>
       </plugin>
+      <!-- The distribution's one runtime artifact: this module with everything it runs on (the CLI, the scenario
+           runner, uchar's frontend and backend, Drools, Jackson, ANTLR) in target/regelspraak.jar. bin/regelspraak
+           and the container run from it. With outputFile set the module's own jar stays the main artifact, so the
+           Quarkus adapter still depends on the plain jar. No dependency-reduced POM: the plugin would write one
+           beside this pom anyway and make it the module's POM, without the dependencies the adapter builds on. The
+           service files are merged, because two Drools jars register the same service interface; signatures, the
+           jar index and module descriptors are left out, as they describe the separate jars and not the merged
+           one. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>regelspraak-jar</id>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <outputFile>${project.build.directory}/regelspraak.jar</outputFile>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+              </transformers>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                    <exclude>META-INF/INDEX.LIST</exclude>
+                    <exclude>module-info.class</exclude>
+                    <exclude>META-INF/versions/*/module-info.class</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>

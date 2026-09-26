@@ -1,16 +1,17 @@
 # RegelSpraak toolchain — the distribution on uchar (git submodule uchar/).
 #
 # Maven builds everything (the root pom is the reactor); this Makefile names the everyday runs. The
-# CLI targets build the toolchain module offline, record its runtime classpath, and run the CLI on it.
+# targets named after a command of bin/regelspraak call that command and nothing else; bin/regelspraak builds the
+# jar it runs from when a source is newer.
 
 .DEFAULT_GOAL := help
-.PHONY: help check-pin verify check-tweelingen check-dienst-replay poorten classpath drl facts graaf ir scenario-test \
-        csv-beslistabel clean image kind-smoke
+.PHONY: help check-pin verify check-tweelingen check-dienst-replay poorten classpath check ir cases scenario serve drl \
+        graaf facts scenario-test csv-beslistabel clean image kind-smoke
 
-MVN      ?= mvn
-OUT_DIR  := out
-CP_FILE  := toolchain/target/runtime-classpath.txt
-TOOLCHAIN_CP = toolchain/target/classes:$$(cat $(CP_FILE))
+MVN         ?= mvn
+OUT_DIR     := out
+CP_FILE     := toolchain/target/runtime-classpath.txt
+REGELSPRAAK := bin/regelspraak
 
 help:
 	@echo "  make check-pin                       Verify the uchar submodule is initialised, clean, and version-aligned"
@@ -18,15 +19,21 @@ help:
 	@echo "  make check-tweelingen                 The three dialect twins fire over HTTP with all their case expectations"
 	@echo "  make check-dienst-replay              Every golden uchar's gate 12 plays, replayed through the service"
 	@echo "  make poorten                          verify, both service gates and the golden TOKA manifest"
-	@echo "  make drl  FILE=<input>               The DRL text of uchar's DRL-text branch on stdout (exit 3 if uchar refuses)"
-	@echo "  make facts                           Generate the TOKA fact-model beans and javac them (out/facts/)"
-	@echo "  make graaf FILE=\"a.rgs …\" [OUT=… MMD=1]  Emit the dataflow regelgraaf (regels ↔ gegevens) as HTML (or bare Mermaid with MMD=1)"
-	@echo "  make ir FILE=\"a.rgs …\" [OUT=…]       Emit the uchar-ir-v1 document of the resolved model (uchar's emitter)"
-	@echo "  make scenario-test FILES=\"a.rgs …\"    Run the scenariotoetsen CLI over .rgs files"
-	@echo "                                       (no FILES: the golden TOKA set via --manifest in one JVM)"
-	@echo "  make csv-beslistabel FILE=<csv> [OUT=<pad>]  Convert a CSV decision table to a §12 Beslistabel .rgs fragment"
-	@echo "  the service                          POST /<pad>?uitleg=true adds the uitleg-verhaal to the answer;"
+	@echo "  make scenario-test                   The golden TOKA scenario manifest (a step of poorten)"
+	@echo ""
+	@echo "  The commands of bin/regelspraak (bin/regelspraak help), with FILE the sources in model order:"
+	@echo "  make check FILE=\"a.rgs …\"           Parse + resolve: the diagnostics, exit 1 on an error, 3 if uchar does not carry it"
+	@echo "  make ir FILE=\"a.rgs …\" [OUT=…]       The uchar-ir-v1 document of the model (default out/ir.json)"
+	@echo "  make cases FILE=\"a.rgs …\" [OUT=…]    The scenarios lowered to case files beside ir.json (default out/cases/)"
+	@echo "  make scenario FILE=\"[--trace] [--uitleg] a.rgs …\"   PASS / FAIL / MARKER per scenario"
+	@echo "  make serve FILE=\"d.dienst.json a.rgs …\" [POORT=…]   The decision service on the JDK HttpServer;"
+	@echo "                                       POST /<pad>?uitleg=true adds the uitleg-verhaal to the answer,"
 	@echo "                                       PLAYGROUND=true binds the dev-only /playground workbench routes"
+	@echo "  make drl FILE=\"a.rgs …\"             The DRL text of uchar's DRL-text branch on stdout (exit 3 if uchar refuses)"
+	@echo "  make graaf FILE=\"a.rgs …\" [OUT=… MMD=1]  The rule graph as HTML (or bare Mermaid with MMD=1)"
+	@echo "  make facts [FILE=\"a.rgs …\"]         The fact beans, javac'd (out/facts/); no FILE: the TOKA model foundation"
+	@echo ""
+	@echo "  make csv-beslistabel FILE=<csv> [OUT=<pad>]  Convert a CSV decision table to a §12 Beslistabel .rgs fragment"
 	@echo "  make clean                           Remove the CLI outputs (out/)"
 	@echo ""
 	@echo "  make image  [TAG=… DESCRIPTOR_SRC=…] (host only) Build the beslisservice service image"
@@ -53,15 +60,21 @@ check-dienst-replay:
 poorten: verify check-tweelingen check-dienst-replay
 	$(MAKE) --no-print-directory scenario-test
 
-# Build the toolchain module and what it needs from uchar, without tests, and record its runtime classpath.
+# Build the toolchain module and what it needs from uchar, without tests, and record its runtime classpath
+# (tools/testdata/run_tests.sh runs on it).
 classpath:
-	$(MVN) -B -o -q -DskipTests package dependency:build-classpath -Dmdep.includeScope=runtime \
+	$(MVN) -B -o -q -DskipTests package dependency:build-classpath -DincludeScope=runtime \
 		-Dmdep.outputFile=$(CURDIR)/$(CP_FILE) -pl toolchain -am
 
-# The DRL text of a .rgs file: parse -> resolve -> emit -> uchar's DRL-text branch, on stdout. That branch
+# Parse and resolve the sources as one model: the model summary and the diagnostics, exit 1 on an error; then the
+# build on uchar's exec-model branch, exit 3 when uchar does not carry the model.
+check:
+	@$(REGELSPRAAK) check $(FILE)
+
+# The DRL text of the model: parse -> resolve -> emit -> uchar's DRL-text branch, on stdout. That branch
 # builds no document with a construct it does not lower; the CLI then prints uchar's refusal and exits 3.
-drl: classpath
-	@java -cp "$(TOOLCHAIN_CP)" dev.uchar.regelspraak.toolchain.cli.RegelSpraakCli --drl $(FILE)
+drl:
+	@$(REGELSPRAAK) drl $(FILE)
 
 # Convert a CSV decision table into the canonical §12 Beslistabel markdown-pipe-table
 # .rgs fragment. Pure-python, no deps. CSV in -> Beslistabel block on stdout:
@@ -72,11 +85,11 @@ drl: classpath
 csv-beslistabel:
 	@python3 tools/csv_naar_beslistabel.py $(if $(OUT),--out $(OUT)) $(FILE)
 
-# Generate the fact-model beans the TOKA casus implies, then PROVE they are pure-JDK by javac'ing them.
-# The input is the TOKA *model foundation* — the exact companion model files the golden scenario manifest
+# Generate the fact-model beans a model implies, then PROVE they are pure-JDK by javac'ing them. Without FILE the
+# input is the TOKA *model foundation* — the exact companion model files the golden scenario manifest
 # (examples/toka-scenarios/manifest) lists: toka-01..16 plus the reconciliatie/model-extensie companions. That
 # set resolves WITHOUT errors; the toka-2x regel files add no fact-model structure, so the beans are fully
-# determined by the foundation. `RegelSpraakCli --facts` is model-level: it writes NOTHING when the model has
+# determined by the foundation. `bin/regelspraak facts` is model-level: it writes NOTHING when the model has
 # errors, so this target doubles as a resolve gate. The generated beans need no external classpath (java.* only),
 # so plain javac proves them.
 TOKA_MODEL_FOUNDATION := \
@@ -85,11 +98,10 @@ TOKA_MODEL_FOUNDATION := \
 	examples/toka-reconciliatie/casus-omissies.rgs \
 	examples/toka-scenarios/scenario-model-extensie.rgs
 FACTS_DIR := $(OUT_DIR)/facts
-facts: classpath
+facts:
 	@rm -rf $(FACTS_DIR)
 	@mkdir -p $(FACTS_DIR)/src $(FACTS_DIR)/classes
-	@cat $(TOKA_MODEL_FOUNDATION) > $(FACTS_DIR)/toka-model.rgs
-	@java -cp "$(TOOLCHAIN_CP)" dev.uchar.regelspraak.toolchain.cli.RegelSpraakCli --facts $(FACTS_DIR)/src $(FACTS_DIR)/toka-model.rgs
+	@$(REGELSPRAAK) facts $(FACTS_DIR)/src $(if $(FILE),$(FILE),$(TOKA_MODEL_FOUNDATION))
 	@javac -d $(FACTS_DIR)/classes $$(find $(FACTS_DIR)/src -name '*.java')
 	@echo "PASS: facts gegenereerd én gecompileerd naar $(FACTS_DIR)/classes"
 
@@ -97,35 +109,47 @@ facts: classpath
 # more .rgs files (concatenated in listed order, so a model chain is FILE="a.rgs b.rgs …"). Default output is a
 # self-contained HTML page with an embedded Mermaid flowchart (Mermaid loads from a CDN, so rendering needs the
 # network); add MMD=1 for the bare, offline-usable Mermaid text. OUT overrides the default out/regelgraaf.{html,mmd}.
-# Model-level: an unresolvable model writes NOTHING and exits 1 (the same disk discipline as --facts). The
+# Model-level: an unresolvable model writes NOTHING and exits 1 (the same disk discipline as facts). The
 # producer/consumer analysis is the ProducentConsument core behind the service's scope-completeness check, so the
 # graph never diverges from that gate.
 GRAAF_OUT := $(if $(OUT),$(OUT),$(OUT_DIR)/regelgraaf.$(if $(MMD),mmd,html))
-graaf: classpath
+graaf:
 	@mkdir -p $(dir $(GRAAF_OUT))
-	@java -cp "$(TOOLCHAIN_CP)" dev.uchar.regelspraak.toolchain.cli.RegelSpraakCli $(if $(MMD),--graaf-mmd,--graaf) $(GRAAF_OUT) $(FILE)
+	@$(REGELSPRAAK) graaf $(if $(MMD),--mmd) $(GRAAF_OUT) $(FILE)
 
 # Emit the IR (uchar-ir-v1) of one or more .rgs files (concatenated in listed order) through uchar's own emitter
 # mode (Resolver --ir). An unresolvable model writes NOTHING and exits 1. OUT overrides the default.
 IR_OUT := $(if $(OUT),$(OUT),$(OUT_DIR)/ir.json)
-ir: classpath
+ir:
 	@mkdir -p $(dir $(IR_OUT))
-	@java -cp "$(TOOLCHAIN_CP)" dev.uchar.regelspraak.resolver.Resolver --ir $(IR_OUT) $(FILE)
+	@$(REGELSPRAAK) ir $(IR_OUT) $(FILE)
 
-# Run the scenariotoetsen CLI over one or more .rgs files, concatenated in order; PASS/FAIL/MARKER per scenario.
-#   make scenario-test FILES="model.rgs regels.rgs scenario.rgs"
-# Options ride FILES too, e.g. FILES="--trace a.rgs" or FILES="--uitleg a.rgs". Exit: 1 on any FAIL/resolve-error,
-# 3 on a MARKER, else 0. Without FILES it runs the golden TOKA set of examples/toka-scenarios/manifest in one JVM:
-# exit 0 when no line mismatches; the scenarios uchar's scenario resolver refuses are listed with their reason in
-# scripts/toka-manifest-uitsluitingen.txt and must stay refused.
-scenario-test: classpath
-ifeq ($(strip $(FILES)),)
+# Lower the scenarios of a test document (model + scenario sources, concatenated in order) to uchar case files,
+# written with the IR document they run against (ir.json) into one directory, the layout of uchar's corpus. A case
+# file the directory already holds that this run would not write is refused. OUT overrides the default out/cases.
+CASES_OUT := $(if $(OUT),$(OUT),$(OUT_DIR)/cases)
+cases:
+	@$(REGELSPRAAK) cases $(CASES_OUT) $(FILE)
+
+# Run the scenariotoetsen over one or more .rgs files, concatenated in order; PASS/FAIL/MARKER per scenario.
+#   make scenario FILE="model.rgs regels.rgs scenario.rgs"
+# Options ride FILE too, e.g. FILE="--trace a.rgs", FILE="--uitleg a.rgs" or FILE="--manifest <manifest>". Exit: 1
+# on any FAIL/resolve-error, 3 on a MARKER, else 0.
+scenario:
+	@$(REGELSPRAAK) scenario $(FILE)
+
+# The golden TOKA set of examples/toka-scenarios/manifest in one JVM: exit 0 when no line mismatches; the
+# scenarios uchar's scenario resolver refuses are listed with their reason in scripts/toka-manifest-uitsluitingen.txt
+# and must stay refused.
+scenario-test:
 	@echo "Golden TOKA-set — examples/toka-scenarios/manifest"
-	@java -cp "$(TOOLCHAIN_CP)" dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli --manifest examples/toka-scenarios/manifest \
-		--uitsluitingen scripts/toka-manifest-uitsluitingen.txt 2>/dev/null
-else
-	java -cp "$(TOOLCHAIN_CP)" dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli $(FILES)
-endif
+	@$(REGELSPRAAK) scenario --manifest examples/toka-scenarios/manifest \
+		--uitsluitingen scripts/toka-manifest-uitsluitingen.txt
+
+# The decision service on the JDK HttpServer over a descriptor and its sources (or one uchar-ir-v1 document), in
+# the foreground. POORT defaults to the service's own 8080; PLAYGROUND=true binds the dev-only workbench routes.
+serve:
+	@$(REGELSPRAAK) serve $(FILE) $(if $(POORT),--poort $(POORT))
 
 clean:
 	rm -rf $(OUT_DIR)

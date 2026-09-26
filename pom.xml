@@ -154,6 +154,11 @@
           <artifactId>antlr4-maven-plugin</artifactId>
           <version>${antlr.version}</version>
         </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-shade-plugin</artifactId>
+          <version>3.6.0</version>
+        </plugin>
         <!-- skip-pin (tools/check-skips.sh): an assumption that does not hold yields a skipped test and a green
              build that only says "Skipped: 3", with no name and no reason. These two steps set a sentinel right
              before the test run and read the surefire reports right after it: every skip or abort is printed by
