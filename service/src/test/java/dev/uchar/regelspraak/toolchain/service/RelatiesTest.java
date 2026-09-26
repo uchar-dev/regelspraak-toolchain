@@ -74,22 +74,21 @@ class RelatiesTest {
 
     @Test
     void wederkerige_relatie_met_een_rol_en_twee_ids_wordt_ontleed() {
-        // "Partnerrelatie" is wederkerig (one role "partner", two ids). No TOKA rule navigates it, so the fact
-        // model materialises NO 'partner' reference field on NatuurlijkPersoon — the mapper must report that as
-        // a CLEAN "niet ondersteund" violation (naming the feittype), never throw a reflective setter error.
+        // "Partnerrelatie" is wederkerig (one role "partner", two ids). Until the move to uchar the fact model
+        // materialised no 'partner' field and the mapper reported NIET_ONDERSTEUND; uchar's generator carries the
+        // §13.3.9.2 reciprocal self-relation as a self-typed reference field, so the mapper writes both ends.
         var r = map("""
             { "instanties": [
                 { "type": "Natuurlijk persoon", "id": "A" },
                 { "type": "Natuurlijk persoon", "id": "B" } ],
               "relaties": [ { "feittype": "Partnerrelatie",
                               "rollen": { "partner": ["A", "B"] } } ] }""");
-        assertTrue(r.schendingen().stream().anyMatch(s ->
-                s.soort() == Schending.Soort.NIET_ONDERSTEUND && s.bericht().contains("Partnerrelatie")),
-                "verwacht een NIET_ONDERSTEUND schending voor het niet-gematerialiseerde partner-veld, kreeg: "
-                        + r.schendingen());
-        // and it was ONE role name carrying two ids, correctly parsed into two endpoints (no MALFORMED)
-        assertTrue(r.schendingen().stream().noneMatch(s -> s.soort() == Schending.Soort.MALFORMED),
-                r.schendingen().toString());
+        // ONE role name carrying two ids, parsed into two endpoints, each written onto the other
+        assertTrue(r.schendingen().isEmpty(), r.schendingen().toString());
+        Object a = r.wereld().beans().get("A");
+        Object b = r.wereld().beans().get("B");
+        assertSame(b, RegelSpraakRuntime.get(a, "partner"), "A.partner moet naar B wijzen");
+        assertSame(a, RegelSpraakRuntime.get(b, "partner"), "B.partner moet naar A wijzen");
     }
 
     @Test

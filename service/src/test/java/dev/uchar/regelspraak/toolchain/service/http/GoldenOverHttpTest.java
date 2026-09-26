@@ -2,8 +2,8 @@ package dev.uchar.regelspraak.toolchain.service.http;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import dev.uchar.regelspraak.emit.CaseEmitter;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
-import dev.uchar.regelspraak.ir.ResolvedScenario.ScopeRegel;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Verwachting;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Waarde;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
@@ -40,31 +40,41 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Gate G2 — ONE TRUTH, TWO TRANSPORTS. For each of the 29 golden TOKA scenariotoetsen (the exit-0 lines of
+ * ONE TRUTH, TWO TRANSPORTS. For each of the 29 golden TOKA scenariotoetsen (the exit-0 lines of
  * {@code examples/toka-scenarios/manifest}) this harness:
  *
  * <ol>
- *   <li>resolves the scenario ({@link ScenarioResolver#resolve} over the concatenated companions + scenario),
- *       yielding the SAME typed IR ({@link ResolvedScenario}) the in-process {@code ScenarioRunner} consumes;</li>
+ *   <li>resolves the scenario (uchar's {@link ScenarioResolver#resolve} over the concatenated companions +
+ *       scenario), yielding the SAME typed scenario ({@link ResolvedScenario}) the scenario runner lowers;</li>
  *   <li>MECHANICALLY derives the HTTP request from the resolved situatie ({@link SituatieNaarVerzoek}) — no
  *       expected value, input value, label or scope is hand-typed;</li>
- *   <li>looks the entrypoint up by matching the scenario's scope (a single {@code toetst de regel X}) to the
- *       descriptor entrypoint whose {@code scope.regelnamen} names X (loaded with {@link DescriptorLoader#MAPPER});</li>
- *   <li>POSTs to ONE {@link DienstHttp} over ONE {@link BeslisserKern} (the full TOKA service, DRL back-end,
- *       strict) and asserts the response reproduces EVERY verwachting, comparing with the SAME semantics
- *       {@code ScenarioRunner.vergelijk} uses (BigDecimal.compareTo for numeriek, equals-after-normalisation for
- *       datum/datumtijd, equals for tekst/enum/bool, boolean read for kenmerk, empty/non-empty inconsistenties
+ *   <li>looks the entrypoint up by matching the scenario's scope (the rules it tests) to the descriptor entrypoint
+ *       whose {@code scope.regelnamen} names them;</li>
+ *   <li>POSTs to ONE {@link DienstHttp} over ONE {@link BeslisserKern} (the full TOKA service, strict) and asserts
+ *       the response reproduces EVERY verwachting (BigDecimal.compareTo for numeriek, equals-after-normalisation
+ *       for datum/datumtijd, equals for tekst/enum/bool, boolean read for kenmerk, empty/non-empty inconsistenties
  *       for CONSISTENT/INCONSISTENT).</li>
  * </ol>
  *
  * The 29 scenarios are dynamic tests (so one failure names its scenario) plus a final count assertion that the
- * harness saw exactly 29 golden scenarios and all reproduced — "G2: 29/29 golden over HTTP". (It was 30 until
- * besluit 16Y turned toka-45's manifest row into an exit-1 refusal — see TokaBron.)
+ * harness saw exactly 29 golden scenarios and all were accounted for. A scenario uchar's scenario resolver refuses
+ * cannot serve as an oracle: it is listed by file name in {@link #UCHAR_WEIGERT} with a fragment of the refusal, and
+ * its dynamic test asserts exactly that refusal, so an entry fails the day uchar resolves the scenario again.
  */
 class GoldenOverHttpTest {
 
-    private static DienstHttp dienst;
+    /** The golden scenario files uchar's scenario resolver refuses (its own {@code Resolver --ir --cases} refuses
+     *  them alike), each with a fragment of the refusal sentence. Measured on uchar d67f5da1. */
+    private static final java.util.Map<String, String> UCHAR_WEIGERT = java.util.Map.of(
+            "scenario-toka-29-passagier-met-recht.rgs",
+                    "uit de scope bestaat niet in het document",
+            "scenario-toka-43-startpunt-vertrek.rgs",
+                    "een scope in een document met een startpuntbepaling wordt geweigerd",
+            "scenario-toka-44-startpunt-min-reserveringstermijn.rgs",
+                    "een scope in een document met een startpuntbepaling wordt geweigerd");
+
     private static DienstDescriptor descriptor;
+    private static DienstHttp dienst;
     private static String baseUrl;
     private static final HttpClient CLIENT =
             HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
@@ -105,17 +115,39 @@ class GoldenOverHttpTest {
         assertEquals(29, golden.size(), "de manifest hoort precies 29 exit-0 golden scenariotoetsen te tellen");
 
         AtomicInteger geslaagd = new AtomicInteger();
+        AtomicInteger geweigerd = new AtomicInteger();
         List<DynamicTest> tests = new ArrayList<>();
-        for (Golden g : golden)
-            tests.add(DynamicTest.dynamicTest(g.scenarioBestand.getFileName().toString(), () -> {
-                toetsScenario(g);
-                geslaagd.incrementAndGet();
+        for (Golden g : golden) {
+            String naam = g.scenarioBestand.getFileName().toString();
+            String weigering = UCHAR_WEIGERT.get(naam);
+            tests.add(DynamicTest.dynamicTest(naam, () -> {
+                if (weigering != null) {
+                    toetsWeigering(g, weigering);
+                    geweigerd.incrementAndGet();
+                } else {
+                    toetsScenario(g);
+                    geslaagd.incrementAndGet();
+                }
             }));
-        // final aggregating assertion: all 29 reproduced.
-        tests.add(DynamicTest.dynamicTest("G2: 29/29 golden over HTTP", () ->
-                assertEquals(29, geslaagd.get(),
-                        "G2 verlangt 29/29 golden reproducties over HTTP; gereproduceerd: " + geslaagd.get())));
+        }
+        // final aggregating assertion: every golden reproduced, or refused as its entry in UCHAR_WEIGERT says.
+        tests.add(DynamicTest.dynamicTest("29 golden: over HTTP gereproduceerd of door uchar geweigerd", () -> {
+            assertEquals(UCHAR_WEIGERT.size(), geweigerd.get(), "elke weigering in UCHAR_WEIGERT hoort op te treden");
+            assertEquals(29 - UCHAR_WEIGERT.size(), geslaagd.get(),
+                    "golden reproducties over HTTP; gereproduceerd: " + geslaagd.get());
+        }));
         return tests.stream();
+    }
+
+    /** A listed golden scenario: uchar's scenario resolver refuses it with the listed fragment. */
+    private static void toetsWeigering(Golden g, String fragment) throws IOException {
+        StringBuilder bron = new StringBuilder();
+        for (Path c : g.companions) bron.append(Files.readString(c)).append('\n');
+        bron.append(Files.readString(g.scenarioBestand)).append('\n');
+        ScenarioBundel bundel = ScenarioResolver.resolve(bron.toString());
+        assertTrue(!bundel.isOk() && bundel.model().errors().stream().anyMatch(d -> d.message().contains(fragment)),
+                () -> g.scenarioBestand.getFileName() + " staat in UCHAR_WEIGERT met '" + fragment + "', maar uchar "
+                        + "weigert het zo niet (meer); fouten: " + bundel.model().errors());
     }
 
     /** Resolve one golden scenario, derive its request, POST it, and assert every verwachting. */
@@ -147,10 +179,10 @@ class GoldenOverHttpTest {
         for (Verwachting v : scenario.verwachtingen()) vergelijk(v, antwoord, pad, verzoek);
     }
 
-    // ---------------- verwachting comparison (mirrors ScenarioRunner.vergelijk) ----------------
+    // ---------------- verwachting comparison ----------------
 
     private void vergelijk(Verwachting v, JsonNode antwoord, String pad, JsonNode verzoek) {
-        String ctx = "\nscope-pad /" + pad + "\nverwachting: '" + v.bron().trim() + "'"
+        String ctx = "\nscope-pad /" + pad + "\nverwachting op regel " + v.line() + " (" + v.soort() + ")"
                 + "\nverzoek: " + verzoek + "\nantwoord: " + antwoord;
         switch (v.soort()) {
             case ATTRIBUUT_WAARDE -> {
@@ -175,22 +207,23 @@ class GoldenOverHttpTest {
             case INCONSISTENT -> {
                 List<String> inc = inconsistenties(antwoord);
                 assertTrue(!inc.isEmpty(), () -> "verwacht inconsistent (niet-lege inconsistenties)" + ctx);
-                // if the verwachting names a regel, it must be listed (mirrors the runner's "and if named" clause).
-                String regel = v.attribuut();
+                // if the verwachting names a regel, it must be listed.
+                String regel = v.regel();
                 if (regel != null && !regel.isBlank())
                     assertTrue(inc.contains(regel),
                             () -> "verwacht dat regel '" + regel + "' in de inconsistenties staat, kreeg " + inc + ctx);
             }
+            case ATTRIBUUT_TIJDLIJN -> throw new AssertionError(
+                    "het antwoord van de dienst draagt geen tijdlijn, dus deze verwachting is over HTTP niet te toetsen" + ctx);
         }
     }
 
-    /** Mirror of {@code ScenarioRunner.gelijk}: numeriek via BigDecimal.compareTo, datum/datumtijd/bool/enum/tekst
-     *  via equals-after-normalisation (a datetime response is the LocalDateTime.toString() form, so parse it back). */
+    /** Numeriek via BigDecimal.compareTo, datum/datumtijd/bool/enum/tekst via equals-after-normalisation (a
+     *  datetime response is the LocalDateTime.toString() form, so parse it back). */
     private static boolean gelijk(Waarde verw, JsonNode werkelijk) {
-        if (verw == null || verw.leeg()) return werkelijk == null || werkelijk.isNull();
         if (werkelijk == null || werkelijk.isNull()) return false;
         if (verw.getal() != null)
-            return werkelijk.isNumber() && verw.getal().compareTo(werkelijk.decimalValue()) == 0;
+            return werkelijk.isNumber() && SituatieNaarVerzoek.getal(verw.getal()).compareTo(werkelijk.decimalValue()) == 0;
         if (verw.datum() != null)
             return werkelijk.isTextual() && verw.datum().equals(LocalDate.parse(werkelijk.asText()));
         if (verw.datumTijd() != null)
@@ -205,8 +238,7 @@ class GoldenOverHttpTest {
     }
 
     private static String renderWaarde(Waarde w) {
-        if (w == null || w.leeg()) return "leeg";
-        if (w.getal() != null) return w.getal().toPlainString();
+        if (w.getal() != null) return w.getal();
         if (w.datum() != null) return w.datum().toString();
         if (w.datumTijd() != null) return w.datumTijd().toString();
         if (w.bool() != null) return w.bool().toString();
@@ -245,7 +277,9 @@ class GoldenOverHttpTest {
     // ---------------- entrypoint lookup by scope ----------------
 
     /** The descriptor entrypoint path whose {@code scope.regelnamen} names every scope rule of the scenario. A
-     *  single-rule scope (all golden scenarios) matches the entrypoint whose regelnamen contains that rule. */
+     *  single-rule scope (all golden scenarios) matches the entrypoint whose regelnamen contains that rule. The
+     *  scope names the forms as the model spells them, a versioned rule once per version, so it is read as base
+     *  names. */
     private String padVoorScope(ResolvedScenario scenario) {
         List<String> namen = scopeNamen(scenario);
         if (namen.isEmpty()) return null;
@@ -261,7 +295,11 @@ class GoldenOverHttpTest {
 
     private static List<String> scopeNamen(ResolvedScenario scenario) {
         List<String> uit = new ArrayList<>();
-        for (ScopeRegel r : scenario.scope().regels()) uit.add(r.naam());
+        if (scenario.scope() == null) return uit;
+        for (String vorm : scenario.scope().vormen()) {
+            String naam = CaseEmitter.basisNaam(vorm);
+            if (!uit.contains(naam)) uit.add(naam);
+        }
         return uit;
     }
 

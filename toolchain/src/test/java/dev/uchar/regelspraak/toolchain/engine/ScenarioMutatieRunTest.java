@@ -1,5 +1,6 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
+import dev.uchar.regelspraak.engine.ScenarioResultaat;
 import dev.uchar.regelspraak.engine.ScenarioResultaat.Status;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
@@ -13,17 +14,16 @@ import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * G3 mutatiegate — the RUNNING half (docs/SCENARIOTOETSEN.md, gate G3). The 11 fixtures in
- * {@code src/test/resources/scenario-mutaties/} each carry a deliberately-WRONG expectation (off-by-one value,
- * wrong-but-compatible unit, missing/unexpected kenmerk, inconsistentie verwacht-maar-afwezig / consistent-maar-
- * inconsistent, leeg-vs-gevuld, tekst/enum/bezittelijk mismatch). The jar-only {@code ScenarioMutatieTest} pins
- * that each RESOLVES cleanly (the failure belongs to the runner, not the resolver); THIS test drives the actual
- * runner and asserts each scenario FAILS with a diagnose that names the rule/expectation AND the diverging value
- * (verwacht vs werkelijk) — so the runner cannot silently pass a bad expectation.
+ * The mutation gate, running half. The 11 fixtures in {@code src/test/resources/scenario-mutaties/} each carry a
+ * deliberately-WRONG expectation (off-by-one value, wrong-but-compatible unit, missing/unexpected kenmerk,
+ * inconsistentie verwacht-maar-afwezig / consistent-maar-inconsistent, leeg-vs-gevuld, tekst/enum/bezittelijk
+ * mismatch); uchar's frontend suite pins that they resolve cleanly. THIS test drives the runner and asserts each
+ * scenario FAILS on a named expectation with a diagnose that carries the diverging value (verwacht vs werkelijk) —
+ * so the runner cannot silently pass a bad expectation.
  */
 class ScenarioMutatieRunTest {
 
-    private static final Path MAP = Path.of("../src/test/resources/scenario-mutaties");
+    private static final Path MAP = Path.of("src/test/resources/scenario-mutaties");
 
     private static List<Path> fixtures() throws IOException {
         try (Stream<Path> s = Files.list(MAP)) {
@@ -44,14 +44,15 @@ class ScenarioMutatieRunTest {
                     () -> p.getFileName() + " zou moeten FALEN (bewust-foute verwachting), kreeg " + r.status()
                             + " — verwachtingen: " + r.verwachtingen());
 
-            // at least one expectation is not-ok, and the diagnose names the diverging value (verwacht + werkelijk).
-            assertTrue(r.verwachtingen().stream().anyMatch(v -> !v.ok()),
-                    () -> p.getFileName() + ": minstens één verwachting hoort niet-ok te zijn");
+            // at least one expectation is not-ok, named by its position in the scenario, and the diagnose names the
+            // diverging value (verwacht + werkelijk). uchar's report names an expectation by its position in the
+            // case; the scenario's source line does not reach the case file.
+            ScenarioResultaat.VerwachtingResultaat fout = r.verwachtingen().stream().filter(v -> !v.ok()).findFirst()
+                    .orElseThrow(() -> new AssertionError(p.getFileName() + ": minstens één verwachting hoort niet-ok te zijn"));
+            assertTrue(fout.positie() >= 1, () -> p.getFileName() + ": de falende verwachting hoort haar positie te dragen");
             assertFalse(r.diagnose().isBlank(), () -> p.getFileName() + ": een falend scenario moet een diagnose dragen");
             assertTrue(r.diagnose().contains("verwacht") && r.diagnose().contains("werkelijk"),
                     () -> p.getFileName() + ": de diagnose moet verwacht én werkelijk noemen: " + r.diagnose());
-            assertTrue(r.diagnose().matches("(?s).*regel \\d+.*"),
-                    () -> p.getFileName() + ": de diagnose moet de (verwachting)regel noemen: " + r.diagnose());
         }));
     }
 }

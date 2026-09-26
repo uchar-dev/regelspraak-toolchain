@@ -10,10 +10,10 @@ import org.eclipse.microprofile.health.HealthCheckResponse;
 import org.eclipse.microprofile.health.Readiness;
 
 /**
- * Readiness probe {@code rules-compiled}: UP once the {@link BeslisserKern} producer succeeded (every
- * entrypoint's DRL compiled to a {@code KieBase} at startup). If the producer threw (e.g. a marker rule in scope
- * under strict {@code ALLOW_MARKERS=false}), CDI construction fails and the app never finishes starting — so
- * readiness stays DOWN. SmallRye serves this at {@code /q/health/ready}.
+ * Readiness probe {@code rules-compiled}: UP once the {@link BeslisserKern} producer succeeded (uchar built every
+ * entrypoint's {@code KieBase} at startup). If the producer threw (e.g. a marker rule in scope under strict
+ * {@code ALLOW_MARKERS=false}), CDI construction fails and the app never finishes starting — so readiness stays
+ * DOWN. SmallRye serves this at {@code /q/health/ready}.
  */
 @Readiness
 @ApplicationScoped

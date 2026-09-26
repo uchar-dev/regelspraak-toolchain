@@ -71,8 +71,7 @@ TOEGESTANE_SKIPS=(
 # ---------------------------------------------------------------------------
 # De ondergrens per poort:  <poort>|<vloer>|<reden>|<meetdatum>
 #
-# Zelfde regime als EXPECTED_MIN_SNIPPETS in tools/verify_corpus.sh: een
-# ONDERGRENS, geen gelijkheid. Groei hoeft geen bump, krimp faalt. Ze vangen wat
+# Een ONDERGRENS, geen gelijkheid. Groei hoeft geen bump, krimp faalt. Ze vangen wat
 # een skiplijst niet kan zien — een suite die stilletjes de helft draait, een
 # testbron die uit de build valt, een klasse die als container afbreekt.
 #
@@ -82,7 +81,7 @@ TOEGESTANE_SKIPS=(
 # de poort — het make-doel en de pom-binding zijn de poort, niet de losse mvn.
 # ---------------------------------------------------------------------------
 VLOEREN=(
-"toolchain|115|de exec-model-engineconsument (tot 2026-09-26 de poort engine), gemeten op de kaartcommit|2026-09-16"
+"toolchain|109|de toolchain-kern: engine-facade, scenariorunner, verbalisator, parameterset-lader en CLI (tot 2026-09-26 de poort engine, vloer 115), na het verhuizen van parser en lowering naar uchar|2026-09-26"
 "service|167|de beslisdienst (JDK-adapter), gemeten op de kaartcommit|2026-09-16"
 "service-quarkus|33|de Quarkus-adapter, gemeten op de kaartcommit|2026-09-16"
 )

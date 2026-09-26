@@ -1,8 +1,8 @@
 package dev.uchar.regelspraak.toolchain.cli;
 
-import dev.uchar.regelspraak.toolchain.cli.RegelSpraakCli;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
+import dev.uchar.regelspraak.schema.ContractValidator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -22,13 +22,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * Pins gate G6: the {@code RegelSpraakCli --facts} CLI path (exposed as {@link dev.uchar.regelspraak.toolchain.cli.RegelSpraakCli#factsNaarDisk}) generates a
- * fact-model that (a) COMPILES as pure-JDK beans and (b) SATISFIES {@link ContractValidator} for the model it
- * came from — generate-then-validate closes the loop, so the generator and the validator can never drift. The
+ * Pins the {@code RegelSpraakCli --facts} CLI path (exposed as {@link RegelSpraakCli#factsNaarDisk}): it writes a
+ * fact-model that (a) COMPILES as pure-JDK beans and (b) SATISFIES uchar's {@link ContractValidator} for the model
+ * it came from — generate-then-validate closes the loop, so the generator and the validator can never drift. The
  * fixture is the TOKA model foundation (the manifest's companion model files: examples/toka/toka-01..16 plus
  * the reconciliatie/model-extensie companions), which resolves WITHOUT errors — the toka-2x regel files carry
- * the known §4.1 datum+datum quirk (see {@link dev.uchar.regelspraak.CasusTest}) and add no fact-model structure,
- * so the model-level fact contract is fully determined by the foundation alone.
+ * the known §4.1 datum+datum quirk and add no fact-model structure, so the model-level fact contract is fully
+ * determined by the foundation alone.
  *
  * <p>The second test pins the ERROR discipline of the mode: an unresolvable model NEVER touches disk.
  */
@@ -59,7 +59,7 @@ class FactModelCliTest {
             .collect(Collectors.toList());
 
     @Test void gegenereerde_toka_facts_compileren_en_valideren(@TempDir Path work) throws IOException {
-        Path repo = Path.of("");
+        Path repo = Path.of("..");   // the module runs from toolchain/; the fixtures sit at the repository root
         assumeTrue(Files.isReadable(repo.resolve(MODEL_FOUNDATION.get(0))), "TOKA fixtures absent");
 
         String bron = MODEL_FOUNDATION.stream()
@@ -88,9 +88,8 @@ class FactModelCliTest {
         int rc = javac.run(null, null, null, args.toArray(new String[0]));
         assertEquals(0, rc, "gegenereerde TOKA-facts moeten pure-JDK compileren");
 
-        // Load the GENERATED beans in isolation: the test classpath already carries hand-written
-        // dev.uchar.regelspraak.facts.* fixture beans, and a parent-first loader would shadow ours with those.
-        // The generated beans reference only java.*, so the platform classloader is a sufficient parent —
+        // Load the GENERATED beans in isolation, so no same-named class elsewhere on the test classpath can shadow
+        // them. The generated beans reference only java.*, so the platform classloader is a sufficient parent —
         // it resolves java.* but knows nothing of dev.uchar.regelspraak.facts, so the fresh classes win.
         try (URLClassLoader cl = new URLClassLoader(new URL[]{classes.toUri().toURL()},
                 ClassLoader.getPlatformClassLoader())) {

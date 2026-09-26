@@ -1,5 +1,7 @@
 package dev.uchar.regelspraak.toolchain.service;
 
+import dev.uchar.regelspraak.schema.FactModelGenerator;
+
 import org.kie.api.KieBase;
 import org.kie.api.runtime.KieSession;
 
@@ -9,29 +11,22 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The per-request executor: given an entry point's compiled {@link KieBase} (built once at startup over the
- * shared bean classloader, immutable thereafter) and a mapped {@link Wereld}, it opens a FRESH
- * {@link KieSession}, sets the parameter globals (the descriptor defaults, overridden by the request), sets the
- * rekendatum global when the request carried one, inserts every bean, fires to quiescence, and returns the
- * fired beans + the {@code Inconsistentie} facts for the response builder. Session-per-request; the KieBase is
- * shared and immutable, so this is thread-safe by construction.
- *
- * <p><b>Back-end</b>: the DRL back-end, exactly the {@link dev.uchar.regelspraak.toolchain.engine.ScenarioRunner} recipe.
- * That is the pinned path for gate G2 — the 29 golden scenariotoetsen reproduce over the DRL back-end
- * (ScenarioRunner.run L79-107 and its L88-93 comment: the exec-model back-end cannot bind its
- * LambdaMetafactory fact-accessors against a foreign child bean classloader, and it SKIPs / fails to compile
- * several golden scopes). The fire is bounded with the same 100_000 cap the engine's own session uses
+ * The per-request executor: given an entry point's compiled {@link KieBase} (built once at startup by uchar,
+ * immutable thereafter) and a mapped {@link Wereld}, it opens a FRESH {@link KieSession}, sets the parameter
+ * globals (the descriptor defaults, overridden by the request), sets the rekendatum global when the request
+ * carried one, inserts every bean, fires to quiescence, and returns the fired beans + the {@code Inconsistentie}
+ * facts for the response builder. Session-per-request; the KieBase is shared and immutable, so this is
+ * thread-safe by construction. The fire is bounded with the same 100_000 cap the engine's own session uses
  * (RegelSpraakEngine.Session#fire), turning a non-fixpoint kringverwijzing into an exception rather than a hang.
  */
 public final class Uitvoerder {
 
     private final KieBase kieBase;
     private final Map<String, Object> defaultGlobals;   // descriptor parameter defaults (global name -> value)
-    /** §9.8 dagsoort predicates the entrypoint's DRL declares as globals — the session builder must supply
-     *  them per {@link dev.uchar.regelspraak.transpiler.DrlTranspiler#dagsoortGlobalen()} (like DroolsExecutionTest
-     *  does), the analog of the parameter globals. Empty for a scope that references no dagsoort. */
+    /** §9.8 dagsoort predicates the build declares as globals (uchar's {@code Build.dagsoortGlobalen()}), the analog
+     *  of the parameter globals. Empty on the exec-model branch, which wires them into its rules. */
     private final Map<String, java.util.function.Predicate<LocalDate>> dagsoortGlobalen;
-    private final ClassLoader beanLoader;               // the shared child bean classloader
+    private final ClassLoader beanLoader;               // the entry point's generated bean classloader
 
     public Uitvoerder(KieBase kieBase, Map<String, Object> defaultGlobals,
                       Map<String, java.util.function.Predicate<LocalDate>> dagsoortGlobalen, ClassLoader beanLoader) {
@@ -90,12 +85,16 @@ public final class Uitvoerder {
         catch (RuntimeException onbekend) { /* global not declared: no scoped rule reads it */ }
     }
 
+    /** uchar's generator writes the {@code Inconsistentie} bean for every model, so a class loader without it is not
+     *  the one the KieBase was built against: that fails here rather than dropping every inconsistency. */
     private List<Object> leesInconsistenties(KieSession sessie) {
+        String naam = FactModelGenerator.PAKKET + ".Inconsistentie";
+        Class<?> inc;
         try {
-            Class<?> inc = Class.forName("dev.uchar.regelspraak.facts.Inconsistentie", true, beanLoader);
-            return List.copyOf(sessie.getObjects(inc::isInstance));
+            inc = Class.forName(naam, true, beanLoader);
         } catch (ClassNotFoundException e) {
-            return List.of();
+            throw new IllegalStateException("de bean-classloader van dit entrypoint draagt " + naam + " niet", e);
         }
+        return List.copyOf(sessie.getObjects(inc::isInstance));
     }
 }

@@ -22,7 +22,7 @@ import java.util.Map;
  * Maps a {@link Verzoek} JSON tree onto a {@link Wereld} of fact beans + globals + rekendatum, validating
  * every field against the resolved model and collecting typed {@link Schending}s (each carrying its FIELD
  * PATH). It REUSES the existing bridge — {@link Class#forName} over {@code dev.uchar.regelspraak.facts.*} and
- * {@link RegelSpraakRuntime#set} — exactly as {@link dev.uchar.regelspraak.toolchain.engine.ScenarioRunner} does; no new
+ * {@link RegelSpraakRuntime#set} — as uchar's case replay ({@code CaseRunner}) sets a case's inputs; no new
  * reflection layer. On any violation it does not throw: it returns the world it managed to build alongside the
  * violation list, so a caller (fase 3) can turn the full set into one 400 naming every bad field.
  *
@@ -35,8 +35,8 @@ public final class VerzoekMapper {
     private final RegelSpraakModel model;
     private final ClassLoader loader;
 
-    /** @param loader the classloader the fact beans live on — the shared CHILD bean classloader the core
-     *                built at startup ({@link dev.uchar.regelspraak.engine.BeanCompiler}); reflection over it is
+    /** @param loader the classloader the fact beans live on — the entry point's generated bean classloader,
+     *                which uchar's build compiled at startup; reflection over it is
      *                classloader-agnostic, only {@link Class#forName} must go through it. */
     public VerzoekMapper(RegelSpraakModel model, ClassLoader loader) {
         this.model = model;

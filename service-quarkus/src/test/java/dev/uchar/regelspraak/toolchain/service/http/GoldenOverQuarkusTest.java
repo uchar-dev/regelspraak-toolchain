@@ -10,8 +10,8 @@ import io.quarkus.test.junit.TestProfile;
 import io.restassured.RestAssured;
 import io.restassured.response.Response;
 
+import dev.uchar.regelspraak.emit.CaseEmitter;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
-import dev.uchar.regelspraak.ir.ResolvedScenario.ScopeRegel;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Verwachting;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Waarde;
 import dev.uchar.regelspraak.toolchain.quarkus.TokaTestProfile;
@@ -24,12 +24,14 @@ import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
@@ -49,7 +51,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>POSTs to the Quarkus URL (RestAssured) and asserts EVERY verwachting with the SAME comparison
  *       {@code GoldenOverHttpTest.gelijk} uses.</li>
  * </ol>
- * The final assertion pins 29/29 reproduced over Quarkus (30 until besluit 16Y — see TokaBron).
+ * The final assertion pins that every golden scenario was reproduced over Quarkus or refused by uchar's scenario
+ * resolver as its entry in {@link #UCHAR_WEIGERT} (the same list as {@code GoldenOverHttpTest}) says.
  */
 @QuarkusTest
 @TestProfile(TokaTestProfile.class)
@@ -59,6 +62,16 @@ class GoldenOverQuarkusTest {
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, true)
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+    /** The golden scenario files uchar's scenario resolver refuses, each with a fragment of the refusal; the same
+     *  list as {@code GoldenOverHttpTest.UCHAR_WEIGERT}. Measured on uchar d67f5da1. */
+    private static final Map<String, String> UCHAR_WEIGERT = Map.of(
+            "scenario-toka-29-passagier-met-recht.rgs",
+                    "uit de scope bestaat niet in het document",
+            "scenario-toka-43-startpunt-vertrek.rgs",
+                    "een scope in een document met een startpuntbepaling wordt geweigerd",
+            "scenario-toka-44-startpunt-min-reserveringstermijn.rgs",
+                    "een scope in een document met een startpuntbepaling wordt geweigerd");
 
     private static DienstDescriptor descriptor;
 
@@ -83,16 +96,38 @@ class GoldenOverQuarkusTest {
         assertEquals(29, golden.size(), "de manifest hoort precies 29 exit-0 golden scenariotoetsen te tellen");
 
         AtomicInteger geslaagd = new AtomicInteger();
+        AtomicInteger geweigerd = new AtomicInteger();
         List<DynamicTest> tests = new ArrayList<>();
-        for (Golden g : golden)
-            tests.add(DynamicTest.dynamicTest(g.scenarioBestand.getFileName().toString(), () -> {
-                toetsScenario(g);
-                geslaagd.incrementAndGet();
+        for (Golden g : golden) {
+            String naam = g.scenarioBestand.getFileName().toString();
+            String weigering = UCHAR_WEIGERT.get(naam);
+            tests.add(DynamicTest.dynamicTest(naam, () -> {
+                if (weigering != null) {
+                    toetsWeigering(g, weigering);
+                    geweigerd.incrementAndGet();
+                } else {
+                    toetsScenario(g);
+                    geslaagd.incrementAndGet();
+                }
             }));
-        tests.add(DynamicTest.dynamicTest("Q1: 29/29 golden over Quarkus", () ->
-                assertEquals(29, geslaagd.get(),
-                        "Q1 verlangt 29/29 golden reproducties over Quarkus; gereproduceerd: " + geslaagd.get())));
+        }
+        tests.add(DynamicTest.dynamicTest("29 golden: over Quarkus gereproduceerd of door uchar geweigerd", () -> {
+            assertEquals(UCHAR_WEIGERT.size(), geweigerd.get(), "elke weigering in UCHAR_WEIGERT hoort op te treden");
+            assertEquals(29 - UCHAR_WEIGERT.size(), geslaagd.get(),
+                    "golden reproducties over Quarkus; gereproduceerd: " + geslaagd.get());
+        }));
         return tests.stream();
+    }
+
+    /** A listed golden scenario: uchar's scenario resolver refuses it with the listed fragment. */
+    private static void toetsWeigering(Golden g, String fragment) throws IOException {
+        StringBuilder bron = new StringBuilder();
+        for (Path c : g.companions) bron.append(Files.readString(c)).append('\n');
+        bron.append(Files.readString(g.scenarioBestand)).append('\n');
+        ScenarioBundel bundel = ScenarioResolver.resolve(bron.toString());
+        assertTrue(!bundel.isOk() && bundel.model().errors().stream().anyMatch(d -> d.message().contains(fragment)),
+                () -> g.scenarioBestand.getFileName() + " staat in UCHAR_WEIGERT met '" + fragment + "', maar uchar "
+                        + "weigert het zo niet (meer); fouten: " + bundel.model().errors());
     }
 
     private void toetsScenario(Golden g) throws Exception {
@@ -145,7 +180,7 @@ class GoldenOverQuarkusTest {
     // ---------------- verwachting comparison (mirrors GoldenOverHttpTest.vergelijk exactly) ----------------
 
     private void vergelijk(Verwachting v, JsonNode antwoord, String pad, JsonNode verzoek) {
-        String ctx = "\nscope-pad /" + pad + "\nverwachting: '" + v.bron().trim() + "'"
+        String ctx = "\nscope-pad /" + pad + "\nverwachting op regel " + v.line() + " (" + v.soort() + ")"
                 + "\nverzoek: " + verzoek + "\nantwoord: " + antwoord;
         switch (v.soort()) {
             case ATTRIBUUT_WAARDE -> {
@@ -167,19 +202,20 @@ class GoldenOverQuarkusTest {
             case INCONSISTENT -> {
                 List<String> inc = inconsistenties(antwoord);
                 assertTrue(!inc.isEmpty(), () -> "verwacht inconsistent (niet-lege inconsistenties)" + ctx);
-                String regel = v.attribuut();
+                String regel = v.regel();
                 if (regel != null && !regel.isBlank())
                     assertTrue(inc.contains(regel),
                             () -> "verwacht dat regel '" + regel + "' in de inconsistenties staat, kreeg " + inc + ctx);
             }
+            case ATTRIBUUT_TIJDLIJN -> throw new AssertionError(
+                    "het antwoord van de dienst draagt geen tijdlijn, dus deze verwachting is over HTTP niet te toetsen" + ctx);
         }
     }
 
     private static boolean gelijk(Waarde verw, JsonNode werkelijk) {
-        if (verw == null || verw.leeg()) return werkelijk == null || werkelijk.isNull();
         if (werkelijk == null || werkelijk.isNull()) return false;
         if (verw.getal() != null)
-            return werkelijk.isNumber() && verw.getal().compareTo(werkelijk.decimalValue()) == 0;
+            return werkelijk.isNumber() && getal(verw.getal()).compareTo(werkelijk.decimalValue()) == 0;
         if (verw.datum() != null)
             return werkelijk.isTextual() && verw.datum().equals(LocalDate.parse(werkelijk.asText()));
         if (verw.datumTijd() != null)
@@ -193,9 +229,17 @@ class GoldenOverQuarkusTest {
         return werkelijk.isNull();
     }
 
+    /** A case number lexeme as an exact BigDecimal: a decimal, or a fraction {@code p/q} whose quotient terminates
+     *  (the same reading as the service test-jar's {@code SituatieNaarVerzoek.getal}, which the Quarkus class
+     *  loader split keeps out of direct reach). */
+    private static BigDecimal getal(String lexeem) {
+        int streep = lexeem.indexOf('/');
+        if (streep < 0) return new BigDecimal(lexeem);
+        return new BigDecimal(lexeem.substring(0, streep)).divide(new BigDecimal(lexeem.substring(streep + 1)));
+    }
+
     private static String renderWaarde(Waarde w) {
-        if (w == null || w.leeg()) return "leeg";
-        if (w.getal() != null) return w.getal().toPlainString();
+        if (w.getal() != null) return w.getal();
         if (w.datum() != null) return w.datum().toString();
         if (w.datumTijd() != null) return w.datumTijd().toString();
         if (w.bool() != null) return w.bool().toString();
@@ -247,7 +291,11 @@ class GoldenOverQuarkusTest {
 
     private static List<String> scopeNamen(ResolvedScenario scenario) {
         List<String> uit = new ArrayList<>();
-        for (ScopeRegel r : scenario.scope().regels()) uit.add(r.naam());
+        if (scenario.scope() == null) return uit;
+        for (String vorm : scenario.scope().vormen()) {
+            String naam = CaseEmitter.basisNaam(vorm);
+            if (!uit.contains(naam)) uit.add(naam);
+        }
         return uit;
     }
 

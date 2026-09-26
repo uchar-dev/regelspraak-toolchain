@@ -1,9 +1,9 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
-import dev.uchar.regelspraak.facts.Persoon;
 import dev.uchar.regelspraak.ir.Geldigheid;
 import dev.uchar.regelspraak.model.Parameterset;
 import dev.uchar.regelspraak.model.Parameterset.WaardeInterval;
+import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 
 import org.junit.jupiter.api.Test;
 
@@ -23,9 +23,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * parameter-vintage kiest ALS de {@code rekendatum}-global is — één datum, nooit twee parallelle noties — plus de
  * fail-fast gap/overlap-semantiek en het degenererende single-value-pad.
  *
- * <p>Fact-beans komen (net als {@link RegelSpraakEngineTest}) uit {@code dev.uchar.regelspraak.facts} op het
- * engine-test-classpath; {@link Persoon} droeg {@code grens} (= de vintage-geselecteerde parameter) en {@code prijs}
- * (= Rekenjaar) toe voor deze test.
+ * <p>De feiten zijn de beans die uchars build uit het model genereert ({@link RegelSpraakEngine#nieuw}): de
+ * Persoon draagt {@code grens} (= de vintage-geselecteerde parameter) en, in {@link #EEN_DATUM}, {@code prijs}
+ * (= Rekenjaar).
  */
 class PeildatumSessieTest {
 
@@ -55,17 +55,17 @@ class PeildatumSessieTest {
         assertTrue(engine.overgeslagen().isEmpty(), () -> "regel moet volledig loweren: " + engine.overgeslagen());
         List<Parameterset> sets = tweeVintages();
 
-        Persoon p2025 = new Persoon();
+        Object p2025 = engine.nieuw("Persoon");
         try (RegelSpraakEngine.Session s = engine.newSession(LocalDate.of(2025, 6, 1), sets)) {
             s.insert(p2025).fire();
         }
-        assertEquals(new BigDecimal(18), p2025.getGrens(), "2025-06-01 kiest de 2025-vintage (18)");
+        assertEquals(new BigDecimal(18), RegelSpraakRuntime.get(p2025, "grens"), "2025-06-01 kiest de 2025-vintage (18)");
 
-        Persoon p2026 = new Persoon();
+        Object p2026 = engine.nieuw("Persoon");
         try (RegelSpraakEngine.Session s = engine.newSession(LocalDate.of(2026, 6, 1), sets)) {
             s.insert(p2026).fire();
         }
-        assertEquals(new BigDecimal(21), p2026.getGrens(), "2026-06-01 kiest de 2026-vintage (21)");
+        assertEquals(new BigDecimal(21), RegelSpraakRuntime.get(p2026, "grens"), "2026-06-01 kiest de 2026-vintage (21)");
     }
 
     // t2 — GAP: peildatum buiten elk interval -> fout die parameternaam EN peildatum noemt.
@@ -113,15 +113,15 @@ class PeildatumSessieTest {
         assertTrue(engine.overgeslagen().isEmpty(),
                 () -> "beide regels (parameter + Rekenjaar) moeten loweren: " + engine.overgeslagen());
 
-        Persoon p = new Persoon();
+        Object p = engine.nieuw("Persoon");
         LocalDate peildatum = LocalDate.of(2026, 6, 1);
         try (RegelSpraakEngine.Session s = engine.newSession(peildatum, tweeVintages())) {
             s.insert(p).fire();
         }
         // de regel die Rekendatum leest ziet de peildatum (Rekenjaar 2026)...
-        assertEquals(new BigDecimal(2026), p.getPrijs(), "prijs = Rekenjaar van de peildatum");
+        assertEquals(new BigDecimal(2026), RegelSpraakRuntime.get(p, "prijs"), "prijs = Rekenjaar van de peildatum");
         // ...en de parameter draagt de vintage van EXACT diezelfde datum (2026 -> 21) — geen tweede datumnotie.
-        assertEquals(new BigDecimal(21), p.getGrens(), "grens = de 2026-vintage van de peildatum");
+        assertEquals(new BigDecimal(21), RegelSpraakRuntime.get(p, "grens"), "grens = de 2026-vintage van de peildatum");
     }
 
     // t5 — DEGENERAAT: newSession(peildatum) zonder sets zet alleen rekendatum; en het bestaande setGlobal-pad blijft.
@@ -129,19 +129,21 @@ class PeildatumSessieTest {
         // newSession(peildatum) zonder sets: zet alleen de rekendatum, tolerant voor een model zonder die global.
         RegelSpraakEngine grensEngine = RegelSpraakEngine.compile(GRENS_UIT_PARAMETER);
         // zonder parameter-global set fires niets voor grens (parameter niet gezet) -> grens blijft leeg; geen fout.
-        Persoon leeg = new Persoon();
+        Object leeg = grensEngine.nieuw("Persoon");
         try (RegelSpraakEngine.Session s = grensEngine.newSession(LocalDate.of(2025, 6, 1))) {
             s.insert(leeg).fire();
         }
-        assertNull(leeg.getGrens(), "zonder parameterset blijft grens ongezet (geen throw op de rekendatum-global)");
+        assertNull(RegelSpraakRuntime.get(leeg, "grens"),
+                "zonder parameterset blijft grens ongezet (geen throw op de rekendatum-global)");
 
-        // het bestaande newSession() + setGlobal-pad blijft byte-ongewijzigd werken (regression-pin).
+        // het bestaande newSession() + setGlobal-pad blijft werken (regression-pin).
         RegelSpraakEngine engine = RegelSpraakEngine.compile(RegelSpraakEngineTest.MINDERJARIG);
-        Persoon minor = new Persoon(); minor.setLeeftijd(new BigDecimal(16));
+        Object minor = RegelSpraakEngineTest.persoon(engine, 16);
         try (RegelSpraakEngine.Session s = engine.newSession()) {
             s.insert(minor).setGlobal("volwassenleeftijd", new BigDecimal(18)).fire();
         }
-        assertTrue(minor.isMinderjarig(), "16 < 18 -> minderjarig via het onveranderde setGlobal-pad");
+        assertEquals(Boolean.TRUE, RegelSpraakRuntime.get(minor, "minderjarig"),
+                "16 < 18 -> minderjarig via het onveranderde setGlobal-pad");
     }
 
     // peildatum == null op het parameterset-pad is een IllegalArgumentException (de datumautoriteit is verplicht).

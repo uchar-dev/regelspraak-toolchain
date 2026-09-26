@@ -49,6 +49,31 @@ class UitlegDienstTest {
         assertTrue(noemtKenmerk, "de uitleg hoort het kenmerk 'minderjarig' te noemen: " + antwoord);
     }
 
+    /** The golden sentence of the minderjarig decision, pinned over the scenario route until the move to uchar,
+     *  whose replay returns no fired facts to verbalise. A parameter operand is read from the globals and rendered
+     *  with its unit (18 jr); the tijdsduur the verbalisator does not recompute is honestly "(onbekend)", never
+     *  guessed. */
+    @Test
+    void gouden_uitlegzin_minderjarig() {
+        String verzoek = """
+            { "parameters": { "volwassenleeftijd": 18 },
+              "instanties": [
+                { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } },
+                { "type": "Natuurlijk persoon", "id": "P1",
+                  "attributen": { "geboortedatum": "2015-06-15" },
+                  "rollen": { "reis": "V1" } } ] }""";
+        ObjectNode antwoord = KERN.verwerk("kenmerktoekenning-persoon-minderjarig", parse(verzoek), true);
+        assertTrue(bevat(antwoord.get("uitleg"),
+                "P1 is minderjarig, omdat de tijdsduur van zijn geboortedatum tot de vluchtdatum van zijn reis"
+                        + " in hele jaren (onbekend) is kleiner dan de volwassenleeftijd (18 jr)"),
+                "de gouden uitlegzin: " + antwoord.get("uitleg"));
+    }
+
+    private static boolean bevat(JsonNode zinnen, String zin) {
+        for (JsonNode z : zinnen) if (z.asText().equals(zin)) return true;
+        return false;
+    }
+
     /** The plain path (no flag, the existing 2-arg contract) is UNCHANGED: no "uitleg" key — every current
      *  caller's response tree is byte-identical to before the feature. */
     @Test

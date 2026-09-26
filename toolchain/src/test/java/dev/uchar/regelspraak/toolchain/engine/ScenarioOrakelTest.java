@@ -1,17 +1,14 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
+import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.engine.ScenarioResultaat;
 import dev.uchar.regelspraak.engine.ScenarioResultaat.Status;
 import dev.uchar.regelspraak.engine.ScenarioResultaat.VerwachtingResultaat;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
-import dev.uchar.regelspraak.schema.ContractValidator;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.transpiler.DrlTranspiler;
 import org.junit.jupiter.api.Test;
-import org.kie.api.KieBase;
-import org.kie.api.io.ResourceType;
 import org.kie.api.runtime.KieSession;
-import org.kie.internal.utils.KieHelper;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -22,22 +19,20 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Gate G1 (docs/SCENARIOTOETSEN.md): the DIFFERENTIAL orakel. Each @Test lifts one case from the existing
- * execution suites (DroolsExecutionTest / TokaVuurTest / ExecModelDifferentialTest) and proves the
- * {@link ScenarioRunner} produces IDENTICAL values to the direct Java/Drools API path.
+ * The DIFFERENTIAL orakel of the scenario route. Each @Test lifts one case from the former execution suites and
+ * proves the {@link ScenarioRunner} produces IDENTICAL values to the direct Java/Drools API path.
  *
  * <p>Per triple, TWO independent legs close the loop:
  * <ol>
- *   <li><b>Java-API ground truth</b> — {@link #wereld} resolves + transpiles the SAME inline model via
- *       {@link DrlTranspiler}, compiles the {@link FactModelGenerator} beans in-memory ({@link BeanCompiler} —
- *       the engine module cannot see the root module's {@code dev.uchar.regelspraak.facts} POJOs, so it reuses the
- *       runner's OWN bean pipeline), builds a KieBase with an explicit classloader
- *       ({@code KieHelper.setClassLoader}, the proven TokaVuurTest pattern), sets globals, fires, and READS the
- *       target getter(s). This is the ground-truth value asserted with the SAME exact comparator the suites use
- *       (BigDecimal.compareTo==0 / equals / boolean read / null⇔leeg).</li>
+ *   <li><b>Java-API ground truth</b> — {@link #wereld} resolves the SAME inline model and builds it through uchar
+ *       on the exec-model branch ({@link UcharBouw}, the build the engine and the service fire), instantiates the
+ *       generated {@link FactModelGenerator} beans directly, sets globals, fires, and READS the target getter(s).
+ *       This is the ground-truth value asserted with an exact comparator (BigDecimal.compareTo==0 / equals /
+ *       boolean read / null⇔leeg).</li>
  *   <li><b>Scenario path</b> — the SAME model + facts + expectation as a {@code .rgs} scenario document, run
- *       through {@link ScenarioRunner#run(String)}. We assert status == PASS (which means every expectation's
- *       EXACT comparator held INSIDE the runner: scenario-expectation-value == runner-actual), AND we assert
+ *       through {@link ScenarioRunner#run(String)}: uchar's scenario resolver, its lowering to case files, and
+ *       the backend's replay. We assert status == PASS (which means every expectation's EXACT comparator held
+ *       INSIDE the replay: scenario-expectation-value == replay-actual), AND we assert
  *       directly that the value we WROTE into the scenario expectation equals the Java-API reading. Together:
  *       runner-actual == scenario-expectation == java-API-value — genuinely differential, not merely "passes".</li>
  * </ol>
@@ -45,10 +40,9 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ScenarioOrakelTest {
 
-    // ---------------- Java-API ground-truth harness (in-memory beans, engine-local) ----------------
+    // ---------------- Java-API ground-truth harness (generated beans, uchar's build) ----------------
 
-    /** Resolve → generate beans → compile in-memory → contract-validate → build the DRL → open a session.
-     *  Mirrors TokaVuurTest.Wereld, but engine-local (BeanCompiler, not the root test's FactModelGeneratorTest). */
+    /** A session on uchar's build of a model, with the class loader of its generated beans. */
     private record Wereld(KieSession sessie, ClassLoader cl) {
         Object nieuw(String klasse) throws Exception {
             return Class.forName(FactModelGenerator.PAKKET + "." + klasse, true, cl).getConstructor().newInstance();
@@ -84,28 +78,18 @@ class ScenarioOrakelTest {
     private Wereld wereld(String src) {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "model hoort te resolven: " + m.errors());
-        ClassLoader cl = BeanCompiler.compileer(FactModelGenerator.genereer(m));
-        var schendingen = ContractValidator.valideer(m, cl);
-        assertTrue(schendingen.isEmpty(), () -> "beans moeten het contract halen:\n  " + String.join("\n  ", schendingen));
-        KieHelper h = new KieHelper();
-        h.setClassLoader(cl);
-        h.addContent(DrlTranspiler.transpile(m), ResourceType.DRL);
-        assertFalse(h.verify().hasMessages(org.kie.api.builder.Message.Level.ERROR),
-                () -> "DRL compileert niet: " + h.verify().getMessages());
-        KieBase kb = h.build();
-        // Drools resolves fact types via the TCCL at fire time, exactly as the runner sets it.
-        ClassLoader vorige = Thread.currentThread().getContextClassLoader();
-        Thread.currentThread().setContextClassLoader(cl);
-        try {
-            return new Wereld(kb.newKieSession(), cl);
-        } finally {
-            Thread.currentThread().setContextClassLoader(vorige);
-        }
+        DroolsBackend.Build b = UcharBouw.bouw(m, DroolsBackend.Branch.EXEC_MODEL);
+        return new Wereld(b.kieBase().newKieSession(), b.beanLoader());
     }
 
+    /** Insert and fire with the bean class loader as the thread's context class loader, as uchar's replay fires. */
     private void vuur(Wereld w, Object... facts) {
         for (Object f : facts) w.sessie().insert(f);
-        int n = w.sessie().fireAllRules(100_000);
+        ClassLoader vorige = Thread.currentThread().getContextClassLoader();
+        Thread.currentThread().setContextClassLoader(w.cl());
+        int n;
+        try { n = w.sessie().fireAllRules(100_000); }
+        finally { Thread.currentThread().setContextClassLoader(vorige); }
         assertTrue(n < 100_000, "regel-loop bereikt geen fixpunt");
     }
 
@@ -1599,9 +1583,12 @@ class ScenarioOrakelTest {
     }
 
     /** FACET kenmerktoekenning (zelfstandig kenmerk uit een ander zelfstandig kenmerk). Lifted from
-     *  DroolsExecutionTest.membership_eenvorm_kenmerkcheck_bindt_alleen_een_zelfstandig_kenmerk (L4988): student → kind. */
+     *  DroolsExecutionTest.membership_eenvorm_kenmerkcheck_bindt_alleen_een_zelfstandig_kenmerk (L4988): student → kind.
+     *  uchar's exec-model branch does not lower the een-form over the bijvoeglijk kenmerk (rule bijvoeglijk), so the
+     *  whole model builds no KieBase: the Java-API leg builds the model without that rule, and the scenario, scoped to
+     *  zelfstandig, carries only its own rule. */
     @Test void kenmerk_zelfstandig_uit_kenmerk() throws Exception {
-        String model = """
+        String declaraties = """
             Objecttype de Passagier
                 is student kenmerk;
                 is minderjarig kenmerk (bijvoeglijk);
@@ -1609,11 +1596,15 @@ class ScenarioOrakelTest {
             Regel zelfstandig
                 geldig altijd
                     Een passagier is kind indien hij een student is.
+            """;
+        String model = declaraties + """
             Regel bijvoeglijk
                 geldig altijd
                     Een passagier is kind indien hij een minderjarig is.
             """;
-        Wereld w = wereld(model);
+        UcharBouw.NietGedragen ng = assertThrows(UcharBouw.NietGedragen.class, () -> wereld(model));
+        assertEquals("bijvoeglijk", ng.construct(), () -> "uchar weigert de regel bijvoeglijk: " + ng.getMessage());
+        Wereld w = wereld(declaraties);
         Object student = w.nieuw("Passagier"); w.kenmerk(student, "setStudent", true); w.kenmerk(student, "setMinderjarig", false);
         vuur(w, student);
         boolean grond = w.bool(student, "isKind");

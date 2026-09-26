@@ -170,12 +170,12 @@ class ScopeKetenTest {
         RegelSpraakModel m = Resolver.resolve(MODEL_KETEN + PRODUCENT_SUPER + CONSUMENT_SUB);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         ElementSleutel verwacht = ElementSleutel.van("Persoon", "volwassen", true);
-        assertTrue(ProducentConsument.producentIndex(m).containsKey(verwacht),
-                () -> "producentsleutel: " + ProducentConsument.producentIndex(m).keySet());
+        var index = ProducentConsument.producentIndex(m, m.prioritizedDefaults);
+        assertTrue(index.containsKey(verwacht), () -> "producentsleutel: " + index.keySet());
         boolean gevonden = false;
         for (var r : m.resolvedRegels)
             if (ProducentConsument.basisNaam(r.naam()).equals("bepaal korting"))
-                gevonden = ProducentConsument.verbruikt(r).contains(verwacht);
+                gevonden = ProducentConsument.verbruikt(r, ProducentConsument.bronNavigatie(m)).contains(verwacht);
         assertTrue(gevonden, "de consument op het subtype hoort dezelfde sleutel te dragen");
     }
 
@@ -205,7 +205,7 @@ class ScopeKetenTest {
         // README-invariant: de scope-poort en de graaf lezen dezelfde IR-feiten. Op een ketenmodel tekende de
         // graaf het lid TWEE keer — 'volwassen · student' als INVOER die niemand schrijft, 'volwassen · persoon'
         // als eind-output die niemand leest — en allebei die beweringen waren onwaar.
-        RegelGraaf g = RegelGraaf.bouw(Resolver.resolve(MODEL_KETEN + PRODUCENT_SUPER + CONSUMENT_SUB));
+        RegelGraaf g = graaf(MODEL_KETEN + PRODUCENT_SUPER + CONSUMENT_SUB);
         long volwassenNodes = g.nodes().stream().filter(n -> n.label().startsWith("volwassen")).count();
         assertEquals(1, volwassenNodes, () -> "één element-node voor één lid: " + g.nodes());
         RegelGraaf.Node volwassen = g.nodes().stream().filter(n -> n.label().startsWith("volwassen"))
@@ -218,11 +218,18 @@ class ScopeKetenTest {
     @Test
     void de_graaf_op_een_vlak_model_verandert_niet() {
         // De ketenlezing mag op een model zonder subtypen niets doen: elke keten is één element lang.
-        RegelGraaf g = RegelGraaf.bouw(Resolver.resolve(MODEL_VLAK + PRODUCENT_SUPER + CONSUMENT_SUPER));
+        RegelGraaf g = graaf(MODEL_VLAK + PRODUCENT_SUPER + CONSUMENT_SUPER);
         assertEquals(5, g.nodes().size(), () -> "" + g.nodes());
         assertEquals(4, g.edges().size(), () -> "" + g.edges());
         assertTrue(g.nodes().stream().anyMatch(n -> n.label().equals("leeftijd · persoon")
                 && n.kind() == RegelGraaf.NodeKind.INVOER), () -> "" + g.nodes());
+    }
+
+    /** uchar's rule graph of a resolver's model: its defaults groups ride on the model, and a navigated kenmerk
+     *  check reaches the type of the role it names. */
+    private static RegelGraaf graaf(String bron) {
+        RegelSpraakModel m = Resolver.resolve(bron);
+        return RegelGraaf.bouw(m, m.prioritizedDefaults, ProducentConsument.bronNavigatie(m));
     }
 
     private static JsonNode parse(String json) {

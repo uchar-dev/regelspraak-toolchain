@@ -1,6 +1,6 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
-import dev.uchar.regelspraak.engine.ScenarioResultaat.DekkingSoort;
+import dev.uchar.regelspraak.engine.ScenarioResultaat;
 import dev.uchar.regelspraak.engine.ScenarioResultaat.Status;
 import org.junit.jupiter.api.Test;
 
@@ -9,7 +9,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Positive end-to-end tests for the {@link ScenarioRunner} (docs/SCENARIOTOETSEN.md): a small self-contained model
+ * Positive end-to-end tests for the {@link ScenarioRunner}: a small self-contained model
  * plus a scenario whose expectations are computed BY HAND from the rule, asserting the runner reaches PASS (and, for
  * the marker case, MARKER). Each covers one facet of the contract: an attribuut value, a kenmerk, a leeg expectation,
  * a CONSISTENT/INCONSISTENT pair, a to-many role, a parameter override, a peildatum-gated (geldig vanaf) rule, and a
@@ -206,7 +206,9 @@ class ScenarioRunnerTest {
                 + r.diagnose() + " / " + r.verwachtingen());
     }
 
-    /** A §4.2 geldig-vanaf rule: the peildatum sets the rekendatum so the version window is open. */
+    /** A §4.2 geldig-vanaf rule: the peildatum sets the rekendatum so the version window is open. The scenario is
+     *  not named "met peildatum": in uchar's grammar that phrase is the header token that sets the peildatum, and a
+     *  scenario name cannot contain it. */
     @Test void peildatum_geldig_vanaf() {
         ScenarioResultaat r = één("""
             Objecttype de Vlucht (mv: Vluchten)
@@ -217,7 +219,7 @@ class ScenarioRunnerTest {
             Situatie basis:
             een Vlucht V1
             - de heffing is 0,00 EUR
-            Scenario met peildatum
+            Scenario venster open op de peildatum
             toetst de regel heffingsregel
             met peildatum 01-06-2024
             gebaseerd op de situatie basis
@@ -251,7 +253,9 @@ class ScenarioRunnerTest {
                 + "worden ook al bevat de tekst-literal '/* TODO'): " + r.diagnose() + " / " + r.verwachtingen());
     }
 
-    /** A MARKER scope: a value the transpiler cannot lower stays an honest marker → status MARKER (exit-3 path). */
+    /** A MARKER scope: a value the transpiler cannot lower stays an honest marker → status MARKER (exit-3 path).
+     *  uchar's replay refuses the document before a case plays, so the report names the rule in its reason and
+     *  carries no coverage entry for it. */
     @Test void marker_scope() {
         ScenarioResultaat r = één("""
             Objecttype de Vlucht (mv: Vluchten)
@@ -269,7 +273,7 @@ class ScenarioRunnerTest {
             - de heffing van V1 is 5,00 EUR
             """);
         assertEquals(Status.MARKER, r.status(), () -> "verwacht MARKER: " + r.diagnose());
-        assertTrue(r.dekking().stream().anyMatch(d -> d.soort() == DekkingSoort.MARKER),
-                "de scope-regel moet als MARKER gedekt zijn");
+        assertTrue(r.diagnose().contains("heffingsregel"), () -> "de reden hoort de regel te noemen: " + r.diagnose());
+        assertTrue(r.dekking().isEmpty(), () -> "een niet-gespeeld document draagt geen dekking: " + r.dekking());
     }
 }

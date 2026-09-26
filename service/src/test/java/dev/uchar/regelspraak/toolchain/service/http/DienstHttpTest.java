@@ -285,14 +285,22 @@ class DienstHttpTest {
         // and the top-level overgeslagen lists it too
         assertTrue(contains(info.get("overgeslagen"), "heffing markert"),
                 "overgeslagen hoort de marker-regel te noemen: " + info.get("overgeslagen"));
-        // its dekking entry carries a MARKER verdict with a reden
-        boolean markerVerdict = false;
-        for (JsonNode d : ep.get("dekking"))
-            if ("MARKER".equals(d.path("verdict").asText())) {
-                markerVerdict = true;
-                assertTrue(d.has("reden"), "een MARKER-verdict hoort een reden te dragen: " + d);
-            }
-        assertTrue(markerVerdict, "de marker-scope hoort een MARKER-dekking te tonen: " + ep.get("dekking"));
+        // uchar builds no KieBase that lacks a construct, so the marker entrypoint has no build and no dekking;
+        // until the move to uchar its dekking listed the rule with a MARKER verdict
+        assertTrue(ep.get("dekking").isEmpty(), "een niet-gebouwd entrypoint draagt geen dekking: " + ep.get("dekking"));
+    }
+
+    @Test
+    void een_verzoek_aan_een_marker_entrypoint_is_503() throws Exception {
+        // started with markers allowed, the entrypoint exists but cannot fire: every request is refused by name,
+        // never answered as if the marker rule did not exist
+        serveer(markerKern());
+        HttpResponse<String> resp = post("/heffing-markert", """
+            { "instanties": [ { "type": "Vlucht", "id": "V1" } ] }""");
+        assertEquals(503, resp.statusCode(), resp.body());
+        JsonNode fout = boom(resp.body());
+        assertTrue(fout.get("fout").asText().contains("niet uitvoerbaar"), resp.body());
+        assertTrue(fout.get("fout").asText().contains("transpiler"), "de reden is uchars weigering: " + resp.body());
     }
 
     // ---------------- negative HTTP ----------------

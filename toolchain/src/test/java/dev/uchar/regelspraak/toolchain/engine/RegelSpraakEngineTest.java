@@ -1,18 +1,20 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
-import dev.uchar.regelspraak.facts.Persoon;
+import dev.uchar.regelspraak.engine.RegelSpraakCompileException;
+import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * End-to-end proof of the shippable path: a RegelSpraak source compiles to an executable-model KieBase and FIRES
- * over real domain facts, mutating them in place — the integration a Quarkus/Drools consumer relies on. Uses ONLY
- * RegelSpraakEngine (the exec-model back-end + the Drools runtime), never the DRL-string oracle.
+ * End-to-end proof of the shippable path: a RegelSpraak source compiles through uchar to an executable-model
+ * KieBase and FIRES over the generated fact beans, mutating them in place — the integration an embedding consumer
+ * relies on.
  */
 class RegelSpraakEngineTest {
 
@@ -31,14 +33,14 @@ class RegelSpraakEngineTest {
         RegelSpraakEngine engine = RegelSpraakEngine.compile(MINDERJARIG);
         assertTrue(engine.overgeslagen().isEmpty(), () -> "rule should fully lower, skipped: " + engine.overgeslagen());
 
-        Persoon minor = new Persoon(); minor.setLeeftijd(new BigDecimal(16));
-        Persoon adult = new Persoon(); adult.setLeeftijd(new BigDecimal(40));
+        Object minor = persoon(engine, 16);
+        Object adult = persoon(engine, 40);
         try (RegelSpraakEngine.Session s = engine.newSession()) {
             int fired = s.insertAll(minor, adult).setGlobal("volwassenleeftijd", new BigDecimal(18)).fire();
             assertTrue(fired >= 1, "at least the minor's rule fires");
         }
-        assertTrue(minor.isMinderjarig(), "16 < 18 -> minderjarig");
-        assertFalse(adult.isMinderjarig(), "40 >= 18 -> not minderjarig");
+        assertEquals(Boolean.TRUE, RegelSpraakRuntime.get(minor, "minderjarig"), "16 < 18 -> minderjarig");
+        assertEquals(Boolean.FALSE, RegelSpraakRuntime.get(adult, "minderjarig"), "40 >= 18 -> not minderjarig");
     }
 
     static final String TYPEFOUT = """
@@ -57,19 +59,35 @@ class RegelSpraakEngineTest {
         assertFalse(ex.diagnostics().isEmpty(), "a type error must report a diagnostic");
     }
 
-    @Test void ontbrekende_feitklasse_faalt_snel_met_alle_contract_schendingen() {
-        // the fact-model contract: compile() validates the bean contract FIRST and reports EVERY violation at once.
+    @Test void de_feitklasse_wordt_gegenereerd() {
+        // Until the move to uchar the consumer supplied the fact classes and compile() refused a model whose class
+        // was missing from the classpath. uchar's build generates the beans from the model itself, so an objecttype
+        // no consumer wrote a class for compiles, and its bean comes from the engine.
         String src = """
             Objecttype het Spookding
                 de waarde Numeriek (geheel getal);
                 de naam Tekst;
             """;
-        RegelSpraakCompileException e = org.junit.jupiter.api.Assertions.assertThrows(
-                RegelSpraakCompileException.class, () -> RegelSpraakEngine.compile(src));
-        org.junit.jupiter.api.Assertions.assertTrue(
-                e.diagnostics().stream().anyMatch(d -> d.message().contains("feitmodel-contract")
-                        && d.message().contains("Spookding")),
-                () -> "de ontbrekende feitklasse moet als contract-schending gemeld worden: " + e.diagnostics());
+        RegelSpraakEngine engine = RegelSpraakEngine.compile(src);
+        Object ding = engine.nieuw("Spookding");
+        RegelSpraakRuntime.set(ding, "naam", "spook");
+        assertEquals("spook", RegelSpraakRuntime.get(ding, "naam"));
+    }
+
+    @Test void een_niet_gelowerde_regel_faalt_bij_het_compileren() {
+        // uchar builds no KieBase that lacks a construct: an engine without the rule would answer as if the rule
+        // did not exist, so compile() refuses and names the rule.
+        String src = """
+            Objecttype de Vlucht (mv: Vluchten)
+                de heffing Numeriek (getal met 2 decimalen) met eenheid EUR;
+            Regel heffing markert
+            geldig altijd
+            De heffing van een Vlucht moet berekend worden als het absolute tijdsevenredig deel per maand van 10,00 EUR.
+            """;
+        RegelSpraakCompileException e = assertThrows(RegelSpraakCompileException.class,
+                () -> RegelSpraakEngine.compile(src));
+        assertTrue(e.diagnostics().stream().anyMatch(d -> d.message().contains("heffing markert")),
+                () -> "de weigering hoort de regel te noemen: " + e.diagnostics());
     }
 
     @org.junit.jupiter.api.Timeout(60)
@@ -90,11 +108,18 @@ class RegelSpraakEngineTest {
             """;
         RegelSpraakEngine engine = RegelSpraakEngine.compile(kring);
         assertTrue(engine.overgeslagen().isEmpty(), () -> "beide kring-regels moeten loweren: " + engine.overgeslagen());
-        Persoon p = new Persoon(); p.setLeeftijd(new BigDecimal(1));
+        Object p = persoon(engine, 1);
         try (RegelSpraakEngine.Session s = engine.newSession()) {
             s.insert(p);
             assertThrows(IllegalStateException.class, s::fire,
                     "een kringverwijzing moet begrensd falen, niet hangen");
         }
+    }
+
+    /** A generated Persoon bean with its leeftijd set. */
+    static Object persoon(RegelSpraakEngine engine, int leeftijd) {
+        Object p = engine.nieuw("Persoon");
+        RegelSpraakRuntime.set(p, "leeftijd", new BigDecimal(leeftijd));
+        return p;
     }
 }

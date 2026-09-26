@@ -13,8 +13,8 @@ import java.util.Set;
 /**
  * The regelnaam → bronbestand index (decision 2b): given the ordered list of {@code .rgs} source files that
  * make up a service, work out which rules each file DECLARES, and which files declare NONE (the PRELUDE —
- * objecttypen, feittypen, domeinen, parameters, eenheidstelsels, …). The core then compiles one
- * {@link org.kie.api.KieBase} per entry point (the DRL recipe) over {@code prelude + scoped-rule-files},
+ * objecttypen, feittypen, domeinen, parameters, eenheidstelsels, …). The core then builds one
+ * {@link org.kie.api.KieBase} per entry point over {@code prelude + scoped-rule-files},
  * so an entry point fires ONLY its scoped rules and upstream rules cannot overwrite request-given intermediate
  * inputs (exact G2 reproduction). File granularity is the unit: a file is either prelude or a rule file, and a
  * rule name maps to the ONE file that declares it (the TOKA casus keeps one construct per file, verified
@@ -116,8 +116,8 @@ public final class RegelBestandIndex {
      * (top-level regels + the verdeling/consistentie/objectcreatie/feitcreatie constructs). We take the union of
      * the two, exactly mirroring the scenario front-end's {@code ScenarioResolver.regelBestaat} (which scopes
      * "toetst de regel X" against {@code model.regels} ∪ {@code resolvedRegels}), so a golden scenario's scope and
-     * a descriptor entrypoint agree on which names exist. A feitcreatie so named yields ZERO dekking entries — it
-     * is accepted but emits no DRL, and is NOT a marker (see {@link BeslisserKern}).
+     * a descriptor entrypoint agree on which names exist. A feitcreatie so named yields ZERO dekking entries in the
+     * entry point's manifest, and is NOT a marker (see {@link BeslisserKern}).
      */
     public static Set<String> regelnamen(RegelSpraakModel m) {
         Set<String> namen = new LinkedHashSet<>();

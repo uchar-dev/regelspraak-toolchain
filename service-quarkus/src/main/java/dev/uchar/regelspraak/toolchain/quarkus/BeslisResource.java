@@ -26,7 +26,8 @@ import dev.uchar.regelspraak.toolchain.service.Schending;
  * The Quarkus JAX-RS adapter over {@link BeslisserKern}, MIRRORING {@code DienstHttp}'s HTTP contract exactly:
  * <ul>
  *   <li>{@code POST /<pad>} → {@link BeslisserKern#verwerk} → {@code 200} JSON; {@link DienstFout} → {@code 400}
- *       {@code {"fout":…,"schendingen":[{"veld":…,"fout":…}]}}; {@link BeslisserKern.OnbekendPad} → {@code 404}.</li>
+ *       {@code {"fout":…,"schendingen":[{"veld":…,"fout":…}]}}; {@link BeslisserKern.OnbekendPad} → {@code 404};
+ *       {@link BeslisserKern.NietUitvoerbaar} → {@code 503}.</li>
  *   <li>{@code GET /info} → the SAME manifest {@code DienstHttp} serves (via {@link InfoBouwer}).</li>
  * </ul>
  *
@@ -75,6 +76,8 @@ public class BeslisResource {
             return response(200, antwoord);
         } catch (BeslisserKern.OnbekendPad onbekend) {
             return response(404, foutBody(onbekend.getMessage(), null));
+        } catch (BeslisserKern.NietUitvoerbaar niet) {
+            return response(503, foutBody(niet.getMessage(), null));
         } catch (DienstFout dienstFout) {
             return response(400, verzoekFoutBody(dienstFout));
         }

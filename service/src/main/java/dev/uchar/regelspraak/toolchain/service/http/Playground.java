@@ -4,10 +4,13 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.engine.ScenarioResultaat;
 import dev.uchar.regelspraak.engine.ScenarioResultaat.DekkingRegel;
 import dev.uchar.regelspraak.engine.ScenarioResultaat.VerwachtingResultaat;
 import dev.uchar.regelspraak.toolchain.engine.ScenarioRunner;
+import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
+import dev.uchar.regelspraak.graaf.ProducentConsument;
 import dev.uchar.regelspraak.graaf.RegelGraaf;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
@@ -17,7 +20,6 @@ import dev.uchar.regelspraak.parser.RegelSpraakLexer;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundel;
-import dev.uchar.regelspraak.transpiler.DrlTranspiler;
 
 import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.CharStreams;
@@ -38,16 +40,17 @@ import java.util.List;
  *       and the {@code verwacht} token set (the ANTLR follow set), so a beginner sees WHERE and WHAT was
  *       expected;</li>
  *   <li><b>resolver</b> — the {@link Resolver} verdict: the ERROR and WARNING diagnostics (line + message);</li>
- *   <li><b>drl</b> — the transpiled Drools text, present only when parse + resolve are clean (a broken model has
- *       no honest DRL);</li>
+ *   <li><b>drl</b> — the DRL text of uchar's DRL-text branch, present only when parse + resolve are clean (a
+ *       broken model has no honest DRL); when uchar does not carry the model it is empty and {@code drlFout}
+ *       carries uchar's refusal;</li>
  *   <li><b>graaf</b> — the regelgraaf: the resolved model's producer/consumer dataflow as Mermaid source, present
  *       under the same clean-model gate as {@code drl} (a broken model has no honest dataflow graph);</li>
  *   <li><b>scenario</b> — only when the source contains a {@code Scenario} block: the in-proc
  *       {@link ScenarioRunner} outcome per scenario (status + per-expectation verwacht/werkelijk).</li>
  * </ol>
  *
- * <p><b>Scenario-aware front-end.</b> {@code Situatie}/{@code Scenario} blocks are a DOCUMENTED extension
- * ({@code docs/SCENARIOTOETSEN.md}) reachable only via the scenario entry rule, NOT part of the production
+ * <p><b>Scenario-aware front-end.</b> {@code Situatie}/{@code Scenario} blocks are a documented extension of uchar's
+ * frontend (its {@code grammar/DIVERGENCES.md}) reachable only via the scenario entry rule, NOT part of the production
  * {@code regelSpraakDocument}. So when a source carries such a block the analyzer parses + resolves it through the
  * scenario front-end ({@link ScenarioResolver}) — whose {@code parse}/{@code resolver}/{@code drl} panes then
  * reflect the MODEL portion (definities/regels/beslistabellen), un-confused by the scenario keywords — and runs
@@ -118,7 +121,7 @@ public final class Playground {
         //    resolved model; scenario blocks live outside the production model, so they never taint the DRL.
         if (model.isOk()) {
             try {
-                root.put("drl", DrlTranspiler.transpile(model));
+                root.put("drl", UcharBouw.bouw(model, DroolsBackend.Branch.DRL_TEXT).drlTranspiler().drl());
             } catch (RuntimeException e) {
                 root.put("drl", "");
                 root.put("drlFout", boodschap(e));
@@ -128,7 +131,8 @@ public final class Playground {
             //     dataflow graph. Built from the shared ProducentConsument core, so the picture can never disagree
             //     with the engine's scope-validation; the page degrades to a <pre> of the source offline.
             try {
-                root.put("graaf", RegelGraaf.bouw(model).mermaid());
+                root.put("graaf", RegelGraaf.bouw(model, model.prioritizedDefaults,
+                        ProducentConsument.bronNavigatie(model)).mermaid());
             } catch (RuntimeException e) {
                 root.put("graaf", "");
                 root.put("graafFout", boodschap(e));

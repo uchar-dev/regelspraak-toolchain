@@ -57,6 +57,8 @@ import java.util.concurrent.TimeoutException;
  *       [{"veld": <pad>, "fout": <detail>}, ...]}} — every schending names its {@code veld}.</li>
  *   <li>malformed / empty request body JSON → {@code 400} {@code {"fout": "...", "veld": "body"}}.</li>
  *   <li>{@link BeslisserKern.OnbekendPad} → {@code 404} naming the pad.</li>
+ *   <li>{@link BeslisserKern.NietUitvoerbaar} → {@code 503} naming the entry point and uchar's refusal: an entry
+ *       point started with a marker has no KieBase.</li>
  *   <li>wrong method on a known path → {@code 405} naming the method.</li>
  *   <li>ANY other exception → {@code 500} {@code {"fout": "interne fout"}} — never a stacktrace or an exception
  *       message in the body; the stack is logged to {@code stderr} server-side.</li>
@@ -65,7 +67,7 @@ import java.util.concurrent.TimeoutException;
  * <h2>Concurrency</h2>
  * The server executor is {@link Executors#newVirtualThreadPerTaskExecutor()} (Java 21 virtual threads). The core
  * is thread-safe BY CONSTRUCTION — each entry point's {@link org.kie.api.KieBase} is built once at startup and
- * immutable thereafter, and {@code verwerk} opens a fresh {@code KieSession} per request over the shared,
+ * immutable thereafter, and {@code verwerk} opens a fresh {@code KieSession} per request over the entry point's
  * read-only bean classloader — so an unbounded virtual-thread-per-request executor is safe. G7 (50 concurrent
  * POSTs, no cross-session fact leakage) lands in fase 6; this adapter is already ready for it.
  */
@@ -185,6 +187,8 @@ public final class DienstHttp {
             stuur(ex, 200, antwoord);
         } catch (BeslisserKern.OnbekendPad onbekend) {
             stuur(ex, 404, foutBody(onbekend.getMessage(), null));
+        } catch (BeslisserKern.NietUitvoerbaar niet) {
+            stuur(ex, 503, foutBody(niet.getMessage(), null));
         } catch (DienstFout dienstFout) {
             stuur(ex, 400, verzoekFoutBody(dienstFout));
         } catch (Exception intern) {

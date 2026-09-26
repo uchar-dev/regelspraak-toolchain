@@ -14,15 +14,17 @@
 #      leading/trailing spaces survive verbatim; unquoted edge spaces are trimmed.
 #      Pinned against tools/testdata/quoting-probe.expected.rgs.
 #
-# Requires: python3, a JDK, and `make compile` already run (out/ present). Run from
-# the repo root or anywhere — paths are resolved relative to the repo root.
+# Requires: python3, a JDK, and `make classpath` already run (the toolchain module built
+# and toolchain/target/runtime-classpath.txt written). Run from the repo root or anywhere
+# — paths are resolved relative to the repo root.
 set -u
 cd "$(dirname "$0")/../.." || exit 2
 ROOT="$(pwd)"
 TOOL="python3 tools/csv_naar_beslistabel.py"
 TD="tools/testdata"
-JAR="$(ls lib/antlr-*-complete.jar 2>/dev/null | head -1)"
-DRL="java -cp $JAR:out dev.uchar.regelspraak.toolchain.cli.RegelSpraakCli --drl --allow-markers"
+CPBESTAND="toolchain/target/runtime-classpath.txt"
+[ -f "$CPBESTAND" ] || { echo "FAIL: $CPBESTAND ontbreekt — draai eerst make classpath"; exit 2; }
+DRL="java -cp toolchain/target/classes:$(cat "$CPBESTAND") dev.uchar.regelspraak.toolchain.cli.RegelSpraakCli --drl"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -46,8 +48,11 @@ for name in woonregio-factor reisduur-band; do
     bad "$name: tool output drifted from $TD/$name.expected.rgs"; diff "$TD/$name.expected.rgs" "$TMP/$name.frag"; continue
   fi
   cat "$TMP/$name.prefix" "$TMP/$name.frag" > "$TMP/$name.tool.rgs"
-  $DRL "$orig"           2>/dev/null > "$TMP/$name.orig.drl"
-  $DRL "$TMP/$name.tool.rgs" 2>/dev/null > "$TMP/$name.tool.drl"
+  # Both DRL runs must succeed: two refusals print two empty DRLs, and those compare byte-equal too.
+  $DRL "$orig"           2>"$TMP/$name.orig.err" > "$TMP/$name.orig.drl" \
+    || { bad "$name: --drl op het origineel faalt (exit $?): $(tail -1 "$TMP/$name.orig.err")"; continue; }
+  $DRL "$TMP/$name.tool.rgs" 2>"$TMP/$name.tool.err" > "$TMP/$name.tool.drl" \
+    || { bad "$name: --drl op de tooluitvoer faalt (exit $?): $(tail -1 "$TMP/$name.tool.err")"; continue; }
   if diff -q "$TMP/$name.orig.drl" "$TMP/$name.tool.drl" >/dev/null; then
     ok "$name: BYTE-EQUAL DRL"
   else

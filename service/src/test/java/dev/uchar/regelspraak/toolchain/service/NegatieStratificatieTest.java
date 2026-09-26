@@ -3,15 +3,13 @@ package dev.uchar.regelspraak.toolchain.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import dev.uchar.regelspraak.engine.BeanCompiler;
+import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.transpiler.model.ExecModelTranspiler;
+import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
 
-import org.drools.modelcompiler.KieBaseBuilder;
 import org.junit.jupiter.api.Test;
-import org.kie.api.KieBase;
 import org.kie.api.runtime.KieSession;
 
 import java.math.BigDecimal;
@@ -80,15 +78,14 @@ class NegatieStratificatieTest {
                   "uitvoer": [ "Werknemer:herleefbaar", "Werknemer:geblokkeerd" ] } ] }
             """;
 
-    /** The EXEC-model reference: build the FULL-model KieBase the ScenarioRunner uses and fire the same fact.
+    /** The EXEC-model reference: build the FULL-model KieBase through uchar and fire the same fact.
      *  This is the ORACLE — it must (and does) derive herleefbaar=false when geblokkeerd is set. */
     @Test
     void exec_model_leidt_herleefbaar_false_af_wanneer_geblokkeerd() throws Exception {
         RegelSpraakModel model = Resolver.resolve(SRC);
         assertTrue(model.errors().isEmpty(), () -> "bron moet schoon resolven: " + model.errors());
-        Map<String, String> bronnen = FactModelGenerator.genereer(model);
-        ClassLoader cl = BeanCompiler.compileer(bronnen);
-        ExecModelTranspiler et = ExecModelTranspiler.build(model, cl);
+        DroolsBackend.Build build = UcharBouw.bouw(model, DroolsBackend.Branch.EXEC_MODEL);
+        ClassLoader cl = build.beanLoader();
 
         Class<?> wn = Class.forName(FactModelGenerator.PAKKET + ".Werknemer", true, cl);
         Object bean = wn.getConstructor().newInstance();
@@ -97,8 +94,7 @@ class NegatieStratificatieTest {
         ClassLoader vorige = Thread.currentThread().getContextClassLoader();
         Thread.currentThread().setContextClassLoader(cl);
         try {
-            KieBase kb = KieBaseBuilder.createKieBaseFromModel(et.model());
-            KieSession s = kb.newKieSession();
+            KieSession s = build.kieBase().newKieSession();
             try {
                 s.insert(bean);
                 s.fireAllRules(10_000);

@@ -3,8 +3,9 @@ package dev.uchar.regelspraak.toolchain.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import dev.uchar.regelspraak.engine.BeanCompiler;
+import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.toolchain.engine.ParametersetLader;
+import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
 import dev.uchar.regelspraak.toolchain.engine.Verbalisator;
 import dev.uchar.regelspraak.toolchain.engine.ParametersetLader.ParametersetFout;
 import dev.uchar.regelspraak.graaf.ProducentConsument;
@@ -12,12 +13,8 @@ import dev.uchar.regelspraak.graaf.ProducentConsument.ElementSleutel;
 import dev.uchar.regelspraak.model.Parameterset;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
-import dev.uchar.regelspraak.schema.ContractValidator;
-import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.transpiler.DrlTranspiler;
 import dev.uchar.regelspraak.transpiler.kern.Dekking;
 import dev.uchar.regelspraak.transpiler.kern.PeriodeDekking;
-import dev.uchar.regelspraak.transpiler.model.ExecModelTranspiler;
 
 import org.kie.api.KieBase;
 
@@ -31,46 +28,37 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The framework-agnostic decision-service CORE (fase 2). Constructed from a descriptor and the ordered list of
- * {@code .rgs} source files that make up the service (manifest-style), it performs, at startup, exactly the
- * pinned steps, mirroring {@link dev.uchar.regelspraak.toolchain.engine.ScenarioRunner#run} (its L79-107):
+ * The framework-agnostic decision-service CORE. Constructed from a descriptor and the ordered list of
+ * {@code .rgs} source files that make up the service (manifest-style), it performs, at startup:
  *
  * <ol>
  *   <li><b>Resolve the FULL concatenated source once</b> — one shared, validated {@link RegelSpraakModel}; the
  *       descriptor is validated against it (unknown regel / regelgroep / objecttype / attribuut / kenmerk /
  *       parameter = a startup error naming the value, ALL collected first). A file set whose union does not
  *       resolve refuses startup with the resolver diagnostics.</li>
- *   <li><b>Compile the fact beans ONCE</b> — {@link FactModelGenerator#genereer} + {@link BeanCompiler#compileer}
- *       yield ONE child bean classloader for the whole service, and {@link ContractValidator#valideer} over it
- *       is a startup gate (any contract violation refuses startup).</li>
- *   <li><b>Build the regelnaam→bronbestand index</b> ({@link RegelBestandIndex}), so an entry point can be
- *       transpiled over PRELUDE (the rule-less files) + only its scoped rule files — one {@link KieBase} per
- *       entry point over the SHARED bean classloader, so upstream rules cannot overwrite request-given
- *       intermediate inputs (exact G2 reproduction).</li>
- *   <li><b>Fail-fast on markers</b> — per entry point, any in-scope construct the DRL back-end could not lower
- *       ({@code !lowered()} in {@link DrlTranspiler#dekking()}) is collected; with
- *       {@link KernConfig#allowMarkers()} false the startup refuses naming each rule, with true it starts and
- *       exposes the list. The marker DRL rule blocks are STRIPPED before {@link KieHelper} compilation (an
- *       accepted-but-inert no-op never fires — dropping its block is behaviour-neutral).</li>
+ *   <li><b>Build the regelnaam→bronbestand index</b> ({@link RegelBestandIndex}), so an entry point is built
+ *       over PRELUDE (the rule-less files) + only its scoped rule files — one {@link KieBase} per entry point, so
+ *       upstream rules cannot overwrite request-given intermediate inputs.</li>
+ *   <li><b>Build each entry point through uchar</b> ({@link UcharBouw}): its source is resolved, emitted as a
+ *       {@code uchar-ir-v1} document and built by uchar's backend on the exec-model branch, which generates the
+ *       fact beans into a class loader of the entry point's own, checks the bean contract, and lowers every
+ *       construct with every side table the loader returns. A refusal is a startup error naming the entry
+ *       point.</li>
+ *   <li><b>Fail-fast on markers</b> — a construct the exec-model branch does not lower refuses the build of the
+ *       entry point whose source carries it. With {@link KernConfig#allowMarkers()} false the startup refuses
+ *       naming the construct; with true it starts, lists the construct under the entry point's markers, and
+ *       refuses every request to that entry point ({@link NietUitvoerbaar}), since uchar hands out no KieBase
+ *       that lacks a construct.</li>
  * </ol>
  *
- * <p><b>Back-end</b>: the KieBase is built via the EXEC-model back-end over the child bean classloader
- * ({@link ExecModelTranspiler#build(RegelSpraakModel, ClassLoader)} +
- * {@link org.drools.modelcompiler.KieBaseBuilder#createKieBaseFromModel} under TCCL=beanLoader — a per-owner
- * Lookup links the child-loaded beans, so all 29 golden scopes fire under exec). {@link DrlTranspiler} is
- * retained as the coverage/marker manifest AUTHORITY (markers, dekking — so {@code /info} stays byte-identical)
- * and the differential oracle; a startup GUARD refuses any entry point where the exec back-end skips an
- * in-scope rule the DRL back-end lowers (no mixed-truth transport). The generated beans live on the CHILD
- * classloader, so all fact {@code Class.forName}/read/write go through the bean classloader.
- *
- * <p>KieBases are immutable after startup; a session is opened per request ({@link Uitvoerder}), so the core is
- * thread-safe by construction.
+ * <p>The generated beans live on the entry point's class loader, so every fact {@code Class.forName}/read/write
+ * of a request goes through it. KieBases are immutable after startup; a session is opened per request
+ * ({@link Uitvoerder}), so the core is thread-safe by construction.
  */
 public final class BeslisserKern {
 
     private final DienstDescriptor descriptor;
     private final RegelSpraakModel model;
-    private final ClassLoader beanLoader;   // the shared child bean classloader
     private final Map<String, Entrypoint> perPad;   // URL path -> compiled entry point
     /** The loaded, validity-versioned parameter sets (fase 5), or empty when the descriptor names no sidecar. */
     private final List<Parameterset> parametersets;
@@ -78,31 +66,35 @@ public final class BeslisserKern {
      *  once at startup; served verbatim on /info and logged by DienstMain. Empty when no gap or no sets. */
     private final List<String> periodeWaarschuwingen;
 
-    private BeslisserKern(DienstDescriptor descriptor, RegelSpraakModel model, ClassLoader beanLoader,
+    private BeslisserKern(DienstDescriptor descriptor, RegelSpraakModel model,
                           Map<String, Entrypoint> perPad, List<Parameterset> parametersets,
                           List<String> periodeWaarschuwingen) {
         this.descriptor = descriptor;
         this.model = model;
-        this.beanLoader = beanLoader;
         this.perPad = perPad;
         this.parametersets = parametersets;
         this.periodeWaarschuwingen = periodeWaarschuwingen;
     }
 
-    /** One compiled entry point: its descriptor entry, its scoped {@link KieBase}, its marker rule list, the
-     *  descriptor parameter defaults resolved to globals, the §9.8 dagsoort predicates its DRL declares as
-     *  globals (the session builder must supply those per {@link DrlTranspiler#dagsoortGlobalen()} — the analog
-     *  of the parameter globals), and the in-scope {@link Dekking} manifest.
+    /** One compiled entry point: its descriptor entry, its scoped {@link KieBase}, its marker list, the
+     *  descriptor parameter defaults resolved to globals, the §9.8 dagsoort predicates the session must carry as
+     *  globals (empty on the exec-model branch, which wires them into its rules), the in-scope {@link Dekking}
+     *  manifest, the class loader of its generated fact beans, and when uchar refused its build, the refusal.
      *
-     *  <p>{@code dekking} carries EVERY per-construct verdict the DRL back-end reached for a construct whose base
-     *  name is in this entry point's scope — LOWERED entries included, filtered the SAME way {@link #markers} is
-     *  ({@link #dekkingInScope}). Fase 3 reports it verbatim on {@code /info} so a caller sees the per-regel
-     *  verdict (LOWERED / MARKER / SKIP). A §13.4.7 feitcreatie scope (toka-29) has NO dekking entry at all, so
-     *  this list is legitimately empty there and /info shows the empty list as-is. */
+     *  <p>{@code dekking} carries the verdict of every lowered construct whose base name is in this entry point's
+     *  scope ({@link #dekkingInScope}); {@code /info} reports it verbatim. A §13.4.7 feitcreatie scope has NO
+     *  dekking entry at all, so this list is legitimately empty there and /info shows the empty list as-is.
+     *
+     *  <p>An entry point with a marker, started with {@link KernConfig#allowMarkers()}, has no KieBase and no bean
+     *  class loader: {@code markers} names the construct, {@code weigering} carries uchar's sentence, and a request
+     *  to it is refused with {@link NietUitvoerbaar}. */
     public record Entrypoint(DienstDescriptor.Entrypoint descriptor, KieBase kieBase,
                              List<String> markers, Map<String, Object> defaultGlobals,
                              Map<String, java.util.function.Predicate<java.time.LocalDate>> dagsoortGlobalen,
-                             List<Dekking> dekking) {}
+                             List<Dekking> dekking, ClassLoader beanLoader, String weigering) {
+        /** Whether a request to this entry point can fire: uchar built its KieBase. */
+        public boolean uitvoerbaar() { return kieBase != null; }
+    }
 
     // ---------------- startup ----------------
 
@@ -185,30 +177,20 @@ public final class BeslisserKern {
         if (!startFouten.isEmpty())
             throw new DienstFout("dienst start niet: descriptor/model-validatie faalt", startFouten);
 
-        // 3. compile the fact beans ONCE for the whole service (same objectmodel for every entrypoint) and
-        //    contract-validate the model against them (the ScenarioRunner.run L83-86 gate).
-        Map<String, String> beanBronnen = FactModelGenerator.genereer(model);
-        ClassLoader beanLoader = BeanCompiler.compileer(beanBronnen);
-        List<String> schendingen = ContractValidator.valideer(model, beanLoader);
-        if (!schendingen.isEmpty()) {
-            List<Schending> uit = new ArrayList<>();
-            for (String s : schendingen) uit.add(Schending.van(Schending.Soort.MALFORMED, "feitmodel", s));
-            throw new DienstFout("dienst start niet: het feitmodel-contract faalt", uit);
-        }
-
-        // 4. rule -> file index; prelude = files declaring no rules
+        // 3. rule -> file index; prelude = files declaring no rules
         RegelBestandIndex index = RegelBestandIndex.bouw(bronPerBestand);
 
-        // 5. per entry point: transpile prelude + scoped rule files to DRL over the shared bean classloader,
-        //    collect markers, build the KieBase. HARD failures (a scope file missing, a scope source that does
-        //    not resolve, a DRL that does not compile) are startup errors REGARDLESS of allowMarkers — that flag
-        //    only tolerates honest markers; it must never mask a broken entrypoint as a silently-missing route.
+        // 4. per entry point: resolve prelude + scoped rule files and build them through uchar, which generates
+        //    the beans, checks their contract and lowers every construct. HARD failures (a scope file missing, a
+        //    scope source that does not resolve, a form uchar does not carry) are startup errors REGARDLESS of
+        //    allowMarkers — that flag only tolerates honest markers; it must never mask a broken entrypoint.
         Map<String, Entrypoint> perPad = new LinkedHashMap<>();
         List<Schending> markerFouten = new ArrayList<>();
         List<Schending> hardeFouten = new ArrayList<>();
         List<Schending> scopeFouten = new ArrayList<>();
-        // the producer index is model-wide (every rule that WRITES a kenmerk/attribuut), computed once.
-        Map<ElementSleutel, java.util.Set<String>> producenten = ProducentConsument.producentIndex(model);
+        // the producer index is model-wide (every form that WRITES a kenmerk/attribuut), computed once.
+        Map<ElementSleutel, java.util.Set<String>> producenten =
+                ProducentConsument.producentIndex(model, model.prioritizedDefaults);
         for (DienstDescriptor.Entrypoint ep : descriptor.entrypoints()) {
             if (!ep.scopeControleUit())
                 scopeFouten.addAll(scopeVolledigheid(ep, model, producenten));
@@ -221,30 +203,28 @@ public final class BeslisserKern {
                             "scope-bron van '" + ep.naam() + "' resolvet niet: regel " + d.line() + " " + d.message()));
                 continue;
             }
-            DrlTranspiler transpiler = DrlTranspiler.build(scopeModel);
-            List<String> markers = markersInScope(ep, transpiler, model);
-            if (!markers.isEmpty() && !config.allowMarkers())
-                for (String m : markers)
+            Map<String, Object> defaults = defaultGlobals(descriptor, model);
+            DroolsBackend.Build build;
+            try {
+                build = UcharBouw.bouw(scopeModel, DroolsBackend.Branch.EXEC_MODEL);
+            } catch (UcharBouw.NietGedragen ng) {
+                if (ng.construct() == null) {
+                    hardeFouten.add(Schending.van(Schending.Soort.MALFORMED, "entrypoint:" + ep.pad(),
+                            "entrypoint '" + ep.naam() + "' is niet uitvoerbaar in uchar: " + ng.getMessage()));
+                    continue;
+                }
+                // A marker: the construct is not lowered, and uchar builds no KieBase without it.
+                if (!config.allowMarkers())
                     markerFouten.add(Schending.van(Schending.Soort.MARKER, "entrypoint:" + ep.pad(),
-                            "in-scope regel '" + m + "' is een marker (niet-gelowerd) in entrypoint '" + ep.naam() + "'"));
-            // Build the KieBase via the exec-model back-end (what FIRES); DrlTranspiler stays the manifest authority.
-            ExecModelTranspiler et = ExecModelTranspiler.build(scopeModel, beanLoader);
-            // no-mixed-truth guard: exec must not skip an in-scope rule DRL lowers (otherwise the exec KieBase would
-            // silently omit a rule /info reports as covered). All exec lowering gaps are lifted, so this never trips.
-            java.util.Set<String> drlLowered = new java.util.LinkedHashSet<>(inScopeLoweredNames(ep, transpiler.dekking(), model));
-            List<String> execSkips = markersInScope(ep, et.dekking(), model);
-            List<String> mixed = execSkips.stream().filter(drlLowered::contains).collect(java.util.stream.Collectors.toList());
-            if (!mixed.isEmpty()) {
-                hardeFouten.add(Schending.van(Schending.Soort.MALFORMED, "entrypoint:" + ep.pad(),
-                        "exec-model kan in-scope regel(s) niet loweren die DRL wel lowert (geen mixed-truth transport): " + mixed));
+                            "regel '" + ng.construct() + "' in de bron van entrypoint '" + ep.naam()
+                                    + "' is een marker (niet-gelowerd): " + ng.getMessage()));
+                else
+                    perPad.put(ep.pad(), new Entrypoint(ep, null, List.of(ng.construct()), defaults, Map.of(),
+                            List.of(), null, ng.getMessage()));
                 continue;
             }
-            KieBase kieBase = bouwKieBaseExec(et, beanLoader, ep, hardeFouten);
-            if (kieBase == null) continue;
-            Map<String, Object> defaults = defaultGlobals(descriptor, model);
-            List<Dekking> dekking = dekkingInScope(ep, transpiler, model);
-            perPad.put(ep.pad(), new Entrypoint(ep, kieBase, markers, defaults,
-                    transpiler.dagsoortGlobalen(), dekking));
+            perPad.put(ep.pad(), new Entrypoint(ep, build.kieBase(), List.of(), defaults,
+                    build.dagsoortGlobalen(), dekkingInScope(ep, build.dekking(), model), build.beanLoader(), null));
         }
         if (!hardeFouten.isEmpty())
             throw new DienstFout("dienst start niet: entrypoint(s) niet bouwbaar", hardeFouten);
@@ -259,7 +239,7 @@ public final class BeslisserKern {
         List<Parameterset> sets = laadParametersets(descriptor, parametersetsJson, model);
         List<String> waarschuwingen = periodeWaarschuwingen(model, sets);
 
-        return new BeslisserKern(descriptor, model, beanLoader, perPad, sets, waarschuwingen);
+        return new BeslisserKern(descriptor, model, perPad, sets, waarschuwingen);
     }
 
     /**
@@ -326,22 +306,6 @@ public final class BeslisserKern {
         return uit;
     }
 
-    /** Build a {@link KieBase} over the shared child bean classloader via the EXEC-model back-end
-     *  ({@link org.drools.modelcompiler.KieBaseBuilder#createKieBaseFromModel} under TCCL=beanLoader, so the
-     *  LambdaMetafactory fact-accessors bind against the child-loaded beans). A build failure is a startup
-     *  violation naming the entrypoint. Returns null on failure (the caller records it and skips the entrypoint). */
-    private static KieBase bouwKieBaseExec(ExecModelTranspiler et, ClassLoader beanLoader,
-                                           DienstDescriptor.Entrypoint ep, List<Schending> fouten) {
-        ClassLoader vorige = Thread.currentThread().getContextClassLoader();
-        Thread.currentThread().setContextClassLoader(beanLoader);
-        try { return org.drools.modelcompiler.KieBaseBuilder.createKieBaseFromModel(et.model()); }
-        catch (RuntimeException e) {
-            fouten.add(Schending.van(Schending.Soort.MALFORMED, "entrypoint:" + ep.pad(),
-                    "entrypoint '" + ep.naam() + "' exec-model KieBase-build faalt: " + e.getMessage()));
-            return null;
-        } finally { Thread.currentThread().setContextClassLoader(vorige); }
-    }
-
     /** The rule FILES an entry point's scope needs, from its scoped rule names (via the index). */
     private static List<String> scopeBestanden(DienstDescriptor.Entrypoint ep, RegelBestandIndex index,
                                                RegelSpraakModel model, List<Schending> fouten) {
@@ -366,52 +330,6 @@ public final class BeslisserKern {
         return b.toString();
     }
 
-    /**
-     * The in-scope construct names the DRL back-end did NOT lower (markers), from the scoped transpiler's
-     * {@link DrlTranspiler#dekking()}. A non-lowered dekking entry whose base name is in scope is a marker.
-     *
-     * <p><b>A scoped rule that yields NO dekking entry at all is NOT a marker.</b> A marker is specifically a
-     * construct the transpiler ACCEPTED into a dekking entry but could not lower ({@code !lowered()}) — an
-     * inert placeholder that would mis-fire if left in. A §13.4.7 feitcreatie ("passagier met recht op
-     * treinmiles") is different: {@code RegelSpraakModel#isValueWriter} keeps it out of every resolved
-     * collection, so {@link DrlTranspiler#build} emits ZERO rule blocks AND ZERO dekking entries for it. Its
-     * base name therefore never appears among {@code transpiler.dekking()}, this loop never sees it, and it does
-     * not trip strict mode. The construct is ACCEPTED (the DRL is empty for it, nothing fires), the dekking
-     * manifest stays empty for it, and the /info story reports that empty manifest as-is. Its golden scenario
-     * (scenario-toka-29) consequently passes as a VACUOUS consistency check — nothing fires, no Inconsistentie,
-     * so "de gegevens zijn consistent".
-     */
-    private static List<String> markersInScope(DienstDescriptor.Entrypoint ep, DrlTranspiler transpiler,
-                                               RegelSpraakModel model) {
-        return markersInScope(ep, transpiler.dekking(), model);
-    }
-
-    /** The {@code !lowered()} sub-view of an arbitrary {@link Dekking} manifest, filtered to this entry point's
-     *  scope — the SAME scope-set + {@link #basisNaam} logic as the DrlTranspiler overload above, over ANY
-     *  manifest (used for the exec back-end's dekking in the no-mixed-truth guard). */
-    private static List<String> markersInScope(DienstDescriptor.Entrypoint ep, List<Dekking> dekking,
-                                               RegelSpraakModel model) {
-        java.util.Set<String> scope = scopeBasisNamen(ep, model);
-        List<String> markers = new ArrayList<>();
-        for (Dekking d : dekking)
-            if (!d.lowered() && scope.contains(basisNaam(d.naam())) && !markers.contains(basisNaam(d.naam())))
-                markers.add(basisNaam(d.naam()));
-        return markers;
-    }
-
-    /** The in-scope base-names a manifest LOWERS ({@code lowered()} TRUE) — the positive counterpart of
-     *  {@link #markersInScope(DienstDescriptor.Entrypoint, List, RegelSpraakModel)}, used to compute the DRL-lowered
-     *  set the no-mixed-truth guard compares the exec skips against. */
-    private static List<String> inScopeLoweredNames(DienstDescriptor.Entrypoint ep, List<Dekking> dekking,
-                                                    RegelSpraakModel model) {
-        java.util.Set<String> scope = scopeBasisNamen(ep, model);
-        List<String> lowered = new ArrayList<>();
-        for (Dekking d : dekking)
-            if (d.lowered() && scope.contains(basisNaam(d.naam())) && !lowered.contains(basisNaam(d.naam())))
-                lowered.add(basisNaam(d.naam()));
-        return lowered;
-    }
-
     /** The set of in-scope base-names for an entry point: its scoped rule names plus every member of its scoped
      *  regelgroepen, {@link #basisNaam}-normalised. Shared by the marker/lowered scope filters. */
     private static java.util.Set<String> scopeBasisNamen(DienstDescriptor.Entrypoint ep, RegelSpraakModel model) {
@@ -423,24 +341,14 @@ public final class BeslisserKern {
         return scope;
     }
 
-    /**
-     * The FULL in-scope {@link Dekking} manifest for an entry point — every per-construct verdict the DRL
-     * back-end reached for a construct whose base name is in the entry point's scope, filtered EXACTLY the way
-     * {@link #markersInScope} filters (same scope set, same {@link #basisNaam} normalisation) but keeping ALL
-     * verdicts, LOWERED included. This is what fase-3 {@code /info} reports per-regel; {@code markersInScope} is
-     * just the {@code !lowered()} sub-view of the same list. A feitcreatie scope (toka-29) yields ZERO dekking
-     * entries and therefore an empty manifest here — reported as-is.
-     */
-    private static List<Dekking> dekkingInScope(DienstDescriptor.Entrypoint ep, DrlTranspiler transpiler,
+    /** The {@link Dekking} manifest of an entry point's build restricted to its scope: the verdict of every
+     *  construct whose base name is in the scope ({@link #scopeBasisNamen}). A feitcreatie scope yields ZERO
+     *  dekking entries and therefore an empty manifest here — reported as-is. */
+    private static List<Dekking> dekkingInScope(DienstDescriptor.Entrypoint ep, List<Dekking> dekking,
                                                 RegelSpraakModel model) {
-        java.util.Set<String> scope = new java.util.LinkedHashSet<>();
-        for (String n : ep.scope().regelnamenOfLeeg()) scope.add(basisNaam(n));
-        for (String groep : ep.scope().regelgroepenOfLeeg())
-            for (var g : model.regelGroepen) if (g.naam().equals(groep))
-                for (String lid : g.leden()) scope.add(basisNaam(lid));
-
+        java.util.Set<String> scope = scopeBasisNamen(ep, model);
         List<Dekking> uit = new ArrayList<>();
-        for (Dekking d : transpiler.dekking())
+        for (Dekking d : dekking)
             if (scope.contains(basisNaam(d.naam()))) uit.add(d);
         return uit;
     }
@@ -479,9 +387,11 @@ public final class BeslisserKern {
 
         List<Schending> uit = new ArrayList<>();
         java.util.Set<ElementSleutel> gemeld = new java.util.LinkedHashSet<>();
+        // a resolver's model: a navigated kenmerk check reads the kenmerk of the type its role reaches
+        ProducentConsument.Navigatie navigatie = ProducentConsument.bronNavigatie(model);
         for (var r : model.resolvedRegels) {
             if (!scope.contains(basisNaam(r.naam()))) continue;
-            for (ElementSleutel consumed : ProducentConsument.verbruikt(r)) {
+            for (ElementSleutel consumed : ProducentConsument.verbruikt(r, navigatie)) {
                 java.util.Set<String> writers = producenten.get(consumed);
                 if (writers == null || writers.isEmpty()) continue;          // a genuine request input
                 if (writers.stream().anyMatch(scope::contains)) continue;    // produced in scope: fine
@@ -532,7 +442,8 @@ public final class BeslisserKern {
     public ObjectNode verwerk(String pad, JsonNode verzoekBoom, boolean uitleg) {
         Entrypoint ep = perPad.get(pad);
         if (ep == null) throw new OnbekendPad(pad);
-        VerzoekMapper mapper = new VerzoekMapper(model, beanLoader);
+        if (!ep.uitvoerbaar()) throw new NietUitvoerbaar(ep);
+        VerzoekMapper mapper = new VerzoekMapper(model, ep.beanLoader());
         VerzoekMapper.Resultaat mr = mapper.map(new Verzoek(verzoekBoom));
         if (!mr.schendingen().isEmpty())
             throw new DienstFout("verzoek valideert niet", mr.schendingen());
@@ -550,7 +461,8 @@ public final class BeslisserKern {
         // request parameter overrides (descriptor default first, set-value next — the conflict rule guarantees
         // they never name the same parameter — request override last: explicit caller-intent wins).
         Map<String, Object> setGlobals = vintageGlobals(mr.wereld().rekendatum());
-        Uitvoerder uitvoerder = new Uitvoerder(ep.kieBase(), ep.defaultGlobals(), ep.dagsoortGlobalen(), beanLoader);
+        Uitvoerder uitvoerder = new Uitvoerder(ep.kieBase(), ep.defaultGlobals(), ep.dagsoortGlobalen(),
+                ep.beanLoader());
         Uitvoerder.Uitkomst uitkomst = uitvoerder.vuur(mr.wereld(), setGlobals);
         ObjectNode antwoord = new AntwoordBouwer(model).bouw(uitkomst, ep.descriptor().uitvoer(), mr.typePerLabel());
         if (uitleg) voegUitlegToe(antwoord, uitkomst, mr, setGlobals, ep);
@@ -656,6 +568,14 @@ public final class BeslisserKern {
     /** Thrown when a request targets a path no entry point serves. */
     public static final class OnbekendPad extends RuntimeException {
         public OnbekendPad(String pad) { super("onbekend pad: '" + pad + "'"); }
+    }
+
+    /** Thrown when a request targets an entry point that started with a marker ({@link KernConfig#allowMarkers()}):
+     *  uchar built no KieBase for it, so no answer it could give is complete. */
+    public static final class NietUitvoerbaar extends RuntimeException {
+        public NietUitvoerbaar(Entrypoint ep) {
+            super("entrypoint '" + ep.descriptor().naam() + "' is niet uitvoerbaar: " + ep.weigering());
+        }
     }
 
     /** Strip a §9.10 "<groep>: " prefix and a §13.4.2.3 " #k" version suffix (and a beslistabel " (n)"

@@ -1,14 +1,17 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
-import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.resolver.Resolver;
-import dev.uchar.regelspraak.transpiler.kern.Dekking;
-import dev.uchar.regelspraak.transpiler.model.ExecModelTranspiler;
-
+import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.engine.RegelSpraakCompileException;
 import dev.uchar.regelspraak.model.Parameterset;
+import dev.uchar.regelspraak.model.RegelSpraakModel;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Severity;
+import dev.uchar.regelspraak.resolver.Resolver;
+import dev.uchar.regelspraak.schema.FactModelGenerator;
+import dev.uchar.regelspraak.transpiler.kern.Dekking;
 import dev.uchar.regelspraak.transpiler.kern.Namen;
 
-import org.drools.modelcompiler.KieBaseBuilder;
 import org.kie.api.KieBase;
 import org.kie.api.runtime.KieSession;
 
@@ -19,78 +22,73 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The shippable RegelSpraak runtime: compile a RegelSpraak v2.3.0 source into a ready-to-fire Drools engine and
- * run rules over facts. This is the CONSUMER side of the executable-model split — it adds the Drools runtime on
- * top of the lean transpiler (the {@code regelspraak-parser} module builds the {@link org.drools.model.Model};
- * this module fires it). It uses ONLY the executable-model back-end ({@link ExecModelTranspiler}), the shippable
- * path — never the DRL-string oracle.
+ * The embeddable RegelSpraak engine: compile a RegelSpraak source into a ready-to-fire Drools engine and run rules
+ * over facts. The source goes through uchar's frontend and is built by uchar's backend on the exec-model branch
+ * ({@link UcharBouw}), which also generates the fact beans and compiles them into a class loader of their own.
  *
  * <pre>{@code
- *   RegelSpraakEngine engine = RegelSpraakEngine.compile(regelSpraakSource);   // resolve + transpile + KieBase
+ *   RegelSpraakEngine engine = RegelSpraakEngine.compile(regelSpraakSource);   // resolve, emit, build
+ *   Object persoon = engine.nieuw("Persoon");                                  // a generated fact bean
  *   try (RegelSpraakEngine.Session s = engine.newSession()) {
  *       s.insert(persoon).setGlobal("volwassenleeftijd", new BigDecimal(18)).fire();
  *   }                                                                          // persoon is mutated in place
  * }</pre>
  *
- * A Quarkus application holds a {@code RegelSpraakEngine} as an application-scoped bean (compiled once) and opens
- * a {@link Session} per request. The fact classes the Model references must be on the classpath in package
- * {@code dev.uchar.regelspraak.facts} (the consumer's domain beans) — {@code compile} validates that contract
- * up front via {@link dev.uchar.regelspraak.schema.ContractValidator} and fails fast with EVERY violation
- * (the fact-model contract); {@code dev.uchar.regelspraak.schema.FactModelGenerator} emits matching bean sources.
- * The {@link #compile(String, ClassLoader)} overload threads a bean {@link ClassLoader} for beans compiled into a
- * CHILD loader (the {@code FactModelGenerator} + {@code BeanCompiler} shape); the 1-arg form uses the app loader.
+ * The facts are instances of the generated beans ({@link #nieuw}, {@link #beanLoader()}): the KieBase is built
+ * against those classes, so an object of a same-named class from another class loader never matches a rule.
  */
 public final class RegelSpraakEngine {
-    private final KieBase kieBase;
-    private final List<String> overgeslagen;
-    private final List<Dekking> dekking;
+    private final RegelSpraakModel model;
+    private final DroolsBackend.Build build;
 
-    private RegelSpraakEngine(KieBase kieBase, List<String> overgeslagen, List<Dekking> dekking) {
-        this.kieBase = kieBase;
-        this.overgeslagen = overgeslagen;
-        this.dekking = dekking;
+    private RegelSpraakEngine(RegelSpraakModel model, DroolsBackend.Build build) {
+        this.model = model;
+        this.build = build;
     }
 
-    /** Resolve + transpile a RegelSpraak source to an executable {@link org.drools.model.Model} and build its
-     *  {@link KieBase}. Throws {@link RegelSpraakCompileException} if the source has resolver errors. */
+    /** Resolve {@code regelSpraakSource}, emit it and build its {@link KieBase}. Throws
+     *  {@link RegelSpraakCompileException} if the source has resolver errors, and also when uchar refuses the model
+     *  (a construct its exec-model branch does not lower among them): an engine without that construct would answer
+     *  as if it did not exist. */
     public static RegelSpraakEngine compile(String regelSpraakSource) {
-        return compile(regelSpraakSource, null);
-    }
-
-    /** As {@link #compile(String)} but resolves the fact beans against {@code beanLoader} (card fase 1): beans
-     *  compiled into a CHILD classloader ({@code FactModelGenerator} + {@code BeanCompiler}) are then visible to the
-     *  contract validator, the exec-model back-end, and Drools-internal linking. A null loader uses the app loader. */
-    public static RegelSpraakEngine compile(String regelSpraakSource, ClassLoader beanLoader) {
-        ClassLoader cl = beanLoader != null ? beanLoader : RegelSpraakEngine.class.getClassLoader();
         RegelSpraakModel model = Resolver.resolve(regelSpraakSource);
         if (!model.errors().isEmpty()) throw new RegelSpraakCompileException(model.errors());
-        // the fact-model contract: the fact-bean contract is validated FIRST, and completely — every bean the model
-        // implies must exist on this classpath with the right member shapes, or compilation fails with the
-        // FULL violation list (one round trip, not one reflective fire-time abort per run).
-        java.util.List<String> schendingen = dev.uchar.regelspraak.schema.ContractValidator
-                .valideer(model, cl);
-        if (!schendingen.isEmpty()) throw RegelSpraakCompileException.contract(schendingen);
-        ExecModelTranspiler transpiler = ExecModelTranspiler.build(model, cl);
-        // TCCL swap so any Drools-internal linking of the Model sees the bean loader (child-loaded beans).
-        ClassLoader vorige = Thread.currentThread().getContextClassLoader();
-        Thread.currentThread().setContextClassLoader(cl);
-        KieBase kieBase;
-        try { kieBase = KieBaseBuilder.createKieBaseFromModel(transpiler.model()); }
-        finally { Thread.currentThread().setContextClassLoader(vorige); }
-        return new RegelSpraakEngine(kieBase, transpiler.overgeslagen(), transpiler.dekking());
+        try {
+            return new RegelSpraakEngine(model, UcharBouw.bouw(model, DroolsBackend.Branch.EXEC_MODEL));
+        } catch (UcharBouw.NietGedragen e) {
+            throw new RegelSpraakCompileException(List.of(new Diagnostic(Severity.ERROR,
+                    "niet uitvoerbaar in uchar: " + e.getMessage(), 0)));
+        }
+    }
+
+    /** The resolved model the engine was compiled from (what a {@link Verbalisator} explains a decision with). */
+    public RegelSpraakModel model() { return model; }
+
+    /** The class loader the generated fact beans live in ({@link FactModelGenerator#PAKKET}). */
+    public ClassLoader beanLoader() { return build.beanLoader(); }
+
+    /** A fresh instance of the generated bean for objecttype {@code objecttype} (its declared name). */
+    public Object nieuw(String objecttype) {
+        Objecttype ot = model.objecttypeOpNaam(objecttype);
+        if (ot == null) throw new IllegalArgumentException("onbekend objecttype '" + objecttype + "'");
+        String klasse = FactModelGenerator.PAKKET + "." + Namen.ident(ot.naam, true);
+        try {
+            return Class.forName(klasse, true, build.beanLoader()).getConstructor().newInstance();
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("kon de bean " + klasse + " niet maken", e);
+        }
     }
 
     /** Open a fresh fact session against the compiled rule base. */
-    public Session newSession() { return new Session(kieBase.newKieSession()); }
+    public Session newSession() { return new Session(build.kieBase().newKieSession(), build.beanLoader()); }
 
     /**
      * Open a fresh session op één datumautoriteit: {@code peildatum} wordt de {@code rekendatum}-global. Een model
      * dat geen rekendatum-global declareert (niet-tijdgebonden) is tolerant — {@code setGlobal} wordt dan opgeslikt,
-     * geen fout (spiegel {@code setGlobalVeilig} uit ScenarioRunner/Uitvoerder). Dit is het pad zonder parametersets;
-     * de sessie draagt dan alleen de datum, geen parameter-globals.
+     * geen fout. Dit is het pad zonder parametersets; de sessie draagt dan alleen de datum, geen parameter-globals.
      */
     public Session newSession(LocalDate peildatum) {
-        Session s = new Session(kieBase.newKieSession());
+        Session s = newSession();
         setGlobalVeilig(s, "rekendatum", peildatum);
         return s;
     }
@@ -107,9 +105,9 @@ public final class RegelSpraakEngine {
      *       peildatum noemt ({@link IllegalStateException} met alle gap-regels; geen compile-fout, dus geen
      *       {@link RegelSpraakCompileException}: de bron compileerde prima, de session-DATA dekt deze datum niet).</li>
      * </ul>
-     * Elke opgeloste parameter wordt als global gezet onder {@code Namen.ident(parameternaam, false)} (dezelfde formule
-     * als ScenarioRunner en de service-VerzoekMapper), tolerant voor niet-gedeclareerde globals: een parameter die geen
-     * enkele regel leest is geen fout.
+     * Elke opgeloste parameter wordt als global gezet onder {@code Namen.ident(parameternaam, false)}, de naam die de
+     * transpiler de global geeft, tolerant voor niet-gedeclareerde globals: een parameter die geen enkele regel leest
+     * is geen fout.
      */
     public Session newSession(LocalDate peildatum, List<Parameterset> parametersets) {
         if (peildatum == null)
@@ -130,7 +128,7 @@ public final class RegelSpraakEngine {
             throw new IllegalStateException("geen parameterwaarde geldig op peildatum " + peildatum + ": "
                     + String.join("; ", gaten));
 
-        Session s = new Session(kieBase.newKieSession());
+        Session s = newSession();
         for (Map.Entry<String, Object> e : opgelost.entrySet())
             setGlobalVeilig(s, Namen.ident(e.getKey(), false), e.getValue());
         // de unificatie: dezelfde peildatum is de rekendatum-global.
@@ -139,24 +137,29 @@ public final class RegelSpraakEngine {
     }
 
     /** setGlobal, tolerant voor een model dat geen zodanige global declareerde (een parameter die geen regel leest,
-     *  of een niet-tijdgebonden model zonder rekendatum-global): schrijven zou throwen — hier onschadelijk gemaakt
-     *  (spiegel ScenarioRunner/Uitvoerder.setGlobalVeilig). */
+     *  of een niet-tijdgebonden model zonder rekendatum-global): schrijven zou throwen — hier onschadelijk gemaakt. */
     private static void setGlobalVeilig(Session s, String naam, Object waarde) {
         try { s.setGlobal(naam, waarde); }
         catch (RuntimeException onbekend) { /* global niet gedeclareerd: onschadelijk — geen regel leest hem */ }
     }
 
-    /** Rules the transpiler could not lower (honest markers); empty for a fully-supported source. */
-    public List<String> overgeslagen() { return overgeslagen; }
+    /** Rules the transpiler could not lower. Empty: uchar refuses to build a model with such a rule, and
+     *  {@link #compile} reports that refusal. */
+    public List<String> overgeslagen() { return build.execModelTranspiler().overgeslagen(); }
 
-    /** The coverage manifest: one verdict per construct (LOWERED or SKIP with a reason), so a
-     *  consumer can see exactly WHICH rules the compiled engine carries — not just a skip count. */
-    public List<Dekking> dekking() { return dekking; }
+    /** The coverage manifest of the built rule base: one verdict per construct, every one LOWERED, because the build
+     *  refuses any other. */
+    public List<Dekking> dekking() { return build.dekking(); }
 
     /** A unit of work: insert facts (+ globals), fire, read results. {@link AutoCloseable} disposes the session. */
     public static final class Session implements AutoCloseable {
         private final KieSession session;
-        Session(KieSession session) { this.session = session; }
+        private final ClassLoader beanLoader;
+
+        Session(KieSession session, ClassLoader beanLoader) {
+            this.session = session;
+            this.beanLoader = beanLoader;
+        }
 
         public Session insert(Object fact) { session.insert(fact); return this; }
         public Session insertAll(Object... facts) { for (Object f : facts) session.insert(f); return this; }
@@ -166,20 +169,37 @@ public final class RegelSpraakEngine {
          *  read-write dependency CYCLE between berekeningen (x = y+1; y = x+1 — resolver-diagnosed as a
          *  WARNING, but a voorwaarde may or may not break it at runtime) recomputes divergently forever
          *  under the freshness semantics; the cap turns that authoring error into an exception instead
-         *  of a hung session. Any real model reaches its fixpoint in a tiny fraction of the bound. */
+         *  of a hung session. Any real model reaches its fixpoint in a tiny fraction of the bound. The rules
+         *  resolve the generated fact types through the thread's context class loader, as uchar's replay fires. */
         public int fire() {
-            int n = session.fireAllRules(100_000);
+            ClassLoader vorige = Thread.currentThread().getContextClassLoader();
+            Thread.currentThread().setContextClassLoader(beanLoader);
+            int n;
+            try { n = session.fireAllRules(100_000); }
+            finally { Thread.currentThread().setContextClassLoader(vorige); }
             if (n >= 100_000)
                 throw new IllegalStateException("regel-herberekening bereikt geen fixpunt binnen 100000 activaties"
                         + " — vermoedelijk een kringverwijzing tussen berekeningen (zie de resolver-WARNING)");
             return n;
         }
 
-        /** All facts in working memory that are instances of {@code type} — e.g. inserted §9.5 Inconsistentie
-         *  facts, or objects a §13.4.6 objectcreatie produced. */
+        /** All facts in working memory that are instances of {@code type} — e.g. objects a §13.4.6 objectcreatie
+         *  produced; {@link #facts(String)} reaches a generated class by name. */
         @SuppressWarnings("unchecked")
         public <T> Collection<T> facts(Class<T> type) {
             return (Collection<T>) (Collection<?>) session.getObjects(type::isInstance);
+        }
+
+        /** All facts in working memory that are instances of the generated class {@code klasse} (its simple name in
+         *  {@link FactModelGenerator#PAKKET}), e.g. {@code "Inconsistentie"} for the §9.5 inconsistency facts. */
+        public Collection<?> facts(String klasse) {
+            try {
+                Class<?> type = Class.forName(FactModelGenerator.PAKKET + "." + klasse, true, beanLoader);
+                return session.getObjects(type::isInstance);
+            } catch (ClassNotFoundException e) {
+                throw new IllegalArgumentException("geen gegenereerde klasse " + klasse + " in "
+                        + FactModelGenerator.PAKKET, e);
+            }
         }
 
         @Override public void close() { session.dispose(); }
