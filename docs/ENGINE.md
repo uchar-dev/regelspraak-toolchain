@@ -76,7 +76,8 @@ java -cp … dev.uchar.regelspraak.toolchain.service.http.DienstMain <descriptor
 - `PLAYGROUND=true` binds the dev-only workbench (`GET /playground`, `POST /playground/analyse`). A source with a
   parse or resolver error gets its diagnostics and nothing else. A clean source gets the `uchar-ir-v1` document,
   the exec-model verdict (`uitvoerbaar` with the `dekking`, or uchar's `weigering`), the DRL of the DRL-text branch
-  as a view (not the verdict), uchar's rule graph as Mermaid (`graaf`) and as `graafJson`
+  as a view (not the verdict), uchar's rule graph of the document its loader reads back, as Mermaid (`graaf`) and
+  as `graafJson`
   (`{nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}`), and per scenario uchar's report with its `trace`
   and `uitleg`.
 

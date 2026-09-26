@@ -13,6 +13,7 @@ import dev.uchar.regelspraak.toolchain.engine.ScenarioRunner;
 import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
 import dev.uchar.regelspraak.graaf.ProducentConsument;
 import dev.uchar.regelspraak.graaf.RegelGraaf;
+import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Severity;
@@ -51,7 +52,8 @@ import java.util.List;
  *       {@code dekking} per form, or {@code false} with uchar's {@code weigering};</li>
  *   <li><b>drl</b> — the DRL text of uchar's DRL-text branch, a view and no verdict (that branch is narrower than
  *       the one that fires); {@code drlFout} carries its refusal;</li>
- *   <li><b>graaf</b> and <b>graafJson</b> — uchar's rule graph as Mermaid source and as
+ *   <li><b>graaf</b> and <b>graafJson</b> — uchar's rule graph of the document its loader reads back (the route
+ *       uchar's gate 15 holds equal to the source route), as Mermaid source and as
  *       {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, so a workbench can take a rule's dataflow
  *       neighbourhood without parsing Mermaid;</li>
  *   <li><b>scenario</b> — only when the source contains a {@code Scenario} block: per scenario uchar's report
@@ -114,8 +116,10 @@ public final class Playground {
         if (!model.isOk()) return root;
 
         // 3. IR and the verdict of the branch that fires
+        com.fasterxml.jackson.databind.JsonNode ir = null;
         try {
-            root.set("ir", JSON.readTree(UcharBouw.document(model)));
+            ir = JSON.readTree(UcharBouw.document(model));
+            root.set("ir", ir);
         } catch (UcharBouw.NietGedragen e) {
             root.put("irFout", e.getMessage());
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
@@ -144,15 +148,22 @@ public final class Playground {
             root.put("drlFout", e.getMessage());
         }
 
-        // 5. GRAAF — uchar's rule graph over the resolver's model with its defaults groups; a navigated check whose
-        //    role reaches no unique type is refused by the graph as the emitter refuses to write it
-        try {
-            RegelGraaf graaf = RegelGraaf.bouw(model, model.prioritizedDefaults, ProducentConsument.bronNavigatie(model));
-            root.put("graaf", graaf.mermaid());
-            root.set("graafJson", graafJson(graaf));
-        } catch (IllegalStateException e) {
+        // 5. GRAAF — uchar's rule graph of the document its loader reads back, with the defaults groups and the
+        //    navigation bindings it returns beside the model; without a document there is no graph
+        if (ir == null) {
             root.put("graaf", "");
-            root.put("graafFout", boodschap(e));
+            root.put("graafFout", root.get("irFout").asText());
+        } else {
+            try {
+                IrLoader.Loaded geladen = IrLoader.loadAll(ir);
+                RegelGraaf graaf = RegelGraaf.bouw(geladen.model(), geladen.prioritizedDefaults(),
+                        ProducentConsument.wireNavigatie(geladen));
+                root.put("graaf", graaf.mermaid());
+                root.set("graafJson", graafJson(graaf));
+            } catch (IrLoader.Refusal | IrLoader.Documentfout e) {
+                root.put("graaf", "");
+                root.put("graafFout", "loader: " + boodschap(e));
+            }
         }
 
         // 6. SCENARIO — only when the source carries a Scenario block
