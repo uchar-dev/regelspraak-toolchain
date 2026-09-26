@@ -1,3 +1,5 @@
+> Historical, kept for reference: the transpilers and the runtime live in uchar (`uchar/backends/drools/`, see its README).
+
 # Transpiler architecture — one semantic core, two thin back-ends, one runtime
 
 *(Kept short on purpose. Correctness authority: the RegelSpraak v2.3.0 spec, always.)*

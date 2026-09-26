@@ -1,3 +1,5 @@
+> Historical, kept for reference: the grammar lives in uchar, and `uchar/frontends/regelspraak/grammar/DIVERGENCES.md` is authoritative.
+
 # Grammar divergences from the v2.3.0 source
 
 The grammar is derived from the spec as the oracle. Where the **authoritative

@@ -1,3 +1,5 @@
+> Historical, kept for reference: the grammar and its build live in uchar (`uchar/frontends/regelspraak/`); this repository generates the parser with the antlr4-maven-plugin in `uchar-frontend/`.
+
 # ANTLR HOWTO (RegelSpraak-java)
 
 Everything needed to run ANTLR 4 for this project. Distilled from experience
