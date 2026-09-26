@@ -75,7 +75,9 @@ public class BeslisResource {
             ObjectNode antwoord = kern.verwerk(pad, boom, metUitleg);
             return response(200, antwoord);
         } catch (BeslisserKern.OnbekendPad onbekend) {
-            return response(404, foutBody(onbekend.getMessage(), null));
+            // DienstHttp answers an unknown path from its catch-all route, which names the request path, slash
+            // included; the kern's own message names the pad without it
+            return response(404, foutBody("onbekend pad: '/" + pad + "'", null));
         } catch (BeslisserKern.NietUitvoerbaar niet) {
             return response(503, markerBody(niet));
         } catch (DienstFout dienstFout) {
