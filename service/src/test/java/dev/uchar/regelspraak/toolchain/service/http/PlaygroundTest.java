@@ -10,9 +10,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The dev-only playground analyzer, exercised for its five answer shapes (the payload {@code POST
- * /playground/analyse} returns): a parse error (position + expected tokens), a resolver error, a clean model with
- * DRL text and its dataflow graaf, and a scenario outcome. These pin the core {@link Playground#analyseer}
+ * The dev-only playground analyzer, exercised for its answer shapes (the payload {@code POST /playground/analyse}
+ * returns): a parse error (position + expected tokens), a resolver error (diagnostics and nothing else), a clean
+ * model with its IR, the verdict of the branch that fires, the DRL view and the rule graph, a clean model uchar does
+ * not carry, and a scenario outcome with its trace and uitleg. These pin the core {@link Playground#analyseer}
  * contract; the wiring over HTTP (env-gated route) is covered by {@link PlaygroundHttpTest}.
  */
 class PlaygroundTest {
@@ -88,6 +89,19 @@ class PlaygroundTest {
         assertTrue(resolver.get("fouten").size() >= 1, a.toString());
         assertFalse(a.has("drl"), "een resolver-fout mag geen DRL opleveren: " + a);
         assertFalse(a.has("graaf"), "een resolver-fout mag geen graaf opleveren: " + a);
+        assertFalse(a.has("ir") || a.has("uitvoerbaar"), "een resolver-fout heeft geen document: " + a);
+    }
+
+    @Test
+    void resolve_fout_in_een_scenariobron_geeft_alleen_de_diagnoses() {
+        // the scenario's expectation names an attribute the model does not declare: a resolver error, so nothing
+        // fires; until the playground ran on uchar, the scenario pane ran anyway and reported the refusal as its own
+        String bron = MET_SCENARIO.replace("- de korting van P1 is 25", "- de schoenmaat van P1 is 25");
+        ObjectNode a = Playground.analyseer(bron);
+        assertFalse(a.get("resolver").get("ok").asBoolean(), a.toString());
+        assertTrue(a.get("resolver").get("fouten").size() >= 1, a.toString());
+        for (String veld : new String[]{"ir", "uitvoerbaar", "drl", "graaf", "graafJson", "scenario"})
+            assertFalse(a.has(veld), "bij een resolver-fout geen '" + veld + "': " + a);
     }
 
     // ---------------- shape 3: DRL ok ----------------
@@ -110,6 +124,41 @@ class PlaygroundTest {
         assertTrue(graaf.contains("bepaal korting"), "regel-knoop ontbreekt: " + graaf);
         // no scenario block -> no scenario section
         assertFalse(a.has("scenario"), "zonder Scenario-blok geen scenario-sectie: " + a);
+        // the IR document uchar's emitter writes, and the verdict of the branch that fires
+        assertEquals("uchar-ir-v1", a.get("ir").get("format").asText(), a.toString());
+        assertTrue(a.get("uitvoerbaar").asBoolean(), a.toString());
+        assertEquals(2, a.get("dekking").size(), a.toString());
+        for (JsonNode d : a.get("dekking")) assertEquals("LOWERED", d.get("verdict").asText(), d.toString());
+        // the graph as nodes and edges beside the Mermaid text: two rule nodes, edges between known ids
+        JsonNode g = a.get("graafJson");
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        int regels = 0;
+        for (JsonNode n : g.get("nodes")) {
+            ids.add(n.get("id").asText());
+            if ("REGEL".equals(n.get("kind").asText())) regels++;
+            assertTrue(n.has("label") && n.has("eindOutput"), n.toString());
+        }
+        assertEquals(2, regels, g.toString());
+        assertTrue(g.get("edges").size() >= 2, g.toString());
+        for (JsonNode e : g.get("edges"))
+            assertTrue(ids.contains(e.get("van").asText()) && ids.contains(e.get("naar").asText()), e.toString());
+    }
+
+    @Test
+    void een_schoon_model_dat_uchar_niet_draagt_krijgt_uchars_weigering() {
+        // resolves cleanly; uchar's exec-model branch does not lower the rule, so the verdict is 'niet uitvoerbaar'
+        // with uchar's sentence (the DRL view is a view, not the verdict)
+        ObjectNode a = Playground.analyseer("""
+            Objecttype de Vlucht (mv: Vluchten)
+                de heffing Numeriek (getal met 2 decimalen) met eenheid EUR;
+            Regel heffing markert
+            geldig altijd
+            De heffing van een Vlucht moet berekend worden als het absolute tijdsevenredig deel per maand van 10,00 EUR.
+            """);
+        assertTrue(a.get("resolver").get("ok").asBoolean(), a.toString());
+        assertFalse(a.get("uitvoerbaar").asBoolean(), a.toString());
+        assertTrue(a.get("weigering").asText().contains("heffing markert"), a.toString());
+        assertFalse(a.has("dekking"), a.toString());
     }
 
     // ---------------- shape 4: scenario outcome ----------------
@@ -126,5 +175,16 @@ class PlaygroundTest {
         assertEquals(2, r.get("verwachtingen").size(), a.toString());
         for (JsonNode v : r.get("verwachtingen"))
             assertTrue(v.get("ok").asBoolean(), "elke verwachting hoort te slagen: " + v);
+        // the trace: both rules fired on P1, as uchar's replay counts it
+        assertEquals(2, r.get("trace").size(), r.toString());
+        for (JsonNode t : r.get("trace")) {
+            assertTrue(t.get("aantal").asInt() >= 1, t.toString());
+            assertEquals("P1", t.get("labels").get(0).asText(), t.toString());
+        }
+        // the uitleg: the characteristic, justified with the value its condition read
+        assertFalse(r.has("uitlegFout"), r.toString());
+        assertEquals(1, r.get("uitleg").size(), r.toString());
+        String zin = r.get("uitleg").get(0).asText();
+        assertTrue(zin.startsWith("P1 is minderjarig, omdat") && zin.contains("12"), zin);
     }
 }

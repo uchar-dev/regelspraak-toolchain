@@ -59,26 +59,37 @@ public final class UcharBouw {
     /** Emit {@code model} and build it on {@code tak}. The model must resolve without errors: an emitter writes no
      *  document for a model that carries an ERROR, so the caller reports those first. */
     public static DroolsBackend.Build bouw(RegelSpraakModel model, DroolsBackend.Branch tak) {
-        if (!model.isOk())
-            throw new IllegalArgumentException("UcharBouw.bouw: het model draagt resolverfouten " + model.errors()
-                    + "; meld die voordat er gebouwd wordt");
-        List<Diagnostic> ongeschreven = IrEmitter.ongeschrevenVerdelingen(model);
-        if (!ongeschreven.isEmpty())
-            throw new NietGedragen("emitter: " + ongeschreven.get(0).message(), verdelingsnaam(model), null);
-        String document;
-        try {
-            document = IrEmitter.emit(model);
-        } catch (IllegalStateException | UnsupportedOperationException e) {
-            throw new NietGedragen("emitter: " + e.getMessage(), null, e);
-        }
+        String document = document(model);
         JsonNode boom;
         try {
             boom = JSON.readTree(document);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("de emitter schreef geen leesbare JSON: " + e.getOriginalMessage(), e);
         }
+        return bouw(boom, tak);
+    }
+
+    /** The {@code uchar-ir-v1} document uchar's emitter writes for {@code model}, which must resolve without
+     *  errors. A refusal of the emitter, and an allocation it leaves out, is {@link NietGedragen}. */
+    public static String document(RegelSpraakModel model) {
+        if (!model.isOk())
+            throw new IllegalArgumentException("UcharBouw: het model draagt resolverfouten " + model.errors()
+                    + "; meld die voordat er gebouwd wordt");
+        List<Diagnostic> ongeschreven = IrEmitter.ongeschrevenVerdelingen(model);
+        if (!ongeschreven.isEmpty())
+            throw new NietGedragen("emitter: " + ongeschreven.get(0).message(), verdelingsnaam(model), null);
         try {
-            return DroolsBackend.build(boom, tak);
+            return IrEmitter.emit(model);
+        } catch (IllegalStateException | UnsupportedOperationException e) {
+            throw new NietGedragen("emitter: " + e.getMessage(), null, e);
+        }
+    }
+
+    /** Build {@code document}, a {@code uchar-ir-v1} document, on {@code tak} through uchar's facade. Every refusal
+     *  of the facade — the loader's, a malformed document, the backend's — is {@link NietGedragen}. */
+    public static DroolsBackend.Build bouw(JsonNode document, DroolsBackend.Branch tak) {
+        try {
+            return DroolsBackend.build(document, tak);
         } catch (IrLoader.Refusal e) {
             throw new NietGedragen("loader: " + e.getMessage(), null, e);
         } catch (IrLoader.Documentfout e) {

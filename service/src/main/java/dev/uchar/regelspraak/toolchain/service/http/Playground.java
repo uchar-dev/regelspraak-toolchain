@@ -8,6 +8,7 @@ import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.engine.ScenarioResultaat;
 import dev.uchar.regelspraak.engine.ScenarioResultaat.DekkingRegel;
 import dev.uchar.regelspraak.engine.ScenarioResultaat.VerwachtingResultaat;
+import dev.uchar.regelspraak.engine.ScenarioResultaat.Vuring;
 import dev.uchar.regelspraak.toolchain.engine.ScenarioRunner;
 import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
 import dev.uchar.regelspraak.graaf.ProducentConsument;
@@ -20,6 +21,7 @@ import dev.uchar.regelspraak.parser.RegelSpraakLexer;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundel;
+import dev.uchar.regelspraak.transpiler.kern.Dekking;
 
 import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.CharStreams;
@@ -33,57 +35,52 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The DEV-ONLY RegelSpraak playground core (a "type-and-see" workbench). It is a pure analyzer: given a
- * RegelSpraak source it returns ONE JSON tree carrying, in order, the five things a learner wants to see:
+ * The DEV-ONLY RegelSpraak playground core (a "type-and-see" workbench). It is a pure analyzer: given a RegelSpraak
+ * source it returns ONE JSON tree:
  * <ol>
  *   <li><b>parse</b> — {@code ok} plus, per syntax error, its {@code regel}/{@code kolom}, the offending token
- *       and the {@code verwacht} token set (the ANTLR follow set), so a beginner sees WHERE and WHAT was
- *       expected;</li>
- *   <li><b>resolver</b> — the {@link Resolver} verdict: the ERROR and WARNING diagnostics (line + message);</li>
- *   <li><b>drl</b> — the DRL text of uchar's DRL-text branch, present only when parse + resolve are clean (a
- *       broken model has no honest DRL); when uchar does not carry the model it is empty and {@code drlFout}
- *       carries uchar's refusal;</li>
- *   <li><b>graaf</b> — the regelgraaf: the resolved model's producer/consumer dataflow as Mermaid source, present
- *       under the same clean-model gate as {@code drl} (a broken model has no honest dataflow graph);</li>
- *   <li><b>scenario</b> — only when the source contains a {@code Scenario} block: the in-proc
- *       {@link ScenarioRunner} outcome per scenario (status + per-expectation verwacht/werkelijk).</li>
+ *       and the {@code verwacht} token set (the ANTLR follow set);</li>
+ *   <li><b>resolver</b> — the resolver verdict: the ERROR and WARNING diagnostics (line + message).</li>
+ * </ol>
+ * A source with a parse or resolver error gets those two and nothing else: uchar's emitter writes no document for
+ * it, so there is nothing to show, build or fire. A clean source also gets:
+ * <ol start="3">
+ *   <li><b>ir</b> — the {@code uchar-ir-v1} document uchar's emitter writes, or {@code irFout} with the emitter's
+ *       refusal;</li>
+ *   <li><b>uitvoerbaar</b> — uchar's verdict on the exec-model branch, the branch that fires: {@code true} with the
+ *       {@code dekking} per form, or {@code false} with uchar's {@code weigering};</li>
+ *   <li><b>drl</b> — the DRL text of uchar's DRL-text branch, a view and no verdict (that branch is narrower than
+ *       the one that fires); {@code drlFout} carries its refusal;</li>
+ *   <li><b>graaf</b> and <b>graafJson</b> — uchar's rule graph as Mermaid source and as
+ *       {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, so a workbench can take a rule's dataflow
+ *       neighbourhood without parsing Mermaid;</li>
+ *   <li><b>scenario</b> — only when the source contains a {@code Scenario} block: per scenario uchar's report
+ *       (status, per expectation verwacht/werkelijk, the coverage), its {@code trace} (per fired rule the labels it
+ *       bound and how often) and its {@code uitleg} ({@link ScenarioRunner#runMetUitleg}), or {@code uitlegFout}.</li>
  * </ol>
  *
  * <p><b>Scenario-aware front-end.</b> {@code Situatie}/{@code Scenario} blocks are a documented extension of uchar's
- * frontend (its {@code grammar/DIVERGENCES.md}) reachable only via the scenario entry rule, NOT part of the production
- * {@code regelSpraakDocument}. So when a source carries such a block the analyzer parses + resolves it through the
- * scenario front-end ({@link ScenarioResolver}) — whose {@code parse}/{@code resolver}/{@code drl} panes then
- * reflect the MODEL portion (definities/regels/beslistabellen), un-confused by the scenario keywords — and runs
- * the scenarios off that SAME resolved bundle. A production-only source keeps the plain {@link Resolver} path.
+ * frontend (its {@code grammar/DIVERGENCES.md}) reachable only via the scenario entry rule, NOT part of the
+ * production {@code regelSpraakDocument}. So when a source carries such a block the analyzer parses + resolves it
+ * through the scenario front-end ({@link ScenarioResolver}) and runs the scenarios off that same resolved bundle.
  *
- * <p>This class owns NO web plumbing and NO persistence: it never touches disk, holds no state between calls,
- * and every analysis runs compile-per-request. The HTTP adapter ({@link DienstHttp}) wires it behind an
- * env-gated route and imposes the request timeout. It reuses the SAME resolver / transpiler / scenario-runner
- * the shipped chain uses — it invents no RegelSpraak meaning of its own.
+ * <p>This class owns NO web plumbing and NO persistence. A refusal of uchar is part of the answer; any other failure
+ * is not caught here, so the HTTP adapter ({@link DienstHttp}) answers it with 500 and logs it.
  */
 public final class Playground {
 
     private Playground() {}
 
     private static final JsonNodeFactory NF = JsonNodeFactory.withExactBigDecimals(true);
+    private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
 
     /** The literal that opens a scenariotoets block (RegelSpraakLexer SCENARIO token). Its presence is what makes
      *  the analyzer run the scenario front-end/runner rather than only the production pipeline. */
     private static final String SCENARIO_KOP = "Scenario";
 
-    /**
-     * Analyze {@code bron} and return the single answer tree (see the class javadoc for the shape). Never throws
-     * on RegelSpraak-level errors: a parse error, a resolve error, an un-transpilable model, and a scenario
-     * FAIL/MARKER are all NORMAL, reported outcomes, not exceptions. An unexpected internal failure of the
-     * scenario runner is caught and reported in the {@code scenario.fout} field rather than propagated, so the
-     * workbench answers even on a runner surprise.
-     */
+    /** Analyze {@code bron} and return the answer tree (see the class javadoc for its shape). */
     public static ObjectNode analyseer(String bron) {
         ObjectNode root = NF.objectNode();
-
-        // A Scenario/Situatie block is a scenario-front-end construct, unknown to the production grammar. When one
-        // is present the parse + resolve + DRL panes must read the source through the SCENARIO front-end (whose
-        // model portion is the production model), or the scenario keywords would spuriously error every pane.
         boolean scenario = bevatScenario(bron);
 
         // 1. PARSE — a dedicated pass that KEEPS the column + expected-token set the shared Resolver discards. Uses
@@ -102,9 +99,7 @@ public final class Playground {
             for (String t : f.verwacht()) verwacht.add(t);
         }
 
-        // 2. RESOLVER — the shipped front-end verdict. For a scenario source the ScenarioResolver bundle carries the
-        //    SAME model (built by the identical DefinitionResolver + RuleChecker) plus the scenario diagnostics; its
-        //    model is what the DRL and scenario panes below read, so the whole answer stays consistent.
+        // 2. RESOLVER — for a scenario source the bundle's model carries the scenario diagnostics as well.
         ScenarioBundel bundel = scenario ? ScenarioResolver.resolve(bron) : null;
         RegelSpraakModel model = scenario ? bundel.model() : Resolver.resolve(bron);
         ObjectNode resolver = root.putObject("resolver");
@@ -116,50 +111,60 @@ public final class Playground {
             n.put("regel", d.line());
             n.put("boodschap", d.message());
         }
+        if (!model.isOk()) return root;
 
-        // 3. DRL — only for a clean model (a broken model has no honest transpilation). The transpiler reads the
-        //    resolved model; scenario blocks live outside the production model, so they never taint the DRL.
-        if (model.isOk()) {
-            try {
-                root.put("drl", UcharBouw.bouw(model, DroolsBackend.Branch.DRL_TEXT).drlTranspiler().drl());
-            } catch (RuntimeException e) {
-                root.put("drl", "");
-                root.put("drlFout", boodschap(e));
+        // 3. IR and the verdict of the branch that fires
+        try {
+            root.set("ir", JSON.readTree(UcharBouw.document(model)));
+        } catch (UcharBouw.NietGedragen e) {
+            root.put("irFout", e.getMessage());
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException("de emitter schreef geen leesbare JSON: " + e.getOriginalMessage(), e);
+        }
+        try {
+            DroolsBackend.Build build = UcharBouw.bouw(model, DroolsBackend.Branch.EXEC_MODEL);
+            root.put("uitvoerbaar", true);
+            ArrayNode dekking = root.putArray("dekking");
+            for (Dekking d : build.dekking()) {
+                ObjectNode dn = dekking.addObject();
+                dn.put("soort", d.soort());
+                dn.put("naam", d.naam());
+                dn.put("verdict", d.verdict().name());
             }
-            // 3b. GRAAF — the dataflow projection of the SAME resolved model (rules <-> gegevens) as bare Mermaid
-            //     source the page renders. A peer of DRL under the clean-model gate: a broken model has no honest
-            //     dataflow graph. Built from the shared ProducentConsument core, so the picture can never disagree
-            //     with the engine's scope-validation; the page degrades to a <pre> of the source offline.
-            try {
-                root.put("graaf", RegelGraaf.bouw(model, model.prioritizedDefaults,
-                        ProducentConsument.bronNavigatie(model)).mermaid());
-            } catch (RuntimeException e) {
-                root.put("graaf", "");
-                root.put("graafFout", boodschap(e));
-            }
+        } catch (UcharBouw.NietGedragen e) {
+            root.put("uitvoerbaar", false);
+            root.put("weigering", e.getMessage());
         }
 
-        // 4. SCENARIO — only when the source carries a Scenario block. Reuse the already-resolved bundle (the same
-        //    core ScenarioRunnerCli drives). A resolve error inside the bundle is reported as scenario.fout.
+        // 4. DRL — a view of the DRL-text branch, never the verdict
+        try {
+            root.put("drl", UcharBouw.bouw(model, DroolsBackend.Branch.DRL_TEXT).drlTranspiler().drl());
+        } catch (UcharBouw.NietGedragen e) {
+            root.put("drl", "");
+            root.put("drlFout", e.getMessage());
+        }
+
+        // 5. GRAAF — uchar's rule graph over the resolver's model with its defaults groups; a navigated check whose
+        //    role reaches no unique type is refused by the graph as the emitter refuses to write it
+        try {
+            RegelGraaf graaf = RegelGraaf.bouw(model, model.prioritizedDefaults, ProducentConsument.bronNavigatie(model));
+            root.put("graaf", graaf.mermaid());
+            root.set("graafJson", graafJson(graaf));
+        } catch (IllegalStateException e) {
+            root.put("graaf", "");
+            root.put("graafFout", boodschap(e));
+        }
+
+        // 6. SCENARIO — only when the source carries a Scenario block
         if (scenario) {
-            ObjectNode scenarioNode = root.putObject("scenario");
-            try {
-                List<ScenarioResultaat> resultaten = ScenarioRunner.run(bundel);
-                ArrayNode arr = scenarioNode.putArray("resultaten");
-                for (ScenarioResultaat r : resultaten) rendScenario(arr.addObject(), r);
-            } catch (ScenarioRunner.ResolveFout f) {
-                ArrayNode diag = scenarioNode.putArray("diagnostiek");
-                for (String d : f.diagnostiek()) diag.add(d);
-                scenarioNode.put("fout", "de bron resolvet niet als scenariotoets");
-            } catch (RuntimeException e) {
-                scenarioNode.put("fout", boodschap(e));
-            }
+            ArrayNode arr = root.putObject("scenario").putArray("resultaten");
+            for (ScenarioRunner.Uitgelegd u : ScenarioRunner.runMetUitleg(bundel)) rendScenario(arr.addObject(), u);
         }
-
         return root;
     }
 
-    private static void rendScenario(ObjectNode n, ScenarioResultaat r) {
+    private static void rendScenario(ObjectNode n, ScenarioRunner.Uitgelegd u) {
+        ScenarioResultaat r = u.resultaat();
         n.put("naam", r.naam());
         n.put("status", r.status().name());
         if (r.diagnose() != null && !r.diagnose().isEmpty()) n.put("diagnose", r.diagnose());
@@ -177,6 +182,38 @@ public final class Playground {
             dn.put("regel", d.regel());
             dn.put("soort", d.soort().name());
         }
+        // the fired rules in the order they first fired, with the labels of the input instances they bound
+        ArrayNode trace = n.putArray("trace");
+        for (Vuring vuring : r.trace().vuringen()) {
+            ObjectNode tn = trace.addObject();
+            tn.put("regel", vuring.regel());
+            ArrayNode labels = tn.putArray("labels");
+            for (String l : vuring.labels()) labels.add(l);
+            tn.put("aantal", vuring.aantal());
+        }
+        ArrayNode uitleg = n.putArray("uitleg");
+        for (String z : u.uitleg()) uitleg.add(z);
+        if (u.uitlegFout() != null) n.put("uitlegFout", u.uitlegFout());
+    }
+
+    /** The rule graph as {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}. */
+    private static ObjectNode graafJson(RegelGraaf graaf) {
+        ObjectNode g = NF.objectNode();
+        ArrayNode nodes = g.putArray("nodes");
+        for (RegelGraaf.Node kn : graaf.nodes()) {
+            ObjectNode nn = nodes.addObject();
+            nn.put("id", kn.id());
+            nn.put("label", kn.label());
+            nn.put("kind", kn.kind().name());
+            nn.put("eindOutput", kn.eindOutput());
+        }
+        ArrayNode edges = g.putArray("edges");
+        for (RegelGraaf.Edge e : graaf.edges()) {
+            ObjectNode en = edges.addObject();
+            en.put("van", e.van());
+            en.put("naar", e.naar());
+        }
+        return g;
     }
 
     /** True when the source carries a {@code Scenario} block. A raw substring test is intentionally cheap and

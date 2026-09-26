@@ -43,6 +43,7 @@
   .diag { border-left: 3px solid var(--line); padding: 4px 0 4px 10px; margin: 6px 0; font-size: 13px; }
   .diag.err { border-color: var(--err); }
   .diag.warn { border-color: var(--warn); }
+  .diag.ok { border-color: var(--ok); }
   .diag .loc { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
   .expect { color: var(--accent); font-family: var(--mono); font-size: 12px; }
   h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
@@ -66,7 +67,7 @@
 <header>
   <h1>RegelSpraak-playground</h1>
   <span class="badge">DEV</span>
-  <span class="hint">typ links, druk <b>Analyseer</b> (of Ctrl/&#8984;+Enter) &mdash; parse &middot; resolver &middot; DRL &middot; graaf &middot; scenario</span>
+  <span class="hint">typ links, druk <b>Analyseer</b> (of Ctrl/&#8984;+Enter) &mdash; parse &middot; resolver &middot; IR &middot; dekking &middot; DRL &middot; graaf &middot; scenario</span>
 </header>
 <main>
   <div class="col">
@@ -82,6 +83,8 @@
     <div class="tabs" id="tabs">
       <button data-tab="parse" class="active">Parse</button>
       <button data-tab="resolver">Resolver</button>
+      <button data-tab="ir">IR</button>
+      <button data-tab="dekking">Dekking</button>
       <button data-tab="drl">DRL</button>
       <button data-tab="graaf">Graaf</button>
       <button data-tab="scenario">Scenario</button>
@@ -132,7 +135,8 @@ function render() {
   const v = $("view");
   if (!laatste) { v.innerHTML = '<span class="muted">Nog geen analyse.</span>'; return; }
   if (laatste.__transport) { v.innerHTML = '<span class="pill err">FOUT</span> ' + esc(laatste.__transport); return; }
-  v.innerHTML = ({ parse: renderParse, resolver: renderResolver, drl: renderDrl, graaf: renderGraaf, scenario: renderScenario }[actief])();
+  v.innerHTML = ({ parse: renderParse, resolver: renderResolver, ir: renderIr, dekking: renderDekking, drl: renderDrl,
+                   graaf: renderGraaf, scenario: renderScenario }[actief])();
   // The graaf pane injects a fresh .mermaid node above; render it now that the node is live (Mermaid loads lazily,
   // and degrades to the readable source <pre> when the runtime cannot be reached).
   if (actief === "graaf" && laatste.graaf != null) renderMermaid();
@@ -164,10 +168,29 @@ function renderResolver() {
   return h;
 }
 
+function renderIr() {
+  if (laatste.irFout) return '<span class="pill err">GEEN IR</span><pre>' + esc(laatste.irFout) + "</pre>";
+  if (laatste.ir == null)
+    return '<span class="pill warn">GEEN IR</span><div class="diag muted">Er is pas een IR-document als het model schoon parset en resolvet.</div>';
+  return '<span class="pill ok">uchar-ir-v1</span><pre>' + esc(JSON.stringify(laatste.ir, null, 2)) + "</pre>";
+}
+
+// The verdict of the branch that fires (uchar's exec-model branch): every form with its verdict, or uchar's refusal.
+function renderDekking() {
+  if (laatste.uitvoerbaar == null)
+    return '<span class="pill warn">GEEN OORDEEL</span><div class="diag muted">Er is pas een oordeel als het model schoon parset en resolvet.</div>';
+  if (!laatste.uitvoerbaar) return '<span class="pill err">NIET UITVOERBAAR</span><pre>' + esc(laatste.weigering) + "</pre>";
+  let h = '<span class="pill ok">UITVOERBAAR</span><table><tr><th>soort</th><th>vorm</th><th>verdict</th></tr>';
+  for (const d of (laatste.dekking || []))
+    h += "<tr><td>" + esc(d.soort) + "</td><td>" + esc(d.naam) + "</td><td>" + esc(d.verdict) + "</td></tr>";
+  return h + "</table>";
+}
+
+// The DRL-text branch is shown, not judged: it is narrower than the branch that fires (see the Dekking tab).
 function renderDrl() {
   if (laatste.drl == null)
     return '<span class="pill warn">GEEN DRL</span><div class="diag muted">Er is pas DRL als het model schoon parset en resolvet.</div>';
-  if (laatste.drlFout) return '<span class="pill err">TRANSPILER-FOUT</span><pre>' + esc(laatste.drlFout) + "</pre>";
+  if (laatste.drlFout) return '<span class="pill warn">GEEN DRL-WEERGAVE</span><div class="diag muted">De DRL-tak draagt dit model niet; het oordeel staat onder Dekking.</div><pre>' + esc(laatste.drlFout) + "</pre>";
   return '<span class="pill ok">DRL</span><pre>' + esc(laatste.drl) + "</pre>";
 }
 
@@ -209,12 +232,9 @@ function renderMermaid() {
 
 function renderScenario() {
   const s = laatste.scenario;
+  if (laatste.resolver && !laatste.resolver.ok)
+    return '<span class="pill warn">NIET GEVUURD</span><div class="diag muted">De bron resolvet niet; zie Resolver.</div>';
   if (!s) return '<div class="diag muted">Geen <b>Scenario</b>-blok in de bron.</div>';
-  if (s.fout) {
-    let h = '<span class="pill err">FOUT</span> ' + esc(s.fout);
-    for (const d of (s.diagnostiek || [])) h += '<div class="diag err">' + esc(d) + "</div>";
-    return h;
-  }
   let h = "";
   for (const r of (s.resultaten || [])) {
     const cls = r.status === "PASS" ? "ok" : r.status === "MARKER" ? "warn" : "err";
@@ -227,6 +247,11 @@ function renderScenario() {
            + "</td><td>" + esc(v.bron) + "</td><td>" + esc(v.verwacht) + "</td><td>" + esc(v.werkelijk) + "</td></tr>";
       h += "</table>";
     }
+    if ((r.trace || []).length) {
+      h += '<div class="diag muted">vuringen: ' + r.trace.map((t) => esc(t.regel) + (t.labels.length ? " @ " + esc(t.labels.join(", ")) : "") + " &times;" + t.aantal).join("; ") + "</div>";
+    }
+    if (r.uitlegFout) h += '<div class="diag warn">geen uitleg: ' + esc(r.uitlegFout) + "</div>";
+    for (const z of (r.uitleg || [])) h += '<div class="diag ok">' + esc(z) + "</div>";
   }
   return h || '<div class="diag muted">Geen scenario&rsquo;s gevonden.</div>';
 }
