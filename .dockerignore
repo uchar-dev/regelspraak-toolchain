@@ -1,20 +1,23 @@
-# Keep the build context lean: the service image only needs what stage 1/2 build
-# from (Makefile, poms, vendor/tools/src, engine/service, examples, docker/). The
-# ANTLR jar is re-fetched by `make parser` inside the build, so lib/ is excluded;
-# every generated/build tree is excluded so a dirty host checkout cannot leak in.
+# The build context admits only what docker/Dockerfile reads: the reactor (the root pom, the own modules and, of the
+# submodule uchar/, the RegelSpraak frontend and the Drools backend), bin/regelspraak, docker/ and the served rules
+# under examples/. Everything else stays out, the rest of uchar/ included.
+*
+!pom.xml
+!bin/regelspraak
+!uchar-frontend/
+!toolchain/
+!service/
+!service-quarkus/pom.xml
+!uchar/frontends/regelspraak/
+!uchar/backends/drools/
+!docker/
+!examples/
+
+# Never: git metadata (the repository's .git directory and the .git file the submodule carries), build output of a
+# host checkout, the dependency-reduced pom uchar's backend build writes beside its pom, editor and OS files.
 .git
-lib/
-gen/
-out/
-target/
-engine/target/
-service/target/
-alef-comparison/
-scratch_candC_75318/
-specification/
-backlog/
-docs/
-*.md
-.claude/
-.idea/
-.DS_Store
+uchar/.git
+**/.git
+**/target/
+**/dependency-reduced-pom.xml
+**/.DS_Store
