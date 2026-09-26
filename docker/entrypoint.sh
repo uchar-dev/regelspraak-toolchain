@@ -19,5 +19,5 @@ FLAGS=""
 [ "${ALLOW_MARKERS:-false}" = "true" ] && FLAGS="--allow-markers"
 
 # shellcheck disable=SC2086  # BRONNEN/FLAGS must word-split into separate args.
-exec java -cp '/app/lib/*:/app/service.jar' io.github.yhavinga.regelspraak.service.http.DienstMain \
+exec java -cp '/app/lib/*:/app/service.jar' dev.uchar.regelspraak.toolchain.service.http.DienstMain \
     "$DESCRIPTOR" $BRONNEN --poort "$POORT" $FLAGS

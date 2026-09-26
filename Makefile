@@ -26,7 +26,7 @@ help:
 # stays an honest marker (the dekking-WARNINGs still land on stderr). A bare
 # `RegelSpraakCli --drl` without the flag exits 3 on any marker — the CI-facing contract.
 drl: resolver
-	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.cli.RegelSpraakCli --drl --allow-markers $(FILE)
+	@java -cp $(ANTLR4_JAR):$(OUT_DIR) dev.uchar.regelspraak.toolchain.cli.RegelSpraakCli --drl --allow-markers $(FILE)
 
 # Convert a CSV decision table into the canonical §12 Beslistabel markdown-pipe-table
 # .rgs fragment (docs/grammar-divergences.md §12 CSV-import note). Pure-python, no deps
@@ -55,7 +55,7 @@ facts: resolver
 	@rm -rf $(FACTS_DIR)
 	@mkdir -p $(FACTS_DIR)/src $(FACTS_DIR)/classes
 	@cat $(TOKA_MODEL_FOUNDATION) > $(FACTS_DIR)/toka-model.rgs
-	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.cli.RegelSpraakCli --facts $(FACTS_DIR)/src $(FACTS_DIR)/toka-model.rgs
+	@java -cp $(ANTLR4_JAR):$(OUT_DIR) dev.uchar.regelspraak.toolchain.cli.RegelSpraakCli --facts $(FACTS_DIR)/src $(FACTS_DIR)/toka-model.rgs
 	@javac -d $(FACTS_DIR)/classes $$(find $(FACTS_DIR)/src -name '*.java')
 	@echo "PASS: facts gegenereerd én gecompileerd naar $(FACTS_DIR)/classes"
 
@@ -68,7 +68,7 @@ facts: resolver
 # scope-completeness check, so the graph never diverges from that gate.
 GRAAF_OUT := $(if $(OUT),$(OUT),$(OUT_DIR)/regelgraaf.$(if $(MMD),mmd,html))
 graaf: resolver
-	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.cli.RegelSpraakCli $(if $(MMD),--graaf-mmd,--graaf) $(GRAAF_OUT) $(FILE)
+	@java -cp $(ANTLR4_JAR):$(OUT_DIR) dev.uchar.regelspraak.toolchain.cli.RegelSpraakCli $(if $(MMD),--graaf-mmd,--graaf) $(GRAAF_OUT) $(FILE)
 
 # Emit the IR (uchar-ir-v1) — a FAITHFUL JSON dump of the complete resolved in-memory model (objecttypen with
 # every side-map, domeinen, parameters, eenheidstelsels, feittypen, dimensies, tijdlijnen, the resolved rule/
@@ -82,7 +82,7 @@ graaf: resolver
 # the default.
 IR_OUT := $(if $(OUT),$(OUT),$(OUT_DIR)/ir.json)
 ir: resolver
-	@java -cp $(ANTLR4_JAR):$(OUT_DIR) io.github.yhavinga.regelspraak.resolver.Resolver --ir $(IR_OUT) $(FILE)
+	@java -cp $(ANTLR4_JAR):$(OUT_DIR) dev.uchar.regelspraak.resolver.Resolver --ir $(IR_OUT) $(FILE)
 
 MVN ?= mvn
 # Build + test the shippable engine consumer (engine/): install the lean transpiler artifact
@@ -107,9 +107,9 @@ ifeq ($(strip $(FILES)),)
 	@# Single JVM: --manifest draait alle regels in één proces (deelt de TOKA-fundering + fact-beans via de
 	@# BeanCompiler-cache), reproduceert dezelfde OK/MISMATCH/summary-uitvoer en de golden-verdict-exitcode.
 	@CP="engine/target/classes:$$(cat engine/target/.scenario-cp)"; \
-	java -cp "$$CP" io.github.yhavinga.regelspraak.engine.ScenarioRunnerCli --manifest examples/toka-scenarios/manifest 2>/dev/null
+	java -cp "$$CP" dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli --manifest examples/toka-scenarios/manifest 2>/dev/null
 else
-	java -cp "engine/target/classes:$$(cat engine/target/.scenario-cp)" io.github.yhavinga.regelspraak.engine.ScenarioRunnerCli $(FILES)
+	java -cp "engine/target/classes:$$(cat engine/target/.scenario-cp)" dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli $(FILES)
 endif
 
 clean:

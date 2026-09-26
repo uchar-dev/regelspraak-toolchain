@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>dev.uchar.regelspraak.toolchain</groupId>
+    <artifactId>regelspraak-toolchain</artifactId>
+    <version>0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>toolchain</artifactId>
+  <name>RegelSpraak toolchain core (CLI, engine facade, scenario runner)</name>
+
+  <!--
+    The own core of the distribution: the CLI, the engine facade, the scenario runner and its CLI, the
+    verbaliser and the parameterset loader. It reads only uchar's public API: the frontend (uchar-frontend)
+    and the Drools backend, whose DroolsBackend.build(document, branch) is the one way to a KieBase.
+
+    Drools and Jackson are declared here although the backend depends on them: the backend's shade plugin
+    publishes a dependency-reduced POM without them, so they do not arrive transitively. drools-mvel is part
+    of the backend's own classpath and so of the configuration uchar tests; the DRL-text branch needs it.
+  -->
+
+  <properties>
+    <skippin.poort>toolchain</skippin.poort>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>dev.uchar.regelspraak.toolchain</groupId>
+      <artifactId>uchar-frontend</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>dev.uchar.backends</groupId>
+      <artifactId>uchar-drools-backend</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.antlr</groupId>
+      <artifactId>antlr4-runtime</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.drools</groupId>
+      <artifactId>drools-engine</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.drools</groupId>
+      <artifactId>drools-mvel</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>

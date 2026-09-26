@@ -124,7 +124,7 @@ Compile-per-request with a 15 s timeout, no persistence, and **off by default**
 — it binds only when `PLAYGROUND=true`, and is meant for a developer laptop, not
 production.
 
-    PLAYGROUND=true java -cp … io.github.yhavinga.regelspraak.service.http.DienstMain \
+    PLAYGROUND=true java -cp … dev.uchar.regelspraak.toolchain.service.http.DienstMain \
         <descriptor.dienst.json> <bron.rgs…>        # then open /playground
     # or from a domain rule repo: PLAYGROUND=true make serve
 

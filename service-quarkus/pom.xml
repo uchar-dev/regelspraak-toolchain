@@ -4,44 +4,43 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.github.yhavinga.regelspraak</groupId>
-  <artifactId>regelspraak-service-quarkus</artifactId>
-  <version>2.3.0-SNAPSHOT</version>
-  <packaging>jar</packaging>
-  <name>RegelSpraak v2.3.0 decision-service — Quarkus HTTP adapter (opt-in)</name>
+  <parent>
+    <groupId>dev.uchar.regelspraak.toolchain</groupId>
+    <artifactId>regelspraak-toolchain</artifactId>
+    <version>0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>service-quarkus</artifactId>
+  <name>RegelSpraak decision service, Quarkus HTTP adapter</name>
 
   <!--
-    ADDITIVE, OPT-IN Quarkus HTTP adapter over the framework-agnostic
-    io.github.yhavinga.regelspraak.service.BeslisserKern (REUSED UNCHANGED). It gives the
-    decision service Quarkus-native health/readiness probes, config injection and
-    (host-side, deferred) a GraalVM native image — WITHOUT touching the RegelSpraak
-    core. The zero-dependency JDK-HttpServer DienstHttp stays the DEFAULT delivery;
-    this module is a STANDALONE build (no parent), NOT wired into the reactor.
+    A Quarkus HTTP adapter over the framework-agnostic service core (BeslisserKern, reused unchanged):
+    health/readiness probes, config injection and, host-side, a native image. The JDK-HttpServer DienstHttp
+    stays the default delivery.
 
-    Deliberately NO parent POM so `mvn clean verify` at the repo root never pulls in
-    the Quarkus dependency graph. Build it explicitly:
-        mvn -f service-quarkus/pom.xml clean test
-    Requires network on first run (Quarkus BOM/extensions download from Central); the
-    regelspraak-* SNAPSHOTs must already be installed in ~/.m2.
+    The Quarkus BOM is imported here only. Its Jackson (2.17 at Quarkus 3.15) would replace the Jackson uchar
+    tests with, so the Jackson BOM of the parent's jackson.version is imported FIRST: of two imported BOMs the
+    first one wins. The ANTLR runtime and Drools are pinned explicitly in the parent, and an explicit pin wins
+    over any imported BOM. JUnit is left to the Quarkus BOM, whose quarkus-junit5 is built against it.
   -->
 
   <properties>
-    <maven.compiler.release>21</maven.compiler.release>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <quarkus.version>3.15.5</quarkus.version>
-    <regelspraak.version>2.3.0-SNAPSHOT</regelspraak.version>
-    <surefire.version>3.2.5</surefire.version>
     <rest-assured.version>5.5.0</rest-assured.version>
-    <!-- keep the plugin/reactor from failing the build offline on plugin-metadata lookups -->
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <maven.compiler.parameters>true</maven.compiler.parameters>
-    <!-- Declared so the skip-pin executions below can read ${skipTests}; zie de root-pom. -->
-    <skipTests>false</skipTests>
+    <skippin.poort>service-quarkus</skippin.poort>
   </properties>
 
   <dependencyManagement>
     <dependencies>
-      <!-- Quarkus 3.15.5 LTS (Java 21). Imported so every quarkus-* artifact below is version-aligned. -->
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>${jackson.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
       <dependency>
         <groupId>io.quarkus</groupId>
         <artifactId>quarkus-bom</artifactId>
@@ -53,12 +52,12 @@
   </dependencyManagement>
 
   <dependencies>
-    <!-- JAX-RS + Jackson (Quarkus REST, the "resteasy-reactive" successor). -->
+    <!-- JAX-RS + Jackson (Quarkus REST). -->
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-rest-jackson</artifactId>
     </dependency>
-    <!-- SmallRye Health: serves /q/health/live and /q/health/ready automatically. -->
+    <!-- SmallRye Health: /q/health/live and /q/health/ready. -->
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-smallrye-health</artifactId>
@@ -68,16 +67,11 @@
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-arc</artifactId>
     </dependency>
-
-    <!-- The framework-agnostic decision-service core. Brings BeslisserKern + engine + drools + jackson
-         transitively. REUSED UNCHANGED — this module owns no RegelSpraak meaning. -->
     <dependency>
-      <groupId>io.github.yhavinga.regelspraak</groupId>
-      <artifactId>regelspraak-service</artifactId>
-      <version>${regelspraak.version}</version>
+      <groupId>dev.uchar.regelspraak.toolchain</groupId>
+      <artifactId>service</artifactId>
     </dependency>
 
-    <!-- ===== test ===== -->
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-junit5</artifactId>
@@ -89,12 +83,10 @@
       <version>${rest-assured.version}</version>
       <scope>test</scope>
     </dependency>
-    <!-- The service module's test-jar: the golden-parity harness (TokaBron, SituatieNaarVerzoek, the manifest
-         reader). REUSED mechanically so no golden expected value is re-typed here. -->
+    <!-- The service module's test-jar: the golden-parity harness, reused so no expected value is re-typed. -->
     <dependency>
-      <groupId>io.github.yhavinga.regelspraak</groupId>
-      <artifactId>regelspraak-service</artifactId>
-      <version>${regelspraak.version}</version>
+      <groupId>dev.uchar.regelspraak.toolchain</groupId>
+      <artifactId>service</artifactId>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
@@ -102,8 +94,7 @@
 
   <build>
     <plugins>
-      <!-- The Quarkus build (augmentation): wires CDI/JAX-RS/Health at build time. extensions=true registers
-           the Quarkus lifecycle so @QuarkusTest boots the augmented app. -->
+      <!-- The Quarkus build (augmentation); extensions=true registers the lifecycle @QuarkusTest boots. -->
       <plugin>
         <groupId>io.quarkus</groupId>
         <artifactId>quarkus-maven-plugin</artifactId>
@@ -119,80 +110,28 @@
           </execution>
         </executions>
       </plugin>
-
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>${surefire.version}</version>
         <configuration>
-          <!-- @QuarkusTest boots ONE augmented app; a single fork is correct. Give it headroom for the 30
-               DRL KieBase builds the TOKA service compiles at startup. -->
+          <!-- @QuarkusTest boots one augmented app, so a single fork; headroom for the KieBases the TOKA
+               service builds at startup. -->
           <argLine>-Xmx1536m</argLine>
           <systemPropertyVariables>
             <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
           </systemPropertyVariables>
         </configuration>
       </plugin>
-
-      <!-- skip-pin: zie de root-pom. Deze module heeft vandaag GEEN toegestane skip, dus elke skip of
-           abort die hier opduikt faalt de poort bij naam in plaats van als "Skipped: 1" weg te vallen. -->
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
-        <version>3.1.1</version>
-        <executions>
-          <execution>
-            <id>skip-pin-ijkpunt</id>
-            <phase>process-test-classes</phase>
-            <goals><goal>exec</goal></goals>
-            <configuration>
-              <skip>${skipTests}</skip>
-              <executable>bash</executable>
-              <arguments>
-                <argument>${basedir}/../tools/check-skips.sh</argument>
-                <argument>--sentinel</argument>
-                <argument>${project.build.directory}/.skip-pin-ijkpunt</argument>
-              </arguments>
-            </configuration>
-          </execution>
-          <execution>
-            <id>skip-pin</id>
-            <phase>test</phase>
-            <goals><goal>exec</goal></goals>
-            <configuration>
-              <skip>${skipTests}</skip>
-              <executable>bash</executable>
-              <arguments>
-                <argument>${basedir}/../tools/check-skips.sh</argument>
-                <argument>service-quarkus</argument>
-                <argument>${project.build.directory}/.skip-pin-ijkpunt</argument>
-                <argument>${project.build.directory}/surefire-reports</argument>
-              </arguments>
-            </configuration>
-          </execution>
-        </executions>
       </plugin>
     </plugins>
   </build>
 
   <profiles>
-
-    <!-- `-Dmaven.test.skip=true` is de ZUSTERPROPERTY van `-DskipTests`: hij slaat surefire over
-         (en de testcompilatie erbij) ZONDER skipTests te zetten. Zonder deze activatie zouden de
-         skip-pin-stappen daarna een testrun natellen die niet heeft plaatsgevonden, en de build
-         falen op "geen enkel rapport is jonger dan het ijkpunt". docker/Dockerfile bouwt met
-         precies die vlag. De activatie kijkt naar de USER-property (-D of systeemproperty); een
-         maven.test.skip in een pom-properties-blok ziet Maven hier niet — dat is de bekende grens
-         van profielactivatie, en die vorm komt in dit project niet voor. -->
-    <profile>
-      <id>skip-pin-uit-bij-maven-test-skip</id>
-      <activation>
-        <property><name>maven.test.skip</name><value>true</value></property>
-      </activation>
-      <properties><skipTests>true</skipTests></properties>
-    </profile>
-      <!-- HOST-ONLY native build (deferred). Requires a GraalVM/Mandrel toolchain; NOT run in this sandbox.
-         Build host-side with:  mvn -f service-quarkus/pom.xml -Pnative clean package  -->
+    <!-- Host-only native build; needs a GraalVM/Mandrel toolchain:
+         mvn -pl service-quarkus -am -Pnative package -->
     <profile>
       <id>native</id>
       <properties>

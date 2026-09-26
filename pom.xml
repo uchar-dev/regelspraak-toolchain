@@ -32,6 +32,10 @@
                              does not reach it.
       uchar-frontend         uchar's RegelSpraak frontend (grammar, resolver, emitter) compiled from
                              the submodule's source tree.
+      toolchain              the own core: CLI, engine facade, scenario runner and its CLI, the
+                             verbaliser and the parameterset loader (dev.uchar.regelspraak.toolchain.*).
+      service                the decision service on the JDK HttpServer.
+      service-quarkus        the Quarkus adapter over the same service core.
 
     The versions below pin what the own modules link against. They must equal uchar's
     (scripts/check-pin.sh compares them): a different Jackson, ANTLR runtime or Drools would run
@@ -41,6 +45,9 @@
   <modules>
     <module>uchar/backends/drools</module>
     <module>uchar-frontend</module>
+    <module>toolchain</module>
+    <module>service</module>
+    <module>service-quarkus</module>
   </modules>
 
   <properties>
@@ -53,6 +60,10 @@
     <jackson.version>2.21.2</jackson.version>
     <junit.version>5.11.4</junit.version>
     <uchar.backend.version>0-SNAPSHOT</uchar.backend.version>
+    <!-- Declared so the skip-pin executions below can read ${skipTests}: an undeclared property would reach
+         exec-maven-plugin unresolved. `-DskipTests` sets it, and the skip-pin steps then stand down with the
+         tests they would have counted. -->
+    <skipTests>false</skipTests>
   </properties>
 
   <dependencyManagement>
@@ -66,6 +77,22 @@
         <groupId>dev.uchar.regelspraak.toolchain</groupId>
         <artifactId>uchar-frontend</artifactId>
         <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>dev.uchar.regelspraak.toolchain</groupId>
+        <artifactId>toolchain</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>dev.uchar.regelspraak.toolchain</groupId>
+        <artifactId>service</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>dev.uchar.regelspraak.toolchain</groupId>
+        <artifactId>service</artifactId>
+        <version>${project.version}</version>
+        <type>test-jar</type>
       </dependency>
       <dependency>
         <groupId>org.antlr</groupId>
@@ -127,7 +154,64 @@
           <artifactId>antlr4-maven-plugin</artifactId>
           <version>${antlr.version}</version>
         </plugin>
+        <!-- skip-pin (tools/check-skips.sh): an assumption that does not hold yields a skipped test and a green
+             build that only says "Skipped: 3", with no name and no reason. These two steps set a sentinel right
+             before the test run and read the surefire reports right after it: every skip or abort is printed by
+             name with its reason, an unpinned one fails the build, and the module's count is held to its floor.
+             The sentinel exists because `mvn test` without `clean` leaves reports of an earlier run behind; only
+             reports younger than it count. A module takes part by declaring this plugin and setting
+             skippin.poort, its gate name in the script. -->
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>exec-maven-plugin</artifactId>
+          <version>3.1.1</version>
+          <executions>
+            <execution>
+              <id>skip-pin-ijkpunt</id>
+              <phase>process-test-classes</phase>
+              <goals><goal>exec</goal></goals>
+              <configuration>
+                <skip>${skipTests}</skip>
+                <executable>bash</executable>
+                <arguments>
+                  <argument>${project.basedir}/../tools/check-skips.sh</argument>
+                  <argument>--sentinel</argument>
+                  <argument>${project.build.directory}/.skip-pin-ijkpunt</argument>
+                </arguments>
+              </configuration>
+            </execution>
+            <execution>
+              <id>skip-pin</id>
+              <phase>test</phase>
+              <goals><goal>exec</goal></goals>
+              <configuration>
+                <skip>${skipTests}</skip>
+                <executable>bash</executable>
+                <arguments>
+                  <argument>${project.basedir}/../tools/check-skips.sh</argument>
+                  <argument>${skippin.poort}</argument>
+                  <argument>${project.build.directory}/.skip-pin-ijkpunt</argument>
+                  <argument>${project.build.directory}/surefire-reports</argument>
+                </arguments>
+              </configuration>
+            </execution>
+          </executions>
+        </plugin>
       </plugins>
     </pluginManagement>
   </build>
+
+  <profiles>
+    <!-- `-Dmaven.test.skip=true` is the sister property of `-DskipTests`: it skips surefire (and the test
+         compilation) WITHOUT setting skipTests. Without this activation the skip-pin steps would then count a
+         test run that never happened and fail on "geen enkel rapport is jonger dan het ijkpunt". The activation
+         reads the USER property (-D or a system property). -->
+    <profile>
+      <id>skip-pin-uit-bij-maven-test-skip</id>
+      <activation>
+        <property><name>maven.test.skip</name><value>true</value></property>
+      </activation>
+      <properties><skipTests>true</skipTests></properties>
+    </profile>
+  </profiles>
 </project>

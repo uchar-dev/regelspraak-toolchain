@@ -82,7 +82,7 @@ TOEGESTANE_SKIPS=(
 # de poort — het make-doel en de pom-binding zijn de poort, niet de losse mvn.
 # ---------------------------------------------------------------------------
 VLOEREN=(
-"engine|115|de exec-model-engineconsument, gemeten op de kaartcommit|2026-09-16"
+"toolchain|115|de exec-model-engineconsument (tot 2026-09-26 de poort engine), gemeten op de kaartcommit|2026-09-16"
 "service|167|de beslisdienst (JDK-adapter), gemeten op de kaartcommit|2026-09-16"
 "service-quarkus|33|de Quarkus-adapter, gemeten op de kaartcommit|2026-09-16"
 )

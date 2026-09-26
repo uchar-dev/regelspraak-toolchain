@@ -4,139 +4,71 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <groupId>io.github.yhavinga.regelspraak</groupId>
-  <artifactId>regelspraak-service</artifactId>
-  <version>2.3.0-SNAPSHOT</version>
-  <packaging>jar</packaging>
-  <name>RegelSpraak v2.3.0 decision-service core (HTTP + OpenAPI)</name>
+  <parent>
+    <groupId>dev.uchar.regelspraak.toolchain</groupId>
+    <artifactId>regelspraak-toolchain</artifactId>
+    <version>0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>service</artifactId>
+  <name>RegelSpraak decision service (HTTP + OpenAPI)</name>
 
   <!--
-    The DECISION-SERVICE CORE: descriptor-driven HTTP delivery of the engine.
-    Framework-agnostic core (descriptor model, request->facts mapping,
-    session-per-request execution, response building) with the JDK built-in
-    com.sun.net.httpserver as the only HTTP layer — a host-side Quarkus wrap
-    later reuses the core unchanged. JSON via jackson-databind only (the one
-    new dependency, per the dependency policy: it must resolve OFFLINE).
+    The decision-service core: descriptor-driven HTTP delivery of the engine. Framework-agnostic (descriptor
+    model, request->facts mapping, session-per-request execution, response building) with the JDK's
+    com.sun.net.httpserver as the only HTTP layer; the Quarkus adapter reuses the core unchanged.
   -->
 
   <properties>
-    <maven.compiler.release>21</maven.compiler.release>
-    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <jackson.version>2.21.2</jackson.version>
-    <junit.version>5.10.2</junit.version>
-    <!-- Declared so the skip-pin executions below can read ${skipTests}; zie de root-pom. -->
-    <skipTests>false</skipTests>
+    <skippin.poort>service</skippin.poort>
   </properties>
 
   <dependencies>
     <dependency>
-      <groupId>io.github.yhavinga.regelspraak</groupId>
-      <artifactId>regelspraak-engine</artifactId>
-      <version>2.3.0-SNAPSHOT</version>
+      <groupId>dev.uchar.regelspraak.toolchain</groupId>
+      <artifactId>toolchain</artifactId>
     </dependency>
-
     <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
-      <version>${jackson.version}</version>
     </dependency>
-
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
-      <version>${junit.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
 
   <build>
     <plugins>
-      <!-- Publish a test-jar alongside the main jar so the ADDITIVE, opt-in service-quarkus adapter module can
-           reuse the golden-parity harness (TokaBron, SituatieNaarVerzoek, the manifest reader) mechanically — no
-           expected value is re-typed there. Build-config only: it adds an artifact, it does NOT change any main
-           or test behavior of this module. -->
+      <!-- A test-jar beside the main jar, so the Quarkus adapter can reuse the golden-parity harness (TokaBron,
+           SituatieNaarVerzoek, the manifest reader) without re-typing an expected value. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
-        <version>3.4.1</version>
         <executions>
           <execution>
             <id>test-jar</id>
-            <goals>
-              <goal>test-jar</goal>
-            </goals>
+            <goals><goal>test-jar</goal></goals>
           </execution>
         </executions>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.2.5</version>
         <configuration>
-          <!-- Drools' in-JVM DRL (KieHelper) build accumulates classloader/knowledge state across the many DRL
-               builds a full run makes (one KieBase per entrypoint × several test classes). Under one shared forked
-               JVM that accumulation occasionally mis-resolves a VALID generated DRL. Run each test CLASS in a
-               FRESH JVM (mirrors the root pom's rationale). -->
+          <!-- One KieBase per entry point times several test classes: each test class runs in a fresh JVM so
+               one class's Drools builds cannot leave state for the next, with a heap of its own (MAVEN_OPTS does
+               not reach the fork). -->
           <forkCount>1</forkCount>
           <reuseForks>false</reuseForks>
           <argLine>-Xmx1536m</argLine>
         </configuration>
       </plugin>
-      <!-- skip-pin: zie de root-pom. Deze module heeft vandaag GEEN toegestane skip, dus elke skip of
-           abort die hier opduikt faalt de poort bij naam in plaats van als "Skipped: 1" weg te vallen. -->
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
-        <version>3.1.1</version>
-        <executions>
-          <execution>
-            <id>skip-pin-ijkpunt</id>
-            <phase>process-test-classes</phase>
-            <goals><goal>exec</goal></goals>
-            <configuration>
-              <skip>${skipTests}</skip>
-              <executable>bash</executable>
-              <arguments>
-                <argument>${basedir}/../tools/check-skips.sh</argument>
-                <argument>--sentinel</argument>
-                <argument>${project.build.directory}/.skip-pin-ijkpunt</argument>
-              </arguments>
-            </configuration>
-          </execution>
-          <execution>
-            <id>skip-pin</id>
-            <phase>test</phase>
-            <goals><goal>exec</goal></goals>
-            <configuration>
-              <skip>${skipTests}</skip>
-              <executable>bash</executable>
-              <arguments>
-                <argument>${basedir}/../tools/check-skips.sh</argument>
-                <argument>service</argument>
-                <argument>${project.build.directory}/.skip-pin-ijkpunt</argument>
-                <argument>${project.build.directory}/surefire-reports</argument>
-              </arguments>
-            </configuration>
-          </execution>
-        </executions>
       </plugin>
     </plugins>
   </build>
-
-  <profiles>
-    <!-- `-Dmaven.test.skip=true` is de ZUSTERPROPERTY van `-DskipTests`: hij slaat surefire over
-         (en de testcompilatie erbij) ZONDER skipTests te zetten. Zonder deze activatie zouden de
-         skip-pin-stappen daarna een testrun natellen die niet heeft plaatsgevonden, en de build
-         falen op "geen enkel rapport is jonger dan het ijkpunt". docker/Dockerfile bouwt met
-         precies die vlag. De activatie kijkt naar de USER-property (-D of systeemproperty); een
-         maven.test.skip in een pom-properties-blok ziet Maven hier niet — dat is de bekende grens
-         van profielactivatie, en die vorm komt in dit project niet voor. -->
-    <profile>
-      <id>skip-pin-uit-bij-maven-test-skip</id>
-      <activation>
-        <property><name>maven.test.skip</name><value>true</value></property>
-      </activation>
-      <properties><skipTests>true</skipTests></properties>
-    </profile>
-  </profiles>
 </project>

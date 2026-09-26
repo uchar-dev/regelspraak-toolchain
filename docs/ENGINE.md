@@ -40,7 +40,7 @@ try (RegelSpraakEngine.Session s = engine.newSession()) {
 Collection<Inconsistentie> fouten = /* a fresh session */ s.facts(Inconsistentie.class);
 ```
 
-The fact classes the Model references must be on the classpath in package `io.github.yhavinga.regelspraak.facts`
+The fact classes the Model references must be on the classpath in package `dev.uchar.regelspraak.facts`
 (Pascal-case class, `getX`/`setX` per attribute, `isX`/`setX` per kenmerk, plus `Segment`/`Inconsistentie`
 carriers). You do **not** hand-write them: `RegelSpraakCli --facts <outdir>` (or `make facts` for the TOKA casus)
 **generates** exactly the beans a resolved model implies into that package, and `RegelSpraakEngine.compile`
@@ -51,7 +51,7 @@ source, keep them on the engine's classpath, and let the validator guarantee the
 ## The DRL oracle's classpath contract
 
 Since the single-runtime refactor the generated DRL text contains **no `function` bodies**: every helper arrives as
-`import function io.github.yhavinga.regelspraak.runtime.RegelSpraakRuntime.<naam>;`, so **the `regelspraak-parser`
+`import function dev.uchar.regelspraak.runtime.RegelSpraakRuntime.<naam>;`, so **the `regelspraak-parser`
 artifact must be on the classpath that compiles the DRL** (the test suites already satisfy this — the
 runtime lives in the same artifact as the transpiler). The one rs* implementation is
 `RegelSpraakRuntime`; the DRL and exec back-ends now call the same bodies, so the differential suite
