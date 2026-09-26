@@ -325,3 +325,27 @@ meer, zie restpunt 3); `toolchain/src/test/.../facts/Persoon.java` (een handgesc
    dialect-tweelingen via HTTP, `bin/`-ingangen, nieuwe vloeren.
 10. Triage van de verwijderde tests in uchar (43 TOKA-vrije runtime/kern-tests, 170 frontendtests zonder tegenhanger,
     de IT-differentiaal): kaart in uchar, geschiedenis op b002492.
+
+## Keuring (2026-09-26, hoofdsessie)
+
+Gekeurd op `419d4c9` in de worktree en geland met een fast-forward. Gemeten:
+`scripts/check-pin.sh` groen; `git grep io\.github\.yhavinga` leeg buiten
+`backlog/` en `docs/historisch/`; geen pakket `dev.uchar.regelspraak` buiten
+`uchar/` dat niet met `.toolchain` begint; `vendor/`, `SPEC_REV`,
+`scripts/uchar-conformance.sh`, `.claude/` en `src/main/java` bestaan niet;
+`mvn -B -o verify` op de root groen (uchar-backend 840, toolchain 109, service
+169, service-quarkus 33 tests, geen skips); geen tripwirewoorden in de diff;
+alle commitboodschappen binnen 72 tekens. `NOTICE` hernoemd in de landing.
+
+Triage van de restpunten: 1 (Docker/kind) en 8 (`NOTICE`, in de landing
+gedaan) naar de kaart `ingangen-en-deploy`; 3 (uitleg en parametersets van de
+scenarioroute), 5 (scope op vormniveau via `CaseEmitter.metScope`, zodat een
+niet-gelowerde regel buiten de scope het entrypoint niet blokkeert), 6
+(`--manifest` generiek), 9 en de drie geweigerde pariteitsscenario's uit 2
+(als redendragende uitsluiting in de manifestpoort) naar de kaart
+`dienst-gedrag-en-poorten`; 2 (de scenariolaag weigert een scope die een
+feitcreatie noemt, en een scope in een document met een startpuntbepaling), 4
+(een getypeerde weigering uit de facade) en 10 (triage van de verwijderde
+tests) zijn open punten voor uchar, vastgelegd in uchars PLAN §9, geen kaart
+nu (maintainer, 2026-09-26: eerst de verhuizing). 7 blijft: de pariteitszone
+wordt niet aangeraakt.
