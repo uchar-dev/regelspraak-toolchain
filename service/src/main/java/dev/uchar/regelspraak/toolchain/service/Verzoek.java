@@ -23,8 +23,8 @@ import com.fasterxml.jackson.databind.JsonNode;
  * }
  * }</pre>
  * Rol relations may be given inline per instance ({@code instanties[].rollen}, mirroring the situatie's
- * "de reis is V1") and/or via the top-level {@code relaties} list; both are desugared to the same bean-field
- * writes the {@link dev.uchar.regelspraak.toolchain.engine.ScenarioRunner} performs.
+ * "de reis is V1" and a case file's {@code roles}) and/or via the top-level {@code relaties} list; the inline ones
+ * are written as uchar's replay writes a case's roles ({@link dev.uchar.regelspraak.toolchain.engine.RolSchrijver}).
  */
 public record Verzoek(JsonNode boom) {
 

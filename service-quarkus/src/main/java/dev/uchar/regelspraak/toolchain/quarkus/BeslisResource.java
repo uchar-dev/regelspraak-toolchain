@@ -119,6 +119,7 @@ public class BeslisResource {
         for (Schending s : fout.schendingen()) {
             ObjectNode sn = schendingen.addObject();
             sn.put("veld", s.veld());
+            sn.put("soort", s.soort().name());
             sn.put("fout", s.bericht());
         }
         return n;

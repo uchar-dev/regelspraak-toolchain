@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.Eenheid;
+import dev.uchar.regelspraak.transpiler.kern.Namen;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -26,7 +27,10 @@ import java.util.List;
  *       {@code {"waarde": n, "eenheid": "<afk>"}} whose eenheid must EQUAL the declared unit's weergave.</li>
  *   <li><b>Booleaan</b> → {@link Boolean}.</li>
  *   <li><b>Tekst</b> → {@link String}.</li>
- *   <li><b>Enumeratie</b> → the {@link String} literal, which must be one of the domein's waarden.</li>
+ *   <li><b>Enumeratie</b> → the {@link String} literal as the request spells it, which must name one of the
+ *       domein's waarden. A waarde is a declared name, compared as uchar compares declared names (its
+ *       {@code Namen.norm}: spacing collapsed, A-Z lowercased), so "Gaaf" names the declared "gaaf"; the spelling
+ *       of the request is kept, as uchar's replay keeps a case's spelling, and the rules compare it alike.</li>
  *   <li><b>Datum-in-dagen</b> → {@link LocalDate} (ISO-8601 {@code yyyy-MM-dd}).</li>
  *   <li><b>Datum-en-tijd</b> → {@link LocalDateTime} (ISO-8601 {@code yyyy-MM-ddThh:mm:ss[.SSS]}).</li>
  * </ul>
@@ -120,7 +124,7 @@ public final class WaardeCoder {
             return Resultaat.fout(Schending.van(Schending.Soort.VERKEERD_TYPE, veld,
                     "verwacht een enumeratie-waarde (tekst), kreeg " + omschrijf(node)));
         String v = node.asText();
-        if (!e.waarden().contains(v))
+        if (e.waarden().stream().noneMatch(w -> Namen.norm(w).equals(Namen.norm(v))))
             return Resultaat.fout(Schending.van(Schending.Soort.ONBEKENDE_ENUM_WAARDE, veld,
                     "'" + v + "' is geen waarde van domein '" + e.domein() + "' (toegestaan: " + e.waarden() + ")"));
         return Resultaat.ok(v);

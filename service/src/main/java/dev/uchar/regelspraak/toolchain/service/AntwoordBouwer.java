@@ -25,14 +25,17 @@ import java.util.Map;
  * a {@link BigDecimal} as an EXACT JSON number (Jackson renders BigDecimal natively — never a double), a
  * {@code null}/leeg as JSON {@code null}, a kenmerk as a boolean, a date as an ISO string. It also emits the
  * {@code inconsistenties} array — the {@code regel} names of every {@code Inconsistentie} fact — because the
- * golden verwachtingen include CONSISTENT/INCONSISTENT.
+ * golden verwachtingen include CONSISTENT/INCONSISTENT, and beside it {@code inconsistentieDetails}, the same facts
+ * with their subject: the request id of the instance the failed check is about (null when that is no request
+ * instance), since uchar pins an inconsistency on its subject.
  *
  * <p>Response shape:
  * <pre>{@code
  * { "instanties": [ { "id": "<label>", "type": "<objecttype>",
  *                     "attributen": { "<attribuut>": <waarde|null>, ... },
  *                     "kenmerken":  { "<kenmerk>": true|false, ... } }, ... ],
- *   "inconsistenties": [ "<regelnaam>", ... ] }
+ *   "inconsistenties": [ "<regelnaam>", ... ],
+ *   "inconsistentieDetails": [ { "regel": "<regelnaam>", "onderwerp": "<id>"|null }, ... ] }
  * }</pre>
  */
 public final class AntwoordBouwer {
@@ -79,11 +82,23 @@ public final class AntwoordBouwer {
         }
 
         ArrayNode inc = root.putArray("inconsistenties");
+        ArrayNode details = NF.arrayNode();
         for (Object o : uitkomst.inconsistenties()) {
             Object regel = RegelSpraakRuntime.get(o, "regel");
             inc.add(regel == null ? null : regel.toString());
+            ObjectNode d = details.addObject();
+            d.put("regel", regel == null ? null : regel.toString());
+            d.put("onderwerp", idVan(uitkomst.beans(), RegelSpraakRuntime.get(o, "subject")));
         }
+        root.set("inconsistentieDetails", details);
         return root;
+    }
+
+    /** The request id whose bean IS {@code bean}, or null when it is none of the request's instances. */
+    private static String idVan(Map<String, Object> beans, Object bean) {
+        if (bean == null) return null;
+        for (var e : beans.entrySet()) if (e.getValue() == bean) return e.getKey();
+        return null;
     }
 
     /** Render an attribute value as an EXACT JSON node: BigDecimal as a number (no double), date as ISO string,

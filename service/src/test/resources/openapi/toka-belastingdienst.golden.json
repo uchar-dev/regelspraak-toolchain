@@ -51,6 +51,16 @@
               }
             }
           },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "500": {
             "description": "interne fout (geen stacktrace gelekt)",
             "content": {
@@ -102,6 +112,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
               "application/json": {
                 "schema": {
@@ -169,6 +189,16 @@
               }
             }
           },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "500": {
             "description": "interne fout (geen stacktrace gelekt)",
             "content": {
@@ -220,6 +250,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
               "application/json": {
                 "schema": {
@@ -287,6 +327,16 @@
               }
             }
           },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "500": {
             "description": "interne fout (geen stacktrace gelekt)",
             "content": {
@@ -338,6 +388,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
               "application/json": {
                 "schema": {
@@ -405,6 +465,16 @@
               }
             }
           },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "500": {
             "description": "interne fout (geen stacktrace gelekt)",
             "content": {
@@ -456,6 +526,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
               "application/json": {
                 "schema": {
@@ -523,6 +603,16 @@
               }
             }
           },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "500": {
             "description": "interne fout (geen stacktrace gelekt)",
             "content": {
@@ -574,6 +664,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
               "application/json": {
                 "schema": {
@@ -641,6 +741,16 @@
               }
             }
           },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "500": {
             "description": "interne fout (geen stacktrace gelekt)",
             "content": {
@@ -692,6 +802,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
               "application/json": {
                 "schema": {
@@ -759,6 +879,16 @@
               }
             }
           },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "500": {
             "description": "interne fout (geen stacktrace gelekt)",
             "content": {
@@ -810,6 +940,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
               "application/json": {
                 "schema": {
@@ -877,6 +1017,16 @@
               }
             }
           },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "500": {
             "description": "interne fout (geen stacktrace gelekt)",
             "content": {
@@ -928,6 +1078,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
               "application/json": {
                 "schema": {
@@ -995,6 +1155,16 @@
               }
             }
           },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "500": {
             "description": "interne fout (geen stacktrace gelekt)",
             "content": {
@@ -1046,6 +1216,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
               "application/json": {
                 "schema": {
@@ -1113,6 +1293,16 @@
               }
             }
           },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "500": {
             "description": "interne fout (geen stacktrace gelekt)",
             "content": {
@@ -1164,6 +1354,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
               "application/json": {
                 "schema": {
@@ -1231,6 +1431,16 @@
               }
             }
           },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "500": {
             "description": "interne fout (geen stacktrace gelekt)",
             "content": {
@@ -1282,6 +1492,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
               "application/json": {
                 "schema": {
@@ -1349,6 +1569,16 @@
               }
             }
           },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "500": {
             "description": "interne fout (geen stacktrace gelekt)",
             "content": {
@@ -1400,6 +1630,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
               "application/json": {
                 "schema": {
@@ -1467,6 +1707,16 @@
               }
             }
           },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "500": {
             "description": "interne fout (geen stacktrace gelekt)",
             "content": {
@@ -1518,6 +1768,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
               "application/json": {
                 "schema": {
@@ -1585,6 +1845,16 @@
               }
             }
           },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "500": {
             "description": "interne fout (geen stacktrace gelekt)",
             "content": {
@@ -1644,6 +1914,16 @@
               }
             }
           },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "500": {
             "description": "interne fout (geen stacktrace gelekt)",
             "content": {
@@ -1695,6 +1975,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
               "application/json": {
                 "schema": {
@@ -2074,6 +2364,22 @@
               "type": "string"
             },
             "description": "de namen van de regels waarvan een consistentietoets INCONSISTENT opleverde."
+          },
+          "inconsistentieDetails": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "regel": {
+                  "type": "string"
+                },
+                "onderwerp": {
+                  "type": "string",
+                  "nullable": true
+                }
+              }
+            },
+            "description": "dezelfde inconsistenties met hun onderwerp: het id van de instantie waarover de toets ging, of null als dat geen instantie van het verzoek is."
           }
         }
       },

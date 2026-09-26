@@ -99,6 +99,8 @@ public final class OpenApiEmitter {
         antwoord(responses, "400", "verzoek valideert niet — het antwoord noemt het foutieve veld",
                 "#/components/schemas/Fout");
         antwoord(responses, "404", "onbekend pad", "#/components/schemas/Fout");
+        antwoord(responses, "503", "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+                "#/components/schemas/Fout");
         antwoord(responses, "500", "interne fout (geen stacktrace gelekt)", "#/components/schemas/Fout");
         return item;
     }
@@ -308,7 +310,7 @@ public final class OpenApiEmitter {
     }
 
     /** The generic response schema, honest to {@link AntwoordBouwer}: instanties[{id,type,attributen,kenmerken}]
-     *  + inconsistenties[string]. */
+     *  + inconsistenties[string] + inconsistentieDetails[{regel,onderwerp}]. */
     private static ObjectNode antwoordSchema() {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
@@ -330,6 +332,16 @@ public final class OpenApiEmitter {
         inc.put("type", "array");
         inc.putObject("items").put("type", "string");
         inc.put("description", "de namen van de regels waarvan een consistentietoets INCONSISTENT opleverde.");
+
+        ObjectNode details = props.putObject("inconsistentieDetails");
+        details.put("type", "array");
+        ObjectNode detail = details.putObject("items");
+        detail.put("type", "object");
+        ObjectNode detailProps = detail.putObject("properties");
+        detailProps.putObject("regel").put("type", "string");
+        detailProps.putObject("onderwerp").put("type", "string").put("nullable", true);
+        details.put("description", "dezelfde inconsistenties met hun onderwerp: het id van de instantie waarover de"
+                + " toets ging, of null als dat geen instantie van het verzoek is.");
         return s;
     }
 

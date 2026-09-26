@@ -9,6 +9,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Rol;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
+import dev.uchar.regelspraak.toolchain.engine.RolSchrijver;
 import dev.uchar.regelspraak.transpiler.kern.Namen;
 
 import java.time.LocalDate;
@@ -34,6 +35,7 @@ public final class VerzoekMapper {
 
     private final RegelSpraakModel model;
     private final ClassLoader loader;
+    private final RolSchrijver rollenSchrijver;
 
     /** @param loader the classloader the fact beans live on — the entry point's generated bean classloader,
      *                which uchar's build compiled at startup; reflection over it is
@@ -41,6 +43,7 @@ public final class VerzoekMapper {
     public VerzoekMapper(RegelSpraakModel model, ClassLoader loader) {
         this.model = model;
         this.loader = loader;
+        this.rollenSchrijver = new RolSchrijver(model);
     }
 
     /** The mapped world, the id→objecttype map (for the response builder), and the violations produced while
@@ -143,6 +146,12 @@ public final class VerzoekMapper {
                 zetRollen(ot, id, beans, typePerLabel, in.get("rollen"), "instanties[" + i + "].rollen", s);
             }
         zetRelaties(verzoek.relaties(), beans, typePerLabel, s);
+        // a reciprocal self-relation holds both ways: its reverse leg, as uchar's replay writes it
+        try {
+            rollenSchrijver.spiegelWederkerig(beans, typePerLabel);
+        } catch (RolSchrijver.Geweigerd g) {
+            s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, "instanties", g.getMessage()));
+        }
 
         return new Resultaat(new Wereld(beans, globals, datum), typePerLabel, s);
     }
@@ -232,6 +241,9 @@ public final class VerzoekMapper {
 
     // ---- rollen (inline) ----
 
+    /** The inline roles of one instance, written as uchar's replay writes a case's roles ({@link RolSchrijver}): a
+     *  request instance with {@code rollen} is the case instance with {@code roles}, so the service sets the facts
+     *  the replay sets. A role name the model does not know is refused before anything is written. */
     private void zetRollen(Objecttype ot, String id, Map<String, Object> beans, Map<String, Objecttype> typePerLabel,
                            JsonNode rollen, String pad, List<Schending> s) {
         if (rollen == null || rollen.isNull()) return;
@@ -240,60 +252,27 @@ public final class VerzoekMapper {
         rollen.fields().forEachRemaining(e -> {
             String rol = e.getKey();
             String veld = pad + "." + rol;
-            Objecttype doelType = model.rolDoeltypeNaarSubject(ot, rol);
-            if (doelType == null) {
+            if (model.rolDoeltypeNaarSubject(ot, rol) == null) {
                 s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, veld,
                         "onbekende rol '" + rol + "' vanaf objecttype '" + ot.naam + "'"));
                 return;
             }
-            boolean naarVeel = model.naarVeelRol(ot, doelType, rol);
             List<String> doelen = new ArrayList<>();
             JsonNode v = e.getValue();
             if (v.isArray()) v.forEach(n -> doelen.add(n.asText()));
             else doelen.add(v.asText());
-
-            if (!naarVeel) {
-                if (doelen.size() != 1) {
-                    s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, veld,
-                            "rol '" + rol + "' is naar-één maar kreeg " + doelen.size() + " doelen"));
-                    return;
-                }
-                Object doel = beans.get(doelen.get(0));
+            for (String label : doelen) {
+                Object doel = beans.get(label);
                 if (doel == null) {
                     s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, veld,
-                            "rol '" + rol + "' verwijst naar onbekend id '" + doelen.get(0) + "'"));
-                    return;
+                            "rol '" + rol + "' verwijst naar onbekend id '" + label + "'"));
+                    continue;
                 }
-                if (!heeftSetter(bean, rol)) {
-                    s.add(Schending.van(Schending.Soort.NIET_ONDERSTEUND, veld,
-                            "rol '" + rol + "' heeft geen referentieveld op objecttype '" + ot.naam
-                                    + "' — deze relatie wordt niet door het feitmodel gematerialiseerd"));
-                    return;
-                }
-                RegelSpraakRuntime.set(bean, prop(rol), doel);
-            } else {
-                // to-many: THIS is the ONE side; write each target's reverse role -> this (as ScenarioRunner does)
-                for (String label : doelen) {
-                    Object doel = beans.get(label);
-                    if (doel == null) {
-                        s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, veld,
-                                "rol '" + rol + "' verwijst naar onbekend id '" + label + "'"));
-                        continue;
-                    }
-                    Objecttype doelOt = typePerLabel.get(label);
-                    String reverse = doelOt == null ? null : model.verbindendeRol(doelOt, ot);
-                    if (reverse == null) {
-                        s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, veld,
-                                "kon omgekeerde rol voor naar-veel-rol '" + rol + "' niet bepalen (id '" + label + "')"));
-                        continue;
-                    }
-                    if (!heeftSetter(doel, reverse)) {
-                        s.add(Schending.van(Schending.Soort.NIET_ONDERSTEUND, veld,
-                                "naar-veel-rol '" + rol + "' heeft geen referentieveld '" + reverse + "' op '"
-                                        + (doelOt == null ? "?" : doelOt.naam) + "' — niet gematerialiseerd"));
-                        continue;
-                    }
-                    RegelSpraakRuntime.set(doel, prop(reverse), bean);
+                try {
+                    rollenSchrijver.schrijf(bean, ot, rol, doel, typePerLabel.get(label));
+                } catch (RolSchrijver.Geweigerd g) {
+                    s.add(Schending.van(g.tweedeDoel() ? Schending.Soort.VERKEERD_TYPE : Schending.Soort.NIET_ONDERSTEUND,
+                            veld, g.getMessage()));
                 }
             }
         });

@@ -1,0 +1,107 @@
+package dev.uchar.regelspraak.toolchain.engine;
+
+import dev.uchar.regelspraak.model.RegelSpraakModel;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
+import dev.uchar.regelspraak.schema.FactModelGenerator;
+import dev.uchar.regelspraak.transpiler.kern.Namen;
+
+import java.util.Map;
+
+/**
+ * Writes a role link between two fact beans the way uchar's replay writes a case's roles ({@code CaseRunner}, whose
+ * input step is not public API), after RUNTIME-SEMANTICS ch. 5.7a: a supplied link establishes the relation in both
+ * directions. The role the link names is taken by that name where it names a reference field the bean model derives,
+ * else by the type pair; a to-one role is written on this bean, and on a one-to-one relation the far field as well;
+ * a to-many role is stored in the far end's field, through the sister role. A reciprocal self-relation (§13.3.9.2)
+ * gets its reverse leg in a separate pass over all beans ({@link #spiegelWederkerig}). A link the bean model cannot
+ * hold, or a second, different target on a to-one field, is refused by name ({@link Geweigerd}).
+ */
+public final class RolSchrijver {
+
+    /** A link this bean model cannot hold as written, or ({@link #tweedeDoel()}) a second, different target on a
+     *  to-one field: one relation instance per to-one role, as uchar's case reader holds it (WF-013). */
+    public static final class Geweigerd extends RuntimeException {
+        private final boolean tweedeDoel;
+
+        Geweigerd(String reden, boolean tweedeDoel) {
+            super(reden);
+            this.tweedeDoel = tweedeDoel;
+        }
+
+        public boolean tweedeDoel() { return tweedeDoel; }
+    }
+
+    private final RegelSpraakModel model;
+
+    public RolSchrijver(RegelSpraakModel model) {
+        this.model = model;
+    }
+
+    /** Link {@code bean} (of type {@code tI}) to {@code doel} (of type {@code tL}) through the role the input names
+     *  {@code rolSleutel}. */
+    public void schrijf(Object bean, Objecttype tI, String rolSleutel, Object doel, Objecttype tL) {
+        String viaNaam = model.verbindendeRolViaNaam(tI, tL, rolSleutel);
+        String rolIL = viaNaam != null && geldigRolveld(tI, viaNaam, tL) ? viaNaam : model.verbindendeRol(tI, tL);
+        String zuster = model.verbindendeRolViaElementnaam(tI, rolSleutel);
+        String rolLI = zuster != null && geldigRolveld(tL, zuster, tI) ? zuster : model.verbindendeRol(tL, tI);
+        if (rolIL != null && !model.naarVeelRol(tI, tL, rolIL)) {
+            naamdelingsPoort(tI, rolIL, tL, rolSleutel);
+            zetToOne(bean, rolIL, doel);
+            if (rolLI != null && !rolLI.equalsIgnoreCase(rolIL) && !model.naarVeelRol(tL, tI, rolLI)) {
+                naamdelingsPoort(tL, rolLI, tI, rolSleutel);
+                zetToOne(doel, rolLI, bean);
+            }
+        } else {
+            if (rolLI == null || model.naarVeelRol(tL, tI, rolLI))
+                throw new Geweigerd("de rol '" + rolSleutel + "' (" + tI.naam + " -> " + tL.naam
+                        + ") bereikt geen naar-één referentieveld", false);
+            naamdelingsPoort(tL, rolLI, tI, rolSleutel);
+            zetToOne(doel, rolLI, bean);
+        }
+    }
+
+    /** The reverse leg of every reciprocal self-relation among {@code beans} (label -> bean, in input order; its
+     *  type in {@code typePerLabel}): one link holds both ways. */
+    public void spiegelWederkerig(Map<String, Object> beans, Map<String, Objecttype> typePerLabel) {
+        for (Map.Entry<String, Object> e : beans.entrySet()) {
+            Object bean = e.getValue();
+            String rol = FactModelGenerator.zelfpaarRol(model, typePerLabel.get(e.getKey()));
+            if (rol == null) continue;
+            Object partner = CaseSessie.lees(bean, Namen.getter(rol));
+            if (partner == null) continue;
+            Object terug = CaseSessie.lees(partner, Namen.getter(rol));
+            if (terug == bean) continue;
+            if (terug != null)
+                throw new Geweigerd("de wederkerige rol '" + rol + "': het doel is al met een ander verbonden", true);
+            roep(partner, Namen.setter(rol), bean.getClass(), bean);
+        }
+    }
+
+    private boolean geldigRolveld(Objecttype drager, String rol, Objecttype doel) {
+        return drager.naam.equalsIgnoreCase(doel.naam)
+                ? FactModelGenerator.zelfpaarRollen(model, drager).contains(rol)
+                : model.verbindendeRollen(drager, doel).contains(rol);
+    }
+
+    private void naamdelingsPoort(Objecttype drager, String rol, Objecttype doel, String geschreven) {
+        if (!FactModelGenerator.heeftReferentieVeld(model, drager, rol, doel))
+            throw new Geweigerd("de rol '" + geschreven + "' wordt de naar-één rol '" + rol + "' op " + drager.naam
+                    + ", waarvan de bean het referentieveld niet draagt", false);
+    }
+
+    private static void zetToOne(Object drager, String rol, Object doel) {
+        Object huidig = CaseSessie.lees(drager, Namen.getter(rol));
+        if (huidig != null && huidig != doel)
+            throw new Geweigerd("de naar-één rol '" + rol + "' krijgt een tweede, ander doel", true);
+        roep(drager, Namen.setter(rol), doel.getClass(), doel);
+    }
+
+    private static void roep(Object bean, String methode, Class<?> type, Object waarde) {
+        try {
+            bean.getClass().getMethod(methode, type).invoke(bean, waarde);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("kon " + methode + "(" + type.getSimpleName() + ") niet aanroepen op "
+                    + bean.getClass().getSimpleName(), e);
+        }
+    }
+}

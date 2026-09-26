@@ -424,8 +424,9 @@ public final class DienstHttp {
         return n;
     }
 
-    /** {@code {"fout": <boodschap>, "schendingen": [{"veld": <pad>, "fout": <detail>}, ...]}} — every schending
-     *  NAMES its veld. Built from a request-mapping {@link DienstFout}. */
+    /** {@code {"fout": <boodschap>, "schendingen": [{"veld": <pad>, "soort": <soort>, "fout": <detail>}, ...]}} —
+     *  every schending NAMES its veld, and its soort tells a caller a request error from a request form the service
+     *  does not carry ({@code NIET_ONDERSTEUND}). Built from a request-mapping {@link DienstFout}. */
     static ObjectNode verzoekFoutBody(DienstFout fout) {
         ObjectNode n = NF.objectNode();
         // the constructed message already concatenates the schendingen; use its context head only would lose the
@@ -435,6 +436,7 @@ public final class DienstHttp {
         for (Schending s : fout.schendingen()) {
             ObjectNode sn = schendingen.addObject();
             sn.put("veld", s.veld());
+            sn.put("soort", s.soort().name());
             sn.put("fout", s.bericht());
         }
         return n;

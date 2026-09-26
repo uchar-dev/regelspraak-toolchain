@@ -67,10 +67,13 @@ public final class CaseSessie {
         private final Map<String, Integer> telling = new LinkedHashMap<>();
         private final Map<String, List<String>> labels = new LinkedHashMap<>();
 
+        private final RolSchrijver rollenSchrijver;
+
         Speler(DroolsBackend.Build build) {
             this.build = build;
             this.model = build.model();
             this.cl = build.beanLoader();
+            this.rollenSchrijver = new RolSchrijver(model);
         }
 
         Uitkomst speel(JsonNode c) {
@@ -148,75 +151,30 @@ public final class CaseSessie {
             if (ctls != null && !ctls.isEmpty()) throw new NietSpeelbaar("de case geeft een kenmerk met perioden");
         }
 
-        /** A role link as the replay writes it (RUNTIME-SEMANTICS ch. 5.7a): by the role the case writes where it
-         *  names a reference field the bean model derives, else by the type pair; a to-one role on this bean, and on
-         *  a one-to-one relation the far field too; a to-many role through the far end's field. */
+        /** The case's roles, written as the replay writes them ({@link RolSchrijver}). */
         private void zetRollen(JsonNode i) {
             String label = i.get("label").asText();
-            Object bean = labelNaarBean.get(label);
-            Objecttype tI = labelType.get(label);
             JsonNode rollen = i.get("roles");
             if (rollen == null) return;
-            for (Map.Entry<String, JsonNode> e : rollen.properties()) {
+            for (Map.Entry<String, JsonNode> e : rollen.properties())
                 for (JsonNode labelNode : e.getValue()) {
                     Object doel = labelNaarBean.get(labelNode.asText());
                     if (doel == null)
                         throw new NietSpeelbaar("de rol '" + e.getKey() + "' noemt het onbekende label " + labelNode.asText());
-                    Objecttype tL = labelType.get(labelNode.asText());
-                    String viaNaam = model.verbindendeRolViaNaam(tI, tL, e.getKey());
-                    String rolIL = viaNaam != null && geldigRolveld(tI, viaNaam, tL) ? viaNaam : model.verbindendeRol(tI, tL);
-                    String zuster = model.verbindendeRolViaElementnaam(tI, e.getKey());
-                    String rolLI = zuster != null && geldigRolveld(tL, zuster, tI) ? zuster : model.verbindendeRol(tL, tI);
-                    if (rolIL != null && !model.naarVeelRol(tI, tL, rolIL)) {
-                        naamdelingsPoort(tI, rolIL, tL, e.getKey());
-                        zetToOne(bean, rolIL, doel);
-                        if (rolLI != null && !rolLI.equalsIgnoreCase(rolIL) && !model.naarVeelRol(tL, tI, rolLI)) {
-                            naamdelingsPoort(tL, rolLI, tI, e.getKey());
-                            zetToOne(doel, rolLI, bean);
-                        }
-                    } else {
-                        if (rolLI == null || model.naarVeelRol(tL, tI, rolLI))
-                            throw new NietSpeelbaar("de rol '" + e.getKey() + "' (" + tI.naam + " -> " + tL.naam
-                                    + ") bereikt geen naar-één referentieveld");
-                        naamdelingsPoort(tL, rolLI, tI, e.getKey());
-                        zetToOne(doel, rolLI, bean);
+                    try {
+                        rollenSchrijver.schrijf(labelNaarBean.get(label), labelType.get(label), e.getKey(), doel,
+                                labelType.get(labelNode.asText()));
+                    } catch (RolSchrijver.Geweigerd g) {
+                        throw new NietSpeelbaar(g.getMessage());
                     }
                 }
-            }
         }
 
-        private boolean geldigRolveld(Objecttype drager, String rol, Objecttype doel) {
-            return drager.naam.equalsIgnoreCase(doel.naam)
-                    ? FactModelGenerator.zelfpaarRollen(model, drager).contains(rol)
-                    : model.verbindendeRollen(drager, doel).contains(rol);
-        }
-
-        private void naamdelingsPoort(Objecttype drager, String rol, Objecttype doel, String geschreven) {
-            if (!FactModelGenerator.heeftReferentieVeld(model, drager, rol, doel))
-                throw new NietSpeelbaar("de rol '" + geschreven + "' wordt de naar-één rol '" + rol + "' op "
-                        + drager.naam + ", waarvan de bean het referentieveld niet draagt");
-        }
-
-        private void zetToOne(Object drager, String rol, Object doel) {
-            Object huidig = lees(drager, Namen.getter(rol));
-            if (huidig != null && huidig != doel)
-                throw new NietSpeelbaar("de naar-één rol '" + rol + "' krijgt een tweede, ander doel");
-            roep(drager, Namen.setter(rol), doel.getClass(), doel);
-        }
-
-        /** The reciprocal self-relation (§13.3.9.2): one entry holds both ways, so the reverse leg is written. */
         private void spiegelWederkerigeRollen() {
-            for (Map.Entry<String, Object> e : labelNaarBean.entrySet()) {
-                Object bean = e.getValue();
-                String rol = FactModelGenerator.zelfpaarRol(model, labelType.get(e.getKey()));
-                if (rol == null) continue;
-                Object partner = lees(bean, Namen.getter(rol));
-                if (partner == null) continue;
-                Object terug = lees(partner, Namen.getter(rol));
-                if (terug == bean) continue;
-                if (terug != null)
-                    throw new NietSpeelbaar("de wederkerige rol '" + rol + "': het doel is al met een ander verbonden");
-                roep(partner, Namen.setter(rol), bean.getClass(), bean);
+            try {
+                rollenSchrijver.spiegelWederkerig(labelNaarBean, labelType);
+            } catch (RolSchrijver.Geweigerd g) {
+                throw new NietSpeelbaar(g.getMessage());
             }
         }
 
