@@ -1,16 +1,17 @@
 beslisservice "{{ .Release.Name }}" is uitgerold.
 
 Readiness-contract:
-  DienstMain compileert ELKE gescopete regel VOORDAT het de poort bindt. Een pod die
-  /info beantwoordt heeft dus al zijn regels volledig gecompileerd — luisteren ==
-  regels gecompileerd. Daarom probet elke probe /info; de startupProbe geeft de
+  De dienst bouwt ELK entrypoint (via uchar) VOORDAT hij de poort bindt. Een pod die
+  /info beantwoordt heeft dus al zijn regels volledig gebouwd — luisteren ==
+  regels gebouwd. Daarom probet elke probe /info; de startupProbe geeft de
   KieBase-build tot ~10 minuten voordat readiness/liveness overnemen.
 
 allowMarkers = {{ .Values.allowMarkers }}
-  Staat allowMarkers op false en scopet de descriptor een regel die de DRL-back-end
-  niet kan loweren (een MARKER), dan faalt DienstMain fail-fast met exit 3 en gaat de
-  pod in CrashLoopBackOff — dit is by design (de honest startup-contract). Zet
-  --set allowMarkers=true om de dienst toch te starten met de markers zichtbaar in /info.
+  Staat allowMarkers op false en draagt uchar een entrypoint van de descriptor niet
+  (een MARKER: een weigering van uchars emitter, lader of backend), dan stopt de
+  dienst bij de start met exit 3 en gaat de pod in CrashLoopBackOff — dit is by design
+  (de honest startup-contract). Met --set allowMarkers=true start de dienst toch: /info
+  noemt de markers, en elk verzoek aan zo'n entrypoint krijgt 503 met uchars reden.
 
 {{- if .Values.parametersets.multiVintage }}
 

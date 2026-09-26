@@ -7,7 +7,7 @@ image:
 
 replicas: 1
 
-# Container HTTP port (DienstMain --poort). Also the Service port.
+# Container HTTP port (bin/regelspraak serve --poort). Also the Service port.
 poort: 8080
 
 # When false a marker-scoping descriptor fails fast (exit 3 → CrashLoopBackOff).
