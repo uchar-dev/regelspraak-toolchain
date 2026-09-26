@@ -15,9 +15,10 @@ map; `docs/ENGINE.md` describes the engine and the service.
   submodule moved to a newer commit of uchar's main, `git add uchar`.
 - **Own code in `dev.uchar.regelspraak.toolchain.*` only**, reading uchar's public API. Never a class in a uchar
   package, and never one in uchar's generated namespaces (`dev.uchar.regelspraak.facts`, `…generated`).
-- **One way to a KieBase:** `DroolsBackend.build(document, branch)` over the document uchar's emitter writes
-  (`UcharBouw`). The transpilers take the loader's side tables beside the model, and only that build passes all
-  of them; a transpiler call of our own could drop one and still produce a KieBase.
+- **One way to a KieBase:** `DroolsBackend.build(document, branch)` over a `uchar-ir-v1` document — the one
+  uchar's emitter writes, or one the service is given as its source — always through `UcharBouw`. The transpilers
+  take the loader's side tables beside the model, and only that build passes all of them; a transpiler call of our
+  own could drop one and still produce a KieBase.
 - **Fail fast.** A refusal of uchar is reported with uchar's sentence; nothing is skipped, caught and dropped, or
   answered as if a construct did not exist.
 - **The parity zone** — `examples/toka*` and `specification/` — is © Belastingdienst material: never edited,

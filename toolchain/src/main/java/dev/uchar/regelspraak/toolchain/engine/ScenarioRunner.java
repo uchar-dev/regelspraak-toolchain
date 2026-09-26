@@ -114,11 +114,11 @@ public final class ScenarioRunner {
             if (rapport.size() != scenarios.size())
                 throw new IllegalStateException("het rapport telt " + rapport.size() + " case(s) voor "
                         + scenarios.size() + " scenario('s): een gelagerde case hoort nooit een red-path case te zijn");
-            // the build the explanation plays on: the document the replay played, through the same facade. When the
-            // replay played no case (the facade refused the document, every report is MARKER) there is nothing to
-            // explain and no build to make.
+            // the build the explanation plays on: the document the replay played, through the same facade
+            // (UcharBouw, this distribution's one way to a build). When the replay played no case (the facade
+            // refused the document, every report is MARKER) there is nothing to explain and no build to make.
             boolean gespeeld = rapport.stream().anyMatch(r -> r.status() != ScenarioResultaat.Status.MARKER);
-            DroolsBackend.Build build = metUitleg && gespeeld ? DroolsBackend.build(JSON.readTree(document),
+            DroolsBackend.Build build = metUitleg && gespeeld ? UcharBouw.bouw(JSON.readTree(document),
                     DroolsBackend.Branch.EXEC_MODEL) : null;
             List<Uitgelegd> uit = new ArrayList<>();
             for (int i = 0; i < scenarios.size(); i++) {
