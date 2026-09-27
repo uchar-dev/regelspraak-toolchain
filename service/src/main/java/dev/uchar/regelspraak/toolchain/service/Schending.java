@@ -21,7 +21,8 @@ public record Schending(Soort soort, String veld, String bericht) {
         MARKER,
         /** A request field names an unknown objecttype/attribuut/kenmerk/parameter/rol. */
         ONBEKEND_VELD,
-        /** A request value has the wrong datatype (a string where a number is due, a bad date, …). */
+        /** A request value has the wrong datatype (a string where a number is due, a bad date, …), or an id on a
+         *  rol names an instance whose objecttype does not fill that rol. */
         VERKEERD_TYPE,
         /** An eenheid-bearing value carries an eenheid that does not equal the declared one. */
         VERKEERDE_EENHEID,

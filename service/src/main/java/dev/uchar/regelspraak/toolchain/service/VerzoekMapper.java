@@ -243,7 +243,10 @@ public final class VerzoekMapper {
 
     /** The inline roles of one instance, written as uchar's replay writes a case's roles ({@link RolSchrijver}): a
      *  request instance with {@code rollen} is the case instance with {@code roles}, so the service sets the facts
-     *  the replay sets. A role name the model does not know is refused before anything is written. */
+     *  the replay sets. A role name the model does not know is refused before anything is written, and so is an id
+     *  whose objecttype does not fill the role (the role's type or a subtype of it): the writer falls back on the
+     *  type pair, and would write such a link into another relation between the two types, or refuse it as a form
+     *  the service does not carry. */
     private void zetRollen(Objecttype ot, String id, Map<String, Object> beans, Map<String, Objecttype> typePerLabel,
                            JsonNode rollen, String pad, List<Schending> s) {
         if (rollen == null || rollen.isNull()) return;
@@ -252,7 +255,8 @@ public final class VerzoekMapper {
         rollen.fields().forEachRemaining(e -> {
             String rol = e.getKey();
             String veld = pad + "." + rol;
-            if (model.rolDoeltypeNaarSubject(ot, rol) == null) {
+            Objecttype doeltype = model.rolDoeltypeNaarSubject(ot, rol);
+            if (doeltype == null) {
                 s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, veld,
                         "onbekende rol '" + rol + "' vanaf objecttype '" + ot.naam + "'"));
                 return;
@@ -268,14 +272,24 @@ public final class VerzoekMapper {
                             "rol '" + rol + "' verwijst naar onbekend id '" + label + "'"));
                     continue;
                 }
+                Objecttype labelType = typePerLabel.get(label);
+                if (!labelType.isEen(doeltype)) {
+                    s.add(verkeerdType(veld, rol, doeltype, label, labelType));
+                    continue;
+                }
                 try {
-                    rollenSchrijver.schrijf(bean, ot, rol, doel, typePerLabel.get(label));
+                    rollenSchrijver.schrijf(bean, ot, rol, doel, labelType);
                 } catch (RolSchrijver.Geweigerd g) {
                     s.add(Schending.van(g.tweedeDoel() ? Schending.Soort.VERKEERD_TYPE : Schending.Soort.NIET_ONDERSTEUND,
                             veld, g.getMessage()));
                 }
             }
         });
+    }
+
+    private static Schending verkeerdType(String veld, String rol, Objecttype doeltype, String id, Objecttype type) {
+        return Schending.van(Schending.Soort.VERKEERD_TYPE, veld, "rol '" + rol + "' verwacht een instantie van"
+                + " objecttype '" + doeltype.naam + "', maar id '" + id + "' is van objecttype '" + type.naam + "'");
     }
 
     // ---- relaties (top-level) — desugar to bean-field writes ----

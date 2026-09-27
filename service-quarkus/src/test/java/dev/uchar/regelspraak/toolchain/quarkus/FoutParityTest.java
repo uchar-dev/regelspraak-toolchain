@@ -56,10 +56,36 @@ class FoutParityTest {
             "invoer": ["Vlucht"], "uitvoer": ["Vlucht.heffing"] } ],
           "parameters": {} }""";
 
+    /** Own material for an id of another objecttype on a rol: no feittype relates a Jutter to a Strandpaal. */
+    private static final String ROL_BRON = """
+        Objecttype de Jutter (mv: Jutters) (bezield)
+            het leerlingaantal Numeriek (niet-negatief geheel getal);
+
+        Objecttype de Strandpaal (mv: Strandpalen)
+            het paalnummer Numeriek (niet-negatief geheel getal);
+
+        Feittype leerlingschap
+            de leermeester (mv: leermeesters) Jutter
+            de leerling (mv: leerlingen) Jutter
+        Eén leermeester heeft meerdere leerlingen
+
+        Regel leerlingaantal van een jutter
+            geldig altijd
+                Het leerlingaantal van een Jutter moet berekend worden als het aantal leerlingen van de Jutter.
+        """;
+    private static final String ROL_DESCRIPTOR = """
+        { "dienst": {"naam":"leerlingschap","versie":"1"},
+          "entrypoints": [ { "naam":"leerlingaantal","pad":"leerlingaantal",
+            "scope": {"regelnamen": ["leerlingaantal van een jutter"]},
+            "invoer": ["Jutter"], "uitvoer": ["Jutter.leerlingaantal"] } ],
+          "parameters": {} }""";
+
     private static BeslisserKern toka;
     private static BeslisserKern marker;
+    private static BeslisserKern rol;
     private static DienstHttp tokaDienst;
     private static DienstHttp markerDienst;
+    private static DienstHttp rolDienst;
 
     @BeforeAll
     static void bouw() throws Exception {
@@ -68,14 +94,17 @@ class FoutParityTest {
         Map<String, String> bron = new LinkedHashMap<>();
         bron.put("marker.rgs", MARKER_BRON);
         marker = BeslisserKern.bouw(MARKER_DESCRIPTOR, bron, KernConfig.metMarkers(), cl);
+        rol = BeslisserKern.bouw(ROL_DESCRIPTOR, Map.of("leerlingschap.rgs", ROL_BRON), KernConfig.strikt(), cl);
         tokaDienst = DienstHttp.bind(toka, "127.0.0.1", 0).start();
         markerDienst = DienstHttp.bind(marker, "127.0.0.1", 0).start();
+        rolDienst = DienstHttp.bind(rol, "127.0.0.1", 0).start();
     }
 
     @AfterAll
     static void stop() {
         if (tokaDienst != null) tokaDienst.stop(0);
         if (markerDienst != null) markerDienst.stop(0);
+        if (rolDienst != null) rolDienst.stop(0);
     }
 
     @Test
@@ -83,6 +112,14 @@ class FoutParityTest {
         JsonNode fixture = MAPPER.readTree(Files.readString(TokaBron.REPO.resolve(
                 "service/src/test/resources/negatief/01-onbekend-attribuut.json")));
         vergelijk(toka, tokaDienst, fixture.get("pad").asText(), fixture.get("body").toString(), 400);
+    }
+
+    @Test
+    void id_van_een_ander_objecttype_op_een_rol_400_verkeerd_type() throws Exception {
+        JsonNode body = vergelijk(rol, rolDienst, "leerlingaantal", """
+            {"instanties":[{"type":"Jutter","id":"J1","rollen":{"leerling":["P1"]}},{"type":"Strandpaal","id":"P1"}]}""",
+                400);
+        assertEquals("VERKEERD_TYPE", body.at("/schendingen/0/soort").asText(), body.toString());
     }
 
     @Test
@@ -115,8 +152,9 @@ class FoutParityTest {
         return kern.entrypoints().keySet().iterator().next();
     }
 
-    /** The same POST to both adapters over the same kern: the same status ({@code verwacht}) and the same body. */
-    private static void vergelijk(BeslisserKern kern, DienstHttp dienst, String pad, String body, int verwacht)
+    /** The same POST to both adapters over the same kern: the same status ({@code verwacht}) and the same body, which
+     *  it returns. */
+    private static JsonNode vergelijk(BeslisserKern kern, DienstHttp dienst, String pad, String body, int verwacht)
             throws Exception {
         BeslisResource resource = new BeslisResource();
         resource.kern = kern;
@@ -133,5 +171,6 @@ class FoutParityTest {
         JsonNode jdkBody = MAPPER.readTree(jdk.body());
         JsonNode quarkusBody = MAPPER.readTree((String) quarkus.getEntity());
         assertEquals(jdkBody, quarkusBody, "het foutlichaam van de Quarkus-adapter wijkt af van dat van DienstHttp");
+        return jdkBody;
     }
 }
