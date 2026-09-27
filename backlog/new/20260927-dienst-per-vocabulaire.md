@@ -24,7 +24,14 @@ pin-bump hierheen.
   niet volledig; `/info` zegt per vocabulaire of het volledig is).
 - U3 OpenAPI: één document per vocabulaire (pad of parameter, de bouwer
   kiest), gegenereerd uit dezelfde emitter; de bestaande golden blijft
-  het canonieke document.
+  het canonieke document. Uchar kent geen soort op een vocabulaire
+  (maintainerbesluit 2026-09-27): een benaming is vrije tekst, spaties
+  inbegrepen. JSON-sleutels en OpenAPI-eigenschapsnamen dragen de
+  benaming letterlijk; waar het koppelvlak een identifier eist
+  (operationId, gegenereerde clients) leidt de bouwer die af en
+  documenteert de afleiding; `/info` meldt per vocabulaire of alle
+  benamingen identifier-vormig zijn, zodat een afnemer dat niet hoeft te
+  raden.
 - U4 Verwoording: de verbalisator, de uitleg, de trace en `graafJson` van
   de playground en de scenarioroute (`--vocabulaire`) gebruiken het
   gekozen vocabulaire voor namen van objecttypen, attributen, kenmerken,
