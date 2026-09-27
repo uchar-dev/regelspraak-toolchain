@@ -179,6 +179,10 @@ checks the running service: the golden TOKA scenarios over HTTP, the marker's ex
 - **Parameter sets on the scenario route** (`--parametersets`, refused by name). uchar's scenario resolver refuses a
   scenario whose carried rules read a parameter its situation does not set, so no case file is written for a
   parameter set to go into. Every parameter a tested rule reads needs a value in the scenario's situation.
+- **The kind of a wrong-typed label in a request.** A label of the wrong type
+  in a service request is refused as NIET_ONDERSTEUND where the nluwv fork
+  answered VERKEERD_TYPE; both are HTTP 400, only the kind and the sentence
+  differ (comparison of 2026-09-27).
 - **Timelines in a service request.** The request has no timeline value, no characteristic with periods, and no
   scalar on a time-dependent attribute (uchar's replay places one in the bucket of the evaluation date); the service
   refuses them as `NIET_ONDERSTEUND`. 27 of the goldens gate 12 plays need one; the replay gate lists them.
