@@ -18,6 +18,9 @@ import dev.uchar.regelspraak.toolchain.service.BeslisserKern;
 import dev.uchar.regelspraak.toolchain.service.DienstDescriptor;
 import dev.uchar.regelspraak.toolchain.service.DienstFout;
 import dev.uchar.regelspraak.toolchain.service.Schending;
+import dev.uchar.regelspraak.toolchain.service.VerzoekOpties;
+import dev.uchar.regelspraak.toolchain.service.Volledigheid;
+import dev.uchar.regelspraak.toolchain.engine.Naamgeving;
 import dev.uchar.regelspraak.transpiler.kern.Dekking;
 
 import java.io.IOException;
@@ -45,12 +48,15 @@ import java.util.concurrent.TimeoutException;
  * <ul>
  *   <li>{@code POST /<pad>} for every entry point: the body is read as JSON (BigDecimal-for-floats so no request
  *       number is ever a double), handed to {@link BeslisserKern#verwerk}, and the response tree is written back
- *       with {@code 200} and {@code Content-Type: application/json; charset=UTF-8}.</li>
+ *       with {@code 200} and {@code Content-Type: application/json; charset=UTF-8}. The query carries what the
+ *       request asks beside its body ({@link #opties}): {@code uitleg}, {@code vocabulaire} (the vocabulary of the
+ *       answer) and {@code invoervocabulaire} (the one the request's names are read in).</li>
  *   <li>{@code GET /info}: the service manifest — dienst identity, one entry per entry point carrying its path,
  *       whether it is {@code uitvoerbaar}, its {@code dekking} (the exec-model branch's verdict per form of its
  *       document, the defaults groups included), its {@code markers} and, when uchar does not carry it, uchar's
  *       sentence as {@code weigering}; the list of ALL {@code overgeslagen} (marker) names across the service, and
- *       the descriptor {@code parameters} defaults verbatim.</li>
+ *       the descriptor {@code parameters} defaults verbatim. A model with vocabularies adds {@code vocabulaires}
+ *       ({@link Volledigheid}), and an entry point with a default vocabulary names it.</li>
  * </ul>
  *
  * <h2>Errors — always a JSON body, NEVER a leaked stacktrace</h2>
@@ -182,11 +188,12 @@ public final class DienstHttp {
                 return;
             }
 
-            // ?uitleg=true bypasses the (uitleg-independent) test-seam delegate and asks the core for the verhaal;
+            // a request that asks something beside its body bypasses the test-seam delegate and asks the core itself;
             // the plain path stays byte-identical through the delegate (kern::verwerk in production).
-            ObjectNode antwoord = vraagtUitleg(ex.getRequestURI().getRawQuery())
-                    ? kern.verwerk(pad, boom, true)
-                    : verwerker.verwerk(pad, boom);
+            VerzoekOpties opties = opties(ex.getRequestURI().getRawQuery());
+            ObjectNode antwoord = opties.equals(VerzoekOpties.STANDAARD)
+                    ? verwerker.verwerk(pad, boom)
+                    : kern.verwerk(pad, boom, opties);
             stuur(ex, 200, antwoord);
         } catch (BeslisserKern.OnbekendPad onbekend) {
             stuur(ex, 404, foutBody(onbekend.getMessage(), null));
@@ -215,6 +222,27 @@ public final class DienstHttp {
             return "true".equalsIgnoreCase(waarde) || waarde.isEmpty();
         }
         return false;
+    }
+
+    /** What the query of a request asks beside its body: {@link #vraagtUitleg}, and the values of
+     *  {@code vocabulaire} and {@code invoervocabulaire} ({@link #queryWaarde}). The Quarkus adapter reads the same
+     *  three parameters. */
+    public static VerzoekOpties opties(String rawQuery) {
+        return new VerzoekOpties(vraagtUitleg(rawQuery), queryWaarde(rawQuery, "vocabulaire"),
+                queryWaarde(rawQuery, "invoervocabulaire"));
+    }
+
+    /** The decoded value of the first query parameter {@code naam} (its name compared case-insensitively, as
+     *  {@code uitleg}), the empty text for a bare {@code naam}, or null when the query does not carry it. */
+    public static String queryWaarde(String rawQuery, String naam) {
+        if (rawQuery == null || rawQuery.isEmpty()) return null;
+        for (String deel : rawQuery.split("&")) {
+            int eq = deel.indexOf('=');
+            String sleutel = eq < 0 ? deel : deel.substring(0, eq);
+            if (!naam.equalsIgnoreCase(sleutel)) continue;
+            return eq < 0 ? "" : java.net.URLDecoder.decode(deel.substring(eq + 1), StandardCharsets.UTF_8);
+        }
+        return null;
     }
 
     // ---------------- GET /info ----------------
@@ -270,15 +298,22 @@ public final class DienstHttp {
                 return;
             }
             String bron = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String vocabulaire = queryWaarde(ex.getRequestURI().getRawQuery(), "vocabulaire");
             // Compile-per-request under a hard timeout, on a throwaway single-use executor (no shared state).
             ExecutorService exec = Executors.newSingleThreadExecutor();
             try {
-                Future<ObjectNode> f = exec.submit(() -> Playground.analyseer(bron));
+                Future<ObjectNode> f = exec.submit(() -> Playground.analyseer(bron, vocabulaire));
                 stuur(ex, 200, f.get(PLAYGROUND_TIMEOUT_MS, TimeUnit.MILLISECONDS));
             } catch (TimeoutException te) {
                 stuur(ex, 503, foutBody("analyse overschreed de tijdslimiet ("
                         + PLAYGROUND_TIMEOUT_MS + " ms)", null));
             } catch (java.util.concurrent.ExecutionException ee) {
+                if (ee.getCause() instanceof Naamgeving.Vocabulairefout vf) {
+                    // the source's model declares no such vocabulary: the request asked what cannot be answered
+                    stuur(ex, 400, verzoekFoutBody(new DienstFout("verzoek valideert niet", List.of(
+                            Schending.van(Schending.Soort.ONBEKEND_VOCABULAIRE, "vocabulaire", vf.getMessage())))));
+                    return;
+                }
                 ee.getCause().printStackTrace(System.err);
                 stuur(ex, 500, foutBody("interne fout", null));
             } catch (InterruptedException ie) {
@@ -337,6 +372,7 @@ public final class DienstHttp {
             ObjectNode eNode = entrypoints.addObject();
             eNode.put("naam", ep.descriptor().naam());
             eNode.put("pad", ep.descriptor().pad());
+            if (ep.descriptor().vocabulaire() != null) eNode.put("vocabulaire", ep.descriptor().vocabulaire());
             eNode.put("uitvoerbaar", ep.uitvoerbaar());
             if (!ep.uitvoerbaar()) eNode.put("weigering", ep.weigering());
 
@@ -385,6 +421,9 @@ public final class DienstHttp {
         // periodeWaarschuwingen (gate G3): the rendered regel×parameter period-coverage WARNING lines.
         ArrayNode waarschuwingen = root.putArray("periodeWaarschuwingen");
         for (String w : kern.periodeWaarschuwingen()) waarschuwingen.add(w);
+
+        // the vocabularies, each with the declarations an answer in it names canonically; absent without any
+        if (!kern.model().vocabulaires.isEmpty()) root.set("vocabulaires", Volledigheid.info(kern.model()));
 
         return root;
     }

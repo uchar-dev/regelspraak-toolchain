@@ -10,6 +10,7 @@ import dev.uchar.regelspraak.model.Parameterset;
 import dev.uchar.regelspraak.model.Parameterset.WaardeInterval;
 import dev.uchar.regelspraak.toolchain.service.BeslisserKern;
 import dev.uchar.regelspraak.toolchain.service.DienstDescriptor;
+import dev.uchar.regelspraak.toolchain.service.Volledigheid;
 import dev.uchar.regelspraak.transpiler.kern.Dekking;
 
 import java.math.BigDecimal;
@@ -25,7 +26,8 @@ import java.util.Map;
  * per entry point carrying its {@code pad}, {@code uitvoerbaar} (and uchar's {@code weigering} when not), its
  * {@code dekking} verdicts per form and its {@code markers}, the global
  * {@code overgeslagen} marker list, the descriptor {@code parameters} defaults verbatim, the loaded
- * {@code parametersets}, and the {@code periodeWaarschuwingen}.
+ * {@code parametersets}, and the {@code periodeWaarschuwingen}; an entry point's default {@code vocabulaire} and, for a
+ * model with vocabularies, the {@code vocabulaires} block ({@link Volledigheid}).
  */
 final class InfoBouwer {
 
@@ -50,6 +52,7 @@ final class InfoBouwer {
             ObjectNode eNode = entrypoints.addObject();
             eNode.put("naam", ep.descriptor().naam());
             eNode.put("pad", ep.descriptor().pad());
+            if (ep.descriptor().vocabulaire() != null) eNode.put("vocabulaire", ep.descriptor().vocabulaire());
             eNode.put("uitvoerbaar", ep.uitvoerbaar());
             if (!ep.uitvoerbaar()) eNode.put("weigering", ep.weigering());
 
@@ -95,6 +98,8 @@ final class InfoBouwer {
 
         ArrayNode waarschuwingen = root.putArray("periodeWaarschuwingen");
         for (String w : kern.periodeWaarschuwingen()) waarschuwingen.add(w);
+
+        if (!kern.model().vocabulaires.isEmpty()) root.set("vocabulaires", Volledigheid.info(kern.model()));
 
         return root;
     }

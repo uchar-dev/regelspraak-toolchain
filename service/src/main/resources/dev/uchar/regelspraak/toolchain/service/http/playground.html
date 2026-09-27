@@ -75,6 +75,7 @@
       <button class="primary" id="run">Analyseer</button>
       <button id="voorbeeld">Voorbeeld</button>
       <button id="leeg">Leeg</button>
+      <input id="vocabulaire" size="12" placeholder="vocabulaire" title="de namen van graaf, trace en uitleg: een vocabulaire van de bron, leeg voor canoniek">
       <span class="hint" id="status"></span>
     </div>
     <textarea id="bron" spellcheck="false" placeholder="Plak of typ hier een RegelSpraak-model, regel en (optioneel) Scenario-blok..."></textarea>
@@ -260,7 +261,8 @@ async function analyseer() {
   const bron = $("bron").value;
   $("run").disabled = true; $("status").textContent = "bezig...";
   try {
-    const resp = await fetch("/playground/analyse", {
+    const vocabulaire = $("vocabulaire").value.trim();
+    const resp = await fetch("/playground/analyse" + (vocabulaire ? "?vocabulaire=" + encodeURIComponent(vocabulaire) : ""), {
       method: "POST", headers: { "Content-Type": "text/plain; charset=utf-8" }, body: bron,
     });
     if (!resp.ok) { laatste = { __transport: "HTTP " + resp.status + " " + (await resp.text()) }; }

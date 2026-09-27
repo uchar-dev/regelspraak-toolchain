@@ -21,6 +21,7 @@ import jakarta.ws.rs.core.Response;
 import dev.uchar.regelspraak.toolchain.service.BeslisserKern;
 import dev.uchar.regelspraak.toolchain.service.DienstFout;
 import dev.uchar.regelspraak.toolchain.service.Schending;
+import dev.uchar.regelspraak.toolchain.service.VerzoekOpties;
 
 /**
  * The Quarkus JAX-RS adapter over {@link BeslisserKern}, MIRRORING {@code DienstHttp}'s HTTP contract exactly:
@@ -30,6 +31,8 @@ import dev.uchar.regelspraak.toolchain.service.Schending;
  *       {@link BeslisserKern.NietUitvoerbaar} → {@code 503} with the MARKER answer.</li>
  *   <li>{@code GET /info} → the SAME manifest {@code DienstHttp} serves (via {@link InfoBouwer}).</li>
  * </ul>
+ * The query parameters are {@code DienstHttp}'s: {@code uitleg}, {@code vocabulaire} (the vocabulary of the answer)
+ * and {@code invoervocabulaire} (the one the request's names are read in).
  *
  * <p>The request body is read as a raw {@link String} and parsed with a private {@link ObjectMapper} configured
  * {@code USE_BIG_DECIMAL_FOR_FLOATS} (mirror of {@code DienstHttp.MAPPER}), so no request number is ever a
@@ -55,7 +58,9 @@ public class BeslisResource {
     @Path("{pad}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response verwerk(@PathParam("pad") String pad, @QueryParam("uitleg") String uitleg, String body) {
+    public Response verwerk(@PathParam("pad") String pad, @QueryParam("uitleg") String uitleg,
+                            @QueryParam("vocabulaire") String vocabulaire,
+                            @QueryParam("invoervocabulaire") String invoervocabulaire, String body) {
         JsonNode boom;
         if (body == null || body.isEmpty())
             return response(400, foutBody("leeg verzoek-body: verwacht JSON met een 'instanties'-array", "body"));
@@ -72,7 +77,7 @@ public class BeslisResource {
             // ?uitleg=true (or a bare ?uitleg) opts into the Verbalisator verhaal; any other value = no (mirror
             // of DienstHttp.vraagtUitleg). Additive + descriptor-independent: no existing caller's contract breaks.
             boolean metUitleg = "true".equalsIgnoreCase(uitleg) || (uitleg != null && uitleg.isEmpty());
-            ObjectNode antwoord = kern.verwerk(pad, boom, metUitleg);
+            ObjectNode antwoord = kern.verwerk(pad, boom, new VerzoekOpties(metUitleg, vocabulaire, invoervocabulaire));
             return response(200, antwoord);
         } catch (BeslisserKern.OnbekendPad onbekend) {
             // DienstHttp answers an unknown path from its catch-all route, which names the request path, slash
@@ -83,6 +88,11 @@ public class BeslisResource {
         } catch (DienstFout dienstFout) {
             return response(400, verzoekFoutBody(dienstFout));
         }
+    }
+
+    /** A request that names no vocabulary: {@link #verwerk(String, String, String, String, String)} without them. */
+    public Response verwerk(String pad, String uitleg, String body) {
+        return verwerk(pad, uitleg, null, null, body);
     }
 
     // ---------------- GET /info ----------------

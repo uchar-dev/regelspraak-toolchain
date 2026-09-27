@@ -9,12 +9,14 @@ import dev.uchar.regelspraak.engine.ScenarioResultaat;
 import dev.uchar.regelspraak.engine.ScenarioResultaat.DekkingRegel;
 import dev.uchar.regelspraak.engine.ScenarioResultaat.VerwachtingResultaat;
 import dev.uchar.regelspraak.engine.ScenarioResultaat.Vuring;
+import dev.uchar.regelspraak.toolchain.engine.Naamgeving;
 import dev.uchar.regelspraak.toolchain.engine.ScenarioRunner;
 import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
 import dev.uchar.regelspraak.graaf.ProducentConsument;
 import dev.uchar.regelspraak.graaf.RegelGraaf;
 import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Benoembaar;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Severity;
 import dev.uchar.regelspraak.parser.RegelSpraak;
@@ -23,6 +25,7 @@ import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundel;
 import dev.uchar.regelspraak.transpiler.kern.Dekking;
+import dev.uchar.regelspraak.transpiler.kern.Namen;
 
 import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.CharStreams;
@@ -33,7 +36,9 @@ import org.antlr.v4.runtime.Recognizer;
 import org.antlr.v4.runtime.misc.IntervalSet;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The DEV-ONLY RegelSpraak playground core (a "type-and-see" workbench). It is a pure analyzer: given a RegelSpraak
@@ -61,6 +66,11 @@ import java.util.List;
  *       bound and how often) and its {@code uitleg} ({@link ScenarioRunner#runMetUitleg}), or {@code uitlegFout}.</li>
  * </ol>
  *
+ * <p><b>Vocabulary.</b> {@link #analyseer(String, String)} names the declarations in {@code graafJson}, the trace, the
+ * per-scenario coverage and the uitleg in a vocabulary the source declares ({@link Naamgeving}); the parse and resolver
+ * output, the IR, the verdict, the DRL and the Mermaid graph are uchar's and stay as uchar writes them. A vocabulary the
+ * source does not declare is a {@link Naamgeving.Vocabulairefout}, which the HTTP adapter answers with 400.
+ *
  * <p><b>Scenario-aware front-end.</b> {@code Situatie}/{@code Scenario} blocks are a documented extension of uchar's
  * frontend (its {@code grammar/DIVERGENCES.md}) reachable only via the scenario entry rule, NOT part of the
  * production {@code regelSpraakDocument}. So when a source carries such a block the analyzer parses + resolves it
@@ -82,6 +92,12 @@ public final class Playground {
 
     /** Analyze {@code bron} and return the answer tree (see the class javadoc for its shape). */
     public static ObjectNode analyseer(String bron) {
+        return analyseer(bron, null);
+    }
+
+    /** {@link #analyseer(String)} with the declarations named in {@code vocabulaire} (null or
+     *  {@link Naamgeving#CANONIEK}: canonically). */
+    public static ObjectNode analyseer(String bron, String vocabulaire) {
         ObjectNode root = NF.objectNode();
         boolean scenario = bevatScenario(bron);
 
@@ -114,6 +130,7 @@ public final class Playground {
             n.put("boodschap", d.message());
         }
         if (!model.isOk()) return root;
+        Naamgeving naamgeving = Naamgeving.van(model, vocabulaire);
 
         // 3. IR and the verdict of the branch that fires
         com.fasterxml.jackson.databind.JsonNode ir = null;
@@ -159,7 +176,11 @@ public final class Playground {
                 RegelGraaf graaf = RegelGraaf.bouw(geladen.model(), geladen.prioritizedDefaults(),
                         ProducentConsument.wireNavigatie(geladen));
                 root.put("graaf", graaf.mermaid());
-                root.set("graafJson", graafJson(graaf));
+                try {
+                    root.set("graafJson", graafJson(graaf, model, naamgeving));
+                } catch (OnbenoembareKnoop o) {
+                    root.put("graafFout", o.getMessage());
+                }
             } catch (IrLoader.Refusal | IrLoader.Documentfout e) {
                 root.put("graaf", "");
                 root.put("graafFout", "loader: " + boodschap(e));
@@ -169,12 +190,13 @@ public final class Playground {
         // 6. SCENARIO — only when the source carries a Scenario block
         if (scenario) {
             ArrayNode arr = root.putObject("scenario").putArray("resultaten");
-            for (ScenarioRunner.Uitgelegd u : ScenarioRunner.runMetUitleg(bundel)) rendScenario(arr.addObject(), u);
+            for (ScenarioRunner.Uitgelegd u : ScenarioRunner.runMetUitleg(bundel, vocabulaire))
+                rendScenario(arr.addObject(), u, naamgeving);
         }
         return root;
     }
 
-    private static void rendScenario(ObjectNode n, ScenarioRunner.Uitgelegd u) {
+    private static void rendScenario(ObjectNode n, ScenarioRunner.Uitgelegd u, Naamgeving naamgeving) {
         ScenarioResultaat r = u.resultaat();
         n.put("naam", r.naam());
         n.put("status", r.status().name());
@@ -190,14 +212,14 @@ public final class Playground {
         ArrayNode dekking = n.putArray("dekking");
         for (DekkingRegel d : r.dekking()) {
             ObjectNode dn = dekking.addObject();
-            dn.put("regel", d.regel());
+            dn.put("regel", naamgeving.vorm(d.regel()));
             dn.put("soort", d.soort().name());
         }
         // the fired rules in the order they first fired, with the labels of the input instances they bound
         ArrayNode trace = n.putArray("trace");
         for (Vuring vuring : r.trace().vuringen()) {
             ObjectNode tn = trace.addObject();
-            tn.put("regel", vuring.regel());
+            tn.put("regel", naamgeving.vorm(vuring.regel()));
             ArrayNode labels = tn.putArray("labels");
             for (String l : vuring.labels()) labels.add(l);
             tn.put("aantal", vuring.aantal());
@@ -207,14 +229,16 @@ public final class Playground {
         if (u.uitlegFout() != null) n.put("uitlegFout", u.uitlegFout());
     }
 
-    /** The rule graph as {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}. */
-    private static ObjectNode graafJson(RegelGraaf graaf) {
+    /** The rule graph as {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, each label in the names of
+     *  {@code naamgeving}. */
+    private static ObjectNode graafJson(RegelGraaf graaf, RegelSpraakModel model, Naamgeving naamgeving) {
+        Map<String, List<Benoembaar>> leden = naamgeving.isCanoniek() ? Map.of() : ledenPerLabel(model);
         ObjectNode g = NF.objectNode();
         ArrayNode nodes = g.putArray("nodes");
         for (RegelGraaf.Node kn : graaf.nodes()) {
             ObjectNode nn = nodes.addObject();
             nn.put("id", kn.id());
-            nn.put("label", kn.label());
+            nn.put("label", naamgeving.isCanoniek() ? kn.label() : label(kn, leden, naamgeving));
             nn.put("kind", kn.kind().name());
             nn.put("eindOutput", kn.eindOutput());
         }
@@ -225,6 +249,43 @@ public final class Playground {
             en.put("naar", e.naar());
         }
         return g;
+    }
+
+    /** A graph node whose declaration the label does not decide, while its candidates carry different names in the
+     *  chosen vocabulary. */
+    static final class OnbenoembareKnoop extends RuntimeException {
+        OnbenoembareKnoop(String zin) { super(zin); }
+    }
+
+    /** The label of node {@code kn} in the chosen vocabulary. A form node is labelled with its form name, an element
+     *  node with the member and its declaring type as uchar's graph spells them ({@code "<lid> · <type>"}, both
+     *  normalised): the member is looked up among the attributes and characteristics of that type, by the node's kind,
+     *  and an input node, which is either, by both. uchar's graph does not hand out the element behind a node, so an
+     *  input node whose attribute and characteristic of one name are named differently is refused, never guessed. */
+    private static String label(RegelGraaf.Node kn, Map<String, List<Benoembaar>> leden, Naamgeving naamgeving) {
+        if (kn.kind() == RegelGraaf.NodeKind.REGEL) return naamgeving.vorm(kn.label());
+        List<String> namen = new ArrayList<>();
+        for (Benoembaar b : leden.getOrDefault(kn.label(), List.of())) {
+            boolean kenmerk = b.soort() == Benoembaar.Soort.KENMERK;
+            if (kn.kind() == RegelGraaf.NodeKind.ATTRIBUUT && kenmerk) continue;
+            if (kn.kind() == RegelGraaf.NodeKind.KENMERK && !kenmerk) continue;
+            String naam = naamgeving.naam(b) + " · " + naamgeving.objecttype(b.eigenaar());
+            if (!namen.contains(naam)) namen.add(naam);
+        }
+        if (namen.isEmpty()) return kn.label();       // no declared member: nothing to name
+        if (namen.size() > 1)
+            throw new OnbenoembareKnoop("de graafknoop '" + kn.label() + "' is een attribuut of een kenmerk met die naam,"
+                    + " en die heten in het vocabulaire '" + naamgeving.keuze() + "' verschillend: " + namen);
+        return namen.get(0);
+    }
+
+    /** The attributes and characteristics of {@code model} by the label uchar's graph gives their element node. */
+    private static Map<String, List<Benoembaar>> ledenPerLabel(RegelSpraakModel model) {
+        Map<String, List<Benoembaar>> uit = new LinkedHashMap<>();
+        for (Benoembaar b : model.benoembaar())
+            if (b.soort() == Benoembaar.Soort.ATTRIBUUT || b.soort() == Benoembaar.Soort.KENMERK)
+                uit.computeIfAbsent(Namen.norm(b.naam()) + " · " + Namen.norm(b.eigenaar()), k -> new ArrayList<>()).add(b);
+        return uit;
     }
 
     /** True when the source carries a {@code Scenario} block. A raw substring test is intentionally cheap and
