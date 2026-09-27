@@ -62,16 +62,22 @@ public final class ScenarioRunner {
      *  does not carry) and a document its loader calls malformed. */
     public static List<ScenarioResultaat> run(ScenarioBundel bundel) {
         List<ScenarioResultaat> uit = new ArrayList<>();
-        for (Uitgelegd u : speel(bundel, false)) uit.add(u.resultaat());
+        for (Uitgelegd u : speel(bundel, false, null)) uit.add(u.resultaat());
         return uit;
     }
 
     /** {@link #run(ScenarioBundel)} with the explanation of each played scenario's outcome. */
     public static List<Uitgelegd> runMetUitleg(ScenarioBundel bundel) {
-        return speel(bundel, true);
+        return speel(bundel, true, null);
     }
 
-    private static List<Uitgelegd> speel(ScenarioBundel bundel, boolean metUitleg) {
+    /** {@link #runMetUitleg(ScenarioBundel)} with the explanation in vocabulary {@code vocabulaire}
+     *  ({@link Naamgeving#van}; null or {@link Naamgeving#CANONIEK} for the canonical names). */
+    public static List<Uitgelegd> runMetUitleg(ScenarioBundel bundel, String vocabulaire) {
+        return speel(bundel, true, vocabulaire);
+    }
+
+    private static List<Uitgelegd> speel(ScenarioBundel bundel, boolean metUitleg, String vocabulaire) {
         if (!bundel.isOk()) throw new ResolveFout(diagnostiek(bundel));
         List<ResolvedScenario> scenarios = bundel.scenarios();
         if (scenarios.isEmpty()) return List.of();
@@ -125,7 +131,7 @@ public final class ScenarioRunner {
                 ScenarioResultaat r = rapport.get(i);
                 ScenarioResultaat benoemd = new ScenarioResultaat(scenarios.get(i).naam(), r.status(),
                         r.verwachtingen(), r.trace(), r.dekking(), r.diagnose());
-                uit.add(metUitleg ? uitleg(build, benoemd, JSON.readTree(Files.readString(cases.get(i))))
+                uit.add(metUitleg ? uitleg(build, benoemd, JSON.readTree(Files.readString(cases.get(i))), vocabulaire)
                         : new Uitgelegd(benoemd, List.of(), null));
             }
             return uit;
@@ -146,8 +152,8 @@ public final class ScenarioRunner {
     }
 
     /** The explanation of report {@code r}, whose case is {@code c}: the case played in a session of its own on
-     *  {@code build}, checked against what uchar's replay reported, then verbalised. */
-    private static Uitgelegd uitleg(DroolsBackend.Build build, ScenarioResultaat r, JsonNode c) {
+     *  {@code build}, checked against what uchar's replay reported, then verbalised in {@code vocabulaire}. */
+    private static Uitgelegd uitleg(DroolsBackend.Build build, ScenarioResultaat r, JsonNode c, String vocabulaire) {
         if (r.status() == ScenarioResultaat.Status.MARKER) return new Uitgelegd(r, List.of(), null);
         if (r.verwachtingen().isEmpty() && r.status() == ScenarioResultaat.Status.FAIL)
             return new Uitgelegd(r, List.of(), "uchars replay speelde de case niet uit: " + r.diagnose());
@@ -162,8 +168,8 @@ public final class ScenarioRunner {
                     + ", uchars replay " + r.trace().vuringen());
         String verschil = waardeVerschil(sessie, r, c);
         if (verschil != null) return new Uitgelegd(r, List.of(), verschil);
-        return new Uitgelegd(r, new Verbalisator(build.model(), sessie.globals())
-                .verbaliseer(sessie.beans(), sessie.typePerLabel()), null);
+        return new Uitgelegd(r, new Verbalisator(build.model(), sessie.globals(),
+                Naamgeving.van(build.model(), vocabulaire)).verbaliseer(sessie.beans(), sessie.typePerLabel()), null);
     }
 
     /** The first attribute or characteristic expectation whose value in the explanation's session differs from the

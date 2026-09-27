@@ -14,9 +14,11 @@ gebruik: bin/regelspraak <opdracht> [argumenten]
   check <bron.rgs...>                 parse and resolve; the diagnostics, then whether uchar carries the model
   ir <uit.json> <bron.rgs...>         the uchar-ir-v1 document of the model (uchar's emitter)
   cases <map> <bron.rgs...>           the scenarios lowered to case files in <map>, beside <map>/ir.json
-  scenario [--trace] [--uitleg] <bron.rgs...>
+  scenario [--trace] [--uitleg] [--vocabulaire <naam>] <bron.rgs...>
   scenario [--trace] --manifest <manifest> [--uitsluitingen <lijst>]
-                                      lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario
+                                      lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario;
+                                      --vocabulaire names the rules and declarations of trace and uitleg in a
+                                      vocabulary of the model (canoniek: the canonical names)
   serve <descriptor.dienst.json> <bron.rgs...> | <document.json> [--allow-markers] [--host H] [--poort N]
                                       the decision service on the JDK HttpServer (PLAYGROUND=true: the workbench)
   drl <bron.rgs...>                   the DRL text of uchar's DRL-text branch

@@ -1,0 +1,22 @@
+
+Scenario premie per vondst
+Gegeven is de volgende situatie:
+een Jutter J1
+- de naam is "Aukje"
+een Vondst V1
+- de soort is 'barnsteen'
+- het gewicht is 3,00
+- de aanmelder is J1
+een Vondst V2
+- de soort is 'wrakhout'
+- het gewicht is 1,20
+- de aanmelder is J1
+de parameter het premietarief is 3
+Met als verwacht resultaat:
+- de premie van V1 is 9,00
+- de premie van V2 is 3,60
+- V1 is waardevol
+- V2 is niet waardevol
+- het vondstbedrag van J1 is 12,60
+- J1 is premiewaardig
+- de gegevens zijn consistent
