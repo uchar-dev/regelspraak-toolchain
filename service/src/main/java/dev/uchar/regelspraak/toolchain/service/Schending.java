@@ -28,6 +28,11 @@ public record Schending(Soort soort, String veld, String bericht) {
         VERKEERDE_EENHEID,
         /** An enumeratie value is not one of the domein's declared waarden. */
         ONBEKENDE_ENUM_WAARDE,
+        /** A request name reads as two different declarations — in two vocabularies, or as a designation in one and as
+         *  a canonical name — and the request has not pinned its input vocabulary. The service never guesses which. */
+        DUBBELZINNIGE_NAAM,
+        /** A request or a descriptor entry point names a vocabulary the model does not declare. */
+        ONBEKEND_VOCABULAIRE,
         /** A construct the service core deliberately does not support (dimensie/tijdlijn-valued input). */
         NIET_ONDERSTEUND,
         /** The entrypoint declares an invoer objecttype but the request supplies no instance of it. The invoer

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
+import dev.uchar.regelspraak.toolchain.engine.Naamgeving;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -65,6 +66,9 @@ public final class DescriptorLoader {
         if (d == null) { uit.add(Schending.van(Schending.Soort.MALFORMED, "", "leeg descriptor")); return uit; }
         if (d.dienst() == null || d.dienst().naam() == null || d.dienst().naam().isBlank())
             uit.add(Schending.van(Schending.Soort.MALFORMED, "dienst.naam", "dienst.naam ontbreekt"));
+        // 'canoniek' chooses the canonical names in a request, so a vocabulary of that name could never be chosen
+        String gereserveerd = Naamgeving.gereserveerd(model);
+        if (gereserveerd != null) uit.add(Schending.van(Schending.Soort.MALFORMED, "vocabulaires", gereserveerd));
 
         Set<String> groepnamen = new java.util.LinkedHashSet<>();
         for (var g : model.regelGroepen) groepnamen.add(g.naam());
@@ -84,6 +88,13 @@ public final class DescriptorLoader {
                 uit.add(Schending.van(Schending.Soort.MALFORMED, pad + ".naam", "entrypoint-naam ontbreekt"));
             if (ep.pad() == null || ep.pad().isBlank())
                 uit.add(Schending.van(Schending.Soort.MALFORMED, pad + ".pad", "entrypoint-pad ontbreekt"));
+            if (ep.vocabulaire() != null && gereserveerd == null) {
+                try {
+                    Naamgeving.van(model, ep.vocabulaire());
+                } catch (Naamgeving.Vocabulairefout f) {
+                    uit.add(Schending.van(Schending.Soort.ONBEKEND_VOCABULAIRE, pad + ".vocabulaire", f.getMessage()));
+                }
+            }
 
             // scope
             if (ep.scope() == null

@@ -64,6 +64,9 @@ public record DienstDescriptor(
      *        (or an {@code invoerElementen} declaration); a producer that exists but sits OUTSIDE the scope makes
      *        the scoped rule read a stale-false/leeg value, semantically diverging from the source concatenation
      *        the scenariotoetsen run against. {@code true} waives the check entirely; absent/false = strict.
+     * @param vocabulaire OPTIONAL the vocabulary an answer of this entry point names the declarations in when the
+     *        request chooses none: one the model declares, or {@code canoniek}. Absent = the canonical names. The
+     *        descriptor's own names (scope, invoer, uitvoer, invoerElementen, parameters) are canonical names.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Entrypoint(
@@ -73,7 +76,8 @@ public record DienstDescriptor(
             List<String> invoer,
             List<String> uitvoer,
             @JsonProperty("invoerElementen") List<String> invoerElementen,
-            @JsonProperty("scopeControleUit") boolean scopeControleUit) {
+            @JsonProperty("scopeControleUit") boolean scopeControleUit,
+            @JsonProperty("vocabulaire") String vocabulaire) {
 
         public List<String> invoerElementenOfLeeg() { return invoerElementen == null ? List.of() : invoerElementen; }
     }

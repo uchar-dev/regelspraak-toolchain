@@ -7,6 +7,7 @@ import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.emit.CaseEmitter;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.loader.IrLoader;
+import dev.uchar.regelspraak.toolchain.engine.Naamgeving;
 import dev.uchar.regelspraak.toolchain.engine.ParametersetLader;
 import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
 import dev.uchar.regelspraak.toolchain.engine.Verbalisator;
@@ -470,23 +471,35 @@ public final class BeslisserKern {
     // ---------------- request handling ----------------
 
     /** Handle a request against the entry point at {@code pad}: map → fire → build response. Existing 2-arg
-     *  contract (no uitleg); delegates with {@code uitleg=false}, byte-identical for every current caller. */
+     *  contract (no uitleg); delegates with {@link VerzoekOpties#STANDAARD}, byte-identical for every current caller. */
     public ObjectNode verwerk(String pad, JsonNode verzoekBoom) {
-        return verwerk(pad, verzoekBoom, false);
+        return verwerk(pad, verzoekBoom, VerzoekOpties.STANDAARD);
+    }
+
+    /** As {@link #verwerk(String, JsonNode, VerzoekOpties)} with only the explanation asked for or not. */
+    public ObjectNode verwerk(String pad, JsonNode verzoekBoom, boolean uitleg) {
+        return verwerk(pad, verzoekBoom, new VerzoekOpties(uitleg, null, null));
     }
 
     /**
-     * As {@link #verwerk(String, JsonNode)} but OPTIONALLY attaching the {@link Verbalisator} verhaal. When
-     * {@code uitleg} is true, an {@code "uitleg"} array is added to the response — one NL sentence per assigned/
-     * withheld kenmerk of a request instance, justified with the evaluated operandwaarden (§norm read via the
-     * IR, not the programmer). This is DESCRIPTOR-INDEPENDENT and ADDITIVE: with {@code uitleg=false} the
-     * response tree is byte-identical to the pre-verbalisator shape, so no existing caller's contract breaks.
+     * Handle a request with what it asks beside its body. When {@code uitleg} is asked, an {@code "uitleg"} array is
+     * added to the response — one NL sentence per assigned/withheld kenmerk of a request instance, justified with the
+     * evaluated operandwaarden (§norm read via the IR, not the programmer); without it the response tree has no such
+     * key. The request's names are read by a {@link NaamLezer}, liberally or in the input vocabulary the request
+     * pins; the answer and its explanation name the declarations in the vocabulary the request chooses, else in the
+     * entry point's default from the descriptor, else canonically ({@link Naamgeving}). A vocabulary the model does
+     * not declare is refused before the body is read: an answer in it could not be given.
      */
-    public ObjectNode verwerk(String pad, JsonNode verzoekBoom, boolean uitleg) {
+    public ObjectNode verwerk(String pad, JsonNode verzoekBoom, VerzoekOpties opties) {
         Entrypoint ep = perPad.get(pad);
         if (ep == null) throw new OnbekendPad(pad);
         if (!ep.uitvoerbaar()) throw new NietUitvoerbaar(ep);
-        VerzoekMapper mapper = new VerzoekMapper(model, ep.beanLoader());
+        List<Schending> keuzes = new ArrayList<>();
+        Naamgeving uitvoer = naamgeving(opties.vocabulaire() != null ? opties.vocabulaire()
+                : ep.descriptor().vocabulaire(), "vocabulaire", keuzes);
+        if (opties.invoervocabulaire() != null) naamgeving(opties.invoervocabulaire(), "invoervocabulaire", keuzes);
+        if (!keuzes.isEmpty()) throw new DienstFout("verzoek valideert niet", keuzes);
+        VerzoekMapper mapper = new VerzoekMapper(model, ep.beanLoader(), new NaamLezer(model, opties.invoervocabulaire()));
         VerzoekMapper.Resultaat mr = mapper.map(new Verzoek(verzoekBoom));
         if (!mr.schendingen().isEmpty())
             throw new DienstFout("verzoek valideert niet", mr.schendingen());
@@ -507,9 +520,21 @@ public final class BeslisserKern {
         Uitvoerder uitvoerder = new Uitvoerder(ep.kieBase(), ep.defaultGlobals(), ep.dagsoortGlobalen(),
                 ep.beanLoader());
         Uitvoerder.Uitkomst uitkomst = uitvoerder.vuur(mr.wereld(), setGlobals);
-        ObjectNode antwoord = new AntwoordBouwer(model).bouw(uitkomst, ep.descriptor().uitvoer(), mr.typePerLabel());
-        if (uitleg) voegUitlegToe(antwoord, uitkomst, mr, setGlobals, ep);
+        ObjectNode antwoord = new AntwoordBouwer(model, uitvoer).bouw(uitkomst, ep.descriptor().uitvoer(),
+                mr.typePerLabel());
+        if (opties.uitleg()) voegUitlegToe(antwoord, uitkomst, mr, setGlobals, ep, uitvoer);
         return antwoord;
+    }
+
+    /** The naming {@code keuze} names, or the canonical one after adding the violation of a vocabulary the model does
+     *  not declare to {@code fouten}, on the query parameter {@code veld}. */
+    private Naamgeving naamgeving(String keuze, String veld, List<Schending> fouten) {
+        try {
+            return Naamgeving.van(model, keuze);
+        } catch (Naamgeving.Vocabulairefout f) {
+            fouten.add(Schending.van(Schending.Soort.ONBEKEND_VOCABULAIRE, veld, f.getMessage()));
+            return Naamgeving.canoniek(model);
+        }
     }
 
     /**
@@ -520,12 +545,13 @@ public final class BeslisserKern {
      * read of the already-fired beans — nothing re-fires.
      */
     private void voegUitlegToe(ObjectNode antwoord, Uitvoerder.Uitkomst uitkomst, VerzoekMapper.Resultaat mr,
-                               Map<String, Object> setGlobals, Entrypoint ep) {
+                               Map<String, Object> setGlobals, Entrypoint ep, Naamgeving naamgeving) {
         Map<String, Object> globals = new LinkedHashMap<>(ep.defaultGlobals());
         globals.putAll(setGlobals);
         globals.putAll(mr.wereld().globals());
         if (mr.wereld().rekendatum() != null) globals.put("rekendatum", mr.wereld().rekendatum());
-        List<String> zinnen = new Verbalisator(model, globals).verbaliseer(uitkomst.beans(), mr.typePerLabel());
+        List<String> zinnen = new Verbalisator(model, globals, naamgeving)
+                .verbaliseer(uitkomst.beans(), mr.typePerLabel());
         var arr = antwoord.putArray("uitleg");
         for (String zin : zinnen) arr.add(zin);
     }

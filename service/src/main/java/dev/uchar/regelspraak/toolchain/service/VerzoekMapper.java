@@ -1,6 +1,7 @@
 package dev.uchar.regelspraak.toolchain.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.TextNode;
 
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
@@ -30,20 +31,33 @@ import java.util.Map;
  * <p>Unsupported by the service core (a clear violation, never a silent accept): a dimensie- or
  * tijdlijn-valued attribute (no golden situatie uses one). An unknown objecttype/attribuut/kenmerk/parameter/
  * rol, an ill-typed value, an eenheid mismatch, and an unknown enumeratie-waarde are all violations.
+ *
+ * <p>Every name is read by a {@link NaamLezer}: canonical or a designation in any vocabulary of the model, unless
+ * the request pins its input vocabulary. A name that reads as two declarations is a
+ * {@link Schending.Soort#DUBBELZINNIGE_NAAM}; two names of one object that read as one declaration are
+ * {@link Schending.Soort#MALFORMED}, since the service would otherwise keep one of the two values without saying so.
+ * A violation names the field as the request spells it, and a declaration by its canonical name.
  */
 public final class VerzoekMapper {
 
     private final RegelSpraakModel model;
     private final ClassLoader loader;
     private final RolSchrijver rollenSchrijver;
+    private final NaamLezer lezer;
 
     /** @param loader the classloader the fact beans live on — the entry point's generated bean classloader,
      *                which uchar's build compiled at startup; reflection over it is
      *                classloader-agnostic, only {@link Class#forName} must go through it. */
     public VerzoekMapper(RegelSpraakModel model, ClassLoader loader) {
+        this(model, loader, new NaamLezer(model, null));
+    }
+
+    /** As {@link #VerzoekMapper(RegelSpraakModel, ClassLoader)}, reading the names with {@code lezer}. */
+    VerzoekMapper(RegelSpraakModel model, ClassLoader loader, NaamLezer lezer) {
         this.model = model;
         this.loader = loader;
         this.rollenSchrijver = new RolSchrijver(model);
+        this.lezer = lezer;
     }
 
     /** The mapped world, the id→objecttype map (for the response builder), and the violations produced while
@@ -78,19 +92,27 @@ public final class VerzoekMapper {
         if (params != null && !params.isNull()) {
             if (!params.isObject())
                 s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, "parameters", "parameters moet een object zijn"));
-            else params.fields().forEachRemaining(e -> {
-                String naam = e.getKey();
-                RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, naam);
-                if (p == null) {
-                    s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, "parameters." + naam,
-                            "onbekende parameter '" + naam + "'"));
-                    return;
-                }
-                WaardeCoder.Resultaat r = WaardeCoder.decodeer(e.getValue(), p.datatype(), "parameters." + naam);
-                s.addAll(r.schendingen());
-                if (r.schendingen().isEmpty())
-                    globals.put(globalNaam(p.naam()), r.waarde());
-            });
+            else {
+                Dubbel dubbel = new Dubbel("de parameters");
+                params.fields().forEachRemaining(e -> {
+                    String naam = e.getKey();
+                    String veld = "parameters." + naam;
+                    Gelezen g = lees(lezer.parameter(naam), naam, veld, dubbel, s);
+                    if (g.geweigerd()) return;
+                    RegelSpraakModel.Parameter p = g.naam() == null ? null : DescriptorLoader.parameter(model, g.naam());
+                    if (p == null) {
+                        s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, veld,
+                                "onbekende parameter '" + naam + "'" + lezer.vastgezetZin()));
+                        return;
+                    }
+                    JsonNode waarde = waarde(e.getValue(), p.datatype(), veld, s);
+                    if (waarde == null) return;
+                    WaardeCoder.Resultaat r = WaardeCoder.decodeer(waarde, p.datatype(), veld);
+                    s.addAll(r.schendingen());
+                    if (r.schendingen().isEmpty())
+                        globals.put(globalNaam(p.naam()), r.waarde());
+                });
+            }
         }
 
         // 3. instanties (beans + attributen + kenmerken)
@@ -114,10 +136,12 @@ public final class VerzoekMapper {
                     continue;
                 }
                 String id = idN.asText();
-                Objecttype ot = DescriptorLoader.objecttype(model, typeN.asText());
+                Gelezen type = lees(lezer.objecttype(typeN.asText()), typeN.asText(), pad + ".type", null, s);
+                if (type.geweigerd()) continue;
+                Objecttype ot = type.naam() == null ? null : DescriptorLoader.objecttype(model, type.naam());
                 if (ot == null) {
                     s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, pad + ".type",
-                            "onbekend objecttype '" + typeN.asText() + "'"));
+                            "onbekend objecttype '" + typeN.asText() + "'" + lezer.vastgezetZin()));
                     continue;
                 }
                 if (beans.containsKey(id)) {
@@ -189,43 +213,53 @@ public final class VerzoekMapper {
     private void zetAttributen(Objecttype ot, Object bean, JsonNode attrs, String pad, List<Schending> s) {
         if (attrs == null || attrs.isNull()) return;
         if (!attrs.isObject()) { s.add(Schending.van(Schending.Soort.MALFORMED, pad, "attributen moet een object zijn")); return; }
+        Dubbel dubbel = new Dubbel("deze instantie");
         attrs.fields().forEachRemaining(e -> {
             String naam = e.getKey();
             String veld = pad + "." + naam;
-            Datatype dt = ot.attribuut(naam);
+            Gelezen g = lees(lezer.attribuut(ot, naam), naam, veld, dubbel, s);
+            if (g.geweigerd()) return;
+            String canoniek = g.naam();
+            Datatype dt = canoniek == null ? null : ot.attribuut(canoniek);
             if (dt == null) {
                 s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, veld,
-                        "onbekend attribuut '" + naam + "' op objecttype '" + ot.naam + "'"));
+                        "onbekend attribuut '" + naam + "' op objecttype '" + ot.naam + "'" + lezer.vastgezetZin()));
                 return;
             }
-            if (!ot.dimensiesVan(naam).isEmpty()) {
+            if (!ot.dimensiesVan(canoniek).isEmpty()) {
                 s.add(Schending.van(Schending.Soort.NIET_ONDERSTEUND, veld,
                         "dimensie-gewaardeerd attribuut '" + naam + "' wordt niet ondersteund door de dienst-kern"));
                 return;
             }
-            if (isTemporeel(ot, naam)) {
+            if (isTemporeel(ot, canoniek)) {
                 s.add(Schending.van(Schending.Soort.NIET_ONDERSTEUND, veld,
                         "tijdlijn-gewaardeerd attribuut '" + naam + "' wordt niet ondersteund door de dienst-kern"));
                 return;
             }
-            WaardeCoder.Resultaat r = WaardeCoder.decodeer(e.getValue(), dt, veld);
+            JsonNode waarde = waarde(e.getValue(), dt, veld, s);
+            if (waarde == null) return;
+            WaardeCoder.Resultaat r = WaardeCoder.decodeer(waarde, dt, veld);
             s.addAll(r.schendingen());
-            if (r.schendingen().isEmpty()) RegelSpraakRuntime.set(bean, prop(naam), r.waarde());
+            if (r.schendingen().isEmpty()) RegelSpraakRuntime.set(bean, prop(canoniek), r.waarde());
         });
     }
 
     private void zetKenmerken(Objecttype ot, Object bean, JsonNode kenm, String pad, List<Schending> s) {
         if (kenm == null || kenm.isNull()) return;
         if (!kenm.isObject()) { s.add(Schending.van(Schending.Soort.MALFORMED, pad, "kenmerken moet een object zijn")); return; }
+        Dubbel dubbel = new Dubbel("deze instantie");
         kenm.fields().forEachRemaining(e -> {
             String naam = e.getKey();
             String veld = pad + "." + naam;
-            if (!DescriptorLoader.heeftKenmerk(ot, naam)) {
+            Gelezen g = lees(lezer.kenmerk(ot, naam), naam, veld, dubbel, s);
+            if (g.geweigerd()) return;
+            String canoniek = g.naam();
+            if (canoniek == null || !DescriptorLoader.heeftKenmerk(ot, canoniek)) {
                 s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, veld,
-                        "onbekend kenmerk '" + naam + "' op objecttype '" + ot.naam + "'"));
+                        "onbekend kenmerk '" + naam + "' op objecttype '" + ot.naam + "'" + lezer.vastgezetZin()));
                 return;
             }
-            if (isTemporeelKenmerk(ot, naam)) {
+            if (isTemporeelKenmerk(ot, canoniek)) {
                 s.add(Schending.van(Schending.Soort.NIET_ONDERSTEUND, veld,
                         "tijdlijn-gewaardeerd kenmerk '" + naam + "' wordt niet ondersteund door de dienst-kern"));
                 return;
@@ -235,8 +269,78 @@ public final class VerzoekMapper {
                 s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, veld, "kenmerk '" + naam + "' moet een boolean zijn"));
                 return;
             }
-            RegelSpraakRuntime.set(bean, prop(naam), v.booleanValue());
+            RegelSpraakRuntime.set(bean, prop(canoniek), v.booleanValue());
         });
+    }
+
+    // ---- names and values read by the NaamLezer ----
+
+    /** A name read for the mapping: {@code naam} to go on with — the written name where it reads canonically, the
+     *  declaration's canonical name where only a designation reads it, null where nothing reads it (the caller
+     *  refuses it with its own sentence) — or {@code geweigerd} when its violation has been added. */
+    private record Gelezen(String naam, boolean geweigerd) {
+        static final Gelezen GEWEIGERD = new Gelezen(null, true);
+    }
+
+    /** {@code lezing} for the mapping, adding the violation of an ambiguous name, and of a name that reads as a
+     *  declaration another name of the same object ({@code dubbel}; null: nothing to compare with) already read. */
+    private Gelezen lees(NaamLezer.Lezing lezing, String naam, String veld, Dubbel dubbel, List<Schending> s) {
+        if (lezing instanceof NaamLezer.Dubbelzinnig d) {
+            s.add(Schending.van(Schending.Soort.DUBBELZINNIGE_NAAM, veld, d.zin()));
+            return Gelezen.GEWEIGERD;
+        }
+        if (!(lezing instanceof NaamLezer.Gevonden g)) return new Gelezen(null, false);
+        if (dubbel != null) {
+            String eerder = dubbel.eerder(g.declaratie(), naam);
+            if (eerder != null) {
+                s.add(Schending.van(Schending.Soort.MALFORMED, veld, NaamLezer.beschrijving(g.declaratie())
+                        + " staat twee keer in " + dubbel.waar() + ": als '" + eerder + "' en als '" + naam + "'"));
+                return Gelezen.GEWEIGERD;
+            }
+        }
+        return new Gelezen(g.naam(), false);
+    }
+
+    /** The names one object of the request has read so far, by declaration: a second name of the same declaration is
+     *  a second value for it. */
+    private static final class Dubbel {
+        private final String waar;
+        private final List<RegelSpraakModel.Benoembaar> declaraties = new ArrayList<>();
+        private final List<String> namen = new ArrayList<>();
+
+        Dubbel(String waar) { this.waar = waar; }
+
+        String waar() { return waar; }
+
+        /** The name that already read {@code b}, or null after recording {@code naam} for it. */
+        String eerder(RegelSpraakModel.Benoembaar b, String naam) {
+            for (int i = 0; i < declaraties.size(); i++)
+                if (NaamLezer.zelfde(declaraties.get(i), b)) return namen.get(i);
+            declaraties.add(b);
+            namen.add(naam);
+            return null;
+        }
+    }
+
+    /** An enumeration value read by the {@link NaamLezer}, as the node {@link WaardeCoder} decodes: a designation
+     *  becomes the value it names, a canonical spelling stays as written (the rules compare it as uchar compares
+     *  declared names). Null after adding the violation of an ambiguous value, or of a value the pinned input
+     *  vocabulary does not name; any other datatype, and an unknown value, go to the coder as they are. */
+    private JsonNode waarde(JsonNode node, Datatype dt, String veld, List<Schending> s) {
+        if (!(dt instanceof Datatype.Enumeratie e) || node == null || !node.isTextual()) return node;
+        NaamLezer.Lezing lezing = lezer.waarde(e, node.asText());
+        if (lezing instanceof NaamLezer.Dubbelzinnig d) {
+            s.add(Schending.van(Schending.Soort.DUBBELZINNIGE_NAAM, veld, d.zin()));
+            return null;
+        }
+        if (lezing instanceof NaamLezer.Gevonden g) return TextNode.valueOf(g.naam());
+        if (lezer.vastInVocabulaire()) {
+            s.add(Schending.van(Schending.Soort.ONBEKENDE_ENUM_WAARDE, veld, "'" + node.asText()
+                    + "' is geen waarde van domein '" + e.domein() + "' (toegestaan in het invoervocabulaire '"
+                    + lezer.vastgezet() + "': " + lezer.waarden(e) + ")"));
+            return null;
+        }
+        return node;
     }
 
     // ---- rollen (inline) ----
@@ -252,13 +356,17 @@ public final class VerzoekMapper {
         if (rollen == null || rollen.isNull()) return;
         if (!rollen.isObject()) { s.add(Schending.van(Schending.Soort.MALFORMED, pad, "rollen moet een object zijn")); return; }
         Object bean = beans.get(id);
+        Dubbel dubbel = new Dubbel("deze instantie");
         rollen.fields().forEachRemaining(e -> {
             String rol = e.getKey();
             String veld = pad + "." + rol;
-            Objecttype doeltype = model.rolDoeltypeNaarSubject(ot, rol);
+            Gelezen gelezen = lees(lezer.rolVanaf(ot, rol), rol, veld, dubbel, s);
+            if (gelezen.geweigerd()) return;
+            String canoniek = gelezen.naam();
+            Objecttype doeltype = canoniek == null ? null : model.rolDoeltypeNaarSubject(ot, canoniek);
             if (doeltype == null) {
                 s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, veld,
-                        "onbekende rol '" + rol + "' vanaf objecttype '" + ot.naam + "'"));
+                        "onbekende rol '" + rol + "' vanaf objecttype '" + ot.naam + "'" + lezer.vastgezetZin()));
                 return;
             }
             List<String> doelen = new ArrayList<>();
@@ -278,7 +386,7 @@ public final class VerzoekMapper {
                     continue;
                 }
                 try {
-                    rollenSchrijver.schrijf(bean, ot, rol, doel, labelType);
+                    rollenSchrijver.schrijf(bean, ot, canoniek, doel, labelType);
                 } catch (RolSchrijver.Geweigerd g) {
                     s.add(Schending.van(g.tweedeDoel() ? Schending.Soort.VERKEERD_TYPE : Schending.Soort.NIET_ONDERSTEUND,
                             veld, g.getMessage()));
@@ -307,16 +415,20 @@ public final class VerzoekMapper {
                 s.add(Schending.van(Schending.Soort.MALFORMED, pad + ".feittype", "feittype ontbreekt of is geen tekst"));
                 continue;
             }
-            Feittype ft = feittype(ftN.asText());
+            Gelezen feittype = lees(lezer.feittype(ftN.asText()), ftN.asText(), pad + ".feittype", null, s);
+            if (feittype.geweigerd()) continue;
+            Feittype ft = feittype.naam() == null ? null : feittype(feittype.naam());
             if (ft == null) {
                 s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, pad + ".feittype",
-                        "onbekend feittype '" + ftN.asText() + "'"));
+                        "onbekend feittype '" + ftN.asText() + "'" + lezer.vastgezetZin()));
                 continue;
             }
             if (rollenN == null || !rollenN.isObject()) {
                 s.add(Schending.van(Schending.Soort.MALFORMED, pad + ".rollen", "rollen ontbreekt of is geen object"));
                 continue;
             }
+            rollenN = rollenGelezen(ft, rollenN, pad + ".rollen", s);
+            if (rollenN == null) continue;
             // resolve each named role to its id. A binary feittype has two roles; a §13.3.9.2 WEDERKERIG feittype
             // relates an objecttype to itself through ONE role entry — the request then names that one role TWICE
             // (two ids under the same role name in a JSON array), or gives an array value.
@@ -353,6 +465,23 @@ public final class VerzoekMapper {
             writeRefAls1op1(beanA, otA, rolB, otB, beanB, ft, pad, s);   // A -> B named after B's role
             writeRefAls1op1(beanB, otB, rolA, otA, beanA, ft, pad, s);   // B -> A named after A's role
         }
+    }
+
+    /** The roles of a relation keyed by their declared names, which {@link #eindpunten} looks them up by: each written
+     *  name read as a role of {@code ft}. A name no role of {@code ft} answers to stays as written, so the endpoint
+     *  count refuses the relation as before; null after adding the violation of an ambiguous or a repeated role. */
+    private JsonNode rollenGelezen(Feittype ft, JsonNode rollenN, String pad, List<Schending> s) {
+        com.fasterxml.jackson.databind.node.ObjectNode gelezen =
+                com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+        Dubbel dubbel = new Dubbel("de relatie");
+        boolean fout = false;
+        for (var it = rollenN.fields(); it.hasNext(); ) {
+            var e = it.next();
+            NaamLezer.Lezing lezing = lezer.rolIn(ft, e.getKey());
+            if (lees(lezing, e.getKey(), pad + "." + e.getKey(), dubbel, s).geweigerd()) { fout = true; continue; }
+            gelezen.set(lezing instanceof NaamLezer.Gevonden g ? g.declaratie().naam() : e.getKey(), e.getValue());
+        }
+        return fout ? null : gelezen;
     }
 
     /** Whether {@code id} (of objecttype {@code type}) fills the role {@code rol} of {@code ft}, its declared type or a

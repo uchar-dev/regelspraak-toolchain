@@ -5,9 +5,11 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
+import dev.uchar.regelspraak.toolchain.engine.Naamgeving;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -29,6 +31,11 @@ import java.util.Map;
  * with their subject: the request id of the instance the failed check is about (null when that is no request
  * instance), since uchar pins an inconsistency on its subject.
  *
+ * <p>The answer names the declarations through a {@link Naamgeving}: in a vocabulary, the object type, the attributes
+ * and characteristics, an enumeration value and the rule of an inconsistency go by their names there, and a
+ * declaration without a designation by its canonical name. The canonical choice writes the names as the descriptor's
+ * selectors and the facts spell them, as the answer always did.
+ *
  * <p>Response shape:
  * <pre>{@code
  * { "instanties": [ { "id": "<label>", "type": "<objecttype>",
@@ -43,8 +50,14 @@ public final class AntwoordBouwer {
     private static final JsonNodeFactory NF = JsonNodeFactory.withExactBigDecimals(true);
 
     private final RegelSpraakModel model;
+    private final Naamgeving naamgeving;
 
-    public AntwoordBouwer(RegelSpraakModel model) { this.model = model; }
+    public AntwoordBouwer(RegelSpraakModel model) { this(model, Naamgeving.canoniek(model)); }
+
+    public AntwoordBouwer(RegelSpraakModel model, Naamgeving naamgeving) {
+        this.model = model;
+        this.naamgeving = naamgeving;
+    }
 
     /**
      * @param uitkomst      the fired result (beans by id + inconsistenties)
@@ -69,13 +82,13 @@ public final class AntwoordBouwer {
                 if (u == null) continue;
                 if (!DescriptorLoader.objectMatch(model, ot, u.objecttype())) continue;
                 Object waarde = RegelSpraakRuntime.get(bean, VerzoekMapper.prop(u.lid()));
-                if (u.kenmerk()) kenmerken.set(u.lid(), rendKenmerk(waarde));
-                else attributen.set(u.lid(), rend(waarde));
+                if (u.kenmerk()) kenmerken.set(naamgeving.kenmerk(ot, u.lid()), rendKenmerk(waarde));
+                else attributen.set(naamgeving.attribuut(ot, u.lid()), rend(waarde, ot.attribuut(u.lid())));
             }
             if (attributen.isEmpty() && kenmerken.isEmpty()) continue;
             ObjectNode inst = NF.objectNode();
             inst.put("id", id);
-            inst.put("type", ot.naam);
+            inst.put("type", naamgeving.objecttype(ot.naam));
             if (!attributen.isEmpty()) inst.set("attributen", attributen);
             if (!kenmerken.isEmpty()) inst.set("kenmerken", kenmerken);
             instanties.add(inst);
@@ -85,9 +98,10 @@ public final class AntwoordBouwer {
         ArrayNode details = NF.arrayNode();
         for (Object o : uitkomst.inconsistenties()) {
             Object regel = RegelSpraakRuntime.get(o, "regel");
-            inc.add(regel == null ? null : regel.toString());
+            String naam = regel == null ? null : naamgeving.vorm(regel.toString());
+            inc.add(naam);
             ObjectNode d = details.addObject();
-            d.put("regel", regel == null ? null : regel.toString());
+            d.put("regel", naam);
             d.put("onderwerp", idVan(uitkomst.beans(), RegelSpraakRuntime.get(o, "subject")));
         }
         root.set("inconsistentieDetails", details);
@@ -101,15 +115,16 @@ public final class AntwoordBouwer {
         return null;
     }
 
-    /** Render an attribute value as an EXACT JSON node: BigDecimal as a number (no double), date as ISO string,
-     *  boolean as boolean, tekst/enum as string, null as JSON null. */
-    private JsonNode rend(Object v) {
+    /** Render an attribute value of datatype {@code dt} as an EXACT JSON node: BigDecimal as a number (no double),
+     *  date as ISO string, boolean as boolean, tekst as string, an enumeration value by its name in the chosen
+     *  vocabulary, null as JSON null. */
+    private JsonNode rend(Object v, Datatype dt) {
         if (v == null) return NF.nullNode();
         if (v instanceof BigDecimal b) return NF.numberNode(b);          // EXACT (no double)
         if (v instanceof Boolean b) return NF.booleanNode(b);
         if (v instanceof LocalDate d) return NF.textNode(d.toString());
         if (v instanceof LocalDateTime d) return NF.textNode(d.toString());
-        if (v instanceof String s) return NF.textNode(s);
+        if (v instanceof String s) return NF.textNode(dt instanceof Datatype.Enumeratie e ? naamgeving.waarde(e, s) : s);
         return NF.textNode(v.toString());
     }
 

@@ -1,0 +1,135 @@
+package dev.uchar.regelspraak.toolchain.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+
+import dev.uchar.regelspraak.model.RegelSpraakModel;
+import dev.uchar.regelspraak.resolver.Resolver;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+
+/**
+ * Test fixtures for the vocabularies. {@link #GOLDEN}: uchar's golden {@code jutterswet-vocabulaires} (the
+ * submodule), two vocabularies with a designation on every declaration, served with the descriptor under
+ * {@code src/test/resources/vocabulaires/} (an entry point without and one with a default vocabulary).
+ * {@link #DUBBELZINNIG}: own material in which names read as two declarations — {@code bedrag} is the vondstbedrag in
+ * {@code handboek} and the premiebedrag in {@code cgm}; {@code toeslag} is a canonical name and the {@code handboek}
+ * designation of the basisbedrag; the value {@code hout} is canonical and the {@code handboek} designation of
+ * {@code wrakhout} — and whose vocabularies are incomplete.
+ */
+final class VocabulaireBron {
+
+    private VocabulaireBron() {}
+
+    static final Path GOLDEN = TokaBron.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires");
+
+    static final String DUBBELZINNIG = """
+            Vocabulaire handboek (taal: nl)
+            Vocabulaire cgm
+
+            Domein Houtsoort is van het type Enumeratie
+                'wrakhout' (handboek: hout) (cgm: WRAKHOUT)
+                'hout' (handboek: timmerhout)
+
+            Objecttype de Jutter (mv: Jutters) (bezield) (cgm: JUTTER)
+                het vondstbedrag (handboek: bedrag) Numeriek (getal met 2 decimalen);
+                het premiebedrag (cgm: bedrag) Numeriek (getal met 2 decimalen);
+                het basisbedrag (handboek: toeslag) Numeriek (getal met 2 decimalen);
+                de toeslag (handboek: bijslag) Numeriek (getal met 2 decimalen);
+                de houtsoort Houtsoort;
+                de uitkering (cgm: UITKERING) Numeriek (getal met 2 decimalen);
+                is houtjutter (cgm: HOUTJUTTER) kenmerk (bijvoeglijk);
+
+            Regel uitkering van een jutter (cgm: R_UITKERING)
+                geldig altijd
+                    De uitkering van een Jutter moet berekend worden als zijn vondstbedrag plus zijn premiebedrag plus zijn basisbedrag plus zijn toeslag.
+
+            Regel houtjutter (cgm: R_HOUT)
+                geldig altijd
+                    Een Jutter is houtjutter indien zijn houtsoort gelijk is aan 'wrakhout'.
+
+            Regel bedragen verschillen (cgm: C_BEDRAGEN)
+                geldig altijd
+                    Het vondstbedrag van een Jutter moet ongelijk zijn aan het premiebedrag van de Jutter.
+            """;
+
+    static final String DUBBELZINNIG_DESCRIPTOR = """
+            { "dienst": {"naam":"dubbelzinnig","versie":"1"},
+              "entrypoints": [ { "naam":"uitkering","pad":"uitkering",
+                "scope": {"regelnamen": ["uitkering van een jutter", "houtjutter", "bedragen verschillen"]},
+                "invoer": ["Jutter"], "uitvoer": ["Jutter.uitkering", "Jutter.houtsoort", "Jutter:houtjutter"] } ],
+              "parameters": {} }""";
+
+    static String bron() {
+        try {
+            return Files.readString(GOLDEN.resolve("bron.rgs"));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    static String descriptorJson() { return KetenBron.lees("vocabulaires/jutterswet-vocabulaires.dienst.json"); }
+
+    static RegelSpraakModel model() { return Resolver.resolve(bron()); }
+
+    static BeslisserKern kern() {
+        return BeslisserKern.bouw(descriptorJson(), Map.of("bron.rgs", bron()), KernConfig.strikt(),
+                Thread.currentThread().getContextClassLoader());
+    }
+
+    static BeslisserKern dubbelzinnig() {
+        return BeslisserKern.bouw(DUBBELZINNIG_DESCRIPTOR, Map.of("dubbelzinnig.rgs", DUBBELZINNIG),
+                KernConfig.strikt(), Thread.currentThread().getContextClassLoader());
+    }
+
+    static JsonNode json(String tekst) {
+        try {
+            return DescriptorLoader.MAPPER.readTree(tekst);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /** The request of the golden's case1, in the canonical names. */
+    static final String CASE1 = """
+            { "parameters": { "premietarief": 3 },
+              "instanties": [
+                { "type": "Jutter", "id": "J1", "attributen": { "naam": "Aukje" }, "rollen": { "vondsten": ["V1", "V2"] } },
+                { "type": "Jutter", "id": "J2", "attributen": { "naam": "Bram" }, "rollen": { "vondsten": ["V3"] } },
+                { "type": "Vondst", "id": "V1", "attributen": { "soort": "barnsteen", "gewicht": 3.00 } },
+                { "type": "Vondst", "id": "V2", "attributen": { "soort": "wrakhout", "gewicht": 1.20 } },
+                { "type": "Vondst", "id": "V3", "attributen": { "soort": "flessenpost", "gewicht": 0.40 } } ] }""";
+
+    /** The same request with every name as the vocabulary 'handboek' writes it. */
+    static final String CASE1_HANDBOEK = """
+            { "parameters": { "premie per kilogram": 3 },
+              "instanties": [
+                { "type": "strandjutter", "id": "J1", "attributen": { "naam": "Aukje" },
+                  "rollen": { "gemelde vondst": ["V1", "V2"] } },
+                { "type": "strandjutter", "id": "J2", "attributen": { "naam": "Bram" },
+                  "rollen": { "gemelde vondst": ["V3"] } },
+                { "type": "aangespoeld voorwerp", "id": "V1",
+                  "attributen": { "soort vondst": "amber", "gewicht in kilogram": 3.00 } },
+                { "type": "aangespoeld voorwerp", "id": "V2",
+                  "attributen": { "soort vondst": "hout van een wrak", "gewicht in kilogram": 1.20 } },
+                { "type": "aangespoeld voorwerp", "id": "V3",
+                  "attributen": { "soort vondst": "bericht in een fles", "gewicht in kilogram": 0.40 } } ] }""";
+
+    /** The same request with the names mixed: canonical, 'handboek' and 'cgm', a relation instead of a role. */
+    static final String CASE1_GEMENGD = """
+            { "parameters": { "PREMIE_TARIEF": 3 },
+              "instanties": [
+                { "type": "JUTTER", "id": "J1", "attributen": { "NAAM": "Aukje" }, "rollen": { "vondsten": ["V1"] } },
+                { "type": "strandjutter", "id": "J2", "attributen": { "naam": "Bram" },
+                  "rollen": { "GEMELDE_VONDST": ["V3"] } },
+                { "type": "Vondst", "id": "V1", "attributen": { "VONDST_SOORT": "amber", "gewicht": 3.00 } },
+                { "type": "aangespoeld voorwerp", "id": "V2",
+                  "attributen": { "soort": "WRAKHOUT", "GEWICHT": 1.20 } },
+                { "type": "VONDST", "id": "V3",
+                  "attributen": { "soort vondst": "flessenpost", "gewicht in kilogram": 0.40 } } ],
+              "relaties": [ { "feittype": "aanmelding van een vondst",
+                              "rollen": { "AANMELDER": "J1", "gemelde vondst": "V2" } } ] }""";
+}
