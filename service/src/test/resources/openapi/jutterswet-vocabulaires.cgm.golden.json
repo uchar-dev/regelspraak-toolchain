@@ -1,0 +1,584 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Jutterswet vocabulaires",
+    "version": "tweeling",
+    "description": "De namen in dit document zijn die van het vocabulaire 'cgm'. De dienst neemt in een verzoek elke naam aan: canoniek of als benaming in de vocabulaires 'handboek' en 'cgm', ook gemengd; x-spellingen en x-waardespellingen noemen ze. Een naam die zo twee declaraties noemt is een 400 (DUBBELZINNIGE_NAAM), tenzij de queryparameter invoervocabulaire het vocabulaire vastzet; de queryparameter vocabulaire kiest de namen van het antwoord. Een gewijzigde benaming is een wijziging van dit contract.",
+    "x-vocabulaire": "cgm"
+  },
+  "paths": {
+    "/premie": {
+      "post": {
+        "operationId": "premie",
+        "summary": "premie",
+        "description": "Entrypoint 'premie'. Invoer-objecttypen: JUTTER, VONDST. Uitvoer-selectoren: VONDST.VONDST_SOORT, VONDST.PREMIE, VONDST:WAARDEVOL, JUTTER.VONDST_BEDRAG, JUTTER.AANTAL_WAARDEVOL, JUTTER:PREMIE_WAARDIG. De dienst neemt ook de spellingen van x-spellingen aan.",
+        "x-spellingen": {
+          "canoniek": {
+            "invoer": [
+              "Jutter",
+              "Vondst"
+            ],
+            "uitvoer": [
+              "Vondst.soort",
+              "Vondst.premie",
+              "Vondst:waardevol",
+              "Jutter.vondstbedrag",
+              "Jutter.aantal waardevolle vondsten",
+              "Jutter:premiewaardig"
+            ]
+          },
+          "handboek": {
+            "invoer": [
+              "strandjutter",
+              "aangespoeld voorwerp"
+            ],
+            "uitvoer": [
+              "aangespoeld voorwerp.soort vondst",
+              "aangespoeld voorwerp.premie voor de vondst",
+              "aangespoeld voorwerp:van waarde",
+              "strandjutter.totale premie",
+              "strandjutter.aantal vondsten van waarde",
+              "strandjutter:komt in aanmerking voor premie"
+            ]
+          }
+        },
+        "parameters": [
+          {
+            "name": "vocabulaire",
+            "in": "query",
+            "required": false,
+            "description": "Het vocabulaire waarin het antwoord de declaraties noemt; zonder: de canonieke namen. Een declaratie zonder benaming in het gekozen vocabulaire draagt haar canonieke naam; GET /info noemt die declaraties per vocabulaire. Een onbekend vocabulaire is een 400 (ONBEKEND_VOCABULAIRE).",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "canoniek",
+                "handboek",
+                "cgm"
+              ]
+            }
+          },
+          {
+            "name": "invoervocabulaire",
+            "in": "query",
+            "required": false,
+            "description": "Zet het vocabulaire vast waarin de namen van het verzoek gelezen worden; zonder wordt elke naam gelezen als canonieke naam of als benaming in elk vocabulaire.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "canoniek",
+                "handboek",
+                "cgm"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/premie-cgm": {
+      "post": {
+        "operationId": "premieInHetCgm",
+        "summary": "premie in het cgm",
+        "description": "Entrypoint 'premie in het cgm'. Invoer-objecttypen: JUTTER, VONDST. Uitvoer-selectoren: VONDST.VONDST_SOORT, VONDST.PREMIE, VONDST:WAARDEVOL, JUTTER.VONDST_BEDRAG, JUTTER.AANTAL_WAARDEVOL, JUTTER:PREMIE_WAARDIG. De dienst neemt ook de spellingen van x-spellingen aan.",
+        "x-spellingen": {
+          "canoniek": {
+            "invoer": [
+              "Jutter",
+              "Vondst"
+            ],
+            "uitvoer": [
+              "Vondst.soort",
+              "Vondst.premie",
+              "Vondst:waardevol",
+              "Jutter.vondstbedrag",
+              "Jutter.aantal waardevolle vondsten",
+              "Jutter:premiewaardig"
+            ]
+          },
+          "handboek": {
+            "invoer": [
+              "strandjutter",
+              "aangespoeld voorwerp"
+            ],
+            "uitvoer": [
+              "aangespoeld voorwerp.soort vondst",
+              "aangespoeld voorwerp.premie voor de vondst",
+              "aangespoeld voorwerp:van waarde",
+              "strandjutter.totale premie",
+              "strandjutter.aantal vondsten van waarde",
+              "strandjutter:komt in aanmerking voor premie"
+            ]
+          }
+        },
+        "parameters": [
+          {
+            "name": "vocabulaire",
+            "in": "query",
+            "required": false,
+            "description": "Het vocabulaire waarin het antwoord de declaraties noemt; zonder: 'cgm', de standaard van dit entrypoint. Een declaratie zonder benaming in het gekozen vocabulaire draagt haar canonieke naam; GET /info noemt die declaraties per vocabulaire. Een onbekend vocabulaire is een 400 (ONBEKEND_VOCABULAIRE).",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "canoniek",
+                "handboek",
+                "cgm"
+              ]
+            }
+          },
+          {
+            "name": "invoervocabulaire",
+            "in": "query",
+            "required": false,
+            "description": "Zet het vocabulaire vast waarin de namen van het verzoek gelezen worden; zonder wordt elke naam gelezen als canonieke naam of als benaming in elk vocabulaire.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "canoniek",
+                "handboek",
+                "cgm"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Verzoek"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Antwoord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/info": {
+      "get": {
+        "operationId": "info",
+        "summary": "dienst-info",
+        "description": "De dienst-identiteit, de per-regel Dekking-verdicten, de overgeslagen (marker) regels en de parameter-defaults.",
+        "responses": {
+          "200": {
+            "description": "dienst-info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Info"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Jutter": {
+        "type": "object",
+        "properties": {
+          "NAAM": {
+            "type": "string",
+            "description": "De dienst neemt ook 'naam' (canoniek) en 'naam' (handboek) aan.",
+            "x-spellingen": {
+              "canoniek": "naam",
+              "handboek": "naam"
+            }
+          },
+          "VONDST_BEDRAG": {
+            "type": "number",
+            "description": "De dienst neemt ook 'vondstbedrag' (canoniek) en 'totale premie' (handboek) aan.",
+            "x-spellingen": {
+              "canoniek": "vondstbedrag",
+              "handboek": "totale premie"
+            }
+          },
+          "AANTAL_WAARDEVOL": {
+            "type": "integer",
+            "description": "De dienst neemt ook 'aantal waardevolle vondsten' (canoniek) en 'aantal vondsten van waarde' (handboek) aan.",
+            "x-spellingen": {
+              "canoniek": "aantal waardevolle vondsten",
+              "handboek": "aantal vondsten van waarde"
+            }
+          },
+          "PREMIE_WAARDIG": {
+            "type": "boolean",
+            "description": "kenmerk. De dienst neemt ook 'premiewaardig' (canoniek) en 'komt in aanmerking voor premie' (handboek) aan.",
+            "x-spellingen": {
+              "canoniek": "premiewaardig",
+              "handboek": "komt in aanmerking voor premie"
+            }
+          }
+        },
+        "description": "Objecttype 'JUTTER'. Kenmerken (boolean-eigenschappen): PREMIE_WAARDIG. De dienst neemt ook 'Jutter' (canoniek) en 'strandjutter' (handboek) aan.",
+        "x-spellingen": {
+          "canoniek": "Jutter",
+          "handboek": "strandjutter"
+        }
+      },
+      "Vondst": {
+        "type": "object",
+        "properties": {
+          "VONDST_SOORT": {
+            "type": "string",
+            "enum": [
+              "WRAKHOUT",
+              "BARNSTEEN",
+              "FLESSENPOST"
+            ],
+            "x-waardespellingen": {
+              "WRAKHOUT": {
+                "canoniek": "wrakhout",
+                "handboek": "hout van een wrak"
+              },
+              "BARNSTEEN": {
+                "canoniek": "barnsteen",
+                "handboek": "amber"
+              },
+              "FLESSENPOST": {
+                "canoniek": "flessenpost",
+                "handboek": "bericht in een fles"
+              }
+            },
+            "description": "De dienst neemt ook 'soort' (canoniek) en 'soort vondst' (handboek) aan.",
+            "x-spellingen": {
+              "canoniek": "soort",
+              "handboek": "soort vondst"
+            }
+          },
+          "GEWICHT": {
+            "type": "number",
+            "description": "De dienst neemt ook 'gewicht' (canoniek) en 'gewicht in kilogram' (handboek) aan.",
+            "x-spellingen": {
+              "canoniek": "gewicht",
+              "handboek": "gewicht in kilogram"
+            }
+          },
+          "PREMIE": {
+            "type": "number",
+            "description": "De dienst neemt ook 'premie' (canoniek) en 'premie voor de vondst' (handboek) aan.",
+            "x-spellingen": {
+              "canoniek": "premie",
+              "handboek": "premie voor de vondst"
+            }
+          },
+          "WAARDEVOL": {
+            "type": "boolean",
+            "description": "kenmerk. De dienst neemt ook 'waardevol' (canoniek) en 'van waarde' (handboek) aan.",
+            "x-spellingen": {
+              "canoniek": "waardevol",
+              "handboek": "van waarde"
+            }
+          }
+        },
+        "description": "Objecttype 'VONDST'. Kenmerken (boolean-eigenschappen): WAARDEVOL. De dienst neemt ook 'Vondst' (canoniek) en 'aangespoeld voorwerp' (handboek) aan.",
+        "x-spellingen": {
+          "canoniek": "Vondst",
+          "handboek": "aangespoeld voorwerp"
+        }
+      },
+      "Verzoek": {
+        "type": "object",
+        "description": "Een beslissingsverzoek: gelabelde object-instanties met attribuut-/kenmerk-waarden en rol-relaties, plus optionele parameter-overrides en rekendatum.",
+        "required": [
+          "instanties"
+        ],
+        "properties": {
+          "peildatum": {
+            "type": "string",
+            "format": "date",
+            "description": "ISO-datum (yyyy-MM-dd); optioneel. De ÉÉN datumautoriteit: dezelfde datum selecteert de parameterset-vintage EN is de rekendatum-global. Gelijk aan 'rekendatum' (alias); beide meegeven met verschillende waarden is een 400."
+          },
+          "rekendatum": {
+            "type": "string",
+            "format": "date",
+            "description": "ISO-datum (yyyy-MM-dd); optioneel. Alias van 'peildatum' (dezelfde datumautoriteit)."
+          },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "parameternaam -> waarde; overschrijft de descriptor-defaults."
+          },
+          "instanties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "type",
+                "id"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "attributen": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "attribuutnaam -> waarde (per het objecttype-schema)."
+                },
+                "kenmerken": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "kenmerknaam -> boolean."
+                },
+                "rollen": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "rolnaam -> doel-id of lijst van doel-ids."
+                }
+              }
+            }
+          },
+          "relaties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "feittype",
+                "rollen"
+              ],
+              "properties": {
+                "feittype": {
+                  "type": "string"
+                },
+                "rollen": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "rolnaam -> id of lijst van ids."
+                }
+              }
+            }
+          }
+        }
+      },
+      "Antwoord": {
+        "type": "object",
+        "description": "Het beslissingsantwoord: per instantie de gevraagde uitvoer-attributen/-kenmerken, plus de namen van de regels waarvan een consistentietoets faalde.",
+        "properties": {
+          "instanties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "attributen": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "attribuutnaam -> waarde (of null bij leeg)."
+                },
+                "kenmerken": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "kenmerknaam -> boolean."
+                }
+              }
+            }
+          },
+          "inconsistenties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "de namen van de regels waarvan een consistentietoets INCONSISTENT opleverde."
+          },
+          "inconsistentieDetails": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "regel": {
+                  "type": "string"
+                },
+                "onderwerp": {
+                  "type": "string",
+                  "nullable": true
+                }
+              }
+            },
+            "description": "dezelfde inconsistenties met hun onderwerp: het id van de instantie waarover de toets ging, of null als dat geen instantie van het verzoek is."
+          }
+        }
+      },
+      "Fout": {
+        "type": "object",
+        "description": "Een dienst-fout; noemt waar mogelijk het foutieve veld/pad.",
+        "required": [
+          "fout"
+        ],
+        "properties": {
+          "fout": {
+            "type": "string"
+          },
+          "veld": {
+            "type": "string"
+          },
+          "schendingen": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "de verzameling schendingen, elk met soort/veld/melding."
+          }
+        }
+      },
+      "Info": {
+        "type": "object",
+        "description": "De dienst-info: identiteit, per-regel Dekking, overgeslagen markers, parameters.",
+        "properties": {
+          "dienst": {
+            "type": "object"
+          },
+          "dekking": {
+            "type": "object"
+          },
+          "overgeslagen": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "parameters": {
+            "type": "object"
+          },
+          "parametersets": {
+            "type": "array"
+          },
+          "periodeWaarschuwingen": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "vocabulaires": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "per vocabulaire: naam, standaard, taal, of het volledig is, en de declaraties zonder benaming (die draagt een antwoord in dat vocabulaire bij hun canonieke naam)."
+          }
+        }
+      }
+    }
+  }
+}

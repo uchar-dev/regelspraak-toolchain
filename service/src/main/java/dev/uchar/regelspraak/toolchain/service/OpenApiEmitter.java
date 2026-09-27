@@ -13,7 +13,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.Eenheid;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Benoembaar;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
+import dev.uchar.regelspraak.toolchain.engine.Naamgeving;
 import dev.uchar.regelspraak.transpiler.kern.Namen;
 
 import java.io.IOException;
@@ -44,6 +46,16 @@ import java.util.List;
  * description. Kenmerken are boolean properties on the same schema (the description says which are kenmerken).
  * Dimensie- and tijdlijn-valued members are REJECTED by the service ({@link VerzoekMapper} NIET_ONDERSTEUND),
  * so no property is emitted for them — the schema description says so.
+ *
+ * <p><b>Per vocabulary.</b> {@link #emit(DienstDescriptor, RegelSpraakModel, String)} writes the document of one
+ * vocabulary the model declares, or of the canonical names: the object types, properties, enumeration values and
+ * selectors go by their names in it ({@link Naamgeving}). The service reads every other spelling too
+ * ({@link NaamLezer}), so for a model with vocabularies each object type, property and entry point lists its other
+ * spellings — the canonical one and those of the other vocabularies — in {@code x-spellingen}, each enumeration its
+ * values' in {@code x-waardespellingen}, and says in its description that the service accepts them; the operations
+ * document the query parameters {@code vocabulaire} and {@code invoervocabulaire}, and the info block names the
+ * document's vocabulary in {@code x-vocabulaire}. A model without vocabularies gets none of this, so its document is
+ * the one it always was.
  */
 public final class OpenApiEmitter {
 
@@ -53,42 +65,135 @@ public final class OpenApiEmitter {
 
     // ------------------------------------------------------------------ emit
 
-    /** Build the OpenAPI 3.0.3 document for {@code descriptor} over {@code model}. */
+    /** Build the OpenAPI 3.0.3 document for {@code descriptor} over {@code model}, in the canonical names. */
     public static ObjectNode emit(DienstDescriptor descriptor, RegelSpraakModel model) {
+        return emit(descriptor, model, null);
+    }
+
+    /** Build the document in {@code vocabulaire}: one the model declares, or null or {@link Naamgeving#CANONIEK} for the
+     *  canonical names. Another vocabulary is a {@link Naamgeving.Vocabulairefout}. */
+    public static ObjectNode emit(DienstDescriptor descriptor, RegelSpraakModel model, String vocabulaire) {
+        Spellingen sp = new Spellingen(model, Naamgeving.van(model, vocabulaire));
         ObjectNode doc = NF.objectNode();
         doc.put("openapi", "3.0.3");
 
         ObjectNode info = doc.putObject("info");
         info.put("title", descriptor.dienst() == null ? "" : nvl(descriptor.dienst().naam()));
         info.put("version", descriptor.dienst() == null ? "" : nvl(descriptor.dienst().versie()));
+        if (sp.aan()) {
+            info.put("description", sp.documentBeschrijving());
+            info.put("x-vocabulaire", sp.in.keuze());
+        }
 
         // paths — one POST per entrypoint (declared order), then GET /info
         ObjectNode paths = doc.putObject("paths");
         for (DienstDescriptor.Entrypoint ep : eps(descriptor))
-            paths.set("/" + nvl(ep.pad()), padItem(ep, model));
+            paths.set("/" + nvl(ep.pad()), padItem(ep, model, sp));
         paths.set("/info", infoPad());
 
         // components.schemas — one per objecttype (declared order), then the generic request/response/fout
         ObjectNode components = doc.putObject("components");
         ObjectNode schemas = components.putObject("schemas");
         for (Objecttype ot : model.objecttypen.values())
-            schemas.set(componentNaam(ot), objecttypeSchema(ot, model));
+            schemas.set(componentNaam(ot, sp.in), objecttypeSchema(ot, sp));
         schemas.set("Verzoek", verzoekSchema());
         schemas.set("Antwoord", antwoordSchema());
         schemas.set("Fout", foutSchema());
-        schemas.set("Info", infoSchema());
+        schemas.set("Info", infoSchema(sp));
 
         return doc;
     }
 
+    // ------------------------------------------------------------------ the other spellings
+
+    /** The names of the document ({@code in}) and, for a model with vocabularies, the other spellings of each
+     *  declaration: its canonical name and its effective name in every other vocabulary, the names the service reads
+     *  as well. */
+    private static final class Spellingen {
+        private final RegelSpraakModel model;
+        private final Naamgeving in;
+        private final List<Naamgeving> andere = new ArrayList<>();
+
+        Spellingen(RegelSpraakModel model, Naamgeving in) {
+            this.model = model;
+            this.in = in;
+            if (model.vocabulaires.isEmpty()) return;
+            if (!in.isCanoniek()) andere.add(Naamgeving.canoniek(model));
+            for (RegelSpraakModel.Vocabulaire v : model.vocabulaires)
+                if (!v.naam().equals(in.keuze())) andere.add(Naamgeving.van(model, v.naam()));
+        }
+
+        /** Whether the document lists other spellings: the model declares vocabularies. */
+        boolean aan() { return !model.vocabulaires.isEmpty(); }
+
+        /** {@code {<keuze>: <naam>}} of declaration {@code b} in the other spellings. */
+        ObjectNode van(Benoembaar b) {
+            ObjectNode uit = NF.objectNode();
+            for (Naamgeving n : andere) uit.put(n.keuze(), n.naam(b));
+            return uit;
+        }
+
+        /** The sentence a description ends with: the other spellings, which the service accepts as well. */
+        static String zin(ObjectNode spellingen) {
+            List<String> delen = new ArrayList<>();
+            spellingen.fields().forEachRemaining(e -> delen.add("'" + e.getValue().asText() + "' (" + e.getKey() + ")"));
+            return "De dienst neemt ook " + opsomming(delen) + " aan.";
+        }
+
+        /** The info block's description: whose names the document carries, and what else the service reads. */
+        String documentBeschrijving() {
+            List<String> vocabulaires = model.vocabulaires.stream().map(v -> "'" + v.naam() + "'").toList();
+            return (in.isCanoniek() ? "De namen in dit document zijn de canonieke namen."
+                    : "De namen in dit document zijn die van het vocabulaire '" + in.keuze() + "'.")
+                    + " De dienst neemt in een verzoek elke naam aan: canoniek of als benaming in "
+                    + (vocabulaires.size() == 1 ? "het vocabulaire " : "de vocabulaires ") + opsomming(vocabulaires)
+                    + ", ook gemengd; x-spellingen en x-waardespellingen noemen ze."
+                    + " Een naam die zo twee declaraties noemt is een 400 (DUBBELZINNIGE_NAAM), tenzij de queryparameter"
+                    + " invoervocabulaire het vocabulaire vastzet; de queryparameter vocabulaire kiest de namen van het"
+                    + " antwoord. Een gewijzigde benaming is een wijziging van dit contract.";
+        }
+
+        private static String opsomming(List<String> delen) {
+            if (delen.size() == 1) return delen.get(0);
+            return String.join(", ", delen.subList(0, delen.size() - 1)) + " en " + delen.get(delen.size() - 1);
+        }
+
+        /** The choices of the query parameters: the canonical names and every vocabulary. */
+        List<String> keuzes() {
+            List<String> uit = new ArrayList<>();
+            uit.add(Naamgeving.CANONIEK);
+            for (RegelSpraakModel.Vocabulaire v : model.vocabulaires) uit.add(v.naam());
+            return uit;
+        }
+    }
+
     // ------------------------------------------------------------------ paths
 
-    private static ObjectNode padItem(DienstDescriptor.Entrypoint ep, RegelSpraakModel model) {
+    private static ObjectNode padItem(DienstDescriptor.Entrypoint ep, RegelSpraakModel model, Spellingen sp) {
         ObjectNode item = NF.objectNode();
         ObjectNode post = item.putObject("post");
         post.put("operationId", Namen.ident(nvl(ep.naam()), false));
         post.put("summary", nvl(ep.naam()));
-        post.put("description", operatieBeschrijving(ep, model));
+        post.put("description", operatieBeschrijving(ep, model, sp));
+        if (sp.aan()) {
+            ObjectNode spellingen = post.putObject("x-spellingen");
+            for (Naamgeving n : sp.andere) {
+                ObjectNode s = spellingen.putObject(n.keuze());
+                ArrayNode invoer = s.putArray("invoer");
+                for (String i : invoer(ep, model, n)) invoer.add(i);
+                ArrayNode uitvoer = s.putArray("uitvoer");
+                for (String u : uitvoer(ep, model, n)) uitvoer.add(u);
+            }
+            ArrayNode parameters = post.putArray("parameters");
+            parameters.add(queryParameter("vocabulaire", "Het vocabulaire waarin het antwoord de declaraties noemt;"
+                    + " zonder: " + (ep.vocabulaire() == null ? "de canonieke namen"
+                    : "'" + ep.vocabulaire() + "', de standaard van dit entrypoint") + ". Een declaratie zonder"
+                    + " benaming in het gekozen vocabulaire draagt haar canonieke naam; GET /info noemt die declaraties"
+                    + " per vocabulaire. Een onbekend vocabulaire is een 400 (ONBEKEND_VOCABULAIRE).", sp.keuzes()));
+            parameters.add(queryParameter("invoervocabulaire", "Zet het vocabulaire vast waarin de namen van het"
+                    + " verzoek gelezen worden; zonder wordt elke naam gelezen als canonieke naam of als benaming in"
+                    + " elk vocabulaire.", sp.keuzes()));
+        }
 
         ObjectNode requestBody = post.putObject("requestBody");
         requestBody.put("required", true);
@@ -119,15 +224,51 @@ public final class OpenApiEmitter {
     }
 
     /** The per-entrypoint invoer/uitvoer documentation: which objecttypen it accepts and which
-     *  objecttype.attribuut / objecttype:kenmerk selectors it returns. */
-    private static String operatieBeschrijving(DienstDescriptor.Entrypoint ep, RegelSpraakModel model) {
+     *  objecttype.attribuut / objecttype:kenmerk selectors it returns, in the document's names. */
+    private static String operatieBeschrijving(DienstDescriptor.Entrypoint ep, RegelSpraakModel model, Spellingen sp) {
         StringBuilder b = new StringBuilder();
         b.append("Entrypoint '").append(nvl(ep.naam())).append("'. ");
-        List<String> invoer = ep.invoer() == null ? List.of() : ep.invoer();
+        List<String> invoer = invoer(ep, model, sp.in);
         b.append("Invoer-objecttypen: ").append(invoer.isEmpty() ? "(geen)" : String.join(", ", invoer)).append(". ");
-        List<String> uitvoer = ep.uitvoer() == null ? List.of() : ep.uitvoer();
+        List<String> uitvoer = uitvoer(ep, model, sp.in);
         b.append("Uitvoer-selectoren: ").append(uitvoer.isEmpty() ? "(geen)" : String.join(", ", uitvoer)).append(".");
+        if (sp.aan()) b.append(" De dienst neemt ook de spellingen van x-spellingen aan.");
         return b.toString();
+    }
+
+    /** The invoer object types of {@code ep} in the names of {@code n}; canonically as the descriptor writes them. */
+    private static List<String> invoer(DienstDescriptor.Entrypoint ep, RegelSpraakModel model, Naamgeving n) {
+        List<String> uit = new ArrayList<>();
+        for (String inv : ep.invoer() == null ? List.<String>of() : ep.invoer()) {
+            Objecttype ot = DescriptorLoader.objecttype(model, inv);
+            uit.add(n.isCanoniek() || ot == null ? inv : n.objecttype(ot.naam));
+        }
+        return uit;
+    }
+
+    /** The uitvoer selectors of {@code ep} in the names of {@code n}; canonically as the descriptor writes them. */
+    private static List<String> uitvoer(DienstDescriptor.Entrypoint ep, RegelSpraakModel model, Naamgeving n) {
+        List<String> uit = new ArrayList<>();
+        for (String sel : ep.uitvoer() == null ? List.<String>of() : ep.uitvoer()) {
+            Uitvoerselector u = Uitvoerselector.ontleed(sel);
+            Objecttype ot = u == null ? null : DescriptorLoader.objecttype(model, u.objecttype());
+            if (n.isCanoniek() || ot == null) { uit.add(sel); continue; }
+            uit.add(n.objecttype(ot.naam) + (u.kenmerk() ? ":" + n.kenmerk(ot, u.lid()) : "." + n.attribuut(ot, u.lid())));
+        }
+        return uit;
+    }
+
+    private static ObjectNode queryParameter(String naam, String beschrijving, List<String> keuzes) {
+        ObjectNode p = NF.objectNode();
+        p.put("name", naam);
+        p.put("in", "query");
+        p.put("required", false);
+        p.put("description", beschrijving);
+        ObjectNode schema = p.putObject("schema");
+        schema.put("type", "string");
+        ArrayNode en = schema.putArray("enum");
+        for (String k : keuzes) en.add(k);
+        return p;
     }
 
     private static void antwoord(ObjectNode responses, String code, String beschrijving, String ref) {
@@ -158,7 +299,7 @@ public final class OpenApiEmitter {
      *  choice from {@link dev.uchar.regelspraak.schema.FactModelGenerator}, which stays per
      *  declaring type BECAUSE the generated bean {@code extends} its supertype's and would hide the
      *  parent's field by redeclaring it; a JSON schema property set has no such mechanism. */
-    private static ObjectNode objecttypeSchema(Objecttype ot, RegelSpraakModel model) {
+    private static ObjectNode objecttypeSchema(Objecttype ot, Spellingen sp) {
         ObjectNode schema = NF.objectNode();
         schema.put("type", "object");
 
@@ -168,28 +309,43 @@ public final class OpenApiEmitter {
 
         // attributen (own first, then inherited — declared order within each)
         for (var e : ot.attribuutLeden().entrySet()) {
-            String naam = e.getKey();
-            if (!ot.dimensiesVan(naam).isEmpty()) { afgewezen.add(naam + " (dimensie)"); continue; }
-            if (temporeelAttribuut(ot, naam))      { afgewezen.add(naam + " (tijdlijn)"); continue; }
-            props.set(naam, attribuutSchema(e.getValue()));
+            String naam = sp.in.attribuut(ot, e.getKey());
+            if (!ot.dimensiesVan(e.getKey()).isEmpty()) { afgewezen.add(naam + " (dimensie)"); continue; }
+            if (temporeelAttribuut(ot, e.getKey()))      { afgewezen.add(naam + " (tijdlijn)"); continue; }
+            ObjectNode attribuut = attribuutSchema(e.getValue(), sp);
+            if (sp.aan()) spellingen(attribuut, sp.van(Naamgeving.attribuutVan(ot, e.getKey())));
+            props.set(naam, attribuut);
         }
         // kenmerken (own first, then inherited) — boolean properties
         for (String k : DescriptorLoader.kenmerkLeden(ot)) {
-            if (temporeelKenmerk(ot, k)) { afgewezen.add(k + " (tijdlijn-kenmerk)"); continue; }
+            String naam = sp.in.kenmerk(ot, k);
+            if (temporeelKenmerk(ot, k)) { afgewezen.add(naam + " (tijdlijn-kenmerk)"); continue; }
             ObjectNode kn = NF.objectNode();
             kn.put("type", "boolean");
             kn.put("description", "kenmerk");
-            props.set(k, kn);
-            kenmerken.add(k);
+            if (sp.aan()) spellingen(kn, sp.van(Naamgeving.kenmerkVan(ot, k)));
+            props.set(naam, kn);
+            kenmerken.add(naam);
         }
         schema.set("properties", props);
-        schema.put("description", objecttypeBeschrijving(ot, kenmerken, afgewezen));
+        schema.put("description", objecttypeBeschrijving(ot, sp.in, kenmerken, afgewezen));
+        if (sp.aan()) spellingen(schema, sp.van(Benoembaar.objecttype(ot.naam)));
         return schema;
     }
 
-    private static String objecttypeBeschrijving(Objecttype ot, List<String> kenmerken, List<String> afgewezen) {
+    /** {@code node} lists {@code spellingen} in {@code x-spellingen}, and its description says the service accepts
+     *  them (a description of its own is kept in front). */
+    private static void spellingen(ObjectNode node, ObjectNode spellingen) {
+        String zin = Spellingen.zin(spellingen);
+        String eigen = node.has("description") ? node.get("description").asText() : "";
+        node.put("description", eigen.isEmpty() ? zin : eigen + (eigen.endsWith(".") ? " " : ". ") + zin);
+        node.set("x-spellingen", spellingen);
+    }
+
+    private static String objecttypeBeschrijving(Objecttype ot, Naamgeving in, List<String> kenmerken,
+                                                 List<String> afgewezen) {
         StringBuilder b = new StringBuilder();
-        b.append("Objecttype '").append(ot.naam).append("'.");
+        b.append("Objecttype '").append(in.objecttype(ot.naam)).append("'.");
         if (!kenmerken.isEmpty())
             b.append(" Kenmerken (boolean-eigenschappen): ").append(String.join(", ", kenmerken)).append(".");
         if (!afgewezen.isEmpty())
@@ -199,8 +355,9 @@ public final class OpenApiEmitter {
     }
 
     /** Map a scalar attribuut's datatype onto its JSON-schema fragment, documenting an eenheid via
-     *  {@code x-eenheid} + a description mention. */
-    private static ObjectNode attribuutSchema(Datatype dt) {
+     *  {@code x-eenheid} + a description mention; an enumeration's values in the document's names, and for a model
+     *  with vocabularies their other spellings in {@code x-waardespellingen}. */
+    private static ObjectNode attribuutSchema(Datatype dt, Spellingen sp) {
         ObjectNode s = NF.objectNode();
         Eenheid eenheid = null;
         switch (dt) {
@@ -219,7 +376,12 @@ public final class OpenApiEmitter {
             case Datatype.Enumeratie e -> {
                 s.put("type", "string");
                 ArrayNode en = s.putArray("enum");
-                for (String w : e.waarden()) en.add(w);
+                for (String w : e.waarden()) en.add(sp.in.waarde(e, w));
+                if (sp.aan()) {
+                    ObjectNode waarden = s.putObject("x-waardespellingen");
+                    for (String w : e.waarden())
+                        waarden.set(sp.in.waarde(e, w), sp.van(Benoembaar.enumeratiewaarde(e.domein(), w)));
+                }
             }
             case Datatype.Onbekend o -> s.put("type", "string");
         }
@@ -232,7 +394,7 @@ public final class OpenApiEmitter {
         return s;
     }
 
-    private static String componentNaam(Objecttype ot) { return Namen.ident(ot.naam, true); }
+    private static String componentNaam(Objecttype ot, Naamgeving in) { return Namen.ident(in.objecttype(ot.naam), true); }
 
     /** §13.3.6 whether attribuut {@code naam} rides a tijdlijn ANYWHERE on {@code ot}'s chain. Reading the own
      *  maps would call an INHERITED timeline scalar and emit a plain property for it — a contract the service
@@ -362,8 +524,8 @@ public final class OpenApiEmitter {
         return s;
     }
 
-    /** The /info response schema (minimal, honest to fase-3 /info). */
-    private static ObjectNode infoSchema() {
+    /** The /info response schema (minimal, honest to fase-3 /info); with vocabularies, their completeness. */
+    private static ObjectNode infoSchema(Spellingen sp) {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "De dienst-info: identiteit, per-regel Dekking, overgeslagen markers, parameters.");
@@ -379,6 +541,13 @@ public final class OpenApiEmitter {
         ObjectNode pw = props.putObject("periodeWaarschuwingen");
         pw.put("type", "array");
         pw.putObject("items").put("type", "string");
+        if (sp.aan()) {
+            ObjectNode v = props.putObject("vocabulaires");
+            v.put("type", "array");
+            v.putObject("items").put("type", "object");
+            v.put("description", "per vocabulaire: naam, standaard, taal, of het volledig is, en de declaraties"
+                    + " zonder benaming (die draagt een antwoord in dat vocabulaire bij hun canonieke naam).");
+        }
         return s;
     }
 
@@ -426,9 +595,14 @@ public final class OpenApiEmitter {
     /** Emit the document for {@code descriptor}+{@code model} and write its canonical bytes to {@code doel}
      *  (creating parent directories). */
     public static void schrijf(DienstDescriptor descriptor, RegelSpraakModel model, Path doel) {
+        schrijf(descriptor, model, null, doel);
+    }
+
+    /** {@link #schrijf(DienstDescriptor, RegelSpraakModel, Path)} for the document in {@code vocabulaire}. */
+    public static void schrijf(DienstDescriptor descriptor, RegelSpraakModel model, String vocabulaire, Path doel) {
         try {
             if (doel.getParent() != null) Files.createDirectories(doel.getParent());
-            Files.write(doel, naarBytes(emit(descriptor, model)));
+            Files.write(doel, naarBytes(emit(descriptor, model, vocabulaire)));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -436,11 +610,19 @@ public final class OpenApiEmitter {
 
     /** The kebab-case file name a dienst's document lands under ({@code <kebab(naam)>.json}). */
     public static String bestandsnaam(DienstDescriptor descriptor) {
+        return bestandsnaam(descriptor, null);
+    }
+
+    /** The file name of the document in {@code vocabulaire}: {@code <kebab(naam)>.<vocabulaire>.json}, or
+     *  {@link #bestandsnaam(DienstDescriptor)} for the canonical one (null or {@link Naamgeving#CANONIEK}). */
+    public static String bestandsnaam(DienstDescriptor descriptor, String vocabulaire) {
         String naam = descriptor.dienst() == null ? "dienst" : nvl(descriptor.dienst().naam());
         String kebab = naam.trim().toLowerCase()
                 .replaceAll("[^a-z0-9]+", "-")
                 .replaceAll("(^-+)|(-+$)", "");
-        return (kebab.isEmpty() ? "dienst" : kebab) + ".json";
+        String vocab = vocabulaire == null || vocabulaire.equalsIgnoreCase(Naamgeving.CANONIEK) ? ""
+                : "." + vocabulaire.toLowerCase();
+        return (kebab.isEmpty() ? "dienst" : kebab) + vocab + ".json";
     }
 
     private static List<DienstDescriptor.Entrypoint> eps(DienstDescriptor d) {
