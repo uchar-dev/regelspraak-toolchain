@@ -88,6 +88,18 @@ class VocabulaireAntwoordTest {
     }
 
     @Test
+    void een_document_als_bron_draagt_de_vocabulaires_van_uchars_lader() throws Exception {
+        BeslisserKern kern = BeslisserKern.bouwVanDocument(VocabulaireBron.descriptorJson(),
+                java.nio.file.Files.readString(VocabulaireBron.GOLDEN.resolve("ir.json")), KernConfig.strikt(),
+                getClass().getClassLoader(), null);
+        ObjectNode a = kern.verwerk("premie", VocabulaireBron.json(VocabulaireBron.CASE1_HANDBOEK),
+                new VerzoekOpties(false, "cgm", null));
+        assertEquals("BARNSTEEN", instantie(a, "V1").at("/attributen/VONDST_SOORT").asText(), a.toString());
+        assertEquals(0, new BigDecimal("12.6").compareTo(instantie(a, "J1").at("/attributen/VONDST_BEDRAG").decimalValue()),
+                a.toString());
+    }
+
+    @Test
     void een_onbekend_standaardvocabulaire_weigert_de_start() {
         String descriptor = VocabulaireBron.descriptorJson().replace("\"vocabulaire\": \"cgm\"", "\"vocabulaire\": \"wetboek\"");
         DienstFout f = assertThrows(DienstFout.class, () -> BeslisserKern.bouw(descriptor,
