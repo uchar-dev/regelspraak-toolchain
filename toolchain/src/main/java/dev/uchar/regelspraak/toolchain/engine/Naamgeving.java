@@ -63,7 +63,7 @@ public final class Naamgeving {
     }
 
     /** The sentence for a vocabulary {@code keuze} the model does not declare, naming the ones it does. */
-    public static String onbekend(String keuze, RegelSpraakModel model) {
+    private static String onbekend(String keuze, RegelSpraakModel model) {
         List<String> namen = model.vocabulaires.stream().map(v -> "'" + v.naam() + "'").toList();
         String gedeclareerd = namen.isEmpty() ? "geen vocabulaire"
                 : namen.size() == 1 ? namen.get(0)
@@ -91,12 +91,6 @@ public final class Naamgeving {
     public String objecttype(String naam) { return benoem(Benoembaar.objecttype(naam), naam); }
 
     public String parameter(String naam) { return benoem(Benoembaar.parameter(naam), naam); }
-
-    public String feittype(String naam) { return benoem(Benoembaar.feittype(naam), naam); }
-
-    public String rol(String feittype, String rol) { return benoem(Benoembaar.rol(feittype, rol), rol); }
-
-    public String regelgroep(String naam) { return benoem(Benoembaar.regelgroep(naam), naam); }
 
     /** The role written {@code geschreven} (its name, declared plural or best-effort plural) that {@code onderwerp}
      *  reaches: the far role of a fact type {@code onderwerp} takes part in. When the written name names no such role,
