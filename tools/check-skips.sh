@@ -81,9 +81,9 @@ TOEGESTANE_SKIPS=(
 # de poort — het make-doel en de pom-binding zijn de poort, niet de losse mvn.
 # ---------------------------------------------------------------------------
 VLOEREN=(
-"toolchain|110|de toolchain-kern: engine-facade, scenariorunner met uitleg, verbalisator, parameterset-lader en CLI (de vroegere poorten engine en toolchain-kern in één module); gemeten na de kaart dienst-gedrag-en-poorten|2026-09-26"
-"service|180|de beslisdienst (JDK-adapter): vormscope, MARKER-antwoord, IR-document als bron, rolinvoer zoals uchars replay, playground; gemeten na de kaart dienst-gedrag-en-poorten|2026-09-26"
-"service-quarkus|33|de Quarkus-adapter, opnieuw gemeten na de kaart dienst-gedrag-en-poorten|2026-09-26"
+"toolchain|120|de toolchain-kern: engine-facade, scenariorunner met uitleg, verbalisator, parameterset-lader en CLI (de vroegere poorten engine en toolchain-kern in één module), met de naamgeving per vocabulaire; gemeten na de kaart dienst-vocabulaires|2026-09-27"
+"service|210|de beslisdienst (JDK-adapter): vormscope, MARKER-antwoord, IR-document als bron, rolinvoer zoals uchars replay, playground, de liberale lezer en het antwoord, /info en de OpenAPI per vocabulaire; gemeten na de kaart dienst-vocabulaires|2026-09-27"
+"service-quarkus|43|de Quarkus-adapter met de pariteit van de vocabulaires; gemeten na de kaart dienst-vocabulaires|2026-09-27"
 )
 
 # ---------------------------------------------------------------------------
