@@ -69,7 +69,7 @@ at the first red step, with one summary line per step and a closing line; the fu
 ```
 scripts/check-pin.sh      # the submodule is initialised, clean, on the recorded commit; the versions are uchar's
 mvn -B -o verify          # the reactor; each own module holds its test count to a floor (tools/check-skips.sh)
-make check-tweelingen     # the three dialect twins, over HTTP, with the expectations of all 18 of their cases
+make check-tweelingen     # the three dialect twins and the vocabulary twin, over HTTP, with their case expectations
 make check-dienst-replay  # every golden uchar's gate 12 plays, replayed through the service
 make scenario-test        # the golden TOKA scenario manifest
 make image                # the service image ("The container")
@@ -89,7 +89,13 @@ pinned expectation, compared as uchar's replay compares it (`scripts/dienst_repl
 - `check-tweelingen` serves `ww-herleving-inkomen-rgs`, `jutterswet-uitsluiting-rgs` and
   `jutterswet-nestkenmerk-rgs` from their `bron.rgs` with a descriptor as a user writes one
   (`scripts/tweelingen/`): named entry points whose scope names the rules and the defaults group. The case count of
-  each twin is pinned (10 + 4 + 4).
+  each twin is pinned (10 + 4 + 4). It then serves the vocabulary twin `jutterswet-vocabulaires`
+  (`scripts/vocabulaire_replay.py`): each case in the canonical spelling, in that of each vocabulary and mixed, each
+  answer asked canonically and in each vocabulary, beside the pinned input vocabulary, an entry point's default
+  vocabulary and `/info`, with the golden's `ir.json` as the table of names (2 cases pinned, at least 34 requests);
+  and an own witness (`scripts/tweelingen/vocabulaire-dubbelzinnig.*`): a name that two vocabularies give to two
+  declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
+  testimonies).
 - `check-dienst-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
   case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (216). Each golden is
   served from its `bron.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
@@ -111,7 +117,7 @@ to the directory the command is given in.
 | `check <bron.rgs...>` | parse and resolve: the model summary and the diagnostics (in a chain of files as `file:line`), exit 1 on an error; then the build on uchar's exec-model branch, exit 3 when uchar does not carry the model |
 | `ir <uit.json> <bron.rgs...>` | the `uchar-ir-v1` document of the model (uchar's emitter) |
 | `cases <map> <bron.rgs...>` | the scenarios of a test document lowered to uchar case files in `<map>`, beside the IR document they run against (`<map>/ir.json`): the layout of uchar's corpus |
-| `scenario [--trace] [--uitleg] <bron.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL, 3 on a MARKER |
+| `scenario [--trace] [--uitleg] [--vocabulaire <naam>] <bron.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL, 3 on a MARKER; `--vocabulaire` names the rules of the trace and the declarations of the uitleg in a vocabulary of the model |
 | `scenario --manifest <manifest> [--uitsluitingen <lijst>]` | every line `<verwachte-exit> <scenario.rgs> <companion.rgs...>` of a manifest, in one JVM; exit 0 when no line mismatches |
 | `serve <descriptor.dienst.json> <bron.rgs...> \| <document.json> [--allow-markers] [--host H] [--poort N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes |
 | `drl <bron.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal |
@@ -147,6 +153,34 @@ their reasons in `scripts/toka-manifest-uitsluitingen.txt`).
 
 The decision service serves a descriptor over `.rgs` sources or over one `uchar-ir-v1` document; `docs/ENGINE.md`
 describes its routes, its MARKER answer and the dev-only playground.
+
+## Vocabularies
+
+uchar lets a model declare named vocabularies and give each declaration a designation in them (`Vocabulaire
+handboek`, `(handboek: totale premie)`; uchar's `spec/IR-SPEC.md` ch. 2.12). The designations carry no semantics:
+rules are written and computed in the canonical names. The distribution uses them at the edge, as one service:
+
+- **Input is liberal.** A request may write every name — object type, attribute, characteristic, fact type, role,
+  parameter, enumeration value — canonically or as its designation in any vocabulary, mixed within one request,
+  case-insensitively, within the scope of the name (the members of an object type with the inherited ones, the roles
+  of a fact type, the values of a domain, the rest model-wide). A name that reads as two different declarations is a
+  400 `DUBBELZINNIGE_NAAM` whose sentence names both readings; the query parameter `invoervocabulaire=<naam>` pins
+  the vocabulary the names are read in (`canoniek` for the canonical names), which resolves it.
+- **Output is chosen.** `vocabulaire=<naam>` names the declarations of the answer, its inconsistencies and its
+  uitleg in that vocabulary; without it the entry point's `vocabulaire` from the descriptor applies, else the
+  canonical names. An unknown vocabulary is a 400 `ONBEKEND_VOCABULAIRE` naming the declared ones.
+- **Complete or not.** A declaration without a designation in the chosen vocabulary keeps its canonical name. uchar
+  requires a designation of every declaration only in the default vocabulary; `/info` lists per vocabulary whether it
+  is complete and which declarations have none.
+- **One OpenAPI document per vocabulary.** `OpenApiEmitter.emit(descriptor, model, vocabulaire)` writes the contract
+  in the names of one vocabulary (or canonically); each property, value and entry point lists its other spellings in
+  `x-spellingen` / `x-waardespellingen`, which the service accepts as well. A model without vocabularies gets the
+  document it always had.
+- **A designation is part of the contract.** Changing a designation changes the names a consumer of that vocabulary
+  sends and receives; treat it as a contract change of the service.
+
+The word `canoniek` chooses the canonical names, so a model that declares a vocabulary of that name does not start.
+The rule text is never renamed: the uitleg quotes it as written.
 
 ## The container
 
@@ -188,6 +222,8 @@ checks the running service: the golden TOKA scenarios over HTTP, the marker's ex
   decides gets no sentence.
 - **The playground trace** names per fired rule the labels it bound and how often, but no value: uchar's report
   carries none.
+- **Vocabulary names in the Mermaid graph.** The playground's `graaf` and `bin/regelspraak graaf` are uchar's
+  rendering and stay canonical; the playground's `graafJson` carries the chosen vocabulary.
 
 ## The parity zone
 

@@ -58,6 +58,16 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   of a request are written as uchar's replay writes a case's `roles` (`RolSchrijver`: by the role's written name,
   the far field of a one-to-one relation too, a to-many role through the far end); an enumeration value names a
   declared value as uchar compares declared names (case and spacing aside), and keeps its own spelling.
+- Names and vocabularies (README, "Vocabularies"). `NaamLezer` reads every name of a request canonically or as a
+  designation in any vocabulary of the model (uchar's `RegelSpraakModel.benoemd`), within the scope of its kind,
+  case-insensitively and mixed; a name that reads as two declarations is a 400 `DUBBELZINNIGE_NAAM` naming both
+  readings, and `?invoervocabulaire=<naam>` (or `canoniek`) pins the vocabulary names are read in. A designation is
+  read as the declaration's canonical name, an enumeration value as the declared value it names. Two names of one
+  object that read as one declaration are a 400 `MALFORMED`. `?vocabulaire=<naam>` chooses the names of the answer,
+  its `inconsistenties` and its `uitleg` (`Naamgeving`), else the entry point's `vocabulaire` from the descriptor,
+  else the canonical names; an unknown vocabulary is a 400 `ONBEKEND_VOCABULAIRE`, and a descriptor naming one does
+  not start. A declaration without a designation in the chosen vocabulary keeps its canonical name. The Quarkus
+  adapter reads the same query parameters.
 - The answer lists per instance the selected attributes and characteristics, `inconsistenties` (the rule names of
   the failed consistency checks) and `inconsistentieDetails` (the same, each with its `onderwerp`: the request id
   of the instance the check is about). A 400 names per violation its `veld`, its `soort` and its message; `soort`
@@ -65,7 +75,18 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   periods, a dimensioned attribute).
 - `GET /info`: per entry point whether it is `uitvoerbaar`, its `dekking` (the exec-model branch's verdict per form
   of its document, defaults groups included), its markers and, when uchar does not carry it, uchar's sentence as
-  `weigering`; the parameter defaults, the loaded parameter sets and the period-coverage warnings.
+  `weigering`; the parameter defaults, the loaded parameter sets and the period-coverage warnings. An entry point
+  with a default vocabulary names it (`vocabulaire`), and a model with vocabularies adds `vocabulaires`: per
+  vocabulary `naam`, `standaard`, `taal`, whether it is `volledig`, and `zonderBenaming`, the declarations
+  (`{soort, eigenaar?, naam}`) an answer in it names canonically. uchar's WF-119 makes only the default vocabulary
+  complete.
+- The OpenAPI contract (`OpenApiEmitter`) is written per vocabulary: `emit(descriptor, model, vocabulaire)` names the
+  object types, properties, enumeration values and selectors in that vocabulary (null or `canoniek`: canonically). For
+  a model with vocabularies every object type, property and entry point lists its other spellings in `x-spellingen`,
+  every enumeration its values' in `x-waardespellingen`, the descriptions say the service accepts them, the
+  operations document `vocabulaire` and `invoervocabulaire`, and `info.x-vocabulaire` names the document's
+  vocabulary. A model without vocabularies gets none of it. The documents are written by the emitter's API
+  (`schrijf`, file `<dienst>.<vocabulaire>.json`); the service serves no route for them.
 - What uchar does not carry — a refusal of its emitter, loader or backend (a construct the exec-model branch does
   not lower among them), or a scoped rule name that yields no form in uchar's model — makes the entry point a
   marker. Strict, the service refuses to start (exit 3, `MARKER: …` with uchar's sentence). With `--allow-markers`
@@ -78,7 +99,8 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   as a view (not the verdict), uchar's rule graph of the document its loader reads back, as Mermaid (`graaf`) and
   as `graafJson`
   (`{nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}`), and per scenario uchar's report with its `trace`
-  and `uitleg`.
+  and `uitleg`. `?vocabulaire=<naam>` names `graafJson`, the trace, the per-scenario coverage and the uitleg in a
+  vocabulary of the source (the Mermaid graph, the IR and the verdict stay uchar's); an unknown one is a 400.
 
 **peildatum-contract (multi-vintage deploys).** When the descriptor names a parameterset sidecar whose values
 carry more than one vintage, the service selects each parameter's vintage against ONE date authority: the request
