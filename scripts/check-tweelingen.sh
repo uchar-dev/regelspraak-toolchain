@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Poort: de drie dialect-tweelingen uit uchars corpus vuren via HTTP met de verwachtingen van al hun casebestanden.
+# Poort: de drie dialect-tweelingen en de vocabulairetweeling uit uchars corpus vuren via HTTP met de verwachtingen
+# van al hun casebestanden.
 #
 # ww-herleving-inkomen-rgs, jutterswet-uitsluiting-rgs en jutterswet-nestkenmerk-rgs zijn RegelSpraak-tweelingen
 # van hand geschreven uchar-goldens in het uitzonderingsdialect: hun basisregels met uitzonderingen worden
@@ -13,6 +14,15 @@
 # Vloer: het aantal cases per tweeling is gepind (een gelijkheid): 10 + 4 + 4, gemeten 2026-09-26 op uchar d67f5da1.
 # Een tweeling die een case verliest of wint, faalt hier bij naam; een pin-bump die het corpus verandert, zet dit
 # getal bewust bij. Een lege set faalt.
+#
+# De vocabulairetweeling: jutterswet-vocabulaires (twee vocabulaires, een benaming op elke declaratie) via
+# scripts/vocabulaire_replay.py met scripts/tweelingen/jutterswet-vocabulaires.dienst.json. Elke case gaat in de
+# canonieke spelling, in die van elk vocabulaire en gemengd, en vraagt zijn antwoord canoniek en in elk vocabulaire;
+# daarbij het vastgezette invoervocabulaire, de weigering van een andere spelling daaronder, het standaardvocabulaire
+# van een entrypoint en /info. De vertaaltafel is het ir.json van de golden. Gepind: het aantal cases (een gelijkheid,
+# 2) en een vloer op het aantal verzoeken. De getuige (scripts/tweelingen/vocabulaire-dubbelzinnig.*, eigen materiaal):
+# een naam die in twee vocabulaires naar verschillende declaraties wijst, is een 400 die beide lezingen noemt; met het
+# invoervocabulaire vastgezet speelt hetzelfde verzoek; een onbekend vocabulaire is een 400 die de gedeclareerde noemt.
 set -u
 cd "$(dirname "$0")/.."
 
@@ -27,6 +37,12 @@ TWEELINGEN=(
   "jutterswet-nestkenmerk-rgs|4"
 )
 EXPECTED_CASES=18   # 2026-09-26: 10 + 4 + 4, de som van de pins hierboven
+
+VOCABULAIRE_TWEELING="jutterswet-vocabulaires|2"
+# 2026-09-27, uchar 43caed71: 2 cases × (4 spellingen × 3 uitvoervocabulaires + 3 vastgezet + 1 standaard + 1 weigering)
+EXPECTED_MIN_VOCABULAIRE_VERZOEKEN=34
+# 2026-09-27: dubbelzinnig, vastgezet in twee uitvoervocabulaires, onbekend vocabulaire
+EXPECTED_MIN_GETUIGENISSEN=4
 
 [ ${#TWEELINGEN[@]} -gt 0 ] || fail "geen tweeling om te spelen (een lege set is een faal)"
 
@@ -58,4 +74,27 @@ for t in "${TWEELINGEN[@]}"; do
 done
 [ "$totaal" -eq "$EXPECTED_CASES" ] || fail "$totaal cases gespeeld, EXPECTED_CASES pint $EXPECTED_CASES"
 
-echo "check-tweelingen: PASS — ${#TWEELINGEN[@]} tweelingen, $totaal cases via HTTP met de gepinde verwachtingen"
+vg="${VOCABULAIRE_TWEELING%%|*}"; vpin="${VOCABULAIRE_TWEELING#*|}"
+[ -f "uchar/corpus/golden/$vg/bron.rgs" ] || fail "vocabulairetweeling '$vg' heeft geen bron.rgs in uchars corpus"
+getuige=scripts/tweelingen/vocabulaire-dubbelzinnig
+uitvoer=$(python3 scripts/vocabulaire_replay.py --corpus uchar/corpus/golden \
+    --golden "$vg=scripts/tweelingen/$vg.dienst.json" \
+    --getuige "vocabulaire-dubbelzinnig=$getuige.rgs,$getuige.dienst.json,$getuige.getuige.json") \
+  || fail "de vocabulaire-driver faalde"
+echo "$uitvoer" | sed 's/^/  /'
+regel=$(printf '%s\n' "$uitvoer" | awk -F'\t' -v g="$vg" '$1 == g')
+[ -n "$regel" ] || fail "'$vg' kreeg geen uitkomst"
+[ "$(printf '%s' "$regel" | cut -f2)" = PLAYED ] || fail "'$vg' speelt niet in elk vocabulaire: $(printf '%s' "$regel" | cut -f2-)"
+vcases=$(printf '%s' "$regel" | cut -f3); vverzoeken=$(printf '%s' "$regel" | cut -f4)
+[ "$vcases" -eq "$vpin" ] || fail "'$vg' speelde $vcases cases, gepind zijn er $vpin"
+[ "$vverzoeken" -ge "$EXPECTED_MIN_VOCABULAIRE_VERZOEKEN" ] \
+  || fail "'$vg' deed $vverzoeken verzoeken, de vloer EXPECTED_MIN_VOCABULAIRE_VERZOEKEN is $EXPECTED_MIN_VOCABULAIRE_VERZOEKEN"
+regel=$(printf '%s\n' "$uitvoer" | awk -F'\t' '$1 == "vocabulaire-dubbelzinnig"')
+[ -n "$regel" ] || fail "de getuige kreeg geen uitkomst"
+[ "$(printf '%s' "$regel" | cut -f2)" = PLAYED ] || fail "de getuige getuigt niet: $(printf '%s' "$regel" | cut -f2-)"
+getuigenissen=$(printf '%s' "$regel" | cut -f3)
+[ "$getuigenissen" -ge "$EXPECTED_MIN_GETUIGENISSEN" ] \
+  || fail "de getuige gaf $getuigenissen getuigenissen, de vloer EXPECTED_MIN_GETUIGENISSEN is $EXPECTED_MIN_GETUIGENISSEN"
+
+echo "check-tweelingen: PASS — ${#TWEELINGEN[@]} tweelingen, $totaal cases via HTTP met de gepinde verwachtingen;" \
+  "vocabulairetweeling $vg: $vcases cases in $vverzoeken verzoeken; getuige: $getuigenissen getuigenissen"

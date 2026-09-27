@@ -3,7 +3,7 @@
 #
 #   1 pin         scripts/check-pin.sh            de submodule op de pin, schoon, de versies van uchar
 #   2 reactor     mvn -B -o verify                de reactor met zijn suites en vloeren
-#   3 tweelingen  scripts/check-tweelingen.sh     de drie dialect-tweelingen over HTTP
+#   3 tweelingen  scripts/check-tweelingen.sh     de dialect-tweelingen en de vocabulairetweeling over HTTP
 #   4 replay      scripts/check-dienst-replay.sh  de goldens van uchars gate 12 door de dienst
 #   5 manifest    make scenario-test              het gouden TOKA-manifest
 #   6 image       make image                      het image van de dienst

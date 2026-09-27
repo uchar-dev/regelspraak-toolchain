@@ -16,7 +16,7 @@ REGELSPRAAK := bin/regelspraak
 help:
 	@echo "  make check-pin                       Verify the uchar submodule is initialised, clean, and version-aligned"
 	@echo "  make verify                          check-pin, then mvn -B -o verify over the whole reactor"
-	@echo "  make check-tweelingen                 The three dialect twins fire over HTTP with all their case expectations"
+	@echo "  make check-tweelingen                 The dialect twins and the vocabulary twin fire over HTTP with all their case expectations"
 	@echo "  make check-dienst-replay              Every golden uchar's gate 12 plays, replayed through the service"
 	@echo "  make poorten                          verify, both service gates and the golden TOKA manifest"
 	@echo "  make gates                           The check before every landing: poorten, image and kind-smoke in"
