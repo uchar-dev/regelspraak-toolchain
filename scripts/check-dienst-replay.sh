@@ -29,7 +29,9 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 
 # Het aantal goldens dat door de dienst speelt. 2026-09-26, uchar d67f5da1: 188 van de 215 die gate 12 speelt; de
 # 27 andere staan hieronder, alle met een tijdlijnvorm.
-EXPECTED_REPLAY_PLAYED=188
+# 2026-09-27, uchar c70dcad6: 189 — de golden jutterswet-jaarvaststelling (parametersets, scalaire
+# parameters) speelt door de dienst; de 27 uitsluitingen zijn ongewijzigd.
+EXPECTED_REPLAY_PLAYED=189
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
