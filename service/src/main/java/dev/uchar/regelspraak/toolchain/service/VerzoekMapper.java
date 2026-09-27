@@ -341,6 +341,10 @@ public final class VerzoekMapper {
             if (beanA == null) { s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, pad + ".rollen." + rolA, "onbekend id '" + idA + "'")); continue; }
             if (beanB == null) { s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, pad + ".rollen." + rolB, "onbekend id '" + idB + "'")); continue; }
             Objecttype otA = typePerLabel.get(idA), otB = typePerLabel.get(idB);
+            // writeRefAls1op1 falls back on the type pair as the role writer does: an id that does not fill its role
+            // would be written into another relation between the two types, as on an inline rol
+            boolean vultA = vultRol(ft, rolA, idA, otA, pad, s), vultB = vultRol(ft, rolB, idB, otB, pad, s);
+            if (!vultA || !vultB) continue;
             // A to-ONE reference field exists on a holder iff navigating holder->doel is NOT to-many; for a 1:1
             // feittype that is BOTH directions (two fields), for a 1:N only the many->one direction. Write every
             // to-one direction so navigation never reads a spuriously-null leg (the §4.20 leegwaarde bug the
@@ -349,6 +353,19 @@ public final class VerzoekMapper {
             writeRefAls1op1(beanA, otA, rolB, otB, beanB, ft, pad, s);   // A -> B named after B's role
             writeRefAls1op1(beanB, otB, rolA, otA, beanA, ft, pad, s);   // B -> A named after A's role
         }
+    }
+
+    /** Whether {@code id} (of objecttype {@code type}) fills the role {@code rol} of {@code ft}, its declared type or a
+     *  subtype of it; if not, a {@link Schending.Soort#VERKEERD_TYPE} on that role's field. */
+    private boolean vultRol(Feittype ft, String rol, String id, Objecttype type, String pad, List<Schending> s) {
+        for (Rol r : ft.rollen) {
+            if (!r.naam().equals(rol)) continue;
+            Objecttype doeltype = model.objecttypeOpNaam(r.objecttypeNaam());
+            if (doeltype == null || type.isEen(doeltype)) return true;
+            s.add(verkeerdType(pad + ".rollen." + rol, rol, doeltype, id, type));
+            return false;
+        }
+        return true;
     }
 
     /** Collect exactly the two (roleName, id) endpoints of a relation. For a normal binary feittype that is one

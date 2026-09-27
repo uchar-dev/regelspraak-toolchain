@@ -17,11 +17,11 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * An id on an inline rol must name an instance whose objecttype fills that rol: the declared type or a subtype of
- * it. Another objecttype is an error of the caller, refused as VERKEERD_TYPE with the rol, the id and both types,
- * before the role writer runs. That writer falls back on the type pair when the written rol does not fit, and then
- * either refused the link as a form the service does not carry (NIET_ONDERSTEUND) or wrote it into the field of
- * another relation between the two types.
+ * An id on a rol, inline or in a relatie, must name an instance whose objecttype fills that rol: the declared type
+ * or a subtype of it. Another objecttype is an error of the caller, refused as VERKEERD_TYPE with the rol, the id
+ * and both types, before anything is written. Both writers fall back on the type pair when the rol does not fit,
+ * and then refused the link as a form the service does not carry (NIET_ONDERSTEUND) or as a rol they could not
+ * determine (ONBEKEND_VELD), or wrote it into the field of another relation between the two types.
  *
  * <p>Own material: a self-typed one-to-many feittype on Jutter, a one-to-many feittype between Jutter and
  * Strandvondst (which has the subtype Wrakstuk), and a Strandpaal no feittype relates.
@@ -98,6 +98,20 @@ class RolDoeltypeTest {
                 { "type": "Jutter", "id": "J1", "rollen": { "leerling": ["S1"] } },
                 { "type": "Strandvondst", "id": "S1" } ] }""");
         assertEquals(List.of(Schending.van(Schending.Soort.VERKEERD_TYPE, "instanties[0].rollen.leerling",
+                        "rol 'leerling' verwacht een instantie van objecttype 'Jutter', maar id 'S1' is van"
+                                + " objecttype 'Strandvondst'")),
+                r.schendingen());
+        assertNull(RegelSpraakRuntime.get(r.wereld().beans().get("S1"), "vinder"), "S1 kreeg een vinder");
+    }
+
+    @Test
+    void id_van_een_ander_objecttype_op_een_rol_van_een_relatie_is_verkeerd_type() {
+        // the by-pair fallback made J1 the vinder of S1 and then found no field for the other direction
+        var r = map("""
+            { "instanties": [ { "type": "Jutter", "id": "J1" }, { "type": "Strandvondst", "id": "S1" } ],
+              "relaties": [ { "feittype": "leerlingschap",
+                              "rollen": { "leermeester": "J1", "leerling": "S1" } } ] }""");
+        assertEquals(List.of(Schending.van(Schending.Soort.VERKEERD_TYPE, "relaties[0].rollen.leerling",
                         "rol 'leerling' verwacht een instantie van objecttype 'Jutter', maar id 'S1' is van"
                                 + " objecttype 'Strandvondst'")),
                 r.schendingen());
