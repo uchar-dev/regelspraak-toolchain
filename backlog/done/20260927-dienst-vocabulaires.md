@@ -379,3 +379,47 @@ c3cc62a Test: een uchar-ir-v1-document als bron draagt de vocabulaires
 ```
 
 en de commit van dit Result.
+
+## Keuring (hoofdsessie, 2026-09-27)
+
+Geland op main na een eigen `make gates` op de kop van de branch
+(`/tmp/vocab/logs/tc-gates-vocab.log`): groen — pin uchar 43caed71,
+reactor 846/120/210/43 (vloeren bewust naar 120/210/43), tweelingen 3 met
+18 cases plus de vocabulairetweeling (2 cases, 34 verzoeken) en de
+dubbelzinnigheidsgetuige (4 getuigenissen), replay 190 goldens en 498
+cases (pin 190), manifest 32 regels 29 ok 3 uitgesloten, image, kind-smoke.
+
+Gelezen: de lezer (`NaamLezer`: liberaal, gemengd, dubbelzinnig met beide
+lezingen, vastgezet strikt op de effectieve namen, onbekend), de
+antwoordbouwer en `Naamgeving` (uitvoer in het gekozen vocabulaire, trace,
+uitleg, `graafJson`, scenario-CLI `--vocabulaire`), `/info` met
+volledigheid per vocabulaire, de OpenAPI-emitter met `x-spellingen` en
+`x-waardespellingen` en drie byte-gepinde goldens naast de onveranderde
+bestaande golden, de poort met zijn vertaaltafel uit het `ir.json` van de
+golden en de mutatieproef, de README-sectie "Vocabularies" en ENGINE.
+Voorbeeldverzoeken in het Result zijn echte uitvoer.
+
+De besluiten van Yeb (2026-09-27) zijn gevolgd: één dienst, invoer
+liberaal met dubbelzinnigheidsweigering en optionele vastzetting, uitvoer
+per verzoek met een descriptor-standaard, OpenAPI per vocabulaire met de
+andere spellingen als extensie en geen liberaal verzameldocument. De vijf
+normvragen zijn beantwoord met het standaardantwoord van de bouwer, hier
+bevestigd: de descriptor blijft canoniek (alleen `vocabulaire` erbij);
+weigerzinnen noemen declaraties canoniek met de spelling van de afnemer in
+`veld`; de canonieke uitvoer houdt de spelling van het verzoek voor een
+enumeratiewaarde; een vastgezet vocabulaire leest strikt; `/info` blijft
+canoniek. Het gereserveerde woord `canoniek` en de nieuwe `MALFORMED` voor
+twee spellingen van één declaratie in één object zijn aanvaard (de tweede
+sluit een stille laatste-wint). Buiten het "mag raken" aanvaard:
+`bin/regelspraak` en `Makefile` (helptekst) en de vloeren in
+`tools/check-skips.sh`.
+
+Open, vastgelegd en niet als kaart: er is geen route en geen CLI-pad dat
+de OpenAPI-documenten levert (voor en na deze kaart; ze ontstaan via de
+API van de emitter en in `target/openapi/` van de tests); de Mermaid-graaf
+blijft canoniek; de zinsbouw van de uitleg met een benaming in een andere
+woordvorm leest stroef. Voor uchar (vastgelegd in PLAN §9 daar):
+`RegelGraaf` geeft per knoop geen elementsleutel, zodat de playground de
+declaratie via het label zoekt en een niet-eenduidige knoop weigert; de
+bereikbaarheidsregel van een rol (IR-SPEC ch. 2.6) bestaat in uchar alleen
+privé. Daarna: pin-bump naar de werkbank (lokaal, Yeb pusht).
