@@ -91,9 +91,9 @@ pinned expectation, compared as uchar's replay compares it (`scripts/dienst_repl
   (`scripts/tweelingen/`): named entry points whose scope names the rules and the defaults group. The case count of
   each twin is pinned (10 + 4 + 4).
 - `check-dienst-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
-  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (215). Each golden is
+  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (216). Each golden is
   served from its `bron.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
-  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 188); every golden that does not play is listed by name with
+  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 189); every golden that does not play is listed by name with
   its reason (27, each a timeline form the request cannot express); a deviation always fails, and the list fails when
   it goes stale in either direction. About 50 seconds with four services at a time (`REPLAY_WERKERS`).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
@@ -176,9 +176,10 @@ checks the running service: the golden TOKA scenarios over HTTP, the marker's ex
 
 ## Known losses
 
-- **Parameter sets on the scenario route** (`--parametersets`, refused by name). uchar's scenario resolver refuses a
-  scenario whose carried rules read a parameter its situation does not set, so no case file is written for a
-  parameter set to go into. Every parameter a tested rule reads needs a value in the scenario's situation.
+- **A parameter-set file on the scenario route** (`--parametersets`, refused by name). A scenario gets its parameter
+  set from the scenario document itself: a `Parameterset <naam>:` block, chosen with `met parameterset <naam>`
+  (uchar's scenario layer, since the pin on `c70dcad6`). The former runner's JSON file beside the scenario has no
+  counterpart.
 - **Timelines in a service request.** The request has no timeline value, no characteristic with periods, and no
   scalar on a time-dependent attribute (uchar's replay places one in the bucket of the evaluation date); the service
   refuses them as `NIET_ONDERSTEUND`. 27 of the goldens gate 12 plays need one; the replay gate lists them.
