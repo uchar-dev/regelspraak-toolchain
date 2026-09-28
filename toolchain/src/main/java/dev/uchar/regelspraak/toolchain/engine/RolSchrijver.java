@@ -96,12 +96,27 @@ public final class RolSchrijver {
         roep(drager, Namen.setter(rol), doel.getClass(), doel);
     }
 
+    /** Calls {@code bean.methode(waarde)}. The reference field of a role is typed as the role's declared filler
+     *  (uchar's bean model since 2026-09-28), so an instance of a subtype of that filler arrives as a value whose own
+     *  class the setter does not name: the setter is looked up along the value's class line, the declared type
+     *  first, then each superclass, and the first match is called. */
     private static void roep(Object bean, String methode, Class<?> type, Object waarde) {
-        try {
-            bean.getClass().getMethod(methode, type).invoke(bean, waarde);
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("kon " + methode + "(" + type.getSimpleName() + ") niet aanroepen op "
-                    + bean.getClass().getSimpleName(), e);
+        for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {
+            java.lang.reflect.Method m;
+            try {
+                m = bean.getClass().getMethod(methode, c);
+            } catch (NoSuchMethodException e) {
+                continue;
+            }
+            try {
+                m.invoke(bean, waarde);
+                return;
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("kon " + methode + "(" + c.getSimpleName() + ") niet aanroepen op "
+                        + bean.getClass().getSimpleName(), e);
+            }
         }
+        throw new IllegalStateException("kon " + methode + "(" + type.getSimpleName() + ") niet aanroepen op "
+                + bean.getClass().getSimpleName() + ": geen setter voor dat type of een supertype ervan");
     }
 }

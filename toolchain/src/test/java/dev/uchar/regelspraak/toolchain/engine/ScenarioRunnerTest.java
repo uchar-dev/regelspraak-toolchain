@@ -52,6 +52,37 @@ class ScenarioRunnerTest {
         assertEquals(Status.PASS, r.status(), () -> "verwacht PASS: " + r.diagnose() + " / " + r.verwachtingen());
     }
 
+    /** A subtype instance in a role whose declared filler is its supertype: the bean's setter is typed as the filler
+     *  (uchar's bean model since 2026-09-28), and the role writer finds it along the value's class line. Before that
+     *  lookup the session failed with "kon setVondst(Wrakvondst) niet aanroepen op Melding" while uchar's own replay
+     *  played the same case. */
+    @Test void subtype_in_de_rol_van_zijn_supertype() {
+        ScenarioResultaat r = één("""
+            Objecttype de Vondst (mv: Vondsten)
+                de waarde Numeriek (geheel getal);
+            Objecttype de Wrakvondst is een Vondst (mv: Wrakvondsten)
+                het aantal meldingen Numeriek (geheel getal);
+            Objecttype de Melding (mv: Meldingen)
+                de gemelde waarde Numeriek (geheel getal);
+            Feittype VondstHeeftMelding
+                de vondst Vondst
+                de melding (mv: meldingen) Melding
+            Eén vondst heeft meerdere meldingen
+            Regel gemelde waarde
+            geldig altijd
+            De gemelde waarde van een Melding moet gesteld worden op de waarde van de vondst van de Melding.
+            Scenario subtype in de rol
+            Gegeven is de volgende situatie:
+            een Wrakvondst W
+            - de waarde is 5
+            een Melding M
+            - de vondst is W
+            Met als verwacht resultaat:
+            - de gemelde waarde van M is 5
+            """);
+        assertEquals(Status.PASS, r.status(), () -> "verwacht PASS: " + r.diagnose() + " / " + r.verwachtingen());
+    }
+
     /** The explanation of a played scenario: its own session fires what uchar's replay reported, and the verbaliser
      *  justifies the characteristic with the operand values the condition read. The rule with a parameter shows that
      *  the session carries the situation's parameters as globals. */

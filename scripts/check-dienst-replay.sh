@@ -39,7 +39,12 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # 2026-09-28, uchar ea6695a2: 192 — de golden jutterswet-opgave-datum (de opgave-markering op een Datum in dagen;
 # een datum berekend uit een andere datum, een initialisatie met datumliteral als laagste default) speelt door de
 # dienst; de 27 uitsluitingen zijn ongewijzigd.
-EXPECTED_REPLAY_PLAYED=192
+# 2026-09-29, uchar 26ca6b0b: 195 — drie nieuwe spelers: jutterswet-wrakmelding (een subtype-instantie in een rol
+# die het supertype vult; de rolschrijver van de toolchain zoekt de setter sindsdien langs de klasselijn van de
+# waarde), jutterswet-meldingsketen (een voorwaarde op een afgeleide waarde van een genavigeerd object vuurt nu in
+# de exec-tak) en anchor/jutterswet-kustwacht (verliet de weigerlijst van gate 12 om dezelfde reden); de 27
+# uitsluitingen zijn ongewijzigd.
+EXPECTED_REPLAY_PLAYED=195
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
