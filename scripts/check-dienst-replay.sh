@@ -33,7 +33,10 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # parameters) speelt door de dienst; de 27 uitsluitingen zijn ongewijzigd.
 # 2026-09-27, uchar 43caed71: 190 — de golden jutterswet-vocabulaires (vocabulairezijtafel, geen semantiek)
 # speelt door de dienst; de 27 uitsluitingen zijn ongewijzigd.
-EXPECTED_REPLAY_PLAYED=190
+# 2026-09-28, uchar 68eed2fb: 191 — de golden jutterswet-premierecht (een objecttypenaam met een voorzetsel,
+# een feittypenaam met een werkwoord; namen die de frontend eerder afkapte) speelt door de dienst; de 27
+# uitsluitingen zijn ongewijzigd.
+EXPECTED_REPLAY_PLAYED=191
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
