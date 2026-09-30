@@ -52,7 +52,9 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # 2026-09-30, uchar 6f8b9d1f: 198 — één nieuwe speler: jutterswet-sluitdag (de operanden van een
 # berekening onder een kwantorvoorwaarde; de exec-tak houdt het onderwerppatroon reactief); de 27
 # uitsluitingen zijn ongewijzigd.
-EXPECTED_REPLAY_PLAYED=198
+# 2026-09-30, uchar 6b7ab8a2: 199 — één nieuwe speler: jutterswet-opgave-subtype (de opgave-markering met
+# schrijvers op subtypen: de groep op het supertype wordt heel geërfd); de 27 uitsluitingen zijn ongewijzigd.
+EXPECTED_REPLAY_PLAYED=199
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
