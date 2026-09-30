@@ -49,7 +49,10 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # jutterswet-premiestaffel (een rechtvaardiging van een default die telt, een keten van rollen of een numerieke
 # parameter leest, speelt in de exec-tak; de groepen beslissen na hun producenten); de 27 uitsluitingen zijn
 # ongewijzigd.
-EXPECTED_REPLAY_PLAYED=197
+# 2026-09-30, uchar 6f8b9d1f: 198 — één nieuwe speler: jutterswet-sluitdag (de operanden van een
+# berekening onder een kwantorvoorwaarde; de exec-tak houdt het onderwerppatroon reactief); de 27
+# uitsluitingen zijn ongewijzigd.
+EXPECTED_REPLAY_PLAYED=198
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
