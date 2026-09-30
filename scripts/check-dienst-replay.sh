@@ -59,7 +59,9 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # Comparable; een vouw in een berekening wordt een eigen accumulate); de 27 uitsluitingen zijn ongewijzigd.
 # 2026-09-30, uchar b0aab696: 203 — één nieuwe speler: jutterswet-zwaarste-vondst (een vouw met een subselectie
 # op een later afgeleide waarde herziet in de exec-tak); de 27 uitsluitingen zijn ongewijzigd.
-EXPECTED_REPLAY_PLAYED=203
+# 2026-10-01, uchar e33b5c8d: 204 — één nieuwe speler: jutterswet-sluitdag-gemeld (een vouw als consequentie van
+# een default speelt in de exec-tak als accumulate op de reduce-regel); de 27 uitsluitingen zijn ongewijzigd.
+EXPECTED_REPLAY_PLAYED=204
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
