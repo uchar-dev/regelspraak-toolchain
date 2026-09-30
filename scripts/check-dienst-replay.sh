@@ -44,7 +44,12 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # waarde), jutterswet-meldingsketen (een voorwaarde op een afgeleide waarde van een genavigeerd object vuurt nu in
 # de exec-tak) en anchor/jutterswet-kustwacht (verliet de weigerlijst van gate 12 om dezelfde reden); de 27
 # uitsluitingen zijn ongewijzigd.
-EXPECTED_REPLAY_PLAYED=195
+# 2026-09-30, uchar de809cf7: 197 — twee nieuwe spelers: jutterswet-zinkende-jutter (een kenmerkcontrole onder een
+# kwantor leest 'geen' en een meerwoordige naam heel, zodat "alle … geen X hebben" als ontkenning lowert) en
+# jutterswet-premiestaffel (een rechtvaardiging van een default die telt, een keten van rollen of een numerieke
+# parameter leest, speelt in de exec-tak; de groepen beslissen na hun producenten); de 27 uitsluitingen zijn
+# ongewijzigd.
+EXPECTED_REPLAY_PLAYED=197
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
