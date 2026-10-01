@@ -323,6 +323,68 @@ class ScopeDefaultsgroepTest {
                 indien %s.
         """;
 
+    /** One base on Jutter and the own exceptions of three subtypes, a grandchild among them, each reading only request
+     *  input. uchar lowers them to the groups 'premie voor Strandjutter', 'premie voor Barnsteenjutter' and 'premie
+     *  voor Wrakjutter', each over the inherited base (RUNTIME-SEMANTICS ch. 7.10). */
+    private static final String ERFLIJN = TIJD + """
+        Objecttype de Jutter (mv: Jutters) (bezield)
+            de vinddag Datum in dagen;
+            de premie Numeriek (geheel getal);
+
+        Objecttype de Strandjutter is een Jutter (mv: Strandjutters)
+            de strook Tekst;
+
+        Objecttype de Barnsteenjutter is een Strandjutter (mv: Barnsteenjutters)
+            de vindplaats Tekst;
+
+        Objecttype de Wrakjutter is een Jutter (mv: Wrakjutters)
+            de wrak Tekst;
+        """ + PREMIE_10 + """
+
+        Uitzondering op premie: strandberging
+            geldig altijd
+                De premie van een Strandjutter moet gesteld worden op 7
+                indien zijn vinddag later is dan 28-05-2026.
+
+        Uitzondering op premie: barnsteenberging
+            geldig altijd
+                De premie van een Barnsteenjutter moet gesteld worden op 9
+                indien zijn vinddag later is dan 28-05-2026.
+
+        Uitzondering op premie: wrakberging
+            geldig altijd
+                De premie van een Wrakjutter moet gesteld worden op 6
+                indien zijn vinddag later is dan 28-05-2026.
+        """;
+
+    /** What the whole model gives each type, found on 30-05-2026 (an own exception decides) and on 01-03-2026 (the
+     *  base decides). */
+    private static final Map<String, Integer> ERFLIJN_VOL = Map.of("J1", 10, "S1", 7, "B1", 9, "W1", 6,
+            "J2", 10, "S2", 10, "B2", 10, "W2", 10);
+
+    /** The base reads 'bergdag'; the Strandjutter's own exception (an Afwijking, which keeps only its own condition)
+     *  reads request input. */
+    private static final String BASIS_LEEST = TIJD + """
+        Objecttype de Jutter (mv: Jutters) (bezield)
+            de vinddag Datum in dagen;
+            de bergdag Datum in dagen;
+            de premie Numeriek (geheel getal);
+
+        Objecttype de Strandjutter is een Jutter (mv: Strandjutters)
+            de strook Tekst;
+        """ + BERGDAG + """
+
+        Regel premie
+            geldig altijd
+                De premie van een Jutter moet gesteld worden op 10
+                indien zijn bergdag gevuld is.
+
+        Afwijking van premie: strandberging
+            geldig altijd
+                De premie van een Strandjutter moet gesteld worden op 7
+                indien zijn vinddag later is dan 28-05-2026.
+        """;
+
     private static final String BUITEN_DE_SCOPE =
             " vallen buiten de scope en het element is niet als invoerElement gedeclareerd";
 
@@ -455,6 +517,40 @@ class ScopeDefaultsgroepTest {
         assertTrue(f.schendingen().get(0).bericht().contains("navigeert via 'haven'"), () -> "" + f.schendingen());
     }
 
+    // ---------------- a subtype's own exceptions go with their base (RUNTIME-SEMANTICS ch. 7.10) ----------------
+
+    @Test
+    void de_basisregel_draagt_de_groepen_van_haar_subtypen() {
+        assertEquals(ERFLIJN_VOL, erflijnPremies(List.of("premie")));
+    }
+
+    @Test
+    void een_groep_van_een_subtype_draagt_haar_basis_en_de_andere_groepen_van_die_basis() {
+        assertEquals(ERFLIJN_VOL, erflijnPremies(List.of("premie voor Strandjutter")));
+        assertEquals(ERFLIJN_VOL, erflijnPremies(List.of("premie voor Barnsteenjutter")));
+    }
+
+    @Test
+    void wie_de_gegenereerde_groepen_toch_noemt_krijgt_hetzelfde() {
+        assertEquals(ERFLIJN_VOL, erflijnPremies(List.of("premie", "premie voor Strandjutter",
+                "premie voor Barnsteenjutter", "premie voor Wrakjutter")));
+    }
+
+    @Test
+    void de_basisregel_draagt_ook_wat_de_groep_van_het_subtype_leest() {
+        assertEquals(List.of(groep("gegenereerde defaults-groep 'premie voor Strandjutter'",
+                        "attribuut 'bergdag' van 'jutter'", "[bergdag]")),
+                scopeSchendingen(SUBTYPE, descriptor("premie", List.of("premie"), List.of("Strandjutter"),
+                        "Jutter.premie", "")));
+    }
+
+    @Test
+    void de_groep_van_het_subtype_draagt_ook_wat_haar_basis_leest() {
+        assertEquals(List.of(groep("defaults-groep van regel 'premie'", "attribuut 'bergdag' van 'jutter'", "[bergdag]")),
+                scopeSchendingen(BASIS_LEEST, descriptor("premie", List.of("premie voor Strandjutter"),
+                        List.of("Strandjutter"), "Jutter.premie", "")));
+    }
+
     // ---------------- the flanks: R2, R7 and the opt-outs ----------------
 
     @Test
@@ -551,6 +647,26 @@ class ScopeDefaultsgroepTest {
         assertNotNull(premie, () -> "antwoord: " + a);
         assertTrue(premie.isNumber(), () -> "antwoord: " + a);
         return premie.intValue();
+    }
+
+    /** The premie of each Jutter of {@link #ERFLIJN}, one of every type found on 30-05-2026 and one on 01-03-2026,
+     *  through an entry point whose scope names {@code regelnamen}; null where the answer has none. */
+    private static Map<String, Integer> erflijnPremies(List<String> regelnamen) {
+        BeslisserKern kern = bouw(ERFLIJN, descriptor("premie", regelnamen,
+                List.of("Jutter", "Strandjutter", "Barnsteenjutter", "Wrakjutter"), "Jutter.premie", ""));
+        StringBuilder instanties = new StringBuilder();
+        for (String type : List.of("Jutter", "Strandjutter", "Barnsteenjutter", "Wrakjutter"))
+            for (String[] dag : new String[][] { {"1", "2026-05-30"}, {"2", "2026-03-01"} })
+                instanties.append(instanties.length() == 0 ? "" : ", ").append("{ \"type\": \"").append(type)
+                        .append("\", \"id\": \"").append(type.charAt(0)).append(dag[0])
+                        .append("\", \"attributen\": { \"vinddag\": \"").append(dag[1]).append("\" } }");
+        ObjectNode a = kern.verwerk("premie", parse("{ \"instanties\": [ " + instanties + " ] }"));
+        Map<String, Integer> uit = new LinkedHashMap<>();
+        for (JsonNode i : a.path("instanties")) {
+            JsonNode premie = i.path("attributen").get("premie");
+            uit.put(i.path("id").asText(), premie == null || premie.isNull() ? null : premie.intValue());
+        }
+        return uit;
     }
 
     private static JsonNode parse(String json) {
