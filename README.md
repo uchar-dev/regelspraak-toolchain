@@ -152,9 +152,11 @@ what uchar's replay reported. uchar's scenario resolver refuses three of the 29 
 their reasons in `scripts/toka-manifest-uitsluitingen.txt`).
 
 The decision service serves a descriptor over `.rgs` sources or over one `uchar-ir-v1` document; `docs/ENGINE.md`
-describes its routes, its MARKER answer and the dev-only playground. It checks every scope at the start: a rule or a
-defaults group in the scope that reads an attribute or characteristic only forms outside the scope write refuses the
-start, unless the entry point declares that element in `invoerElementen` or sets `scopeControleUit`.
+describes its routes, its MARKER answer and the dev-only playground. A scope that names a base rule also carries the
+groups uchar makes of the own exceptions of its subtypes (`<basis> voor <subtype>`), and a scope that names such a group
+carries its base. It checks every scope at the start: a rule or a defaults group in the scope that reads an attribute or
+characteristic only forms outside the scope write refuses the start, unless the entry point declares that element in
+`invoerElementen` or sets `scopeControleUit`.
 
 ## Vocabularies
 
