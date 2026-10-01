@@ -74,7 +74,11 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # 2026-10-01, uchar 921fcc64: 209 — één nieuwe speler: jutterswet-late-vondst (een vouwfilter dat via een rol van
 # het element een later afgeleid lid leest, joint in de exec-tak het bereikte object en wordt na die schrijving
 # opnieuw getoetst; de telling-vorm ernaast); de 27 uitsluitingen zijn ongewijzigd.
-EXPECTED_REPLAY_PLAYED=209
+# 2026-10-02, uchar da03d480: 212 — drie nieuwe spelers uit de frontend-ronde G4+G5: jutterswet-havengeld (het
+# percentage van een genavigeerde grondslag), jutterswet-zwaarste-weging (een vouw over een verzameling gevolgd
+# door to-one stappen, via een gegenereerd lid) en jutterswet-opgave-bedrag (de opgave-markering op een bedrag met
+# één eenheid); de 27 uitsluitingen zijn ongewijzigd.
+EXPECTED_REPLAY_PLAYED=212
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
