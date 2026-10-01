@@ -60,10 +60,11 @@ public record DienstDescriptor(
      *        is intentional (an ordinary {@code invoer} objecttype only declares instance presence, NOT that its
      *        derived kenmerk/attribuut values are caller-supplied, so the opt-out is element-granular).
      * @param scopeControleUit OPT-OUT of the whole startup scope-completeness validation for this entry point.
-     *        The check verifies that every kenmerk/attribuut the scoped rules CONSUME has an in-scope producer
-     *        (or an {@code invoerElementen} declaration); a producer that exists but sits OUTSIDE the scope makes
-     *        the scoped rule read a stale-false/leeg value, semantically diverging from the source concatenation
-     *        the scenariotoetsen run against. {@code true} waives the check entirely; absent/false = strict.
+     *        The check verifies that every kenmerk/attribuut the scoped rules and defaults groups READ has an
+     *        in-scope producer (or an {@code invoerElementen} declaration); a producer that exists but sits OUTSIDE
+     *        the scope makes the scoped form read a stale-false/leeg value, semantically diverging from the source
+     *        concatenation the scenariotoetsen run against. {@code true} waives the check entirely; absent/false =
+     *        strict.
      * @param vocabulaire OPTIONAL the vocabulary an answer of this entry point names the declarations in when the
      *        request chooses none: one the model declares, or {@code canoniek}. Absent = the canonical names. The
      *        descriptor's own names (scope, invoer, uitvoer, invoerElementen, parameters) are canonical names.

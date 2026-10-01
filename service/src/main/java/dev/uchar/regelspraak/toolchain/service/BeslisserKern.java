@@ -199,8 +199,6 @@ public final class BeslisserKern {
                 ProducentConsument.producentIndex(model, model.prioritizedDefaults);
         for (DienstDescriptor.Entrypoint ep : descriptor.entrypoints()) {
             VormIndex.Keuze keuze = vormen.scope(ep.scope());
-            if (!ep.scopeControleUit())
-                scopeFouten.addAll(scopeVolledigheid(ep, model, producenten, keuze));
             Map<String, Object> defaults = defaultGlobals(descriptor, model);
             if (!keuze.zonderVorm().isEmpty()) {
                 String naam = keuze.zonderVorm().get(0);
@@ -210,14 +208,18 @@ public final class BeslisserKern {
                         defaults, config, perPad, markerFouten);
                 continue;
             }
+            RegelSpraakModel gescoopt = CaseEmitter.metScope(model, new ResolvedScenario.Scope(keuze.vormen()));
             DroolsBackend.Build build;
             try {
-                build = UcharBouw.bouw(CaseEmitter.metScope(model, new ResolvedScenario.Scope(keuze.vormen())),
-                        DroolsBackend.Branch.EXEC_MODEL);
+                build = UcharBouw.bouw(gescoopt, DroolsBackend.Branch.EXEC_MODEL);
             } catch (UcharBouw.NietGedragen ng) {
                 marker(ep, ng.construct(), ng.getMessage(), defaults, config, perPad, markerFouten);
                 continue;
             }
+            // Only once uchar carries the scope: a marker answers no request, so its reads decide nothing, and uchar's
+            // walk throws on a navigation its emitter refuses, where the marker names the refusal.
+            if (!ep.scopeControleUit())
+                scopeFouten.addAll(scopeVolledigheid(ep, model, gescoopt, producenten));
             perPad.put(ep.pad(), new Entrypoint(ep, build.kieBase(), List.of(), defaults,
                     build.dagsoortGlobalen(), build.dekking(), build.beanLoader(), null));
         }
@@ -397,25 +399,29 @@ public final class BeslisserKern {
 
     // ---------------- scope-completeness validation ----------------
 
-    // The producer/consumer analysis — the producer index, the consumed-element walk, and the ElementSleutel
-    // identity — is the SHARED {@link ProducentConsument} core (jar-only, no Drools). This class is one of its
-    // two consumers (the regelgraaf builder is the other); both check producer against consumer over the same
-    // IR-derived facts, so this scope-completeness gate and the graph never diverge.
+    // The producer/consumer analysis — the producer index, the walk over what a form reads, and the ElementSleutel
+    // identity — is the SHARED {@link ProducentConsument} core (jar-only, no Drools). This class is one of its two
+    // consumers (uchar's rule graph is the other); both read the same walk ({@link ProducentConsument#vormen}), so
+    // this scope-completeness gate and the graph never diverge.
 
     /**
-     * The scope-completeness violations for one entry point (decision: fail-fast, opt-out per entrypoint). For
-     * every scoped {@link dev.uchar.regelspraak.ir.ResolvedRegel} it collects the kenmerken/attributen the rule
-     * CONSUMES (its voorwaarde predicates + operands, and its RHS {@code waarde}); a consumed element is a
-     * violation iff (a) some rule in {@code producenten} WRITES it, (b) NONE of those producers is in this
-     * entry point's scope, and (c) the element is not a declared {@code invoerElementen} (the caller then
-     * supplies the value, so the missing producer is intentional). Elements with no producer at all are genuine
-     * request inputs, not violations.
+     * The scope-completeness violations for one entry point (decision: fail-fast, opt-out per entrypoint). It reads
+     * the forms the entry point's KieBase carries — {@code gescoopt}, the model of its scope — as uchar's rule graph
+     * reads them: of a rule the kenmerken/attributen its voorwaarde and value read, of a defaults group those the
+     * justification and consequence of every default read, nested exception groups included. A read element is a
+     * violation iff (a) some form in {@code producenten} WRITES it, (b) NONE of those producers is in this entry
+     * point's scope, and (c) the element is not a declared {@code invoerElementen} (the caller then supplies the
+     * value, so the missing producer is intentional). Elements with no producer at all are genuine request inputs,
+     * not violations.
      */
     private static List<Schending> scopeVolledigheid(DienstDescriptor.Entrypoint ep, RegelSpraakModel model,
-            Map<ElementSleutel, java.util.Set<String>> producenten, VormIndex.Keuze keuze) {
-        // the base names the producer index keys its writers on, of the forms the scope carries
+            RegelSpraakModel gescoopt, Map<ElementSleutel, java.util.Set<String>> producenten) {
+        // a resolver's model: a navigated kenmerk check reads the kenmerk of the type its role reaches
+        List<ProducentConsument.Vorm> gedragen = ProducentConsument.vormen(gescoopt, gescoopt.prioritizedDefaults,
+                ProducentConsument.bronNavigatie(gescoopt));
+        // the writers in the scope, under the names the producer index keys them on
         java.util.Set<String> scope = new java.util.LinkedHashSet<>();
-        for (String v : keuze.vormen()) scope.add(ProducentConsument.basisNaam(v));
+        for (ProducentConsument.Vorm v : gedragen) scope.add(v.naam());
         // The opt-out keys through the SAME element identity the consumption does ({@link
         // ProducentConsument#elementVan}), so the declaration binds on the member's declarant: a caller that
         // declares the element on the type that DECLARES it silences a consumption on any subtype, and one that
@@ -428,21 +434,33 @@ public final class BeslisserKern {
             invoerElementen.add(houder == null ? ElementSleutel.van(u.objecttype(), u.lid(), u.kenmerk())
                     : ProducentConsument.elementVan(houder, u.lid(), u.kenmerk()));
         }
+        // A tree of exceptions is lowered to one group named after its base rule, an unordered block without a
+        // carrier to one group per member; the opgave marker and a subtype's own exceptions get a group whose name
+        // uchar makes up. The author knows the first two by a rule they wrote, the last two only by that name.
+        java.util.Set<String> geschreven = new java.util.HashSet<>();
+        for (var r : model.regels) if (r.naam() != null) geschreven.add(CaseEmitter.norm(r.naam()));
 
         List<Schending> uit = new ArrayList<>();
         java.util.Set<ElementSleutel> gemeld = new java.util.LinkedHashSet<>();
-        // a resolver's model: a navigated kenmerk check reads the kenmerk of the type its role reaches
-        ProducentConsument.Navigatie navigatie = ProducentConsument.bronNavigatie(model);
-        for (var r : model.resolvedRegels) {
-            if (!scope.contains(ProducentConsument.basisNaam(r.naam()))) continue;
-            for (ElementSleutel consumed : ProducentConsument.verbruikt(r, navigatie)) {
+        for (ProducentConsument.Vorm v : gedragen) {
+            String lezer = switch (v.soort()) {
+                case REGEL -> "regel '" + v.naam() + "'";
+                case DEFAULTSGROEP -> geschreven.contains(CaseEmitter.norm(v.naam()))
+                        ? "defaults-groep van regel '" + v.naam() + "'"
+                        : "gegenereerde defaults-groep '" + v.naam() + "'";
+                // The other forms read as well, but are not held to it: five entry points of
+                // examples/toka/toka.dienst.json scope an allocation without the writers of what it reads.
+                case OBJECTCREATIE, VERDELING, CONSISTENTIE, UNICITEIT, FEITCREATIE -> null;
+            };
+            if (lezer == null) continue;
+            for (ElementSleutel consumed : v.leest()) {
                 java.util.Set<String> writers = producenten.get(consumed);
                 if (writers == null || writers.isEmpty()) continue;          // a genuine request input
                 if (writers.stream().anyMatch(scope::contains)) continue;    // produced in scope: fine
                 if (invoerElementen.contains(consumed)) continue;            // element-level caller input: opt-out
                 if (!gemeld.add(consumed)) continue;
                 uit.add(Schending.van(Schending.Soort.SCOPE_ONVOLLEDIG, "entrypoint:" + ep.pad(),
-                        "regel '" + ProducentConsument.basisNaam(r.naam()) + "' in entrypoint '" + ep.naam() + "' leest "
+                        lezer + " in entrypoint '" + ep.naam() + "' leest "
                                 + (consumed.kenmerk() ? "kenmerk" : "attribuut") + " '" + consumed.naam() + "'"
                                 + (consumed.objecttype().isEmpty() ? "" : " van '" + consumed.objecttype() + "'")
                                 + ", maar de enige producent(en) " + writers + " vallen buiten de scope"
