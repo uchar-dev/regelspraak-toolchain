@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.emit.CaseEmitter;
+import dev.uchar.regelspraak.ir.Bron;
+import dev.uchar.regelspraak.ir.PrioritizedDefaults;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.toolchain.engine.Naamgeving;
@@ -412,13 +414,18 @@ public final class BeslisserKern {
      * violation iff (a) some form in {@code producenten} WRITES it, (b) NONE of those producers is in this entry
      * point's scope, and (c) the element is not a declared {@code invoerElementen} (the caller then supplies the
      * value, so the missing producer is intentional). Elements with no producer at all are genuine request inputs,
-     * not violations.
+     * not violations. The violation of a group also names the defaults that read the element, from uchar's walk per
+     * default ({@link ProducentConsument#lezingen}), of which the group's reads are the union.
      */
     private static List<Schending> scopeVolledigheid(DienstDescriptor.Entrypoint ep, RegelSpraakModel model,
             RegelSpraakModel gescoopt, Map<ElementSleutel, java.util.Set<String>> producenten) {
         // a resolver's model: a navigated kenmerk check reads the kenmerk of the type its role reaches
+        ProducentConsument.Navigatie navigatie = ProducentConsument.bronNavigatie(gescoopt);
         List<ProducentConsument.Vorm> gedragen = ProducentConsument.vormen(gescoopt, gescoopt.prioritizedDefaults,
-                ProducentConsument.bronNavigatie(gescoopt));
+                navigatie);
+        Map<String, PrioritizedDefaults> groepen = new java.util.HashMap<>();
+        for (PrioritizedDefaults p : gescoopt.prioritizedDefaults)
+            if (p.naam() != null) groepen.put(ProducentConsument.basisNaam(p.naam()), p);
         // the writers in the scope, under the names the producer index keys them on
         java.util.Set<String> scope = new java.util.LinkedHashSet<>();
         for (ProducentConsument.Vorm v : gedragen) scope.add(v.naam());
@@ -453,21 +460,56 @@ public final class BeslisserKern {
                 case OBJECTCREATIE, VERDELING, CONSISTENTIE, UNICITEIT, FEITCREATIE -> null;
             };
             if (lezer == null) continue;
+            List<ProducentConsument.DefaultLezing> lezingen = null;
             for (ElementSleutel consumed : v.leest()) {
                 java.util.Set<String> writers = producenten.get(consumed);
                 if (writers == null || writers.isEmpty()) continue;          // a genuine request input
                 if (writers.stream().anyMatch(scope::contains)) continue;    // produced in scope: fine
                 if (invoerElementen.contains(consumed)) continue;            // element-level caller input: opt-out
                 if (!gemeld.add(consumed)) continue;
+                String waar = "";
+                if (v.soort() == ProducentConsument.Vormsoort.DEFAULTSGROEP) {
+                    PrioritizedDefaults groep = java.util.Objects.requireNonNull(groepen.get(v.naam()),
+                            () -> "geen defaultsgroep '" + v.naam() + "' in de scope");
+                    if (lezingen == null) lezingen = ProducentConsument.lezingen(gescoopt, groep, navigatie);
+                    waar = " " + waarGelezen(lezingen, consumed, v.naam());
+                }
                 uit.add(Schending.van(Schending.Soort.SCOPE_ONVOLLEDIG, "entrypoint:" + ep.pad(),
                         lezer + " in entrypoint '" + ep.naam() + "' leest "
                                 + (consumed.kenmerk() ? "kenmerk" : "attribuut") + " '" + consumed.naam() + "'"
                                 + (consumed.objecttype().isEmpty() ? "" : " van '" + consumed.objecttype() + "'")
-                                + ", maar de enige producent(en) " + writers + " vallen buiten de scope"
+                                + waar + ", maar de enige producent(en) " + writers + " vallen buiten de scope"
                                 + " en het element is niet als invoerElement gedeclareerd"));
             }
         }
         return uit;
+    }
+
+    /** Where a defaults group reads {@code element}: every default that reads it, by the part that reads (its
+     *  justification or its consequence) with that part's source text, and by its path in the group. */
+    private static String waarGelezen(List<ProducentConsument.DefaultLezing> lezingen, ElementSleutel element,
+                                      String groep) {
+        List<String> plekken = new ArrayList<>();
+        for (ProducentConsument.DefaultLezing d : lezingen) {
+            var dflt = d.dflt();
+            if (d.rechtvaardiging().contains(element))
+                plekken.add(plek("rechtvaardiging", dflt.voorwaarde() == null ? null : dflt.voorwaarde().bron(), d));
+            if (d.consequentie().contains(element))
+                plekken.add(plek("consequentie", dflt.consequentie() == null ? null : dflt.consequentie().bron(), d));
+        }
+        // uchar takes a group's reads from these, so an element no default reads is a broken promise of uchar's
+        if (plekken.isEmpty())
+            throw new IllegalStateException("uchars wandeling per default van defaults-groep '" + groep
+                    + "' leest '" + element.naam() + "' niet, maar die van de groep wel");
+        return String.join(" en ", plekken);
+    }
+
+    /** One reading default: the part that reads, its source text as the author wrote it (or else the default's own
+     *  source, which the opgave marker fills with the attribute it reads), and the default's path in the group. */
+    private static String plek(String deel, Bron bron, ProducentConsument.DefaultLezing d) {
+        String tekst = bron != null && bron.snippet() != null && !bron.snippet().isBlank()
+                ? bron.snippet() : d.dflt().bron();
+        return "in de " + deel + (tekst == null ? "" : " '" + tekst + "'") + " van default " + d.pad();
     }
 
     /** The descriptor parameter defaults, decoded per-parameter datatype to (globalNaam -> value). */
