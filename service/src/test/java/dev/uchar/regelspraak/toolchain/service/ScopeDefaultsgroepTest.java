@@ -22,8 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * an exception for a subtype generate one. When such a group reads an attribute or characteristic that only a form
  * outside the scope writes, the service used to start and decide the group on an empty reading: 10 where the whole
  * model gives 5, {@code null} where it gives a date. {@link BeslisserKern#bouw} now refuses that start, naming the
- * group as its author wrote it (the rule the group belongs to, or the generated group by its name), the element and
- * the writers outside the scope; an {@code invoerElementen} declaration and {@code scopeControleUit} still opt out.
+ * group as its author wrote it (the rule the group belongs to, or the generated group by its name), the element, the
+ * default that reads it (its path in the group and the text of the part that reads) and the writers outside the scope;
+ * an {@code invoerElementen} declaration and {@code scopeControleUit} still opt out.
  *
  * <p>Every source is self-contained Jutterswet material, so the core compiles its beans in memory.
  */
@@ -385,6 +386,11 @@ class ScopeDefaultsgroepTest {
                 indien zijn vinddag later is dan 28-05-2026.
         """;
 
+    /** Where the groups above read 'bergdag' and 'stormberger', up to the path of the default. */
+    private static final String BERGDAG_LATER = "in de rechtvaardiging 'zijn bergdag later is dan 01-06-2026' van default ";
+    private static final String STORM =
+            "in de rechtvaardiging 'zijn bergdag later is dan 01-06-2026 en hij stormberger is' van default ";
+
     private static final String BUITEN_DE_SCOPE =
             " vallen buiten de scope en het element is niet als invoerElement gedeclareerd";
 
@@ -393,22 +399,25 @@ class ScopeDefaultsgroepTest {
     @Test
     void r1_de_rechtvaardiging_van_een_uitzondering_leest_een_attribuut_van_buiten_de_scope() {
         assertEquals(List.of("defaults-groep van regel 'premie' in entrypoint 'premie' leest attribuut 'bergdag' van "
-                        + "'jutter', maar de enige producent(en) [bergdag]" + BUITEN_DE_SCOPE),
+                        + "'jutter' in de rechtvaardiging 'zijn bergdag later is dan 01-06-2026' van default [0], maar de "
+                        + "enige producent(en) [bergdag]" + BUITEN_DE_SCOPE),
                 scopeSchendingen(UITZONDERING, descriptor("premie", List.of("premie"), "Jutter.premie", "")));
     }
 
     @Test
     void r3_de_consequentie_van_de_basis_onder_een_afwijking_leest_van_buiten_de_scope() {
         assertEquals(List.of("defaults-groep van regel 'meldtermijn' in entrypoint 'meldtermijn' leest attribuut "
-                        + "'bergdag' van 'jutter', maar de enige producent(en) [bergdag]" + BUITEN_DE_SCOPE),
+                        + "'bergdag' van 'jutter' in de consequentie 'zijn bergdag plus 6 mnd' van default [1], maar de "
+                        + "enige producent(en) [bergdag]" + BUITEN_DE_SCOPE),
                 scopeSchendingen(AFWIJKING, descriptor("meldtermijn", List.of("meldtermijn"), "Jutter.meldtermijn", "")));
     }
 
     @Test
     void r4_de_groep_van_de_opgavemarkering_noemt_zich_bij_haar_gegenereerde_naam() {
         assertEquals(List.of("gegenereerde defaults-groep 'opgave boven berekening meldtermijn' in entrypoint "
-                        + "'meldtermijn' leest attribuut 'berekende meldtermijn' van 'jutter', maar de enige "
-                        + "producent(en) [meldtermijn]" + BUITEN_DE_SCOPE),
+                        + "'meldtermijn' leest attribuut 'berekende meldtermijn' van 'jutter' in de consequentie 'zijn "
+                        + "berekende meldtermijn' van default [1], maar de enige producent(en) [meldtermijn]"
+                        + BUITEN_DE_SCOPE),
                 scopeSchendingen(OPGAVE, descriptor("meldtermijn", List.of("opgave boven berekening meldtermijn"),
                         "Jutter.meldtermijn", "")));
     }
@@ -416,14 +425,16 @@ class ScopeDefaultsgroepTest {
     @Test
     void r5_een_kenmerkcheck_in_de_rechtvaardiging_leest_een_kenmerk_van_buiten_de_scope() {
         assertEquals(List.of("defaults-groep van regel 'premie' in entrypoint 'premie' leest kenmerk 'laatgeborgen' "
-                        + "van 'jutter', maar de enige producent(en) [laatgeborgen]" + BUITEN_DE_SCOPE),
+                        + "van 'jutter' in de rechtvaardiging 'hij laatgeborgen is' van default [0], maar de enige "
+                        + "producent(en) [laatgeborgen]" + BUITEN_DE_SCOPE),
                 scopeSchendingen(KENMERK, descriptor("premie", List.of("premie"), "Jutter.premie", "")));
     }
 
     @Test
     void r6_een_groep_leest_wat_een_andere_groep_buiten_de_scope_schrijft() {
         assertEquals(List.of("defaults-groep van regel 'meldtermijn' in entrypoint 'meldtermijn' leest attribuut "
-                        + "'bergdag' van 'jutter', maar de enige producent(en) [bergdag]" + BUITEN_DE_SCOPE),
+                        + "'bergdag' van 'jutter' in de consequentie 'zijn bergdag plus 6 mnd' van default [1], maar de "
+                        + "enige producent(en) [bergdag]" + BUITEN_DE_SCOPE),
                 scopeSchendingen(GROEP_LEEST_GROEP,
                         descriptor("meldtermijn", List.of("meldtermijn"), "Jutter.meldtermijn", "")));
     }
@@ -432,7 +443,8 @@ class ScopeDefaultsgroepTest {
 
     @Test
     void een_lid_van_uitzonderingen_ongeordend_op_een_basisregel() {
-        assertEquals(List.of(groep("defaults-groep van regel 'premie'", "attribuut 'bergdag' van 'jutter'", "[bergdag]")),
+        assertEquals(List.of(groep("defaults-groep van regel 'premie'", "attribuut 'bergdag' van 'jutter'",
+                        BERGDAG_LATER + "[0, 0, 0]", "[bergdag]")),
                 scopeSchendingen(ONGEORDEND_OP, descriptor("premie", List.of("premie"), "Jutter.premie", "")));
     }
 
@@ -440,7 +452,7 @@ class ScopeDefaultsgroepTest {
     void uitzonderingen_ongeordend_zonder_drager_noemt_de_groep_van_het_lid() {
         // every member is a group of its own; the element is reported once, at the first group that reads it
         assertEquals(List.of(groep("defaults-groep van regel 'premie bij late berging'", "attribuut 'bergdag' van 'jutter'",
-                        "[bergdag]")),
+                        BERGDAG_LATER + "[0]", "[bergdag]")),
                 scopeSchendingen(ONGEORDEND_ZONDER_DRAGER, descriptor("premie",
                         List.of("premie bij late berging", "premie bij vroege berging"), "Jutter.premie", "")));
     }
@@ -448,7 +460,7 @@ class ScopeDefaultsgroepTest {
     @Test
     void de_eigen_uitzondering_van_een_subtype_is_een_gegenereerde_groep() {
         assertEquals(List.of(groep("gegenereerde defaults-groep 'premie voor Strandjutter'",
-                        "attribuut 'bergdag' van 'jutter'", "[bergdag]")),
+                        "attribuut 'bergdag' van 'jutter'", BERGDAG_LATER + "[0, 0, 0]", "[bergdag]")),
                 scopeSchendingen(SUBTYPE, descriptor("premie", List.of("premie", "premie voor Strandjutter"),
                         List.of("Strandjutter"), "Jutter.premie", "")));
         BeslisserKern kern = bouw(SUBTYPE, descriptor("premie", List.of("bergdag", "premie", "premie voor Strandjutter"),
@@ -459,27 +471,39 @@ class ScopeDefaultsgroepTest {
     @Test
     void een_geneste_uitzondering_leest_een_kenmerk_van_buiten_de_scope() {
         assertEquals(List.of(groep("defaults-groep van regel 'premie'", "kenmerk 'stormberger' van 'jutter'",
-                        "[stormberger]")),
+                        STORM + "[0, 0, 0]", "[stormberger]")),
                 scopeSchendingen(GENEST, descriptor("premie", List.of("bergdag", "premie"), "Jutter.premie", "")));
+    }
+
+    @Test
+    void een_element_dat_twee_defaults_lezen_noemt_ze_allebei() {
+        assertEquals(List.of(
+                        groep("defaults-groep van regel 'premie'", "attribuut 'bergdag' van 'jutter'",
+                                BERGDAG_LATER + "[0] en " + STORM + "[0, 0, 0]", "[bergdag]"),
+                        groep("defaults-groep van regel 'premie'", "kenmerk 'stormberger' van 'jutter'",
+                                STORM + "[0, 0, 0]", "[stormberger]")),
+                scopeSchendingen(GENEST, descriptor("premie", List.of("premie"), "Jutter.premie", "")));
     }
 
     @Test
     void de_producent_buiten_de_scope_is_een_beslistabel() {
         assertEquals(List.of(groep("defaults-groep van regel 'premie'", "attribuut 'bergklasse' van 'jutter'",
-                        "[bergklasse 1]")),
+                        "in de rechtvaardiging 'zijn bergklasse gelijk is aan \"laat\"' van default [0]", "[bergklasse 1]")),
                 scopeSchendingen(BESLISTABEL, descriptor("premie", List.of("premie"), "Jutter.premie", "")));
     }
 
     @Test
     void de_consequentie_van_een_afwijking_leest_van_buiten_de_scope() {
-        assertEquals(List.of(groep("defaults-groep van regel 'premie'", "attribuut 'bergloon' van 'jutter'", "[bergloon]")),
+        assertEquals(List.of(groep("defaults-groep van regel 'premie'", "attribuut 'bergloon' van 'jutter'",
+                        "in de consequentie 'zijn bergloon' van default [0]", "[bergloon]")),
                 scopeSchendingen(CONSEQUENTIE, descriptor("premie", List.of("premie"), "Jutter.premie", "")));
     }
 
     @Test
     void een_lezing_een_rol_ver() {
         assertEquals(List.of(groep("defaults-groep van regel 'premie van een vondst'", "attribuut 'bergdag' van 'jutter'",
-                        "[bergdag]")),
+                        "in de rechtvaardiging 'de bergdag van de jutter van de Vondst later is dan 01-06-2026' van default "
+                                + "[0]", "[bergdag]")),
                 scopeSchendingen(VONDST + VONDSTPREMIE.formatted("de bergdag van de jutter van de Vondst later is dan "
                         + "01-06-2026"), vondstdescriptor()));
     }
@@ -487,7 +511,8 @@ class ScopeDefaultsgroepTest {
     @Test
     void een_lezing_twee_rollen_ver() {
         assertEquals(List.of(groep("defaults-groep van regel 'premie van een vondst'", "attribuut 'openingsdag' van 'haven'",
-                        "[openingsdag]")),
+                        "in de rechtvaardiging 'de openingsdag van de haven van de jutter van de Vondst later is dan "
+                                + "01-06-2026' van default [0]", "[openingsdag]")),
                 scopeSchendingen(VONDST + VONDSTPREMIE.formatted("de openingsdag van de haven van de jutter van de "
                         + "Vondst later is dan 01-06-2026"), vondstdescriptor()));
     }
@@ -495,7 +520,7 @@ class ScopeDefaultsgroepTest {
     @Test
     void een_kenmerkcheck_een_rol_ver() {
         assertEquals(List.of(groep("defaults-groep van regel 'premie van een vondst'", "kenmerk 'laatgeborgen' van 'jutter'",
-                        "[laatgeborgen]")),
+                        "in de rechtvaardiging 'zijn jutter laatgeborgen is' van default [0]", "[laatgeborgen]")),
                 scopeSchendingen(VONDST + VONDSTPREMIE.formatted("zijn jutter laatgeborgen is"), vondstdescriptor()));
     }
 
@@ -539,14 +564,15 @@ class ScopeDefaultsgroepTest {
     @Test
     void de_basisregel_draagt_ook_wat_de_groep_van_het_subtype_leest() {
         assertEquals(List.of(groep("gegenereerde defaults-groep 'premie voor Strandjutter'",
-                        "attribuut 'bergdag' van 'jutter'", "[bergdag]")),
+                        "attribuut 'bergdag' van 'jutter'", BERGDAG_LATER + "[0, 0, 0]", "[bergdag]")),
                 scopeSchendingen(SUBTYPE, descriptor("premie", List.of("premie"), List.of("Strandjutter"),
                         "Jutter.premie", "")));
     }
 
     @Test
     void de_groep_van_het_subtype_draagt_ook_wat_haar_basis_leest() {
-        assertEquals(List.of(groep("defaults-groep van regel 'premie'", "attribuut 'bergdag' van 'jutter'", "[bergdag]")),
+        assertEquals(List.of(groep("defaults-groep van regel 'premie'", "attribuut 'bergdag' van 'jutter'",
+                        "in de rechtvaardiging 'zijn bergdag gevuld is' van default [0]", "[bergdag]")),
                 scopeSchendingen(BASIS_LEEST, descriptor("premie", List.of("premie voor Strandjutter"),
                         List.of("Strandjutter"), "Jutter.premie", "")));
     }
@@ -613,9 +639,9 @@ class ScopeDefaultsgroepTest {
     }
 
     /** The violation of a group in the entry point 'premie'. */
-    private static String groep(String lezer, String element, String producenten) {
-        return lezer + " in entrypoint 'premie' leest " + element + ", maar de enige producent(en) " + producenten
-                + BUITEN_DE_SCOPE;
+    private static String groep(String lezer, String element, String waar, String producenten) {
+        return lezer + " in entrypoint 'premie' leest " + element + " " + waar + ", maar de enige producent(en) "
+                + producenten + BUITEN_DE_SCOPE;
     }
 
     private static BeslisserKern bouw(String bron, String descriptor) {
