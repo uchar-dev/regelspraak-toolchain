@@ -60,7 +60,10 @@ or characteristic a rule or a defaults group of the scope reads, which forms out
 refuses the start (`SCOPE_ONVOLLEDIG`, exit 1). The violation names the reader — a rule, the group of the rule a tree
 of exceptions hangs on (or of a member of an `Uitzonderingen ongeordend` block), or a group uchar generates by its
 name (`opgave boven berekening X` for the opgave marker, `X voor S` for the own exceptions of a subtype S) — the
-element and its writers. An element no form writes is request input. Two opt-outs per entry point: `invoerElementen`
+element and its writers. For a group it also names each default that reads the element, from uchar's walk per default
+(`ProducentConsument.lezingen`): the part that reads with its source text and the default's path in the group, as in
+"in de rechtvaardiging 'zijn bergdag later is dan 01-06-2026' van default [0]" ([0] the highest default, [i, g, j] the
+j-th default of exception group g of default i). An element no form writes is request input. Two opt-outs per entry point: `invoerElementen`
 declares an element the caller supplies, and `scopeControleUit: true` waives the check (the replay gate sets it). The
 other forms a scope can carry (object creations, allocations, consistencies, uniquenesses, fact creations) are not
 checked.
