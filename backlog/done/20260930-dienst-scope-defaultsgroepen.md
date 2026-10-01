@@ -363,7 +363,7 @@ geen voorwaarde voor de methode.
 ### Open punten
 
 1. De default die leest in de schending: wacht op `ProducentConsument.lezingen` in uchar (hierboven).
-2. De overige vormen van de scope (objectcreatie, verdeling, consistentie, uniciteit, feitcreatie) toetst de dienst
+2. Naar de eigenaar (besluit van de hoofdsessie). De overige vormen van de scope (objectcreatie, verdeling, consistentie, uniciteit, feitcreatie) toetst de dienst
    niet. Gemeten: x01d, een consistentie in de scope die `bergdag` leest, start stil en meldt J1 en J2 inconsistent waar
    de volle scope geen inconsistentie geeft. De toets uitbreiden is één `case` meer, maar
    `examples/toka/toka.dienst.json` start dan niet (7 schendingen in 5 entrypoints, alle bij een verdeling) en die
@@ -372,12 +372,14 @@ geen voorwaarde voor de methode.
 3. Wat een scopenaam draagt bij een eigen uitzondering van een subtype. `premie` draagt `premie voor Strandjutter`
    niet (v03 alleen basis: de dienst start en antwoordt S1 10 waar de volle scope 7 geeft), en een scope met
    `premie voor Strandjutter` zonder `premie` start en mist de geërfde basis (v03e: S2 null waar de volle scope 10
-   geeft). Geen van beide is een lezing van buiten de scope; het gaat over welke vormen een naam draagt. `VormIndex`
-   leest een scope zoals uchars scenarioresolver (`CaseEmitter.metScope`), dus dit is een vraag aan uchar: draagt de
-   naam van een basisregel haar groepen `<basis> voor <subtype>`, zoals hij de uitzonderingen van het eigen type
-   draagt, en weigert een scope een subtypegroep zonder haar basis.
+   geeft). Geen van beide is een lezing van buiten de scope; het gaat over welke vormen een naam draagt. Afgehandeld
+   in deze ronde op besluit van de hoofdsessie: zie "Vervolg open punt 3".
 4. Waargenomen, geen actie hier: uchars resolver neemt `indien de haven van zijn jutter gesloten is` (twee rollen, één
    genoemd) zonder diagnose aan; de emitter weigert hem (`check` exit 3), dus het blijft luid.
+5. Uit het vervolg: de dienst leest een scope nu ruimer dan uchars scenariolaag. Een scenario met de scope `premie`
+   bouwt in uchar het document zonder `premie voor Strandjutter`, een entrypoint met dezelfde scope met. Een vraag
+   aan uchar of zijn scenarioresolver (`CaseEmitter.metScope` en wat de scope daar vult) dezelfde stapel meeneemt,
+   zodat een scenario en een entrypoint met dezelfde namen weer hetzelfde document bouwen.
 
 ### Commits
 
@@ -387,4 +389,104 @@ geen voorwaarde voor de methode.
 - `ac83800` README en ENGINE: de scopetoets dekt regels en defaultsgroepen
 - `5c3c2c5` README: replay-telling 208 bij uchars 235
 - `1dae08b` Vloeren: de dienst gegroeid met de getuige van de defaultsgroepen (voorstel)
-- de commit van dit Result: de kaart naar `backlog/done/`
+- `5f64103` Result van de kaart dienst-scope-defaultsgroepen
+- vervolg: zie "Vervolg open punt 3"
+
+### Vervolg open punt 3 (besluit van de hoofdsessie, 2026-10-01)
+
+Besluit: de scope-resolutie van de dienst behandelt de gegenereerde groep `<basis> voor <subtype>` als onlosmakelijk
+van haar basis, omdat RUNTIME-SEMANTICS ch. 7.10 de stapel per concreet type samenstelt uit de eigen groep van het
+subtype en de geërfde basis. Een scope die de basisregel noemt, draagt elke groep `<basis> voor <subtype>` die uchar
+daaruit maakte; een scope die zo'n groep noemt, draagt haar basis en de andere subtypegroepen van die basis; wie de
+gegenereerde naam toch noemt, maakt geen fout. Open punt 1 blijft wachten op uchar, open punt 2 gaat naar de eigenaar.
+
+**Gebouwd** (`82b9089`, `VormIndex` +82, −5). `VormIndex.scope` voegt aan elke defaultsgroep die de scope draagt de
+groepen van haar stapel toe; `BeslisserKern` krijgt die vormen via `vormen.scope(ep.scope())`, zowel voor de build
+als voor de scopetoets (en bij een `uchar-ir-v1`-document voor de vraag of de scope elke vorm draagt). De stapel komt uit
+de IR, niet uit de naam: een groep op een subtype zonder eigen basis wordt verbonden met elke groep van het
+dichtstbijzijnde supertype dat hetzelfde doel schrijft, en een groep daar zonder basis reikt op haar beurt verder
+omhoog. "Eigen basis" leest zoals uchars samenstelling (`basisVan` in de exectak) hem leest: de laagste gewone
+default beslist zelf iets, en een groep-default (`Default.heeftEigenInhoud()` onwaar) is geen basis. Een groep met
+eigen basis reikt niet omhoog, want zij is de basis van haar stapel (een eigen basisregel op het subtype blijft dus een
+eigen vorm die de auteur noemt); een ongeordende groep ook niet, want uchars samenstelling vouwt die niet over een
+geërfde stapel. Het doel is de element-identiteit van `ProducentConsument.elementVan`, zodat een lid op het supertype en
+op een subtype één doel zijn, zoals de exectak (`effectieveStapels`, op soort en doel langs de supertypeketen) ze
+samenvoegt.
+
+Waarom niet de naam: de bron is `RuleChecker.subtypeGroepNaam` (privé, `wortel + " voor " + sub.naam`). uchar biedt
+geen sleutel die de groep aan haar basis koppelt, behalve die naam en de prozatekst van `bron` ("eigen uitzonderingen
+van Strandjutter; de basis 'premie' is geërfd van Jutter"). De naam parsen gaat mis bij een basisregel waarvan de naam
+zelf " voor " bevat, en een formule die de naam nabouwt, vindt stil niets meer als uchar haar verandert; de structuur
+is wat ch. 7.10 samenstelt en wat bij de build gebruikt wordt.
+
+**De scopetoets erbij.** De toets loopt over het gescoopte model en leest dus ook wat de meegenomen groepen lezen: een
+scope `premie` toetst nu wat de eigen uitzondering van de Strandjutter leest, en een scope met alleen de subtypegroep
+toetst wat de basis leest.
+
+**Vormruimte, vóór en na.** Vóór is de jar van `681fc97` (de code van `1dae08b`), na die van `82b9089`; zeven nieuwe
+documenten (`tools/vervolg.py`, `vormen/w*`). Het model `erflijn.rgs`: basis `premie` op Jutter (10), eigen
+uitzonderingen van Strandjutter (7), Barnsteenjutter, een subtype van Strandjutter (9), en Wrakjutter (6), elk
+`indien zijn vinddag later is dan 28-05-2026`; per type één instantie met vinddag 30-05-2026 (J1, S1, B1, W1) en één met
+01-03-2026 (J2, S2, B2, W2).
+
+| Vorm | scope | vóór | na |
+|---|---|---|---|
+| w1 | `premie` | J1 10, S1 10, B1 10, W1 10; vroeg alle 10 | J1 10, S1 7, B1 9, W1 6; vroeg alle 10 |
+| w2 | `premie voor Strandjutter` | J1 null, S1 7, B1 7, W1 null; vroeg alle null | gelijk aan w1 na |
+| w3 | `premie voor Barnsteenjutter` | B1 9, de rest null | gelijk aan w1 na |
+| w4 | alle vier de groepen | J1 10, S1 7, B1 9, W1 6; vroeg alle 10 | gelijk |
+| w5 (v03: de uitzondering van de Strandjutter leest `bergdag`) | `premie` | start; S1 10 | exit 1: `gegenereerde defaults-groep 'premie voor Strandjutter' in entrypoint 'premie' leest attribuut 'bergdag' van 'jutter', maar de enige producent(en) [bergdag] …` |
+| w6 (de basis leest `bergdag`, een `Afwijking van` voor de Strandjutter leest `vinddag`) | `premie voor Strandjutter` | start; J1 null, S1 7 | exit 1: `defaults-groep van regel 'premie' in entrypoint 'premie' leest attribuut 'bergdag' van 'jutter', maar de enige producent(en) [bergdag] …` |
+| w6 met `bergdag` | `bergdag`, `premie voor Strandjutter` | start; J1 null, S1 7 | start; J1 10, S1 7 |
+| v03 alleen basis | `premie` | start; S1 10 (vol 7) | exit 1, dezelfde zin als w5 |
+| v03e | `bergdag`, `premie voor Strandjutter` | start; S1 7, S2 null (vol 10) | start; S1 7, S2 10 |
+
+De andere 49 documenten van (a) geven met de jar van `82b9089` byte-gelijke metingen aan die van `681fc97` (`cmp`).
+
+**Getuige.** Vijf rijen in `ScopeDefaultsgroepTest` (nu 24 tests): `de_basisregel_draagt_de_groepen_van_haar_subtypen`
+(scope `premie`), `een_groep_van_een_subtype_draagt_haar_basis_en_de_andere_groepen_van_die_basis` (scope
+`premie voor Strandjutter`, en `premie voor Barnsteenjutter`; de gewone Jutter krijgt 10), beide met de uitkomst van het
+hele model; de flank `wie_de_gegenereerde_groepen_toch_noemt_krijgt_hetzelfde`; en voor de scopetoets
+`de_basisregel_draagt_ook_wat_de_groep_van_het_subtype_leest` en `de_groep_van_het_subtype_draagt_ook_wat_haar_basis_leest`.
+Rood eerst: `56c21b5` tegen de kern van `1dae08b`, `Tests run: 24, Failures: 4`:
+
+```
+de_basisregel_draagt_de_groepen_van_haar_subtypen expected: <{B2=10, S2=10, B1=9, S1=7, W2=10, W1=6, J2=10, J1=10}> but was: <{J1=10, J2=10, S1=10, S2=10, B1=10, B2=10, W1=10, W2=10}>
+een_groep_van_een_subtype_draagt_haar_basis_en_de_andere_groepen_van_die_basis expected: <{…}> but was: <{J1=null, J2=null, S1=7, S2=null, B1=7, B2=null, W1=null, W2=null}>
+de_basisregel_draagt_ook_wat_de_groep_van_het_subtype_leest … Expected …DienstFout to be thrown, but nothing was thrown.
+de_groep_van_het_subtype_draagt_ook_wat_haar_basis_leest … Expected …DienstFout to be thrown, but nothing was thrown.
+```
+
+De flank en de 19 eerdere rijen groen. Na `82b9089`: 24 van 24 groen; `VormIndexTest` (4), `ScopeKetenTest` (9) en
+`ScopeVolledigheidTest` (3) groen; de dienstsuite 234 tests.
+
+**Docs** (`794359a`): één zin in de `README.md` bij de beslisdienst en één in `docs/ENGINE.md` bij de scope (die zin
+zegt ook dat uchars scenariolaag zich aan de namen houdt). **Vloervoorstel** (`a91fe7d`): `service|234`, in plaats van
+het voorstel 229.
+
+**Poorten en gates** op `a91fe7d`: `make poorten` groen (check-pin `PASS`; reactor `1020/121/234/43`, skip-pin
+`234 testgevallen (vloer 234)`; check-tweelingen `3 tweelingen, 18 cases …, 2 cases in 34 verzoeken; getuige: 4
+getuigenissen`; replay `208 goldens, 553 cases (pin 208)`; manifest `32 regels, 29 ok, 3 uitgesloten, 0 mismatch`).
+`make gates`:
+
+```
+gates: 1 pin        GROEN      1s  PASS: de submodule uchar is geïnitialiseerd, schoon en op de vastgelegde commit; de versies zijn gelijk
+gates: 2 reactor    GROEN   1m02s  testgevallen per module 1020/121/234/43
+gates: 3 tweelingen GROEN      8s  3 tweelingen, 18 cases via HTTP met de gepinde verwachtingen; vocabulairetweeling jutterswet-vocabulaires: 2 cases in 34 verzoeken; getuige: 4 getuigenissen
+gates: 4 replay     GROEN   1m01s  208 goldens, 553 cases (pin 208)
+gates: 5 manifest   GROEN      1s  32 regels, 29 ok, 3 uitgesloten, 0 mismatch
+gates: 6 image      GROEN     32s  beslisservice:dev
+gates: 7 kind-smoke GROEN     49s  H2 PASS, H3 PASS, H4 PASS
+gates: GROEN — 7 stappen in 3m35s; de uitvoer staat in out/gates/
+```
+
+**Afwijking.** De dienst leest een scope nu ruimer dan uchars scenariolaag (open punt 5); `VormIndex` zegt dat in
+zijn javadoc.
+
+**Commits van het vervolg.**
+
+- `56c21b5` Getuige: een subtypegroep hoort bij haar basis (rood)
+- `82b9089` Dienst: een scope draagt de subtypegroepen met hun basis mee
+- `794359a` README en ENGINE: een subtypegroep gaat met haar basis mee
+- `a91fe7d` Vloeren: de dienst 234 met de subtypegroepen
+- de commit van dit vervolg: Result van de kaart dienst-scope-defaultsgroepen (2)
