@@ -61,7 +61,9 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # op een later afgeleide waarde herziet in de exec-tak); de 27 uitsluitingen zijn ongewijzigd.
 # 2026-10-01, uchar e33b5c8d: 204 — één nieuwe speler: jutterswet-sluitdag-gemeld (een vouw als consequentie van
 # een default speelt in de exec-tak als accumulate op de reduce-regel); de 27 uitsluitingen zijn ongewijzigd.
-EXPECTED_REPLAY_PLAYED=204
+# 2026-10-01, uchar 3fc145d1: 205 — één nieuwe speler: jutterswet-havenketen (een voorwaarde die via een keten
+# van rollen leest krijgt in de exec-tak een join per object onderweg); de 27 uitsluitingen zijn ongewijzigd.
+EXPECTED_REPLAY_PLAYED=205
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
