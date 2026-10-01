@@ -82,7 +82,7 @@ TOEGESTANE_SKIPS=(
 # ---------------------------------------------------------------------------
 VLOEREN=(
 "toolchain|120|de toolchain-kern: engine-facade, scenariorunner met uitleg, verbalisator, parameterset-lader en CLI (de vroegere poorten engine en toolchain-kern in één module), met de naamgeving per vocabulaire; gemeten na de kaart dienst-vocabulaires|2026-09-27"
-"service|210|de beslisdienst (JDK-adapter): vormscope, MARKER-antwoord, IR-document als bron, rolinvoer zoals uchars replay, playground, de liberale lezer en het antwoord, /info en de OpenAPI per vocabulaire; gemeten na de kaart dienst-vocabulaires|2026-09-27"
+"service|229|de beslisdienst (JDK-adapter): vormscope, MARKER-antwoord, IR-document als bron, rolinvoer zoals uchars replay, playground, de liberale lezer en het antwoord, /info en de OpenAPI per vocabulaire, de scopetoets over regels en defaultsgroepen; gemeten na de kaart dienst-scope-defaultsgroepen|2026-10-01"
 "service-quarkus|43|de Quarkus-adapter met de pariteit van de vocabulaires; gemeten na de kaart dienst-vocabulaires|2026-09-27"
 )
 
