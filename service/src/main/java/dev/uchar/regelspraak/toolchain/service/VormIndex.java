@@ -22,7 +22,8 @@ import java.util.regex.Pattern;
  * creation, an allocation, a consistency, a uniqueness, a fact creation or a defaults group. A scope name carries the
  * forms of that name, or else the rows of the decision table of that name; a rule group carries the forms of its
  * members. That is how uchar's scenario resolver reads a scope, so an entry point and a scenario that name the same
- * rules build the same document, with one addition: a defaults group without a base of its own — what uchar makes of
+ * rules build the same document, the inheritance line included, which uchar's scenario resolver reads the same way
+ * since uchar 2a0c6d60: a defaults group without a base of its own — what uchar makes of
  * the own exceptions of a subtype under the base rule of its supertype, {@code <basis> voor <subtype>} — goes with the
  * group whose base it inherits, and with the other such groups of that base. RUNTIME-SEMANTICS ch. 7.10 composes the
  * stack of a concrete type from both, so a scope that carries one of them carries all of them; no author wrote a rule

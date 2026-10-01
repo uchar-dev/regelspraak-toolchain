@@ -48,8 +48,8 @@ groups (`VormIndex`, then `CaseEmitter.metScope`, the lowering of uchar's scenar
 through uchar, so each entry point has its own KieBase and bean class loader and a form outside its scope does not
 decide whether it runs. A defaults group without a base of its own, which uchar makes of the own exceptions of a
 subtype (`<basis> voor <subtype>`), goes with the groups of the base it inherits, since RUNTIME-SEMANTICS ch. 7.10
-composes one stack per concrete type from them: a scope that names either carries all of them, where uchar's
-scenario layer keeps to the names. A `uchar-ir-v1` document is served whole: a scope drops forms by rebuilding the model it
+composes one stack per concrete type from them: a scope that names either carries all of them, as uchar's
+scenario layer does as well since uchar `2a0c6d60` (`ScenarioResolver`). A `uchar-ir-v1` document is served whole: a scope drops forms by rebuilding the model it
 came from, which a document without its source does not have, so a scope that does not carry every form refuses the
 start.
 

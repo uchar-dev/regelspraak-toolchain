@@ -595,3 +595,18 @@ regel 25 ("with one addition"). Aan de hoofdsessie of die mee moeten in een volg
 - `164ce06` README en ENGINE: de schending noemt de default die leest
 - `143d699` Vloeren: de dienst 235 met de default die leest
 - de commit van dit vervolg: Result van de kaart dienst-scope-defaultsgroepen (3)
+
+## Keuring vervolg open punt 1 (hoofdsessie, 2026-10-01)
+
+Eigen run van `make poorten` en `make gates` op `3dead65` na de ff naar
+main; logs in `/tmp/v2/dist-poorten24/`. Poorten PASS (replay 208 goldens,
+553 cases); gates zeven stappen GROEN in 2m58s, reactor 1035/121/235/43. De
+fix gelezen: de schending noemt per element elke default die het leest via
+`ProducentConsument.lezingen`, met het deel, de brontekst en het pad in de
+groep; zestien getuigenrijen pinden de oude groepszin en volgen de nieuwe
+(oud en nieuw in het Result). In dit landingscommit zijn de twee zinnen
+bijgewerkt die zeiden dat de dienst van uchars scenariolaag afwijkt
+(`docs/ENGINE.md`, javadoc van `VormIndex`): sinds uchar `2a0c6d60` leest
+de scenariolaag de erflijn op dezelfde manier (open punt 5 gesloten, gemeten
+in uchar door `ScenarioErflijnScopeTest`). Open punt 2 (consistenties en
+verdelingen buiten de toets) blijft bij de eigenaar.
