@@ -490,3 +490,26 @@ zijn javadoc.
 - `794359a` README en ENGINE: een subtypegroep gaat met haar basis mee
 - `a91fe7d` Vloeren: de dienst 234 met de subtypegroepen
 - de commit van dit vervolg: Result van de kaart dienst-scope-defaultsgroepen (2)
+
+## Keuring (hoofdsessie, 2026-10-01)
+
+Eigen run van `make poorten` en `make gates` op `e63acef` na de ff naar
+main; logs in `/tmp/v2/dist-poorten22/`. Poorten: check-pin PASS,
+check-tweelingen PASS (3 tweelingen, 18 cases), check-dienst-replay PASS
+(208 goldens, 553 cases, pin 208). Gates: zeven stappen GROEN in 3m04s,
+reactor 1020/121/234/43, manifest 29 ok en 3 uitgesloten, image, kind-smoke
+H2–H4. De fix gelezen: `scopeVolledigheid` leest de vormen die de scope
+draagt met `ProducentConsument.vormen` op het gescoopte model, regels en
+defaultsgroepen onder dezelfde drie voorwaarden, en noemt een groep als
+`defaults-groep van regel 'X'` of als `gegenereerde defaults-groep 'X'`;
+de toets draait na de build (een marker-entrypoint toetst niet meer op zijn
+scope, strikt weigert hij toch); `VormIndex.scope` draagt de groep `<basis>
+voor <subtype>` met haar basis mee in beide richtingen, uit de IR en niet
+uit de naam. Afwijkingen 1–5 aanvaard; afwijking 1 (de default die leest
+wordt niet genoemd) wacht op een publieke wandeling per default in uchar
+(`ProducentConsument.lezingen`, signatuur in het Result): een kleine
+uchar-ronde na skelet-vervolg 3. Open punt 2 (consistenties en verdelingen
+buiten de toets; de TOKA-descriptor start anders niet) is voor de eigenaar.
+Open punt 5 (uchars scenariolaag leest dezelfde scope zonder de
+subtypegroepen) gaat mee in diezelfde uchar-ronde; tot dan noemt een
+scenario de subtypegroep zelf. Commitkoppen tot 64 tekens aanvaard.
