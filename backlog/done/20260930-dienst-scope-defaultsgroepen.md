@@ -513,3 +513,85 @@ buiten de toets; de TOKA-descriptor start anders niet) is voor de eigenaar.
 Open punt 5 (uchars scenariolaag leest dezelfde scope zonder de
 subtypegroepen) gaat mee in diezelfde uchar-ronde; tot dan noemt een
 scenario de subtypegroep zelf. Commitkoppen tot 64 tekens aanvaard.
+
+## Vervolg open punt 1 (2026-10-01, bouwer)
+
+Tak `vervolg/dienst-noemt-default` in een nieuwe worktree, afgetakt van distributie-main `ccbc229` (uchar `2a0c6d60`);
+niet gepusht, niet gemerged, `uchar/` niet aangeraakt. Gemeten met `bin/regelspraak serve` en `REGELSPRAAK_JAR` op twee
+bewaarde jars: vóór die van `ccbc229`, na die van `53a6f5d`. Vormen, meetscript en metingen staan onder
+`/tmp/v2/probe/dsc-vervolg/` (`vormen/<naam>/meting-{voor,na}.txt`, `tools/`, `probe/Lezingen.java`, de logs).
+
+**Wat uchar leverde.** `ProducentConsument.lezingen(model, groep, navigatie)` met `record DefaultLezing(List<Integer>
+pad, Default dflt, Set<ElementSleutel> rechtvaardiging, Set<ElementSleutel> consequentie)`; `vormen()` bouwt de lezing
+van een groep daarop, dus de vereniging van alle lezingen is `Vorm.leest()` van die groep.
+
+**Fix** (`53a6f5d`, `BeslisserKern` +45, −3). De beslissing blijft op `Vorm.leest()`. Bij een schending van een
+defaultsgroep haalt `scopeVolledigheid` de lezingen van die groep op (eenmaal per groep, het record uit het gescoopte
+model bij zijn basisnaam) en noemt per element elke default die het leest: het deel (`rechtvaardiging` of
+`consequentie`) met de brontekst zoals de auteur die schreef (`Bron.snippet()` van de voorwaarde of de consequentie,
+anders `Default.bron()`) en het pad van uchar (`[0]` de hoogste default, `[i, g, j]` de j-de default van
+uitzonderingsgroep g van default i). Lezen meer defaults het element, dan staan ze na elkaar met "en". Een element dat
+de groep leest maar geen enkele default, kan volgens uchar niet bestaan; de dienst gooit dan een `IllegalStateException`
+die dat zegt. De zin van een gewone regel is ongewijzigd.
+
+**Vóór en na** (22 documenten, eerder gemeten vormen en `v04b`: `v04` met de scope `premie` alleen). Alle 22 geven
+vóór en na dezelfde start (19 keer exit 1, 3 keer luistert); 17 weigeringen van een groep veranderen alleen in hun zin,
+de 5 flanken zijn byte-gelijk (`r2`, `r7` tweemaal, `o1`, `o2`). De zin tot "maar":
+
+| | vóór | na |
+|---|---|---|
+| R1 | `defaults-groep van regel 'premie' in entrypoint 'premie' leest attribuut 'bergdag' van 'jutter'` | `… van 'jutter' in de rechtvaardiging 'zijn bergdag later is dan 01-06-2026' van default [0]` |
+| R3 | `defaults-groep van regel 'meldtermijn' … leest attribuut 'bergdag' van 'jutter'` | `… in de consequentie 'zijn bergdag plus 6 mnd' van default [1]` |
+| R4 | `gegenereerde defaults-groep 'opgave boven berekening meldtermijn' … leest attribuut 'berekende meldtermijn' van 'jutter'` | `… in de consequentie 'zijn berekende meldtermijn' van default [1]` |
+| R5 | `defaults-groep van regel 'premie' … leest kenmerk 'laatgeborgen' van 'jutter'` | `… in de rechtvaardiging 'hij laatgeborgen is' van default [0]` |
+| R6 | `defaults-groep van regel 'meldtermijn' … leest attribuut 'bergdag' van 'jutter'` | `… in de consequentie 'zijn bergdag plus 6 mnd' van default [1]` |
+| v04b, `bergdag` | `defaults-groep van regel 'premie' … leest attribuut 'bergdag' van 'jutter'` | `… in de rechtvaardiging 'zijn bergdag later is dan 01-06-2026' van default [0] en in de rechtvaardiging 'zijn bergdag later is dan 01-06-2026 en hij stormberger is' van default [0, 0, 0]` |
+| w5, subtypegroep | `gegenereerde defaults-groep 'premie voor Strandjutter' … leest attribuut 'bergdag' van 'jutter'` | `… in de rechtvaardiging 'zijn bergdag later is dan 01-06-2026' van default [0, 0, 0]` |
+
+**Getuige.** `ScopeDefaultsgroepTest`, 25 tests. Zestien rijen pinnen de zin van een groep en zijn terecht veranderd:
+oud `<lezer> in entrypoint '<ep>' leest <element>, maar de enige producent(en) …`, nieuw met `in de <deel> '<tekst>'
+van default <pad>` vóór ", maar". Het zijn de vijf R-rijen (`r1_…`, `r3_…`, `r4_…`, `r5_…`, `r6_…`) en
+`een_lid_van_uitzonderingen_ongeordend_op_een_basisregel`, `uitzonderingen_ongeordend_zonder_drager_noemt_de_groep_van_het_lid`,
+`de_eigen_uitzondering_van_een_subtype_is_een_gegenereerde_groep`, `een_geneste_uitzondering_leest_een_kenmerk_van_buiten_de_scope`,
+`de_producent_buiten_de_scope_is_een_beslistabel`, `de_consequentie_van_een_afwijking_leest_van_buiten_de_scope`,
+`een_lezing_een_rol_ver`, `een_lezing_twee_rollen_ver`, `een_kenmerkcheck_een_rol_ver`,
+`de_basisregel_draagt_ook_wat_de_groep_van_het_subtype_leest` en `de_groep_van_het_subtype_draagt_ook_wat_haar_basis_leest`;
+de helper `groep(…)` kreeg daarvoor een argument. Nieuw: `een_element_dat_twee_defaults_lezen_noemt_ze_allebei`. Rood
+eerst: `daee050` tegen de kern van `ccbc229`, `Tests run: 25, Failures: 17` (de zestien en de nieuwe rij); R1 letterlijk:
+`expected: <[… leest attribuut 'bergdag' van 'jutter' in de rechtvaardiging 'zijn bergdag later is dan 01-06-2026' van
+default [0], maar …]> but was: <[… leest attribuut 'bergdag' van 'jutter', maar …]>`. De acht flanken en rijen die op
+antwoorden toetsen bleven groen. Na `53a6f5d`: 25 van 25; de dienstsuite 235.
+
+**Docs** (`164ce06`): `docs/ENGINE.md` één zin bij de schending (de default die leest, het deel, de tekst en het pad,
+met een voorbeeld); de `README.md` een bijzin bij de toets. **Vloervoorstel** (`143d699`): `service|235`.
+
+**Poorten en gates** op `143d699`: `make poorten` groen (check-pin `PASS`; reactor `1035/121/235/43`, skip-pin `235
+testgevallen (vloer 235)`; check-tweelingen `3 tweelingen, 18 cases …, 2 cases in 34 verzoeken; getuige: 4
+getuigenissen`; replay `208 goldens, 553 cases (pin 208)`; manifest `32 regels, 29 ok, 3 uitgesloten, 0 mismatch`). De
+1035 is uchars backendsuite op de nieuwe pin. `make gates`:
+
+```
+gates: 1 pin        GROEN      0s  PASS: de submodule uchar is geïnitialiseerd, schoon en op de vastgelegde commit; de versies zijn gelijk
+gates: 2 reactor    GROEN   1m02s  testgevallen per module 1035/121/235/43
+gates: 3 tweelingen GROEN      9s  3 tweelingen, 18 cases via HTTP met de gepinde verwachtingen; vocabulairetweeling jutterswet-vocabulaires: 2 cases in 34 verzoeken; getuige: 4 getuigenissen
+gates: 4 replay     GROEN     58s  208 goldens, 553 cases (pin 208)
+gates: 5 manifest   GROEN      1s  32 regels, 29 ok, 3 uitgesloten, 0 mismatch
+gates: 6 image      GROEN     33s  beslisservice:dev
+gates: 7 kind-smoke GROEN     48s  H2 PASS, H3 PASS, H4 PASS
+gates: GROEN — 7 stappen in 3m31s; de uitvoer staat in out/gates/
+```
+
+**Open punten.** Punt 1 is hiermee af. Punt 2 ligt bij de eigenaar. Waargenomen buiten dit punt (niet gewijzigd, op
+de opdracht "alleen dit punt"): op uchar `2a0c6d60` draagt ook uchars scenarioresolver een scope over de erflijn mee
+(`646603ed` "ScenarioResolver: een scope draagt de groepen van een erflijn mee"); daarmee lijkt open punt 5 opgelost,
+niet gemeten in deze ronde. Twee zinnen van de distributie zeggen nog dat de dienst daarin afwijkt:
+`docs/ENGINE.md` regel 51–52 ("where uchar's scenario layer keeps to the names") en de javadoc van `VormIndex`
+regel 25 ("with one addition"). Aan de hoofdsessie of die mee moeten in een volgende ronde.
+
+**Commits van dit vervolg.**
+
+- `daee050` Getuige: de schending noemt de default die leest (rood)
+- `53a6f5d` Dienst: de schending van een groep noemt de default die leest
+- `164ce06` README en ENGINE: de schending noemt de default die leest
+- `143d699` Vloeren: de dienst 235 met de default die leest
+- de commit van dit vervolg: Result van de kaart dienst-scope-defaultsgroepen (3)
