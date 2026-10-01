@@ -50,6 +50,18 @@ decide whether it runs. A `uchar-ir-v1` document is served whole: a scope drops 
 came from, which a document without its source does not have, so a scope that does not carry every form refuses the
 start.
 
+At the start the core also checks that each scope uchar carries is complete. It reads the forms of the entry point's
+KieBase as uchar's rule graph reads them (`ProducentConsument.vormen`): of a rule its condition and value, of a defaults
+group the justification and consequence of every default, nested exceptions included, over roles as well. An attribute
+or characteristic a rule or a defaults group of the scope reads, which forms outside the scope write and none inside,
+refuses the start (`SCOPE_ONVOLLEDIG`, exit 1). The violation names the reader — a rule, the group of the rule a tree
+of exceptions hangs on (or of a member of an `Uitzonderingen ongeordend` block), or a group uchar generates by its
+name (`opgave boven berekening X` for the opgave marker, `X voor S` for the own exceptions of a subtype S) — the
+element and its writers. An element no form writes is request input. Two opt-outs per entry point: `invoerElementen`
+declares an element the caller supplies, and `scopeControleUit: true` waives the check (the replay gate sets it). The
+other forms a scope can carry (object creations, allocations, consistencies, uniquenesses, fact creations) are not
+checked.
+
 ```
 bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [--allow-markers] [--host H] [--poort N]
 ```
