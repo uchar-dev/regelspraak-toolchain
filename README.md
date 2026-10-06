@@ -210,8 +210,9 @@ Mounting a rule set at `/app/rules` and setting `DESCRIPTOR` and `BRONNEN_MANIFE
 `helm/beslisservice` deploys the image. `make kind-smoke` builds it, loads it into the kind cluster `regelspraak`
 (created when absent; `CLUSTER=` names another, and an existing cluster that does not answer stops the run) and
 checks the running service: the golden TOKA scenarios over HTTP, the marker's exit 3 and its 503 with
-`allowMarkers`, and a rollout that changes a parameter and with it the decision. `bash scripts/kind-smoke.sh
---teardown` deletes the cluster afterwards. Both targets need Docker and run on the host.
+`allowMarkers`, and a rollout that changes a parameter and with it the decision. It then deletes the cluster;
+`bash scripts/kind-smoke.sh` without `--teardown` keeps it, and so does a failed run, which names the failed step
+and the command that deletes the cluster. Both targets need Docker and run on the host.
 
 ## Known losses
 

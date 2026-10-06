@@ -39,7 +39,7 @@ help:
 	@echo "  make clean                           Remove the CLI outputs (out/)"
 	@echo ""
 	@echo "  make image  [TAG=… DESCRIPTOR_SRC=…] (host only) Build the beslisservice service image"
-	@echo "  make kind-smoke                      (host only) kind H2/H3/H4 gates against the live service"
+	@echo "  make kind-smoke                      (host only) kind H2/H3/H4 gates against the live service, then delete the cluster"
 
 # The pin is the commit the uchar submodule is checked out at: this target fails when the
 # submodule is missing, moved or dirty, or when the parent pom's versions drift from uchar's.
@@ -170,5 +170,6 @@ DESCRIPTOR_SRC ?= examples/toka/toka.dienst.json
 image:
 	docker build -f docker/Dockerfile --build-arg DESCRIPTOR_SRC=$(DESCRIPTOR_SRC) -t $(IMAGE_REPO):$(TAG) .
 
+# --teardown: a kind control plane left running idles at about a fifth of a core.
 kind-smoke:
-	bash scripts/kind-smoke.sh
+	bash scripts/kind-smoke.sh --teardown

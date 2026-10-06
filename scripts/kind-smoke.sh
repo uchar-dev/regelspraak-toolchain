@@ -8,7 +8,8 @@
 #   H4  rollout         — a rebuilt image with a changed parameter (volwassenleeftijd)
 #                         changes the decision, proving descriptor overlay + rollout
 #
-# One linear gate sequence; --teardown deletes the kind cluster at the end. Every kubectl
+# One linear gate sequence; --teardown deletes the kind cluster at the end, a failed run
+# keeps it for debugging and says how to delete it. Every kubectl
 # and helm call names the cluster's context, so the current context of the caller does
 # not decide where the releases land. Needs docker, kind, kubectl, helm, mvn, python3.
 set -euo pipefail
@@ -41,8 +42,26 @@ h() { helm --kube-context "$KCTX" "$@"; }
 # held by another process on the host, and a forward that then binds only [::1] is not the one
 # curl reaches. kubectl runs directly in the background, so PF_PID is kubectl itself.
 PF_PID=""; PF_PORT=""; PF_LOG=$(mktemp)
-cleanup() { { [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null; } || true; rm -f "$OVERLAY" "$PF_LOG"; }
+# A failed run skips the teardown on purpose, so the cluster stays for debugging; the
+# message at exit says so, because a forgotten cluster keeps costing CPU on the host.
+cleanup() {
+  local rc=$?
+  { [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null; } || true
+  rm -f "$OVERLAY" "$PF_LOG"
+  if [ "$rc" -ne 0 ] && kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
+    {
+      echo "=================================================================="
+      echo "kind-smoke MISLUKT in stap '$STAP' (exit $rc); de oorzaak staat in de uitvoer hierboven."
+      echo "De kind cluster '$CLUSTER' is blijven staan om te debuggen: kubectl --context $KCTX get pods -A"
+      echo "Een volgende run hergebruikt hem. Ruim hem daarna op, want een draaiende cluster blijft CPU kosten:"
+      echo "  kind delete cluster --name $CLUSTER"
+    } >&2
+  fi
+}
 trap cleanup EXIT
+
+STAP=start
+stap() { STAP=$1; echo "== $1 =="; }
 
 # pf <svc>: stop any prior forward, start a fresh one, wait for /info.
 pf() {
@@ -62,7 +81,7 @@ pf() {
 }
 
 # ---- cluster ------------------------------------------------------------------
-echo "== cluster =="
+stap "cluster"
 if kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
   echo "hergebruik bestaande kind cluster '$CLUSTER'"
   k get nodes >/dev/null 2>&1 || {
@@ -75,12 +94,12 @@ else
 fi
 
 # ---- build + load -------------------------------------------------------------
-echo "== build + load =="
+stap "build + load"
 make image TAG="$TAG"
 kind load docker-image "$IMG_REPO:$TAG" --name "$CLUSTER"
 
 # ---- install ------------------------------------------------------------------
-echo "== install =="
+stap "install"
 h upgrade --install "$RELEASE" "$CHART" -f "$CHART/values-dev.yaml" --set image.tag="$TAG"
 k rollout status "deploy/$RELEASE" --timeout=600s
 
@@ -91,7 +110,7 @@ e = json.load(sys.stdin)["entrypoints"]
 print("/info:", len(e), "entrypoints,", sum(1 for x in e if x.get("uitvoerbaar")), "uitvoerbaar")'
 
 # ---- H2: cluster oracle -------------------------------------------------------
-echo "== H2 =="
+stap "H2"
 # The identical golden assertions (GoldenOverHttpTest) against the IN-CLUSTER service via
 # -Ddienst.url, in the reactor (the service module needs the modules below it). The
 # surefire goal runs alone after test-compile: the module's skip-pin step counts full
@@ -101,7 +120,7 @@ mvn -o -B -pl service -am test-compile surefire:test -Dtest=GoldenOverHttpTest \
 echo "H2 PASS: GoldenOverHttpTest tegen de in-cluster dienst (26 over HTTP gereproduceerd, 3 door uchar geweigerd)"
 
 # ---- H3: fail-fast ------------------------------------------------------------
-echo "== H3 =="
+stap "H3"
 # Install the marker descriptor with allowMarkers=false → the service exits 3 → CrashLoopBackOff.
 h upgrade --install "$MARKER_RELEASE" "$CHART" --set image.tag="$TAG" \
     --set descriptor=/app/rules/marker/marker.dienst.json \
@@ -152,7 +171,7 @@ echo "H3 PASS: met --allow-markers start de dienst, toont /info de marker en kri
 h uninstall "$MARKER_RELEASE"
 
 # ---- H4: rollout --------------------------------------------------------------
-echo "== H4 =="
+stap "H4"
 # Pinned request: a Vlucht op 2026-07-01 met een persoon geboren 2007-01-01 (19 jr).
 read -r -d '' H4_BODY <<'JSON' || true
 {"instanties":[{"type":"Vlucht","id":"V1","attributen":{"vluchtdatum":"2026-07-01"}},{"type":"Natuurlijk persoon","id":"P1","attributen":{"geboortedatum":"2007-01-01"},"rollen":{"reis":"V1"}}]}
@@ -223,7 +242,7 @@ echo "H4 PASS: descriptor-overlay wijzigt de beslissing over een rollout heen"
 
 # ---- teardown -----------------------------------------------------------------
 if [ "$TEARDOWN" = true ]; then
-  echo "== teardown =="
+  stap "teardown"
   h uninstall "$RELEASE" || true
   kind delete cluster --name "$CLUSTER"
 fi
