@@ -32,6 +32,16 @@
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
     </dependency>
+    <!-- Drools logs through SLF4J and brings no backend, so every command printed SLF4J's StaticLoggerBinder
+         notice. A backend at WARN (simplelogger.properties) keeps Drools' warnings and errors on stderr, where a
+         no-op backend would drop them. Optional: the Quarkus adapter depends on this module and logs through
+         Quarkus. -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <scope>runtime</scope>
+      <optional>true</optional>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>
