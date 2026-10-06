@@ -78,7 +78,11 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # percentage van een genavigeerde grondslag), jutterswet-zwaarste-weging (een vouw over een verzameling gevolgd
 # door to-one stappen, via een gegenereerd lid) en jutterswet-opgave-bedrag (de opgave-markering op een bedrag met
 # één eenheid); de 27 uitsluitingen zijn ongewijzigd.
-EXPECTED_REPLAY_PLAYED=212
+# 2026-10-06, uchar 0a378588: 213 — één nieuwe speler: jutterswet-premiepot (een objectcreatie telt de leden van een
+# rol, een feitcreatie koppelt die bestaande objecten aan het gemaakte object, een rolcheck leest de koppeling; de
+# verifier weigerde zo'n document eerder onder WF-045 door de populatieproxy van de feitcreatie); de 27
+# uitsluitingen zijn ongewijzigd.
+EXPECTED_REPLAY_PLAYED=213
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
