@@ -122,20 +122,23 @@ class ScenarioOrakelTest {
     // =====================================================================================================
 
     /** FACET rekenkunde+eenheden (also parameter-gedreven, voorwaarden). Lifted from
-     *  DroolsExecutionTest.berekening_met_voorwaarde_vuurt_en_zet_attribuut (L154): 10 < 100 fires 10+100=110. */
+     *  DroolsExecutionTest.berekening_met_voorwaarde_vuurt_en_zet_attribuut (L154): 10 < 100 fires 10+100=110.
+     *  The rule reads a basisprijs and writes the totaalprijs: a rule that reads its own target is a dependency cycle
+     *  uchar's frontend refuses (WF-045). */
     @Test void rekenkunde_parameter_voorwaarde_optellen() throws Exception {
         String model = """
             Parameter de grens : Numeriek (geheel getal)
             Objecttype de Vlucht
+                de basisprijs Numeriek (geheel getal);
                 de totaalprijs Numeriek (geheel getal);
             Regel verhoog
                 geldig altijd
-                    De totaalprijs van een Vlucht moet gesteld worden op de totaalprijs van een Vlucht plus de grens
-                    indien de totaalprijs van een Vlucht kleiner is dan de grens.
+                    De totaalprijs van een Vlucht moet gesteld worden op de basisprijs van een Vlucht plus de grens
+                    indien de basisprijs van een Vlucht kleiner is dan de grens.
             """;
         Wereld w = wereld(model);
         w.sessie().setGlobal("grens", new BigDecimal("100"));
-        Object v = w.nieuw("Vlucht"); w.getal(v, "setTotaalprijs", 10);
+        Object v = w.nieuw("Vlucht"); w.getal(v, "setBasisprijs", 10);
         vuur(w, v);
         BigDecimal grond = w.num(v, "getTotaalprijs");
         assertGetal("110", grond, "java-api totaalprijs");
@@ -143,7 +146,7 @@ class ScenarioOrakelTest {
         ScenarioResultaat r = één(model + """
             Situatie basis:
             een Vlucht V1
-            - de totaalprijs is 10
+            - de basisprijs is 10
             de parameter de grens is 100
             Scenario optellen
             toetst de regel verhoog
@@ -193,21 +196,24 @@ class ScenarioOrakelTest {
     }
 
     /** FACET rekenkunde+eenheden (cross-unit optelling). Lifted from
-     *  DroolsExecutionTest.cross_unit_optelling_wordt_omgerekend_niet_rauw_geteld (L3359): 2 jr + 3 mnd = 27 mnd. */
+     *  DroolsExecutionTest.cross_unit_optelling_wordt_omgerekend_niet_rauw_geteld (L3359): 2 jr + 3 mnd = 27 mnd.
+     *  The rule reads a beginduur and writes the duur: a rule that reads its own target is a dependency cycle uchar's
+     *  frontend refuses (WF-045). */
     @Test void rekenkunde_cross_unit_optelling() throws Exception {
         String model = """
             Eenheidsysteem Tijd
                 de maand    mnd
                 het jaar    jr    =    12 mnd
             Objecttype de Periode
+                de beginduur Numeriek (geheel getal) met eenheid mnd;
                 de duur Numeriek (geheel getal) met eenheid mnd;
                 de looptijd Numeriek (geheel getal) met eenheid jr;
             Regel tel
                 geldig altijd
-                    De duur van een Periode moet gesteld worden op de duur van een Periode plus de looptijd van een Periode.
+                    De duur van een Periode moet gesteld worden op de beginduur van een Periode plus de looptijd van een Periode.
             """;
         Wereld w = wereld(model);
-        Object p = w.nieuw("Periode"); w.getal(p, "setLooptijd", 2); w.getal(p, "setDuur", 3);
+        Object p = w.nieuw("Periode"); w.getal(p, "setLooptijd", 2); w.getal(p, "setBeginduur", 3);
         vuur(w, p);
         BigDecimal grond = w.num(p, "getDuur");
         assertGetal("27", grond, "java-api duur (2 jr + 3 mnd)");
@@ -215,7 +221,7 @@ class ScenarioOrakelTest {
         ScenarioResultaat r = één(model + """
             Situatie basis:
             een Periode P1
-            - de duur is 3 mnd
+            - de beginduur is 3 mnd
             - de looptijd is 2 jr
             Scenario cross-unit
             toetst de regel tel

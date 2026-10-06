@@ -90,11 +90,10 @@ class RegelSpraakEngineTest {
                 () -> "de weigering hoort de regel te noemen: " + e.diagnostics());
     }
 
-    @org.junit.jupiter.api.Timeout(60)
-    @Test void kringverwijzing_wordt_begrensd_niet_gehangen() {
+    @Test void kringverwijzing_weigert_bij_het_compileren() {
         // A read-write dependency cycle (leeftijd = uitkomst+1; uitkomst = leeftijd+1) never reaches a
-        // fixpoint — the resolver WARNs, and fire() must turn the run-away into an exception, never a
-        // hung session (the @Timeout converts a regression into a failure instead of a hung build).
+        // fixpoint. uchar's frontend refuses it under WF-045 before a KieBase is built, so no session
+        // ever fires it; until uchar a7210c19 the resolver only warned and fire() hit its cap.
         String kring = """
             Objecttype de Persoon (mv: Personen) (bezield)
                 de leeftijd Numeriek (geheel getal);
@@ -106,14 +105,11 @@ class RegelSpraakEngineTest {
                 geldig altijd
                     De uitkomst van een Persoon moet berekend worden als de leeftijd van een Persoon plus 1.
             """;
-        RegelSpraakEngine engine = RegelSpraakEngine.compile(kring);
-        assertTrue(engine.overgeslagen().isEmpty(), () -> "beide kring-regels moeten loweren: " + engine.overgeslagen());
-        Object p = persoon(engine, 1);
-        try (RegelSpraakEngine.Session s = engine.newSession()) {
-            s.insert(p);
-            assertThrows(IllegalStateException.class, s::fire,
-                    "een kringverwijzing moet begrensd falen, niet hangen");
-        }
+        RegelSpraakCompileException e = assertThrows(RegelSpraakCompileException.class,
+                () -> RegelSpraakEngine.compile(kring));
+        assertTrue(e.diagnostics().stream().anyMatch(d -> d.isError() && d.message().contains("(WF-045)")
+                        && d.message().endsWith("dependency cycle through no recursive creation: a -> b -> a")),
+                () -> "de weigering hoort WF-045 en de kring te noemen: " + e.diagnostics());
     }
 
     /** A generated Persoon bean with its leeftijd set. */
