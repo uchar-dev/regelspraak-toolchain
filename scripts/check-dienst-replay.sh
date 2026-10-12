@@ -82,7 +82,14 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # rol, een feitcreatie koppelt die bestaande objecten aan het gemaakte object, een rolcheck leest de koppeling; de
 # verifier weigerde zo'n document eerder onder WF-045 door de populatieproxy van de feitcreatie); de 27
 # uitsluitingen zijn ongewijzigd.
-EXPECTED_REPLAY_PLAYED=213
+# 2026-10-12, uchar b536bbc9 (kaart sessie-via-de-ingang-van-uchar): 222 — de dienst vult, vuurt en leest via
+# uchars ingang, en de set van gate 12 groeit met de exec-model-tak op truth maintenance van 240 naar 250 goldens.
+# Negen nieuwe spelers: anchor/jutterswet-erflijn, anchor/jutterswet-penninguitgifte, anchor/jutterswet-vindersloon,
+# jutterswet-afdrachtstapel, jutterswet-vondsttarief en synth2-afrondingscombinaties (de vorige tak weigerde een
+# vorm van elk), en jutterswet-budgetgrens-op, jutterswet-filterwacht en jutterswet-penningbesluit (nieuw in uchars
+# corpus). jutterswet-klipwacht komt ook in de set, maar speelt niet door de dienst (een tijdlijn als invoerwaarde,
+# hieronder); de 27 andere uitsluitingen zijn ongewijzigd.
+EXPECTED_REPLAY_PLAYED=222
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
@@ -102,6 +109,7 @@ REPLAY_UITGESLOTEN=(
   "jutterswet-getijdenwacht|tijdlijn als invoerwaarde"
   "jutterswet-keurlast|tijdlijn als invoerwaarde"
   "jutterswet-keurploeg|tijdlijn als invoerwaarde"
+  "jutterswet-klipwacht|tijdlijn als invoerwaarde"
   "jutterswet-muntbewaring|tijdlijn als invoerwaarde"
   "jutterswet-penningjaar|scalaire waarde op een tijdsafhankelijk attribuut (NIET_ONDERSTEUND in de dienst)"
   "jutterswet-ploegpremie|tijdlijn als invoerwaarde"
