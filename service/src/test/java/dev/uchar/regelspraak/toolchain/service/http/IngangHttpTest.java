@@ -50,8 +50,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * that stands at the fixpoint is a 422 that gives per fault its kind and uchar's sentence, never a stacktrace. Own
  * material: one model of finds with an entry point per rule set, so each request meets the fault it is about and no
  * other, one of a fold over a to-many role, whose fault names the member the order of the list puts first, as in
- * uchar's replay, and the model of uchar's witness of a fact creation that gives a to-one role a second filling, a
- * fault of another type.
+ * uchar's replay, the model of uchar's witness of a fact creation that gives a to-one role a second filling, a fault of
+ * another type, and that of a reciprocal role written on a subtype of its filler.
  */
 class IngangHttpTest {
 
@@ -217,6 +217,43 @@ class IngangHttpTest {
           "rollen":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
           {"type":"Haven","id":"H1","attributen":{"ligplaatsen":0}},
           {"type":"Haven","id":"H2","attributen":{"ligplaatsen":4}},{"type":"Jutter","id":"J1"}]}""";
+
+    /** The model of uchar's {@code SubtypeRolvullerWitnessTest.de_wederkerige_rol_spiegelt_ook_voor_een_subtype},
+     *  without the rest of its golden: a reciprocal role filled by Vondst, and Wrakvondst a subtype of Vondst. */
+    private static final String MAAT_BRON = """
+        Objecttype de Vondst (mv: Vondsten)
+            de waarde Numeriek (geheel getal);
+            de maatwaarde Numeriek (geheel getal);
+
+        Objecttype de Wrakvondst is een Vondst (mv: Wrakvondsten)
+
+        Wederkerig feittype vondstpaar
+            de maat (mv: maten) Vondst
+        Eén maat heeft één maat
+
+        Regel maatwaarde van een vondst
+            geldig altijd
+                De maatwaarde van een Vondst moet gesteld worden op de waarde van de maat van de Vondst.
+        """;
+
+    private static final String MAAT_DESCRIPTOR = """
+        { "dienst": {"naam":"maat","versie":"1"},
+          "entrypoints": [ { "naam":"maatwaarde","pad":"maatwaarde",
+            "scope": {"regelnamen": ["maatwaarde van een vondst"]},
+            "invoer": ["Vondst", "Wrakvondst"], "uitvoer": ["Vondst.maatwaarde"] } ],
+          "parameters": {} }""";
+
+    /** The case of uchar's witness: W, a Wrakvondst, writes the one link of the reciprocal role. */
+    private static final String MAAT_CASE = """
+        { "format": "uchar-case-v0", "asOfDate": null,
+          "input": { "instances": [
+              { "label": "V", "objectType": "Vondst", "attributes": { "waarde": { "number": "2" } },
+                "roles": {}, "characteristics": [] },
+              { "label": "W", "objectType": "Wrakvondst", "attributes": { "waarde": { "number": "5" } },
+                "roles": { "maat": [ "V" ] }, "characteristics": [] } ], "parameters": {} },
+          "expected": [
+              { "kind": "attributeValue", "label": "V", "attribute": "maatwaarde", "value": { "number": "5" } },
+              { "kind": "attributeValue", "label": "W", "attribute": "maatwaarde", "value": { "number": "2" } } ] }""";
 
     private static DienstHttp dienst;
     private static DienstHttp vouwdienst;
@@ -434,6 +471,39 @@ class IngangHttpTest {
         assertEquals("relaties[0].rollen.aanmelder", body.at("/schendingen/0/veld").asText(), resp.body());
         assertEquals("de naar-één rol 'aanmelder' krijgt een tweede, ander doel", body.at("/schendingen/0/fout").asText(),
                 resp.body());
+    }
+
+    // ---------------- a reciprocal role written on a subtype of its filler ----------------
+
+    /** W, a Wrakvondst, names V as its maat, and one link of a reciprocal role holds both ways (§13.3.9.2): the role
+     *  writer asks the reciprocal role along the chain of W's types, as uchar's replay does, so V reads W's waarde.
+     *  Asked of W's own type alone, the reverse leg stayed unwritten and V's maatwaarde empty, in a 200, where uchar's
+     *  replay of the same case plays with 5. */
+    @Test
+    void een_wederkerige_rol_op_een_subtype_geldt_in_beide_richtingen(@TempDir Path map) throws Exception {
+        RegelSpraakModel model = Resolver.resolve(MAAT_BRON);
+        assertEquals(List.of(), model.errors());
+        Path ir = map.resolve("ir.json");
+        Files.writeString(ir, IrEmitter.emit(model), StandardCharsets.UTF_8);
+        Path zaak = map.resolve("case.json");
+        Files.writeString(zaak, MAAT_CASE, StandardCharsets.UTF_8);
+        CaseRunner.Result replay = CaseRunner.runGolden(ir, List.of(zaak));
+        assertEquals("PLAYED", replay.status(), replay::toString);
+
+        BeslisserKern kern = BeslisserKern.bouw(MAAT_DESCRIPTOR, Map.of("maat.rgs", MAAT_BRON), KernConfig.strikt(),
+                Thread.currentThread().getContextClassLoader());
+        DienstHttp maat = DienstHttp.bind(kern, "127.0.0.1", 0).start();
+        try {
+            HttpResponse<String> resp = post(maat, "/maatwaarde", """
+                {"instanties":[{"type":"Vondst","id":"V","attributen":{"waarde":2}},
+                  {"type":"Wrakvondst","id":"W","attributen":{"waarde":5},"rollen":{"maat":"V"}}]}""");
+            assertEquals(200, resp.statusCode(), resp.body());
+            JsonNode antwoord = boom(resp.body());
+            assertEquals("5", String.valueOf(vind(antwoord, "V", "maatwaarde")), resp.body());
+            assertEquals("2", String.valueOf(vind(antwoord, "W", "maatwaarde")), resp.body());
+        } finally {
+            maat.stop(0);
+        }
     }
 
     // ---------------- helpers ----------------

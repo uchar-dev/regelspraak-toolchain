@@ -153,6 +153,39 @@ class ScenarioRunnerTest {
                 u.get(0).uitleg());
     }
 
+    /** The model of uchar's {@code SubtypeRolvullerWitnessTest.de_wederkerige_rol_spiegelt_ook_voor_een_subtype}: W, a
+     *  Wrakvondst, writes the one link of a reciprocal role filled by Vondst. uchar's replay mirrors it along the chain
+     *  of W's types, and so does the explanation's session, which shares the role writer with the service: it reads
+     *  V's maatwaarde as 5 and gives its explanation. Asked of W's own type alone, the session read V's maatwaarde
+     *  empty, and the explanation was withheld. */
+    @Test void uitleg_met_een_wederkerige_rol_op_een_subtype_wordt_niet_ingehouden() {
+        List<ScenarioRunner.Uitgelegd> u = ScenarioRunner.runMetUitleg(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve("""
+            Objecttype de Vondst (mv: Vondsten)
+                de waarde Numeriek (geheel getal);
+                de maatwaarde Numeriek (geheel getal);
+            Objecttype de Wrakvondst is een Vondst (mv: Wrakvondsten)
+            Wederkerig feittype vondstpaar
+                de maat (mv: maten) Vondst
+            Eén maat heeft één maat
+            Regel maatwaarde van een vondst
+            geldig altijd
+            De maatwaarde van een Vondst moet gesteld worden op de waarde van de maat van de Vondst.
+            Scenario maat van een wrakvondst
+            Gegeven is de volgende situatie:
+            een Vondst V
+            - de waarde is 2
+            een Wrakvondst W
+            - de waarde is 5
+            - de maat is V
+            Met als verwacht resultaat:
+            - de maatwaarde van V is 5
+            - de maatwaarde van W is 2
+            """));
+        assertEquals(1, u.size());
+        assertEquals(Status.PASS, u.get(0).resultaat().status(), () -> u.get(0).resultaat().diagnose());
+        assertNull(u.get(0).uitlegFout(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).uitlegFout());
+    }
+
     /** A leeg expectation: a rule whose guard does not match leaves the doel unset → the attribuut reads leeg. */
     @Test void leeg_verwachting() {
         ScenarioResultaat r = één("""

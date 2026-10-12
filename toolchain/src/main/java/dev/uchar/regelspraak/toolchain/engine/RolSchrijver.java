@@ -24,8 +24,9 @@ import java.util.TreeMap;
  * names is taken by that name where it names a reference field the bean model derives, else by the type pair; a to-one
  * role is written on this bean, and on a one-to-one relation the far field as well; a to-many role is stored in the far
  * end's field, through the sister role. A reciprocal self-relation (§13.3.9.2) gets its reverse leg in a separate pass
- * over all beans ({@link #spiegelWederkerig}). A link the bean model cannot hold, or a second, different target on a
- * to-one field, is refused by name ({@link Geweigerd}).
+ * over all beans ({@link #spiegelWederkerig}), its role asked along the chain of the bean's types, so a link written on
+ * a subtype of the role's filler holds both ways as well. A link the bean model cannot hold, or a second, different
+ * target on a to-one field, is refused by name ({@link Geweigerd}).
  */
 public final class RolSchrijver {
 
@@ -129,7 +130,11 @@ public final class RolSchrijver {
     public void spiegelWederkerig(Map<String, Object> beans, Map<String, Objecttype> typePerLabel) {
         for (Map.Entry<String, Object> e : beans.entrySet()) {
             Object bean = e.getValue();
-            String rol = FactModelGenerator.zelfpaarRol(model, typePerLabel.get(e.getKey()));
+            // the reciprocal role of an instance of a subtype of its filler is its ancestor's (IR-SPEC ch. 2.6): asked
+            // of the bean's own type alone, its leg went unmirrored, so the chain is asked as uchar's replay asks it
+            String rol = null;
+            for (Objecttype t : typePerLabel.get(e.getKey()).keten())
+                if ((rol = FactModelGenerator.zelfpaarRol(model, t)) != null) break;
             if (rol == null) continue;
             Object partner = CaseSessie.lees(bean, Namen.getter(rol));
             if (partner == null) continue;
