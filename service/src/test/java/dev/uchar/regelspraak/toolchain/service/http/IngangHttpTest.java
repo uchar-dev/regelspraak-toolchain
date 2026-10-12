@@ -225,11 +225,13 @@ class IngangHttpTest {
         assertTrue(body.at("/fouten/1/fout").asText().contains("van V1, een Vondst"), body.toString());
     }
 
-    /** A timeline of a request is refused (NIET_ONDERSTEUND), so no request reaches an input in the other convention;
-     *  the service's executor reaches it with a world whose bean holds a full timeline where the rule takes the
-     *  asOfDate-bucket scalar, and the fault becomes the body both adapters send with the 422. */
+    /** No request reaches an {@code Invoervormfout}: the HTTP route answers a request with a timeline with 400
+     *  NIET_ONDERSTEUND, which this test asserts first. The translation of that fault into a 422 is therefore tested at
+     *  the level of the core: the service's executor ({@link Uitvoerder}) gets a world whose bean holds a full timeline
+     *  where the rule takes the asOfDate-bucket scalar, and {@link AntwoordBouwer#evaluatiefout} builds from the fault
+     *  the body both adapters send with the 422. This is the strongest witness of this kind that exists. */
     @Test
-    void een_tijdlijninvoer_in_de_andere_conventie_is_een_evaluatiefout_invoervormfout() throws Exception {
+    void een_tijdlijn_geeft_over_http_400_en_de_kern_vertaalt_een_invoervormfout_naar_de_422() throws Exception {
         BeslisserKern kern = BeslisserKern.bouw(BEWARING_DESCRIPTOR, Map.of("bewaring.rgs", BEWARING_BRON),
                 KernConfig.strikt(), Thread.currentThread().getContextClassLoader());
         DienstHttp bewaring = DienstHttp.bind(kern, "127.0.0.1", 0).start();
