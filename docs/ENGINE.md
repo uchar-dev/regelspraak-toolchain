@@ -36,13 +36,16 @@ derived values and characteristics, the objects and links the creations made, th
 inconsistencies) without writing anything, and `zetTerug()` puts it on the beans, after which the session does not
 fire again. Between two fires a consumer changes an attribute or a characteristic of a bean of the session and calls
 `update(bean)`; an object that comes or goes, a changed relation or another global asks a fresh session, and
-`setGlobal` belongs before the first `fire()`. uchar's entry refuses each of these by name. `fire()` returns the
-number of firings and throws with uchar's sentence when a run reaches no fixpoint; `zetTerug()` throws every
-evaluation fault that stands at the fixpoint as uchar's own exception, two or more as `Evaluatiefouten`: one of the
-four types uchar's README names (`Breuk.DelingDoorNul`, `Rekenfout`, `Schrijversconflict`, `Invoervormfout`) or
-another, such as the `IllegalStateException` of a fact creation that gives a to-one role a second filling. A fault is
-an evaluation fault by its place at the fixpoint, not by its type: `lees().fouten()` gives each as data, which tells
-it from an exception of the entry itself. `facts(…)` reads the working memory, the `Inconsistentie` facts among them.
+`setGlobal` belongs before the first `fire()`. uchar's entry refuses each of these by name. A forgotten `update` it
+does not refuse: the entry does not see an attribute or a characteristic set without one, so the next `fire()` fires
+nothing, and `lees()` and `zetTerug()` give the old fixpoint (uchar's `backends/drools/README.md`, "What a consumer
+can forget"). `fire()` returns the number of firings and throws with uchar's sentence when a run reaches no fixpoint;
+`zetTerug()` throws every evaluation fault that stands at the fixpoint as uchar's own exception, two or more as
+`Evaluatiefouten`: one of the four types uchar's README names (`Breuk.DelingDoorNul`, `Rekenfout`,
+`Schrijversconflict`, `Invoervormfout`) or another, such as the `IllegalStateException` of a fact creation that gives
+a to-one role a second filling. A fault is an evaluation fault by its place at the fixpoint, not by its type:
+`lees().fouten()` gives each as data, which tells it from an exception of the entry itself. `facts(…)` reads the
+working memory, the `Inconsistentie` facts among them.
 
 The facts are instances of the generated beans (`nieuw`, `beanLoader()`), in uchar's package
 `dev.uchar.regelspraak.facts`: the KieBase is built against those classes, so an object of a same-named class from
