@@ -36,10 +36,12 @@ derived values and characteristics, the objects and links the creations made, th
 inconsistencies) without writing anything, and `zetTerug()` puts it on the beans, after which the session does not
 fire again. Between two fires a consumer changes an attribute or a characteristic of a bean of the session and calls
 `update(bean)`; an object that comes or goes, a changed relation or another global asks a fresh session, and
-`setGlobal` belongs before the first `fire()`. uchar's entry refuses each of these by name. A forgotten `update` it
-does not refuse: the entry does not see an attribute or a characteristic set without one, so the next `fire()` fires
-nothing, and `lees()` and `zetTerug()` give the old fixpoint (uchar's `backends/drools/README.md`, "What a consumer
-can forget"). `fire()` returns the number of firings and throws with uchar's sentence when a run reaches no fixpoint;
+`setGlobal` belongs before the first `fire()`. uchar's entry refuses each of these by name. A model with an object or
+a fact creation fires once per session: uchar refuses a second `fire()` there, so a change asks a fresh session. In a
+session that may fire again, a forgotten `update` uchar's entry does not refuse: the entry does not see an attribute
+or a characteristic set without one, so the next `fire()` fires nothing, and `lees()` and `zetTerug()` give the old
+fixpoint (uchar's `backends/drools/README.md`, "What a consumer can forget"). `fire()` returns the number of firings
+and throws with uchar's sentence when a run reaches no fixpoint;
 `zetTerug()` throws every evaluation fault that stands at the fixpoint as uchar's own exception, two or more as
 `Evaluatiefouten`: one of the four types uchar's README names (`Breuk.DelingDoorNul`, `Rekenfout`,
 `Schrijversconflict`, `Invoervormfout`) or another, such as the `IllegalStateException` of a fact creation that gives
@@ -135,8 +137,9 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   `soort` is `DELING_DOOR_NUL` (a division by a numeric zero), `REKENFOUT` (a fault of a computation or of the
   evaluation date), `SCHRIJVERSCONFLICT` (two writers of one attribute that disagree), `INVOERVORMFOUT` (a timeline
   input in the other convention, which no request reaches, since a request carries no timeline) or `ANDERE` (a fault
-  of another type, such as a fact creation that gives a to-one role a second filling). uchar's sentence names an
-  object of the request by its id; no stacktrace enters the answer. The Quarkus adapter answers the same, and the
+  of another type, such as a fact creation that gives a to-one role a second filling). Where uchar's sentence names
+  an object, it names an object of the request by its id; a sentence about a kind of object (the second filling: "a
+  Jutter") names none. No stacktrace enters the answer. The Quarkus adapter answers the same, and the
   OpenAPI contract describes the body of the 422 (schema `Evaluatiefout`, with `soort` as an enumeration of these
   kinds).
 - `GET /info`: per entry point whether it is `uitvoerbaar`, its `dekking` (the exec-model branch's verdict per form

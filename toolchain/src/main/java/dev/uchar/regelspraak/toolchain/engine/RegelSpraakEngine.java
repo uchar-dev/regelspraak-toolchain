@@ -261,7 +261,9 @@ public final class RegelSpraakEngine {
 
         /** Tells the session that an attribute or a characteristic of {@code bean} changed, between two fires: the
          *  entry does not see a field set without it, and the next {@link #fire} would keep the old fixpoint. Before
-         *  the first fire there is nothing to tell, as that fire reads the bean as it is then. */
+         *  the first fire there is nothing to tell, as that fire reads the bean as it is then. A model with an object
+         *  or a fact creation fires once per session: uchar refuses a second fire there, so a change asks a fresh
+         *  session. */
         public Session update(Object bean) {
             Objects.requireNonNull(bean, "bean");
             if (!gevuld) {

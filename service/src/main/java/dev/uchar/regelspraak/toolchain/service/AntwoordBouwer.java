@@ -114,8 +114,8 @@ public final class AntwoordBouwer {
     /** The answer to a request on which the rules give an evaluation fault, which both adapters send with HTTP 422,
      *  shaped as the MARKER answer and the answer to a request that does not validate:
      *  {@code {"status": "EVALUATIEFOUT", "fout": <sentence>, "fouten": [{"soort": <soort>, "fout": <uchar's
-     *  sentence>}, ...]}}, one element per fault in uchar's order. uchar's sentence names an object of the request by
-     *  its id; no stacktrace and no class name enter it. */
+     *  sentence>}, ...]}}, one element per fault in uchar's order. Where uchar's sentence names an object, it names an
+     *  object of the request by its id; no stacktrace and no class name enter it. */
     public static ObjectNode evaluatiefout(Evaluatiefout fout) {
         ObjectNode n = NF.objectNode();
         n.put("status", "EVALUATIEFOUT");
