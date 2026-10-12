@@ -118,7 +118,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Fout"
+                  "$ref": "#/components/schemas/Evaluatiefout"
                 }
               }
             }
@@ -257,7 +257,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Fout"
+                  "$ref": "#/components/schemas/Evaluatiefout"
                 }
               }
             }
@@ -559,6 +559,54 @@
               "type": "object"
             },
             "description": "de verzameling schendingen, elk met soort/veld/melding."
+          }
+        }
+      },
+      "Evaluatiefout": {
+        "type": "object",
+        "description": "De regels geven op deze invoer geen antwoord: aan het fixpunt staan een of meer evaluatiefouten, elk met haar soort en uchars zin.",
+        "required": [
+          "status",
+          "fout",
+          "fouten"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "EVALUATIEFOUT"
+            ]
+          },
+          "fout": {
+            "type": "string",
+            "description": "zegt dat de regels op deze invoer een evaluatiefout geven, of hoeveel."
+          },
+          "fouten": {
+            "type": "array",
+            "description": "een element per fout, in uchars volgorde.",
+            "items": {
+              "type": "object",
+              "required": [
+                "soort",
+                "fout"
+              ],
+              "properties": {
+                "soort": {
+                  "type": "string",
+                  "enum": [
+                    "DELING_DOOR_NUL",
+                    "REKENFOUT",
+                    "SCHRIJVERSCONFLICT",
+                    "INVOERVORMFOUT"
+                  ],
+                  "description": "DELING_DOOR_NUL: een deling door een numerieke nul; REKENFOUT: een fout van een berekening of van de rekendatum; SCHRIJVERSCONFLICT: twee schrijvers van één attribuut die verschillen; INVOERVORMFOUT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt, want de dienst weigert een tijdlijn (400)."
+                },
+                "fout": {
+                  "type": "string",
+                  "description": "uchars zin; een object van het verzoek heet daarin naar zijn id."
+                }
+              }
+            }
           }
         }
       },

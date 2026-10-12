@@ -99,6 +99,7 @@ public final class OpenApiEmitter {
         schemas.set("Verzoek", verzoekSchema());
         schemas.set("Antwoord", antwoordSchema());
         schemas.set("Fout", foutSchema());
+        schemas.set("Evaluatiefout", evaluatiefoutSchema());
         schemas.set("Info", infoSchema(sp));
 
         return doc;
@@ -205,7 +206,7 @@ public final class OpenApiEmitter {
                 "#/components/schemas/Fout");
         antwoord(responses, "404", "onbekend pad", "#/components/schemas/Fout");
         antwoord(responses, "422", "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout"
-                + " de soort en uchars zin", "#/components/schemas/Fout");
+                + " de soort en uchars zin", "#/components/schemas/Evaluatiefout");
         antwoord(responses, "503", "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
                 "#/components/schemas/Fout");
         antwoord(responses, "500", "interne fout (geen stacktrace gelekt)", "#/components/schemas/Fout");
@@ -523,6 +524,44 @@ public final class OpenApiEmitter {
         sch.put("type", "array");
         sch.putObject("items").put("type", "object");
         sch.put("description", "de verzameling schendingen, elk met soort/veld/melding.");
+        return s;
+    }
+
+    /** The 422 body, honest to {@link AntwoordBouwer#evaluatiefout}: {status, fout, fouten[{soort, fout}]}, with the
+     *  kinds of {@link Evaluatiefout.Soort}. */
+    private static ObjectNode evaluatiefoutSchema() {
+        ObjectNode s = NF.objectNode();
+        s.put("type", "object");
+        s.put("description", "De regels geven op deze invoer geen antwoord: aan het fixpunt staan een of meer"
+                + " evaluatiefouten, elk met haar soort en uchars zin.");
+        ArrayNode req = s.putArray("required");
+        req.add("status"); req.add("fout"); req.add("fouten");
+        ObjectNode props = s.putObject("properties");
+        ObjectNode status = props.putObject("status");
+        status.put("type", "string");
+        status.putArray("enum").add("EVALUATIEFOUT");
+        ObjectNode fout = props.putObject("fout");
+        fout.put("type", "string");
+        fout.put("description", "zegt dat de regels op deze invoer een evaluatiefout geven, of hoeveel.");
+        ObjectNode fouten = props.putObject("fouten");
+        fouten.put("type", "array");
+        fouten.put("description", "een element per fout, in uchars volgorde.");
+        ObjectNode item = fouten.putObject("items");
+        item.put("type", "object");
+        ArrayNode itemReq = item.putArray("required");
+        itemReq.add("soort"); itemReq.add("fout");
+        ObjectNode itemProps = item.putObject("properties");
+        ObjectNode soort = itemProps.putObject("soort");
+        soort.put("type", "string");
+        ArrayNode soorten = soort.putArray("enum");
+        for (Evaluatiefout.Soort k : Evaluatiefout.Soort.values()) soorten.add(k.name());
+        soort.put("description", "DELING_DOOR_NUL: een deling door een numerieke nul; REKENFOUT: een fout van een"
+                + " berekening of van de rekendatum; SCHRIJVERSCONFLICT: twee schrijvers van één attribuut die"
+                + " verschillen; INVOERVORMFOUT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt,"
+                + " want de dienst weigert een tijdlijn (400).");
+        ObjectNode zin = itemProps.putObject("fout");
+        zin.put("type", "string");
+        zin.put("description", "uchars zin; een object van het verzoek heet daarin naar zijn id.");
         return s;
     }
 

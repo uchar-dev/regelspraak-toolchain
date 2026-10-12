@@ -128,7 +128,8 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   computation or of the evaluation date), `SCHRIJVERSCONFLICT` (two writers of one attribute that disagree) or
   `INVOERVORMFOUT` (a timeline input in the other convention, which no request reaches, since a request carries no
   timeline). uchar's sentence names an object of the request by its id; no stacktrace enters the answer. The Quarkus
-  adapter answers the same, and the OpenAPI contract names the 422.
+  adapter answers the same, and the OpenAPI contract describes the body of the 422 (schema `Evaluatiefout`, with
+  `soort` as an enumeration of the four kinds).
 - `GET /info`: per entry point whether it is `uitvoerbaar`, its `dekking` (the exec-model branch's verdict per form
   of its document, defaults groups included), its markers and, when uchar does not carry it, uchar's sentence as
   `weigering`; the parameter defaults, the loaded parameter sets and the period-coverage warnings. An entry point

@@ -111,6 +111,34 @@ class OpenApiEmitterTest {
         assertTrue(paths.has("/info") && paths.get("/info").has("get"), "geen GET /info-pad");
     }
 
+    /** The 422 of every entry point names the body {@link AntwoordBouwer#evaluatiefout} builds, and no other fields:
+     *  {@code status} EVALUATIEFOUT, the sentence {@code fout}, and {@code fouten}, each with its {@code soort}, one of
+     *  the kinds of {@link Evaluatiefout.Soort}, and uchar's sentence {@code fout}. */
+    @Test
+    void de_422_beschrijft_het_lichaam_van_een_evaluatiefout() {
+        for (DienstDescriptor.Entrypoint ep : DESCRIPTOR.entrypoints())
+            assertEquals("#/components/schemas/Evaluatiefout", DOC.get("paths").get("/" + ep.pad())
+                    .at("/post/responses/422/content/application~1json/schema/$ref").asText(), "de 422 van '/" + ep.pad() + "'");
+        JsonNode s = DOC.at("/components/schemas/Evaluatiefout");
+        assertEquals("[\"status\",\"fout\",\"fouten\"]", s.path("required").toString(), s::toString);
+        assertEquals(java.util.List.of("status", "fout", "fouten"), velden(s.path("properties")), s::toString);
+        assertEquals("[\"EVALUATIEFOUT\"]", s.at("/properties/status/enum").toString(), s::toString);
+        assertEquals("string", s.at("/properties/fout/type").asText(), s::toString);
+        assertEquals("array", s.at("/properties/fouten/type").asText(), s::toString);
+        JsonNode fout = s.at("/properties/fouten/items");
+        assertEquals("[\"soort\",\"fout\"]", fout.path("required").toString(), s::toString);
+        assertEquals(java.util.List.of("soort", "fout"), velden(fout.path("properties")), s::toString);
+        assertEquals(Arrays.stream(Evaluatiefout.Soort.values()).map(Enum::name).toList(),
+                fout.at("/properties/soort/enum").valueStream().map(JsonNode::asText).toList(), s::toString);
+        assertEquals("string", fout.at("/properties/fout/type").asText(), s::toString);
+    }
+
+    private static java.util.List<String> velden(JsonNode n) {
+        java.util.List<String> uit = new java.util.ArrayList<>();
+        n.fieldNames().forEachRemaining(uit::add);
+        return uit;
+    }
+
     @Test
     void elke_invoer_en_uitvoer_objecttype_heeft_een_schema_eigenschap() {
         JsonNode schemas = DOC.get("components").get("schemas");
