@@ -578,9 +578,9 @@ public final class VerzoekMapper {
         return ot.kenmerkGranulariteitVan(naam) != null || ot.kenmerkTijdlijnAantalVan(naam) != null;
     }
 
-    /** The parameter GLOBAL name the exec-model back-end registers — {@link Namen#ident}(naam,false), the
-     *  camelCase form (the same formula {@code ExecModelTranspiler.globalNaam} uses; recomputed here because
-     *  that helper is package-private in the engine and the engine is consumed as-is). */
+    /** The parameter GLOBAL name the exec-model branch registers — {@link Namen#ident}(naam,false), the
+     *  camelCase form (the formula uchar's {@code TmsTranspiler} names a parameter's global with, and the name uchar's
+     *  entry asks a consumer to set; recomputed here because the transpiler keeps that step private). */
     static String globalNaam(String naam) { return Namen.ident(naam, false); }
 
     /** The bean property name for a RegelSpraak name — {@link Namen#ident}(naam,false), the SAME
