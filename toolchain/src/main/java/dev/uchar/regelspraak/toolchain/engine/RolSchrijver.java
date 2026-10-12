@@ -20,13 +20,12 @@ import java.util.TreeMap;
  * Writes a role link between two fact beans the way uchar's replay writes a case's roles ({@code CaseRunner}, whose
  * step of writing them is not public API; the beans then go in through uchar's public {@code Invoer}, and each link
  * returns the list it puts its member in, {@link Koppeling}, which {@link Lijsten} orders as the replay orders it),
- * after RUNTIME-SEMANTICS ch. 5.7a: a supplied link
- * establishes the relation in both directions. The role the link names is taken by that name where it names a
- * reference field the bean model derives, else by the type pair; a to-one role is written on this bean, and on a
- * one-to-one relation the far field as well; a to-many role is stored in the far end's field, through the sister
- * role. A reciprocal self-relation (§13.3.9.2) gets its reverse leg in a separate pass over all beans
- * ({@link #spiegelWederkerig}). A link the bean model cannot hold, or a second, different target on a to-one field,
- * is refused by name ({@link Geweigerd}).
+ * after RUNTIME-SEMANTICS ch. 5.7a: a supplied link establishes the relation in both directions. The role the link
+ * names is taken by that name where it names a reference field the bean model derives, else by the type pair; a to-one
+ * role is written on this bean, and on a one-to-one relation the far field as well; a to-many role is stored in the far
+ * end's field, through the sister role. A reciprocal self-relation (§13.3.9.2) gets its reverse leg in a separate pass
+ * over all beans ({@link #spiegelWederkerig}). A link the bean model cannot hold, or a second, different target on a
+ * to-one field, is refused by name ({@link Geweigerd}).
  */
 public final class RolSchrijver {
 
