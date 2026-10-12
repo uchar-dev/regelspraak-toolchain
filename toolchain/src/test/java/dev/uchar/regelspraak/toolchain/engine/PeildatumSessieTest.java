@@ -4,6 +4,7 @@ import dev.uchar.regelspraak.ir.Geldigheid;
 import dev.uchar.regelspraak.model.Parameterset;
 import dev.uchar.regelspraak.model.Parameterset.WaardeInterval;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
+import dev.uchar.regelspraak.transpiler.kern.Dekking;
 
 import org.junit.jupiter.api.Test;
 
@@ -52,18 +53,21 @@ class PeildatumSessieTest {
     // t1 — VINTAGE: één gecompileerde engine, zelfde feiten, twee peildatums -> twee VERSCHILLENDE gepinde uitkomsten.
     @Test void t1_vintage_selectie_op_peildatum() {
         RegelSpraakEngine engine = RegelSpraakEngine.compile(GRENS_UIT_PARAMETER);
-        assertTrue(engine.overgeslagen().isEmpty(), () -> "regel moet volledig loweren: " + engine.overgeslagen());
+        assertEquals(List.of("regel: bepaal grens"), engine.dekking().stream().map(Dekking::sleutel).toList(),
+                "de build draagt de regel");
         List<Parameterset> sets = tweeVintages();
 
         Object p2025 = engine.nieuw("Persoon");
         try (RegelSpraakEngine.Session s = engine.newSession(LocalDate.of(2025, 6, 1), sets)) {
             s.insert(p2025).fire();
+            s.zetTerug();
         }
         assertEquals(new BigDecimal(18), RegelSpraakRuntime.get(p2025, "grens"), "2025-06-01 kiest de 2025-vintage (18)");
 
         Object p2026 = engine.nieuw("Persoon");
         try (RegelSpraakEngine.Session s = engine.newSession(LocalDate.of(2026, 6, 1), sets)) {
             s.insert(p2026).fire();
+            s.zetTerug();
         }
         assertEquals(new BigDecimal(21), RegelSpraakRuntime.get(p2026, "grens"), "2026-06-01 kiest de 2026-vintage (21)");
     }
@@ -110,13 +114,15 @@ class PeildatumSessieTest {
     // t4 — ONE DATE AUTHORITY: één newSession(peildatum, sets) drijft ZOWEL de Rekenjaar-regel als de vintage.
     @Test void t4_een_datum_autoriteit() {
         RegelSpraakEngine engine = RegelSpraakEngine.compile(EEN_DATUM);
-        assertTrue(engine.overgeslagen().isEmpty(),
-                () -> "beide regels (parameter + Rekenjaar) moeten loweren: " + engine.overgeslagen());
+        assertEquals(List.of("regel: bepaal grens", "regel: bepaal prijs"),
+                engine.dekking().stream().map(Dekking::sleutel).toList(),
+                "de build draagt beide regels (parameter + Rekenjaar)");
 
         Object p = engine.nieuw("Persoon");
         LocalDate peildatum = LocalDate.of(2026, 6, 1);
         try (RegelSpraakEngine.Session s = engine.newSession(peildatum, tweeVintages())) {
             s.insert(p).fire();
+            s.zetTerug();
         }
         // de regel die Rekendatum leest ziet de peildatum (Rekenjaar 2026)...
         assertEquals(new BigDecimal(2026), RegelSpraakRuntime.get(p, "prijs"), "prijs = Rekenjaar van de peildatum");
@@ -132,6 +138,7 @@ class PeildatumSessieTest {
         Object leeg = grensEngine.nieuw("Persoon");
         try (RegelSpraakEngine.Session s = grensEngine.newSession(LocalDate.of(2025, 6, 1))) {
             s.insert(leeg).fire();
+            s.zetTerug();
         }
         assertNull(RegelSpraakRuntime.get(leeg, "grens"),
                 "zonder parameterset blijft grens ongezet (geen throw op de rekendatum-global)");
@@ -141,6 +148,7 @@ class PeildatumSessieTest {
         Object minor = RegelSpraakEngineTest.persoon(engine, 16);
         try (RegelSpraakEngine.Session s = engine.newSession()) {
             s.insert(minor).setGlobal("volwassenleeftijd", new BigDecimal(18)).fire();
+            s.zetTerug();
         }
         assertEquals(Boolean.TRUE, RegelSpraakRuntime.get(minor, "minderjarig"),
                 "16 < 18 -> minderjarig via het onveranderde setGlobal-pad");

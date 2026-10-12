@@ -118,6 +118,41 @@ class ScenarioRunnerTest {
         assertTrue(zin.startsWith("V1 is belast, omdat") && zin.contains("200"), zin);
     }
 
+    /** The explanation of a characteristic whose condition reads a derived value. The session of the explanation fills,
+     *  fires and writes back through uchar's entry, so it fires what uchar's replay reported, row for row under the
+     *  name of the form, and the verbaliser reads the derived retourafstand on the bean. */
+    @Test void uitleg_leest_een_afgeleide_waarde_zonder_afwijkend_spoor() {
+        List<ScenarioRunner.Uitgelegd> u = ScenarioRunner.runMetUitleg(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve("""
+            Objecttype de Vlucht (mv: Vluchten)
+                de afstand tot bestemming Numeriek (positief geheel getal);
+                de retourafstand Numeriek (positief geheel getal);
+                is belast kenmerk (bijvoeglijk);
+            Regel retourafstandregel
+            geldig altijd
+            De retourafstand van een Vlucht moet berekend worden als de afstand tot bestemming van de Vlucht maal 2.
+            Regel belastregel
+            geldig altijd
+            Een Vlucht is belast indien de retourafstand van de Vlucht groter is dan 300.
+            Situatie basis:
+            een Vlucht V1
+            - de afstand tot bestemming is 200
+            Scenario belast door de retourafstand
+            toetst de regels retourafstandregel en belastregel
+            gebaseerd op de situatie basis
+            Met als verwacht resultaat:
+            - de retourafstand van V1 is 400
+            - V1 is een belast
+            """));
+        assertEquals(1, u.size());
+        ScenarioResultaat r = u.get(0).resultaat();
+        assertEquals(Status.PASS, r.status(), r::diagnose);
+        assertEquals(List.of("retourafstandregel", "belastregel"),
+                r.trace().vuringen().stream().map(ScenarioResultaat.Vuring::regel).toList(), r.trace()::toString);
+        assertNull(u.get(0).uitlegFout(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).uitlegFout());
+        assertEquals(List.of("V1 is belast, omdat de retourafstand van de Vlucht (400) is groter dan 300"),
+                u.get(0).uitleg());
+    }
+
     /** A leeg expectation: a rule whose guard does not match leaves the doel unset → the attribuut reads leeg. */
     @Test void leeg_verwachting() {
         ScenarioResultaat r = één("""
@@ -325,18 +360,19 @@ class ScenarioRunnerTest {
     @Test void marker_scope() {
         ScenarioResultaat r = één("""
             Objecttype de Vlucht (mv: Vluchten)
-                de heffing Numeriek (getal met 2 decimalen) met eenheid EUR;
+                de heffing Numeriek (niet-negatief geheel getal);
+                is belast kenmerk (bijvoeglijk) voor elke dag;
             Regel heffingsregel
             geldig altijd
-            De heffing van een Vlucht moet berekend worden als het absolute tijdsevenredig deel per maand van 10,00 EUR.
+            De heffing van een Vlucht moet berekend worden als het aantal dagen in de maand dat hij belast is.
             Situatie basis:
             een Vlucht V1
-            - de heffing is 5,00 EUR
+            - de heffing is 5
             Scenario marker-oefening
             toetst de regel heffingsregel
             gebaseerd op de situatie basis
             Met als verwacht resultaat:
-            - de heffing van V1 is 5,00 EUR
+            - de heffing van V1 is 5
             """);
         assertEquals(Status.MARKER, r.status(), () -> "verwacht MARKER: " + r.diagnose());
         assertTrue(r.diagnose().contains("heffingsregel"), () -> "de reden hoort de regel te noemen: " + r.diagnose());

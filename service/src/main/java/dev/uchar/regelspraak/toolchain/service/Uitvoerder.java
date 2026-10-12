@@ -1,45 +1,47 @@
 package dev.uchar.regelspraak.toolchain.service;
 
+import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.cases.Invoer;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
 
-import org.kie.api.KieBase;
 import org.kie.api.runtime.KieSession;
 
 import java.time.LocalDate;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * The per-request executor: given an entry point's compiled {@link KieBase} (built once at startup by uchar,
- * immutable thereafter) and a mapped {@link Wereld}, it opens a FRESH {@link KieSession}, sets the parameter
- * globals (the descriptor defaults, overridden by the request), sets the rekendatum global when the request
- * carried one, inserts every bean, fires to quiescence, and returns the fired beans + the {@code Inconsistentie}
- * facts for the response builder. Session-per-request; the KieBase is shared and immutable, so this is
- * thread-safe by construction. The fire is bounded with the same 100_000 cap the engine's own session uses
- * (RegelSpraakEngine.Session#fire), turning a non-fixpoint kringverwijzing into an exception rather than a hang.
+ * The per-request executor: given an entry point's {@link DroolsBackend.Build} (built once at startup by uchar,
+ * immutable thereafter) and a mapped {@link Wereld}, it opens a FRESH session of the build's KieBase, sets the
+ * parameter globals (the descriptor defaults, overridden by the request), sets the rekendatum global when the request
+ * carried one, and then fills, fires and reads it through uchar's entry: {@link DroolsBackend#voegIn} puts the beans
+ * in, {@link DroolsBackend#vuur} fires to the fixpoint, and {@link DroolsBackend#zetAfgeleideWaarden} puts the derived
+ * values on the beans, which the branch keeps as facts of the session until then. It returns the beans and the
+ * {@code Inconsistentie} facts for the response builder. Session-per-request; the KieBase is shared and immutable, so
+ * this is thread-safe by construction.
+ *
+ * <p>An evaluation fault that stands at the fixpoint is thrown by the write-back, which then writes nothing, as
+ * uchar's own exception. A run without a fixpoint is no such fault but a fault of the lowering, since uchar refuses a
+ * cycle at the build, and leaves as an {@link IllegalStateException} with uchar's sentence.
  */
 public final class Uitvoerder {
 
-    private final KieBase kieBase;
+    private final DroolsBackend.Build build;
     private final Map<String, Object> defaultGlobals;   // descriptor parameter defaults (global name -> value)
-    /** §9.8 dagsoort predicates the build declares as globals (uchar's {@code Build.dagsoortGlobalen()}), the analog
-     *  of the parameter globals. Empty on the exec-model branch, which wires them into its rules. */
-    private final Map<String, java.util.function.Predicate<LocalDate>> dagsoortGlobalen;
-    private final ClassLoader beanLoader;               // the entry point's generated bean classloader
 
-    public Uitvoerder(KieBase kieBase, Map<String, Object> defaultGlobals,
-                      Map<String, java.util.function.Predicate<LocalDate>> dagsoortGlobalen, ClassLoader beanLoader) {
-        this.kieBase = kieBase;
+    public Uitvoerder(DroolsBackend.Build build, Map<String, Object> defaultGlobals) {
+        this.build = build;
         this.defaultGlobals = defaultGlobals == null ? Map.of() : defaultGlobals;
-        this.dagsoortGlobalen = dagsoortGlobalen == null ? Map.of() : dagsoortGlobalen;
-        this.beanLoader = beanLoader;
     }
 
-    /** The result of a fire: the beans by id (mutated in place), the activations fired, the inconsistenties. */
+    /** The result of a fire: the beans by id with the derived values written back, the firings, the
+     *  inconsistenties. */
     public record Uitkomst(Map<String, Object> beans, int gevuurd, List<Object> inconsistenties) {}
 
-    /** Fire the entry point's rules over {@code wereld} and return the mutated beans + inconsistenties. */
+    /** Fire the entry point's rules over {@code wereld} and return the beans with their derived values and the
+     *  inconsistenties. */
     public Uitkomst vuur(Wereld wereld) {
         return vuur(wereld, Map.of());
     }
@@ -58,20 +60,23 @@ public final class Uitvoerder {
         globals.putAll(wereld.globals());
 
         ClassLoader vorige = Thread.currentThread().getContextClassLoader();
-        Thread.currentThread().setContextClassLoader(beanLoader);   // Drools resolves fact types via the TCCL
-        KieSession sessie = kieBase.newKieSession();
+        Thread.currentThread().setContextClassLoader(build.beanLoader());   // Drools resolves fact types via the TCCL
+        KieSession sessie = build.kieBase().newKieSession();
         try {
-            for (var e : dagsoortGlobalen.entrySet()) setGlobalVeilig(sessie, e.getKey(), e.getValue());
+            // the branch states the globals as facts at the first fire, so they all go on before it
+            for (var e : build.dagsoortGlobalen().entrySet()) setGlobalVeilig(sessie, e.getKey(), e.getValue());
             for (var e : globals.entrySet()) setGlobalVeilig(sessie, e.getKey(), e.getValue());
             LocalDate rd = wereld.rekendatum();
             if (rd != null) setGlobalVeilig(sessie, "rekendatum", rd);
-            for (Object bean : wereld.beans().values()) sessie.insert(bean);
-            int n = sessie.fireAllRules(100_000);
-            if (n >= 100_000)
-                throw new IllegalStateException("regel-herberekening bereikt geen fixpunt binnen 100000 activaties"
-                        + " — vermoedelijk een kringverwijzing tussen berekeningen (zie de resolver-WARNING)");
+            DroolsBackend.voegIn(build, sessie, new Invoer().beans(wereld.beans().values()));
+            DroolsBackend.Vuring vuring = DroolsBackend.vuur(build, sessie);
+            if (vuring.geenFixpunt() != null) throw new IllegalStateException(vuring.geenFixpunt());
+            // a fault names its object by the id of the request; a made object has none, and uchar names it as ref does
+            Map<Object, String> label = new IdentityHashMap<>();
+            wereld.beans().forEach((id, bean) -> label.put(bean, id));
+            DroolsBackend.zetAfgeleideWaarden(build, sessie, label::get);
             List<Object> inc = leesInconsistenties(sessie);
-            return new Uitkomst(wereld.beans(), n, inc);
+            return new Uitkomst(wereld.beans(), vuring.vuringen(), inc);
         } finally {
             sessie.dispose();
             Thread.currentThread().setContextClassLoader(vorige);
@@ -91,7 +96,7 @@ public final class Uitvoerder {
         String naam = FactModelGenerator.PAKKET + ".Inconsistentie";
         Class<?> inc;
         try {
-            inc = Class.forName(naam, true, beanLoader);
+            inc = Class.forName(naam, true, build.beanLoader());
         } catch (ClassNotFoundException e) {
             throw new IllegalStateException("de bean-classloader van dit entrypoint draagt " + naam + " niet", e);
         }

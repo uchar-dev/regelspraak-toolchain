@@ -28,10 +28,11 @@ class DienstMainTest {
     // the same self-contained marker construct MarkerFailFastTest uses.
     private static final String MARKER_BRON = """
         Objecttype de Vlucht (mv: Vluchten)
-            de heffing Numeriek (getal met 2 decimalen) met eenheid EUR;
+            de heffing Numeriek (niet-negatief geheel getal);
+            is belast kenmerk (bijvoeglijk) voor elke dag;
         Regel heffing markert
         geldig altijd
-        De heffing van een Vlucht moet berekend worden als het absolute tijdsevenredig deel per maand van 10,00 EUR.
+        De heffing van een Vlucht moet berekend worden als het aantal dagen in de maand dat hij belast is.
         """;
     private static final String MARKER_DESCRIPTOR = """
         { "dienst": {"naam":"marker-test","versie":"1"},

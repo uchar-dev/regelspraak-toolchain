@@ -10,25 +10,26 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Fail-fast on marker rules (decision 3, the exit-3 discipline at the service boundary). Under the DRL back-end
- * a MARKER is a construct the DRL transpiler emits as an accepted-but-inert no-op ({@code /* TODO} placeholder,
- * stripped before compile). The Paaskorting rule the earlier exec-model version used LOWERS under DRL, so this
- * test drives the DRL-MARKER construct instead: "het absolute tijdsevenredig deel per maand" (the same
- * construct the golden {@code scenario-marker-exit3.rgs} scopes for its exit-3 reading). A descriptor scoping it
- * must refuse startup naming the rule when markers are disallowed, and start + expose it when allowed.
+ * Fail-fast on marker rules (decision 3, the exit-3 discipline at the service boundary): a construct uchar's
+ * exec-model branch refuses by name. This test drives a day count as the value of a target that is not
+ * time-dependent, which that branch computes only as the timeline of a time-dependent target; the unresolved name
+ * of the form it drove before uchar b536bbc9 now lowers to a rule that faults where the evaluation reaches it
+ * (WF-044). A descriptor scoping it must refuse startup naming the rule when markers are disallowed, and start +
+ * expose it when allowed.
  *
  * <p>The source is self-contained (its own Objecttype), so {@link BeslisserKern} compiles its beans in memory
  * and needs no external fact classes.
  */
 class MarkerFailFastTest {
 
-    /** A self-contained model whose one rule lowers to a DRL marker (mirrors scenario-marker-exit3.rgs). */
+    /** A self-contained model whose one rule uchar's exec-model branch refuses by name. */
     private static final String MARKER_BRON = """
         Objecttype de Vlucht (mv: Vluchten)
-            de heffing Numeriek (getal met 2 decimalen) met eenheid EUR;
+            de heffing Numeriek (niet-negatief geheel getal);
+            is belast kenmerk (bijvoeglijk) voor elke dag;
         Regel heffing markert
         geldig altijd
-        De heffing van een Vlucht moet berekend worden als het absolute tijdsevenredig deel per maand van 10,00 EUR.
+        De heffing van een Vlucht moet berekend worden als het aantal dagen in de maand dat hij belast is.
         """;
 
     private static final String MARKER_DESCRIPTOR = """

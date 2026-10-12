@@ -37,9 +37,15 @@ public final class RolSchrijver {
         this.model = model;
     }
 
+    /** The list a written link puts a member in, as uchar's replay keeps it for the order of a to-many list
+     *  ({@code Invoer.lijst}): {@code lid} holds {@code houder} in its reference field {@code rol}. A link written on
+     *  the member itself, a to-one role from there, is {@code gespiegeld}: the member joins the holder's list through
+     *  the reverse leg (RUNTIME-SEMANTICS ch. 5.7a); a to-many role written on the holder adds the member as written. */
+    public record Koppeling(Object houder, String rol, Object lid, boolean gespiegeld) {}
+
     /** Link {@code bean} (of type {@code tI}) to {@code doel} (of type {@code tL}) through the role the input names
-     *  {@code rolSleutel}. */
-    public void schrijf(Object bean, Objecttype tI, String rolSleutel, Object doel, Objecttype tL) {
+     *  {@code rolSleutel}, and return the list the link puts its member in. */
+    public Koppeling schrijf(Object bean, Objecttype tI, String rolSleutel, Object doel, Objecttype tL) {
         String viaNaam = model.verbindendeRolViaNaam(tI, tL, rolSleutel);
         String rolIL = viaNaam != null && geldigRolveld(tI, viaNaam, tL) ? viaNaam : model.verbindendeRol(tI, tL);
         String zuster = model.verbindendeRolViaElementnaam(tI, rolSleutel);
@@ -51,13 +57,14 @@ public final class RolSchrijver {
                 naamdelingsPoort(tL, rolLI, tI, rolSleutel);
                 zetToOne(doel, rolLI, bean);
             }
-        } else {
-            if (rolLI == null || model.naarVeelRol(tL, tI, rolLI))
-                throw new Geweigerd("de rol '" + rolSleutel + "' (" + tI.naam + " -> " + tL.naam
-                        + ") bereikt geen naar-één referentieveld", false);
-            naamdelingsPoort(tL, rolLI, tI, rolSleutel);
-            zetToOne(doel, rolLI, bean);
+            return new Koppeling(doel, rolIL, bean, true);
         }
+        if (rolLI == null || model.naarVeelRol(tL, tI, rolLI))
+            throw new Geweigerd("de rol '" + rolSleutel + "' (" + tI.naam + " -> " + tL.naam
+                    + ") bereikt geen naar-één referentieveld", false);
+        naamdelingsPoort(tL, rolLI, tI, rolSleutel);
+        zetToOne(doel, rolLI, bean);
+        return new Koppeling(bean, rolLI, doel, false);
     }
 
     /** The reverse leg of every reciprocal self-relation among {@code beans} (label -> bean, in input order; its

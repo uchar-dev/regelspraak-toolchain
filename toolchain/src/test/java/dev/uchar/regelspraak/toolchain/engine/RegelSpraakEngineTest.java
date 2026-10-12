@@ -2,9 +2,12 @@ package dev.uchar.regelspraak.toolchain.engine;
 
 import dev.uchar.regelspraak.engine.RegelSpraakCompileException;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
+import dev.uchar.regelspraak.transpiler.kern.Dekking;
+import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -13,8 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * End-to-end proof of the shippable path: a RegelSpraak source compiles through uchar to an executable-model
- * KieBase and FIRES over the generated fact beans, mutating them in place — the integration an embedding consumer
- * relies on.
+ * KieBase, FIRES over the generated fact beans through uchar's entry and writes the derived values back onto them —
+ * the integration an embedding consumer relies on.
  */
 class RegelSpraakEngineTest {
 
@@ -31,16 +34,67 @@ class RegelSpraakEngineTest {
     @Test
     void compiles_and_fires_end_to_end() {
         RegelSpraakEngine engine = RegelSpraakEngine.compile(MINDERJARIG);
-        assertTrue(engine.overgeslagen().isEmpty(), () -> "rule should fully lower, skipped: " + engine.overgeslagen());
+        // the build refuses a model with a form its branch does not lower, so its manifest names the rule, lowered
+        assertEquals(List.of("regel: R"), engine.dekking().stream().map(Dekking::sleutel).toList());
+        assertTrue(engine.dekking().stream().allMatch(Dekking::lowered), engine.dekking()::toString);
 
         Object minor = persoon(engine, 16);
         Object adult = persoon(engine, 40);
         try (RegelSpraakEngine.Session s = engine.newSession()) {
             int fired = s.insertAll(minor, adult).setGlobal("volwassenleeftijd", new BigDecimal(18)).fire();
             assertTrue(fired >= 1, "at least the minor's rule fires");
+            s.zetTerug();
         }
         assertEquals(Boolean.TRUE, RegelSpraakRuntime.get(minor, "minderjarig"), "16 < 18 -> minderjarig");
         assertEquals(Boolean.FALSE, RegelSpraakRuntime.get(adult, "minderjarig"), "40 >= 18 -> not minderjarig");
+    }
+
+    static final String TOEKOMST = """
+            Parameter de volwassenleeftijd : Numeriek (geheel getal) met eenheid jr
+            Objecttype de Persoon (mv: Personen) (bezield)
+                de leeftijd Numeriek (geheel getal) met eenheid jr;
+                de toekomstige leeftijd Numeriek (geheel getal) met eenheid jr;
+                is minderjarig kenmerk (bijvoeglijk);
+            Regel R
+                geldig altijd
+                    Een Persoon is minderjarig indien zijn leeftijd kleiner is dan de volwassenleeftijd.
+            Regel toekomstige leeftijd
+                geldig altijd
+                    De toekomstige leeftijd van een Persoon moet berekend worden als zijn leeftijd plus 1 jr.
+            """;
+
+    /** A session that fires twice with an update in between reads what a fresh session with the changed input reads:
+     *  the session fills and fires through uchar's entry, and the derived values are facts of the session until
+     *  {@code zetTerug}, so the second fire withdraws the characteristic of the first and derives the value anew. */
+    @Test void een_sessie_vuurt_twee_keer_met_een_update_ertussen_als_een_verse_sessie() {
+        RegelSpraakEngine engine = RegelSpraakEngine.compile(TOEKOMST);
+        Object p = persoon(engine, 16);
+        Fixpunt eerste;
+        try (RegelSpraakEngine.Session s = engine.newSession()) {
+            s.insert(p).setGlobal("volwassenleeftijd", new BigDecimal(18)).fire();
+            eerste = s.lees();
+            RegelSpraakRuntime.set(p, "leeftijd", new BigDecimal(40));
+            s.update(p);
+            s.fire();
+            s.zetTerug();
+        }
+        assertEquals(List.of(new BigDecimal(17)), eerste.waarden().stream()
+                .filter(w -> w.object() == p && w.attribuut().equals("toekomstige leeftijd"))
+                .map(Fixpunt.AfgeleideWaarde::waarde).toList(), eerste.waarden()::toString);
+        assertTrue(eerste.kenmerken().stream().anyMatch(k -> k.object() == p && k.kenmerk().equals("minderjarig")),
+                eerste.kenmerken()::toString);
+
+        Object vers = persoon(engine, 40);
+        try (RegelSpraakEngine.Session s = engine.newSession()) {
+            s.insert(vers).setGlobal("volwassenleeftijd", new BigDecimal(18)).fire();
+            s.zetTerug();
+        }
+        assertEquals(new BigDecimal(41), RegelSpraakRuntime.get(vers, "toekomstigeLeeftijd"), "40 + 1 in een verse sessie");
+        assertEquals(Boolean.FALSE, RegelSpraakRuntime.get(vers, "minderjarig"), "40 >= 18 in een verse sessie");
+        assertEquals(RegelSpraakRuntime.get(vers, "toekomstigeLeeftijd"), RegelSpraakRuntime.get(p, "toekomstigeLeeftijd"),
+                "na de update leest de sessie wat een verse sessie leest");
+        assertEquals(RegelSpraakRuntime.get(vers, "minderjarig"), RegelSpraakRuntime.get(p, "minderjarig"),
+                "na de update leest de sessie wat een verse sessie leest");
     }
 
     static final String TYPEFOUT = """
@@ -79,10 +133,11 @@ class RegelSpraakEngineTest {
         // did not exist, so compile() refuses and names the rule.
         String src = """
             Objecttype de Vlucht (mv: Vluchten)
-                de heffing Numeriek (getal met 2 decimalen) met eenheid EUR;
+                de heffing Numeriek (niet-negatief geheel getal);
+                is belast kenmerk (bijvoeglijk) voor elke dag;
             Regel heffing markert
             geldig altijd
-            De heffing van een Vlucht moet berekend worden als het absolute tijdsevenredig deel per maand van 10,00 EUR.
+            De heffing van een Vlucht moet berekend worden als het aantal dagen in de maand dat hij belast is.
             """;
         RegelSpraakCompileException e = assertThrows(RegelSpraakCompileException.class,
                 () -> RegelSpraakEngine.compile(src));

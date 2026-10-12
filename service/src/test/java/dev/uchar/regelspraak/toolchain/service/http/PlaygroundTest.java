@@ -150,10 +150,11 @@ class PlaygroundTest {
         // with uchar's sentence (the DRL view is a view, not the verdict)
         ObjectNode a = Playground.analyseer("""
             Objecttype de Vlucht (mv: Vluchten)
-                de heffing Numeriek (getal met 2 decimalen) met eenheid EUR;
+                de heffing Numeriek (niet-negatief geheel getal);
+                is belast kenmerk (bijvoeglijk) voor elke dag;
             Regel heffing markert
             geldig altijd
-            De heffing van een Vlucht moet berekend worden als het absolute tijdsevenredig deel per maand van 10,00 EUR.
+            De heffing van een Vlucht moet berekend worden als het aantal dagen in de maand dat hij belast is.
             """);
         assertTrue(a.get("resolver").get("ok").asBoolean(), a.toString());
         assertFalse(a.get("uitvoerbaar").asBoolean(), a.toString());

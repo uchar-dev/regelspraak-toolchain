@@ -3,8 +3,8 @@ package dev.uchar.regelspraak.toolchain.engine;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.cases.Invoer;
 import dev.uchar.regelspraak.engine.ScenarioResultaat;
-import dev.uchar.regelspraak.graaf.ProducentConsument;
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
@@ -16,27 +16,36 @@ import org.kie.api.event.rule.DefaultAgendaEventListener;
 import org.kie.api.runtime.KieSession;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * One case of the {@code uchar-case-v0} format played in a session of its own on a build uchar made
  * ({@link DroolsBackend.Build}): the input beans the case describes, its parameters and evaluation date as globals,
- * fired to a fixpoint, with a listener that records every firing under the rule's base name with the labels of the
- * input instances its match bound. It exists for what uchar's replay ({@code CaseRunner.rapport}) does not return:
- * the fired beans, from which the {@link Verbalisator} explains an outcome.
+ * put in, fired to the fixpoint and written back through uchar's entry ({@link DroolsBackend#voegIn},
+ * {@link DroolsBackend#vuur}, {@link DroolsBackend#zetAfgeleideWaarden}), with a listener that records every firing
+ * under the form of the document its rule belongs to, with the labels of the input instances its match bound. It
+ * exists for what uchar's replay ({@code CaseRunner.rapport}) does not return: the beans with their derived values,
+ * from which the {@link Verbalisator} explains an outcome.
  *
- * <p>The inputs are set as uchar's replay sets them, whose input step is not public API: the beans of the generated
- * classes, the attributes and characteristics through their setters, the roles through the role the case writes
- * (and its sister role, the far field of a one-to-one relation, and the mirror of a reciprocal self-relation), the
- * parameters as globals under their camelCase name, the evaluation date as {@code rekendatum}. A caller that uses the
- * outcome to explain uchar's verdict compares {@link Uitkomst#vuringen()} with the trace uchar reported, so a session
- * that set an input otherwise does not explain a run that did not happen. A form this session does not set — a
- * timeline, a dimensioned attribute, a rational value — is refused by name ({@link NietSpeelbaar}).
+ * <p>The beans are made as uchar's replay makes them, whose step of setting them is not public API: the beans of the
+ * generated classes, the attributes and characteristics through their setters, the roles through the role the case
+ * writes (and its sister role, the far field of a one-to-one relation, and the mirror of a reciprocal self-relation),
+ * the parameters as globals under their camelCase name, the evaluation date as {@code rekendatum}. They go in as the
+ * replay puts them in, through the public {@link Invoer}: in the order of the case, each to-many list in the order of
+ * the replay. A caller that uses the outcome to explain uchar's verdict compares {@link Uitkomst#vuringen()} with the
+ * trace uchar reported, so a session that set an input otherwise does not explain a run that did not happen. A form
+ * this session does not set — a timeline, a dimensioned attribute, a rational value — is refused by name
+ * ({@link NietSpeelbaar}).
  */
 public final class CaseSessie {
 
@@ -47,13 +56,17 @@ public final class CaseSessie {
         NietSpeelbaar(String reden) { super(reden); }
     }
 
-    /** The fired input beans by label, their object types, the globals the session carried (parameters by their
-     *  camelCase name, {@code rekendatum}), and the firings in the order they first fired. */
+    /** The input beans by label with the derived values written back, their object types, the globals the session
+     *  carried (parameters by their camelCase name, {@code rekendatum}), and the firings in the order they first
+     *  fired. */
     public record Uitkomst(Map<String, Object> beans, Map<String, Objecttype> typePerLabel,
                            Map<String, Object> globals, List<ScenarioResultaat.Vuring> vuringen) {}
 
-    /** Play case {@code c} on {@code build}, whose {@link DroolsBackend.Build#model()} names the types. */
+    /** Play case {@code c} on {@code build}, a build of the exec-model branch, whose
+     *  {@link DroolsBackend.Build#model()} names the types. */
     public static Uitkomst speel(DroolsBackend.Build build, JsonNode c) {
+        if (build.execModelTranspiler() == null)
+            throw new IllegalArgumentException("de uitleg speelt alleen de exec-model-tak, niet de " + build.branch());
         return new Speler(build).speel(c);
     }
 
@@ -66,6 +79,8 @@ public final class CaseSessie {
         private final Map<String, Object> globals = new LinkedHashMap<>();
         private final Map<String, Integer> telling = new LinkedHashMap<>();
         private final Map<String, List<String>> labels = new LinkedHashMap<>();
+        /** The to-many lists the roles of the case fill, per holder and per reference field of their members. */
+        private final Map<Object, Map<String, Lijst>> lijsten = new IdentityHashMap<>();
 
         private final RolSchrijver rollenSchrijver;
 
@@ -99,9 +114,10 @@ public final class CaseSessie {
                 for (Map.Entry<String, java.util.function.Predicate<LocalDate>> d : build.dagsoortGlobalen().entrySet())
                     setGlobalVeilig(sessie, d.getKey(), d.getValue());
                 sessie.addEventListener(luisteraar());
-                for (Object bean : labelNaarBean.values()) sessie.insert(bean);
-                if (sessie.fireAllRules(100_000) >= 100_000)
-                    throw new NietSpeelbaar("geen fixpunt binnen 100000 activaties");
+                DroolsBackend.voegIn(build, sessie, invoer());
+                DroolsBackend.Vuring vuring = DroolsBackend.vuur(build, sessie);
+                if (vuring.geenFixpunt() != null) throw new NietSpeelbaar(vuring.geenFixpunt());
+                DroolsBackend.zetAfgeleideWaarden(build, sessie, this::labelVan);
                 List<ScenarioResultaat.Vuring> vuringen = new ArrayList<>();
                 for (Map.Entry<String, Integer> e : telling.entrySet())
                     vuringen.add(new ScenarioResultaat.Vuring(e.getKey(), List.copyOf(labels.get(e.getKey())), e.getValue()));
@@ -161,13 +177,35 @@ public final class CaseSessie {
                     Object doel = labelNaarBean.get(labelNode.asText());
                     if (doel == null)
                         throw new NietSpeelbaar("de rol '" + e.getKey() + "' noemt het onbekende label " + labelNode.asText());
+                    RolSchrijver.Koppeling k;
                     try {
-                        rollenSchrijver.schrijf(labelNaarBean.get(label), labelType.get(label), e.getKey(), doel,
+                        k = rollenSchrijver.schrijf(labelNaarBean.get(label), labelType.get(label), e.getKey(), doel,
                                 labelType.get(labelNode.asText()));
                     } catch (RolSchrijver.Geweigerd g) {
                         throw new NietSpeelbaar(g.getMessage());
                     }
+                    Lijst l = lijsten.computeIfAbsent(k.houder(), h -> new LinkedHashMap<>())
+                            .computeIfAbsent(Namen.ident(k.rol(), false), v -> new Lijst(k.rol()));
+                    if (k.gespiegeld()) l.gespiegeld.putIfAbsent(label, k.lid());
+                    else if (l.geschreven.stream().noneMatch(x -> x == k.lid())) l.geschreven.add(k.lid());
                 }
+        }
+
+        /** The input as uchar's replay puts it in: the beans in the order of the case, and every to-many list in the
+         *  order of the list the reference interpreter folds over, the written members first, in the order the case
+         *  wrote them, then the members whose own link the reverse leg mirrors into it, by label in byte order. The
+         *  order decides which member a fault of a fold names, also on a state the fire passes, so a session that put
+         *  a list in another order could fire another trace than the replay. */
+        private Invoer invoer() {
+            Invoer invoer = new Invoer().beans(labelNaarBean.values());
+            for (Map.Entry<Object, Map<String, Lijst>> perHouder : lijsten.entrySet())
+                for (Lijst l : perHouder.getValue().values()) {
+                    List<Object> leden = new ArrayList<>(l.geschreven);
+                    for (Object lid : l.gespiegeld.values())
+                        if (leden.stream().noneMatch(x -> x == lid)) leden.add(lid);
+                    invoer.lijst(perHouder.getKey(), l.rol, leden);
+                }
+            return invoer;
         }
 
         private void spiegelWederkerigeRollen() {
@@ -178,10 +216,15 @@ public final class CaseSessie {
             }
         }
 
+        /** Every firing under the form of the document its rule belongs to, its name without a version suffix, as
+         *  uchar's replay names it ({@code CaseRunner.luisteraar}); a rule of no form, one the lowering keeps for
+         *  every form alike, is no row. */
         private DefaultAgendaEventListener luisteraar() {
             return new DefaultAgendaEventListener() {
                 @Override public void afterMatchFired(AfterMatchFiredEvent e) {
-                    String regel = ProducentConsument.basisNaam(e.getMatch().getRule().getName());
+                    String vorm = build.execModelTranspiler().vormVan(e.getMatch().getRule().getName());
+                    if (vorm == null) return;
+                    String regel = RegelSpraakModel.vormnaam(vorm);
                     telling.merge(regel, 1, Integer::sum);
                     List<String> ls = labels.computeIfAbsent(regel, k -> new ArrayList<>());
                     for (Object o : e.getMatch().getObjects()) {
@@ -195,6 +238,20 @@ public final class CaseSessie {
         private String labelVan(Object bean) {
             for (Map.Entry<String, Object> e : labelNaarBean.entrySet()) if (e.getValue() == bean) return e.getKey();
             return null;
+        }
+    }
+
+    /** One to-many list of the case input: the members the case wrote under the holder, in the order it wrote them,
+     *  and the members whose own link to the holder the reverse leg mirrors into it, by label in the reference
+     *  interpreter's order, plain byte order. */
+    private static final class Lijst {
+        final String rol;
+        final List<Object> geschreven = new ArrayList<>();
+        final TreeMap<String, Object> gespiegeld = new TreeMap<>(
+                Comparator.comparing((String l) -> l.getBytes(StandardCharsets.UTF_8), Arrays::compareUnsigned));
+
+        Lijst(String rol) {
+            this.rol = rol;
         }
     }
 

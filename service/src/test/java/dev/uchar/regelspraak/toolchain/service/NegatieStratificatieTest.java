@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.cases.Invoer;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
@@ -18,6 +19,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -78,8 +80,8 @@ class NegatieStratificatieTest {
                   "uitvoer": [ "Werknemer:herleefbaar", "Werknemer:geblokkeerd" ] } ] }
             """;
 
-    /** The EXEC-model reference: build the FULL-model KieBase through uchar and fire the same fact.
-     *  This is the ORACLE — it must (and does) derive herleefbaar=false when geblokkeerd is set. */
+    /** The EXEC-model reference: build the FULL-model KieBase through uchar and fire the same fact through uchar's
+     *  entry. This is the ORACLE — it must (and does) derive herleefbaar=false when geblokkeerd is set. */
     @Test
     void exec_model_leidt_herleefbaar_false_af_wanneer_geblokkeerd() throws Exception {
         RegelSpraakModel model = Resolver.resolve(SRC);
@@ -96,8 +98,9 @@ class NegatieStratificatieTest {
         try {
             KieSession s = build.kieBase().newKieSession();
             try {
-                s.insert(bean);
-                s.fireAllRules(10_000);
+                DroolsBackend.voegIn(build, s, new Invoer().bean(bean));
+                assertNull(DroolsBackend.vuur(build, s).geenFixpunt(), "de sessie bereikt haar fixpunt");
+                DroolsBackend.zetAfgeleideWaarden(build, s);
             } finally { s.dispose(); }
         } finally { Thread.currentThread().setContextClassLoader(vorige); }
 

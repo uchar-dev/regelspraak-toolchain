@@ -1,6 +1,7 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.cases.Invoer;
 import dev.uchar.regelspraak.engine.RegelSpraakCompileException;
 import dev.uchar.regelspraak.model.Parameterset;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
@@ -11,15 +12,18 @@ import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.transpiler.kern.Dekking;
 import dev.uchar.regelspraak.transpiler.kern.Namen;
+import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
 
 import org.kie.api.KieBase;
 import org.kie.api.runtime.KieSession;
+import org.kie.api.runtime.rule.FactHandle;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * The embeddable RegelSpraak engine: compile a RegelSpraak source into a ready-to-fire Drools engine and run rules
@@ -31,11 +35,14 @@ import java.util.Map;
  *   Object persoon = engine.nieuw("Persoon");                                  // a generated fact bean
  *   try (RegelSpraakEngine.Session s = engine.newSession()) {
  *       s.insert(persoon).setGlobal("volwassenleeftijd", new BigDecimal(18)).fire();
- *   }                                                                          // persoon is mutated in place
+ *       s.zetTerug();                                                          // the derived values onto persoon
+ *   }
  * }</pre>
  *
  * The facts are instances of the generated beans ({@link #nieuw}, {@link #beanLoader()}): the KieBase is built
- * against those classes, so an object of a same-named class from another class loader never matches a rule.
+ * against those classes, so an object of a same-named class from another class loader never matches a rule. A
+ * session fills, fires and reads through uchar's entry ({@link Session}): the branch derives with truth maintenance,
+ * so a derived value is a fact of the session, and the beans hold the input alone until {@link Session#zetTerug}.
  */
 public final class RegelSpraakEngine {
     private final RegelSpraakModel model;
@@ -80,7 +87,7 @@ public final class RegelSpraakEngine {
     }
 
     /** Open a fresh fact session against the compiled rule base. */
-    public Session newSession() { return new Session(build.kieBase().newKieSession(), build.beanLoader()); }
+    public Session newSession() { return new Session(build, build.kieBase().newKieSession()); }
 
     /**
      * Open a fresh session op één datumautoriteit: {@code peildatum} wordt de {@code rekendatum}-global. Een model
@@ -143,48 +150,103 @@ public final class RegelSpraakEngine {
         catch (RuntimeException onbekend) { /* global niet gedeclareerd: onschadelijk — geen regel leest hem */ }
     }
 
-    /** Rules the transpiler could not lower. Empty: uchar refuses to build a model with such a rule, and
-     *  {@link #compile} reports that refusal. */
-    public List<String> overgeslagen() { return build.execModelTranspiler().overgeslagen(); }
-
     /** The coverage manifest of the built rule base: one verdict per construct, every one LOWERED, because the build
      *  refuses any other. */
     public List<Dekking> dekking() { return build.dekking(); }
 
-    /** A unit of work: insert facts (+ globals), fire, read results. {@link AutoCloseable} disposes the session. */
+    /**
+     * A unit of work on uchar's entry ({@code DroolsBackend.voegIn}, {@code vuur}, {@code lees},
+     * {@code zetAfgeleideWaarden}): the beans of {@link #insert} and {@link #insertAll} are gathered until the first
+     * {@link #fire}, which puts them in through {@code voegIn} and fires through {@code vuur}; a later fire only fires.
+     * Between two fires a consumer changes an attribute or a characteristic of a bean of the session and calls
+     * {@link #update}; anything else, an object that comes or goes, a changed relation, another global, asks a fresh
+     * session, and uchar's entry refuses it by name. {@link #lees} gives what stands at the fixpoint of the last fire,
+     * {@link #zetTerug} puts it on the beans and closes the session for firing. {@link AutoCloseable} disposes the
+     * session. The rules resolve the generated fact types through the thread's context class loader, which every call
+     * of the entry gets as uchar's replay gives it.
+     */
     public static final class Session implements AutoCloseable {
+        private final DroolsBackend.Build build;
         private final KieSession session;
-        private final ClassLoader beanLoader;
+        private final List<Object> invoer = new ArrayList<>();
+        private boolean gevuld;
 
-        Session(KieSession session, ClassLoader beanLoader) {
+        Session(DroolsBackend.Build build, KieSession session) {
+            this.build = build;
             this.session = session;
-            this.beanLoader = beanLoader;
         }
 
-        public Session insert(Object fact) { session.insert(fact); return this; }
-        public Session insertAll(Object... facts) { for (Object f : facts) session.insert(f); return this; }
+        /** Adds {@code fact} to the input of the first {@link #fire}. */
+        public Session insert(Object fact) { verzamel(fact); return this; }
+
+        /** Adds {@code facts}, in this order, to the input of the first {@link #fire}. */
+        public Session insertAll(Object... facts) { for (Object f : facts) verzamel(f); return this; }
+
+        // voegIn fills a fresh session only, and the places of a list are numbered over the beans of one input
+        private void verzamel(Object fact) {
+            Objects.requireNonNull(fact, "fact");
+            if (gevuld)
+                throw new IllegalStateException("insert na de eerste fire: de sessie is gevuld via uchars ingang"
+                        + " (DroolsBackend.voegIn), die alleen een verse sessie vult; een object erbij vraagt een verse"
+                        + " sessie");
+            invoer.add(fact);
+        }
+
+        /** Sets a global, before the first {@link #fire}: the branch states a global once, at the first fire, and
+         *  uchar's entry refuses a session whose global changed after it. */
         public Session setGlobal(String name, Object value) { session.setGlobal(name, value); return this; }
 
-        /** Fire all rules to quiescence; returns the number of rule activations fired. BOUNDED: a
-         *  read-write dependency CYCLE between berekeningen (x = y+1; y = x+1 — resolver-diagnosed as a
-         *  WARNING, but a voorwaarde may or may not break it at runtime) recomputes divergently forever
-         *  under the freshness semantics; the cap turns that authoring error into an exception instead
-         *  of a hung session. Any real model reaches its fixpoint in a tiny fraction of the bound. The rules
-         *  resolve the generated fact types through the thread's context class loader, as uchar's replay fires. */
+        /** Fires to the fixpoint through uchar's entry, the first time after putting the gathered beans in, and returns
+         *  the number of firings. A run without a fixpoint, at the cap or at the creation budget, throws an
+         *  {@link IllegalStateException} with uchar's sentence. A model with a creation fires once per session, and
+         *  a fire after {@link #zetTerug} is refused, each by uchar's entry with the way on. */
         public int fire() {
-            ClassLoader vorige = Thread.currentThread().getContextClassLoader();
-            Thread.currentThread().setContextClassLoader(beanLoader);
-            int n;
-            try { n = session.fireAllRules(100_000); }
-            finally { Thread.currentThread().setContextClassLoader(vorige); }
-            if (n >= 100_000)
-                throw new IllegalStateException("regel-herberekening bereikt geen fixpunt binnen 100000 activaties"
-                        + " — vermoedelijk een kringverwijzing tussen berekeningen (zie de resolver-WARNING)");
-            return n;
+            return metBeanLoader(() -> {
+                if (!gevuld) {
+                    DroolsBackend.voegIn(build, session, new Invoer().beans(invoer));
+                    gevuld = true;
+                }
+                DroolsBackend.Vuring vuring = DroolsBackend.vuur(build, session);
+                if (vuring.geenFixpunt() != null) throw new IllegalStateException(vuring.geenFixpunt());
+                return vuring.vuringen();
+            });
+        }
+
+        /** Tells the session that an attribute or a characteristic of {@code bean} changed, between two fires: the
+         *  entry does not see a field set without it, and the next {@link #fire} would keep the old fixpoint. Before
+         *  the first fire there is nothing to tell, as that fire reads the bean as it is then. */
+        public Session update(Object bean) {
+            Objects.requireNonNull(bean, "bean");
+            if (!gevuld) {
+                if (invoer.stream().noneMatch(b -> b == bean))
+                    throw new IllegalArgumentException("update van een bean die niet in deze sessie staat");
+                return this;
+            }
+            FactHandle handle = session.getFactHandle(bean);
+            if (handle == null)
+                throw new IllegalArgumentException("update van een bean die niet in deze sessie staat; een object"
+                        + " erbij vraagt een verse sessie");
+            metBeanLoader(() -> { session.update(handle, bean); return null; });
+            return this;
+        }
+
+        /** What stands at the fixpoint of the last {@link #fire}, without writing anything on a bean: the derived values
+         *  and characteristics, the objects and links the creations made, the evaluation faults as data and the
+         *  inconsistencies. */
+        public Fixpunt lees() {
+            return metBeanLoader(() -> DroolsBackend.lees(build, session));
+        }
+
+        /** Puts what stands at the fixpoint of the last {@link #fire} on the beans, after which the session does not
+         *  fire again. An evaluation fault that stands there is thrown as uchar's own exception (two or more as
+         *  {@code Evaluatiefouten}), and then nothing is written. */
+        public void zetTerug() {
+            metBeanLoader(() -> { DroolsBackend.zetAfgeleideWaarden(build, session); return null; });
         }
 
         /** All facts in working memory that are instances of {@code type} — e.g. objects a §13.4.6 objectcreatie
-         *  produced; {@link #facts(String)} reaches a generated class by name. */
+         *  produced; {@link #facts(String)} reaches a generated class by name. A derived value is a fact of the
+         *  session, not a field of its bean, until {@link #zetTerug}. */
         @SuppressWarnings("unchecked")
         public <T> Collection<T> facts(Class<T> type) {
             return (Collection<T>) (Collection<?>) session.getObjects(type::isInstance);
@@ -194,7 +256,7 @@ public final class RegelSpraakEngine {
          *  {@link FactModelGenerator#PAKKET}), e.g. {@code "Inconsistentie"} for the §9.5 inconsistency facts. */
         public Collection<?> facts(String klasse) {
             try {
-                Class<?> type = Class.forName(FactModelGenerator.PAKKET + "." + klasse, true, beanLoader);
+                Class<?> type = Class.forName(FactModelGenerator.PAKKET + "." + klasse, true, build.beanLoader());
                 return session.getObjects(type::isInstance);
             } catch (ClassNotFoundException e) {
                 throw new IllegalArgumentException("geen gegenereerde klasse " + klasse + " in "
@@ -203,5 +265,12 @@ public final class RegelSpraakEngine {
         }
 
         @Override public void close() { session.dispose(); }
+
+        private <T> T metBeanLoader(java.util.function.Supplier<T> stap) {
+            ClassLoader vorige = Thread.currentThread().getContextClassLoader();
+            Thread.currentThread().setContextClassLoader(build.beanLoader());
+            try { return stap.get(); }
+            finally { Thread.currentThread().setContextClassLoader(vorige); }
+        }
     }
 }

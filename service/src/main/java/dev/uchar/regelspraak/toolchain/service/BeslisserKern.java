@@ -82,24 +82,28 @@ public final class BeslisserKern {
         this.periodeWaarschuwingen = periodeWaarschuwingen;
     }
 
-    /** One compiled entry point: its descriptor entry, its scoped {@link KieBase}, its marker list, the
-     *  descriptor parameter defaults resolved to globals, the §9.8 dagsoort predicates the session must carry as
-     *  globals (empty on the exec-model branch, which wires them into its rules), the {@link Dekking} manifest of
-     *  its build, the class loader of its generated fact beans, and when uchar refused its build, the refusal.
+    /** One compiled entry point: its descriptor entry, uchar's {@link DroolsBackend.Build} of its scope (the scoped
+     *  {@link KieBase}, the class loader of its generated fact beans and the manifest, which a session needs whole
+     *  to go through uchar's entry), its marker list, the descriptor parameter defaults resolved to globals, and when
+     *  uchar refused its build, the refusal.
      *
-     *  <p>{@code dekking} is the exec-model branch's manifest of the entry point's document, one verdict per form,
+     *  <p>{@link #dekking()} is the exec-model branch's manifest of the entry point's document, one verdict per form,
      *  the defaults groups included; the document carries only the forms of the scope, so the manifest is the
      *  scope's. {@code /info} reports it verbatim.
      *
-     *  <p>An entry point uchar does not carry, started with {@link KernConfig#allowMarkers()}, has no KieBase and no
-     *  bean class loader: {@code markers} names the construct when uchar's refusal names one, {@code weigering}
-     *  carries uchar's sentence, and a request to it is refused with {@link NietUitvoerbaar}. */
-    public record Entrypoint(DienstDescriptor.Entrypoint descriptor, KieBase kieBase,
-                             List<String> markers, Map<String, Object> defaultGlobals,
-                             Map<String, java.util.function.Predicate<java.time.LocalDate>> dagsoortGlobalen,
-                             List<Dekking> dekking, ClassLoader beanLoader, String weigering) {
-        /** Whether a request to this entry point can fire: uchar built its KieBase. */
-        public boolean uitvoerbaar() { return kieBase != null; }
+     *  <p>An entry point uchar does not carry, started with {@link KernConfig#allowMarkers()}, has no build:
+     *  {@code markers} names the construct when uchar's refusal names one, {@code weigering} carries uchar's sentence,
+     *  and a request to it is refused with {@link NietUitvoerbaar}. */
+    public record Entrypoint(DienstDescriptor.Entrypoint descriptor, DroolsBackend.Build build,
+                             List<String> markers, Map<String, Object> defaultGlobals, String weigering) {
+        /** Whether a request to this entry point can fire: uchar built it. */
+        public boolean uitvoerbaar() { return build != null; }
+
+        /** The manifest of the build, empty for an entry point uchar does not carry. */
+        public List<Dekking> dekking() { return build == null ? List.of() : build.dekking(); }
+
+        /** The class loader of the generated fact beans, null for an entry point uchar does not carry. */
+        public ClassLoader beanLoader() { return build == null ? null : build.beanLoader(); }
     }
 
     // ---------------- startup ----------------
@@ -222,8 +226,7 @@ public final class BeslisserKern {
             // walk throws on a navigation its emitter refuses, where the marker names the refusal.
             if (!ep.scopeControleUit())
                 scopeFouten.addAll(scopeVolledigheid(ep, model, gescoopt, producenten));
-            perPad.put(ep.pad(), new Entrypoint(ep, build.kieBase(), List.of(), defaults,
-                    build.dagsoortGlobalen(), build.dekking(), build.beanLoader(), null));
+            perPad.put(ep.pad(), new Entrypoint(ep, build, List.of(), defaults, null));
         }
         if (!scopeFouten.isEmpty())
             throw new DienstFout("dienst start niet: onvolledige regel-scope (buiten-scope kenmerk-producent)",
@@ -298,8 +301,7 @@ public final class BeslisserKern {
                 marker(ep, weigering.construct(), weigering.getMessage(), defaults, config, perPad, markerFouten);
                 continue;
             }
-            perPad.put(ep.pad(), new Entrypoint(ep, build.kieBase(), List.of(), defaults, build.dagsoortGlobalen(),
-                    build.dekking(), build.beanLoader(), null));
+            perPad.put(ep.pad(), new Entrypoint(ep, build, List.of(), defaults, null));
         }
         if (!scopeFouten.isEmpty())
             throw new DienstFout("dienst start niet: een scope draagt niet het hele document", scopeFouten);
@@ -326,7 +328,7 @@ public final class BeslisserKern {
                                List<Schending> markerFouten) {
         if (config.allowMarkers()) {
             perPad.put(ep.pad(), new Entrypoint(ep, null, construct == null ? List.of() : List.of(construct),
-                    defaults, Map.of(), List.of(), null, reden));
+                    defaults, reden));
             return;
         }
         markerFouten.add(Schending.van(Schending.Soort.MARKER, "entrypoint:" + ep.pad(), construct == null
@@ -577,8 +579,7 @@ public final class BeslisserKern {
         // request parameter overrides (descriptor default first, set-value next — the conflict rule guarantees
         // they never name the same parameter — request override last: explicit caller-intent wins).
         Map<String, Object> setGlobals = vintageGlobals(mr.wereld().rekendatum());
-        Uitvoerder uitvoerder = new Uitvoerder(ep.kieBase(), ep.defaultGlobals(), ep.dagsoortGlobalen(),
-                ep.beanLoader());
+        Uitvoerder uitvoerder = new Uitvoerder(ep.build(), ep.defaultGlobals());
         Uitvoerder.Uitkomst uitkomst = uitvoerder.vuur(mr.wereld(), setGlobals);
         ObjectNode antwoord = new AntwoordBouwer(model, uitvoer).bouw(uitkomst, ep.descriptor().uitvoer(),
                 mr.typePerLabel());

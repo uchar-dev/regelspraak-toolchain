@@ -1,6 +1,7 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.cases.Invoer;
 import dev.uchar.regelspraak.engine.ScenarioResultaat;
 import dev.uchar.regelspraak.engine.ScenarioResultaat.Status;
 import dev.uchar.regelspraak.engine.ScenarioResultaat.VerwachtingResultaat;
@@ -26,7 +27,8 @@ import static org.junit.jupiter.api.Assertions.*;
  * <ol>
  *   <li><b>Java-API ground truth</b> — {@link #wereld} resolves the SAME inline model and builds it through uchar
  *       on the exec-model branch ({@link UcharBouw}, the build the engine and the service fire), instantiates the
- *       generated {@link FactModelGenerator} beans directly, sets globals, fires, and READS the target getter(s).
+ *       generated {@link FactModelGenerator} beans directly, sets globals, puts the beans in, fires and writes the
+ *       derived values back through uchar's entry, and READS the target getter(s).
  *       This is the ground-truth value asserted with an exact comparator (BigDecimal.compareTo==0 / equals /
  *       boolean read / null⇔leeg).</li>
  *   <li><b>Scenario path</b> — the SAME model + facts + expectation as a {@code .rgs} scenario document, run
@@ -43,7 +45,7 @@ class ScenarioOrakelTest {
     // ---------------- Java-API ground-truth harness (generated beans, uchar's build) ----------------
 
     /** A session on uchar's build of a model, with the class loader of its generated beans. */
-    private record Wereld(KieSession sessie, ClassLoader cl) {
+    private record Wereld(DroolsBackend.Build build, KieSession sessie, ClassLoader cl) {
         Object nieuw(String klasse) throws Exception {
             return Class.forName(FactModelGenerator.PAKKET + "." + klasse, true, cl).getConstructor().newInstance();
         }
@@ -79,18 +81,22 @@ class ScenarioOrakelTest {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "model hoort te resolven: " + m.errors());
         DroolsBackend.Build b = UcharBouw.bouw(m, DroolsBackend.Branch.EXEC_MODEL);
-        return new Wereld(b.kieBase().newKieSession(), b.beanLoader());
+        return new Wereld(b, b.kieBase().newKieSession(), b.beanLoader());
     }
 
-    /** Insert and fire with the bean class loader as the thread's context class loader, as uchar's replay fires. */
+    /** Put {@code facts} in, fire and write the derived values back through uchar's entry, with the bean class loader
+     *  as the thread's context class loader, as uchar's replay fires. */
     private void vuur(Wereld w, Object... facts) {
-        for (Object f : facts) w.sessie().insert(f);
         ClassLoader vorige = Thread.currentThread().getContextClassLoader();
         Thread.currentThread().setContextClassLoader(w.cl());
-        int n;
-        try { n = w.sessie().fireAllRules(100_000); }
-        finally { Thread.currentThread().setContextClassLoader(vorige); }
-        assertTrue(n < 100_000, "regel-loop bereikt geen fixpunt");
+        try {
+            DroolsBackend.voegIn(w.build(), w.sessie(), new Invoer().beans(List.of(facts)));
+            DroolsBackend.Vuring vuring = DroolsBackend.vuur(w.build(), w.sessie());
+            assertNull(vuring.geenFixpunt(), "regel-loop bereikt geen fixpunt");
+            DroolsBackend.zetAfgeleideWaarden(w.build(), w.sessie());
+        } finally {
+            Thread.currentThread().setContextClassLoader(vorige);
+        }
     }
 
     // ---------------- scenario-path harness ----------------
@@ -1590,9 +1596,9 @@ class ScenarioOrakelTest {
 
     /** FACET kenmerktoekenning (zelfstandig kenmerk uit een ander zelfstandig kenmerk). Lifted from
      *  DroolsExecutionTest.membership_eenvorm_kenmerkcheck_bindt_alleen_een_zelfstandig_kenmerk (L4988): student → kind.
-     *  uchar's exec-model branch does not lower the een-form over the bijvoeglijk kenmerk (rule bijvoeglijk), so the
-     *  whole model builds no KieBase: the Java-API leg builds the model without that rule, and the scenario, scoped to
-     *  zelfstandig, carries only its own rule. */
+     *  The Java-API leg builds the model without the een-form over the bijvoeglijk kenmerk (rule bijvoeglijk), and the
+     *  scenario, scoped to zelfstandig, carries only its own rule. Until uchar b536bbc9 the exec-model branch refused
+     *  rule bijvoeglijk, which the test asserted; the truth-maintenance branch lowers it. */
     @Test void kenmerk_zelfstandig_uit_kenmerk() throws Exception {
         String declaraties = """
             Objecttype de Passagier
@@ -1608,8 +1614,6 @@ class ScenarioOrakelTest {
                 geldig altijd
                     Een passagier is kind indien hij een minderjarig is.
             """;
-        UcharBouw.NietGedragen ng = assertThrows(UcharBouw.NietGedragen.class, () -> wereld(model));
-        assertEquals("bijvoeglijk", ng.construct(), () -> "uchar weigert de regel bijvoeglijk: " + ng.getMessage());
         Wereld w = wereld(declaraties);
         Object student = w.nieuw("Passagier"); w.kenmerk(student, "setStudent", true); w.kenmerk(student, "setMinderjarig", false);
         vuur(w, student);
@@ -2399,34 +2403,36 @@ class ScenarioOrakelTest {
     }
 
     /** FACET tekst/enum (tekstreeks-concatenatie met «...» interpolatie). Lifted from
-     *  DroolsExecutionTest.tekstreeks_vuurt_een_geconcateneerde_tekstwaarde (L6391): "nr 528 jaar". */
+     *  DroolsExecutionTest.tekstreeks_vuurt_een_geconcateneerde_tekstwaarde (L6391), with a text part where the source
+     *  interpolated a number ("nr 528 jaar"): since uchar b536bbc9 the exec-model branch refuses a number in a text
+     *  composition, whose text RUNTIME-SEMANTICS ch. 1.2 does not decide. */
     @Test void tekst_concatenatie() throws Exception {
         String model = """
             Objecttype de Persoon (mv: Personen) (bezield)
-                de leeftijd Numeriek (geheel getal);
+                de voornaam Tekst;
                 de roepnaam Tekst;
             Regel R
                 geldig altijd
-                    De roepnaam van een Persoon moet gesteld worden op "nr «de leeftijd van een Persoon» jaar".
+                    De roepnaam van een Persoon moet gesteld worden op "nr «de voornaam van een Persoon» jaar".
             """;
         Wereld w = wereld(model);
-        Object p = w.nieuw("Persoon"); w.getal(p, "setLeeftijd", 528);
+        Object p = w.nieuw("Persoon"); w.zet(p, "setVoornaam", "Ada", String.class);
         vuur(w, p);
         Object grond = w.lees(p, "getRoepnaam");
-        assertEquals("nr 528 jaar", grond, "java-api roepnaam");
+        assertEquals("nr Ada jaar", grond, "java-api roepnaam");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
             een Persoon P1
-            - de leeftijd is 528
+            - de voornaam is "Ada"
             Scenario tekstreeks
             toetst de regel R
             gebaseerd op de situatie basis
             Met als verwacht resultaat:
-            - de roepnaam van P1 is "nr 528 jaar"
+            - de roepnaam van P1 is "nr Ada jaar"
             """);
         pass(r);
-        assertEquals("nr 528 jaar", grond, "scenario == java-api");
+        assertEquals("nr Ada jaar", grond, "scenario == java-api");
     }
 
     /** FACET tekst/enum (tekst-predicaat "numeriek met exact 9 cijfers"). Lifted from

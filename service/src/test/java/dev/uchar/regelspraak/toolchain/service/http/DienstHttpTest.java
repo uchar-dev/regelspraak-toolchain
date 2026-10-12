@@ -53,13 +53,14 @@ class DienstHttpTest {
     }
 
     /** A self-contained marker service (mirrors MarkerFailFastTest), built with markers ALLOWED so /info lists
-     *  the marker rule "het absolute tijdsevenredig deel per maand" scope. */
+     *  the marker rule, a day count as the value of a target that is not time-dependent. */
     private static final String MARKER_BRON = """
         Objecttype de Vlucht (mv: Vluchten)
-            de heffing Numeriek (getal met 2 decimalen) met eenheid EUR;
+            de heffing Numeriek (niet-negatief geheel getal);
+            is belast kenmerk (bijvoeglijk) voor elke dag;
         Regel heffing markert
         geldig altijd
-        De heffing van een Vlucht moet berekend worden als het absolute tijdsevenredig deel per maand van 10,00 EUR.
+        De heffing van een Vlucht moet berekend worden als het aantal dagen in de maand dat hij belast is.
         """;
     private static final String MARKER_DESCRIPTOR = """
         { "dienst": {"naam":"marker-test","versie":"1"},

@@ -55,7 +55,7 @@ class VocabulaireScenarioTest {
             Files.writeString(doc, document());
             Uitvoer u = voerUit("--trace", "--uitleg", "--vocabulaire", "cgm", doc.toString());
             assertEquals(0, u.code(), u.fout());
-            assertTrue(u.uit().contains("      R_PREMIE_VONDST @ [V1, V2] x3"), u.uit());
+            assertTrue(u.uit().contains("      R_PREMIE_VONDST @ [V1, V2] x2"), u.uit());
             assertTrue(u.uit().contains("      R_PREMIEWAARDIG @ [J1] x1"), u.uit());
             assertTrue(u.uit().contains("      V1 is WAARDEVOL, omdat zijn soort (BARNSTEEN) is gelijk aan BARNSTEEN"),
                     u.uit());

@@ -64,11 +64,11 @@ class PlaygroundVocabulaireTest {
 
         JsonNode scenario = cgm.at("/scenario/resultaten/0");
         assertEquals("PASS", scenario.get("status").asText(), scenario.toString());
-        assertEquals("R_PREMIE_VONDST", scenario.at("/trace/0/regel").asText(), scenario.toString());
+        assertEquals("R_VONDSTBEDRAG", scenario.at("/trace/0/regel").asText(), scenario.toString());
         assertTrue(scenario.get("dekking").toString().contains("\"R_PREMIEWAARDIG\""), scenario.toString());
         assertTrue(scenario.get("uitleg").toString().contains("V1 is WAARDEVOL, omdat zijn soort (BARNSTEEN) is gelijk"
                 + " aan BARNSTEEN"), scenario.get("uitleg").toString());
-        assertEquals("premie van een vondst", canoniek.at("/scenario/resultaten/0/trace/0/regel").asText());
+        assertEquals("vondstbedrag van een jutter", canoniek.at("/scenario/resultaten/0/trace/0/regel").asText());
     }
 
     @Test
