@@ -24,6 +24,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * The embeddable RegelSpraak engine: compile a RegelSpraak source into a ready-to-fire Drools engine and run rules
@@ -156,8 +157,9 @@ public final class RegelSpraakEngine {
 
     /**
      * A unit of work on uchar's entry ({@code DroolsBackend.voegIn}, {@code vuur}, {@code lees},
-     * {@code zetAfgeleideWaarden}): the beans of {@link #insert} and {@link #insertAll} are gathered until the first
-     * {@link #fire}, which puts them in through {@code voegIn} and fires through {@code vuur}; a later fire only fires.
+     * {@code zetAfgeleideWaarden}): the beans of {@link #insert} and {@link #insertAll}, with the bucket scalars of
+     * {@link #emmerscalair} and the list orders of {@link #lijst}, are gathered until the first {@link #fire}, which
+     * puts them in through {@code voegIn} and fires through {@code vuur}; a later fire only fires.
      * Between two fires a consumer changes an attribute or a characteristic of a bean of the session and calls
      * {@link #update}; anything else, an object that comes or goes, a changed relation, another global, asks a fresh
      * session, and uchar's entry refuses it by name. {@link #lees} gives what stands at the fixpoint of the last fire,
@@ -169,6 +171,9 @@ public final class RegelSpraakEngine {
         private final DroolsBackend.Build build;
         private final KieSession session;
         private final List<Object> invoer = new ArrayList<>();
+        /** The bucket scalars and list orders of the first fire's input, stated on its {@code Invoer} beside the
+         *  beans of {@link #invoer}. */
+        private final List<Consumer<Invoer>> opgaven = new ArrayList<>();
         private boolean gevuld;
 
         Session(DroolsBackend.Build build, KieSession session) {
@@ -182,28 +187,70 @@ public final class RegelSpraakEngine {
         /** Adds {@code facts}, in this order, to the input of the first {@link #fire}. */
         public Session insertAll(Object... facts) { for (Object f : facts) verzamel(f); return this; }
 
-        // voegIn fills a fresh session only, and the places of a list are numbered over the beans of one input
         private void verzamel(Object fact) {
             Objects.requireNonNull(fact, "fact");
-            if (gevuld)
-                throw new IllegalStateException("insert na de eerste fire: de sessie is gevuld via uchars ingang"
-                        + " (DroolsBackend.voegIn), die alleen een verse sessie vult; een object erbij vraagt een verse"
-                        + " sessie");
+            voorDeEersteFire("insert", "een object erbij");
             invoer.add(fact);
+        }
+
+        /**
+         * States that {@code bean} holds the input of {@code attribuut}, an attribute on a timeline named as the model
+         * declares it, as the asOfDate-bucket scalar: the one segment of the period of the attribute's grid that holds
+         * the peildatum (uchar's {@code Invoer.emmerscalair}, RUNTIME-SEMANTICS ch. 8.4). A consumer that sets such an
+         * attribute that way states it here. The bean cannot tell that scalar from a full timeline of one segment, and
+         * without the statement the branch reads the full timeline: a form that needs the bucket scalar, the subject's
+         * own total without a clip, faults with an {@code Invoervormfout} at {@link #zetTerug}, and a form that needs
+         * the full timeline, such as the base of a pro-rata part, computes over that one segment without a fault.
+         * Before the first {@link #fire}, as {@link #insert}; there uchar's entry refuses a statement that does not fit
+         * the beans or the model.
+         */
+        public Session emmerscalair(Object bean, String attribuut) {
+            Objects.requireNonNull(bean, "bean");
+            Objects.requireNonNull(attribuut, "attribuut");
+            voorDeEersteFire("emmerscalair", "een emmerscalair erbij");
+            opgaven.add(i -> i.emmerscalair(bean, attribuut));
+            return this;
+        }
+
+        /**
+         * States the order of a to-many list (uchar's {@code Invoer.lijst}): {@code leden} are the members whose
+         * reference field {@code rol} holds {@code houder}, in this order, {@code rol} being the role the holder plays,
+         * the name of that field; the list names every bean of the input whose field holds the holder, each once. The
+         * order decides only which member a fault of a fold names, where the fold reads its members one by one and stops
+         * at the first fault; without the statement a list holds its members in the order of the inserts. Before the
+         * first {@link #fire}, as {@link #insert}; there uchar's entry refuses a list that does not fit the beans.
+         */
+        public Session lijst(Object houder, String rol, List<?> leden) {
+            Objects.requireNonNull(houder, "houder");
+            Objects.requireNonNull(rol, "rol");
+            List<Object> volgorde = List.copyOf(leden);   // the order as given now, not as the list reads at the fire
+            voorDeEersteFire("lijst", "een lijst erbij");
+            opgaven.add(i -> i.lijst(houder, rol, volgorde));
+            return this;
+        }
+
+        // voegIn fills a fresh session only, and states the places of a list and the bucket scalars over one input
+        private void voorDeEersteFire(String wat, String erbij) {
+            if (gevuld)
+                throw new IllegalStateException(wat + " na de eerste fire: de sessie is gevuld via uchars ingang"
+                        + " (DroolsBackend.voegIn), die alleen een verse sessie vult; " + erbij + " vraagt een verse"
+                        + " sessie");
         }
 
         /** Sets a global, before the first {@link #fire}: the branch states a global once, at the first fire, and
          *  uchar's entry refuses a session whose global changed after it. */
         public Session setGlobal(String name, Object value) { session.setGlobal(name, value); return this; }
 
-        /** Fires to the fixpoint through uchar's entry, the first time after putting the gathered beans in, and returns
-         *  the number of firings. A run without a fixpoint, at the cap or at the creation budget, throws an
+        /** Fires to the fixpoint through uchar's entry, the first time after putting the gathered input in (the beans,
+         *  the bucket scalars, the list orders), and returns the number of firings. A run without a fixpoint, at the cap or at the creation budget, throws an
          *  {@link IllegalStateException} with uchar's sentence. A model with a creation fires once per session, and
          *  a fire after {@link #zetTerug} is refused, each by uchar's entry with the way on. */
         public int fire() {
             return metBeanLoader(() -> {
                 if (!gevuld) {
-                    DroolsBackend.voegIn(build, session, new Invoer().beans(invoer));
+                    Invoer in = new Invoer().beans(invoer);
+                    for (Consumer<Invoer> opgave : opgaven) opgave.accept(in);
+                    DroolsBackend.voegIn(build, session, in);
                     gevuld = true;
                 }
                 DroolsBackend.Vuring vuring = DroolsBackend.vuur(build, session);

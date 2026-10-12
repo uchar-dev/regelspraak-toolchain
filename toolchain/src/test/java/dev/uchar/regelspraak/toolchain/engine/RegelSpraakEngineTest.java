@@ -1,12 +1,23 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
+import dev.uchar.regelspraak.cases.CaseRunner;
+import dev.uchar.regelspraak.emit.IrEmitter;
 import dev.uchar.regelspraak.engine.RegelSpraakCompileException;
+import dev.uchar.regelspraak.runtime.Breuk;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
+import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.transpiler.kern.Dekking;
 import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
+import dev.uchar.regelspraak.transpiler.tms.Invoervormfout;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -165,6 +176,154 @@ class RegelSpraakEngineTest {
         assertTrue(e.diagnostics().stream().anyMatch(d -> d.isError() && d.message().contains("(WF-045)")
                         && d.message().endsWith("dependency cycle through no recursive creation: a -> b -> a")),
                 () -> "de weigering hoort WF-045 en de kring te noemen: " + e.diagnostics());
+    }
+
+    /** An own total without a clip over an attribute on a timeline, which reads the asOfDate-bucket scalar. */
+    static final String BEWARING = """
+            Eenheidsysteem Munt
+                de euro (mv: euros) EUR €
+
+            Eenheidsysteem Bewaartijd
+                de maand mnd
+
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                de bewaarvergoeding per maand Numeriek (geheel getal) met eenheid €/mnd voor elke maand;
+                het bewaargeld Numeriek (geheel getal) met eenheid €;
+
+            Regel bewaargeld van een jutter
+                geldig altijd
+                    Het bewaargeld van een Jutter moet berekend worden als het totaal van zijn bewaarvergoeding per
+                    maand.
+            """;
+
+    /** A consumer that sets an attribute on a timeline as the one segment of the period of the peildatum states it as
+     *  the asOfDate-bucket scalar ({@link RegelSpraakEngine.Session#emmerscalair}). Without the statement the branch
+     *  reads a full timeline of one segment, and the own total faults with an {@code Invoervormfout}; with it the
+     *  session gives the value uchar's replay gives on the same case, which states such a scalar itself. */
+    @Test
+    void een_emmerscalair_gaat_met_de_eerste_fire_naar_uchars_ingang(@TempDir Path map) throws Exception {
+        RegelSpraakEngine engine = RegelSpraakEngine.compile(BEWARING);
+        LocalDate peildatum = LocalDate.of(2026, 3, 15);
+
+        Object zonder = jutter(engine, 10);
+        try (RegelSpraakEngine.Session s = engine.newSession(peildatum)) {
+            s.insert(zonder).fire();
+            assertThrows(Invoervormfout.class, s::zetTerug);
+        }
+
+        Object met = jutter(engine, 10);
+        try (RegelSpraakEngine.Session s = engine.newSession(peildatum)) {
+            s.insert(met).emmerscalair(met, "bewaarvergoeding per maand").fire();
+            assertThrows(IllegalStateException.class, () -> s.emmerscalair(met, "bewaarvergoeding per maand"));
+            s.zetTerug();
+        }
+        CaseRunner.Result replay = replay(map, engine, """
+            {"format":"uchar-case-v0","asOfDate":"2026-03-15",
+             "input":{"instances":[{"label":"J1","objectType":"Jutter",
+               "attributes":{"bewaarvergoeding per maand":{"number":"10"}},"roles":{},"characteristics":[]}],
+              "parameters":{}},
+             "expected":[{"kind":"attributeValue","label":"J1","attribute":"bewaargeld","value":{"number":"10"}}]}""");
+        assertEquals(List.of(), replay.caseFailures());
+        assertEquals("PLAYED", replay.status());
+        assertEquals(0, new BigDecimal(10).compareTo((BigDecimal) RegelSpraakRuntime.get(met, "bewaargeld")),
+                () -> "bewaargeld " + RegelSpraakRuntime.get(met, "bewaargeld"));
+    }
+
+    /** A fold over a to-many role whose filter divides by a member's deelnemers. */
+    static final String VOUW = """
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                de zware vondsten Numeriek (geheel getal);
+
+            Objecttype de Vondst (mv: Vondsten)
+                het gewicht Numeriek (geheel getal);
+                de deelnemers Numeriek (geheel getal);
+
+            Feittype aanmelding
+                de aanmelder Jutter
+                de vondst (mv: vondsten) Vondst
+            Eén aanmelder heeft meerdere vondsten
+
+            Regel zware vondsten
+                geldig altijd
+                    De zware vondsten van een Jutter moet berekend worden als het aantal vondsten van de Jutter
+                    die aan de volgende voorwaarde voldoen: zijn gewicht gedeeld door zijn deelnemers is groter dan 2.
+            """;
+
+    /** J1's vondsten V1 (10 by 2), V2 (4 by 0) and V3 (9 by 0), inserted in that order: the evaluation of the fold stops
+     *  at the first member whose filter divides by 0, in the order of the list. Without a statement the list keeps the
+     *  order of the inserts, V2's 4; with {@link RegelSpraakEngine.Session#lijst} as V1, V3, V2 the session faults on
+     *  V3's 9, as uchar's replay does on the case where J1 writes its vondsten in that order. */
+    @Test
+    void de_volgorde_van_een_lijst_gaat_met_de_eerste_fire_naar_uchars_ingang(@TempDir Path map) throws Exception {
+        RegelSpraakEngine engine = RegelSpraakEngine.compile(VOUW);
+        try (RegelSpraakEngine.Session s = engine.newSession()) {
+            List<Object> j1v1v2v3 = vondsten(engine);
+            s.insertAll(j1v1v2v3.toArray()).fire();
+            assertTrue(assertThrows(Breuk.DelingDoorNul.class, s::zetTerug).getMessage().contains("4 gedeeld door 0"));
+        }
+        String zin;
+        try (RegelSpraakEngine.Session s = engine.newSession()) {
+            List<Object> j1v1v2v3 = vondsten(engine);
+            Object j1 = j1v1v2v3.get(0);
+            s.insertAll(j1v1v2v3.toArray())
+                    .lijst(j1, "aanmelder", List.of(j1v1v2v3.get(1), j1v1v2v3.get(3), j1v1v2v3.get(2))).fire();
+            assertThrows(IllegalStateException.class, () -> s.lijst(j1, "aanmelder", j1v1v2v3.subList(1, 4)));
+            zin = assertThrows(Breuk.DelingDoorNul.class, s::zetTerug).getMessage();
+        }
+        Path ir = map.resolve("ir.json");
+        Files.writeString(ir, IrEmitter.emit(engine.model()), StandardCharsets.UTF_8);
+        Path zaak = map.resolve("case.json");
+        Files.writeString(zaak, """
+            {"format":"uchar-case-v0","asOfDate":null,
+             "input":{"instances":[
+               {"label":"J1","objectType":"Jutter","attributes":{},"roles":{"vondsten":["V1","V3","V2"]},
+                "characteristics":[]},
+               {"label":"V1","objectType":"Vondst","attributes":{"gewicht":{"number":"10"},"deelnemers":{"number":"2"}},
+                "roles":{},"characteristics":[]},
+               {"label":"V2","objectType":"Vondst","attributes":{"gewicht":{"number":"4"},"deelnemers":{"number":"0"}},
+                "roles":{},"characteristics":[]},
+               {"label":"V3","objectType":"Vondst","attributes":{"gewicht":{"number":"9"},"deelnemers":{"number":"0"}},
+                "roles":{},"characteristics":[]}],
+              "parameters":{}},
+             "expected":[{"kind":"consistent"}]}""", StandardCharsets.UTF_8);
+        String replay = assertThrows(Breuk.DelingDoorNul.class, () -> CaseRunner.runGolden(ir, List.of(zaak)))
+                .getMessage();
+        assertTrue(replay.contains("9 gedeeld door 0"), replay);
+        assertEquals(replay, zin);
+    }
+
+    /** uchar's replay ({@code CaseRunner.runGolden}) of case {@code zaak} on the document of {@code engine}'s model. */
+    private static CaseRunner.Result replay(Path map, RegelSpraakEngine engine, String zaak) throws Exception {
+        Path ir = map.resolve("ir.json");
+        Files.writeString(ir, IrEmitter.emit(engine.model()), StandardCharsets.UTF_8);
+        Path c = map.resolve("case.json");
+        Files.writeString(c, zaak, StandardCharsets.UTF_8);
+        return CaseRunner.runGolden(ir, List.of(c));
+    }
+
+    /** A generated Jutter bean whose bewaarvergoeding per maand is {@code waarde} on the one segment of March 2026, the
+     *  period of the peildatum 2026-03-15 on the attribute's monthly grid. */
+    static Object jutter(RegelSpraakEngine engine, int waarde) throws Exception {
+        Object j = engine.nieuw("Jutter");
+        Object segment = Class.forName(FactModelGenerator.PAKKET + ".Segment", true, engine.beanLoader())
+                .getConstructor(LocalDate.class, LocalDate.class, BigDecimal.class)
+                .newInstance(LocalDate.of(2026, 3, 1), LocalDate.of(2026, 4, 1), new BigDecimal(waarde));
+        RegelSpraakRuntime.set(j, "bewaarvergoedingPerMaand", List.of(segment));
+        return j;
+    }
+
+    /** J1 and its vondsten V1 (10 by 2), V2 (4 by 0) and V3 (9 by 0), each holding J1 as its aanmelder, in that order. */
+    static List<Object> vondsten(RegelSpraakEngine engine) {
+        Object j1 = engine.nieuw("Jutter");
+        List<Object> uit = new ArrayList<>(List.of(j1));
+        for (int[] gd : new int[][]{{10, 2}, {4, 0}, {9, 0}}) {
+            Object v = engine.nieuw("Vondst");
+            RegelSpraakRuntime.set(v, "gewicht", new BigDecimal(gd[0]));
+            RegelSpraakRuntime.set(v, "deelnemers", new BigDecimal(gd[1]));
+            RegelSpraakRuntime.set(v, "aanmelder", j1);
+            uit.add(v);
+        }
+        return uit;
     }
 
     /** A generated Persoon bean with its leeftijd set. */

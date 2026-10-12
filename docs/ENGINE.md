@@ -24,6 +24,12 @@ try (RegelSpraakEngine.Session s = engine.newSession()) {
 A session fills, fires and reads through uchar's entry (`DroolsBackend.voegIn`, `vuur`, `lees` and
 `zetAfgeleideWaarden`; uchar's `backends/drools/README.md`, "The entry for consumers"). `insert` and `insertAll`
 gather the beans until the first `fire()`, which puts them in and fires to the fixpoint; a later `fire()` only fires.
+Two statements go with the beans, before the first `fire()` as well. A consumer that sets an attribute on a timeline as
+the one segment of the period of the peildatum states it with `emmerscalair(bean, attribuut)`: without it the branch
+reads a full timeline of one segment, and the subject's own total faults with an `Invoervormfout`, while a form that
+needs the full timeline computes over that segment without a fault. `lijst(houder, rol, leden)` gives the order of a
+to-many list, which decides only which member a fault of a fold names; without it a list keeps the order of the
+inserts.
 The exec-model branch derives with truth maintenance, so a derived value is a fact of the session and the beans hold
 the input alone until `zetTerug()`: `lees()` gives what stands at the fixpoint of the last fire (uchar's `Fixpunt`: the
 derived values and characteristics, the objects and links the creations made, the evaluation faults as data, the
@@ -53,7 +59,9 @@ mvn -B -o verify -pl toolchain -am      # only the toolchain core and what it ne
 
 `RegelSpraakEngineTest` is the end-to-end proof: a rule compiles, fires over generated beans through uchar's entry
 and writes the derived values back onto them; a session that fires twice with an update in between reads what a fresh
-session reads; a type error and a construct uchar does not lower both surface as `RegelSpraakCompileException`.
+session reads; a bucket scalar and the order of a list reach uchar's entry with the first fire, and the session then
+gives what uchar's replay gives on the same case; a type error and a construct uchar does not lower both surface as
+`RegelSpraakCompileException`.
 
 ## The decision service
 
