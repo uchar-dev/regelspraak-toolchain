@@ -8,6 +8,7 @@ import dev.uchar.regelspraak.engine.ScenarioResultaat.VerwachtingResultaat;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
+import dev.uchar.regelspraak.transpiler.tms.Rekenfout;
 import org.junit.jupiter.api.Test;
 import org.kie.api.runtime.KieSession;
 
@@ -1598,7 +1599,9 @@ class ScenarioOrakelTest {
      *  DroolsExecutionTest.membership_eenvorm_kenmerkcheck_bindt_alleen_een_zelfstandig_kenmerk (L4988): student → kind.
      *  The Java-API leg builds the model without the een-form over the bijvoeglijk kenmerk (rule bijvoeglijk), and the
      *  scenario, scoped to zelfstandig, carries only its own rule. Until uchar b536bbc9 the exec-model branch refused
-     *  rule bijvoeglijk, which the test asserted; the truth-maintenance branch lowers it. */
+     *  rule bijvoeglijk, which the test asserted. The truth-maintenance branch lowers its unresolved condition to a
+     *  rule whose evaluation faults (WF-044), and the last leg asserts that fault on the whole model, in the Java-API
+     *  leg and in uchar's replay of the same input. */
     @Test void kenmerk_zelfstandig_uit_kenmerk() throws Exception {
         String declaraties = """
             Objecttype de Passagier
@@ -1632,6 +1635,29 @@ class ScenarioOrakelTest {
             """);
         pass(r);
         assertTrue(grond, "scenario == java-api");
+
+        // rule bijvoeglijk, the een-form over the bijvoeglijk kenmerk: the written name binds no characteristic and no
+        // role of the subject, so the resolver leaves the condition unresolved, with a warning, and the truth-maintenance
+        // branch lowers it to a rule whose evaluation faults (WF-044) where the old branch refused the rule. The whole
+        // model builds, and the Java-API leg gives the fault uchar's replay gives on the same input.
+        Wereld volledig = wereld(model);
+        Object minderjarige = volledig.nieuw("Passagier");
+        volledig.kenmerk(minderjarige, "setStudent", false); volledig.kenmerk(minderjarige, "setMinderjarig", true);
+        Rekenfout fout = assertThrows(Rekenfout.class, () -> vuur(volledig, minderjarige));
+        assertEquals("fout in de regel \"bijvoeglijk\": Unresolved condition reached in evaluation", fout.getMessage());
+
+        ScenarioResultaat rb = één(model + """
+            Situatie bijvoeglijk:
+            een Passagier P2
+            - is minderjarig
+            Scenario minderjarig-kind
+            toetst de regel bijvoeglijk
+            gebaseerd op de situatie bijvoeglijk
+            Met als verwacht resultaat:
+            - P2 is kind
+            """);
+        assertEquals(Status.FAIL, rb.status(), () -> "verwacht FAIL: " + rb.diagnose());
+        assertTrue(rb.diagnose().contains("Rekenfout: " + fout.getMessage()), () -> "uchars replay: " + rb.diagnose());
     }
 
     /** FACET kenmerktoekenning (bezittelijk positief met lidwoord, subjectvorm). Lifted from
