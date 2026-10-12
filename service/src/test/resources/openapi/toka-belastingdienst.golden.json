@@ -51,6 +51,16 @@
               }
             }
           },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "503": {
             "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
@@ -112,6 +122,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -189,6 +209,16 @@
               }
             }
           },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "503": {
             "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
@@ -250,6 +280,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -327,6 +367,16 @@
               }
             }
           },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "503": {
             "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
@@ -388,6 +438,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -465,6 +525,16 @@
               }
             }
           },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "503": {
             "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
@@ -526,6 +596,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -603,6 +683,16 @@
               }
             }
           },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "503": {
             "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
@@ -664,6 +754,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -741,6 +841,16 @@
               }
             }
           },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "503": {
             "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
@@ -802,6 +912,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -879,6 +999,16 @@
               }
             }
           },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "503": {
             "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
@@ -940,6 +1070,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -1017,6 +1157,16 @@
               }
             }
           },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "503": {
             "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
@@ -1078,6 +1228,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -1155,6 +1315,16 @@
               }
             }
           },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "503": {
             "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
@@ -1216,6 +1386,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -1293,6 +1473,16 @@
               }
             }
           },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "503": {
             "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
@@ -1354,6 +1544,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -1431,6 +1631,16 @@
               }
             }
           },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "503": {
             "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
@@ -1492,6 +1702,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -1569,6 +1789,16 @@
               }
             }
           },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "503": {
             "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
@@ -1630,6 +1860,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -1707,6 +1947,16 @@
               }
             }
           },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "503": {
             "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
@@ -1768,6 +2018,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -1845,6 +2105,16 @@
               }
             }
           },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "503": {
             "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
@@ -1914,6 +2184,16 @@
               }
             }
           },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
           "503": {
             "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
             "content": {
@@ -1975,6 +2255,16 @@
           },
           "404": {
             "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fout"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
             "content": {
               "application/json": {
                 "schema": {

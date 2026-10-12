@@ -44,6 +44,9 @@ import java.util.Map;
  *   "inconsistenties": [ "<regelnaam>", ... ],
  *   "inconsistentieDetails": [ { "regel": "<regelnaam>", "onderwerp": "<id>"|null }, ... ] }
  * }</pre>
+ *
+ * <p>A request on which the rules give an evaluation fault gets no such answer but the one of
+ * {@link #evaluatiefout}, which both adapters send with HTTP 422.
  */
 public final class AntwoordBouwer {
 
@@ -106,6 +109,24 @@ public final class AntwoordBouwer {
         }
         root.set("inconsistentieDetails", details);
         return root;
+    }
+
+    /** The answer to a request on which the rules give an evaluation fault, which both adapters send with HTTP 422,
+     *  shaped as the MARKER answer and the answer to a request that does not validate:
+     *  {@code {"status": "EVALUATIEFOUT", "fout": <sentence>, "fouten": [{"soort": <soort>, "fout": <uchar's
+     *  sentence>}, ...]}}, one element per fault in uchar's order. uchar's sentence names an object of the request by
+     *  its id; no stacktrace and no class name enter it. */
+    public static ObjectNode evaluatiefout(Evaluatiefout fout) {
+        ObjectNode n = NF.objectNode();
+        n.put("status", "EVALUATIEFOUT");
+        n.put("fout", fout.getMessage());
+        ArrayNode fouten = n.putArray("fouten");
+        for (Evaluatiefout.Fout f : fout.fouten()) {
+            ObjectNode fn = fouten.addObject();
+            fn.put("soort", f.soort().name());
+            fn.put("fout", f.zin());
+        }
+        return n;
     }
 
     /** The request id whose bean IS {@code bean}, or null when it is none of the request's instances. */

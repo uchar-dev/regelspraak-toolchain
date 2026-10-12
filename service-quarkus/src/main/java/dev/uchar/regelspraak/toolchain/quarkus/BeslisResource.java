@@ -18,8 +18,10 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
+import dev.uchar.regelspraak.toolchain.service.AntwoordBouwer;
 import dev.uchar.regelspraak.toolchain.service.BeslisserKern;
 import dev.uchar.regelspraak.toolchain.service.DienstFout;
+import dev.uchar.regelspraak.toolchain.service.Evaluatiefout;
 import dev.uchar.regelspraak.toolchain.service.Schending;
 import dev.uchar.regelspraak.toolchain.service.VerzoekOpties;
 
@@ -28,7 +30,8 @@ import dev.uchar.regelspraak.toolchain.service.VerzoekOpties;
  * <ul>
  *   <li>{@code POST /<pad>} → {@link BeslisserKern#verwerk} → {@code 200} JSON; {@link DienstFout} → {@code 400}
  *       {@code {"fout":…,"schendingen":[{"veld":…,"fout":…}]}}; {@link BeslisserKern.OnbekendPad} → {@code 404};
- *       {@link BeslisserKern.NietUitvoerbaar} → {@code 503} with the MARKER answer.</li>
+ *       {@link BeslisserKern.NietUitvoerbaar} → {@code 503} with the MARKER answer; {@link Evaluatiefout} →
+ *       {@code 422} with the answer {@link AntwoordBouwer#evaluatiefout} builds, as {@code DienstHttp} sends it.</li>
  *   <li>{@code GET /info} → the SAME manifest {@code DienstHttp} serves (via {@link InfoBouwer}).</li>
  * </ul>
  * The query parameters are {@code DienstHttp}'s: {@code uitleg}, {@code vocabulaire} (the vocabulary of the answer)
@@ -87,6 +90,8 @@ public class BeslisResource {
             return response(503, markerBody(niet));
         } catch (DienstFout dienstFout) {
             return response(400, verzoekFoutBody(dienstFout));
+        } catch (Evaluatiefout evaluatiefout) {
+            return response(422, AntwoordBouwer.evaluatiefout(evaluatiefout));
         }
     }
 

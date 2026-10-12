@@ -2,7 +2,12 @@ package dev.uchar.regelspraak.toolchain.service;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.cases.Invoer;
+import dev.uchar.regelspraak.runtime.Breuk;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
+import dev.uchar.regelspraak.transpiler.tms.Evaluatiefouten;
+import dev.uchar.regelspraak.transpiler.tms.Invoervormfout;
+import dev.uchar.regelspraak.transpiler.tms.Rekenfout;
+import dev.uchar.regelspraak.transpiler.tms.Schrijversconflict;
 
 import org.kie.api.runtime.KieSession;
 
@@ -22,9 +27,10 @@ import java.util.Map;
  * {@code Inconsistentie} facts for the response builder. Session-per-request; the KieBase is shared and immutable, so
  * this is thread-safe by construction.
  *
- * <p>An evaluation fault that stands at the fixpoint is thrown by the write-back, which then writes nothing, as
- * uchar's own exception. A run without a fixpoint is no such fault but a fault of the lowering, since uchar refuses a
- * cycle at the build, and leaves as an {@link IllegalStateException} with uchar's sentence.
+ * <p>An evaluation fault that stands at the fixpoint is thrown by the write-back, which then writes nothing, and
+ * leaves here as an {@link Evaluatiefout}: the rules give no answer on this input. A run without a fixpoint is no
+ * such fault but a fault of the lowering, since uchar refuses a cycle at the build, and leaves as an
+ * {@link IllegalStateException} with uchar's sentence.
  */
 public final class Uitvoerder {
 
@@ -52,6 +58,8 @@ public final class Uitvoerder {
      * BeslisserKern conflict rule guarantees these never name the same parameter as a default), then the request
      * parameter overrides LAST (explicit caller-intent wins — mirrors the scenario situatie-override). The
      * rekendatum global stays {@code wereld.rekendatum()} — that IS the peildatum (the one date authority).
+     *
+     * @throws Evaluatiefout an evaluation fault that stands at the fixpoint, one or more
      */
     public Uitkomst vuur(Wereld wereld, Map<String, Object> setGlobals) {
         // descriptor defaults first, set-vintage values next, request parameters override last
@@ -74,7 +82,11 @@ public final class Uitvoerder {
             // a fault names its object by the id of the request; a made object has none, and uchar names it as ref does
             Map<Object, String> label = new IdentityHashMap<>();
             wereld.beans().forEach((id, bean) -> label.put(bean, id));
-            DroolsBackend.zetAfgeleideWaarden(build, sessie, label::get);
+            try {
+                DroolsBackend.zetAfgeleideWaarden(build, sessie, label::get);
+            } catch (Breuk.DelingDoorNul | Rekenfout | Schrijversconflict | Invoervormfout | Evaluatiefouten fout) {
+                throw Evaluatiefout.van(fout);
+            }
             List<Object> inc = leesInconsistenties(sessie);
             return new Uitkomst(wereld.beans(), vuring.vuringen(), inc);
         } finally {

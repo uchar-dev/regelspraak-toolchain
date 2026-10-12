@@ -204,6 +204,8 @@ public final class OpenApiEmitter {
         antwoord(responses, "400", "verzoek valideert niet — het antwoord noemt het foutieve veld",
                 "#/components/schemas/Fout");
         antwoord(responses, "404", "onbekend pad", "#/components/schemas/Fout");
+        antwoord(responses, "422", "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout"
+                + " de soort en uchars zin", "#/components/schemas/Fout");
         antwoord(responses, "503", "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
                 "#/components/schemas/Fout");
         antwoord(responses, "500", "interne fout (geen stacktrace gelekt)", "#/components/schemas/Fout");

@@ -14,9 +14,11 @@ import com.sun.net.httpserver.HttpServer;
 import dev.uchar.regelspraak.ir.Geldigheid;
 import dev.uchar.regelspraak.model.Parameterset;
 import dev.uchar.regelspraak.model.Parameterset.WaardeInterval;
+import dev.uchar.regelspraak.toolchain.service.AntwoordBouwer;
 import dev.uchar.regelspraak.toolchain.service.BeslisserKern;
 import dev.uchar.regelspraak.toolchain.service.DienstDescriptor;
 import dev.uchar.regelspraak.toolchain.service.DienstFout;
+import dev.uchar.regelspraak.toolchain.service.Evaluatiefout;
 import dev.uchar.regelspraak.toolchain.service.Schending;
 import dev.uchar.regelspraak.toolchain.service.VerzoekOpties;
 import dev.uchar.regelspraak.toolchain.service.Volledigheid;
@@ -68,6 +70,9 @@ import java.util.concurrent.TimeoutException;
  *   <li>{@link BeslisserKern.NietUitvoerbaar} → {@code 503}, the MARKER answer: {@code {"status": "MARKER",
  *       "fout": …, "reden": <uchar's sentence>, "markers": […]}}. An entry point uchar does not carry has no
  *       KieBase, and an answer without the construct would be an answer to another rule set.</li>
+ *   <li>{@link Evaluatiefout} → {@code 422}: the rules give an evaluation fault on this input, which stands at the
+ *       fixpoint ({@link AntwoordBouwer#evaluatiefout}): {@code {"status": "EVALUATIEFOUT", "fout": …, "fouten":
+ *       [{"soort": …, "fout": <uchar's sentence>}, …]}}.</li>
  *   <li>wrong method on a known path → {@code 405} naming the method.</li>
  *   <li>ANY other exception → {@code 500} {@code {"fout": "interne fout"}} — never a stacktrace or an exception
  *       message in the body; the stack is logged to {@code stderr} server-side.</li>
@@ -201,6 +206,8 @@ public final class DienstHttp {
             stuur(ex, 503, markerBody(niet));
         } catch (DienstFout dienstFout) {
             stuur(ex, 400, verzoekFoutBody(dienstFout));
+        } catch (Evaluatiefout evaluatiefout) {
+            stuur(ex, 422, AntwoordBouwer.evaluatiefout(evaluatiefout));
         } catch (Exception intern) {
             // NEVER leak a stacktrace or the exception message to the client; log it server-side.
             intern.printStackTrace(System.err);

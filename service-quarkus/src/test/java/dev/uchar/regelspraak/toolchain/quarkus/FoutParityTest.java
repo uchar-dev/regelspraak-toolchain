@@ -28,10 +28,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * Pins that the Quarkus adapter answers a request it refuses with the SAME status and body as {@code DienstHttp},
  * over the SAME {@link BeslisserKern}: the 400 of a request that does not validate (each violation with its
- * {@code veld}, {@code soort} and message), the 400 of an empty or malformed body, the 404 of an unknown path, and
- * the 503 MARKER answer of an entry point uchar does not carry. {@link BeslisResource} builds these bodies by hand,
- * as {@code DienstHttp}'s builders are package-private in the service module; this test catches a drift in either
- * copy, as {@link InfoParityTest} does for {@code /info}.
+ * {@code veld}, {@code soort} and message), the 400 of an empty or malformed body, the 404 of an unknown path, the
+ * 503 MARKER answer of an entry point uchar does not carry, and the 422 of a request on which the rules give an
+ * evaluation fault. {@link BeslisResource} builds the first bodies by hand, as {@code DienstHttp}'s builders are
+ * package-private in the service module, and the 422 body with the service core's builder, as {@code DienstHttp} does;
+ * this test catches a drift in either adapter, as {@link InfoParityTest} does for {@code /info}.
  *
  * <p>A plain JUnit test, like {@link InfoParityTest}: the resource is called directly with the kern set, and
  * {@code DienstHttp} is asked over HTTP on an ephemeral port.
@@ -81,12 +82,45 @@ class FoutParityTest {
             "invoer": ["Jutter"], "uitvoer": ["Jutter.leerlingaantal"] } ],
           "parameters": {} }""";
 
+    /** Own material for two evaluation faults at once: a division by a numeric zero, and two writers of one attribute
+     *  whose conditions both hold. */
+    private static final String EVALUATIE_BRON = """
+        Objecttype de Vondst (mv: Vondsten)
+            het gewicht Numeriek (getal met 2 decimalen);
+            het aantal delen Numeriek (geheel getal);
+            het deelgewicht Numeriek (getal met 2 decimalen);
+            het vindersloon Numeriek (getal met 2 decimalen);
+
+        Regel deelgewicht van een vondst
+            geldig altijd
+                Het deelgewicht van een Vondst moet berekend worden als zijn gewicht gedeeld door zijn aantal delen.
+
+        Regel loon voor een zware vondst
+            geldig altijd
+                Het vindersloon van een Vondst moet gesteld worden op 25,00
+                indien zijn gewicht groter is dan 5,00.
+
+        Regel loon voor een grote vondst
+            geldig altijd
+                Het vindersloon van een Vondst moet gesteld worden op 10,00
+                indien zijn gewicht groter is dan 3,00.
+        """;
+    private static final String EVALUATIE_DESCRIPTOR = """
+        { "dienst": {"naam":"vondsten","versie":"1"},
+          "entrypoints": [ { "naam":"vondst","pad":"vondst",
+            "scope": {"regelnamen": ["deelgewicht van een vondst", "loon voor een zware vondst",
+                                     "loon voor een grote vondst"]},
+            "invoer": ["Vondst"], "uitvoer": ["Vondst.deelgewicht", "Vondst.vindersloon"] } ],
+          "parameters": {} }""";
+
     private static BeslisserKern toka;
     private static BeslisserKern marker;
     private static BeslisserKern rol;
+    private static BeslisserKern evaluatie;
     private static DienstHttp tokaDienst;
     private static DienstHttp markerDienst;
     private static DienstHttp rolDienst;
+    private static DienstHttp evaluatieDienst;
 
     @BeforeAll
     static void bouw() throws Exception {
@@ -96,9 +130,12 @@ class FoutParityTest {
         bron.put("marker.rgs", MARKER_BRON);
         marker = BeslisserKern.bouw(MARKER_DESCRIPTOR, bron, KernConfig.metMarkers(), cl);
         rol = BeslisserKern.bouw(ROL_DESCRIPTOR, Map.of("leerlingschap.rgs", ROL_BRON), KernConfig.strikt(), cl);
+        evaluatie = BeslisserKern.bouw(EVALUATIE_DESCRIPTOR, Map.of("vondsten.rgs", EVALUATIE_BRON),
+                KernConfig.strikt(), cl);
         tokaDienst = DienstHttp.bind(toka, "127.0.0.1", 0).start();
         markerDienst = DienstHttp.bind(marker, "127.0.0.1", 0).start();
         rolDienst = DienstHttp.bind(rol, "127.0.0.1", 0).start();
+        evaluatieDienst = DienstHttp.bind(evaluatie, "127.0.0.1", 0).start();
     }
 
     @AfterAll
@@ -106,6 +143,7 @@ class FoutParityTest {
         if (tokaDienst != null) tokaDienst.stop(0);
         if (markerDienst != null) markerDienst.stop(0);
         if (rolDienst != null) rolDienst.stop(0);
+        if (evaluatieDienst != null) evaluatieDienst.stop(0);
     }
 
     @Test
@@ -147,6 +185,15 @@ class FoutParityTest {
     void entrypoint_dat_uchar_niet_draagt_503_marker() throws Exception {
         vergelijk(marker, markerDienst, "heffing-markert",
                 "{\"instanties\":[{\"type\":\"Vlucht\",\"id\":\"V1\",\"attributen\":{}}]}", 503);
+    }
+
+    @Test
+    void evaluatiefout_422_met_soort_en_zin_per_fout() throws Exception {
+        JsonNode body = vergelijk(evaluatie, evaluatieDienst, "vondst",
+                "{\"instanties\":[{\"type\":\"Vondst\",\"id\":\"V1\",\"attributen\":{\"gewicht\":6.00,\"aantal delen\":0}}]}",
+                422);
+        assertEquals("EVALUATIEFOUT", body.path("status").asText(), body.toString());
+        assertEquals(2, body.path("fouten").size(), body.toString());
     }
 
     private static String eenPad(BeslisserKern kern) {
