@@ -181,3 +181,104 @@ de zwaarste post van het dekkingsverlies terug, op het supertypepad na
 resolver-WARNING bij de literalen van punt 8, die met deze kaart verdwijnen; uchar
 `20261008-drl-teksttak-op-truth-maintenance` verandert de DRL-teksttak, die de distributie alleen toont (CLI `drl`,
 `Playground`).
+
+## Result (2026-10-12)
+
+### Wat de kaart opleverde
+
+- **De pin** staat op uchar `b536bbc9`. Dat is de omschakeling van uchar (`ac8bc71a`) plus de objectcreatie zonder
+  binding (`e2144945`). De exec-model-tak leidt daar af met truth maintenance en speelt 250 goldens, waaronder alle 242
+  van de oude tak.
+- **Elke sessie gaat via uchars ingang**: globals → `voegIn` → `vuur` → `lees` of `zetAfgeleideWaarden`. Het geldt voor
+  de dienst (`Uitvoerder`, `BeslisserKern.Entrypoint` draagt de `Build`), de scenario-uitleg (`CaseSessie`) en de
+  engine-facade (`RegelSpraakEngine.Session`).
+  - Er staat geen `fireAllRules` meer in `service/src/main` of `toolchain/src/main`.
+  - De bean-loader is bij elke aanroep de context-classloader.
+- **De dienst.**
+  - Na `vuur` leest hij `lees(…).fouten()`. Staat er een fout aan het fixpunt, dan antwoordt hij met een 422
+    `{"status":"EVALUATIEFOUT","fout":…,"fouten":[{"soort":…,"fout":<uchars zin>}]}`, met de soort
+    `DELING_DOOR_NUL`, `REKENFOUT`, `SCHRIJVERSCONFLICT`, `INVOERVORMFOUT` of `ANDERE`.
+  - Een fout van de ingang zelf, of een sessie zonder fixpunt, blijft een 500 zonder stacktrace.
+  - Beide adapters geven hetzelfde, en het OpenAPI-schema `Evaluatiefout` beschrijft de 422.
+  - De volgorde van een rollenlijst en de gespiegelde leden gaan als `Invoer.lijst` naar uchar, zoals in uchars replay.
+  - Een wederkerige rol geldt langs de keten van typen.
+  - Een tweede, ander doel via `relaties` is een 400 `VERKEERD_TYPE`.
+- **De uitleg** noemt een vuring zoals uchars `CaseRunner.luisteraar`: `vormVan`, dan `vormnaam`, en een regel zonder
+  vorm geeft geen rij. Daardoor houdt `ScenarioRunner` haar antwoord niet meer in.
+- **`Session`** verzamelt `insert`, `emmerscalair` en `lijst` tot de eerste `fire()`.
+  - Nieuw zijn `update(bean)`, `lees()` en `zetTerug()`.
+  - `fire()` geeft het aantal vuringen en werpt zonder fixpunt.
+  - Na de eerste `fire()` weigert ze `insert`, `emmerscalair` en `lijst`. `overgeslagen()` is weg.
+- **Pins.** `check-dienst-replay` gaat van 213 naar 222 goldens (591 cases), met 28 uitgesloten. Negen nieuwe spelers:
+  zes die de oude tak weigerde, en drie nieuw in uchars corpus. `jutterswet-klipwacht` staat met reden bij de
+  uitgesloten (het verzoek draagt geen tijdlijn). De vloeren zijn niet veranderd.
+
+### Commits
+
+`6d7421a` claim · `c952a7b` pin en de drie vuurplekken · `f930619` 422 · `5310e8d` weigerzinnen · `8adbb03` docker-marker ·
+`99b84a5` replay 222 · `a3496d6` tekst · `3de04c7` javadoc · `9cfef39` rollenlijsten · `4df8871` `Session.emmerscalair`
+en `lijst` · `408b3d9` OpenAPI · `ac4c3ac` bijvoeglijke een-vorm · `07a9b0a` markerscenario in de zone · `1bbb534` getuige
+`INVOERVORMFOUT` · `e3bd111` javadoc · `49c4db6` tweede doel 400 · `0c9d8e8` elke fout aan het fixpunt een 422 · `d1313e9`
+wederkerige rol langs de keten · `8388584` en `74d3b9a` tekst.
+
+### Acceptatie
+
+- **(a)** De pin staat op `b536bbc9` en `make check-pin` is groen.
+- **(b)** `grep fireAllRules` over `service/src/main` en `toolchain/src/main` vindt niets.
+- **(c)** Rood eerst, per vuurplek een getuige:
+  - een antwoord van de dienst met een afgeleide waarde (`IngangHttpTest`);
+  - een `Session` die twee keer vuurt, met een `update` ertussen, zoals een verse sessie (`RegelSpraakEngineTest`);
+  - een uitleg zonder afwijkend spoor (`ScenarioRunnerTest`).
+- **(d)** Een getuige per fouttype in het antwoord van de dienst. `INVOERVORMFOUT` kan geen verzoek bereiken: een
+  tijdlijn als invoer is een 400 `NIET_ONDERSTEUND`. Die vertaling is daarom op het niveau van de kern getoetst, en de
+  getuige zegt dat. `ANDERE` heeft een getuige met uchars document voor een tweede vulling, en met een mengsel van
+  fouten.
+- **(e)** `make gates` is groen op `8388584`, in 7 stappen:
+  - reactor: 1443, 126, 249 en 47 tests;
+  - replay: 222 goldens en 591 cases;
+  - manifest: 0 mismatches;
+  - de image en de kind-smoke (H2, H3 en H4 PASS).
+
+  Gedraaid met `QUARKUS_HTTP_TEST_PORT=0`, omdat poort 8081 bezet was door de preview-server van een werkbanksessie,
+  die zichzelf herstart. `74d3b9a` raakt alleen tekst en javadoc en compileert.
+
+### Gedrag dat verandert, naast de kaart
+
+- **Een onopgeloste naam is geen marker meer.**
+  - Het gaat om bijvoorbeeld het oude markervoorbeeld, of een bijvoeglijk kenmerk in de een-vorm. Zo'n regel bouwt nu
+    en faalt bij de evaluatie (WF-044), zoals ref.
+  - In de dienst wordt dat een 422 `REKENFOUT`, en in de CLI exit 1 in plaats van 3.
+  - De docker-marker (`8adbb03`) en het markerscenario in de pariteitszone (`07a9b0a`, één vervanging, met toestemming
+    van de eigenaar) rusten nu op een vorm die de tak met naam weigert.
+- **uchars spoor verschuift** in telling en volgorde; twee tests van de toolchain pinden het.
+- **Een fout tijdens het vuren** gaf eerder een 500 "interne fout" en geeft nu een 422.
+
+### Lenzen en besluiten
+
+| Lens | Vondsten | Besluit |
+|---|---|---|
+| sol6 op de bouwstap | rollenlijst (B), `Session` zonder emmerscalair (B), `INVOERVORMFOUT` niet via HTTP (B), OpenAPI (A) | eerste, tweede en vierde overgenomen; de derde afgewezen (geen verzoek bereikt die fout) |
+| sol6, herkeuring van fixronde 1 | positieve toets van de een-vorm (B), canoniek veld in de 400 (B) | allebei afgewezen: de vorm faalt ook in uchars replay; het veld volgt de bestaande conventie (vervolgkaart) |
+| Opus 5.5, eindlens | vijfde fouttype gaf 500 (B), wederkerige rol op subtype (A), vergeten `update` in de tekst (A), replay per golden (A) | eerste drie overgenomen; de vierde wordt een vervolgkaart |
+| sol6, herkeuring van fixronde 2 | twee tekstbeloften te ruim (A) | overgenomen in `74d3b9a`; "door naar de landing" |
+
+### Open punten
+
+1. **Voor de eigenaar.** Moet de distributie een onopgeloste naam bij `check` en `serve` als fout nemen? Nu bouwt zo'n
+   bron, met een WARNING van de resolver, en faalt ze bij het rekenen, net als ref. De oude tak weigerde haar bij de
+   bouw.
+2. **Dubbel lezen.** Op een verzoek zonder fout leest de dienst het fixpunt twee keer (`lees`, dan
+   `zetAfgeleideWaarden`). Dat telt pas bij heel grote verzoeken.
+3. **De werkbank** draagt de toolchain als submodule en volgt met haar eigen pinbump.
+
+### Vervolgkaarten
+
+- **Toolchain:**
+  - `20261012-verbalisator-getalliteral`: de uitleg zegt "3.000 eur" voor "30,00 EUR". Dat bestond al op de oude pin.
+  - `20261012-quarkus-vangnet-en-testpoort`.
+  - `20261012-schendingsveld-in-de-spelling-van-het-verzoek`.
+  - `20261012-dienst-replay-per-case`.
+- **uchar:**
+  - `dagentelling-onbekende-voorwaarde`: de frontend laat een voorwaarde stil weg. De verifier, ref en clingo weigeren
+    zo'n document wel.
+  - `tweede-vulling-als-eigen-fouttype`.
