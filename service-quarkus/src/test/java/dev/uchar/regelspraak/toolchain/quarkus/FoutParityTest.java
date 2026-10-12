@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * over the SAME {@link BeslisserKern}: the 400 of a request that does not validate (each violation with its
  * {@code veld}, {@code soort} and message), the 400 of an empty or malformed body, the 404 of an unknown path, the
  * 503 MARKER answer of an entry point uchar does not carry, and the 422 of a request on which the rules give an
- * evaluation fault. {@link BeslisResource} builds the first bodies by hand, as {@code DienstHttp}'s builders are
+ * evaluation fault. The 400s include a to-one role that gets a second, different target through {@code relaties}. {@link BeslisResource} builds the first bodies by hand, as {@code DienstHttp}'s builders are
  * package-private in the service module, and the 422 body with the service core's builder, as {@code DienstHttp} does;
  * this test catches a drift in either adapter, as {@link InfoParityTest} does for {@code /info}.
  *
@@ -113,14 +113,43 @@ class FoutParityTest {
             "invoer": ["Vondst"], "uitvoer": ["Vondst.deelgewicht", "Vondst.vindersloon"] } ],
           "parameters": {} }""";
 
+    /** Own material for a second, different target on a to-one role: a Vondst has one aanmelder, which a request can
+     *  name by the Vondst's own role and by a relation of {@code relaties}. */
+    private static final String AANMELDING_BRON = """
+        Objecttype de Jutter (mv: Jutters) (bezield)
+            de zware vondsten Numeriek (geheel getal);
+
+        Objecttype de Vondst (mv: Vondsten)
+            het gewicht Numeriek (geheel getal);
+            de deelnemers Numeriek (geheel getal);
+
+        Feittype aanmelding
+            de aanmelder Jutter
+            de vondst (mv: vondsten) Vondst
+        Eén aanmelder heeft meerdere vondsten
+
+        Regel zware vondsten
+            geldig altijd
+                De zware vondsten van een Jutter moet berekend worden als het aantal vondsten van de Jutter
+                die aan de volgende voorwaarde voldoen: zijn gewicht gedeeld door zijn deelnemers is groter dan 2.
+        """;
+    private static final String AANMELDING_DESCRIPTOR = """
+        { "dienst": {"naam":"vouw","versie":"1"},
+          "entrypoints": [ { "naam":"zware vondsten","pad":"zware-vondsten",
+            "scope": {"regelnamen": ["zware vondsten"]},
+            "invoer": ["Jutter"], "uitvoer": ["Jutter.zware vondsten"] } ],
+          "parameters": {} }""";
+
     private static BeslisserKern toka;
     private static BeslisserKern marker;
     private static BeslisserKern rol;
     private static BeslisserKern evaluatie;
+    private static BeslisserKern aanmelding;
     private static DienstHttp tokaDienst;
     private static DienstHttp markerDienst;
     private static DienstHttp rolDienst;
     private static DienstHttp evaluatieDienst;
+    private static DienstHttp aanmeldingDienst;
 
     @BeforeAll
     static void bouw() throws Exception {
@@ -132,10 +161,13 @@ class FoutParityTest {
         rol = BeslisserKern.bouw(ROL_DESCRIPTOR, Map.of("leerlingschap.rgs", ROL_BRON), KernConfig.strikt(), cl);
         evaluatie = BeslisserKern.bouw(EVALUATIE_DESCRIPTOR, Map.of("vondsten.rgs", EVALUATIE_BRON),
                 KernConfig.strikt(), cl);
+        aanmelding = BeslisserKern.bouw(AANMELDING_DESCRIPTOR, Map.of("vouw.rgs", AANMELDING_BRON), KernConfig.strikt(),
+                cl);
         tokaDienst = DienstHttp.bind(toka, "127.0.0.1", 0).start();
         markerDienst = DienstHttp.bind(marker, "127.0.0.1", 0).start();
         rolDienst = DienstHttp.bind(rol, "127.0.0.1", 0).start();
         evaluatieDienst = DienstHttp.bind(evaluatie, "127.0.0.1", 0).start();
+        aanmeldingDienst = DienstHttp.bind(aanmelding, "127.0.0.1", 0).start();
     }
 
     @AfterAll
@@ -144,6 +176,7 @@ class FoutParityTest {
         if (markerDienst != null) markerDienst.stop(0);
         if (rolDienst != null) rolDienst.stop(0);
         if (evaluatieDienst != null) evaluatieDienst.stop(0);
+        if (aanmeldingDienst != null) aanmeldingDienst.stop(0);
     }
 
     @Test
@@ -159,6 +192,16 @@ class FoutParityTest {
             {"instanties":[{"type":"Jutter","id":"J1","rollen":{"leerling":["P1"]}},{"type":"Strandpaal","id":"P1"}]}""",
                 400);
         assertEquals("VERKEERD_TYPE", body.at("/schendingen/0/soort").asText(), body.toString());
+    }
+
+    @Test
+    void tweede_ander_doel_via_relaties_400_verkeerd_type() throws Exception {
+        JsonNode body = vergelijk(aanmelding, aanmeldingDienst, "zware-vondsten", """
+            {"instanties":[{"type":"Jutter","id":"J1"},{"type":"Jutter","id":"J2"},
+              {"type":"Vondst","id":"V1","attributen":{"gewicht":10,"deelnemers":2},"rollen":{"aanmelder":"J1"}}],
+             "relaties":[{"feittype":"aanmelding","rollen":{"aanmelder":"J2","vondst":"V1"}}]}""", 400);
+        assertEquals("VERKEERD_TYPE", body.at("/schendingen/0/soort").asText(), body.toString());
+        assertEquals("relaties[0].rollen.aanmelder", body.at("/schendingen/0/veld").asText(), body.toString());
     }
 
     @Test

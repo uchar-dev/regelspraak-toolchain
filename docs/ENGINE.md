@@ -104,7 +104,8 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   list goes to uchar in the order the replay gives it (`RolSchrijver.Lijsten`, `Invoer.lijst`): the members written
   under the holder first, in the order of the request, then the members linked from their own side, by an inline
   role or by `relaties`, by id in byte order. That order decides which member a fault of a fold names, so the 422
-  names the member uchar's replay names on the same input.
+  names the member uchar's replay names on the same input. A to-one role that gets a second, different target, among
+  the inline roles or through `relaties`, is a 400 `VERKEERD_TYPE` on the role that names the second target.
 - Names and vocabularies (README, "Vocabularies"). `NaamLezer` reads every name of a request canonically or as a
   designation in any vocabulary of the model (uchar's `RegelSpraakModel.benoemd`), within the scope of its kind,
   case-insensitively and mixed; a name that reads as two declarations is a 400 `DUBBELZINNIGE_NAAM` naming both

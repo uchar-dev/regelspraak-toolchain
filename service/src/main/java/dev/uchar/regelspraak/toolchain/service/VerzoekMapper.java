@@ -529,7 +529,9 @@ public final class VerzoekMapper {
      *  lives on the other side, written by the reciprocal call), and return the name of the field it set, null where
      *  it sets none. The role NAME disambiguates a pair joined by more than one feittype
      *  ({@link RegelSpraakModel#verbindendeRolViaNaam}). A direction that resolves to a real to-one role but whose
-     *  name cannot be pinned falls back to the by-pair role. */
+     *  name cannot be pinned falls back to the by-pair role. A field that already holds another object, by an inline
+     *  role or an earlier relation, is refused as the inline roles refuse it ({@link RolSchrijver}): a
+     *  {@link Schending.Soort#VERKEERD_TYPE} on the role of this relation that names the second target. */
     private String writeRefAls1op1(Object houderBean, Objecttype houderOt, String doelRol, Objecttype doelOt,
                                    Object doelBean, Feittype ft, String pad, List<Schending> s) {
         if (model.naarVeelRol(houderOt, doelOt, doelRol)) return null;   // to-many: no scalar field on this side
@@ -548,6 +550,13 @@ public final class VerzoekMapper {
             s.add(Schending.van(Schending.Soort.NIET_ONDERSTEUND, pad,
                     "feittype '" + ft.naam + "' heeft geen referentieveld '" + rol + "' op objecttype '"
                             + houderOt.naam + "' — deze relatie wordt niet door het feitmodel gematerialiseerd"));
+            return null;
+        }
+        // one relation instance per to-one role (WF-013): written over, the first link would vanish without a word
+        Object huidig = RegelSpraakRuntime.get(houderBean, prop(rol));
+        if (huidig != null && huidig != doelBean) {
+            s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, pad + ".rollen." + doelRol,
+                    "de naar-één rol '" + rol + "' krijgt een tweede, ander doel"));
             return null;
         }
         RegelSpraakRuntime.set(houderBean, prop(rol), doelBean);

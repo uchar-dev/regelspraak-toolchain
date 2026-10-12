@@ -310,6 +310,25 @@ class IngangHttpTest {
               {"type":"Vondst","id":"V10","attributen":{"gewicht":9,"deelnemers":0},"rollen":{"aanmelder":"J1"}}]}""");
     }
 
+    /** V1 names J1 as its aanmelder by its own role, and a relation of {@code relaties} links it to J2: the to-one field
+     *  aanmelder gets a second, different target. The service refuses that with 400 VERKEERD_TYPE on the role of the
+     *  relation that names J2, as it refuses a second target among the inline roles ({@code RolSchrijver}). Before, the
+     *  relation wrote over the first link and the list of J1 kept V1, which uchar's entry refused (500). */
+    @Test
+    void een_tweede_ander_doel_via_relaties_is_400_verkeerd_type() throws Exception {
+        HttpResponse<String> resp = post(vouwdienst, "/zware-vondsten", """
+            {"instanties":[{"type":"Jutter","id":"J1"},{"type":"Jutter","id":"J2"},
+              {"type":"Vondst","id":"V1","attributen":{"gewicht":10,"deelnemers":2},"rollen":{"aanmelder":"J1"}}],
+             "relaties":[{"feittype":"aanmelding","rollen":{"aanmelder":"J2","vondst":"V1"}}]}""");
+        assertEquals(400, resp.statusCode(), resp.body());
+        JsonNode body = boom(resp.body());
+        assertEquals(1, body.path("schendingen").size(), resp.body());
+        assertEquals("VERKEERD_TYPE", body.at("/schendingen/0/soort").asText(), resp.body());
+        assertEquals("relaties[0].rollen.aanmelder", body.at("/schendingen/0/veld").asText(), resp.body());
+        assertEquals("de naar-één rol 'aanmelder' krijgt een tweede, ander doel", body.at("/schendingen/0/fout").asText(),
+                resp.body());
+    }
+
     // ---------------- helpers ----------------
 
     /** The 422 of {@code verzoek} on the fold names the fault uchar's replay names on the same input written as a case
