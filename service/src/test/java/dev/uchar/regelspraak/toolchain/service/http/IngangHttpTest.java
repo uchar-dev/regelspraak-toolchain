@@ -1,8 +1,16 @@
 package dev.uchar.regelspraak.toolchain.service.http;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import dev.uchar.regelspraak.cases.CaseRunner;
+import dev.uchar.regelspraak.emit.IrEmitter;
+import dev.uchar.regelspraak.model.RegelSpraakModel;
+import dev.uchar.regelspraak.resolver.Resolver;
+import dev.uchar.regelspraak.runtime.Breuk;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
+import dev.uchar.regelspraak.toolchain.engine.RolSchrijver;
 import dev.uchar.regelspraak.toolchain.service.AntwoordBouwer;
 import dev.uchar.regelspraak.toolchain.service.BeslisserKern;
 import dev.uchar.regelspraak.toolchain.service.Evaluatiefout;
@@ -13,6 +21,7 @@ import dev.uchar.regelspraak.toolchain.service.Wereld;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.math.BigDecimal;
 import java.net.URI;
@@ -20,6 +29,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,7 +46,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The service fills, fires and reads every session through uchar's entry ({@code DroolsBackend.voegIn}, {@code vuur},
  * {@code zetAfgeleideWaarden}): the answer carries the value a rule derived, and an evaluation fault that stands at the
  * fixpoint is a 422 that gives per fault its kind and uchar's sentence, never a stacktrace. Own material: one model of
- * finds with an entry point per rule set, so each request meets the fault it is about and no other.
+ * finds with an entry point per rule set, so each request meets the fault it is about and no other, and one of a fold
+ * over a to-many role, whose fault names the member the order of the list puts first, as in uchar's replay.
  */
 class IngangHttpTest {
 
@@ -108,7 +120,36 @@ class IngangHttpTest {
             "invoer": ["Jutter"], "uitvoer": ["Jutter.bewaargeld"] } ],
           "parameters": {} }""";
 
+    /** A fold over a to-many role whose filter divides by a member's deelnemers: where it divides by 0 for two
+     *  members, the evaluation stops at the first in the order of the list (RUNTIME-SEMANTICS ch. 5.11). */
+    private static final String VOUW_BRON = """
+        Objecttype de Jutter (mv: Jutters) (bezield)
+            de zware vondsten Numeriek (geheel getal);
+
+        Objecttype de Vondst (mv: Vondsten)
+            het gewicht Numeriek (geheel getal);
+            de deelnemers Numeriek (geheel getal);
+
+        Feittype aanmelding
+            de aanmelder Jutter
+            de vondst (mv: vondsten) Vondst
+        Eén aanmelder heeft meerdere vondsten
+
+        Regel zware vondsten
+            geldig altijd
+                De zware vondsten van een Jutter moet berekend worden als het aantal vondsten van de Jutter
+                die aan de volgende voorwaarde voldoen: zijn gewicht gedeeld door zijn deelnemers is groter dan 2.
+        """;
+
+    private static final String VOUW_DESCRIPTOR = """
+        { "dienst": {"naam":"vouw","versie":"1"},
+          "entrypoints": [ { "naam":"zware vondsten","pad":"zware-vondsten",
+            "scope": {"regelnamen": ["zware vondsten"]},
+            "invoer": ["Jutter"], "uitvoer": ["Jutter.zware vondsten"] } ],
+          "parameters": {} }""";
+
     private static DienstHttp dienst;
+    private static DienstHttp vouwdienst;
     private static final HttpClient CLIENT = HttpClient.newHttpClient();
 
     @BeforeAll
@@ -116,11 +157,15 @@ class IngangHttpTest {
         BeslisserKern kern = BeslisserKern.bouw(DESCRIPTOR, Map.of("vondsten.rgs", BRON), KernConfig.strikt(),
                 Thread.currentThread().getContextClassLoader());
         dienst = DienstHttp.bind(kern, "127.0.0.1", 0).start();
+        BeslisserKern vouw = BeslisserKern.bouw(VOUW_DESCRIPTOR, Map.of("vouw.rgs", VOUW_BRON), KernConfig.strikt(),
+                Thread.currentThread().getContextClassLoader());
+        vouwdienst = DienstHttp.bind(vouw, "127.0.0.1", 0).start();
     }
 
     @AfterAll
     static void stop() {
         if (dienst != null) dienst.stop(0);
+        if (vouwdienst != null) vouwdienst.stop(0);
     }
 
     // ---------------- (c) an answer with a derived value ----------------
@@ -208,7 +253,7 @@ class IngangHttpTest {
         Map<String, Object> beans = new LinkedHashMap<>();
         beans.put("J1", jutter);
         Evaluatiefout fout = assertThrows(Evaluatiefout.class, () -> new Uitvoerder(ep.build(), ep.defaultGlobals())
-                .vuur(new Wereld(beans, Map.of(), LocalDate.of(2026, 3, 15))));
+                .vuur(new Wereld(beans, Map.of(), LocalDate.of(2026, 3, 15), new RolSchrijver.Lijsten())));
         JsonNode body = AntwoordBouwer.evaluatiefout(fout);
         assertEquals("EVALUATIEFOUT", body.path("status").asText(), body.toString());
         assertEquals(List.of("INVOERVORMFOUT"), soorten(body), body.toString());
@@ -217,7 +262,99 @@ class IngangHttpTest {
                 && zin.contains("supplies a full timeline"), zin);
     }
 
+    // ---------------- the order of a to-many list: the member a fault of a fold names ----------------
+
+    /** J1 writes its vondsten as V1, V3, V2, while the instances come as V1, V2, V3; the filter divides 9 by 0 for V3
+     *  and 4 by 0 for V2. uchar's replay of that input stops at V3, the first in the written order, and so does the
+     *  service; the order of the instances would name V2's 4. */
+    @Test
+    void een_lijst_onder_de_houder_noemt_het_falende_lid_in_de_volgorde_van_het_verzoek(@TempDir Path map)
+            throws Exception {
+        assertVouwfoutAlsReplay(map, """
+            {"instanties":[{"type":"Jutter","id":"J1","rollen":{"vondsten":["V1","V3","V2"]}},
+              {"type":"Vondst","id":"V1","attributen":{"gewicht":10,"deelnemers":2}},
+              {"type":"Vondst","id":"V2","attributen":{"gewicht":4,"deelnemers":0}},
+              {"type":"Vondst","id":"V3","attributen":{"gewicht":9,"deelnemers":0}}]}""", null);
+    }
+
+    /** V9 (4 by 0) and V10 (9 by 0) each name J1 as their aanmelder, in that order: the replay mirrors those links into
+     *  J1's list by label in byte order (RUNTIME-SEMANTICS ch. 5.7a), V10 before V9, so 9, where the order of the
+     *  instances gives 4. */
+    @Test
+    void een_gespiegelde_lijst_noemt_het_falende_lid_in_de_volgorde_van_de_ids(@TempDir Path map) throws Exception {
+        assertVouwfoutAlsReplay(map, """
+            {"instanties":[{"type":"Jutter","id":"J1"},
+              {"type":"Vondst","id":"V9","attributen":{"gewicht":4,"deelnemers":0},"rollen":{"aanmelder":"J1"}},
+              {"type":"Vondst","id":"V10","attributen":{"gewicht":9,"deelnemers":0},"rollen":{"aanmelder":"J1"}}]}""",
+                null);
+    }
+
+    /** A relation of {@code relaties} sets the member's own field toward the holder, as a role the member writes does,
+     *  so its member joins the list as a mirrored one: J1 writes V1, and the relations link V9 (4 by 0) and V10 (9 by
+     *  0), which gives the order V1, V10, V9 and 9, as the replay gives on the case where V9 and V10 each write their
+     *  aanmelder. A list of the written members alone would leave V9 and V10 out, which uchar's entry refuses. */
+    @Test
+    void een_lid_uit_relaties_staat_in_de_lijst_als_een_gespiegeld_lid(@TempDir Path map) throws Exception {
+        assertVouwfoutAlsReplay(map, """
+            {"instanties":[{"type":"Jutter","id":"J1","rollen":{"vondsten":["V1"]}},
+              {"type":"Vondst","id":"V1","attributen":{"gewicht":10,"deelnemers":2}},
+              {"type":"Vondst","id":"V9","attributen":{"gewicht":4,"deelnemers":0}},
+              {"type":"Vondst","id":"V10","attributen":{"gewicht":9,"deelnemers":0}}],
+             "relaties":[{"feittype":"aanmelding","rollen":{"aanmelder":"J1","vondst":"V9"}},
+                         {"feittype":"aanmelding","rollen":{"aanmelder":"J1","vondst":"V10"}}]}""", """
+            {"instanties":[{"type":"Jutter","id":"J1","rollen":{"vondsten":["V1"]}},
+              {"type":"Vondst","id":"V1","attributen":{"gewicht":10,"deelnemers":2}},
+              {"type":"Vondst","id":"V9","attributen":{"gewicht":4,"deelnemers":0},"rollen":{"aanmelder":"J1"}},
+              {"type":"Vondst","id":"V10","attributen":{"gewicht":9,"deelnemers":0},"rollen":{"aanmelder":"J1"}}]}""");
+    }
+
     // ---------------- helpers ----------------
+
+    /** The 422 of {@code verzoek} on the fold names the fault uchar's replay names on the same input written as a case
+     *  ({@code alsCase} where the request carries {@code relaties}, which a case does not have; else {@code verzoek}),
+     *  and that fault is the division of 9: the replay names the member the order of its list puts first. */
+    private static void assertVouwfoutAlsReplay(Path map, String verzoek, String alsCase) throws Exception {
+        String replay = replayFout(map, alsCase != null ? alsCase : verzoek);
+        assertTrue(replay.contains("\"zware vondsten\": 9 gedeeld door 0"), replay);
+        JsonNode body = evaluatiefout(post(vouwdienst, "/zware-vondsten", verzoek));
+        assertEquals(List.of("DELING_DOOR_NUL"), soorten(body), body.toString());
+        assertEquals(replay, body.at("/fouten/0/fout").asText(), body.toString());
+    }
+
+    /** The sentence of the fault uchar's replay ({@code CaseRunner.runGolden}) throws on {@code verzoek} as a case of the
+     *  fold's document: the reverse of how the replay gate writes a case as a request, an instance per instance with its
+     *  numbers and its roles, in the order of the request. */
+    private static String replayFout(Path map, String verzoek) throws Exception {
+        RegelSpraakModel model = Resolver.resolve(VOUW_BRON);
+        assertEquals(List.of(), model.errors());
+        Path ir = map.resolve("ir.json");
+        Files.writeString(ir, IrEmitter.emit(model), StandardCharsets.UTF_8);
+        ObjectNode zaak = DienstHttp.MAPPER.createObjectNode();
+        zaak.put("format", "uchar-case-v0");
+        zaak.putNull("asOfDate");
+        ObjectNode input = zaak.putObject("input");
+        ArrayNode instances = input.putArray("instances");
+        for (JsonNode i : boom(verzoek).get("instanties")) {
+            ObjectNode instance = instances.addObject();
+            instance.put("label", i.get("id").asText());
+            instance.put("objectType", i.get("type").asText());
+            ObjectNode attributes = instance.putObject("attributes");
+            for (Map.Entry<String, JsonNode> a : i.path("attributen").properties())
+                attributes.putObject(a.getKey()).put("number", a.getValue().asText());
+            ObjectNode roles = instance.putObject("roles");
+            for (Map.Entry<String, JsonNode> r : i.path("rollen").properties()) {
+                ArrayNode doelen = roles.putArray(r.getKey());
+                if (r.getValue().isArray()) r.getValue().forEach(doelen::add);
+                else doelen.add(r.getValue());
+            }
+            instance.putArray("characteristics");
+        }
+        input.putObject("parameters");
+        zaak.putArray("expected").addObject().put("kind", "consistent");
+        Path casePad = map.resolve("case.json");
+        Files.writeString(casePad, zaak.toString(), StandardCharsets.UTF_8);
+        return assertThrows(Breuk.DelingDoorNul.class, () -> CaseRunner.runGolden(ir, List.of(casePad))).getMessage();
+    }
 
     /** The body of a 422: status EVALUATIEFOUT, a sentence, and per fault its kind and uchar's sentence, without a
      *  stacktrace. */

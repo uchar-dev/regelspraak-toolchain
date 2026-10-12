@@ -69,6 +69,7 @@ public final class VerzoekMapper {
         Map<String, Object> beans = new LinkedHashMap<>();
         Map<String, Object> globals = new LinkedHashMap<>();
         Map<String, Objecttype> typePerLabel = new LinkedHashMap<>();
+        RolSchrijver.Lijsten lijsten = new RolSchrijver.Lijsten();
 
         // 1. peildatum / rekendatum — ONE date authority (fase 5). 'peildatum' is the preferred name, 'rekendatum'
         //    the existing alias: the two are the SAME notion. Both present and UNEQUAL is a violation naming BOTH
@@ -167,9 +168,9 @@ public final class VerzoekMapper {
                 String id = idN.asText();
                 Objecttype ot = typePerLabel.get(id);
                 if (ot == null) continue;
-                zetRollen(ot, id, beans, typePerLabel, in.get("rollen"), "instanties[" + i + "].rollen", s);
+                zetRollen(ot, id, beans, typePerLabel, in.get("rollen"), "instanties[" + i + "].rollen", lijsten, s);
             }
-        zetRelaties(verzoek.relaties(), beans, typePerLabel, s);
+        zetRelaties(verzoek.relaties(), beans, typePerLabel, lijsten, s);
         // a reciprocal self-relation holds both ways: its reverse leg, as uchar's replay writes it
         try {
             rollenSchrijver.spiegelWederkerig(beans, typePerLabel);
@@ -177,7 +178,7 @@ public final class VerzoekMapper {
             s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, "instanties", g.getMessage()));
         }
 
-        return new Resultaat(new Wereld(beans, globals, datum), typePerLabel, s);
+        return new Resultaat(new Wereld(beans, globals, datum, lijsten), typePerLabel, s);
     }
 
     /** Parse an ISO-datum node (yyyy-MM-dd) into a {@link LocalDate}, or {@code null} when absent/null. A
@@ -347,12 +348,12 @@ public final class VerzoekMapper {
 
     /** The inline roles of one instance, written as uchar's replay writes a case's roles ({@link RolSchrijver}): a
      *  request instance with {@code rollen} is the case instance with {@code roles}, so the service sets the facts
-     *  the replay sets. A role name the model does not know is refused before anything is written, and so is an id
-     *  whose objecttype does not fill the role (the role's type or a subtype of it): the writer falls back on the
-     *  type pair, and would write such a link into another relation between the two types, or refuse it as a form
-     *  the service does not carry. */
+     *  the replay sets, and adds each link to {@code lijsten} as the replay orders its lists. A role name the model
+     *  does not know is refused before anything is written, and so is an id whose objecttype does not fill the role
+     *  (the role's type or a subtype of it): the writer falls back on the type pair, and would write such a link into
+     *  another relation between the two types, or refuse it as a form the service does not carry. */
     private void zetRollen(Objecttype ot, String id, Map<String, Object> beans, Map<String, Objecttype> typePerLabel,
-                           JsonNode rollen, String pad, List<Schending> s) {
+                           JsonNode rollen, String pad, RolSchrijver.Lijsten lijsten, List<Schending> s) {
         if (rollen == null || rollen.isNull()) return;
         if (!rollen.isObject()) { s.add(Schending.van(Schending.Soort.MALFORMED, pad, "rollen moet een object zijn")); return; }
         Object bean = beans.get(id);
@@ -386,7 +387,8 @@ public final class VerzoekMapper {
                     continue;
                 }
                 try {
-                    rollenSchrijver.schrijf(bean, ot, canoniek, doel, labelType);
+                    RolSchrijver.Koppeling k = rollenSchrijver.schrijf(bean, ot, canoniek, doel, labelType);
+                    lijsten.voegToe(k, k.gespiegeld() ? id : label);
                 } catch (RolSchrijver.Geweigerd g) {
                     s.add(Schending.van(g.tweedeDoel() ? Schending.Soort.VERKEERD_TYPE : Schending.Soort.NIET_ONDERSTEUND,
                             veld, g.getMessage()));
@@ -403,7 +405,7 @@ public final class VerzoekMapper {
     // ---- relaties (top-level) — desugar to bean-field writes ----
 
     private void zetRelaties(JsonNode relaties, Map<String, Object> beans, Map<String, Objecttype> typePerLabel,
-                             List<Schending> s) {
+                             RolSchrijver.Lijsten lijsten, List<Schending> s) {
         if (relaties == null || relaties.isNull()) return;
         if (!relaties.isArray()) { s.add(Schending.van(Schending.Soort.MALFORMED, "relaties", "relaties moet een array zijn")); return; }
         for (int i = 0; i < relaties.size(); i++) {
@@ -462,8 +464,12 @@ public final class VerzoekMapper {
             // to-one direction so navigation never reads a spuriously-null leg (the §4.20 leegwaarde bug the
             // symmetric relaties path otherwise introduced). The role NAME (rolB / rolA) disambiguates when the
             // same objecttype pair is joined by more than one feittype.
-            writeRefAls1op1(beanA, otA, rolB, otB, beanB, ft, pad, s);   // A -> B named after B's role
-            writeRefAls1op1(beanB, otB, rolA, otA, beanA, ft, pad, s);   // B -> A named after A's role
+            String veldA = writeRefAls1op1(beanA, otA, rolB, otB, beanB, ft, pad, s);   // A -> B named after B's role
+            String veldB = writeRefAls1op1(beanB, otB, rolA, otA, beanA, ft, pad, s);   // B -> A named after A's role
+            // a field written here is the member's own link toward the other end, as a to-one role the member writes
+            // itself, so the member joins that end's list as the replay mirrors such a link: by its id
+            if (veldA != null) lijsten.voegToe(new RolSchrijver.Koppeling(beanB, veldA, beanA, true), idA);
+            if (veldB != null) lijsten.voegToe(new RolSchrijver.Koppeling(beanA, veldB, beanB, true), idB);
         }
     }
 
@@ -520,19 +526,20 @@ public final class VerzoekMapper {
 
     /** Set the to-one reference on {@code houderBean} pointing at {@code doelBean}, IFF navigating houder→doel
      *  through the role {@code doelRol} is to-one (a to-many direction has no scalar reference field — its field
-     *  lives on the other side, written by the reciprocal call). The role NAME disambiguates a pair joined by
-     *  more than one feittype ({@link RegelSpraakModel#verbindendeRolViaNaam}). A direction that resolves to a
-     *  real to-one role but whose name cannot be pinned falls back to the by-pair role. */
-    private void writeRefAls1op1(Object houderBean, Objecttype houderOt, String doelRol, Objecttype doelOt,
-                                 Object doelBean, Feittype ft, String pad, List<Schending> s) {
-        if (model.naarVeelRol(houderOt, doelOt, doelRol)) return;   // to-many: no scalar field on this side
+     *  lives on the other side, written by the reciprocal call), and return the name of the field it set, null where
+     *  it sets none. The role NAME disambiguates a pair joined by more than one feittype
+     *  ({@link RegelSpraakModel#verbindendeRolViaNaam}). A direction that resolves to a real to-one role but whose
+     *  name cannot be pinned falls back to the by-pair role. */
+    private String writeRefAls1op1(Object houderBean, Objecttype houderOt, String doelRol, Objecttype doelOt,
+                                   Object doelBean, Feittype ft, String pad, List<Schending> s) {
+        if (model.naarVeelRol(houderOt, doelOt, doelRol)) return null;   // to-many: no scalar field on this side
         String rol = model.verbindendeRolViaNaam(houderOt, doelOt, doelRol);
         if (rol == null) rol = model.verbindendeRol(houderOt, doelOt);
         if (rol == null) {
             s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, pad,
                     "kon de verbindende rol van '" + houderOt.naam + "' naar '" + doelOt.naam
                             + "' (rol '" + doelRol + "') in feittype '" + ft.naam + "' niet bepalen"));
-            return;
+            return null;
         }
         // The reference field only exists on the bean when the fact model actually materialises this relation
         // (a relation no rule navigates has no generated field). A missing setter is a clean "not supported"
@@ -541,9 +548,10 @@ public final class VerzoekMapper {
             s.add(Schending.van(Schending.Soort.NIET_ONDERSTEUND, pad,
                     "feittype '" + ft.naam + "' heeft geen referentieveld '" + rol + "' op objecttype '"
                             + houderOt.naam + "' — deze relatie wordt niet door het feitmodel gematerialiseerd"));
-            return;
+            return null;
         }
         RegelSpraakRuntime.set(houderBean, prop(rol), doelBean);
+        return rol;
     }
 
     /** Whether {@code bean} has a single-arg {@code set<Prop>} for the rol/attr {@code naam} — so a

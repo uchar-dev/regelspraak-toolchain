@@ -16,17 +16,12 @@ import org.kie.api.event.rule.DefaultAgendaEventListener;
 import org.kie.api.runtime.KieSession;
 
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 
 /**
  * One case of the {@code uchar-case-v0} format played in a session of its own on a build uchar made
@@ -79,8 +74,8 @@ public final class CaseSessie {
         private final Map<String, Object> globals = new LinkedHashMap<>();
         private final Map<String, Integer> telling = new LinkedHashMap<>();
         private final Map<String, List<String>> labels = new LinkedHashMap<>();
-        /** The to-many lists the roles of the case fill, per holder and per reference field of their members. */
-        private final Map<Object, Map<String, Lijst>> lijsten = new IdentityHashMap<>();
+        /** The to-many lists the roles of the case fill, in the order of the replay. */
+        private final RolSchrijver.Lijsten lijsten = new RolSchrijver.Lijsten();
 
         private final RolSchrijver rollenSchrijver;
 
@@ -184,28 +179,16 @@ public final class CaseSessie {
                     } catch (RolSchrijver.Geweigerd g) {
                         throw new NietSpeelbaar(g.getMessage());
                     }
-                    Lijst l = lijsten.computeIfAbsent(k.houder(), h -> new LinkedHashMap<>())
-                            .computeIfAbsent(Namen.ident(k.rol(), false), v -> new Lijst(k.rol()));
-                    if (k.gespiegeld()) l.gespiegeld.putIfAbsent(label, k.lid());
-                    else if (l.geschreven.stream().noneMatch(x -> x == k.lid())) l.geschreven.add(k.lid());
+                    lijsten.voegToe(k, k.gespiegeld() ? label : labelNode.asText());
                 }
         }
 
         /** The input as uchar's replay puts it in: the beans in the order of the case, and every to-many list in the
-         *  order of the list the reference interpreter folds over, the written members first, in the order the case
-         *  wrote them, then the members whose own link the reverse leg mirrors into it, by label in byte order. The
-         *  order decides which member a fault of a fold names, also on a state the fire passes, so a session that put
-         *  a list in another order could fire another trace than the replay. */
+         *  order of the list the reference interpreter folds over ({@link RolSchrijver.Lijsten}). The order decides
+         *  which member a fault of a fold names, also on a state the fire passes, so a session that put a list in
+         *  another order could fire another trace than the replay. */
         private Invoer invoer() {
-            Invoer invoer = new Invoer().beans(labelNaarBean.values());
-            for (Map.Entry<Object, Map<String, Lijst>> perHouder : lijsten.entrySet())
-                for (Lijst l : perHouder.getValue().values()) {
-                    List<Object> leden = new ArrayList<>(l.geschreven);
-                    for (Object lid : l.gespiegeld.values())
-                        if (leden.stream().noneMatch(x -> x == lid)) leden.add(lid);
-                    invoer.lijst(perHouder.getKey(), l.rol, leden);
-                }
-            return invoer;
+            return lijsten.geefAan(new Invoer().beans(labelNaarBean.values()));
         }
 
         private void spiegelWederkerigeRollen() {
@@ -238,20 +221,6 @@ public final class CaseSessie {
         private String labelVan(Object bean) {
             for (Map.Entry<String, Object> e : labelNaarBean.entrySet()) if (e.getValue() == bean) return e.getKey();
             return null;
-        }
-    }
-
-    /** One to-many list of the case input: the members the case wrote under the holder, in the order it wrote them,
-     *  and the members whose own link to the holder the reverse leg mirrors into it, by label in the reference
-     *  interpreter's order, plain byte order. */
-    private static final class Lijst {
-        final String rol;
-        final List<Object> geschreven = new ArrayList<>();
-        final TreeMap<String, Object> gespiegeld = new TreeMap<>(
-                Comparator.comparing((String l) -> l.getBytes(StandardCharsets.UTF_8), Arrays::compareUnsigned));
-
-        Lijst(String rol) {
-            this.rol = rol;
         }
     }
 

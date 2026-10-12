@@ -22,10 +22,10 @@ import java.util.Map;
  * immutable thereafter) and a mapped {@link Wereld}, it opens a FRESH session of the build's KieBase, sets the
  * parameter globals (the descriptor defaults, overridden by the request), sets the rekendatum global when the request
  * carried one, and then fills, fires and reads it through uchar's entry: {@link DroolsBackend#voegIn} puts the beans
- * in, {@link DroolsBackend#vuur} fires to the fixpoint, and {@link DroolsBackend#zetAfgeleideWaarden} puts the derived
- * values on the beans, which the branch keeps as facts of the session until then. It returns the beans and the
- * {@code Inconsistentie} facts for the response builder. Session-per-request; the KieBase is shared and immutable, so
- * this is thread-safe by construction.
+ * in, each to-many list in the order uchar's replay gives it ({@link Wereld#lijsten()}), {@link DroolsBackend#vuur}
+ * fires to the fixpoint, and {@link DroolsBackend#zetAfgeleideWaarden} puts the derived values on the beans, which the
+ * branch keeps as facts of the session until then. It returns the beans and the {@code Inconsistentie} facts for the
+ * response builder. Session-per-request; the KieBase is shared and immutable, so this is thread-safe by construction.
  *
  * <p>An evaluation fault that stands at the fixpoint is thrown by the write-back, which then writes nothing, and
  * leaves here as an {@link Evaluatiefout}: the rules give no answer on this input. A run without a fixpoint is no
@@ -76,7 +76,9 @@ public final class Uitvoerder {
             for (var e : globals.entrySet()) setGlobalVeilig(sessie, e.getKey(), e.getValue());
             LocalDate rd = wereld.rekendatum();
             if (rd != null) setGlobalVeilig(sessie, "rekendatum", rd);
-            DroolsBackend.voegIn(build, sessie, new Invoer().beans(wereld.beans().values()));
+            // the order of a list decides which member a fault of a fold names: in the replay's order, the 422 names
+            // the member uchar's replay names on the same input
+            DroolsBackend.voegIn(build, sessie, wereld.lijsten().geefAan(new Invoer().beans(wereld.beans().values())));
             DroolsBackend.Vuring vuring = DroolsBackend.vuur(build, sessie);
             if (vuring.geenFixpunt() != null) throw new IllegalStateException(vuring.geenFixpunt());
             // a fault names its object by the id of the request; a made object has none, and uchar names it as ref does
