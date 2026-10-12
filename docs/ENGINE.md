@@ -37,10 +37,12 @@ inconsistencies) without writing anything, and `zetTerug()` puts it on the beans
 fire again. Between two fires a consumer changes an attribute or a characteristic of a bean of the session and calls
 `update(bean)`; an object that comes or goes, a changed relation or another global asks a fresh session, and
 `setGlobal` belongs before the first `fire()`. uchar's entry refuses each of these by name. `fire()` returns the
-number of firings and throws with uchar's sentence when a run reaches no fixpoint; `zetTerug()` throws an evaluation
-fault that stands at the fixpoint as uchar's own exception (`Breuk.DelingDoorNul`, `Rekenfout`, `Schrijversconflict`,
-`Invoervormfout`; two or more as `Evaluatiefouten`). `facts(…)` reads the working memory, the `Inconsistentie` facts
-among them.
+number of firings and throws with uchar's sentence when a run reaches no fixpoint; `zetTerug()` throws every
+evaluation fault that stands at the fixpoint as uchar's own exception, two or more as `Evaluatiefouten`: one of the
+four types uchar's README names (`Breuk.DelingDoorNul`, `Rekenfout`, `Schrijversconflict`, `Invoervormfout`) or
+another, such as the `IllegalStateException` of a fact creation that gives a to-one role a second filling. A fault is
+an evaluation fault by its place at the fixpoint, not by its type: `lees().fouten()` gives each as data, which tells
+it from an exception of the entry itself. `facts(…)` reads the working memory, the `Inconsistentie` facts among them.
 
 The facts are instances of the generated beans (`nieuw`, `beanLoader()`), in uchar's package
 `dev.uchar.regelspraak.facts`: the KieBase is built against those classes, so an object of a same-named class from
@@ -117,20 +119,23 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   not start. A declaration without a designation in the chosen vocabulary keeps its canonical name. The Quarkus
   adapter reads the same query parameters.
 - Each request gets a fresh session that the core fills, fires and reads through uchar's entry (`DroolsBackend.voegIn`,
-  `vuur`, `zetAfgeleideWaarden`), so the answer carries the values the rules derive. The answer lists per instance
-  the selected attributes and characteristics, `inconsistenties` (the rule names of the failed consistency checks)
-  and `inconsistentieDetails` (the same, each with its `onderwerp`: the request id of the instance the check is
-  about). A 400 names per violation its `veld`, its `soort` and its message; `soort` `NIET_ONDERSTEUND` marks a
+  `vuur`, `lees`, `zetAfgeleideWaarden`), so the answer carries the values the rules derive. The answer lists per
+  instance the selected attributes and characteristics, `inconsistenties` (the rule names of the failed consistency
+  checks) and `inconsistentieDetails` (the same, each with its `onderwerp`: the request id of the instance the check
+  is about). A 400 names per violation its `veld`, its `soort` and its message; `soort` `NIET_ONDERSTEUND` marks a
   request form the service does not carry (a timeline value, a characteristic with periods, a dimensioned
   attribute).
 - A request on which the rules give an evaluation fault that stands at the fixpoint gets 422 with
   `{"status": "EVALUATIEFOUT", "fout": …, "fouten": [{"soort": …, "fout": <uchar's sentence>}, …]}`, one element per
-  fault in uchar's order. `soort` is `DELING_DOOR_NUL` (a division by a numeric zero), `REKENFOUT` (a fault of a
-  computation or of the evaluation date), `SCHRIJVERSCONFLICT` (two writers of one attribute that disagree) or
-  `INVOERVORMFOUT` (a timeline input in the other convention, which no request reaches, since a request carries no
-  timeline). uchar's sentence names an object of the request by its id; no stacktrace enters the answer. The Quarkus
-  adapter answers the same, and the OpenAPI contract describes the body of the 422 (schema `Evaluatiefout`, with
-  `soort` as an enumeration of the four kinds).
+  fault in uchar's order. Every fault at the fixpoint is such an element, whatever its type: the core reads them from
+  uchar's entry (`DroolsBackend.lees`) before the write-back, so an exception of the entry itself stays a 500.
+  `soort` is `DELING_DOOR_NUL` (a division by a numeric zero), `REKENFOUT` (a fault of a computation or of the
+  evaluation date), `SCHRIJVERSCONFLICT` (two writers of one attribute that disagree), `INVOERVORMFOUT` (a timeline
+  input in the other convention, which no request reaches, since a request carries no timeline) or `ANDERE` (a fault
+  of another type, such as a fact creation that gives a to-one role a second filling). uchar's sentence names an
+  object of the request by its id; no stacktrace enters the answer. The Quarkus adapter answers the same, and the
+  OpenAPI contract describes the body of the 422 (schema `Evaluatiefout`, with `soort` as an enumeration of these
+  kinds).
 - `GET /info`: per entry point whether it is `uitvoerbaar`, its `dekking` (the exec-model branch's verdict per form
   of its document, defaults groups included), its markers and, when uchar does not carry it, uchar's sentence as
   `weigering`; the parameter defaults, the loaded parameter sets and the period-coverage warnings. An entry point

@@ -597,9 +597,10 @@
                     "DELING_DOOR_NUL",
                     "REKENFOUT",
                     "SCHRIJVERSCONFLICT",
-                    "INVOERVORMFOUT"
+                    "INVOERVORMFOUT",
+                    "ANDERE"
                   ],
-                  "description": "DELING_DOOR_NUL: een deling door een numerieke nul; REKENFOUT: een fout van een berekening of van de rekendatum; SCHRIJVERSCONFLICT: twee schrijvers van één attribuut die verschillen; INVOERVORMFOUT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt, want de dienst weigert een tijdlijn (400)."
+                  "description": "DELING_DOOR_NUL: een deling door een numerieke nul; REKENFOUT: een fout van een berekening of van de rekendatum; SCHRIJVERSCONFLICT: twee schrijvers van één attribuut die verschillen; INVOERVORMFOUT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt, want de dienst weigert een tijdlijn (400); ANDERE: een fout van een ander type die aan het fixpunt staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft."
                 },
                 "fout": {
                   "type": "string",

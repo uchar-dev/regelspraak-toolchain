@@ -21,6 +21,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -30,9 +31,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * over the SAME {@link BeslisserKern}: the 400 of a request that does not validate (each violation with its
  * {@code veld}, {@code soort} and message), the 400 of an empty or malformed body, the 404 of an unknown path, the
  * 503 MARKER answer of an entry point uchar does not carry, and the 422 of a request on which the rules give an
- * evaluation fault. The 400s include a to-one role that gets a second, different target through {@code relaties}. {@link BeslisResource} builds the first bodies by hand, as {@code DienstHttp}'s builders are
- * package-private in the service module, and the 422 body with the service core's builder, as {@code DienstHttp} does;
- * this test catches a drift in either adapter, as {@link InfoParityTest} does for {@code /info}.
+ * evaluation fault. The 400s include a to-one role that gets a second, different target through {@code relaties}; the
+ * 422s include a fault at the fixpoint of another type than the four uchar's README names, {@code ANDERE}, alone and
+ * beside a division by zero. {@link BeslisResource} builds the first bodies by hand, as {@code DienstHttp}'s builders
+ * are package-private in the service module, and the 422 body with the service core's builder, as {@code DienstHttp}
+ * does; this test catches a drift in either adapter, as {@link InfoParityTest} does for {@code /info}.
  *
  * <p>A plain JUnit test, like {@link InfoParityTest}: the resource is called directly with the kern set, and
  * {@code DienstHttp} is asked over HTTP on an ephemeral port.
@@ -140,16 +143,70 @@ class FoutParityTest {
             "invoer": ["Jutter"], "uitvoer": ["Jutter.zware vondsten"] } ],
           "parameters": {} }""";
 
+    /** Own material for a fault at the fixpoint of another type than the four uchar's README names: the model of
+     *  uchar's witness of a second filling ({@code TmsCreatieWitnessTest}, document D), in which a fact creation gives
+     *  a to-one role two different fillers, with a division by a numeric zero beside it. */
+    private static final String VULLING_BRON = """
+        Objecttype de Kustwacht (mv: Kustwachten)
+
+        Objecttype de Haven (mv: Havens)
+            het jutteraantal Numeriek (geheel getal);
+            de ligplaatsen Numeriek (geheel getal);
+            het ligplaatsdeel Numeriek (geheel getal);
+
+        Objecttype de Jutter (mv: Jutters) (bezield)
+
+        Feittype bewaking
+            de kustwacht Kustwacht
+            de bewaakte haven (mv: bewaakte havens) Haven
+        Eén kustwacht bewaakt meerdere bewaakte havens
+
+        Feittype werving
+            de werver Kustwacht
+            de geworven jutter (mv: geworven jutters) Jutter
+        Eén werver heeft meerdere geworven jutters
+
+        Feittype havenlid
+            de haven Haven
+            de havenjutter (mv: havenjutters) Jutter
+        Eén haven heeft meerdere havenjutters
+
+        Regel jutteraantal van een haven
+            geldig altijd
+                Het jutteraantal van een Haven moet berekend worden als het aantal havenjutters van de Haven.
+
+        Regel werving van havenjutters
+            geldig altijd
+                Een havenjutter van een Haven is een geworven jutter van de kustwacht van de Haven.
+
+        Regel ligplaatsdeel van een haven
+            geldig altijd
+                Het ligplaatsdeel van een Haven moet berekend worden als 100 gedeeld door zijn ligplaatsen.
+        """;
+    private static final String VULLING_DESCRIPTOR = """
+        { "dienst": {"naam":"vulling","versie":"1"},
+          "entrypoints": [
+            { "naam":"vulling","pad":"vulling",
+              "scope": {"regelnamen": ["jutteraantal van een haven", "werving van havenjutters"]},
+              "invoer": ["Kustwacht", "Haven", "Jutter"], "uitvoer": ["Haven.jutteraantal"] },
+            { "naam":"mengsel","pad":"mengsel",
+              "scope": {"regelnamen": ["jutteraantal van een haven", "werving van havenjutters",
+                                       "ligplaatsdeel van een haven"]},
+              "invoer": ["Kustwacht", "Haven", "Jutter"], "uitvoer": ["Haven.jutteraantal", "Haven.ligplaatsdeel"] } ],
+          "parameters": {} }""";
+
     private static BeslisserKern toka;
     private static BeslisserKern marker;
     private static BeslisserKern rol;
     private static BeslisserKern evaluatie;
     private static BeslisserKern aanmelding;
+    private static BeslisserKern vulling;
     private static DienstHttp tokaDienst;
     private static DienstHttp markerDienst;
     private static DienstHttp rolDienst;
     private static DienstHttp evaluatieDienst;
     private static DienstHttp aanmeldingDienst;
+    private static DienstHttp vullingDienst;
 
     @BeforeAll
     static void bouw() throws Exception {
@@ -163,11 +220,13 @@ class FoutParityTest {
                 KernConfig.strikt(), cl);
         aanmelding = BeslisserKern.bouw(AANMELDING_DESCRIPTOR, Map.of("vouw.rgs", AANMELDING_BRON), KernConfig.strikt(),
                 cl);
+        vulling = BeslisserKern.bouw(VULLING_DESCRIPTOR, Map.of("vulling.rgs", VULLING_BRON), KernConfig.strikt(), cl);
         tokaDienst = DienstHttp.bind(toka, "127.0.0.1", 0).start();
         markerDienst = DienstHttp.bind(marker, "127.0.0.1", 0).start();
         rolDienst = DienstHttp.bind(rol, "127.0.0.1", 0).start();
         evaluatieDienst = DienstHttp.bind(evaluatie, "127.0.0.1", 0).start();
         aanmeldingDienst = DienstHttp.bind(aanmelding, "127.0.0.1", 0).start();
+        vullingDienst = DienstHttp.bind(vulling, "127.0.0.1", 0).start();
     }
 
     @AfterAll
@@ -177,6 +236,7 @@ class FoutParityTest {
         if (rolDienst != null) rolDienst.stop(0);
         if (evaluatieDienst != null) evaluatieDienst.stop(0);
         if (aanmeldingDienst != null) aanmeldingDienst.stop(0);
+        if (vullingDienst != null) vullingDienst.stop(0);
     }
 
     @Test
@@ -237,6 +297,29 @@ class FoutParityTest {
                 422);
         assertEquals("EVALUATIEFOUT", body.path("status").asText(), body.toString());
         assertEquals(2, body.path("fouten").size(), body.toString());
+    }
+
+    @Test
+    void tweede_vulling_van_een_naar_een_rol_422_andere() throws Exception {
+        JsonNode body = vergelijk(vulling, vullingDienst, "vulling", """
+            {"instanties":[{"type":"Kustwacht","id":"K1",
+              "rollen":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
+              {"type":"Haven","id":"H1"},{"type":"Haven","id":"H2"},{"type":"Jutter","id":"J1"}]}""", 422);
+        assertEquals(List.of("ANDERE"), soorten(body), body.toString());
+    }
+
+    @Test
+    void tweede_vulling_naast_een_deling_door_nul_422_in_uchars_volgorde() throws Exception {
+        JsonNode body = vergelijk(vulling, vullingDienst, "mengsel", """
+            {"instanties":[{"type":"Kustwacht","id":"K1",
+              "rollen":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
+              {"type":"Haven","id":"H1","attributen":{"ligplaatsen":0}},
+              {"type":"Haven","id":"H2","attributen":{"ligplaatsen":4}},{"type":"Jutter","id":"J1"}]}""", 422);
+        assertEquals(List.of("ANDERE", "DELING_DOOR_NUL"), soorten(body), body.toString());
+    }
+
+    private static List<String> soorten(JsonNode body) {
+        return body.path("fouten").valueStream().map(f -> f.path("soort").asText()).toList();
     }
 
     private static String eenPad(BeslisserKern kern) {

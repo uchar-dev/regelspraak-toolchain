@@ -285,8 +285,12 @@ public final class RegelSpraakEngine {
         }
 
         /** Puts what stands at the fixpoint of the last {@link #fire} on the beans, after which the session does not
-         *  fire again. An evaluation fault that stands there is thrown as uchar's own exception (two or more as
-         *  {@code Evaluatiefouten}), and then nothing is written. */
+         *  fire again. Every evaluation fault that stands there is thrown as uchar's own exception (two or more as
+         *  {@code Evaluatiefouten}), and then nothing is written: one of the four types uchar's README names
+         *  ({@code Breuk.DelingDoorNul}, {@code Rekenfout}, {@code Schrijversconflict}, {@code Invoervormfout}) or
+         *  another, such as the {@code IllegalStateException} of a fact creation that gives a to-one role a second
+         *  filling. A fault is an evaluation fault by its place at the fixpoint, not by its type: a consumer that must
+         *  tell it from an exception of the entry itself reads {@link #lees}{@code ().fouten()} first. */
         public void zetTerug() {
             metBeanLoader(() -> { DroolsBackend.zetAfgeleideWaarden(build, session); return null; });
         }

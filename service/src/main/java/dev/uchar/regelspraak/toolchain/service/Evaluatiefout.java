@@ -1,7 +1,6 @@
 package dev.uchar.regelspraak.toolchain.service;
 
 import dev.uchar.regelspraak.runtime.Breuk;
-import dev.uchar.regelspraak.transpiler.tms.Evaluatiefouten;
 import dev.uchar.regelspraak.transpiler.tms.Invoervormfout;
 import dev.uchar.regelspraak.transpiler.tms.Rekenfout;
 import dev.uchar.regelspraak.transpiler.tms.Schrijversconflict;
@@ -10,18 +9,19 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The evaluation faults that stand at the fixpoint of a request's session, as uchar's write-back throws them
- * ({@code DroolsBackend.zetAfgeleideWaarden}): the rules give no answer on this input. Each fault keeps uchar's
- * sentence and gets the kind of uchar's exception; both adapters answer it with a 422
- * ({@link AntwoordBouwer#evaluatiefout}). The kind is read here, in the core, so that an exception of another type is a
- * broken contract that the adapters answer as an internal fault, and never a 422 with a guessed kind.
+ * The evaluation faults that stand at the fixpoint of a request's session, as uchar's entry reads them
+ * ({@code DroolsBackend.lees(…).fouten()}): the rules give no answer on this input. A fault there is an evaluation
+ * fault by its place at the fixpoint, whatever the type of its exception, so each one is an element: it keeps uchar's
+ * sentence and gets the kind of its exception, one of the four types uchar's README names ("Faults") or
+ * {@link Soort#ANDERE} for any other, such as the {@code IllegalStateException} of a fact creation that gives a to-one
+ * role a second filling. Both adapters answer it with a 422 ({@link AntwoordBouwer#evaluatiefout}).
  */
 public final class Evaluatiefout extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 
-    /** The kind of a fault, by uchar's exception. */
-    public enum Soort { DELING_DOOR_NUL, REKENFOUT, SCHRIJVERSCONFLICT, INVOERVORMFOUT }
+    /** The kind of a fault, by the type of uchar's exception. */
+    public enum Soort { DELING_DOOR_NUL, REKENFOUT, SCHRIJVERSCONFLICT, INVOERVORMFOUT, ANDERE }
 
     /** One fault: its kind and uchar's sentence. */
     public record Fout(Soort soort, String zin) {}
@@ -34,25 +34,22 @@ public final class Evaluatiefout extends RuntimeException {
         this.fouten = List.copyOf(fouten);
     }
 
-    /** The faults uchar's write-back threw: one fault as its own exception, two or more as {@code Evaluatiefouten},
-     *  one element per fault in the order of its {@code fouten()}. */
-    static Evaluatiefout van(RuntimeException fout) {
+    /** The faults that stand at the fixpoint, one element per fault in the order of {@code fouten}, which is uchar's:
+     *  by the name of the form, then by the sentence. The first fault's exception is the cause. */
+    static Evaluatiefout van(List<dev.uchar.regelspraak.transpiler.tms.Fout> fouten) {
         List<Fout> uit = new ArrayList<>();
-        if (fout instanceof Evaluatiefouten meer) for (RuntimeException f : meer.fouten()) uit.add(fout(f));
-        else uit.add(fout(fout));
-        return new Evaluatiefout(uit, fout);
+        for (dev.uchar.regelspraak.transpiler.tms.Fout f : fouten) uit.add(new Fout(soort(f.fout()), f.melding()));
+        return new Evaluatiefout(uit, fouten.get(0).fout());
     }
 
-    private static Fout fout(RuntimeException f) {
-        Soort soort = switch (f) {
+    private static Soort soort(RuntimeException f) {
+        return switch (f) {
             case Breuk.DelingDoorNul d -> Soort.DELING_DOOR_NUL;
             case Rekenfout r -> Soort.REKENFOUT;
             case Schrijversconflict s -> Soort.SCHRIJVERSCONFLICT;
             case Invoervormfout i -> Soort.INVOERVORMFOUT;
-            default -> throw new IllegalStateException("uchars terugschrijving wierp een evaluatiefout van een onbekend"
-                    + " type: " + f.getClass().getName(), f);
+            default -> Soort.ANDERE;
         };
-        return new Fout(soort, f.getMessage());
     }
 
     /** The faults, in the order uchar reports them. */

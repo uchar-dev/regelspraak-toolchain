@@ -17,6 +17,7 @@ import dev.uchar.regelspraak.toolchain.service.Evaluatiefout;
 import dev.uchar.regelspraak.toolchain.service.KernConfig;
 import dev.uchar.regelspraak.toolchain.service.Uitvoerder;
 import dev.uchar.regelspraak.toolchain.service.Wereld;
+import dev.uchar.regelspraak.transpiler.tms.Evaluatiefouten;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -38,16 +39,19 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The service fills, fires and reads every session through uchar's entry ({@code DroolsBackend.voegIn}, {@code vuur},
- * {@code zetAfgeleideWaarden}): the answer carries the value a rule derived, and an evaluation fault that stands at the
- * fixpoint is a 422 that gives per fault its kind and uchar's sentence, never a stacktrace. Own material: one model of
- * finds with an entry point per rule set, so each request meets the fault it is about and no other, and one of a fold
- * over a to-many role, whose fault names the member the order of the list puts first, as in uchar's replay.
+ * {@code lees}, {@code zetAfgeleideWaarden}): the answer carries the value a rule derived, and every evaluation fault
+ * that stands at the fixpoint is a 422 that gives per fault its kind and uchar's sentence, never a stacktrace. Own
+ * material: one model of finds with an entry point per rule set, so each request meets the fault it is about and no
+ * other, one of a fold over a to-many role, whose fault names the member the order of the list puts first, as in
+ * uchar's replay, and the model of uchar's witness of a fact creation that gives a to-one role a second filling, a
+ * fault of another type.
  */
 class IngangHttpTest {
 
@@ -148,8 +152,75 @@ class IngangHttpTest {
             "invoer": ["Jutter"], "uitvoer": ["Jutter.zware vondsten"] } ],
           "parameters": {} }""";
 
+    /** The model of uchar's witness of a second filling ({@code TmsCreatieWitnessTest}, document D): the fact creation
+     *  makes every geworven jutter of the kustwacht of a Haven a havenjutter of that Haven, and a Jutter has one haven.
+     *  The division of ligplaatsdeel is the other fault of the mixed request. */
+    private static final String VULLING_BRON = """
+        Objecttype de Kustwacht (mv: Kustwachten)
+
+        Objecttype de Haven (mv: Havens)
+            het jutteraantal Numeriek (geheel getal);
+            de ligplaatsen Numeriek (geheel getal);
+            het ligplaatsdeel Numeriek (geheel getal);
+
+        Objecttype de Jutter (mv: Jutters) (bezield)
+
+        Feittype bewaking
+            de kustwacht Kustwacht
+            de bewaakte haven (mv: bewaakte havens) Haven
+        Eén kustwacht bewaakt meerdere bewaakte havens
+
+        Feittype werving
+            de werver Kustwacht
+            de geworven jutter (mv: geworven jutters) Jutter
+        Eén werver heeft meerdere geworven jutters
+
+        Feittype havenlid
+            de haven Haven
+            de havenjutter (mv: havenjutters) Jutter
+        Eén haven heeft meerdere havenjutters
+
+        Regel jutteraantal van een haven
+            geldig altijd
+                Het jutteraantal van een Haven moet berekend worden als het aantal havenjutters van de Haven.
+
+        Regel werving van havenjutters
+            geldig altijd
+                Een havenjutter van een Haven is een geworven jutter van de kustwacht van de Haven.
+
+        Regel ligplaatsdeel van een haven
+            geldig altijd
+                Het ligplaatsdeel van een Haven moet berekend worden als 100 gedeeld door zijn ligplaatsen.
+        """;
+
+    private static final String VULLING_DESCRIPTOR = """
+        { "dienst": {"naam":"vulling","versie":"1"},
+          "entrypoints": [
+            { "naam":"vulling","pad":"vulling",
+              "scope": {"regelnamen": ["jutteraantal van een haven", "werving van havenjutters"]},
+              "invoer": ["Kustwacht", "Haven", "Jutter"], "uitvoer": ["Haven.jutteraantal"] },
+            { "naam":"mengsel","pad":"mengsel",
+              "scope": {"regelnamen": ["jutteraantal van een haven", "werving van havenjutters",
+                                       "ligplaatsdeel van een haven"]},
+              "invoer": ["Kustwacht", "Haven", "Jutter"], "uitvoer": ["Haven.jutteraantal", "Haven.ligplaatsdeel"] } ],
+          "parameters": {} }""";
+
+    /** uchar's case D2: K1 guards H1 and H2 and recruits J1, so J1 would be a havenjutter of both. */
+    private static final String VULLING = """
+        {"instanties":[{"type":"Kustwacht","id":"K1",
+          "rollen":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
+          {"type":"Haven","id":"H1"},{"type":"Haven","id":"H2"},{"type":"Jutter","id":"J1"}]}""";
+
+    /** D2, with H1 at 0 ligplaatsen and H2 at 4. */
+    private static final String MENGSEL = """
+        {"instanties":[{"type":"Kustwacht","id":"K1",
+          "rollen":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
+          {"type":"Haven","id":"H1","attributen":{"ligplaatsen":0}},
+          {"type":"Haven","id":"H2","attributen":{"ligplaatsen":4}},{"type":"Jutter","id":"J1"}]}""";
+
     private static DienstHttp dienst;
     private static DienstHttp vouwdienst;
+    private static DienstHttp vullingdienst;
     private static final HttpClient CLIENT = HttpClient.newHttpClient();
 
     @BeforeAll
@@ -160,12 +231,16 @@ class IngangHttpTest {
         BeslisserKern vouw = BeslisserKern.bouw(VOUW_DESCRIPTOR, Map.of("vouw.rgs", VOUW_BRON), KernConfig.strikt(),
                 Thread.currentThread().getContextClassLoader());
         vouwdienst = DienstHttp.bind(vouw, "127.0.0.1", 0).start();
+        BeslisserKern vulling = BeslisserKern.bouw(VULLING_DESCRIPTOR, Map.of("vulling.rgs", VULLING_BRON),
+                KernConfig.strikt(), Thread.currentThread().getContextClassLoader());
+        vullingdienst = DienstHttp.bind(vulling, "127.0.0.1", 0).start();
     }
 
     @AfterAll
     static void stop() {
         if (dienst != null) dienst.stop(0);
         if (vouwdienst != null) vouwdienst.stop(0);
+        if (vullingdienst != null) vullingdienst.stop(0);
     }
 
     // ---------------- (c) an answer with a derived value ----------------
@@ -264,6 +339,38 @@ class IngangHttpTest {
                 && zin.contains("supplies a full timeline"), zin);
     }
 
+    // ---------------- a fault at the fixpoint of another type: ANDERE ----------------
+
+    /** uchar's case D2 ({@code TmsCreatieWitnessTest.een_tweede_vulling_van_een_naar_een_rol_is_een_fout}): the fact
+     *  creation gives J1 two havens, and uchar puts that fault at the fixpoint with a plain
+     *  {@code IllegalStateException}, outside the four types its README names. It is an evaluation fault by its place
+     *  there, so the 422 gives it as ANDERE, with the sentence uchar's replay gives on the same input. */
+    @Test
+    void een_tweede_vulling_van_een_naar_een_rol_is_422_andere(@TempDir Path map) throws Exception {
+        List<String> replay = replayFouten(map, VULLING_BRON, VULLING);
+        assertEquals(1, replay.size(), replay::toString);
+        assertTrue(replay.get(0).startsWith("de naar-één-rol \"haven\" van een Jutter heeft twee verschillende"
+                + " vullingen"), replay::toString);
+        JsonNode body = evaluatiefout(post(vullingdienst, "/vulling", VULLING));
+        assertEquals("de regels geven op deze invoer een evaluatiefout", body.get("fout").asText(), body.toString());
+        assertEquals(List.of("ANDERE"), soorten(body), body.toString());
+        assertEquals(replay, zinnen(body), body.toString());
+    }
+
+    /** The second filling of D2 beside a division by a numeric zero (H1 has 0 ligplaatsen): the 422 has an element
+     *  for each, in the order of uchar's faults, which is by the name of the form ("havenlid", the fact type of the
+     *  filling, before "ligplaatsdeel van een haven") and not by kind. */
+    @Test
+    void een_tweede_vulling_naast_een_deling_door_nul_is_een_422_met_beide_in_uchars_volgorde(@TempDir Path map)
+            throws Exception {
+        List<String> replay = replayFouten(map, VULLING_BRON, MENGSEL);
+        assertEquals(2, replay.size(), replay::toString);
+        JsonNode body = evaluatiefout(post(vullingdienst, "/mengsel", MENGSEL));
+        assertEquals("de regels geven op deze invoer 2 evaluatiefouten", body.get("fout").asText(), body.toString());
+        assertEquals(List.of("ANDERE", "DELING_DOOR_NUL"), soorten(body), body.toString());
+        assertEquals(replay, zinnen(body), body.toString());
+    }
+
     // ---------------- the order of a to-many list: the member a fault of a fold names ----------------
 
     /** J1 writes its vondsten as V1, V3, V2, while the instances come as V1, V2, V3; the filter divides 9 by 0 for V3
@@ -343,10 +450,26 @@ class IngangHttpTest {
     }
 
     /** The sentence of the fault uchar's replay ({@code CaseRunner.runGolden}) throws on {@code verzoek} as a case of the
-     *  fold's document: the reverse of how the replay gate writes a case as a request, an instance per instance with its
-     *  numbers and its roles, in the order of the request. */
+     *  fold's document. */
     private static String replayFout(Path map, String verzoek) throws Exception {
-        RegelSpraakModel model = Resolver.resolve(VOUW_BRON);
+        RuntimeException fout = replay(map, VOUW_BRON, verzoek);
+        assertInstanceOf(Breuk.DelingDoorNul.class, fout, fout::toString);
+        return fout.getMessage();
+    }
+
+    /** The sentences of the faults uchar's replay throws on {@code verzoek} as a case of the document of {@code bron},
+     *  in its order: one fault as its own exception, two or more as {@code Evaluatiefouten}. */
+    private static List<String> replayFouten(Path map, String bron, String verzoek) throws Exception {
+        RuntimeException fout = replay(map, bron, verzoek);
+        if (fout instanceof Evaluatiefouten meer) return meer.fouten().stream().map(Throwable::getMessage).toList();
+        return List.of(fout.getMessage());
+    }
+
+    /** What uchar's replay ({@code CaseRunner.runGolden}) throws on {@code verzoek} as a case of the document of
+     *  {@code bron}: the reverse of how the replay gate writes a case as a request, an instance per instance with its
+     *  numbers and its roles, in the order of the request. */
+    private static RuntimeException replay(Path map, String bron, String verzoek) throws Exception {
+        RegelSpraakModel model = Resolver.resolve(bron);
         assertEquals(List.of(), model.errors());
         Path ir = map.resolve("ir.json");
         Files.writeString(ir, IrEmitter.emit(model), StandardCharsets.UTF_8);
@@ -374,7 +497,7 @@ class IngangHttpTest {
         zaak.putArray("expected").addObject().put("kind", "consistent");
         Path casePad = map.resolve("case.json");
         Files.writeString(casePad, zaak.toString(), StandardCharsets.UTF_8);
-        return assertThrows(Breuk.DelingDoorNul.class, () -> CaseRunner.runGolden(ir, List.of(casePad))).getMessage();
+        return assertThrows(RuntimeException.class, () -> CaseRunner.runGolden(ir, List.of(casePad)));
     }
 
     /** The body of a 422: status EVALUATIEFOUT, a sentence, and per fault its kind and uchar's sentence, without a
@@ -392,6 +515,10 @@ class IngangHttpTest {
 
     private static List<String> soorten(JsonNode body) {
         return body.get("fouten").valueStream().map(f -> f.get("soort").asText()).toList();
+    }
+
+    private static List<String> zinnen(JsonNode body) {
+        return body.get("fouten").valueStream().map(f -> f.get("fout").asText()).toList();
     }
 
     private static List<String> velden(JsonNode n) {

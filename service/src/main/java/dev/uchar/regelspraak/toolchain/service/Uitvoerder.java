@@ -2,12 +2,8 @@ package dev.uchar.regelspraak.toolchain.service;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.cases.Invoer;
-import dev.uchar.regelspraak.runtime.Breuk;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.transpiler.tms.Evaluatiefouten;
-import dev.uchar.regelspraak.transpiler.tms.Invoervormfout;
-import dev.uchar.regelspraak.transpiler.tms.Rekenfout;
-import dev.uchar.regelspraak.transpiler.tms.Schrijversconflict;
+import dev.uchar.regelspraak.transpiler.tms.Fout;
 
 import org.kie.api.runtime.KieSession;
 
@@ -23,14 +19,17 @@ import java.util.Map;
  * parameter globals (the descriptor defaults, overridden by the request), sets the rekendatum global when the request
  * carried one, and then fills, fires and reads it through uchar's entry: {@link DroolsBackend#voegIn} puts the beans
  * in, each to-many list in the order uchar's replay gives it ({@link Wereld#lijsten()}), {@link DroolsBackend#vuur}
- * fires to the fixpoint, and {@link DroolsBackend#zetAfgeleideWaarden} puts the derived values on the beans, which the
- * branch keeps as facts of the session until then. It returns the beans and the {@code Inconsistentie} facts for the
- * response builder. Session-per-request; the KieBase is shared and immutable, so this is thread-safe by construction.
+ * fires to the fixpoint, {@link DroolsBackend#lees} gives the evaluation faults that stand there, and where none
+ * stands {@link DroolsBackend#zetAfgeleideWaarden} puts the derived values on the beans, which the branch keeps as
+ * facts of the session until then. It returns the beans and the {@code Inconsistentie} facts for the response builder.
+ * Session-per-request; the KieBase is shared and immutable, so this is thread-safe by construction.
  *
- * <p>An evaluation fault that stands at the fixpoint is thrown by the write-back, which then writes nothing, and
- * leaves here as an {@link Evaluatiefout}: the rules give no answer on this input. A run without a fixpoint is no
- * such fault but a fault of the lowering, since uchar refuses a cycle at the build, and leaves as an
- * {@link IllegalStateException} with uchar's sentence.
+ * <p>Every fault that stands at the fixpoint leaves here as an {@link Evaluatiefout}, and nothing is written back: the
+ * rules give no answer on this input. Such a fault is an evaluation fault by its place at the fixpoint, whatever its
+ * type, so it is read as data before the write-back, which would throw it as an exception like those the entry throws
+ * itself for a session used wrongly; those stay internal faults. A run without a fixpoint is no evaluation fault but
+ * a fault of the lowering, since uchar refuses a cycle at the build, and leaves as an {@link IllegalStateException}
+ * with uchar's sentence.
  */
 public final class Uitvoerder {
 
@@ -59,7 +58,7 @@ public final class Uitvoerder {
      * parameter overrides LAST (explicit caller-intent wins — mirrors the scenario situatie-override). The
      * rekendatum global stays {@code wereld.rekendatum()} — that IS the peildatum (the one date authority).
      *
-     * @throws Evaluatiefout an evaluation fault that stands at the fixpoint, one or more
+     * @throws Evaluatiefout the evaluation faults that stand at the fixpoint, one or more, of any type
      */
     public Uitkomst vuur(Wereld wereld, Map<String, Object> setGlobals) {
         // descriptor defaults first, set-vintage values next, request parameters override last
@@ -84,11 +83,11 @@ public final class Uitvoerder {
             // a fault names its object by the id of the request; a made object has none, and uchar names it as ref does
             Map<Object, String> label = new IdentityHashMap<>();
             wereld.beans().forEach((id, bean) -> label.put(bean, id));
-            try {
-                DroolsBackend.zetAfgeleideWaarden(build, sessie, label::get);
-            } catch (Breuk.DelingDoorNul | Rekenfout | Schrijversconflict | Invoervormfout | Evaluatiefouten fout) {
-                throw Evaluatiefout.van(fout);
-            }
+            // a fault is an evaluation fault by its place at the fixpoint, not by its type: the write-back would throw
+            // it as one exception among those the entry throws itself, so the faults are read as data first
+            List<Fout> fouten = DroolsBackend.lees(build, sessie, label::get).fouten();
+            if (!fouten.isEmpty()) throw Evaluatiefout.van(fouten);
+            DroolsBackend.zetAfgeleideWaarden(build, sessie, label::get);
             List<Object> inc = leesInconsistenties(sessie);
             return new Uitkomst(wereld.beans(), vuring.vuringen(), inc);
         } finally {

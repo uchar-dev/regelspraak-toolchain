@@ -558,7 +558,8 @@ public final class OpenApiEmitter {
         soort.put("description", "DELING_DOOR_NUL: een deling door een numerieke nul; REKENFOUT: een fout van een"
                 + " berekening of van de rekendatum; SCHRIJVERSCONFLICT: twee schrijvers van één attribuut die"
                 + " verschillen; INVOERVORMFOUT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt,"
-                + " want de dienst weigert een tijdlijn (400).");
+                + " want de dienst weigert een tijdlijn (400); ANDERE: een fout van een ander type die aan het fixpunt"
+                + " staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft.");
         ObjectNode zin = itemProps.putObject("fout");
         zin.put("type", "string");
         zin.put("description", "uchars zin; een object van het verzoek heet daarin naar zijn id.");
