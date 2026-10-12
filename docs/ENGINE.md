@@ -16,9 +16,25 @@ RegelSpraakRuntime.set(persoon, "leeftijd", new BigDecimal(16));
 try (RegelSpraakEngine.Session s = engine.newSession()) {
     s.insert(persoon)
      .setGlobal("volwassenleeftijd", new BigDecimal(18))
-     .fire();                                  // rules mutate persoon in place
+     .fire();                                  // fires to the fixpoint through uchar's entry
+    s.zetTerug();                              // the derived values onto persoon
 }
 ```
+
+A session fills, fires and reads through uchar's entry (`DroolsBackend.voegIn`, `vuur`, `lees` and
+`zetAfgeleideWaarden`; uchar's `backends/drools/README.md`, "The entry for consumers"). `insert` and `insertAll`
+gather the beans until the first `fire()`, which puts them in and fires to the fixpoint; a later `fire()` only fires.
+The exec-model branch derives with truth maintenance, so a derived value is a fact of the session and the beans hold
+the input alone until `zetTerug()`: `lees()` gives what stands at the fixpoint of the last fire (uchar's `Fixpunt`: the
+derived values and characteristics, the objects and links the creations made, the evaluation faults as data, the
+inconsistencies) without writing anything, and `zetTerug()` puts it on the beans, after which the session does not
+fire again. Between two fires a consumer changes an attribute or a characteristic of a bean of the session and calls
+`update(bean)`; an object that comes or goes, a changed relation or another global asks a fresh session, and
+`setGlobal` belongs before the first `fire()`. uchar's entry refuses each of these by name. `fire()` returns the
+number of firings and throws with uchar's sentence when a run reaches no fixpoint; `zetTerug()` throws an evaluation
+fault that stands at the fixpoint as uchar's own exception (`Breuk.DelingDoorNul`, `Rekenfout`, `Schrijversconflict`,
+`Invoervormfout`; two or more as `Evaluatiefouten`). `facts(…)` reads the working memory, the `Inconsistentie` facts
+among them.
 
 The facts are instances of the generated beans (`nieuw`, `beanLoader()`), in uchar's package
 `dev.uchar.regelspraak.facts`: the KieBase is built against those classes, so an object of a same-named class from
@@ -35,8 +51,9 @@ make verify          # check-pin, then mvn -B -o verify over the whole reactor
 mvn -B -o verify -pl toolchain -am      # only the toolchain core and what it needs from uchar
 ```
 
-`RegelSpraakEngineTest` is the end-to-end proof: a rule compiles, fires over generated beans, and mutates them;
-a type error and a construct uchar does not lower both surface as `RegelSpraakCompileException`.
+`RegelSpraakEngineTest` is the end-to-end proof: a rule compiles, fires over generated beans through uchar's entry
+and writes the derived values back onto them; a session that fires twice with an update in between reads what a fresh
+session reads; a type error and a construct uchar does not lower both surface as `RegelSpraakCompileException`.
 
 ## The decision service
 
@@ -86,11 +103,20 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   else the canonical names; an unknown vocabulary is a 400 `ONBEKEND_VOCABULAIRE`, and a descriptor naming one does
   not start. A declaration without a designation in the chosen vocabulary keeps its canonical name. The Quarkus
   adapter reads the same query parameters.
-- The answer lists per instance the selected attributes and characteristics, `inconsistenties` (the rule names of
-  the failed consistency checks) and `inconsistentieDetails` (the same, each with its `onderwerp`: the request id
-  of the instance the check is about). A 400 names per violation its `veld`, its `soort` and its message; `soort`
-  `NIET_ONDERSTEUND` marks a request form the service does not carry (a timeline value, a characteristic with
-  periods, a dimensioned attribute).
+- Each request gets a fresh session that the core fills, fires and reads through uchar's entry (`DroolsBackend.voegIn`,
+  `vuur`, `zetAfgeleideWaarden`), so the answer carries the values the rules derive. The answer lists per instance
+  the selected attributes and characteristics, `inconsistenties` (the rule names of the failed consistency checks)
+  and `inconsistentieDetails` (the same, each with its `onderwerp`: the request id of the instance the check is
+  about). A 400 names per violation its `veld`, its `soort` and its message; `soort` `NIET_ONDERSTEUND` marks a
+  request form the service does not carry (a timeline value, a characteristic with periods, a dimensioned
+  attribute).
+- A request on which the rules give an evaluation fault that stands at the fixpoint gets 422 with
+  `{"status": "EVALUATIEFOUT", "fout": …, "fouten": [{"soort": …, "fout": <uchar's sentence>}, …]}`, one element per
+  fault in uchar's order. `soort` is `DELING_DOOR_NUL` (a division by a numeric zero), `REKENFOUT` (a fault of a
+  computation or of the evaluation date), `SCHRIJVERSCONFLICT` (two writers of one attribute that disagree) or
+  `INVOERVORMFOUT` (a timeline input in the other convention, which no request reaches, since a request carries no
+  timeline). uchar's sentence names an object of the request by its id; no stacktrace enters the answer. The Quarkus
+  adapter answers the same, and the OpenAPI contract names the 422.
 - `GET /info`: per entry point whether it is `uitvoerbaar`, its `dekking` (the exec-model branch's verdict per form
   of its document, defaults groups included), its markers and, when uchar does not carry it, uchar's sentence as
   `weigering`; the parameter defaults, the loaded parameter sets and the period-coverage warnings. An entry point

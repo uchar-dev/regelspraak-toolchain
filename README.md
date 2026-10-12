@@ -97,10 +97,10 @@ pinned expectation, compared as uchar's replay compares it (`scripts/dienst_repl
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
 - `check-dienst-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
-  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (235). Each golden is
+  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (250). Each golden is
   served from its `bron.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
-  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 208); every golden that does not play is listed by name with
-  its reason (27, each a timeline form the request cannot express); a deviation always fails, and the list fails when
+  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 222); every golden that does not play is listed by name with
+  its reason (28, each a timeline form the request cannot express); a deviation always fails, and the list fails when
   it goes stale in either direction. About 50 seconds with four services at a time (`REPLAY_WERKERS`).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
   scenario resolver refuses are listed in `scripts/toka-manifest-uitsluitingen.txt` with a fragment of that refusal,
@@ -146,10 +146,11 @@ make scenario-test                              # the golden TOKA scenario set
 
 A scenario document runs through uchar's scenario layer: uchar resolves it, lowers the scenarios to case files,
 and uchar's replay reports each one. With `--uitleg` (`FILE="--uitleg a.rgs"`) each played scenario also gets the
-explanation of its outcome: it is played once more, in a session of its own on the same build, and the verbaliser
-explains that session's facts; the explanation is withheld, with the difference, when that session did not fire
-what uchar's replay reported. uchar's scenario resolver refuses three of the 29 golden TOKA scenarios (listed with
-their reasons in `scripts/toka-manifest-uitsluitingen.txt`).
+explanation of its outcome: it is played once more, in a session of its own on the same build, through uchar's entry
+with the input as the replay puts it in, and the verbaliser explains the beans with their derived values; the
+explanation is withheld, with the difference, when that session did not fire what uchar's replay reported, counted
+per form of the document as the replay counts it. uchar's scenario resolver refuses three of the 29 golden TOKA
+scenarios (listed with their reasons in `scripts/toka-manifest-uitsluitingen.txt`).
 
 The decision service serves a descriptor over `.rgs` sources or over one `uchar-ir-v1` document; `docs/ENGINE.md`
 describes its routes, its MARKER answer and the dev-only playground. A scope that names a base rule also carries the
@@ -222,7 +223,7 @@ and the command that deletes the cluster. Both targets need Docker and run on th
   counterpart.
 - **Timelines in a service request.** The request has no timeline value, no characteristic with periods, and no
   scalar on a time-dependent attribute (uchar's replay places one in the bucket of the evaluation date); the service
-  refuses them as `NIET_ONDERSTEUND`. 27 of the goldens gate 12 plays need one; the replay gate lists them.
+  refuses them as `NIET_ONDERSTEUND`. 28 of the goldens gate 12 plays need one; the replay gate lists them.
 - **A `uchar-ir-v1` document is served whole**: a scope that drops forms needs the model the document came from.
 - **The uitleg** explains characteristic-attribution rules, not defaults groups: a characteristic a defaults group
   decides gets no sentence.
