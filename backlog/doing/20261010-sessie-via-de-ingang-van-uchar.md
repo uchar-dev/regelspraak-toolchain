@@ -3,8 +3,7 @@
 *Vastgelegd bij de landing van `20261008-tms-omschakeling` in uchar, uit het `Result:` van die kaart. Deze kaart landt
 na die kaart; de pin mag niet bewegen zonder haar. Op 2026-10-12 in deze repository gezet en bijgewerkt naar uchar
 main `b536bbc9`, met de landing van `20261010-objectcreatie-zonder-connectingrole-binding` erbij. Regelnummers op
-`f9fc44c` (submodule op uchar `0a378588`). De eigenaar besloot op 2026-10-11 dat de pin pas na de demo van 2026-10-12
-beweegt.*
+`f9fc44c` (submodule op uchar `0a378588`).*
 
 **Aanleiding.** Sinds `20261008-tms-omschakeling` leidt `DroolsBackend.Branch.EXEC_MODEL` af met truth maintenance:
 een afgeleide waarde is een logisch feit in de sessie, en de beans dragen alleen invoer tot
