@@ -11,13 +11,13 @@ This repository succeeds `yhavinga/regelspraak-java`, which is deprecated; its h
 ## Getting it
 
 ```
-git clone --recurse-submodules git@github.com:uchar-dev/regelspraak-toolchain.git
+git clone --recurse-submodules https://github.com/uchar-dev/regelspraak-toolchain.git
 # or, in an existing clone:
 git submodule update --init --recursive
 ```
 
 The submodule URL is relative (`../uchar.git`), so it resolves to `uchar-dev/uchar` next to this repository. Both
-repositories are private: a clone needs read access to both.
+repositories are public.
 
 ## Building
 
@@ -232,11 +232,27 @@ and the command that deletes the cluster. Both targets need Docker and run on th
 - **Vocabulary names in the Mermaid graph.** The playground's `graaf` and `bin/regelspraak graaf` are uchar's
   rendering and stay canonical; the playground's `graafJson` carries the chosen vocabulary.
 
-## The parity zone
+## The TOKA casus and the specification
 
-`examples/toka*` and `specification/` hold material that is © Belastingdienst: the TOKA casus the tests and the
-golden scenarios run on, and derived notes on the RegelSpraak specification. It stays as it is and is never
-quoted elsewhere, and the repository stays private while the zone exists.
+`examples/toka*` holds the TOKA casus the tests and the golden scenarios run on.
+
+> **TOKA casus.** Source: *RegelSpraak specificatie* v2.3.0 (4-12-2025), Bijlage 1, "Treinen Op Korte Afstand" (TOKA,
+> a fictitious act from the Belastingdienst's ALEF course), published by the Belastingdienst at
+> https://wendbarewetsuitvoering.pleio.nl/page/view/291f5846-cdfc-42d9-9f31-a2158fe59128/specificaties-regelspraak.
+> Rights notice of the source: "© 2025 Belastingdienst / Alle rechten voorbehouden".
+> Status: the Belastingdienst indicated to the maintainer on 2026-10-13 that TOKA is meant to be releasable. It is
+> probably under EUPL-1.2, like ALEF (https://github.com/belastingdienst/ALEF) and the repository
+> MinBZK/regels.overheid.nl, which carries a 2022 version of the course casus. Written confirmation: not yet received.
+> The licence of this repository (Apache-2.0) does not cover this material.
+
+Copied verbatim from the casus: the 47 definition fragments `examples/toka/*.rgs`, byte-identical to uchar's
+`toka/casus/*.rgs`; they are not edited, so that the two stay in parity. Derived from the casus or this project's own
+work: the rest of `examples/toka*` (the README and the service descriptor `toka.dienst.json` in `examples/toka/`, the
+scenarios in `examples/toka-scenarios/`, the reconciliation in `examples/toka-reconciliatie/`), the decision-table
+examples `examples/beslistabel/spec12-*.rgs`, and the tests and test resources that load the casus.
+
+The RegelSpraak v2.3.0 specification itself is not in this repository; `NOTICE` says where it is published.
+`specification/v2.3.0/` holds this project's own notes derived from it.
 
 ## Working here
 

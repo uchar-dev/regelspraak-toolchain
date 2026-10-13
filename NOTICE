@@ -6,10 +6,33 @@ This product includes software developed by third parties:
   - ANTLR 4 runtime                       (BSD-3-Clause)
   - JUnit 5                               (Eclipse Public License 2.0)
 
-The RegelSpraak v2.3.0 specification and the TOKA casus are
+The RegelSpraak v2.3.0 specification is
 © Belastingdienst (Dutch Tax & Customs Administration),
-"Alle rechten voorbehouden" (all rights reserved). They are NOT redistributed
-in this repository; obtain them from the official source:
+"Alle rechten voorbehouden" (all rights reserved). It is NOT redistributed
+in this repository, apart from the TOKA fragments described below; obtain it
+from the official source:
   https://wendbarewetsuitvoering.pleio.nl/   (search: "specificaties RegelSpraak")
-This implementation is derived from that specification; the sample/test rules
-use the public, explicitly-fictitious TOKA training case.
+This implementation is derived from that specification. The notes in
+specification/v2.3.0/ are this project's own, derived from it; they are not
+the specification.
+
+TOKA casus. Source: RegelSpraak specificatie v2.3.0 (4-12-2025), Bijlage 1,
+"Treinen Op Korte Afstand" (TOKA, a fictitious act from the Belastingdienst's
+ALEF course), published by the Belastingdienst at
+  https://wendbarewetsuitvoering.pleio.nl/page/view/291f5846-cdfc-42d9-9f31-a2158fe59128/specificaties-regelspraak
+Rights notice of the source: "© 2025 Belastingdienst / Alle rechten voorbehouden".
+Status: the Belastingdienst indicated to the maintainer on 2026-10-13 that
+TOKA is meant to be releasable. It is probably under EUPL-1.2, like ALEF
+(https://github.com/belastingdienst/ALEF) and the repository
+MinBZK/regels.overheid.nl, which carries a 2022 version of the course casus.
+Written confirmation: not yet received.
+The licence of this repository (Apache-2.0) does not cover this material.
+
+Copied verbatim from the casus: the 47 definition fragments
+examples/toka/*.rgs, byte-identical to uchar's toka/casus/*.rgs. Derived from
+the casus or this project's own work: the rest of examples/toka* (the README
+and the service descriptor toka.dienst.json in examples/toka/, the scenarios
+in examples/toka-scenarios/, the reconciliation in
+examples/toka-reconciliatie/), the decision-table examples
+examples/beslistabel/spec12-*.rgs, and the tests and test resources that load
+the casus.

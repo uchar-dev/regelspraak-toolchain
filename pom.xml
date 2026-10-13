@@ -18,8 +18,8 @@
     </license>
   </licenses>
   <scm>
-    <connection>scm:git:git@github.com:uchar-dev/regelspraak-toolchain.git</connection>
-    <developerConnection>scm:git:git@github.com:uchar-dev/regelspraak-toolchain.git</developerConnection>
+    <connection>scm:git:https://github.com/uchar-dev/regelspraak-toolchain.git</connection>
+    <developerConnection>scm:git:https://github.com/uchar-dev/regelspraak-toolchain.git</developerConnection>
     <url>https://github.com/uchar-dev/regelspraak-toolchain</url>
   </scm>
 

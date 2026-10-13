@@ -21,9 +21,12 @@ map; `docs/ENGINE.md` describes the engine and the service.
   own could drop one and still produce a KieBase.
 - **Fail fast.** A refusal of uchar is reported with uchar's sentence; nothing is skipped, caught and dropped, or
   answered as if a construct did not exist.
-- **The parity zone** — `examples/toka*` and `specification/` — is © Belastingdienst material: never edited,
-  never quoted anywhere (in code comments, commits, cards or reports only paths and counts). The repository stays
-  private while the zone exists.
+- **The TOKA fragments stay as they are.** `examples/toka/*.rgs` are the 47 definition fragments copied verbatim
+  from the TOKA casus, byte-identical to uchar's `toka/casus/*.rgs`; they are never edited, so that the two stay in
+  parity. The other files under `examples/toka*` are ordinary project files. Source, rights and status of the casus
+  are one text, kept the same in `NOTICE`, `README.md` and `examples/toka/README.md`. `specification/v2.3.0/` holds
+  the project's own notes derived from the RegelSpraak specification; the specification itself is not in this
+  repository (`NOTICE`).
 
 ## Build and gates
 
