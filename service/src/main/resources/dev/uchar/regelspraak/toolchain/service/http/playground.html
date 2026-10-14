@@ -19,8 +19,9 @@
   header .badge { font-size: 11px; color: #fff; background: var(--warn); padding: 2px 8px;
                   border-radius: 10px; letter-spacing: .3px; }
   header .hint { font-size: 12px; color: var(--muted); }
-  main { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 14px 20px; height: calc(100vh - 55px); }
-  .col { display: flex; flex-direction: column; min-height: 0; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; padding: 14px 20px;
+         height: calc(100vh - 55px); }
+  .col { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
   .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
   button { font: inherit; font-size: 13px; padding: 6px 14px; border: 1px solid var(--line);
            background: var(--panel); border-radius: 6px; cursor: pointer; }
@@ -61,13 +62,38 @@
   .lg.invoer { background:#fae8ff; border-color:#a21caf; color:#701a75; }
   .lg.eind { background:#fff; border-color:#111827; color:#111827; border-style:dashed; }
   .graafview { border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto; background:var(--panel); }
+  .keuze { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+  .keuze button { font-size: 12px; padding: 3px 9px; border-left-width: 4px; }
+  .keuze button.ok { border-left-color: var(--ok); }
+  .keuze button.err { border-left-color: var(--err); }
+  .keuze button.warn { border-left-color: var(--warn); }
+  .keuze button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  details { border-top: 1px solid var(--line); padding: 6px 0; }
+  details > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink); padding: 2px 0; }
+  details > summary .muted { font-weight: 400; }
+  details > div { margin-top: 6px; }
+  .filterbar { display: flex; gap: 12px; align-items: center; margin: 8px 0; font-size: 12.5px; }
+  .filterbar input[type=text], .filterbar select { font: inherit; padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; }
+  tr.obj td { background: #f0f0eb; font-weight: 600; }
+  tr.obj td .muted { font-weight: 400; }
+  td.num, th.num { text-align: right; font-family: var(--mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+  td.mono { font-family: var(--mono); font-size: 12px; }
+  .canon { border-bottom: 1px dotted var(--muted); cursor: help; }
+  .hk { font-size: 10.5px; padding: 0 6px; border-radius: 8px; white-space: nowrap; }
+  .hk.afgeleid { background: #dbeafe; color: #1e3a8a; }
+  .hk.invoer { background: #ececec; color: #4b4b4b; }
+  .hk.creatie { background: #fae8ff; color: #701a75; }
+  .klein { font-size: 11.5px; color: var(--muted); }
+  .kop { font-size: 14px; font-weight: 600; margin: 4px 0 8px; }
+  table.voc td, table.voc th { overflow-wrap: anywhere; }
+  table.voc td:first-child { white-space: nowrap; }
 </style>
 </head>
 <body>
 <header>
   <h1>RegelSpraak-playground</h1>
   <span class="badge">DEV</span>
-  <span class="hint">typ links, druk <b>Analyseer</b> (of Ctrl/&#8984;+Enter) &mdash; parse &middot; resolver &middot; IR &middot; dekking &middot; DRL &middot; graaf &middot; scenario</span>
+  <span class="hint">typ links, druk <b>Analyseer</b> (of Ctrl/&#8984;+Enter) &mdash; parse &middot; resolver &middot; IR &middot; dekking &middot; DRL &middot; graaf &middot; scenario &middot; vocabulaires</span>
 </header>
 <main>
   <div class="col">
@@ -75,7 +101,7 @@
       <button class="primary" id="run">Analyseer</button>
       <button id="voorbeeld">Voorbeeld</button>
       <button id="leeg">Leeg</button>
-      <input id="vocabulaire" size="12" placeholder="vocabulaire" title="de namen van graaf, trace en uitleg: een vocabulaire van de bron, leeg voor canoniek">
+      <input id="vocabulaire" size="12" placeholder="vocabulaire" title="de namen van graaf, trace, uitleg, situatie en fixpunt: een vocabulaire van de bron, leeg voor canoniek">
       <span class="hint" id="status"></span>
     </div>
     <textarea id="bron" spellcheck="false" placeholder="Plak of typ hier een RegelSpraak-model, regel en (optioneel) Scenario-blok..."></textarea>
@@ -89,6 +115,7 @@
       <button data-tab="drl">DRL</button>
       <button data-tab="graaf">Graaf</button>
       <button data-tab="scenario">Scenario</button>
+      <button data-tab="vocabulaires">Vocabulaires</button>
     </div>
     <div class="view" id="view"><span class="muted">Nog geen analyse.</span></div>
   </div>
@@ -129,7 +156,7 @@ Met als verwacht resultaat:
 `;
 
 function esc(s) {
-  return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
 
 function render() {
@@ -137,7 +164,9 @@ function render() {
   if (!laatste) { v.innerHTML = '<span class="muted">Nog geen analyse.</span>'; return; }
   if (laatste.__transport) { v.innerHTML = '<span class="pill err">FOUT</span> ' + esc(laatste.__transport); return; }
   v.innerHTML = ({ parse: renderParse, resolver: renderResolver, ir: renderIr, dekking: renderDekking, drl: renderDrl,
-                   graaf: renderGraaf, scenario: renderScenario }[actief])();
+                   graaf: renderGraaf, scenario: renderScenario, vocabulaires: renderVocabulaires }[actief])();
+  if (actief === "scenario") bindScenario();
+  if (actief === "vocabulaires") bindVocabulaires();
   // The graaf pane injects a fresh .mermaid node above; render it now that the node is live (Mermaid loads lazily,
   // and degrades to the readable source <pre> when the runtime cannot be reached).
   if (actief === "graaf" && laatste.graaf != null) renderMermaid();
@@ -231,30 +260,267 @@ function renderMermaid() {
   document.head.appendChild(s);
 }
 
+// ---------- scenario: one scenario at a time, its parts folded, the tables filtered ----------
+// A document of the eval dataset is some 1 600 lines with dozens of objects per scenario, so the page shows one
+// scenario, keeps the choice across a new analysis, and redraws only the tables when a filter changes.
+let scenarioKeuze = null;
+const filter = { tekst: "", alleenAfgeleid: false, voc: "", vocSoort: "" };
+
+function statusKlasse(r) { return r.status === "PASS" ? "ok" : r.status === "MARKER" ? "warn" : "err"; }
+
+// A name in the chosen vocabulary; the canonical name, where it differs, on hover.
+function naam(o, k) {
+  const c = o[k + "Canoniek"];
+  return c != null ? '<span class="canon" title="canoniek: ' + esc(c) + '">' + esc(o[k]) + "</span>" : esc(o[k]);
+}
+function scalar(w) {
+  if (w === null || w === undefined) return '<span class="muted">leeg</span>';
+  if (w === true) return "waar";
+  if (w === false) return "onwaar";
+  return esc(w);
+}
+function tijdlijn(tl) {
+  if (!tl.length) return '<span class="muted">leeg</span>';
+  return tl.map((s) => "[" + esc(s.van) + ", " + esc(s.tot) + ") " + scalar(s.waarde)).join("<br>");
+}
+function waarde(o) {
+  let h;
+  if (o.tijdlijn) h = tijdlijn(o.tijdlijn);
+  else if (o.dimensies) h = Object.entries(o.dimensies).map(([c, w]) => esc(c) + ": " + scalar(w)).join("<br>");
+  else h = o.waardeCanoniek != null ? naam(o, "waarde") : scalar(o.waarde);
+  return h + (o.eenheid ? ' <span class="muted">' + esc(o.eenheid) + "</span>" : "");
+}
+function past(...namen) {
+  const f = filter.tekst.trim().toLowerCase();
+  return !f || namen.some((n) => n != null && String(n).toLowerCase().includes(f));
+}
+function sectie(titel, inhoud, open) {
+  return "<details" + (open ? " open" : "") + "><summary>" + titel + "</summary><div>" + inhoud + "</div></details>";
+}
+
 function renderScenario() {
   const s = laatste.scenario;
   if (laatste.resolver && !laatste.resolver.ok)
     return '<span class="pill warn">NIET GEVUURD</span><div class="diag muted">De bron resolvet niet; zie Resolver.</div>';
   if (!s) return '<div class="diag muted">Geen <b>Scenario</b>-blok in de bron.</div>';
-  let h = "";
-  for (const r of (s.resultaten || [])) {
-    const cls = r.status === "PASS" ? "ok" : r.status === "MARKER" ? "warn" : "err";
-    h += '<h3><span class="pill ' + cls + '">' + esc(r.status) + "</span> " + esc(r.naam) + "</h3>";
-    if (r.diagnose) h += '<div class="diag ' + cls + '">' + esc(r.diagnose) + "</div>";
-    if ((r.verwachtingen || []).length) {
-      h += "<table><tr><th></th><th>verwachting</th><th>verwacht</th><th>werkelijk</th></tr>";
-      for (const v of r.verwachtingen)
-        h += '<tr class="' + (v.ok ? "row-ok" : "row-bad") + '"><td>' + (v.ok ? "&#10003;" : "&#10007;")
-           + "</td><td>" + esc(v.bron) + "</td><td>" + esc(v.verwacht) + "</td><td>" + esc(v.werkelijk) + "</td></tr>";
-      h += "</table>";
-    }
-    if ((r.trace || []).length) {
-      h += '<div class="diag muted">vuringen: ' + r.trace.map((t) => esc(t.regel) + (t.labels.length ? " @ " + esc(t.labels.join(", ")) : "") + " &times;" + t.aantal).join("; ") + "</div>";
-    }
-    if (r.uitlegFout) h += '<div class="diag warn">geen uitleg: ' + esc(r.uitlegFout) + "</div>";
-    for (const z of (r.uitleg || [])) h += '<div class="diag ok">' + esc(z) + "</div>";
+  const rs = s.resultaten || [];
+  if (!rs.length) return '<div class="diag muted">Geen scenario&rsquo;s gevonden.</div>';
+  const r = rs.find((x) => x.naam === scenarioKeuze) || rs[0];
+  scenarioKeuze = r.naam;
+  const cls = statusKlasse(r);
+  let h = '<div class="keuze">' + rs.map((x) => '<button data-scenario="' + esc(x.naam) + '" class="' + statusKlasse(x)
+        + (x === r ? " active" : "") + '" title="' + esc(x.status) + '">' + esc(x.naam) + "</button>").join("") + "</div>";
+  h += '<div class="kop"><span class="pill ' + cls + '">' + esc(r.status) + "</span> " + esc(r.naam)
+     + (r.regel ? ' <span class="klein">regel ' + r.regel + "</span>" : "") + "</div>";
+  if (r.diagnose) h += '<div class="diag ' + cls + '">' + esc(r.diagnose) + "</div>";
+  const vw = r.verwachtingen || [];
+  h += sectie("Verwachtingen <span class=\"muted\">" + vw.filter((v) => v.ok).length + " van " + vw.length + " gehaald</span>",
+              verwachtingenHtml(vw), true);
+  h += '<div class="filterbar"><input type="text" id="filter" size="28" placeholder="filter op label of naam" value="'
+     + esc(filter.tekst) + '"><label><input type="checkbox" id="alleenAfgeleid"' + (filter.alleenAfgeleid ? " checked" : "")
+     + "> fixpunt: alleen afgeleid en gemaakt</label></div>";
+  const sit = r.situatie;
+  h += sectie("Situatie" + (sit ? ' <span class="muted">' + sit.objecten.length + " objecten, " + sit.parameters.length
+              + " parameters" + (sit.peildatum ? ", peildatum " + esc(sit.peildatum) : "") + "</span>" : ""),
+              '<div id="situatie">' + situatieHtml(sit) + "</div>", true);
+  h += sectie("Fixpunt" + (r.fixpunt ? ' <span class="muted">' + fixpuntTelling(r.fixpunt) + "</span>" : ""),
+              '<div id="fixpunt">' + fixpuntHtml(r) + "</div>", true);
+  const dk = r.dekking || [];
+  h += sectie("Dekking <span class=\"muted\">" + dk.filter((d) => d.soort === "GEVUURD").length + " van " + dk.length
+              + " vormen gevuurd</span>", dekkingHtml(dk), false);
+  const tr = r.trace || [];
+  h += sectie("Vuringen <span class=\"muted\">" + tr.length + " vormen</span>", vuringenHtml(tr), false);
+  h += sectie("Uitleg <span class=\"muted\">" + (r.uitleg || []).length + " zinnen</span>", uitlegHtml(r), false);
+  return h;
+}
+
+function verwachtingenHtml(vw) {
+  if (!vw.length) return '<div class="diag muted">uchars rapport geeft geen verwachtingen voor dit scenario.</div>';
+  let h = '<table><tr><th></th><th class="num">regel</th><th>verwachting in de bron</th><th>verwacht</th><th>werkelijk</th></tr>';
+  for (const v of vw)
+    h += '<tr class="' + (v.ok ? "row-ok" : "row-bad") + '"><td>' + (v.ok ? "&#10003;" : "&#10007;") + '</td><td class="num">'
+       + (v.regel || "") + '</td><td class="mono" title="' + esc(v.bron) + '">' + esc(v.regeltekst || v.bron)
+       + "</td><td>" + esc(v.verwacht) + "</td><td>" + esc(v.werkelijk) + "</td></tr>";
+  return h + "</table>";
+}
+
+function situatieHtml(sit) {
+  if (!sit) return '<div class="diag muted">Geen situatie in het antwoord.</div>';
+  let h = "<table><tr><th>lid</th><th>waarde</th><th class=\"num\">regel</th></tr>", n = 0;
+  for (const o of sit.objecten) {
+    const heel = past(o.label, o.objecttype, o.objecttypeCanoniek);
+    const rijen = [];
+    for (const a of o.attributen)
+      if (heel || past(a.attribuut, a.attribuutCanoniek))
+        rijen.push("<tr><td>" + naam(a, "attribuut") + "</td><td>" + waarde(a) + '</td><td class="num">' + a.regel + "</td></tr>");
+    for (const k of o.kenmerken)
+      if (heel || past(k.kenmerk, k.kenmerkCanoniek))
+        rijen.push("<tr><td>" + naam(k, "kenmerk") + "</td><td>" + (k.perioden
+          ? k.perioden.map((p) => "[" + esc(p.van) + ", " + esc(p.tot) + ")").join("<br>") : "waar")
+          + '</td><td class="num">' + k.regel + "</td></tr>");
+    for (const r of o.rollen)
+      if (heel || past(r.rol, r.rolCanoniek, ...r.labels))
+        rijen.push("<tr><td>" + naam(r, "rol") + "</td><td>" + r.labels.map(esc).join(", ")
+          + ' <span class="muted">' + naam(r, "doeltype") + '</span></td><td class="num">' + r.regel + "</td></tr>");
+    if (!heel && !rijen.length) continue;
+    n++;
+    h += '<tr class="obj"><td colspan="3">' + esc(o.label) + ' <span class="muted">' + naam(o, "objecttype") + "</span></td></tr>"
+       + (rijen.length ? rijen.join("") : '<tr><td colspan="3" class="muted">geen attributen, kenmerken of rollen</td></tr>');
   }
-  return h || '<div class="diag muted">Geen scenario&rsquo;s gevonden.</div>';
+  const ps = sit.parameters.filter((p) => past(p.parameter, p.parameterCanoniek));
+  if (ps.length) {
+    n++;
+    h += '<tr class="obj"><td colspan="3">parameters</td></tr>';
+    for (const p of ps)
+      h += "<tr><td>" + naam(p, "parameter") + "</td><td>" + waarde(p) + '</td><td class="num">' + p.regel + "</td></tr>";
+  }
+  return n ? h + "</table>" : '<div class="diag muted">Niets in de situatie past op het filter.</div>';
+}
+
+function fixpuntTelling(f) {
+  const delen = [f.objecten.length + " objecten"];
+  for (const [k, w] of [["gemaakteObjecten", "gemaakt"], ["koppelingen", "koppelingen"], ["fouten", "fouten"],
+                        ["inconsistenties", "inconsistenties"]])
+    if (f[k].length) delen.push(f[k].length + " " + w);
+  return delen.join(", ");
+}
+
+function fixpuntHtml(r) {
+  if (!r.fixpunt)
+    return r.fixpuntFout ? '<div class="diag warn">geen fixpunt: ' + esc(r.fixpuntFout) + "</div>"
+                         : '<div class="diag muted">Geen fixpunt: uchar speelde deze case niet.</div>';
+  const f = r.fixpunt;
+  let h = "";
+  if (f.fouten.length) {
+    h += '<table><tr><th>evaluatiefout</th><th>regel</th><th>onderwerp</th><th>zin</th></tr>';
+    for (const x of f.fouten)
+      h += '<tr class="row-bad"><td>' + esc(x.soort) + "</td><td>" + naam(x, "regel") + "</td><td>" + esc(x.onderwerp)
+         + "</td><td>" + esc(x.zin) + "</td></tr>";
+    h += "</table>";
+  }
+  let t = '<table><tr><th>lid</th><th>waarde</th><th>herkomst</th></tr>', n = 0;
+  for (const o of f.objecten) {
+    const heel = past(o.object, o.objecttype, o.objecttypeCanoniek);
+    const zichtbaar = (herkomst) => !filter.alleenAfgeleid || herkomst !== "invoer";
+    const rijen = [];
+    for (const w of o.waarden)
+      if (zichtbaar(w.herkomst) && (heel || past(w.attribuut, w.attribuutCanoniek)))
+        rijen.push("<tr><td>" + naam(w, "attribuut") + "</td><td>" + waarde(w)
+          + ("invoer" in w ? ' <span class="klein">(invoer ' + (Array.isArray(w.invoer) ? tijdlijn(w.invoer) : scalar(w.invoer)) + ")</span>" : "")
+          + '</td><td><span class="hk ' + esc(w.herkomst) + '">' + esc(w.herkomst) + "</span></td></tr>");
+    for (const k of o.kenmerken)
+      if (zichtbaar(k.herkomst) && (heel || past(k.kenmerk, k.kenmerkCanoniek)))
+        rijen.push("<tr><td>" + naam(k, "kenmerk") + "</td><td>waar" + (k.invoer ? ' <span class="klein">(ook invoer)</span>' : "")
+          + '</td><td><span class="hk ' + esc(k.herkomst) + '">' + esc(k.herkomst) + "</span></td></tr>");
+    if (!rijen.length) continue;
+    n++;
+    t += '<tr class="obj"><td colspan="3">' + esc(o.object) + ' <span class="muted">' + naam(o, "objecttype") + "</span></td></tr>"
+       + rijen.join("");
+  }
+  h += n ? t + "</table>" : '<div class="diag muted">Geen waarden of kenmerken' + (filter.tekst || filter.alleenAfgeleid ? " die op het filter passen" : "") + ".</div>";
+  if (f.gemaakteObjecten.length) {
+    h += '<table><tr><th>gemaakt object</th><th>objecttype</th><th>creatie</th><th>onderwerp</th></tr>';
+    for (const g of f.gemaakteObjecten)
+      h += "<tr><td>" + esc(g.object) + "</td><td>" + naam(g, "objecttype") + "</td><td>" + naam(g, "creatie") + "</td><td>"
+         + esc(g.onderwerp) + "</td></tr>";
+    h += "</table>";
+  }
+  if (f.koppelingen.length) {
+    h += '<table><tr><th>feittype</th><th>rol</th><th>object</th><th>rol</th><th>object</th></tr>';
+    for (const k of f.koppelingen)
+      h += "<tr><td>" + naam(k, "feittype") + "</td><td>" + naam(k, "eersteRol") + "</td><td>" + esc(k.eerste) + "</td><td>"
+         + naam(k, "tweedeRol") + "</td><td>" + esc(k.tweede) + "</td></tr>";
+    h += "</table>";
+  }
+  if (f.inconsistenties.length) {
+    h += '<table><tr><th>inconsistentie volgens</th><th>onderwerp</th></tr>';
+    for (const x of f.inconsistenties)
+      h += '<tr class="row-bad"><td>' + (x.regel == null ? '<span class="muted">geen regel</span>' : naam(x, "regel"))
+         + "</td><td>" + (x.onderwerp == null ? '<span class="muted">geen</span>' : esc(x.onderwerp)) + "</td></tr>";
+    h += "</table>";
+  }
+  if (!f.gemaakteObjecten.length && !f.koppelingen.length && !f.fouten.length && !f.inconsistenties.length)
+    h += '<div class="diag muted">Geen gemaakte objecten, koppelingen, evaluatiefouten of inconsistenties.</div>';
+  return h;
+}
+
+function dekkingHtml(dk) {
+  if (!dk.length) return '<div class="diag muted">Geen dekking: uchar speelde deze case niet.</div>';
+  let h = "<table><tr><th>vorm</th><th></th></tr>";
+  for (const d of dk)
+    h += "<tr><td>" + esc(d.regel) + '</td><td><span class="pill ' + (d.soort === "GEVUURD" ? "ok" : "warn") + '">'
+       + esc(d.soort) + "</span></td></tr>";
+  return h + "</table>";
+}
+
+function vuringenHtml(tr) {
+  if (!tr.length) return '<div class="diag muted">Geen vuringen.</div>';
+  let h = '<table><tr><th>vorm</th><th>labels</th><th class="num">aantal</th></tr>';
+  for (const t of tr)
+    h += "<tr><td>" + esc(t.regel) + "</td><td>" + t.labels.map(esc).join(", ") + '</td><td class="num">' + t.aantal + "</td></tr>";
+  return h + "</table>";
+}
+
+function uitlegHtml(r) {
+  let h = r.uitlegFout ? '<div class="diag warn">geen uitleg: ' + esc(r.uitlegFout) + "</div>" : "";
+  for (const z of (r.uitleg || [])) h += '<div class="diag ok">' + esc(z) + "</div>";
+  return h || '<div class="diag muted">Geen uitleg.</div>';
+}
+
+function bindScenario() {
+  for (const b of $("view").querySelectorAll(".keuze button"))
+    b.addEventListener("click", () => { scenarioKeuze = b.dataset.scenario; render(); });
+  const r = laatste && laatste.scenario && (laatste.scenario.resultaten || []).find((x) => x.naam === scenarioKeuze);
+  if (!r) return;
+  const herteken = () => {
+    $("situatie").innerHTML = situatieHtml(r.situatie);
+    $("fixpunt").innerHTML = fixpuntHtml(r);
+  };
+  $("filter").addEventListener("input", (e) => { filter.tekst = e.target.value; herteken(); });
+  $("alleenAfgeleid").addEventListener("change", (e) => { filter.alleenAfgeleid = e.target.checked; herteken(); });
+}
+
+// ---------- vocabulaires: what the source declares, and per declaration its designation in each ----------
+function renderVocabulaires() {
+  const v = laatste.vocabulaires;
+  if (!v)
+    return '<span class="pill warn">GEEN OVERZICHT</span><div class="diag muted">Er is pas een overzicht als het model schoon parset en resolvet.</div>';
+  let h = '<div class="diag">gekozen: <b>' + esc(v.gekozen) + "</b> <span class=\"muted\">(het veld boven de bron; leeg is canoniek)</span></div>";
+  if (!v.gedeclareerd.length) return h + '<div class="diag muted">De bron declareert geen vocabulaire: elke naam is canoniek.</div>';
+  h += '<table><tr><th>vocabulaire</th><th>standaard</th><th>taal</th><th class="num">met benaming</th></tr>';
+  for (const d of v.gedeclareerd) {
+    const met = v.elementen.filter((e) => e.benamingen[d.naam] != null).length;
+    h += "<tr><td>" + esc(d.naam) + "</td><td>" + (d.standaard ? "ja" : "") + "</td><td>" + esc(d.taal || "") + '</td><td class="num">'
+       + met + " van " + v.elementen.length + "</td></tr>";
+  }
+  h += "</table>";
+  const soorten = [...new Set(v.elementen.map((e) => e.soort))];
+  h += '<div class="filterbar"><input type="text" id="vocFilter" size="28" placeholder="filter op naam" value="' + esc(filter.voc)
+     + '"><select id="vocSoort"><option value="">alle soorten</option>'
+     + soorten.map((s) => '<option value="' + esc(s) + '"' + (s === filter.vocSoort ? " selected" : "") + ">" + esc(s.toLowerCase()) + "</option>").join("")
+     + "</select></div>";
+  return h + '<div id="vocElementen">' + vocElementenHtml(v) + "</div>";
+}
+
+function vocElementenHtml(v) {
+  const f = filter.voc.trim().toLowerCase();
+  const rijen = v.elementen.filter((e) => (!filter.vocSoort || e.soort === filter.vocSoort)
+    && (!f || [e.canoniek, e.eigenaar, ...Object.values(e.benamingen)].some((n) => n != null && n.toLowerCase().includes(f))));
+  if (!rijen.length) return '<div class="diag muted">Geen declaratie past op het filter.</div>';
+  let h = '<table class="voc"><tr><th>soort</th><th>eigenaar</th><th>canoniek</th>'
+        + v.gedeclareerd.map((d) => "<th>" + esc(d.naam) + (d.naam.toLowerCase() === v.gekozen.toLowerCase() ? " &#9679;" : "") + "</th>").join("") + "</tr>";
+  for (const e of rijen)
+    h += '<tr><td class="klein">' + esc(e.soort.toLowerCase()) + '</td><td class="klein">' + esc(e.eigenaar || "") + "</td><td>" + esc(e.canoniek) + "</td>"
+       + v.gedeclareerd.map((d) => "<td>" + (e.benamingen[d.naam] == null ? '<span class="muted">&mdash;</span>' : esc(e.benamingen[d.naam])) + "</td>").join("")
+       + "</tr>";
+  return h + "</table>";
+}
+
+function bindVocabulaires() {
+  const v = laatste && laatste.vocabulaires;
+  if (!v || !v.gedeclareerd.length) return;
+  $("vocFilter").addEventListener("input", (e) => { filter.voc = e.target.value; $("vocElementen").innerHTML = vocElementenHtml(v); });
+  $("vocSoort").addEventListener("change", (e) => { filter.vocSoort = e.target.value; $("vocElementen").innerHTML = vocElementenHtml(v); });
 }
 
 async function analyseer() {
