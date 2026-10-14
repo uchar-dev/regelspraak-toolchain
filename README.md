@@ -228,7 +228,12 @@ and the command that deletes the cluster. Both targets need Docker and run on th
 - **The uitleg** explains characteristic-attribution rules, not defaults groups: a characteristic a defaults group
   decides gets no sentence.
 - **The playground trace** names per fired rule the labels it bound and how often, but no value: uchar's report
-  carries none.
+  carries none. The values stand in the scenario's `fixpunt`, read from the case's own session.
+- **The sentence of an expectation.** uchar's scenario resolver gives the line an expectation begins on
+  (`ResolvedScenario.Verwachting.line`) and no end; the playground's `regeltekst` is that line, which is the whole
+  expectation only where one bullet stands on one line. A timeline expectation of several bullets is one entry at
+  its first bullet. The name of the parameter set a scenario chose is not in the resolved scenario either; its
+  values are, each with its line.
 - **Vocabulary names in the Mermaid graph.** The playground's `graaf` and `bin/regelspraak graaf` are uchar's
   rendering and stay canonical; the playground's `graafJson` carries the chosen vocabulary.
 

@@ -167,9 +167,16 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   the exec-model verdict (`uitvoerbaar` with the `dekking`, or uchar's `weigering`), the DRL of the DRL-text branch
   as a view (not the verdict), uchar's rule graph of the document its loader reads back, as Mermaid (`graaf`) and
   as `graafJson`
-  (`{nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}`), and per scenario uchar's report with its `trace`
-  and `uitleg`. `?vocabulaire=<naam>` names `graafJson`, the trace, the per-scenario coverage and the uitleg in a
-  vocabulary of the source (the Mermaid graph, the IR and the verdict stay uchar's); an unknown one is a 400.
+  (`{nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}`), the `vocabulaires` of the source (the declared
+  ones, the chosen one, and per declaration its designation in each), and per scenario uchar's report with its
+  `trace` and `uitleg`. Beside the report stand the source line of the scenario and of each expectation (`regel`,
+  `regeltekst`: uchar gives the line an expectation begins on), the `situatie` uchar's scenario resolver makes, and
+  the `fixpunt` of the case's own session as uchar reads it (`DroolsBackend.lees`): per object every value and
+  characteristic with its origin, the made objects, the links, the evaluation faults as data and the
+  inconsistencies, each list sorted, or `fixpuntFout` with the reason there is none. `?vocabulaire=<naam>` names
+  `graafJson`, the trace, the per-scenario coverage, the uitleg, the situation and the fixpoint in a vocabulary of
+  the source, the canonical name beside a name that differs (the Mermaid graph, the IR and the verdict stay
+  uchar's); an unknown one is a 400.
 
 **peildatum-contract (multi-vintage deploys).** When the descriptor names a parameterset sidecar whose values
 carry more than one vintage, the service selects each parameter's vintage against ONE date authority: the request
