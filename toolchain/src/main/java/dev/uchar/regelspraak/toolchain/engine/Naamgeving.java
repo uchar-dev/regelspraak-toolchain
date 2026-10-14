@@ -88,9 +88,20 @@ public final class Naamgeving {
         return vocabulaire == null ? b.naam() : model.benaming(vocabulaire, b).orElse(b.naam());
     }
 
+    /** The designation of declaration {@code b} in the chosen vocabulary, or null where it has none there and in the
+     *  canonical choice: what tells a designation from a canonical name that {@link #naam} gives in its place. */
+    public String benaming(Benoembaar b) {
+        return vocabulaire == null ? null : model.benaming(vocabulaire, b).orElse(null);
+    }
+
     public String objecttype(String naam) { return benoem(Benoembaar.objecttype(naam), naam); }
 
     public String parameter(String naam) { return benoem(Benoembaar.parameter(naam), naam); }
+
+    public String feittype(String naam) { return benoem(Benoembaar.feittype(naam), naam); }
+
+    /** Role {@code rol} of fact type {@code feittype}, both as the model declares them. */
+    public String rol(String feittype, String rol) { return benoem(Benoembaar.rol(feittype, rol), rol); }
 
     /** The role written {@code geschreven} (its name, declared plural or best-effort plural) that {@code onderwerp}
      *  reaches: the far role of a fact type {@code onderwerp} takes part in. When the written name names no such role,

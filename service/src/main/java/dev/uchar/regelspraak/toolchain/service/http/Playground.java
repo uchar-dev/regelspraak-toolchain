@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.emit.CaseEmitter;
 import dev.uchar.regelspraak.engine.ScenarioResultaat;
 import dev.uchar.regelspraak.engine.ScenarioResultaat.DekkingRegel;
 import dev.uchar.regelspraak.engine.ScenarioResultaat.VerwachtingResultaat;
@@ -14,11 +15,13 @@ import dev.uchar.regelspraak.toolchain.engine.ScenarioRunner;
 import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
 import dev.uchar.regelspraak.graaf.ProducentConsument;
 import dev.uchar.regelspraak.graaf.RegelGraaf;
+import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Benoembaar;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Severity;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Vocabulaire;
 import dev.uchar.regelspraak.parser.RegelSpraak;
 import dev.uchar.regelspraak.parser.RegelSpraakLexer;
 import dev.uchar.regelspraak.resolver.Resolver;
@@ -62,15 +65,21 @@ import java.util.Map;
  *       uchar's gate 15 holds equal to the source route), as Mermaid source and as
  *       {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, so a workbench can take a rule's dataflow
  *       neighbourhood without parsing Mermaid;</li>
+ *   <li><b>vocabulaires</b> — the vocabularies the source declares, the chosen one, and per declaration its
+ *       designation in each ({@link #vocabulaires});</li>
  *   <li><b>scenario</b> — only when the source contains a {@code Scenario} block: per scenario uchar's report
  *       (status, per expectation verwacht/werkelijk, the coverage), its {@code trace} (per fired rule the labels it
- *       bound and how often) and its {@code uitleg} ({@link ScenarioRunner#runMetUitleg}), or {@code uitlegFout}.</li>
+ *       bound and how often) and its {@code uitleg} ({@link ScenarioRunner#runMetUitleg}), or {@code uitlegFout};
+ *       beside it the source line of the scenario and of each expectation, the {@code situatie} uchar's scenario
+ *       resolver gives, and the {@code fixpunt} of the case's own session, or {@code fixpuntFout}
+ *       ({@link ScenarioGegevens}).</li>
  * </ol>
  *
  * <p><b>Vocabulary.</b> {@link #analyseer(String, String)} names the declarations in {@code graafJson}, the trace, the
- * per-scenario coverage and the uitleg in a vocabulary the source declares ({@link Naamgeving}); the parse and resolver
- * output, the IR, the verdict, the DRL and the Mermaid graph are uchar's and stay as uchar writes them. A vocabulary the
- * source does not declare is a {@link Naamgeving.Vocabulairefout}, which the HTTP adapter answers with 400.
+ * per-scenario coverage, the uitleg, the situation and the fixpoint in a vocabulary the source declares
+ * ({@link Naamgeving}); the parse and resolver output, the IR, the verdict, the DRL and the Mermaid graph are uchar's
+ * and stay as uchar writes them. A vocabulary the source does not declare is a {@link Naamgeving.Vocabulairefout},
+ * which the HTTP adapter answers with 400.
  *
  * <p><b>Scenario-aware front-end.</b> {@code Situatie}/{@code Scenario} blocks are a documented extension of uchar's
  * frontend (its {@code grammar/DIVERGENCES.md}) reachable only via the scenario entry rule, NOT part of the
@@ -133,6 +142,7 @@ public final class Playground {
         }
         if (!model.isOk()) return root;
         Naamgeving naamgeving = Naamgeving.van(model, vocabulaire);
+        root.set("vocabulaires", vocabulaires(model, naamgeving));
 
         // 3. IR and the verdict of the branch that fires
         com.fasterxml.jackson.databind.JsonNode ir = null;
@@ -194,17 +204,34 @@ public final class Playground {
         // 6. SCENARIO — only when the source carries a Scenario block
         if (scenario) {
             ArrayNode arr = root.putObject("scenario").putArray("resultaten");
-            for (ScenarioRunner.Uitgelegd u : ScenarioRunner.runMetUitleg(bundel, vocabulaire))
-                rendScenario(arr.addObject(), u, naamgeving);
+            List<ResolvedScenario> scenarios = bundel.scenarios();
+            List<ScenarioRunner.Uitgelegd> uitgelegd = ScenarioRunner.runMetUitleg(bundel, vocabulaire);
+            if (uitgelegd.size() != scenarios.size())
+                throw new IllegalStateException("de scenariorunner gaf " + uitgelegd.size() + " rapport(en) voor "
+                        + scenarios.size() + " scenario('s)");
+            List<String> bronregels = ScenarioGegevens.regels(bron);
+            for (int i = 0; i < scenarios.size(); i++)
+                rendScenario(arr.addObject(), uitgelegd.get(i), scenarios.get(i), bronregels, model, naamgeving);
         }
         return root;
     }
 
-    private static void rendScenario(ObjectNode n, ScenarioRunner.Uitgelegd u, Naamgeving naamgeving) {
+    private static void rendScenario(ObjectNode n, ScenarioRunner.Uitgelegd u, ResolvedScenario s,
+                                     List<String> bronregels, RegelSpraakModel model, Naamgeving naamgeving) {
         ScenarioResultaat r = u.resultaat();
+        if (!r.naam().equals(s.naam()))
+            throw new IllegalStateException("het rapport '" + r.naam() + "' staat op de plaats van het scenario '"
+                    + s.naam() + "'");
+        // an expectation of the report is found by its position in the case, which the lowering writes one per
+        // expectation of the resolved scenario, in its order
+        int inCase = verwachtingenInCase(s);
+        if (inCase != s.verwachtingen().size())
+            throw new IllegalStateException("de case van het scenario '" + s.naam() + "' telt " + inCase
+                    + " verwachting(en), het scenario " + s.verwachtingen().size());
         n.put("naam", r.naam());
         n.put("status", r.status().name());
         if (r.diagnose() != null && !r.diagnose().isEmpty()) n.put("diagnose", r.diagnose());
+        n.put("regel", s.line());
         ArrayNode verwachtingen = n.putArray("verwachtingen");
         for (VerwachtingResultaat v : r.verwachtingen()) {
             ObjectNode vn = verwachtingen.addObject();
@@ -212,6 +239,7 @@ public final class Playground {
             vn.put("verwacht", v.verwacht());
             vn.put("werkelijk", v.werkelijk());
             vn.put("ok", v.ok());
+            ScenarioGegevens.plaats(vn, v, s, bronregels);
         }
         ArrayNode dekking = n.putArray("dekking");
         for (DekkingRegel d : r.dekking()) {
@@ -231,6 +259,61 @@ public final class Playground {
         ArrayNode uitleg = n.putArray("uitleg");
         for (String z : u.uitleg()) uitleg.add(z);
         if (u.uitlegFout() != null) n.put("uitlegFout", u.uitlegFout());
+        n.set("situatie", ScenarioGegevens.situatie(s, model, naamgeving));
+        if (u.sessie() != null) {
+            try {
+                n.set("fixpunt", ScenarioGegevens.fixpunt(u.sessie(), s, model, naamgeving));
+            } catch (ScenarioGegevens.OnweergeefbareWaarde o) {
+                n.put("fixpuntFout", o.getMessage());
+            }
+        } else if (u.sessieFout() != null) {
+            n.put("fixpuntFout", u.sessieFout());
+        }
+    }
+
+    /** The number of expectations in the case uchar's lowering writes for {@code s}. */
+    private static int verwachtingenInCase(ResolvedScenario s) {
+        try {
+            return JSON.readTree(CaseEmitter.emit(s)).get("expected").size();
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException("de lowering schreef voor het scenario '" + s.naam()
+                    + "' geen leesbare case: " + e.getOriginalMessage(), e);
+        }
+    }
+
+    /** The vocabularies of {@code model}: {@code gekozen}, the choice of {@code naamgeving}
+     *  ({@link Naamgeving#CANONIEK} or a vocabulary), {@code gedeclareerd}, each declared vocabulary with whether it
+     *  is the default one and its language, and {@code elementen}, every declaration a vocabulary can name in the
+     *  model's order ({@link RegelSpraakModel#benoembaar}) with its kind, its owner and canonical name as declared, and
+     *  its {@code benamingen}: per declared vocabulary its designation there, or null where it has none and goes by
+     *  its canonical name. Without a declared vocabulary there is nothing to compare, and {@code elementen} is
+     *  empty. */
+    static ObjectNode vocabulaires(RegelSpraakModel model, Naamgeving naamgeving) {
+        ObjectNode n = NF.objectNode();
+        n.put("gekozen", naamgeving.keuze());
+        ArrayNode gedeclareerd = n.putArray("gedeclareerd");
+        List<Naamgeving> per = new ArrayList<>();
+        for (Vocabulaire v : model.vocabulaires) {
+            ObjectNode vn = gedeclareerd.addObject();
+            vn.put("naam", v.naam());
+            vn.put("standaard", v.standaard());
+            if (v.taal() == null) vn.putNull("taal"); else vn.put("taal", v.taal());
+            per.add(Naamgeving.van(model, v.naam()));
+        }
+        ArrayNode elementen = n.putArray("elementen");
+        if (per.isEmpty()) return n;
+        for (Benoembaar b : model.benoembaar()) {
+            ObjectNode en = elementen.addObject();
+            en.put("soort", b.soort().name());
+            if (b.eigenaar() == null) en.putNull("eigenaar"); else en.put("eigenaar", b.eigenaar());
+            en.put("canoniek", b.naam());
+            ObjectNode benamingen = en.putObject("benamingen");
+            for (Naamgeving g : per) {
+                String t = g.benaming(b);
+                if (t == null) benamingen.putNull(g.keuze()); else benamingen.put(g.keuze(), t);
+            }
+        }
+        return n;
     }
 
     /** The rule graph as {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, each label in the names of

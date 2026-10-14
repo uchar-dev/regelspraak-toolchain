@@ -42,7 +42,8 @@ public final class Evaluatiefout extends RuntimeException {
         return new Evaluatiefout(uit, fouten.get(0).fout());
     }
 
-    private static Soort soort(RuntimeException f) {
+    /** The kind of uchar's fault {@code f}. */
+    public static Soort soort(RuntimeException f) {
         return switch (f) {
             case Breuk.DelingDoorNul d -> Soort.DELING_DOOR_NUL;
             case Rekenfout r -> Soort.REKENFOUT;
