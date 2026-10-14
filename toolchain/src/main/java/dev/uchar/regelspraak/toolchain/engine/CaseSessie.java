@@ -10,6 +10,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.transpiler.kern.Namen;
+import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
 
 import org.kie.api.event.rule.AfterMatchFiredEvent;
 import org.kie.api.event.rule.DefaultAgendaEventListener;
@@ -26,11 +27,12 @@ import java.util.Map;
 /**
  * One case of the {@code uchar-case-v0} format played in a session of its own on a build uchar made
  * ({@link DroolsBackend.Build}): the input beans the case describes, its parameters and evaluation date as globals,
- * put in, fired to the fixpoint and written back through uchar's entry ({@link DroolsBackend#voegIn},
- * {@link DroolsBackend#vuur}, {@link DroolsBackend#zetAfgeleideWaarden}), with a listener that records every firing
- * under the form of the document its rule belongs to, with the labels of the input instances its match bound. It
- * exists for what uchar's replay ({@code CaseRunner.rapport}) does not return: the beans with their derived values,
- * from which the {@link Verbalisator} explains an outcome.
+ * put in, fired to the fixpoint, read and written back through uchar's entry ({@link DroolsBackend#voegIn},
+ * {@link DroolsBackend#vuur}, {@link DroolsBackend#lees}, {@link DroolsBackend#zetAfgeleideWaarden}), with a listener
+ * that records every firing under the form of the document its rule belongs to, with the labels of the input instances
+ * its match bound. It exists for what uchar's replay ({@code CaseRunner.rapport}) does not return: the beans with their
+ * derived values, from which the {@link Verbalisator} explains an outcome, and uchar's {@link Fixpunt}, what stands at
+ * the fixpoint with or without an expectation on it.
  *
  * <p>The beans are made as uchar's replay makes them, whose step of setting them is not public API: the beans of the
  * generated classes, the attributes and characteristics through their setters, the roles through the role the case
@@ -51,11 +53,13 @@ public final class CaseSessie {
         NietSpeelbaar(String reden) { super(reden); }
     }
 
-    /** The input beans by label with the derived values written back, their object types, the globals the session
-     *  carried (parameters by their camelCase name, {@code rekendatum}), and the firings in the order they first
-     *  fired. */
+    /** The input beans by label, their object types, the globals the session carried (parameters by their camelCase
+     *  name, {@code rekendatum}), the firings in the order they first fired, and uchar's reading of the fixpoint, read
+     *  before the write-back with the labels of the input beans. The beans carry the derived values written back,
+     *  unless an evaluation fault stands at the fixpoint ({@code fixpunt.fouten()} not empty): the write-back would
+     *  throw it, so the beans then hold the input alone and the fault is in the fixpoint as data. */
     public record Uitkomst(Map<String, Object> beans, Map<String, Objecttype> typePerLabel,
-                           Map<String, Object> globals, List<ScenarioResultaat.Vuring> vuringen) {}
+                           Map<String, Object> globals, List<ScenarioResultaat.Vuring> vuringen, Fixpunt fixpunt) {}
 
     /** Play case {@code c} on {@code build}, a build of the exec-model branch, whose
      *  {@link DroolsBackend.Build#model()} names the types. The branch is required because the caller compares the
@@ -114,12 +118,15 @@ public final class CaseSessie {
                 DroolsBackend.voegIn(build, sessie, invoer());
                 DroolsBackend.Vuring vuring = DroolsBackend.vuur(build, sessie);
                 if (vuring.geenFixpunt() != null) throw new NietSpeelbaar(vuring.geenFixpunt());
-                DroolsBackend.zetAfgeleideWaarden(build, sessie, this::labelVan);
+                // read before the write-back, which throws a standing evaluation fault where the reading gives it as
+                // data, and writes nothing after a throw (uchar's entry, as the service's Uitvoerder reads it)
+                Fixpunt fixpunt = DroolsBackend.lees(build, sessie, this::labelVan);
+                if (fixpunt.fouten().isEmpty()) DroolsBackend.zetAfgeleideWaarden(build, sessie, this::labelVan);
                 List<ScenarioResultaat.Vuring> vuringen = new ArrayList<>();
                 for (Map.Entry<String, Integer> e : telling.entrySet())
                     vuringen.add(new ScenarioResultaat.Vuring(e.getKey(), List.copyOf(labels.get(e.getKey())), e.getValue()));
                 return new Uitkomst(new LinkedHashMap<>(labelNaarBean), new LinkedHashMap<>(labelType),
-                        new LinkedHashMap<>(globals), vuringen);
+                        new LinkedHashMap<>(globals), vuringen, fixpunt);
             } finally {
                 sessie.dispose();
                 Thread.currentThread().setContextClassLoader(vorige);
@@ -261,7 +268,7 @@ public final class CaseSessie {
     }
 
     /** A getter read, the boolean {@code is…} form included. */
-    static Object lees(Object bean, String getter) {
+    public static Object lees(Object bean, String getter) {
         for (String m : new String[]{ getter, "is" + getter.substring(3) }) {
             try { return bean.getClass().getMethod(m).invoke(bean); }
             catch (NoSuchMethodException volgende) { /* the other spelling */ }

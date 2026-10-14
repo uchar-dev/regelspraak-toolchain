@@ -38,7 +38,10 @@ import java.util.stream.Stream;
  * verdicts and the firings but not the fired facts (an explanation is presentation, its record says), so each played
  * scenario is played once more, in a session of its own on the same build ({@link CaseSessie}), and the
  * {@link Verbalisator} explains that session's facts. The explanation is given only when that session fired what
- * uchar's replay reported and reads the values uchar read; otherwise it is withheld with the difference.
+ * uchar's replay reported and reads the values uchar read; otherwise it is withheld with the difference. The session
+ * itself, with uchar's reading of its fixpoint, is given under the same condition. A case uchar's replay did not play
+ * out has no explanation; its session is played all the same and given when evaluation faults stand at its fixpoint,
+ * the faults the write-back of the replay throws, so that they are there as data.
  */
 public final class ScenarioRunner {
     private ScenarioRunner() {}
@@ -47,8 +50,12 @@ public final class ScenarioRunner {
 
     /** A scenario's report with the explanation of its outcome: {@code uitleg} one sentence per characteristic an
      *  attribution rule decided, and {@code uitlegFout} why there is none when a played scenario has none (null
-     *  otherwise; a MARKER scenario has no explanation and no reason beside its own diagnose). */
-    public record Uitgelegd(ScenarioResultaat resultaat, List<String> uitleg, String uitlegFout) {}
+     *  otherwise; a MARKER scenario has no explanation and no reason beside its own diagnose). {@code sessie} is the
+     *  case played in a session of its own, with uchar's reading of its fixpoint ({@link CaseSessie.Uitkomst#fixpunt}),
+     *  when that session follows uchar's replay, and {@code sessieFout} why there is none otherwise (both null for a
+     *  MARKER scenario and without an explanation asked). */
+    public record Uitgelegd(ScenarioResultaat resultaat, List<String> uitleg, String uitlegFout,
+                            CaseSessie.Uitkomst sessie, String sessieFout) {}
 
     /** Resolve {@code bron} under the scenario frontend and run every scenario in it. A resolve error throws
      *  {@link ResolveFout} carrying the diagnostics (the CLI turns that into exit 1). */
@@ -132,7 +139,7 @@ public final class ScenarioRunner {
                 ScenarioResultaat benoemd = new ScenarioResultaat(scenarios.get(i).naam(), r.status(),
                         r.verwachtingen(), r.trace(), r.dekking(), r.diagnose());
                 uit.add(metUitleg ? uitleg(build, benoemd, JSON.readTree(Files.readString(cases.get(i))), vocabulaire)
-                        : new Uitgelegd(benoemd, List.of(), null));
+                        : new Uitgelegd(benoemd, List.of(), null, null, null));
             }
             return uit;
         } catch (IOException e) {
@@ -147,29 +154,63 @@ public final class ScenarioRunner {
         List<Uitgelegd> uit = new ArrayList<>();
         for (ResolvedScenario s : scenarios)
             uit.add(new Uitgelegd(new ScenarioResultaat(s.naam(), ScenarioResultaat.Status.MARKER, List.of(),
-                    new ScenarioResultaat.Trace(List.of()), List.of(), reden), List.of(), null));
+                    new ScenarioResultaat.Trace(List.of()), List.of(), reden), List.of(), null, null, null));
         return uit;
     }
 
     /** The explanation of report {@code r}, whose case is {@code c}: the case played in a session of its own on
      *  {@code build}, checked against what uchar's replay reported, then verbalised in {@code vocabulaire}. */
     private static Uitgelegd uitleg(DroolsBackend.Build build, ScenarioResultaat r, JsonNode c, String vocabulaire) {
-        if (r.status() == ScenarioResultaat.Status.MARKER) return new Uitgelegd(r, List.of(), null);
+        if (r.status() == ScenarioResultaat.Status.MARKER) return new Uitgelegd(r, List.of(), null, null, null);
         if (r.verwachtingen().isEmpty() && r.status() == ScenarioResultaat.Status.FAIL)
-            return new Uitgelegd(r, List.of(), "uchars replay speelde de case niet uit: " + r.diagnose());
+            return nietUitgespeeld(build, r, c);
         CaseSessie.Uitkomst sessie;
         try {
             sessie = CaseSessie.speel(build, c);
         } catch (CaseSessie.NietSpeelbaar e) {
-            return new Uitgelegd(r, List.of(), "de uitleg speelt deze case niet: " + e.getMessage());
+            return new Uitgelegd(r, List.of(), "de uitleg speelt deze case niet: " + e.getMessage(), null,
+                    "de eigen sessie speelt deze case niet: " + e.getMessage());
         }
-        if (!sessie.vuringen().equals(r.trace().vuringen()))
-            return new Uitgelegd(r, List.of(), "de sessie van de uitleg vuurde " + sessie.vuringen()
-                    + ", uchars replay " + r.trace().vuringen());
+        // uchar's replay wrote back without a throw, so no fault stood at its fixpoint
+        if (!sessie.fixpunt().fouten().isEmpty()) {
+            String z = "de sessie van de uitleg kwam op een evaluatiefout die uchars replay niet gaf: "
+                    + sessie.fixpunt().fouten().get(0).melding();
+            return new Uitgelegd(r, List.of(), z, null, z);
+        }
+        if (!sessie.vuringen().equals(r.trace().vuringen())) {
+            String z = "de sessie van de uitleg vuurde " + sessie.vuringen() + ", uchars replay "
+                    + r.trace().vuringen();
+            return new Uitgelegd(r, List.of(), z, null, z);
+        }
         String verschil = waardeVerschil(sessie, r, c);
-        if (verschil != null) return new Uitgelegd(r, List.of(), verschil);
+        if (verschil != null) return new Uitgelegd(r, List.of(), verschil, null, verschil);
         return new Uitgelegd(r, new Verbalisator(build.model(), sessie.globals(),
-                Naamgeving.van(build.model(), vocabulaire)).verbaliseer(sessie.beans(), sessie.typePerLabel()), null);
+                Naamgeving.van(build.model(), vocabulaire)).verbaliseer(sessie.beans(), sessie.typePerLabel()), null,
+                sessie, null);
+    }
+
+    /** A case uchar's replay did not play out, its play raised an exception: no explanation, and the session played
+     *  for its fixpoint. That session is given when evaluation faults stand at the fixpoint, which the write-back of
+     *  the replay throws; a session that reaches its fixpoint without one did not run as the replay ran. The session
+     *  raises what the replay raised where the replay raised it before the write-back, and that is its reason. */
+    private static Uitgelegd nietUitgespeeld(DroolsBackend.Build build, ScenarioResultaat r, JsonNode c) {
+        String geenUitleg = "uchars replay speelde de case niet uit: " + r.diagnose();
+        CaseSessie.Uitkomst sessie;
+        try {
+            sessie = CaseSessie.speel(build, c);
+        } catch (CaseSessie.NietSpeelbaar e) {
+            return new Uitgelegd(r, List.of(), geenUitleg, null,
+                    "de eigen sessie speelt deze case niet: " + e.getMessage());
+        } catch (RuntimeException e) {
+            // uchar's report names the same failure as this case's FAIL; the session reports it as well
+            return new Uitgelegd(r, List.of(), geenUitleg, null,
+                    "de eigen sessie speelde de case evenmin uit: " + e.getClass().getSimpleName() + ": "
+                            + e.getMessage());
+        }
+        if (sessie.fixpunt().fouten().isEmpty())
+            return new Uitgelegd(r, List.of(), geenUitleg, null, "de eigen sessie kwam zonder evaluatiefout op haar"
+                    + " fixpunt, waar uchars replay de case niet uitspeelde");
+        return new Uitgelegd(r, List.of(), geenUitleg, sessie, null);
     }
 
     /** The first attribute or characteristic expectation whose value in the explanation's session differs from the

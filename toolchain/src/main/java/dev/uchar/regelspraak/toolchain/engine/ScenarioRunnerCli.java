@@ -125,7 +125,8 @@ public final class ScenarioRunnerCli {
                 }
             }
             resultaten = uitleg ? ScenarioRunner.runMetUitleg(bundel, vocabulaire)
-                    : ScenarioRunner.run(bundel).stream().map(r -> new ScenarioRunner.Uitgelegd(r, List.of(), null)).toList();
+                    : ScenarioRunner.run(bundel).stream()
+                            .map(r -> new ScenarioRunner.Uitgelegd(r, List.of(), null, null, null)).toList();
         } catch (ScenarioRunner.ResolveFout f) {
             System.err.println("de bron resolvet niet — " + f.diagnostiek().size() + " diagnose(s):");
             for (String d : f.diagnostiek()) System.err.println("  " + d);
