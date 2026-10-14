@@ -121,6 +121,7 @@ public final class RegelSpraakCli {
      *  look like success), else 0.
      *  With --drl, print the DRL text of uchar's DRL-text branch instead of the summary, or exit 3 with uchar's
      *  refusal; that branch builds no document with a construct it does not lower, so there is no DRL with markers.
+     *  A DRL text the Drools compiler rejects is a fault of uchar's rendering: exit 1 with uchar's sentence.
      *  With --facts &lt;outdir&gt;, generate the implied fact-model beans (§13.3) into &lt;outdir&gt;
      *  and exit 0. --facts is model-level: it builds no KieBase and does NOT apply the exit-3 marker discipline
      *  (that discipline is about RULE lowering, orthogonal to the fact-model the beans encode).
@@ -157,6 +158,11 @@ public final class RegelSpraakCli {
             } catch (UcharBouw.NietGedragen e) {
                 System.err.println("  niet uitvoerbaar in uchar (exit 3): " + e.getMessage());
                 System.exit(3);
+            } catch (IllegalStateException e) {
+                // uchar's build of this branch throws this for a DRL text the Drools compiler rejects: a fault of its
+                // rendering, not a form the branch does not carry, so no exit 3; uchar's sentence carries Drools' error
+                System.err.println("  fout van uchar (exit 1): " + e.getMessage());
+                System.exit(1);
             }
             System.exit(0);
         }

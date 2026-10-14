@@ -55,8 +55,9 @@ import java.util.Map;
  *       refusal;</li>
  *   <li><b>uitvoerbaar</b> — uchar's verdict on the exec-model branch, the branch that fires: {@code true} with the
  *       {@code dekking} per form, or {@code false} with uchar's {@code weigering};</li>
- *   <li><b>drl</b> — the DRL text of uchar's DRL-text branch, a view and no verdict (that branch is narrower than
- *       the one that fires); {@code drlFout} carries its refusal;</li>
+ *   <li><b>drl</b> — the DRL text of uchar's DRL-text branch, a view and no verdict (that branch renders the
+ *       analysis the exec-model branch fires as DRL text); {@code drlFout} carries its refusal, or uchar's sentence
+ *       for a DRL text the Drools compiler rejects;</li>
  *   <li><b>graaf</b> and <b>graafJson</b> — uchar's rule graph of the document its loader reads back (the route
  *       uchar's gate 15 holds equal to the source route), as Mermaid source and as
  *       {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, so a workbench can take a rule's dataflow
@@ -76,8 +77,9 @@ import java.util.Map;
  * production {@code regelSpraakDocument}. So when a source carries such a block the analyzer parses + resolves it
  * through the scenario front-end ({@link ScenarioResolver}) and runs the scenarios off that same resolved bundle.
  *
- * <p>This class owns NO web plumbing and NO persistence. A refusal of uchar is part of the answer; any other failure
- * is not caught here, so the HTTP adapter ({@link DienstHttp}) answers it with 500 and logs it.
+ * <p>This class owns NO web plumbing and NO persistence. A refusal of uchar, and a DRL text of uchar that does not
+ * compile, is part of the answer; any other failure is not caught here, so the HTTP adapter ({@link DienstHttp})
+ * answers it with 500 and logs it.
  */
 public final class Playground {
 
@@ -157,10 +159,12 @@ public final class Playground {
             root.put("weigering", e.getMessage());
         }
 
-        // 4. DRL — a view of the DRL-text branch, never the verdict
+        // 4. DRL — a view of the DRL-text branch, never the verdict. uchar's build of that branch throws an
+        //    IllegalStateException for a DRL text the Drools compiler rejects, a fault of its rendering; the view
+        //    shows uchar's sentence for it as it shows a refusal
         try {
             root.put("drl", UcharBouw.bouw(model, DroolsBackend.Branch.DRL_TEXT).drl());
-        } catch (UcharBouw.NietGedragen e) {
+        } catch (UcharBouw.NietGedragen | IllegalStateException e) {
             root.put("drl", "");
             root.put("drlFout", e.getMessage());
         }
