@@ -203,7 +203,40 @@ die zij lezen houden en geen volledige sleutelset pinnen. Er zijn twee nieuwe te
 - Een waarde in een vorm die geen bean van uchars generator heeft, geeft `fixpuntFout` (`OnweergeefbareWaarde`) in
   plaats van een geraden weergave.
 
+### Na de bekijking in de browser (alleen `playground.html`, de JSON is gelijk)
+
+- **Het eigen type bij een label.** Een rol in de situatie toonde het doeltype dat zij declareert. Daardoor stond R1
+  in s04 onder drie typen: `RechtOpUitkeringWwBijOntslag` (recht van U1), `Recht op uitkering WW` (recht van D1) en
+  `RechtOpUitkering` (recht van G1, P1). Bij elk label staat nu het objecttype van het object zelf, uit
+  `situatie.objecten`. Het gedeclareerde doeltype staat in de tooltip, alleen waar het verschilt. In het fixpunt staat
+  bij de objecten van koppelingen, bij het onderwerp van gemaakte objecten, fouten en inconsistenties ook het eigen
+  type, uit `fixpunt.objecten`.
+- **Van verwachting naar fixpunt.** Een klik op een verwachtingsrij zet het filter op het label van die verwachting,
+  klapt het fixpunt open en schuift het in beeld. Het label komt uit uchars korte vorm in `bron` (`CaseRunner.bron`).
+  Bij `attributeValue`, `attributeEmpty`, `attributeTimeline`, `characteristicPresent` en `characteristicAbsent` is
+  het het tweede woord, want een label is één woord (`UPPER_ID`). Bij een inconsistentie op een object is het het
+  woord na ` @ ` (`inconsistent (<regel> @ <LABEL>)`). `consistent` en een inconsistentie zonder label (`inconsistent`,
+  `inconsistent (<regel>)`) krijgen geen label, dus geen klik. Het filter vergelijkt een label nu heel, zodat P1 niet
+  ook P10 toont; een naam past nog op een deel.
+- **Getoetst met headless Chrome (puppeteer, buiten de repository).**
+  - De functie gaf voor alle negen vormen het verwachte label of null.
+  - Op s04-v02 gaf een klik filter P1 en een geopend fixpunt, met in situatie en fixpunt alleen P1.
+  - R1 staat bij elke rol als `RechtOpUitkeringWwBijOntslag`, met in de tooltip "gedeclareerd doeltype: Recht op
+    uitkering WW" of "…: RechtOpUitkering".
+  - Op uchars golden `jutterswet-opgave-bedrag` met zijn eigen scenario's kregen de vijf attribuut- en
+    kenmerkregels V, `- de gegevens zijn consistent` geen label, en de inconsistentie "voor V" kreeg V.
+  - Er waren geen scriptfouten.
+- `make gates` groen op `66403d0` (18:06–18:14, 8 min 30 s):
+  - pin;
+  - reactor 1574/129/255/47;
+  - tweelingen 3 met 18 cases, de vocabulairetweeling 2 cases in 34 verzoeken, 4 getuigenissen;
+  - replay 225 met 599 cases;
+  - manifest 29 ok, 3 uitgesloten, 0 mismatch;
+  - image;
+  - kind-smoke H2, H3 en H4 PASS (1 min 19 s).
+
 ### Commits
 
 `e2ef852` kaart · `0cf1de3` claim · `721d4f7` de sessie leest het fixpunt · `71dbff6` de JSON van de playground ·
-`9fe674f` de pagina · `1814191` tekst · dit Result met de verplaatsing naar `done/`.
+`9fe674f` de pagina · `1814191` tekst · `18d732a` Result en naar `done/` · `66403d0` eigen type bij een label en klik
+naar het fixpunt · deze aanvulling.
