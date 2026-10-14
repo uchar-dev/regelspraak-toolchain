@@ -89,7 +89,13 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # vorm van elk), en jutterswet-budgetgrens-op, jutterswet-filterwacht en jutterswet-penningbesluit (nieuw in uchars
 # corpus). jutterswet-klipwacht komt ook in de set, maar speelt niet door de dienst (een tijdlijn als invoerwaarde,
 # hieronder); de 27 andere uitsluitingen zijn ongewijzigd.
-EXPECTED_REPLAY_PLAYED=222
+# 2026-10-14, uchar a63ef307 (kaart pin-naar-de-drl-teksttak-op-truth-maintenance): 225 — gate 12 heeft één lijst
+# niet-spelers en één pin EXPECTED_PLAYED voor beide takken (de DRL-pin en de DRL-lijst vervallen), en de set groeit
+# van 250 naar 255 met vijf goldens die uchars kaart drl-teksttak-op-truth-maintenance schreef. Drie nieuwe spelers:
+# jutterswet-verdeling-dubbelbezet, jutterswet-uniciteit-drie-bronnen en jutterswet-uitsluiting-gedateerd.
+# jutterswet-aantalfilter-gehele-jaar en jutterswet-aantalfilter-gehele-jaar-creatieguard komen ook in de set, maar
+# spelen niet door de dienst (een kenmerk met perioden, hieronder); de 28 andere uitsluitingen zijn ongewijzigd.
+EXPECTED_REPLAY_PLAYED=225
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
@@ -101,6 +107,8 @@ REPLAY_UITGESLOTEN=(
   "anchor/jutterswet-dubbelwacht|tijdlijn als invoerwaarde"
   "anchor/jutterswet-nummerregister|tijdlijn als invoerwaarde"
   "anchor/jutterswet-strandregister|tijdlijn als invoerwaarde"
+  "jutterswet-aantalfilter-gehele-jaar|kenmerk met perioden"
+  "jutterswet-aantalfilter-gehele-jaar-creatieguard|kenmerk met perioden"
   "jutterswet-bakenmeester|tijdlijn als invoerwaarde"
   "jutterswet-dagentelling-rgs|kenmerk met perioden"
   "jutterswet-erfwacht|tijdlijn als invoerwaarde"
