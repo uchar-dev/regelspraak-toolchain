@@ -97,10 +97,10 @@ pinned expectation, compared as uchar's replay compares it (`scripts/dienst_repl
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
 - `check-dienst-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
-  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (250). Each golden is
+  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (255). Each golden is
   served from its `bron.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
-  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 222); every golden that does not play is listed by name with
-  its reason (28, each a timeline form the request cannot express); a deviation always fails, and the list fails when
+  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 225); every golden that does not play is listed by name with
+  its reason (30, each a timeline form the request cannot express); a deviation always fails, and the list fails when
   it goes stale in either direction. About 50 seconds with four services at a time (`REPLAY_WERKERS`).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
   scenario resolver refuses are listed in `scripts/toka-manifest-uitsluitingen.txt` with a fragment of that refusal,
@@ -120,7 +120,7 @@ to the directory the command is given in.
 | `scenario [--trace] [--uitleg] [--vocabulaire <naam>] <bron.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL, 3 on a MARKER; `--vocabulaire` names the rules of the trace and the declarations of the uitleg in a vocabulary of the model |
 | `scenario --manifest <manifest> [--uitsluitingen <lijst>]` | every line `<verwachte-exit> <scenario.rgs> <companion.rgs...>` of a manifest, in one JVM; exit 0 when no line mismatches |
 | `serve <descriptor.dienst.json> <bron.rgs...> \| <document.json> [--allow-markers] [--host H] [--poort N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes |
-| `drl <bron.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal |
+| `drl <bron.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal; exit 1 with uchar's sentence when that text does not compile (a fault of uchar's rendering) |
 | `graaf [--mmd] <uit> <bron.rgs...>` | uchar's rule graph as an HTML page, or as Mermaid text |
 | `facts <uitmap> <bron.rgs...>` | the fact beans uchar's generator writes for the model |
 
@@ -223,7 +223,7 @@ and the command that deletes the cluster. Both targets need Docker and run on th
   counterpart.
 - **Timelines in a service request.** The request has no timeline value, no characteristic with periods, and no
   scalar on a time-dependent attribute (uchar's replay places one in the bucket of the evaluation date); the service
-  refuses them as `NIET_ONDERSTEUND`. 28 of the goldens gate 12 plays need one; the replay gate lists them.
+  refuses them as `NIET_ONDERSTEUND`. 30 of the goldens gate 12 plays need one; the replay gate lists them.
 - **A `uchar-ir-v1` document is served whole**: a scope that drops forms needs the model the document came from.
 - **The uitleg** explains characteristic-attribution rules, not defaults groups: a characteristic a defaults group
   decides gets no sentence.

@@ -187,11 +187,11 @@ function renderDekking() {
   return h + "</table>";
 }
 
-// The DRL-text branch is shown, not judged: it is narrower than the branch that fires (see the Dekking tab).
+// The DRL-text branch is shown, not judged: the verdict is that of the branch that fires (see the Dekking tab).
 function renderDrl() {
   if (laatste.drl == null)
     return '<span class="pill warn">GEEN DRL</span><div class="diag muted">Er is pas DRL als het model schoon parset en resolvet.</div>';
-  if (laatste.drlFout) return '<span class="pill warn">GEEN DRL-WEERGAVE</span><div class="diag muted">De DRL-tak draagt dit model niet; het oordeel staat onder Dekking.</div><pre>' + esc(laatste.drlFout) + "</pre>";
+  if (laatste.drlFout) return '<span class="pill warn">GEEN DRL-WEERGAVE</span><div class="diag muted">uchar geeft geen DRL-tekst van dit model; de zin van uchar staat hieronder, het oordeel onder Dekking.</div><pre>' + esc(laatste.drlFout) + "</pre>";
   return '<span class="pill ok">DRL</span><pre>' + esc(laatste.drl) + "</pre>";
 }
 
