@@ -33,12 +33,12 @@ public final class UcharBouw {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    /** The backend's sentence for a construct its branch does not lower: {@code DroolsBackend} refuses with
-     *  {@code "transpiler <verdict>: <soort>: <naam> — <reden>"} on the exec-model branch and the same with a
-     *  {@code drl-} prefix on the DRL-text branch. The construct's name is read from it because the refusal carries
-     *  no structured form of it; a change of that sentence in uchar fails the marker tests of this repository. */
+    /** The backend's sentence for a construct its analysis does not lower: {@code DroolsBackend} refuses with
+     *  {@code "transpiler <verdict>: <soort>: <naam> — <reden>"}, on both branches in the same sentence, since both
+     *  render one analysis. The construct's name is read from it because the refusal carries no structured form of
+     *  it; a change of that sentence in uchar fails the marker tests of this repository. */
     private static final Pattern NIET_GELOWERD =
-            Pattern.compile("^(?:drl-)?transpiler (?:MARKER|SKIP): [^:]+: (.*?)(?: — .*)?$", Pattern.DOTALL);
+            Pattern.compile("^transpiler (?:MARKER|SKIP): [^:]+: (.*?)(?: — .*)?$", Pattern.DOTALL);
 
     private UcharBouw() {}
 
