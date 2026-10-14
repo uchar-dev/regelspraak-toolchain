@@ -87,6 +87,8 @@
   .kop { font-size: 14px; font-weight: 600; margin: 4px 0 8px; }
   table.voc td, table.voc th { overflow-wrap: anywhere; }
   table.voc td:first-child { white-space: nowrap; }
+  tr.klikbaar { cursor: pointer; }
+  tr.klikbaar:hover td { background: #eef3f9; }
 </style>
 </head>
 <body>
@@ -290,9 +292,37 @@ function waarde(o) {
   else h = o.waardeCanoniek != null ? naam(o, "waarde") : scalar(o.waarde);
   return h + (o.eenheid ? ' <span class="muted">' + esc(o.eenheid) + "</span>" : "");
 }
+// A name matches the filter in part; a label matches it whole, so that P1 does not show P10 as well.
 function past(...namen) {
   const f = filter.tekst.trim().toLowerCase();
   return !f || namen.some((n) => n != null && String(n).toLowerCase().includes(f));
+}
+function pastLabel(...labels) {
+  const f = filter.tekst.trim().toLowerCase();
+  return !f || labels.some((l) => l != null && String(l).toLowerCase() === f);
+}
+// An object by its label with its own type. A role names the type it declares, which can be a supertype of the
+// object's own (R1 as "Recht op uitkering WW" or "RechtOpUitkering"); that one goes in the tooltip.
+function objectMetType(label, typen, gedeclareerd) {
+  const o = typen[label];
+  if (!o) return esc(label);
+  const titel = [];
+  if (o.objecttypeCanoniek != null) titel.push("canoniek: " + o.objecttypeCanoniek);
+  if (gedeclareerd != null && gedeclareerd !== o.objecttype) titel.push("gedeclareerd doeltype: " + gedeclareerd);
+  return esc(label) + ' <span class="muted' + (titel.length ? ' canon" title="' + esc(titel.join("; ")) : "") + '">'
+       + esc(o.objecttype) + "</span>";
+}
+// The label an expectation is about, from uchar's short form of it (CaseRunner.bron): "<soort> <LABEL> <lid>" for an
+// attribute value, an empty attribute, a timeline and a characteristic present or absent, and
+// "inconsistent (<regel> @ <LABEL>)" for an inconsistency on an object. "consistent" and an inconsistency without an
+// object name none. A label is one word (UPPER_ID).
+const SOORTEN_MET_LABEL = ["attributeValue", "attributeEmpty", "attributeTimeline", "characteristicPresent",
+                           "characteristicAbsent"];
+function labelVanBron(bron) {
+  const m = /^inconsistent \(.* @ (\S+)\)$/.exec(bron);
+  if (m) return m[1];
+  const w = bron.split(" ");
+  return SOORTEN_MET_LABEL.includes(w[0]) && w.length > 1 ? w[1] : null;
 }
 function sectie(titel, inhoud, open) {
   return "<details" + (open ? " open" : "") + "><summary>" + titel + "</summary><div>" + inhoud + "</div></details>";
@@ -316,7 +346,8 @@ function renderScenario() {
   const vw = r.verwachtingen || [];
   h += sectie("Verwachtingen <span class=\"muted\">" + vw.filter((v) => v.ok).length + " van " + vw.length + " gehaald</span>",
               verwachtingenHtml(vw), true);
-  h += '<div class="filterbar"><input type="text" id="filter" size="28" placeholder="filter op label of naam" value="'
+  h += '<div class="filterbar"><input type="text" id="filter" size="28" placeholder="filter op label of naam"'
+     + ' title="een label telt heel (P1 toont P10 niet), een naam ook in delen" value="'
      + esc(filter.tekst) + '"><label><input type="checkbox" id="alleenAfgeleid"' + (filter.alleenAfgeleid ? " checked" : "")
      + "> fixpunt: alleen afgeleid en gemaakt</label></div>";
   const sit = r.situatie;
@@ -337,18 +368,22 @@ function renderScenario() {
 function verwachtingenHtml(vw) {
   if (!vw.length) return '<div class="diag muted">uchars rapport geeft geen verwachtingen voor dit scenario.</div>';
   let h = '<table><tr><th></th><th class="num">regel</th><th>verwachting in de bron</th><th>verwacht</th><th>werkelijk</th></tr>';
-  for (const v of vw)
-    h += '<tr class="' + (v.ok ? "row-ok" : "row-bad") + '"><td>' + (v.ok ? "&#10003;" : "&#10007;") + '</td><td class="num">'
+  for (const v of vw) {
+    const label = labelVanBron(v.bron);
+    h += '<tr class="' + (v.ok ? "row-ok" : "row-bad") + (label ? ' klikbaar" data-label="' + esc(label)
+       + '" title="toon ' + esc(label) + ' in situatie en fixpunt' : "") + '"><td>' + (v.ok ? "&#10003;" : "&#10007;") + '</td><td class="num">'
        + (v.regel || "") + '</td><td class="mono" title="' + esc(v.bron) + '">' + esc(v.regeltekst || v.bron)
        + "</td><td>" + esc(v.verwacht) + "</td><td>" + esc(v.werkelijk) + "</td></tr>";
+  }
   return h + "</table>";
 }
 
 function situatieHtml(sit) {
   if (!sit) return '<div class="diag muted">Geen situatie in het antwoord.</div>';
+  const typen = Object.fromEntries(sit.objecten.map((o) => [o.label, o]));
   let h = "<table><tr><th>lid</th><th>waarde</th><th class=\"num\">regel</th></tr>", n = 0;
   for (const o of sit.objecten) {
-    const heel = past(o.label, o.objecttype, o.objecttypeCanoniek);
+    const heel = pastLabel(o.label) || past(o.objecttype, o.objecttypeCanoniek);
     const rijen = [];
     for (const a of o.attributen)
       if (heel || past(a.attribuut, a.attribuutCanoniek))
@@ -359,9 +394,9 @@ function situatieHtml(sit) {
           ? k.perioden.map((p) => "[" + esc(p.van) + ", " + esc(p.tot) + ")").join("<br>") : "waar")
           + '</td><td class="num">' + k.regel + "</td></tr>");
     for (const r of o.rollen)
-      if (heel || past(r.rol, r.rolCanoniek, ...r.labels))
-        rijen.push("<tr><td>" + naam(r, "rol") + "</td><td>" + r.labels.map(esc).join(", ")
-          + ' <span class="muted">' + naam(r, "doeltype") + '</span></td><td class="num">' + r.regel + "</td></tr>");
+      if (heel || past(r.rol, r.rolCanoniek) || (r.labels.length && pastLabel(...r.labels)))
+        rijen.push("<tr><td>" + naam(r, "rol") + "</td><td>" + r.labels.map((l) => objectMetType(l, typen, r.doeltype)).join(", ")
+          + '</td><td class="num">' + r.regel + "</td></tr>");
     if (!heel && !rijen.length) continue;
     n++;
     h += '<tr class="obj"><td colspan="3">' + esc(o.label) + ' <span class="muted">' + naam(o, "objecttype") + "</span></td></tr>"
@@ -390,17 +425,18 @@ function fixpuntHtml(r) {
     return r.fixpuntFout ? '<div class="diag warn">geen fixpunt: ' + esc(r.fixpuntFout) + "</div>"
                          : '<div class="diag muted">Geen fixpunt: uchar speelde deze case niet.</div>';
   const f = r.fixpunt;
+  const typen = Object.fromEntries(f.objecten.map((o) => [o.object, o]));
   let h = "";
   if (f.fouten.length) {
     h += '<table><tr><th>evaluatiefout</th><th>regel</th><th>onderwerp</th><th>zin</th></tr>';
     for (const x of f.fouten)
-      h += '<tr class="row-bad"><td>' + esc(x.soort) + "</td><td>" + naam(x, "regel") + "</td><td>" + esc(x.onderwerp)
+      h += '<tr class="row-bad"><td>' + esc(x.soort) + "</td><td>" + naam(x, "regel") + "</td><td>" + objectMetType(x.onderwerp, typen)
          + "</td><td>" + esc(x.zin) + "</td></tr>";
     h += "</table>";
   }
   let t = '<table><tr><th>lid</th><th>waarde</th><th>herkomst</th></tr>', n = 0;
   for (const o of f.objecten) {
-    const heel = past(o.object, o.objecttype, o.objecttypeCanoniek);
+    const heel = pastLabel(o.object) || past(o.objecttype, o.objecttypeCanoniek);
     const zichtbaar = (herkomst) => !filter.alleenAfgeleid || herkomst !== "invoer";
     const rijen = [];
     for (const w of o.waarden)
@@ -422,21 +458,21 @@ function fixpuntHtml(r) {
     h += '<table><tr><th>gemaakt object</th><th>objecttype</th><th>creatie</th><th>onderwerp</th></tr>';
     for (const g of f.gemaakteObjecten)
       h += "<tr><td>" + esc(g.object) + "</td><td>" + naam(g, "objecttype") + "</td><td>" + naam(g, "creatie") + "</td><td>"
-         + esc(g.onderwerp) + "</td></tr>";
+         + objectMetType(g.onderwerp, typen) + "</td></tr>";
     h += "</table>";
   }
   if (f.koppelingen.length) {
     h += '<table><tr><th>feittype</th><th>rol</th><th>object</th><th>rol</th><th>object</th></tr>';
     for (const k of f.koppelingen)
-      h += "<tr><td>" + naam(k, "feittype") + "</td><td>" + naam(k, "eersteRol") + "</td><td>" + esc(k.eerste) + "</td><td>"
-         + naam(k, "tweedeRol") + "</td><td>" + esc(k.tweede) + "</td></tr>";
+      h += "<tr><td>" + naam(k, "feittype") + "</td><td>" + naam(k, "eersteRol") + "</td><td>" + objectMetType(k.eerste, typen)
+         + "</td><td>" + naam(k, "tweedeRol") + "</td><td>" + objectMetType(k.tweede, typen) + "</td></tr>";
     h += "</table>";
   }
   if (f.inconsistenties.length) {
     h += '<table><tr><th>inconsistentie volgens</th><th>onderwerp</th></tr>';
     for (const x of f.inconsistenties)
       h += '<tr class="row-bad"><td>' + (x.regel == null ? '<span class="muted">geen regel</span>' : naam(x, "regel"))
-         + "</td><td>" + (x.onderwerp == null ? '<span class="muted">geen</span>' : esc(x.onderwerp)) + "</td></tr>";
+         + "</td><td>" + (x.onderwerp == null ? '<span class="muted">geen</span>' : objectMetType(x.onderwerp, typen)) + "</td></tr>";
     h += "</table>";
   }
   if (!f.gemaakteObjecten.length && !f.koppelingen.length && !f.fouten.length && !f.inconsistenties.length)
@@ -477,6 +513,16 @@ function bindScenario() {
     $("fixpunt").innerHTML = fixpuntHtml(r);
   };
   $("filter").addEventListener("input", (e) => { filter.tekst = e.target.value; herteken(); });
+  // from an expectation to its object: the filter on its label, the fixpoint open and in view
+  for (const rij of $("view").querySelectorAll("tr[data-label]"))
+    rij.addEventListener("click", () => {
+      filter.tekst = rij.dataset.label;
+      $("filter").value = filter.tekst;
+      herteken();
+      const d = $("fixpunt").closest("details");
+      d.open = true;
+      d.scrollIntoView({ block: "start" });
+    });
   $("alleenAfgeleid").addEventListener("change", (e) => { filter.alleenAfgeleid = e.target.checked; herteken(); });
 }
 
