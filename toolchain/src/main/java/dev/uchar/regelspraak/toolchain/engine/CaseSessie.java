@@ -58,9 +58,11 @@ public final class CaseSessie {
                            Map<String, Object> globals, List<ScenarioResultaat.Vuring> vuringen) {}
 
     /** Play case {@code c} on {@code build}, a build of the exec-model branch, whose
-     *  {@link DroolsBackend.Build#model()} names the types. */
+     *  {@link DroolsBackend.Build#model()} names the types. The branch is required because the caller compares the
+     *  firings with the trace of uchar's report ({@code CaseRunner.rapport}), which plays the exec-model branch: the
+     *  DRL-text branch reaches the same fixpoint, but at an accumulate it can fire in another order and number. */
     public static Uitkomst speel(DroolsBackend.Build build, JsonNode c) {
-        if (build.execModelTranspiler() == null)
+        if (build.branch() != DroolsBackend.Branch.EXEC_MODEL)
             throw new IllegalArgumentException("de uitleg speelt alleen de exec-model-tak, niet de " + build.branch());
         return new Speler(build).speel(c);
     }
