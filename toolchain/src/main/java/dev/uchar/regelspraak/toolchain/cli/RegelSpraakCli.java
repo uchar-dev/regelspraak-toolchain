@@ -153,7 +153,7 @@ public final class RegelSpraakCli {
             m.diagnostics.forEach(d -> System.err.println("  " + keten.melding(d)));
             if (!m.isOk()) System.exit(1);
             try {
-                System.out.print(UcharBouw.bouw(m, DroolsBackend.Branch.DRL_TEXT).drlTranspiler().drl());
+                System.out.print(UcharBouw.bouw(m, DroolsBackend.Branch.DRL_TEXT).drl());
             } catch (UcharBouw.NietGedragen e) {
                 System.err.println("  niet uitvoerbaar in uchar (exit 3): " + e.getMessage());
                 System.exit(3);

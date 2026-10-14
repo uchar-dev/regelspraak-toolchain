@@ -159,7 +159,7 @@ public final class Playground {
 
         // 4. DRL — a view of the DRL-text branch, never the verdict
         try {
-            root.put("drl", UcharBouw.bouw(model, DroolsBackend.Branch.DRL_TEXT).drlTranspiler().drl());
+            root.put("drl", UcharBouw.bouw(model, DroolsBackend.Branch.DRL_TEXT).drl());
         } catch (UcharBouw.NietGedragen e) {
             root.put("drl", "");
             root.put("drlFout", e.getMessage());
