@@ -186,7 +186,9 @@ rules are written and computed in the canonical names. The distribution uses the
   sends and receives; treat it as a contract change of the service.
 
 The word `canoniek` chooses the canonical names, so a model that declares a vocabulary of that name does not start.
-The rule text is never renamed: the uitleg quotes it as written.
+The rule text is never renamed: the uitleg quotes it as written. In the uitleg, an enumeration value whose designation
+differs from the declared value is written as both, `<designation> · <value>` (`01 · Hoogte inkomsten uit verzekerde
+arbeid`), because a code alone does not say what it stands for; the answer carries the designation alone.
 
 ## The container
 

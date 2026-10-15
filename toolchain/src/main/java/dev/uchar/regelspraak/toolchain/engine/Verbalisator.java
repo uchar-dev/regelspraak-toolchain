@@ -42,7 +42,9 @@ import java.util.Map;
  *
  * <p><b>Vocabulaire.</b> Met een {@link Naamgeving} noemt het verhaal de gedeclareerde namen — objecttypen,
  * attributen, kenmerken, rollen, parameters en enumeratiewaarden — in het gekozen vocabulaire; de brontekst van een
- * operand is regeltekst en blijft zoals hij geschreven is. Zonder naamgeving is het verhaal canoniek.
+ * operand is regeltekst en blijft zoals hij geschreven is. Een enumeratiewaarde waarvan de benaming afwijkt van de
+ * gedeclareerde waarde staat er als "benaming · waarde" ("01 · Hoogte inkomsten uit verzekerde arbeid"). Zonder
+ * naamgeving is het verhaal canoniek.
  *
  * <p><b>Bronverwijzing.</b> Kaart-fase (1) vroeg de {@code // Bron:}-commentaren uit de {@code .rgs} mee de IR in
  * te tillen als optionele regelbron-annotatie. In de huidige grammatica geldt
@@ -329,8 +331,19 @@ public final class Verbalisator {
 
     /** {@link #renderWaarde}, met een enumeratiewaarde in het gekozen vocabulaire: een waarde is een declaratie. */
     private String render(Object v, Datatype type) {
-        if (v instanceof String s && type instanceof Datatype.Enumeratie e) return naamgeving.waarde(e, s);
+        if (v instanceof String s && type instanceof Datatype.Enumeratie e) return enumeratiewaarde(e, s);
         return renderWaarde(v, type);
+    }
+
+    /** Een enumeratiewaarde in het gekozen vocabulaire. Wijkt haar benaming daar af van de gedeclareerde waarde,
+     *  zoals een code ("01"), dan volgt die waarde erachter: de code alleen zegt de lezer niet waar ze voor staat.
+     *  Gelijk zoals uchar gedeclareerde namen vergelijkt ({@link Namen#norm}), of zonder benaming: de naam alleen. */
+    private String enumeratiewaarde(Datatype.Enumeratie e, String waarde) {
+        String genoemd = naamgeving.waarde(e, waarde);
+        for (String w : e.waarden())
+            if (Namen.norm(w).equals(Namen.norm(waarde)) && !Namen.norm(genoemd).equals(Namen.norm(w)))
+                return genoemd + " · " + w;
+        return genoemd;
     }
 
     /** Het enumeratietype van een operand: dat van de expressie, of voor een attribuut- of parameterread dat van de
