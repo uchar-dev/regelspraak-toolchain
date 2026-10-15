@@ -51,9 +51,10 @@ import java.util.regex.Pattern;
  * regel {@code afwijking opgave X} van de opgave-markering (uchars DIVERGENCES §7): zijn tekst is uchars canonieke
  * spelling, geen tekst van een auteur, en daarin staat de naam van een gelezen attribuut in het gekozen vocabulaire
  * ("zijn opgegeven Datum einde recht op uitkering"). Welke regel dat is, staat in uchars tabel van herkomst
- * ({@link RegelSpraakModel#gegenereerdUit}), niet in de naam. Een enumeratiewaarde waarvan de benaming afwijkt van de
- * gedeclareerde waarde staat er als "benaming · waarde" ("01 · Hoogte inkomsten uit verzekerde arbeid"). Zonder
- * naamgeving is het verhaal canoniek.
+ * ({@link RegelSpraakModel#gegenereerdUit}) van het uitgelegde model, niet in de naam. Ook een model dat uchars
+ * IR-lader leest, draagt die tabel: het IR-document schrijft haar als veld {@code origin} (IR-SPEC ch. 2.13). Een
+ * enumeratiewaarde waarvan de benaming afwijkt van de gedeclareerde waarde staat er als "benaming · waarde" ("01 ·
+ * Hoogte inkomsten uit verzekerde arbeid"). Zonder naamgeving is het verhaal canoniek.
  *
  * <p><b>Kenmerksoort.</b> Een kenmerk staat er met het werkwoord van zijn soort (§3.5): bijvoeglijk "is (niet)
  * waardevol", bezittelijk "heeft de uitkeringsduur verstreken" of "heeft geen uitkeringsduur verstreken",
@@ -74,27 +75,15 @@ public final class Verbalisator {
     private final Map<String, Object> globals;
     /** De namen waarin het verhaal de declaraties noemt. */
     private final Naamgeving naamgeving;
-    /** Het model waarvan de tabel van herkomst ({@link RegelSpraakModel#gegenereerd}) zegt welke regels uchar
-     *  schreef. */
-    private final RegelSpraakModel herkomst;
 
     public Verbalisator(RegelSpraakModel model, Map<String, Object> globals) {
         this(model, globals, Naamgeving.canoniek(model));
     }
 
     public Verbalisator(RegelSpraakModel model, Map<String, Object> globals, Naamgeving naamgeving) {
-        this(model, globals, naamgeving, model);
-    }
-
-    /** {@code herkomst} is het model waarvan de tabel van herkomst zegt welke regels uchar schreef: dat van de
-     *  frontend. De wire draagt die tabel niet, dus een model dat uchars IR-lader leest heeft haar leeg; wie op zo'n
-     *  model uitlegt, geeft hier het model van de frontend. */
-    public Verbalisator(RegelSpraakModel model, Map<String, Object> globals, Naamgeving naamgeving,
-                        RegelSpraakModel herkomst) {
         this.model = model;
         this.globals = globals == null ? Map.of() : globals;
         this.naamgeving = naamgeving;
-        this.herkomst = herkomst;
     }
 
     /**
@@ -156,7 +145,7 @@ public final class Verbalisator {
      *  herkomst. Een beslistabelrij maakte uchar ook, maar uit de kolomkoppen en cellen van de auteur; die tekst is van
      *  de auteur. */
     private boolean doorUcharGeschreven(ResolvedRegel r) {
-        return herkomst.gegenereerdUit(Benoembaar.vorm(RegelSpraakModel.vormnaam(r.naam())))
+        return model.gegenereerdUit(Benoembaar.vorm(RegelSpraakModel.vormnaam(r.naam())))
                 .map(g -> g.vorm() == Herkomstvorm.OPGAVE_BOVEN_BEREKENING).orElse(false);
     }
 

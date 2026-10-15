@@ -189,8 +189,9 @@ The word `canoniek` chooses the canonical names, so a model that declares a voca
 The rule text is not renamed: the uitleg quotes it as written. The exception is a rule uchar wrote itself, the rule
 `afwijking opgave X` of the opgave marker: its text is uchar's canonical spelling, not an author's, so the uitleg names
 the attribute an operand reads in the chosen vocabulary (`zijn opgegeven Datum einde recht op uitkering`). uchar's table
-of origins (`RegelSpraakModel.gegenereerdUit`) says which rule that is; the row of a decision table is generated too,
-but its text is the author's column header and cell, and stays as written.
+of origins (`RegelSpraakModel.gegenereerdUit`) says which rule that is; the IR document carries that table (`origin`,
+IR-SPEC ch. 2.13), so a service started from an IR document explains these rules the same way. The row of a decision
+table is generated too, but its text is the author's column header and cell, and stays as written.
 In the uitleg, an enumeration value whose designation
 differs from the declared value is written as both, `<designation> · <value>` (`01 · Hoogte inkomsten uit verzekerde
 arbeid`), because a code alone does not say what it stands for; the answer carries the designation alone. A
