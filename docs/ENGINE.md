@@ -168,7 +168,10 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   as a view (not the verdict), uchar's rule graph of the document its loader reads back, as Mermaid (`graaf`) and
   as `graafJson`
   (`{nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}`), the `vocabulaires` of the source (the declared
-  ones, the chosen one, and per declaration its designation in each), and per scenario uchar's report with its
+  ones, the chosen one, and per declaration its designation in each, with its source line `regel` and the
+  `commentaar` directly above it, read from uchar's parse; the list `elementen` is always filled, also without a
+  declared vocabulary, and a declaration uchar's frontend wrote itself has no line; `declaratieFout` names an
+  element that does not couple to one declaration), and per scenario uchar's report with its
   `trace` and `uitleg`. Beside the report stand the source line of the scenario and of each expectation (`regel`,
   `regeltekst`: uchar gives the line an expectation begins on), the `situatie` uchar's scenario resolver makes, and
   the `fixpunt` of the case's own session as uchar reads it (`DroolsBackend.lees`): per object every value and
