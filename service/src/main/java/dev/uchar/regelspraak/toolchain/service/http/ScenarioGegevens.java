@@ -77,8 +77,9 @@ final class ScenarioGegevens {
 
     /** The situation of {@code s}: {@code peildatum} (the case's evaluation date, which the session carries as its
      *  {@code rekendatum}; null without one), {@code objecten} with their label, type, attribute values,
-     *  characteristics and roles, and {@code parameters}: the values of the chosen parameter set on the peildatum
-     *  first, then those of the situation. Every assignment carries its source line ({@code regel}). */
+     *  characteristics and roles, each role with the fact type uchar's scenario resolver found it in, and
+     *  {@code parameters}: the values of the chosen parameter set on the peildatum first, then those of the
+     *  situation. Every assignment carries its source line ({@code regel}). */
     static ObjectNode situatie(ResolvedScenario s, RegelSpraakModel model, Naamgeving ng) {
         ObjectNode n = NF.objectNode();
         if (s.peildatum() == null) n.putNull("peildatum"); else n.put("peildatum", s.peildatum().toString());
@@ -113,6 +114,7 @@ final class ScenarioGegevens {
             for (RolWaarde r : i.rollen()) {
                 ObjectNode rn = rollen.addObject();
                 naam(rn, "rol", ng.rolVanaf(ot, r.sleutel()), r.sleutel());
+                naam(rn, "feittype", ng.feittype(r.feittype().naam), r.feittype().naam);
                 naam(rn, "doeltype", ng.objecttype(r.doeltype().naam), r.doeltype().naam);
                 ArrayNode labels = rn.putArray("labels");
                 for (String l : r.doelLabels()) labels.add(l);
