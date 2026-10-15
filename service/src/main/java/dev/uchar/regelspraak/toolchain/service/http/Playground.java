@@ -34,6 +34,7 @@ import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
 import org.antlr.v4.runtime.Parser;
+import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.RecognitionException;
 import org.antlr.v4.runtime.Recognizer;
 import org.antlr.v4.runtime.misc.IntervalSet;
@@ -66,7 +67,7 @@ import java.util.Map;
  *       {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, so a workbench can take a rule's dataflow
  *       neighbourhood without parsing Mermaid;</li>
  *   <li><b>vocabulaires</b> — the vocabularies the source declares, the chosen one, and per declaration its
- *       designation in each ({@link #vocabulaires});</li>
+ *       designation in each, its source line and the comment above it ({@link #vocabulaires});</li>
  *   <li><b>scenario</b> — only when the source contains a {@code Scenario} block: per scenario uchar's report
  *       (status, per expectation verwacht/werkelijk, the coverage), its {@code trace} (per fired rule the labels it
  *       bound and how often) and its {@code uitleg} ({@link ScenarioRunner#runMetUitleg}), or {@code uitlegFout};
@@ -114,7 +115,8 @@ public final class Playground {
 
         // 1. PARSE — a dedicated pass that KEEPS the column + expected-token set the shared Resolver discards. Uses
         //    the scenario entry rule when a Scenario block is present, so those keywords are not mis-flagged.
-        List<ParseFout> parseFouten = parse(bron, scenario);
+        Ontleding ontleding = parse(bron, scenario);
+        List<ParseFout> parseFouten = ontleding.fouten();
         ObjectNode parse = root.putObject("parse");
         parse.put("ok", parseFouten.isEmpty());
         ArrayNode pf = parse.putArray("fouten");
@@ -142,7 +144,7 @@ public final class Playground {
         }
         if (!model.isOk()) return root;
         Naamgeving naamgeving = Naamgeving.van(model, vocabulaire);
-        root.set("vocabulaires", vocabulaires(model, naamgeving));
+        root.set("vocabulaires", vocabulaires(model, naamgeving, ontleding));
 
         // 3. IR and the verdict of the branch that fires
         com.fasterxml.jackson.databind.JsonNode ir = null;
@@ -284,11 +286,13 @@ public final class Playground {
     /** The vocabularies of {@code model}: {@code gekozen}, the choice of {@code naamgeving}
      *  ({@link Naamgeving#CANONIEK} or a vocabulary), {@code gedeclareerd}, each declared vocabulary with whether it
      *  is the default one and its language, and {@code elementen}, every declaration a vocabulary can name in the
-     *  model's order ({@link RegelSpraakModel#benoembaar}) with its kind, its owner and canonical name as declared, and
-     *  its {@code benamingen}: per declared vocabulary its designation there, or null where it has none and goes by
-     *  its canonical name. Without a declared vocabulary there is nothing to compare, and {@code elementen} is
-     *  empty. */
-    static ObjectNode vocabulaires(RegelSpraakModel model, Naamgeving naamgeving) {
+     *  model's order ({@link RegelSpraakModel#benoembaar}) with its kind, its owner and canonical name as declared, its
+     *  {@code benamingen}: per declared vocabulary its designation there, or null where it has none and goes by its
+     *  canonical name (an empty object without a declared vocabulary), and, where it has a declaration in the source,
+     *  its {@code regel} and the {@code commentaar} directly above it, read from the parse in {@code ontleding}
+     *  ({@link Declaraties}). An element or a declaration that does not couple puts {@code declaratieFout} with the
+     *  reason, and then no element carries {@code regel} or {@code commentaar}. */
+    static ObjectNode vocabulaires(RegelSpraakModel model, Naamgeving naamgeving, Ontleding ontleding) {
         ObjectNode n = NF.objectNode();
         n.put("gekozen", naamgeving.keuze());
         ArrayNode gedeclareerd = n.putArray("gedeclareerd");
@@ -300,8 +304,14 @@ public final class Playground {
             if (v.taal() == null) vn.putNull("taal"); else vn.put("taal", v.taal());
             per.add(Naamgeving.van(model, v.naam()));
         }
+        Map<Benoembaar, Declaraties.Declaratie> declaraties = Map.of();
+        String declaratieFout = null;
+        try {
+            declaraties = Declaraties.van(ontleding.document(), ontleding.tokens(), model);
+        } catch (Declaraties.Onkoppelbaar o) {
+            declaratieFout = o.getMessage();
+        }
         ArrayNode elementen = n.putArray("elementen");
-        if (per.isEmpty()) return n;
         for (Benoembaar b : model.benoembaar()) {
             ObjectNode en = elementen.addObject();
             en.put("soort", b.soort().name());
@@ -312,7 +322,14 @@ public final class Playground {
                 String t = g.benaming(b);
                 if (t == null) benamingen.putNull(g.keuze()); else benamingen.put(g.keuze(), t);
             }
+            Declaraties.Declaratie d = declaraties.get(b);
+            if (d != null) {
+                en.put("regel", d.regel());
+                ArrayNode commentaar = en.putArray("commentaar");
+                for (String c : d.commentaar()) commentaar.add(c);
+            }
         }
+        if (declaratieFout != null) n.put("declaratieFout", declaratieFout);
         return n;
     }
 
@@ -388,6 +405,10 @@ public final class Playground {
      *  Resolver drops. */
     record ParseFout(int regel, int kolom, String boodschap, String token, List<String> verwacht) {}
 
+    /** The parse of a source: its syntax errors, the tree of its entry rule and the token stream under it, whose
+     *  HIDDEN channel holds the line comments ({@link Declaraties}). */
+    record Ontleding(List<ParseFout> fouten, ParserRuleContext document, CommonTokenStream tokens) {}
+
     /**
      * Parse {@code bron}, collecting a {@link ParseFout} per syntax error. Unlike {@link Resolver#resolve} (which
      * keeps only line + message), this listener recovers the offending token text and the parser's expected-token
@@ -395,7 +416,7 @@ public final class Playground {
      * learner needs. The entry rule is {@code testDocument} when {@code scenario} is set (so a Scenario/Situatie
      * block is admitted), else the production {@code regelSpraakDocument}.
      */
-    static List<ParseFout> parse(String bron, boolean scenario) {
+    static Ontleding parse(String bron, boolean scenario) {
         RegelSpraakLexer lexer = new RegelSpraakLexer(CharStreams.fromString(bron));
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         RegelSpraak parser = new RegelSpraak(tokens);
@@ -411,8 +432,8 @@ public final class Playground {
         };
         lexer.removeErrorListeners(); lexer.addErrorListener(listener);
         parser.removeErrorListeners(); parser.addErrorListener(listener);
-        if (scenario) parser.testDocument(); else parser.regelSpraakDocument();
-        return fouten;
+        ParserRuleContext document = scenario ? parser.testDocument() : parser.regelSpraakDocument();
+        return new Ontleding(fouten, document, tokens);
     }
 
     /** The expected-token set at the failure point, rendered as grammar names. Uses the recognition exception's
