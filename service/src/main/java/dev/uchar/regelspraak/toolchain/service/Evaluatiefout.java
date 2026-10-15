@@ -20,7 +20,9 @@ import java.util.List;
  * role a second filling. Both adapters answer it with a 422 ({@link AntwoordBouwer#evaluatiefout}).
  *
  * <p>It carries the {@link Fixpunt} the faults stand at, and, when the request asked to see its session
- * ({@link VerzoekOpties#detailvlaggen()}), the fields the 422 gives beside the faults ({@link #detail()}).
+ * ({@link VerzoekOpties#detailvlaggen()}), the fields the 422 gives beside the faults ({@link #detail()}). Its cause
+ * is the exception uchar's write-back throws for these faults: the fault's own for one, uchar's
+ * {@code Evaluatiefouten} for two or more, the one uchar's scenario report names in its diagnose.
  */
 public final class Evaluatiefout extends RuntimeException {
 
@@ -45,11 +47,12 @@ public final class Evaluatiefout extends RuntimeException {
     }
 
     /** The faults that stand at {@code fixpunt}, one element per fault in the order of its {@code fouten}, which is
-     *  uchar's: by the name of the form, then by the sentence. The first fault's exception is the cause. */
-    static Evaluatiefout van(Fixpunt fixpunt) {
+     *  uchar's: by the name of the form, then by the sentence. {@code oorzaak} is what uchar's write-back threw for
+     *  them. */
+    static Evaluatiefout van(Fixpunt fixpunt, RuntimeException oorzaak) {
         List<Fout> uit = new ArrayList<>();
         for (dev.uchar.regelspraak.transpiler.tms.Fout f : fixpunt.fouten()) uit.add(new Fout(soort(f.fout()), f.melding()));
-        return new Evaluatiefout(uit, fixpunt.fouten().get(0).fout(), fixpunt, null);
+        return new Evaluatiefout(uit, oorzaak, fixpunt, null);
     }
 
     /** The same faults with {@code detail}, the fields the request asked to see of its session. */

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.emit.CaseEmitter;
 import dev.uchar.regelspraak.engine.ScenarioResultaat;
@@ -13,7 +14,12 @@ import dev.uchar.regelspraak.engine.ScenarioResultaat.Vuring;
 import dev.uchar.regelspraak.toolchain.engine.Naamgeving;
 import dev.uchar.regelspraak.toolchain.engine.ScenarioRunner;
 import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
+import dev.uchar.regelspraak.toolchain.service.BeslisserKern;
+import dev.uchar.regelspraak.toolchain.service.DienstFout;
+import dev.uchar.regelspraak.toolchain.service.Evaluatiefout;
 import dev.uchar.regelspraak.toolchain.service.FixpuntGegevens;
+import dev.uchar.regelspraak.toolchain.service.Schending;
+import dev.uchar.regelspraak.toolchain.service.VerzoekOpties;
 import dev.uchar.regelspraak.graaf.ProducentConsument;
 import dev.uchar.regelspraak.graaf.RegelGraaf;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
@@ -43,7 +49,9 @@ import org.antlr.v4.runtime.misc.IntervalSet;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -94,6 +102,14 @@ import java.util.Set;
  * production {@code regelSpraakDocument}. So when a source carries such a block the analyzer parses + resolves it
  * through the scenario front-end ({@link ScenarioResolver}) and runs the scenarios off that same resolved bundle.
  *
+ * <p><b>Via the service.</b> {@link #analyseer(String, String, BeslisserKern)} with a core gives the same tree, and only
+ * the scenarios are computed by that core instead of uchar's scenario layer ({@link #rendViaDienst}): each becomes a
+ * request of the service ({@link SituatieNaarVerzoek}) to the entry point its scope maps to
+ * ({@link BeslisserKern#padVoorScope}), and uchar compares the expectations of its case with the session of that
+ * request ({@link BeslisserKern#beoordeel}). The core computes with its own sources, so a source whose
+ * {@code uchar-ir-v1} document is not the core's ({@link BeslisserKern#document}) is refused as a whole with a
+ * {@link DienstFout}.
+ *
  * <p>This class owns NO web plumbing and NO persistence. A refusal of uchar, and a DRL text of uchar that does not
  * compile, is part of the answer; any other failure is not caught here, so the HTTP adapter ({@link DienstHttp})
  * answers it with 500 and logs it.
@@ -117,6 +133,18 @@ public final class Playground {
     /** {@link #analyseer(String)} with the declarations named in {@code vocabulaire} (null or
      *  {@link Naamgeving#CANONIEK}: canonically). */
     public static ObjectNode analyseer(String bron, String vocabulaire) {
+        return analyseer(bron, vocabulaire, null);
+    }
+
+    /**
+     * {@link #analyseer(String, String)} with the scenarios computed by {@code dienst} (null: by uchar's scenario layer,
+     * as above). Each result then also names the {@code pad} of the entry point it ran on.
+     *
+     * @throws DienstFout when the {@code uchar-ir-v1} document of {@code bron}, without its scenarios, is not that of
+     *                    {@code dienst}: the service computes with its own sources, so its verdict would be about other
+     *                    rules than these
+     */
+    public static ObjectNode analyseer(String bron, String vocabulaire, BeslisserKern dienst) {
         ObjectNode root = NF.objectNode();
         boolean scenario = bevatScenario(bron);
 
@@ -163,6 +191,7 @@ public final class Playground {
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             throw new IllegalStateException("de emitter schreef geen leesbare JSON: " + e.getOriginalMessage(), e);
         }
+        if (dienst != null) zelfdeBronnen(ir, root.path("irFout").asText(null), dienst);
         try {
             DroolsBackend.Build build = UcharBouw.bouw(model, DroolsBackend.Branch.EXEC_MODEL);
             root.put("uitvoerbaar", true);
@@ -212,7 +241,13 @@ public final class Playground {
         }
 
         // 6. SCENARIO — only when the source carries a Scenario block
-        if (scenario) {
+        if (scenario && dienst != null) {
+            ArrayNode arr = root.putObject("scenario").putArray("resultaten");
+            List<String> bronregels = ScenarioGegevens.regels(bron);
+            List<ResolvedScenario> scenarios = bundel.scenarios();
+            for (int i = 0; i < scenarios.size(); i++)
+                rendViaDienst(arr.addObject(), i, scenarios.get(i), dienst, bronregels, model, naamgeving, vocabulaire);
+        } else if (scenario) {
             ArrayNode arr = root.putObject("scenario").putArray("resultaten");
             List<ResolvedScenario> scenarios = bundel.scenarios();
             List<ScenarioRunner.Uitgelegd> uitgelegd = ScenarioRunner.runMetUitleg(bundel, vocabulaire);
@@ -283,12 +318,158 @@ public final class Playground {
 
     /** The number of expectations in the case uchar's lowering writes for {@code s}. */
     private static int verwachtingenInCase(ResolvedScenario s) {
+        return verwachtingen(s).size();
+    }
+
+    /** The {@code expected} of the case uchar's lowering writes for {@code s}. */
+    private static com.fasterxml.jackson.databind.JsonNode verwachtingen(ResolvedScenario s) {
         try {
-            return JSON.readTree(CaseEmitter.emit(s)).get("expected").size();
+            return JSON.readTree(CaseEmitter.emit(s)).get("expected");
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             throw new IllegalStateException("de lowering schreef voor het scenario '" + s.naam()
                     + "' geen leesbare case: " + e.getOriginalMessage(), e);
         }
+    }
+
+    // ---------------- via the service ----------------
+
+    /** Refuses with a {@link DienstFout} unless {@code ir}, the document of the posted source, equals that of
+     *  {@code dienst} as a JSON tree: the same model, forms and source positions. {@code irFout} is the emitter's
+     *  refusal when there is no document. */
+    private static void zelfdeBronnen(com.fasterxml.jackson.databind.JsonNode ir, String irFout, BeslisserKern dienst) {
+        String reden;
+        if (ir == null) {
+            reden = "uchars emitter schrijft van de geposte bronnen geen document: " + irFout;
+        } else {
+            com.fasterxml.jackson.databind.JsonNode eigen;
+            try {
+                eigen = JSON.readTree(dienst.document());
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                throw new IllegalStateException("het document van de dienst is geen leesbare JSON: "
+                        + e.getOriginalMessage(), e);
+            }
+            if (ir.equals(eigen)) return;
+            reden = "het uchar-ir-v1-document van de geposte bronnen is niet dat van de dienst; eerste verschil "
+                    + verschil(ir, eigen, "");
+        }
+        throw new DienstFout("verzoek valideert niet", List.of(Schending.van(Schending.Soort.NIET_ONDERSTEUND, "bron",
+                "via=dienst rekent met de bronnen waarmee de dienst gestart is, en " + reden)));
+    }
+
+    /** The first place where {@code a} (the posted source's) and {@code b} (the service's) differ, as a JSON pointer
+     *  with what each has there; null when they are equal. */
+    static String verschil(com.fasterxml.jackson.databind.JsonNode a, com.fasterxml.jackson.databind.JsonNode b,
+                           String pad) {
+        if (a.equals(b)) return null;
+        if (a.isObject() && b.isObject()) {
+            Set<String> sleutels = new LinkedHashSet<>();
+            a.fieldNames().forEachRemaining(sleutels::add);
+            b.fieldNames().forEachRemaining(sleutels::add);
+            for (String k : sleutels) {
+                String p = pad + "/" + k;
+                if (!a.has(k)) return p + ": ontbreekt in de geposte bronnen, de dienst heeft " + kort(b.get(k));
+                if (!b.has(k)) return p + ": de geposte bronnen hebben " + kort(a.get(k)) + ", de dienst niets";
+                String v = verschil(a.get(k), b.get(k), p);
+                if (v != null) return v;
+            }
+        }
+        if (a.isArray() && b.isArray()) {
+            Iterator<com.fasterxml.jackson.databind.JsonNode> ia = a.elements(), ib = b.elements();
+            for (int i = 0; ia.hasNext() && ib.hasNext(); i++) {
+                String v = verschil(ia.next(), ib.next(), pad + "/" + i);
+                if (v != null) return v;
+            }
+            return pad + ": " + a.size() + " elementen in de geposte bronnen, " + b.size() + " in de dienst";
+        }
+        return (pad.isEmpty() ? "/" : pad) + ": de geposte bronnen hebben " + kort(a) + ", de dienst " + kort(b);
+    }
+
+    private static String kort(com.fasterxml.jackson.databind.JsonNode n) {
+        String t = n.toString();
+        return t.length() <= 120 ? t : t.substring(0, 117) + "...";
+    }
+
+    /**
+     * Scenario {@code s}, the {@code i}-th of the source, computed by {@code dienst}, in the shape {@link #rendScenario}
+     * gives, with {@code pad} after {@code regel}: the entry point its scope maps to, null when none does. The
+     * situation becomes a request ({@link SituatieNaarVerzoek}) with canonical names, the answer is named in
+     * {@code vocabulaire}, and uchar compares the expectations of the scenario's case with the request's session
+     * ({@link BeslisserKern#beoordeel}): PASS or FAIL with uchar's diagnose, prefixed as uchar's report prefixes it with
+     * the name of the case file. What the service does not compute is not a PASS:
+     * <ul>
+     *   <li>no entry point carries the scope, a value the request cannot carry ({@link SituatieNaarVerzoek.NietDraagbaar}),
+     *       a request form the service does not carry (each violation of its 400 {@code NIET_ONDERSTEUND}), an entry
+     *       point uchar does not carry, an expectation uchar does not compare: MARKER with the sentence;</li>
+     *   <li>an evaluation fault (the service's 422): FAIL with the line of uchar's report, the exception its write-back
+     *       throws, and the trace, coverage and fixpoint of the 422;</li>
+     *   <li>any other 400 of the service: FAIL naming its violations.</li>
+     * </ul>
+     */
+    private static void rendViaDienst(ObjectNode n, int i, ResolvedScenario s, BeslisserKern dienst,
+                                      List<String> bronregels, RegelSpraakModel model, Naamgeving naamgeving,
+                                      String vocabulaire) {
+        String casenaam = CaseEmitter.bestandsnaam(i + 1, s);
+        com.fasterxml.jackson.databind.JsonNode verwacht = verwachtingen(s);
+        if (verwacht.size() != s.verwachtingen().size())
+            throw new IllegalStateException("de case van het scenario '" + s.naam() + "' telt " + verwacht.size()
+                    + " verwachting(en), het scenario " + s.verwachtingen().size());
+        String pad = null;
+        ScenarioResultaat.Status status;
+        String diagnose = "";
+        List<VerwachtingResultaat> verwachtingen = List.of();
+        com.fasterxml.jackson.databind.JsonNode sessie = NF.objectNode();   // trace, dekking, uitleg, fixpunt
+        String uitlegFout = null;
+        try {
+            pad = dienst.padVoorScope(s.scope());
+            VerzoekOpties opties = new VerzoekOpties(true, vocabulaire == null ? Naamgeving.CANONIEK : vocabulaire,
+                    Naamgeving.CANONIEK, true, true, true);
+            BeslisserKern.Beoordeling b = dienst.beoordeel(pad, SituatieNaarVerzoek.bouw(s), opties, verwacht);
+            status = b.vergelijking().pass() ? ScenarioResultaat.Status.PASS : ScenarioResultaat.Status.FAIL;
+            if (!b.vergelijking().pass()) diagnose = casenaam + ": " + b.vergelijking().diagnose();
+            verwachtingen = b.vergelijking().verwachtingen();
+            sessie = b.antwoord();
+        } catch (BeslisserKern.GeenIngangspunt | SituatieNaarVerzoek.NietDraagbaar | BeslisserKern.NietUitvoerbaar
+                 | CaseRunner.Excluded geen) {
+            status = ScenarioResultaat.Status.MARKER;
+            diagnose = geen.getMessage();
+        } catch (DienstFout fout) {
+            List<String> zinnen = new ArrayList<>();
+            boolean nietOndersteund = true;
+            for (Schending sch : fout.schendingen()) {
+                zinnen.add(sch.toString());
+                nietOndersteund &= sch.soort() == Schending.Soort.NIET_ONDERSTEUND;
+            }
+            status = nietOndersteund ? ScenarioResultaat.Status.MARKER : ScenarioResultaat.Status.FAIL;
+            diagnose = nietOndersteund ? String.join("; ", zinnen)
+                    : casenaam + ": de dienst weigert het verzoek: " + String.join("; ", zinnen);
+        } catch (Evaluatiefout fout) {
+            Throwable uchar = fout.getCause();
+            status = ScenarioResultaat.Status.FAIL;
+            diagnose = casenaam + ": ERROR " + uchar.getClass().getSimpleName() + ": "
+                    + String.valueOf(uchar.getMessage()).replace('\n', ' ');
+            sessie = fout.detail();
+            uitlegFout = "de dienst gaf een evaluatiefout (422) en geeft dan geen uitleg";
+        }
+        n.put("naam", s.naam());
+        n.put("status", status.name());
+        if (!diagnose.isEmpty()) n.put("diagnose", diagnose);
+        n.put("regel", s.line());
+        if (pad == null) n.putNull("pad"); else n.put("pad", pad);
+        ArrayNode va = n.putArray("verwachtingen");
+        for (VerwachtingResultaat v : verwachtingen) {
+            ObjectNode vn = va.addObject();
+            vn.put("bron", v.bron().trim());
+            vn.put("verwacht", v.verwacht());
+            vn.put("werkelijk", v.werkelijk());
+            vn.put("ok", v.ok());
+            ScenarioGegevens.plaats(vn, v, s, bronregels);
+        }
+        for (String veld : List.of("dekking", "trace", "uitleg"))
+            n.set(veld, sessie.has(veld) ? sessie.get(veld) : NF.arrayNode());
+        if (uitlegFout != null) n.put("uitlegFout", uitlegFout);
+        n.set("situatie", ScenarioGegevens.situatie(s, model, naamgeving));
+        if (sessie.has("fixpunt")) n.set("fixpunt", sessie.get("fixpunt"));
+        if (sessie.has("fixpuntFout")) n.put("fixpuntFout", sessie.get("fixpuntFout").asText());
     }
 
     /** The vocabularies of {@code model}: {@code gekozen}, the choice of {@code naamgeving}

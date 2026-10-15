@@ -305,7 +305,12 @@ public final class DienstHttp {
     /** {@code POST /playground/analyse}: the request body is the raw RegelSpraak source (text/plain). It is analyzed
      *  compile-per-request under a timeout with NO persistence, and the {@link Playground} answer tree is written
      *  back as JSON. Errors at the RegelSpraak level (parse/resolve/scenario) are part of that tree, not HTTP
-     *  errors; only a timeout (503) or an unexpected internal fault (500) map to a status. */
+     *  errors; only a timeout (503) or an unexpected internal fault (500) map to a status.
+     *
+     *  <p>{@code ?via=dienst} has this service's core compute the scenarios ({@link Playground#analyseer(String,
+     *  String, BeslisserKern)}). It shows the session of each, so a core started without detail answers it with a 400
+     *  that names {@code DETAIL}, before any analysis; a source that is not the service's own is a 400 as well.
+     *  Another value of {@code via} is a 400. */
     private void verwerkPlaygroundAnalyse(HttpExchange ex) throws IOException {
         try {
             if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
@@ -315,15 +320,33 @@ public final class DienstHttp {
             }
             String bron = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             String vocabulaire = queryWaarde(ex.getRequestURI().getRawQuery(), "vocabulaire");
+            String via = queryWaarde(ex.getRequestURI().getRawQuery(), "via");
+            if (via != null && !"dienst".equalsIgnoreCase(via)) {
+                stuur(ex, 400, verzoekFoutBody(new DienstFout("verzoek valideert niet", List.of(Schending.van(
+                        Schending.Soort.MALFORMED, "via", "via kent alleen de waarde 'dienst', niet '" + via + "'")))));
+                return;
+            }
+            if (via != null && !kern.detail()) {
+                stuur(ex, 400, verzoekFoutBody(new DienstFout("verzoek valideert niet", List.of(Schending.van(
+                        Schending.Soort.NIET_ONDERSTEUND, "via", "de dienst is zonder DETAIL gestart en rekent geen"
+                                + " scenario's via de dienst; start hem met DETAIL=true of --detail")))));
+                return;
+            }
+            BeslisserKern dienst = via == null ? null : kern;
             // Compile-per-request under a hard timeout, on a throwaway single-use executor (no shared state).
             ExecutorService exec = Executors.newSingleThreadExecutor();
             try {
-                Future<ObjectNode> f = exec.submit(() -> Playground.analyseer(bron, vocabulaire));
+                Future<ObjectNode> f = exec.submit(() -> Playground.analyseer(bron, vocabulaire, dienst));
                 stuur(ex, 200, f.get(PLAYGROUND_TIMEOUT_MS, TimeUnit.MILLISECONDS));
             } catch (TimeoutException te) {
                 stuur(ex, 503, foutBody("analyse overschreed de tijdslimiet ("
                         + PLAYGROUND_TIMEOUT_MS + " ms)", null));
             } catch (java.util.concurrent.ExecutionException ee) {
+                if (ee.getCause() instanceof DienstFout df) {
+                    // via=dienst on a source that is not the service's own
+                    stuur(ex, 400, verzoekFoutBody(df));
+                    return;
+                }
                 if (ee.getCause() instanceof Naamgeving.Vocabulairefout vf) {
                     // the source's model declares no such vocabulary: the request asked what cannot be answered
                     stuur(ex, 400, verzoekFoutBody(new DienstFout("verzoek valideert niet", List.of(

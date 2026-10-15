@@ -1,5 +1,7 @@
 package dev.uchar.regelspraak.toolchain.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.cases.Invoer;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
@@ -42,8 +44,10 @@ public final class Uitvoerder {
     }
 
     /** The result of a fire: the beans by id with the derived values written back, the firings, the
-     *  inconsistenties, and what stood at the fixpoint before the write-back, as uchar's entry reads it. */
-    public record Uitkomst(Map<String, Object> beans, int gevuurd, List<Object> inconsistenties, Fixpunt fixpunt) {}
+     *  inconsistenties, what stood at the fixpoint before the write-back, as uchar's entry reads it, and uchar's
+     *  verdict on the expectations the caller gave ({@link DroolsBackend#vergelijk}), null when it gave none. */
+    public record Uitkomst(Map<String, Object> beans, int gevuurd, List<Object> inconsistenties, Fixpunt fixpunt,
+                           DroolsBackend.Vergelijking vergelijking) {}
 
     /** Fire the entry point's rules over {@code wereld} and return the beans with their derived values and the
      *  inconsistenties. */
@@ -73,6 +77,22 @@ public final class Uitvoerder {
      *                       fixpoint they stand at
      */
     public Uitkomst vuur(Wereld wereld, Map<String, Object> setGlobals, DroolsBackend.Waarnemer waarnemer) {
+        return vuur(wereld, setGlobals, waarnemer, null);
+    }
+
+    /**
+     * As {@link #vuur(Wereld, Map, DroolsBackend.Waarnemer)}, and with {@code verwachtingen} (null: none), the
+     * {@code expected} of a {@code uchar-case-v0} case whose labels are ids of the request, uchar's verdict on them over
+     * the written-back session ({@link DroolsBackend#vergelijk}, with the ids of the request as labels), before the
+     * session is disposed. uchar compares; this class only hands the session over.
+     *
+     * @throws Evaluatiefout            the evaluation faults that stand at the fixpoint, with the fixpoint they stand
+     *                                  at; nothing is compared then, as uchar's report compares nothing of such a case
+     * @throws dev.uchar.regelspraak.cases.CaseRunner.Excluded an expectation of a form uchar does not compare, in the
+     *                                  sentence of its replay
+     */
+    public Uitkomst vuur(Wereld wereld, Map<String, Object> setGlobals, DroolsBackend.Waarnemer waarnemer,
+                         JsonNode verwachtingen) {
         // descriptor defaults first, set-vintage values next, request parameters override last
         Map<String, Object> globals = new LinkedHashMap<>(defaultGlobals);
         if (setGlobals != null) globals.putAll(setGlobals);
@@ -99,14 +119,29 @@ public final class Uitvoerder {
             // a fault is an evaluation fault by its place at the fixpoint, not by its type: the write-back would throw
             // it as one exception among those the entry throws itself, so the faults are read as data first
             Fixpunt fixpunt = DroolsBackend.lees(build, sessie, label::get);
-            if (!fixpunt.fouten().isEmpty()) throw Evaluatiefout.van(fixpunt);
+            if (!fixpunt.fouten().isEmpty()) throw Evaluatiefout.van(fixpunt, teruggeworpen(sessie, label, fixpunt));
             DroolsBackend.zetAfgeleideWaarden(build, sessie, label::get);
             List<Object> inc = leesInconsistenties(sessie);
-            return new Uitkomst(wereld.beans(), vuring.vuringen(), inc, fixpunt);
+            DroolsBackend.Vergelijking vergelijking = verwachtingen == null ? null
+                    : DroolsBackend.vergelijk(build, sessie, label::get, verwachtingen);
+            return new Uitkomst(wereld.beans(), vuring.vuringen(), inc, fixpunt, vergelijking);
         } finally {
             sessie.dispose();
             Thread.currentThread().setContextClassLoader(vorige);
         }
+    }
+
+    /** The exception uchar's write-back throws for the faults that stand at {@code fixpunt}: the fault's own for one,
+     *  uchar's {@code Evaluatiefouten} for two or more. It writes nothing back then; a write-back that does not throw
+     *  is a broken promise of uchar's entry. */
+    private RuntimeException teruggeworpen(KieSession sessie, Map<Object, String> label, Fixpunt fixpunt) {
+        try {
+            DroolsBackend.zetAfgeleideWaarden(build, sessie, label::get);
+        } catch (RuntimeException e) {
+            return e;
+        }
+        throw new IllegalStateException("uchars terugzetting wierp niets, terwijl aan het fixpunt "
+                + fixpunt.fouten().size() + " evaluatiefout(en) staan, de eerste: " + fixpunt.fouten().get(0).melding());
     }
 
     /** setGlobal tolerating a global the compiled DRL did not declare (a parameter no scoped rule reads is not

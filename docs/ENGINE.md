@@ -209,6 +209,35 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   `fixpuntFout` with the reason there is none. `?vocabulaire=<naam>` names `graafJson`, the trace, the per-scenario
   coverage, the uitleg, the situation and the fixpoint in a vocabulary of the source, the canonical name beside a name
   that differs (the Mermaid graph, the IR and the verdict stay uchar's); an unknown one is a 400.
+- `POST /playground/analyse?via=dienst` gives the same answer, except that the service the process runs computes the
+  scenarios, so that a PASS says: this service gives this answer. It shows the session of each scenario, so a service
+  started without `DETAIL` answers it with a 400 that names `DETAIL` (`veld` `via`), and another value of `via` is a
+  400. The service computes with its own sources: the `uchar-ir-v1` document uchar's emitter writes of the posted
+  source, without its scenarios, must equal the service's (`BeslisserKern.document`: the document it was given, or the
+  one its `.rgs` sources make, in the order the service reads them), as JSON trees, the source lines uchar's document
+  carries included; otherwise the whole request is a 400 `NIET_ONDERSTEUND` on `veld` `bron` that names the first
+  difference as a JSON pointer. A source with a parse or resolver error gets its diagnostics, as without the flag. Per
+  scenario:
+  - its scope is mapped to an entry point of the descriptor (`BeslisserKern.padVoorScope`): one whose scope carries the
+    forms of the scenario's scope, or every form of the model for a scenario without a scope; an exact match first, else
+    the entry point with the fewest forms beside them, the first in the descriptor's order on a tie. The result names
+    it as `pad`, after `regel`. Without one the result is a MARKER whose `diagnose` says what each entry point lacks,
+    with `pad` null; there is no fallback to the ordinary route;
+  - the situation becomes a request (`SituatieNaarVerzoek`, each instance with its label as its id, the names
+    canonical, read with `invoervocabulaire=canoniek`), and the core answers it with `uitleg`, `trace`, `dekking` and
+    `fixpunt`, in the vocabulary of `?vocabulaire=` (canonical without it). uchar compares the `expected` of the case
+    its frontend writes for the scenario with the written-back session of that request, the ids of the request as
+    labels (`BeslisserKern.beoordeel`, `DroolsBackend.vergelijk`): PASS or FAIL, the `verwachtingen` and the `diagnose`
+    as uchar's report gives them, prefixed with the name of the case file as the report prefixes it;
+  - an evaluation fault (the service's 422) is a FAIL with no `verwachtingen` and the line of uchar's report,
+    `<case file>: ERROR <exception>: <sentence>`, the exception uchar's write-back throws for the faults; `trace`,
+    `dekking` and `fixpunt` are those of the 422, and `uitlegFout` says there is no `uitleg`;
+  - a situation a request cannot carry (a timeline, a characteristic with periods, a fraction without a decimal form),
+    a 400 of the service whose violations are all `NIET_ONDERSTEUND`, an entry point uchar does not carry and an
+    expectation uchar does not compare (`CaseRunner.Excluded`) are a MARKER with the sentence; any other 400 of the
+    service is a FAIL naming its violations.
+  The entry point fires only the forms of its scope and uses the parameters of the descriptor beside those the
+  situation sets, so a verdict can differ from the ordinary route's, which fires the forms of the scenario's own scope.
 
 **peildatum-contract (multi-vintage deploys).** When the descriptor names a parameterset sidecar whose values
 carry more than one vintage, the service selects each parameter's vintage against ONE date authority: the request

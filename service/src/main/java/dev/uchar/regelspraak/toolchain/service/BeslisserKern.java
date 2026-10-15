@@ -80,16 +80,23 @@ public final class BeslisserKern {
     private final List<String> periodeWaarschuwingen;
     /** Whether a request may ask to see its session ({@link KernConfig#detail()}). */
     private final boolean detail;
+    /** The forms of the model by the names a scope uses, as the entry points were built from them. */
+    private final VormIndex vormen;
+    /** The {@code uchar-ir-v1} document of the source: the one the service was given, or, for {@code .rgs} sources,
+     *  the one uchar's emitter writes of the model, emitted on the first ask ({@link #document()}). */
+    private volatile String document;
 
     private BeslisserKern(DienstDescriptor descriptor, RegelSpraakModel model,
                           Map<String, Entrypoint> perPad, List<Parameterset> parametersets,
-                          List<String> periodeWaarschuwingen, boolean detail) {
+                          List<String> periodeWaarschuwingen, boolean detail, VormIndex vormen, String document) {
         this.descriptor = descriptor;
         this.model = model;
         this.perPad = perPad;
         this.parametersets = parametersets;
         this.periodeWaarschuwingen = periodeWaarschuwingen;
         this.detail = detail;
+        this.vormen = vormen;
+        this.document = document;
     }
 
     /** One compiled entry point: its descriptor entry, uchar's {@link DroolsBackend.Build} of its scope (the scoped
@@ -249,7 +256,7 @@ public final class BeslisserKern {
         List<Parameterset> sets = laadParametersets(descriptor, parametersetsJson, model);
         List<String> waarschuwingen = periodeWaarschuwingen(model, sets);
 
-        return new BeslisserKern(descriptor, model, perPad, sets, waarschuwingen, config.detail());
+        return new BeslisserKern(descriptor, model, perPad, sets, waarschuwingen, config.detail(), vormen, null);
     }
 
     /**
@@ -318,7 +325,8 @@ public final class BeslisserKern {
         if (!markerFouten.isEmpty())
             throw new DienstFout("dienst start niet: uchar draagt een entrypoint niet", markerFouten);
         List<Parameterset> sets = laadParametersets(descriptor, parametersetsJson, model);
-        return new BeslisserKern(descriptor, model, perPad, sets, periodeWaarschuwingen(model, sets), config.detail());
+        return new BeslisserKern(descriptor, model, perPad, sets, periodeWaarschuwingen(model, sets), config.detail(),
+                vormen, documentJson);
     }
 
     private static DienstDescriptor leesDescriptor(String descriptorJson) {
@@ -569,6 +577,27 @@ public final class BeslisserKern {
      * core without detail gives, byte for byte.
      */
     public ObjectNode verwerk(String pad, JsonNode verzoekBoom, VerzoekOpties opties) {
+        return verwerk(pad, verzoekBoom, opties, null).antwoord();
+    }
+
+    /** The answer to a request and uchar's verdict on expectations about it ({@link #beoordeel}). */
+    public record Beoordeling(ObjectNode antwoord, DroolsBackend.Vergelijking vergelijking) {}
+
+    /**
+     * As {@link #verwerk(String, JsonNode, VerzoekOpties)}, with uchar's verdict on {@code verwachtingen}, the
+     * {@code expected} of a {@code uchar-case-v0} case whose labels are ids of the request: uchar compares them with the
+     * written-back session of the request ({@link DroolsBackend#vergelijk}), the ids of the request as labels. No route
+     * of the service asks it; the playground does, for {@code via=dienst}.
+     *
+     * @throws Evaluatiefout what {@link #verwerk(String, JsonNode, VerzoekOpties)} throws, and nothing is compared
+     * @throws dev.uchar.regelspraak.cases.CaseRunner.Excluded an expectation of a form uchar does not compare
+     */
+    public Beoordeling beoordeel(String pad, JsonNode verzoekBoom, VerzoekOpties opties, JsonNode verwachtingen) {
+        java.util.Objects.requireNonNull(verwachtingen, "verwachtingen");
+        return verwerk(pad, verzoekBoom, opties, verwachtingen);
+    }
+
+    private Beoordeling verwerk(String pad, JsonNode verzoekBoom, VerzoekOpties opties, JsonNode verwachtingen) {
         Entrypoint ep = perPad.get(pad);
         if (ep == null) throw new OnbekendPad(pad);
         if (!ep.uitvoerbaar()) throw new NietUitvoerbaar(ep);
@@ -611,7 +640,7 @@ public final class BeslisserKern {
         Uitvoerder uitvoerder = new Uitvoerder(ep.build(), ep.defaultGlobals());
         Uitvoerder.Uitkomst uitkomst;
         try {
-            uitkomst = uitvoerder.vuur(mr.wereld(), setGlobals, waarnemer);
+            uitkomst = uitvoerder.vuur(mr.wereld(), setGlobals, waarnemer, verwachtingen);
         } catch (Evaluatiefout fout) {
             if (!metDetail) throw fout;
             throw fout.metDetail(detail(opties, ep, waarnemer, fout.fixpunt(), invoer, uitvoer));
@@ -620,7 +649,7 @@ public final class BeslisserKern {
                 mr.typePerLabel());
         if (opties.uitleg()) voegUitlegToe(antwoord, uitkomst, mr, setGlobals, ep, uitvoer);
         if (metDetail) antwoord.setAll(detail(opties, ep, waarnemer, uitkomst.fixpunt(), invoer, uitvoer));
-        return antwoord;
+        return new Beoordeling(antwoord, uitkomst.vergelijking());
     }
 
     /**
@@ -761,6 +790,56 @@ public final class BeslisserKern {
 
     public DienstDescriptor descriptor() { return descriptor; }
     public RegelSpraakModel model() { return model; }
+
+    /** Whether a request may ask to see its session: the core was started with {@link KernConfig#detail()}. */
+    public boolean detail() { return detail; }
+
+    /** The {@code uchar-ir-v1} document the service serves: the one it was given as its source, or the one uchar's
+     *  emitter writes of the model of its {@code .rgs} sources ({@link UcharBouw#document}), the forms of every scope
+     *  together. Whoever holds a document equal to it holds the service's model. */
+    public String document() {
+        String d = document;
+        if (d == null) document = d = UcharBouw.document(model);
+        return d;
+    }
+
+    /**
+     * The entry point a scenario with {@code scope} runs on, by its path: one whose scope carries the forms of the
+     * scenario ({@link VormIndex}), the forms named as the model spells them without a version. A scenario without a
+     * scope runs on every form of the model. An entry point that carries exactly those forms comes first, the first
+     * in the order of the descriptor; else the one that carries them with the fewest others, the first on a tie. That
+     * one fires the extra forms as well, so its answer can differ from the scenario's, and the path says which entry
+     * point it was.
+     *
+     * @throws GeenIngangspunt when no entry point carries every form of the scenario, naming what each one lacks
+     */
+    public String padVoorScope(ResolvedScenario.Scope scope) {
+        java.util.Set<String> gevraagd = new java.util.LinkedHashSet<>();
+        for (String v : scope == null ? vormen.alle() : scope.vormen())
+            gevraagd.add(CaseEmitter.norm(CaseEmitter.basisNaam(v)));
+        String beste = null;
+        int extra = Integer.MAX_VALUE;
+        List<String> tekort = new ArrayList<>();
+        for (DienstDescriptor.Entrypoint ep : descriptor.entrypoints()) {
+            java.util.Set<String> gedragen = new java.util.LinkedHashSet<>();
+            for (String v : vormen.scope(ep.scope()).vormen()) gedragen.add(CaseEmitter.norm(v));
+            List<String> mist = new ArrayList<>();
+            for (String v : gevraagd) if (!gedragen.contains(v)) mist.add(v);
+            if (!mist.isEmpty()) {
+                tekort.add("'" + ep.pad() + "' mist " + (mist.size() <= 5 ? mist : mist.subList(0, 5) + " en "
+                        + (mist.size() - 5) + " andere"));
+                continue;
+            }
+            int erbij = gedragen.size() - gevraagd.size();
+            if (erbij < extra) { beste = ep.pad(); extra = erbij; }
+        }
+        if (beste != null) return beste;
+        throw new GeenIngangspunt((scope == null ? "het scenario noemt geen scope en rekent dus met alle "
+                + gevraagd.size() + " vormen van het model" : "de scope van het scenario draagt " + gevraagd.size()
+                + " vorm(en)") + "; geen ingangspunt van de dienst draagt ze alle: "
+                + String.join("; ", tekort));
+    }
+
     public Map<String, Entrypoint> entrypoints() { return perPad; }
     public Entrypoint entrypoint(String pad) { return perPad.get(pad); }
 
@@ -770,6 +849,11 @@ public final class BeslisserKern {
     /** The rendered regel-geldigheid × parameter-geldigheid WARNING lines (gate G3), served on /info and logged
      *  by {@link dev.uchar.regelspraak.toolchain.service.http.DienstMain} at startup. Empty when no gap / no sets. */
     public List<String> periodeWaarschuwingen() { return periodeWaarschuwingen; }
+
+    /** Thrown when no entry point of the service carries the forms of a scenario ({@link #padVoorScope}). */
+    public static final class GeenIngangspunt extends RuntimeException {
+        public GeenIngangspunt(String zin) { super(zin); }
+    }
 
     /** Thrown when a request targets a path no entry point serves. */
     public static final class OnbekendPad extends RuntimeException {
