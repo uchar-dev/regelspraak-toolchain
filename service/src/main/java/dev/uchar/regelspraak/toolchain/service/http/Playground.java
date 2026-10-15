@@ -20,6 +20,7 @@ import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Benoembaar;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
+import dev.uchar.regelspraak.model.RegelSpraakModel.GegenereerdUit;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Severity;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Vocabulaire;
 import dev.uchar.regelspraak.parser.RegelSpraak;
@@ -40,9 +41,11 @@ import org.antlr.v4.runtime.Recognizer;
 import org.antlr.v4.runtime.misc.IntervalSet;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The DEV-ONLY RegelSpraak playground core (a "type-and-see" workbench). It is a pure analyzer: given a RegelSpraak
@@ -58,7 +61,9 @@ import java.util.Map;
  *   <li><b>ir</b> — the {@code uchar-ir-v1} document uchar's emitter writes, or {@code irFout} with the emitter's
  *       refusal;</li>
  *   <li><b>uitvoerbaar</b> — uchar's verdict on the exec-model branch, the branch that fires: {@code true} with the
- *       {@code dekking} per form, or {@code false} with uchar's {@code weigering};</li>
+ *       {@code dekking} per form and {@code gegenereerd}, the names of that coverage that name no element of
+ *       {@code vocabulaires} with the element uchar made them from ({@link #gegenereerd}), or {@code false} with
+ *       uchar's {@code weigering};</li>
  *   <li><b>drl</b> — the DRL text of uchar's DRL-text branch, a view and no verdict (that branch renders the
  *       analysis the exec-model branch fires as DRL text); {@code drlFout} carries its refusal, or uchar's sentence
  *       for a DRL text the Drools compiler rejects;</li>
@@ -67,7 +72,8 @@ import java.util.Map;
  *       {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, so a workbench can take a rule's dataflow
  *       neighbourhood without parsing Mermaid;</li>
  *   <li><b>vocabulaires</b> — the vocabularies the source declares, the chosen one, and per declaration its
- *       designation in each, its source line and the comment above it ({@link #vocabulaires});</li>
+ *       designation in each, its source line and the comment above it, and for an element uchar made itself the
+ *       element it comes from ({@link #vocabulaires});</li>
  *   <li><b>scenario</b> — only when the source contains a {@code Scenario} block: per scenario uchar's report
  *       (status, per expectation verwacht/werkelijk, the coverage), its {@code trace} (per fired rule the labels it
  *       bound and how often) and its {@code uitleg} ({@link ScenarioRunner#runMetUitleg}), or {@code uitlegFout};
@@ -166,6 +172,7 @@ public final class Playground {
                 dn.put("naam", d.naam());
                 dn.put("verdict", d.verdict().name());
             }
+            root.set("gegenereerd", gegenereerd(build, model, naamgeving));
         } catch (UcharBouw.NietGedragen e) {
             root.put("uitvoerbaar", false);
             root.put("weigering", e.getMessage());
@@ -291,7 +298,8 @@ public final class Playground {
      *  canonical name (an empty object without a declared vocabulary), and, where it has a declaration in the source,
      *  its {@code regel} and the {@code commentaar} directly above it, read from the parse in {@code ontleding}
      *  ({@link Declaraties}). An element or a declaration that does not couple puts {@code declaratieFout} with the
-     *  reason, and then no element carries {@code regel} or {@code commentaar}. */
+     *  reason, and then no element carries {@code regel} or {@code commentaar}. An element uchar's frontend made itself
+     *  carries {@code gegenereerdUit}, the element it comes from ({@link RegelSpraakModel#gegenereerdUit}). */
     static ObjectNode vocabulaires(RegelSpraakModel model, Naamgeving naamgeving, Ontleding ontleding) {
         ObjectNode n = NF.objectNode();
         n.put("gekozen", naamgeving.keuze());
@@ -328,9 +336,51 @@ public final class Playground {
                 ArrayNode commentaar = en.putArray("commentaar");
                 for (String c : d.commentaar()) commentaar.add(c);
             }
+            model.gegenereerdUit(b).ifPresent(g -> en.set("gegenereerdUit", gegenereerdUit(g)));
         }
         if (declaratieFout != null) n.put("declaratieFout", declaratieFout);
         return n;
+    }
+
+    /** Where an element uchar made comes from, as {@code {soort, eigenaar, naam, vorm}}: the kind, owner and name of the
+     *  source element as declared (canonical, as an element of {@code vocabulaires} carries them) and uchar's fixed key
+     *  of the form that made it. */
+    private static ObjectNode gegenereerdUit(GegenereerdUit g) {
+        ObjectNode n = NF.objectNode();
+        n.put("soort", g.bron().soort().name());
+        if (g.bron().eigenaar() == null) n.putNull("eigenaar"); else n.put("eigenaar", g.bron().eigenaar());
+        n.put("naam", g.bron().naam());
+        n.put("vorm", g.vorm().sleutel());
+        return n;
+    }
+
+    /** The names of the coverage of {@code build} that name no element of {@link RegelSpraakModel#benoembaar}, each as
+     *  {@code {naam, soort, gegenereerdUit}} in the order of the coverage, with uchar's origin of it
+     *  ({@code TmsTranspiler.gegenereerd}): an effective defaults stack, a version of a form. {@code naam} is spelled
+     *  as the coverage and trace of a scenario spell it ({@link Naamgeving#vorm}), with {@code naamCanoniek} beside it
+     *  where that differs from uchar's name; {@code soort} is the kind of the coverage. A name of the coverage that is
+     *  no form of the model and has no origin in uchar's table is a fault of the analysis, not an answer. */
+    static ArrayNode gegenereerd(DroolsBackend.Build build, RegelSpraakModel model, Naamgeving naamgeving) {
+        Set<String> vormen = new HashSet<>();
+        for (Benoembaar b : model.benoembaar()) if (b.soort() == Benoembaar.Soort.VORM) vormen.add(b.naam());
+        Map<String, GegenereerdUit> tabel = build.execModelTranspiler().gegenereerd();
+        ArrayNode uit = NF.arrayNode();
+        for (Dekking d : build.dekking()) {
+            GegenereerdUit g = tabel.get(d.naam());
+            if (g == null) {
+                if (!vormen.contains(d.naam()))
+                    throw new IllegalStateException("de dekking noemt " + d.soort() + " '" + d.naam() + "', geen "
+                            + "vorm van het model, en uchar noemt de naam niet gegenereerd");
+                continue;
+            }
+            ObjectNode n = uit.addObject();
+            String gekozen = naamgeving.vorm(d.naam());
+            n.put("naam", gekozen);
+            if (!gekozen.equals(d.naam())) n.put("naamCanoniek", d.naam());
+            n.put("soort", d.soort());
+            n.set("gegenereerdUit", gegenereerdUit(g));
+        }
+        return uit;
     }
 
     /** The rule graph as {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, each label in the names of
