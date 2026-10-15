@@ -138,8 +138,8 @@ public final class ScenarioRunner {
                 ScenarioResultaat r = rapport.get(i);
                 ScenarioResultaat benoemd = new ScenarioResultaat(scenarios.get(i).naam(), r.status(),
                         r.verwachtingen(), r.trace(), r.dekking(), r.diagnose());
-                uit.add(metUitleg ? uitleg(build, benoemd, JSON.readTree(Files.readString(cases.get(i))), vocabulaire)
-                        : new Uitgelegd(benoemd, List.of(), null, null, null));
+                uit.add(metUitleg ? uitleg(build, benoemd, JSON.readTree(Files.readString(cases.get(i))), vocabulaire,
+                        irModel) : new Uitgelegd(benoemd, List.of(), null, null, null));
             }
             return uit;
         } catch (IOException e) {
@@ -159,8 +159,11 @@ public final class ScenarioRunner {
     }
 
     /** The explanation of report {@code r}, whose case is {@code c}: the case played in a session of its own on
-     *  {@code build}, checked against what uchar's replay reported, then verbalised in {@code vocabulaire}. */
-    private static Uitgelegd uitleg(DroolsBackend.Build build, ScenarioResultaat r, JsonNode c, String vocabulaire) {
+     *  {@code build}, checked against what uchar's replay reported, then verbalised in {@code vocabulaire}. The build's
+     *  model is the one uchar's loader read from the IR document, which does not carry uchar's table of origins;
+     *  {@code herkomst}, the frontend's model the document was emitted from, does, and tells the rules uchar wrote. */
+    private static Uitgelegd uitleg(DroolsBackend.Build build, ScenarioResultaat r, JsonNode c, String vocabulaire,
+                                    RegelSpraakModel herkomst) {
         if (r.status() == ScenarioResultaat.Status.MARKER) return new Uitgelegd(r, List.of(), null, null, null);
         if (r.verwachtingen().isEmpty() && r.status() == ScenarioResultaat.Status.FAIL)
             return nietUitgespeeld(build, r, c);
@@ -185,8 +188,8 @@ public final class ScenarioRunner {
         String verschil = waardeVerschil(sessie, r, c);
         if (verschil != null) return new Uitgelegd(r, List.of(), verschil, null, verschil);
         return new Uitgelegd(r, new Verbalisator(build.model(), sessie.globals(),
-                Naamgeving.van(build.model(), vocabulaire)).verbaliseer(sessie.beans(), sessie.typePerLabel()), null,
-                sessie, null);
+                Naamgeving.van(build.model(), vocabulaire), herkomst)
+                .verbaliseer(sessie.beans(), sessie.typePerLabel()), null, sessie, null);
     }
 
     /** A case uchar's replay did not play out, its play raised an exception: no explanation, and the session played

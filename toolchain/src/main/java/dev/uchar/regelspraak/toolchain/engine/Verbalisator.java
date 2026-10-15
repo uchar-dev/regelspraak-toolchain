@@ -6,6 +6,8 @@ import dev.uchar.regelspraak.ir.ResolvedRegel;
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.Eenheid;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Benoembaar;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Herkomstvorm;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
 import dev.uchar.regelspraak.transpiler.kern.Namen;
 
@@ -45,7 +47,11 @@ import java.util.regex.Pattern;
  *
  * <p><b>Vocabulaire.</b> Met een {@link Naamgeving} noemt het verhaal de gedeclareerde namen — objecttypen,
  * attributen, kenmerken, rollen, parameters en enumeratiewaarden — in het gekozen vocabulaire; de brontekst van een
- * operand is regeltekst en blijft zoals hij geschreven is. Een enumeratiewaarde waarvan de benaming afwijkt van de
+ * operand is regeltekst en blijft zoals hij geschreven is. De uitzondering is een regel die uchar zelf schreef, de
+ * regel {@code afwijking opgave X} van de opgave-markering (uchars DIVERGENCES §7): zijn tekst is uchars canonieke
+ * spelling, geen tekst van een auteur, en daarin staat de naam van een gelezen attribuut in het gekozen vocabulaire
+ * ("zijn opgegeven Datum einde recht op uitkering"). Welke regel dat is, staat in uchars tabel van herkomst
+ * ({@link RegelSpraakModel#gegenereerdUit}), niet in de naam. Een enumeratiewaarde waarvan de benaming afwijkt van de
  * gedeclareerde waarde staat er als "benaming · waarde" ("01 · Hoogte inkomsten uit verzekerde arbeid"). Zonder
  * naamgeving is het verhaal canoniek.
  *
@@ -68,15 +74,27 @@ public final class Verbalisator {
     private final Map<String, Object> globals;
     /** De namen waarin het verhaal de declaraties noemt. */
     private final Naamgeving naamgeving;
+    /** Het model waarvan de tabel van herkomst ({@link RegelSpraakModel#gegenereerd}) zegt welke regels uchar
+     *  schreef. */
+    private final RegelSpraakModel herkomst;
 
     public Verbalisator(RegelSpraakModel model, Map<String, Object> globals) {
         this(model, globals, Naamgeving.canoniek(model));
     }
 
     public Verbalisator(RegelSpraakModel model, Map<String, Object> globals, Naamgeving naamgeving) {
+        this(model, globals, naamgeving, model);
+    }
+
+    /** {@code herkomst} is het model waarvan de tabel van herkomst zegt welke regels uchar schreef: dat van de
+     *  frontend. De wire draagt die tabel niet, dus een model dat uchars IR-lader leest heeft haar leeg; wie op zo'n
+     *  model uitlegt, geeft hier het model van de frontend. */
+    public Verbalisator(RegelSpraakModel model, Map<String, Object> globals, Naamgeving naamgeving,
+                        RegelSpraakModel herkomst) {
         this.model = model;
         this.globals = globals == null ? Map.of() : globals;
         this.naamgeving = naamgeving;
+        this.herkomst = herkomst;
     }
 
     /**
@@ -121,27 +139,36 @@ public final class Verbalisator {
         if (gezegde == null)
             throw new IllegalStateException("de kenmerktoekenning '" + r.naam() + "' kent '" + kenmerk + "' toe, en "
                     + onderwerp.naam + " heeft geen kenmerk met die naam: de uitleg kent de soort niet");
+        boolean uchartekst = doorUcharGeschreven(r);
         StringBuilder b = new StringBuilder(label).append(' ').append(gezegde.hoofdzin());
         if (aanwezig) {
-            if (v != null) b.append(", omdat ").append(verbaliseerVoorwaarde(v, bean, onderwerp));
+            if (v != null) b.append(", omdat ").append(verbaliseerVoorwaarde(v, bean, onderwerp, uchartekst));
             else b.append(" (onvoorwaardelijk toegekend)");
         } else {
-            b.append(", want ").append(eersteFalendeConjunct(v, bean, onderwerp));
+            b.append(", want ").append(eersteFalendeConjunct(v, bean, onderwerp, uchartekst));
         }
         String bron = bronVerwijzing(r);
         if (bron != null) b.append(". Grondslag: ").append(bron);
         return b.toString();
     }
 
+    /** Of uchar de tekst van regel {@code r} schreef: een regel van de opgave-familie, volgens uchars tabel van
+     *  herkomst. Een beslistabelrij maakte uchar ook, maar uit de kolomkoppen en cellen van de auteur; die tekst is van
+     *  de auteur. */
+    private boolean doorUcharGeschreven(ResolvedRegel r) {
+        return herkomst.gegenereerdUit(Benoembaar.vorm(RegelSpraakModel.vormnaam(r.naam())))
+                .map(g -> g.vorm() == Herkomstvorm.OPGAVE_BOVEN_BEREKENING).orElse(false);
+    }
+
     // ---------------- voorwaarde-verbalisatie ----------------
 
     /** Een voorwaarde in proza, met de geëvalueerde operandwaarden: WAAROM ze geldt (het toegekende geval); de
      *  niet-toegekende tak gaat via {@link #eersteFalendeConjunct}. {@code onderwerp} is het objecttype van de regel,
-     *  vanwaar een kenmerk- of rolnaam in de voorwaarde gelezen wordt. */
-    private String verbaliseerVoorwaarde(Conditie c, Object bean, Objecttype onderwerp) {
+     *  vanwaar een kenmerk- of rolnaam in de voorwaarde gelezen wordt; {@code uchartekst} of uchar de regel schreef. */
+    private String verbaliseerVoorwaarde(Conditie c, Object bean, Objecttype onderwerp, boolean uchartekst) {
         if (c instanceof Conditie.Samengesteld s) {
             List<String> delen = new ArrayList<>();
-            for (Conditie d : s.onderdelen()) delen.add(verbaliseerVoorwaarde(d, bean, onderwerp));
+            for (Conditie d : s.onderdelen()) delen.add(verbaliseerVoorwaarde(d, bean, onderwerp, uchartekst));
             String voegwoord = switch (s.kwantor()) {
                 case ALLE -> " en ";
                 case GEEN -> " en niet ";
@@ -149,14 +176,14 @@ public final class Verbalisator {
             };
             return String.join(voegwoord, delen);
         }
-        return verbaliseerAtoom(c, bean, onderwerp);
+        return verbaliseerAtoom(c, bean, onderwerp, uchartekst);
     }
 
     /** Een enkele (niet-samengestelde) conditie als proza met geëvalueerde operanden. */
-    private String verbaliseerAtoom(Conditie c, Object bean, Objecttype onderwerp) {
+    private String verbaliseerAtoom(Conditie c, Object bean, Objecttype onderwerp, boolean uchartekst) {
         if (c instanceof Conditie.Vergelijking vg) {
-            return operandProza(vg.links(), bean) + " " + operatorWoorden(vg.op()) + " "
-                    + operandProza(vg.rechts(), bean);
+            return operandProza(vg.links(), bean, uchartekst) + " " + operatorWoorden(vg.op()) + " "
+                    + operandProza(vg.rechts(), bean, uchartekst);
         }
         if (c instanceof Conditie.Kenmerk k) {
             Objecttype houder = k.navigatie() == null ? onderwerp
@@ -176,7 +203,7 @@ public final class Verbalisator {
                 case GEVULD -> "gevuld is";
                 default -> "voldoet aan " + p.soort().name().toLowerCase(Locale.ROOT);
             };
-            return operandProza(p.operand(), bean) + " " + kern;
+            return operandProza(p.operand(), bean, uchartekst) + " " + kern;
         }
         // een nog niet gestructureerde conditievorm: eerlijk de brontekst tonen, geen gok.
         return "aan de voorwaarde \"" + c.bron().snippet().trim() + "\" is voldaan";
@@ -186,18 +213,18 @@ public final class Verbalisator {
      *  operanden tegen de eindtoestand) niet houdt — de reden dat de toekenning uitbleef. Voor een niet-
      *  samengestelde voorwaarde is dat de voorwaarde zelf. Kan een conjunct niet worden geëvalueerd (een
      *  onopgeloste vorm, een niet-leesbaar operand), dan noemt hij die eerlijk als "niet vast te stellen". */
-    private String eersteFalendeConjunct(Conditie c, Object bean, Objecttype onderwerp) {
+    private String eersteFalendeConjunct(Conditie c, Object bean, Objecttype onderwerp, boolean uchartekst) {
         if (c instanceof Conditie.Samengesteld s && s.kwantor() == Conditie.Kwantor.ALLE) {
             for (Conditie d : s.onderdelen()) {
                 Boolean houdt = evalueer(d, bean);
                 if (houdt == null) return "de voorwaarde \"" + samenvatting(d) + "\" niet is vast te stellen";
-                if (!houdt) return "niet geldt: " + verbaliseerAtoom(d, bean, onderwerp);
+                if (!houdt) return "niet geldt: " + verbaliseerAtoom(d, bean, onderwerp, uchartekst);
             }
             // alle conjuncten houden maar het kenmerk staat toch niet aan: een producent buiten deze run.
             return "de conclusie niet is bereikt (mogelijk een regel buiten deze berekening)";
         }
         Boolean houdt = evalueer(c, bean);
-        if (Boolean.FALSE.equals(houdt)) return "niet geldt: " + verbaliseerAtoom(c, bean, onderwerp);
+        if (Boolean.FALSE.equals(houdt)) return "niet geldt: " + verbaliseerAtoom(c, bean, onderwerp, uchartekst);
         if (houdt == null) return "de voorwaarde \"" + samenvatting(c) + "\" niet is vast te stellen";
         return "de conclusie niet is bereikt (mogelijk een regel buiten deze berekening)";
     }
@@ -371,9 +398,9 @@ public final class Verbalisator {
     /** Een operand als leesbaar deel van een vergelijking: een LITERAL toont zijn waarde één keer ("100 km") —
      *  géén verdubbeling van de brontekst; elk ander operand toont zijn omschrijving mét de geëvalueerde waarde
      *  tussen haakjes ("de maandloon nieuw van EOver (3.000,00 EUR)"), zodat de jurist de norm én het feit ziet. */
-    private String operandProza(Expr e, Object bean) {
+    private String operandProza(Expr e, Object bean, boolean uchartekst) {
         if (e instanceof Expr.Literal) return renderOperand(e, bean);
-        return omschrijf(e) + " (" + renderOperand(e, bean) + ")";
+        return omschrijf(e, uchartekst) + " (" + renderOperand(e, bean) + ")";
     }
 
     /** Een Java-waarde in helder Nederlands: getallen met punt-duizend/komma-decimaal en de eenheid uit het type;
@@ -425,14 +452,33 @@ public final class Verbalisator {
     }
 
     /** Een korte omschrijving van WAT een operand is, uit zijn brontekst (bv. "de maandloon nieuw van EOver"); die is
-     *  regeltekst en blijft zoals hij geschreven is. Zonder brontekst noemt hij de declaratie. */
-    private String omschrijf(Expr e) {
+     *  regeltekst en blijft zoals hij geschreven is, behalve de naam van een gelezen attribuut in een regel die uchar
+     *  schreef ({@code uchartekst}). Zonder brontekst noemt hij de declaratie. */
+    private String omschrijf(Expr e, boolean uchartekst) {
         if (e == null) return "de waarde";
         String bron = e.bron().snippet();
-        if (bron != null && !bron.isBlank()) return bron.trim();
+        if (bron != null && !bron.isBlank()) {
+            if (uchartekst && e instanceof Expr.AttribuutRef ref) return inVocabulaire(bron.trim(), ref);
+            return bron.trim();
+        }
         if (e instanceof Expr.AttribuutRef ref) return "de " + naamgeving.attribuut(ref.objecttype(), ref.attribuut());
         if (e instanceof Expr.ParameterRef pr) return "de " + naamgeving.parameter(pr.parameter().naam());
         return "de waarde";
+    }
+
+    /** {@code tekst}, uchars spelling van lezing {@code ref} ("zijn opgegeven beëindigingsdatum"), met de naam van het
+     *  gelezen attribuut via {@link Naamgeving}: "zijn opgegeven Datum einde recht op uitkering". De lezing die uchars
+     *  IR-lader leest draagt het onderwerpwoord niet, dus blijft de tekst de bron en verandert alleen de naam erin: het
+     *  laatste voorkomen, want uchar schrijft de lezing als "zijn &lt;naam&gt;". */
+    private String inVocabulaire(String tekst, Expr.AttribuutRef ref) {
+        Matcher m = Pattern.compile("(?iu)" + naamPatroon(ref.attribuut())).matcher(tekst);
+        int begin = -1, eind = -1;
+        while (m.find()) { begin = m.start(); eind = m.end(); }
+        if (begin < 0)
+            throw new IllegalStateException("uchar schreef de lezing van '" + ref.attribuut() + "' als '" + tekst
+                    + "', zonder die naam: de uitleg kan haar niet in het vocabulaire noemen");
+        return tekst.substring(0, begin) + naamgeving.attribuut(ref.objecttype(), ref.attribuut())
+                + tekst.substring(eind);
     }
 
     /** Een kenmerk als gezegde: het werkwoord en wat erbij hoort, in de volgorde van een hoofdzin ("heeft de
@@ -468,13 +514,21 @@ public final class Verbalisator {
      *  lidwoord schrijft of de naam niet bevat. */
     private static String lidwoordVoor(String regeltekst, String kenmerk) {
         if (regeltekst == null || kenmerk == null || kenmerk.isBlank()) return null;
-        String naam = String.join("\\s+", Arrays.stream(kenmerk.trim().split("\\s+")).map(Pattern::quote).toList());
-        String grens = "[\\p{L}\\p{N}-]";
-        Matcher m = Pattern.compile("(?iu)(?:(?<!" + grens + ")(de|het|een)\\s+)?(?<!" + grens + ")" + naam
-                + "(?!" + grens + ")").matcher(regeltekst);
+        Matcher m = Pattern.compile("(?iu)(?:(?<!" + GRENS + ")(de|het|een)\\s+)?" + naamPatroon(kenmerk))
+                .matcher(regeltekst);
         String lidwoord = null;
         while (m.find()) lidwoord = m.group(1);
         return lidwoord == null ? null : lidwoord.toLowerCase(Locale.ROOT);
+    }
+
+    /** Een teken dat een woord voortzet: een naam in een tekst staat niet direct naast zo'n teken. */
+    private static final String GRENS = "[\\p{L}\\p{N}-]";
+
+    /** De gedeclareerde naam {@code naam} als patroon in een tekst: zijn woorden met witruimte ertussen, als hele
+     *  woorden. */
+    private static String naamPatroon(String naam) {
+        String woorden = String.join("\\s+", Arrays.stream(naam.trim().split("\\s+")).map(Pattern::quote).toList());
+        return "(?<!" + GRENS + ")" + woorden + "(?!" + GRENS + ")";
     }
 
     private static String operatorWoorden(Conditie.Operator op) {

@@ -186,7 +186,12 @@ rules are written and computed in the canonical names. The distribution uses the
   sends and receives; treat it as a contract change of the service.
 
 The word `canoniek` chooses the canonical names, so a model that declares a vocabulary of that name does not start.
-The rule text is never renamed: the uitleg quotes it as written. In the uitleg, an enumeration value whose designation
+The rule text is not renamed: the uitleg quotes it as written. The exception is a rule uchar wrote itself, the rule
+`afwijking opgave X` of the opgave marker: its text is uchar's canonical spelling, not an author's, so the uitleg names
+the attribute an operand reads in the chosen vocabulary (`zijn opgegeven Datum einde recht op uitkering`). uchar's table
+of origins (`RegelSpraakModel.gegenereerdUit`) says which rule that is; the row of a decision table is generated too,
+but its text is the author's column header and cell, and stays as written.
+In the uitleg, an enumeration value whose designation
 differs from the declared value is written as both, `<designation> · <value>` (`01 · Hoogte inkomsten uit verzekerde
 arbeid`), because a code alone does not say what it stands for; the answer carries the designation alone. A
 characteristic stands in the uitleg with the verb of its declared kind (§3.5), in every vocabulary and also in a
