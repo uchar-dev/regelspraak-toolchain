@@ -46,8 +46,6 @@ testklasse, `README.md`, kaartverplaatsing. Niet `uchar/`.
 
 ## Result (2026-10-15)
 
-De kaart blijft in `doing/`: acceptatie (c) wacht op een akkoord over twee bestaande testbestanden (zie "Open").
-
 ### Wat de kaart opleverde
 
 - **`Verbalisator.enumeratiewaarde`**, aangeroepen uit `render`: de naam uit `Naamgeving.waarde`, en als die volgens
@@ -83,34 +81,28 @@ uitleg als voor de wijziging.
   01 · Hoogte inkomsten uit verzekerde arbeid", "(OVERLIJDEN)" en "(Onbekend)"; canoniek staan de zinnen zoals ze
   waren.
 - Rood zonder de wijziging: "(01) is gelijk aan 01"; de canonieke test was al groen.
-- Geen bestaand testbestand gewijzigd (zie "Open").
+- Twee bestaande tests, met akkoord van de eigenaar (`80734a9`). Ze pinden de handboekzin van de golden
+  `jutterswet-vocabulaires`, waar `barnsteen` de benaming `amber` heeft en `wrakhout` de benaming `hout van een wrak`.
+  De regel geldt in elk vocabulaire, niet alleen bij codes, dus die zin wordt "zijn soort (amber · barnsteen) is gelijk
+  aan amber · barnsteen" en "zijn soort (hout van een wrak · wrakhout) is gelijk aan amber · barnsteen":
+  - `toolchain/…/engine/VocabulaireScenarioTest`, `de_uitleg_noemt_de_declaraties_in_het_gekozen_vocabulaire`, r. 43–44;
+  - `service/…/VocabulaireAntwoordTest`, `het_antwoord_in_het_handboek`, r. 56.
+  Een code herkennen aan haar vorm, om alleen daar de waarde erachter te zetten, zou een afleiding uit een naampatroon
+  zijn.
 
 ### Poorten
 
-De zeven stappen van `make gates` zijn los gedraaid, de reactor met `-Dmaven.test.failure.ignore=true`, omdat
-`make gates` bij de reactor stopt:
+`make gates` op `80734a9`: groen, 7 stappen in 8 min 50 s.
 - pin: uchar op `99f614b8`;
-- reactor (5 min 31 s): 1578 tests in uchars backend, 131 in toolchain (was 129, plus de 2 nieuwe; vloer 120), 269 in
-  service (vloer 235) en 47 in service-quarkus, geen skip. **Rood: 2 tests**, beide op de oude handboekzin (zie
-  "Open"); verder niets;
+- reactor (5 min 34 s): 1578 tests in uchars backend, 131 in toolchain (was 129, plus de 2 nieuwe; vloer 120), 269 in
+  service (vloer 235) en 47 in service-quarkus, geen skip;
 - tweelingen: 3 tweelingen met 18 cases, de vocabulairetweeling met 2 cases in 34 verzoeken, 4 getuigenissen;
 - replay: 225 goldens met 599 cases (pin 225);
 - manifest: 32 regels, 29 ok, 3 uitgesloten, 0 mismatch;
 - image `beslisservice:dev`;
-- kind-smoke: H2, H3 en H4 PASS, het cluster daarna verwijderd.
-
-### Open
-
-- Twee bestaande tests pinnen de handboekzin van de golden `jutterswet-vocabulaires`, waar `barnsteen` de benaming
-  `amber` heeft en `wrakhout` de benaming `hout van een wrak`. Met deze kaart wordt die zin "zijn soort (amber ·
-  barnsteen) is gelijk aan amber · barnsteen" en "zijn soort (hout van een wrak · wrakhout) is gelijk aan amber ·
-  barnsteen":
-  - `toolchain/…/engine/VocabulaireScenarioTest`, `de_uitleg_noemt_de_declaraties_in_het_gekozen_vocabulaire`, r. 43–44;
-  - `service/…/VocabulaireAntwoordTest`, `het_antwoord_in_het_handboek`, r. 56.
-  Een bestaand testbestand verandert pas na akkoord van de eigenaar; daarom zijn ze niet aangepast. De werkelijke
-  uitvoer in het rapport van de reactor is letterlijk de nieuwe zin. Na akkoord: die drie regels aanpassen in een eigen
-  commit, de reactor opnieuw, en de kaart naar `done/`.
+- kind-smoke: H2, H3 en H4 PASS.
 
 ### Commits
 
-`0f47abd` kaart · `21ce408` claim · `c62d2ac` de Verbalisator, de nieuwe testklasse en de README · deze Result.
+`0f47abd` kaart · `21ce408` claim · `c62d2ac` de Verbalisator, de nieuwe testklasse en de README · `3317e39` Result ·
+`80734a9` de twee bestaande tests · deze verplaatsing naar `done/`.
