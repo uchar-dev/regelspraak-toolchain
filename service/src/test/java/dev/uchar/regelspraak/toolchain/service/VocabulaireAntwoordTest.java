@@ -53,7 +53,8 @@ class VocabulaireAntwoordTest {
                 j1.toString());
         assertEquals(1, j1.at("/attributen/aantal vondsten van waarde").asInt());
         assertTrue(j1.at("/kenmerken/komt in aanmerking voor premie").asBoolean(), j1.toString());
-        assertTrue(a.get("uitleg").toString().contains("V1 is van waarde, omdat zijn soort (amber) is gelijk aan amber"),
+        assertTrue(a.get("uitleg").toString().contains("V1 is van waarde, omdat zijn soort (amber · barnsteen)"
+                + " is gelijk aan amber · barnsteen"),
                 a.get("uitleg").toString());
     }
 

@@ -40,8 +40,9 @@ class VocabulaireScenarioTest {
         assertNull(u.get(0).uitlegFout(), u.get(0)::uitlegFout);
         assertEquals(List.of(
                 "J1 is komt in aanmerking voor premie, omdat zijn vondstbedrag (12,60) is groter dan 10",
-                "V1 is van waarde, omdat zijn soort (amber) is gelijk aan amber",
-                "V2 is niet van waarde, want niet geldt: zijn soort (hout van een wrak) is gelijk aan amber"),
+                "V1 is van waarde, omdat zijn soort (amber · barnsteen) is gelijk aan amber · barnsteen",
+                "V2 is niet van waarde, want niet geldt: zijn soort (hout van een wrak · wrakhout) is gelijk aan"
+                        + " amber · barnsteen"),
                 u.get(0).uitleg());
         // canonically the same sentences in the canonical names
         List<ScenarioRunner.Uitgelegd> c = ScenarioRunner.runMetUitleg(ScenarioResolver.resolve(document()));
