@@ -12,14 +12,11 @@ import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.transpiler.kern.Namen;
 import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
 
-import org.kie.api.event.rule.AfterMatchFiredEvent;
-import org.kie.api.event.rule.DefaultAgendaEventListener;
 import org.kie.api.runtime.KieSession;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,9 +25,9 @@ import java.util.Map;
  * One case of the {@code uchar-case-v0} format played in a session of its own on a build uchar made
  * ({@link DroolsBackend.Build}): the input beans the case describes, its parameters and evaluation date as globals,
  * put in, fired to the fixpoint, read and written back through uchar's entry ({@link DroolsBackend#voegIn},
- * {@link DroolsBackend#vuur}, {@link DroolsBackend#lees}, {@link DroolsBackend#zetAfgeleideWaarden}), with a listener
- * that records every firing under the form of the document its rule belongs to, with the labels of the input instances
- * its match bound. It exists for what uchar's replay ({@code CaseRunner.rapport}) does not return: the beans with their
+ * {@link DroolsBackend#vuur}, {@link DroolsBackend#lees}, {@link DroolsBackend#zetAfgeleideWaarden}), the firings
+ * recorded by uchar's {@link DroolsBackend.Waarnemer} with the labels of the input instances, as uchar's replay records
+ * them, so the trace has one definition. It exists for what uchar's replay ({@code CaseRunner.rapport}) does not return: the beans with their
  * derived values, from which the {@link Verbalisator} explains an outcome, and uchar's {@link Fixpunt}, what stands at
  * the fixpoint with or without an expectation on it.
  *
@@ -78,8 +75,6 @@ public final class CaseSessie {
         private final Map<String, Object> labelNaarBean = new LinkedHashMap<>();
         private final Map<String, Objecttype> labelType = new LinkedHashMap<>();
         private final Map<String, Object> globals = new LinkedHashMap<>();
-        private final Map<String, Integer> telling = new LinkedHashMap<>();
-        private final Map<String, List<String>> labels = new LinkedHashMap<>();
         /** The to-many lists the roles of the case fill, in the order of the replay. */
         private final RolSchrijver.Lijsten lijsten = new RolSchrijver.Lijsten();
 
@@ -114,19 +109,16 @@ public final class CaseSessie {
                 for (Map.Entry<String, Object> g : globals.entrySet()) setGlobalVeilig(sessie, g.getKey(), g.getValue());
                 for (Map.Entry<String, java.util.function.Predicate<LocalDate>> d : build.dagsoortGlobalen().entrySet())
                     setGlobalVeilig(sessie, d.getKey(), d.getValue());
-                sessie.addEventListener(luisteraar());
                 DroolsBackend.voegIn(build, sessie, invoer());
-                DroolsBackend.Vuring vuring = DroolsBackend.vuur(build, sessie);
+                DroolsBackend.Waarnemer waarnemer = new DroolsBackend.Waarnemer(this::labelVan);
+                DroolsBackend.Vuring vuring = DroolsBackend.vuur(build, sessie, waarnemer);
                 if (vuring.geenFixpunt() != null) throw new NietSpeelbaar(vuring.geenFixpunt());
                 // read before the write-back, which throws a standing evaluation fault where the reading gives it as
                 // data, and writes nothing after a throw (uchar's entry, as the service's Uitvoerder reads it)
                 Fixpunt fixpunt = DroolsBackend.lees(build, sessie, this::labelVan);
                 if (fixpunt.fouten().isEmpty()) DroolsBackend.zetAfgeleideWaarden(build, sessie, this::labelVan);
-                List<ScenarioResultaat.Vuring> vuringen = new ArrayList<>();
-                for (Map.Entry<String, Integer> e : telling.entrySet())
-                    vuringen.add(new ScenarioResultaat.Vuring(e.getKey(), List.copyOf(labels.get(e.getKey())), e.getValue()));
                 return new Uitkomst(new LinkedHashMap<>(labelNaarBean), new LinkedHashMap<>(labelType),
-                        new LinkedHashMap<>(globals), vuringen, fixpunt);
+                        new LinkedHashMap<>(globals), waarnemer.vuringen(), fixpunt);
             } finally {
                 sessie.dispose();
                 Thread.currentThread().setContextClassLoader(vorige);
@@ -206,25 +198,6 @@ public final class CaseSessie {
             } catch (RolSchrijver.Geweigerd g) {
                 throw new NietSpeelbaar(g.getMessage());
             }
-        }
-
-        /** Every firing under the form of the document its rule belongs to, its name without a version suffix, as
-         *  uchar's replay names it ({@code CaseRunner.luisteraar}); a rule of no form, one the lowering keeps for
-         *  every form alike, is no row. */
-        private DefaultAgendaEventListener luisteraar() {
-            return new DefaultAgendaEventListener() {
-                @Override public void afterMatchFired(AfterMatchFiredEvent e) {
-                    String vorm = build.execModelTranspiler().vormVan(e.getMatch().getRule().getName());
-                    if (vorm == null) return;
-                    String regel = RegelSpraakModel.vormnaam(vorm);
-                    telling.merge(regel, 1, Integer::sum);
-                    List<String> ls = labels.computeIfAbsent(regel, k -> new ArrayList<>());
-                    for (Object o : e.getMatch().getObjects()) {
-                        String l = labelVan(o);
-                        if (l != null && !ls.contains(l)) ls.add(l);
-                    }
-                }
-            };
         }
 
         private String labelVan(Object bean) {
