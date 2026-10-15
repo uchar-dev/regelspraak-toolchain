@@ -13,6 +13,7 @@ import dev.uchar.regelspraak.engine.ScenarioResultaat.Vuring;
 import dev.uchar.regelspraak.toolchain.engine.Naamgeving;
 import dev.uchar.regelspraak.toolchain.engine.ScenarioRunner;
 import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
+import dev.uchar.regelspraak.toolchain.service.FixpuntGegevens;
 import dev.uchar.regelspraak.graaf.ProducentConsument;
 import dev.uchar.regelspraak.graaf.RegelGraaf;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
@@ -272,7 +273,7 @@ public final class Playground {
         if (u.sessie() != null) {
             try {
                 n.set("fixpunt", ScenarioGegevens.fixpunt(u.sessie(), s, model, naamgeving));
-            } catch (ScenarioGegevens.OnweergeefbareWaarde o) {
+            } catch (FixpuntGegevens.OnweergeefbareWaarde o) {
                 n.put("fixpuntFout", o.getMessage());
             }
         } else if (u.sessieFout() != null) {
