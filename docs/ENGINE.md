@@ -173,8 +173,9 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   declared vocabulary, and a declaration uchar's frontend wrote itself has no line; `declaratieFout` names an
   element that does not couple to one declaration), and per scenario uchar's report with its
   `trace` and `uitleg`. Beside the report stand the source line of the scenario and of each expectation (`regel`,
-  `regeltekst`: uchar gives the line an expectation begins on), the `situatie` uchar's scenario resolver makes, and
-  the `fixpunt` of the case's own session as uchar reads it (`DroolsBackend.lees`): per object every value and
+  `regeltekst`: uchar gives the line an expectation begins on), the `situatie` uchar's scenario resolver makes
+  (each role in `objecten[].rollen[]` with its `feittype`, the fact type the resolver found the role in), and the
+  `fixpunt` of the case's own session as uchar reads it (`DroolsBackend.lees`): per object every value and
   characteristic with its origin, the made objects, the links, the evaluation faults as data and the
   inconsistencies, each list sorted, or `fixpuntFout` with the reason there is none. `?vocabulaire=<naam>` names
   `graafJson`, the trace, the per-scenario coverage, the uitleg, the situation and the fixpoint in a vocabulary of

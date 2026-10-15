@@ -234,9 +234,6 @@ and the command that deletes the cluster. Both targets need Docker and run on th
   expectation only where one bullet stands on one line. A timeline expectation of several bullets is one entry at
   its first bullet. The name of the parameter set a scenario chose is not in the resolved scenario either; its
   values are, each with its line.
-- **The fact type of a role in the playground's situation.** uchar's scenario resolver finds the fact type of a
-  role assignment, but its `ResolvedScenario.RolWaarde` carries only the role, its target type and the labels, and
-  a case file maps a role name to labels; so a role in `situatie.objecten[].rollen[]` has no `feittype`.
 - **Vocabulary names in the Mermaid graph.** The playground's `graaf` and `bin/regelspraak graaf` are uchar's
   rendering and stay canonical; the playground's `graafJson` carries the chosen vocabulary.
 
