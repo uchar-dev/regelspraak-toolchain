@@ -52,7 +52,7 @@
   <build>
     <plugins>
       <!-- A test-jar beside the main jar, so the Quarkus adapter can reuse the golden-parity harness (TokaBron,
-           SituatieNaarVerzoek, the manifest reader) without re-typing an expected value. -->
+           the manifest reader) without re-typing an expected value; SituatieNaarVerzoek is in the main jar. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>

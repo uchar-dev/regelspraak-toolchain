@@ -15,11 +15,13 @@ import dev.uchar.regelspraak.ir.ResolvedScenario.Waarde;
 import java.math.BigDecimal;
 
 /**
- * Test-support: MECHANICALLY derive the HTTP request body from a resolved scenario's merged
+ * MECHANICALLY derive the request body of the service from a resolved scenario's merged
  * {@link ResolvedScenario.Situatie}. Nothing here is hand-typed — every value, label, type, rol target,
  * parameter and the peildatum is read straight off uchar's scenario resolver, so the "one truth, two transports"
  * guarantee holds: the same {@link dev.uchar.regelspraak.resolver.ScenarioResolver} output that the scenario
- * runner lowers to a case file is the HTTP request the golden harness posts.
+ * runner lowers to a case file is the request the golden harness posts and the playground's {@code via=dienst}
+ * hands to the core ({@link Playground}). Each instance keeps its label as its {@code id}, so an expectation of the
+ * case names the instance by an id of the request.
  *
  * <p>The situatie value is ALREADY normalised by the resolver to the target attribuut/parameter's declared unit
  * (2 uur → 120, 90 minuut → 90) as an exact case lexeme, so a numeric value emits as a bare EXACT JSON number (a
@@ -27,7 +29,7 @@ import java.math.BigDecimal;
  * boolean/tekst/enum as its plain JSON scalar. Those are exactly the forms
  * {@link dev.uchar.regelspraak.toolchain.service.WaardeCoder} accepts (a plain number is read in the declared unit),
  * so no request value is ever approximated. A timeline value, a time-dependent kenmerk and a fraction that has no
- * exact decimal form have no request form, and fail here by name.
+ * exact decimal form have no request form, and fail here by name ({@link NietDraagbaar}).
  *
  * <p>The response shape produced matches {@link dev.uchar.regelspraak.toolchain.service.Verzoek}:
  * {@code instanties[]{type,id,attributen,kenmerken,rollen}}, {@code parameters}, {@code rekendatum}.
@@ -38,6 +40,12 @@ final class SituatieNaarVerzoek {
     private static final JsonNodeFactory NF = JsonNodeFactory.withExactBigDecimals(true);
 
     private SituatieNaarVerzoek() {}
+
+    /** A value of the situation that a request of the service cannot carry, named in the sentence. */
+    static final class NietDraagbaar extends IllegalArgumentException {
+        NietDraagbaar(String zin) { super(zin); }
+        NietDraagbaar(String zin, Throwable oorzaak) { super(zin, oorzaak); }
+    }
 
     /** Build the request tree from a resolved scenario's situatie + peildatum. */
     static ObjectNode bouw(ResolvedScenario scenario) {
@@ -52,7 +60,7 @@ final class SituatieNaarVerzoek {
             ObjectNode params = root.putObject("parameters");
             for (ParameterWaarde p : situatie.parameters()) {
                 if (p.tijdlijn() != null)
-                    throw new IllegalArgumentException("parameter '" + p.parameter() + "' heeft een tijdlijn; het "
+                    throw new NietDraagbaar("parameter '" + p.parameter() + "' heeft een tijdlijn; het "
                             + "verzoek van de dienst draagt geen tijdlijnwaarde");
                 params.set(p.parameter(), waardeNaarJson(p.waarde()));
             }
@@ -69,7 +77,7 @@ final class SituatieNaarVerzoek {
                 ObjectNode attributen = inst.putObject("attributen");
                 for (AttribuutWaarde a : i.attributen()) {
                     if (a.tijdlijn() != null)
-                        throw new IllegalArgumentException("attribuut '" + a.attribuut() + "' van " + i.label()
+                        throw new NietDraagbaar("attribuut '" + a.attribuut() + "' van " + i.label()
                                 + " heeft een tijdlijn; het verzoek van de dienst draagt geen tijdlijnwaarde");
                     attributen.set(a.attribuut(), waardeNaarJson(a.waarde()));
                 }
@@ -78,7 +86,7 @@ final class SituatieNaarVerzoek {
                 ObjectNode kenmerken = inst.putObject("kenmerken");
                 for (KenmerkWaarde k : i.kenmerken()) {
                     if (k.perioden() != null)
-                        throw new IllegalArgumentException("kenmerk '" + k.kenmerk() + "' van " + i.label()
+                        throw new NietDraagbaar("kenmerk '" + k.kenmerk() + "' van " + i.label()
                                 + " is tijdsafhankelijk; het verzoek van de dienst draagt geen perioden");
                     kenmerken.put(k.kenmerk(), Boolean.TRUE);   // a situatie only ever ASSERTS a kenmerk
                 }
@@ -119,7 +127,7 @@ final class SituatieNaarVerzoek {
         try {
             return teller.divide(noemer);
         } catch (ArithmeticException e) {
-            throw new IllegalArgumentException("de breuk " + lexeem + " heeft geen exacte decimale vorm", e);
+            throw new NietDraagbaar("de breuk " + lexeem + " heeft geen exacte decimale vorm", e);
         }
     }
 }
