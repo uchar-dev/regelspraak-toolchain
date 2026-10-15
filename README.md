@@ -188,7 +188,12 @@ rules are written and computed in the canonical names. The distribution uses the
 The word `canoniek` chooses the canonical names, so a model that declares a vocabulary of that name does not start.
 The rule text is never renamed: the uitleg quotes it as written. In the uitleg, an enumeration value whose designation
 differs from the declared value is written as both, `<designation> · <value>` (`01 · Hoogte inkomsten uit verzekerde
-arbeid`), because a code alone does not say what it stands for; the answer carries the designation alone.
+arbeid`), because a code alone does not say what it stands for; the answer carries the designation alone. A
+characteristic stands in the uitleg with the verb of its declared kind (§3.5), in every vocabulary and also in a
+condition: adjectival `is waardevol` / `is niet waardevol`, possessive `heeft de uitkeringsduur verstreken` / `heeft
+geen uitkeringsduur verstreken`, nominal `is een recht op grond-van-de-wia` / `is geen recht op grond-van-de-wia`.
+The model does not carry the article of a declaration, so a present possessive characteristic takes the article the
+rule text writes before its name, and none where it writes none (`heeft recht op duurzaamheidskorting`).
 
 ## The container
 

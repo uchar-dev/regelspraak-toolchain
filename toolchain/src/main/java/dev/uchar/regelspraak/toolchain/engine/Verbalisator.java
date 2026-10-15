@@ -13,10 +13,13 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * De UITLEG-generator: verantwoordt een gedraaide beslissing in helder Nederlands, voor de jurist en de burger —
@@ -45,6 +48,12 @@ import java.util.Map;
  * operand is regeltekst en blijft zoals hij geschreven is. Een enumeratiewaarde waarvan de benaming afwijkt van de
  * gedeclareerde waarde staat er als "benaming · waarde" ("01 · Hoogte inkomsten uit verzekerde arbeid"). Zonder
  * naamgeving is het verhaal canoniek.
+ *
+ * <p><b>Kenmerksoort.</b> Een kenmerk staat er met het werkwoord van zijn soort (§3.5): bijvoeglijk "is (niet)
+ * waardevol", bezittelijk "heeft de uitkeringsduur verstreken" of "heeft geen uitkeringsduur verstreken",
+ * zelfstandig "is een recht op grond-van-de-wia" of "is geen recht op grond-van-de-wia"; ook in een voorwaarde. Het
+ * lidwoord bij een aanwezig bezittelijk kenmerk is dat van de regeltekst, want het model draagt dat van de declaratie
+ * niet.
  *
  * <p><b>Bronverwijzing.</b> Kaart-fase (1) vroeg de {@code // Bron:}-commentaren uit de {@code .rgs} mee de IR in
  * te tillen als optionele regelbron-annotatie. In de huidige grammatica geldt
@@ -106,16 +115,18 @@ public final class Verbalisator {
         boolean aanwezig = leesBoolean(bean, kenmerk);
         Conditie v = r.voorwaarde();
         Objecttype onderwerp = ref.objecttype();
-        String genoemd = naamgeving.kenmerk(onderwerp, kenmerk);
-        StringBuilder b = new StringBuilder();
+        if (!aanwezig && v == null) return null;   // onvoorwaardelijk maar afwezig: niets te verantwoorden
+        // de conclusie van de regel ("Een … heeft de uitkeringsduur verstreken") draagt het lidwoord
+        Gezegde gezegde = gezegde(onderwerp, kenmerk, aanwezig, ref.bron() == null ? null : ref.bron().snippet());
+        if (gezegde == null)
+            throw new IllegalStateException("de kenmerktoekenning '" + r.naam() + "' kent '" + kenmerk + "' toe, en "
+                    + onderwerp.naam + " heeft geen kenmerk met die naam: de uitleg kent de soort niet");
+        StringBuilder b = new StringBuilder(label).append(' ').append(gezegde.hoofdzin());
         if (aanwezig) {
-            b.append(label).append(" is ").append(genoemd);
             if (v != null) b.append(", omdat ").append(verbaliseerVoorwaarde(v, bean, onderwerp));
             else b.append(" (onvoorwaardelijk toegekend)");
         } else {
-            if (v == null) return null;   // onvoorwaardelijk maar afwezig: niets te verantwoorden
-            b.append(label).append(" is niet ").append(genoemd).append(", want ")
-             .append(eersteFalendeConjunct(v, bean, onderwerp));
+            b.append(", want ").append(eersteFalendeConjunct(v, bean, onderwerp));
         }
         String bron = bronVerwijzing(r);
         if (bron != null) b.append(". Grondslag: ").append(bron);
@@ -148,12 +159,13 @@ public final class Verbalisator {
                     + operandProza(vg.rechts(), bean);
         }
         if (c instanceof Conditie.Kenmerk k) {
-            if (k.navigatie() == null)
-                return "het onderwerp" + (k.negatie() ? " niet " : " ") + naamgeving.kenmerk(onderwerp, k.kenmerk())
-                        + " is";
-            Objecttype bereikt = model.rolDoeltypeNaarSubject(onderwerp, k.navigatie());
-            return "de " + naamgeving.rolVanaf(onderwerp, k.navigatie()) + (k.negatie() ? " niet " : " ")
-                    + naamgeving.kenmerk(bereikt, k.kenmerk()) + " is";
+            Objecttype houder = k.navigatie() == null ? onderwerp
+                    : model.rolDoeltypeNaarSubject(onderwerp, k.navigatie());
+            Gezegde gezegde = gezegde(houder, k.kenmerk(), !k.negatie(), samenvatting(c));
+            // zonder soort geen werkwoord: dan de voorwaarde zoals de regel haar schrijft, zoals hieronder
+            if (gezegde == null) return "aan de voorwaarde \"" + samenvatting(c) + "\" is voldaan";
+            String wie = k.navigatie() == null ? "het onderwerp" : "de " + naamgeving.rolVanaf(onderwerp, k.navigatie());
+            return wie + " " + gezegde.bijzin();
         }
         if (c instanceof Conditie.Rollidmaatschap rl)
             return "het onderwerp " + (rl.negatie() ? "geen " : "een ") + naamgeving.rolVervuld(onderwerp, rl.rol())
@@ -421,6 +433,48 @@ public final class Verbalisator {
         if (e instanceof Expr.AttribuutRef ref) return "de " + naamgeving.attribuut(ref.objecttype(), ref.attribuut());
         if (e instanceof Expr.ParameterRef pr) return "de " + naamgeving.parameter(pr.parameter().naam());
         return "de waarde";
+    }
+
+    /** Een kenmerk als gezegde: het werkwoord en wat erbij hoort, in de volgorde van een hoofdzin ("heeft de
+     *  uitkeringsduur verstreken") of een bijzin ("de uitkeringsduur verstreken heeft"). */
+    private record Gezegde(String werkwoord, String naamdeel) {
+        String hoofdzin() { return werkwoord + " " + naamdeel; }
+        String bijzin() { return naamdeel + " " + werkwoord; }
+    }
+
+    /** Kenmerk {@code kenmerk} van {@code houder} als gezegde, met het werkwoord dat §3.5 zijn soort geeft en de
+     *  ontkenning die Tabel 16 erbij schrijft: bijvoeglijk "is (niet) X", bezittelijk "heeft &lt;lidwoord&gt; X" of
+     *  "heeft geen X", zelfstandig "is een X" of "is geen X". De soort is die van de declaratie, ook in een ander
+     *  vocabulaire; de naam is die van {@link Naamgeving}. Het model draagt het lidwoord van een declaratie niet, dus
+     *  komt het bij een aanwezig bezittelijk kenmerk uit {@code regeltekst}, de tekst van de regel die het kenmerk
+     *  noemt. Null wanneer {@code houder} geen kenmerk {@code kenmerk} kent. */
+    private Gezegde gezegde(Objecttype houder, String kenmerk, boolean aanwezig, String regeltekst) {
+        Objecttype.KenmerkSoort soort = houder == null ? null : houder.kenmerkSoort(kenmerk);
+        if (soort == null) return null;
+        String naam = naamgeving.kenmerk(houder, kenmerk);
+        return switch (soort) {
+            case BIJVOEGLIJK -> new Gezegde("is", aanwezig ? naam : "niet " + naam);
+            case ZELFSTANDIG -> new Gezegde("is", (aanwezig ? "een " : "geen ") + naam);
+            case BEZITTELIJK -> {
+                String lidwoord = aanwezig ? lidwoordVoor(regeltekst, kenmerk) : "geen";
+                yield new Gezegde("heeft", lidwoord == null ? naam : lidwoord + " " + naam);
+            }
+        };
+    }
+
+    /** Het lidwoord ("de", "het" of "een") dat {@code regeltekst} direct vóór het laatste voorkomen van de
+     *  kenmerknaam schrijft. Het laatste, omdat het gezegde achter het onderwerp staat en het onderwerp dezelfde
+     *  woorden kan bevatten ("Een Recht op uitkering WW heeft recht op uitkering"). Null wanneer de tekst daar geen
+     *  lidwoord schrijft of de naam niet bevat. */
+    private static String lidwoordVoor(String regeltekst, String kenmerk) {
+        if (regeltekst == null || kenmerk == null || kenmerk.isBlank()) return null;
+        String naam = String.join("\\s+", Arrays.stream(kenmerk.trim().split("\\s+")).map(Pattern::quote).toList());
+        String grens = "[\\p{L}\\p{N}-]";
+        Matcher m = Pattern.compile("(?iu)(?:(?<!" + grens + ")(de|het|een)\\s+)?(?<!" + grens + ")" + naam
+                + "(?!" + grens + ")").matcher(regeltekst);
+        String lidwoord = null;
+        while (m.find()) lidwoord = m.group(1);
+        return lidwoord == null ? null : lidwoord.toLowerCase(Locale.ROOT);
     }
 
     private static String operatorWoorden(Conditie.Operator op) {
