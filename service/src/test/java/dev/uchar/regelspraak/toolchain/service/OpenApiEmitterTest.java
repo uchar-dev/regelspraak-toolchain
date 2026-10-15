@@ -113,7 +113,8 @@ class OpenApiEmitterTest {
 
     /** The 422 of every entry point names the body {@link AntwoordBouwer#evaluatiefout} builds, and no other fields:
      *  {@code status} EVALUATIEFOUT, the sentence {@code fout}, and {@code fouten}, each with its {@code soort}, one of
-     *  the kinds of {@link Evaluatiefout.Soort}, and uchar's sentence {@code fout}. */
+     *  the kinds of {@link Evaluatiefout.Soort}, and uchar's sentence {@code fout}; and, not required, the detail a
+     *  request may ask ({@code trace}, {@code dekking}, {@code fixpunt} or {@code fixpuntFout}). */
     @Test
     void de_422_beschrijft_het_lichaam_van_een_evaluatiefout() {
         for (DienstDescriptor.Entrypoint ep : DESCRIPTOR.entrypoints())
@@ -121,7 +122,8 @@ class OpenApiEmitterTest {
                     .at("/post/responses/422/content/application~1json/schema/$ref").asText(), "de 422 van '/" + ep.pad() + "'");
         JsonNode s = DOC.at("/components/schemas/Evaluatiefout");
         assertEquals("[\"status\",\"fout\",\"fouten\"]", s.path("required").toString(), s::toString);
-        assertEquals(java.util.List.of("status", "fout", "fouten"), velden(s.path("properties")), s::toString);
+        assertEquals(java.util.List.of("status", "fout", "fouten", "trace", "dekking", "fixpunt", "fixpuntFout"),
+                velden(s.path("properties")), s::toString);
         assertEquals("[\"EVALUATIEFOUT\"]", s.at("/properties/status/enum").toString(), s::toString);
         assertEquals("string", s.at("/properties/fout/type").asText(), s::toString);
         assertEquals("array", s.at("/properties/fouten/type").asText(), s::toString);

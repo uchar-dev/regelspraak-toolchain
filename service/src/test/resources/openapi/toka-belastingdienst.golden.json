@@ -10,6 +10,44 @@
         "operationId": "bepaalLeeftijd",
         "summary": "bepaal leeftijd",
         "description": "Entrypoint 'bepaal leeftijd'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.leeftijd.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -89,6 +127,44 @@
         "operationId": "kenmerktoekenningPersoonMinderjarig",
         "summary": "Kenmerktoekenning persoon minderjarig",
         "description": "Entrypoint 'Kenmerktoekenning persoon minderjarig'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon:minderjarig.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -168,6 +244,44 @@
         "operationId": "hoeveelheidPassagiersVanEenReis",
         "summary": "Hoeveelheid passagiers van een reis",
         "description": "Entrypoint 'Hoeveelheid passagiers van een reis'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Vlucht.hoeveelheid passagiers.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -247,6 +361,44 @@
         "operationId": "totaalTeBetalenBelasting",
         "summary": "Totaal te betalen belasting",
         "description": "Entrypoint 'Totaal te betalen belasting'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Vlucht.totaal te betalen belasting.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -326,6 +478,44 @@
         "operationId": "leeftijdOudstePassagier",
         "summary": "Leeftijd oudste passagier",
         "description": "Entrypoint 'Leeftijd oudste passagier'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Vlucht.leeftijd van de oudste passagier.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -405,6 +595,44 @@
         "operationId": "teBetalenBelastingVanEenPassagier",
         "summary": "Te betalen belasting van een passagier",
         "description": "Entrypoint 'Te betalen belasting van een passagier'. Invoer-objecttypen: Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.te betalen belasting.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -484,6 +712,44 @@
         "operationId": "hoogseizoen",
         "summary": "Hoogseizoen",
         "description": "Entrypoint 'Hoogseizoen'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: Vlucht:in het hoogseizoen.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -563,6 +829,44 @@
         "operationId": "paaskorting",
         "summary": "Paaskorting",
         "description": "Entrypoint 'Paaskorting'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: Vlucht:reis met paaskorting.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -642,6 +946,44 @@
         "operationId": "vastgesteldeContingentTreinmiles",
         "summary": "vastgestelde contingent treinmiles",
         "description": "Entrypoint 'vastgestelde contingent treinmiles'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: (geen).",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -721,6 +1063,44 @@
         "operationId": "controleerOfVluchtGeenRondvluchtIs",
         "summary": "Controleer of vlucht geen rondvlucht is",
         "description": "Entrypoint 'Controleer of vlucht geen rondvlucht is'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: (geen).",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -800,6 +1180,44 @@
         "operationId": "initialiseerTeBetalenBelastingOpInitieleBelasting",
         "summary": "Initialiseer te betalen belasting op initiele belasting",
         "description": "Entrypoint 'Initialiseer te betalen belasting op initiele belasting'. Invoer-objecttypen: Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.te betalen belasting.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -879,6 +1297,44 @@
         "operationId": "verdelingTreinmilesInGelijkeDelen",
         "summary": "verdeling treinmiles in gelijke delen",
         "description": "Entrypoint 'verdeling treinmiles in gelijke delen'. Invoer-objecttypen: Contingent treinmiles, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.treinmiles.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -958,6 +1414,44 @@
         "operationId": "verdelingTreinmilesOpBasisVanWoonregioFactor",
         "summary": "verdeling treinmiles op basis van woonregio factor",
         "description": "Entrypoint 'verdeling treinmiles op basis van woonregio factor'. Invoer-objecttypen: Contingent treinmiles, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.treinmiles.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1037,6 +1531,44 @@
         "operationId": "verdelingTreinmilesOpBasisVanLeeftijdEnWoonregioFactor",
         "summary": "Verdeling treinmiles op basis van leeftijd en woonregio factor",
         "description": "Entrypoint 'Verdeling treinmiles op basis van leeftijd en woonregio factor'. Invoer-objecttypen: Contingent treinmiles, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.treinmiles, Contingent treinmiles.restant na verdeling.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1116,6 +1648,44 @@
         "operationId": "verdelingTreinmilesOpBasisVanWoonregioFactorEnMetMaximumWaarde",
         "summary": "verdeling treinmiles op basis van woonregio factor en met maximum waarde",
         "description": "Entrypoint 'verdeling treinmiles op basis van woonregio factor en met maximum waarde'. Invoer-objecttypen: Contingent treinmiles, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.treinmiles, Contingent treinmiles.restant na verdeling.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1195,6 +1765,44 @@
         "operationId": "verdelingTreinmilesOpBasisVanWoonregioFactorMetAfronding",
         "summary": "verdeling treinmiles op basis van woonregio factor met afronding",
         "description": "Entrypoint 'verdeling treinmiles op basis van woonregio factor met afronding'. Invoer-objecttypen: Contingent treinmiles, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.treinmiles, Contingent treinmiles.restant na verdeling.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1274,6 +1882,44 @@
         "operationId": "verdelingTreinmilesOpBasisVanLeeftijdWoonregioFactorMetMaximumWaardeEnAfronding",
         "summary": "Verdeling treinmiles op basis van leeftijd, woonregio factor, met maximum waarde en afronding",
         "description": "Entrypoint 'Verdeling treinmiles op basis van leeftijd, woonregio factor, met maximum waarde en afronding'. Invoer-objecttypen: Contingent treinmiles, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.treinmiles, Contingent treinmiles.restant na verdeling.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1353,6 +1999,44 @@
         "operationId": "belasteReis",
         "summary": "belaste reis",
         "description": "Entrypoint 'belaste reis'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: Vlucht:belaste reis.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1432,6 +2116,44 @@
         "operationId": "rechtOpDuurzaamheidskorting",
         "summary": "Recht op Duurzaamheidskorting",
         "description": "Entrypoint 'Recht op Duurzaamheidskorting'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon:recht op duurzaamheidskorting.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1511,6 +2233,44 @@
         "operationId": "rechtOpDuurzaamheidskortingAlternatief",
         "summary": "Recht op Duurzaamheidskorting alternatief",
         "description": "Entrypoint 'Recht op Duurzaamheidskorting alternatief'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon:recht op duurzaamheidskorting.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1590,6 +2350,44 @@
         "operationId": "passagierVan18Tm24Jaar",
         "summary": "Passagier van 18 tm 24 jaar",
         "description": "Entrypoint 'Passagier van 18 tm 24 jaar'. Invoer-objecttypen: Vlucht, Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon:passagier van 18 tot en met 24 jaar.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1669,6 +2467,44 @@
         "operationId": "startpuntVariabelePeriodeOpDatumVanVertrek",
         "summary": "Startpunt variabele periode op datum van vertrek",
         "description": "Entrypoint 'Startpunt variabele periode op datum van vertrek'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: (geen).",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1748,6 +2584,44 @@
         "operationId": "startpuntVariabelePeriodeOpDatumVanVertrekMinReserveringstermijn",
         "summary": "Startpunt variabele periode op datum van vertrek min reserveringstermijn",
         "description": "Entrypoint 'Startpunt variabele periode op datum van vertrek min reserveringstermijn'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: (geen).",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1827,6 +2701,44 @@
         "operationId": "woonregioFactor1",
         "summary": "Woonregio factor 1",
         "description": "Entrypoint 'Woonregio factor 1'. Invoer-objecttypen: Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.woonregio factor.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1906,6 +2818,44 @@
         "operationId": "woonregioFactor2",
         "summary": "Woonregio factor 2",
         "description": "Entrypoint 'Woonregio factor 2'. Invoer-objecttypen: Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.woonregio factor.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1985,6 +2935,44 @@
         "operationId": "woonregioFactor3",
         "summary": "Woonregio factor 3",
         "description": "Entrypoint 'Woonregio factor 3'. Invoer-objecttypen: Natuurlijk persoon. Uitvoer-selectoren: Natuurlijk persoon.woonregio factor.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2064,6 +3052,44 @@
         "operationId": "datumTijdVoorHetBerekenenVanDeBelastingOpBasisVanAfstand",
         "summary": "Datum-tijd voor het berekenen van de belasting op basis van afstand",
         "description": "Entrypoint 'Datum-tijd voor het berekenen van de belasting op basis van afstand'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: Vlucht.datum-tijd voor het berekenen van de belasting op basis van afstand.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2143,6 +3169,44 @@
         "operationId": "verwachteDatumTijdVanAankomstVanEenVlucht",
         "summary": "Verwachte datum-tijd van aankomst van een Vlucht",
         "description": "Entrypoint 'Verwachte datum-tijd van aankomst van een Vlucht'. Invoer-objecttypen: Vlucht. Uitvoer-selectoren: Vlucht.verwachte datum-tijd van aankomst.",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2222,6 +3286,44 @@
         "operationId": "passagierMetRechtOpTreinmiles",
         "summary": "passagier met recht op treinmiles",
         "description": "Entrypoint 'passagier met recht op treinmiles'. Invoer-objecttypen: Vlucht, Contingent treinmiles, Natuurlijk persoon. Uitvoer-selectoren: (geen).",
+        "parameters": [
+          {
+            "name": "uitleg",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "dekking",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpunt",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2670,6 +3772,26 @@
               }
             },
             "description": "dezelfde inconsistenties met hun onderwerp: het id van de instantie waarover de toets ging, of null als dat geen instantie van het verzoek is."
+          },
+          "uitleg": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "met de vlag uitleg: een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust."
+          },
+          "trace": {
+            "$ref": "#/components/schemas/Trace"
+          },
+          "dekking": {
+            "$ref": "#/components/schemas/Dekking"
+          },
+          "fixpunt": {
+            "$ref": "#/components/schemas/Fixpunt"
+          },
+          "fixpuntFout": {
+            "type": "string",
+            "description": "met de vlag fixpunt, in plaats van fixpunt: waarom een waarde van het fixpunt niet getoond kan worden."
           }
         }
       },
@@ -2741,6 +3863,19 @@
                 }
               }
             }
+          },
+          "trace": {
+            "$ref": "#/components/schemas/Trace"
+          },
+          "dekking": {
+            "$ref": "#/components/schemas/Dekking"
+          },
+          "fixpunt": {
+            "$ref": "#/components/schemas/Fixpunt"
+          },
+          "fixpuntFout": {
+            "type": "string",
+            "description": "met de vlag fixpunt, in plaats van fixpunt: waarom een waarde van het fixpunt niet getoond kan worden."
           }
         }
       },
@@ -2770,6 +3905,173 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          }
+        }
+      },
+      "Trace": {
+        "type": "array",
+        "description": "met de vlag trace: per vorm die vuurde, in de volgorde waarin een regel ervan het eerst vuurde, de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. Een vorm heet in het vocabulaire van het antwoord.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "regel": {
+              "type": "string"
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "aantal": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "Dekking": {
+        "type": "array",
+        "description": "met de vlag dekking: per vorm van het entrypoint, in de volgorde van zijn manifest, of een regel ervan vuurde. Een vorm heet in het vocabulaire van het antwoord.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "regel": {
+              "type": "string"
+            },
+            "soort": {
+              "type": "string",
+              "enum": [
+                "GEVUURD",
+                "NIET_GERAAKT"
+              ]
+            }
+          }
+        }
+      },
+      "Fixpunt": {
+        "type": "object",
+        "description": "met de vlag fixpunt: wat aan het fixpunt van de sessie staat. Een instantie van het verzoek heet naar haar id, een gemaakt object #<n>. Een naam staat in het vocabulaire van het antwoord; waar de canonieke naam verschilt, staat die ernaast onder <sleutel>Canoniek. Een waarde is een tekst (een getal met zijn schaal, een datum, een enumeratiewaarde), een boolean of null (leeg); een tijdlijn staat onder tijdlijn, een gedimensioneerde waarde onder dimensies.",
+        "properties": {
+          "objecten": {
+            "type": "array",
+            "description": "elke instantie van het verzoek, in de volgorde van het verzoek, dan elk gemaakt object, met zijn waarden en kenmerken in de declaratievolgorde van zijn type.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "object": {
+                  "type": "string"
+                },
+                "objecttype": {
+                  "type": "string"
+                },
+                "waarden": {
+                  "type": "array",
+                  "description": "attribuut, waarde (of tijdlijn of dimensies), herkomst (invoer, afgeleid of creatie), invoer (bij een afgeleide waarde de invoerwaarde die zij verving) en eenheid.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "kenmerken": {
+                  "type": "array",
+                  "description": "elk kenmerk dat geldt: kenmerk, herkomst (invoer of afgeleid), en invoer: true als ook de invoer het zette.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          },
+          "gemaakteObjecten": {
+            "type": "array",
+            "description": "de objecten die een objectcreatie maakte.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "object": {
+                  "type": "string"
+                },
+                "objecttype": {
+                  "type": "string"
+                },
+                "creatie": {
+                  "type": "string"
+                },
+                "onderwerp": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "koppelingen": {
+            "type": "array",
+            "description": "de koppelingen die een creatie legde.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "feittype": {
+                  "type": "string"
+                },
+                "eersteRol": {
+                  "type": "string"
+                },
+                "eerste": {
+                  "type": "string"
+                },
+                "tweedeRol": {
+                  "type": "string"
+                },
+                "tweede": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "fouten": {
+            "type": "array",
+            "description": "de evaluatiefouten die aan het fixpunt staan, elk met de vorm die haar gaf, het object waarover zij gaat, haar soort en uchars zin.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "regel": {
+                  "type": "string"
+                },
+                "onderwerp": {
+                  "type": "string"
+                },
+                "soort": {
+                  "type": "string",
+                  "enum": [
+                    "DELING_DOOR_NUL",
+                    "REKENFOUT",
+                    "SCHRIJVERSCONFLICT",
+                    "INVOERVORMFOUT",
+                    "ANDERE"
+                  ]
+                },
+                "zin": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "inconsistenties": {
+            "type": "array",
+            "description": "de gefaalde consistentietoetsen met hun regel en onderwerp, elk null als er geen is.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "regel": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "onderwerp": {
+                  "type": "string",
+                  "nullable": true
+                }
+              }
             }
           }
         }
