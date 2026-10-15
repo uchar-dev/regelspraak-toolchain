@@ -241,12 +241,13 @@ class PlaygroundScenarioGegevensTest {
         assertFalse(canoniek.at("/scenario/resultaten/0/fixpunt").toString().contains("Canoniek\""));
     }
 
-    /** A source without a vocabulary lists none and no declarations. */
+    /** A source without a vocabulary lists none; its declarations are there, each without a designation. */
     @Test
-    void zonder_vocabulaire_geen_elementen() {
+    void zonder_vocabulaire_lege_benamingen() {
         JsonNode voc = Playground.analyseer(BERGING).get("vocabulaires");
         assertEquals("canoniek", voc.get("gekozen").asText());
         assertEquals(0, voc.get("gedeclareerd").size());
-        assertEquals(0, voc.get("elementen").size());
+        assertEquals(8, voc.get("elementen").size(), voc.toString());
+        for (JsonNode e : voc.get("elementen")) assertEquals(0, e.get("benamingen").size(), e.toString());
     }
 }
