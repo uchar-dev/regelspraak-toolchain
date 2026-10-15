@@ -163,24 +163,31 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   `{"status": "MARKER", "fout": …, "reden": <uchar's sentence>, "markers": […]}`: an answer without the construct
   would be an answer to another rule set.
 - `PLAYGROUND=true` binds the dev-only workbench (`GET /playground`, `POST /playground/analyse`). A source with a
-  parse or resolver error gets its diagnostics and nothing else. A clean source gets the `uchar-ir-v1` document,
-  the exec-model verdict (`uitvoerbaar` with the `dekking`, or uchar's `weigering`), the DRL of the DRL-text branch
-  as a view (not the verdict), uchar's rule graph of the document its loader reads back, as Mermaid (`graaf`) and
-  as `graafJson`
-  (`{nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}`), the `vocabulaires` of the source (the declared
-  ones, the chosen one, and per declaration its designation in each, with its source line `regel` and the
-  `commentaar` directly above it, read from uchar's parse; the list `elementen` is always filled, also without a
-  declared vocabulary, and a declaration uchar's frontend wrote itself has no line; `declaratieFout` names an
-  element that does not couple to one declaration), and per scenario uchar's report with its
+  parse or resolver error gets its diagnostics and nothing else. A clean source gets the `uchar-ir-v1` document, the
+  exec-model verdict (`uitvoerbaar` with the `dekking` and `gegenereerd`, or uchar's `weigering`), the DRL of the
+  DRL-text branch as a view (not the verdict), uchar's rule graph of the document its loader reads back, as Mermaid
+  (`graaf`) and as `graafJson` (`{nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}`), the `vocabulaires` of the
+  source (the declared ones, the chosen one, and per declaration its designation in each, with its source line `regel`
+  and the `commentaar` directly above it, read from uchar's parse; the list `elementen` is always filled, also without
+  a declared vocabulary, and a declaration uchar's frontend wrote itself has no line; `declaratieFout` names an
+  element that does not couple to one declaration). An element uchar's frontend made itself, under a name no
+  declaration carries (`berekende maxdatum`), has instead `gegenereerdUit: {soort, eigenaar, naam, vorm}`: the element
+  it comes from, canonical like an element's own `soort`, `eigenaar` and `canoniek`, and uchar's fixed key of the form
+  that made it (`opgave-boven-berekening`, `uitzondering-voor-subtype`, `beslistabelrij`, `stappen-na-de-verzameling`,
+  `startpunt`). Beside the `dekking`, `gegenereerd` lists each name of it that is no element (an effective defaults
+  stack `defaults A:<type>.<member>` or `defaults K:<type>.<member>`, a version `<form> #<k>`) as `{naam, soort,
+  gegenereerdUit}`, with the key `defaultsstapel` or `versie`; `naam` is spelled as the coverage and the trace of a
+  scenario spell it, with `naamCanoniek` beside it where that differs, so every name of the coverage and the trace is
+  found by its exact text among the elements or in `gegenereerd`. Nothing is read off a name: both come from uchar's
+  tables (`RegelSpraakModel.gegenereerd`, `TmsTranspiler.gegenereerd`). Per scenario it gets uchar's report with its
   `trace` and `uitleg`. Beside the report stand the source line of the scenario and of each expectation (`regel`,
-  `regeltekst`: uchar gives the line an expectation begins on), the `situatie` uchar's scenario resolver makes
-  (each role in `objecten[].rollen[]` with its `feittype`, the fact type the resolver found the role in), and the
-  `fixpunt` of the case's own session as uchar reads it (`DroolsBackend.lees`): per object every value and
-  characteristic with its origin, the made objects, the links, the evaluation faults as data and the
-  inconsistencies, each list sorted, or `fixpuntFout` with the reason there is none. `?vocabulaire=<naam>` names
-  `graafJson`, the trace, the per-scenario coverage, the uitleg, the situation and the fixpoint in a vocabulary of
-  the source, the canonical name beside a name that differs (the Mermaid graph, the IR and the verdict stay
-  uchar's); an unknown one is a 400.
+  `regeltekst`: uchar gives the line an expectation begins on), the `situatie` uchar's scenario resolver makes (each
+  role in `objecten[].rollen[]` with its `feittype`, the fact type the resolver found the role in), and the `fixpunt`
+  of the case's own session as uchar reads it (`DroolsBackend.lees`): per object every value and characteristic with
+  its origin, the made objects, the links, the evaluation faults as data and the inconsistencies, each list sorted, or
+  `fixpuntFout` with the reason there is none. `?vocabulaire=<naam>` names `graafJson`, the trace, the per-scenario
+  coverage, the uitleg, the situation and the fixpoint in a vocabulary of the source, the canonical name beside a name
+  that differs (the Mermaid graph, the IR and the verdict stay uchar's); an unknown one is a 400.
 
 **peildatum-contract (multi-vintage deploys).** When the descriptor names a parameterset sidecar whose values
 carry more than one vintage, the service selects each parameter's vintage against ONE date authority: the request
