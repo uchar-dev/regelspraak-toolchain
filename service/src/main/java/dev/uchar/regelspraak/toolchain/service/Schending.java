@@ -33,7 +33,8 @@ public record Schending(Soort soort, String veld, String bericht) {
         DUBBELZINNIGE_NAAM,
         /** A request or a descriptor entry point names a vocabulary the model does not declare. */
         ONBEKEND_VOCABULAIRE,
-        /** A construct the service core deliberately does not support (dimensie/tijdlijn-valued input). */
+        /** A construct the service core deliberately does not support (dimensie/tijdlijn-valued input), or a detail of
+         *  the session a core started without detail does not give ({@link KernConfig#detail()}). */
         NIET_ONDERSTEUND,
         /** The entrypoint declares an invoer objecttype but the request supplies no instance of it. The invoer
          *  list is the declared contract; an absent required instance can never fire meaningfully (the scoped

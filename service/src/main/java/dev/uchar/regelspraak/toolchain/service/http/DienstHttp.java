@@ -52,7 +52,9 @@ import java.util.concurrent.TimeoutException;
  *       number is ever a double), handed to {@link BeslisserKern#verwerk}, and the response tree is written back
  *       with {@code 200} and {@code Content-Type: application/json; charset=UTF-8}. The query carries what the
  *       request asks beside its body ({@link #opties}): {@code uitleg}, {@code vocabulaire} (the vocabulary of the
- *       answer) and {@code invoervocabulaire} (the one the request's names are read in).</li>
+ *       answer), {@code invoervocabulaire} (the one the request's names are read in), and the detail flags
+ *       {@code trace}, {@code dekking} and {@code fixpunt}, which a core started with detail answers
+ *       ({@link dev.uchar.regelspraak.toolchain.service.KernConfig#detail()}) and any other refuses with a 400.</li>
  *   <li>{@code GET /info}: the service manifest — dienst identity, one entry per entry point carrying its path,
  *       whether it is {@code uitvoerbaar}, its {@code dekking} (the exec-model branch's verdict per form of its
  *       document, the defaults groups included), its {@code markers} and, when uchar does not carry it, uchar's
@@ -220,23 +222,30 @@ public final class DienstHttp {
      *  a request without the flag. Null/empty query → false. Public so a test can pin the parse (the Quarkus
      *  adapter carries the equivalent inline). */
     public static boolean vraagtUitleg(String rawQuery) {
+        return vraagt(rawQuery, "uitleg");
+    }
+
+    /** Whether the query string sets the flag {@code naam} as {@link #vraagtUitleg} reads {@code uitleg}: the first
+     *  parameter of that name (compared case-insensitively) with the value {@code true} (case-insensitive), or bare. */
+    public static boolean vraagt(String rawQuery, String naam) {
         if (rawQuery == null || rawQuery.isEmpty()) return false;
         for (String deel : rawQuery.split("&")) {
             int eq = deel.indexOf('=');
             String sleutel = eq < 0 ? deel : deel.substring(0, eq);
-            if (!"uitleg".equalsIgnoreCase(sleutel)) continue;
+            if (!naam.equalsIgnoreCase(sleutel)) continue;
             String waarde = eq < 0 ? "true" : deel.substring(eq + 1);
             return "true".equalsIgnoreCase(waarde) || waarde.isEmpty();
         }
         return false;
     }
 
-    /** What the query of a request asks beside its body: {@link #vraagtUitleg}, and the values of
-     *  {@code vocabulaire} and {@code invoervocabulaire} ({@link #queryWaarde}). The Quarkus adapter reads the same
-     *  three parameters. */
+    /** What the query of a request asks beside its body: {@link #vraagtUitleg}, the values of {@code vocabulaire} and
+     *  {@code invoervocabulaire} ({@link #queryWaarde}), and the detail flags {@code trace}, {@code dekking} and
+     *  {@code fixpunt} ({@link #vraagt}). The Quarkus adapter reads the same six parameters. */
     public static VerzoekOpties opties(String rawQuery) {
         return new VerzoekOpties(vraagtUitleg(rawQuery), queryWaarde(rawQuery, "vocabulaire"),
-                queryWaarde(rawQuery, "invoervocabulaire"));
+                queryWaarde(rawQuery, "invoervocabulaire"), vraagt(rawQuery, "trace"), vraagt(rawQuery, "dekking"),
+                vraagt(rawQuery, "fixpunt"));
     }
 
     /** The decoded value of the first query parameter {@code naam} (its name compared case-insensitively, as

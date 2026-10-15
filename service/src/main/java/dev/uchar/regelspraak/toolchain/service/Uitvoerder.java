@@ -3,7 +3,7 @@ package dev.uchar.regelspraak.toolchain.service;
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.cases.Invoer;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.transpiler.tms.Fout;
+import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
 
 import org.kie.api.runtime.KieSession;
 
@@ -42,8 +42,8 @@ public final class Uitvoerder {
     }
 
     /** The result of a fire: the beans by id with the derived values written back, the firings, the
-     *  inconsistenties. */
-    public record Uitkomst(Map<String, Object> beans, int gevuurd, List<Object> inconsistenties) {}
+     *  inconsistenties, and what stood at the fixpoint before the write-back, as uchar's entry reads it. */
+    public record Uitkomst(Map<String, Object> beans, int gevuurd, List<Object> inconsistenties, Fixpunt fixpunt) {}
 
     /** Fire the entry point's rules over {@code wereld} and return the beans with their derived values and the
      *  inconsistenties. */
@@ -61,6 +61,18 @@ public final class Uitvoerder {
      * @throws Evaluatiefout the evaluation faults that stand at the fixpoint, one or more, of any type
      */
     public Uitkomst vuur(Wereld wereld, Map<String, Object> setGlobals) {
+        return vuur(wereld, setGlobals, null);
+    }
+
+    /**
+     * As {@link #vuur(Wereld, Map)}, with {@code waarnemer} (null: none) recording what the session fires, through
+     * uchar's {@link DroolsBackend#vuur(DroolsBackend.Build, KieSession, DroolsBackend.Waarnemer)}. A waarnemer belongs
+     * to one session, so the caller gives each request a fresh one and reads it after this returns or throws.
+     *
+     * @throws Evaluatiefout the evaluation faults that stand at the fixpoint, one or more, of any type, with the
+     *                       fixpoint they stand at
+     */
+    public Uitkomst vuur(Wereld wereld, Map<String, Object> setGlobals, DroolsBackend.Waarnemer waarnemer) {
         // descriptor defaults first, set-vintage values next, request parameters override last
         Map<String, Object> globals = new LinkedHashMap<>(defaultGlobals);
         if (setGlobals != null) globals.putAll(setGlobals);
@@ -78,18 +90,19 @@ public final class Uitvoerder {
             // the order of a list decides which member a fault of a fold names: in the replay's order, the 422 names
             // the member uchar's replay names on the same input
             DroolsBackend.voegIn(build, sessie, wereld.lijsten().geefAan(new Invoer().beans(wereld.beans().values())));
-            DroolsBackend.Vuring vuring = DroolsBackend.vuur(build, sessie);
+            DroolsBackend.Vuring vuring = waarnemer == null ? DroolsBackend.vuur(build, sessie)
+                    : DroolsBackend.vuur(build, sessie, waarnemer);
             if (vuring.geenFixpunt() != null) throw new IllegalStateException(vuring.geenFixpunt());
             // a fault names its object by the id of the request; a made object has none, and uchar names it as ref does
             Map<Object, String> label = new IdentityHashMap<>();
             wereld.beans().forEach((id, bean) -> label.put(bean, id));
             // a fault is an evaluation fault by its place at the fixpoint, not by its type: the write-back would throw
             // it as one exception among those the entry throws itself, so the faults are read as data first
-            List<Fout> fouten = DroolsBackend.lees(build, sessie, label::get).fouten();
-            if (!fouten.isEmpty()) throw Evaluatiefout.van(fouten);
+            Fixpunt fixpunt = DroolsBackend.lees(build, sessie, label::get);
+            if (!fixpunt.fouten().isEmpty()) throw Evaluatiefout.van(fixpunt);
             DroolsBackend.zetAfgeleideWaarden(build, sessie, label::get);
             List<Object> inc = leesInconsistenties(sessie);
-            return new Uitkomst(wereld.beans(), vuring.vuringen(), inc);
+            return new Uitkomst(wereld.beans(), vuring.vuringen(), inc, fixpunt);
         } finally {
             sessie.dispose();
             Thread.currentThread().setContextClassLoader(vorige);

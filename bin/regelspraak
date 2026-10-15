@@ -19,8 +19,9 @@ gebruik: bin/regelspraak <opdracht> [argumenten]
                                       lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario;
                                       --vocabulaire names the rules and declarations of trace and uitleg in a
                                       vocabulary of the model (canoniek: the canonical names)
-  serve <descriptor.dienst.json> <bron.rgs...> | <document.json> [--allow-markers] [--host H] [--poort N]
-                                      the decision service on the JDK HttpServer (PLAYGROUND=true: the workbench)
+  serve <descriptor.dienst.json> <bron.rgs...> | <document.json> [--allow-markers] [--detail] [--host H] [--poort N]
+                                      the decision service on the JDK HttpServer (PLAYGROUND=true: the workbench;
+                                      --detail or DETAIL=true: ?trace, ?dekking and ?fixpunt)
   drl <bron.rgs...>                   the DRL text of uchar's DRL-text branch
   graaf [--mmd] <uit> <bron.rgs...>   the rule graph as an HTML page, or with --mmd as Mermaid text
   facts <uitmap> <bron.rgs...>        the fact beans uchar's generator writes for the model

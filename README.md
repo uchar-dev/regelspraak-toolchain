@@ -119,7 +119,7 @@ to the directory the command is given in.
 | `cases <map> <bron.rgs...>` | the scenarios of a test document lowered to uchar case files in `<map>`, beside the IR document they run against (`<map>/ir.json`): the layout of uchar's corpus |
 | `scenario [--trace] [--uitleg] [--vocabulaire <naam>] <bron.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL, 3 on a MARKER; `--vocabulaire` names the rules of the trace and the declarations of the uitleg in a vocabulary of the model |
 | `scenario --manifest <manifest> [--uitsluitingen <lijst>]` | every line `<verwachte-exit> <scenario.rgs> <companion.rgs...>` of a manifest, in one JVM; exit 0 when no line mismatches |
-| `serve <descriptor.dienst.json> <bron.rgs...> \| <document.json> [--allow-markers] [--host H] [--poort N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes |
+| `serve <descriptor.dienst.json> <bron.rgs...> \| <document.json> [--allow-markers] [--detail] [--host H] [--poort N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes; `--detail` or `DETAIL=true` answers `?trace`, `?dekking` and `?fixpunt` |
 | `drl <bron.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal; exit 1 with uchar's sentence when that text does not compile (a fault of uchar's rendering) |
 | `graaf [--mmd] <uit> <bron.rgs...>` | uchar's rule graph as an HTML page, or as Mermaid text |
 | `facts <uitmap> <bron.rgs...>` | the fact beans uchar's generator writes for the model |

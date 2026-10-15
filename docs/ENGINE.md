@@ -101,7 +101,8 @@ other forms a scope can carry (object creations, allocations, consistencies, uni
 checked.
 
 ```
-bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [--allow-markers] [--host H] [--poort N]
+bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [--allow-markers] [--detail] [--host H]
+                      [--poort N]
 ```
 
 - `POST /<pad>` per entry point; `?uitleg=true` adds the verbaliser's sentences to the answer. The inline `rollen`
@@ -129,7 +130,7 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   checks) and `inconsistentieDetails` (the same, each with its `onderwerp`: the request id of the instance the check
   is about). A 400 names per violation its `veld`, its `soort` and its message; `soort` `NIET_ONDERSTEUND` marks a
   request form the service does not carry (a timeline value, a characteristic with periods, a dimensioned
-  attribute).
+  attribute), and a detail flag of a service started without `DETAIL` (below).
 - A request on which the rules give an evaluation fault that stands at the fixpoint gets 422 with
   `{"status": "EVALUATIEFOUT", "fout": …, "fouten": [{"soort": …, "fout": <uchar's sentence>}, …]}`, one element per
   fault in uchar's order. Every fault at the fixpoint is such an element, whatever its type: the core reads them from
@@ -142,6 +143,24 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   Jutter") names none. No stacktrace enters the answer. The Quarkus adapter answers the same, and the
   OpenAPI contract describes the body of the 422 (schema `Evaluatiefout`, with `soort` as an enumeration of these
   kinds).
+- The detail of a session. A service started with `--detail` or `DETAIL=true` (Quarkus: `DETAIL=true`; default off,
+  as `PLAYGROUND`, and no part of the container contract) answers three more query flags, read as `uitleg` is (`true`
+  or bare), each adding a field after `uitleg`: `?trace=true` gives `trace: [{regel, labels, aantal}]`, per form that
+  fired, in the order a rule of it first fired, the request ids its matches bound and how often its rules fired, as
+  uchar's `DroolsBackend.Waarnemer` records them on the request's session; `?dekking=true` gives `dekking: [{regel,
+  soort}]`, per form of the entry point's build `GEVUURD` or `NIET_GERAAKT` (uchar's `DroolsBackend.dekking` over the
+  forms the waarnemer saw); `?fixpunt=true` gives `fixpunt: {objecten, gemaakteObjecten, koppelingen, fouten,
+  inconsistenties}` in the form of the playground's (below), with the instances of the request as its input: an
+  instance by its id, its input values read off its bean before the fire, a made object `#<n>`, a type by its name;
+  or `fixpuntFout` with the reason a value of it cannot be shown.
+  A form and a declaration are named in the vocabulary of the answer; in `fixpunt` the canonical name stands beside a
+  name that differs (`objecttypeCanoniek`), as in the playground, whose trace and coverage name a form without it. A
+  422 gets the asked fields beside its faults, so the faults stand as data in `fixpunt.fouten` next to the values. The
+  fields show every intermediate value, where the answer gives the selected `uitvoer` alone, so a service started
+  without `DETAIL` answers each flag with a 400 `NIET_ONDERSTEUND` whose `veld` is the flag's name, before the body is
+  read. Without a flag the answer is byte for byte that of a service without `DETAIL`. The core builds the fields
+  (`BeslisserKern.verwerk` with the flags of `VerzoekOpties`), so the Quarkus adapter answers the same, and the
+  playground and the service render a fixpoint with one class (`FixpuntGegevens`).
 - `GET /info`: per entry point whether it is `uitvoerbaar`, its `dekking` (the exec-model branch's verdict per form
   of its document, defaults groups included), its markers and, when uchar does not carry it, uchar's sentence as
   `weigering`; the parameter defaults, the loaded parameter sets and the period-coverage warnings. An entry point
@@ -154,7 +173,9 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   a model with vocabularies every object type, property and entry point lists its other spellings in `x-spellingen`,
   every enumeration its values' in `x-waardespellingen`, the descriptions say the service accepts them, the
   operations document `vocabulaire` and `invoervocabulaire`, and `info.x-vocabulaire` names the document's
-  vocabulary. A model without vocabularies gets none of it. The documents are written by the emitter's API
+  vocabulary. A model without vocabularies gets none of it. Every operation documents the flags `uitleg`, `trace`,
+  `dekking` and `fixpunt`; `Antwoord` has the fields they add, `Evaluatiefout` those of the detail, with the
+  components `Trace`, `Dekking` and `Fixpunt`. The documents are written by the emitter's API
   (`schrijf`, file `<dienst>.<vocabulaire>.json`); the service serves no route for them.
 - What uchar does not carry — a refusal of its emitter, loader or backend (a construct the exec-model branch does
   not lower among them), or a scoped rule name that yields no form in uchar's model — makes the entry point a

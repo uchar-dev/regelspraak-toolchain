@@ -22,7 +22,9 @@ import java.util.List;
  * contract exactly ({@code service-entrypoint.sh}): {@code DESCRIPTOR} points at the {@code .dienst.json},
  * {@code BRONNEN_MANIFEST} at a text file listing one bron {@code .rgs} path per line, {@code ALLOW_MARKERS}
  * toggles strict-vs-marker mode. Those env-var NAMES are shared with the shell launcher so existing Helm values
- * apply unchanged.
+ * apply unchanged. {@code DETAIL=true} starts the core with the details of a session on request, as
+ * {@code --detail} or {@code DETAIL=true} does for the JDK service; default off, and no part of the container
+ * contract.
  *
  * <p><b>Fail-fast (Q2).</b> {@link BeslisserKern#bouw} throws {@link DienstFout} when a rule cannot lower (e.g. a
  * marker rule in scope under strict). The producer RETHROWS it: CDI bean construction fails, the app never
@@ -41,6 +43,9 @@ public class KernProducer {
     @ConfigProperty(name = "ALLOW_MARKERS", defaultValue = "false")
     boolean allowMarkers;
 
+    @ConfigProperty(name = "DETAIL", defaultValue = "false")
+    boolean detail;
+
     /**
      * Build the {@link BeslisserKern} once, shared (singleton) by the resource and the readiness health check.
      * Resolves the bron paths by reading the {@code BRONNEN_MANIFEST} file line-by-line (mirrors the shell
@@ -53,6 +58,7 @@ public class KernProducer {
         Path descriptorPad = Path.of(descriptor);
         List<Path> bronnen = leesManifest(Path.of(bronnenManifest));
         KernConfig config = allowMarkers ? KernConfig.metMarkers() : KernConfig.strikt();
+        if (detail) config = config.metDetail();
         try {
             // DienstFout (a RuntimeException) propagates out of bouw as-is → fail-fast startup (readiness DOWN).
             return BeslisserKern.bouw(descriptorPad, bronnen, config,

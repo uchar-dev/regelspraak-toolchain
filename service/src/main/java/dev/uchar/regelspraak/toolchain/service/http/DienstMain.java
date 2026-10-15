@@ -16,10 +16,13 @@ import java.util.List;
  * {@link DienstHttp}. {@code --poort 0} binds a free port; the serving line names the port bound. {@code --host}
  * picks the address to bind (default {@code 0.0.0.0}, every interface); a local caller that binds a free port
  * passes {@code 127.0.0.1}, because a port free on every interface can still be bound on the loopback address
- * alone by another process, which then answers on it.
+ * alone by another process, which then answers on it. {@code --detail}, or {@code DETAIL=true} in the environment,
+ * starts the core with the details of a session on request ({@link KernConfig#detail()}); default off, as
+ * {@code PLAYGROUND}, since they show every intermediate value.
  *
  * <pre>{@code
- *   DienstMain <descriptor.dienst.json> <bron.rgs...> | <document.json> [--allow-markers] [--host H] [--poort N]
+ *   DienstMain <descriptor.dienst.json> <bron.rgs...> | <document.json> [--allow-markers] [--detail] [--host H]
+ *              [--poort N]
  * }</pre>
  *
  * <h2>Startup / exit discipline (the exit-3 MARKER discipline at the service boundary)</h2>
@@ -42,7 +45,7 @@ public final class DienstMain {
     private DienstMain() {}
 
     /** Parsed CLI arguments. */
-    record Args(Path descriptor, List<Path> bronnen, boolean allowMarkers, String host, int poort) {}
+    record Args(Path descriptor, List<Path> bronnen, boolean allowMarkers, boolean detail, String host, int poort) {}
 
     /** Exit code 3: the startup failure was purely marker schendingen (needs {@code --allow-markers}). */
     static final int EXIT_MARKER = 3;
@@ -56,12 +59,13 @@ public final class DienstMain {
         } catch (IllegalArgumentException e) {
             System.err.println(e.getMessage());
             System.err.println("gebruik: DienstMain <descriptor.dienst.json> <bron.rgs...> | <document.json> "
-                    + "[--allow-markers] [--host H] [--poort N]");
+                    + "[--allow-markers] [--detail] [--host H] [--poort N]");
             System.exit(2);
             return;
         }
 
         KernConfig config = args.allowMarkers() ? KernConfig.metMarkers() : KernConfig.strikt();
+        if (args.detail() || "true".equalsIgnoreCase(System.getenv("DETAIL"))) config = config.metDetail();
         BeslisserKern kern;
         try {
             kern = BeslisserKern.bouw(args.descriptor(), args.bronnen(), config,
@@ -135,17 +139,20 @@ public final class DienstMain {
         return kern.descriptor().dienst() == null ? "?" : kern.descriptor().dienst().naam();
     }
 
-    /** Parse {@code <descriptor> <bron...> [--allow-markers] [--host H] [--poort N]}. */
+    /** Parse {@code <descriptor> <bron...> [--allow-markers] [--detail] [--host H] [--poort N]}. */
     static Args parseArgs(String[] raw) {
         Path descriptor = null;
         List<Path> bronnen = new ArrayList<>();
         boolean allowMarkers = false;
+        boolean detail = false;
         String host = "0.0.0.0";
         int poort = 8080;
         for (int i = 0; i < raw.length; i++) {
             String a = raw[i];
             if (a.equals("--allow-markers")) {
                 allowMarkers = true;
+            } else if (a.equals("--detail")) {
+                detail = true;
             } else if (a.equals("--host")) {
                 if (i + 1 >= raw.length) throw new IllegalArgumentException("--host verwacht een adres");
                 host = raw[++i];
@@ -164,6 +171,6 @@ public final class DienstMain {
         if (descriptor == null) throw new IllegalArgumentException("geen descriptor (.dienst.json) opgegeven");
         if (bronnen.isEmpty())
             throw new IllegalArgumentException("geen bron opgegeven: .rgs-bestanden of één uchar-ir-v1-document");
-        return new Args(descriptor, bronnen, allowMarkers, host, poort);
+        return new Args(descriptor, bronnen, allowMarkers, detail, host, poort);
     }
 }

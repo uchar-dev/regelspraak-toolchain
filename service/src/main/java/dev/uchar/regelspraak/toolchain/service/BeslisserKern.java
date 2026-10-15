@@ -1,10 +1,13 @@
 package dev.uchar.regelspraak.toolchain.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.emit.CaseEmitter;
+import dev.uchar.regelspraak.engine.ScenarioResultaat;
 import dev.uchar.regelspraak.ir.Bron;
 import dev.uchar.regelspraak.ir.PrioritizedDefaults;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
@@ -21,6 +24,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.transpiler.kern.Dekking;
 import dev.uchar.regelspraak.transpiler.kern.PeriodeDekking;
+import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
 
 import org.kie.api.KieBase;
 
@@ -29,6 +33,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,6 +68,8 @@ import java.util.Map;
  */
 public final class BeslisserKern {
 
+    private static final JsonNodeFactory NF = JsonNodeFactory.withExactBigDecimals(true);
+
     private final DienstDescriptor descriptor;
     private final RegelSpraakModel model;
     private final Map<String, Entrypoint> perPad;   // URL path -> compiled entry point
@@ -71,15 +78,18 @@ public final class BeslisserKern {
     /** The rendered {@link PeriodeDekking} WARNING lines (regel-geldigheid × parameter-geldigheid gaps), computed
      *  once at startup; served verbatim on /info and logged by DienstMain. Empty when no gap or no sets. */
     private final List<String> periodeWaarschuwingen;
+    /** Whether a request may ask to see its session ({@link KernConfig#detail()}). */
+    private final boolean detail;
 
     private BeslisserKern(DienstDescriptor descriptor, RegelSpraakModel model,
                           Map<String, Entrypoint> perPad, List<Parameterset> parametersets,
-                          List<String> periodeWaarschuwingen) {
+                          List<String> periodeWaarschuwingen, boolean detail) {
         this.descriptor = descriptor;
         this.model = model;
         this.perPad = perPad;
         this.parametersets = parametersets;
         this.periodeWaarschuwingen = periodeWaarschuwingen;
+        this.detail = detail;
     }
 
     /** One compiled entry point: its descriptor entry, uchar's {@link DroolsBackend.Build} of its scope (the scoped
@@ -239,7 +249,7 @@ public final class BeslisserKern {
         List<Parameterset> sets = laadParametersets(descriptor, parametersetsJson, model);
         List<String> waarschuwingen = periodeWaarschuwingen(model, sets);
 
-        return new BeslisserKern(descriptor, model, perPad, sets, waarschuwingen);
+        return new BeslisserKern(descriptor, model, perPad, sets, waarschuwingen, config.detail());
     }
 
     /**
@@ -308,7 +318,7 @@ public final class BeslisserKern {
         if (!markerFouten.isEmpty())
             throw new DienstFout("dienst start niet: uchar draagt een entrypoint niet", markerFouten);
         List<Parameterset> sets = laadParametersets(descriptor, parametersetsJson, model);
-        return new BeslisserKern(descriptor, model, perPad, sets, periodeWaarschuwingen(model, sets));
+        return new BeslisserKern(descriptor, model, perPad, sets, periodeWaarschuwingen(model, sets), config.detail());
     }
 
     private static DienstDescriptor leesDescriptor(String descriptorJson) {
@@ -551,6 +561,12 @@ public final class BeslisserKern {
      * pins; the answer and its explanation name the declarations in the vocabulary the request chooses, else in the
      * entry point's default from the descriptor, else canonically ({@link Naamgeving}). A vocabulary the model does
      * not declare is refused before the body is read: an answer in it could not be given.
+     *
+     * <p>The detail flags of {@code opties} add the session to the answer, after the explanation ({@link #detail}), and
+     * to the {@link Evaluatiefout} of a request on which the rules give a fault. A core started without
+     * {@link KernConfig#detail()} refuses each of them by its name before the body is read: it shows every intermediate
+     * value, where the answer gives the selected {@code uitvoer} alone. Without a detail flag the answer is the one a
+     * core without detail gives, byte for byte.
      */
     public ObjectNode verwerk(String pad, JsonNode verzoekBoom, VerzoekOpties opties) {
         Entrypoint ep = perPad.get(pad);
@@ -560,6 +576,10 @@ public final class BeslisserKern {
         Naamgeving uitvoer = naamgeving(opties.vocabulaire() != null ? opties.vocabulaire()
                 : ep.descriptor().vocabulaire(), "vocabulaire", keuzes);
         if (opties.invoervocabulaire() != null) naamgeving(opties.invoervocabulaire(), "invoervocabulaire", keuzes);
+        if (!detail)
+            for (String vlag : opties.detailvlaggen())
+                keuzes.add(Schending.van(Schending.Soort.NIET_ONDERSTEUND, vlag, "de dienst is zonder DETAIL gestart"
+                        + " en geeft geen " + vlag + "; start hem met DETAIL=true of --detail"));
         if (!keuzes.isEmpty()) throw new DienstFout("verzoek valideert niet", keuzes);
         VerzoekMapper mapper = new VerzoekMapper(model, ep.beanLoader(), new NaamLezer(model, opties.invoervocabulaire()));
         VerzoekMapper.Resultaat mr = mapper.map(new Verzoek(verzoekBoom));
@@ -579,12 +599,68 @@ public final class BeslisserKern {
         // request parameter overrides (descriptor default first, set-value next — the conflict rule guarantees
         // they never name the same parameter — request override last: explicit caller-intent wins).
         Map<String, Object> setGlobals = vintageGlobals(mr.wereld().rekendatum());
+        boolean metDetail = !opties.detailvlaggen().isEmpty();
+        // uchar's waarnemer labels a firing with the ids of the request; the input is read off the beans before the
+        // fire, because the write-back puts the derived values on the same beans
+        Map<Object, String> label = new IdentityHashMap<>();
+        mr.wereld().beans().forEach((id, bean) -> label.put(bean, id));
+        DroolsBackend.Waarnemer waarnemer = opties.trace() || opties.dekking()
+                ? new DroolsBackend.Waarnemer(label::get) : null;
+        List<FixpuntGegevens.Invoerobject> invoer = opties.fixpunt()
+                ? FixpuntGegevens.invoer(mr.wereld().beans(), mr.typePerLabel(), uitvoer) : null;
         Uitvoerder uitvoerder = new Uitvoerder(ep.build(), ep.defaultGlobals());
-        Uitvoerder.Uitkomst uitkomst = uitvoerder.vuur(mr.wereld(), setGlobals);
+        Uitvoerder.Uitkomst uitkomst;
+        try {
+            uitkomst = uitvoerder.vuur(mr.wereld(), setGlobals, waarnemer);
+        } catch (Evaluatiefout fout) {
+            if (!metDetail) throw fout;
+            throw fout.metDetail(detail(opties, ep, waarnemer, fout.fixpunt(), invoer, uitvoer));
+        }
         ObjectNode antwoord = new AntwoordBouwer(model, uitvoer).bouw(uitkomst, ep.descriptor().uitvoer(),
                 mr.typePerLabel());
         if (opties.uitleg()) voegUitlegToe(antwoord, uitkomst, mr, setGlobals, ep, uitvoer);
+        if (metDetail) antwoord.setAll(detail(opties, ep, waarnemer, uitkomst.fixpunt(), invoer, uitvoer));
         return antwoord;
+    }
+
+    /**
+     * The detail of a request's session that {@code opties} asks, in this order and under these keys, the names in
+     * {@code naamgeving}: {@code trace}, per form that fired, in the order a rule of it first fired, the ids of the
+     * request its matches bound ({@code labels}) and how often its rules fired ({@code aantal}), as uchar's
+     * {@code waarnemer} recorded them; {@code dekking}, per form of the entry point's build whether a rule of it fired
+     * ({@link DroolsBackend#dekking}: {@code GEVUURD} or {@code NIET_GERAAKT}); and {@code fixpunt}, what stands at the
+     * fixpoint with the instances of the request as its input ({@link FixpuntGegevens}), or {@code fixpuntFout} with the
+     * reason a value of it cannot be shown. The playground gives a scenario the same three.
+     */
+    private ObjectNode detail(VerzoekOpties opties, Entrypoint ep, DroolsBackend.Waarnemer waarnemer, Fixpunt fixpunt,
+                              List<FixpuntGegevens.Invoerobject> invoer, Naamgeving naamgeving) {
+        ObjectNode n = NF.objectNode();
+        if (opties.trace()) {
+            ArrayNode trace = n.putArray("trace");
+            for (ScenarioResultaat.Vuring v : waarnemer.vuringen()) {
+                ObjectNode tn = trace.addObject();
+                tn.put("regel", naamgeving.vorm(v.regel()));
+                ArrayNode labels = tn.putArray("labels");
+                for (String l : v.labels()) labels.add(l);
+                tn.put("aantal", v.aantal());
+            }
+        }
+        if (opties.dekking()) {
+            ArrayNode dekking = n.putArray("dekking");
+            for (ScenarioResultaat.DekkingRegel d : DroolsBackend.dekking(ep.build(), waarnemer.vormen())) {
+                ObjectNode dn = dekking.addObject();
+                dn.put("regel", naamgeving.vorm(d.regel()));
+                dn.put("soort", d.soort().name());
+            }
+        }
+        if (opties.fixpunt()) {
+            try {
+                n.set("fixpunt", FixpuntGegevens.fixpunt(fixpunt, invoer, model, naamgeving));
+            } catch (FixpuntGegevens.OnweergeefbareWaarde o) {
+                n.put("fixpuntFout", o.getMessage());
+            }
+        }
+        return n;
     }
 
     /** The naming {@code keuze} names, or the canonical one after adding the violation of a vocabulary the model does

@@ -30,6 +30,7 @@ help:
 	@echo "  make scenario FILE=\"[--trace] [--uitleg] a.rgs …\"   PASS / FAIL / MARKER per scenario"
 	@echo "  make serve FILE=\"d.dienst.json a.rgs …\" [POORT=…]   The decision service on the JDK HttpServer;"
 	@echo "                                       POST /<pad>?uitleg=true adds the uitleg-verhaal to the answer,"
+	@echo "                                       DETAIL=true answers ?trace, ?dekking and ?fixpunt,"
 	@echo "                                       PLAYGROUND=true binds the dev-only /playground workbench routes"
 	@echo "  make drl FILE=\"a.rgs …\"             The DRL text of uchar's DRL-text branch on stdout (exit 3 if uchar refuses)"
 	@echo "  make graaf FILE=\"a.rgs …\" [OUT=… MMD=1]  The rule graph as HTML (or bare Mermaid with MMD=1)"

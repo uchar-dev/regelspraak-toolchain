@@ -115,7 +115,8 @@ public final class AntwoordBouwer {
      *  shaped as the MARKER answer and the answer to a request that does not validate:
      *  {@code {"status": "EVALUATIEFOUT", "fout": <sentence>, "fouten": [{"soort": <soort>, "fout": <uchar's
      *  sentence>}, ...]}}, one element per fault in uchar's order. Where uchar's sentence names an object, it names an
-     *  object of the request by its id; no stacktrace and no class name enter it. */
+     *  object of the request by its id; no stacktrace and no class name enter it. The detail of the session the request
+     *  asked ({@link Evaluatiefout#detail()}) follows the faults, under the keys of the answer it would have had. */
     public static ObjectNode evaluatiefout(Evaluatiefout fout) {
         ObjectNode n = NF.objectNode();
         n.put("status", "EVALUATIEFOUT");
@@ -126,6 +127,7 @@ public final class AntwoordBouwer {
             fn.put("soort", f.soort().name());
             fn.put("fout", f.zin());
         }
+        if (fout.detail() != null) n.setAll(fout.detail());
         return n;
     }
 

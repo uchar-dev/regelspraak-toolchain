@@ -34,8 +34,10 @@ import dev.uchar.regelspraak.toolchain.service.VerzoekOpties;
  *       {@code 422} with the answer {@link AntwoordBouwer#evaluatiefout} builds, as {@code DienstHttp} sends it.</li>
  *   <li>{@code GET /info} → the SAME manifest {@code DienstHttp} serves (via {@link InfoBouwer}).</li>
  * </ul>
- * The query parameters are {@code DienstHttp}'s: {@code uitleg}, {@code vocabulaire} (the vocabulary of the answer)
- * and {@code invoervocabulaire} (the one the request's names are read in).
+ * The query parameters are {@code DienstHttp}'s: {@code uitleg}, {@code vocabulaire} (the vocabulary of the answer),
+ * {@code invoervocabulaire} (the one the request's names are read in), and the detail flags {@code trace},
+ * {@code dekking} and {@code fixpunt}, which the core answers when {@code DETAIL} started it with detail
+ * ({@link KernProducer}) and refuses with a 400 otherwise.
  *
  * <p>The request body is read as a raw {@link String} and parsed with a private {@link ObjectMapper} configured
  * {@code USE_BIG_DECIMAL_FOR_FLOATS} (mirror of {@code DienstHttp.MAPPER}), so no request number is ever a
@@ -63,7 +65,9 @@ public class BeslisResource {
     @Produces(MediaType.APPLICATION_JSON)
     public Response verwerk(@PathParam("pad") String pad, @QueryParam("uitleg") String uitleg,
                             @QueryParam("vocabulaire") String vocabulaire,
-                            @QueryParam("invoervocabulaire") String invoervocabulaire, String body) {
+                            @QueryParam("invoervocabulaire") String invoervocabulaire,
+                            @QueryParam("trace") String trace, @QueryParam("dekking") String dekking,
+                            @QueryParam("fixpunt") String fixpunt, String body) {
         JsonNode boom;
         if (body == null || body.isEmpty())
             return response(400, foutBody("leeg verzoek-body: verwacht JSON met een 'instanties'-array", "body"));
@@ -77,10 +81,10 @@ public class BeslisResource {
             return response(400, foutBody("verzoek-body is geen geldige JSON (null)", "body"));
 
         try {
-            // ?uitleg=true (or a bare ?uitleg) opts into the Verbalisator verhaal; any other value = no (mirror
-            // of DienstHttp.vraagtUitleg). Additive + descriptor-independent: no existing caller's contract breaks.
-            boolean metUitleg = "true".equalsIgnoreCase(uitleg) || (uitleg != null && uitleg.isEmpty());
-            ObjectNode antwoord = kern.verwerk(pad, boom, new VerzoekOpties(metUitleg, vocabulaire, invoervocabulaire));
+            // ?uitleg=true (or a bare ?uitleg) opts into the Verbalisator verhaal, and the detail flags read the same
+            // way; any other value = no (mirror of DienstHttp.vraagt)
+            ObjectNode antwoord = kern.verwerk(pad, boom, new VerzoekOpties(vraagt(uitleg), vocabulaire,
+                    invoervocabulaire, vraagt(trace), vraagt(dekking), vraagt(fixpunt)));
             return response(200, antwoord);
         } catch (BeslisserKern.OnbekendPad onbekend) {
             // DienstHttp answers an unknown path from its catch-all route, which names the request path, slash
@@ -95,9 +99,19 @@ public class BeslisResource {
         }
     }
 
+    /** A request that asks no detail of its session: the resource method without the detail flags. */
+    public Response verwerk(String pad, String uitleg, String vocabulaire, String invoervocabulaire, String body) {
+        return verwerk(pad, uitleg, vocabulaire, invoervocabulaire, null, null, null, body);
+    }
+
     /** A request that names no vocabulary: {@link #verwerk(String, String, String, String, String)} without them. */
     public Response verwerk(String pad, String uitleg, String body) {
         return verwerk(pad, uitleg, null, null, body);
+    }
+
+    /** A query flag as {@code DienstHttp.vraagt} reads it: {@code true} (case-insensitive) or bare. */
+    private static boolean vraagt(String waarde) {
+        return "true".equalsIgnoreCase(waarde) || (waarde != null && waarde.isEmpty());
     }
 
     // ---------------- GET /info ----------------
