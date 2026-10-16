@@ -90,6 +90,9 @@ public final class VerzoekMapper {
         // the instances of the case by id, in the order of the request, and the field of the request per link
         Map<String, ObjectNode> instanties = new LinkedHashMap<>();
         Map<Link, String> paden = new LinkedHashMap<>();
+        // the fields whose date or date-time has a year the case lexeme does not carry (four digits, no sign), in the
+        // order uchar's input step reads them: the evaluation date first, then the attributes in the order of the case
+        List<String> jaarBuitenCasevorm = new ArrayList<>();
 
         // 1. peildatum / rekendatum — ONE date authority (fase 5). 'peildatum' is the preferred name, 'rekendatum'
         //    the existing alias: the two are the SAME notion. Both present and UNEQUAL is a violation naming BOTH
@@ -107,6 +110,7 @@ public final class VerzoekMapper {
         } else {
             datum = peildatum != null ? peildatum : rekendatum;   // peildatum wins when both equal
         }
+        if (datum != null && !inCasevorm(datum.getYear())) jaarBuitenCasevorm.add(peildatum != null ? "peildatum" : "rekendatum");
 
         // 2. parameters
         JsonNode params = verzoek.parameters();
@@ -175,7 +179,7 @@ public final class VerzoekMapper {
                 instantie.put("objectType", ot.naam);
                 instanties.put(id, instantie);
                 typePerLabel.put(id, ot);
-                zetAttributen(ot, instantie, in.get("attributen"), pad + ".attributen", s);
+                zetAttributen(ot, instantie, in.get("attributen"), pad + ".attributen", jaarBuitenCasevorm, s);
                 zetKenmerken(ot, instantie, in.get("kenmerken"), pad + ".kenmerken", s);
             }
         }
@@ -208,6 +212,11 @@ public final class VerzoekMapper {
         } catch (CaseRunner.Excluded x) {
             // a form uchar's input step does not carry that the validation above let through: no link names it
             s.add(Schending.van(Schending.Soort.NIET_ONDERSTEUND, "instanties", x.getMessage()));
+        } catch (IllegalArgumentException f) {
+            // after the validation above the one defect of the case uchar's input step can find is a date or date-time
+            // lexeme outside its form, a year beyond 0000-9999; it stops at the first it reads
+            if (jaarBuitenCasevorm.isEmpty()) throw f;
+            s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, jaarBuitenCasevorm.get(0), f.getMessage()));
         }
         return new Resultaat(invoer == null ? null : new Wereld(invoer, globals, datum), typePerLabel, s);
     }
@@ -241,15 +250,26 @@ public final class VerzoekMapper {
 
     // ---- the case instance ----
 
+    /** Whether the case lexeme of a date carries year {@code jaar}: four digits, no sign. */
+    private static boolean inCasevorm(int jaar) {
+        return jaar >= 0 && jaar <= 9999;
+    }
+
     /** The {@code uchar-case-v0} value of {@code w}, a value {@link WaardeCoder} decoded for {@code dt}: what uchar's
      *  case reader reads back as that same Java value. Null after adding the violation of a value the case form cannot
-     *  carry: a date-time with a fraction finer than a millisecond. */
-    private static JsonNode caseWaarde(Object w, Datatype dt, String veld, List<Schending> s) {
+     *  carry: a date-time with a fraction finer than a millisecond. A date or date-time whose year the lexeme does not
+     *  carry is written as {@link LocalDate#toString} writes it, for uchar's reader to refuse, and {@code veld} is added
+     *  to {@code jaarBuitenCasevorm}. */
+    private static JsonNode caseWaarde(Object w, Datatype dt, String veld, List<String> jaarBuitenCasevorm,
+                                       List<Schending> s) {
         if (w == null) return NF.nullNode();
         ObjectNode n = NF.objectNode();
         // toString, not toPlainString: new BigDecimal(toString()) gives back the same unscaled value and scale
         if (w instanceof BigDecimal b) return n.put("number", b.toString());
-        if (w instanceof LocalDate d) return n.put("date", d.toString());
+        if (w instanceof LocalDate d) {
+            if (!inCasevorm(d.getYear())) jaarBuitenCasevorm.add(veld);
+            return n.put("date", d.toString());
+        }
         if (w instanceof Boolean b) return n.put("boolean", b);
         if (w instanceof String tekst) return n.put(dt instanceof Datatype.Enumeratie ? "enumeration" : "text", tekst);
         if (w instanceof LocalDateTime dt2) {
@@ -258,6 +278,7 @@ public final class VerzoekMapper {
                         + " seconde fijner dan een milliseconde; de dienst draagt hele milliseconden"));
                 return null;
             }
+            if (!inCasevorm(dt2.getYear())) jaarBuitenCasevorm.add(veld);
             String lexeem = DATUM_TIJD.format(dt2);
             if (dt2.getNano() != 0) lexeem += String.format(".%03d", dt2.getNano() / 1_000_000);
             return n.put("dateTime", lexeem);
@@ -276,7 +297,8 @@ public final class VerzoekMapper {
         return o instanceof ObjectNode on ? on : n.putObject(veld);
     }
 
-    private void zetAttributen(Objecttype ot, ObjectNode instantie, JsonNode attrs, String pad, List<Schending> s) {
+    private void zetAttributen(Objecttype ot, ObjectNode instantie, JsonNode attrs, String pad,
+                               List<String> jaarBuitenCasevorm, List<Schending> s) {
         if (attrs == null || attrs.isNull()) return;
         if (!attrs.isObject()) { s.add(Schending.van(Schending.Soort.MALFORMED, pad, "attributen moet een object zijn")); return; }
         Dubbel dubbel = new Dubbel("deze instantie");
@@ -307,7 +329,7 @@ public final class VerzoekMapper {
             WaardeCoder.Resultaat r = WaardeCoder.decodeer(waarde, dt, veld);
             s.addAll(r.schendingen());
             if (!r.schendingen().isEmpty()) return;
-            JsonNode caseWaarde = caseWaarde(r.waarde(), dt, veld, s);
+            JsonNode caseWaarde = caseWaarde(r.waarde(), dt, veld, jaarBuitenCasevorm, s);
             if (caseWaarde != null) objectIn(instantie, "attributes").set(canoniek, caseWaarde);
         });
     }

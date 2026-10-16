@@ -117,9 +117,11 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   of the request that wrote it (for a relation, the role that names the target of its link, also where the collision
   is on the far field): a to-one role that gets a second, different target (WF-013, `CaseInvoer.Rolbotsing`),
   among the inline roles, through `relaties` or through the far field, is a 400 `VERKEERD_TYPE`, a link the bean
-  model cannot hold (`CaseInvoer.Rolweigering`) a 400 `NIET_ONDERSTEUND`, each with uchar's sentence. An
-  enumeration value names a declared value as uchar compares declared names (case and spacing aside), and keeps its
-  own spelling.
+  model cannot hold (`CaseInvoer.Rolweigering`) a 400 `NIET_ONDERSTEUND`, each with uchar's sentence. A date or
+  date-time whose year the case lexeme does not carry (beyond 0000–9999, `+10000-01-01`), uchar's input step refuses
+  as well: a 400 `VERKEERD_TYPE` on the field that holds it (`peildatum`, `rekendatum` or the attribute), with uchar's
+  sentence. An enumeration value names a declared value as uchar compares declared names (case and spacing aside),
+  and keeps its own spelling.
 - Names and vocabularies (README, "Vocabularies"). `NaamLezer` reads every name of a request canonically or as a
   designation in any vocabulary of the model (uchar's `RegelSpraakModel.benoemd`), within the scope of its kind,
   case-insensitively and mixed; a name that reads as two declarations is a 400 `DUBBELZINNIGE_NAAM` naming both
