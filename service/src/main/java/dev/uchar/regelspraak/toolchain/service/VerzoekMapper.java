@@ -1,8 +1,14 @@
 package dev.uchar.regelspraak.toolchain.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 
+import dev.uchar.regelspraak.cases.CaseInvoer;
+import dev.uchar.regelspraak.cases.CaseRunner;
+import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Feittype;
@@ -10,10 +16,12 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Rol;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.toolchain.engine.RolSchrijver;
 import dev.uchar.regelspraak.transpiler.kern.Namen;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,10 +31,15 @@ import java.util.Map;
 /**
  * Maps a {@link Verzoek} JSON tree onto a {@link Wereld} of fact beans + globals + rekendatum, validating
  * every field against the resolved model and collecting typed {@link Schending}s (each carrying its FIELD
- * PATH). It REUSES the existing bridge — {@link Class#forName} over {@code dev.uchar.regelspraak.facts.*} and
- * {@link RegelSpraakRuntime#set} — as uchar's case replay ({@code CaseRunner}) sets a case's inputs; no new
- * reflection layer. On any violation it does not throw: it returns the world it managed to build alongside the
- * violation list, so a caller (fase 3) can turn the full set into one 400 naming every bad field.
+ * PATH). The beans are not made here: the validated request is written as the input of a {@code uchar-case-v0} case,
+ * {@code {"asOfDate", "input": {"instances": [...]}}} with the ids of the request as labels, and uchar's input step
+ * reads that case ({@link CaseInvoer#van}), the one its replay reads every case with, so the service puts in the facts
+ * the replay puts in on the same input. A role link uchar refuses names the link the case wrote; a table of the links
+ * (id, role key, target id) gives the field of the request that wrote it: a second, different target on a to-one role
+ * (WF-013, {@link CaseInvoer.Rolbotsing}) is a {@link Schending.Soort#VERKEERD_TYPE}, a link the bean model cannot hold
+ * ({@link CaseInvoer.Rolweigering}) a {@link Schending.Soort#NIET_ONDERSTEUND}, each with uchar's sentence. On any
+ * violation it does not throw: it returns the violations, beside the world uchar read from the fields that validated
+ * (none when uchar refused a link), so a caller (fase 3) can turn the full set into one 400 naming every bad field.
  *
  * <p>Unsupported by the service core (a clear violation, never a silent accept): a dimensie- or
  * tijdlijn-valued attribute (no golden situatie uses one). An unknown objecttype/attribuut/kenmerk/parameter/
@@ -40,36 +53,43 @@ import java.util.Map;
  */
 public final class VerzoekMapper {
 
+    private static final JsonNodeFactory NF = JsonNodeFactory.instance;
+    /** The {@code dateTime} lexeme of {@code uchar-case-v0}: the seconds always written, a fraction of whole
+     *  milliseconds only where there is one. */
+    private static final DateTimeFormatter DATUM_TIJD = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss");
+
     private final RegelSpraakModel model;
-    private final ClassLoader loader;
-    private final RolSchrijver rollenSchrijver;
+    private final DroolsBackend.Build build;
     private final NaamLezer lezer;
 
-    /** @param loader the classloader the fact beans live on — the entry point's generated bean classloader,
-     *                which uchar's build compiled at startup; reflection over it is
-     *                classloader-agnostic, only {@link Class#forName} must go through it. */
-    public VerzoekMapper(RegelSpraakModel model, ClassLoader loader) {
-        this(model, loader, new NaamLezer(model, null));
+    /** @param model the resolved model the request is validated against
+     *  @param build uchar's build of the entry point, whose input step reads the request ({@link CaseInvoer#van}) */
+    public VerzoekMapper(RegelSpraakModel model, DroolsBackend.Build build) {
+        this(model, build, new NaamLezer(model, null));
     }
 
-    /** As {@link #VerzoekMapper(RegelSpraakModel, ClassLoader)}, reading the names with {@code lezer}. */
-    VerzoekMapper(RegelSpraakModel model, ClassLoader loader, NaamLezer lezer) {
+    /** As {@link #VerzoekMapper(RegelSpraakModel, DroolsBackend.Build)}, reading the names with {@code lezer}. */
+    VerzoekMapper(RegelSpraakModel model, DroolsBackend.Build build, NaamLezer lezer) {
         this.model = model;
-        this.loader = loader;
-        this.rollenSchrijver = new RolSchrijver(model);
+        this.build = java.util.Objects.requireNonNull(build, "build");
         this.lezer = lezer;
     }
 
     /** The mapped world, the id→objecttype map (for the response builder), and the violations produced while
-     *  mapping (empty on success). */
+     *  mapping (empty on success). The world is null when uchar refused the input. */
     public record Resultaat(Wereld wereld, Map<String, Objecttype> typePerLabel, List<Schending> schendingen) {}
+
+    /** A role link the mapper writes into the case: under the {@code roles} of instance {@code id}, the key
+     *  {@code rol}, naming {@code doel}; uchar's {@link CaseInvoer.Rolfout} names a refused link the same way. */
+    private record Link(String id, String rol, String doel) {}
 
     public Resultaat map(Verzoek verzoek) {
         List<Schending> s = new ArrayList<>();
-        Map<String, Object> beans = new LinkedHashMap<>();
         Map<String, Object> globals = new LinkedHashMap<>();
         Map<String, Objecttype> typePerLabel = new LinkedHashMap<>();
-        RolSchrijver.Lijsten lijsten = new RolSchrijver.Lijsten();
+        // the instances of the case by id, in the order of the request, and the field of the request per link
+        Map<String, ObjectNode> instanties = new LinkedHashMap<>();
+        Map<Link, String> paden = new LinkedHashMap<>();
 
         // 1. peildatum / rekendatum — ONE date authority (fase 5). 'peildatum' is the preferred name, 'rekendatum'
         //    the existing alias: the two are the SAME notion. Both present and UNEQUAL is a violation naming BOTH
@@ -116,7 +136,7 @@ public final class VerzoekMapper {
             }
         }
 
-        // 3. instanties (beans + attributen + kenmerken)
+        // 3. instanties (case instances + attributen + kenmerken)
         JsonNode insts = verzoek.instanties();
         if (insts == null || insts.isNull()) {
             s.add(Schending.van(Schending.Soort.MALFORMED, "instanties", "instanties ontbreekt"));
@@ -145,21 +165,22 @@ public final class VerzoekMapper {
                             "onbekend objecttype '" + typeN.asText() + "'" + lezer.vastgezetZin()));
                     continue;
                 }
-                if (beans.containsKey(id)) {
+                if (instanties.containsKey(id)) {
                     s.add(Schending.van(Schending.Soort.MALFORMED, pad + ".id",
                             "dubbel id '" + id + "'"));
                     continue;
                 }
-                Object bean = maakBean(ot, pad, s);
-                if (bean == null) continue;
-                beans.put(id, bean);
+                ObjectNode instantie = NF.objectNode();
+                instantie.put("label", id);
+                instantie.put("objectType", ot.naam);
+                instanties.put(id, instantie);
                 typePerLabel.put(id, ot);
-                zetAttributen(ot, bean, in.get("attributen"), pad + ".attributen", s);
-                zetKenmerken(ot, bean, in.get("kenmerken"), pad + ".kenmerken", s);
+                zetAttributen(ot, instantie, in.get("attributen"), pad + ".attributen", s);
+                zetKenmerken(ot, instantie, in.get("kenmerken"), pad + ".kenmerken", s);
             }
         }
 
-        // 4. rollen — inline per instance, then top-level relaties (both after all beans exist)
+        // 4. rollen — inline per instance, then top-level relaties (both after all instances exist)
         if (insts != null && insts.isArray())
             for (int i = 0; i < insts.size(); i++) {
                 JsonNode in = insts.get(i);
@@ -168,17 +189,37 @@ public final class VerzoekMapper {
                 String id = idN.asText();
                 Objecttype ot = typePerLabel.get(id);
                 if (ot == null) continue;
-                zetRollen(ot, id, beans, typePerLabel, in.get("rollen"), "instanties[" + i + "].rollen", lijsten, s);
+                zetRollen(ot, id, typePerLabel, in.get("rollen"), "instanties[" + i + "].rollen", instanties, paden, s);
             }
-        zetRelaties(verzoek.relaties(), beans, typePerLabel, lijsten, s);
-        // a reciprocal self-relation holds both ways: its reverse leg, as uchar's replay writes it
-        try {
-            rollenSchrijver.spiegelWederkerig(beans, typePerLabel);
-        } catch (RolSchrijver.Geweigerd g) {
-            s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, "instanties", g.getMessage()));
-        }
+        zetRelaties(verzoek.relaties(), typePerLabel, instanties, paden, s);
 
-        return new Resultaat(new Wereld(beans, globals, datum, lijsten), typePerLabel, s);
+        // 5. uchar reads the case: the beans, the roles both ways (RUNTIME-SEMANTICS ch. 5.7a), the lists
+        ObjectNode c = NF.objectNode();
+        if (datum != null) c.put("asOfDate", datum.toString());
+        ArrayNode cInstanties = c.putObject("input").putArray("instances");
+        instanties.values().forEach(cInstanties::add);
+        CaseInvoer invoer = null;
+        try {
+            invoer = CaseInvoer.van(build, c);
+        } catch (CaseInvoer.Rolbotsing b) {
+            s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, pad(paden, b), b.getMessage()));
+        } catch (CaseInvoer.Rolweigering w) {
+            s.add(Schending.van(Schending.Soort.NIET_ONDERSTEUND, pad(paden, w), w.getMessage()));
+        } catch (CaseRunner.Excluded x) {
+            // a form uchar's input step does not carry that the validation above let through: no link names it
+            s.add(Schending.van(Schending.Soort.NIET_ONDERSTEUND, "instanties", x.getMessage()));
+        }
+        return new Resultaat(invoer == null ? null : new Wereld(invoer, globals, datum), typePerLabel, s);
+    }
+
+    /** The field of the request that wrote the link uchar refused. A link the mapper did not write is a broken promise
+     *  of the input step, and fails here. */
+    private static String pad(Map<Link, String> paden, CaseInvoer.Rolfout f) {
+        String pad = paden.get(new Link(f.label(), f.rol(), f.doel()));
+        if (pad == null)
+            throw new IllegalStateException("uchars invoerstap weigerde de link " + f.label() + " -" + f.rol() + "-> "
+                    + f.doel() + ", die het verzoek niet schreef: " + ((RuntimeException) f).getMessage());
+        return pad;
     }
 
     /** Parse an ISO-datum node (yyyy-MM-dd) into a {@link LocalDate}, or {@code null} when absent/null. A
@@ -198,20 +239,44 @@ public final class VerzoekMapper {
         }
     }
 
-    // ---- bean construction ----
+    // ---- the case instance ----
 
-    private Object maakBean(Objecttype ot, String pad, List<Schending> s) {
-        String fqcn = FactModelGenerator.PAKKET + "." + Namen.ident(ot.naam, true);
-        try {
-            return Class.forName(fqcn, true, loader).getConstructor().newInstance();
-        } catch (ReflectiveOperationException e) {
-            s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, pad + ".type",
-                    "kon geen instantie van objecttype '" + ot.naam + "' (" + fqcn + ") maken: " + e.getMessage()));
-            return null;
+    /** The {@code uchar-case-v0} value of {@code w}, a value {@link WaardeCoder} decoded for {@code dt}: what uchar's
+     *  case reader reads back as that same Java value. Null after adding the violation of a value the case form cannot
+     *  carry: a date-time with a fraction finer than a millisecond. */
+    private static JsonNode caseWaarde(Object w, Datatype dt, String veld, List<Schending> s) {
+        if (w == null) return NF.nullNode();
+        ObjectNode n = NF.objectNode();
+        // toString, not toPlainString: new BigDecimal(toString()) gives back the same unscaled value and scale
+        if (w instanceof BigDecimal b) return n.put("number", b.toString());
+        if (w instanceof LocalDate d) return n.put("date", d.toString());
+        if (w instanceof Boolean b) return n.put("boolean", b);
+        if (w instanceof String tekst) return n.put(dt instanceof Datatype.Enumeratie ? "enumeration" : "text", tekst);
+        if (w instanceof LocalDateTime dt2) {
+            if (dt2.getNano() % 1_000_000 != 0) {
+                s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, veld, "'" + dt2 + "' heeft een fractie van een"
+                        + " seconde fijner dan een milliseconde; de dienst draagt hele milliseconden"));
+                return null;
+            }
+            String lexeem = DATUM_TIJD.format(dt2);
+            if (dt2.getNano() != 0) lexeem += String.format(".%03d", dt2.getNano() / 1_000_000);
+            return n.put("dateTime", lexeem);
         }
+        throw new IllegalStateException("WaardeCoder gaf voor '" + veld + "' een " + w.getClass().getSimpleName()
+                + ", waarvoor de case geen vorm heeft");
     }
 
-    private void zetAttributen(Objecttype ot, Object bean, JsonNode attrs, String pad, List<Schending> s) {
+    private static ArrayNode lijstIn(ObjectNode n, String veld) {
+        JsonNode l = n.get(veld);
+        return l instanceof ArrayNode a ? a : n.putArray(veld);
+    }
+
+    private static ObjectNode objectIn(ObjectNode n, String veld) {
+        JsonNode o = n.get(veld);
+        return o instanceof ObjectNode on ? on : n.putObject(veld);
+    }
+
+    private void zetAttributen(Objecttype ot, ObjectNode instantie, JsonNode attrs, String pad, List<Schending> s) {
         if (attrs == null || attrs.isNull()) return;
         if (!attrs.isObject()) { s.add(Schending.van(Schending.Soort.MALFORMED, pad, "attributen moet een object zijn")); return; }
         Dubbel dubbel = new Dubbel("deze instantie");
@@ -241,11 +306,13 @@ public final class VerzoekMapper {
             if (waarde == null) return;
             WaardeCoder.Resultaat r = WaardeCoder.decodeer(waarde, dt, veld);
             s.addAll(r.schendingen());
-            if (r.schendingen().isEmpty()) RegelSpraakRuntime.set(bean, prop(canoniek), r.waarde());
+            if (!r.schendingen().isEmpty()) return;
+            JsonNode caseWaarde = caseWaarde(r.waarde(), dt, veld, s);
+            if (caseWaarde != null) objectIn(instantie, "attributes").set(canoniek, caseWaarde);
         });
     }
 
-    private void zetKenmerken(Objecttype ot, Object bean, JsonNode kenm, String pad, List<Schending> s) {
+    private void zetKenmerken(Objecttype ot, ObjectNode instantie, JsonNode kenm, String pad, List<Schending> s) {
         if (kenm == null || kenm.isNull()) return;
         if (!kenm.isObject()) { s.add(Schending.van(Schending.Soort.MALFORMED, pad, "kenmerken moet een object zijn")); return; }
         Dubbel dubbel = new Dubbel("deze instantie");
@@ -270,7 +337,8 @@ public final class VerzoekMapper {
                 s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, veld, "kenmerk '" + naam + "' moet een boolean zijn"));
                 return;
             }
-            RegelSpraakRuntime.set(bean, prop(canoniek), v.booleanValue());
+            // a case names the characteristics an instance has; one it does not name, it has not
+            if (v.booleanValue()) lijstIn(instantie, "characteristics").add(canoniek);
         });
     }
 
@@ -346,17 +414,16 @@ public final class VerzoekMapper {
 
     // ---- rollen (inline) ----
 
-    /** The inline roles of one instance, written as uchar's replay writes a case's roles ({@link RolSchrijver}): a
-     *  request instance with {@code rollen} is the case instance with {@code roles}, so the service sets the facts
-     *  the replay sets, and adds each link to {@code lijsten} as the replay orders its lists. A role name the model
-     *  does not know is refused before anything is written, and so is an id whose objecttype does not fill the role
-     *  (the role's type or a subtype of it): the writer falls back on the type pair, and would write such a link into
-     *  another relation between the two types, or refuse it as a form the service does not carry. */
-    private void zetRollen(Objecttype ot, String id, Map<String, Object> beans, Map<String, Objecttype> typePerLabel,
-                           JsonNode rollen, String pad, RolSchrijver.Lijsten lijsten, List<Schending> s) {
+    /** The inline roles of one instance, as the {@code roles} of its case instance under the canonical role name: a
+     *  request instance with {@code rollen} is the case instance with {@code roles}, so uchar's input step sets the
+     *  facts the replay sets. A role name the model does not know is refused before anything is written, and so is an
+     *  id whose objecttype does not fill the role (the role's type or a subtype of it): the input step falls back on the
+     *  type pair, and would write such a link into another relation between the two types, or refuse it as a form the
+     *  service does not carry. */
+    private void zetRollen(Objecttype ot, String id, Map<String, Objecttype> typePerLabel, JsonNode rollen, String pad,
+                           Map<String, ObjectNode> instanties, Map<Link, String> paden, List<Schending> s) {
         if (rollen == null || rollen.isNull()) return;
         if (!rollen.isObject()) { s.add(Schending.van(Schending.Soort.MALFORMED, pad, "rollen moet een object zijn")); return; }
-        Object bean = beans.get(id);
         Dubbel dubbel = new Dubbel("deze instantie");
         rollen.fields().forEachRemaining(e -> {
             String rol = e.getKey();
@@ -375,26 +442,27 @@ public final class VerzoekMapper {
             if (v.isArray()) v.forEach(n -> doelen.add(n.asText()));
             else doelen.add(v.asText());
             for (String label : doelen) {
-                Object doel = beans.get(label);
-                if (doel == null) {
+                Objecttype labelType = typePerLabel.get(label);
+                if (labelType == null) {
                     s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, veld,
                             "rol '" + rol + "' verwijst naar onbekend id '" + label + "'"));
                     continue;
                 }
-                Objecttype labelType = typePerLabel.get(label);
                 if (!labelType.isEen(doeltype)) {
                     s.add(verkeerdType(veld, rol, doeltype, label, labelType));
                     continue;
                 }
-                try {
-                    RolSchrijver.Koppeling k = rollenSchrijver.schrijf(bean, ot, canoniek, doel, labelType);
-                    lijsten.voegToe(k, k.gespiegeld() ? id : label);
-                } catch (RolSchrijver.Geweigerd g) {
-                    s.add(Schending.van(g.tweedeDoel() ? Schending.Soort.VERKEERD_TYPE : Schending.Soort.NIET_ONDERSTEUND,
-                            veld, g.getMessage()));
-                }
+                schrijfLink(instanties, paden, id, canoniek, label, veld);
             }
         });
+    }
+
+    /** Writes the link {@code id} -{@code rol}-> {@code doel} into the case, and records {@code veld} as the field of
+     *  the request that wrote it; a link written twice keeps the first field. */
+    private static void schrijfLink(Map<String, ObjectNode> instanties, Map<Link, String> paden, String id, String rol,
+                                    String doel, String veld) {
+        lijstIn(objectIn(instanties.get(id), "roles"), rol).add(doel);
+        paden.putIfAbsent(new Link(id, rol, doel), veld);
     }
 
     private static Schending verkeerdType(String veld, String rol, Objecttype doeltype, String id, Objecttype type) {
@@ -402,10 +470,14 @@ public final class VerzoekMapper {
                 + " objecttype '" + doeltype.naam + "', maar id '" + id + "' is van objecttype '" + type.naam + "'");
     }
 
-    // ---- relaties (top-level) — desugar to bean-field writes ----
+    // ---- relaties (top-level) — desugar to a role link of the case ----
 
-    private void zetRelaties(JsonNode relaties, Map<String, Object> beans, Map<String, Objecttype> typePerLabel,
-                             RolSchrijver.Lijsten lijsten, List<Schending> s) {
+    /** Each relation as one role link of the case, on the end whose role toward the other end is to-one, keyed by the
+     *  role the other end fills: the link a case writes on that instance. uchar's input step establishes the relation
+     *  both ways from it (RUNTIME-SEMANTICS ch. 5.7a): the far field of a 1:1 relation, the reverse leg of a reciprocal
+     *  one. Where neither direction is to-one the link goes on the first end, and the input step refuses it. */
+    private void zetRelaties(JsonNode relaties, Map<String, Objecttype> typePerLabel, Map<String, ObjectNode> instanties,
+                             Map<Link, String> paden, List<Schending> s) {
         if (relaties == null || relaties.isNull()) return;
         if (!relaties.isArray()) { s.add(Schending.van(Schending.Soort.MALFORMED, "relaties", "relaties moet een array zijn")); return; }
         for (int i = 0; i < relaties.size(); i++) {
@@ -451,25 +523,19 @@ public final class VerzoekMapper {
             }
             String rolA = eindpunten.get(0)[0], idA = eindpunten.get(0)[1];
             String rolB = eindpunten.get(1)[0], idB = eindpunten.get(1)[1];
-            Object beanA = beans.get(idA), beanB = beans.get(idB);
-            if (beanA == null) { s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, pad + ".rollen." + rolA, "onbekend id '" + idA + "'")); continue; }
-            if (beanB == null) { s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, pad + ".rollen." + rolB, "onbekend id '" + idB + "'")); continue; }
             Objecttype otA = typePerLabel.get(idA), otB = typePerLabel.get(idB);
-            // writeRefAls1op1 falls back on the type pair as the role writer does: an id that does not fill its role
-            // would be written into another relation between the two types, as on an inline rol
+            if (otA == null) { s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, pad + ".rollen." + rolA, "onbekend id '" + idA + "'")); continue; }
+            if (otB == null) { s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, pad + ".rollen." + rolB, "onbekend id '" + idB + "'")); continue; }
+            // the input step falls back on the type pair: an id that does not fill its role would be written into
+            // another relation between the two types, as on an inline rol
             boolean vultA = vultRol(ft, rolA, idA, otA, pad, s), vultB = vultRol(ft, rolB, idB, otB, pad, s);
             if (!vultA || !vultB) continue;
-            // A to-ONE reference field exists on a holder iff navigating holder->doel is NOT to-many; for a 1:1
-            // feittype that is BOTH directions (two fields), for a 1:N only the many->one direction. Write every
-            // to-one direction so navigation never reads a spuriously-null leg (the §4.20 leegwaarde bug the
-            // symmetric relaties path otherwise introduced). The role NAME (rolB / rolA) disambiguates when the
-            // same objecttype pair is joined by more than one feittype.
-            String veldA = writeRefAls1op1(beanA, otA, rolB, otB, beanB, ft, pad, s);   // A -> B named after B's role
-            String veldB = writeRefAls1op1(beanB, otB, rolA, otA, beanA, ft, pad, s);   // B -> A named after A's role
-            // a field written here is the member's own link toward the other end, as a to-one role the member writes
-            // itself, so the member joins that end's list as the replay mirrors such a link: by its id
-            if (veldA != null) lijsten.voegToe(new RolSchrijver.Koppeling(beanB, veldA, beanA, true), idA);
-            if (veldB != null) lijsten.voegToe(new RolSchrijver.Koppeling(beanA, veldB, beanB, true), idB);
+            // the link goes where its field is: A holds B in a to-one field named after B's role, or else B holds A.
+            // The role NAME disambiguates when the same objecttype pair is joined by more than one feittype.
+            if (!model.naarVeelRol(otA, otB, rolB) || model.naarVeelRol(otB, otA, rolA))
+                schrijfLink(instanties, paden, idA, rolB, idB, pad + ".rollen." + rolB);
+            else
+                schrijfLink(instanties, paden, idB, rolA, idA, pad + ".rollen." + rolA);
         }
     }
 
@@ -524,54 +590,6 @@ public final class VerzoekMapper {
         return uit;
     }
 
-    /** Set the to-one reference on {@code houderBean} pointing at {@code doelBean}, IFF navigating houder→doel
-     *  through the role {@code doelRol} is to-one (a to-many direction has no scalar reference field — its field
-     *  lives on the other side, written by the reciprocal call), and return the name of the field it set, null where
-     *  it sets none. The role NAME disambiguates a pair joined by more than one feittype
-     *  ({@link RegelSpraakModel#verbindendeRolViaNaam}). A direction that resolves to a real to-one role but whose
-     *  name cannot be pinned falls back to the by-pair role. A field that already holds another object, by an inline
-     *  role or an earlier relation, is refused as the inline roles refuse it ({@link RolSchrijver}): a
-     *  {@link Schending.Soort#VERKEERD_TYPE} on the role of this relation that names the second target. */
-    private String writeRefAls1op1(Object houderBean, Objecttype houderOt, String doelRol, Objecttype doelOt,
-                                   Object doelBean, Feittype ft, String pad, List<Schending> s) {
-        if (model.naarVeelRol(houderOt, doelOt, doelRol)) return null;   // to-many: no scalar field on this side
-        String rol = model.verbindendeRolViaNaam(houderOt, doelOt, doelRol);
-        if (rol == null) rol = model.verbindendeRol(houderOt, doelOt);
-        if (rol == null) {
-            s.add(Schending.van(Schending.Soort.ONBEKEND_VELD, pad,
-                    "kon de verbindende rol van '" + houderOt.naam + "' naar '" + doelOt.naam
-                            + "' (rol '" + doelRol + "') in feittype '" + ft.naam + "' niet bepalen"));
-            return null;
-        }
-        // The reference field only exists on the bean when the fact model actually materialises this relation
-        // (a relation no rule navigates has no generated field). A missing setter is a clean "not supported"
-        // violation, never a thrown reflective error.
-        if (!heeftSetter(houderBean, rol)) {
-            s.add(Schending.van(Schending.Soort.NIET_ONDERSTEUND, pad,
-                    "feittype '" + ft.naam + "' heeft geen referentieveld '" + rol + "' op objecttype '"
-                            + houderOt.naam + "' — deze relatie wordt niet door het feitmodel gematerialiseerd"));
-            return null;
-        }
-        // one relation instance per to-one role (WF-013): written over, the first link would vanish without a word
-        Object huidig = RegelSpraakRuntime.get(houderBean, prop(rol));
-        if (huidig != null && huidig != doelBean) {
-            s.add(Schending.van(Schending.Soort.VERKEERD_TYPE, pad + ".rollen." + doelRol,
-                    "de naar-één rol '" + rol + "' krijgt een tweede, ander doel"));
-            return null;
-        }
-        RegelSpraakRuntime.set(houderBean, prop(rol), doelBean);
-        return rol;
-    }
-
-    /** Whether {@code bean} has a single-arg {@code set<Prop>} for the rol/attr {@code naam} — so a
-     *  {@link RegelSpraakRuntime#set} will not throw {@link NoSuchMethodException}. */
-    private static boolean heeftSetter(Object bean, String naam) {
-        String setter = Namen.setter(naam);
-        for (var m : bean.getClass().getMethods())
-            if (m.getName().equals(setter) && m.getParameterCount() == 1) return true;
-        return false;
-    }
-
     private Feittype feittype(String naam) {
         Feittype ft = model.feittypen.get(naam);
         if (ft != null) return ft;
@@ -581,9 +599,9 @@ public final class VerzoekMapper {
 
     /** Whether attribute {@code naam} on {@code ot} is a §13.3.6 tijdlijn (temporal, {@code List<Segment>}) —
      *  asked over the WHOLE chain (IR-SPEC ch. 2.2), not the own maps. An inherited timeline read as a scalar
-     *  is not a missing binding but a wrong judgement: the mapper would accept the value and
-     *  {@link RegelSpraakRuntime#set} would then push a {@code BigDecimal} into the {@code List<Segment>} field
-     *  the bean inherits — a ClassCastException inside the service instead of a violation naming the field.
+     *  is not a missing binding but a wrong judgement: the mapper would accept the value and write it as a scalar of
+     *  the case, which uchar's input step reads as the asOfDate-bucket scalar of a timeline the service does not
+     *  carry, instead of a violation naming the field.
      *  The model's chain walk is case-INSENSITIVE, exactly as this scan was. */
     private static boolean isTemporeel(Objecttype ot, String naam) {
         return ot.granulariteitVan(naam) != null || ot.tijdlijnAantalVan(naam) != null;

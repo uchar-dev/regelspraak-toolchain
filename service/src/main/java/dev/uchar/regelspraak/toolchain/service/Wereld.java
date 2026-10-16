@@ -1,26 +1,30 @@
 package dev.uchar.regelspraak.toolchain.service;
 
-import dev.uchar.regelspraak.toolchain.engine.RolSchrijver;
+import dev.uchar.regelspraak.cases.CaseInvoer;
 
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
- * The mapped request world: the labelled beans to insert, the order of their to-many lists, the parameter globals to
- * set, and the rekendatum — everything a session needs to fire. It is a plain value object with no engine coupling,
- * produced by {@link VerzoekMapper} and consumed by {@link Uitvoerder}.
+ * The mapped request world: uchar's reading of the request as the input of a case ({@link CaseInvoer}: the labelled
+ * beans and what {@code voegIn} needs beside them), the parameter globals to set, and the rekendatum — everything a
+ * session needs to fire. Produced by {@link VerzoekMapper} and consumed by {@link Uitvoerder}.
  *
- * @param beans      label (id) → fact bean, in first-seen order
+ * @param invoer     the beans of the request by id, read by uchar's input step from the case the mapper wrote
  * @param globals    global name (already the engine's camelCase form) → value (BigDecimal / LocalDate / …)
  * @param rekendatum the §4.2 rekendatum, or null when the request set none
- * @param lijsten    the to-many lists the roles and relations of the request fill, in the order of uchar's replay
  */
-public record Wereld(Map<String, Object> beans, Map<String, Object> globals, LocalDate rekendatum,
-                     RolSchrijver.Lijsten lijsten) {
+public record Wereld(CaseInvoer invoer, Map<String, Object> globals, LocalDate rekendatum) {
 
     public Wereld {
-        beans = beans == null ? new LinkedHashMap<>() : beans;
+        Objects.requireNonNull(invoer, "invoer");
         globals = globals == null ? new LinkedHashMap<>() : globals;
+    }
+
+    /** The beans by id, in the order of the request. */
+    public Map<String, Object> beans() {
+        return invoer.beans();
     }
 }

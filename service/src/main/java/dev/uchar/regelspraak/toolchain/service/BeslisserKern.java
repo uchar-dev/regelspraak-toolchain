@@ -612,7 +612,7 @@ public final class BeslisserKern {
                 keuzes.add(Schending.van(Schending.Soort.NIET_ONDERSTEUND, vlag, "de dienst is zonder DETAIL gestart"
                         + " en geeft geen " + vlag + "; start hem met DETAIL=true of --detail"));
         if (!keuzes.isEmpty()) throw new DienstFout("verzoek valideert niet", keuzes);
-        VerzoekMapper mapper = new VerzoekMapper(model, ep.beanLoader(), new NaamLezer(model, opties.invoervocabulaire()));
+        VerzoekMapper mapper = new VerzoekMapper(model, ep.build(), new NaamLezer(model, opties.invoervocabulaire()));
         VerzoekMapper.Resultaat mr = mapper.map(new Verzoek(verzoekBoom));
         if (!mr.schendingen().isEmpty())
             throw new DienstFout("verzoek valideert niet", mr.schendingen());

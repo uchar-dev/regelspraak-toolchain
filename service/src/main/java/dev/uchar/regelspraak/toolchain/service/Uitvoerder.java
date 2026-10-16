@@ -3,7 +3,6 @@ package dev.uchar.regelspraak.toolchain.service;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
-import dev.uchar.regelspraak.cases.Invoer;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
 
@@ -19,8 +18,8 @@ import java.util.Map;
  * The per-request executor: given an entry point's {@link DroolsBackend.Build} (built once at startup by uchar,
  * immutable thereafter) and a mapped {@link Wereld}, it opens a FRESH session of the build's KieBase, sets the
  * parameter globals (the descriptor defaults, overridden by the request), sets the rekendatum global when the request
- * carried one, and then fills, fires and reads it through uchar's entry: {@link DroolsBackend#voegIn} puts the beans
- * in, each to-many list in the order uchar's replay gives it ({@link Wereld#lijsten()}), {@link DroolsBackend#vuur}
+ * carried one, and then fills, fires and reads it through uchar's entry: {@link DroolsBackend#voegIn} puts the input
+ * in that uchar's input step read ({@link Wereld#invoer()}), each to-many list in the replay's order, {@link DroolsBackend#vuur}
  * fires to the fixpoint, {@link DroolsBackend#lees} gives the evaluation faults that stand there, and where none
  * stands {@link DroolsBackend#zetAfgeleideWaarden} puts the derived values on the beans, which the branch keeps as
  * facts of the session until then. It returns the beans and the {@code Inconsistentie} facts for the response builder.
@@ -107,9 +106,9 @@ public final class Uitvoerder {
             for (var e : globals.entrySet()) setGlobalVeilig(sessie, e.getKey(), e.getValue());
             LocalDate rd = wereld.rekendatum();
             if (rd != null) setGlobalVeilig(sessie, "rekendatum", rd);
-            // the order of a list decides which member a fault of a fold names: in the replay's order, the 422 names
-            // the member uchar's replay names on the same input
-            DroolsBackend.voegIn(build, sessie, wereld.lijsten().geefAan(new Invoer().beans(wereld.beans().values())));
+            // the input as uchar's replay puts it in: the order of a list decides which member a fault of a fold
+            // names, so the 422 names the member uchar's replay names on the same input
+            DroolsBackend.voegIn(build, sessie, wereld.invoer().invoer());
             DroolsBackend.Vuring vuring = waarnemer == null ? DroolsBackend.vuur(build, sessie)
                     : DroolsBackend.vuur(build, sessie, waarnemer);
             if (vuring.geenFixpunt() != null) throw new GeenFixpunt(vuring.geenFixpunt());

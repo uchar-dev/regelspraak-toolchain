@@ -105,15 +105,20 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
                       [--poort N]
 ```
 
-- `POST /<pad>` per entry point; `?uitleg=true` adds the verbaliser's sentences to the answer. The inline `rollen`
-  of a request are written as uchar's replay writes a case's `roles` (`RolSchrijver`: by the role's written name,
-  the far field of a one-to-one relation too, a to-many role through the far end); an enumeration value names a
-  declared value as uchar compares declared names (case and spacing aside), and keeps its own spelling. Each to-many
-  list goes to uchar in the order the replay gives it (`RolSchrijver.Lijsten`, `Invoer.lijst`): the members written
-  under the holder first, in the order of the request, then the members linked from their own side, by an inline
-  role or by `relaties`, by id in byte order. That order decides which member a fault of a fold names, so the 422
-  names the member uchar's replay names on the same input. A to-one role that gets a second, different target, among
-  the inline roles or through `relaties`, is a 400 `VERKEERD_TYPE` on the role that names the second target.
+- `POST /<pad>` per entry point; `?uitleg=true` adds the verbaliser's sentences to the answer. The service makes no
+  bean itself: `VerzoekMapper` validates the request (names, types, units; a 400 with the field path) and writes it as
+  the input of a `uchar-case-v0` case, `{"asOfDate", "input": {"instances": [...]}}` with the ids of the request as
+  labels, the inline `rollen` and each relation of `relaties` as `roles` (a relation on the end whose role toward the
+  other is to-one). uchar's input step reads that case (`CaseInvoer.van`), the one its replay reads every case with:
+  the beans, the role by its written name, the far field of a one-to-one relation, a to-many role through the far
+  end, the reverse leg of a reciprocal role (RUNTIME-SEMANTICS ch. 5.7a), and each to-many list in the replay's order
+  (`CaseInvoer.invoer()`), which decides which member a fault of a fold names, so the 422 names the member uchar's
+  replay names on the same input. A link uchar refuses names the link the case wrote, and the mapper gives the field
+  of the request that wrote it: a to-one role that gets a second, different target (WF-013, `CaseInvoer.Rolbotsing`),
+  among the inline roles, through `relaties` or through the far field, is a 400 `VERKEERD_TYPE`, a link the bean
+  model cannot hold (`CaseInvoer.Rolweigering`) a 400 `NIET_ONDERSTEUND`, each with uchar's sentence. An
+  enumeration value names a declared value as uchar compares declared names (case and spacing aside), and keeps its
+  own spelling.
 - Names and vocabularies (README, "Vocabularies"). `NaamLezer` reads every name of a request canonically or as a
   designation in any vocabulary of the model (uchar's `RegelSpraakModel.benoemd`), within the scope of its kind,
   case-insensitively and mixed; a name that reads as two declarations is a 400 `DUBBELZINNIGE_NAAM` naming both
