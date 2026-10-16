@@ -150,11 +150,18 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin; of de sessie bereikt geen fixpunt: status GEEN_FIXPUNT, met uchars zin",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Evaluatiefout"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Evaluatiefout"
+                    },
+                    {
+                      "$ref": "#/components/schemas/GeenFixpunt"
+                    }
+                  ]
                 }
               }
             }
@@ -325,11 +332,18 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin; of de sessie bereikt geen fixpunt: status GEEN_FIXPUNT, met uchars zin",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Evaluatiefout"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Evaluatiefout"
+                    },
+                    {
+                      "$ref": "#/components/schemas/GeenFixpunt"
+                    }
+                  ]
                 }
               }
             }
@@ -917,6 +931,36 @@
                 }
               }
             }
+          }
+        }
+      },
+      "GeenFixpunt": {
+        "type": "object",
+        "description": "De regels geven op deze invoer geen antwoord: de sessie bereikte geen fixpunt, want uchars vuurplafond of creatiebudget is bereikt. Er staat dan niets om te lezen.",
+        "required": [
+          "status",
+          "fout"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "GEEN_FIXPUNT"
+            ]
+          },
+          "fout": {
+            "type": "string",
+            "description": "uchars zin: welk plafond of budget bereikt is."
+          },
+          "trace": {
+            "$ref": "#/components/schemas/Trace"
+          },
+          "dekking": {
+            "$ref": "#/components/schemas/Dekking"
+          },
+          "fixpuntFout": {
+            "type": "string",
+            "description": "met de vlag fixpunt: uchars zin, want er is geen fixpunt om te tonen."
           }
         }
       }

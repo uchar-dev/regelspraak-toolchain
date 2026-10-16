@@ -119,7 +119,7 @@ class OpenApiEmitterTest {
     void de_422_beschrijft_het_lichaam_van_een_evaluatiefout() {
         for (DienstDescriptor.Entrypoint ep : DESCRIPTOR.entrypoints())
             assertEquals("#/components/schemas/Evaluatiefout", DOC.get("paths").get("/" + ep.pad())
-                    .at("/post/responses/422/content/application~1json/schema/$ref").asText(), "de 422 van '/" + ep.pad() + "'");
+                    .at("/post/responses/422/content/application~1json/schema/oneOf/0/$ref").asText(), "de 422 van '/" + ep.pad() + "'");
         JsonNode s = DOC.at("/components/schemas/Evaluatiefout");
         assertEquals("[\"status\",\"fout\",\"fouten\"]", s.path("required").toString(), s::toString);
         assertEquals(java.util.List.of("status", "fout", "fouten", "trace", "dekking", "fixpunt", "fixpuntFout"),
