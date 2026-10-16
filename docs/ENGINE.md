@@ -114,7 +114,8 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   end, the reverse leg of a reciprocal role (RUNTIME-SEMANTICS ch. 5.7a), and each to-many list in the replay's order
   (`CaseInvoer.invoer()`), which decides which member a fault of a fold names, so the 422 names the member uchar's
   replay names on the same input. A link uchar refuses names the link the case wrote, and the mapper gives the field
-  of the request that wrote it: a to-one role that gets a second, different target (WF-013, `CaseInvoer.Rolbotsing`),
+  of the request that wrote it (for a relation, the role that names the target of its link, also where the collision
+  is on the far field): a to-one role that gets a second, different target (WF-013, `CaseInvoer.Rolbotsing`),
   among the inline roles, through `relaties` or through the far field, is a 400 `VERKEERD_TYPE`, a link the bean
   model cannot hold (`CaseInvoer.Rolweigering`) a 400 `NIET_ONDERSTEUND`, each with uchar's sentence. An
   enumeration value names a declared value as uchar compares declared names (case and spacing aside), and keeps its
