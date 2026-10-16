@@ -4,13 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import dev.uchar.regelspraak.cases.CaseInvoer;
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.emit.IrEmitter;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.runtime.Breuk;
-import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.toolchain.engine.RolSchrijver;
 import dev.uchar.regelspraak.toolchain.service.AntwoordBouwer;
 import dev.uchar.regelspraak.toolchain.service.BeslisserKern;
 import dev.uchar.regelspraak.toolchain.service.Evaluatiefout;
@@ -33,7 +32,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -358,16 +356,11 @@ class IngangHttpTest {
         }
 
         BeslisserKern.Entrypoint ep = kern.entrypoint("bewaargeld");
-        ClassLoader cl = ep.beanLoader();
-        Object jutter = Class.forName(FactModelGenerator.PAKKET + ".Jutter", true, cl).getConstructor().newInstance();
-        Object segment = Class.forName(FactModelGenerator.PAKKET + ".Segment", true, cl)
-                .getConstructor(LocalDate.class, LocalDate.class, BigDecimal.class)
-                .newInstance(LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 1), new BigDecimal(10));
-        jutter.getClass().getMethod("setBewaarvergoedingPerMaand", List.class).invoke(jutter, List.of(segment));
-        Map<String, Object> beans = new LinkedHashMap<>();
-        beans.put("J1", jutter);
+        CaseInvoer invoer = CaseInvoer.van(ep.build(), boom("""
+            {"asOfDate":"2026-03-15","input":{"instances":[{"label":"J1","objectType":"Jutter","attributes":
+              {"bewaarvergoeding per maand":{"timeline":[{"from":"2026-01-01","to":"2027-01-01","value":{"number":"10"}}]}}}]}}"""));
         Evaluatiefout fout = assertThrows(Evaluatiefout.class, () -> new Uitvoerder(ep.build(), ep.defaultGlobals())
-                .vuur(new Wereld(beans, Map.of(), LocalDate.of(2026, 3, 15), new RolSchrijver.Lijsten())));
+                .vuur(new Wereld(invoer, Map.of(), LocalDate.of(2026, 3, 15))));
         JsonNode body = AntwoordBouwer.evaluatiefout(fout);
         assertEquals("EVALUATIEFOUT", body.path("status").asText(), body.toString());
         assertEquals(List.of("INVOERVORMFOUT"), soorten(body), body.toString());
