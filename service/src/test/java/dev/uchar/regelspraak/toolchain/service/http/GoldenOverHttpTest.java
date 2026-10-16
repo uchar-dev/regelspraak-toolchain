@@ -175,7 +175,8 @@ class GoldenOverHttpTest {
                         + "\nverzoek: " + verzoek);
         JsonNode antwoord = DienstHttp.MAPPER.readTree(resp.body());
 
-        // 4. every verwachting, mirroring ScenarioRunner.vergelijk exactly.
+        // 4. every verwachting against the answer on the wire. uchar's DroolsBackend.vergelijk judges a session in
+        //    memory, which an HTTP answer does not carry; this test checks what the service sends, so it reads it.
         for (Verwachting v : scenario.verwachtingen()) vergelijk(v, antwoord, pad, verzoek);
     }
 

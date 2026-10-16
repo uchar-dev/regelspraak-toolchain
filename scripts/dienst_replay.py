@@ -175,7 +175,9 @@ def gelijk(verwacht, gegeven, plek):
 
 
 def vergelijk(case, antwoord):
-    """Zet een Afwijking bij de eerste verwachting die het antwoord niet geeft."""
+    """Zet een Afwijking bij de eerste verwachting die het antwoord niet geeft. Dit leest het
+    HTTP-antwoord zelf: uchars DroolsBackend.vergelijk oordeelt over een sessie in het geheugen, en
+    die gaat niet over de lijn; deze gate toetst wat de dienst stuurt."""
     inst = {i["id"]: i for i in antwoord.get("instanties", [])}
     inconsistenties = antwoord.get("inconsistenties")
     details = antwoord.get("inconsistentieDetails")
