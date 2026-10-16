@@ -449,7 +449,7 @@ class IngangHttpTest {
 
     /** V1 names J1 as its aanmelder by its own role, and a relation of {@code relaties} links it to J2: the to-one field
      *  aanmelder gets a second, different target. The service refuses that with 400 VERKEERD_TYPE on the role of the
-     *  relation that names J2, as it refuses a second target among the inline roles ({@code RolSchrijver}). Before, the
+     *  relation that names J2, as it refuses a second target among the inline roles (uchar's {@code CaseInvoer}). Before, the
      *  relation wrote over the first link and the list of J1 kept V1, which uchar's entry refused (500). */
     @Test
     void een_tweede_ander_doel_via_relaties_is_400_verkeerd_type() throws Exception {
@@ -462,14 +462,14 @@ class IngangHttpTest {
         assertEquals(1, body.path("schendingen").size(), resp.body());
         assertEquals("VERKEERD_TYPE", body.at("/schendingen/0/soort").asText(), resp.body());
         assertEquals("relaties[0].rollen.aanmelder", body.at("/schendingen/0/veld").asText(), resp.body());
-        assertEquals("de naar-één rol 'aanmelder' krijgt een tweede, ander doel", body.at("/schendingen/0/fout").asText(),
-                resp.body());
+        assertEquals("to-one rol 'aanmelder' krijgt een tweede, ander doel — ref weigert die case bij het laden (WF-013)",
+                body.at("/schendingen/0/fout").asText(), resp.body());
     }
 
     // ---------------- a reciprocal role written on a subtype of its filler ----------------
 
-    /** W, a Wrakvondst, names V as its maat, and one link of a reciprocal role holds both ways (§13.3.9.2): the role
-     *  writer asks the reciprocal role along the chain of W's types, as uchar's replay does, so V reads W's waarde.
+    /** W, a Wrakvondst, names V as its maat, and one link of a reciprocal role holds both ways (§13.3.9.2): uchar's
+     *  CaseInvoer asks the reciprocal role along the chain of W's types, as uchar's replay does, so V reads W's waarde.
      *  Asked of W's own type alone, the reverse leg stayed unwritten and V's maatwaarde empty, in a 200, where uchar's
      *  replay of the same case plays with 5. */
     @Test

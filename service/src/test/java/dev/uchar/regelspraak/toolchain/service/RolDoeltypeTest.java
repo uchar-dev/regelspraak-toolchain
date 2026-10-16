@@ -1,10 +1,10 @@
 package dev.uchar.regelspraak.toolchain.service;
 
-import dev.uchar.regelspraak.engine.BeanCompiler;
+import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
-import dev.uchar.regelspraak.schema.FactModelGenerator;
+import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -62,7 +62,7 @@ class RolDoeltypeTest {
     static void bouw() {
         RegelSpraakModel model = Resolver.resolve(BRON);
         assertTrue(model.isOk(), model.errors().toString());
-        MAPPER = new VerzoekMapper(model, BeanCompiler.compileer(FactModelGenerator.genereer(model)));
+        MAPPER = new VerzoekMapper(model, UcharBouw.bouw(model, DroolsBackend.Branch.EXEC_MODEL));
     }
 
     private static VerzoekMapper.Resultaat map(String json) {
@@ -73,7 +73,7 @@ class RolDoeltypeTest {
     @Test
     void id_van_een_ander_objecttype_op_een_rol_is_verkeerd_type() {
         // both rollen of the self-typed feittype, the to-many and the to-one, and no feittype relates a Jutter to a
-        // Strandpaal: the role writer found no field and refused the link as NIET_ONDERSTEUND
+        // Strandpaal: uchar's input step (CaseInvoer) found no field and refused the link as NIET_ONDERSTEUND
         var r = map("""
             { "instanties": [
                 { "type": "Jutter", "id": "J1", "rollen": { "leerling": ["P1"] } },
@@ -91,7 +91,7 @@ class RolDoeltypeTest {
 
     @Test
     void id_van_een_ander_objecttype_komt_niet_via_het_typepaar_in_een_andere_rol() {
-        // Jutter and Strandvondst are related by vinderschap: the role writer's by-pair fallback took that relation
+        // Jutter and Strandvondst are related by vinderschap: CaseInvoer's by-pair fallback took that relation
         // and made J1 the vinder of S1, a link the request does not name
         var r = map("""
             { "instanties": [

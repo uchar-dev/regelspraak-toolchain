@@ -1,9 +1,11 @@
 package dev.uchar.regelspraak.toolchain.service;
 
-import dev.uchar.regelspraak.engine.BeanCompiler;
+import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.emit.CaseEmitter;
+import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
-import dev.uchar.regelspraak.schema.FactModelGenerator;
+import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -93,10 +95,12 @@ public final class TokaBron {
         return Resolver.resolve(bron.toString());
     }
 
-    /** The CHILD bean classloader for the served TOKA model — the DRL back-end's fact source, compiled in
-     *  memory by {@link BeanCompiler} exactly as {@link BeslisserKern} does at startup. Mapper/relation tests
-     *  build their beans through this loader (the pinned parent-CL fact classes are gone with the exec pivot). */
-    static ClassLoader beanLoader() {
-        return BeanCompiler.compileer(FactModelGenerator.genereer(model()));
+    /** uchar's build of the declarations of the served TOKA model, a scope without forms, on the exec-model branch
+     *  ({@link UcharBouw}), as {@link BeslisserKern} builds an entry point at startup. The whole model does not build
+     *  (two of its allocations write one attribute, WF-026), and the mapper reads no rule: mapper/relation tests read
+     *  their requests with the input step of this build, whose bean model carries every type and fact type. */
+    static DroolsBackend.Build build() {
+        return UcharBouw.bouw(CaseEmitter.metScope(model(), new ResolvedScenario.Scope(List.of())),
+                DroolsBackend.Branch.EXEC_MODEL);
     }
 }

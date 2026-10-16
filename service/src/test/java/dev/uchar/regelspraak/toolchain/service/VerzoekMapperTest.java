@@ -29,7 +29,7 @@ class VerzoekMapperTest {
         StringBuilder bron = new StringBuilder();
         for (String tekst : TokaBron.bronPerBestand().values()) bron.append(tekst).append('\n');
         MODEL = Resolver.resolve(bron.toString());
-        MAPPER = new VerzoekMapper(MODEL, TokaBron.beanLoader());
+        MAPPER = new VerzoekMapper(MODEL, TokaBron.build());
     }
 
     private static VerzoekMapper.Resultaat map(String json) {
