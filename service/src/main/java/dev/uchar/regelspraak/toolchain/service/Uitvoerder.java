@@ -29,9 +29,8 @@ import java.util.Map;
  * <p>Every fault that stands at the fixpoint leaves here as an {@link Evaluatiefout}, and nothing is written back: the
  * rules give no answer on this input. Such a fault is an evaluation fault by its place at the fixpoint, whatever its
  * type, so it is read as data before the write-back, which would throw it as an exception like those the entry throws
- * itself for a session used wrongly; those stay internal faults. A run without a fixpoint is no evaluation fault but
- * a fault of the lowering, since uchar refuses a cycle at the build, and leaves as an {@link IllegalStateException}
- * with uchar's sentence.
+ * itself for a session used wrongly; those stay internal faults. A run without a fixpoint, at uchar's fire cap or at
+ * its creation budget, leaves as a {@link GeenFixpunt} with uchar's sentence, and nothing is read or written back.
  */
 public final class Uitvoerder {
 
@@ -88,6 +87,7 @@ public final class Uitvoerder {
      *
      * @throws Evaluatiefout            the evaluation faults that stand at the fixpoint, with the fixpoint they stand
      *                                  at; nothing is compared then, as uchar's report compares nothing of such a case
+     * @throws GeenFixpunt              a run that reached no fixpoint, with uchar's sentence; nothing is compared
      * @throws dev.uchar.regelspraak.cases.CaseRunner.Excluded an expectation of a form uchar does not compare, in the
      *                                  sentence of its replay
      */
@@ -112,7 +112,7 @@ public final class Uitvoerder {
             DroolsBackend.voegIn(build, sessie, wereld.lijsten().geefAan(new Invoer().beans(wereld.beans().values())));
             DroolsBackend.Vuring vuring = waarnemer == null ? DroolsBackend.vuur(build, sessie)
                     : DroolsBackend.vuur(build, sessie, waarnemer);
-            if (vuring.geenFixpunt() != null) throw new IllegalStateException(vuring.geenFixpunt());
+            if (vuring.geenFixpunt() != null) throw new GeenFixpunt(vuring.geenFixpunt());
             // a fault names its object by the id of the request; a made object has none, and uchar names it as ref does
             Map<Object, String> label = new IdentityHashMap<>();
             wereld.beans().forEach((id, bean) -> label.put(bean, id));

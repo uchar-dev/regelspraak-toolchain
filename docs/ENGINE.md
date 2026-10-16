@@ -143,6 +143,13 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   Jutter") names none. No stacktrace enters the answer. The Quarkus adapter answers the same, and the
   OpenAPI contract describes the body of the 422 (schema `Evaluatiefout`, with `soort` as an enumeration of these
   kinds).
+- A request whose session reaches no fixpoint gets 422 with `{"status": "GEEN_FIXPUNT", "fout": <uchar's
+  sentence>}`: uchar's `DroolsBackend.vuur` ended the run at its fire cap or at the creation budget
+  (`Vuring.geenFixpunt`), and the core throws `GeenFixpunt` with that sentence. Nothing stands to be read then, so
+  nothing is read or written back; the service does not judge which of the two it was. With the detail flags (below)
+  the 422 carries `trace` and `dekking` of what fired up to the end of the run, and for `?fixpunt=true` `fixpuntFout`
+  with the same sentence. The Quarkus adapter answers the same; the OpenAPI 422 is one of `Evaluatiefout` and
+  `GeenFixpunt`. Any other exception stays a 500 `interne fout`.
 - The detail of a session. A service started with `--detail` or `DETAIL=true` (Quarkus: `DETAIL=true`; default off,
   as `PLAYGROUND`, and no part of the container contract) answers three more query flags, read as `uitleg` is (`true`
   or bare), each adding a field after `uitleg`: `?trace=true` gives `trace: [{regel, labels, aantal}]`, per form that
@@ -175,7 +182,7 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   operations document `vocabulaire` and `invoervocabulaire`, and `info.x-vocabulaire` names the document's
   vocabulary. A model without vocabularies gets none of it. Every operation documents the flags `uitleg`, `trace`,
   `dekking` and `fixpunt`; `Antwoord` has the fields they add, `Evaluatiefout` those of the detail, with the
-  components `Trace`, `Dekking` and `Fixpunt`. The documents are written by the emitter's API
+  components `Trace`, `Dekking` and `Fixpunt`. The 422 is one of `Evaluatiefout` and `GeenFixpunt`. The documents are written by the emitter's API
   (`schrijf`, file `<dienst>.<vocabulaire>.json`); the service serves no route for them.
 - What uchar does not carry — a refusal of its emitter, loader or backend (a construct the exec-model branch does
   not lower among them), or a scoped rule name that yields no form in uchar's model — makes the entry point a
@@ -232,6 +239,9 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   - an evaluation fault (the service's 422) is a FAIL with no `verwachtingen` and the line of uchar's report,
     `<case file>: ERROR <exception>: <sentence>`, the exception uchar's write-back throws for the faults; `trace`,
     `dekking` and `fixpunt` are those of the 422, and `uitlegFout` says there is no `uitleg`;
+  - a session without a fixpoint (the service's 422 `GEEN_FIXPUNT`) is a FAIL with no `verwachtingen` and the line
+    uchar's report gives such a case, `<case file>: <sentence>`; `trace`, `dekking` and `fixpuntFout` are those of the
+    422, and `uitlegFout` says there is no `uitleg`. The other scenarios of the document are computed as usual;
   - a situation a request cannot carry (a timeline, a characteristic with periods, a fraction without a decimal form),
     a 400 of the service whose violations are all `NIET_ONDERSTEUND`, an entry point uchar does not carry and an
     expectation uchar does not compare (`CaseRunner.Excluded`) are a MARKER with the sentence; any other 400 of the

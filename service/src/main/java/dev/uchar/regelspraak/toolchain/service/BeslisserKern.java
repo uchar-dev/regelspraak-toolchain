@@ -570,8 +570,9 @@ public final class BeslisserKern {
      * entry point's default from the descriptor, else canonically ({@link Naamgeving}). A vocabulary the model does
      * not declare is refused before the body is read: an answer in it could not be given.
      *
-     * <p>The detail flags of {@code opties} add the session to the answer, after the explanation ({@link #detail}), and
-     * to the {@link Evaluatiefout} of a request on which the rules give a fault. A core started without
+     * <p>The detail flags of {@code opties} add the session to the answer, after the explanation ({@link #detail}), to
+     * the {@link Evaluatiefout} of a request on which the rules give a fault, and to the {@link GeenFixpunt} of a request
+     * whose session reached no fixpoint. A core started without
      * {@link KernConfig#detail()} refuses each of them by its name before the body is read: it shows every intermediate
      * value, where the answer gives the selected {@code uitvoer} alone. Without a detail flag the answer is the one a
      * core without detail gives, byte for byte.
@@ -590,6 +591,7 @@ public final class BeslisserKern {
      * of the service asks it; the playground does, for {@code via=dienst}.
      *
      * @throws Evaluatiefout what {@link #verwerk(String, JsonNode, VerzoekOpties)} throws, and nothing is compared
+     * @throws GeenFixpunt   what {@link #verwerk(String, JsonNode, VerzoekOpties)} throws, and nothing is compared
      * @throws dev.uchar.regelspraak.cases.CaseRunner.Excluded an expectation of a form uchar does not compare
      */
     public Beoordeling beoordeel(String pad, JsonNode verzoekBoom, VerzoekOpties opties, JsonNode verwachtingen) {
@@ -643,12 +645,15 @@ public final class BeslisserKern {
             uitkomst = uitvoerder.vuur(mr.wereld(), setGlobals, waarnemer, verwachtingen);
         } catch (Evaluatiefout fout) {
             if (!metDetail) throw fout;
-            throw fout.metDetail(detail(opties, ep, waarnemer, fout.fixpunt(), invoer, uitvoer));
+            throw fout.metDetail(detail(opties, ep, waarnemer, fout.fixpunt(), null, invoer, uitvoer));
+        } catch (GeenFixpunt geen) {
+            if (!metDetail) throw geen;
+            throw geen.metDetail(detail(opties, ep, waarnemer, null, geen.getMessage(), invoer, uitvoer));
         }
         ObjectNode antwoord = new AntwoordBouwer(model, uitvoer).bouw(uitkomst, ep.descriptor().uitvoer(),
                 mr.typePerLabel());
         if (opties.uitleg()) voegUitlegToe(antwoord, uitkomst, mr, setGlobals, ep, uitvoer);
-        if (metDetail) antwoord.setAll(detail(opties, ep, waarnemer, uitkomst.fixpunt(), invoer, uitvoer));
+        if (metDetail) antwoord.setAll(detail(opties, ep, waarnemer, uitkomst.fixpunt(), null, invoer, uitvoer));
         return new Beoordeling(antwoord, uitkomst.vergelijking());
     }
 
@@ -659,10 +664,11 @@ public final class BeslisserKern {
      * {@code waarnemer} recorded them; {@code dekking}, per form of the entry point's build whether a rule of it fired
      * ({@link DroolsBackend#dekking}: {@code GEVUURD} or {@code NIET_GERAAKT}); and {@code fixpunt}, what stands at the
      * fixpoint with the instances of the request as its input ({@link FixpuntGegevens}), or {@code fixpuntFout} with the
-     * reason a value of it cannot be shown. The playground gives a scenario the same three.
+     * reason a value of it cannot be shown, or {@code zonderFixpunt}, uchar's sentence of a run that reached no fixpoint
+     * (null at a fixpoint): then there is nothing to show. The playground gives a scenario the same three.
      */
     private ObjectNode detail(VerzoekOpties opties, Entrypoint ep, DroolsBackend.Waarnemer waarnemer, Fixpunt fixpunt,
-                              List<FixpuntGegevens.Invoerobject> invoer, Naamgeving naamgeving) {
+                              String zonderFixpunt, List<FixpuntGegevens.Invoerobject> invoer, Naamgeving naamgeving) {
         ObjectNode n = NF.objectNode();
         if (opties.trace()) {
             ArrayNode trace = n.putArray("trace");
@@ -682,7 +688,9 @@ public final class BeslisserKern {
                 dn.put("soort", d.soort().name());
             }
         }
-        if (opties.fixpunt()) {
+        if (opties.fixpunt() && zonderFixpunt != null) {
+            n.put("fixpuntFout", zonderFixpunt);
+        } else if (opties.fixpunt()) {
             try {
                 n.set("fixpunt", FixpuntGegevens.fixpunt(fixpunt, invoer, model, naamgeving));
             } catch (FixpuntGegevens.OnweergeefbareWaarde o) {

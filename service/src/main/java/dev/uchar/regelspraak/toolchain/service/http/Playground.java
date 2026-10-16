@@ -18,6 +18,7 @@ import dev.uchar.regelspraak.toolchain.service.BeslisserKern;
 import dev.uchar.regelspraak.toolchain.service.DienstFout;
 import dev.uchar.regelspraak.toolchain.service.Evaluatiefout;
 import dev.uchar.regelspraak.toolchain.service.FixpuntGegevens;
+import dev.uchar.regelspraak.toolchain.service.GeenFixpunt;
 import dev.uchar.regelspraak.toolchain.service.Schending;
 import dev.uchar.regelspraak.toolchain.service.VerzoekOpties;
 import dev.uchar.regelspraak.graaf.ProducentConsument;
@@ -402,6 +403,8 @@ public final class Playground {
      *       point uchar does not carry, an expectation uchar does not compare: MARKER with the sentence;</li>
      *   <li>an evaluation fault (the service's 422): FAIL with the line of uchar's report, the exception its write-back
      *       throws, and the trace, coverage and fixpoint of the 422;</li>
+     *   <li>a session without a fixpoint (the service's 422 {@code GEEN_FIXPUNT}): FAIL with the line uchar's report
+     *       gives such a case, the name of the case file and uchar's sentence, and the trace and coverage of the 422;</li>
      *   <li>any other 400 of the service: FAIL naming its violations.</li>
      * </ul>
      */
@@ -449,6 +452,12 @@ public final class Playground {
                     + String.valueOf(uchar.getMessage()).replace('\n', ' ');
             sessie = fout.detail();
             uitlegFout = "de dienst gaf een evaluatiefout (422) en geeft dan geen uitleg";
+        } catch (GeenFixpunt geen) {
+            // uchar's report makes such a case a FAIL with its sentence after the name of the case file, no ERROR
+            status = ScenarioResultaat.Status.FAIL;
+            diagnose = casenaam + ": " + geen.getMessage();
+            sessie = geen.detail();
+            uitlegFout = "de dienst bereikte geen fixpunt (422) en geeft dan geen uitleg";
         }
         n.put("naam", s.naam());
         n.put("status", status.name());

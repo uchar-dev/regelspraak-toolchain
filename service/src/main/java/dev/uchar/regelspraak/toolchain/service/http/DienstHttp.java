@@ -19,6 +19,7 @@ import dev.uchar.regelspraak.toolchain.service.BeslisserKern;
 import dev.uchar.regelspraak.toolchain.service.DienstDescriptor;
 import dev.uchar.regelspraak.toolchain.service.DienstFout;
 import dev.uchar.regelspraak.toolchain.service.Evaluatiefout;
+import dev.uchar.regelspraak.toolchain.service.GeenFixpunt;
 import dev.uchar.regelspraak.toolchain.service.Schending;
 import dev.uchar.regelspraak.toolchain.service.VerzoekOpties;
 import dev.uchar.regelspraak.toolchain.service.Volledigheid;
@@ -75,6 +76,9 @@ import java.util.concurrent.TimeoutException;
  *   <li>{@link Evaluatiefout} → {@code 422}: the rules give an evaluation fault on this input, which stands at the
  *       fixpoint ({@link AntwoordBouwer#evaluatiefout}): {@code {"status": "EVALUATIEFOUT", "fout": …, "fouten":
  *       [{"soort": …, "fout": <uchar's sentence>}, …]}}.</li>
+ *   <li>{@link GeenFixpunt} → {@code 422}: the session of the request reached no fixpoint, at uchar's fire cap or its
+ *       creation budget ({@link AntwoordBouwer#geenFixpunt}): {@code {"status": "GEEN_FIXPUNT", "fout": <uchar's
+ *       sentence>}}.</li>
  *   <li>wrong method on a known path → {@code 405} naming the method.</li>
  *   <li>ANY other exception → {@code 500} {@code {"fout": "interne fout"}} — never a stacktrace or an exception
  *       message in the body; the stack is logged to {@code stderr} server-side.</li>
@@ -210,6 +214,8 @@ public final class DienstHttp {
             stuur(ex, 400, verzoekFoutBody(dienstFout));
         } catch (Evaluatiefout evaluatiefout) {
             stuur(ex, 422, AntwoordBouwer.evaluatiefout(evaluatiefout));
+        } catch (GeenFixpunt geen) {
+            stuur(ex, 422, AntwoordBouwer.geenFixpunt(geen));
         } catch (Exception intern) {
             // NEVER leak a stacktrace or the exception message to the client; log it server-side.
             intern.printStackTrace(System.err);

@@ -62,6 +62,9 @@ import java.util.List;
  * {@code trace}, {@code dekking} and {@code fixpunt}, which a service gives only when it was started with detail
  * ({@link KernConfig#detail()}) and otherwise refuses with a 400; the fields they add stand in {@code Antwoord} and, for
  * the detail, in {@code Evaluatiefout}, with the components {@code Trace}, {@code Dekking} and {@code Fixpunt}.
+ *
+ * <p><b>The 422.</b> A request on which the rules give no answer gets one of two bodies: {@code Evaluatiefout}, the faults
+ * that stand at the fixpoint, or {@code GeenFixpunt}, a session that reached no fixpoint, with uchar's sentence.
  */
 public final class OpenApiEmitter {
 
@@ -110,6 +113,7 @@ public final class OpenApiEmitter {
         schemas.set("Trace", traceSchema());
         schemas.set("Dekking", dekkingSchema());
         schemas.set("Fixpunt", fixpuntSchema());
+        schemas.set("GeenFixpunt", geenFixpuntSchema());
 
         return doc;
     }
@@ -223,8 +227,13 @@ public final class OpenApiEmitter {
         antwoord(responses, "400", "verzoek valideert niet — het antwoord noemt het foutieve veld",
                 "#/components/schemas/Fout");
         antwoord(responses, "404", "onbekend pad", "#/components/schemas/Fout");
-        antwoord(responses, "422", "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout"
-                + " de soort en uchars zin", "#/components/schemas/Evaluatiefout");
+        ObjectNode onbeantwoord = responses.putObject("422");
+        onbeantwoord.put("description", "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout"
+                + " de soort en uchars zin; of de sessie bereikt geen fixpunt: status GEEN_FIXPUNT, met uchars zin");
+        ArrayNode eenVan = onbeantwoord.putObject("content").putObject("application/json").putObject("schema")
+                .putArray("oneOf");
+        eenVan.addObject().put("$ref", "#/components/schemas/Evaluatiefout");
+        eenVan.addObject().put("$ref", "#/components/schemas/GeenFixpunt");
         antwoord(responses, "503", "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
                 "#/components/schemas/Fout");
         antwoord(responses, "500", "interne fout (geen stacktrace gelekt)", "#/components/schemas/Fout");
@@ -709,6 +718,30 @@ public final class OpenApiEmitter {
         zin.put("type", "string");
         zin.put("description", "uchars zin; een object van het verzoek heet daarin naar zijn id.");
         detailVelden(props);
+        return s;
+    }
+
+    /** The 422 body of a session without a fixpoint, honest to {@link AntwoordBouwer#geenFixpunt}: {status, fout}, and
+     *  the detail a request may ask, where the fixpoint gives way to the reason there is none. */
+    private static ObjectNode geenFixpuntSchema() {
+        ObjectNode s = NF.objectNode();
+        s.put("type", "object");
+        s.put("description", "De regels geven op deze invoer geen antwoord: de sessie bereikte geen fixpunt, want uchars"
+                + " vuurplafond of creatiebudget is bereikt. Er staat dan niets om te lezen.");
+        ArrayNode req = s.putArray("required");
+        req.add("status"); req.add("fout");
+        ObjectNode props = s.putObject("properties");
+        ObjectNode status = props.putObject("status");
+        status.put("type", "string");
+        status.putArray("enum").add("GEEN_FIXPUNT");
+        ObjectNode fout = props.putObject("fout");
+        fout.put("type", "string");
+        fout.put("description", "uchars zin: welk plafond of budget bereikt is.");
+        props.putObject("trace").put("$ref", "#/components/schemas/Trace");
+        props.putObject("dekking").put("$ref", "#/components/schemas/Dekking");
+        ObjectNode fixpuntFout = props.putObject("fixpuntFout");
+        fixpuntFout.put("type", "string");
+        fixpuntFout.put("description", "met de vlag fixpunt: uchars zin, want er is geen fixpunt om te tonen.");
         return s;
     }
 

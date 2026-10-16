@@ -46,7 +46,8 @@ import java.util.Map;
  * }</pre>
  *
  * <p>A request on which the rules give an evaluation fault gets no such answer but the one of
- * {@link #evaluatiefout}, which both adapters send with HTTP 422.
+ * {@link #evaluatiefout}, and a request whose session reached no fixpoint the one of {@link #geenFixpunt}; both
+ * adapters send them with HTTP 422.
  */
 public final class AntwoordBouwer {
 
@@ -128,6 +129,17 @@ public final class AntwoordBouwer {
             fn.put("fout", f.zin());
         }
         if (fout.detail() != null) n.setAll(fout.detail());
+        return n;
+    }
+
+    /** The answer to a request whose session reached no fixpoint, which both adapters send with HTTP 422, shaped as the
+     *  answer to an evaluation fault: {@code {"status": "GEEN_FIXPUNT", "fout": <uchar's sentence>}}. The detail of the
+     *  session the request asked ({@link GeenFixpunt#detail()}) follows the sentence. */
+    public static ObjectNode geenFixpunt(GeenFixpunt geen) {
+        ObjectNode n = NF.objectNode();
+        n.put("status", "GEEN_FIXPUNT");
+        n.put("fout", geen.getMessage());
+        if (geen.detail() != null) n.setAll(geen.detail());
         return n;
     }
 
