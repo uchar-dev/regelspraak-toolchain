@@ -13,7 +13,7 @@ import java.util.List;
 /**
  * The CLI entry point for the decision service. It builds a {@link DecisionCore} from a descriptor + the
  * service's {@code .rgs} sources, or one {@code uchar-ir-v1} document ({@code .json}), then serves it over
- * {@link ServiceHttp}. {@code --poort 0} binds a free port; the serving line names the port bound. {@code --host}
+ * {@link ServiceHttp}. {@code --port 0} binds a free port; the serving line names the port bound. {@code --host}
  * picks the address to bind (default {@code 0.0.0.0}, every interface); a local caller that binds a free port
  * passes {@code 127.0.0.1}, because a port free on every interface can still be bound on the loopback address
  * alone by another process, which then answers on it. {@code --detail}, or {@code DETAIL=true} in the environment,
@@ -22,7 +22,7 @@ import java.util.List;
  *
  * <pre>{@code
  *   ServiceMain <descriptor.service.json> <bron.rgs...> | <document.json> [--allow-markers] [--detail] [--host H]
- *              [--poort N]
+ *              [--port N]
  * }</pre>
  *
  * <h2>Startup / exit discipline (the exit-3 MARKER discipline at the service boundary)</h2>
@@ -59,7 +59,7 @@ public final class ServiceMain {
         } catch (IllegalArgumentException e) {
             System.err.println(e.getMessage());
             System.err.println("gebruik: DienstMain <descriptor.service.json> <bron.rgs...> | <document.json> "
-                    + "[--allow-markers] [--detail] [--host H] [--poort N]");
+                    + "[--allow-markers] [--detail] [--host H] [--port N]");
             System.exit(2);
             return;
         }
@@ -139,7 +139,7 @@ public final class ServiceMain {
         return core.descriptor().service() == null ? "?" : core.descriptor().service().name();
     }
 
-    /** Parse {@code <descriptor> <bron...> [--allow-markers] [--detail] [--host H] [--poort N]}. */
+    /** Parse {@code <descriptor> <bron...> [--allow-markers] [--detail] [--host H] [--port N]}. */
     static Args parseArgs(String[] raw) {
         Path descriptor = null;
         List<Path> sources = new ArrayList<>();
@@ -156,10 +156,10 @@ public final class ServiceMain {
             } else if (a.equals("--host")) {
                 if (i + 1 >= raw.length) throw new IllegalArgumentException("--host verwacht een adres");
                 host = raw[++i];
-            } else if (a.equals("--poort")) {
-                if (i + 1 >= raw.length) throw new IllegalArgumentException("--poort verwacht een getal");
+            } else if (a.equals("--port")) {
+                if (i + 1 >= raw.length) throw new IllegalArgumentException("--port verwacht een getal");
                 try { port = Integer.parseInt(raw[++i]); }
-                catch (NumberFormatException nfe) { throw new IllegalArgumentException("--poort verwacht een getal, kreeg '" + raw[i] + "'"); }
+                catch (NumberFormatException nfe) { throw new IllegalArgumentException("--port verwacht een getal, kreeg '" + raw[i] + "'"); }
             } else if (a.startsWith("--")) {
                 throw new IllegalArgumentException("onbekende optie: " + a);
             } else if (descriptor == null) {

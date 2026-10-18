@@ -20,7 +20,7 @@ import java.util.List;
 /**
  * CDI producer of the single {@link DecisionCore} the Quarkus adapter serves. It mirrors the shell/Helm config
  * contract exactly ({@code service-entrypoint.sh}): {@code DESCRIPTOR} points at the {@code .service.json},
- * {@code BRONNEN_MANIFEST} at a text file listing one bron {@code .rgs} path per line, {@code ALLOW_MARKERS}
+ * {@code SOURCES_MANIFEST} at a text file listing one bron {@code .rgs} path per line, {@code ALLOW_MARKERS}
  * toggles strict-vs-marker mode. Those env-var NAMES are shared with the shell launcher so existing Helm values
  * apply unchanged. {@code DETAIL=true} starts the core with the details of a session on request, as
  * {@code --detail} or {@code DETAIL=true} does for the JDK service; default off, and no part of the container
@@ -37,8 +37,8 @@ public class CoreProducer {
     @ConfigProperty(name = "DESCRIPTOR")
     String descriptor;
 
-    @ConfigProperty(name = "BRONNEN_MANIFEST")
-    String bronnenManifest;
+    @ConfigProperty(name = "SOURCES_MANIFEST")
+    String sourcesManifest;
 
     @ConfigProperty(name = "ALLOW_MARKERS", defaultValue = "false")
     boolean allowMarkers;
@@ -48,15 +48,15 @@ public class CoreProducer {
 
     /**
      * Build the {@link DecisionCore} once, shared (singleton) by the resource and the readiness health check.
-     * Resolves the bron paths by reading the {@code BRONNEN_MANIFEST} file line-by-line (mirrors the shell
-     * entrypoint's {@code cat "$BRONNEN_MANIFEST"} word-split), then calls
+     * Resolves the bron paths by reading the {@code SOURCES_MANIFEST} file line-by-line (mirrors the shell
+     * entrypoint's {@code cat "$SOURCES_MANIFEST"} word-split), then calls
      * {@code DecisionCore.assemble(descriptorPath, bronPaths, config, TCCL)}.
      */
     @Produces
     @Singleton
     public DecisionCore decisionCore() {
         Path descriptorPath = Path.of(descriptor);
-        List<Path> sources = readManifest(Path.of(bronnenManifest));
+        List<Path> sources = readManifest(Path.of(sourcesManifest));
         CoreConfig config = allowMarkers ? CoreConfig.withMarkers() : CoreConfig.strict();
         if (detail) config = config.withDetail();
         try {

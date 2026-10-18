@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Replay van uchar-goldens door de JDK-dienst van deze distributie.
 
-Per golden: de dienst start op een vrije poort (bin/regelspraak serve ... --poort 0) over de RegelSpraak-bron van de
+Per golden: de dienst start op een vrije poort (bin/regelspraak serve ... --port 0) over de RegelSpraak-bron van de
 golden (bron.rgs) of, zonder bron, over het uchar-ir-v1-document zelf (ir.json); elk casebestand wordt een verzoek,
 het antwoord wordt vergeleken met de gepinde verwachtingen, zoals uchars replay (CaseRunner) vergelijkt: getallen op
 waarde, een enumeratie op genormaliseerde naam, een inconsistentie op regel en onderwerp. De descriptor maakt dit
@@ -236,7 +236,7 @@ class Dienst:
         self.uit = open(self.uit_pad, "w")
         self.fout = open(self.fout_pad, "w")
         self.proces = subprocess.Popen([REGELSPRAAK, "serve", descriptor_pad, bron_pad,
-                                        "--host", "127.0.0.1", "--poort", "0"],
+                                        "--host", "127.0.0.1", "--port", "0"],
                                        stdout=self.uit, stderr=self.fout, text=True)
         self.poort = None
 
@@ -337,7 +337,7 @@ def speel(golden, map_, descriptor_pad=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--corpus", required=True, help="de map met de goldens (uchar/corpus/golden)")
-    ap.add_argument("--werkers", type=int, default=4)
+    ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--descriptor", action="append", default=[], help="<golden>=<pad>: een eigen descriptor")
     ap.add_argument("goldens", nargs="+", help="goldens, als pad relatief aan --corpus")
     a = ap.parse_args()

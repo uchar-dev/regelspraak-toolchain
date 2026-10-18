@@ -1,6 +1,6 @@
 # docker/
 
-The **beslisservice production image** — `Dockerfile` + `entrypoint.sh` build the
+The **decision-service production image** — `Dockerfile` + `entrypoint.sh` build the
 deployable decision service, produced via `make image` (`marker/` holds the tiny
 descriptor used to smoke the build).
 

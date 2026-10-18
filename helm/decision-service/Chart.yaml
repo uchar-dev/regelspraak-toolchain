@@ -1,0 +1,6 @@
+apiVersion: v2
+name: decision-service
+description: RegelSpraak decision-service (bin/regelspraak serve, the JDK service of the toolchain on uchar)
+type: application
+version: 0.1.0
+appVersion: "0-SNAPSHOT"

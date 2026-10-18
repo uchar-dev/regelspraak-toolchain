@@ -101,7 +101,7 @@ pinned expectation, compared as uchar's replay compares it (`scripts/dienst_repl
   served from its `bron.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
   number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 225); every golden that does not play is listed by name with
   its reason (30, each a timeline form the request cannot express); a deviation always fails, and the list fails when
-  it goes stale in either direction. About 50 seconds with four services at a time (`REPLAY_WERKERS`).
+  it goes stale in either direction. About 50 seconds with four services at a time (`REPLAY_WORKERS`).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
   scenario resolver refuses are listed in `scripts/toka-manifest-uitsluitingen.txt` with a fragment of that refusal,
   and a listed scenario uchar accepts fails the run.
@@ -119,7 +119,7 @@ to the directory the command is given in.
 | `cases <map> <bron.rgs...>` | the scenarios of a test document lowered to uchar case files in `<map>`, beside the IR document they run against (`<map>/ir.json`): the layout of uchar's corpus |
 | `scenario [--trace] [--uitleg] [--vocabulaire <naam>] <bron.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL, 3 on a MARKER; `--vocabulaire` names the rules of the trace and the declarations of the uitleg in a vocabulary of the model |
 | `scenario --manifest <manifest> [--uitsluitingen <lijst>]` | every line `<verwachte-exit> <scenario.rgs> <companion.rgs...>` of a manifest, in one JVM; exit 0 when no line mismatches |
-| `serve <descriptor.service.json> <bron.rgs...> \| <document.json> [--allow-markers] [--detail] [--host H] [--poort N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes; `--detail` or `DETAIL=true` answers `?trace`, `?dekking` and `?fixpunt`, and the workbench's `?via=service` |
+| `serve <descriptor.service.json> <bron.rgs...> \| <document.json> [--allow-markers] [--detail] [--host H] [--port N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes; `--detail` or `DETAIL=true` answers `?trace`, `?dekking` and `?fixpunt`, and the workbench's `?via=service` |
 | `drl <bron.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal; exit 1 with uchar's sentence when that text does not compile (a fault of uchar's rendering) |
 | `graaf [--mmd] <uit> <bron.rgs...>` | uchar's rule graph as an HTML page, or as Mermaid text |
 | `facts <uitmap> <bron.rgs...>` | the fact beans uchar's generator writes for the model |
@@ -137,7 +137,7 @@ make check FILE="model.rgs regels.rgs"
 make ir FILE="model.rgs regels.rgs"             # out/ir.json (OUT= overrides)
 make cases FILE="model.rgs scenario.rgs"        # out/cases/ (OUT= overrides)
 make scenario FILE="--uitleg model.rgs scenario.rgs"
-make serve FILE="d.service.json model.rgs regels.rgs" POORT=8080
+make serve FILE="d.service.json model.rgs regels.rgs" PORT=8080
 make drl FILE=model.rgs
 make graaf FILE="model.rgs regels.rgs"          # out/regelgraaf.html (MMD=1 for Mermaid, OUT= overrides)
 make facts                                      # the TOKA model foundation (FILE= another model), javac'd
@@ -203,7 +203,7 @@ rule text writes before its name, and none where it writes none (`heeft recht op
 
 ## The container
 
-`make image` builds the decision-service image (`beslisservice:dev`; `TAG=` and `DESCRIPTOR_SRC=` override, the
+`make image` builds the decision-service image (`decision-service:dev`; `TAG=` and `DESCRIPTOR_SRC=` override, the
 latter a descriptor under `docker/` or `examples/`) from `docker/Dockerfile`, with the repository root as build
 context and the submodule checked out. `.dockerignore`
 admits only the reactor (the root pom, the own modules and, of `uchar/`, the RegelSpraak frontend and the Drools
@@ -216,12 +216,12 @@ fact beans and the executable model in memory) with the jar and `bin/regelspraak
 | Variable | Meaning |
 |----------|---------|
 | `DESCRIPTOR` | the `.service.json` (default: the baked TOKA descriptor) |
-| `BRONNEN_MANIFEST` | a file with the sources, one absolute path per line, in model order (default: the baked TOKA set) |
-| `POORT` | the port, 8080 |
+| `SOURCES_MANIFEST` | a file with the sources, one absolute path per line, in model order (default: the baked TOKA set) |
+| `PORT` | the port, 8080 |
 | `ALLOW_MARKERS` | `true` starts with entry points uchar does not carry, each request to one gets 503; otherwise such an entry point stops the start with exit 3 |
 
-Mounting a rule set at `/app/rules` and setting `DESCRIPTOR` and `BRONNEN_MANIFEST` serves it from the same image.
-`helm/beslisservice` deploys the image. `make kind-smoke` builds it, loads it into the kind cluster `regelspraak`
+Mounting a rule set at `/app/rules` and setting `DESCRIPTOR` and `SOURCES_MANIFEST` serves it from the same image.
+`helm/decision-service` deploys the image. `make kind-smoke` builds it, loads it into the kind cluster `regelspraak`
 (created when absent; `CLUSTER=` names another, and an existing cluster that does not answer stops the run) and
 checks the running service: the golden TOKA scenarios over HTTP, the marker's exit 3 and its 503 with
 `allowMarkers`, and a rollout that changes a parameter and with it the decision. It then deletes the cluster;

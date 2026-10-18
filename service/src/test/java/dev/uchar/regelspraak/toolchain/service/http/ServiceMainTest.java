@@ -91,7 +91,7 @@ class ServiceMainTest {
     @Test
     void args_parse_descriptor_sources_flags() {
         ServiceMain.Args a = ServiceMain.parseArgs(new String[]{
-                "toka.service.json", "a.rgs", "b.rgs", "--allow-markers", "--poort", "9090"});
+                "toka.service.json", "a.rgs", "b.rgs", "--allow-markers", "--port", "9090"});
         assertEquals(Path.of("toka.service.json"), a.descriptor());
         assertEquals(List.of(Path.of("a.rgs"), Path.of("b.rgs")), a.sources());
         assertTrue(a.allowMarkers());
@@ -106,7 +106,7 @@ class ServiceMainTest {
         assertEquals("0.0.0.0", a.host());
         // a local caller on a free port binds the loopback address: a port free on every interface can still be
         // bound on 127.0.0.1 alone by another process, which would then answer
-        ServiceMain.Args local = ServiceMain.parseArgs(new String[]{"d.json", "ir.json", "--host", "127.0.0.1", "--poort", "0"});
+        ServiceMain.Args local = ServiceMain.parseArgs(new String[]{"d.json", "ir.json", "--host", "127.0.0.1", "--port", "0"});
         assertEquals("127.0.0.1", local.host());
         assertEquals(0, local.port());
     }
@@ -116,6 +116,6 @@ class ServiceMainTest {
         assertThrows(IllegalArgumentException.class, () -> ServiceMain.parseArgs(new String[]{}));
         assertThrows(IllegalArgumentException.class, () -> ServiceMain.parseArgs(new String[]{"alleen-descriptor.json"}));
         assertThrows(IllegalArgumentException.class,
-                () -> ServiceMain.parseArgs(new String[]{"d.json", "x.rgs", "--poort"}));
+                () -> ServiceMain.parseArgs(new String[]{"d.json", "x.rgs", "--port"}));
     }
 }

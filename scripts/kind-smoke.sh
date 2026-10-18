@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HOST-side kind smoke: build the beslisservice image, load it into a kind cluster,
+# HOST-side kind smoke: build the decision-service image, load it into a kind cluster,
 # and drive the three gates against the LIVE in-cluster service:
 #   H2  cluster oracle  — the golden TOKA scenariotoetsen over HTTP (GoldenOverHttpTest)
 #   H3  fail-fast       — a marker-scoping descriptor crashes (exit 3) without
@@ -24,11 +24,11 @@ done
 
 # ---- config -------------------------------------------------------------------
 CLUSTER=${CLUSTER:-regelspraak}
-IMG_REPO=beslisservice
+IMG_REPO=decision-service
 TAG=${TAG:-dev}
-RELEASE=beslisservice
-MARKER_RELEASE=beslisservice-marker
-CHART=helm/beslisservice
+RELEASE=decision-service
+MARKER_RELEASE=decision-service-marker
+CHART=helm/decision-service
 KCTX=kind-$CLUSTER
 OVERLAY=docker/.h4-descriptor.json
 
@@ -124,7 +124,7 @@ step "H3"
 # Install the marker descriptor with allowMarkers=false → the service exits 3 → CrashLoopBackOff.
 h upgrade --install "$MARKER_RELEASE" "$CHART" --set image.tag="$TAG" \
     --set descriptor=/app/rules/marker/marker.service.json \
-    --set bronnenManifest=/app/rules/marker/manifest.txt
+    --set sourcesManifest=/app/rules/marker/manifest.txt
 
 MARKER_POD=""
 for i in $(seq 1 60); do
@@ -158,7 +158,7 @@ echo "H3: fail-fast exit 3 bevestigd (CrashLoopBackOff by design)"
 # Same descriptor/manifest, nu MET --allow-markers → start schoon; een verzoek krijgt 503.
 h upgrade "$MARKER_RELEASE" "$CHART" --set image.tag="$TAG" \
     --set descriptor=/app/rules/marker/marker.service.json \
-    --set bronnenManifest=/app/rules/marker/manifest.txt \
+    --set sourcesManifest=/app/rules/marker/manifest.txt \
     --set allowMarkers=true
 k rollout status "deploy/$MARKER_RELEASE" --timeout=600s
 pf "$MARKER_RELEASE"

@@ -19,7 +19,7 @@ gebruik: bin/regelspraak <opdracht> [argumenten]
                                       lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario;
                                       --vocabulaire names the rules and declarations of trace and uitleg in a
                                       vocabulary of the model (canoniek: the canonical names)
-  serve <descriptor.service.json> <bron.rgs...> | <document.json> [--allow-markers] [--detail] [--host H] [--poort N]
+  serve <descriptor.service.json> <bron.rgs...> | <document.json> [--allow-markers] [--detail] [--host H] [--port N]
                                       the decision service on the JDK HttpServer (PLAYGROUND=true: the workbench;
                                       --detail or DETAIL=true: ?trace, ?dekking and ?fixpunt, and the
                                       workbench's ?via=service)

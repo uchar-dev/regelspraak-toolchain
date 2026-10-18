@@ -28,7 +28,7 @@ help:
 	@echo "  make ir FILE=\"a.rgs …\" [OUT=…]       The uchar-ir-v1 document of the model (default out/ir.json)"
 	@echo "  make cases FILE=\"a.rgs …\" [OUT=…]    The scenarios lowered to case files beside ir.json (default out/cases/)"
 	@echo "  make scenario FILE=\"[--trace] [--uitleg] a.rgs …\"   PASS / FAIL / MARKER per scenario"
-	@echo "  make serve FILE=\"d.service.json a.rgs …\" [POORT=…]   The decision service on the JDK HttpServer;"
+	@echo "  make serve FILE=\"d.service.json a.rgs …\" [PORT=…]   The decision service on the JDK HttpServer;"
 	@echo "                                       POST /<pad>?explanation=true adds the uitleg-verhaal to the answer,"
 	@echo "                                       DETAIL=true answers ?trace, ?dekking and ?fixpunt,"
 	@echo "                                       PLAYGROUND=true binds the dev-only /playground workbench routes,"
@@ -40,7 +40,7 @@ help:
 	@echo "  make csv-beslistabel FILE=<csv> [OUT=<pad>]  Convert a CSV decision table to a §12 Beslistabel .rgs fragment"
 	@echo "  make clean                           Remove the CLI outputs (out/)"
 	@echo ""
-	@echo "  make image  [TAG=… DESCRIPTOR_SRC=…] (host only) Build the beslisservice service image"
+	@echo "  make image  [TAG=… DESCRIPTOR_SRC=…] (host only) Build the decision-service service image"
 	@echo "  make kind-smoke                      (host only) kind H2/H3/H4 gates against the live service, then delete the cluster"
 
 # The pin is the commit the uchar submodule is checked out at: this target fails when the
@@ -156,17 +156,17 @@ scenario-test:
 		--uitsluitingen scripts/toka-manifest-uitsluitingen.txt
 
 # The decision service on the JDK HttpServer over a descriptor and its sources (or one uchar-ir-v1 document), in
-# the foreground. POORT defaults to the service's own 8080; PLAYGROUND=true binds the dev-only workbench routes.
+# the foreground. PORT defaults to the service's own 8080; PLAYGROUND=true binds the dev-only workbench routes.
 serve:
-	@$(REGELSPRAAK) serve $(FILE) $(if $(POORT),--poort $(POORT))
+	@$(REGELSPRAAK) serve $(FILE) $(if $(PORT),--port $(PORT))
 
 clean:
 	rm -rf $(OUT_DIR)
 
-# HOST-side packaging targets (needs Docker): build the beslisservice image and
+# HOST-side packaging targets (needs Docker): build the decision-service image and
 # run the kind H2/H3/H4 smoke gates. DESCRIPTOR_SRC swaps the baked descriptor at
 # build time (the H4 rollout overlay).
-IMAGE_REPO ?= beslisservice
+IMAGE_REPO ?= decision-service
 TAG ?= dev
 DESCRIPTOR_SRC ?= examples/toka/toka.service.json
 image:

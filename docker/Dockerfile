@@ -1,4 +1,4 @@
-# Decision-service (beslisservice) image — multi-stage, built from the reactor.
+# Decision-service (decision-service) image — multi-stage, built from the reactor.
 #
 # The build context is the repository root with the submodule uchar/ checked out (git submodule update --init
 # --recursive) and without any .git: .dockerignore admits only what the two stages read. Stage 1 builds the one jar
@@ -67,12 +67,12 @@ RUN chmod +x /app/entrypoint.sh /app/bin/regelspraak \
          ls /app/rules/toka/toka-1[7-9]-*.rgs /app/rules/toka/toka-[2-9][0-9]-*.rgs | sort | grep -v -e 'toka-23-' -e 'toka-45-'; \
        } > /app/rules/toka-manifest.txt
 
-# Mounting a volume at /app/rules and overriding DESCRIPTOR + BRONNEN_MANIFEST serves an entirely different rule
+# Mounting a volume at /app/rules and overriding DESCRIPTOR + SOURCES_MANIFEST serves an entirely different rule
 # set from the same image. REGELSPRAAK_JAR points bin/regelspraak at the jar of stage 1; it never builds here.
-ENV POORT=8080 \
+ENV PORT=8080 \
     ALLOW_MARKERS=false \
     DESCRIPTOR=/app/rules/toka/toka.service.json \
-    BRONNEN_MANIFEST=/app/rules/toka-manifest.txt \
+    SOURCES_MANIFEST=/app/rules/toka-manifest.txt \
     REGELSPRAAK_JAR=/app/regelspraak.jar
 
 EXPOSE 8080
@@ -80,6 +80,6 @@ EXPOSE 8080
 # The service builds every entry point BEFORE it binds the port, so /info answering means startup fully succeeded.
 # Give it a long start-period for that build.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=180s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:${POORT}/info >/dev/null || exit 1
+    CMD curl -fsS http://127.0.0.1:${PORT}/info >/dev/null || exit 1
 
 ENTRYPOINT ["/app/entrypoint.sh"]

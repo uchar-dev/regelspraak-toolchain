@@ -348,9 +348,9 @@ public final class FixpointGivens {
             ArrayNode tl = n.putArray("timeline");
             for (Object seg : segments) {
                 ObjectNode sn = tl.addObject();
-                sn.set("van", scalar(CaseSession.read(seg, "getVan"), null));
-                sn.set("tot", scalar(CaseSession.read(seg, "getTot"), null));
-                sn.set("waarde", scalar(CaseSession.read(seg, "getWaarde"), dt));
+                sn.set("from", scalar(CaseSession.read(seg, "getVan"), null));
+                sn.set("to", scalar(CaseSession.read(seg, "getTot"), null));
+                sn.set("value", scalar(CaseSession.read(seg, "getWaarde"), dt));
             }
         } else if (v instanceof Map<?, ?> perCoordinate) {
             ObjectNode d = n.putObject("dimensions");

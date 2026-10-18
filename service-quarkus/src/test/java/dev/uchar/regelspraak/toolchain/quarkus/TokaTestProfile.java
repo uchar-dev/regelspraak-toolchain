@@ -12,10 +12,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * The @QuarkusTest config profile that points {@code DESCRIPTOR} / {@code BRONNEN_MANIFEST} / {@code ALLOW_MARKERS}
+ * The @QuarkusTest config profile that points {@code DESCRIPTOR} / {@code SOURCES_MANIFEST} / {@code ALLOW_MARKERS}
  * at the TOKA fixtures, so the app boots the SAME 29-entrypoint TOKA service the service module tests use. The
  * bron paths + descriptor are read straight off {@link TokaSource} (the service test-jar), and a small
- * {@code BRONNEN_MANIFEST} file is generated (one absolute {@code .rgs} path per line, in
+ * {@code SOURCES_MANIFEST} file is generated (one absolute {@code .rgs} path per line, in
  * {@code TokaSource.sourcePerFile()} order) so the {@link CoreProducer}'s manifest reader has a real file to read —
  * exactly mirroring {@code service-entrypoint.sh}. Nothing here is a hand-typed rule/value.
  */
@@ -27,7 +27,7 @@ public class TokaTestProfile implements QuarkusTestProfile {
         Path manifest = writeManifest();
         Map<String, String> cfg = new LinkedHashMap<>();
         cfg.put("DESCRIPTOR", descriptor.toString());
-        cfg.put("BRONNEN_MANIFEST", manifest.toString());
+        cfg.put("SOURCES_MANIFEST", manifest.toString());
         cfg.put("ALLOW_MARKERS", "false");   // strict — the healthy TOKA service compiles clean
         return cfg;
     }

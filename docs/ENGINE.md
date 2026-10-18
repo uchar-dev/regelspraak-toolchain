@@ -102,7 +102,7 @@ checked.
 
 ```
 bin/regelspraak serve <descriptor.service.json> <bron.rgs…> | <document.json> [--allow-markers] [--detail] [--host H]
-                      [--poort N]
+                      [--port N]
 ```
 
 - `POST /<pad>` per entry point; `?explanation=true` adds the verbaliser's sentences to the answer. The service makes no
@@ -266,7 +266,7 @@ declared/actual mismatch.
 
 ## Deploying (container + Helm + kind) — host only
 
-`make image`, `docker/`, `helm/beslisservice/` and `make kind-smoke` package the service (README, "The
+`make image`, `docker/`, `helm/decision-service/` and `make kind-smoke` package the service (README, "The
 container"). The image is built from the reactor and starts `bin/regelspraak serve` (`docker/entrypoint.sh`); its
-contract is the environment: `DESCRIPTOR`, `BRONNEN_MANIFEST` (a file listing the `.rgs` sources in order), `POORT`,
+contract is the environment: `DESCRIPTOR`, `SOURCES_MANIFEST` (a file listing the `.rgs` sources in order), `PORT`,
 `ALLOW_MARKERS`.

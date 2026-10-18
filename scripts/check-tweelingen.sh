@@ -58,7 +58,7 @@ for t in "${TWEELINGEN[@]}"; do
   goldens+=("$g"); descriptors+=(--descriptor "$g=scripts/tweelingen/$g.service.json")
 done
 
-output=$(python3 scripts/dienst_replay.py --corpus uchar/corpus/golden --werkers 3 \
+output=$(python3 scripts/dienst_replay.py --corpus uchar/corpus/golden --workers 3 \
     "${descriptors[@]}" "${goldens[@]}") || fail "de replay-driver faalde"
 echo "$output" | sed 's/^/  /'
 

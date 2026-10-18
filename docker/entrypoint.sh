@@ -6,17 +6,17 @@
 set -eu
 
 : "${DESCRIPTOR:?DESCRIPTOR env is niet gezet}"
-: "${BRONNEN_MANIFEST:?BRONNEN_MANIFEST env is niet gezet}"
-: "${POORT:=8080}"
+: "${SOURCES_MANIFEST:?SOURCES_MANIFEST env is niet gezet}"
+: "${PORT:=8080}"
 
 [ -f "$DESCRIPTOR" ] || { echo "descriptor niet gevonden: $DESCRIPTOR" >&2; exit 1; }
-[ -f "$BRONNEN_MANIFEST" ] || { echo "bronnen-manifest niet gevonden: $BRONNEN_MANIFEST" >&2; exit 1; }
+[ -f "$SOURCES_MANIFEST" ] || { echo "bronnen-manifest niet gevonden: $SOURCES_MANIFEST" >&2; exit 1; }
 
 # Read the manifest into a space-separated, word-split list of sources.
-SOURCES=$(cat "$BRONNEN_MANIFEST")
+SOURCES=$(cat "$SOURCES_MANIFEST")
 
 FLAGS=""
 [ "${ALLOW_MARKERS:-false}" = "true" ] && FLAGS="--allow-markers"
 
 # shellcheck disable=SC2086  # BRONNEN/FLAGS must word-split into separate args.
-exec /app/bin/regelspraak serve "$DESCRIPTOR" $SOURCES --poort "$POORT" $FLAGS
+exec /app/bin/regelspraak serve "$DESCRIPTOR" $SOURCES --port "$PORT" $FLAGS

@@ -82,11 +82,11 @@ class GoldenOverHttpTest {
     @BeforeAll
     static void startService() throws IOException {
         // service.url override (chunk B, the third transport): when set — system property `service.url` or env
-        // DIENST_URL — the IDENTICAL 29 golden assertions run against an already-running service (e.g. the
+        // SERVICE_URL — the IDENTICAL 29 golden assertions run against an already-running service (e.g. the
         // in-cluster pod) instead of an in-process ServiceHttp. The descriptor is the same toka.service.json,
         // parsed standalone for scope→entrypoint ROUTING only; every expected value still comes from the
         // scenario fixtures, so nothing is duplicated or re-typed.
-        String override = System.getProperty("service.url", System.getenv("DIENST_URL"));
+        String override = System.getProperty("service.url", System.getenv("SERVICE_URL"));
         if (override != null && !override.isBlank()) {
             baseUrl = override.endsWith("/") ? override.substring(0, override.length() - 1) : override;
             descriptor = ServiceHttp.MAPPER.readValue(TokaSource.descriptorJson(), ServiceDescriptor.class);

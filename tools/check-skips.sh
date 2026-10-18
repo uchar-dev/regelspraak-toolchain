@@ -96,7 +96,7 @@ if [ "${1:-}" = "--sentinel" ]; then
 fi
 
 [ $# -ge 3 ] || { echo "skip-pin: gebruik <poort> <ijkpunt> <rapportmap>..."; exit 2; }
-POORT=$1; CALIBRATION_POINT=$2; shift 2
+PORT=$1; CALIBRATION_POINT=$2; shift 2
 
 [ -f "$CALIBRATION_POINT" ] \
   || { echo "skip-pin: ijkpunt '$CALIBRATION_POINT' ontbreekt — de stap die het vlak voor de testrun zet, draaide niet"; exit 2; }
@@ -106,13 +106,13 @@ POORT=$1; CALIBRATION_POINT=$2; shift 2
 FLOOR=""
 for line in ${FLOORS[@]+"${FLOORS[@]}"}; do
   IFS='|' read -r p n _reden _datum <<<"$line"
-  [ "$p" = "$POORT" ] && FLOOR=$n
+  [ "$p" = "$PORT" ] && FLOOR=$n
 done
 [ -n "$FLOOR" ] \
-  || { echo "skip-pin: poort '$POORT' heeft geen vloer in VLOEREN (tools/check-skips.sh) — voeg hem toe met reden en meetdatum"; exit 2; }
+  || { echo "skip-pin: poort '$PORT' heeft geen vloer in VLOEREN (tools/check-skips.sh) — voeg hem toe met reden en meetdatum"; exit 2; }
 
 echo ""
-echo "=== skip-pin — poort '$POORT' ==================================================="
+echo "=== skip-pin — poort '$PORT' ==================================================="
 
 # Wijzigingstijd in hele seconden; BSD (macOS) en GNU spellen het verschillend.
 if stat -f %m . >/dev/null 2>&1; then mtime() { stat -f %m "$1"; }; else mtime() { stat -c %Y "$1"; }; fi
@@ -220,7 +220,7 @@ done <<<"$(printf '%s\n' "$suites" | grep $'\t' || true)"
 PIN_KEYS=(); PIN_REASONS=(); PIN_DATA=()
 for line in ${ALLOWED_SKIPS[@]+"${ALLOWED_SKIPS[@]}"}; do
   IFS='|' read -r p key reason date <<<"$line"
-  [ "$p" = "$POORT" ] || continue
+  [ "$p" = "$PORT" ] || continue
   PIN_KEYS+=("$key"); PIN_REASONS+=("$reason"); PIN_DATA+=("$date")
 done
 
@@ -308,21 +308,21 @@ if [ ${#empty_class_report[@]} -gt 0 ]; then
 fi
 if [ "$total" -lt "$FLOOR" ]; then
   echo ""
-  echo "FAIL: $total testgevallen gemeten, vloer is $FLOOR voor poort '$POORT' — de suite is gekrompen."
+  echo "FAIL: $total testgevallen gemeten, vloer is $FLOOR voor poort '$PORT' — de suite is gekrompen."
   echo "  Een gerichte run (-Dtest=…) zakt hier altijd doorheen; de poort is de VOLLEDIGE run."
   echo "  Is de krimp bedoeld, verlaag de vloer in dezelfde commit (VLOEREN in tools/check-skips.sh)."
   status=1
 fi
 if [ ${#unpinned[@]} -gt 0 ]; then
   echo ""
-  echo "FAIL: ${#unpinned[@]} ongepinde skip/abort in poort '$POORT':"
+  echo "FAIL: ${#unpinned[@]} ongepinde skip/abort in poort '$PORT':"
   for key in "${unpinned[@]}"; do echo "  $key"; done
   echo "  Neem de oorzaak weg, of pin hem BEWUST in tools/check-skips.sh (TOEGESTANE_SKIPS: poort, test, reden, datum)."
   status=1
 fi
 if [ ${#outdated_pins[@]} -gt 0 ]; then
   echo ""
-  echo "FAIL: ${#outdated_pins[@]} verouderde pin in poort '$POORT' — de klasse draaide, de gepinde methode bestaat niet meer:"
+  echo "FAIL: ${#outdated_pins[@]} verouderde pin in poort '$PORT' — de klasse draaide, de gepinde methode bestaat niet meer:"
   for key in "${outdated_pins[@]}"; do
     i=$(pin_index "$key")
     echo "  $key  (gepind: ${PIN_REASONS[$i]}, ${PIN_DATA[$i]})"

@@ -1,6 +1,0 @@
-apiVersion: v2
-name: beslisservice
-description: RegelSpraak beslisservice (bin/regelspraak serve, the JDK service of the toolchain on uchar)
-type: application
-version: 0.1.0
-appVersion: "0-SNAPSHOT"

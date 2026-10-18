@@ -18,7 +18,7 @@
 # EXPECTED_REPLAY_PLAYED pint het aantal spelers (een gelijkheid, zoals gate 12 EXPECTED_PLAYED pint): een nieuwe
 # golden die speelt, is voor een lijst die alleen niet-spelers noemt onzichtbaar. Een lege set faalt.
 #
-# REPLAY_WERKERS (standaard 4) is het aantal diensten dat tegelijk draait.
+# REPLAY_WORKERS (standaard 4) is het aantal diensten dat tegelijk draait.
 set -u
 cd "$(dirname "$0")/.."
 
@@ -171,7 +171,7 @@ mvn -B -o -q -DskipTests package -pl service -am >"$log" 2>&1 \
 
 begin=$(date +%s)
 output=$(python3 scripts/dienst_replay.py --corpus uchar/corpus/golden \
-    --werkers "${REPLAY_WERKERS:-4}" "${set_goldens[@]}") || fail "de replay-driver faalde"
+    --workers "${REPLAY_WORKERS:-4}" "${set_goldens[@]}") || fail "de replay-driver faalde"
 duration=$(( $(date +%s) - begin ))
 
 played=0; excl=0; cases=0
@@ -213,4 +213,4 @@ echo "check-dienst-replay: PASS"
 echo "  set van gate 12: ${#set_goldens[@]} goldens (uchars EXPECTED_PLAYED $uchar_played)"
 echo "  gespeeld door de dienst: $played goldens, $cases cases (pin $EXPECTED_REPLAY_PLAYED)"
 echo "  uitgesloten: $excl, bij naam met reden"
-echo "  duur: ${duration}s met ${REPLAY_WERKERS:-4} diensten tegelijk"
+echo "  duur: ${duration}s met ${REPLAY_WORKERS:-4} diensten tegelijk"

@@ -1,39 +1,39 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "beslisservice.fullname" . }}
+  name: {{ include "decision-service.fullname" . }}
   labels:
-    {{- include "beslisservice.labels" . | nindent 4 }}
+    {{- include "decision-service.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicas }}
   selector:
     matchLabels:
-      {{- include "beslisservice.selectorLabels" . | nindent 6 }}
+      {{- include "decision-service.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "beslisservice.selectorLabels" . | nindent 8 }}
+        {{- include "decision-service.selectorLabels" . | nindent 8 }}
     spec:
       containers:
-        - name: beslisservice
+        - name: decision-service
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
-            - name: POORT
-              value: {{ .Values.poort | quote }}
+            - name: PORT
+              value: {{ .Values.port | quote }}
             - name: ALLOW_MARKERS
               value: {{ .Values.allowMarkers | quote }}
             {{- if .Values.descriptor }}
             - name: DESCRIPTOR
               value: {{ .Values.descriptor | quote }}
             {{- end }}
-            {{- if .Values.bronnenManifest }}
-            - name: BRONNEN_MANIFEST
-              value: {{ .Values.bronnenManifest | quote }}
+            {{- if .Values.sourcesManifest }}
+            - name: SOURCES_MANIFEST
+              value: {{ .Values.sourcesManifest | quote }}
             {{- end }}
           ports:
             - name: http
-              containerPort: {{ .Values.poort }}
+              containerPort: {{ .Values.port }}
           # Rule compilation happens BEFORE the port binds, so a slow first bind is
           # normal startup, not a hang. The startupProbe grants up to ~10 min
           # (5s × 120) for compilation before readiness/liveness take over.
