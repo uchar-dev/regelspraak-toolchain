@@ -182,7 +182,7 @@ public final class DescriptorLoader {
     /** IR-SPEC ch. 2.2: does {@code ot} OR an ancestor declare kenmerk {@code naam}? An inherited kenmerk is a
      *  kenmerk of the subtype — a rule on the subtype assigns it, the generated bean carries its getter, and a
      *  request may set it — so the own list alone answers "onbekend kenmerk" for a member that exists. The
-     *  model's own chain walk ({@link Objecttype#kenmerkNaam}) is the authority; it is case-insensitive exactly
+     *  model's own chain walk ({@link Objecttype#characteristicName}) is the authority; it is case-insensitive exactly
      *  as the old own-list scan was. */
     static boolean hasCharacteristic(Objecttype ot, String name) {
         return ot != null && ot.characteristicName(name) != null;
@@ -191,7 +191,7 @@ public final class DescriptorLoader {
     /** The chain-closed kenmerk NAMES of {@code ot}, nearest declaration first — the list-shaped twin of
      *  {@link #hasCharacteristic}, for the reader that must ENUMERATE the kenmerken rather than ask about one
      *  ({@link OpenApiEmitter}). It lives here so service/ walks the kenmerk chain in exactly one place; the
-     *  attribuut side needs no twin because the model already ships {@link Objecttype#attribuutLeden} (the
+     *  attribuut side needs no twin because the model already ships {@link Objecttype#attributeMembers} (the
      *  kenmerken are a List, not a member-keyed map, so {@code opKetenKaart} does not cover them). A nearer
      *  declaration wins and a name is listed once, matched case-insensitively like the lookups above. */
     static List<String> characteristicMembers(Objecttype ot) {
@@ -211,7 +211,7 @@ public final class DescriptorLoader {
      *  the old case-insensitive name equality. An unresolvable {@code naam} selects nothing (it is already a
      *  descriptor-validation error).
      *
-     *  <p>{@link Objecttype#isEen} compares by {@code keten().contains}, i.e. by REFERENCE identity, so both
+     *  <p>{@link Objecttype#isA} compares by {@code keten().contains}, i.e. by REFERENCE identity, so both
      *  arguments must come from ONE resolved model instance. Every caller today passes the core's own
      *  {@code this.model} and resolves {@code naam} against that same model here, so the condition holds by
      *  construction; a future caller that resolves a second model would have to pass its own, not another's. */

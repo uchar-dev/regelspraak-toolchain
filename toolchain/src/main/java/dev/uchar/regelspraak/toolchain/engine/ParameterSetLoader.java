@@ -36,7 +36,7 @@ import java.util.List;
  * <p>Fouten worden VERZAMELEND gerapporteerd (alle eerst, dan één {@link ParameterSetError}), house-style: elke fout
  * noemt de overtreder + locatie. Malformed JSON mag direct één throw zijn. Gedekte fouten: onbekende parameternaam,
  * verkeerd getypeerde waarde, verkeerde eenheid, ongeldige/omgekeerde vanaf/tot, en overlap (via
- * {@link ParameterSet#overlapFouten}, ná decode).
+ * {@link ParameterSet#overlapErrors}, ná decode).
  *
  * <p>De waarde-decodering spiegelt {@code dev.uchar.regelspraak.toolchain.service.ValueCoder} (Numeriek/Percentage → BigDecimal
  * met eenheid-objectvorm {@code {"waarde": n, "eenheid": "<afk>"}} waarvan de eenheid EXACT de gedeclareerde

@@ -48,7 +48,7 @@ import java.util.Map;
  *       parameter = a startup error naming the value, ALL collected first). A file set whose union does not
  *       resolve refuses startup with the resolver diagnostics.</li>
  *   <li><b>Build each entry point from the forms of its scope</b> ({@link FormIndex}): the forms its rule names
- *       and rule groups carry are kept, the others dropped ({@link CaseEmitter#metScope}, the lowering uchar's
+ *       and rule groups carry are kept, the others dropped ({@link CaseEmitter#withScope}, the lowering uchar's
  *       scenario layer uses), and that model is emitted as a {@code uchar-ir-v1} document and built by uchar's
  *       backend on the exec-model branch ({@link UcharBuild}) — one {@link KieBase} per entry point, so upstream
  *       rules cannot overwrite request-given intermediate inputs, and a form outside the scope does not decide
@@ -75,7 +75,7 @@ public final class DecisionCore {
     private final Map<String, Entrypoint> perPath;   // URL path -> compiled entry point
     /** The loaded, validity-versioned parameter sets (fase 5), or empty when the descriptor names no sidecar. */
     private final List<ParameterSet> parameterSets;
-    /** The rendered {@link PeriodeDekking} WARNING lines (regel-geldigheid × parameter-geldigheid gaps), computed
+    /** The rendered {@link PeriodCoverage} WARNING lines (regel-geldigheid × parameter-geldigheid gaps), computed
      *  once at startup; served verbatim on /info and logged by ServiceMain. Empty when no gap or no sets. */
     private final List<String> periodWarnings;
     /** Whether a request may ask to see its session ({@link CoreConfig#detail()}). */
@@ -405,8 +405,8 @@ public final class DecisionCore {
         return sets;
     }
 
-    /** The rendered {@link PeriodeDekking} WARNING lines for the regel-geldigheid × parameter-geldigheid gaps
-     *  (fase 5, gate G3). {@link PeriodeDekking#controleer} is pure; {@link PeriodeDekking#meldAlle} renders each
+    /** The rendered {@link PeriodCoverage} WARNING lines for the regel-geldigheid × parameter-geldigheid gaps
+     *  (fase 5, gate G3). {@link PeriodCoverage#controleer} is pure; {@link PeriodCoverage#reportAll} renders each
      *  finding onto a throw-away model so we can lift the WARNING message text out verbatim (the SAME text the
      *  engine surfaces), without polluting the real service model's diagnostics. Empty when no gap / no sets. */
     private static List<String> periodWarnings(RegelSpraakModel model, List<ParameterSet> sets) {
@@ -421,9 +421,9 @@ public final class DecisionCore {
 
     // ---------------- scope-completeness validation ----------------
 
-    // The producer/consumer analysis — the producer index, the walk over what a form reads, and the ElementSleutel
-    // identity — is the SHARED {@link ProducentConsument} core (jar-only, no Drools). This class is one of its two
-    // consumers (uchar's rule graph is the other); both read the same walk ({@link ProducentConsument#vormen}), so
+    // The producer/consumer analysis — the producer index, the walk over what a form reads, and the ElementKey
+    // identity — is the SHARED {@link ProducerConsumer} core (jar-only, no Drools). This class is one of its two
+    // consumers (uchar's rule graph is the other); both read the same walk ({@link ProducerConsumer#vormen}), so
     // this scope-completeness gate and the graph never diverge.
 
     /**
@@ -435,7 +435,7 @@ public final class DecisionCore {
      * point's scope, and (c) the element is not a declared {@code inputElements} (the caller then supplies the
      * value, so the missing producer is intentional). Elements with no producer at all are genuine request inputs,
      * not violations. The violation of a group also names the defaults that read the element, from uchar's walk per
-     * default ({@link ProducentConsument#lezingen}), of which the group's reads are the union.
+     * default ({@link ProducerConsumer#lezingen}), of which the group's reads are the union.
      */
     private static List<Violation> scopeCompleteness(ServiceDescriptor.Entrypoint ep, RegelSpraakModel model,
             RegelSpraakModel scoped, Map<ElementKey, java.util.Set<String>> producers) {
@@ -450,7 +450,7 @@ public final class DecisionCore {
         java.util.Set<String> scope = new java.util.LinkedHashSet<>();
         for (ProducerConsumer.Form v : carried) scope.add(v.naam());
         // The opt-out keys through the SAME element identity the consumption does ({@link
-        // ProducentConsument#elementVan}), so the declaration binds on the member's declarant: a caller that
+        // ProducerConsumer#elementOf}), so the declaration binds on the member's declarant: a caller that
         // declares the element on the type that DECLARES it silences a consumption on any subtype, and one that
         // names a subtype silences it too — the alternative is an escape hatch that exists but cannot be spelled.
         java.util.Set<ElementKey> inputElements = new java.util.LinkedHashSet<>();
@@ -662,7 +662,7 @@ public final class DecisionCore {
      * {@code naming}: {@code trace}, per form that fired, in the order a rule of it first fired, the ids of the
      * request its matches bound ({@code labels}) and how often its rules fired ({@code aantal}), as uchar's
      * {@code observer} recorded them; {@code dekking}, per form of the entry point's build whether a rule of it fired
-     * ({@link DroolsBackend#dekking}: {@code GEVUURD} or {@code NIET_GERAAKT}); and {@code fixpunt}, what stands at the
+     * ({@link DroolsBackend#dekking}: {@code FIRED} or {@code NOT_FIRED}); and {@code fixpunt}, what stands at the
      * fixpoint with the instances of the request as its input ({@link FixpointGivens}), or {@code fixpointError} with the
      * reason a value of it cannot be shown, or {@code withoutFixpoint}, uchar's sentence of a run that reached no fixpoint
      * (null at a fixpoint): then there is nothing to show. The playground gives a scenario the same three.
@@ -735,7 +735,7 @@ public final class DecisionCore {
      * of set-resolved parameters, empty when no sets are loaded. Fail-fast against the one date authority
      * ({@code datum} = the request peildatum = {@code World.evaluationDate}):
      * <ul>
-     *   <li><b>datum present</b> — {@link ParameterSet#waardenOp}; any gap is a 4xx {@link ServiceError} whose
+     *   <li><b>datum present</b> — {@link ParameterSet#valuesOn}; any gap is a 4xx {@link ServiceError} whose
      *       schendingen name the parameter + the datum, on veld {@code "peildatum"};</li>
      *   <li><b>datum absent + multi-vintage</b> — a 4xx naming veld {@code "peildatum"}: the peildatum is
      *       mandatory because the sets carry more than one vintage (ambiguous truth);</li>

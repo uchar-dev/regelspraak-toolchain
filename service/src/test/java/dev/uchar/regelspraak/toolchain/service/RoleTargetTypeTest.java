@@ -73,7 +73,7 @@ class RoleTargetTypeTest {
     @Test
     void id_of_another_object_type_on_a_role_is_wrong_type() {
         // both rollen of the self-typed feittype, the to-many and the to-one, and no feittype relates a Jutter to a
-        // Strandpaal: uchar's input step (CaseInvoer) found no field and refused the link as NIET_ONDERSTEUND
+        // Strandpaal: uchar's input step (CaseInput) found no field and refused the link as NIET_ONDERSTEUND
         var r = map("""
             { "instanties": [
                 { "type": "Jutter", "id": "J1", "rollen": { "leerling": ["P1"] } },
@@ -91,7 +91,7 @@ class RoleTargetTypeTest {
 
     @Test
     void id_of_another_object_type_does_not_come_via_the_type_pair_in_another_role() {
-        // Jutter and Strandvondst are related by vinderschap: CaseInvoer's by-pair fallback took that relation
+        // Jutter and Strandvondst are related by vinderschap: CaseInput's by-pair fallback took that relation
         // and made J1 the vinder of S1, a link the request does not name
         var r = map("""
             { "instanties": [

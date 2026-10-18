@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * A run without a fixpoint, on uchar's red golden {@code jutterswet-budgetgrens-over}: from a Wachter of rang 1 its
  * recursive creation would make a Wachter at creation depth 101, one past uchar's creation budget, and uchar's
- * {@code DroolsBackend.vuur} ends the run there with its sentence ({@code Vuring.geenFixpunt}). From rang 50 the chain
+ * {@code DroolsBackend.fire} ends the run there with its sentence ({@code Firing.noFixpoint}). From rang 50 the chain
  * ends at depth 52 and the run reaches its fixpoint. The core throws {@link NoFixpoint} with uchar's sentence; the
  * decision route answers it with a 422 {@code GEEN_FIXPUNT}; {@code ?via=dienst} makes that scenario a FAIL in the shape
  * of uchar's report and computes the other scenario of the document.

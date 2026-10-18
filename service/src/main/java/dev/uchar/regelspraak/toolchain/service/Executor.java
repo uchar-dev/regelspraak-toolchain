@@ -18,10 +18,10 @@ import java.util.Map;
  * The per-request executor: given an entry point's {@link DroolsBackend.Build} (built once at startup by uchar,
  * immutable thereafter) and a mapped {@link World}, it opens a FRESH session of the build's KieBase, sets the
  * parameter globals (the descriptor defaults, overridden by the request), sets the rekendatum global when the request
- * carried one, and then fills, fires and reads it through uchar's entry: {@link DroolsBackend#voegIn} puts the input
- * in that uchar's input step read ({@link World#input()}), each to-many list in the replay's order, {@link DroolsBackend#vuur}
- * fires to the fixpoint, {@link DroolsBackend#lees} gives the evaluation faults that stand there, and where none
- * stands {@link DroolsBackend#zetAfgeleideWaarden} puts the derived values on the beans, which the branch keeps as
+ * carried one, and then fills, fires and reads it through uchar's entry: {@link DroolsBackend#insert} puts the input
+ * in that uchar's input step read ({@link World#input()}), each to-many list in the replay's order, {@link DroolsBackend#fire}
+ * fires to the fixpoint, {@link DroolsBackend#fixpointOf} gives the evaluation faults that stand there, and where none
+ * stands {@link DroolsBackend#setDerivedValues} puts the derived values on the beans, which the branch keeps as
  * facts of the session until then. It returns the beans and the {@code Inconsistentie} facts for the response builder.
  * Session-per-request; the KieBase is shared and immutable, so this is thread-safe by construction.
  *
@@ -68,7 +68,7 @@ public final class Executor {
 
     /**
      * As {@link #fire(Wereld, Map)}, with {@code observer} (null: none) recording what the session fires, through
-     * uchar's {@link DroolsBackend#vuur(DroolsBackend.Build, KieSession, DroolsBackend.Waarnemer)}. A waarnemer belongs
+     * uchar's {@link DroolsBackend#fire(DroolsBackend.Build, KieSession, DroolsBackend.Observer)}. A waarnemer belongs
      * to one session, so the caller gives each request a fresh one and reads it after this returns or throws.
      *
      * @throws Evaluatiefout the evaluation faults that stand at the fixpoint, one or more, of any type, with the
@@ -79,7 +79,7 @@ public final class Executor {
     }
 
     /**
-     * As {@link #fire(Wereld, Map, DroolsBackend.Waarnemer)}, and with {@code expectations} (null: none), the
+     * As {@link #fire(Wereld, Map, DroolsBackend.Observer)}, and with {@code expectations} (null: none), the
      * {@code expected} of a {@code uchar-case-v0} case whose labels are ids of the request, uchar's verdict on them over
      * the written-back session ({@link DroolsBackend#vergelijk}, with the ids of the request as labels), before the
      * session is disposed. uchar compares; this class only hands the session over.
@@ -131,7 +131,7 @@ public final class Executor {
     }
 
     /** The exception uchar's write-back throws for the faults that stand at {@code fixpunt}: the fault's own for one,
-     *  uchar's {@code Evaluatiefouten} for two or more. It writes nothing back then; a write-back that does not throw
+     *  uchar's {@code EvaluationFaults} for two or more. It writes nothing back then; a write-back that does not throw
      *  is a broken promise of uchar's entry. */
     private RuntimeException rethrown(KieSession session, Map<Object, String> label, Fixpoint fixpoint) {
         try {

@@ -43,8 +43,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The service fills, fires and reads every session through uchar's entry ({@code DroolsBackend.voegIn}, {@code vuur},
- * {@code lees}, {@code zetAfgeleideWaarden}): the answer carries the value a rule derived, and every evaluation fault
+ * The service fills, fires and reads every session through uchar's entry ({@code DroolsBackend.insert}, {@code fire},
+ * {@code fixpointOf}, {@code setDerivedValues}): the answer carries the value a rule derived, and every evaluation fault
  * that stands at the fixpoint is a 422 that gives per fault its kind and uchar's sentence, never a stacktrace. Own
  * material: one model of finds with an entry point per rule set, so each request meets the fault it is about and no
  * other, one of a fold over a to-many role, whose fault names the member the order of the list puts first, as in
@@ -335,7 +335,7 @@ class EntryHttpTest {
         assertTrue(body.at("/fouten/1/fout").asText().contains("van V1, een Vondst"), body.toString());
     }
 
-    /** No request reaches an {@code Invoervormfout}: the HTTP route answers a request with a timeline with 400
+    /** No request reaches an {@code InputFormFault}: the HTTP route answers a request with a timeline with 400
      *  NIET_ONDERSTEUND, which this test asserts first. The translation of that fault into a 422 is therefore tested at
      *  the level of the core: the service's executor ({@link Executor}) gets a world whose bean holds a full timeline
      *  where the rule takes the asOfDate-bucket scalar, and {@link AnswerBuilder#evaluationFault} builds from the fault
@@ -449,7 +449,7 @@ class EntryHttpTest {
 
     /** V1 names J1 as its aanmelder by its own role, and a relation of {@code relaties} links it to J2: the to-one field
      *  aanmelder gets a second, different target. The service refuses that with 400 VERKEERD_TYPE on the role of the
-     *  relation that names J2, as it refuses a second target among the inline roles (uchar's {@code CaseInvoer}). Before, the
+     *  relation that names J2, as it refuses a second target among the inline roles (uchar's {@code CaseInput}). Before, the
      *  relation wrote over the first link and the list of J1 kept V1, which uchar's entry refused (500). */
     @Test
     void a_second_other_target_via_relations_is_400_wrong_type() throws Exception {
@@ -469,7 +469,7 @@ class EntryHttpTest {
     // ---------------- a reciprocal role written on a subtype of its filler ----------------
 
     /** W, a Wrakvondst, names V as its maat, and one link of a reciprocal role holds both ways (§13.3.9.2): uchar's
-     *  CaseInvoer asks the reciprocal role along the chain of W's types, as uchar's replay does, so V reads W's waarde.
+     *  CaseInput asks the reciprocal role along the chain of W's types, as uchar's replay does, so V reads W's waarde.
      *  Asked of W's own type alone, the reverse leg stayed unwritten and V's maatwaarde empty, in a 200, where uchar's
      *  replay of the same case plays with 5. */
     @Test
@@ -521,7 +521,7 @@ class EntryHttpTest {
     }
 
     /** The sentences of the faults uchar's replay throws on {@code verzoek} as a case of the document of {@code source},
-     *  in its order: one fault as its own exception, two or more as {@code Evaluatiefouten}. */
+     *  in its order: one fault as its own exception, two or more as {@code EvaluationFaults}. */
     private static List<String> replayFaults(Path map, String source, String request) throws Exception {
         RuntimeException error = replay(map, source, request);
         if (error instanceof EvaluationFaults more) return more.faults().stream().map(Throwable::getMessage).toList();

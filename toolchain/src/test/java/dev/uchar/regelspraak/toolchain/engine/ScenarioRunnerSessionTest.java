@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The session {@link ScenarioRunner#runWithUitleg} gives beside each report: the case played in a session of its own,
- * with uchar's reading of its fixpoint ({@code DroolsBackend.lees}) taken before the write-back. It is there when the
+ * with uchar's reading of its fixpoint ({@code DroolsBackend.fixpointOf}) taken before the write-back. It is there when the
  * session follows uchar's replay; for a case the replay did not play out it is there when evaluation faults stand at
  * its fixpoint, the faults that made the replay's write-back throw, now as data; a MARKER scenario has none.
  */

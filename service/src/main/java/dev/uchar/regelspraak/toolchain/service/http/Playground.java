@@ -490,7 +490,7 @@ public final class Playground {
      *  its {@code position} and the {@code comment} directly above it, read from the parse in {@code parseResult}
      *  ({@link Declarations}). An element or a declaration that does not couple puts {@code declarationError} with the
      *  reason, and then no element carries {@code position} or {@code comment}. An element uchar's frontend made itself
-     *  carries {@code generatedFrom}, the element it comes from ({@link RegelSpraakModel#gegenereerdUit}). */
+     *  carries {@code generatedFrom}, the element it comes from ({@link RegelSpraakModel#generatedFrom}). */
     static ObjectNode vocabularies(RegelSpraakModel model, Naming naming, ParseResult parseResult) {
         ObjectNode n = NF.objectNode();
         n.put("gekozen", naming.choice());

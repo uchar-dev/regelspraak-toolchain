@@ -8,8 +8,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * The mapped request world: uchar's reading of the request as the input of a case ({@link CaseInvoer}: the labelled
- * beans and what {@code voegIn} needs beside them), the parameter globals to set, and the rekendatum — everything a
+ * The mapped request world: uchar's reading of the request as the input of a case ({@link CaseInput}: the labelled
+ * beans and what {@code insert} needs beside them), the parameter globals to set, and the rekendatum — everything a
  * session needs to fire. Produced by {@link RequestMapper} and consumed by {@link Executor}.
  *
  * @param invoer     the beans of the request by id, read by uchar's input step from the case the mapper wrote

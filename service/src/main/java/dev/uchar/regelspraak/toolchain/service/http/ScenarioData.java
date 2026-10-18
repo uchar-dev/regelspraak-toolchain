@@ -110,7 +110,7 @@ final class ScenarioData {
     }
 
     /** Puts on {@code vn} where expectation {@code v} of uchar's report stands in the source: {@code line}, the line
-     *  uchar's scenario resolver gives the expectation ({@link ResolvedScenario.Verwachting#line}, the line of its
+     *  uchar's scenario resolver gives the expectation ({@link ResolvedScenario.Expectation#line}, the line of its
      *  first bullet), found by the report's position of the expectation in the case, and {@code regeltekst}, the text
      *  of that line as written. uchar gives the line on which an expectation begins and no end, so the line text is
      *  the whole expectation only where one bullet stands on one line. */

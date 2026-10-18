@@ -13,16 +13,16 @@ import java.util.List;
 
 /**
  * The evaluation faults that stand at the fixpoint of a request's session, as uchar's entry reads them
- * ({@code DroolsBackend.lees(…).fouten()}): the rules give no answer on this input. A fault there is an evaluation
+ * ({@code DroolsBackend.fixpointOf(…).fouten()}): the rules give no answer on this input. A fault there is an evaluation
  * fault by its place at the fixpoint, whatever the type of its exception, so each one is an element: it keeps uchar's
  * sentence and gets the kind of its exception, one of the four types uchar's README names ("Faults") or
  * {@link Kind#ANDERE} for any other, such as the {@code IllegalStateException} of a fact creation that gives a to-one
  * role a second filling. Both adapters answer it with a 422 ({@link AnswerBuilder#evaluationFault}).
  *
- * <p>It carries the {@link Fixpunt} the faults stand at, and, when the request asked to see its session
+ * <p>It carries the {@link Fixpoint} the faults stand at, and, when the request asked to see its session
  * ({@link RequestOptions#detailFlags()}), the fields the 422 gives beside the faults ({@link #detail()}). Its cause
  * is the exception uchar's write-back throws for these faults: the fault's own for one, uchar's
- * {@code Evaluatiefouten} for two or more, the one uchar's scenario report names in its diagnose.
+ * {@code EvaluationFaults} for two or more, the one uchar's scenario report names in its diagnose.
  */
 public final class EvaluationFault extends RuntimeException {
 

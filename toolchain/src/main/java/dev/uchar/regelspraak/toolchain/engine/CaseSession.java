@@ -23,15 +23,15 @@ import java.util.Map;
 /**
  * One case of the {@code uchar-case-v0} format played in a session of its own on a build uchar made
  * ({@link DroolsBackend.Build}): the input beans the case describes, its parameters and evaluation date as globals,
- * put in, fired to the fixpoint, read and written back through uchar's entry ({@link DroolsBackend#voegIn},
- * {@link DroolsBackend#vuur}, {@link DroolsBackend#lees}, {@link DroolsBackend#zetAfgeleideWaarden}), the firings
- * recorded by uchar's {@link DroolsBackend.Waarnemer} with the labels of the input instances, as uchar's replay records
+ * put in, fired to the fixpoint, read and written back through uchar's entry ({@link DroolsBackend#insert},
+ * {@link DroolsBackend#fire}, {@link DroolsBackend#fixpointOf}, {@link DroolsBackend#setDerivedValues}), the firings
+ * recorded by uchar's {@link DroolsBackend.Observer} with the labels of the input instances, as uchar's replay records
  * them, so the trace has one definition. It exists for what uchar's replay ({@code CaseRunner.rapport}) does not return: the beans with their
- * derived values, from which the {@link Verbaliser} explains an outcome, and uchar's {@link Fixpunt}, what stands at
+ * derived values, from which the {@link Verbaliser} explains an outcome, and uchar's {@link Fixpoint}, what stands at
  * the fixpoint with or without an expectation on it.
  *
- * <p>The input is read by uchar's own input step ({@link CaseInvoer#van}), the one the replay reads every case with:
- * the beans, their attributes, characteristics, timelines and roles, and the {@link CaseInvoer#invoer()} that puts them
+ * <p>The input is read by uchar's own input step ({@link CaseInput#van}), the one the replay reads every case with:
+ * the beans, their attributes, characteristics, timelines and roles, and the {@link CaseInput#invoer()} that puts them
  * in as the replay does (each to-many list in the replay's order, each bucket scalar named). This session sets the
  * parameters as globals under their camelCase name and the evaluation date as {@code evaluationDate}. A caller that uses
  * the outcome to explain uchar's verdict compares {@link Outcome#firings()} with the trace uchar reported, so a

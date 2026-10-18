@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The chain half of {@link ScopeCompletenessTest}: the scope-completeness gate over an objecttype-inheritance
  * chain. The element identity the gate matches on is the member's DECLARING type (IR-SPEC ch. 2.2, see
- * {@link ProducentConsument#elementVan}), so a producer and a consumer that range over different types of one
+ * {@link ProducerConsumer#elementOf}), so a producer and a consumer that range over different types of one
  * chain still meet.
  *
  * <p>Keyed on the rule's own subject type instead, the gate concluded "no producer at all, so this is a genuine
@@ -203,7 +203,7 @@ class ScopeChainTest {
     @Test
     void the_graph_shares_the_key_and_draws_the_member_one_time() {
         // README-invariant: de scope-poort en de graaf lezen dezelfde IR-feiten. Op een ketenmodel tekende de
-        // graaf het lid TWEE keer — 'volwassen · student' als INVOER die niemand schrijft, 'volwassen · persoon'
+        // graaf het lid TWEE keer — 'volwassen · student' als INPUT die niemand schrijft, 'volwassen · persoon'
         // als eind-output die niemand leest — en allebei die beweringen waren onwaar.
         RuleGraph g = graph(MODEL_CHAIN + PRODUCER_SUPER + CONSUMER_SUB);
         long volwassenNodes = g.nodes().stream().filter(n -> n.label().startsWith("volwassen")).count();

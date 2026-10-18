@@ -11,7 +11,7 @@ import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
 
 /**
  * The distribution's CLI over uchar's frontend and backend. {@code --ir} is uchar's own emitter mode
- * ({@link Resolver#irModus}); {@code --drl}, {@code --facts} and {@code --graaf}/{@code --graaf-mmd} are
+ * ({@link Resolver#irMode}); {@code --drl}, {@code --facts} and {@code --graaf}/{@code --graaf-mmd} are
  * output modes this distribution adds on top of uchar's public API: the DRL text of uchar's DRL-text branch, the
  * fact beans uchar's generator writes, and uchar's rule graph.
  */
@@ -89,7 +89,7 @@ public final class RegelSpraakCli {
      *  exiting, so an unresolvable model writes NOTHING — the same disk discipline as --facts. The graph is
      *  model-level, so it builds no KieBase and applies no exit-3 marker discipline. A resolver's model carries its
      *  defaults groups itself, and a navigated characteristic check reaches the type of the role it names
-     *  ({@link ProducentConsument#bronNavigatie}). */
+     *  ({@link ProducerConsumer#sourceNavigation}). */
     public static int graphMode(java.util.List<String> rest, boolean html) throws java.io.IOException {
         if (rest.size() < 2) {
             System.err.println("usage: RegelSpraakCli " + (html ? "--graaf" : "--graaf-mmd") + " <out> <file.rgs...>");
@@ -128,7 +128,7 @@ public final class RegelSpraakCli {
      *  With --graaf &lt;out.html&gt; / --graaf-mmd &lt;out.mmd&gt; over one-or-more source files, emit the
      *  regelgraaf (dataflow regels &harr; gegevens) as a self-contained HTML page (embedded Mermaid via CDN) or
      *  as bare Mermaid text (offline-usable). Also model-level.
-     *  With --ir &lt;out.json&gt; over one-or-more source files, delegate to uchar's {@link Resolver#irModus} to emit
+     *  With --ir &lt;out.json&gt; over one-or-more source files, delegate to uchar's {@link Resolver#irMode} to emit
      *  the FAITHFUL {@code uchar-ir-v1} JSON dump. The output modes are mutually exclusive. */
     public static void main(String[] args) throws java.io.IOException {
         var rest = new java.util.ArrayList<>(java.util.List.of(args));

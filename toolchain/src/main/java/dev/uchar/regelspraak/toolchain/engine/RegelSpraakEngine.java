@@ -107,7 +107,7 @@ public final class RegelSpraakEngine {
      * dus ALTIJD dezelfde datum; een tweede datumnotie is onmogelijk. Fail-fast:
      * <ul>
      *   <li><b>peildatum {@code null}</b> — de datumautoriteit is verplicht op dit pad ({@link IllegalArgumentException});</li>
-     *   <li><b>overlap</b> — {@link ParameterSet#overlapFouten} niet-leeg is nooit last-one-wins, ook voor
+     *   <li><b>overlap</b> — {@link ParameterSet#overlapErrors} niet-leeg is nooit last-one-wins, ook voor
      *       hand-gebouwde sets ({@link IllegalArgumentException}); de lader vangt dit normaal al af;</li>
      *   <li><b>gap</b> — geen interval bevat de peildatum voor een parameter is een SESSION-fout die parameter +
      *       peildatum noemt ({@link IllegalStateException} met alle gap-regels; geen compile-fout, dus geen
@@ -156,10 +156,10 @@ public final class RegelSpraakEngine {
     public List<Coverage> coverage() { return build.coverage(); }
 
     /**
-     * A unit of work on uchar's entry ({@code DroolsBackend.voegIn}, {@code vuur}, {@code read},
-     * {@code zetAfgeleideWaarden}): the beans of {@link #insert} and {@link #insertAll}, with the bucket scalars of
+     * A unit of work on uchar's entry ({@code DroolsBackend.insert}, {@code fire}, {@code fixpointOf},
+     * {@code setDerivedValues}): the beans of {@link #insert} and {@link #insertAll}, with the bucket scalars of
      * {@link #bucketScalar} and the list orders of {@link #list}, are gathered until the first {@link #fire}, which
-     * puts them in through {@code voegIn} and fires through {@code vuur}; a later fire only fires.
+     * puts them in through {@code insert} and fires through {@code fire}; a later fire only fires.
      * Between two fires a consumer changes an attribute or a characteristic of a bean of the session and calls
      * {@link #update}; anything else, an object that comes or goes, a changed relation, another global, asks a fresh
      * session, and uchar's entry refuses it by name. {@link #read} gives what stands at the fixpoint of the last fire,
@@ -199,7 +199,7 @@ public final class RegelSpraakEngine {
          * the peildatum (uchar's {@code Invoer.emmerscalair}, RUNTIME-SEMANTICS ch. 8.4). A consumer that sets such an
          * attribute that way states it here. The bean cannot tell that scalar from a full timeline of one segment, and
          * without the statement the branch reads the full timeline: a form that needs the bucket scalar, the subject's
-         * own total without a clip, faults with an {@code Invoervormfout} at {@link #restore}, and a form that needs
+         * own total without a clip, faults with an {@code InputFormFault} at {@link #restore}, and a form that needs
          * the full timeline, such as the base of a pro-rata part, computes over that one segment without a fault.
          * Before the first {@link #fire}, as {@link #insert}; there uchar's entry refuses a statement that does not fit
          * the beans or the model.
@@ -229,7 +229,7 @@ public final class RegelSpraakEngine {
             return this;
         }
 
-        // voegIn fills a fresh session only, and states the places of a list and the bucket scalars over one input
+        // insert fills a fresh session only, and states the places of a list and the bucket scalars over one input
         private void beforeFirstFire(String what, String surplus) {
             if (filled)
                 throw new IllegalStateException(what + " na de eerste fire: de sessie is gevuld via uchars ingang"
@@ -288,8 +288,8 @@ public final class RegelSpraakEngine {
 
         /** Puts what stands at the fixpoint of the last {@link #fire} on the beans, after which the session does not
          *  fire again. Every evaluation fault that stands there is thrown as uchar's own exception (two or more as
-         *  {@code Evaluatiefouten}), and then nothing is written: one of the four types uchar's README names
-         *  ({@code Breuk.DelingDoorNul}, {@code Rekenfout}, {@code Schrijversconflict}, {@code Invoervormfout}) or
+         *  {@code EvaluationFaults}), and then nothing is written: one of the four types uchar's README names
+         *  ({@code Breuk.DelingDoorNul}, {@code ComputeFault}, {@code WritersConflict}, {@code InputFormFault}) or
          *  another, such as the {@code IllegalStateException} of a fact creation that gives a to-one role a second
          *  filling. A fault is an evaluation fault by its place at the fixpoint, not by its type: a consumer that must
          *  tell it from an exception of the entry itself reads {@link #read}{@code ().fouten()} first. */

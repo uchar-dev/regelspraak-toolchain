@@ -21,17 +21,17 @@ try (RegelSpraakEngine.Session s = engine.newSession()) {
 }
 ```
 
-A session fills, fires and reads through uchar's entry (`DroolsBackend.voegIn`, `vuur`, `lees` and
-`zetAfgeleideWaarden`; uchar's `backends/drools/README.md`, "The entry for consumers"). `insert` and `insertAll`
+A session fills, fires and reads through uchar's entry (`DroolsBackend.insert`, `fire`, `fixpointOf` and
+`setDerivedValues`; uchar's `backends/drools/README.md`, "The entry for consumers"). `insert` and `insertAll`
 gather the beans until the first `fire()`, which puts them in and fires to the fixpoint; a later `fire()` only fires.
 Two statements go with the beans, before the first `fire()` as well. A consumer that sets an attribute on a timeline as
 the one segment of the period of the peildatum states it with `emmerscalair(bean, attribuut)`: without it the branch
-reads a full timeline of one segment, and the subject's own total faults with an `Invoervormfout`, while a form that
+reads a full timeline of one segment, and the subject's own total faults with an `InputFormFault`, while a form that
 needs the full timeline computes over that segment without a fault. `lijst(houder, rol, leden)` gives the order of a
 to-many list, which decides only which member a fault of a fold names; without it a list keeps the order of the
 inserts.
 The exec-model branch derives with truth maintenance, so a derived value is a fact of the session and the beans hold
-the input alone until `restore()`: `lees()` gives what stands at the fixpoint of the last fire (uchar's `Fixpunt`: the
+the input alone until `restore()`: `lees()` gives what stands at the fixpoint of the last fire (uchar's `Fixpoint`: the
 derived values and characteristics, the objects and links the creations made, the evaluation faults as data, the
 inconsistencies) without writing anything, and `restore()` puts it on the beans, after which the session does not
 fire again. Between two fires a consumer changes an attribute or a characteristic of a bean of the session and calls
@@ -43,8 +43,8 @@ or a characteristic set without one, so the next `fire()` fires nothing, and `le
 fixpoint (uchar's `backends/drools/README.md`, "What a consumer can forget"). `fire()` returns the number of firings
 and throws with uchar's sentence when a run reaches no fixpoint;
 `restore()` throws every evaluation fault that stands at the fixpoint as uchar's own exception, two or more as
-`Evaluatiefouten`: one of the four types uchar's README names (`Breuk.DelingDoorNul`, `Rekenfout`,
-`Schrijversconflict`, `Invoervormfout`) or another, such as the `IllegalStateException` of a fact creation that gives
+`EvaluationFaults`: one of the four types uchar's README names (`Breuk.DelingDoorNul`, `ComputeFault`,
+`WritersConflict`, `InputFormFault`) or another, such as the `IllegalStateException` of a fact creation that gives
 a to-one role a second filling. A fault is an evaluation fault by its place at the fixpoint, not by its type:
 `lees().fouten()` gives each as data, which tells it from an exception of the entry itself. `facts(…)` reads the
 working memory, the `Inconsistentie` facts among them.
@@ -76,7 +76,7 @@ gives what uchar's replay gives on the same case; a type error and a construct u
 descriptor over the same core (`DecisionCore`). Its source is a set of `.rgs` files, resolved together into one
 model, or one `uchar-ir-v1` document (a `.json` file) that uchar's loader reads. Per entry point the core keeps the
 forms its scope names — the rules, decision-table rows, defaults groups and other forms of its rule names and rule
-groups (`FormIndex`, then `CaseEmitter.metScope`, the lowering of uchar's scenario layer) — and builds that document
+groups (`FormIndex`, then `CaseEmitter.withScope`, the lowering of uchar's scenario layer) — and builds that document
 through uchar, so each entry point has its own KieBase and bean class loader and a form outside its scope does not
 decide whether it runs. A defaults group without a base of its own, which uchar makes of the own exceptions of a
 subtype (`<basis> voor <subtype>`), goes with the groups of the base it inherits, since RUNTIME-SEMANTICS ch. 7.10
@@ -86,14 +86,14 @@ came from, which a document without its source does not have, so a scope that do
 start.
 
 At the start the core also checks that each scope uchar carries is complete. It reads the forms of the entry point's
-KieBase as uchar's rule graph reads them (`ProducentConsument.vormen`): of a rule its condition and value, of a defaults
+KieBase as uchar's rule graph reads them (`ProducerConsumer.forms`): of a rule its condition and value, of a defaults
 group the justification and consequence of every default, nested exceptions included, over roles as well. An attribute
 or characteristic a rule or a defaults group of the scope reads, which forms outside the scope write and none inside,
 refuses the start (`SCOPE_ONVOLLEDIG`, exit 1). The violation names the reader — a rule, the group of the rule a tree
 of exceptions hangs on (or of a member of an `Uitzonderingen ongeordend` block), or a group uchar generates by its
 name (`opgave boven berekening X` for the opgave marker, `X voor S` for the own exceptions of a subtype S) — the
 element and its writers. For a group it also names each default that reads the element, from uchar's walk per default
-(`ProducentConsument.lezingen`): the part that reads with its source text and the default's path in the group, as in
+(`ProducerConsumer.readings`): the part that reads with its source text and the default's path in the group, as in
 "in de rechtvaardiging 'zijn bergdag later is dan 01-06-2026' van default [0]" ([0] the highest default, [i, g, j] the
 j-th default of exception group g of default i). An element no form writes is request input. Two opt-outs per entry point: `invoerElementen`
 declares an element the caller supplies, and `scopeControleUit: true` waives the check (the replay gate sets it). The
@@ -109,15 +109,15 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   bean itself: `RequestMapper` validates the request (names, types, units; a 400 with the field path) and writes it as
   the input of a `uchar-case-v0` case, `{"asOfDate", "input": {"instances": [...]}}` with the ids of the request as
   labels, the inline `rollen` and each relation of `relaties` as `roles` (a relation on the end whose role toward the
-  other is to-one). uchar's input step reads that case (`CaseInvoer.van`), the one its replay reads every case with:
+  other is to-one). uchar's input step reads that case (`CaseInput.van`), the one its replay reads every case with:
   the beans, the role by its written name, the far field of a one-to-one relation, a to-many role through the far
   end, the reverse leg of a reciprocal role (RUNTIME-SEMANTICS ch. 5.7a), and each to-many list in the replay's order
-  (`CaseInvoer.invoer()`), which decides which member a fault of a fold names, so the 422 names the member uchar's
+  (`CaseInput.inputData()`), which decides which member a fault of a fold names, so the 422 names the member uchar's
   replay names on the same input. A link uchar refuses names the link the case wrote, and the mapper gives the field
   of the request that wrote it (for a relation, the role that names the target of its link, also where the collision
-  is on the far field): a to-one role that gets a second, different target (WF-013, `CaseInvoer.Rolbotsing`),
+  is on the far field): a to-one role that gets a second, different target (WF-013, `CaseInput.RoleCollision`),
   among the inline roles, through `relaties` or through the far field, is a 400 `VERKEERD_TYPE`, a link the bean
-  model cannot hold (`CaseInvoer.Rolweigering`) a 400 `NIET_ONDERSTEUND`, each with uchar's sentence. A date or
+  model cannot hold (`CaseInput.RoleRefusal`) a 400 `NIET_ONDERSTEUND`, each with uchar's sentence. A date or
   date-time whose year the case lexeme does not carry (beyond 0000–9999, `+10000-01-01`), uchar's input step refuses
   as well: a 400 `VERKEERD_TYPE` on the field that holds it (`peildatum`, `rekendatum` or the attribute), with uchar's
   sentence. An enumeration value names a declared value as uchar compares declared names (case and spacing aside),
@@ -132,8 +132,8 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   else the canonical names; an unknown vocabulary is a 400 `ONBEKEND_VOCABULAIRE`, and a descriptor naming one does
   not start. A declaration without a designation in the chosen vocabulary keeps its canonical name. The Quarkus
   adapter reads the same query parameters.
-- Each request gets a fresh session that the core fills, fires and reads through uchar's entry (`DroolsBackend.voegIn`,
-  `vuur`, `lees`, `zetAfgeleideWaarden`), so the answer carries the values the rules derive. The answer lists per
+- Each request gets a fresh session that the core fills, fires and reads through uchar's entry (`DroolsBackend.insert`,
+  `fire`, `fixpointOf`, `setDerivedValues`), so the answer carries the values the rules derive. The answer lists per
   instance the selected attributes and characteristics, `inconsistenties` (the rule names of the failed consistency
   checks) and `inconsistentieDetails` (the same, each with its `onderwerp`: the request id of the instance the check
   is about). A 400 names per violation its `veld`, its `soort` and its message; `soort` `NIET_ONDERSTEUND` marks a
@@ -152,8 +152,8 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   OpenAPI contract describes the body of the 422 (schema `Evaluatiefout`, with `soort` as an enumeration of these
   kinds).
 - A request whose session reaches no fixpoint gets 422 with `{"status": "GEEN_FIXPUNT", "fout": <uchar's
-  sentence>}`: uchar's `DroolsBackend.vuur` ended the run at its fire cap or at the creation budget
-  (`Vuring.geenFixpunt`), and the core throws `NoFixpoint` with that sentence. Nothing stands to be read then, so
+  sentence>}`: uchar's `DroolsBackend.fire` ended the run at its fire cap or at the creation budget
+  (`Firing.noFixpoint`), and the core throws `NoFixpoint` with that sentence. Nothing stands to be read then, so
   nothing is read or written back; the service does not judge which of the two it was. With the detail flags (below)
   the 422 carries `trace` and `dekking` of what fired up to the end of the run, and for `?fixpunt=true` `fixpuntFout`
   with the same sentence. The Quarkus adapter answers the same; the OpenAPI 422 is one of `Evaluatiefout` and
@@ -162,8 +162,8 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   as `PLAYGROUND`, and no part of the container contract) answers three more query flags, read as `uitleg` is (`true`
   or bare), each adding a field after `uitleg`: `?trace=true` gives `trace: [{regel, labels, aantal}]`, per form that
   fired, in the order a rule of it first fired, the request ids its matches bound and how often its rules fired, as
-  uchar's `DroolsBackend.Waarnemer` records them on the request's session; `?dekking=true` gives `dekking: [{regel,
-  soort}]`, per form of the entry point's build `GEVUURD` or `NIET_GERAAKT` (uchar's `DroolsBackend.dekking` over the
+  uchar's `DroolsBackend.Observer` records them on the request's session; `?dekking=true` gives `dekking: [{regel,
+  soort}]`, per form of the entry point's build `GEVUURD` or `NIET_GERAAKT` (uchar's `DroolsBackend.coverage` over the
   forms the waarnemer saw); `?fixpunt=true` gives `fixpunt: {objecten, gemaakteObjecten, koppelingen, fouten,
   inconsistenties}` in the form of the playground's (below), with the instances of the request as its input: an
   instance by its id, its input values read off its bean before the fire, a made object `#<n>`, a type by its name;

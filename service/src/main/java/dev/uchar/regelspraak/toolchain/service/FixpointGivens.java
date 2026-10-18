@@ -35,7 +35,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
- * What stands at the fixpoint of a session ({@link Fixpunt}, as uchar's entry reads it with {@code DroolsBackend.lees})
+ * What stands at the fixpoint of a session ({@link Fixpoint}, as uchar's entry reads it with {@code DroolsBackend.fixpointOf})
  * as JSON: the playground gives it per scenario and the decision service per request ({@code ?fixpunt=true}), so both
  * render it here. The input of the session is a list of {@link InputObject}s: the playground makes them of a
  * scenario's situation, the service of the instances of a request ({@link #input}).
@@ -47,7 +47,7 @@ import java.util.TreeSet;
  * leeg; a timeline is {@code tijdlijn}, a list of {@code {van, tot, waarde}}, and a dimensioned value
  * {@code dimensies}, its values by coordinate. {@code unit} is the declared unit of a number.
  *
- * <p><b>Order.</b> uchar's {@link Fixpunt} lists have no order, so every list here is sorted: the objects of the input in
+ * <p><b>Order.</b> uchar's {@link Fixpoint} lists have no order, so every list here is sorted: the objects of the input in
  * the order of the input, the made objects after them; the members of an object in the declaration order of its type,
  * the nearest type of its chain first; the made objects by type, creation, subject and values; links, faults and
  * inconsistencies by their names and the objects they name. An object of the input goes by its label, a made object by
@@ -55,7 +55,7 @@ import java.util.TreeSet;
  * without changing anything that is shown of them, apart from the links they take part in.
  *
  * <p>No class name of a bean enters the JSON: an object goes by its label and its type by its name. uchar's
- * {@link GemaaktObject} names no type, so the type of a made object is found here as the type whose generated bean
+ * {@link MadeObject} names no type, so the type of a made object is found here as the type whose generated bean
  * class it is.
  */
 public final class FixpointGivens {

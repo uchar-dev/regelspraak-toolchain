@@ -3,8 +3,8 @@ package dev.uchar.regelspraak.toolchain.service;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
- * A request whose session reached no fixpoint: uchar's {@code DroolsBackend.vuur} ended the run at its fire cap or at
- * the creation budget, and its message is uchar's sentence ({@code Vuring.geenFixpunt}). The rules give no answer on
+ * A request whose session reached no fixpoint: uchar's {@code DroolsBackend.fire} ended the run at its fire cap or at
+ * the creation budget, and its message is uchar's sentence ({@code Firing.noFixpoint}). The rules give no answer on
  * this input and nothing stands to be read, so nothing is read or written back. The service does not judge which of
  * the two it was; uchar's sentence says so. Both adapters answer it with a 422 ({@link AnswerBuilder#noFixpoint}),
  * as an {@link EvaluationFault}, so that it is told apart from an internal fault, which stays a 500.

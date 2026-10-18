@@ -198,7 +198,7 @@ class RegelSpraakEngineTest {
 
     /** A consumer that sets an attribute on a timeline as the one segment of the period of the peildatum states it as
      *  the asOfDate-bucket scalar ({@link RegelSpraakEngine.Session#bucketScalar}). Without the statement the branch
-     *  reads a full timeline of one segment, and the own total faults with an {@code Invoervormfout}; with it the
+     *  reads a full timeline of one segment, and the own total faults with an {@code InputFormFault}; with it the
      *  session gives the value uchar's replay gives on the same case, which states such a scalar itself. */
     @Test
     void a_bucket_scalar_goes_with_the_first_fire_to_the_uchar_entry(@TempDir Path map) throws Exception {

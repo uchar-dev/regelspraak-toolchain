@@ -33,11 +33,11 @@ import java.util.Map;
  * every field against the resolved model and collecting typed {@link Violation}s (each carrying its FIELD
  * PATH). The beans are not made here: the validated request is written as the input of a {@code uchar-case-v0} case,
  * {@code {"asOfDate", "input": {"instances": [...]}}} with the ids of the request as labels, and uchar's input step
- * reads that case ({@link CaseInvoer#van}), the one its replay reads every case with, so the service puts in the facts
+ * reads that case ({@link CaseInput#van}), the one its replay reads every case with, so the service puts in the facts
  * the replay puts in on the same input. A role link uchar refuses names the link the case wrote; a table of the links
  * (id, role key, target id) gives the field of the request that wrote it: a second, different target on a to-one role
- * (WF-013, {@link CaseInvoer.Rolbotsing}) is a {@link Violation.Kind#VERKEERD_TYPE}, a link the bean model cannot hold
- * ({@link CaseInvoer.Rolweigering}) a {@link Violation.Kind#NIET_ONDERSTEUND}, each with uchar's sentence. On any
+ * (WF-013, {@link CaseInput.RoleCollision}) is a {@link Violation.Kind#VERKEERD_TYPE}, a link the bean model cannot hold
+ * ({@link CaseInput.RoleRefusal}) a {@link Violation.Kind#NIET_ONDERSTEUND}, each with uchar's sentence. On any
  * violation it does not throw: it returns the violations, beside the world uchar read from the fields that validated
  * (none when uchar refused a link), so a caller (fase 3) can turn the full set into one 400 naming every bad field.
  *
@@ -63,7 +63,7 @@ public final class RequestMapper {
     private final NameReader reader;
 
     /** @param model the resolved model the request is validated against
-     *  @param build uchar's build of the entry point, whose input step reads the request ({@link CaseInvoer#van}) */
+     *  @param build uchar's build of the entry point, whose input step reads the request ({@link CaseInput#van}) */
     public RequestMapper(RegelSpraakModel model, DroolsBackend.Build build) {
         this(model, build, new NameReader(model, null));
     }
@@ -80,7 +80,7 @@ public final class RequestMapper {
     public record Result(World world, Map<String, Objecttype> typePerLabel, List<Violation> violations) {}
 
     /** A role link the mapper writes into the case: under the {@code roles} of instance {@code id}, the key
-     *  {@code role}, naming {@code doel}; uchar's {@link CaseInvoer.Rolfout} names a refused link the same way. */
+     *  {@code role}, naming {@code doel}; uchar's {@link CaseInput.RoleError} names a refused link the same way. */
     private record Link(String id, String role, String target) {}
 
     public Result map(Request request) {

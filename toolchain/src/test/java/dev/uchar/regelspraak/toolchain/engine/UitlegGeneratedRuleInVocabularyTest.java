@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * explanation names the attribute such an operand reads in that vocabulary, as it names the characteristic of the
  * main clause. A rule the author wrote keeps the text of its operands in every vocabulary, also where it reads the
  * same generated attribute and where its name looks like a generated one: what uchar generated is read in uchar's
- * table of origins ({@code RegelSpraakModel.gegenereerdUit}), not from a name.
+ * table of origins ({@code RegelSpraakModel.generatedFrom}), not from a name.
  */
 class UitlegGeneratedRuleInVocabularyTest {
 

@@ -334,7 +334,7 @@ public final class OpenApiEmitter {
      *  property per (non-temporal) kenmerk. The description records the eenheid-bearing attributen, the
      *  kenmerken, and any rejected (dimensie/tijdlijn) member.
      *
-     *  <p><b>IR-SPEC ch. 2.2: the member set is CHAIN-CLOSED</b> ({@link Objecttype#attribuutLeden} /
+     *  <p><b>IR-SPEC ch. 2.2: the member set is CHAIN-CLOSED</b> ({@link Objecttype#attributeMembers} /
      *  {@link DescriptorLoader#characteristicMembers}), nearest declaration first. A request instance of a subtype
      *  carries its inherited members exactly like its own ones — {@link RequestMapper} accepts them and
      *  {@link AnswerBuilder} reads them off the same bean — so a document built from the OWN maps would

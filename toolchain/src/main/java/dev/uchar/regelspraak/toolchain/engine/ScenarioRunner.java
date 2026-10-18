@@ -73,12 +73,12 @@ public final class ScenarioRunner {
         return sink;
     }
 
-    /** {@link #run(ScenarioBundel)} with the explanation of each played scenario's outcome. */
+    /** {@link #run(ScenarioBundle)} with the explanation of each played scenario's outcome. */
     public static List<Explained> runWithUitleg(ScenarioBundle bundle) {
         return play(bundle, true, null);
     }
 
-    /** {@link #runWithUitleg(ScenarioBundel)} with the explanation in vocabulary {@code vocabulaire}
+    /** {@link #runWithUitleg(ScenarioBundle)} with the explanation in vocabulary {@code vocabulaire}
      *  ({@link Naming#van}; null or {@link Naming#CANONICAL} for the canonical names). */
     public static List<Explained> runWithUitleg(ScenarioBundle bundle, String vocabulary) {
         return play(bundle, true, vocabulary);

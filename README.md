@@ -189,7 +189,7 @@ The word `canoniek` chooses the canonical names, so a model that declares a voca
 The rule text is not renamed: the uitleg quotes it as written. The exception is a rule uchar wrote itself, the rule
 `afwijking opgave X` of the opgave marker: its text is uchar's canonical spelling, not an author's, so the uitleg names
 the attribute an operand reads in the chosen vocabulary (`zijn opgegeven Datum einde recht op uitkering`). uchar's table
-of origins (`RegelSpraakModel.gegenereerdUit`) says which rule that is; the IR document carries that table (`origin`,
+of origins (`RegelSpraakModel.generatedFrom`) says which rule that is; the IR document carries that table (`origin`,
 IR-SPEC ch. 2.13), so a service started from an IR document explains these rules the same way. The row of a decision
 table is generated too, but its text is the author's column header and cell, and stays as written.
 In the uitleg, an enumeration value whose designation
@@ -243,7 +243,7 @@ and the command that deletes the cluster. Both targets need Docker and run on th
 - **The playground trace** names per fired rule the labels it bound and how often, but no value: uchar's report
   carries none. The values stand in the scenario's `fixpunt`, read from the case's own session.
 - **The sentence of an expectation.** uchar's scenario resolver gives the line an expectation begins on
-  (`ResolvedScenario.Verwachting.line`) and no end; the playground's `regeltekst` is that line, which is the whole
+  (`ResolvedScenario.Expectation.line`) and no end; the playground's `regeltekst` is that line, which is the whole
   expectation only where one bullet stands on one line. A timeline expectation of several bullets is one entry at
   its first bullet. The name of the parameter set a scenario chose is not in the resolved scenario either; its
   values are, each with its line.

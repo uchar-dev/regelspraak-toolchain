@@ -51,7 +51,7 @@ import java.util.regex.Pattern;
  * regel {@code afwijking opgave X} van de opgave-markering (uchars DIVERGENCES §7): zijn tekst is uchars canonieke
  * spelling, geen tekst van een auteur, en daarin staat de naam van een gelezen attribuut in het gekozen vocabulaire
  * ("zijn opgegeven Datum einde recht op uitkering"). Welke regel dat is, staat in uchars tabel van herkomst
- * ({@link RegelSpraakModel#gegenereerdUit}) van het uitgelegde model, niet in de naam. Ook een model dat uchars
+ * ({@link RegelSpraakModel#generatedFrom}) van het uitgelegde model, niet in de naam. Ook een model dat uchars
  * IR-lader leest, draagt die tabel: het IR-document schrijft haar als veld {@code origin} (IR-SPEC ch. 2.13). Een
  * enumeratiewaarde waarvan de benaming afwijkt van de gedeclareerde waarde staat er als "benaming · waarde" ("01 ·
  * Hoogte inkomsten uit verzekerde arbeid"). Zonder naamgeving is het verhaal canoniek.
@@ -66,7 +66,7 @@ import java.util.regex.Pattern;
  * te tillen als optionele regelbron-annotatie. In de huidige grammatica geldt
  * {@code LINE_COMMENT : '//' ~[\r\n]* -> skip} — commentaren worden weggegooid, niet naar een hidden channel
  * gerouteerd — dus de annotatie is er vandaag NIET. De verbalisator is daar eerlijk over: hij drukt een
- * bronverwijzing af zodra {@link ResolvedRegel} er een draagt en laat de regel anders weg (geen verzonnen bron).
+ * bronverwijzing af zodra {@link ResolvedRule} er een draagt en laat de regel anders weg (geen verzonnen bron).
  */
 public final class Verbaliser {
 

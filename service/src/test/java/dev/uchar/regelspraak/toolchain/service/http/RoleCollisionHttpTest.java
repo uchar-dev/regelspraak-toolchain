@@ -21,7 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * A request whose one-to-one relation gets two different targets is refused by uchar's input step
- * ({@code CaseInvoer.Rolbotsing}, WF-013), which reads the request written as a case; the service gives it as a 400
+ * ({@code CaseInput.RoleCollision}, WF-013), which reads the request written as a case; the service gives it as a 400
  * {@code VERKEERD_TYPE} on the field of the request that wrote the colliding link, with uchar's sentence. The collision
  * is checked on each field a link of a 1:1 relation writes: the instance's own field, the far field (RUNTIME-SEMANTICS
  * ch. 5.7a), the far field through {@code relaties}, and the reverse leg of a reciprocal relation (§13.3.9.2).

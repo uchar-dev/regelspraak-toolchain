@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 
 /**
  * The forms of a model's rule layer by the names a descriptor scope uses. A form is what uchar lowers a scope to
- * ({@link CaseEmitter#metScope}): a rule (each version and each decision-table row a form of its own), an object
+ * ({@link CaseEmitter#withScope}): a rule (each version and each decision-table row a form of its own), an object
  * creation, an allocation, a consistency, a uniqueness, a fact creation or a defaults group. A scope name carries the
  * forms of that name, or else the rows of the decision table of that name; a rule group carries the forms of its
  * members. That is how uchar's scenario resolver reads a scope, so an entry point and a scenario that name the same
@@ -80,7 +80,7 @@ public final class FormIndex {
      * nearest type above its subject that writes the same target, and a group there without a base reaches further up
      * in its turn. A group with a base of its own does not reach up, since it is the base of its stack, and neither
      * does a declared-unordered one, which uchar's composition does not fold over an inherited stack. The target is
-     * the member's identity of uchar's rule graph ({@link ProducentConsument#elementVan}), so a member written on the
+     * the member's identity of uchar's rule graph ({@link ProducerConsumer#elementOf}), so a member written on the
      * supertype and on a subtype is one target, as ch. 7.10 composes it.
      */
     private static Map<String, List<String>> stackMates(RegelSpraakModel model, List<PrioritizedDefaults> defaults) {
